@@ -20,7 +20,8 @@
 #include "tui/widgets/list_view.hpp"
 #include "tui/widgets/tree_view.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
+
 #include <cctype>
 #include <memory>
 #include <string>
@@ -37,7 +38,7 @@ using viper::tui::widgets::ListView;
 using viper::tui::widgets::TreeNode;
 using viper::tui::widgets::TreeView;
 
-int main()
+TEST(TUI, ListTree)
 {
     Theme theme;
     ScreenBuffer sb;
@@ -52,8 +53,8 @@ int main()
     lv.paint(sb);
     tio.clear();
     r.draw(sb);
-    assert(tio.buffer().find('>') != std::string::npos);
-    assert(tio.buffer().find("one") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find('>') != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("one") != std::string::npos);
 
     Event ev{};
     ev.key.code = KeyEvent::Code::Down;
@@ -62,7 +63,7 @@ int main()
     ev.key.code = KeyEvent::Code::Down;
     lv.onEvent(ev);
     auto sel = lv.selection();
-    assert(sel.size() == 2 && sel[0] == 1 && sel[1] == 2);
+    ASSERT_TRUE(sel.size() == 2 && sel[0] == 1 && sel[1] == 2);
 
     // Custom renderer outputs uppercase without prefix
     lv.setRenderer(
@@ -79,7 +80,7 @@ int main()
     lv.paint(sb);
     tio.clear();
     r.draw(sb);
-    assert(tio.buffer().find("ONE") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("ONE") != std::string::npos);
 
     // TreeView expand/collapse
     auto root = std::make_unique<TreeNode>("root");
@@ -95,8 +96,8 @@ int main()
     tv.paint(sb);
     tio.clear();
     r.draw(sb);
-    assert(tio.buffer().find('+') != std::string::npos);
-    assert(tio.buffer().find("root") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find('+') != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("root") != std::string::npos);
 
     ev = {};
     ev.key.code = KeyEvent::Code::Enter;
@@ -105,8 +106,8 @@ int main()
     tv.paint(sb);
     tio.clear();
     r.draw(sb);
-    assert(tio.buffer().find('-') != std::string::npos);
-    assert(tio.buffer().find("root") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find('-') != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("root") != std::string::npos);
 
     ev.key.code = KeyEvent::Code::Down;
     tv.onEvent(ev); // child1
@@ -118,7 +119,7 @@ int main()
     tv.paint(sb);
     tio.clear();
     r.draw(sb);
-    assert(tio.buffer().find("grand") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("grand") != std::string::npos);
 
     ev.key.code = KeyEvent::Code::Left;
     tv.onEvent(ev); // collapse child2
@@ -126,7 +127,11 @@ int main()
     tv.paint(sb);
     tio.clear();
     r.draw(sb);
-    assert(tio.buffer().find("grand") == std::string::npos);
+    ASSERT_EQ(tio.buffer().find("grand"), std::string::npos);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

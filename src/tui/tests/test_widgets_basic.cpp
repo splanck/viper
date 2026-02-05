@@ -20,7 +20,7 @@
 #include "tui/widgets/button.hpp"
 #include "tui/widgets/label.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <string>
 
 using viper::tui::render::Renderer;
@@ -33,7 +33,7 @@ using viper::tui::ui::Event;
 using viper::tui::widgets::Button;
 using viper::tui::widgets::Label;
 
-int main()
+TEST(TUI, WidgetsBasic)
 {
     Theme theme;
 
@@ -49,7 +49,7 @@ int main()
     StringTermIO tio;
     Renderer r(tio, true);
     r.draw(sb);
-    assert(tio.buffer().find("Hello") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("Hello") != std::string::npos);
 
     // Button paint and onClick
     bool clicked = false;
@@ -60,19 +60,23 @@ int main()
     btn.paint(sb);
     tio.clear();
     r.draw(sb);
-    assert(tio.buffer().find("Go") != std::string::npos);
-    assert(tio.buffer().find("+--+") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("Go") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("+--+") != std::string::npos);
 
     Event ev{};
     ev.key.code = KeyEvent::Code::Enter;
-    assert(btn.onEvent(ev));
-    assert(clicked);
+    ASSERT_TRUE(btn.onEvent(ev));
+    ASSERT_TRUE(clicked);
 
     clicked = false;
     ev.key.code = KeyEvent::Code::Unknown;
     ev.key.codepoint = U' ';
-    assert(btn.onEvent(ev));
-    assert(clicked);
+    ASSERT_TRUE(btn.onEvent(ev));
+    ASSERT_TRUE(clicked);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

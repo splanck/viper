@@ -20,7 +20,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <iostream>
 
 using namespace il::core;
@@ -34,7 +34,7 @@ static void verifyOrDie(const Module &module)
     if (!verifyResult)
     {
         il::support::printDiag(verifyResult.error(), std::cerr);
-        assert(false && "Module verification failed");
+        ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
@@ -54,8 +54,9 @@ void emitBinOp(BasicBlock &bb,
     bb.instructions.push_back(instr);
 }
 
-/// @brief Test that integer comparison folding produces boolean type.
-void testIntegerComparisonFold()
+} // namespace
+
+TEST(IL, testIntegerComparisonFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -83,16 +84,15 @@ void testIntegerComparisonFold()
 
     // After folding, the ret should have a constant boolean operand
     const Instr &ret = entry.instructions.back();
-    assert(ret.op == Opcode::Ret);
-    assert(ret.operands.size() == 1);
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_EQ(ret.operands.size(), 1);
     const Value &result = ret.operands[0];
-    assert(result.kind == Value::Kind::ConstInt);
-    assert(result.isBool && "Comparison result should be boolean");
-    assert(result.i64 == 1 && "5 < 10 should be true");
+    ASSERT_EQ(result.kind, Value::Kind::ConstInt);
+    ASSERT_TRUE(result.isBool);
+    ASSERT_EQ(result.i64, 1);
 }
 
-/// @brief Test unsigned comparison folding.
-void testUnsignedComparisonFold()
+TEST(IL, testUnsignedComparisonFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -119,13 +119,12 @@ void testUnsignedComparisonFold()
     verifyOrDie(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt);
-    assert(ret.operands[0].isBool);
-    assert(ret.operands[0].i64 == 1);
+    ASSERT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    ASSERT_TRUE(ret.operands[0].isBool);
+    ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-/// @brief Test shift operation folding.
-void testShiftFold()
+TEST(IL, testShiftFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -147,12 +146,11 @@ void testShiftFold()
     verifyOrDie(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt);
-    assert(ret.operands[0].i64 == 16 && "1 << 4 should equal 16");
+    ASSERT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    ASSERT_EQ(ret.operands[0].i64, 16);
 }
 
-/// @brief Test logical shift right folding.
-void testLShrFold()
+TEST(IL, testLShrFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -174,12 +172,11 @@ void testLShrFold()
     verifyOrDie(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt);
-    assert(ret.operands[0].i64 == 16 && "256 >> 4 should equal 16");
+    ASSERT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    ASSERT_EQ(ret.operands[0].i64, 16);
 }
 
-/// @brief Test float comparison folding produces boolean.
-void testFloatComparisonFold()
+TEST(IL, testFloatComparisonFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -206,13 +203,12 @@ void testFloatComparisonFold()
     verifyOrDie(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt);
-    assert(ret.operands[0].isBool && "Float comparison should produce boolean");
-    assert(ret.operands[0].i64 == 1 && "1.0 < 2.0 should be true");
+    ASSERT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    ASSERT_TRUE(ret.operands[0].isBool);
+    ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-/// @brief Test that equality comparison folds correctly.
-void testEqualityFold()
+TEST(IL, testEqualityFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -239,13 +235,12 @@ void testEqualityFold()
     verifyOrDie(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt);
-    assert(ret.operands[0].isBool);
-    assert(ret.operands[0].i64 == 1 && "42 == 42 should be true");
+    ASSERT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    ASSERT_TRUE(ret.operands[0].isBool);
+    ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-/// @brief Test inequality comparison folding.
-void testInequalityFold()
+TEST(IL, testInequalityFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -268,21 +263,13 @@ void testInequalityFold()
     verifyOrDie(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt);
-    assert(ret.operands[0].isBool);
-    assert(ret.operands[0].i64 == 1 && "1 != 2 should be true");
+    ASSERT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    ASSERT_TRUE(ret.operands[0].isBool);
+    ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-} // namespace
-
-int main()
+int main(int argc, char **argv)
 {
-    testIntegerComparisonFold();
-    testUnsignedComparisonFold();
-    testShiftFold();
-    testLShrFold();
-    testFloatComparisonFold();
-    testEqualityFold();
-    testInequalityFold();
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

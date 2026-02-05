@@ -21,7 +21,7 @@
 #include "tui/util/unicode.hpp"
 #include "tui/views/text_view.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <string>
 
 using viper::tui::render::ScreenBuffer;
@@ -54,44 +54,44 @@ static const char kCombiningGrave[] = "\xCC\x80"; // U+0300
 void test_combining_marks_width()
 {
     // U+0301 COMBINING ACUTE ACCENT
-    assert(char_width(0x0301) == 0);
+    ASSERT_EQ(char_width(0x0301), 0);
     // U+0300 COMBINING GRAVE ACCENT
-    assert(char_width(0x0300) == 0);
+    ASSERT_EQ(char_width(0x0300), 0);
     // U+0302 COMBINING CIRCUMFLEX ACCENT
-    assert(char_width(0x0302) == 0);
+    ASSERT_EQ(char_width(0x0302), 0);
     // U+0308 COMBINING DIAERESIS (umlaut)
-    assert(char_width(0x0308) == 0);
+    ASSERT_EQ(char_width(0x0308), 0);
     // U+036F COMBINING LATIN SMALL LETTER X (end of range)
-    assert(char_width(0x036F) == 0);
+    ASSERT_EQ(char_width(0x036F), 0);
 }
 
 // Test full-width CJK characters have width 2.
 void test_cjk_full_width()
 {
     // Common CJK ideographs
-    assert(char_width(0x4E2D) == 2); // 中
-    assert(char_width(0x6587) == 2); // 文
-    assert(char_width(0x5B57) == 2); // 字
+    ASSERT_EQ(char_width(0x4E2D), 2); // 中
+    ASSERT_EQ(char_width(0x6587), 2); // 文
+    ASSERT_EQ(char_width(0x5B57), 2); // 字
     // Korean Hangul syllables
-    assert(char_width(0xAC00) == 2); // 가
-    assert(char_width(0xD7A3) == 2); // end of Hangul syllables
+    ASSERT_EQ(char_width(0xAC00), 2); // 가
+    ASSERT_EQ(char_width(0xD7A3), 2); // end of Hangul syllables
     // Japanese Hiragana (in wide range)
-    assert(char_width(0x3042) == 2); // あ
+    ASSERT_EQ(char_width(0x3042), 2); // あ
     // Japanese Katakana
-    assert(char_width(0x30A2) == 2); // ア
+    ASSERT_EQ(char_width(0x30A2), 2); // ア
     // Fullwidth Latin
-    assert(char_width(0xFF21) == 2); // Ａ (fullwidth A)
+    ASSERT_EQ(char_width(0xFF21), 2); // Ａ (fullwidth A)
 }
 
 // Test ASCII and other characters have width 1.
 void test_normal_width()
 {
-    assert(char_width('A') == 1);
-    assert(char_width('z') == 1);
-    assert(char_width(' ') == 1);
-    assert(char_width('0') == 1);
+    ASSERT_EQ(char_width('A'), 1);
+    ASSERT_EQ(char_width('z'), 1);
+    ASSERT_EQ(char_width(' '), 1);
+    ASSERT_EQ(char_width('0'), 1);
     // Emoji (not in wide range, treated as width 1 by our simplified impl)
-    assert(char_width(0x1F600) == 1); // grinning face
+    ASSERT_EQ(char_width(0x1F600), 1); // grinning face
 }
 
 //===----------------------------------------------------------------------===//
@@ -104,15 +104,15 @@ void test_decode_multiple_combining()
     // "e" + combining acute + combining grave = 3 code points
     std::string input = std::string("e") + kCombiningAcute + kCombiningGrave;
     auto s = decode_utf8(input);
-    assert(s.size() == 3);
-    assert(s[0] == 'e');
-    assert(s[1] == 0x0301); // acute
-    assert(s[2] == 0x0300); // grave
+    ASSERT_EQ(s.size(), 3);
+    ASSERT_EQ(s[0], 'e');
+    ASSERT_EQ(s[1], 0x0301); // acute
+    ASSERT_EQ(s[2], 0x0300); // grave
     // Total display width: 1 + 0 + 0 = 1
     int w = 0;
     for (auto cp : s)
         w += char_width(cp);
-    assert(w == 1);
+    ASSERT_EQ(w, 1);
 }
 
 // Test decoding mixed ASCII and CJK.
@@ -121,17 +121,17 @@ void test_decode_mixed_ascii_cjk()
     // "a中b文c"
     std::string input = std::string("a") + kCjkZhong + "b" + kCjkWen + "c";
     auto s = decode_utf8(input);
-    assert(s.size() == 5);
-    assert(s[0] == 'a');
-    assert(s[1] == 0x4E2D); // 中
-    assert(s[2] == 'b');
-    assert(s[3] == 0x6587); // 文
-    assert(s[4] == 'c');
+    ASSERT_EQ(s.size(), 5);
+    ASSERT_EQ(s[0], 'a');
+    ASSERT_EQ(s[1], 0x4E2D); // 中
+    ASSERT_EQ(s[2], 'b');
+    ASSERT_EQ(s[3], 0x6587); // 文
+    ASSERT_EQ(s[4], 'c');
     // Width: 1 + 2 + 1 + 2 + 1 = 7
     int w = 0;
     for (auto cp : s)
         w += char_width(cp);
-    assert(w == 7);
+    ASSERT_EQ(w, 7);
 }
 
 // Test CJK string width calculation.
@@ -139,11 +139,11 @@ void test_cjk_string_width()
 {
     // "你好" (2 characters, each width 2 = total 4)
     auto s = decode_utf8("\xE4\xBD\xA0\xE5\xA5\xBD");
-    assert(s.size() == 2);
+    ASSERT_EQ(s.size(), 2);
     int w = 0;
     for (auto cp : s)
         w += char_width(cp);
-    assert(w == 4);
+    ASSERT_EQ(w, 4);
 }
 
 //===----------------------------------------------------------------------===//
@@ -157,10 +157,10 @@ void test_buffer_unicode_storage()
     // Line with combining mark: "café" where é = e + combining acute
     std::string cafe = std::string("caf") + "e" + kCombiningAcute;
     buf.load(cafe);
-    assert(buf.lineCount() == 1);
+    ASSERT_EQ(buf.lineCount(), 1);
     std::string line = buf.getLine(0);
-    assert(line == cafe);
-    assert(line.size() == 6); // c a f e combining_acute = 6 bytes
+    ASSERT_EQ(line, cafe);
+    ASSERT_EQ(line.size(), 6); // c a f e combining_acute = 6 bytes
 }
 
 // Test TextBuffer insert with CJK.
@@ -171,7 +171,7 @@ void test_buffer_insert_cjk()
     // Insert 中 between a and b
     buf.insert(1, kCjkZhong);
     std::string expected = std::string("a") + kCjkZhong + "b";
-    assert(buf.getLine(0) == expected);
+    ASSERT_EQ(buf.getLine(0), expected);
 }
 
 // Test TextBuffer erase within CJK character.
@@ -182,7 +182,7 @@ void test_buffer_erase_cjk()
     buf.load(aZhongB);
     // Erase the CJK character (3 bytes at position 1)
     buf.erase(1, 3);
-    assert(buf.getLine(0) == "ab");
+    ASSERT_EQ(buf.getLine(0), "ab");
 }
 
 // Test TextBuffer erase combining sequence as unit.
@@ -193,7 +193,7 @@ void test_buffer_erase_combining()
     buf.load(aeAcuteB);
     // Erase "é" = e + combining = 3 bytes at position 1
     buf.erase(1, 3);
-    assert(buf.getLine(0) == "ab");
+    ASSERT_EQ(buf.getLine(0), "ab");
 }
 
 //===----------------------------------------------------------------------===//
@@ -213,31 +213,31 @@ void test_view_cursor_cjk()
     view.layout({0, 0, 20, 5});
 
     // Start at column 0
-    assert(view.cursorRow() == 0);
-    assert(view.cursorCol() == 0);
+    ASSERT_EQ(view.cursorRow(), 0);
+    ASSERT_EQ(view.cursorCol(), 0);
 
     // Move right: should go from col 0 to col 1 (after 'a')
     Event ev{};
     ev.key.code = KeyEvent::Code::Right;
     view.onEvent(ev);
-    assert(view.cursorCol() == 1);
+    ASSERT_EQ(view.cursorCol(), 1);
 
     // Move right: should skip over 中 (width 2) to col 3
     view.onEvent(ev);
-    assert(view.cursorCol() == 3);
+    ASSERT_EQ(view.cursorCol(), 3);
 
     // Move right: should go to col 4 (after 'b', end of line)
     view.onEvent(ev);
-    assert(view.cursorCol() == 4);
+    ASSERT_EQ(view.cursorCol(), 4);
 
     // Move left: should go back to col 3
     ev.key.code = KeyEvent::Code::Left;
     view.onEvent(ev);
-    assert(view.cursorCol() == 3);
+    ASSERT_EQ(view.cursorCol(), 3);
 
     // Move left: should skip back over 中 to col 1
     view.onEvent(ev);
-    assert(view.cursorCol() == 1);
+    ASSERT_EQ(view.cursorCol(), 1);
 }
 
 // Test cursor navigation over combining marks.
@@ -253,22 +253,22 @@ void test_view_cursor_combining()
     TextView view(buf, theme, false);
     view.layout({0, 0, 20, 5});
 
-    assert(view.cursorCol() == 0);
+    ASSERT_EQ(view.cursorCol(), 0);
 
     // Move right to after 'a'
     Event ev{};
     ev.key.code = KeyEvent::Code::Right;
     view.onEvent(ev);
-    assert(view.cursorCol() == 1);
+    ASSERT_EQ(view.cursorCol(), 1);
 
     // Move right: should move over 'e' + combining (treated as 1 column)
     view.onEvent(ev);
     // After 'é', column should be 2
-    assert(view.cursorCol() == 2);
+    ASSERT_EQ(view.cursorCol(), 2);
 
     // Move right to after 'b'
     view.onEvent(ev);
-    assert(view.cursorCol() == 3);
+    ASSERT_EQ(view.cursorCol(), 3);
 }
 
 // Test moveCursorToOffset with CJK content.
@@ -285,15 +285,15 @@ void test_view_move_to_offset_cjk()
 
     // Move to start
     view.moveCursorToOffset(0);
-    assert(view.cursorCol() == 0);
+    ASSERT_EQ(view.cursorCol(), 0);
 
     // Move to byte 3 (start of second char)
     view.moveCursorToOffset(3);
-    assert(view.cursorCol() == 2); // First char takes 2 columns
+    ASSERT_EQ(view.cursorCol(), 2); // First char takes 2 columns
 
     // Move to end
     view.moveCursorToOffset(6);
-    assert(view.cursorCol() == 4);
+    ASSERT_EQ(view.cursorCol(), 4);
 }
 
 // Test End key with mixed-width line.
@@ -311,7 +311,7 @@ void test_view_end_key_mixed()
     Event ev{};
     ev.key.code = KeyEvent::Code::End;
     view.onEvent(ev);
-    assert(view.cursorCol() == 4);
+    ASSERT_EQ(view.cursorCol(), 4);
 }
 
 // Test Home key resets to column 0.
@@ -329,12 +329,12 @@ void test_view_home_key()
     Event ev{};
     ev.key.code = KeyEvent::Code::End;
     view.onEvent(ev);
-    assert(view.cursorCol() == 4);
+    ASSERT_EQ(view.cursorCol(), 4);
 
     // Home should go back to 0
     ev.key.code = KeyEvent::Code::Home;
     view.onEvent(ev);
-    assert(view.cursorCol() == 0);
+    ASSERT_EQ(view.cursorCol(), 0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -357,8 +357,8 @@ void test_render_cjk()
     view.paint(sb);
 
     // First cell should have the CJK character
-    assert(sb.at(0, 0).ch == 0x4E2D);
-    assert(sb.at(0, 0).width == 2);
+    ASSERT_EQ(sb.at(0, 0).ch, 0x4E2D);
+    ASSERT_EQ(sb.at(0, 0).width, 2);
 }
 
 // Test rendering combining mark sequence.
@@ -379,11 +379,11 @@ void test_render_combining()
     view.paint(sb);
 
     // First cell should have 'e'
-    assert(sb.at(0, 0).ch == 'e');
+    ASSERT_EQ(sb.at(0, 0).ch, 'e');
     // Second cell should have the combining mark (width 0)
-    assert(sb.at(0, 1).ch == 0x0301);
+    ASSERT_EQ(sb.at(0, 1).ch, 0x0301);
     // The combining mark cell should have width 0
-    assert(sb.at(0, 1).width == 0);
+    ASSERT_EQ(sb.at(0, 1).width, 0);
 }
 
 // Test rendering mixed ASCII and CJK.
@@ -403,14 +403,14 @@ void test_render_mixed()
     view.paint(sb);
 
     // Column 0: 'a'
-    assert(sb.at(0, 0).ch == 'a');
-    assert(sb.at(0, 0).width == 1);
+    ASSERT_EQ(sb.at(0, 0).ch, 'a');
+    ASSERT_EQ(sb.at(0, 0).width, 1);
     // Column 1: '中' (width 2)
-    assert(sb.at(0, 1).ch == 0x4E2D);
-    assert(sb.at(0, 1).width == 2);
+    ASSERT_EQ(sb.at(0, 1).ch, 0x4E2D);
+    ASSERT_EQ(sb.at(0, 1).width, 2);
     // Column 3: 'b' (column 2 is continuation of wide char)
-    assert(sb.at(0, 3).ch == 'b');
-    assert(sb.at(0, 3).width == 1);
+    ASSERT_EQ(sb.at(0, 3).ch, 'b');
+    ASSERT_EQ(sb.at(0, 3).width, 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -434,20 +434,20 @@ void test_view_vertical_nav_mixed()
     Event ev{};
     ev.key.code = KeyEvent::Code::End;
     view.onEvent(ev);
-    assert(view.cursorRow() == 0);
-    assert(view.cursorCol() == 4);
+    ASSERT_EQ(view.cursorRow(), 0);
+    ASSERT_EQ(view.cursorCol(), 4);
 
     // Move down: target column 4, but line 1 only has 2 columns
     ev.key.code = KeyEvent::Code::Down;
     view.onEvent(ev);
-    assert(view.cursorRow() == 1);
-    assert(view.cursorCol() == 2); // Clamped to end of shorter line
+    ASSERT_EQ(view.cursorRow(), 1);
+    ASSERT_EQ(view.cursorCol(), 2); // Clamped to end of shorter line
 
     // Move up: should try to restore target column 4
     ev.key.code = KeyEvent::Code::Up;
     view.onEvent(ev);
-    assert(view.cursorRow() == 0);
-    assert(view.cursorCol() == 4);
+    ASSERT_EQ(view.cursorRow(), 0);
+    ASSERT_EQ(view.cursorCol(), 4);
 }
 
 // Test selection with CJK characters.
@@ -468,11 +468,11 @@ void test_view_selection_cjk()
 
     // Shift+Right once: select 'a'
     view.onEvent(ev);
-    assert(view.cursorCol() == 1);
+    ASSERT_EQ(view.cursorCol(), 1);
 
     // Shift+Right again: select '中'
     view.onEvent(ev);
-    assert(view.cursorCol() == 3);
+    ASSERT_EQ(view.cursorCol(), 3);
 
     // Render and check selection styling
     ScreenBuffer sb;
@@ -482,18 +482,18 @@ void test_view_selection_cjk()
 
     const auto &selStyle = theme.style(Role::Selection);
     // 'a' should be selected
-    assert(sb.at(0, 0).style == selStyle);
+    ASSERT_EQ(sb.at(0, 0).style, selStyle);
     // '中' should be selected
-    assert(sb.at(0, 1).style == selStyle);
+    ASSERT_EQ(sb.at(0, 1).style, selStyle);
     // 'b' should NOT be selected
-    assert(sb.at(0, 3).style != selStyle);
+    ASSERT_TRUE(sb.at(0, 3).style != selStyle);
 }
 
 //===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
 
-int main()
+TEST(TUI, UnicodeGrapheme)
 {
     // char_width tests
     test_combining_marks_width();
@@ -526,6 +526,10 @@ int main()
     // Multi-line tests
     test_view_vertical_nav_mixed();
     test_view_selection_cjk();
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

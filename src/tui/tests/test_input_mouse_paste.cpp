@@ -15,52 +15,56 @@
 
 #include "tui/term/input.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
 using viper::tui::term::InputDecoder;
 using viper::tui::term::KeyEvent;
 using viper::tui::term::MouseEvent;
 using viper::tui::term::PasteEvent;
 
-int main()
+TEST(TUI, InputMousePaste)
 {
     InputDecoder d;
 
     d.feed("\x1b[<0;10;20M");
     auto me = d.drain_mouse();
-    assert(me.size() == 1);
-    assert(me[0].type == MouseEvent::Type::Down);
-    assert(me[0].x == 9 && me[0].y == 19);
-    assert(me[0].buttons == 1);
+    ASSERT_EQ(me.size(), 1);
+    ASSERT_EQ(me[0].type, MouseEvent::Type::Down);
+    ASSERT_TRUE(me[0].x == 9 && me[0].y == 19);
+    ASSERT_EQ(me[0].buttons, 1);
 
     d.feed("\x1b[<0;10;20m");
     me = d.drain_mouse();
-    assert(me.size() == 1);
-    assert(me[0].type == MouseEvent::Type::Up);
+    ASSERT_EQ(me.size(), 1);
+    ASSERT_EQ(me[0].type, MouseEvent::Type::Up);
 
     d.feed("\x1b[<32;11;21M");
     me = d.drain_mouse();
-    assert(me.size() == 1);
-    assert(me[0].type == MouseEvent::Type::Move);
-    assert(me[0].x == 10 && me[0].y == 20);
+    ASSERT_EQ(me.size(), 1);
+    ASSERT_EQ(me[0].type, MouseEvent::Type::Move);
+    ASSERT_TRUE(me[0].x == 10 && me[0].y == 20);
 
     d.feed("\x1b[<64;12;22M");
     me = d.drain_mouse();
-    assert(me.size() == 1);
-    assert(me[0].type == MouseEvent::Type::Wheel);
-    assert(me[0].buttons == 1);
+    ASSERT_EQ(me.size(), 1);
+    ASSERT_EQ(me[0].type, MouseEvent::Type::Wheel);
+    ASSERT_EQ(me[0].buttons, 1);
 
     d.feed("\x1b[200~hello\nworld\x1b[201~");
     auto pe = d.drain_paste();
-    assert(pe.size() == 1);
-    assert(pe[0].text == "hello\nworld");
+    ASSERT_EQ(pe.size(), 1);
+    ASSERT_EQ(pe[0].text, "hello\nworld");
 
     d.feed("\x1b[A");
     auto ke = d.drain();
-    assert(ke.size() == 1);
-    assert(ke[0].code == KeyEvent::Code::Up);
+    ASSERT_EQ(ke.size(), 1);
+    ASSERT_EQ(ke[0].code, KeyEvent::Code::Up);
     me = d.drain_mouse();
-    assert(me.empty());
+    ASSERT_TRUE(me.empty());
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

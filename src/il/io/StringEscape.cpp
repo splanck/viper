@@ -20,7 +20,7 @@
 #include "il/io/StringEscape.hpp"
 
 #include <cctype>
-#include <cstdio>
+#include <string>
 
 namespace il::io
 {
@@ -124,11 +124,7 @@ bool decodeEscapedString(std::string_view input, std::string &output, std::strin
             default:
                 if (error)
                 {
-                    char buf[64];
-                    if (std::snprintf(buf, sizeof(buf), "unknown escape sequence \\%c", next) < 0)
-                        *error = "unknown escape sequence";
-                    else
-                        *error = buf;
+                    *error = std::string("unknown escape sequence \\") + next;
                 }
                 return false;
         }

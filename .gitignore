@@ -125,3 +125,15 @@ __pycache__/
 *.img
 *.iso
 *.bin
+*.sys
+
+# --- Benchmark binaries ---
+benchmarks/bench_c
+benchmarks/bench_c_O0
+benchmarks/bench_native
+benchmarks/bench_new
+
+# --- Root-level scratch/analysis files ---
+viper_issues*.txt
+viper_runtime_*.md
+viper_zia_issues.md

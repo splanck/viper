@@ -16,7 +16,7 @@
 #include "tui/term/clipboard.hpp"
 #include "tui/term/term_io.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <cstdlib>
 
 static void clear_disable()
@@ -37,31 +37,36 @@ static void set_disable()
 #endif
 }
 
-int main()
+TEST(TUI, Clipboard)
 {
     clear_disable();
     viper::tui::term::StringTermIO tio;
     viper::tui::term::Osc52Clipboard cb(tio);
     [[maybe_unused]] bool ok = cb.copy("hello");
-    assert(ok);
-    assert(tio.buffer() == "\x1b]52;c;aGVsbG8=\x07");
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(tio.buffer(), "\x1b]52;c;aGVsbG8=\x07");
 
     set_disable();
     ok = cb.copy("world");
-    assert(!ok);
-    assert(tio.buffer() == "\x1b]52;c;aGVsbG8=\x07");
+    ASSERT_FALSE(ok);
+    ASSERT_EQ(tio.buffer(), "\x1b]52;c;aGVsbG8=\x07");
 
     clear_disable();
     viper::tui::term::MockClipboard mock;
     ok = mock.copy("test");
-    assert(ok);
-    assert(mock.last() == "\x1b]52;c;dGVzdA==\x07");
-    assert(mock.paste() == "test");
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(mock.last(), "\x1b]52;c;dGVzdA==\x07");
+    ASSERT_EQ(mock.paste(), "test");
 
     set_disable();
     ok = mock.copy("again");
-    assert(!ok);
-    assert(mock.last().empty());
-    assert(mock.paste().empty());
-    return 0;
+    ASSERT_FALSE(ok);
+    ASSERT_TRUE(mock.last().empty());
+    ASSERT_TRUE(mock.paste().empty());
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

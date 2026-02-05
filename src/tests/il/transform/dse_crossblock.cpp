@@ -25,7 +25,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <iostream>
 
 using namespace il::core;
@@ -39,7 +39,7 @@ static void verifyOrDie(const Module &module)
     if (!verifyResult)
     {
         il::support::printDiag(verifyResult.error(), std::cerr);
-        assert(false && "Module verification failed");
+        ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
@@ -76,9 +76,9 @@ size_t countStores(const Function &fn)
     return count;
 }
 
-/// @brief Test that intra-block dead stores are eliminated.
-/// store ptr, 1; store ptr, 2 -> store ptr, 2
-void testIntraBlockDSE()
+} // namespace
+
+TEST(IL, testIntraBlockDSE)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -118,7 +118,7 @@ void testIntraBlockDSE()
     verifyOrDie(module);
 
     size_t storesBefore = countStores(fn);
-    assert(storesBefore == 2);
+    ASSERT_EQ(storesBefore, 2);
 
     il::transform::AnalysisRegistry registry;
     setupAnalysisRegistry(registry);
@@ -129,12 +129,10 @@ void testIntraBlockDSE()
     verifyOrDie(module);
 
     size_t storesAfter = countStores(fn);
-    // DSE should remove the first store
-    assert(storesAfter == 1 && "First dead store should be eliminated");
+    ASSERT_EQ(storesAfter, 1);
 }
 
-/// @brief Test that stores read before being overwritten are NOT eliminated.
-void testStoreReadBeforeOverwrite()
+TEST(IL, testStoreReadBeforeOverwrite)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -183,7 +181,7 @@ void testStoreReadBeforeOverwrite()
     verifyOrDie(module);
 
     size_t storesBefore = countStores(fn);
-    assert(storesBefore == 2);
+    ASSERT_EQ(storesBefore, 2);
 
     il::transform::AnalysisRegistry registry;
     setupAnalysisRegistry(registry);
@@ -194,13 +192,10 @@ void testStoreReadBeforeOverwrite()
     verifyOrDie(module);
 
     size_t storesAfter = countStores(fn);
-    // First store should NOT be eliminated (it's read before overwrite)
-    // Second store should NOT be eliminated (it's the last store)
-    assert(storesAfter == 2 && "No stores should be eliminated when read occurs");
+    ASSERT_EQ(storesAfter, 2);
 }
 
-/// @brief Test that stores to different locations are not confused.
-void testDifferentLocations()
+TEST(IL, testDifferentLocations)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -249,7 +244,7 @@ void testDifferentLocations()
     verifyOrDie(module);
 
     size_t storesBefore = countStores(fn);
-    assert(storesBefore == 2);
+    ASSERT_EQ(storesBefore, 2);
 
     il::transform::AnalysisRegistry registry;
     setupAnalysisRegistry(registry);
@@ -260,16 +255,11 @@ void testDifferentLocations()
     verifyOrDie(module);
 
     size_t storesAfter = countStores(fn);
-    // Both stores should remain (different locations)
-    assert(storesAfter == 2 && "Stores to different locations should not be eliminated");
+    ASSERT_EQ(storesAfter, 2);
 }
 
-} // namespace
-
-int main()
+int main(int argc, char **argv)
 {
-    testIntraBlockDSE();
-    testStoreReadBeforeOverwrite();
-    testDifferentLocations();
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

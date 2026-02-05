@@ -23,7 +23,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <chrono>
 #include <iostream>
 #include <optional>
@@ -39,7 +39,7 @@ static void verifyOrDie(const Module &module)
     if (!verifyResult)
     {
         il::support::printDiag(verifyResult.error(), std::cerr);
-        assert(false && "Module verification failed");
+        ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
@@ -60,8 +60,9 @@ void emitBinOp(BasicBlock &bb,
     bb.instructions.push_back(instr);
 }
 
-/// @brief Test that add x, 0 is simplified to x where x is a temp.
-void testAddZeroIdentity()
+} // namespace
+
+TEST(IL, testAddZeroIdentity)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -71,11 +72,9 @@ void testAddZeroIdentity()
     BasicBlock &entry = fn.blocks[0];
     builder.setInsertPoint(entry);
 
-    // Create a temp %0 that cannot be simplified
     unsigned temp0 = builder.reserveTempId();
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(10), Value::constInt(2), temp0);
 
-    // %1 = iadd.ovf %0, 0  -> should simplify to %0
     unsigned resultId = builder.reserveTempId();
     emitBinOp(entry, Opcode::IAddOvf, Value::temp(temp0), Value::constInt(0), resultId);
     builder.emitRet(Value::temp(resultId), {});
@@ -84,17 +83,14 @@ void testAddZeroIdentity()
 
     il::transform::peephole(module);
 
-    // After peephole, the iadd.ovf +0 should be eliminated
-    // The ret should now reference %0 (the mul result)
-    assert(entry.instructions.size() == 2 && "Two instructions should remain (mul + ret)");
+    ASSERT_EQ(entry.instructions.size(), 2);
     const Instr &ret = entry.instructions[1];
-    assert(ret.op == Opcode::Ret);
-    assert(ret.operands.size() == 1);
-    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == temp0);
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_EQ(ret.operands.size(), 1);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == temp0);
 }
 
-/// @brief Test that mul x, 1 is simplified to x.
-void testMulOneIdentity()
+TEST(IL, testMulOneIdentity)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -104,11 +100,9 @@ void testMulOneIdentity()
     BasicBlock &entry = fn.blocks[0];
     builder.setInsertPoint(entry);
 
-    // Create a temp %0 that won't be simplified (mul by 2, not 1)
     unsigned tempId = builder.reserveTempId();
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(5), Value::constInt(2), tempId);
 
-    // %1 = imul.ovf 1, %0  -> should simplify to %0
     unsigned resultId = builder.reserveTempId();
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(1), Value::temp(tempId), resultId);
     builder.emitRet(Value::temp(resultId), {});
@@ -117,14 +111,12 @@ void testMulOneIdentity()
 
     il::transform::peephole(module);
 
-    // Check that ret uses %0
     const Instr &ret = entry.instructions.back();
-    assert(ret.op == Opcode::Ret);
-    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == tempId);
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == tempId);
 }
 
-/// @brief Test that shift by 0 is simplified to the input.
-void testShiftZeroIdentity()
+TEST(IL, testShiftZeroIdentity)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -134,11 +126,9 @@ void testShiftZeroIdentity()
     BasicBlock &entry = fn.blocks[0];
     builder.setInsertPoint(entry);
 
-    // Create a temp %0 that won't be simplified (mul by 2)
     unsigned tempId = builder.reserveTempId();
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(7), Value::constInt(2), tempId);
 
-    // %1 = shl %0, 0  -> should simplify to %0
     unsigned resultId = builder.reserveTempId();
     emitBinOp(entry, Opcode::Shl, Value::temp(tempId), Value::constInt(0), resultId);
     builder.emitRet(Value::temp(resultId), {});
@@ -148,12 +138,11 @@ void testShiftZeroIdentity()
     il::transform::peephole(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.op == Opcode::Ret);
-    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == tempId);
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == tempId);
 }
 
-/// @brief Test that plain iadd.ovf x + 0 is simplified.
-void testPlainAddZeroIdentity()
+TEST(IL, testPlainAddZeroIdentity)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -175,12 +164,11 @@ void testPlainAddZeroIdentity()
     il::transform::peephole(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.op == Opcode::Ret);
-    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
 }
 
-/// @brief Test that plain imul.ovf x * 1 is simplified.
-void testPlainMulOneIdentity()
+TEST(IL, testPlainMulOneIdentity)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -202,12 +190,11 @@ void testPlainMulOneIdentity()
     il::transform::peephole(module);
 
     const Instr &ret = entry.instructions.back();
-    assert(ret.op == Opcode::Ret);
-    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
 }
 
-/// @brief Ensure we do not fold isub.ovf when zero is the lhs (0 - x).
-void testNoFoldIsubZeroLHS()
+TEST(IL, testNoFoldIsubZeroLHS)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -228,14 +215,12 @@ void testNoFoldIsubZeroLHS()
 
     il::transform::peephole(module);
 
-    // The subtraction should remain because the zero is on the lhs (not an identity).
-    assert(entry.instructions.size() == 3);
+    ASSERT_EQ(entry.instructions.size(), 3);
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == subId);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == subId);
 }
 
-/// @brief Test that imul.ovf with zero folds to a constant zero.
-void testMulZeroAnnihilation()
+TEST(IL, testMulZeroAnnihilation)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -256,14 +241,13 @@ void testMulZeroAnnihilation()
     il::transform::peephole(module);
     verifyOrDie(module);
 
-    assert(entry.instructions.size() == 2 && "mul should be removed");
+    ASSERT_EQ(entry.instructions.size(), 2);
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt);
-    assert(ret.operands[0].i64 == 0);
+    ASSERT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    ASSERT_EQ(ret.operands[0].i64, 0);
 }
 
-/// @brief Test that and x, 0 collapses to constant zero.
-void testAndZeroAnnihilation()
+TEST(IL, testAndZeroAnnihilation)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -284,13 +268,12 @@ void testAndZeroAnnihilation()
     il::transform::peephole(module);
     verifyOrDie(module);
 
-    assert(entry.instructions.size() == 2 && "and should be removed");
+    ASSERT_EQ(entry.instructions.size(), 2);
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
 }
 
-/// @brief Test that xor x, x collapses to constant zero.
-void testXorSameOperand()
+TEST(IL, testXorSameOperand)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -311,13 +294,12 @@ void testXorSameOperand()
     il::transform::peephole(module);
     verifyOrDie(module);
 
-    assert(entry.instructions.size() == 2);
+    ASSERT_EQ(entry.instructions.size(), 2);
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
 }
 
-/// @brief Test that reflexive integer comparisons fold to booleans.
-void testCmpReflexive()
+TEST(IL, testCmpReflexive)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -338,14 +320,13 @@ void testCmpReflexive()
     il::transform::peephole(module);
     verifyOrDie(module);
 
-    assert(entry.instructions.size() == 2);
+    ASSERT_EQ(entry.instructions.size(), 2);
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].isBool);
-    assert(ret.operands[0].i64 == 1);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].isBool);
+    ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-/// @brief Ensure imul.ovf x, -1 is left untouched (potential overflow patterns).
-void testNoFoldIMulMinusOne()
+TEST(IL, testNoFoldIMulMinusOne)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -366,21 +347,17 @@ void testNoFoldIMulMinusOne()
     il::transform::peephole(module);
     verifyOrDie(module);
 
-    // No folding should have occurred.
-    assert(entry.instructions.size() == 3);
+    ASSERT_EQ(entry.instructions.size(), 3);
     const Instr &ret = entry.instructions.back();
-    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == mulId);
+    ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == mulId);
 }
 
-/// @brief Test that CBr with constant condition folds to Br and removes
-///        single-use comparison instruction.
-void testCBrConstantFold()
+TEST(IL, testCBrConstantFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
 
     Function &fn = builder.startFunction("test_cbr_fold", Type(Type::Kind::I64), {});
-    // Create all blocks first to avoid invalidating references
     builder.createBlock(fn, "entry");
     builder.createBlock(fn, "then");
     builder.createBlock(fn, "else");
@@ -390,11 +367,9 @@ void testCBrConstantFold()
     BasicBlock &elseBlock = fn.blocks[2];
 
     builder.setInsertPoint(entry);
-    // %0 = icmp.eq 5, 5  -> always true
     unsigned cmpId = builder.reserveTempId();
     emitBinOp(
         entry, Opcode::ICmpEq, Value::constInt(5), Value::constInt(5), cmpId, Type(Type::Kind::I1));
-    // cbr %0, ^then, ^else
     builder.cbr(Value::temp(cmpId), thenBlock, {}, elseBlock, {});
 
     builder.setInsertPoint(thenBlock);
@@ -407,21 +382,18 @@ void testCBrConstantFold()
 
     il::transform::peephole(module);
 
-    // The comparison should be removed (single use) and cbr folded to br
-    assert(entry.instructions.size() == 1 && "Only br should remain in entry");
+    ASSERT_EQ(entry.instructions.size(), 1);
     const Instr &br = entry.instructions[0];
-    assert(br.op == Opcode::Br && "Should be unconditional branch");
-    assert(br.labels.size() == 1 && br.labels[0] == "then");
+    ASSERT_EQ(br.op, Opcode::Br);
+    ASSERT_TRUE(br.labels.size() == 1 && br.labels[0] == "then");
 }
 
-/// @brief Test that CBr with same-target branches becomes unconditional Br.
-void testCBrSameTargetFold()
+TEST(IL, testCBrSameTargetFold)
 {
     Module module;
     il::build::IRBuilder builder(module);
 
     Function &fn = builder.startFunction("test_cbr_same", Type(Type::Kind::Void), {});
-    // Create all blocks first
     builder.createBlock(fn, "entry");
     builder.createBlock(fn, "target");
 
@@ -429,7 +401,6 @@ void testCBrSameTargetFold()
     BasicBlock &target = fn.blocks[1];
 
     builder.setInsertPoint(entry);
-    // Create a temp condition
     unsigned condId = builder.reserveTempId();
     emitBinOp(entry,
               Opcode::ICmpEq,
@@ -437,7 +408,6 @@ void testCBrSameTargetFold()
               Value::constInt(2),
               condId,
               Type(Type::Kind::I1));
-    // cbr %cond, ^target, ^target  -> should become br ^target
     builder.cbr(Value::temp(condId), target, {}, target, {});
 
     builder.setInsertPoint(target);
@@ -447,17 +417,13 @@ void testCBrSameTargetFold()
 
     il::transform::peephole(module);
 
-    // The last instruction in entry should be br
     const Instr &br = entry.instructions.back();
-    assert(br.op == Opcode::Br && "Should be unconditional branch");
-    assert(br.labels.size() == 1 && br.labels[0] == "target");
-    assert(br.operands.empty() && "Br should have no condition operand");
+    ASSERT_EQ(br.op, Opcode::Br);
+    ASSERT_TRUE(br.labels.size() == 1 && br.labels[0] == "target");
+    ASSERT_TRUE(br.operands.empty());
 }
 
-/// @brief Test performance with a moderately large single block.
-/// @details Creates a large function with many instructions in a single block
-///          to verify that the precomputed use-count map provides O(n) behavior.
-void testLargeFunctionPerformance()
+TEST(IL, testLargeFunctionPerformance)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -467,24 +433,19 @@ void testLargeFunctionPerformance()
     BasicBlock &entry = fn.blocks[0];
     builder.setInsertPoint(entry);
 
-    // Create many instructions in a single block
     constexpr size_t numOps = 1000;
     unsigned prevId = builder.reserveTempId();
-    // Start with a non-identity mul so it won't be folded
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(3), Value::constInt(7), prevId);
 
     for (size_t i = 0; i < numOps; ++i)
     {
         unsigned addId = builder.reserveTempId();
-        // Some adds with 0 (will be folded), some with 1 (won't be)
         if (i % 2 == 0)
         {
-            // add %prev, 0 -> should simplify to %prev
             emitBinOp(entry, Opcode::IAddOvf, Value::temp(prevId), Value::constInt(0), addId);
         }
         else
         {
-            // add %prev, 1 -> won't simplify
             emitBinOp(entry, Opcode::IAddOvf, Value::temp(prevId), Value::constInt(1), addId);
         }
         prevId = addId;
@@ -496,42 +457,22 @@ void testLargeFunctionPerformance()
 
     size_t instrsBefore = entry.instructions.size();
 
-    // Time the peephole pass
     auto start = std::chrono::high_resolution_clock::now();
     il::transform::peephole(module);
     auto end = std::chrono::high_resolution_clock::now();
 
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-    // With O(N) use counting, this should complete very quickly (under 1 second)
-    assert(duration.count() < 5000 && "Peephole pass took too long");
+    ASSERT_TRUE(duration.count() < 5000);
 
     size_t instrsAfter = entry.instructions.size();
-    // Should have removed ~500 add-0 instructions (every other one)
-    assert(instrsAfter < instrsBefore && "Peephole should have removed some instructions");
+    ASSERT_TRUE(instrsAfter < instrsBefore);
 
-    // Verify the module still verifies after transformation
     verifyOrDie(module);
 }
 
-} // namespace
-
-int main()
+int main(int argc, char **argv)
 {
-    testAddZeroIdentity();
-    testMulOneIdentity();
-    testShiftZeroIdentity();
-    testPlainAddZeroIdentity();
-    testPlainMulOneIdentity();
-    testNoFoldIsubZeroLHS();
-    testMulZeroAnnihilation();
-    testAndZeroAnnihilation();
-    testXorSameOperand();
-    testCmpReflexive();
-    testNoFoldIMulMinusOne();
-    testCBrConstantFold();
-    testCBrSameTargetFold();
-    testLargeFunctionPerformance();
-
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

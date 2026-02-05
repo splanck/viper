@@ -17,7 +17,7 @@
 #include "tui/term/term_io.hpp"
 #include "tui/ui/modal.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <memory>
 
 using viper::tui::App;
@@ -48,7 +48,7 @@ struct FlagWidget : Widget
     }
 };
 
-int main()
+TEST(TUI, Modal)
 {
     auto base = std::make_unique<FlagWidget>();
     FlagWidget *ptr = base.get();
@@ -63,17 +63,17 @@ int main()
     ev.key.code = KeyEvent::Code::Enter;
     app.pushEvent(ev);
     app.tick();
-    assert(ptr->flag);
+    ASSERT_TRUE(ptr->flag);
 
     // Popup intercepts and dismisses on Enter
     ptr->flag = false;
     hptr->pushModal(std::make_unique<Popup>(4, 3));
     app.pushEvent(ev);
     app.tick();
-    assert(!ptr->flag);
+    ASSERT_FALSE(ptr->flag);
     app.pushEvent(ev);
     app.tick();
-    assert(ptr->flag);
+    ASSERT_TRUE(ptr->flag);
 
     // Popup intercepts and dismisses on Esc
     ptr->flag = false;
@@ -81,11 +81,15 @@ int main()
     ev.key.code = KeyEvent::Code::Esc;
     app.pushEvent(ev);
     app.tick();
-    assert(!ptr->flag);
+    ASSERT_FALSE(ptr->flag);
     ev.key.code = KeyEvent::Code::Enter;
     app.pushEvent(ev);
     app.tick();
-    assert(ptr->flag);
+    ASSERT_TRUE(ptr->flag);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -15,7 +15,7 @@
 
 #include "tui/widgets/splitter.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <memory>
 
 using viper::tui::term::KeyEvent;
@@ -36,7 +36,7 @@ struct StubWidget : viper::tui::ui::Widget
     viper::tui::ui::Rect last{};
 };
 
-int main()
+TEST(TUI, SplitterKeyboard)
 {
     // Horizontal splitter ratio adjustments
     auto left = std::make_unique<StubWidget>();
@@ -49,17 +49,17 @@ int main()
     KeyEvent k{};
     k.mods = KeyEvent::Ctrl;
     k.code = KeyEvent::Code::Left;
-    assert(hs.onEvent(Event{k}));
-    assert(lp->last.w == 45);
-    assert(rp->last.w == 55);
+    ASSERT_TRUE(hs.onEvent(Event{k}));
+    ASSERT_EQ(lp->last.w, 45);
+    ASSERT_EQ(rp->last.w, 55);
 
     for (int i = 0; i < 20; ++i)
         hs.onEvent(Event{k});
-    assert(lp->last.w == 5);
+    ASSERT_EQ(lp->last.w, 5);
 
     k.code = KeyEvent::Code::Right;
-    assert(hs.onEvent(Event{k}));
-    assert(lp->last.w == 10);
+    ASSERT_TRUE(hs.onEvent(Event{k}));
+    ASSERT_EQ(lp->last.w, 10);
 
     // Vertical splitter ratio adjustments
     auto top = std::make_unique<StubWidget>();
@@ -70,14 +70,18 @@ int main()
     vs.layout({0, 0, 10, 100});
 
     k.code = KeyEvent::Code::Up;
-    assert(vs.onEvent(Event{k}));
-    assert(tp->last.h == 45);
-    assert(bp->last.h == 55);
+    ASSERT_TRUE(vs.onEvent(Event{k}));
+    ASSERT_EQ(tp->last.h, 45);
+    ASSERT_EQ(bp->last.h, 55);
 
     k.code = KeyEvent::Code::Down;
     for (int i = 0; i < 20; ++i)
         vs.onEvent(Event{k});
-    assert(tp->last.h == 95);
+    ASSERT_EQ(tp->last.h, 95);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

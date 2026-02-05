@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <cstdlib>
 #include <string>
 
@@ -26,7 +26,7 @@ static void set_no_tty_env()
 #endif
 }
 
-int main()
+TEST(TUI, DemoHeadless)
 {
     set_no_tty_env();
 #if defined(_WIN32)
@@ -35,6 +35,11 @@ int main()
     const std::string cmd = "../apps/tui_demo";
 #endif
     int rc = std::system(cmd.c_str());
-    assert(rc == 0);
-    return 0;
+    ASSERT_EQ(rc, 0);
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

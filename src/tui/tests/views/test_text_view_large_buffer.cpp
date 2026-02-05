@@ -16,7 +16,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/views/text_view.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <string>
 
 using viper::tui::style::Theme;
@@ -41,7 +41,7 @@ std::string makeLargeBuffer(std::size_t lines, std::size_t width)
 }
 } // namespace
 
-int main()
+TEST(TUI, TextViewLargeBuffer)
 {
     constexpr std::size_t kLines = 2048;
     constexpr std::size_t kWidth = 96;
@@ -49,17 +49,17 @@ int main()
     TextBuffer buf;
     buf.load(makeLargeBuffer(kLines, kWidth));
 
-    assert(buf.lineCount() == kLines);
+    ASSERT_EQ(buf.lineCount(), kLines);
     const std::size_t sample = kLines / 2;
-    assert(buf.lineOffset(sample) == sample * (kWidth + 1));
-    assert(buf.lineLength(sample) == kWidth);
-    assert(buf.lineStart(sample) == buf.lineOffset(sample));
-    assert(buf.lineEnd(sample) == buf.lineStart(sample) + kWidth);
-    assert(buf.lineOffset(kLines - 1) == (kLines - 1) * (kWidth + 1));
-    assert(buf.lineLength(kLines - 1) == kWidth);
-    assert(buf.lineEnd(kLines - 1) == buf.size());
-    assert(buf.lineStart(kLines) == buf.size());
-    assert(buf.lineEnd(kLines) == buf.size());
+    ASSERT_EQ(buf.lineOffset(sample), sample * (kWidth + 1));
+    ASSERT_EQ(buf.lineLength(sample), kWidth);
+    ASSERT_EQ(buf.lineStart(sample), buf.lineOffset(sample));
+    ASSERT_EQ(buf.lineEnd(sample), buf.lineStart(sample) + kWidth);
+    ASSERT_EQ(buf.lineOffset(kLines - 1), (kLines - 1) * (kWidth + 1));
+    ASSERT_EQ(buf.lineLength(kLines - 1), kWidth);
+    ASSERT_EQ(buf.lineEnd(kLines - 1), buf.size());
+    ASSERT_EQ(buf.lineStart(kLines), buf.size());
+    ASSERT_EQ(buf.lineEnd(kLines), buf.size());
 
     Theme theme;
     TextView view(buf, theme, false);
@@ -69,21 +69,25 @@ int main()
     const std::size_t targetStart = buf.lineOffset(targetLine);
 
     view.moveCursorToOffset(targetStart);
-    assert(view.cursorRow() == targetLine);
-    assert(view.cursorCol() == 0);
+    ASSERT_EQ(view.cursorRow(), targetLine);
+    ASSERT_EQ(view.cursorCol(), 0);
 
     const std::size_t midOffset = targetStart + kWidth / 2;
     view.moveCursorToOffset(midOffset);
-    assert(view.cursorRow() == targetLine);
-    assert(view.cursorCol() == kWidth / 2);
+    ASSERT_EQ(view.cursorRow(), targetLine);
+    ASSERT_EQ(view.cursorCol(), kWidth / 2);
 
     view.moveCursorToOffset(targetStart + kWidth);
-    assert(view.cursorRow() == targetLine + 1);
-    assert(view.cursorCol() == 0);
+    ASSERT_EQ(view.cursorRow(), targetLine + 1);
+    ASSERT_EQ(view.cursorCol(), 0);
 
     view.moveCursorToOffset(buf.size());
-    assert(view.cursorRow() == kLines - 1);
-    assert(view.cursorCol() == kWidth);
+    ASSERT_EQ(view.cursorRow(), kLines - 1);
+    ASSERT_EQ(view.cursorCol(), kWidth);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

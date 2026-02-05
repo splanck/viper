@@ -16,7 +16,7 @@
 #include "tui/ui/focus.hpp"
 #include "tui/ui/widget.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
 using viper::tui::ui::FocusManager;
 using viper::tui::ui::Widget;
@@ -38,7 +38,7 @@ struct HookWidget : Widget
     }
 };
 
-int main()
+TEST(TUI, FocusHooks)
 {
     FocusManager fm;
     HookWidget a{};
@@ -47,22 +47,27 @@ int main()
     fm.registerWidget(&b);
 
     (void)fm.next();
-    assert(!a.focused);
-    assert(b.focused);
-    assert(a.calls == 1);
-    assert(b.calls == 1);
+    ASSERT_FALSE(a.focused);
+    ASSERT_TRUE(b.focused);
+    ASSERT_EQ(a.calls, 1);
+    ASSERT_EQ(b.calls, 1);
 
     (void)fm.prev();
-    assert(a.focused);
-    assert(!b.focused);
-    assert(a.calls == 2);
-    assert(b.calls == 2);
+    ASSERT_TRUE(a.focused);
+    ASSERT_FALSE(b.focused);
+    ASSERT_EQ(a.calls, 2);
+    ASSERT_EQ(b.calls, 2);
 
     fm.unregisterWidget(&a);
-    assert(!a.focused);
-    assert(b.focused);
-    assert(a.calls == 3);
-    assert(b.calls == 3);
-    assert(fm.current() == &b);
-    return 0;
+    ASSERT_FALSE(a.focused);
+    ASSERT_TRUE(b.focused);
+    ASSERT_EQ(a.calls, 3);
+    ASSERT_EQ(b.calls, 3);
+    ASSERT_EQ(fm.current(), &b);
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -1,5 +1,8 @@
 # Tests for ViperTUI
 
+# Make TestHarness.hpp available via "tests/TestHarness.hpp"
+include_directories(${CMAKE_SOURCE_DIR}/src)
+
 add_executable(tui_test_smoke test_smoke.cpp)
 
 target_link_libraries(tui_test_smoke PRIVATE tui)

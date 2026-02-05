@@ -57,349 +57,152 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
 
 # ARM64/AArch64 tests - skip on Windows (x86_64)
 if (NOT WIN32)
-    add_executable(test_target_aarch64 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_target_aarch64.cpp)
-    target_link_libraries(test_target_aarch64 PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_target_aarch64 $<TARGET_FILE:test_target_aarch64>)
 
-    # Minimal AArch64 emission smoke test
-    add_executable(test_emit_aarch64_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_minimal.cpp)
-    target_link_libraries(test_emit_aarch64_minimal PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_emit_aarch64_minimal $<TARGET_FILE:test_emit_aarch64_minimal>)
+    # ── helper: register one codegen unit test ──────────────────────────
+    macro(_aarch64_add_test _name _src _libs)
+        add_executable(${_name} ${_src})
+        target_link_libraries(${_name} PRIVATE viper_testing ${_libs})
+        viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
+    endmacro()
 
-    # Minimal AArch64 MIR emission smoke test
-    add_executable(test_emit_aarch64_mir_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_minimal.cpp)
-    target_link_libraries(test_emit_aarch64_mir_minimal PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_emit_aarch64_mir_minimal $<TARGET_FILE:test_emit_aarch64_mir_minimal>)
+    # helper variant for tests that use viper_test_common instead of viper_testing
+    macro(_aarch64_add_test_common _name _src _libs)
+        add_executable(${_name} ${_src})
+        target_link_libraries(${_name} PRIVATE viper_test_common ${_libs})
+        viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
+    endmacro()
 
-    # FramePlan emission test
-    add_executable(test_emit_aarch64_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_frameplan.cpp)
-    target_link_libraries(test_emit_aarch64_frameplan PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_emit_aarch64_frameplan $<TARGET_FILE:test_emit_aarch64_frameplan>)
+    # ── Group 1: il_codegen_aarch64 only ────────────────────────────────
+    set(_AARCH64_CODEGEN_ONLY_TESTS
+        test_target_aarch64
+        test_emit_aarch64_minimal
+        test_emit_aarch64_mir_minimal
+        test_emit_aarch64_frameplan
+        test_emit_aarch64_mir_bitwise
+        test_emit_aarch64_mir_branches
+        test_emit_aarch64_mir_frameplan
+        test_codegen_arm64_peephole
+        test_aarch64_rodata_pool
+    )
+    foreach(_test IN LISTS _AARCH64_CODEGEN_ONLY_TESTS)
+        _aarch64_add_test(${_test}
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
+            "il_codegen_aarch64")
+    endforeach()
 
-    # MIR bitwise rr emission test
-    add_executable(test_emit_aarch64_mir_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_bitwise.cpp)
-    target_link_libraries(test_emit_aarch64_mir_bitwise PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_emit_aarch64_mir_bitwise $<TARGET_FILE:test_emit_aarch64_mir_bitwise>)
+    # ── Group 2: il_codegen_aarch64 + viper_cmd_arm64 ──────────────────
+    set(_AARCH64_CMD_TESTS
+        test_codegen_arm64_cli
+        test_codegen_arm64_add_params
+        test_codegen_arm64_ret_param
+        test_codegen_arm64_add_imm
+        test_codegen_arm64_bitwise
+        test_codegen_arm64_params_wide
+        test_codegen_arm64_ovf
+        test_codegen_arm64_shift_imm
+        test_codegen_arm64_stack_locals
+        test_codegen_arm64_stack_locals_cli
+        test_codegen_arm64_gep_load_store
+        test_codegen_arm64_array_access
+        test_codegen_arm64_const_str_addr
+        test_codegen_arm64_mir_dump
+        test_codegen_arm64_ra_many_temps
+        test_codegen_arm64_icmp
+        test_codegen_arm64_large_imm
+        test_codegen_arm64_icmp_imm
+        test_codegen_arm64_switch
+        test_codegen_arm64_trap_eh
+        test_codegen_arm64_run_native
+        test_codegen_arm64_bugfix
+        test_codegen_arm64_cbr
+        test_codegen_arm64_call
+        test_codegen_arm64_call_args
+        test_codegen_arm64_call_mid_block
+        test_codegen_arm64_cf_if_else_phi
+        test_codegen_arm64_select
+        test_codegen_arm64_cf_loop_phi
+        test_codegen_arm64_call_temp_args
+        test_codegen_arm64_print_str
+        test_codegen_arm64_dead_strip
+        test_codegen_arm64_modvar_addr
+        test_codegen_arm64_emit_and_link
+        test_codegen_arm64_arr_obj_len
+        test_codegen_arm64_obj_field_gep
+        test_codegen_arm64_arr_obj_put_get
+        test_codegen_arm64_call_stack_args
+        test_codegen_arm64_call_convention
+        test_codegen_arm64_fp
+        test_codegen_arm64_indirect_call
+        test_codegen_arm64_idxchk
+        test_codegen_arm64_division
+        test_codegen_arm64_exception_handling
+        test_codegen_arm64_string_store_refcount
+        test_codegen_arm64_sub_mul
+        test_codegen_arm64_shift_reg
+        test_codegen_arm64_fp_cmp_all
+        test_codegen_arm64_gaddr_constnull
+        test_codegen_arm64_spill_fpr
+        test_codegen_arm64_cross_block_phi_spill
+        test_codegen_arm64_unsigned_cmp
+        test_codegen_arm64_peephole_comprehensive
+        test_codegen_arm64_abi_mixed_args
+        test_codegen_arm64_rodata_literals
+        test_codegen_arm64_callee_saved
+    )
+    foreach(_test IN LISTS _AARCH64_CMD_TESTS)
+        _aarch64_add_test(${_test}
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
+            "il_codegen_aarch64;viper_cmd_arm64")
+    endforeach()
 
-    # MIR branches emission test
-    add_executable(test_emit_aarch64_mir_branches ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_branches.cpp)
-    target_link_libraries(test_emit_aarch64_mir_branches PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_emit_aarch64_mir_branches $<TARGET_FILE:test_emit_aarch64_mir_branches>)
+    # Temporarily disabled: flaky on some environments while AArch64 cast tests
+    # also covered by VM and IL suites.
+    # _aarch64_add_test(test_codegen_arm64_casts
+    #     ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp
+    #     "il_codegen_aarch64;viper_cmd_arm64")
 
-    # MIR frame plan emission through emitFunction
-    add_executable(test_emit_aarch64_mir_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_frameplan.cpp)
-    target_link_libraries(test_emit_aarch64_mir_frameplan PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_emit_aarch64_mir_frameplan $<TARGET_FILE:test_emit_aarch64_mir_frameplan>)
+    # CLI run-native should return user exit code
+    # Note: run-native exit code coverage exists in other tests; keep CI stable.
+    # _aarch64_add_test(test_codegen_arm64_run_ret42
+    #     ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_ret42.cpp
+    #     "il_codegen_aarch64;viper_cmd_arm64")
 
-    # AArch64 peephole optimization tests
-    add_executable(test_codegen_arm64_peephole ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_peephole.cpp)
-    target_link_libraries(test_codegen_arm64_peephole PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_codegen_arm64_peephole $<TARGET_FILE:test_codegen_arm64_peephole>)
-
-    # AArch64 rodata pool test
-    add_executable(test_aarch64_rodata_pool ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_rodata_pool.cpp)
-    target_link_libraries(test_aarch64_rodata_pool PRIVATE viper_testing il_codegen_aarch64)
-    viper_add_ctest(test_aarch64_rodata_pool $<TARGET_FILE:test_aarch64_rodata_pool>)
-
-    # CLI smoke for arm64 -S (ret 0)
-    add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
-    target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_cli $<TARGET_FILE:test_codegen_arm64_cli>)
-
-    add_executable(test_codegen_arm64_add_params ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_params.cpp)
-    target_link_libraries(test_codegen_arm64_add_params PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_add_params $<TARGET_FILE:test_codegen_arm64_add_params>)
-
-    add_executable(test_codegen_arm64_ret_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ret_param.cpp)
-    target_link_libraries(test_codegen_arm64_ret_param PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_ret_param $<TARGET_FILE:test_codegen_arm64_ret_param>)
-
-    add_executable(test_codegen_arm64_add_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_imm.cpp)
-    target_link_libraries(test_codegen_arm64_add_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_add_imm $<TARGET_FILE:test_codegen_arm64_add_imm>)
-
-    add_executable(test_codegen_arm64_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_bitwise.cpp)
-    target_link_libraries(test_codegen_arm64_bitwise PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_bitwise $<TARGET_FILE:test_codegen_arm64_bitwise>)
-
-    add_executable(test_codegen_arm64_params_wide ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_params_wide.cpp)
-    target_link_libraries(test_codegen_arm64_params_wide PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_params_wide $<TARGET_FILE:test_codegen_arm64_params_wide>)
-
-    add_executable(test_codegen_arm64_ovf ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ovf.cpp)
-    target_link_libraries(test_codegen_arm64_ovf PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_ovf $<TARGET_FILE:test_codegen_arm64_ovf>)
-
-    add_executable(test_codegen_arm64_shift_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_shift_imm.cpp)
-    target_link_libraries(test_codegen_arm64_shift_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_shift_imm $<TARGET_FILE:test_codegen_arm64_shift_imm>)
-
-    add_executable(test_codegen_arm64_stack_locals ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals.cpp)
-    target_link_libraries(test_codegen_arm64_stack_locals PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_stack_locals $<TARGET_FILE:test_codegen_arm64_stack_locals>)
-
-    # CLI variant: ensure ilc -S path emits FP-relative local accesses
-    add_executable(test_codegen_arm64_stack_locals_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals_cli.cpp)
-    target_link_libraries(test_codegen_arm64_stack_locals_cli PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_stack_locals_cli $<TARGET_FILE:test_codegen_arm64_stack_locals_cli>)
-
-    add_executable(test_codegen_arm64_gep_load_store ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_gep_load_store.cpp)
-    target_link_libraries(test_codegen_arm64_gep_load_store PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_gep_load_store $<TARGET_FILE:test_codegen_arm64_gep_load_store>)
-
-    add_executable(test_codegen_arm64_array_access ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_array_access.cpp)
-    target_link_libraries(test_codegen_arm64_array_access PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_array_access $<TARGET_FILE:test_codegen_arm64_array_access>)
-
-    add_executable(test_codegen_arm64_const_str_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_const_str_addr.cpp)
-    target_link_libraries(test_codegen_arm64_const_str_addr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_const_str_addr $<TARGET_FILE:test_codegen_arm64_const_str_addr>)
-
-    add_executable(test_codegen_arm64_mir_dump ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_mir_dump.cpp)
-    target_link_libraries(test_codegen_arm64_mir_dump PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_mir_dump $<TARGET_FILE:test_codegen_arm64_mir_dump>)
-
-    add_executable(test_codegen_arm64_ra_many_temps ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ra_many_temps.cpp)
-    target_link_libraries(test_codegen_arm64_ra_many_temps PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_ra_many_temps $<TARGET_FILE:test_codegen_arm64_ra_many_temps>)
-
-    add_executable(test_codegen_arm64_icmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp.cpp)
-    target_link_libraries(test_codegen_arm64_icmp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_icmp $<TARGET_FILE:test_codegen_arm64_icmp>)
-
-    add_executable(test_codegen_arm64_large_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_large_imm.cpp)
-    target_link_libraries(test_codegen_arm64_large_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_large_imm $<TARGET_FILE:test_codegen_arm64_large_imm>)
-
-    add_executable(test_codegen_arm64_icmp_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp_imm.cpp)
-    target_link_libraries(test_codegen_arm64_icmp_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_icmp_imm $<TARGET_FILE:test_codegen_arm64_icmp_imm>)
-
-    # switch lowering tests for arm64 CLI
-    add_executable(test_codegen_arm64_switch ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_switch.cpp)
-    target_link_libraries(test_codegen_arm64_switch PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_switch $<TARGET_FILE:test_codegen_arm64_switch>)
-
-    # trap and EH lowering tests for arm64 CLI
-    add_executable(test_codegen_arm64_trap_eh ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_trap_eh.cpp)
-    target_link_libraries(test_codegen_arm64_trap_eh PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_trap_eh $<TARGET_FILE:test_codegen_arm64_trap_eh>)
-
-    # run-native test for arm64 CLI
-    add_executable(test_codegen_arm64_run_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_native.cpp)
-    target_link_libraries(test_codegen_arm64_run_native PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_run_native $<TARGET_FILE:test_codegen_arm64_run_native>)
-
-    # Regression tests for ARM64 codegen bug fixes #1, #2, #3
-    add_executable(test_codegen_arm64_bugfix ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_bugfix.cpp)
-    target_link_libraries(test_codegen_arm64_bugfix PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_bugfix $<TARGET_FILE:test_codegen_arm64_bugfix>)
+    # ── Group 3: special link patterns ──────────────────────────────────
 
     # Environment.IsNative should distinguish VM vs native paths
-    add_executable(test_codegen_env_is_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp)
-    target_link_libraries(test_codegen_env_is_native PRIVATE viper_test_common il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_env_is_native $<TARGET_FILE:test_codegen_env_is_native>)
+    _aarch64_add_test_common(test_codegen_env_is_native
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp
+        "il_codegen_aarch64;viper_cmd_arm64")
 
     # Property-based differential testing: VM vs ARM64 native
     # This test must run alone (RUN_SERIAL) to avoid resource contention with other
     # codegen tests that use the same assembler/linker toolchain.
-    add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp)
-    target_link_libraries(test_diff_vm_native_property PRIVATE viper_test_common il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_diff_vm_native_property $<TARGET_FILE:test_diff_vm_native_property>)
+    _aarch64_add_test_common(test_diff_vm_native_property
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp
+        "il_codegen_aarch64;viper_cmd_arm64")
     set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow")
 
-    add_executable(test_emit_x86_runtime_map ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp)
-    target_link_libraries(test_emit_x86_runtime_map PRIVATE viper_test_common viper_codegen_x86_64)
-    viper_add_ctest(test_emit_x86_runtime_map $<TARGET_FILE:test_emit_x86_runtime_map>)
+    # x86-64 runtime map (lives here because it requires non-Windows host)
+    _aarch64_add_test_common(test_emit_x86_runtime_map
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp
+        "viper_codegen_x86_64")
 
     # Optimizer pipeline differential testing (VM baseline vs O0/O1/O2)
-    add_executable(test_il_opt_equivalence ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp)
-    target_link_libraries(test_il_opt_equivalence PRIVATE viper_test_common il_transform viper::il_verify)
-    viper_add_ctest(test_il_opt_equivalence $<TARGET_FILE:test_il_opt_equivalence>)
+    _aarch64_add_test_common(test_il_opt_equivalence
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp
+        "il_transform;viper::il_verify")
 
-    # cbr lowering tests for arm64 CLI
-    add_executable(test_codegen_arm64_cbr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cbr.cpp)
-    target_link_libraries(test_codegen_arm64_cbr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_cbr $<TARGET_FILE:test_codegen_arm64_cbr>)
+    # ── ARM64 end-to-end demo tests ────────────────────────────────────
+    set(_AARCH64_E2E_TESTS
+        test_arm64_demos
+        test_arm64_demos_run
+    )
+    foreach(_test IN LISTS _AARCH64_E2E_TESTS)
+        _aarch64_add_test(${_test}
+            ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${_test}.cpp
+            "viper_common")
+    endforeach()
 
-    # call lowering smoke test for arm64 CLI (bl callee)
-    add_executable(test_codegen_arm64_call ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call.cpp)
-    target_link_libraries(test_codegen_arm64_call PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_call $<TARGET_FILE:test_codegen_arm64_call>)
-
-    # call arg marshalling tests
-    add_executable(test_codegen_arm64_call_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_args.cpp)
-    target_link_libraries(test_codegen_arm64_call_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_call_args $<TARGET_FILE:test_codegen_arm64_call_args>)
-
-    add_executable(test_codegen_arm64_call_mid_block ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_mid_block.cpp)
-    target_link_libraries(test_codegen_arm64_call_mid_block PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_call_mid_block $<TARGET_FILE:test_codegen_arm64_call_mid_block>)
-
-    add_executable(test_codegen_arm64_cf_if_else_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_if_else_phi.cpp)
-    target_link_libraries(test_codegen_arm64_cf_if_else_phi PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_cf_if_else_phi $<TARGET_FILE:test_codegen_arm64_cf_if_else_phi>)
-
-    # select-like cbr + join patterns
-    add_executable(test_codegen_arm64_select ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_select.cpp)
-    target_link_libraries(test_codegen_arm64_select PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_select $<TARGET_FILE:test_codegen_arm64_select>)
-
-    add_executable(test_codegen_arm64_cf_loop_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_loop_phi.cpp)
-    target_link_libraries(test_codegen_arm64_cf_loop_phi PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_cf_loop_phi $<TARGET_FILE:test_codegen_arm64_cf_loop_phi>)
-    # call args with a single non-entry temp
-    add_executable(test_codegen_arm64_call_temp_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_temp_args.cpp)
-    target_link_libraries(test_codegen_arm64_call_temp_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_call_temp_args $<TARGET_FILE:test_codegen_arm64_call_temp_args>)
-
-    # integer/FP casts lowering tests for arm64
-    # Temporarily disabled: flaky on some environments while AArch64 cast tests
-    # also covered by VM and IL suites.
-    # add_executable(test_codegen_arm64_casts ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp)
-    # target_link_libraries(test_codegen_arm64_casts PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    # viper_add_ctest(test_codegen_arm64_casts $<TARGET_FILE:test_codegen_arm64_casts>)
-
-    add_executable(test_codegen_arm64_print_str ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_print_str.cpp)
-    target_link_libraries(test_codegen_arm64_print_str PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_print_str $<TARGET_FILE:test_codegen_arm64_print_str>)
-
-    add_executable(test_codegen_arm64_dead_strip ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_dead_strip.cpp)
-    target_link_libraries(test_codegen_arm64_dead_strip PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_dead_strip $<TARGET_FILE:test_codegen_arm64_dead_strip>)
-
-    add_executable(test_codegen_arm64_modvar_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_modvar_addr.cpp)
-    target_link_libraries(test_codegen_arm64_modvar_addr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_modvar_addr $<TARGET_FILE:test_codegen_arm64_modvar_addr>)
-
-    # CLI run-native should return user exit code
-    # Note: run-native exit code coverage exists in other tests; keep CI stable.
-    # add_executable(test_codegen_arm64_run_ret42 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_ret42.cpp)
-    # target_link_libraries(test_codegen_arm64_run_ret42 PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    # viper_add_ctest(test_codegen_arm64_run_ret42 $<TARGET_FILE:test_codegen_arm64_run_ret42>)
-
-    # CLI -S and -o path flows
-    add_executable(test_codegen_arm64_emit_and_link ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_emit_and_link.cpp)
-    target_link_libraries(test_codegen_arm64_emit_and_link PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_emit_and_link $<TARGET_FILE:test_codegen_arm64_emit_and_link>)
-
-    # arrays/objects tests for arm64 CLI
-    add_executable(test_codegen_arm64_arr_obj_len ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_len.cpp)
-    target_link_libraries(test_codegen_arm64_arr_obj_len PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_arr_obj_len $<TARGET_FILE:test_codegen_arm64_arr_obj_len>)
-
-    add_executable(test_codegen_arm64_obj_field_gep ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_obj_field_gep.cpp)
-    target_link_libraries(test_codegen_arm64_obj_field_gep PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_obj_field_gep $<TARGET_FILE:test_codegen_arm64_obj_field_gep>)
-
-    add_executable(test_codegen_arm64_arr_obj_put_get ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_put_get.cpp)
-    target_link_libraries(test_codegen_arm64_arr_obj_put_get PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_arr_obj_put_get $<TARGET_FILE:test_codegen_arm64_arr_obj_put_get>)
-
-    # ARM64 end-to-end demo tests
-    add_executable(test_arm64_demos ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos.cpp)
-    target_link_libraries(test_arm64_demos PRIVATE viper_testing viper_common)
-    viper_add_ctest(test_arm64_demos $<TARGET_FILE:test_arm64_demos>)
-
-    # Opt-in run-native demos (guarded by host/ENV inside the test)
-    add_executable(test_arm64_demos_run ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos_run.cpp)
-    target_link_libraries(test_arm64_demos_run PRIVATE viper_testing viper_common)
-    viper_add_ctest(test_arm64_demos_run $<TARGET_FILE:test_arm64_demos_run>)
-
-    ## call with >8 integer args uses stack area
-    add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)
-    target_link_libraries(test_codegen_arm64_call_stack_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_call_stack_args $<TARGET_FILE:test_codegen_arm64_call_stack_args>)
-
-    ## Comprehensive calling convention tests
-    add_executable(test_codegen_arm64_call_convention ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_convention.cpp)
-    target_link_libraries(test_codegen_arm64_call_convention PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_call_convention $<TARGET_FILE:test_codegen_arm64_call_convention>)
-
-    ## Floating-point support tests
-    add_executable(test_codegen_arm64_fp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp.cpp)
-    target_link_libraries(test_codegen_arm64_fp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_fp $<TARGET_FILE:test_codegen_arm64_fp>)
-
-    ## Indirect call lowering tests
-    add_executable(test_codegen_arm64_indirect_call ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_indirect_call.cpp)
-    target_link_libraries(test_codegen_arm64_indirect_call PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_indirect_call $<TARGET_FILE:test_codegen_arm64_indirect_call>)
-
-    ## Index bounds checking tests
-    add_executable(test_codegen_arm64_idxchk ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_idxchk.cpp)
-    target_link_libraries(test_codegen_arm64_idxchk PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_idxchk $<TARGET_FILE:test_codegen_arm64_idxchk>)
-
-    ## Division operations tests (sdiv/udiv/srem/urem)
-    add_executable(test_codegen_arm64_division ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_division.cpp)
-    target_link_libraries(test_codegen_arm64_division PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_division $<TARGET_FILE:test_codegen_arm64_division>)
-
-    ## Exception handling tests
-    add_executable(test_codegen_arm64_exception_handling ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_exception_handling.cpp)
-    target_link_libraries(test_codegen_arm64_exception_handling PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_exception_handling $<TARGET_FILE:test_codegen_arm64_exception_handling>)
-
-    ## String store with refcount tests
-    add_executable(test_codegen_arm64_string_store_refcount ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_string_store_refcount.cpp)
-    target_link_libraries(test_codegen_arm64_string_store_refcount PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_string_store_refcount $<TARGET_FILE:test_codegen_arm64_string_store_refcount>)
-
-    ## Subtraction and multiplication tests
-    add_executable(test_codegen_arm64_sub_mul ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_sub_mul.cpp)
-    target_link_libraries(test_codegen_arm64_sub_mul PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_sub_mul $<TARGET_FILE:test_codegen_arm64_sub_mul>)
-
-    ## Shift by register tests
-    add_executable(test_codegen_arm64_shift_reg ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_shift_reg.cpp)
-    target_link_libraries(test_codegen_arm64_shift_reg PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_shift_reg $<TARGET_FILE:test_codegen_arm64_shift_reg>)
-
-    ## All FP comparison tests
-    add_executable(test_codegen_arm64_fp_cmp_all ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp_cmp_all.cpp)
-    target_link_libraries(test_codegen_arm64_fp_cmp_all PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_fp_cmp_all $<TARGET_FILE:test_codegen_arm64_fp_cmp_all>)
-
-    ## Global address and const.null tests
-    add_executable(test_codegen_arm64_gaddr_constnull ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_gaddr_constnull.cpp)
-    target_link_libraries(test_codegen_arm64_gaddr_constnull PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_gaddr_constnull $<TARGET_FILE:test_codegen_arm64_gaddr_constnull>)
-
-    ## FPR spilling tests
-    add_executable(test_codegen_arm64_spill_fpr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_spill_fpr.cpp)
-    target_link_libraries(test_codegen_arm64_spill_fpr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_spill_fpr $<TARGET_FILE:test_codegen_arm64_spill_fpr>)
-
-    ## Cross-block phi with spilling tests
-    add_executable(test_codegen_arm64_cross_block_phi_spill ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cross_block_phi_spill.cpp)
-    target_link_libraries(test_codegen_arm64_cross_block_phi_spill PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_cross_block_phi_spill $<TARGET_FILE:test_codegen_arm64_cross_block_phi_spill>)
-
-    ## Unsigned comparison tests
-    add_executable(test_codegen_arm64_unsigned_cmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_unsigned_cmp.cpp)
-    target_link_libraries(test_codegen_arm64_unsigned_cmp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_unsigned_cmp $<TARGET_FILE:test_codegen_arm64_unsigned_cmp>)
-
-    ## Comprehensive peephole optimization tests
-    add_executable(test_codegen_arm64_peephole_comprehensive ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_peephole_comprehensive.cpp)
-    target_link_libraries(test_codegen_arm64_peephole_comprehensive PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_peephole_comprehensive $<TARGET_FILE:test_codegen_arm64_peephole_comprehensive>)
-
-    ## Mixed int/float argument ABI tests
-    add_executable(test_codegen_arm64_abi_mixed_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_abi_mixed_args.cpp)
-    target_link_libraries(test_codegen_arm64_abi_mixed_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_abi_mixed_args $<TARGET_FILE:test_codegen_arm64_abi_mixed_args>)
-
-    ## Rodata pool literals tests
-    add_executable(test_codegen_arm64_rodata_literals ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_rodata_literals.cpp)
-    target_link_libraries(test_codegen_arm64_rodata_literals PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_rodata_literals $<TARGET_FILE:test_codegen_arm64_rodata_literals>)
-
-    ## Callee-saved register preservation tests
-    add_executable(test_codegen_arm64_callee_saved ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_callee_saved.cpp)
-    target_link_libraries(test_codegen_arm64_callee_saved PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-    viper_add_ctest(test_codegen_arm64_callee_saved $<TARGET_FILE:test_codegen_arm64_callee_saved>)
 endif () # NOT WIN32 - ARM64 tests
 
 viper_add_ctest(NoAssertFalseGuard
@@ -420,94 +223,80 @@ if (NOT WIN32)
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif ()
 
-add_executable(test_basic_oop_parsing ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp)
-target_link_libraries(test_basic_oop_parsing fe_basic viper_testing)
-add_test(NAME unit_basic_oop_parsing COMMAND test_basic_oop_parsing)
+# ── BASIC OOP unit tests ────────────────────────────────────────────────
+viper_add_test(test_basic_oop_parsing
+    SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp
+    TEST_NAME unit_basic_oop_parsing
+    LIBS fe_basic)
 
-add_executable(test_basic_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Lowering.cpp)
-target_link_libraries(test_basic_oop_lowering fe_basic viper_testing)
-add_test(NAME unit_basic_oop_lowering COMMAND test_basic_oop_lowering)
+viper_add_test(test_basic_oop_lowering
+    SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Lowering.cpp
+    TEST_NAME unit_basic_oop_lowering
+    LIBS fe_basic)
 
-# String array field helpers in OOP
-add_executable(test_basic_oop_string_array_field
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_string_array_field.cpp)
-target_link_libraries(test_basic_oop_string_array_field PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_basic_oop_string_array_field test_basic_oop_string_array_field)
+# NOTE: The following tests were previously compiled but never registered with
+# ctest due to a viper_add_ctest(name name) no-op pattern. They have pre-existing
+# failures that need investigation. NO_CTEST preserves the old behavior.
+viper_add_test(test_basic_oop_string_array_field NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_string_array_field.cpp
+    LIBS fe_basic)
 
-# Object array field helpers in OOP
-add_executable(test_basic_oop_object_array_field
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_object_array_field.cpp)
-target_link_libraries(test_basic_oop_object_array_field PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_basic_oop_object_array_field test_basic_oop_object_array_field)
+viper_add_test(test_basic_oop_object_array_field NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_object_array_field.cpp
+    LIBS fe_basic)
 
-# Global string array assignment from SUB uses string helper
-add_executable(test_basic_global_string_array_sub_store
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_global_string_array_sub_store.cpp)
-target_link_libraries(test_basic_global_string_array_sub_store PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_basic_global_string_array_sub_store test_basic_global_string_array_sub_store)
+viper_add_test(test_basic_global_string_array_sub_store
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_global_string_array_sub_store.cpp
+    LIBS fe_basic)
 
-# SELECT CASE object assignment retains object
-add_executable(test_basic_select_case_object_assign
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_select_case_object_assign.cpp)
-target_link_libraries(test_basic_select_case_object_assign PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_basic_select_case_object_assign test_basic_select_case_object_assign)
+viper_add_test(test_basic_select_case_object_assign
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_select_case_object_assign.cpp
+    LIBS fe_basic)
 
-# INPUT typing for SINGLE conversion
-add_executable(test_basic_input_typing
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_input_typing.cpp)
-target_link_libraries(test_basic_input_typing PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_basic_input_typing test_basic_input_typing)
+viper_add_test(test_basic_input_typing NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_input_typing.cpp
+    LIBS fe_basic)
 
-# Nested member method call resolution
-add_executable(test_basic_nested_member_method_call
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_nested_member_method_call.cpp)
-target_link_libraries(test_basic_nested_member_method_call PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_basic_nested_member_method_call test_basic_nested_member_method_call)
+viper_add_test(test_basic_nested_member_method_call NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_nested_member_method_call.cpp
+    LIBS fe_basic)
 
-# BUG-040 guard: FUNCTIONS returning class types should return ptr from RETURN var
-viper_add_test(
-        test_basic_class_return
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_class_return.cpp)
-target_link_libraries(test_basic_class_return PRIVATE fe_basic)
-viper_add_ctest(test_basic_class_return test_basic_class_return)
+viper_add_test(test_basic_class_return
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_class_return.cpp
+    LIBS fe_basic)
 
-viper_add_test(
-        test_basic_lower_builtin_dispatch
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp)
-target_link_libraries(test_basic_lower_builtin_dispatch PRIVATE fe_basic)
-viper_add_ctest(test_basic_lower_builtin_dispatch test_basic_lower_builtin_dispatch)
+viper_add_test(test_basic_lower_builtin_dispatch
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp
+    LIBS fe_basic)
 
-# Runtime class catalog and binding tests
-add_executable(test_runtime_class_catalog ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestRuntimeClassCatalog.cpp)
-target_link_libraries(test_runtime_class_catalog PRIVATE viper_testing fe_basic)
-viper_add_ctest(test_runtime_class_catalog test_runtime_class_catalog)
+# ── Runtime class catalog and binding tests ─────────────────────────────
+viper_add_test(test_runtime_class_catalog NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestRuntimeClassCatalog.cpp
+    LIBS fe_basic)
 
-add_executable(test_runtime_property_binding ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestPropertyBinding.cpp)
-target_link_libraries(test_runtime_property_binding PRIVATE viper_testing fe_basic)
-viper_add_ctest(test_runtime_property_binding test_runtime_property_binding)
+viper_add_test(test_runtime_property_binding
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestPropertyBinding.cpp
+    LIBS fe_basic)
 
-add_executable(test_runtime_method_binding ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestMethodBinding.cpp)
-target_link_libraries(test_runtime_method_binding PRIVATE viper_testing fe_basic)
-viper_add_ctest(test_runtime_method_binding test_runtime_method_binding)
+viper_add_test(test_runtime_method_binding
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestMethodBinding.cpp
+    LIBS fe_basic)
 
-add_executable(test_runtime_catalog_targets_resolve ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp)
-target_link_libraries(test_runtime_catalog_targets_resolve PRIVATE viper_testing fe_basic)
-viper_add_ctest(test_runtime_catalog_targets_resolve test_runtime_catalog_targets_resolve)
+viper_add_test(test_runtime_catalog_targets_resolve NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
+    LIBS fe_basic)
 
-# Runtime property diagnostics (read-only setter)
-add_executable(test_frontends_basic_runtime_property_diag ${CMAKE_CURRENT_SOURCE_DIR}/frontends/basic/RuntimePropertyDiagTests.cpp)
-target_link_libraries(test_frontends_basic_runtime_property_diag PRIVATE viper_testing fe_basic)
-viper_add_ctest(test_frontends_basic_runtime_property_diag test_frontends_basic_runtime_property_diag)
+viper_add_test(test_frontends_basic_runtime_property_diag
+    ${CMAKE_CURRENT_SOURCE_DIR}/frontends/basic/RuntimePropertyDiagTests.cpp
+    LIBS fe_basic)
 
-viper_add_test(
-        test_basic_semantic_new_ctor
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_semantic_new_ctor.cpp)
-target_link_libraries(test_basic_semantic_new_ctor PRIVATE fe_basic)
-viper_add_ctest(test_basic_semantic_new_ctor test_basic_semantic_new_ctor)
+viper_add_test(test_basic_semantic_new_ctor
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_semantic_new_ctor.cpp
+    LIBS fe_basic)
 
-viper_add_test(test_run_process_quotes ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_run_process_quotes.cpp)
-target_link_libraries(test_run_process_quotes PRIVATE viper_common)
-viper_add_ctest(test_run_process_quotes test_run_process_quotes)
+viper_add_test(test_run_process_quotes
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_run_process_quotes.cpp
+    LIBS viper_common)
 
 add_test(NAME smoke_basic_oop
         COMMAND $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
@@ -544,36 +333,37 @@ viper_add_basic_namespace_tests()
 viper_add_e2e_codegen_tests()
 viper_add_golden_suite_tests()
 
-# Milestone D unit tests (OOP)
-add_executable(test_oop_static_members ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestStaticMembers.cpp)
-target_link_libraries(test_oop_static_members PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_oop_static_members test_oop_static_members)
+# ── Milestone D unit tests (OOP) ────────────────────────────────────────
+# NOTE: Several OOP tests were previously compiled but never registered with
+# ctest due to a viper_add_ctest(name name) no-op pattern. They have pre-existing
+# failures. NO_CTEST preserves the old behavior until they are fixed.
+viper_add_test(test_oop_static_members NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestStaticMembers.cpp
+    LIBS fe_basic)
 
-add_executable(test_oop_properties ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestProperties.cpp)
-target_link_libraries(test_oop_properties PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_oop_properties test_oop_properties)
+viper_add_test(test_oop_properties NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestProperties.cpp
+    LIBS fe_basic)
 
-add_executable(test_oop_overloads ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverloads.cpp)
-target_link_libraries(test_oop_overloads PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_oop_overloads test_oop_overloads)
+viper_add_test(test_oop_overloads
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverloads.cpp
+    LIBS fe_basic)
 
-# Inheritance tests (BUG-OOP-001, BUG-OOP-002, BUG-OOP-007)
-add_executable(test_oop_inheritance ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestInheritance.cpp)
-target_link_libraries(test_oop_inheritance PRIVATE fe_basic viper_testing viper_test_common)
-viper_add_ctest(test_oop_inheritance $<TARGET_FILE:test_oop_inheritance>)
+viper_add_test(test_oop_inheritance
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestInheritance.cpp
+    LIBS fe_basic viper_test_common)
 
-# Destructor + dispose tests
-add_executable(test_oop_destructor_dispose ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorDispose.cpp)
-target_link_libraries(test_oop_destructor_dispose PRIVATE fe_basic viper_testing)
-viper_add_ctest(test_oop_destructor_dispose test_oop_destructor_dispose)
+viper_add_test(test_oop_destructor_dispose NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorDispose.cpp
+    LIBS fe_basic)
 
-add_executable(test_oop_destructor_chain ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorChain.cpp)
-target_link_libraries(test_oop_destructor_chain PRIVATE fe_basic viper_testing viper_test_common)
-viper_add_ctest(test_oop_destructor_chain test_oop_destructor_chain)
+viper_add_test(test_oop_destructor_chain NO_CTEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorChain.cpp
+    LIBS fe_basic viper_test_common)
 
-add_executable(test_oop_dispose ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDispose.cpp)
-target_link_libraries(test_oop_dispose PRIVATE fe_basic viper_testing viper_test_common)
-viper_add_ctest(test_oop_dispose test_oop_dispose)
+viper_add_test(test_oop_dispose
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDispose.cpp
+    LIBS fe_basic viper_test_common)
 
 # Shell script tests - skip on Windows
 if (NOT WIN32)

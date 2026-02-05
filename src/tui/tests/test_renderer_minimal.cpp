@@ -18,7 +18,7 @@
 #include "tui/term/term_io.hpp"
 
 #include <algorithm>
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <string>
 
 using viper::tui::render::Renderer;
@@ -31,7 +31,7 @@ static int countChar(const std::string &s, char c)
     return static_cast<int>(std::count(s.begin(), s.end(), c));
 }
 
-int main()
+TEST(TUI, RendererMinimal)
 {
     StringTermIO tio;
     Renderer r(tio, true);
@@ -63,9 +63,14 @@ int main()
     r.draw(sb);
     int second_sgr = countChar(tio.buffer(), 'm');
     const std::string &out = tio.buffer();
-    assert(second_sgr <= first_sgr);
-    assert(out.find('x') == std::string::npos);
-    assert(out.find('y') == std::string::npos);
-    assert(out.find('z') == std::string::npos);
-    return 0;
+    ASSERT_TRUE(second_sgr <= first_sgr);
+    ASSERT_EQ(out.find('x'), std::string::npos);
+    ASSERT_EQ(out.find('y'), std::string::npos);
+    ASSERT_EQ(out.find('z'), std::string::npos);
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -15,7 +15,7 @@
 
 #include "tui/syntax/rules.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -24,11 +24,11 @@
 
 using viper::tui::syntax::SyntaxRuleSet;
 
-int main()
+TEST(TUI, Syntax)
 {
     SyntaxRuleSet rules;
     bool ok = rules.loadFromFile(SYNTAX_JSON);
-    assert(ok);
+    ASSERT_TRUE(ok);
     std::vector<std::string> lines = {"{", "  \"key\": true", "}"};
     std::string dump;
     for (std::size_t i = 0; i < lines.size(); ++i)
@@ -50,7 +50,7 @@ int main()
             dump += buf;
         }
     }
-    assert(dump == "1:2+5:00ff00:0\n1:9+4:0000ff:1\n");
+    ASSERT_EQ(dump, "1:2+5:00ff00:0\n1:9+4:0000ff:1\n");
 
     namespace fs = std::filesystem;
     const fs::path tmpDir = fs::temp_directory_path();
@@ -62,7 +62,7 @@ int main()
     }
     SyntaxRuleSet truncatedArrayRules;
     bool truncatedArrayOk = truncatedArrayRules.loadFromFile(truncatedArrayPath.string());
-    assert(!truncatedArrayOk);
+    ASSERT_FALSE(truncatedArrayOk);
     fs::remove(truncatedArrayPath);
 
     const fs::path truncatedMapPath = tmpDir / "viper_syntax_truncated_map.json";
@@ -72,8 +72,12 @@ int main()
     }
     SyntaxRuleSet truncatedMapRules;
     bool truncatedMapOk = truncatedMapRules.loadFromFile(truncatedMapPath.string());
-    assert(!truncatedMapOk);
+    ASSERT_FALSE(truncatedMapOk);
     fs::remove(truncatedMapPath);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

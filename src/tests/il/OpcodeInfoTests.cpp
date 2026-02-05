@@ -15,27 +15,31 @@
 
 #include "il/core/OpcodeInfo.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
-int main()
+TEST(IL, OpcodeInfoTests)
 {
     using namespace il::core;
 
     const auto ops = all_opcodes();
-    assert(!ops.empty());
+    ASSERT_FALSE(ops.empty());
 
     const auto again = all_opcodes();
-    assert(ops == again);
+    ASSERT_EQ(ops, again);
 
     for (size_t index = 0; index < ops.size(); ++index)
     {
         const Opcode op = ops[index];
-        assert(static_cast<size_t>(op) == index);
+        ASSERT_EQ(static_cast<size_t>(op), index);
 
         const auto mnemonic = opcode_mnemonic(op);
-        assert(!mnemonic.empty());
-        assert(mnemonic == getOpcodeInfo(op).name);
+        ASSERT_FALSE(mnemonic.empty());
+        ASSERT_EQ(mnemonic, getOpcodeInfo(op).name);
     }
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

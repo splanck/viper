@@ -15,9 +15,9 @@
 
 #include "il/transform/SimplifyCFG/Utils.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
-int main()
+TEST(IL, SimplifyCFGBitVectorResize)
 {
     using il::transform::simplify_cfg::BitVector;
 
@@ -25,16 +25,20 @@ int main()
     bits.set(0);
 
     bits.resize(5, true);
-    assert(bits.size() == 5);
-    assert(bits.test(0));
-    assert(bits.test(2));
-    assert(bits.test(4));
+    ASSERT_EQ(bits.size(), 5);
+    ASSERT_TRUE(bits.test(0));
+    ASSERT_TRUE(bits.test(2));
+    ASSERT_TRUE(bits.test(4));
 
     bits.set(1);
     bits.resize(3);
-    assert(bits.size() == 3);
-    assert(bits.test(0));
-    assert(bits.test(1));
+    ASSERT_EQ(bits.size(), 3);
+    ASSERT_TRUE(bits.test(0));
+    ASSERT_TRUE(bits.test(1));
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

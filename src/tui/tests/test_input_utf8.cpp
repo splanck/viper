@@ -15,65 +15,69 @@
 
 #include "tui/term/input.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
 using viper::tui::term::InputDecoder;
 using viper::tui::term::KeyEvent;
 
-int main()
+TEST(TUI, InputUtf8)
 {
     InputDecoder d;
 
     d.feed("A");
     auto ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].codepoint == 'A');
-    assert(ev[0].code == KeyEvent::Code::Unknown);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].codepoint, 'A');
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Unknown);
 
     d.feed("\xC3\xA9");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].codepoint == 0x00E9);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].codepoint, 0x00E9);
 
     d.feed("\xE4\xBD");
     ev = d.drain();
-    assert(ev.empty());
+    ASSERT_TRUE(ev.empty());
     d.feed("\xA0");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].codepoint == 0x4F60);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].codepoint, 0x4F60);
 
     d.feed("\n\t\x1b\x7f\r");
     ev = d.drain();
-    assert(ev.size() == 5);
-    assert(ev[0].code == KeyEvent::Code::Enter);
-    assert(ev[1].code == KeyEvent::Code::Tab);
-    assert(ev[2].code == KeyEvent::Code::Esc);
-    assert(ev[3].code == KeyEvent::Code::Backspace);
-    assert(ev[4].code == KeyEvent::Code::Enter);
+    ASSERT_EQ(ev.size(), 5);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Enter);
+    ASSERT_EQ(ev[1].code, KeyEvent::Code::Tab);
+    ASSERT_EQ(ev[2].code, KeyEvent::Code::Esc);
+    ASSERT_EQ(ev[3].code, KeyEvent::Code::Backspace);
+    ASSERT_EQ(ev[4].code, KeyEvent::Code::Enter);
 
     d.feed("\xC0\xAF");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::Unknown);
-    assert(ev[0].codepoint == 0);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Unknown);
+    ASSERT_EQ(ev[0].codepoint, 0);
 
     d.feed("\xED\xA0\x80");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::Unknown);
-    assert(ev[0].codepoint == 0);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Unknown);
+    ASSERT_EQ(ev[0].codepoint, 0);
 
     d.feed("\xF4\x90\x80\x80");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::Unknown);
-    assert(ev[0].codepoint == 0);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Unknown);
+    ASSERT_EQ(ev[0].codepoint, 0);
 
     d.feed("C");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].codepoint == 'C');
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].codepoint, 'C');
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

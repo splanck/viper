@@ -17,11 +17,11 @@
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/verify/Verifier.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <optional>
 #include <string>
 
-int main()
+TEST(IL, SimplifyCFGBypassParams)
 {
     using namespace il::core;
 
@@ -43,15 +43,15 @@ int main()
     builder.emitRet(std::optional<Value>{builder.blockParam(exit, 0)}, {});
 
     auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before SimplifyCFG");
+    ASSERT_TRUE(verifyResult && "Module should verify before SimplifyCFG");
 
     il::transform::SimplifyCFG pass;
     pass.setModule(&module);
     il::transform::SimplifyCFG::Stats stats{};
     const bool changed = pass.run(fn, &stats);
-    assert(changed && "SimplifyCFG should remove the forwarding block");
-    assert(stats.predsMerged == 1 && "Expected a single predecessor redirection");
-    assert(stats.emptyBlocksRemoved == 1 && "Expected the forwarding block to be removed");
+    ASSERT_TRUE(changed && "SimplifyCFG should remove the forwarding block");
+    ASSERT_EQ(stats.predsMerged, 1);
+    ASSERT_EQ(stats.emptyBlocksRemoved, 1);
 
     const auto findBlock = [](const Function &function,
                               const std::string &label) -> const BasicBlock *
@@ -65,22 +65,26 @@ int main()
     };
 
     const BasicBlock *entryBlock = findBlock(fn, "entry");
-    assert(entryBlock && "Entry block must remain");
+    ASSERT_TRUE(entryBlock);
     const BasicBlock *exitBlock = findBlock(fn, "exit");
-    assert(exitBlock && "Exit block must remain");
+    ASSERT_TRUE(exitBlock);
     const BasicBlock *midBlock = findBlock(fn, "mid");
-    assert(!midBlock && "Forwarding block should be removed");
+    ASSERT_FALSE(midBlock);
 
-    assert(!entryBlock->instructions.empty());
+    ASSERT_FALSE(entryBlock->instructions.empty());
     const Instr &entryTerm = entryBlock->instructions.back();
-    assert(entryTerm.op == Opcode::Br && "Entry must branch directly to exit");
-    assert(entryTerm.labels.size() == 1 && entryTerm.labels.front() == exitBlock->label);
-    assert(entryTerm.brArgs.size() == 1 && entryTerm.brArgs.front().size() == 1);
+    ASSERT_EQ(entryTerm.op, Opcode::Br);
+    ASSERT_TRUE(entryTerm.labels.size() == 1 && entryTerm.labels.front() == exitBlock->label);
+    ASSERT_TRUE(entryTerm.brArgs.size() == 1 && entryTerm.brArgs.front().size() == 1);
     const Value &bypassedArg = entryTerm.brArgs.front().front();
-    assert(bypassedArg.kind == Value::Kind::ConstInt);
-    assert(bypassedArg.i64 == 7 && "Branch argument should be forwarded");
+    ASSERT_EQ(bypassedArg.kind, Value::Kind::ConstInt);
+    ASSERT_EQ(bypassedArg.i64, 7);
 
-    assert(exitBlock->params.size() == 1 && "Exit block must retain its parameter");
+    ASSERT_EQ(exitBlock->params.size(), 1);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

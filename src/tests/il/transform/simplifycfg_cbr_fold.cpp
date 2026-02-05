@@ -16,11 +16,11 @@
 #include "il/build/IRBuilder.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/verify/Verifier.hpp"
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <optional>
 #include <string>
 
-int main()
+TEST(IL, SimplifyCFGCbrFold)
 {
     using namespace il::core;
 
@@ -46,14 +46,14 @@ int main()
     builder.emitRet(std::nullopt, {});
 
     auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before SimplifyCFG");
+    ASSERT_TRUE(verifyResult && "Module should verify before SimplifyCFG");
 
     il::transform::SimplifyCFG pass;
     pass.setModule(&module);
     il::transform::SimplifyCFG::Stats stats{};
     const bool changed = pass.run(fn, &stats);
-    assert(changed && "SimplifyCFG should fold the trivial conditional branch");
-    assert(stats.cbrToBr == 1 && "Expected exactly one conditional branch fold");
+    ASSERT_TRUE(changed && "SimplifyCFG should fold the trivial conditional branch");
+    ASSERT_EQ(stats.cbrToBr, 1);
 
     const auto findBlock = [](const Function &function,
                               const std::string &label) -> const BasicBlock *
@@ -67,19 +67,23 @@ int main()
     };
 
     const BasicBlock *entryBlock = findBlock(fn, "entry");
-    assert(entryBlock);
-    assert(!entryBlock->instructions.empty());
+    ASSERT_TRUE(entryBlock);
+    ASSERT_FALSE(entryBlock->instructions.empty());
     const Instr &terminator = entryBlock->instructions.back();
     // SimplifyCFG may immediately merge the entry block into A after folding the
     // branch, so accept either an explicit branch to ^A or a direct return.
     const bool isFoldedBranch = terminator.op == Opcode::Br && !terminator.labels.empty() &&
                                 terminator.labels.front() == "A";
     const bool isMergedRet = terminator.op == Opcode::Ret;
-    assert((isFoldedBranch || isMergedRet) && "Entry should branch to A or merge into its return");
+    ASSERT_TRUE((isFoldedBranch || isMergedRet) && "Entry should branch to A or merge into its return");
 
     for (const auto &block : fn.blocks)
         for (const auto &instr : block.instructions)
-            assert(instr.op != Opcode::CBr);
+            ASSERT_TRUE(instr.op != Opcode::CBr);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

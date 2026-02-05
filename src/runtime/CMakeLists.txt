@@ -166,7 +166,13 @@ set(RT_GRAPHICS_SOURCES
         rt_action.c
         rt_font.c
         rt_graphics.c
-        rt_gui.c
+        rt_gui_app.c
+        rt_gui_codeeditor.c
+        rt_gui_features.c
+        rt_gui_menus.c
+        rt_gui_system.c
+        rt_gui_widgets.c
+        rt_gui_widgets_complex.c
         rt_input.c
         rt_input_pad.c
         rt_inputmgr.c

@@ -15,13 +15,18 @@
 
 #include "tui/term/term_io.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
-int main()
+TEST(TUI, TermIO)
 {
     viper::tui::term::StringTermIO tio;
     tio.write("hello");
     tio.flush();
-    assert(tio.buffer() == "hello");
-    return 0;
+    ASSERT_EQ(tio.buffer(), "hello");
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -15,50 +15,51 @@
 
 #include "tui/text/text_buffer.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
+
 #include <string>
 #include <string_view>
 
 using viper::tui::text::TextBuffer;
 
-int main()
+TEST(TUI, TextBuffer)
 {
     TextBuffer buf;
     buf.load("hello\nworld");
-    assert(buf.getLine(0) == "hello");
-    assert(buf.getLine(1) == "world");
-    assert(buf.lineCount() == 2);
-    assert(buf.lineStart(0) == 0);
-    assert(buf.lineEnd(0) == buf.lineStart(0) + buf.getLine(0).size());
-    assert(buf.lineStart(1) == 6);
-    assert(buf.lineEnd(1) == buf.size());
-    assert(buf.lineStart(5) == buf.size());
-    assert(buf.lineEnd(5) == buf.size());
+    ASSERT_EQ(buf.getLine(0), "hello");
+    ASSERT_EQ(buf.getLine(1), "world");
+    ASSERT_EQ(buf.lineCount(), 2);
+    ASSERT_EQ(buf.lineStart(0), 0);
+    ASSERT_EQ(buf.lineEnd(0), buf.lineStart(0) + buf.getLine(0).size());
+    ASSERT_EQ(buf.lineStart(1), 6);
+    ASSERT_EQ(buf.lineEnd(1), buf.size());
+    ASSERT_EQ(buf.lineStart(5), buf.size());
+    ASSERT_EQ(buf.lineEnd(5), buf.size());
 
     buf.insert(5, ", there\nbeautiful");
-    assert(buf.getLine(0) == "hello, there");
-    assert(buf.getLine(1) == "beautiful");
-    assert(buf.getLine(2) == "world");
-    assert(buf.lineCount() == 3);
-    assert(buf.lineEnd(0) == buf.lineStart(0) + buf.getLine(0).size());
-    assert(buf.lineEnd(1) == buf.lineStart(1) + buf.getLine(1).size());
-    assert(buf.lineEnd(2) == buf.lineStart(2) + buf.getLine(2).size());
-    assert(buf.lineStart(99) == buf.size());
-    assert(buf.lineEnd(99) == buf.size());
+    ASSERT_EQ(buf.getLine(0), "hello, there");
+    ASSERT_EQ(buf.getLine(1), "beautiful");
+    ASSERT_EQ(buf.getLine(2), "world");
+    ASSERT_EQ(buf.lineCount(), 3);
+    ASSERT_EQ(buf.lineEnd(0), buf.lineStart(0) + buf.getLine(0).size());
+    ASSERT_EQ(buf.lineEnd(1), buf.lineStart(1) + buf.getLine(1).size());
+    ASSERT_EQ(buf.lineEnd(2), buf.lineStart(2) + buf.getLine(2).size());
+    ASSERT_EQ(buf.lineStart(99), buf.size());
+    ASSERT_EQ(buf.lineEnd(99), buf.size());
 
     buf.beginTxn();
     buf.erase(0, 5); // remove 'hello'
     buf.insert(0, "bye");
     buf.endTxn();
-    assert(buf.getLine(0) == "bye, there");
+    ASSERT_EQ(buf.getLine(0), "bye, there");
 
     bool ok = buf.undo();
-    assert(ok);
-    assert(buf.getLine(0) == "hello, there");
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(buf.getLine(0), "hello, there");
 
     ok = buf.redo();
-    assert(ok);
-    assert(buf.getLine(0) == "bye, there");
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(buf.getLine(0), "bye, there");
 
     std::size_t visited = 0;
     buf.forEachLine(
@@ -76,22 +77,22 @@ int main()
 
             if (lineNo == 0)
             {
-                assert(reconstructed == "bye, there");
-                assert(segments >= 2);
+                ASSERT_EQ(reconstructed, "bye, there");
+                ASSERT_TRUE(segments >= 2);
             }
             else if (lineNo == 1)
             {
-                assert(reconstructed == "beautiful");
+                ASSERT_EQ(reconstructed, "beautiful");
             }
             else if (lineNo == 2)
             {
-                assert(reconstructed == "world");
+                ASSERT_EQ(reconstructed, "world");
             }
 
             ++visited;
             return true;
         });
-    assert(visited == buf.lineCount());
+    ASSERT_EQ(visited, buf.lineCount());
 
     visited = 0;
     buf.forEachLine(
@@ -100,7 +101,7 @@ int main()
             ++visited;
             return lineNo < 1;
         });
-    assert(visited == 2);
+    ASSERT_EQ(visited, 2);
 
     std::size_t segmentVisits = 0;
     buf.lineView(0).forEachSegment(
@@ -109,7 +110,11 @@ int main()
             ++segmentVisits;
             return false;
         });
-    assert(segmentVisits == 1);
+    ASSERT_EQ(segmentVisits, 1);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

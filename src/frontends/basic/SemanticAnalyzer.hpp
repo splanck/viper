@@ -179,8 +179,6 @@ class SemanticAnalyzer
     friend class sem::ExprCheckContext;
     friend class SemanticAnalyzerExprVisitor;
     friend class SemanticAnalyzerStmtVisitor;
-    friend const semantic_analyzer_detail::ExprRule &semantic_analyzer_detail::exprRule(
-        BinaryExpr::Op op);
     friend class semantic_analyzer_detail::StmtShared;
 
     /// @brief Record symbols and labels from a statement.

@@ -15,47 +15,51 @@
 
 #include "tui/term/input.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
 using viper::tui::term::InputDecoder;
 using viper::tui::term::KeyEvent;
 
-int main()
+TEST(TUI, InputCsi)
 {
     InputDecoder d;
 
     d.feed("\x1b[A");
     auto ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::Up);
-    assert(ev[0].mods == 0);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Up);
+    ASSERT_EQ(ev[0].mods, 0);
 
     d.feed("\x1b[1;5C");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::Right);
-    assert(ev[0].mods == KeyEvent::Ctrl);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Right);
+    ASSERT_EQ(ev[0].mods, KeyEvent::Ctrl);
 
     d.feed("\x1b[3~");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::Delete);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Delete);
 
     d.feed("\x1bOP");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::F1);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::F1);
 
     d.feed("\x1b[15~");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::F5);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::F5);
 
     d.feed("\x1b[1;2H");
     ev = d.drain();
-    assert(ev.size() == 1);
-    assert(ev[0].code == KeyEvent::Code::Home);
-    assert(ev[0].mods == KeyEvent::Shift);
+    ASSERT_EQ(ev.size(), 1);
+    ASSERT_EQ(ev[0].code, KeyEvent::Code::Home);
+    ASSERT_EQ(ev[0].mods, KeyEvent::Shift);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

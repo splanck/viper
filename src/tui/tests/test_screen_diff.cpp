@@ -15,13 +15,13 @@
 
 #include "tui/render/screen.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <vector>
 
 using viper::tui::render::ScreenBuffer;
 using viper::tui::render::Style;
 
-int main()
+TEST(TUI, ScreenDiff)
 {
     ScreenBuffer sb;
     sb.resize(2, 5);
@@ -39,24 +39,28 @@ int main()
 
     std::vector<ScreenBuffer::DiffSpan> spans;
     sb.computeDiff(spans);
-    assert(spans.size() == 2);
-    assert(spans[0].row == 0 && spans[0].x0 == 0 && spans[0].x1 == 5);
-    assert(spans[1].row == 1 && spans[1].x0 == 0 && spans[1].x1 == 5);
+    ASSERT_EQ(spans.size(), 2);
+    ASSERT_TRUE(spans[0].row == 0 && spans[0].x0 == 0 && spans[0].x1 == 5);
+    ASSERT_TRUE(spans[1].row == 1 && spans[1].x0 == 0 && spans[1].x1 == 5);
 
     sb.snapshotPrev();
     spans.clear();
     sb.computeDiff(spans);
-    assert(spans.empty());
+    ASSERT_TRUE(spans.empty());
 
     sb.at(0, 1).ch = U'a';
     sb.at(1, 0).ch = U'W';
     sb.at(1, 3).ch = U'L';
 
     sb.computeDiff(spans);
-    assert(spans.size() == 3);
-    assert(spans[0].row == 0 && spans[0].x0 == 1 && spans[0].x1 == 2);
-    assert(spans[1].row == 1 && spans[1].x0 == 0 && spans[1].x1 == 1);
-    assert(spans[2].row == 1 && spans[2].x0 == 3 && spans[2].x1 == 4);
+    ASSERT_EQ(spans.size(), 3);
+    ASSERT_TRUE(spans[0].row == 0 && spans[0].x0 == 1 && spans[0].x1 == 2);
+    ASSERT_TRUE(spans[1].row == 1 && spans[1].x0 == 0 && spans[1].x1 == 1);
+    ASSERT_TRUE(spans[2].row == 1 && spans[2].x0 == 3 && spans[2].x1 == 4);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

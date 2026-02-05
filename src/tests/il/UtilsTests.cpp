@@ -17,9 +17,9 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/utils/Utils.hpp"
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
-int main()
+TEST(IL, UtilsTests)
 {
     using namespace viper::il;
     using il::core::BasicBlock;
@@ -32,12 +32,12 @@ int main()
     b.instructions.emplace_back();
     Instr &add = b.instructions.back();
     add.op = Opcode::IAddOvf;
-    assert(belongsToBlock(add, b));
+    ASSERT_TRUE(belongsToBlock(add, b));
     Instr other;
     other.op = Opcode::IAddOvf;
-    assert(!belongsToBlock(other, b));
-    assert(!isTerminator(add));
-    assert(terminator(b) == nullptr);
+    ASSERT_FALSE(belongsToBlock(other, b));
+    ASSERT_FALSE(isTerminator(add));
+    ASSERT_EQ(terminator(b), nullptr);
 
     auto checkTerm = [](Opcode op)
     {
@@ -49,8 +49,8 @@ int main()
         Instr &term = blk.instructions.back();
         term.op = op;
         blk.terminated = true;
-        assert(isTerminator(term));
-        assert(terminator(blk) == &term);
+        ASSERT_TRUE(isTerminator(term));
+        ASSERT_EQ(terminator(blk), &term);
     };
 
     checkTerm(Opcode::Br);
@@ -61,6 +61,10 @@ int main()
     checkTerm(Opcode::ResumeSame);
     checkTerm(Opcode::ResumeNext);
     checkTerm(Opcode::ResumeLabel);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

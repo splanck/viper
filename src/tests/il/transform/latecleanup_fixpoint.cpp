@@ -24,7 +24,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <iostream>
 
 using namespace il::core;
@@ -51,11 +51,13 @@ void verifyOrDie(const Module &m)
     if (!result)
     {
         il::support::printDiag(result.error(), std::cerr);
-        assert(false && "module verification failed");
+        ASSERT_TRUE(false && "module verification failed");
     }
 }
 
-void testSingleIterationNoChange()
+} // namespace
+
+TEST(IL, testSingleIterationNoChange)
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -73,14 +75,14 @@ void testSingleIterationNoChange()
 
     verifyOrDie(m);
     auto stats = runCleanup(m);
-    assert(stats.iterations == 1);
-    assert(stats.instrBefore == stats.instrAfter);
-    assert(stats.blocksBefore == stats.blocksAfter);
-    assert(stats.instrPerIter.size() == 1);
-    assert(stats.blocksPerIter.size() == 1);
+    ASSERT_EQ(stats.iterations, 1);
+    ASSERT_EQ(stats.instrBefore, stats.instrAfter);
+    ASSERT_EQ(stats.blocksBefore, stats.blocksAfter);
+    ASSERT_EQ(stats.instrPerIter.size(), 1);
+    ASSERT_EQ(stats.blocksPerIter.size(), 1);
 }
 
-void testTwoIterationsDCEOnly()
+TEST(IL, testTwoIterationsDCEOnly)
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -112,23 +114,20 @@ void testTwoIterationsDCEOnly()
 
     verifyOrDie(m);
     auto stats = runCleanup(m);
-    assert(stats.iterations == 2); // first iteration removes dead add, second converges
-    assert(stats.instrBefore > stats.instrAfter);
-    assert(stats.blocksBefore == stats.blocksAfter);
-    assert(stats.instrPerIter.size() == stats.iterations);
+    ASSERT_EQ(stats.iterations, 2);
+    ASSERT_TRUE(stats.instrBefore > stats.instrAfter);
+    ASSERT_EQ(stats.blocksBefore, stats.blocksAfter);
+    ASSERT_EQ(stats.instrPerIter.size(), stats.iterations);
     for (size_t i = 1; i < stats.instrPerIter.size(); ++i)
     {
-        assert(stats.instrPerIter[i] <= stats.instrPerIter[i - 1]);
-        assert(stats.blocksPerIter[i] <= stats.blocksPerIter[i - 1]);
+        ASSERT_TRUE(stats.instrPerIter[i] <= stats.instrPerIter[i - 1]);
+        ASSERT_TRUE(stats.blocksPerIter[i] <= stats.blocksPerIter[i - 1]);
     }
-    assert(stats.iterations <= 4); // bounded by LateCleanup iteration cap
+    ASSERT_TRUE(stats.iterations <= 4);
 }
 
-} // namespace
-
-int main()
+int main(int argc, char **argv)
 {
-    testSingleIterationNoChange();
-    testTwoIterationsDCEOnly();
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -17,8 +17,9 @@
 #include "il/core/Module.hpp"
 #include "support/diag_expected.hpp"
 
+#include "tests/TestHarness.hpp"
+
 #include <array>
-#include <cassert>
 #include <cstdio>
 #include <fstream>
 #include <initializer_list>
@@ -34,7 +35,7 @@ struct InvalidCase
 };
 } // namespace
 
-int main()
+TEST(IL, InvalidEhTests)
 {
     using il::api::v2::parse_text_expected;
     using il::api::v2::verify_module_expected;
@@ -51,52 +52,29 @@ int main()
     {
         const std::string path = std::string(INVALID_EH_DIR) + "/" + testCase.fileName;
         std::ifstream in(path);
-        if (!in)
-        {
-            std::fprintf(stderr, "failed to open %s\n", path.c_str());
-            return 1;
-        }
+        ASSERT_TRUE(in);
 
         il::core::Module module;
         auto parseResult = parse_text_expected(in, module);
-        if (!parseResult)
-        {
-            std::ostringstream diag;
-            il::support::printDiag(parseResult.error(), diag);
-            std::fprintf(
-                stderr, "unexpected parse failure for %s: %s\n", path.c_str(), diag.str().c_str());
-            return 1;
-        }
+        ASSERT_TRUE(parseResult);
 
         auto verifyResult = verify_module_expected(module);
-        if (verifyResult)
-        {
-            std::fprintf(stderr, "expected verifier to fail for %s\n", path.c_str());
-            return 1;
-        }
+        ASSERT_FALSE(verifyResult);
 
         std::ostringstream diag;
         il::support::printDiag(verifyResult.error(), diag);
         const std::string diagText = diag.str();
-        if (diagText.empty())
-        {
-            std::fprintf(stderr, "expected diagnostic text for %s\n", path.c_str());
-            return 1;
-        }
+        ASSERT_FALSE(diagText.empty());
 
         for (const char *expected : testCase.expectedSubstrings)
         {
-            if (diagText.find(expected) == std::string::npos)
-            {
-                std::fprintf(stderr,
-                             "diagnostic for %s missing substring '%s': %s\n",
-                             path.c_str(),
-                             expected,
-                             diagText.c_str());
-                return 1;
-            }
+            ASSERT_TRUE(diagText.find(expected) != std::string::npos);
         }
     }
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

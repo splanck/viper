@@ -24,9 +24,9 @@
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/verify/Verifier.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
-int main()
+TEST(IL, SimplifyCFGEhGuard)
 {
     using namespace il::core;
 
@@ -77,24 +77,23 @@ int main()
     module.functions.push_back(function);
 
     auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module must verify before running SimplifyCFG");
+    ASSERT_TRUE(verifyResult && "Module must verify before running SimplifyCFG");
 
     il::transform::SimplifyCFG pass;
     pass.setModule(&module);
     il::transform::SimplifyCFG::Stats stats{};
     const bool changed = pass.run(module.functions.front(), &stats);
-    assert(!changed && "SimplifyCFG should not rewrite EH-sensitive blocks");
+    ASSERT_FALSE(changed);
 
     const Function &resultFn = module.functions.front();
-    assert(resultFn.blocks.size() == 2 && "EH handler block must be preserved");
+    ASSERT_EQ(resultFn.blocks.size(), 2);
 
     const BasicBlock &resultEntry = resultFn.blocks[0];
-    assert(!resultEntry.instructions.empty());
+    ASSERT_FALSE(resultEntry.instructions.empty());
     const Instr &resultPush = resultEntry.instructions.front();
-    assert(resultPush.op == Opcode::EhPush);
-    assert(resultPush.labels.size() == 1);
-    assert(resultPush.labels.front() == "handler" &&
-           "EH push must continue to reference the handler label");
+    ASSERT_EQ(resultPush.op, Opcode::EhPush);
+    ASSERT_EQ(resultPush.labels.size(), 1);
+    ASSERT_EQ(resultPush.labels.front(), "handler");
 
     bool foundHandler = false;
     for (const auto &block : resultFn.blocks)
@@ -103,24 +102,28 @@ int main()
             continue;
 
         foundHandler = true;
-        assert(block.instructions.size() == 3);
-        assert(block.instructions[0].op == Opcode::EhEntry);
-        assert(block.instructions[1].op == Opcode::EhPop);
-        assert(block.instructions[2].op == Opcode::ResumeNext);
-        assert(block.instructions[2].operands.size() == 1);
+        ASSERT_EQ(block.instructions.size(), 3);
+        ASSERT_EQ(block.instructions[0].op, Opcode::EhEntry);
+        ASSERT_EQ(block.instructions[1].op, Opcode::EhPop);
+        ASSERT_EQ(block.instructions[2].op, Opcode::ResumeNext);
+        ASSERT_EQ(block.instructions[2].operands.size(), 1);
         const Value &resumeTok = block.instructions[2].operands.front();
-        assert(resumeTok.kind == Value::Kind::Temp);
-        assert(resumeTok.id == handler.params[1].id);
+        ASSERT_EQ(resumeTok.kind, Value::Kind::Temp);
+        ASSERT_EQ(resumeTok.id, handler.params[1].id);
     }
 
-    assert(foundHandler && "Handler block must remain present after SimplifyCFG");
+    ASSERT_TRUE(foundHandler);
 
-    assert(stats.cbrToBr == 0);
-    assert(stats.emptyBlocksRemoved == 0);
-    assert(stats.predsMerged == 0);
-    assert(stats.paramsShrunk == 0);
-    assert(stats.blocksMerged == 0);
-    assert(stats.unreachableRemoved == 0);
+    ASSERT_EQ(stats.cbrToBr, 0);
+    ASSERT_EQ(stats.emptyBlocksRemoved, 0);
+    ASSERT_EQ(stats.predsMerged, 0);
+    ASSERT_EQ(stats.paramsShrunk, 0);
+    ASSERT_EQ(stats.blocksMerged, 0);
+    ASSERT_EQ(stats.unreachableRemoved, 0);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -25,7 +25,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <optional>
 
 using namespace il::core;
@@ -258,7 +258,9 @@ bool hasCall(const Function &fn)
     return false;
 }
 
-void test_inline_multiblock()
+} // namespace
+
+TEST(IL, test_inline_multiblock)
 {
     Module M;
     M.functions.push_back(makeAbsHelper());
@@ -270,8 +272,8 @@ void test_inline_multiblock()
     (void)inl.run(M, AM);
 
     Function &caller = M.functions[1];
-    assert(!hasCall(caller));
-    assert(caller.blocks.size() > 1); // multi-block callee was cloned
+    ASSERT_FALSE(hasCall(caller));
+    ASSERT_TRUE(caller.blocks.size() > 1);
 
     il::transform::sccp(M);
     il::transform::dce(M);
@@ -283,15 +285,15 @@ void test_inline_multiblock()
         {
             if (I.op != Opcode::Ret || I.operands.empty())
                 continue;
-            assert(I.operands.front().kind == Value::Kind::ConstInt);
-            assert(I.operands.front().i64 == 7);
+            ASSERT_EQ(I.operands.front().kind, Value::Kind::ConstInt);
+            ASSERT_EQ(I.operands.front().i64, 7);
             foundRet = true;
         }
     }
-    assert(foundRet);
+    ASSERT_TRUE(foundRet);
 }
 
-void test_no_inline_large()
+TEST(IL, test_no_inline_large)
 {
     Module M;
     M.functions.push_back(makeLargeHelper());
@@ -303,10 +305,10 @@ void test_no_inline_large()
     (void)inl.run(M, AM);
 
     const Function &caller = M.functions[1];
-    assert(hasCall(caller));
+    ASSERT_TRUE(hasCall(caller));
 }
 
-void test_no_inline_recursive()
+TEST(IL, test_no_inline_recursive)
 {
     Module M;
     M.functions.push_back(makeRecursiveHelper());
@@ -317,10 +319,10 @@ void test_no_inline_recursive()
     (void)inl.run(M, AM);
 
     const Function &self = M.functions.front();
-    assert(hasCall(self));
+    ASSERT_TRUE(hasCall(self));
 }
 
-void test_o2_pipeline_runs()
+TEST(IL, test_o2_pipeline_runs)
 {
     Module M;
     M.functions.push_back(makeAbsHelper());
@@ -329,19 +331,14 @@ void test_o2_pipeline_runs()
     il::transform::PassManager pm;
     pm.addSimplifyCFG();
     bool ran = pm.runPipeline(M, "O2");
-    assert(ran);
+    ASSERT_TRUE(ran);
 
     const Function &caller = M.functions[1];
-    assert(!hasCall(caller));
+    ASSERT_FALSE(hasCall(caller));
 }
 
-} // namespace
-
-int main()
+int main(int argc, char **argv)
 {
-    test_inline_multiblock();
-    test_no_inline_large();
-    test_no_inline_recursive();
-    test_o2_pipeline_runs();
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

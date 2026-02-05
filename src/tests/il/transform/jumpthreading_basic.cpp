@@ -20,7 +20,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <iostream>
 
 using namespace il::core;
@@ -34,7 +34,7 @@ static void verifyOrDie(const Module &module)
     if (!verifyResult)
     {
         il::support::printDiag(verifyResult.error(), std::cerr);
-        assert(false && "Module verification failed");
+        ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
@@ -48,13 +48,9 @@ BasicBlock *findBlock(Function &function, const std::string &label)
     return nullptr;
 }
 
-/// @brief Test that a jump through a block with constant condition is threaded.
-/// Before:
-///   entry: br mid(1)
-///   mid(cond): cbr cond, target1, target2
-/// After:
-///   entry: br target1
-void testBasicJumpThreading()
+} // namespace
+
+TEST(IL, testBasicJumpThreading)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -111,20 +107,16 @@ void testBasicJumpThreading()
 
     // After threading, entry should branch directly to target1
     BasicBlock *entryAfter = findBlock(fn, "entry");
-    assert(entryAfter != nullptr);
+    ASSERT_TRUE(entryAfter != nullptr);
 
     const Instr &term = entryAfter->instructions.back();
-    // Should be Br (unconditional) or threading should have occurred
     if (term.op == Opcode::Br && !term.labels.empty())
     {
-        // If threading worked, should go directly to target1
-        // (mid block should be bypassed)
-        assert(term.labels[0] == "target1" || term.labels[0] == "mid");
+        ASSERT_TRUE(term.labels[0] == "target1" || term.labels[0] == "mid");
     }
 }
 
-/// @brief Test that jump threading with false constant goes to false branch.
-void testJumpThreadingFalseBranch()
+TEST(IL, testJumpThreadingFalseBranch)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -180,18 +172,16 @@ void testJumpThreadingFalseBranch()
 
     // After threading, entry should branch directly to target2
     BasicBlock *entryAfter = findBlock(fn, "entry");
-    assert(entryAfter != nullptr);
+    ASSERT_TRUE(entryAfter != nullptr);
 
     const Instr &term = entryAfter->instructions.back();
     if (term.op == Opcode::Br && !term.labels.empty())
     {
-        // If threading worked, should go directly to target2
-        assert(term.labels[0] == "target2" || term.labels[0] == "mid");
+        ASSERT_TRUE(term.labels[0] == "target2" || term.labels[0] == "mid");
     }
 }
 
-/// @brief Test that threading preserves branch arguments properly.
-void testJumpThreadingWithArgs()
+TEST(IL, testJumpThreadingWithArgs)
 {
     Module module;
     il::build::IRBuilder builder(module);
@@ -249,12 +239,8 @@ void testJumpThreadingWithArgs()
     // (since condition is true, takes first branch which passes val=42)
 }
 
-} // namespace
-
-int main()
+int main(int argc, char **argv)
 {
-    testBasicJumpThreading();
-    testJumpThreadingFalseBranch();
-    testJumpThreadingWithArgs();
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

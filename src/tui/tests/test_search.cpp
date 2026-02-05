@@ -20,7 +20,7 @@
 #include "tui/views/text_view.hpp"
 #include "tui/widgets/search_bar.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
 using viper::tui::render::ScreenBuffer;
 using viper::tui::style::Role;
@@ -33,18 +33,18 @@ using viper::tui::ui::Event;
 using viper::tui::views::TextView;
 using viper::tui::widgets::SearchBar;
 
-int main()
+TEST(TUI, Search)
 {
     TextBuffer buf;
     buf.load("alpha beta alpha gamma alpha");
 
     auto hits = findAll(buf, "alpha", false);
-    assert(hits.size() == 3);
+    ASSERT_EQ(hits.size(), 3);
     auto next = findNext(buf, "alpha", hits[0].start + 1, false);
-    assert(next && next->start == hits[1].start);
+    ASSERT_TRUE(next && next->start == hits[1].start);
 
     auto rhits = findAll(buf, "alpha", true);
-    assert(rhits.size() == 3);
+    ASSERT_EQ(rhits.size(), 3);
 
     Theme theme;
     TextView view(buf, theme, false);
@@ -60,18 +60,22 @@ int main()
         ev.key.codepoint = static_cast<uint32_t>(pat[i]);
         bar.onEvent(ev);
     }
-    assert(bar.matchCount() == 3);
-    assert(view.cursorCol() == 0);
+    ASSERT_EQ(bar.matchCount(), 3);
+    ASSERT_EQ(view.cursorCol(), 0);
 
     ev.key.code = KeyEvent::Code::Enter;
     bar.onEvent(ev);
-    assert(view.cursorCol() == 11);
+    ASSERT_EQ(view.cursorCol(), 11);
 
     ScreenBuffer sb;
     sb.resize(1, 40);
     sb.clear(theme.style(Role::Normal));
     view.paint(sb);
-    assert(sb.at(0, 11).style == theme.style(Role::Accent));
+    ASSERT_EQ(sb.at(0, 11).style, theme.style(Role::Accent));
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

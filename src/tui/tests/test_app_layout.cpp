@@ -18,7 +18,7 @@
 #include "tui/term/term_io.hpp"
 #include "tui/ui/container.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <memory>
 #include <string>
 
@@ -47,7 +47,7 @@ struct CharWidget : Widget
     }
 };
 
-int main()
+TEST(TUI, AppLayout)
 {
     auto root = std::make_unique<VStack>();
     auto a = std::make_unique<CharWidget>('A');
@@ -59,10 +59,15 @@ int main()
     StringTermIO tio;
     App app(std::move(root), tio, 2, 2);
     app.tick();
-    assert(ap->rect().h == 1);
-    assert(bp->rect().y == 1);
+    ASSERT_EQ(ap->rect().h, 1);
+    ASSERT_EQ(bp->rect().y, 1);
     const std::string &out = tio.buffer();
-    assert(out.find('A') != std::string::npos);
-    assert(out.find('B') != std::string::npos);
-    return 0;
+    ASSERT_TRUE(out.find('A') != std::string::npos);
+    ASSERT_TRUE(out.find('B') != std::string::npos);
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

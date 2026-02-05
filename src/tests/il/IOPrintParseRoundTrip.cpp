@@ -18,6 +18,8 @@
 #include "support/diag_expected.hpp"
 #include "viper/il/IO.hpp"
 
+#include "tests/TestHarness.hpp"
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -214,14 +216,10 @@ bool shouldSkipFixture(const std::filesystem::path &path)
 
 } // namespace
 
-int main()
+TEST(IL, IOPrintParseRoundTrip)
 {
     const auto fixtures = collectFixtureFiles();
-    if (fixtures.empty())
-    {
-        std::cerr << "No IL fixtures discovered for round-trip test." << std::endl;
-        return 1;
-    }
+    ASSERT_FALSE(fixtures.empty());
 
     for (const auto &fixture : fixtures)
     {
@@ -230,23 +228,15 @@ int main()
             continue;
         }
         std::ifstream input(fixture);
-        if (!input)
-        {
-            std::cerr << "Failed to open fixture: " << fixture << '\n';
-            return 1;
-        }
+        ASSERT_TRUE(input);
+
         std::ostringstream buffer;
         buffer << input.rdbuf();
         const std::string originalText = buffer.str();
         il::core::Module initialModule;
         std::istringstream firstStream(originalText);
         const auto firstParse = il::api::v2::parse_text_expected(firstStream, initialModule);
-        if (!firstParse)
-        {
-            std::cerr << "Initial parse failed for " << fixture << '\n';
-            reportDiag(firstParse.error());
-            return 1;
-        }
+        ASSERT_TRUE(firstParse);
 
         const std::string firstPrinted = il::io::Serializer::toString(initialModule);
         const std::string canonicalFirstPrint = normalizeText(firstPrinted);
@@ -254,25 +244,17 @@ int main()
         il::core::Module roundTripped;
         std::istringstream secondStream(firstPrinted);
         const auto secondParse = il::api::v2::parse_text_expected(secondStream, roundTripped);
-        if (!secondParse)
-        {
-            std::cerr << "Second parse failed for " << fixture << '\n';
-            reportDiag(secondParse.error());
-            return 1;
-        }
+        ASSERT_TRUE(secondParse);
 
         const std::string secondPrinted = il::io::Serializer::toString(roundTripped);
         const std::string canonicalSecondPrint = normalizeText(secondPrinted);
 
-        if (canonicalFirstPrint != canonicalSecondPrint)
-        {
-            std::cerr << "Canonical printer output mismatch after round-trip for " << fixture
-                      << '\n';
-            std::cerr << "First print:\n" << canonicalFirstPrint << '\n';
-            std::cerr << "Second print:\n" << canonicalSecondPrint << '\n';
-            return 1;
-        }
+        ASSERT_EQ(canonicalFirstPrint, canonicalSecondPrint);
     }
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

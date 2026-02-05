@@ -52,7 +52,7 @@ using viper::vm::SwitchCache;
 using viper::vm::SwitchCacheEntry;
 using viper::vm::SwitchMode;
 
-SwitchMode g_switchMode = SwitchMode::Auto; ///< Global override for switch backend selection.
+thread_local SwitchMode g_switchMode = SwitchMode::Auto; ///< Global override for switch backend selection.
 
 /// @brief Determine whether verbose VM debug logging has been requested.
 ///

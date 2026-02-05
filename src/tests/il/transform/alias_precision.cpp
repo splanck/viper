@@ -31,8 +31,8 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 
+#include "tests/TestHarness.hpp"
 #include <algorithm>
-#include <cassert>
 #include <iostream>
 
 using namespace il::core;
@@ -70,11 +70,13 @@ static void verifyOrDie(const Module &module)
     if (!verifyResult)
     {
         il::support::printDiag(verifyResult.error(), std::cerr);
-        assert(false && "Module verification failed");
+        ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
-void testDSENoElimOnDisjointFields()
+} // namespace
+
+TEST(IL, testDSENoElimOnDisjointFields)
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -130,13 +132,12 @@ void testDSENoElimOnDisjointFields()
     AnalysisSetup setup;
     il::transform::AnalysisManager am(m, setup.registry);
     const bool changed = il::transform::runDSE(fn, am);
-    // Stores touch disjoint struct fields; DSE should keep both.
     std::cerr << "dse-changed=" << changed << " instrs=" << entry.instructions.size() << std::endl;
-    assert(!changed);
-    assert(entry.instructions.size() == 6);
+    ASSERT_FALSE(changed);
+    ASSERT_EQ(entry.instructions.size(), 6);
 }
 
-void testLICMLoadHoistWithDisjointStore()
+TEST(IL, testLICMLoadHoistWithDisjointStore)
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -273,10 +274,10 @@ void testLICMLoadHoistWithDisjointStore()
     if (!(loadInPre && !loadInHeader))
         std::cerr << il::io::Serializer::toString(m, il::io::Serializer::Mode::Pretty) << std::endl;
     std::cerr << "licm-pre=" << loadInPre << " hdr=" << loadInHeader << std::endl;
-    assert(loadInPre && !loadInHeader && "load should be hoisted to preheader");
+    ASSERT_TRUE(loadInPre && !loadInHeader && "load should be hoisted to preheader");
 }
 
-void testGVNRedundantLoadSameField()
+TEST(IL, testGVNRedundantLoadSameField)
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -349,21 +350,13 @@ void testGVNRedundantLoadSameField()
                       ? -1
                       : static_cast<int>(entry.instructions.back().operands[0].id))
               << std::endl;
-    assert(loadCount == 1);
+    ASSERT_EQ(loadCount, 1);
     const Instr &retI = entry.instructions.back();
-    assert(retI.operands[0].kind == Value::Kind::Temp && retI.operands[0].id == load0);
+    ASSERT_TRUE(retI.operands[0].kind == Value::Kind::Temp && retI.operands[0].id == load0);
 }
 
-} // namespace
-
-int main()
+int main(int argc, char **argv)
 {
-    std::cerr << "dse" << std::endl;
-    testDSENoElimOnDisjointFields();
-    std::cerr << "licm" << std::endl;
-    testLICMLoadHoistWithDisjointStore();
-    std::cerr << "gvn" << std::endl;
-    testGVNRedundantLoadSameField();
-    std::cerr << "done" << std::endl;
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

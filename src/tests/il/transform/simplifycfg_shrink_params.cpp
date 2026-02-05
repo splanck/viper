@@ -17,11 +17,11 @@
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/verify/Verifier.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <optional>
 #include <string>
 
-int main()
+TEST(IL, SimplifyCFGShrinkParams)
 {
     using namespace il::core;
 
@@ -65,14 +65,14 @@ int main()
     builder.emitRet(std::optional<Value>{Value::temp(sumId)}, {});
 
     auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before SimplifyCFG");
+    ASSERT_TRUE(verifyResult && "Module should verify before SimplifyCFG");
 
     il::transform::SimplifyCFG pass;
     pass.setModule(&module);
     il::transform::SimplifyCFG::Stats stats{};
     const bool changed = pass.run(fn, &stats);
-    assert(changed && "SimplifyCFG should remove redundant block parameters");
-    assert(stats.paramsShrunk == 1 && "Expected a single parameter to be removed");
+    ASSERT_TRUE(changed && "SimplifyCFG should remove redundant block parameters");
+    ASSERT_EQ(stats.paramsShrunk, 1);
 
     const auto findBlock = [](const Function &function,
                               const std::string &label) -> const BasicBlock *
@@ -86,34 +86,36 @@ int main()
     };
 
     const BasicBlock *joinBlock = findBlock(fn, "join");
-    assert(joinBlock && "Join block must remain");
-    assert(joinBlock->params.size() == 1 && "Join should retain only the varying parameter");
+    ASSERT_TRUE(joinBlock);
+    ASSERT_EQ(joinBlock->params.size(), 1);
 
-    assert(!joinBlock->instructions.empty());
+    ASSERT_FALSE(joinBlock->instructions.empty());
     const Instr &sumInstr = joinBlock->instructions.front();
-    assert(sumInstr.operands.size() == 2 && "Addition should have two operands");
+    ASSERT_EQ(sumInstr.operands.size(), 2);
     const Value &firstOperand = sumInstr.operands[0];
-    assert(firstOperand.kind == Value::Kind::ConstInt);
-    assert(firstOperand.i64 == 99 &&
-           "Canonicalized parameter should be replaced with constant value");
+    ASSERT_EQ(firstOperand.kind, Value::Kind::ConstInt);
+    ASSERT_EQ(firstOperand.i64, 99);
     const Value &secondOperand = sumInstr.operands[1];
-    assert(secondOperand.kind == Value::Kind::Temp);
-    assert(secondOperand.id == joinBlock->params[0].id &&
-           "Remaining operand should reference the surviving block parameter");
+    ASSERT_EQ(secondOperand.kind, Value::Kind::Temp);
+    ASSERT_EQ(secondOperand.id, joinBlock->params[0].id);
 
     const BasicBlock *entryBlock = findBlock(fn, "entry");
-    assert(entryBlock && !entryBlock->instructions.empty());
+    ASSERT_TRUE(entryBlock && !entryBlock->instructions.empty());
     const Instr &entryTerm = entryBlock->instructions.back();
-    assert(entryTerm.op == Opcode::CBr);
-    assert(entryTerm.labels.size() == 2);
-    assert(entryTerm.labels[0] == "join" && entryTerm.labels[1] == "join");
-    assert(entryTerm.brArgs.size() == 2);
-    assert(entryTerm.brArgs[0].size() == 1);
-    assert(entryTerm.brArgs[1].size() == 1);
+    ASSERT_EQ(entryTerm.op, Opcode::CBr);
+    ASSERT_EQ(entryTerm.labels.size(), 2);
+    ASSERT_TRUE(entryTerm.labels[0] == "join" && entryTerm.labels[1] == "join");
+    ASSERT_EQ(entryTerm.brArgs.size(), 2);
+    ASSERT_EQ(entryTerm.brArgs[0].size(), 1);
+    ASSERT_EQ(entryTerm.brArgs[1].size(), 1);
     const Value &trueArg = entryTerm.brArgs[0][0];
     const Value &falseArg = entryTerm.brArgs[1][0];
-    assert(trueArg.kind == Value::Kind::ConstInt && trueArg.i64 == 1);
-    assert(falseArg.kind == Value::Kind::ConstInt && falseArg.i64 == 2);
+    ASSERT_TRUE(trueArg.kind == Value::Kind::ConstInt && trueArg.i64 == 1);
+    ASSERT_TRUE(falseArg.kind == Value::Kind::ConstInt && falseArg.i64 == 2);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

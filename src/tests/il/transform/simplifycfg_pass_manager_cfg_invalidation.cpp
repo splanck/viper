@@ -18,10 +18,10 @@
 #include "il/transform/PassManager.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <optional>
 
-int main()
+TEST(IL, SimplifyCFGPassManagerCFGInvalidation)
 {
     using namespace il::core;
 
@@ -66,9 +66,9 @@ int main()
                 analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
             il::transform::CFGInfo &second =
                 analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
-            assert(&first == &second);
+            ASSERT_EQ(&first, &second);
             seedRan = true;
-            assert(cfgComputeCount == 1);
+            ASSERT_EQ(cfgComputeCount, 1);
             return il::transform::PreservedAnalyses::all();
         });
 
@@ -83,7 +83,7 @@ int main()
                 analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
             (void)cfg;
             checkRan = true;
-            assert(cfgComputeCount == 2);
+            ASSERT_EQ(cfgComputeCount, 2);
             return il::transform::PreservedAnalyses::all();
         });
 
@@ -91,13 +91,17 @@ int main()
                         {"seed-cfg-cache", "simplify-cfg", "verify-cfg-recomputed"});
 
     bool ran = pm.runPipeline(module, "simplifycfg-cfg-invalidation");
-    assert(ran);
-    assert(seedRan);
-    assert(checkRan);
-    assert(cfgComputeCount == 2);
+    ASSERT_TRUE(ran);
+    ASSERT_TRUE(seedRan);
+    ASSERT_TRUE(checkRan);
+    ASSERT_EQ(cfgComputeCount, 2);
 
     const il::core::Instr &terminator = module.functions[0].blocks[0].instructions.back();
-    assert(terminator.op != il::core::Opcode::CBr);
+    ASSERT_TRUE(terminator.op != il::core::Opcode::CBr);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

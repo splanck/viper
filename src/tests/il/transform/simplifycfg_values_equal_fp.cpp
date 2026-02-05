@@ -16,12 +16,12 @@
 #include "il/core/Value.hpp"
 #include "il/transform/SimplifyCFG/Utils.hpp"
 
+#include "tests/TestHarness.hpp"
 #include <bit>
-#include <cassert>
 #include <cstdint>
 #include <limits>
 
-int main()
+TEST(IL, SimplifyCFGValuesEqualFP)
 {
     using il::core::Value;
     using il::transform::simplify_cfg::valuesEqual;
@@ -29,9 +29,9 @@ int main()
     const Value posZero = Value::constFloat(0.0);
     const Value negZero = Value::constFloat(-0.0);
 
-    assert(valuesEqual(posZero, posZero) && "+0.0 should equal itself");
-    assert(valuesEqual(negZero, negZero) && "-0.0 should equal itself");
-    assert(!valuesEqual(posZero, negZero) && "Signed zeros must remain distinguishable");
+    ASSERT_TRUE(valuesEqual(posZero, posZero));
+    ASSERT_TRUE(valuesEqual(negZero, negZero));
+    ASSERT_FALSE(valuesEqual(posZero, negZero));
 
     constexpr std::uint64_t quietNanBits = 0x7ff8000000000001ULL;
     constexpr std::uint64_t quietNanOtherBits = 0x7ff8000000000002ULL;
@@ -39,11 +39,15 @@ int main()
     const Value quietNanB = Value::constFloat(std::bit_cast<double>(quietNanBits));
     const Value quietNanOther = Value::constFloat(std::bit_cast<double>(quietNanOtherBits));
 
-    assert(valuesEqual(quietNanA, quietNanB) && "Identical NaN payloads should compare equal");
-    assert(!valuesEqual(quietNanA, quietNanOther) && "Distinct NaN payloads must remain unique");
+    ASSERT_TRUE(valuesEqual(quietNanA, quietNanB));
+    ASSERT_FALSE(valuesEqual(quietNanA, quietNanOther));
 
     const Value infin = Value::constFloat(std::numeric_limits<double>::infinity());
-    assert(!valuesEqual(quietNanA, infin) && "NaN must not compare equal to infinity");
+    ASSERT_FALSE(valuesEqual(quietNanA, infin));
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

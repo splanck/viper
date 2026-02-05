@@ -17,13 +17,13 @@
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
 #include "viper/vm/VM.hpp"
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <sstream>
 #include <string>
 
 using namespace il::core;
 
-int main()
+TEST(IL, CallIndirectRoundTrip)
 {
     // Textual IL with a zero-arg callee and an indirect call.
     const char *text = R"(il 0.2.0
@@ -41,18 +41,23 @@ entry:
     il::core::Module m;
     std::istringstream iss{text};
     auto parsed = il::io::Parser::parse(iss, m);
-    assert(parsed && "parse should succeed");
+    ASSERT_TRUE(parsed && "parse should succeed");
 
     // Round-trip: serialize and parse again to ensure stability.
     std::string roundTripped = il::io::Serializer::toString(m);
     il::core::Module m2;
     std::istringstream iss2{roundTripped};
     auto parsed2 = il::io::Parser::parse(iss2, m2);
-    assert(parsed2 && "round-trip parse should succeed");
+    ASSERT_TRUE(parsed2 && "round-trip parse should succeed");
 
     // Execute via public Runner façade; expect 7 as exit code
     il::vm::Runner r(m2, {});
     auto exit = r.run();
-    assert(exit == 7);
-    return 0;
+    ASSERT_EQ(exit, 7);
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

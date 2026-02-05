@@ -17,7 +17,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/views/text_view.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
 using viper::tui::render::ScreenBuffer;
 using viper::tui::style::Role;
@@ -27,7 +27,7 @@ using viper::tui::text::TextBuffer;
 using viper::tui::ui::Event;
 using viper::tui::views::TextView;
 
-int main()
+TEST(TUI, TextView)
 {
     Theme theme;
     TextBuffer buf;
@@ -42,13 +42,13 @@ int main()
     view.onEvent(ev);
     ev.key.code = KeyEvent::Code::End;
     view.onEvent(ev);
-    assert(view.cursorRow() == 1);
-    assert(view.cursorCol() == 4);
+    ASSERT_EQ(view.cursorRow(), 1);
+    ASSERT_EQ(view.cursorCol(), 4);
 
     // Page down to last line (height=2)
     ev.key.code = KeyEvent::Code::PageDown;
     view.onEvent(ev);
-    assert(view.cursorRow() == 3);
+    ASSERT_EQ(view.cursorRow(), 3);
 
     // Home and select first char with shift+right
     ev.key.code = KeyEvent::Code::Home;
@@ -57,7 +57,7 @@ int main()
     ev.key.code = KeyEvent::Code::Right;
     ev.key.mods = KeyEvent::Mods::Shift;
     view.onEvent(ev);
-    assert(view.cursorCol() == 1);
+    ASSERT_EQ(view.cursorCol(), 1);
 
     // Paint and verify selection
     ScreenBuffer sb;
@@ -65,16 +65,20 @@ int main()
     sb.clear(theme.style(Role::Normal));
     view.paint(sb);
     const auto &selStyle = theme.style(Role::Selection);
-    assert(sb.at(1, 0).ch == U'd');
-    assert(sb.at(1, 0).style == selStyle);
-    assert(sb.at(0, 0).ch == U'g');
-    assert(sb.at(0, 0).style == theme.style(Role::Normal));
+    ASSERT_EQ(sb.at(1, 0).ch, U'd');
+    ASSERT_EQ(sb.at(1, 0).style, selStyle);
+    ASSERT_EQ(sb.at(0, 0).ch, U'g');
+    ASSERT_EQ(sb.at(0, 0).style, theme.style(Role::Normal));
 
     // Page up back to second line
     ev.key.code = KeyEvent::Code::PageUp;
     ev.key.mods = 0;
     view.onEvent(ev);
-    assert(view.cursorRow() == 1);
+    ASSERT_EQ(view.cursorRow(), 1);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

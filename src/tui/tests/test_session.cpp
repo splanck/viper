@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tui/term/session.hpp"
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <cstdlib>
 
 static void set_no_tty_env()
@@ -26,10 +26,15 @@ static void set_no_tty_env()
 #endif
 }
 
-int main()
+TEST(TUI, Session)
 {
     set_no_tty_env();              // ensure CI-safe no-op
     viper::tui::TerminalSession s; // should not throw or exit raw mode paths
-    assert(!s.active());           // in CI/headless we expect inactive
-    return 0;
+    ASSERT_FALSE(s.active());      // in CI/headless we expect inactive
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

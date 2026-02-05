@@ -18,7 +18,7 @@
 #include "tui/term/term_io.hpp"
 #include "tui/ui/container.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <memory>
 
 using viper::tui::App;
@@ -48,7 +48,7 @@ struct FocusWidget : Widget
     }
 };
 
-int main()
+TEST(TUI, Focus)
 {
     auto root = std::make_unique<VStack>();
     auto w1 = std::make_unique<FocusWidget>();
@@ -66,8 +66,8 @@ int main()
     enter.code = KeyEvent::Code::Enter;
     app.pushEvent({enter});
     app.tick();
-    assert(p1->flag);
-    assert(!p2->flag);
+    ASSERT_TRUE(p1->flag);
+    ASSERT_FALSE(p2->flag);
 
     KeyEvent tab{};
     tab.code = KeyEvent::Code::Tab;
@@ -76,7 +76,7 @@ int main()
 
     app.pushEvent({enter});
     app.tick();
-    assert(p2->flag);
+    ASSERT_TRUE(p2->flag);
 
     KeyEvent shiftTab{};
     shiftTab.code = KeyEvent::Code::Tab;
@@ -86,6 +86,11 @@ int main()
 
     app.pushEvent({enter});
     app.tick();
-    assert(!p1->flag);
-    return 0;
+    ASSERT_FALSE(p1->flag);
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -21,8 +21,9 @@
 #include "tui/widgets/command_palette.hpp"
 #include "tui/widgets/label.hpp"
 
+#include "tests/TestHarness.hpp"
+
 #include <algorithm>
-#include <cassert>
 
 using viper::tui::input::KeyChord;
 using viper::tui::input::Keymap;
@@ -36,7 +37,7 @@ using viper::tui::ui::Event;
 using viper::tui::widgets::CommandPalette;
 using viper::tui::widgets::Label;
 
-int main()
+TEST(TUI, KeymapPalette)
 {
     Theme theme;
     Keymap km;
@@ -51,17 +52,17 @@ int main()
     km.registerCommand("save", "Save", [&] { ++save_legacy_calls; });
     km.registerCommand("save", "Save Document", [&] { save_fired = true; });
 
-    assert(km.commands().size() == 3);
+    ASSERT_EQ(km.commands().size(), 3);
     const auto save_count = std::count_if(km.commands().begin(),
                                           km.commands().end(),
                                           [](const auto &cmd) { return cmd.id == "save"; });
-    assert(save_count == 1);
+    ASSERT_EQ(save_count, 1);
     const auto *save_cmd = km.find("save");
-    assert(save_cmd != nullptr);
-    assert(save_cmd->name == "Save Document");
-    assert(km.execute("save"));
-    assert(save_fired);
-    assert(save_legacy_calls == 0);
+    ASSERT_TRUE(save_cmd != nullptr);
+    ASSERT_EQ(save_cmd->name, "Save Document");
+    ASSERT_TRUE(km.execute("save"));
+    ASSERT_TRUE(save_fired);
+    ASSERT_EQ(save_legacy_calls, 0);
     save_fired = false;
 
     KeyChord gkc{KeyEvent::Code::F1, 0, 0};
@@ -73,14 +74,14 @@ int main()
 
     KeyEvent ev{};
     ev.code = KeyEvent::Code::F1;
-    assert(km.handle(nullptr, ev));
-    assert(global_fired);
+    ASSERT_TRUE(km.handle(nullptr, ev));
+    ASSERT_TRUE(global_fired);
 
     ev.code = KeyEvent::Code::F2;
-    assert(!km.handle(nullptr, ev));
-    assert(!widget_fired);
-    assert(km.handle(&lbl, ev));
-    assert(widget_fired);
+    ASSERT_FALSE(km.handle(nullptr, ev));
+    ASSERT_FALSE(widget_fired);
+    ASSERT_TRUE(km.handle(&lbl, ev));
+    ASSERT_TRUE(widget_fired);
 
     CommandPalette cp(km, theme);
     cp.layout({0, 0, 10, 3});
@@ -100,12 +101,16 @@ int main()
     StringTermIO tio;
     Renderer r(tio, true);
     r.draw(sb);
-    assert(tio.buffer().find("Save") != std::string::npos);
+    ASSERT_TRUE(tio.buffer().find("Save") != std::string::npos);
 
     e.key.code = KeyEvent::Code::Enter;
     e.key.codepoint = 0;
     cp.onEvent(e);
-    assert(save_fired);
+    ASSERT_TRUE(save_fired);
+}
 
-    return 0;
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

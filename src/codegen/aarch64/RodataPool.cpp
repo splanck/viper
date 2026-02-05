@@ -108,7 +108,6 @@
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 
-#include <cstdio>
 
 namespace viper::codegen::aarch64
 {
@@ -144,9 +143,10 @@ std::string RodataPool::escapeAsciz(std::string_view bytes)
                 }
                 else
                 {
-                    char buf[5];
-                    std::snprintf(buf, sizeof(buf), "\\x%02X", c);
-                    s += buf;
+                    static const char hex[] = "0123456789ABCDEF";
+                    s += "\\x";
+                    s.push_back(hex[c >> 4]);
+                    s.push_back(hex[c & 0xF]);
                 }
         }
     }

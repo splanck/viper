@@ -9,17 +9,24 @@ set(ZIA_SOURCES
         Types.cpp
         RuntimeAdapter.cpp
         Sema.cpp
+        Sema_Generics.cpp
+        Sema_TypeResolution.cpp
         Sema_Runtime.cpp
         Sema_Decl.cpp
         Sema_Stmt.cpp
         Sema_Expr.cpp
+        Sema_Expr_Ops.cpp
+        Sema_Expr_Call.cpp
+        Sema_Expr_Advanced.cpp
         Lowerer.cpp
         Lowerer_Decl.cpp
         Lowerer_Stmt.cpp
         Lowerer_Expr.cpp
+        Lowerer_Expr_Complex.cpp
         Lowerer_Expr_Literals.cpp
         Lowerer_Expr_Binary.cpp
         Lowerer_Expr_Call.cpp
+        Lowerer_Expr_Method.cpp
         Lowerer_Expr_Collections.cpp
         Lowerer_Expr_Match.cpp
         Lowerer_Dispatch.cpp

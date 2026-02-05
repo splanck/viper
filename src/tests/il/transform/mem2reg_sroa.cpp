@@ -21,7 +21,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 
 using namespace il::core;
 
@@ -170,7 +170,7 @@ static Function makeDynamicGEP()
     return F;
 }
 
-static void test_scalarize_two_fields()
+TEST(IL, test_scalarize_two_fields)
 {
     Module M;
     M.functions.push_back(makeTwoFieldAggregate());
@@ -178,13 +178,13 @@ static void test_scalarize_two_fields()
     viper::passes::mem2reg(M);
 
     const Function &F = M.functions.front();
-    assert(!hasOp(F, Opcode::Alloca));
-    assert(!hasOp(F, Opcode::Load));
-    assert(!hasOp(F, Opcode::Store));
-    assert(!hasOp(F, Opcode::GEP));
+    ASSERT_FALSE(hasOp(F, Opcode::Alloca));
+    ASSERT_FALSE(hasOp(F, Opcode::Load));
+    ASSERT_FALSE(hasOp(F, Opcode::Store));
+    ASSERT_FALSE(hasOp(F, Opcode::GEP));
 }
 
-static void test_skip_dynamic_gep()
+TEST(IL, test_skip_dynamic_gep)
 {
     Module M;
     M.functions.push_back(makeDynamicGEP());
@@ -192,13 +192,12 @@ static void test_skip_dynamic_gep()
     viper::passes::mem2reg(M);
 
     const Function &F = M.functions.front();
-    assert(hasOp(F, Opcode::Load)); // dynamic GEP prevents scalarisation
-    assert(hasOp(F, Opcode::Store));
+    ASSERT_TRUE(hasOp(F, Opcode::Load));
+    ASSERT_TRUE(hasOp(F, Opcode::Store));
 }
 
-int main()
+int main(int argc, char **argv)
 {
-    test_scalarize_two_fields();
-    test_skip_dynamic_gep();
-    return 0;
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

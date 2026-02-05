@@ -18,7 +18,7 @@
 #include "tui/term/term_io.hpp"
 #include "tui/ui/widget.hpp"
 
-#include <cassert>
+#include "tests/TestHarness.hpp"
 #include <memory>
 
 using viper::tui::App;
@@ -45,18 +45,23 @@ struct CharWidget : Widget
     }
 };
 
-int main()
+TEST(TUI, AppResize)
 {
     auto root = std::make_unique<CharWidget>('X');
     CharWidget *wp = root.get();
     StringTermIO tio;
     App app(std::move(root), tio, 1, 1);
     app.tick();
-    assert(wp->rect().h == 1);
-    assert(wp->rect().w == 1);
+    ASSERT_EQ(wp->rect().h, 1);
+    ASSERT_EQ(wp->rect().w, 1);
     app.resize(2, 3);
     app.tick();
-    assert(wp->rect().h == 2);
-    assert(wp->rect().w == 3);
-    return 0;
+    ASSERT_EQ(wp->rect().h, 2);
+    ASSERT_EQ(wp->rect().w, 3);
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }
