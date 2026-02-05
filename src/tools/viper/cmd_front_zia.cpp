@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 using namespace il;
 using namespace il::frontends::zia;
@@ -63,7 +64,7 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv)
 
     for (int i = 0; i < argc; ++i)
     {
-        std::string arg = argv[i];
+        std::string_view arg = argv[i];
 
         if (arg == "-emit-il")
         {
@@ -100,7 +101,8 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv)
                     else
                     {
                         return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
-                            il::support::Severity::Error, "unknown flag: " + arg, {}, {}});
+                            il::support::Severity::Error,
+                            std::string("unknown flag: ") + std::string(arg), {}, {}});
                     }
                     break;
             }

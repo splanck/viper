@@ -386,6 +386,94 @@ extern "C"
     /// @return -1 if a < b, 0 if a == b, 1 if a > b (case-insensitive).
     int64_t rt_str_cmp_nocase(rt_string a, rt_string b);
 
+    /// @brief Capitalize the first character of a string.
+    /// @param str Source string.
+    /// @return Newly allocated string with first character uppercased.
+    rt_string rt_str_capitalize(rt_string str);
+
+    /// @brief Title-case a string (capitalize first letter of each word).
+    /// @param str Source string.
+    /// @return Newly allocated title-cased string.
+    rt_string rt_str_title(rt_string str);
+
+    /// @brief Remove a prefix from a string if present.
+    /// @param str Source string.
+    /// @param prefix Prefix to remove.
+    /// @return Newly allocated string without prefix, or copy if not present.
+    rt_string rt_str_remove_prefix(rt_string str, rt_string prefix);
+
+    /// @brief Remove a suffix from a string if present.
+    /// @param str Source string.
+    /// @param suffix Suffix to remove.
+    /// @return Newly allocated string without suffix, or copy if not present.
+    rt_string rt_str_remove_suffix(rt_string str, rt_string suffix);
+
+    /// @brief Find the last occurrence of a needle in a string.
+    /// @param haystack Source string.
+    /// @param needle Substring to find.
+    /// @return 1-based index of last occurrence, or 0 if not found.
+    int64_t rt_str_last_index_of(rt_string haystack, rt_string needle);
+
+    /// @brief Trim a specific character from both ends of a string.
+    /// @param str Source string.
+    /// @param ch Character to trim (first char of string used).
+    /// @return Newly allocated trimmed string.
+    rt_string rt_str_trim_char(rt_string str, rt_string ch);
+
+    /// @brief Convert string to a URL-safe slug.
+    /// @param str Source string.
+    /// @return Newly allocated slug (lowercase, alphanumeric + hyphens).
+    rt_string rt_str_slug(rt_string str);
+
+    /// @brief Compute Levenshtein edit distance between two strings.
+    /// @param a First string.
+    /// @param b Second string.
+    /// @return Edit distance (insertions + deletions + substitutions).
+    int64_t rt_str_levenshtein(rt_string a, rt_string b);
+
+    /// @brief Compute Jaro similarity score between two strings.
+    /// @param a First string.
+    /// @param b Second string.
+    /// @return Similarity score between 0.0 (no match) and 1.0 (identical).
+    double rt_str_jaro(rt_string a, rt_string b);
+
+    /// @brief Compute Jaro-Winkler similarity score between two strings.
+    /// @param a First string.
+    /// @param b Second string.
+    /// @return Similarity score between 0.0 (no match) and 1.0 (identical).
+    double rt_str_jaro_winkler(rt_string a, rt_string b);
+
+    /// @brief Compute Hamming distance between two equal-length strings.
+    /// @param a First string.
+    /// @param b Second string.
+    /// @return Number of positions where characters differ, or -1 if lengths differ.
+    int64_t rt_str_hamming(rt_string a, rt_string b);
+
+    /// @brief Convert string to camelCase.
+    /// @param str Source string (may contain spaces, hyphens, underscores).
+    /// @return camelCase version (e.g., "hello world" -> "helloWorld").
+    rt_string rt_str_camel_case(rt_string str);
+
+    /// @brief Convert string to PascalCase.
+    /// @param str Source string.
+    /// @return PascalCase version (e.g., "hello world" -> "HelloWorld").
+    rt_string rt_str_pascal_case(rt_string str);
+
+    /// @brief Convert string to snake_case.
+    /// @param str Source string.
+    /// @return snake_case version (e.g., "helloWorld" -> "hello_world").
+    rt_string rt_str_snake_case(rt_string str);
+
+    /// @brief Convert string to kebab-case.
+    /// @param str Source string.
+    /// @return kebab-case version (e.g., "helloWorld" -> "hello-world").
+    rt_string rt_str_kebab_case(rt_string str);
+
+    /// @brief Convert string to SCREAMING_SNAKE_CASE.
+    /// @param str Source string.
+    /// @return UPPER_SNAKE version (e.g., "helloWorld" -> "HELLO_WORLD").
+    rt_string rt_str_screaming_snake(rt_string str);
+
 #ifdef __cplusplus
 }
 #endif

@@ -525,9 +525,81 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_crypto PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_crypto test_rt_crypto)
 
+    viper_add_test(test_rt_cipher ${VIPER_TESTS_DIR}/runtime/RTCipherTests.cpp)
+    target_link_libraries(test_rt_cipher PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_cipher test_rt_cipher)
+
+    viper_add_test(test_rt_stream ${VIPER_TESTS_DIR}/runtime/RTStreamTests.cpp)
+    target_link_libraries(test_rt_stream PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_stream test_rt_stream)
+
+    viper_add_test(test_rt_seq_functional ${VIPER_TESTS_DIR}/runtime/RTSeqFunctionalTests.cpp)
+    target_link_libraries(test_rt_seq_functional PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_seq_functional test_rt_seq_functional)
+
+    viper_add_test(test_rt_password ${VIPER_TESTS_DIR}/runtime/RTPasswordTests.cpp)
+    target_link_libraries(test_rt_password PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_password test_rt_password)
+
+    viper_add_test(test_rt_duration ${VIPER_TESTS_DIR}/runtime/RTDurationTests.cpp)
+    target_link_libraries(test_rt_duration PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_duration test_rt_duration)
+
+    viper_add_test(test_rt_glob ${VIPER_TESTS_DIR}/runtime/RTGlobTests.cpp)
+    target_link_libraries(test_rt_glob PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_glob test_rt_glob)
+
+    viper_add_test(test_rt_tempfile ${VIPER_TESTS_DIR}/runtime/RTTempFileTests.cpp)
+    target_link_libraries(test_rt_tempfile PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_tempfile test_rt_tempfile)
+
+    viper_add_test(test_rt_result ${VIPER_TESTS_DIR}/runtime/RTResultTests.cpp)
+    target_link_libraries(test_rt_result PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_result test_rt_result)
+
+    viper_add_test(test_rt_option ${VIPER_TESTS_DIR}/runtime/RTOptionTests.cpp)
+    target_link_libraries(test_rt_option PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_option test_rt_option)
+
+    viper_add_test(test_rt_deque ${VIPER_TESTS_DIR}/runtime/RTDequeTests.cpp)
+    target_link_libraries(test_rt_deque PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_deque test_rt_deque)
+
+    viper_add_test(test_rt_convert_coll ${VIPER_TESTS_DIR}/runtime/RTConvertCollTests.cpp)
+    target_link_libraries(test_rt_convert_coll PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_convert_coll test_rt_convert_coll)
+
+    viper_add_test(test_rt_sortedset ${VIPER_TESTS_DIR}/runtime/RTSortedSetTests.cpp)
+    target_link_libraries(test_rt_sortedset PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_sortedset test_rt_sortedset)
+
+    viper_add_test(test_rt_scanner ${VIPER_TESTS_DIR}/runtime/RTScannerTests.cpp)
+    target_link_libraries(test_rt_scanner PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_scanner test_rt_scanner)
+
+    viper_add_test(test_rt_dateonly ${VIPER_TESTS_DIR}/runtime/RTDateOnlyTests.cpp)
+    target_link_libraries(test_rt_dateonly PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_dateonly test_rt_dateonly)
+
+    viper_add_test(test_rt_textwrap ${VIPER_TESTS_DIR}/runtime/RTTextWrapTests.cpp)
+    target_link_libraries(test_rt_textwrap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_textwrap test_rt_textwrap)
+
+    viper_add_test(test_rt_lazy ${VIPER_TESTS_DIR}/runtime/RTLazyTests.cpp)
+    target_link_libraries(test_rt_lazy PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_lazy test_rt_lazy)
+
+    viper_add_test(test_rt_lazyseq ${VIPER_TESTS_DIR}/runtime/RTLazySeqTests.cpp)
+    target_link_libraries(test_rt_lazyseq PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_lazyseq test_rt_lazyseq)
+
     viper_add_test(test_rt_pattern ${VIPER_TESTS_DIR}/runtime/RTPatternTests.cpp)
     target_link_libraries(test_rt_pattern PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_pattern test_rt_pattern)
+
+    viper_add_test(test_rt_compiled_pattern ${VIPER_TESTS_DIR}/runtime/RTCompiledPatternTests.cpp)
+    target_link_libraries(test_rt_compiled_pattern PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_compiled_pattern test_rt_compiled_pattern)
 
     viper_add_test(test_rt_template ${VIPER_TESTS_DIR}/runtime/RTTemplateTests.cpp)
     target_link_libraries(test_rt_template PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -544,6 +616,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_network ${VIPER_TESTS_DIR}/runtime/RTNetworkTests.cpp)
     target_link_libraries(test_rt_network PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network test_rt_network)
+
+    viper_add_test(test_rt_restclient ${VIPER_TESTS_DIR}/runtime/RTRestClientTests.cpp)
+    target_link_libraries(test_rt_restclient PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_restclient test_rt_restclient)
 
     viper_add_test(test_rt_bag ${VIPER_TESTS_DIR}/runtime/RTBagTests.cpp)
     target_link_libraries(test_rt_bag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -608,6 +684,18 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_pixels ${VIPER_TESTS_DIR}/runtime/RTPixelsTests.cpp)
     target_link_libraries(test_rt_pixels PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_pixels test_rt_pixels)
+
+    viper_add_test(test_rt_scene ${VIPER_TESTS_DIR}/runtime/RTSceneTests.cpp)
+    target_link_libraries(test_rt_scene PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_scene test_rt_scene)
+
+    viper_add_test(test_rt_spritebatch ${VIPER_TESTS_DIR}/runtime/RTSpriteBatchTests.cpp)
+    target_link_libraries(test_rt_spritebatch PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_spritebatch test_rt_spritebatch)
+
+    viper_add_test(test_rt_listview ${VIPER_TESTS_DIR}/runtime/RTListViewTests.cpp)
+    target_link_libraries(test_rt_listview PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_listview test_rt_listview)
 
     viper_add_test(test_rt_canvas_ext ${VIPER_TESTS_DIR}/runtime/RTCanvasExtTests.cpp)
     target_link_libraries(test_rt_canvas_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -687,6 +775,14 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_threads_primitives ${VIPER_TESTS_DIR}/runtime/RTThreadsPrimitivesTests.cpp)
     target_link_libraries(test_rt_threads_primitives PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_threads_primitives test_rt_threads_primitives)
+
+    viper_add_test(test_rt_future ${VIPER_TESTS_DIR}/runtime/RTFutureTests.cpp)
+    target_link_libraries(test_rt_future PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_future test_rt_future)
+
+    viper_add_test(test_rt_parallel ${VIPER_TESTS_DIR}/runtime/RTParallelTests.cpp)
+    target_link_libraries(test_rt_parallel PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_parallel test_rt_parallel)
 
     viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
     target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -828,13 +924,29 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_ring PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_ring test_rt_ring)
 
+    viper_add_test(test_rt_bitset ${VIPER_TESTS_DIR}/runtime/RTBitSetTests.cpp)
+    target_link_libraries(test_rt_bitset PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bitset test_rt_bitset)
+
+    viper_add_test(test_rt_lrucache ${VIPER_TESTS_DIR}/runtime/RTLruCacheTests.cpp)
+    target_link_libraries(test_rt_lrucache PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_lrucache test_rt_lrucache)
+
     viper_add_test(test_rt_map ${VIPER_TESTS_DIR}/runtime/RTMapTests.cpp)
     target_link_libraries(test_rt_map PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_map test_rt_map)
 
+    viper_add_test(test_rt_multimap ${VIPER_TESTS_DIR}/runtime/RTMultiMapTests.cpp)
+    target_link_libraries(test_rt_multimap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_multimap test_rt_multimap)
+
     viper_add_test(test_rt_treemap ${VIPER_TESTS_DIR}/runtime/RTTreeMapTests.cpp)
     target_link_libraries(test_rt_treemap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_treemap test_rt_treemap)
+
+    viper_add_test(test_rt_trie ${VIPER_TESTS_DIR}/runtime/RTTrieTests.cpp)
+    target_link_libraries(test_rt_trie PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_trie test_rt_trie)
 
     viper_add_test(test_rt_modvar ${VIPER_TESTS_DIR}/runtime/RTModvarTests.cpp)
     target_link_libraries(test_rt_modvar PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -892,4 +1004,136 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_quadtree ${VIPER_TESTS_DIR}/unit/runtime/RTQuadtreeTests.cpp)
     target_link_libraries(test_rt_quadtree PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_quadtree test_rt_quadtree)
+
+    viper_add_test(test_rt_perlin ${VIPER_TESTS_DIR}/runtime/RTPerlinTests.cpp)
+    target_link_libraries(test_rt_perlin PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_perlin test_rt_perlin)
+
+    viper_add_test(test_rt_easing ${VIPER_TESTS_DIR}/runtime/RTEasingTests.cpp)
+    target_link_libraries(test_rt_easing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_easing test_rt_easing)
+
+    viper_add_test(test_rt_color_utils ${VIPER_TESTS_DIR}/runtime/RTColorUtilsTests.cpp)
+    target_link_libraries(test_rt_color_utils PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_color_utils test_rt_color_utils)
+
+    viper_add_test(test_rt_ini ${VIPER_TESTS_DIR}/runtime/RTIniTests.cpp)
+    target_link_libraries(test_rt_ini PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_ini test_rt_ini)
+
+    viper_add_test(test_rt_fmt_ext ${VIPER_TESTS_DIR}/runtime/RTFmtExtTests.cpp)
+    target_link_libraries(test_rt_fmt_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_fmt_ext test_rt_fmt_ext)
+
+    viper_add_test(test_rt_case_convert ${VIPER_TESTS_DIR}/runtime/RTCaseConvertTests.cpp)
+    target_link_libraries(test_rt_case_convert PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_case_convert test_rt_case_convert)
+
+    viper_add_test(test_rt_bimap ${VIPER_TESTS_DIR}/runtime/RTBiMapTests.cpp)
+    target_link_libraries(test_rt_bimap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bimap test_rt_bimap)
+
+    viper_add_test(test_rt_countmap ${VIPER_TESTS_DIR}/runtime/RTCountMapTests.cpp)
+    target_link_libraries(test_rt_countmap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_countmap test_rt_countmap)
+
+    viper_add_test(test_rt_pluralize ${VIPER_TESTS_DIR}/runtime/RTPluralizeTests.cpp)
+    target_link_libraries(test_rt_pluralize PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_pluralize test_rt_pluralize)
+
+    viper_add_test(test_rt_version ${VIPER_TESTS_DIR}/runtime/RTVersionTests.cpp)
+    target_link_libraries(test_rt_version PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_version test_rt_version)
+
+    viper_add_test(test_rt_reltime ${VIPER_TESTS_DIR}/runtime/RTRelTimeTests.cpp)
+    target_link_libraries(test_rt_reltime PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_reltime test_rt_reltime)
+
+    viper_add_test(test_rt_daterange ${VIPER_TESTS_DIR}/runtime/RTDateRangeTests.cpp)
+    target_link_libraries(test_rt_daterange PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_daterange test_rt_daterange)
+
+    viper_add_test(test_rt_numfmt ${VIPER_TESTS_DIR}/runtime/RTNumFmtTests.cpp)
+    target_link_libraries(test_rt_numfmt PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_numfmt test_rt_numfmt)
+
+    viper_add_test(test_rt_bloomfilter ${VIPER_TESTS_DIR}/runtime/RTBloomFilterTests.cpp)
+    target_link_libraries(test_rt_bloomfilter PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bloomfilter test_rt_bloomfilter)
+
+    viper_add_test(test_rt_unionfind ${VIPER_TESTS_DIR}/runtime/RTUnionFindTests.cpp)
+    target_link_libraries(test_rt_unionfind PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_unionfind test_rt_unionfind)
+
+    viper_add_test(test_rt_orderedmap ${VIPER_TESTS_DIR}/runtime/RTOrderedMapTests.cpp)
+    target_link_libraries(test_rt_orderedmap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_orderedmap test_rt_orderedmap)
+
+    viper_add_test(test_rt_diff ${VIPER_TESTS_DIR}/runtime/RTDiffTests.cpp)
+    target_link_libraries(test_rt_diff PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_diff test_rt_diff)
+
+    viper_add_test(test_rt_defaultmap ${VIPER_TESTS_DIR}/runtime/RTDefaultMapTests.cpp)
+    target_link_libraries(test_rt_defaultmap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_defaultmap test_rt_defaultmap)
+
+    viper_add_test(test_rt_frozenset ${VIPER_TESTS_DIR}/runtime/RTFrozenSetTests.cpp)
+    target_link_libraries(test_rt_frozenset PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_frozenset test_rt_frozenset)
+
+    viper_add_test(test_rt_frozenmap ${VIPER_TESTS_DIR}/runtime/RTFrozenMapTests.cpp)
+    target_link_libraries(test_rt_frozenmap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_frozenmap test_rt_frozenmap)
+
+    viper_add_test(test_rt_sparsearray ${VIPER_TESTS_DIR}/runtime/RTSparseArrayTests.cpp)
+    target_link_libraries(test_rt_sparsearray PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_sparsearray test_rt_sparsearray)
+
+    viper_add_test(test_rt_concqueue ${VIPER_TESTS_DIR}/runtime/RTConcQueueTests.cpp)
+    target_link_libraries(test_rt_concqueue PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_concqueue test_rt_concqueue)
+
+    viper_add_test(test_rt_msgbus ${VIPER_TESTS_DIR}/runtime/RTMsgBusTests.cpp)
+    target_link_libraries(test_rt_msgbus PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_msgbus test_rt_msgbus)
+
+    viper_add_test(test_rt_toml ${VIPER_TESTS_DIR}/runtime/RTTomlTests.cpp)
+    target_link_libraries(test_rt_toml PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_toml test_rt_toml)
+
+    viper_add_test(test_rt_markdown ${VIPER_TESTS_DIR}/runtime/RTMarkdownTests.cpp)
+    target_link_libraries(test_rt_markdown PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_markdown test_rt_markdown)
+
+    viper_add_test(test_rt_cancellation ${VIPER_TESTS_DIR}/runtime/RTCancellationTests.cpp)
+    target_link_libraries(test_rt_cancellation PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_cancellation test_rt_cancellation)
+
+    viper_add_test(test_rt_jsonpath ${VIPER_TESTS_DIR}/runtime/RTJsonPathTests.cpp)
+    target_link_libraries(test_rt_jsonpath PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_jsonpath test_rt_jsonpath)
+
+    viper_add_test(test_rt_debounce ${VIPER_TESTS_DIR}/runtime/RTDebounceTests.cpp)
+    target_link_libraries(test_rt_debounce PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_debounce test_rt_debounce)
+
+    viper_add_test(test_rt_retry ${VIPER_TESTS_DIR}/runtime/RTRetryTests.cpp)
+    target_link_libraries(test_rt_retry PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_retry test_rt_retry)
+
+    viper_add_test(test_rt_weakmap ${VIPER_TESTS_DIR}/runtime/RTWeakMapTests.cpp)
+    target_link_libraries(test_rt_weakmap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_weakmap test_rt_weakmap)
+
+    viper_add_test(test_rt_scheduler ${VIPER_TESTS_DIR}/runtime/RTSchedulerTests.cpp)
+    target_link_libraries(test_rt_scheduler PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_scheduler test_rt_scheduler)
+
+    viper_add_test(test_rt_ratelimit ${VIPER_TESTS_DIR}/runtime/RTRateLimitTests.cpp)
+    target_link_libraries(test_rt_ratelimit PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_ratelimit test_rt_ratelimit)
+
+    viper_add_test(test_rt_html ${VIPER_TESTS_DIR}/runtime/RTHtmlTests.cpp)
+    target_link_libraries(test_rt_html PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_html test_rt_html)
 endfunction()

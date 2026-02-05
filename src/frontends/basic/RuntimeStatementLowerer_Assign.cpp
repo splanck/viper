@@ -166,7 +166,24 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
     Lowerer::ArrayAccess access =
         lowerer_.lowerArrayAccess(target, Lowerer::ArrayAccessKind::Store);
 
-    // Determine array element type and use appropriate runtime function
+    // =========================================================================
+    // Member Array Field Resolution (BUG-056, BUG-058, BUG-089, BUG-108)
+    // =========================================================================
+    // Array element types must be determined correctly for three scenarios:
+    //
+    // 1. Dotted member arrays (e.g., `player.inventory(i) = item`):
+    //    - BUG-056: Element type comes from class layout, not symbol table
+    //    - Parse "player.inventory" to get class layout and field type
+    //
+    // 2. Implicit field arrays inside methods (e.g., `inventory(i) = item`):
+    //    - BUG-058: Unqualified array names resolve against the active class
+    //    - BUG-108: Local variables/parameters shadow implicit field arrays
+    //    - Must also recompute base pointer as ME.<field>
+    //
+    // 3. Object arrays (arrays holding object references):
+    //    - BUG-089: Require object-typed runtime helpers, not primitive helpers
+    //    - Detected via non-empty objectClassName in field layout
+    // =========================================================================
     const auto *info = lowerer_.findSymbol(target.name);
     // Array field assignments (dotted names) derive element type from class layout,
     // not the symbol table. (BUG-056)

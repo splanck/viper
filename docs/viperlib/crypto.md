@@ -6,10 +6,146 @@
 
 ## Contents
 
+- [Viper.Crypto.Cipher](#vipercryptocipher)
 - [Viper.Crypto.Hash](#vipercryptohash)
 - [Viper.Crypto.KeyDerive](#vipercryptokeyderive)
 - [Viper.Crypto.Rand](#vipercryptorand)
 - [Viper.Crypto.Tls](#vipercryptotls)
+
+---
+
+## Viper.Crypto.Cipher
+
+High-level symmetric encryption using ChaCha20-Poly1305 AEAD with automatic key derivation.
+
+**Type:** Static utility class
+
+### Encryption Methods
+
+| Method                           | Signature                   | Description                                           |
+|----------------------------------|-----------------------------|-------------------------------------------------------|
+| `Encrypt(data, password)`        | `Bytes(Bytes, String)`      | Encrypt data with password (automatic salt/nonce)     |
+| `Decrypt(data, password)`        | `Bytes(Bytes, String)`      | Decrypt password-encrypted data                       |
+| `EncryptWithKey(data, key)`      | `Bytes(Bytes, Bytes)`       | Encrypt data with a 32-byte key                       |
+| `DecryptWithKey(data, key)`      | `Bytes(Bytes, Bytes)`       | Decrypt key-encrypted data                            |
+
+### Key Management Methods
+
+| Method                           | Signature                   | Description                                           |
+|----------------------------------|-----------------------------|-------------------------------------------------------|
+| `GenerateKey()`                  | `Bytes()`                   | Generate a random 32-byte encryption key              |
+| `DeriveKey(password, salt)`      | `Bytes(String, Bytes)`      | Derive 32-byte key from password using HKDF           |
+
+### Ciphertext Format
+
+Password-based encryption produces ciphertext in this format:
+
+```
+[salt(16 bytes)][nonce(12 bytes)][ciphertext][tag(16 bytes)]
+```
+
+Key-based encryption produces:
+
+```
+[nonce(12 bytes)][ciphertext][tag(16 bytes)]
+```
+
+### Security Properties
+
+- **Algorithm:** ChaCha20-Poly1305 AEAD (RFC 8439)
+- **Key Size:** 256 bits (32 bytes)
+- **Nonce Size:** 96 bits (12 bytes, randomly generated)
+- **Authentication Tag:** 128 bits (16 bytes)
+- **Key Derivation:** HKDF-SHA256 with random 16-byte salt
+
+### Password-Based Encryption Example
+
+```basic
+' Encrypt with a password
+DIM plaintext AS OBJECT = Viper.Collections.Bytes.FromString("Secret message")
+DIM password AS STRING = "my-secure-password"
+
+' Encrypt (automatically generates salt and nonce)
+DIM ciphertext AS OBJECT = Viper.Crypto.Cipher.Encrypt(plaintext, password)
+
+' Decrypt
+DIM decrypted AS OBJECT = Viper.Crypto.Cipher.Decrypt(ciphertext, password)
+PRINT decrypted.ToStr()  ' Output: Secret message
+```
+
+### Key-Based Encryption Example
+
+```basic
+' Generate a random key
+DIM key AS OBJECT = Viper.Crypto.Cipher.GenerateKey()
+
+' Encrypt with the key
+DIM plaintext AS OBJECT = Viper.Collections.Bytes.FromString("Secret data")
+DIM ciphertext AS OBJECT = Viper.Crypto.Cipher.EncryptWithKey(plaintext, key)
+
+' Decrypt with the same key
+DIM decrypted AS OBJECT = Viper.Crypto.Cipher.DecryptWithKey(ciphertext, key)
+```
+
+### Key Derivation Example
+
+```basic
+' Derive a key from password (useful when you need the same key multiple times)
+DIM password AS STRING = "user-password"
+DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)
+
+' Derive key
+DIM key AS OBJECT = Viper.Crypto.Cipher.DeriveKey(password, salt)
+
+' Use key for encryption
+DIM ciphertext AS OBJECT = Viper.Crypto.Cipher.EncryptWithKey(data, key)
+
+' Store salt alongside ciphertext for later decryption
+```
+
+### File Encryption Example
+
+```basic
+' Encrypt a file
+DIM fileData AS OBJECT = Viper.IO.File.ReadAllBytes("secret.doc")
+DIM password AS STRING = "file-password"
+
+DIM encrypted AS OBJECT = Viper.Crypto.Cipher.Encrypt(fileData, password)
+Viper.IO.File.WriteAllBytes("secret.doc.enc", encrypted)
+
+' Decrypt a file
+DIM encData AS OBJECT = Viper.IO.File.ReadAllBytes("secret.doc.enc")
+DIM decrypted AS OBJECT = Viper.Crypto.Cipher.Decrypt(encData, password)
+Viper.IO.File.WriteAllBytes("secret.doc", decrypted)
+```
+
+### Error Handling
+
+Cipher operations trap on errors:
+
+- `Decrypt()` traps if authentication fails (wrong password or corrupted data)
+- `DecryptWithKey()` traps if authentication fails (wrong key or corrupted data)
+- `EncryptWithKey()`/`DecryptWithKey()` trap if key is not exactly 32 bytes
+- Empty plaintext is allowed and produces valid ciphertext
+
+### Security Recommendations
+
+1. **Use strong passwords:** Combine with password requirements in your application
+2. **Store keys securely:** Never hardcode keys in source code
+3. **Use password-based for user data:** Let the API handle salt generation
+4. **Use key-based for application data:** When you manage key storage separately
+5. **Don't reuse keys:** Generate new keys or use password-based encryption with automatic salts
+
+### When to Use Cipher vs. Other Crypto
+
+| Use Case                      | Recommended                          |
+|-------------------------------|--------------------------------------|
+| Encrypt user data             | `Viper.Crypto.Cipher.Encrypt()`      |
+| Encrypt with managed keys     | `Viper.Crypto.Cipher.EncryptWithKey()` |
+| Password storage              | `Viper.Crypto.KeyDerive.Pbkdf2SHA256()` |
+| Message authentication only   | `Viper.Crypto.Hash.HmacSHA256()`     |
+| Data integrity check          | `Viper.Crypto.Hash.SHA256()`         |
+| Secure communication          | `Viper.Crypto.Tls`                   |
 
 ---
 

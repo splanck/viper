@@ -12,13 +12,164 @@
 
 #include "frontends/zia/Sema.hpp"
 
+#include <string_view>
+
 namespace il::frontends::zia
 {
+
+//=============================================================================
+// Collection Method Resolution Helpers
+//=============================================================================
+
+namespace
+{
+
+/// @brief Return type categories for collection methods.
+enum class MethodReturnKind
+{
+    ElementType, ///< Returns the collection's element type
+    KeyType,     ///< Returns the map's key type
+    ValueType,   ///< Returns the map's value type
+    Integer,     ///< Returns Integer
+    Boolean,     ///< Returns Boolean
+    Void,        ///< Returns Void
+    Unknown      ///< Returns Unknown (fallback)
+};
+
+/// @brief Descriptor for a collection method's return type.
+struct CollectionMethodInfo
+{
+    std::string_view name;
+    MethodReturnKind returnKind;
+};
+
+/// @brief List methods and their return types.
+const CollectionMethodInfo listMethods[] = {
+    // Methods returning element type
+    {"get", MethodReturnKind::ElementType},
+    {"first", MethodReturnKind::ElementType},
+    {"last", MethodReturnKind::ElementType},
+    {"pop", MethodReturnKind::ElementType},
+    // Methods returning Integer
+    {"count", MethodReturnKind::Integer},
+    {"size", MethodReturnKind::Integer},
+    {"length", MethodReturnKind::Integer},
+    {"indexOf", MethodReturnKind::Integer},
+    {"lastIndexOf", MethodReturnKind::Integer},
+    // Methods returning Boolean
+    {"isEmpty", MethodReturnKind::Boolean},
+    {"contains", MethodReturnKind::Boolean},
+    {"remove", MethodReturnKind::Boolean},
+    // Methods returning Void
+    {"add", MethodReturnKind::Void},
+    {"insert", MethodReturnKind::Void},
+    {"set", MethodReturnKind::Void},
+    {"clear", MethodReturnKind::Void},
+    {"reverse", MethodReturnKind::Void},
+    {"sort", MethodReturnKind::Void},
+    {"removeAt", MethodReturnKind::Void},
+};
+
+/// @brief Map methods and their return types.
+const CollectionMethodInfo mapMethods[] = {
+    // Methods returning value type
+    {"get", MethodReturnKind::ValueType},
+    {"getOr", MethodReturnKind::ValueType},
+    // Methods returning Void
+    {"set", MethodReturnKind::Void},
+    {"put", MethodReturnKind::Void},
+    {"clear", MethodReturnKind::Void},
+    // Methods returning Boolean
+    {"setIfMissing", MethodReturnKind::Boolean},
+    {"containsKey", MethodReturnKind::Boolean},
+    {"hasKey", MethodReturnKind::Boolean},
+    {"has", MethodReturnKind::Boolean},
+    {"remove", MethodReturnKind::Boolean},
+    // Methods returning Integer
+    {"size", MethodReturnKind::Integer},
+    {"count", MethodReturnKind::Integer},
+    {"length", MethodReturnKind::Integer},
+    // Methods returning Unknown (iterators)
+    {"keys", MethodReturnKind::Unknown},
+    {"values", MethodReturnKind::Unknown},
+};
+
+/// @brief Set methods and their return types.
+const CollectionMethodInfo setMethods[] = {
+    // Methods returning Boolean
+    {"contains", MethodReturnKind::Boolean},
+    {"has", MethodReturnKind::Boolean},
+    {"add", MethodReturnKind::Boolean},
+    {"remove", MethodReturnKind::Boolean},
+    // Methods returning Integer
+    {"size", MethodReturnKind::Integer},
+    {"count", MethodReturnKind::Integer},
+    {"length", MethodReturnKind::Integer},
+    // Methods returning Void
+    {"clear", MethodReturnKind::Void},
+};
+
+/// @brief String methods and their return types.
+const CollectionMethodInfo stringMethods[] = {
+    {"length", MethodReturnKind::Integer},
+    {"count", MethodReturnKind::Integer},
+    {"size", MethodReturnKind::Integer},
+    {"isEmpty", MethodReturnKind::Boolean},
+};
+
+/// @brief Look up a method in a method table.
+/// @param methods The method table to search.
+/// @param methodName The method name to find.
+/// @return The method info if found, nullptr otherwise.
+template <std::size_t N>
+const CollectionMethodInfo *findMethod(const CollectionMethodInfo (&methods)[N],
+                                       std::string_view methodName)
+{
+    for (const auto &m : methods)
+    {
+        if (m.name == methodName)
+            return &m;
+    }
+    return nullptr;
+}
+
+/// @brief Resolve a return type from a MethodReturnKind.
+/// @param kind The return kind.
+/// @param baseType The collection type (for element/key/value type resolution).
+/// @return The resolved type.
+TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType)
+{
+    switch (kind)
+    {
+        case MethodReturnKind::ElementType:
+            return baseType->elementType() ? baseType->elementType() : types::unknown();
+        case MethodReturnKind::KeyType:
+            return baseType->keyType() ? baseType->keyType() : types::unknown();
+        case MethodReturnKind::ValueType:
+            return baseType->valueType() ? baseType->valueType() : types::unknown();
+        case MethodReturnKind::Integer:
+            return types::integer();
+        case MethodReturnKind::Boolean:
+            return types::boolean();
+        case MethodReturnKind::Void:
+            return types::voidType();
+        case MethodReturnKind::Unknown:
+        default:
+            return types::unknown();
+    }
+}
+
+} // anonymous namespace
 
 //=============================================================================
 // Expression Analysis
 //=============================================================================
 
+/// @brief Main entry point for expression analysis.
+/// @param expr The expression AST node to analyze.
+/// @return The resolved semantic type for the expression.
+/// @details Dispatches to specific analysis methods based on expression kind.
+///          Caches the result in exprTypes_ for later retrieval.
 TypeRef Sema::analyzeExpr(Expr *expr)
 {
     if (!expr)
@@ -121,37 +272,54 @@ TypeRef Sema::analyzeExpr(Expr *expr)
     return result;
 }
 
+/// @brief Analyze an integer literal expression.
+/// @return The Integer type singleton.
 TypeRef Sema::analyzeIntLiteral(IntLiteralExpr * /*expr*/)
 {
     return types::integer();
 }
 
+/// @brief Analyze a floating-point number literal expression.
+/// @return The Number type singleton.
 TypeRef Sema::analyzeNumberLiteral(NumberLiteralExpr * /*expr*/)
 {
     return types::number();
 }
 
+/// @brief Analyze a string literal expression.
+/// @return The String type singleton.
 TypeRef Sema::analyzeStringLiteral(StringLiteralExpr * /*expr*/)
 {
     return types::string();
 }
 
+/// @brief Analyze a boolean literal expression (true/false).
+/// @return The Boolean type singleton.
 TypeRef Sema::analyzeBoolLiteral(BoolLiteralExpr * /*expr*/)
 {
     return types::boolean();
 }
 
+/// @brief Analyze a null literal expression.
+/// @return Optional[Unknown] type; actual type determined by context.
 TypeRef Sema::analyzeNullLiteral(NullLiteralExpr * /*expr*/)
 {
     // null is Optional[Unknown] - needs context to determine actual type
     return types::optional(types::unknown());
 }
 
+/// @brief Analyze a unit literal expression ().
+/// @return The Unit type singleton.
 TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/)
 {
     return types::unit();
 }
 
+/// @brief Analyze an identifier expression.
+/// @param expr The identifier expression node.
+/// @return The type bound to the identifier, or Unknown if undefined.
+/// @details Looks up the identifier in the symbol table and imported symbols.
+///          For imported runtime classes, returns a module-like type.
 TypeRef Sema::analyzeIdent(IdentExpr *expr)
 {
     Symbol *sym = lookupSymbol(expr->name);
@@ -176,6 +344,10 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
     return sym->type;
 }
 
+/// @brief Analyze a 'self' expression.
+/// @param expr The self expression node.
+/// @return The type of 'self' in the current method context.
+/// @details Emits error if used outside a method body.
 TypeRef Sema::analyzeSelf(SelfExpr *expr)
 {
     if (!currentSelfType_)
@@ -186,6 +358,11 @@ TypeRef Sema::analyzeSelf(SelfExpr *expr)
     return currentSelfType_;
 }
 
+/// @brief Analyze a binary expression (e.g., a + b, x == y).
+/// @param expr The binary expression node.
+/// @return The result type of the operation.
+/// @details Handles arithmetic, comparison, logical, bitwise, and assignment operators.
+///          Performs type checking and widening for numeric operations.
 TypeRef Sema::analyzeBinary(BinaryExpr *expr)
 {
     TypeRef leftType = analyzeExpr(expr->left.get());
@@ -256,6 +433,10 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
     return types::unknown();
 }
 
+/// @brief Analyze a unary expression (e.g., -x, !flag, ~bits).
+/// @param expr The unary expression node.
+/// @return The result type of the operation.
+/// @details Handles negation, logical not, bitwise not, and address-of operators.
 TypeRef Sema::analyzeUnary(UnaryExpr *expr)
 {
     TypeRef operandType = analyzeExpr(expr->operand.get());
@@ -316,6 +497,10 @@ TypeRef Sema::analyzeUnary(UnaryExpr *expr)
     return types::unknown();
 }
 
+/// @brief Analyze a ternary conditional expression (cond ? then : else).
+/// @param expr The ternary expression node.
+/// @return The common type of the then and else branches.
+/// @details Validates condition is Boolean and finds common type of branches.
 TypeRef Sema::analyzeTernary(TernaryExpr *expr)
 {
     TypeRef condType = analyzeExpr(expr->condition.get());
@@ -335,6 +520,11 @@ TypeRef Sema::analyzeTernary(TernaryExpr *expr)
     return types::unknown();
 }
 
+/// @brief Compute the common type of two types for type unification.
+/// @param lhs The first type.
+/// @param rhs The second type.
+/// @return The most general type compatible with both, or Unknown if incompatible.
+/// @details Handles numeric widening, optional lifting, and subtype relationships.
 TypeRef Sema::commonType(TypeRef lhs, TypeRef rhs)
 {
     if (!lhs && !rhs)
@@ -399,6 +589,17 @@ static bool extractDottedName(Expr *expr, std::string &out)
     return false;
 }
 
+/// @brief Analyze a function or method call expression.
+/// @param expr The call expression node.
+/// @return The return type of the called function/method.
+/// @details This is a comprehensive method that handles multiple call scenarios:
+///          - Generic function calls with explicit type arguments (e.g., identity[Integer](x))
+///          - Generic function calls with type inference (e.g., identity(42))
+///          - Imported symbol calls from bound namespaces
+///          - Qualified function calls (e.g., module.func())
+///          - Collection method calls (List, Map, Set, String methods)
+///          - Runtime class method calls
+///          - Regular function and method calls
 TypeRef Sema::analyzeCall(CallExpr *expr)
 {
     // Handle generic function calls: identity[Integer](100)
@@ -694,48 +895,29 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
         TypeRef baseType = analyzeExpr(fieldExpr->base.get());
 
-        // Handle List methods
+        // Helper to analyze all arguments
+        auto analyzeArgs = [&]()
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.value.get());
+            }
+        };
+
+        // Handle List methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::List)
         {
-            TypeRef elemType = baseType->elementType();
-
-            // Methods that return the element type
-            if (fieldExpr->field == "get" || fieldExpr->field == "first" ||
-                fieldExpr->field == "last" || fieldExpr->field == "pop")
+            if (auto *method = findMethod(listMethods, fieldExpr->field))
             {
-                for (auto &arg : expr->args)
+                // Special handling for remove/contains type checking
+                if (fieldExpr->field == "remove" || fieldExpr->field == "contains")
                 {
-                    analyzeExpr(arg.value.get());
-                }
-                return elemType ? elemType : types::unknown();
-            }
-
-            // Methods that return Integer
-            if (fieldExpr->field == "count" || fieldExpr->field == "size" ||
-                fieldExpr->field == "length" || fieldExpr->field == "indexOf" ||
-                fieldExpr->field == "lastIndexOf")
-            {
-                for (auto &arg : expr->args)
-                {
-                    analyzeExpr(arg.value.get());
-                }
-                return types::integer();
-            }
-
-            // Methods that return Boolean
-            if (fieldExpr->field == "isEmpty" || fieldExpr->field == "contains" ||
-                fieldExpr->field == "remove")
-            {
-                for (auto &arg : expr->args)
-                {
-                    TypeRef argType = analyzeExpr(arg.value.get());
-                    // Type check for remove/contains - argument should match element type
-                    if ((fieldExpr->field == "remove" || fieldExpr->field == "contains") &&
-                        elemType && argType && !expr->args.empty())
+                    TypeRef elemType = baseType->elementType();
+                    for (auto &arg : expr->args)
                     {
-                        // Check if argument type is compatible with element type
-                        // Integer arg for non-Integer list is likely a removeAt() confusion
-                        if (argType->kind == TypeKindSem::Integer &&
+                        TypeRef argType = analyzeExpr(arg.value.get());
+                        if (elemType && argType && !expr->args.empty() &&
+                            argType->kind == TypeKindSem::Integer &&
                             elemType->kind != TypeKindSem::Integer)
                         {
                             error(expr->args[0].value->loc,
@@ -745,134 +927,56 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                         }
                     }
                 }
-                return types::boolean();
-            }
-
-            // Methods that return void
-            if (fieldExpr->field == "add" || fieldExpr->field == "insert" ||
-                fieldExpr->field == "set" || fieldExpr->field == "clear" ||
-                fieldExpr->field == "reverse" || fieldExpr->field == "sort" ||
-                fieldExpr->field == "removeAt")
-            {
-                for (auto &arg : expr->args)
+                else
                 {
-                    analyzeExpr(arg.value.get());
+                    analyzeArgs();
                 }
-                return types::voidType();
+                return resolveMethodReturnType(method->returnKind, baseType);
             }
         }
 
-        // Handle Map methods
+        // Handle Map methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Map)
         {
-            for (auto &arg : expr->args)
+            if (auto *method = findMethod(mapMethods, fieldExpr->field))
             {
-                analyzeExpr(arg.value.get());
-            }
-
-            auto requireStringKey = [&]()
-            {
-                if (expr->args.empty())
-                    return;
-                TypeRef keyType = analyzeExpr(expr->args[0].value.get());
-                if (keyType && keyType->kind != TypeKindSem::String &&
-                    keyType->kind != TypeKindSem::Unknown)
+                analyzeArgs();
+                // Validate string keys for methods that require them
+                if (method->returnKind == MethodReturnKind::ValueType ||
+                    method->returnKind == MethodReturnKind::Boolean ||
+                    fieldExpr->field == "set" || fieldExpr->field == "put")
                 {
-                    error(expr->args[0].value->loc, "Map keys must be String");
+                    if (!expr->args.empty())
+                    {
+                        TypeRef keyType = exprTypes_[expr->args[0].value.get()];
+                        if (keyType && keyType->kind != TypeKindSem::String &&
+                            keyType->kind != TypeKindSem::Unknown)
+                        {
+                            error(expr->args[0].value->loc, "Map keys must be String");
+                        }
+                    }
                 }
-            };
-
-            if (fieldExpr->field == "get" || fieldExpr->field == "getOr")
-            {
-                requireStringKey();
-                return baseType->valueType() ? baseType->valueType() : types::unknown();
-            }
-            if (fieldExpr->field == "set" || fieldExpr->field == "put")
-            {
-                requireStringKey();
-                return types::voidType();
-            }
-            if (fieldExpr->field == "setIfMissing")
-            {
-                requireStringKey();
-                return types::boolean();
-            }
-            if (fieldExpr->field == "containsKey" || fieldExpr->field == "hasKey" ||
-                fieldExpr->field == "has")
-            {
-                requireStringKey();
-                return types::boolean();
-            }
-            if (fieldExpr->field == "remove")
-            {
-                requireStringKey();
-                return types::boolean();
-            }
-            if (fieldExpr->field == "size" || fieldExpr->field == "count" ||
-                fieldExpr->field == "length")
-            {
-                return types::integer();
-            }
-            if (fieldExpr->field == "clear")
-            {
-                return types::voidType();
-            }
-            if (fieldExpr->field == "keys" || fieldExpr->field == "values")
-            {
-                return types::unknown();
+                return resolveMethodReturnType(method->returnKind, baseType);
             }
         }
 
-        // Handle Set methods
+        // Handle Set methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Set)
         {
-            TypeRef elemType = baseType->elementType();
-
-            for (auto &arg : expr->args)
+            if (auto *method = findMethod(setMethods, fieldExpr->field))
             {
-                analyzeExpr(arg.value.get());
-            }
-
-            // Methods that return Boolean
-            if (fieldExpr->field == "contains" || fieldExpr->field == "has" ||
-                fieldExpr->field == "add" || fieldExpr->field == "remove")
-            {
-                return types::boolean();
-            }
-
-            // Methods that return Integer
-            if (fieldExpr->field == "size" || fieldExpr->field == "count" ||
-                fieldExpr->field == "length")
-            {
-                return types::integer();
-            }
-
-            // Methods that return void
-            if (fieldExpr->field == "clear")
-            {
-                return types::voidType();
+                analyzeArgs();
+                return resolveMethodReturnType(method->returnKind, baseType);
             }
         }
 
-        // Handle String methods
+        // Handle String methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::String)
         {
-            if (fieldExpr->field == "length" || fieldExpr->field == "count" ||
-                fieldExpr->field == "size")
+            if (auto *method = findMethod(stringMethods, fieldExpr->field))
             {
-                for (auto &arg : expr->args)
-                {
-                    analyzeExpr(arg.value.get());
-                }
-                return types::integer();
-            }
-            if (fieldExpr->field == "isEmpty")
-            {
-                for (auto &arg : expr->args)
-                {
-                    analyzeExpr(arg.value.get());
-                }
-                return types::boolean();
+                analyzeArgs();
+                return resolveMethodReturnType(method->returnKind, baseType);
             }
         }
 
@@ -946,6 +1050,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
     return types::unknown();
 }
 
+/// @brief Analyze an index expression (e.g., list[i], map["key"]).
+/// @param expr The index expression node.
+/// @return The element type for lists/strings, value type for maps.
+/// @details Validates index type (integral for lists, string for maps).
 TypeRef Sema::analyzeIndex(IndexExpr *expr)
 {
     TypeRef baseType = analyzeExpr(expr->base.get());
@@ -975,6 +1083,14 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr)
     return types::unknown();
 }
 
+/// @brief Analyze a field access expression (e.g., obj.field, Type.method).
+/// @param expr The field expression node.
+/// @return The type of the accessed field, method, or property.
+/// @details Handles multiple cases:
+///          - Runtime class property access (e.g., Viper.Math.Pi)
+///          - Module-qualified access (e.g., colors.initColors)
+///          - Entity/Value field and method access with visibility checking
+///          - Built-in collection properties (e.g., list.count)
 TypeRef Sema::analyzeField(FieldExpr *expr)
 {
     // BUG-012 fix: Handle runtime class namespace property access (e.g., Viper.Math.Pi)
@@ -1180,6 +1296,10 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr)
     return types::optional(fieldType);
 }
 
+/// @brief Analyze a null-coalescing expression (left ?? right).
+/// @param expr The coalesce expression node.
+/// @return The unwrapped type (non-optional) of the left operand.
+/// @details Returns right value if left is null/None.
 TypeRef Sema::analyzeCoalesce(CoalesceExpr *expr)
 {
     TypeRef leftType = analyzeExpr(expr->left.get());
@@ -1196,6 +1316,9 @@ TypeRef Sema::analyzeCoalesce(CoalesceExpr *expr)
     return innerType ? innerType : rightType;
 }
 
+/// @brief Analyze a type check expression (value is Type).
+/// @param expr The is expression node.
+/// @return Boolean type (result of type check).
 TypeRef Sema::analyzeIs(IsExpr *expr)
 {
     analyzeExpr(expr->value.get());
@@ -1203,12 +1326,18 @@ TypeRef Sema::analyzeIs(IsExpr *expr)
     return types::boolean();
 }
 
+/// @brief Analyze a type cast expression (value as Type).
+/// @param expr The as expression node.
+/// @return The target type of the cast.
 TypeRef Sema::analyzeAs(AsExpr *expr)
 {
     analyzeExpr(expr->value.get());
     return resolveTypeNode(expr->type.get());
 }
 
+/// @brief Analyze a range expression (start..end or start..<end).
+/// @param expr The range expression node.
+/// @return List[Integer] type representing the range.
 TypeRef Sema::analyzeRange(RangeExpr *expr)
 {
     TypeRef startType = analyzeExpr(expr->start.get());
@@ -1223,6 +1352,13 @@ TypeRef Sema::analyzeRange(RangeExpr *expr)
     return types::list(types::integer());
 }
 
+/// @brief Analyze a match arm pattern for type compatibility and exhaustiveness.
+/// @param pattern The pattern to analyze.
+/// @param scrutineeType The type being matched against.
+/// @param coverage Track which values are covered for exhaustiveness checking.
+/// @param bindings Output map of variable bindings introduced by the pattern.
+/// @return True if the pattern is valid, false otherwise.
+/// @details Handles wildcard, binding, literal, constructor, and tuple patterns.
 bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                                TypeRef scrutineeType,
                                MatchCoverage &coverage,

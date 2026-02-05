@@ -3,11 +3,11 @@
 Portable C runtime library (`src/runtime/`) providing core types, collections, I/O, text, math,
 graphics, audio, input, networking, system, diagnostics, crypto, time, and threading support.
 
-Last updated: 2026-01-15
+Last updated: 2026-02-04
 
 ## Overview
 
-- **Total source files**: 177 (.c/.h/.cpp/.hpp)
+- **Total source files**: 183 (.c/.h/.cpp/.hpp)
 
 ## Memory Management
 
@@ -70,10 +70,12 @@ Last updated: 2026-01-15
 | `rt_stack.h`   | Stack declarations                |
 | `rt_ring.c`    | Ring buffer implementation        |
 | `rt_ring.h`    | Ring buffer declarations          |
-| `rt_seq.c`     | Sequence/iterator abstraction     |
-| `rt_seq.h`     | Sequence declarations             |
-| `rt_pqueue.c`  | Priority queue implementation     |
-| `rt_pqueue.h`  | Priority queue declarations       |
+| `rt_seq.c`            | Sequence/iterator abstraction               |
+| `rt_seq.h`            | Sequence declarations                       |
+| `rt_seq_functional.c` | Seq functional ops wrappers for IL          |
+| `rt_seq_functional.h` | Seq functional wrapper declarations         |
+| `rt_pqueue.c`         | Priority queue implementation               |
+| `rt_pqueue.h`         | Priority queue declarations                 |
 
 ## Numeric Operations
 
@@ -132,6 +134,8 @@ Last updated: 2026-01-15
 | `rt_linewriter.h` | Line writer declarations                          |
 | `rt_memstream.c`  | In-memory stream operations                       |
 | `rt_memstream.h`  | Memory stream declarations                        |
+| `rt_stream.c`     | Unified stream abstraction over BinFile/MemStream |
+| `rt_stream.h`     | Stream interface declarations                     |
 | `rt_term.c`       | Terminal integration and control                  |
 
 ## Text Processing
@@ -237,14 +241,16 @@ Last updated: 2026-01-15
 
 ## Cryptography
 
-| File            | Purpose                                   |
-|-----------------|-------------------------------------------|
-| `rt_hash.c`     | Hash functions (CRC32, MD5, SHA1, SHA256) |
-| `rt_hash.h`     | Hash declarations                         |
-| `rt_keyderive.c`| Key derivation (PBKDF2)                   |
-| `rt_keyderive.h`| Key derivation declarations               |
-| `rt_rand.c`     | Cryptographically secure random numbers   |
-| `rt_rand.h`     | Secure random declarations                |
+| File            | Purpose                                       |
+|-----------------|-----------------------------------------------|
+| `rt_cipher.c`   | High-level encryption (ChaCha20-Poly1305)     |
+| `rt_cipher.h`   | Cipher API declarations                       |
+| `rt_hash.c`     | Hash functions (CRC32, MD5, SHA1, SHA256)     |
+| `rt_hash.h`     | Hash declarations                             |
+| `rt_keyderive.c`| Key derivation (PBKDF2, HKDF)                 |
+| `rt_keyderive.h`| Key derivation declarations                   |
+| `rt_rand.c`     | Cryptographically secure random numbers       |
+| `rt_rand.h`     | Secure random declarations                    |
 
 ## OOP Support
 

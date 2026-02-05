@@ -27,6 +27,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include <cctype>
 #include <string>
@@ -120,20 +121,6 @@ StmtPtr Parser::parseClassDecl()
             }
         } while (at(TokenKind::Comma));
     }
-
-    auto equalsIgnoreCase = [](const std::string &lhs, std::string_view rhs)
-    {
-        if (lhs.size() != rhs.size())
-            return false;
-        for (std::size_t i = 0; i < lhs.size(); ++i)
-        {
-            unsigned char lc = static_cast<unsigned char>(lhs[i]);
-            unsigned char rc = static_cast<unsigned char>(rhs[i]);
-            if (std::toupper(lc) != std::toupper(rc))
-                return false;
-        }
-        return true;
-    };
 
     if (at(TokenKind::Colon))
         consume();
@@ -489,7 +476,7 @@ StmtPtr Parser::parseClassDecl()
             {
                 if (t.kind == TokenKind::Identifier)
                 {
-                    return equalsIgnoreCase(t.lexeme, s);
+                    return string_utils::iequals(t.lexeme, s);
                 }
                 return false;
             };
@@ -630,7 +617,7 @@ StmtPtr Parser::parseClassDecl()
                     break;
             }
 
-            if (equalsIgnoreCase(subNameTok.lexeme, "NEW"))
+            if (string_utils::iequals(subNameTok.lexeme, "NEW"))
             {
                 auto ctor = std::make_unique<ConstructorDecl>();
                 ctor->loc = subLoc;

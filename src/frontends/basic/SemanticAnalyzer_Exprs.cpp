@@ -31,6 +31,8 @@ namespace il::frontends::basic::semantic_analyzer_detail
 {
 
 /// @brief Case-insensitive lowercase for qualified names (preserves dots).
+/// @param s The qualified name string to convert (e.g., "Viper.Graphics.Canvas").
+/// @return Lowercase version of the input string.
 static std::string toLowerQualified(std::string_view s)
 {
     std::string out;
@@ -40,6 +42,9 @@ static std::string toLowerQualified(std::string_view s)
     return out;
 }
 
+/// @brief Check if an expression represents a runtime namespace chain (starting with "Viper").
+/// @param expr The expression to check.
+/// @return True if the expression is a qualified name chain starting with "Viper".
 static bool isRuntimeNamespaceChain(const Expr &expr)
 {
     std::vector<std::string> parts;
@@ -66,6 +71,10 @@ static bool isRuntimeNamespaceChain(const Expr &expr)
     return string_utils::iequals(parts.front(), "Viper");
 }
 
+/// @brief Collect qualified name segments from an expression chain.
+/// @param expr The expression to traverse (VarExpr or MemberAccessExpr chain).
+/// @param out Output vector to store name segments in order.
+/// @return True if successful, false if expression is not a valid name chain.
 static bool collectQualifiedChain(const Expr &expr, std::vector<std::string> &out)
 {
     const Expr *cur = &expr;
@@ -90,6 +99,9 @@ static bool collectQualifiedChain(const Expr &expr, std::vector<std::string> &ou
     return true;
 }
 
+/// @brief Extract the fully-qualified runtime class name from an expression.
+/// @param expr The expression representing a runtime class reference.
+/// @return The qualified name (e.g., "Viper.Graphics.Canvas") if valid, nullopt otherwise.
 static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr)
 {
     std::vector<std::string> parts;
@@ -100,6 +112,9 @@ static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr)
     return JoinDots(parts);
 }
 
+/// @brief Map runtime IL type names to BASIC semantic types.
+/// @param ty The IL type string (e.g., "i64", "f64", "str").
+/// @return The corresponding SemanticAnalyzer::Type, or nullopt if unknown.
 static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::string_view ty)
 {
     if (ty == "i64")
@@ -115,6 +130,12 @@ static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::st
     return std::nullopt;
 }
 
+/// @brief Resolve the type of a runtime class property access.
+/// @param analyzer The semantic analyzer instance.
+/// @param expr The member access expression (e.g., obj.property).
+/// @return The semantic type of the property if found, nullopt otherwise.
+/// @details Handles both direct class references (Canvas.Width) and variable
+///          references to runtime class instances.
 static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
     SemanticAnalyzer &analyzer, const MemberAccessExpr &expr)
 {

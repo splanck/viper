@@ -9,9 +9,14 @@
 - [Viper.Text.Codec](#vipertextcodec)
 - [Viper.Text.Csv](#vipertextcsv)
 - [Viper.Text.Guid](#vipertextguid)
+- [Viper.Text.Html](#vipertexthtml)
 - [Viper.Text.Json](#vipertextjson)
+- [Viper.Text.JsonPath](#vipertextjsonpath)
+- [Viper.Text.Markdown](#vipertextmarkdown)
 - [Viper.Text.Pattern](#vipertextpattern)
+- [Viper.Text.CompiledPattern](#vipertextcompiledpattern)
 - [Viper.Text.Template](#vipertexttemplate)
+- [Viper.Text.Toml](#vipertexttoml)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
 
 ---
@@ -426,6 +431,131 @@ PRINT IsValidEmail("invalid-email")     ' Output: 0 (false)
 - Compiled patterns are cached internally (LRU cache, 16 entries)
 - Frequently used patterns avoid recompilation overhead
 - For maximum performance with many operations, use consistent pattern strings
+- For repeated operations with the same pattern, consider `CompiledPattern`
+
+---
+
+## Viper.Text.CompiledPattern
+
+Pre-compiled regular expression for efficient repeated matching. Use this when applying the same pattern to multiple
+strings to avoid recompilation overhead.
+
+**Type:** Instance class
+**Constructor:** `NEW Viper.Text.CompiledPattern(pattern)`
+
+### Properties
+
+| Property  | Type   | Description                                   |
+|-----------|--------|-----------------------------------------------|
+| `Pattern` | String | The original pattern string used to compile   |
+
+### Methods
+
+| Method                             | Signature                    | Description                                        |
+|------------------------------------|------------------------------|----------------------------------------------------|
+| `IsMatch(text)`                    | `Boolean(String)`            | Test if pattern matches anywhere in text           |
+| `Find(text)`                       | `String(String)`             | Find first match, or empty string if none          |
+| `FindFrom(text, start)`            | `String(String, Integer)`    | Find first match at or after start position        |
+| `FindPos(text)`                    | `Integer(String)`            | Find position of first match, or -1 if none        |
+| `FindAll(text)`                    | `Seq(String)`                | Find all non-overlapping matches                   |
+| `Captures(text)`                   | `Seq(String)`                | Get capture groups from first match                |
+| `CapturesFrom(text, start)`        | `Seq(String, Integer)`       | Get capture groups starting from position          |
+| `Replace(text, replacement)`       | `String(String, String)`     | Replace all matches with replacement               |
+| `ReplaceFirst(text, replacement)`  | `String(String, String)`     | Replace first match only                           |
+| `Split(text)`                      | `Seq(String)`                | Split text by pattern matches                      |
+| `SplitN(text, limit)`              | `Seq(String, Integer)`       | Split text with maximum number of parts            |
+
+### Capture Groups
+
+The `Captures` and `CapturesFrom` methods return a Seq containing:
+- Index 0: The full match
+- Index 1+: Captured groups in order of opening parentheses
+
+If there is no match, an empty Seq is returned.
+
+### Example
+
+```basic
+' Compile a pattern once for multiple uses
+DIM numberPattern AS OBJECT = NEW Viper.Text.CompiledPattern("\d+")
+
+' Process multiple strings efficiently
+DIM texts AS OBJECT = NEW Viper.Collections.Seq()
+texts.Push("abc123def")
+texts.Push("foo456bar")
+texts.Push("no digits here")
+
+FOR i = 0 TO texts.Len - 1
+    DIM text AS STRING = texts.Get(i)
+    IF numberPattern.IsMatch(text) THEN
+        PRINT "Found number: "; numberPattern.Find(text)
+    ELSE
+        PRINT "No number in: "; text
+    END IF
+NEXT
+' Output:
+' Found number: 123
+' Found number: 456
+' No number in: no digits here
+```
+
+### Capture Groups Example
+
+```basic
+' Pattern with capture groups
+DIM datePattern AS OBJECT = NEW Viper.Text.CompiledPattern("(\d{4})-(\d{2})-(\d{2})")
+
+DIM groups AS OBJECT = datePattern.Captures("Today is 2024-01-15")
+IF groups.Len > 0 THEN
+    PRINT "Full match: "; groups.Get(0)   ' Output: 2024-01-15
+    PRINT "Year: "; groups.Get(1)         ' Output: 2024
+    PRINT "Month: "; groups.Get(2)        ' Output: 01
+    PRINT "Day: "; groups.Get(3)          ' Output: 15
+END IF
+
+' Email extraction
+DIM emailPattern AS OBJECT = NEW Viper.Text.CompiledPattern("(\w+)@(\w+)\.(\w+)")
+groups = emailPattern.Captures("Contact: user@example.com")
+IF groups.Len > 0 THEN
+    PRINT "User: "; groups.Get(1)         ' Output: user
+    PRINT "Domain: "; groups.Get(2)       ' Output: example
+    PRINT "TLD: "; groups.Get(3)          ' Output: com
+END IF
+```
+
+### Split with Limit Example
+
+```basic
+DIM commaPattern AS OBJECT = NEW Viper.Text.CompiledPattern(",")
+
+' Split all
+DIM all AS OBJECT = commaPattern.Split("a,b,c,d,e")
+PRINT all.Len  ' Output: 5
+
+' Split with limit (max 3 parts)
+DIM limited AS OBJECT = commaPattern.SplitN("a,b,c,d,e", 3)
+PRINT limited.Len        ' Output: 3
+PRINT limited.Get(0)     ' Output: a
+PRINT limited.Get(1)     ' Output: b
+PRINT limited.Get(2)     ' Output: c,d,e (rest in last element)
+```
+
+### When to Use CompiledPattern vs Pattern
+
+| Scenario                            | Recommendation             |
+|-------------------------------------|----------------------------|
+| One-time pattern match              | Use `Pattern` (simpler)    |
+| Same pattern on multiple strings    | Use `CompiledPattern`      |
+| Pattern in a loop                   | Use `CompiledPattern`      |
+| Need capture groups                 | Use `CompiledPattern`      |
+| Dynamic pattern from user input     | Use `Pattern` (compiled once) |
+
+### Performance Notes
+
+- Compiling a pattern takes time proportional to pattern complexity
+- Once compiled, matching is fast regardless of pattern complexity
+- For patterns used more than 2-3 times, `CompiledPattern` is more efficient
+- The internal `Pattern` class caches 16 patterns, but explicit `CompiledPattern` avoids cache thrashing
 
 ---
 
@@ -565,6 +695,283 @@ PRINT result  ' Output: "Use {{name}} for placeholders"
 - Templating configuration files
 - Generating reports with placeholder substitution
 - Simple string interpolation without full template engines
+
+---
+
+## Viper.Text.Html
+
+Tolerant HTML parser and utility functions for escaping, unescaping, tag stripping, link extraction, and text extraction.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                       | Signature              | Description                                              |
+|------------------------------|------------------------|----------------------------------------------------------|
+| `Parse(html)`                | `Map(String)`          | Parse HTML into a tree of Map nodes                      |
+| `ToText(html)`               | `String(String)`       | Strip tags and unescape entities to get plain text       |
+| `Escape(text)`               | `String(String)`       | Escape HTML special characters (`<`, `>`, `&`, `"`, `'`) |
+| `Unescape(text)`             | `String(String)`       | Unescape HTML entities (`&lt;`, `&gt;`, `&amp;`, etc.)   |
+| `StripTags(html)`            | `String(String)`       | Remove all HTML tags (entities left as-is)               |
+| `ExtractLinks(html)`         | `Seq(String)`          | Extract all `href` values from `<a>` tags                |
+| `ExtractText(html, tagName)` | `Seq(String, String)`  | Extract text content of all matching tags                |
+
+### Parse Tree Structure
+
+`Parse()` returns a root Map node. Each node has the following keys:
+
+| Key        | Type           | Description                            |
+|------------|----------------|----------------------------------------|
+| `tag`      | String         | Tag name (e.g., `"div"`, `"p"`)        |
+| `text`     | String         | Text content of the element            |
+| `attrs`    | Map            | Attribute name-value pairs             |
+| `children` | Seq of Maps    | Child element nodes                    |
+
+### Notes
+
+- **Tolerant parser:** Handles malformed HTML without trapping. Unclosed tags, missing quotes, and other common issues are handled gracefully.
+- **Entity support:** Handles named entities (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&apos;`, `&nbsp;`), numeric entities (`&#60;`, `&#x3C;`), and passes through unknown entities unchanged.
+- **StripTags vs ToText:** `StripTags` removes tags but leaves entities as-is. `ToText` removes tags AND unescapes entities.
+- All methods return empty string/empty Seq for NULL input.
+
+### Example
+
+```basic
+' Escape user input for safe HTML display
+DIM userInput AS STRING = "<script>alert('xss')</script>"
+DIM safe AS STRING = Viper.Text.Html.Escape(userInput)
+PRINT safe  ' Output: "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
+
+' Unescape HTML entities
+DIM text AS STRING = Viper.Text.Html.Unescape("&lt;div&gt;Hello&lt;/div&gt;")
+PRINT text  ' Output: "<div>Hello</div>"
+
+' Strip tags to get raw text
+DIM html AS STRING = "<p>Hello <b>World</b></p>"
+DIM stripped AS STRING = Viper.Text.Html.StripTags(html)
+PRINT stripped  ' Output: "Hello World"
+
+' Convert HTML to plain text (strips tags + unescapes)
+DIM plain AS STRING = Viper.Text.Html.ToText("<p>Price: &lt;$10&gt;</p>")
+PRINT plain  ' Output: "Price: <$10>"
+
+' Extract all links from HTML
+DIM page AS STRING = "<a href=""https://example.com"">Link 1</a><a href=""/about"">About</a>"
+DIM links AS OBJECT = Viper.Text.Html.ExtractLinks(page)
+PRINT links.Len     ' Output: 2
+PRINT links.Get(0)  ' Output: "https://example.com"
+PRINT links.Get(1)  ' Output: "/about"
+
+' Extract text from specific tags
+DIM doc AS STRING = "<h1>Title</h1><p>Body</p><h1>Another</h1>"
+DIM headings AS OBJECT = Viper.Text.Html.ExtractText(doc, "h1")
+PRINT headings.Len     ' Output: 2
+PRINT headings.Get(0)  ' Output: "Title"
+
+' Parse HTML into a navigable tree
+DIM tree AS OBJECT = Viper.Text.Html.Parse("<div class=""main""><p>Hello</p></div>")
+' tree is a Map with keys: tag, text, attrs, children
+```
+
+### Use Cases
+
+- **Web scraping:** Extract links and content from downloaded HTML
+- **Security:** Escape user input before including in HTML output
+- **Email processing:** Convert HTML emails to plain text
+- **Content extraction:** Pull text from specific HTML elements
+- **HTML cleanup:** Strip tags from rich text content
+
+---
+
+## Viper.Text.JsonPath
+
+JSONPath-like query expressions for navigating parsed JSON objects. Works with objects returned by `Viper.Text.Json.Parse()`.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                      | Signature                   | Description                                          |
+|-----------------------------|-----------------------------|------------------------------------------------------|
+| `Get(root, path)`           | `Object(Object, String)`    | Get value at path, or NULL if not found              |
+| `GetOr(root, path, default)`| `Object(Object, String, Object)` | Get value at path, or default if not found      |
+| `Has(root, path)`           | `Boolean(Object, String)`   | Check if path exists in the object                   |
+| `Query(root, path)`         | `Seq(Object, String)`       | Get all values matching a wildcard path              |
+| `GetStr(root, path)`        | `String(Object, String)`    | Get string value at path, or empty string            |
+| `GetInt(root, path)`        | `Integer(Object, String)`   | Get integer value at path, or 0                      |
+
+### Path Syntax
+
+| Syntax           | Description                           | Example              |
+|------------------|---------------------------------------|----------------------|
+| `key`            | Access object property                | `"name"`             |
+| `key1.key2`      | Nested property access                | `"user.name"`        |
+| `key[0]`         | Array element by index                | `"items[0]"`         |
+| `key1.key2[0].x` | Mixed object/array access             | `"users[0].name"`    |
+| `key.*`          | Wildcard (all children)               | `"users.*.name"`     |
+
+### Example
+
+```basic
+' Parse a JSON document
+DIM json AS STRING = "{""user"": {""name"": ""Alice"", ""scores"": [95, 87, 92]}}"
+DIM data AS OBJECT = Viper.Text.Json.Parse(json)
+
+' Simple path access
+DIM name AS STRING = Viper.Text.JsonPath.GetStr(data, "user.name")
+PRINT name  ' Output: "Alice"
+
+' Array access
+DIM first AS INTEGER = Viper.Text.JsonPath.GetInt(data, "user.scores[0]")
+PRINT first  ' Output: 95
+
+' Check existence
+IF Viper.Text.JsonPath.Has(data, "user.email") THEN
+    PRINT "Has email"
+ELSE
+    PRINT "No email field"  ' Output: "No email field"
+END IF
+
+' Default values
+DIM email AS OBJECT = Viper.Text.JsonPath.GetOr(data, "user.email", Viper.Box.Str("unknown"))
+PRINT Viper.Unbox.Str(email)  ' Output: "unknown"
+
+' Wildcard queries
+DIM api AS STRING = "{""users"": [{""name"": ""Alice""}, {""name"": ""Bob""}]}"
+DIM apiData AS OBJECT = Viper.Text.Json.Parse(api)
+DIM names AS OBJECT = Viper.Text.JsonPath.Query(apiData, "users.*.name")
+PRINT names.Len     ' Output: 2
+```
+
+### Use Cases
+
+- **API responses:** Navigate deeply nested JSON without manual traversal
+- **Configuration:** Access config values by dotted paths
+- **Data extraction:** Query specific fields from complex JSON structures
+
+---
+
+## Viper.Text.Markdown
+
+Basic Markdown to HTML conversion and text extraction. Supports common Markdown syntax including headers, bold, italic, links, code, lists, and paragraphs.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                  | Signature        | Description                                    |
+|-------------------------|------------------|------------------------------------------------|
+| `ToHtml(markdown)`      | `String(String)` | Convert Markdown text to HTML                  |
+| `ToText(markdown)`      | `String(String)` | Strip Markdown formatting to get plain text    |
+| `ExtractLinks(markdown)`| `Seq(String)`    | Extract all URLs from Markdown links           |
+| `ExtractHeadings(markdown)` | `Seq(String)` | Extract all heading texts from Markdown        |
+
+### Supported Markdown Syntax
+
+| Syntax                | HTML Output          | Description            |
+|-----------------------|----------------------|------------------------|
+| `# Heading`           | `<h1>Heading</h1>`  | Headings (h1-h6)       |
+| `**bold**`            | `<strong>bold</strong>` | Bold text           |
+| `*italic*`            | `<em>italic</em>`    | Italic text            |
+| `` `code` ``          | `<code>code</code>`  | Inline code            |
+| `[text](url)`         | `<a href="url">text</a>` | Links              |
+| `- item`              | `<li>item</li>`      | Unordered list items   |
+| Blank line             | `<p>...</p>`         | Paragraph breaks       |
+
+### Example
+
+```basic
+' Convert Markdown to HTML
+DIM md AS STRING = "# Hello" + CHR$(10) + "This is **bold** and *italic*."
+DIM html AS STRING = Viper.Text.Markdown.ToHtml(md)
+PRINT html
+' Output: <h1>Hello</h1><p>This is <strong>bold</strong> and <em>italic</em>.</p>
+
+' Convert to plain text
+DIM plain AS STRING = Viper.Text.Markdown.ToText(md)
+PRINT plain  ' Output: Hello This is bold and italic.
+
+' Extract all links
+DIM doc AS STRING = "Visit [Google](https://google.com) or [GitHub](https://github.com)"
+DIM links AS OBJECT = Viper.Text.Markdown.ExtractLinks(doc)
+PRINT links.Len     ' Output: 2
+PRINT links.Get(0)  ' Output: "https://google.com"
+
+' Extract headings for table of contents
+DIM article AS STRING = "# Introduction" + CHR$(10) + "## Background" + CHR$(10) + "## Methods"
+DIM headings AS OBJECT = Viper.Text.Markdown.ExtractHeadings(article)
+PRINT headings.Len     ' Output: 3
+PRINT headings.Get(0)  ' Output: "Introduction"
+```
+
+### Notes
+
+- This is a basic Markdown converter, not a full CommonMark implementation
+- Supports the most commonly used Markdown features
+- Nested formatting (e.g., bold within italic) may not render correctly
+
+### Use Cases
+
+- **Documentation rendering:** Convert Markdown docs to HTML
+- **Content preview:** Generate plain text previews from Markdown
+- **Link extraction:** Gather all URLs from documentation
+- **Table of contents:** Build TOC from headings
+
+---
+
+## Viper.Text.Toml
+
+TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                | Signature              | Description                                    |
+|-----------------------|------------------------|------------------------------------------------|
+| `Parse(text)`         | `Map(String)`          | Parse TOML text into nested Maps               |
+| `IsValid(text)`       | `Boolean(String)`      | Check if text is valid TOML                    |
+| `Format(map)`         | `String(Map)`          | Format a Map as TOML text                      |
+| `Get(root, keyPath)`  | `Object(Map, String)`  | Get value using dotted key path                |
+
+### Notes
+
+- **Parse output:** Returns a Map where keys are strings and values are strings, Maps (for sections), or Seqs (for arrays).
+- **Dotted paths:** `Get()` supports dotted key paths like `"server.host"` to navigate into nested sections.
+- **Format:** Converts a Map back to TOML text format.
+- Invalid TOML returns NULL from `Parse()` rather than trapping.
+
+### Example
+
+```basic
+' Parse TOML configuration
+DIM config AS STRING = "[server]" + CHR$(10) + _
+                       "host = ""localhost""" + CHR$(10) + _
+                       "port = ""8080""" + CHR$(10) + _
+                       "[database]" + CHR$(10) + _
+                       "url = ""postgres://localhost/mydb"""
+
+DIM data AS OBJECT = Viper.Text.Toml.Parse(config)
+
+' Access nested values using dotted path
+DIM host AS OBJECT = Viper.Text.Toml.Get(data, "server.host")
+PRINT Viper.Unbox.Str(host)  ' Output: "localhost"
+
+' Validate before parsing
+IF Viper.Text.Toml.IsValid(userInput) THEN
+    DIM parsed AS OBJECT = Viper.Text.Toml.Parse(userInput)
+END IF
+
+' Format back to TOML
+DIM output AS STRING = Viper.Text.Toml.Format(data)
+PRINT output
+```
+
+### Use Cases
+
+- **Configuration files:** Parse application config in TOML format
+- **Settings management:** Read/write user preferences
+- **Build tools:** Parse project metadata files
 
 ---
 

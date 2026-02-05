@@ -15,6 +15,9 @@
 - [Viper.Network.HttpRes](#vipernetworkhttpres)
 - [Viper.Network.Url](#vipernetworkurl)
 - [Viper.Network.WebSocket](#vipernetworkwebsocket)
+- [Viper.Network.RestClient](#vipernetworkrestclient)
+- [Viper.Network.RetryPolicy](#vipernetworkretrypolicy)
+- [Viper.Network.RateLimiter](#vipernetworkratelimiter)
 
 ---
 
@@ -1159,6 +1162,383 @@ WebSocket operations trap on errors:
 - **Financial feeds:** Stock tickers, trading data
 - **IoT:** Device monitoring and control
 - **Collaborative tools:** Real-time document editing
+
+---
+
+## Viper.Network.RestClient
+
+High-level REST API client with session management for consuming REST APIs. Maintains persistent headers, authentication,
+and base URL configuration across multiple requests.
+
+**Type:** Instance class
+
+**Constructor:**
+
+- `Viper.Network.RestClient.New(baseUrl)` - Create client with base URL (e.g., "https://api.example.com")
+
+### Properties
+
+| Property  | Type   | Description                                    |
+|-----------|--------|------------------------------------------------|
+| `BaseUrl` | String | Base URL for all requests (read-only)          |
+
+### Configuration Methods
+
+| Method                         | Returns | Description                                    |
+|--------------------------------|---------|------------------------------------------------|
+| `SetHeader(name, value)`       | void    | Set a default header for all requests          |
+| `DelHeader(name)`              | void    | Remove a default header                        |
+| `SetAuthBearer(token)`         | void    | Set Bearer token authentication                |
+| `SetAuthBasic(username, pass)` | void    | Set HTTP Basic authentication                  |
+| `ClearAuth()`                  | void    | Remove authentication header                   |
+| `SetTimeout(ms)`               | void    | Set request timeout in milliseconds            |
+
+### Raw HTTP Methods
+
+Returns `HttpRes` response object for manual handling.
+
+| Method                    | Returns | Description                                    |
+|---------------------------|---------|------------------------------------------------|
+| `Get(path)`               | HttpRes | GET request to path                            |
+| `Post(path, body)`        | HttpRes | POST request with string body                  |
+| `Put(path, body)`         | HttpRes | PUT request with string body                   |
+| `Patch(path, body)`       | HttpRes | PATCH request with string body                 |
+| `Delete(path)`            | HttpRes | DELETE request                                 |
+| `Head(path)`              | HttpRes | HEAD request (headers only)                    |
+
+### JSON Convenience Methods
+
+Automatically sets `Content-Type` and `Accept` headers for JSON, parses response.
+
+| Method                     | Returns | Description                                          |
+|----------------------------|---------|------------------------------------------------------|
+| `GetJson(path)`            | Object  | GET, return parsed JSON (Map/Seq) or null on error   |
+| `PostJson(path, json)`     | Object  | POST JSON body, return parsed response or null       |
+| `PutJson(path, json)`      | Object  | PUT JSON body, return parsed response or null        |
+| `PatchJson(path, json)`    | Object  | PATCH JSON body, return parsed response or null      |
+| `DeleteJson(path)`         | Object  | DELETE, return parsed JSON response or null          |
+
+### Error Handling Methods
+
+| Method           | Returns | Description                                          |
+|------------------|---------|------------------------------------------------------|
+| `LastStatus()`   | Integer | HTTP status code of last request (0 if none)         |
+| `LastResponse()` | HttpRes | Last response object (null if none)                  |
+| `LastOk()`       | Boolean | True if last status was 200-299                      |
+
+### Basic Example
+
+```basic
+' Create a REST client for an API
+DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+
+' Set common headers
+api.SetHeader("User-Agent", "MyApp/1.0")
+api.SetTimeout(15000)  ' 15 seconds
+
+' Make requests - base URL is prepended automatically
+DIM res AS OBJECT = api.Get("/users")
+IF res.IsOk() THEN
+    PRINT "Users: "; res.BodyStr()
+END IF
+```
+
+### Authentication Example
+
+```basic
+' API with Bearer token authentication
+DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com/v1")
+api.SetAuthBearer("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+
+' All requests now include Authorization header
+DIM profile AS OBJECT = api.GetJson("/me")
+IF profile IS NOT NULL THEN
+    PRINT "Welcome, "; profile.Get("name")
+END IF
+```
+
+### Basic Auth Example
+
+```basic
+' API with HTTP Basic authentication
+DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+api.SetAuthBasic("username", "password")
+
+' Credentials are base64-encoded in Authorization header
+DIM data AS OBJECT = api.GetJson("/protected/resource")
+```
+
+### JSON API Example
+
+```basic
+' Complete CRUD example with JSON
+DIM api AS OBJECT = Viper.Network.RestClient.New("https://jsonplaceholder.typicode.com")
+
+' CREATE - POST with JSON body
+DIM newPost AS OBJECT = Viper.Collections.Map.New()
+newPost.Set("title", "My Post")
+newPost.Set("body", "Post content here")
+newPost.Set("userId", 1)
+
+DIM created AS OBJECT = api.PostJson("/posts", newPost)
+IF created IS NOT NULL THEN
+    PRINT "Created post ID: "; created.Get("id")
+END IF
+
+' READ - GET JSON
+DIM post AS OBJECT = api.GetJson("/posts/1")
+IF post IS NOT NULL THEN
+    PRINT "Title: "; post.Get("title")
+END IF
+
+' UPDATE - PUT JSON
+post.Set("title", "Updated Title")
+DIM updated AS OBJECT = api.PutJson("/posts/1", post)
+
+' PARTIAL UPDATE - PATCH JSON
+DIM patch AS OBJECT = Viper.Collections.Map.New()
+patch.Set("title", "Patched Title")
+DIM patched AS OBJECT = api.PatchJson("/posts/1", patch)
+
+' DELETE
+DIM deleted AS OBJECT = api.DeleteJson("/posts/1")
+```
+
+### Error Handling Example
+
+```basic
+DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+
+' Make a request that might fail
+DIM result AS OBJECT = api.GetJson("/nonexistent")
+
+IF result IS NULL THEN
+    ' Check what went wrong
+    IF api.LastStatus() = 404 THEN
+        PRINT "Resource not found"
+    ELSE IF api.LastStatus() = 401 THEN
+        PRINT "Authentication required"
+    ELSE IF api.LastStatus() >= 500 THEN
+        PRINT "Server error: "; api.LastStatus()
+    ELSE
+        PRINT "Request failed with status: "; api.LastStatus()
+    END IF
+
+    ' Access full response if needed
+    DIM res AS OBJECT = api.LastResponse()
+    IF res IS NOT NULL THEN
+        PRINT "Error body: "; res.BodyStr()
+    END IF
+END IF
+```
+
+### Multiple API Sessions
+
+```basic
+' Different APIs with different authentication
+DIM publicApi AS OBJECT = Viper.Network.RestClient.New("https://public-api.example.com")
+
+DIM privateApi AS OBJECT = Viper.Network.RestClient.New("https://private-api.example.com")
+privateApi.SetAuthBearer(GetApiToken())
+
+DIM legacyApi AS OBJECT = Viper.Network.RestClient.New("https://legacy.example.com")
+legacyApi.SetAuthBasic("service", "password123")
+
+' Each client maintains its own configuration
+DIM pub AS OBJECT = publicApi.GetJson("/public/data")
+DIM priv AS OBJECT = privateApi.GetJson("/secure/data")
+DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
+```
+
+### Features
+
+- **Base URL:** All request paths are relative to the configured base URL
+- **Persistent headers:** Headers set with `SetHeader` are sent with every request
+- **Authentication:** Built-in support for Bearer tokens and HTTP Basic auth
+- **Timeout:** Configurable timeout (default 30 seconds)
+- **JSON helpers:** Automatic serialization/deserialization for JSON APIs
+- **Last request tracking:** Access status and response of the most recent request
+
+### RestClient vs HttpReq
+
+| Feature              | RestClient                  | HttpReq                         |
+|----------------------|-----------------------------|---------------------------------|
+| Base URL             | Configured once             | Full URL each request           |
+| Persistent headers   | Maintained across requests  | Set per request                 |
+| Authentication       | Built-in helpers            | Manual header construction      |
+| JSON handling        | Automatic with *Json methods| Manual serialization            |
+| Use case             | REST API consumption        | One-off or custom requests      |
+
+---
+
+## Viper.Network.RetryPolicy
+
+Configurable retry policy with backoff strategies for handling transient failures in network operations. Tracks attempt counts and computes delays between retries.
+
+**Type:** Instance class
+
+**Constructors:**
+
+- `Viper.Network.RetryPolicy.New(maxRetries, baseDelayMs)` - Fixed delay retry policy
+- `Viper.Network.RetryPolicy.Exponential(maxRetries, baseDelayMs, maxDelayMs)` - Exponential backoff
+
+### Properties
+
+| Property        | Type    | Description                                  |
+|-----------------|---------|----------------------------------------------|
+| `Attempt`       | Integer | Current attempt number (0-based)             |
+| `MaxRetries`    | Integer | Maximum number of retries configured         |
+| `TotalAttempts` | Integer | Total number of attempts made                |
+| `IsExhausted`   | Boolean | True if all retries have been used           |
+
+### Methods
+
+| Method          | Signature       | Description                                              |
+|-----------------|-----------------|----------------------------------------------------------|
+| `CanRetry()`    | `Boolean()`     | Check if another retry is allowed                        |
+| `NextDelay()`   | `Integer()`     | Record attempt and get delay before next retry (-1 if exhausted) |
+| `Reset()`       | `Void()`        | Reset the policy for reuse                               |
+
+### Backoff Strategies
+
+| Strategy     | Constructor     | Delay Pattern                                    |
+|--------------|-----------------|--------------------------------------------------|
+| Fixed        | `New()`         | Same delay every time: `base, base, base, ...`   |
+| Exponential  | `Exponential()` | Doubles each time: `base, 2*base, 4*base, ...` (capped at max) |
+
+### Example
+
+```basic
+' Fixed delay retry (3 retries, 1 second between each)
+DIM policy AS OBJECT = Viper.Network.RetryPolicy.New(3, 1000)
+
+DO WHILE policy.CanRetry()
+    DIM result AS OBJECT = TryApiCall()
+    IF result IS NOT NULL THEN
+        PRINT "Success on attempt "; policy.Attempt
+        EXIT DO
+    END IF
+
+    DIM delay AS INTEGER = policy.NextDelay()
+    IF delay >= 0 THEN
+        PRINT "Retry in "; delay; "ms"
+        Viper.Time.Clock.Sleep(delay)
+    END IF
+LOOP
+
+IF policy.IsExhausted THEN
+    PRINT "All retries exhausted after "; policy.TotalAttempts; " attempts"
+END IF
+```
+
+### Exponential Backoff Example
+
+```basic
+' Exponential backoff (5 retries, starting at 100ms, max 5 seconds)
+DIM policy AS OBJECT = Viper.Network.RetryPolicy.Exponential(5, 100, 5000)
+
+' Delays will be: 100, 200, 400, 800, 1600 (capped at 5000)
+DO WHILE policy.CanRetry()
+    IF TryConnect() THEN EXIT DO
+
+    DIM delay AS INTEGER = policy.NextDelay()
+    IF delay >= 0 THEN
+        Viper.Time.Clock.Sleep(delay)
+    END IF
+LOOP
+
+' Reset for reuse
+policy.Reset()
+```
+
+### Use Cases
+
+- **API calls:** Retry failed HTTP requests with backoff
+- **Database connections:** Reconnect with exponential backoff
+- **File operations:** Retry failed file operations
+- **Message queues:** Retry message processing with delays
+
+---
+
+## Viper.Network.RateLimiter
+
+Token bucket rate limiter for controlling the rate of operations. Tokens refill continuously over time and are consumed by operations.
+
+**Type:** Instance class
+**Constructor:** `Viper.Network.RateLimiter.New(maxTokens, refillPerSec)`
+
+### Properties
+
+| Property    | Type    | Description                                    |
+|-------------|---------|------------------------------------------------|
+| `Available` | Integer | Current available tokens (after refill)        |
+| `Max`       | Integer | Maximum token capacity                         |
+| `Rate`      | Double  | Token refill rate (tokens per second)          |
+
+### Methods
+
+| Method              | Signature       | Description                                              |
+|---------------------|-----------------|----------------------------------------------------------|
+| `TryAcquire()`      | `Boolean()`     | Try to consume 1 token (returns false if none available) |
+| `TryAcquireN(n)`    | `Boolean(Integer)` | Try to consume N tokens atomically                    |
+| `Reset()`           | `Void()`        | Reset to full capacity                                   |
+
+### How It Works
+
+1. The limiter starts with `maxTokens` available tokens
+2. Tokens refill continuously at `refillPerSec` rate, up to `maxTokens`
+3. Each operation consumes one or more tokens
+4. If insufficient tokens are available, the operation is denied (returns false)
+
+### Example
+
+```basic
+' Allow 10 requests per second with burst of 10
+DIM limiter AS OBJECT = Viper.Network.RateLimiter.New(10, 10.0)
+
+' Check before making API calls
+FUNCTION MakeApiCall(url AS STRING) AS OBJECT
+    IF limiter.TryAcquire() THEN
+        RETURN Viper.Network.Http.Get(url)
+    ELSE
+        PRINT "Rate limited - try again later"
+        RETURN NULL
+    END IF
+END FUNCTION
+
+' Batch operations - acquire multiple tokens
+IF limiter.TryAcquireN(5) THEN
+    ' Process batch of 5 items
+    ProcessBatch(items)
+END IF
+
+' Check available capacity
+PRINT "Available: "; limiter.Available; " / "; limiter.Max
+PRINT "Refill rate: "; limiter.Rate; " tokens/sec"
+
+' Reset to full capacity
+limiter.Reset()
+```
+
+### Token Bucket Algorithm
+
+The token bucket algorithm works like a bucket that:
+- Holds up to `maxTokens` tokens
+- Refills at `refillPerSec` tokens per second (continuously)
+- Operations take tokens from the bucket
+- If the bucket is empty, operations are denied
+
+This allows:
+- **Burst capacity:** Up to `maxTokens` operations in a burst
+- **Sustained rate:** `refillPerSec` operations per second on average
+- **Smooth throttling:** Natural backpressure as tokens drain
+
+### Use Cases
+
+- **API rate limiting:** Enforce rate limits on outbound API calls
+- **Request throttling:** Limit incoming request processing rate
+- **Resource protection:** Prevent resource exhaustion from burst traffic
+- **Fair scheduling:** Distribute capacity across multiple consumers
 
 ---
 

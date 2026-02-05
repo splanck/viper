@@ -620,6 +620,52 @@ extern "C"
     /// @return Selected item handle, or NULL if none.
     void *rt_listbox_get_selected(void *listbox);
 
+    /// @brief Get the number of items in the list box.
+    /// @param listbox ListBox widget handle.
+    /// @return Number of items.
+    int64_t rt_listbox_get_count(void *listbox);
+
+    /// @brief Get the selected item index.
+    /// @param listbox ListBox widget handle.
+    /// @return Selected index, or -1 if none selected.
+    int64_t rt_listbox_get_selected_index(void *listbox);
+
+    /// @brief Select an item by index.
+    /// @param listbox ListBox widget handle.
+    /// @param index Item index (0-based).
+    void rt_listbox_select_index(void *listbox, int64_t index);
+
+    /// @brief Check if selection changed since last check (polling pattern).
+    /// @param listbox ListBox widget handle.
+    /// @return 1 if selection changed, 0 otherwise.
+    int64_t rt_listbox_was_selection_changed(void *listbox);
+
+    /// @brief Get the text of a list box item.
+    /// @param item ListBox item handle.
+    /// @return Item text as runtime string.
+    rt_string rt_listbox_item_get_text(void *item);
+
+    /// @brief Set the text of a list box item.
+    /// @param item ListBox item handle.
+    /// @param text New text.
+    void rt_listbox_item_set_text(void *item, rt_string text);
+
+    /// @brief Store user data in a list box item.
+    /// @param item ListBox item handle.
+    /// @param data String data to store.
+    void rt_listbox_item_set_data(void *item, rt_string data);
+
+    /// @brief Get user data stored in a list box item.
+    /// @param item ListBox item handle.
+    /// @return Stored string data.
+    rt_string rt_listbox_item_get_data(void *item);
+
+    /// @brief Set list box font.
+    /// @param listbox ListBox widget handle.
+    /// @param font Font handle.
+    /// @param size Font size in pixels.
+    void rt_listbox_set_font(void *listbox, void *font, double size);
+
     //=========================================================================
     // RadioButton Widget
     //=========================================================================

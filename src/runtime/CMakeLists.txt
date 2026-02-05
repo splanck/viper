@@ -13,6 +13,7 @@ set(RT_BASE_SOURCES
         rt_string_encode.c
         rt_io.c
         rt_math.c
+        rt_perlin.c
         rt_random.c
         rt_bits.c
         rt_pool.c
@@ -28,11 +29,17 @@ set(RT_BASE_SOURCES
         rt_term.c
         rt_time.c
         rt_datetime.c
+        rt_dateonly.c
+        rt_easing.c
+        rt_duration.c
+        rt_reltime.c
+        rt_daterange.c
         rt_stopwatch.c
         rt_countdown.c
         rt_modvar.c
         rt_args.c
         rt_log.c
+        rt_msgbus.c
 )
 
 set(RT_ARRAY_SOURCES
@@ -50,19 +57,41 @@ set(RT_OOP_SOURCES
         rt_type_registry.c
         rt_ns_bridge.c
         rt_exc.c
+        rt_result.c
+        rt_option.c
+        rt_lazy.c
+        rt_lazyseq.c
 )
 
 set(RT_COLLECTIONS_SOURCES
         rt_bag.c
+        rt_convert_coll.c
+        rt_bitset.c
+        rt_deque.c
         rt_list.c
         rt_pqueue.c
         rt_seq.c
+        rt_seq_functional.c
         rt_set.c
+        rt_sortedset.c
         rt_stack.c
         rt_queue.c
         rt_ring.c
+        rt_lrucache.c
+        rt_bloomfilter.c
+        rt_unionfind.c
+        rt_orderedmap.c
+        rt_defaultmap.c
+        rt_frozenset.c
+        rt_frozenmap.c
+        rt_sparsearray.c
+        rt_weakmap.c
         rt_map.c
+        rt_bimap.c
+        rt_countmap.c
+        rt_multimap.c
         rt_treemap.c
+        rt_trie.c
         rt_bytes.c
         rt_grid2d.c
         rt_timer.c
@@ -82,6 +111,7 @@ set(RT_COLLECTIONS_SOURCES
 set(RT_TEXT_SOURCES
         rt_codec.c
         rt_csv.c
+        rt_ini.c
         rt_guid.c
         rt_hash.c
         rt_json.c
@@ -89,10 +119,23 @@ set(RT_TEXT_SOURCES
         rt_yaml.c
         rt_keyderive.c
         rt_aes.c
+        rt_cipher.c
+        rt_password.c
         rt_rand.c
         rt_regex.c
+        rt_compiled_pattern.c
+        rt_scanner.c
         rt_template.c
+        rt_textwrap.c
+        rt_diff.c
+        rt_numfmt.c
         rt_parse.c
+        rt_pluralize.c
+        rt_version.c
+        rt_toml.c
+        rt_markdown.c
+        rt_jsonpath.c
+        rt_html.c
 )
 
 set(RT_IO_FS_SOURCES
@@ -102,10 +145,13 @@ set(RT_IO_FS_SOURCES
         rt_file_ext.c
         rt_binfile.c
         rt_memstream.c
+        rt_stream.c
         rt_linereader.c
         rt_linewriter.c
         rt_path.c
         rt_dir.c
+        rt_glob.c
+        rt_tempfile.c
         rt_watcher.c
         rt_compress.c
         rt_archive.c
@@ -132,24 +178,36 @@ set(RT_GRAPHICS_SOURCES
         rt_sprite.c
         rt_camera.c
         rt_tilemap.c
+        rt_scene.c
+        rt_spritebatch.c
 )
 
 set(RT_AUDIO_SOURCES
         rt_audio.c
+        rt_playlist.c
 )
 
 set(RT_THREADS_SOURCES
         rt_channel.c
+        rt_future.c
         rt_monitor.c
+        rt_parallel.c
         rt_safe_i64.c
         rt_threads.c
         rt_threadpool.c
         rt_threads_primitives.cpp
+        rt_concqueue.c
+        rt_cancellation.c
+        rt_debounce.c
+        rt_scheduler.c
 )
 
 set(RT_NETWORK_SOURCES
         rt_network.c
         rt_network_http.c
+        rt_restclient.c
+        rt_retry.c
+        rt_ratelimit.c
         rt_websocket.c
         rt_crypto.c
         rt_tls.c
@@ -215,6 +273,8 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_sprite.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_camera.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_tilemap.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_scene.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_spritebatch.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_audio.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_threads.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_network.h

@@ -20,6 +20,7 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "viper/diag/BasicDiag.hpp"
 #include <cctype>
@@ -95,18 +96,7 @@ StmtPtr Parser::parseStatement(int line)
     //    Must be checked before registry lookup since LINE is not a reserved keyword.
     if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordInput)
     {
-        auto toUpper = [](std::string_view text)
-        {
-            std::string result;
-            result.reserve(text.size());
-            for (char ch : text)
-            {
-                unsigned char byte = static_cast<unsigned char>(ch);
-                result.push_back(static_cast<char>(std::toupper(byte)));
-            }
-            return result;
-        };
-        if (toUpper(peek().lexeme) == "LINE")
+        if (string_utils::to_upper(peek().lexeme) == "LINE")
         {
             return parseLineInputStatement();
         }

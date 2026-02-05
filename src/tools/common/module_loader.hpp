@@ -8,7 +8,9 @@
 // File: tools/common/module_loader.hpp
 // Purpose: Shared helpers for loading and verifying IL modules used by CLI tools.
 // Key invariants: LoadResult accurately describes success or failure without mutating the output
-// Ownership/Lifetime: To be documented.
+// Ownership/Lifetime: Functions take Module by reference and populate it on success.
+//                     Callers own the Module and must keep it alive while using returned results.
+//                     LoadResult owns its diagnostic data; safe to copy/move.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

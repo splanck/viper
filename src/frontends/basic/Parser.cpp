@@ -22,6 +22,7 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Options.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "support/source_manager.hpp"
 #include <array>
 #include <cctype>
@@ -254,15 +255,6 @@ Parser::StatementParserRegistry Parser::buildStatementRegistry()
 /// @return Parsed BASIC return type or @ref BasicType::Unknown when unrecognised.
 BasicType Parser::parseBasicType()
 {
-    const auto toUpper = [](std::string_view text)
-    {
-        std::string result;
-        result.reserve(text.size());
-        for (char c : text)
-            result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-        return result;
-    };
-
     const Token &tok = peek();
 
     if (tok.kind == TokenKind::KeywordBoolean)
@@ -274,7 +266,7 @@ BasicType Parser::parseBasicType()
     if (tok.kind != TokenKind::Identifier)
         return BasicType::Unknown;
 
-    std::string upper = toUpper(tok.lexeme);
+    std::string upper = string_utils::to_upper(tok.lexeme);
     if (upper == "INTEGER" || upper == "LONG" || upper == "INT")
     {
         consume();

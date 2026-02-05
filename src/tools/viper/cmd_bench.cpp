@@ -33,6 +33,7 @@
 #include <iostream>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef _WIN32
@@ -109,7 +110,7 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config)
 
     for (int i = 0; i < argc; ++i)
     {
-        std::string arg = argv[i];
+        std::string_view arg = argv[i];
 
         if (arg == "-n")
         {
@@ -226,7 +227,7 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config)
         }
         else
         {
-            config.ilFiles.push_back(arg);
+            config.ilFiles.push_back(std::string(arg));
         }
     }
 

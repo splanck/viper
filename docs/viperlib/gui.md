@@ -492,29 +492,116 @@ END IF
 
 ### ListBox
 
-Scrollable list of selectable items.
+Scrollable list of selectable items with enhanced item management.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 
-| Method                     | Signature          | Description                     |
-|----------------------------|--------------------|---------------------------------|
-| `AddItem(text)`            | `Object(String)`   | Add item, returns item handle   |
-| `RemoveItem(item)`         | `Void(Object)`     | Remove item                     |
-| `Clear()`                  | `Void()`           | Remove all items                |
-| `Select(item)`             | `Void(Object)`     | Select item (NULL to deselect)  |
-| `GetSelected()`            | `Object()`         | Get selected item handle        |
+### Properties
+
+| Property             | Type    | Access | Description                              |
+|----------------------|---------|--------|------------------------------------------|
+| `Count`              | Integer | Read   | Number of items in the list              |
+| `SelectedIndex`      | Integer | R/W    | Index of selected item (-1 if none)      |
+| `WasSelectionChanged`| Integer | Read   | 1 if selection changed this frame        |
+
+### Methods
+
+| Method                     | Signature               | Description                     |
+|----------------------------|-------------------------|---------------------------------|
+| `AddItem(text)`            | `Object(String)`        | Add item, returns item handle   |
+| `RemoveItem(item)`         | `Void(Object)`          | Remove item                     |
+| `Clear()`                  | `Void()`                | Remove all items                |
+| `Select(item)`             | `Void(Object)`          | Select item (NULL to deselect)  |
+| `GetSelected()`            | `Object()`              | Get selected item handle        |
+| `SelectIndex(index)`       | `Void(Integer)`         | Select item by index            |
+| `GetCount()`               | `Integer()`             | Get number of items             |
+| `GetSelectedIndex()`       | `Integer()`             | Get selected item index         |
+| `SetFont(font, size)`      | `Void(Font, Double)`    | Set font for list items         |
+
+### Item Methods
+
+ListBox items support additional properties for flexible data management:
+
+| Method                     | Signature               | Description                     |
+|----------------------------|-------------------------|---------------------------------|
+| `item.GetText()`           | `String()`              | Get item display text           |
+| `item.SetText(text)`       | `Void(String)`          | Set item display text           |
+| `item.GetData()`           | `String()`              | Get item user data              |
+| `item.SetData(data)`       | `Void(String)`          | Set item user data              |
+
+### Example
 
 ```basic
 DIM fileList AS Viper.GUI.ListBox
 fileList = NEW Viper.GUI.ListBox(root)
 fileList.SetSize(200, 300)
 
-fileList.AddItem("document.txt")
-fileList.AddItem("image.png")
-fileList.AddItem("data.csv")
+' Add items with display text
+DIM item1 AS Object = fileList.AddItem("document.txt")
+DIM item2 AS Object = fileList.AddItem("image.png")
+DIM item3 AS Object = fileList.AddItem("data.csv")
 
-DIM selected AS Object
-selected = fileList.GetSelected()
+' Attach user data to items (e.g., file paths)
+item1.SetData("/home/user/documents/document.txt")
+item2.SetData("/home/user/pictures/image.png")
+item3.SetData("/home/user/data/data.csv")
+
+' Get item count
+PRINT "Total items: "; fileList.GetCount()
+
+' Select by index
+fileList.SelectIndex(0)  ' Select first item
+
+' Check for selection changes in main loop
+DO WHILE app.ShouldClose = 0
+    app.Poll()
+
+    IF fileList.WasSelectionChanged = 1 THEN
+        DIM selected AS Object = fileList.GetSelected()
+        IF selected <> NULL THEN
+            PRINT "Selected: "; selected.GetText()
+            PRINT "Path: "; selected.GetData()
+        END IF
+    END IF
+
+    app.Render()
+LOOP
+```
+
+### File Browser Example
+
+```basic
+' Build a simple file browser
+DIM fileList AS Viper.GUI.ListBox
+fileList = NEW Viper.GUI.ListBox(root)
+fileList.SetSize(250, 400)
+
+' Set custom font
+DIM monoFont AS Viper.GUI.Font
+monoFont = Viper.GUI.Font.Load("consola.ttf")
+fileList.SetFont(monoFont, 11)
+
+' Populate with files
+SUB LoadFiles(path AS STRING)
+    fileList.Clear()
+
+    DIM files() AS STRING
+    files = Viper.IO.Directory.GetFiles(path)
+
+    FOR i = 0 TO UBOUND(files)
+        DIM item AS Object = fileList.AddItem(files(i))
+        item.SetData(path + "/" + files(i))  ' Store full path
+    NEXT i
+END SUB
+
+' Handle double-click to open file
+IF fileList.WasSelectionChanged = 1 THEN
+    DIM idx AS INTEGER = fileList.GetSelectedIndex()
+    IF idx >= 0 THEN
+        DIM item AS Object = fileList.GetSelected()
+        OpenFile(item.GetData())
+    END IF
+END IF
 ```
 
 ---

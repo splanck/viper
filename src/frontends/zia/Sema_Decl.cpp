@@ -78,6 +78,16 @@ void Sema::analyzeBind(BindDecl &decl)
     }
 }
 
+/// @brief Analyze a bind declaration that imports a runtime namespace.
+/// @details Handles three forms of namespace binding:
+///          1. Selective import: `bind Viper.Terminal { Say, ReadLine };`
+///             - Only listed symbols are imported into scope
+///          2. Alias import: `bind Viper.Terminal as T;`
+///             - Namespace accessible via alias (e.g., T.Say())
+///          3. Full import: `bind Viper.Terminal;`
+///             - All namespace symbols imported into current scope
+///          Validates that the namespace exists and checks for symbol conflicts.
+/// @param decl The bind declaration AST node to analyze.
 void Sema::analyzeNamespaceBind(BindDecl &decl)
 {
     const std::string &ns = decl.path;
@@ -289,6 +299,67 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
     }
 }
 
+void Sema::validateInterfaceImplementations(const std::string &typeName,
+                                            const SourceLoc &loc,
+                                            const std::vector<std::string> &interfaces)
+{
+    for (const auto &ifaceName : interfaces)
+    {
+        auto ifaceIt = interfaceDecls_.find(ifaceName);
+        if (ifaceIt == interfaceDecls_.end())
+        {
+            error(loc, "Unknown interface: " + ifaceName);
+            continue;
+        }
+
+        bool ok = true;
+        InterfaceDecl *iface = ifaceIt->second;
+        for (auto &member : iface->members)
+        {
+            if (member->kind != DeclKind::Method)
+                continue;
+
+            auto *ifaceMethod = static_cast<MethodDecl *>(member.get());
+            std::string ifaceKey = ifaceName + "." + ifaceMethod->name;
+            auto ifaceTypeIt = methodTypes_.find(ifaceKey);
+            if (ifaceTypeIt == methodTypes_.end())
+                continue;
+
+            std::string implKey = typeName + "." + ifaceMethod->name;
+            auto implIt = methodTypes_.find(implKey);
+            if (implIt == methodTypes_.end())
+            {
+                error(loc,
+                      "Type '" + typeName + "' does not implement interface method '" + ifaceName +
+                          "." + ifaceMethod->name + "'");
+                ok = false;
+                continue;
+            }
+
+            if (!implIt->second->equals(*ifaceTypeIt->second))
+            {
+                error(loc,
+                      "Method '" + typeName + "." + ifaceMethod->name +
+                          "' does not match interface '" + ifaceName + "." + ifaceMethod->name +
+                          "' signature");
+                ok = false;
+            }
+
+            auto visIt = memberVisibility_.find(implKey);
+            if (visIt != memberVisibility_.end() && visIt->second != Visibility::Public)
+            {
+                error(loc,
+                      "Method '" + typeName + "." + ifaceMethod->name +
+                          "' must be public to satisfy interface '" + ifaceName + "'");
+                ok = false;
+            }
+        }
+
+        if (ok)
+            types::registerInterfaceImplementation(typeName, ifaceName);
+    }
+}
+
 void Sema::analyzeValueDecl(ValueDecl &decl)
 {
     // Generic types are registered in the first pass; skip body analysis
@@ -319,61 +390,7 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
     }
 
     // Validate interface implementations after members are known
-    for (const auto &ifaceName : decl.interfaces)
-    {
-        auto ifaceIt = interfaceDecls_.find(ifaceName);
-        if (ifaceIt == interfaceDecls_.end())
-        {
-            error(decl.loc, "Unknown interface: " + ifaceName);
-            continue;
-        }
-
-        bool ok = true;
-        InterfaceDecl *iface = ifaceIt->second;
-        for (auto &member : iface->members)
-        {
-            if (member->kind != DeclKind::Method)
-                continue;
-
-            auto *ifaceMethod = static_cast<MethodDecl *>(member.get());
-            std::string ifaceKey = ifaceName + "." + ifaceMethod->name;
-            auto ifaceTypeIt = methodTypes_.find(ifaceKey);
-            if (ifaceTypeIt == methodTypes_.end())
-                continue;
-
-            std::string implKey = decl.name + "." + ifaceMethod->name;
-            auto implIt = methodTypes_.find(implKey);
-            if (implIt == methodTypes_.end())
-            {
-                error(decl.loc,
-                      "Type '" + decl.name + "' does not implement interface method '" + ifaceName +
-                          "." + ifaceMethod->name + "'");
-                ok = false;
-                continue;
-            }
-
-            if (!implIt->second->equals(*ifaceTypeIt->second))
-            {
-                error(decl.loc,
-                      "Method '" + decl.name + "." + ifaceMethod->name +
-                          "' does not match interface '" + ifaceName + "." + ifaceMethod->name +
-                          "' signature");
-                ok = false;
-            }
-
-            auto visIt = memberVisibility_.find(implKey);
-            if (visIt != memberVisibility_.end() && visIt->second != Visibility::Public)
-            {
-                error(decl.loc,
-                      "Method '" + decl.name + "." + ifaceMethod->name +
-                          "' must be public to satisfy interface '" + ifaceName + "'");
-                ok = false;
-            }
-        }
-
-        if (ok)
-            types::registerInterfaceImplementation(decl.name, ifaceName);
-    }
+    validateInterfaceImplementations(decl.name, decl.loc, decl.interfaces);
 
     popScope();
     currentSelfType_ = nullptr;
@@ -564,61 +581,8 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         }
     }
 
-    for (const auto &ifaceName : decl.interfaces)
-    {
-        auto ifaceIt = interfaceDecls_.find(ifaceName);
-        if (ifaceIt == interfaceDecls_.end())
-        {
-            error(decl.loc, "Unknown interface: " + ifaceName);
-            continue;
-        }
-
-        bool ok = true;
-        InterfaceDecl *iface = ifaceIt->second;
-        for (auto &member : iface->members)
-        {
-            if (member->kind != DeclKind::Method)
-                continue;
-
-            auto *ifaceMethod = static_cast<MethodDecl *>(member.get());
-            std::string ifaceKey = ifaceName + "." + ifaceMethod->name;
-            auto ifaceTypeIt = methodTypes_.find(ifaceKey);
-            if (ifaceTypeIt == methodTypes_.end())
-                continue;
-
-            std::string implKey = decl.name + "." + ifaceMethod->name;
-            auto implIt = methodTypes_.find(implKey);
-            if (implIt == methodTypes_.end())
-            {
-                error(decl.loc,
-                      "Type '" + decl.name + "' does not implement interface method '" + ifaceName +
-                          "." + ifaceMethod->name + "'");
-                ok = false;
-                continue;
-            }
-
-            if (!implIt->second->equals(*ifaceTypeIt->second))
-            {
-                error(decl.loc,
-                      "Method '" + decl.name + "." + ifaceMethod->name +
-                          "' does not match interface '" + ifaceName + "." + ifaceMethod->name +
-                          "' signature");
-                ok = false;
-            }
-
-            auto visIt = memberVisibility_.find(implKey);
-            if (visIt != memberVisibility_.end() && visIt->second != Visibility::Public)
-            {
-                error(decl.loc,
-                      "Method '" + decl.name + "." + ifaceMethod->name +
-                          "' must be public to satisfy interface '" + ifaceName + "'");
-                ok = false;
-            }
-        }
-
-        if (ok)
-            types::registerInterfaceImplementation(decl.name, ifaceName);
-    }
+    // Validate interface implementations
+    validateInterfaceImplementations(decl.name, decl.loc, decl.interfaces);
 
     popScope();
     currentSelfType_ = nullptr;

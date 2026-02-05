@@ -15,7 +15,7 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Sound`, `Music` — audio playback for games and applications              |
-| [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `Stack`, `TreeMap` |
+| [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap` |
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
@@ -62,13 +62,16 @@ implemented in C and exposed through the IL runtime system.
 |-----------------------------------------------------|----------|-------------------------------------|
 | [`Bag`](collections.md#vipercollectionsbag)         | Instance | String set with set operations      |
 | [`Bytes`](collections.md#vipercollectionsbytes)     | Instance | Byte array for binary data          |
+| [`Deque`](collections.md#vipercollectionsdeque)     | Instance | Double-ended queue                  |
 | [`Heap`](collections.md#vipercollectionsheap)       | Instance | Priority queue (min/max heap)       |
+| [`LazySeq`](collections.md#vipercollectionslazyseq) | Instance | Lazy on-demand sequence             |
 | [`List`](collections.md#vipercollectionslist)       | Instance | Dynamic array of objects            |
 | [`Map`](collections.md#vipercollectionsmap)         | Instance | String-keyed hash map               |
 | [`Queue`](collections.md#vipercollectionsqueue)     | Instance | FIFO collection                     |
 | [`Ring`](collections.md#vipercollectionsring)       | Instance | Fixed-size circular buffer          |
 | [`Seq`](collections.md#vipercollectionsseq)         | Instance | Growable array with stack/queue ops |
 | [`Set`](collections.md#vipercollectionsset)         | Instance | Generic object set with set ops     |
+| [`SortedSet`](collections.md#vipercollectionssortedset) | Instance | Sorted string set with range ops |
 | [`Stack`](collections.md#vipercollectionsstack)     | Instance | LIFO collection                     |
 | [`TreeMap`](collections.md#vipercollectionstreemap) | Instance | Sorted key-value map                |
 
@@ -232,20 +235,23 @@ implemented in C and exposed through the IL runtime system.
 
 ## Which Collection Should I Use?
 
-| Need                      | Use       | Why                                      |
-|---------------------------|-----------|------------------------------------------|
-| 2D tile maps/grids        | `Grid2D`  | Efficient (x,y) access, bounds checking  |
-| Binary data               | `Bytes`   | Efficient byte manipulation              |
-| FIFO (first-in-first-out) | `Queue`   | Enqueue/dequeue interface                |
-| Priority queue            | `Heap`    | Extract min/max by priority              |
-| Fixed-size buffer         | `Ring`    | Overwrites oldest when full              |
-| Indexed array             | `Seq`     | Fast random access, push/pop             |
-| Key-value pairs           | `Map`     | O(1) lookup by string key                |
-| Legacy compatibility      | `List`    | Similar to VB6 Collection                |
-| LIFO (last-in-first-out)  | `Stack`   | Simple push/pop interface                |
-| Sorted key-value          | `TreeMap` | Keys in sorted order, floor/ceil queries |
-| Unique objects            | `Set`     | Object set with set operations           |
-| Unique strings            | `Bag`     | String set operations (union, etc.)      |
+| Need                        | Use         | Why                                         |
+|-----------------------------|-------------|---------------------------------------------|
+| 2D tile maps/grids          | `Grid2D`    | Efficient (x,y) access, bounds checking     |
+| Binary data                 | `Bytes`     | Efficient byte manipulation                 |
+| Both ends access            | `Deque`     | Push/pop from front and back, indexed       |
+| FIFO (first-in-first-out)   | `Queue`     | Enqueue/dequeue interface                   |
+| Fixed-size buffer           | `Ring`      | Overwrites oldest when full                 |
+| Indexed array               | `Seq`       | Fast random access, push/pop                |
+| Key-value pairs             | `Map`       | O(1) lookup by string key                   |
+| Large/infinite sequences    | `LazySeq`   | Memory-efficient on-demand generation       |
+| Legacy compatibility        | `List`      | Similar to VB6 Collection                   |
+| LIFO (last-in-first-out)    | `Stack`     | Simple push/pop interface                   |
+| Priority queue              | `Heap`      | Extract min/max by priority                 |
+| Sorted key-value            | `TreeMap`   | Keys in sorted order, floor/ceil queries    |
+| Sorted unique strings       | `SortedSet` | Sorted order, range queries, floor/ceil     |
+| Unique objects              | `Set`       | Object set with set operations              |
+| Unique strings              | `Bag`       | String set operations (union, etc.)         |
 
 ---
 

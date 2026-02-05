@@ -161,134 +161,16 @@ VMContext::VMContext(VM &vm) noexcept : vmInstance(&vm)
 }
 
 /// @brief Evaluate an IL value within the current frame.
-/// @details Resolves temporaries from the register file, marshals constants into
-///          slot storage, and performs trap reporting for invalid references
-///          (such as out-of-range temporaries or unknown globals).  String
-///          constants are cached so embedded NUL literals survive round-tripping
-///          into the runtime without losing data.
+/// @details Delegates to VM::eval() which handles temporaries, integer/float
+///          immediates, string literals, and global references. This wrapper
+///          ensures VMContext callers have a consistent interface while avoiding
+///          code duplication with the core VM evaluation logic.
 /// @param fr Frame providing registers and pending literals.
 /// @param value IL value to evaluate.
 /// @return Slot populated with the evaluated payload.
 Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
 {
-    // Fast path: Temp is the most common case - inline hot path, branch to cold error
-    if (value.kind == il::core::Value::Kind::Temp) [[likely]]
-    {
-        if (value.id < fr.regs.size()) [[likely]]
-            return fr.regs[value.id];
-
-        // Cold path: register out of range
-        const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
-        const il::core::BasicBlock *block = vmInstance->currentContext.block;
-        const std::string blockLabel = block ? block->label : std::string();
-        const auto loc = vmInstance->currentContext.loc;
-
-        std::string message =
-            detail::formatRegisterRangeError(value.id, fr.regs.size(), fnName, blockLabel);
-        if (loc.hasLine())
-        {
-            message.reserve(message.size() + 24);
-            message += ", at line ";
-            message += std::to_string(loc.line);
-            if (loc.hasColumn())
-            {
-                message.push_back(':');
-                message += std::to_string(loc.column);
-            }
-        }
-        else
-        {
-            message += ", at unknown location";
-        }
-        RuntimeBridge::trap(TrapKind::InvalidOperation, message, loc, fnName, blockLabel);
-        return Slot{};
-    }
-
-    // Fast path: ConstInt - just extract the value directly (no function call)
-    if (value.kind == il::core::Value::Kind::ConstInt) [[likely]]
-    {
-        Slot slot{};
-        slot.i64 = value.i64;
-        return slot;
-    }
-
-    // Fast path: ConstFloat - just extract the value directly
-    if (value.kind == il::core::Value::Kind::ConstFloat)
-    {
-        Slot slot{};
-        slot.f64 = value.f64;
-        return slot;
-    }
-
-    // Less common cases
-    switch (value.kind)
-    {
-        case il::core::Value::Kind::ConstStr:
-        {
-            Slot s{};
-            // Fast path: lookup in pre-populated cache (CRITICAL-3 optimization).
-            // The cache is populated during VM construction, so this find() should
-            // succeed for all string literals in the module. The try_emplace fallback
-            // handles edge cases like dynamically generated strings.
-            auto it = vmInstance->inlineLiteralCache.find(value.str);
-            if (it != vmInstance->inlineLiteralCache.end())
-            {
-                s.str = it->second.get();
-                return s;
-            }
-            // Cold path: string not in cache, insert it
-            auto [insertIt, inserted] = vmInstance->inlineLiteralCache.try_emplace(value.str);
-            if (inserted)
-            {
-                if (value.str.find('\0') == std::string::npos)
-                    insertIt->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
-                else
-                    insertIt->second =
-                        ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
-            }
-            s.str = insertIt->second.get();
-            return s;
-        }
-        case il::core::Value::Kind::GlobalAddr:
-        {
-            Slot s{};
-            // Map to function pointer when name matches a function
-            auto fIt = vmInstance->fnMap.find(value.str);
-            if (fIt != vmInstance->fnMap.end())
-            {
-                s.ptr = const_cast<il::core::Function *>(fIt->second);
-                return s;
-            }
-
-            // Check mutable globals
-            auto mIt = vmInstance->programState_->mutableGlobalMap.find(value.str);
-            if (mIt != vmInstance->programState_->mutableGlobalMap.end())
-            {
-                s.ptr = mIt->second;
-                return s;
-            }
-
-            // Fall back to const string globals
-            auto it = vmInstance->programState_->strMap.find(value.str);
-            if (it == vmInstance->programState_->strMap.end())
-            {
-                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
-            }
-            else
-            {
-                s.str = it->second.get();
-            }
-            return s;
-        }
-        case il::core::Value::Kind::NullPtr:
-        {
-            Slot slot{};
-            slot.ptr = nullptr;
-            return slot;
-        }
-        default:
-            return Slot{};
-    }
+    return vmInstance->eval(fr, value);
 }
 
 /// @brief Execute a single interpreter step for the bound VM.

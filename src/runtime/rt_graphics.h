@@ -471,6 +471,43 @@ extern "C"
     /// @return Darkened color.
     int64_t rt_color_darken(int64_t color, int64_t amount);
 
+    /// @brief Parse a hex color string (e.g., "#FF0000" or "#FF000080").
+    /// @param hex Hex string with or without '#' prefix.
+    /// @return Packed color value (0xAARRGGBB).
+    int64_t rt_color_from_hex(rt_string hex);
+
+    /// @brief Convert a color to hex string format.
+    /// @param color Packed color value.
+    /// @return Hex string like "#RRGGBB" or "#RRGGBBAA" if alpha != 255.
+    rt_string rt_color_to_hex(int64_t color);
+
+    /// @brief Increase saturation of a color.
+    /// @param color Packed color value.
+    /// @param amount Amount to increase (0-100).
+    /// @return Saturated color.
+    int64_t rt_color_saturate(int64_t color, int64_t amount);
+
+    /// @brief Decrease saturation of a color.
+    /// @param color Packed color value.
+    /// @param amount Amount to decrease (0-100).
+    /// @return Desaturated color.
+    int64_t rt_color_desaturate(int64_t color, int64_t amount);
+
+    /// @brief Get the complementary color (opposite on color wheel).
+    /// @param color Packed color value.
+    /// @return Complementary color.
+    int64_t rt_color_complement(int64_t color);
+
+    /// @brief Convert a color to grayscale.
+    /// @param color Packed color value.
+    /// @return Grayscale color.
+    int64_t rt_color_grayscale(int64_t color);
+
+    /// @brief Invert a color (255 - each channel).
+    /// @param color Packed color value.
+    /// @return Inverted color.
+    int64_t rt_color_invert(int64_t color);
+
     //=========================================================================
     // Canvas Extended Functions
     //=========================================================================

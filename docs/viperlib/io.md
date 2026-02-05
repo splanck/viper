@@ -15,6 +15,7 @@
 - [Viper.IO.LineWriter](#viperiolinewriter)
 - [Viper.IO.MemStream](#viperiomemstream)
 - [Viper.IO.Path](#viperiopath)
+- [Viper.IO.Stream](#viperiostream)
 - [Viper.IO.Watcher](#viperiowatcher)
 
 ---
@@ -1255,6 +1256,165 @@ watcher.Stop()
 - After receiving an event, use `EventPath()` and `EventType()` to get details
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
 - Platform-specific behavior may vary slightly for edge cases
+
+---
+
+## Viper.IO.Stream
+
+Unified stream abstraction providing a common interface over file and memory streams.
+
+**Type:** Instance class
+
+**Constructors:**
+
+- `Viper.IO.Stream.OpenFile(path, mode)` - Opens a file stream (wraps BinFile)
+- `Viper.IO.Stream.OpenMemory()` - Opens a new in-memory stream (wraps MemStream)
+- `Viper.IO.Stream.WrapFile(binFile)` - Wraps an existing BinFile object
+- `Viper.IO.Stream.WrapMemory(memStream)` - Wraps an existing MemStream object
+
+### Properties
+
+| Property | Type    | Description                                  |
+|----------|---------|----------------------------------------------|
+| `Pos`    | Integer | Current stream position (read/write)         |
+| `Len`    | Integer | Current data length in bytes (read-only)     |
+| `Eof`    | Boolean | True if at end of stream (read-only)         |
+| `IsFile` | Boolean | True if backed by a file (read-only)         |
+| `IsMem`  | Boolean | True if backed by memory (read-only)         |
+
+### Methods
+
+| Method              | Returns | Description                                      |
+|---------------------|---------|--------------------------------------------------|
+| `Read(count)`       | Bytes   | Read up to count bytes                           |
+| `Write(bytes)`      | void    | Write bytes to stream                            |
+| `ReadByte()`        | Integer | Read single byte (0-255) or -1 at EOF            |
+| `WriteByte(value)`  | void    | Write single byte (0-255)                        |
+| `Seek(offset)`      | void    | Seek to absolute position                        |
+| `Skip(count)`       | void    | Skip forward count bytes                         |
+| `Flush()`           | void    | Flush buffered writes                            |
+| `Close()`           | void    | Close the stream and release resources           |
+| `ToBytes()`         | Bytes   | Get all data as Bytes (memory streams only)      |
+
+### Open Modes (for OpenFile)
+
+| Mode   | Description                               |
+|--------|-------------------------------------------|
+| `"r"`  | Read only (file must exist)               |
+| `"w"`  | Write only (creates or truncates)         |
+| `"rw"` | Read and write (file must exist)          |
+| `"a"`  | Append (creates if needed)                |
+
+### Example
+
+```basic
+' Open a file stream
+DIM fs AS OBJECT = Viper.IO.Stream.OpenFile("data.bin", "rw")
+
+' Write some data
+DIM data AS OBJECT = Viper.Collections.Bytes.FromString("Hello, Stream!")
+fs.Write(data)
+
+' Seek back and read
+fs.Seek(0)
+DIM readData AS OBJECT = fs.Read(14)
+PRINT readData.ToStr()  ' Output: Hello, Stream!
+
+fs.Close()
+
+' Open a memory stream
+DIM ms AS OBJECT = Viper.IO.Stream.OpenMemory()
+
+' Write to memory
+ms.Write(Viper.Collections.Bytes.FromString("In-memory data"))
+
+' Get all data
+DIM allData AS OBJECT = ms.ToBytes()
+PRINT "Length:"; allData.Len
+
+ms.Close()
+```
+
+### Polymorphic Processing Example
+
+```basic
+' Process data from any stream source
+SUB ProcessStream(stream AS OBJECT)
+    ' Read header
+    DIM header AS OBJECT = stream.Read(4)
+    PRINT "Header:"; header.ToHex()
+
+    ' Read remaining data
+    DO WHILE NOT stream.Eof
+        DIM chunk AS OBJECT = stream.Read(1024)
+        ProcessChunk(chunk)
+    LOOP
+END SUB
+
+' Use with file
+DIM fileStream AS OBJECT = Viper.IO.Stream.OpenFile("input.bin", "r")
+ProcessStream(fileStream)
+fileStream.Close()
+
+' Use with memory (e.g., from network)
+DIM memStream AS OBJECT = Viper.IO.Stream.OpenMemory()
+memStream.Write(networkData)
+memStream.Seek(0)
+ProcessStream(memStream)
+memStream.Close()
+```
+
+### Wrapping Existing Streams
+
+```basic
+' Wrap an existing BinFile
+DIM bf AS OBJECT = Viper.IO.BinFile.Open("data.bin", "r")
+DIM wrapped AS OBJECT = Viper.IO.Stream.WrapFile(bf)
+
+' Use the unified interface
+DIM data AS OBJECT = wrapped.Read(100)
+
+' The wrapped stream does NOT own the BinFile
+' You must close the original BinFile separately
+wrapped.Close()  ' Releases wrapper only
+bf.Close()       ' Closes the actual file
+
+' Wrap an existing MemStream
+DIM ms AS OBJECT = Viper.IO.MemStream.New()
+ms.WriteStr("test data")
+ms.Seek(0)
+
+DIM wrappedMem AS OBJECT = Viper.IO.Stream.WrapMemory(ms)
+DIM str AS STRING = wrappedMem.Read(9).ToStr()
+```
+
+### Use Cases
+
+- **Abstraction:** Write code that works with both files and memory
+- **Testing:** Use memory streams in tests, files in production
+- **Buffering:** Read network data into memory stream, process uniformly
+- **Interoperability:** Wrap existing BinFile/MemStream for unified access
+
+### Stream vs BinFile vs MemStream
+
+| Feature           | Stream                  | BinFile        | MemStream           |
+|-------------------|-------------------------|----------------|---------------------|
+| Unified interface | Yes                     | No             | No                  |
+| File backing      | Via OpenFile/WrapFile   | Yes            | No                  |
+| Memory backing    | Via OpenMemory/WrapMemory | No           | Yes                 |
+| Polymorphic use   | Yes                     | No             | No                  |
+| Ownership control | Yes (wrap vs open)      | Always owns    | Always owns         |
+| Best for          | Polymorphic I/O code    | Direct file I/O| In-memory buffering |
+
+Use Stream when:
+- You need code that works with both files and memory
+- You want to abstract the data source from processing logic
+- You're building libraries that accept stream-like inputs
+
+Use BinFile/MemStream directly when:
+- You know the specific backing type
+- You need type-specific features
+- Maximum performance is critical
 
 ---
 

@@ -1,0 +1,61 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: rt_seq_functional.h
+// Purpose: Wrapper functions for Seq functional operations with IL-compatible
+//          signatures (function pointers passed as void*).
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    /// @brief Keep elements matching predicate (wrapper for IL).
+    /// @param seq Seq object.
+    /// @param pred Predicate function (int8_t (*)(void *) cast to void*).
+    /// @return New Seq with matching elements.
+    void *rt_seq_keep_wrapper(void *seq, void *pred);
+
+    /// @brief Reject elements matching predicate (wrapper for IL).
+    void *rt_seq_reject_wrapper(void *seq, void *pred);
+
+    /// @brief Apply transform to each element (wrapper for IL).
+    void *rt_seq_apply_wrapper(void *seq, void *fn);
+
+    /// @brief Check if all elements match predicate (wrapper for IL).
+    int8_t rt_seq_all_wrapper(void *seq, void *pred);
+
+    /// @brief Check if any element matches predicate (wrapper for IL).
+    int8_t rt_seq_any_wrapper(void *seq, void *pred);
+
+    /// @brief Check if no elements match predicate (wrapper for IL).
+    int8_t rt_seq_none_wrapper(void *seq, void *pred);
+
+    /// @brief Count elements matching predicate (wrapper for IL).
+    int64_t rt_seq_count_where_wrapper(void *seq, void *pred);
+
+    /// @brief Find first element matching predicate (wrapper for IL).
+    void *rt_seq_find_where_wrapper(void *seq, void *pred);
+
+    /// @brief Take elements while predicate is true (wrapper for IL).
+    void *rt_seq_take_while_wrapper(void *seq, void *pred);
+
+    /// @brief Drop elements while predicate is true (wrapper for IL).
+    void *rt_seq_drop_while_wrapper(void *seq, void *pred);
+
+    /// @brief Fold/reduce sequence with accumulator (wrapper for IL).
+    void *rt_seq_fold_wrapper(void *seq, void *init, void *fn);
+
+#ifdef __cplusplus
+}
+#endif

@@ -30,6 +30,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace il;
@@ -86,7 +87,7 @@ int cmdILOpt(int argc, char **argv)
 
     for (int i = 1; i < argc; ++i)
     {
-        std::string arg = argv[i];
+        std::string_view arg = argv[i];
         if (arg == "-o" && i + 1 < argc)
         {
             outFile = argv[++i];

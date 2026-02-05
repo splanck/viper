@@ -39,6 +39,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -176,7 +177,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
 
     for (int i = 1; i < argc; ++i)
     {
-        std::string arg = argv[i];
+        std::string_view arg = argv[i];
         if (arg == "--break")
         {
             if (i + 1 >= argc)

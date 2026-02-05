@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_regex.h"
+#include "rt_regex_internal.h"
 
 #include "rt_internal.h"
 #include "rt_seq.h"
@@ -87,14 +88,18 @@ struct re_node
     } data;
 };
 
-/// Compiled pattern
-typedef struct
+/// Compiled pattern (exposed via rt_regex_internal.h as re_compiled_pattern)
+struct re_compiled_pattern
 {
     char *pattern_str;
     re_node *root;
     bool anchored_start; // Pattern starts with ^
     bool anchored_end;   // Pattern ends with $
-} compiled_pattern;
+    int group_count;     // Number of capture groups (not including group 0)
+};
+
+// Local typedef for compatibility with existing code
+typedef struct re_compiled_pattern compiled_pattern;
 
 //=============================================================================
 // Memory Management
@@ -156,6 +161,12 @@ static void pattern_free(compiled_pattern *p)
     free(p->pattern_str);
     node_free(p->root);
     free(p);
+}
+
+// Public API for internal header
+void re_free(re_compiled_pattern *cp)
+{
+    pattern_free(cp);
 }
 
 //=============================================================================
@@ -578,6 +589,38 @@ static re_node *parse_alternation(parser_state *p)
     return alt;
 }
 
+/// Count groups in AST
+static int count_groups(re_node *n)
+{
+    if (!n)
+        return 0;
+
+    int count = 0;
+    switch (n->type)
+    {
+        case RE_GROUP:
+            count = 1; // This group
+            for (int i = 0; i < n->data.children.count; i++)
+            {
+                count += count_groups(n->data.children.children[i]);
+            }
+            break;
+        case RE_CONCAT:
+        case RE_ALT:
+            for (int i = 0; i < n->data.children.count; i++)
+            {
+                count += count_groups(n->data.children.children[i]);
+            }
+            break;
+        case RE_QUANT:
+            count = count_groups(n->data.quant.child);
+            break;
+        default:
+            break;
+    }
+    return count;
+}
+
 /// Compile a pattern string into AST
 static compiled_pattern *compile_pattern(const char *pattern)
 {
@@ -611,7 +654,26 @@ static compiled_pattern *compile_pattern(const char *pattern)
         cp->root = node_new(RE_CONCAT);
     }
 
+    // Count capture groups
+    cp->group_count = count_groups(cp->root);
+
     return cp;
+}
+
+// Public compile API
+re_compiled_pattern *re_compile(const char *pattern)
+{
+    return compile_pattern(pattern);
+}
+
+const char *re_get_pattern(re_compiled_pattern *cp)
+{
+    return cp ? cp->pattern_str : "";
+}
+
+int re_group_count(re_compiled_pattern *cp)
+{
+    return cp ? cp->group_count : 0;
 }
 
 //=============================================================================
@@ -820,6 +882,267 @@ static bool find_match(compiled_pattern *cp,
         }
     }
     return false;
+}
+
+// Public find_match API
+bool re_find_match(re_compiled_pattern *cp,
+                   const char *text,
+                   int text_len,
+                   int start_from,
+                   int *match_start,
+                   int *match_end)
+{
+    return find_match(cp, text, text_len, start_from, match_start, match_end);
+}
+
+//-----------------------------------------------------------------------------
+// Capture Group Support
+//-----------------------------------------------------------------------------
+
+/// Match context with group tracking
+typedef struct
+{
+    const char *text;
+    int text_len;
+    int start_pos;
+    int *group_starts;
+    int *group_ends;
+    int max_groups;
+    int next_group;
+} match_context_groups;
+
+// Forward declarations for group-capturing versions
+static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos);
+
+/// Match a quantified node with group tracking
+static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos)
+{
+    re_node *child = n->data.quant.child;
+    re_quant_type qtype = n->data.quant.qtype;
+    bool greedy = n->data.quant.greedy;
+
+    int min_count = (qtype == QUANT_PLUS) ? 1 : 0;
+    int max_count = (qtype == QUANT_QUEST) ? 1 : INT32_MAX;
+
+    int *match_ends = (int *)malloc(sizeof(int) * (ctx->text_len - pos + 2));
+    if (!match_ends)
+        rt_trap("Pattern: memory allocation failed");
+
+    int num_matches = 0;
+    int cur_pos = pos;
+
+    match_ends[num_matches++] = pos;
+
+    while (num_matches - 1 < max_count)
+    {
+        int child_end;
+        if (match_node_groups(ctx, child, cur_pos, &child_end))
+        {
+            if (child_end == cur_pos)
+                break;
+            cur_pos = child_end;
+            match_ends[num_matches++] = cur_pos;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    bool found = false;
+    if (greedy)
+    {
+        for (int i = num_matches - 1; i >= 0; i--)
+        {
+            if (i >= min_count)
+            {
+                *end_pos = match_ends[i];
+                found = true;
+                break;
+            }
+        }
+    }
+    else
+    {
+        for (int i = 0; i < num_matches; i++)
+        {
+            if (i >= min_count)
+            {
+                *end_pos = match_ends[i];
+                found = true;
+                break;
+            }
+        }
+    }
+
+    free(match_ends);
+    return found;
+}
+
+/// Match node with group tracking
+static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos)
+{
+    if (!n)
+    {
+        *end_pos = pos;
+        return true;
+    }
+
+    switch (n->type)
+    {
+        case RE_LITERAL:
+            if (pos < ctx->text_len && ctx->text[pos] == n->data.literal)
+            {
+                *end_pos = pos + 1;
+                return true;
+            }
+            return false;
+
+        case RE_DOT:
+            if (pos < ctx->text_len && ctx->text[pos] != '\n')
+            {
+                *end_pos = pos + 1;
+                return true;
+            }
+            return false;
+
+        case RE_ANCHOR_START:
+            if (pos == 0)
+            {
+                *end_pos = pos;
+                return true;
+            }
+            return false;
+
+        case RE_ANCHOR_END:
+            if (pos == ctx->text_len)
+            {
+                *end_pos = pos;
+                return true;
+            }
+            return false;
+
+        case RE_CLASS:
+            if (pos < ctx->text_len &&
+                class_test(&n->data.char_class, (unsigned char)ctx->text[pos]))
+            {
+                *end_pos = pos + 1;
+                return true;
+            }
+            return false;
+
+        case RE_CONCAT:
+        {
+            int cur_pos = pos;
+            for (int i = 0; i < n->data.children.count; i++)
+            {
+                int child_end;
+                if (!match_node_groups(ctx, n->data.children.children[i], cur_pos, &child_end))
+                {
+                    return false;
+                }
+                cur_pos = child_end;
+            }
+            *end_pos = cur_pos;
+            return true;
+        }
+
+        case RE_ALT:
+            for (int i = 0; i < n->data.children.count; i++)
+            {
+                int child_end;
+                if (match_node_groups(ctx, n->data.children.children[i], pos, &child_end))
+                {
+                    *end_pos = child_end;
+                    return true;
+                }
+            }
+            return false;
+
+        case RE_GROUP:
+        {
+            int group_idx = ctx->next_group++;
+            int child_end = pos;
+            bool matched = true;
+
+            if (n->data.children.count > 0)
+            {
+                matched = match_node_groups(ctx, n->data.children.children[0], pos, &child_end);
+            }
+
+            if (matched && group_idx < ctx->max_groups)
+            {
+                ctx->group_starts[group_idx] = pos;
+                ctx->group_ends[group_idx] = child_end;
+            }
+
+            if (matched)
+            {
+                *end_pos = child_end;
+            }
+            else
+            {
+                ctx->next_group--;  // Revert group index
+            }
+            return matched;
+        }
+
+        case RE_QUANT:
+            return match_quant_groups(ctx, n, pos, end_pos);
+    }
+
+    return false;
+}
+
+/// Find match with capture groups
+static bool find_match_groups(compiled_pattern *cp,
+                              const char *text,
+                              int text_len,
+                              int start_from,
+                              int *match_start,
+                              int *match_end,
+                              int *group_starts,
+                              int *group_ends,
+                              int max_groups,
+                              int *num_groups)
+{
+    match_context_groups ctx = {
+        text, text_len, 0,
+        group_starts, group_ends, max_groups, 0
+    };
+
+    for (int i = start_from; i <= text_len; i++)
+    {
+        ctx.start_pos = i;
+        ctx.next_group = 0;
+        int end_pos;
+        if (match_node_groups(&ctx, cp->root, i, &end_pos))
+        {
+            *match_start = i;
+            *match_end = end_pos;
+            *num_groups = ctx.next_group;
+            return true;
+        }
+    }
+    *num_groups = 0;
+    return false;
+}
+
+// Public API for group capturing
+bool re_find_match_with_groups(re_compiled_pattern *cp,
+                               const char *text,
+                               int text_len,
+                               int start_from,
+                               int *match_start,
+                               int *match_end,
+                               int *group_starts,
+                               int *group_ends,
+                               int max_groups,
+                               int *num_groups)
+{
+    return find_match_groups(cp, text, text_len, start_from,
+                             match_start, match_end,
+                             group_starts, group_ends, max_groups, num_groups);
 }
 
 //=============================================================================

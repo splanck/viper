@@ -19,6 +19,7 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 
@@ -540,21 +541,9 @@ Type Parser::parseTypeKeyword()
     }
     if (at(TokenKind::Identifier))
     {
-        auto toUpper = [](std::string_view text)
-        {
-            std::string result;
-            result.reserve(text.size());
-            for (char ch : text)
-            {
-                unsigned char byte = static_cast<unsigned char>(ch);
-                result.push_back(static_cast<char>(std::toupper(byte)));
-            }
-            return result;
-        };
-
         std::string name = peek().lexeme;
         consume();
-        std::string upperName = toUpper(name);
+        std::string upperName = string_utils::to_upper(name);
         if (upperName == "INTEGER" || upperName == "INT" || upperName == "LONG")
             return Type::I64;
         if (upperName == "DOUBLE" || upperName == "FLOAT")
@@ -640,19 +629,8 @@ std::vector<Param> Parser::parseParamList()
             if (at(TokenKind::Identifier))
             {
                 // Determine if this is a primitive keyword or a class name
-                auto toUpper = [](std::string_view text)
-                {
-                    std::string result;
-                    result.reserve(text.size());
-                    for (char ch : text)
-                    {
-                        unsigned char byte = static_cast<unsigned char>(ch);
-                        result.push_back(static_cast<char>(std::toupper(byte)));
-                    }
-                    return result;
-                };
                 std::string first = peek().lexeme;
-                std::string upper = toUpper(first);
+                std::string upper = string_utils::to_upper(first);
                 const bool isPrimitive =
                     (upper == "INTEGER" || upper == "INT" || upper == "LONG" || upper == "DOUBLE" ||
                      upper == "FLOAT" || upper == "SINGLE" || upper == "STRING" ||

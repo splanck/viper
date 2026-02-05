@@ -77,6 +77,10 @@ constexpr std::array<InfixParselet, 18> infixParselets{
     InfixParselet{TokenKind::KeywordOr, BinaryExpr::Op::LogicalOr, 1, Assoc::Left},
 };
 
+/// @brief Look up the prefix parselet for a token kind.
+/// @param kind The token kind to search for.
+/// @return Pointer to the matching parselet, or nullptr if not found.
+/// @note Uses linear search; consider optimizing if this becomes a bottleneck.
 inline const PrefixParselet *findPrefix(TokenKind kind)
 {
     const auto it =
@@ -86,6 +90,10 @@ inline const PrefixParselet *findPrefix(TokenKind kind)
     return it == prefixParselets.end() ? nullptr : &*it;
 }
 
+/// @brief Look up the infix parselet for a token kind.
+/// @param kind The token kind to search for.
+/// @return Pointer to the matching parselet, or nullptr if not found.
+/// @note Uses linear search; consider optimizing if this becomes a bottleneck.
 inline const InfixParselet *findInfix(TokenKind kind)
 {
     const auto it =
@@ -419,22 +427,7 @@ ExprPtr Parser::parseArrayOrVar()
             {
                 if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
                 {
-                    // Case-insensitive comparison
-                    auto equalsIgnoreCase = [](const std::string &lhs, const std::string &rhs)
-                    {
-                        if (lhs.size() != rhs.size())
-                            return false;
-                        for (std::size_t i = 0; i < lhs.size(); ++i)
-                        {
-                            unsigned char lc = static_cast<unsigned char>(lhs[i]);
-                            unsigned char rc = static_cast<unsigned char>(rhs[i]);
-                            if (std::toupper(lc) != std::toupper(rc))
-                                return false;
-                        }
-                        return true;
-                    };
-
-                    if (equalsIgnoreCase(name, method->name))
+                    if (string_utils::iequals(name, method->name))
                     {
                         // This is a method call - rewrite to ME.MethodName(args)
                         auto methodCall = std::make_unique<MethodCallExpr>();

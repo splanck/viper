@@ -24,75 +24,24 @@ namespace il::transform
 {
 
 /// @brief Hash a Value based on its kind and payload.
-/// @details The hash combines a kind-specific seed with the value's payload to
-///          yield stable results across runs. Temporaries hash on id, integer
-///          constants include the boolean flag, floating-point constants hash
-///          on their raw bit pattern, and string-backed values hash on content.
-///          The result is deterministic but not intended for cryptographic use.
+/// @details Delegates to the shared valueHash() helper in il::core for
+///          consistent hashing across the codebase.
 /// @param v Value to hash.
 /// @return Hash code suitable for unordered containers.
 size_t ValueHash::operator()(const Value &v) const noexcept
 {
-    size_t h = static_cast<size_t>(v.kind) * 1469598103934665603ULL;
-    switch (v.kind)
-    {
-        case Value::Kind::Temp:
-            h ^= static_cast<size_t>(v.id) + 0x9e3779b97f4a7c15ULL;
-            break;
-        case Value::Kind::ConstInt:
-            h ^= static_cast<size_t>(v.i64) ^ (v.isBool ? 0xBEEF : 0);
-            break;
-        case Value::Kind::ConstFloat:
-        {
-            union
-            {
-                double d;
-                unsigned long long u;
-            } u{};
-
-            u.d = v.f64;
-            h ^= static_cast<size_t>(u.u);
-            break;
-        }
-        case Value::Kind::ConstStr:
-        case Value::Kind::GlobalAddr:
-            h ^= std::hash<std::string>{}(v.str);
-            break;
-        case Value::Kind::NullPtr:
-            h ^= 0xabcdefULL;
-            break;
-    }
-    return h;
+    return valueHash(v);
 }
 
 /// @brief Compare two Values for equality of semantic payload.
-/// @details The comparison is intentionally strict on value payload while
-///          ignoring any name-only metadata. Values must share the same kind;
-///          temporaries compare ids, integer constants compare numeric value
-///          and boolean flag, floating constants compare bitwise value, and
-///          string-backed values compare string content.
+/// @details Delegates to the shared valueEquals() helper in il::core for
+///          consistent comparison across the codebase.
 /// @param a First value to compare.
 /// @param b Second value to compare.
 /// @return True if both values represent the same payload; false otherwise.
 bool ValueEq::operator()(const Value &a, const Value &b) const noexcept
 {
-    if (a.kind != b.kind)
-        return false;
-    switch (a.kind)
-    {
-        case Value::Kind::Temp:
-            return a.id == b.id;
-        case Value::Kind::ConstInt:
-            return a.i64 == b.i64 && a.isBool == b.isBool;
-        case Value::Kind::ConstFloat:
-            return a.f64 == b.f64;
-        case Value::Kind::ConstStr:
-        case Value::Kind::GlobalAddr:
-            return a.str == b.str;
-        case Value::Kind::NullPtr:
-            return true;
-    }
-    return false;
+    return valueEquals(a, b);
 }
 
 /// @brief Compare two expression keys for structural equivalence.

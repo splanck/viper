@@ -107,6 +107,29 @@ extern "C"
     /// @return Octal string without prefix (e.g., "77").
     rt_string rt_fmt_oct(int64_t value);
 
+    /// @brief Format an integer with thousands separators.
+    /// @param value The integer to format.
+    /// @param sep Separator string (e.g., "," or ".").
+    /// @return Formatted string (e.g., "1,234,567").
+    rt_string rt_fmt_int_grouped(int64_t value, rt_string sep);
+
+    /// @brief Format a number as currency.
+    /// @param value The amount.
+    /// @param decimals Decimal places (typically 2).
+    /// @param symbol Currency symbol (e.g., "$", "€").
+    /// @return Formatted string (e.g., "$1,234.56").
+    rt_string rt_fmt_currency(double value, int64_t decimals, rt_string symbol);
+
+    /// @brief Convert a non-negative integer to English words.
+    /// @param value The number (0 to 999,999,999,999).
+    /// @return English text (e.g., "one hundred twenty-three").
+    rt_string rt_fmt_to_words(int64_t value);
+
+    /// @brief Convert an integer to ordinal string.
+    /// @param value The number.
+    /// @return Ordinal string (e.g., "1st", "2nd", "3rd", "4th").
+    rt_string rt_fmt_ordinal(int64_t value);
+
 #ifdef __cplusplus
 }
 #endif

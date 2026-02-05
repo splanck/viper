@@ -21,7 +21,14 @@ namespace il::frontends::basic
 namespace
 {
 
-/// @brief Case-insensitive string comparison helper.
+/// @brief Case-insensitive ASCII string comparison for BASIC identifiers.
+/// @details BASIC is a case-insensitive language, so class/field/method lookups
+///          must compare identifiers without regard to case. Uses std::toupper
+///          for ASCII comparison, which is sufficient for BASIC identifiers
+///          (no Unicode support required).
+/// @param a First string to compare.
+/// @param b Second string to compare.
+/// @return True if strings match case-insensitively; false otherwise.
 bool iequals(std::string_view a, std::string_view b)
 {
     if (a.size() != b.size())

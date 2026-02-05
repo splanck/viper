@@ -47,7 +47,7 @@ namespace ilc
 ///         produced a parsing error.
 SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, SharedCliOptions &opts)
 {
-    const std::string arg = argv[index];
+    const std::string_view arg = argv[index];
     if (arg == "--trace" || arg == "--trace=il")
     {
         opts.trace.mode = il::vm::TraceConfig::IL;

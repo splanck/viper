@@ -22,6 +22,7 @@
 #include "rt_string.h"
 
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1881,6 +1882,112 @@ int64_t rt_color_darken(int64_t color, int64_t amount)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+int64_t rt_color_from_hex(rt_string hex)
+{
+    const char *s = rt_string_cstr(hex);
+    if (!s) return 0;
+    if (*s == '#') s++;
+    size_t len = strlen(s);
+    unsigned long val = strtoul(s, NULL, 16);
+    if (len == 6)
+        return (int64_t)val; // 0xRRGGBB
+    if (len == 8)
+    {
+        // Input is RRGGBBAA, store as AARRGGBB
+        int64_t r = (val >> 24) & 0xFF;
+        int64_t g = (val >> 16) & 0xFF;
+        int64_t b = (val >> 8) & 0xFF;
+        int64_t a = val & 0xFF;
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+    if (len == 3)
+    {
+        // Shorthand: RGB -> RRGGBB
+        int64_t r = (val >> 8) & 0xF;
+        int64_t g = (val >> 4) & 0xF;
+        int64_t b = val & 0xF;
+        return ((r | (r << 4)) << 16) | ((g | (g << 4)) << 8) | (b | (b << 4));
+    }
+    return (int64_t)val;
+}
+
+rt_string rt_color_to_hex(int64_t color)
+{
+    char buf[10];
+    int64_t a = (color >> 24) & 0xFF;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int len;
+    if (a != 0 && a != 255)
+        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X",
+                       (int)r, (int)g, (int)b, (int)a);
+    else
+        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X",
+                       (int)r, (int)g, (int)b);
+    return rt_string_from_bytes(buf, (size_t)len);
+}
+
+int64_t rt_color_saturate(int64_t color, int64_t amount)
+{
+    if (amount < 0) amount = 0;
+    if (amount > 100) amount = 100;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rgb_to_hsl(r, g, b, &h, &s, &l);
+    s = s + amount;
+    if (s > 100) s = 100;
+    hsl_to_rgb(h, s, l, &r, &g, &b);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+int64_t rt_color_desaturate(int64_t color, int64_t amount)
+{
+    if (amount < 0) amount = 0;
+    if (amount > 100) amount = 100;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rgb_to_hsl(r, g, b, &h, &s, &l);
+    s = s - amount;
+    if (s < 0) s = 0;
+    hsl_to_rgb(h, s, l, &r, &g, &b);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+int64_t rt_color_complement(int64_t color)
+{
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rgb_to_hsl(r, g, b, &h, &s, &l);
+    h = (h + 180) % 360;
+    hsl_to_rgb(h, s, l, &r, &g, &b);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+int64_t rt_color_grayscale(int64_t color)
+{
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    // Luminance formula: 0.299R + 0.587G + 0.114B
+    int64_t gray = (r * 299 + g * 587 + b * 114) / 1000;
+    return ((gray & 0xFF) << 16) | ((gray & 0xFF) << 8) | (gray & 0xFF);
+}
+
+int64_t rt_color_invert(int64_t color)
+{
+    int64_t r = 255 - ((color >> 16) & 0xFF);
+    int64_t g = 255 - ((color >> 8) & 0xFF);
+    int64_t b = 255 - (color & 0xFF);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
 //=============================================================================
 // Extended Canvas Functions
 //=============================================================================
@@ -2448,6 +2555,50 @@ int64_t rt_color_darken(int64_t color, int64_t amount)
 {
     (void)color;
     (void)amount;
+    return 0;
+}
+
+int64_t rt_color_from_hex(rt_string hex)
+{
+    (void)hex;
+    return 0;
+}
+
+rt_string rt_color_to_hex(int64_t color)
+{
+    (void)color;
+    return rt_string_from_bytes("#000000", 7);
+}
+
+int64_t rt_color_saturate(int64_t color, int64_t amount)
+{
+    (void)color;
+    (void)amount;
+    return 0;
+}
+
+int64_t rt_color_desaturate(int64_t color, int64_t amount)
+{
+    (void)color;
+    (void)amount;
+    return 0;
+}
+
+int64_t rt_color_complement(int64_t color)
+{
+    (void)color;
+    return 0;
+}
+
+int64_t rt_color_grayscale(int64_t color)
+{
+    (void)color;
+    return 0;
+}
+
+int64_t rt_color_invert(int64_t color)
+{
+    (void)color;
     return 0;
 }
 

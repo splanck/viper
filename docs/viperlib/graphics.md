@@ -12,6 +12,9 @@
 - [Viper.Graphics.Sprite](#vipergraphicssprite)
 - [Viper.Graphics.Tilemap](#vipergraphicstilemap)
 - [Viper.Graphics.Camera](#vipergraphicscamera)
+- [Viper.Graphics.SceneNode](#vipergraphicsscenenode)
+- [Viper.Graphics.Scene](#vipergraphicsscene)
+- [Viper.Graphics.SpriteBatch](#vipergraphicsspritebatch)
 
 ---
 
@@ -796,6 +799,324 @@ SUB Render()
     canvas.Flip()
 END SUB
 ```
+
+---
+
+## Viper.Graphics.SceneNode
+
+Hierarchical scene node for building scene graphs with transform inheritance.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics.SceneNode(sprite)`
+
+Creates a scene node wrapping a sprite. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
+
+### Properties
+
+| Property   | Type    | Access | Description                                    |
+|------------|---------|--------|------------------------------------------------|
+| `X`        | Double  | R/W    | Local X position (relative to parent)          |
+| `Y`        | Double  | R/W    | Local Y position (relative to parent)          |
+| `ScaleX`   | Double  | R/W    | Local X scale (1.0 = 100%)                     |
+| `ScaleY`   | Double  | R/W    | Local Y scale (1.0 = 100%)                     |
+| `Rotation` | Double  | R/W    | Local rotation in degrees                      |
+| `Visible`  | Integer | R/W    | Visibility (1=visible, 0=hidden)               |
+| `Depth`    | Double  | R/W    | Z-order for depth sorting (higher = on top)    |
+| `Parent`   | Object  | Read   | Parent scene node (NULL if root)               |
+
+### Methods
+
+| Method                     | Signature                      | Description                                    |
+|----------------------------|--------------------------------|------------------------------------------------|
+| `AddChild(child)`          | `Void(SceneNode)`              | Add a child node                               |
+| `RemoveChild(child)`       | `Void(SceneNode)`              | Remove a child node                            |
+| `GetChildCount()`          | `Integer()`                    | Get number of direct children                  |
+| `GetChild(index)`          | `SceneNode(Integer)`           | Get child by index                             |
+| `WorldX()`                 | `Double()`                     | Get computed world X position                  |
+| `WorldY()`                 | `Double()`                     | Get computed world Y position                  |
+| `WorldScaleX()`            | `Double()`                     | Get computed world X scale                     |
+| `WorldScaleY()`            | `Double()`                     | Get computed world Y scale                     |
+| `WorldRotation()`          | `Double()`                     | Get computed world rotation                    |
+| `SetSprite(sprite)`        | `Void(Sprite)`                 | Set the sprite for this node                   |
+| `GetSprite()`              | `Sprite()`                     | Get the sprite                                 |
+
+### Example
+
+```basic
+' Create sprites
+DIM bodySprite AS Viper.Graphics.Sprite
+DIM armSprite AS Viper.Graphics.Sprite
+bodySprite = Viper.Graphics.Sprite.FromFile("body.bmp")
+armSprite = Viper.Graphics.Sprite.FromFile("arm.bmp")
+
+' Create scene nodes
+DIM body AS Viper.Graphics.SceneNode
+DIM arm AS Viper.Graphics.SceneNode
+body = NEW Viper.Graphics.SceneNode(bodySprite)
+arm = NEW Viper.Graphics.SceneNode(armSprite)
+
+' Build hierarchy - arm is child of body
+body.AddChild(arm)
+
+' Position arm relative to body
+arm.X = 20  ' 20 pixels right of body origin
+arm.Y = -10 ' 10 pixels above body origin
+
+' When body moves/rotates, arm follows automatically
+body.X = 100
+body.Y = 200
+body.Rotation = 45  ' Arm rotates with body
+
+' Arm inherits transforms - its world position is computed automatically
+PRINT "Arm world position: "; arm.WorldX(); ", "; arm.WorldY()
+```
+
+---
+
+## Viper.Graphics.Scene
+
+Root container for a scene graph. Manages rendering order and provides scene-level operations.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics.Scene()`
+
+### Properties
+
+| Property       | Type    | Access | Description                                |
+|----------------|---------|--------|--------------------------------------------|
+| `DepthSort`    | Integer | R/W    | Enable depth sorting (1=enabled, 0=disabled) |
+
+### Methods
+
+| Method                     | Signature                      | Description                                    |
+|----------------------------|--------------------------------|------------------------------------------------|
+| `AddNode(node)`            | `Void(SceneNode)`              | Add a root-level node to the scene             |
+| `RemoveNode(node)`         | `Void(SceneNode)`              | Remove a node from the scene                   |
+| `Clear()`                  | `Void()`                       | Remove all nodes                               |
+| `GetNodeCount()`           | `Integer()`                    | Get number of root nodes                       |
+| `Draw(canvas)`             | `Void(Canvas)`                 | Render all visible nodes to canvas             |
+| `FindNode(name)`           | `SceneNode(String)`            | Find a node by name (if named)                 |
+
+### Example
+
+```basic
+' Create a scene
+DIM scene AS Viper.Graphics.Scene
+scene = NEW Viper.Graphics.Scene()
+scene.DepthSort = 1  ' Enable depth sorting
+
+' Create game objects as scene nodes
+DIM background AS Viper.Graphics.SceneNode
+DIM player AS Viper.Graphics.SceneNode
+DIM foreground AS Viper.Graphics.SceneNode
+
+background = NEW Viper.Graphics.SceneNode(bgSprite)
+player = NEW Viper.Graphics.SceneNode(playerSprite)
+foreground = NEW Viper.Graphics.SceneNode(fgSprite)
+
+' Set depth (lower = rendered first/behind)
+background.Depth = 0
+player.Depth = 50
+foreground.Depth = 100
+
+' Add to scene
+scene.AddNode(background)
+scene.AddNode(player)
+scene.AddNode(foreground)
+
+' Game loop
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    canvas.Clear(&H000000)
+
+    ' Update player position
+    player.X = playerX
+    player.Y = playerY
+
+    ' Render entire scene (depth-sorted)
+    scene.Draw(canvas)
+
+    canvas.Flip()
+LOOP
+```
+
+### Hierarchical Character Example
+
+```basic
+' Build a character with multiple parts
+DIM character AS Viper.Graphics.SceneNode
+DIM head AS Viper.Graphics.SceneNode
+DIM body AS Viper.Graphics.SceneNode
+DIM leftArm AS Viper.Graphics.SceneNode
+DIM rightArm AS Viper.Graphics.SceneNode
+
+' Create nodes
+character = NEW Viper.Graphics.SceneNode(NULL)  ' Empty parent node
+body = NEW Viper.Graphics.SceneNode(bodySprite)
+head = NEW Viper.Graphics.SceneNode(headSprite)
+leftArm = NEW Viper.Graphics.SceneNode(armSprite)
+rightArm = NEW Viper.Graphics.SceneNode(armSprite)
+
+' Build hierarchy
+character.AddChild(body)
+body.AddChild(head)
+body.AddChild(leftArm)
+body.AddChild(rightArm)
+
+' Position parts relative to body
+head.Y = -40
+leftArm.X = -25
+leftArm.Y = -10
+rightArm.X = 25
+rightArm.Y = -10
+
+' Add character to scene
+scene.AddNode(character)
+
+' Moving/rotating the character moves all parts
+character.X = 400
+character.Y = 300
+character.Rotation = 15  ' Entire character tilts
+```
+
+---
+
+## Viper.Graphics.SpriteBatch
+
+Batched sprite rendering for improved performance when drawing many sprites.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics.SpriteBatch(canvas)`
+
+SpriteBatch collects draw calls and renders them efficiently in a single batch. Use this when drawing many sprites (particles, bullets, tiles) for better performance.
+
+### Properties
+
+| Property   | Type    | Access | Description                                |
+|------------|---------|--------|--------------------------------------------|
+| `DepthSort`| Integer | R/W    | Enable depth sorting (1=enabled, 0=disabled) |
+| `Tint`     | Integer | R/W    | Tint color applied to all sprites (ARGB)   |
+| `Alpha`    | Double  | R/W    | Global alpha multiplier (0.0-1.0)          |
+
+### Methods
+
+| Method                                          | Signature                                    | Description                                    |
+|-------------------------------------------------|----------------------------------------------|------------------------------------------------|
+| `Begin()`                                       | `Void()`                                     | Begin batch - call before drawing              |
+| `End()`                                         | `Void()`                                     | End batch and flush all draws to canvas        |
+| `Draw(sprite, x, y)`                            | `Void(Sprite, Double, Double)`               | Draw sprite at position                        |
+| `DrawEx(sprite, x, y, scaleX, scaleY, rotation)`| `Void(Sprite, Double, Double, Double, Double, Double)` | Draw with transform             |
+| `DrawPixels(pixels, x, y)`                      | `Void(Pixels, Double, Double)`               | Draw pixels buffer at position                 |
+| `DrawPixelsEx(pixels, x, y, scaleX, scaleY, rotation)` | `Void(Pixels, Double...)`             | Draw pixels with transform                     |
+| `DrawDepth(sprite, x, y, depth)`                | `Void(Sprite, Double, Double, Double)`       | Draw with explicit depth value                 |
+| `SetTint(color)`                                | `Void(Integer)`                              | Set tint color (ARGB)                          |
+| `SetAlpha(alpha)`                               | `Void(Double)`                               | Set global alpha (0.0-1.0)                     |
+| `Clear()`                                       | `Void()`                                     | Clear batch without rendering                  |
+| `GetCount()`                                    | `Integer()`                                  | Get number of pending draws                    |
+
+### Example
+
+```basic
+' Create sprite batch for the canvas
+DIM batch AS Viper.Graphics.SpriteBatch
+batch = NEW Viper.Graphics.SpriteBatch(canvas)
+
+' Load sprites
+DIM bulletSprite AS Viper.Graphics.Sprite
+bulletSprite = Viper.Graphics.Sprite.FromFile("bullet.bmp")
+
+' Array of bullet positions
+DIM bullets(100) AS DOUBLE  ' x, y pairs
+
+' Game loop
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    canvas.Clear(&H000000)
+
+    ' Begin batched rendering
+    batch.Begin()
+
+    ' Draw all bullets efficiently
+    FOR i = 0 TO 49
+        batch.Draw(bulletSprite, bullets(i * 2), bullets(i * 2 + 1))
+    NEXT i
+
+    ' End batch - all sprites rendered in one go
+    batch.End()
+
+    canvas.Flip()
+LOOP
+```
+
+### Particle System Example
+
+```basic
+' Create a simple particle system using SpriteBatch
+DIM batch AS Viper.Graphics.SpriteBatch
+batch = NEW Viper.Graphics.SpriteBatch(canvas)
+batch.DepthSort = 1  ' Sort particles by depth
+
+DIM particleSprite AS Viper.Graphics.Sprite
+particleSprite = Viper.Graphics.Sprite.FromFile("particle.bmp")
+
+' Particle data arrays
+DIM px(500) AS DOUBLE   ' X positions
+DIM py(500) AS DOUBLE   ' Y positions
+DIM pz(500) AS DOUBLE   ' Depth
+DIM pa(500) AS DOUBLE   ' Alpha
+
+' Render particles
+SUB RenderParticles()
+    batch.Begin()
+
+    FOR i = 0 TO 499
+        IF pa(i) > 0 THEN
+            ' Set alpha for this particle
+            batch.SetAlpha(pa(i))
+            batch.DrawDepth(particleSprite, px(i), py(i), pz(i))
+        END IF
+    NEXT i
+
+    batch.End()
+END SUB
+```
+
+### Tinting Example
+
+```basic
+' Create batch
+DIM batch AS Viper.Graphics.SpriteBatch
+batch = NEW Viper.Graphics.SpriteBatch(canvas)
+
+DIM sprite AS Viper.Graphics.Sprite
+sprite = Viper.Graphics.Sprite.FromFile("enemy.bmp")
+
+batch.Begin()
+
+' Draw normal sprite
+batch.Draw(sprite, 100, 100)
+
+' Draw with red tint (damaged enemy)
+batch.SetTint(&HFFFF0000)
+batch.Draw(sprite, 200, 100)
+
+' Draw with blue tint
+batch.SetTint(&HFF0000FF)
+batch.Draw(sprite, 300, 100)
+
+' Reset to no tint
+batch.SetTint(&HFFFFFFFF)
+batch.Draw(sprite, 400, 100)
+
+batch.End()
+```
+
+### Performance Tips
+
+- **Batch similar sprites:** Draw sprites that share the same texture together
+- **Minimize Begin/End calls:** Each Begin/End pair flushes the batch
+- **Use depth sorting wisely:** Disable when not needed for faster rendering
+- **Pre-allocate batches:** Create SpriteBatch once, reuse each frame
 
 ---
 

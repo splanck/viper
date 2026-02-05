@@ -133,4 +133,46 @@ struct Value
 
 std::string toString(const Value &v);
 
+//===----------------------------------------------------------------------===//
+// Value Comparison and Hashing Utilities
+//===----------------------------------------------------------------------===//
+
+/// @brief Compare two Values for semantic equality.
+/// @details Compares values based on their kind and payload. Temporaries compare
+///          by id, integers by value and boolean flag, floats by bit pattern,
+///          and string-backed values by string content. NullPtr values are
+///          always equal to other NullPtr values.
+/// @param a First value to compare.
+/// @param b Second value to compare.
+/// @return True if both values represent the same semantic payload.
+bool valueEquals(const Value &a, const Value &b) noexcept;
+
+/// @brief Hash a Value for use in unordered containers.
+/// @details Produces a stable hash combining the value kind with its payload.
+///          Uses mixing constants to reduce collisions across different value
+///          kinds. The hash is deterministic but not cryptographically secure.
+/// @param v Value to hash.
+/// @return Hash code suitable for std::unordered_map/set.
+size_t valueHash(const Value &v) noexcept;
+
+/// @name Hash Constants
+/// @brief Named constants for hash mixing operations.
+/// @details Using named constants improves readability and documents the
+///          provenance of magic numbers used in hash functions.
+/// @{
+
+/// Murmur-like mixing constant for combining hash values.
+inline constexpr size_t kHashKindMix = 1469598103934665603ULL;
+
+/// Golden ratio fractional constant (phi * 2^64), commonly used in hash mixing.
+inline constexpr size_t kHashPhiMix = 0x9e3779b97f4a7c15ULL;
+
+/// Sentinel hash value for null pointers.
+inline constexpr size_t kHashNullSentinel = 0xabcdefULL;
+
+/// Sentinel hash bit for boolean flag discrimination.
+inline constexpr size_t kHashBoolFlag = 0xBEEF;
+
+/// @}
+
 } // namespace il::core

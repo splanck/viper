@@ -359,6 +359,168 @@ static void test_cmp_null()
 }
 
 //===----------------------------------------------------------------------===//
+// Capitalize tests
+//===----------------------------------------------------------------------===//
+
+static void test_capitalize()
+{
+    assert(str_eq(rt_str_capitalize(make_str("hello")), "Hello"));
+    assert(str_eq(rt_str_capitalize(make_str("Hello")), "Hello"));
+    assert(str_eq(rt_str_capitalize(make_str("a")), "A"));
+    assert(str_eq(rt_str_capitalize(make_str("")), ""));
+    assert(str_eq(rt_str_capitalize(make_str("123abc")), "123abc"));
+}
+
+//===----------------------------------------------------------------------===//
+// Title tests
+//===----------------------------------------------------------------------===//
+
+static void test_title()
+{
+    assert(str_eq(rt_str_title(make_str("hello world")), "Hello World"));
+    assert(str_eq(rt_str_title(make_str("the quick brown fox")), "The Quick Brown Fox"));
+    assert(str_eq(rt_str_title(make_str("already Title Case")), "Already Title Case"));
+    assert(str_eq(rt_str_title(make_str("")), ""));
+    assert(str_eq(rt_str_title(make_str("a")), "A"));
+    assert(str_eq(rt_str_title(make_str("  two  spaces")), "  Two  Spaces"));
+}
+
+//===----------------------------------------------------------------------===//
+// RemovePrefix/RemoveSuffix tests
+//===----------------------------------------------------------------------===//
+
+static void test_remove_prefix()
+{
+    assert(str_eq(rt_str_remove_prefix(make_str("hello world"), make_str("hello ")), "world"));
+    assert(str_eq(rt_str_remove_prefix(make_str("hello"), make_str("xyz")), "hello"));
+    assert(str_eq(rt_str_remove_prefix(make_str("hello"), make_str("")), "hello"));
+    assert(str_eq(rt_str_remove_prefix(make_str(""), make_str("abc")), ""));
+    assert(str_eq(rt_str_remove_prefix(make_str("abc"), make_str("abcdef")), "abc"));
+}
+
+static void test_remove_suffix()
+{
+    assert(str_eq(rt_str_remove_suffix(make_str("hello world"), make_str(" world")), "hello"));
+    assert(str_eq(rt_str_remove_suffix(make_str("hello"), make_str("xyz")), "hello"));
+    assert(str_eq(rt_str_remove_suffix(make_str("hello"), make_str("")), "hello"));
+    assert(str_eq(rt_str_remove_suffix(make_str("file.txt"), make_str(".txt")), "file"));
+}
+
+//===----------------------------------------------------------------------===//
+// LastIndexOf tests
+//===----------------------------------------------------------------------===//
+
+static void test_last_index_of()
+{
+    assert(rt_str_last_index_of(make_str("abcabc"), make_str("abc")) == 4);
+    assert(rt_str_last_index_of(make_str("abcabc"), make_str("xyz")) == 0);
+    assert(rt_str_last_index_of(make_str("aaa"), make_str("a")) == 3);
+    assert(rt_str_last_index_of(make_str("hello"), make_str("hello")) == 1);
+    assert(rt_str_last_index_of(make_str(""), make_str("a")) == 0);
+}
+
+//===----------------------------------------------------------------------===//
+// TrimChar tests
+//===----------------------------------------------------------------------===//
+
+static void test_trim_char()
+{
+    assert(str_eq(rt_str_trim_char(make_str("***hello***"), make_str("*")), "hello"));
+    assert(str_eq(rt_str_trim_char(make_str("///path///"), make_str("/")), "path"));
+    assert(str_eq(rt_str_trim_char(make_str("hello"), make_str("*")), "hello"));
+    assert(str_eq(rt_str_trim_char(make_str("****"), make_str("*")), ""));
+    assert(str_eq(rt_str_trim_char(make_str(""), make_str("*")), ""));
+}
+
+//===----------------------------------------------------------------------===//
+// Slug tests
+//===----------------------------------------------------------------------===//
+
+static void test_slug()
+{
+    assert(str_eq(rt_str_slug(make_str("Hello World!")), "hello-world"));
+    assert(str_eq(rt_str_slug(make_str("  The Quick Brown Fox  ")), "the-quick-brown-fox"));
+    assert(str_eq(rt_str_slug(make_str("foo--bar  baz")), "foo-bar-baz"));
+    assert(str_eq(rt_str_slug(make_str("ABC 123")), "abc-123"));
+    assert(str_eq(rt_str_slug(make_str("")), ""));
+    assert(str_eq(rt_str_slug(make_str("already-a-slug")), "already-a-slug"));
+}
+
+//===----------------------------------------------------------------------===//
+// Levenshtein distance tests
+//===----------------------------------------------------------------------===//
+
+static void test_levenshtein()
+{
+    assert(rt_str_levenshtein(make_str("kitten"), make_str("sitting")) == 3);
+    assert(rt_str_levenshtein(make_str(""), make_str("abc")) == 3);
+    assert(rt_str_levenshtein(make_str("abc"), make_str("")) == 3);
+    assert(rt_str_levenshtein(make_str("abc"), make_str("abc")) == 0);
+    assert(rt_str_levenshtein(make_str("a"), make_str("b")) == 1);
+    assert(rt_str_levenshtein(make_str(""), make_str("")) == 0);
+    assert(rt_str_levenshtein(make_str("flaw"), make_str("lawn")) == 2);
+}
+
+//===----------------------------------------------------------------------===//
+// Jaro / Jaro-Winkler tests
+//===----------------------------------------------------------------------===//
+
+static void test_jaro()
+{
+    // Identical strings -> 1.0
+    double j1 = rt_str_jaro(make_str("hello"), make_str("hello"));
+    assert(j1 > 0.999 && j1 <= 1.0);
+
+    // Completely different -> 0.0
+    double j2 = rt_str_jaro(make_str("abc"), make_str("xyz"));
+    assert(j2 >= 0.0 && j2 < 0.01);
+
+    // Empty strings -> 1.0
+    double j3 = rt_str_jaro(make_str(""), make_str(""));
+    assert(j3 > 0.999);
+
+    // One empty -> 0.0
+    double j4 = rt_str_jaro(make_str("abc"), make_str(""));
+    assert(j4 >= 0.0 && j4 < 0.01);
+
+    // Classic example: MARTHA vs MARHTA
+    double j5 = rt_str_jaro(make_str("MARTHA"), make_str("MARHTA"));
+    assert(j5 > 0.94 && j5 < 0.95); // Should be ~0.9444
+}
+
+static void test_jaro_winkler()
+{
+    // Identical strings -> 1.0
+    double jw1 = rt_str_jaro_winkler(make_str("hello"), make_str("hello"));
+    assert(jw1 > 0.999 && jw1 <= 1.0);
+
+    // MARTHA vs MARHTA: Jaro-Winkler should be higher than Jaro
+    double jaro = rt_str_jaro(make_str("MARTHA"), make_str("MARHTA"));
+    double jw2 = rt_str_jaro_winkler(make_str("MARTHA"), make_str("MARHTA"));
+    assert(jw2 >= jaro); // Winkler bonus for common prefix "MAR"
+    assert(jw2 > 0.96 && jw2 < 0.98); // Should be ~0.9611
+
+    // Completely different -> close to 0.0
+    double jw3 = rt_str_jaro_winkler(make_str("abc"), make_str("xyz"));
+    assert(jw3 >= 0.0 && jw3 < 0.01);
+}
+
+//===----------------------------------------------------------------------===//
+// Hamming distance tests
+//===----------------------------------------------------------------------===//
+
+static void test_hamming()
+{
+    assert(rt_str_hamming(make_str("karolin"), make_str("kathrin")) == 3);
+    assert(rt_str_hamming(make_str("abc"), make_str("abc")) == 0);
+    assert(rt_str_hamming(make_str("abc"), make_str("xyz")) == 3);
+    // Different lengths -> -1
+    assert(rt_str_hamming(make_str("ab"), make_str("abc")) == -1);
+    // Empty strings -> 0
+    assert(rt_str_hamming(make_str(""), make_str("")) == 0);
+}
+
+//===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
 
@@ -408,6 +570,29 @@ int main()
     test_cmp();
     test_cmp_nocase();
     test_cmp_null();
+
+    // Capitalize/Title tests
+    test_capitalize();
+    test_title();
+
+    // RemovePrefix/RemoveSuffix tests
+    test_remove_prefix();
+    test_remove_suffix();
+
+    // LastIndexOf tests
+    test_last_index_of();
+
+    // TrimChar tests
+    test_trim_char();
+
+    // Slug tests
+    test_slug();
+
+    // String similarity tests
+    test_levenshtein();
+    test_jaro();
+    test_jaro_winkler();
+    test_hamming();
 
     return 0;
 }

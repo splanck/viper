@@ -8,15 +8,19 @@
 
 - [Viper.Collections.Bag](#vipercollectionsbag)
 - [Viper.Collections.Bytes](#vipercollectionsbytes)
+- [Viper.Collections.Deque](#vipercollectionsdeque)
 - [Viper.Collections.Heap](#vipercollectionsheap)
+- [Viper.Collections.LazySeq](#vipercollectionslazyseq)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
 - [Viper.Collections.Queue](#vipercollectionsqueue)
 - [Viper.Collections.Ring](#vipercollectionsring)
 - [Viper.Collections.Seq](#vipercollectionsseq)
 - [Viper.Collections.Set](#vipercollectionsset)
+- [Viper.Collections.SortedSet](#vipercollectionssortedset)
 - [Viper.Collections.Stack](#vipercollectionsstack)
 - [Viper.Collections.TreeMap](#vipercollectionstreemap)
+- [Viper.Collections.WeakMap](#vipercollectionsweakmap)
 
 ---
 
@@ -206,6 +210,111 @@ PRINT data.ToHex()        ' Output: "00000000"
 
 ---
 
+## Viper.Collections.Deque
+
+A double-ended queue (deque) that supports efficient insertion and removal at both ends. Combines the capabilities of
+stacks and queues while also supporting indexed access.
+
+**Type:** Instance (obj)
+**Constructors:**
+
+- `NEW Viper.Collections.Deque()` - Create with default capacity
+- `Viper.Collections.Deque.WithCapacity(cap)` - Create with specified initial capacity
+
+### Properties
+
+| Property  | Type    | Description                               |
+|-----------|---------|-------------------------------------------|
+| `Len`     | Integer | Number of elements in the deque           |
+| `Cap`     | Integer | Current allocated capacity                |
+| `IsEmpty` | Boolean | Returns true if the deque has no elements |
+
+### Methods
+
+| Method               | Signature               | Description                                           |
+|----------------------|-------------------------|-------------------------------------------------------|
+| `PushFront(value)`   | `Void(Object)`          | Add element to front of deque                         |
+| `PushBack(value)`    | `Void(Object)`          | Add element to back of deque                          |
+| `PopFront()`         | `Object()`              | Remove and return front element (traps if empty)      |
+| `PopBack()`          | `Object()`              | Remove and return back element (traps if empty)       |
+| `PeekFront()`        | `Object()`              | Return front element without removing (traps if empty)|
+| `PeekBack()`         | `Object()`              | Return back element without removing (traps if empty) |
+| `Get(index)`         | `Object(Integer)`       | Get element at index (0 = front)                      |
+| `Set(index, value)`  | `Void(Integer, Object)` | Set element at index                                  |
+| `Has(value)`         | `Boolean(Object)`       | Check if element exists (pointer equality)            |
+| `Clear()`            | `Void()`                | Remove all elements                                   |
+| `Reverse()`          | `Void()`                | Reverse elements in place                             |
+| `Clone()`            | `Deque()`               | Create shallow copy                                   |
+
+### Example
+
+```basic
+DIM deque AS Viper.Collections.Deque
+deque = NEW Viper.Collections.Deque()
+
+' Add elements to both ends
+deque.PushBack("middle")
+deque.PushFront("front")
+deque.PushBack("back")
+
+PRINT deque.Len          ' Output: 3
+
+' Access by index (0 = front)
+PRINT deque.Get(0)       ' Output: "front"
+PRINT deque.Get(1)       ' Output: "middle"
+PRINT deque.Get(2)       ' Output: "back"
+
+' Peek without removing
+PRINT deque.PeekFront()  ' Output: "front"
+PRINT deque.PeekBack()   ' Output: "back"
+
+' Pop from either end
+PRINT deque.PopFront()   ' Output: "front"
+PRINT deque.PopBack()    ' Output: "back"
+PRINT deque.Len          ' Output: 1
+
+' Use as stack (LIFO)
+deque.PushBack("a")
+deque.PushBack("b")
+deque.PushBack("c")
+PRINT deque.PopBack()    ' Output: "c" (LIFO)
+
+' Use as queue (FIFO)
+deque.Clear()
+deque.PushBack("first")
+deque.PushBack("second")
+PRINT deque.PopFront()   ' Output: "first" (FIFO)
+
+' Reverse in place
+deque.Clear()
+deque.PushBack("a")
+deque.PushBack("b")
+deque.PushBack("c")
+deque.Reverse()
+PRINT deque.Get(0)       ' Output: "c" (was last)
+```
+
+### Deque vs Queue vs Stack
+
+| Feature          | Deque          | Queue         | Stack         |
+|------------------|----------------|---------------|---------------|
+| Add front        | O(1)           | No            | No            |
+| Add back         | O(1)           | O(1)          | O(1)          |
+| Remove front     | O(1)           | O(1)          | No            |
+| Remove back      | O(1)           | No            | O(1)          |
+| Random access    | O(1)           | No            | No            |
+| Reverse          | O(n)           | No            | No            |
+
+### Use Cases
+
+- **Sliding window:** Process data with access to both newest and oldest elements
+- **Undo/Redo:** Push operations to back, pop from back for undo, front for redo
+- **Work stealing:** Thread-safe deques enable work stealing for load balancing
+- **Palindrome checking:** Compare elements from both ends
+- **Browser history:** Navigate forward and backward through pages
+
+---
+
 ## Viper.Collections.Heap
 
 A priority queue implemented as a binary heap. Elements are stored with an integer priority value and retrieved in priority order. Supports both min-heap (smallest priority first) and max-heap (largest priority first) modes.
@@ -275,6 +384,160 @@ PRINT maxHeap.Pop()  ' Output: "High" (priority 5 - highest)
 - `Heap.Pop: heap is empty` - Called Pop on empty heap
 - `Heap.Peek: heap is empty` - Called Peek on empty heap
 - `Heap.Push: null heap` - Called Push on null reference
+
+---
+
+## Viper.Collections.LazySeq
+
+A lazy sequence that generates elements on demand rather than storing them all in memory. Useful for infinite sequences,
+computed sequences, and memory-efficient processing of large datasets. Supports functional-style transformations and
+collectors.
+
+**Type:** Instance (obj)
+**Constructors:**
+
+- `Viper.Collections.LazySeq.Range(start, end, step)` - Generate integer range
+- `Viper.Collections.LazySeq.Repeat(value, count)` - Repeat value count times (-1 for infinite)
+- `Viper.Collections.LazySeq.Iterate(seed, fn)` - Generate by repeatedly applying function
+
+### Properties
+
+| Property      | Type    | Description                                        |
+|---------------|---------|----------------------------------------------------|
+| `Index`       | Integer | Current position (number of elements consumed)     |
+| `IsExhausted` | Boolean | True if sequence has no more elements              |
+
+### Methods
+
+#### Element Access
+
+| Method    | Signature       | Description                                             |
+|-----------|-----------------|---------------------------------------------------------|
+| `Next()`  | `Object()`      | Get next element and advance; returns null if exhausted |
+| `Peek()`  | `Object()`      | Get next element without advancing                      |
+| `Reset()` | `Void()`        | Reset sequence to beginning                             |
+
+#### Transformations (return new LazySeq)
+
+| Method             | Signature                    | Description                                      |
+|--------------------|------------------------------|--------------------------------------------------|
+| `Map(fn)`          | `LazySeq(Function)`          | Transform each element with function             |
+| `Filter(pred)`     | `LazySeq(Function)`          | Keep only elements where predicate returns true  |
+| `Take(n)`          | `LazySeq(Integer)`           | Take first n elements only                       |
+| `Drop(n)`          | `LazySeq(Integer)`           | Skip first n elements                            |
+| `TakeWhile(pred)`  | `LazySeq(Function)`          | Take elements while predicate is true            |
+| `DropWhile(pred)`  | `LazySeq(Function)`          | Skip elements while predicate is true            |
+| `Concat(other)`    | `LazySeq(LazySeq)`           | Concatenate with another lazy sequence           |
+| `Zip(other, fn)`   | `LazySeq(LazySeq, Function)` | Zip with another sequence using combiner         |
+
+#### Collectors (consume sequence)
+
+| Method         | Signature                    | Description                                            |
+|----------------|------------------------------|--------------------------------------------------------|
+| `ToSeq()`      | `Seq()`                      | Collect all elements into a Seq (may not terminate!)   |
+| `ToSeqN(n)`    | `Seq(Integer)`               | Collect at most n elements into a Seq                  |
+| `Fold(init,fn)`| `Object(Object, Function)`   | Reduce to single value (may not terminate!)            |
+| `Count()`      | `Integer()`                  | Count all elements (may not terminate!)                |
+| `ForEach(fn)`  | `Void(Function)`             | Execute function for each element                      |
+| `Find(pred)`   | `Object(Function)`           | Find first matching element; null if not found         |
+| `Any(pred)`    | `Boolean(Function)`          | True if any element matches                            |
+| `All(pred)`    | `Boolean(Function)`          | True if all elements match (may not terminate!)        |
+
+### Example
+
+```basic
+' Create a range (like Python's range)
+DIM nums AS OBJECT = Viper.Collections.LazySeq.Range(1, 11, 1)
+' Generates: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+
+' Manual iteration
+WHILE NOT nums.IsExhausted
+    DIM n AS OBJECT = nums.Next()
+    PRINT n
+WEND
+
+' Create and transform lazily
+DIM evens AS OBJECT = Viper.Collections.LazySeq.Range(1, 100, 1) _
+    .Filter(FUNCTION(n) RETURN n MOD 2 = 0) _
+    .Take(5)
+' Generates: 2, 4, 6, 8, 10 (only computes what's needed)
+
+' Collect into a Seq
+DIM evenSeq AS OBJECT = evens.ToSeq()
+PRINT evenSeq.Len    ' Output: 5
+
+' Infinite sequence with Take
+DIM ones AS OBJECT = Viper.Collections.LazySeq.Repeat(1, -1)  ' Infinite 1s
+DIM firstTen AS OBJECT = ones.Take(10).ToSeq()
+PRINT firstTen.Len   ' Output: 10
+
+' Fibonacci using Iterate
+DIM fib AS OBJECT = Viper.Collections.LazySeq.Iterate( _
+    NEW Pair(0, 1), _
+    FUNCTION(p) RETURN NEW Pair(p.Second, p.First + p.Second) _
+).Map(FUNCTION(p) RETURN p.First).Take(10)
+
+' Find first element matching condition
+DIM firstBig AS OBJECT = Viper.Collections.LazySeq.Range(1, 1000000, 1) _
+    .Find(FUNCTION(n) RETURN n > 500)
+PRINT firstBig       ' Output: 501 (stops immediately, doesn't check all million)
+
+' Fold/reduce
+DIM sum AS INTEGER = Viper.Collections.LazySeq.Range(1, 11, 1) _
+    .Fold(0, FUNCTION(acc, n) RETURN acc + n)
+PRINT sum            ' Output: 55
+
+' Check predicates
+DIM allPositive AS INTEGER = Viper.Collections.LazySeq.Range(1, 100, 1) _
+    .All(FUNCTION(n) RETURN n > 0)
+PRINT allPositive    ' Output: 1 (true)
+
+' Peek without consuming
+DIM seq AS OBJECT = Viper.Collections.LazySeq.Range(1, 5, 1)
+PRINT seq.Peek()     ' Output: 1
+PRINT seq.Peek()     ' Output: 1 (still 1)
+PRINT seq.Next()     ' Output: 1 (now consumed)
+PRINT seq.Peek()     ' Output: 2
+
+' Reset to beginning
+seq.Reset()
+PRINT seq.Next()     ' Output: 1 (back to start)
+
+' Zip two sequences
+DIM letters AS OBJECT = Viper.Collections.LazySeq.Repeat("a", 3)
+DIM numbers AS OBJECT = Viper.Collections.LazySeq.Range(1, 4, 1)
+DIM pairs AS OBJECT = letters.Zip(numbers, FUNCTION(a, b) RETURN a + STR(b))
+' Generates: "a1", "a2", "a3"
+```
+
+### LazySeq vs Seq
+
+| Feature               | LazySeq              | Seq                  |
+|-----------------------|----------------------|----------------------|
+| Memory                | O(1)                 | O(n)                 |
+| Element generation    | On demand            | Upfront              |
+| Infinite sequences    | Supported            | Not possible         |
+| Random access         | No (sequential only) | O(1)                 |
+| Multiple iterations   | Requires Reset()     | Automatic            |
+| Chain transformations | Deferred             | Immediate            |
+
+### Important Notes
+
+- **Infinite sequences:** Methods like `ToSeq()`, `Count()`, `Fold()`, and `All()` may never
+  terminate on infinite sequences. Always use `Take(n)` to bound infinite sequences before
+  collecting.
+- **Single-pass:** LazySeq is consumed as you iterate. Use `Reset()` to iterate again, or
+  `ToSeq()` to materialize into a reusable collection.
+- **Transformation chaining:** Transformations like `Map()`, `Filter()`, `Take()` return new
+  LazySeq instances and do no work until elements are requested.
+
+### Use Cases
+
+- **Large datasets:** Process files or data too large to fit in memory
+- **Infinite sequences:** Mathematical sequences like Fibonacci, primes
+- **Early termination:** Find first match without computing everything
+- **Pipeline processing:** Chain transformations efficiently
+- **Generator patterns:** Produce values on demand
 
 ---
 
@@ -892,6 +1155,139 @@ PRINT setA.IsDisjoint(disjoint) ' Output: 1 (true - no common elements)
 
 ---
 
+## Viper.Collections.SortedSet
+
+A sorted set of unique strings maintained in sorted order. Unlike `Bag` which uses hash-based storage, `SortedSet`
+keeps elements sorted, enabling efficient range queries, ordered iteration, and floor/ceiling operations.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.SortedSet()`
+
+### Properties
+
+| Property  | Type    | Description                             |
+|-----------|---------|-----------------------------------------|
+| `Len`     | Integer | Number of strings in the set            |
+| `IsEmpty` | Boolean | True if set contains no strings         |
+
+### Methods
+
+| Method              | Signature                  | Description                                                        |
+|---------------------|----------------------------|--------------------------------------------------------------------|
+| `Put(str)`          | `Boolean(String)`          | Add a string; returns true if new, false if already present        |
+| `Drop(str)`         | `Boolean(String)`          | Remove a string; returns true if removed, false if not found       |
+| `Has(str)`          | `Boolean(String)`          | Check if string is in the set                                      |
+| `Clear()`           | `Void()`                   | Remove all strings from the set                                    |
+| `First()`           | `String()`                 | Get smallest (first) element; empty string if empty                |
+| `Last()`            | `String()`                 | Get largest (last) element; empty string if empty                  |
+| `Floor(str)`        | `String(String)`           | Greatest element <= given string; empty if none                    |
+| `Ceil(str)`         | `String(String)`           | Least element >= given string; empty if none                       |
+| `Lower(str)`        | `String(String)`           | Greatest element < given string (strictly less)                    |
+| `Higher(str)`       | `String(String)`           | Least element > given string (strictly greater)                    |
+| `At(index)`         | `String(Integer)`          | Get element at index in sorted order                               |
+| `IndexOf(str)`      | `Integer(String)`          | Get index of element (-1 if not found)                             |
+| `Items()`           | `Seq()`                    | Get all elements as a Seq in sorted order                          |
+| `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to)                                   |
+| `Take(n)`           | `Seq(Integer)`             | Get first n elements                                               |
+| `Skip(n)`           | `Seq(Integer)`             | Get all elements except first n                                    |
+| `Merge(other)`      | `SortedSet(SortedSet)`     | Return new set with union of both sets                             |
+| `Common(other)`     | `SortedSet(SortedSet)`     | Return new set with intersection of both sets                      |
+| `Diff(other)`       | `SortedSet(SortedSet)`     | Return new set with elements in this but not other                 |
+| `IsSubset(other)`   | `Boolean(SortedSet)`       | True if this set is a subset of other                              |
+
+### Example
+
+```basic
+DIM words AS OBJECT = NEW Viper.Collections.SortedSet()
+
+' Add words (stored in sorted order)
+words.Put("cherry")
+words.Put("apple")
+words.Put("banana")
+words.Put("date")
+
+PRINT words.Len          ' Output: 4
+
+' Ordered access
+PRINT words.First()      ' Output: "apple"
+PRINT words.Last()       ' Output: "date"
+PRINT words.At(1)        ' Output: "banana" (second in sorted order)
+
+' Find index
+PRINT words.IndexOf("cherry")  ' Output: 2
+
+' Range queries
+PRINT words.Floor("cat")       ' Output: "cherry" (largest <= "cat" - actually "banana")
+PRINT words.Ceil("cat")        ' Output: "cherry" (smallest >= "cat")
+PRINT words.Lower("cherry")    ' Output: "banana" (largest < "cherry")
+PRINT words.Higher("cherry")   ' Output: "date" (smallest > "cherry")
+
+' Get all items in sorted order
+DIM all AS OBJECT = words.Items()
+FOR i = 0 TO all.Len - 1
+    PRINT all.Get(i)     ' Output: apple, banana, cherry, date
+NEXT
+
+' Get range [b, d) - from "b" to "d" exclusive
+DIM range AS OBJECT = words.Range("b", "d")
+FOR i = 0 TO range.Len - 1
+    PRINT range.Get(i)   ' Output: banana, cherry
+NEXT
+
+' Set operations
+DIM set1 AS OBJECT = NEW Viper.Collections.SortedSet()
+set1.Put("a")
+set1.Put("b")
+set1.Put("c")
+
+DIM set2 AS OBJECT = NEW Viper.Collections.SortedSet()
+set2.Put("b")
+set2.Put("c")
+set2.Put("d")
+
+' Union
+DIM merged AS OBJECT = set1.Merge(set2)
+PRINT merged.Len         ' Output: 4 (a, b, c, d)
+
+' Intersection
+DIM common AS OBJECT = set1.Common(set2)
+PRINT common.Len         ' Output: 2 (b, c)
+
+' Difference
+DIM diff AS OBJECT = set1.Diff(set2)
+PRINT diff.Len           ' Output: 1 (a only)
+
+' Subset check
+DIM subset AS OBJECT = NEW Viper.Collections.SortedSet()
+subset.Put("b")
+subset.Put("c")
+PRINT subset.IsSubset(set1)  ' Output: 1 (true)
+```
+
+### SortedSet vs Bag vs Set
+
+| Feature          | SortedSet        | Bag              | Set              |
+|------------------|------------------|------------------|------------------|
+| Element type     | Strings          | Strings          | Objects          |
+| Order            | Sorted           | Unordered        | Unordered        |
+| Lookup           | O(log n)         | O(1) average     | O(1) average     |
+| Insert           | O(n)             | O(1) average     | O(1) average     |
+| First/Last       | O(1)             | No               | No               |
+| Floor/Ceil       | O(log n)         | No               | No               |
+| Range queries    | O(log n + k)     | No               | No               |
+| Index access     | O(1)             | No               | No               |
+
+### Use Cases
+
+- **Autocomplete:** Find words in a range starting with a prefix
+- **Leaderboards:** Maintain sorted rankings with efficient updates
+- **Scheduling:** Find next available time slot with Floor/Ceil
+- **Range queries:** Find all items in a lexicographic range
+- **Ordered iteration:** When you need strings in sorted order
+- **Nearest neighbor:** Find closest match using Floor/Ceil
+
+---
+
 ## Viper.Collections.Stack
 
 A LIFO (last-in-first-out) collection. Elements are added and removed from the top.
@@ -1021,6 +1417,96 @@ PRINT tm.Ceil("blueberry")   ' Output: "cherry" (smallest key >= "blueberry")
 - **Range queries:** Finding entries within a key range
 - **Priority systems:** Using keys as priorities
 - **Prefix matching:** Finding nearest matches for partial keys
+
+---
+
+## Viper.Collections.WeakMap
+
+A map with weak value references. Values may become NULL when their referent is garbage collected. Uses string keys. Useful for caches and observer patterns where you don't want to prevent collection of values.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Collections.WeakMap.New()`
+
+### Properties
+
+| Property  | Type    | Description                                              |
+|-----------|---------|----------------------------------------------------------|
+| `Len`     | Integer | Number of entries (including potentially collected ones) |
+| `IsEmpty` | Boolean | True if map has no entries                               |
+
+### Methods
+
+| Method           | Signature              | Description                                                |
+|------------------|------------------------|------------------------------------------------------------|
+| `Set(key, value)`| `Void(String, Object)` | Set a value (stored as weak reference)                     |
+| `Get(key)`       | `Object(String)`       | Get value for key (NULL if not found or collected)         |
+| `Has(key)`       | `Boolean(String)`      | Check if key exists                                        |
+| `Remove(key)`    | `Boolean(String)`      | Remove entry; returns true if found                        |
+| `Keys()`         | `Seq()`                | Get all keys currently in the map                          |
+| `Clear()`        | `Void()`               | Remove all entries                                         |
+| `Compact()`      | `Integer()`            | Remove entries with collected values; returns count removed |
+
+### Notes
+
+- **Weak references:** Values are stored without preventing garbage collection. If the only reference to an object is through a WeakMap, it may be collected.
+- **Stale entries:** After a value is collected, `Get()` returns NULL for that key. Use `Compact()` to clean up stale entries.
+- **String keys:** Keys are regular (strong) string references.
+- **Len includes stale:** `Len` counts all entries including those with collected values. Call `Compact()` first for an accurate live count.
+
+### Example
+
+```basic
+' Create a weak map for caching
+DIM cache AS OBJECT = Viper.Collections.WeakMap.New()
+
+' Store values (weak references)
+DIM obj AS OBJECT = CreateExpensiveObject()
+cache.Set("key1", obj)
+cache.Set("key2", CreateAnotherObject())
+
+PRINT cache.Len      ' Output: 2
+PRINT cache.Has("key1")  ' Output: 1 (true)
+
+' Get value (may be NULL if collected)
+DIM value AS OBJECT = cache.Get("key1")
+IF value IS NOT NULL THEN
+    PRINT "Cache hit"
+ELSE
+    PRINT "Cache miss - object was collected"
+END IF
+
+' Remove specific entry
+cache.Remove("key2")
+
+' Clean up stale entries
+DIM removed AS INTEGER = cache.Compact()
+PRINT "Compacted "; removed; " stale entries"
+
+' Get all current keys
+DIM keys AS OBJECT = cache.Keys()
+FOR i = 0 TO keys.Len - 1
+    PRINT keys.Get(i)
+NEXT
+
+' Clear everything
+cache.Clear()
+```
+
+### WeakMap vs Map
+
+| Feature           | WeakMap                    | Map                       |
+|-------------------|----------------------------|---------------------------|
+| Value references  | Weak (may be collected)    | Strong (prevents collection) |
+| Memory management | Values can be GC'd         | Values kept alive          |
+| Stale entries     | Possible (use Compact)     | Never                      |
+| Use case          | Caches, observers          | General key-value storage  |
+
+### Use Cases
+
+- **Object caches:** Cache computed results without preventing GC of the source objects
+- **Observer patterns:** Track observers without preventing their collection
+- **Metadata storage:** Associate metadata with objects without extending their lifetime
+- **Memoization:** Cache function results that can be recomputed if evicted
 
 ---
 

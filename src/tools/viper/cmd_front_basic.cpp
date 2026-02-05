@@ -36,6 +36,7 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #ifdef _WIN32
 // Windows doesn't have setenv, use _putenv_s instead
@@ -94,7 +95,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
     FrontBasicConfig config{};
     for (int i = 0; i < argc; ++i)
     {
-        std::string arg = argv[i];
+        std::string_view arg = argv[i];
         if (arg == "-emit-il")
         {
             if (i + 1 >= argc)

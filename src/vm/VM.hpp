@@ -609,13 +609,23 @@ class VM
 
     // dispatchOpcodeSwitch is declared via generated include file
 
-    /// @brief Exception type for trap dispatch control flow.
+    /// @brief Exception type for non-local trap dispatch control flow.
+    /// @details When a trap is raised and an exception handler is found in an
+    ///          outer frame, we need to unwind the call stack. This signal is
+    ///          thrown to escape the current execution context and transfer
+    ///          control to the handler. The @c target field points to the
+    ///          execution state that should be resumed after catching the signal.
+    ///          This mechanism enables ON ERROR GOTO style error handling in
+    ///          BASIC programs and try/catch in other frontends.
     struct TrapDispatchSignal : std::exception
     {
+        /// @brief Construct a signal targeting the given execution state.
+        /// @param targetState State to resume after the trap is dispatched.
         explicit TrapDispatchSignal(ExecState *targetState);
 
-        ExecState *target;
+        ExecState *target; ///< Execution state to resume after unwinding.
 
+        /// @brief Return a description of the signal for debugging.
         const char *what() const noexcept override;
     };
 
@@ -858,7 +868,20 @@ class VM
     /// @brief Access active VM instance for thread-local trap reporting.
     static VM *activeInstance();
 
+    /// @brief Prepare trap state and search for an exception handler.
+    /// @details Populates @p error with diagnostic context (function, block,
+    ///          source location) and searches the execution stack for an active
+    ///          exception handler. Returns true if a handler was found and the
+    ///          trap can be dispatched; false if the trap should terminate execution.
+    /// @param error Mutable error to populate with context and handler info.
+    /// @return True if an exception handler was found; false otherwise.
     bool prepareTrap(VmError &error);
+
+    /// @brief Throw a TrapDispatchSignal to unwind to the target execution state.
+    /// @details Called after prepareTrap() finds a handler. Throws an exception
+    ///          that will be caught by the main execution loop, which then resumes
+    ///          execution at the handler's entry point.
+    /// @param target Execution state containing the exception handler to invoke.
     [[noreturn]] void throwForTrap(ExecState *target);
 
     // TrapDispatchSignal moved to public section

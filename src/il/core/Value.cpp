@@ -26,6 +26,7 @@
 #include "il/io/StringEscape.hpp"
 
 #include <cmath>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <locale>
@@ -184,6 +185,65 @@ std::string toString(const Value &v)
             return "null";
     }
     return "";
+}
+
+//===----------------------------------------------------------------------===//
+// Value Comparison and Hashing
+//===----------------------------------------------------------------------===//
+
+bool valueEquals(const Value &a, const Value &b) noexcept
+{
+    if (a.kind != b.kind)
+        return false;
+    switch (a.kind)
+    {
+        case Value::Kind::Temp:
+            return a.id == b.id;
+        case Value::Kind::ConstInt:
+            return a.i64 == b.i64 && a.isBool == b.isBool;
+        case Value::Kind::ConstFloat:
+            return a.f64 == b.f64;
+        case Value::Kind::ConstStr:
+        case Value::Kind::GlobalAddr:
+            return a.str == b.str;
+        case Value::Kind::NullPtr:
+            return true;
+    }
+    return false;
+}
+
+size_t valueHash(const Value &v) noexcept
+{
+    size_t h = static_cast<size_t>(v.kind) * kHashKindMix;
+    switch (v.kind)
+    {
+        case Value::Kind::Temp:
+            h ^= static_cast<size_t>(v.id) + kHashPhiMix;
+            break;
+        case Value::Kind::ConstInt:
+            h ^= static_cast<size_t>(v.i64) ^ (v.isBool ? kHashBoolFlag : 0);
+            break;
+        case Value::Kind::ConstFloat:
+        {
+            // Use type-punning via union to get raw bit representation
+            union
+            {
+                double d;
+                unsigned long long u;
+            } bits{};
+            bits.d = v.f64;
+            h ^= static_cast<size_t>(bits.u);
+            break;
+        }
+        case Value::Kind::ConstStr:
+        case Value::Kind::GlobalAddr:
+            h ^= std::hash<std::string>{}(v.str);
+            break;
+        case Value::Kind::NullPtr:
+            h ^= kHashNullSentinel;
+            break;
+    }
+    return h;
 }
 
 } // namespace il::core

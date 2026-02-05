@@ -551,6 +551,17 @@ class Sema
     /// @details Registers the interface type and its method signatures.
     void analyzeInterfaceDecl(InterfaceDecl &decl);
 
+    /// @brief Validate that a type correctly implements all declared interfaces.
+    /// @param typeName The name of the implementing type.
+    /// @param loc The source location for error reporting.
+    /// @param interfaces List of interface names the type claims to implement.
+    ///
+    /// @details Checks that all interface methods are implemented with matching
+    /// signatures and public visibility. Registers successful implementations.
+    void validateInterfaceImplementations(const std::string &typeName,
+                                          const SourceLoc &loc,
+                                          const std::vector<std::string> &interfaces);
+
     /// @brief Analyze a namespace declaration.
     /// @param decl The namespace declaration.
     ///

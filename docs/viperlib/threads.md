@@ -12,6 +12,13 @@
 - [Viper.Threads.Gate](#viperthreadsgate)
 - [Viper.Threads.Barrier](#viperthreadsbarrier)
 - [Viper.Threads.RwLock](#viperthreadsrwlock)
+- [Viper.Threads.Promise](#viperthreadspromise)
+- [Viper.Threads.Future](#viperthreadsfuture)
+- [Viper.Threads.Parallel](#viperthreadsparallel)
+- [Viper.Threads.CancellationToken](#viperthreadscancellationtoken)
+- [Viper.Threads.Debouncer](#viperthreadsdebouncer)
+- [Viper.Threads.Throttler](#viperthreadsthrottler)
+- [Viper.Threads.Scheduler](#viperthreadsscheduler)
 
 ---
 
@@ -285,6 +292,588 @@ Writer-preference reader-writer lock.
 - `RwLock.WriteExit: null object`
 - `RwLock.WriteExit: exit without matching enter`
 - `RwLock.WriteExit: not owner`
+
+---
+
+## Viper.Threads.Promise
+
+Producer side of a Future/Promise pair for asynchronous result passing between threads.
+
+**Type:** Instance class
+
+A Promise creates a linked Future object. The Promise is used by the producer thread to set the result
+value (or error), and the Future is used by the consumer thread to retrieve the result.
+
+### Constructor
+
+| Method  | Signature    | Description        |
+|---------|--------------|-------------------|
+| `New()` | `Promise()`  | Create a new Promise |
+
+### Methods
+
+| Method           | Signature           | Description                                      |
+|------------------|---------------------|--------------------------------------------------|
+| `GetFuture()`    | `Future()`          | Get the linked Future (always returns same one)  |
+| `Set(value)`     | `Void(Ptr)`         | Complete with a value (can only call once)       |
+| `SetError(msg)`  | `Void(String)`      | Complete with an error (can only call once)      |
+
+### Properties
+
+| Property | Type                   | Description                            |
+|----------|------------------------|----------------------------------------|
+| `IsDone` | `Boolean` (read-only)  | True if Set or SetError was called     |
+
+### Example
+
+```basic
+' Create a promise and get its future
+DIM promise AS OBJECT = Viper.Threads.Promise.New()
+DIM future AS OBJECT = promise.GetFuture()
+
+' Pass future to another thread, keep promise here
+' ... later, complete the promise
+promise.Set(result)
+
+' Or complete with an error
+promise.SetError("Operation failed")
+```
+
+### Errors (Traps)
+
+- `Promise: null object`
+- `Promise: already completed` (calling Set or SetError twice)
+
+---
+
+## Viper.Threads.Future
+
+Consumer side of a Future/Promise pair for receiving asynchronous results.
+
+**Type:** Instance class (obtained via `Promise.GetFuture()`)
+
+A Future represents a value that will be available at some point in the future. It is linked to a
+Promise which is used to set the value.
+
+### Methods
+
+| Method          | Signature           | Description                                          |
+|-----------------|---------------------|------------------------------------------------------|
+| `Get()`         | `Ptr()`             | Block until resolved, return value (traps on error)  |
+| `GetFor(ms)`    | `Boolean(Integer)`  | Wait with timeout, returns false on timeout/error    |
+| `TryGet(out)`   | `Boolean(Ptr)`      | Non-blocking get, returns false if not resolved      |
+| `Wait()`        | `Void()`            | Block until resolved (value or error)                |
+| `WaitFor(ms)`   | `Boolean(Integer)`  | Wait with timeout, returns true if resolved          |
+
+### Properties
+
+| Property  | Type                   | Description                                  |
+|-----------|------------------------|----------------------------------------------|
+| `IsDone`  | `Boolean` (read-only)  | True if resolved (value or error)            |
+| `IsError` | `Boolean` (read-only)  | True if resolved with error                  |
+| `Error`   | `String` (read-only)   | Error message (empty if no error)            |
+
+### Basic Example
+
+```basic
+' Get a future from a promise
+DIM promise AS OBJECT = Viper.Threads.Promise.New()
+DIM future AS OBJECT = promise.GetFuture()
+
+' In producer thread: set the result
+promise.Set(result)
+
+' In consumer thread: get the result
+DIM value AS PTR = future.Get()
+```
+
+### Async Task Example
+
+```basic
+SUB ComputeAsync(promise AS OBJECT)
+    ' Do some long computation
+    DIM result AS INTEGER = ExpensiveComputation()
+    promise.Set(result)
+END SUB
+
+' Start async computation
+DIM promise AS OBJECT = Viper.Threads.Promise.New()
+DIM future AS OBJECT = promise.GetFuture()
+
+' Start worker thread
+DIM t AS OBJECT = Viper.Threads.Thread.Start(ADDR_OF ComputeAsync, promise)
+
+' Do other work while computation runs
+DoOtherWork()
+
+' Wait for result
+DIM result AS PTR = future.Get()
+t.Join()
+```
+
+### Timeout Example
+
+```basic
+DIM future AS OBJECT = GetFutureFromSomewhere()
+
+' Wait up to 5 seconds for result
+IF future.WaitFor(5000) THEN
+    IF NOT future.IsError THEN
+        DIM value AS PTR = future.Get()
+        PRINT "Got result"
+    ELSE
+        PRINT "Error: "; future.Error
+    END IF
+ELSE
+    PRINT "Timed out waiting for result"
+END IF
+```
+
+### Try-Get Pattern
+
+```basic
+DIM future AS OBJECT = GetFutureFromSomewhere()
+
+' Poll without blocking
+DO WHILE NOT future.IsDone
+    ' Do other work
+    ProcessEvents()
+    Viper.Time.Clock.Sleep(10)  ' Small delay
+LOOP
+
+IF NOT future.IsError THEN
+    DIM value AS PTR = future.Get()
+END IF
+```
+
+### Error Handling
+
+```basic
+DIM promise AS OBJECT = Viper.Threads.Promise.New()
+DIM future AS OBJECT = promise.GetFuture()
+
+' Producer might fail
+IF errorOccurred THEN
+    promise.SetError("Failed to compute result")
+ELSE
+    promise.Set(result)
+END IF
+
+' Consumer checks for error
+IF future.IsError THEN
+    PRINT "Error: "; future.Error
+ELSE
+    DIM value AS PTR = future.Get()  ' Safe - we know it's not an error
+END IF
+```
+
+### Errors (Traps)
+
+- `Future: null object`
+- `Future: resolved with error` (calling `Get()` on error-resolved future)
+
+### Notes
+
+- A Promise can only be completed once (either `Set` or `SetError`)
+- Calling `Get()` on an error-resolved Future will trap
+- `GetFor()` and `TryGet()` return false instead of trapping on error
+- Multiple threads can wait on the same Future
+
+---
+
+## Viper.Threads.Parallel
+
+High-level parallel execution utilities for distributing work across CPU cores.
+
+**Type:** Static utility class
+
+Provides common parallel patterns like ForEach, Map, and Invoke using a shared thread pool.
+
+### Methods
+
+| Method                      | Signature                            | Description                                           |
+|-----------------------------|--------------------------------------|-------------------------------------------------------|
+| `ForEach(seq, func)`        | `Void(Seq, Ptr)`                     | Execute func for each item in parallel                |
+| `ForEachPool(seq,func,pool)`| `Void(Seq, Ptr, Pool)`               | ForEach with custom thread pool                       |
+| `Map(seq, func)`            | `Seq(Seq, Ptr)`                      | Transform items in parallel, preserve order           |
+| `MapPool(seq, func, pool)`  | `Seq(Seq, Ptr, Pool)`                | Map with custom thread pool                           |
+| `Invoke(funcs)`             | `Void(Seq)`                          | Execute multiple functions in parallel                |
+| `InvokePool(funcs, pool)`   | `Void(Seq, Pool)`                    | Invoke with custom thread pool                        |
+| `For(start, end, func)`     | `Void(Integer, Integer, Ptr)`        | Parallel for loop over range [start, end)             |
+| `ForPool(start,end,func,p)` | `Void(Integer, Integer, Ptr, Pool)`  | Parallel for with custom pool                         |
+| `DefaultWorkers()`          | `Integer()`                          | Get number of CPU cores                               |
+| `DefaultPool()`             | `Pool()`                             | Get or create the shared default thread pool          |
+
+### Basic ForEach Example
+
+```basic
+SUB ProcessItem(item AS PTR)
+    ' Process each item
+    PRINT "Processing: "; item
+END SUB
+
+' Process all items in parallel
+DIM items AS OBJECT = CreateItems()
+Viper.Threads.Parallel.ForEach(items, ADDR_OF ProcessItem)
+```
+
+### Map Example
+
+```basic
+FUNCTION Transform(item AS PTR) AS PTR
+    ' Transform the item
+    RETURN ComputeResult(item)
+END FUNCTION
+
+DIM inputs AS OBJECT = GetInputs()
+DIM outputs AS OBJECT = Viper.Threads.Parallel.Map(inputs, ADDR_OF Transform)
+
+' outputs has same length and order as inputs
+FOR i = 0 TO outputs.Len - 1
+    PRINT "Result "; i; ": "; outputs.Get(i)
+NEXT i
+```
+
+### Parallel For Example
+
+```basic
+SUB ProcessIndex(i AS INTEGER)
+    ' Process item at index i
+    DoWork(i)
+END SUB
+
+' Process indices 0..99 in parallel
+Viper.Threads.Parallel.For(0, 100, ADDR_OF ProcessIndex)
+```
+
+### Invoke Example
+
+```basic
+SUB TaskA()
+    PRINT "Task A running"
+END SUB
+
+SUB TaskB()
+    PRINT "Task B running"
+END SUB
+
+SUB TaskC()
+    PRINT "Task C running"
+END SUB
+
+' Run all three tasks concurrently
+DIM tasks AS OBJECT = Viper.Collections.Seq.New()
+tasks.Push(ADDR_OF TaskA)
+tasks.Push(ADDR_OF TaskB)
+tasks.Push(ADDR_OF TaskC)
+
+Viper.Threads.Parallel.Invoke(tasks)
+' All tasks completed when Invoke returns
+```
+
+### Custom Thread Pool
+
+```basic
+' Create a pool with 4 workers
+DIM pool AS OBJECT = Viper.Threads.Pool.New(4)
+
+' Use custom pool for parallel operations
+Viper.Threads.Parallel.ForEachPool(items, ADDR_OF Process, pool)
+
+' Shut down pool when done
+pool.Shutdown()
+```
+
+### Notes
+
+- **Default pool:** Operations without explicit pool use a shared pool with `DefaultWorkers()` threads
+- **Order preservation:** `Map` guarantees output order matches input order
+- **Blocking:** All parallel operations block until work is complete
+- **Thread safety:** Functions passed to parallel operations must be thread-safe
+- **Work distribution:** Work is distributed in small chunks for load balancing
+
+### Use Cases
+
+- **Data processing:** Transform large datasets in parallel
+- **Batch operations:** Process many files or network requests concurrently
+- **Computation:** Parallelize CPU-intensive algorithms
+- **Initialization:** Load multiple resources simultaneously
+
+---
+
+## Viper.Threads.CancellationToken
+
+Cooperative cancellation token for signaling cancellation to long-running or asynchronous operations. Thread-safe via atomic operations.
+
+**Type:** Instance class
+**Constructor:** `Viper.Threads.CancellationToken.New()`
+
+### Properties
+
+| Property      | Type    | Description                                |
+|---------------|---------|--------------------------------------------|
+| `IsCancelled` | Boolean | True if cancellation has been requested    |
+
+### Methods
+
+| Method                    | Signature              | Description                                              |
+|---------------------------|------------------------|----------------------------------------------------------|
+| `Cancel()`                | `Void()`               | Request cancellation (irreversible once set)              |
+| `Reset()`                 | `Void()`               | Reset the token for reuse                                |
+| `Linked()`                | `CancellationToken()`  | Create a child token that cancels when parent cancels    |
+| `Check()`                 | `Boolean()`            | Check if this or parent token is cancelled               |
+| `ThrowIfCancelled()`      | `Void()`               | Trap if the token has been cancelled                     |
+
+### Notes
+
+- **Thread-safe:** All operations use atomic memory operations, safe to call from any thread.
+- **One-way:** Once `Cancel()` is called, `IsCancelled` returns true permanently (until `Reset()`).
+- **Linked tokens:** Child tokens created with `Linked()` are automatically cancelled when the parent is cancelled.
+- **Cooperative:** Cancellation is advisory. The operation must check the token and respond appropriately.
+
+### Example
+
+```basic
+' Create a cancellation token
+DIM token AS OBJECT = Viper.Threads.CancellationToken.New()
+
+' Pass to a long-running operation
+SUB ProcessItems(items AS OBJECT, cancel AS OBJECT)
+    FOR i = 0 TO items.Len - 1
+        ' Check for cancellation periodically
+        IF cancel.IsCancelled THEN
+            PRINT "Operation cancelled at item "; i
+            EXIT SUB
+        END IF
+        ProcessItem(items.Get(i))
+    NEXT
+END SUB
+
+' Cancel from another thread or after a condition
+token.Cancel()
+
+' Linked tokens for hierarchical cancellation
+DIM parentToken AS OBJECT = Viper.Threads.CancellationToken.New()
+DIM childToken AS OBJECT = parentToken.Linked()
+
+parentToken.Cancel()
+PRINT childToken.Check()  ' Output: 1 (true - parent was cancelled)
+
+' ThrowIfCancelled traps if cancelled
+token.ThrowIfCancelled()  ' Traps: "operation cancelled"
+```
+
+### Use Cases
+
+- **Async operations:** Cancel HTTP requests, database queries, or file operations
+- **Thread management:** Signal worker threads to stop gracefully
+- **Timeout patterns:** Cancel operations that exceed time limits
+- **UI responsiveness:** Cancel background work when user navigates away
+
+---
+
+## Viper.Threads.Debouncer
+
+Time-based debouncer that delays execution until a quiet period has elapsed. Useful for coalescing rapid events (e.g., keyboard input, resize events) into a single action.
+
+**Type:** Instance class
+**Constructor:** `Viper.Threads.Debouncer.New(delayMs)`
+
+### Properties
+
+| Property      | Type    | Description                                      |
+|---------------|---------|--------------------------------------------------|
+| `Delay`       | Integer | Configured delay in milliseconds                 |
+| `SignalCount` | Integer | Number of signals since last ready state         |
+
+### Methods
+
+| Method       | Signature       | Description                                              |
+|--------------|-----------------|----------------------------------------------------------|
+| `Signal()`   | `Void()`        | Signal the debouncer (resets the timer)                  |
+| `IsReady()`  | `Boolean()`     | Check if delay has elapsed since last signal             |
+| `Reset()`    | `Void()`        | Reset debouncer to initial state                         |
+
+### How It Works
+
+1. Call `Signal()` each time an event occurs
+2. The timer resets on each signal
+3. `IsReady()` returns true only after the full delay has elapsed with no new signals
+4. This ensures the action fires only after events stop arriving
+
+### Example
+
+```basic
+' Create a debouncer with 300ms delay
+DIM debounce AS OBJECT = Viper.Threads.Debouncer.New(300)
+
+' In an event loop (e.g., processing keystrokes)
+SUB OnKeystroke(key AS STRING)
+    debounce.Signal()
+    ' Don't search yet - wait for user to stop typing
+END SUB
+
+' In the main loop
+IF debounce.IsReady() AND debounce.SignalCount > 0 THEN
+    ' User stopped typing for 300ms - perform search
+    PerformSearch()
+    debounce.Reset()
+END IF
+```
+
+### Use Cases
+
+- **Search-as-you-type:** Wait for user to stop typing before querying
+- **Window resize:** Recalculate layout after resizing stops
+- **Auto-save:** Save document after editing pauses
+- **Network requests:** Coalesce rapid updates into a single API call
+
+---
+
+## Viper.Threads.Throttler
+
+Time-based throttler that limits operations to at most once per interval. Unlike debouncing which waits for a quiet period, throttling ensures a minimum time between executions.
+
+**Type:** Instance class
+**Constructor:** `Viper.Threads.Throttler.New(intervalMs)`
+
+### Properties
+
+| Property       | Type    | Description                                         |
+|----------------|---------|-----------------------------------------------------|
+| `Interval`     | Integer | Configured interval in milliseconds                 |
+| `Count`        | Integer | Number of operations allowed so far                 |
+| `RemainingMs`  | Integer | Milliseconds until next operation is allowed (0 if ready) |
+
+### Methods
+
+| Method         | Signature    | Description                                              |
+|----------------|--------------|----------------------------------------------------------|
+| `Try()`        | `Boolean()`  | Try to execute (returns true if allowed, marks as used)  |
+| `CanProceed()` | `Boolean()`  | Check if an operation would be allowed (without marking) |
+| `Reset()`      | `Void()`     | Reset throttler to allow immediate operation             |
+
+### How It Works
+
+1. Call `Try()` before performing the rate-limited operation
+2. Returns `true` if enough time has passed since the last allowed operation
+3. Returns `false` if the interval hasn't elapsed yet
+4. The first call always succeeds
+
+### Example
+
+```basic
+' Create a throttler allowing one operation per second
+DIM throttle AS OBJECT = Viper.Threads.Throttler.New(1000)
+
+' In an event loop
+SUB OnMouseMove(x AS INTEGER, y AS INTEGER)
+    ' Only update at most once per second
+    IF throttle.Try() THEN
+        UpdateDisplay(x, y)
+    END IF
+END SUB
+
+' Check without consuming
+IF throttle.CanProceed() THEN
+    PRINT "Ready for next operation"
+END IF
+
+PRINT "Operations performed: "; throttle.Count
+PRINT "Time until next allowed: "; throttle.RemainingMs; "ms"
+```
+
+### Debouncer vs Throttler
+
+| Feature          | Debouncer                    | Throttler                      |
+|------------------|------------------------------|--------------------------------|
+| Timing           | After quiet period           | At regular intervals           |
+| First event      | Delayed                      | Immediate                      |
+| Rapid events     | Only last event fires        | First event fires, rest skip   |
+| Use case         | Wait for user to stop        | Limit rate of execution        |
+
+### Use Cases
+
+- **API rate limiting:** Limit outbound API calls per second
+- **UI updates:** Throttle expensive re-renders
+- **Logging:** Limit log output rate
+- **Polling:** Control polling frequency
+
+---
+
+## Viper.Threads.Scheduler
+
+Named task scheduler for scheduling delayed operations. Tasks are identified by name and become due after a specified delay. Poll-based (not thread-based).
+
+**Type:** Instance class
+**Constructor:** `Viper.Threads.Scheduler.New()`
+
+### Properties
+
+| Property  | Type    | Description                           |
+|-----------|---------|---------------------------------------|
+| `Pending` | Integer | Number of scheduled tasks (due + not-yet-due) |
+
+### Methods
+
+| Method                     | Signature                   | Description                                      |
+|----------------------------|-----------------------------|--------------------------------------------------|
+| `Schedule(name, delayMs)`  | `Void(String, Integer)`     | Schedule a named task with delay in milliseconds |
+| `Cancel(name)`             | `Boolean(String)`           | Cancel a scheduled task by name                  |
+| `IsDue(name)`              | `Boolean(String)`           | Check if a named task is due                     |
+| `Poll()`                   | `Seq()`                     | Get all due tasks (removes them from scheduler)  |
+| `Clear()`                  | `Void()`                    | Remove all scheduled tasks                       |
+
+### Notes
+
+- **Poll-based:** Tasks don't execute automatically. Call `Poll()` or `IsDue()` to check for due tasks.
+- **Named tasks:** Tasks are identified by name. Scheduling a task with the same name as an existing task replaces it.
+- **Monotonic clock:** Uses monotonic clock for accurate timing unaffected by system clock changes.
+- **Immediate tasks:** A delay of 0 schedules a task that is immediately due on the next `Poll()`.
+
+### Example
+
+```basic
+' Create a scheduler
+DIM sched AS OBJECT = Viper.Threads.Scheduler.New()
+
+' Schedule tasks with different delays
+sched.Schedule("save", 5000)      ' Save in 5 seconds
+sched.Schedule("refresh", 1000)   ' Refresh in 1 second
+sched.Schedule("cleanup", 30000)  ' Cleanup in 30 seconds
+
+PRINT sched.Pending  ' Output: 3
+
+' Check specific task
+IF sched.IsDue("refresh") THEN
+    DoRefresh()
+END IF
+
+' Cancel a task
+sched.Cancel("cleanup")
+PRINT sched.Pending  ' Output: 2
+
+' Poll for all due tasks in main loop
+DO
+    DIM due AS OBJECT = sched.Poll()
+    FOR i = 0 TO due.Len - 1
+        DIM taskName AS STRING = due.Get(i)
+        SELECT CASE taskName
+            CASE "save": DoSave()
+            CASE "refresh": DoRefresh()
+        END SELECT
+    NEXT
+
+    Viper.Time.Clock.Sleep(100)  ' Poll every 100ms
+LOOP WHILE sched.Pending > 0
+```
+
+### Use Cases
+
+- **Delayed operations:** Schedule saves, cleanups, or refreshes
+- **Game timers:** Schedule game events (spawn, power-up expiry)
+- **Retry scheduling:** Schedule retry attempts with delays
+- **Batch processing:** Accumulate work and process after delay
 
 ---
 

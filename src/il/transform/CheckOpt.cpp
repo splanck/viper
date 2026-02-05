@@ -59,7 +59,8 @@ bool isCheckOpcode(Opcode op)
 }
 
 /// @brief Key representing a check condition for redundancy detection.
-/// Two checks with the same key test the same condition.
+/// @details Two checks with the same key test the same condition. Uses the
+///          shared valueEquals() helper for consistent value comparison.
 struct CheckKey
 {
     Opcode op;
@@ -75,42 +76,16 @@ struct CheckKey
             return false;
         for (size_t i = 0; i < operands.size(); ++i)
         {
-            const Value &a = operands[i];
-            const Value &b = other.operands[i];
-            if (a.kind != b.kind)
+            if (!valueEquals(operands[i], other.operands[i]))
                 return false;
-            switch (a.kind)
-            {
-                case Value::Kind::Temp:
-                    if (a.id != b.id)
-                        return false;
-                    break;
-                case Value::Kind::ConstInt:
-                    if (a.i64 != b.i64)
-                        return false;
-                    break;
-                case Value::Kind::ConstFloat:
-                    if (a.f64 != b.f64)
-                        return false;
-                    break;
-                case Value::Kind::ConstStr:
-                    if (a.str != b.str)
-                        return false;
-                    break;
-                case Value::Kind::GlobalAddr:
-                    if (a.str != b.str)
-                        return false;
-                    break;
-                case Value::Kind::NullPtr:
-                    break; // Always equal
-                default:
-                    return false;
-            }
         }
         return true;
     }
 };
 
+/// @brief Hash functor for CheckKey using shared value hashing.
+/// @details Combines opcode and type with each operand hash using the
+///          shared valueHash() helper for consistency.
 struct CheckKeyHash
 {
     size_t operator()(const CheckKey &key) const
@@ -119,22 +94,7 @@ struct CheckKeyHash
         h ^= static_cast<size_t>(key.type.kind) << 8;
         for (const auto &v : key.operands)
         {
-            h ^= static_cast<size_t>(v.kind) << 16;
-            switch (v.kind)
-            {
-                case Value::Kind::Temp:
-                    h ^= std::hash<unsigned>{}(v.id);
-                    break;
-                case Value::Kind::ConstInt:
-                    h ^= std::hash<long long>{}(v.i64);
-                    break;
-                case Value::Kind::ConstFloat:
-                    h ^= std::hash<double>{}(v.f64);
-                    break;
-                default:
-                    break;
-            }
-            h = (h << 5) | (h >> 59); // rotate
+            h ^= valueHash(v) + kHashPhiMix + (h << 6) + (h >> 2);
         }
         return h;
     }
@@ -157,12 +117,24 @@ struct DominatingCheck
     std::optional<unsigned> resultId;
 };
 
+/// @brief Find a basic block by label within a function.
+/// @param function The function containing the block.
+/// @param label The block label to search for.
+/// @return Pointer to the block, or nullptr if not found.
 BasicBlock *findBlock(Function &function, const std::string &label)
 {
     return viper::il::findBlock(function, label);
 }
 
-/// @brief Find the preheader block for a loop (block outside loop targeting header).
+/// @brief Find the preheader block for a loop.
+/// @details The preheader is the unique block outside the loop that branches
+///          to the loop header. It provides a safe location for hoisting
+///          loop-invariant operations. Returns nullptr if no unique preheader
+///          exists (e.g., multiple entry edges or missing block).
+/// @param function The function containing the loop.
+/// @param loop The loop to find the preheader for.
+/// @param header The loop's header block.
+/// @return Pointer to the preheader block, or nullptr if not canonical.
 BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header)
 {
     BasicBlock *preheader = nullptr;
@@ -191,7 +163,14 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
     return preheader;
 }
 
-/// @brief Seed invariant temporaries with values defined outside the loop.
+/// @brief Seed the invariant set with values defined outside the loop.
+/// @details Populates the invariant set with all SSA temporaries that are:
+///          - Function parameters (always loop-invariant)
+///          - Block parameters of blocks outside the loop
+///          - Results of instructions in blocks outside the loop
+/// @param loop The loop whose invariants are being computed.
+/// @param function The function containing the loop.
+/// @param invariants Output set to populate with invariant temporary IDs.
 void seedInvariants(const Loop &loop, Function &function, std::unordered_set<unsigned> &invariants)
 {
     // Function parameters are always invariant
@@ -212,6 +191,11 @@ void seedInvariants(const Loop &loop, Function &function, std::unordered_set<uns
 }
 
 /// @brief Check if all operands of an instruction are loop-invariant.
+/// @details An operand is invariant if it's a constant (non-Temp) or if its
+///          temporary ID is in the invariant set (defined outside the loop).
+/// @param instr The instruction to check.
+/// @param invariants Set of known loop-invariant temporary IDs.
+/// @return True if all operands are loop-invariant.
 bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &invariants)
 {
     auto isInvariantValue = [&invariants](const Value &value)
@@ -229,14 +213,26 @@ bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &i
     return true;
 }
 
-/// @brief Check if the check would execute on all paths into the loop.
-/// For now, we only hoist checks in the header block to be conservative.
+/// @brief Check if an instruction would execute on every loop iteration.
+/// @details Only instructions that must execute can be safely hoisted to the
+///          preheader. Currently uses a conservative approximation: only
+///          instructions in the loop header are considered guaranteed.
+/// @param block The block containing the instruction.
+/// @param loop The loop being analyzed.
+/// @return True if instructions in this block are guaranteed to execute.
 bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop)
 {
     // Conservative: only hoist from header where check must execute on loop entry
     return block.label == loop.headerLabel;
 }
 
+/// @brief Check if a loop contains exception handling operations.
+/// @details Loops with EH-sensitive operations (exception handlers, resume
+///          instructions, trap instructions) require special care when
+///          hoisting. This function conservatively detects such loops.
+/// @param loop The loop to check.
+/// @param function The function containing the loop.
+/// @return True if the loop contains any EH-sensitive operations.
 bool loopHasEHSensitiveOps(const Loop &loop, Function &function)
 {
     for (const auto &label : loop.blockLabels)

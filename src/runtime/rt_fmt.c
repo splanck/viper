@@ -428,6 +428,232 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    // -----------------------------------------------------------------------
+    // Thousands separator, currency, words, ordinal
+    // -----------------------------------------------------------------------
+
+    /// @brief Format an integer with thousands grouping.
+    rt_string rt_fmt_int_grouped(int64_t value, rt_string sep)
+    {
+        const char *sep_str = sep ? rt_string_cstr(sep) : ",";
+        if (!sep_str || *sep_str == '\0')
+            sep_str = ",";
+        size_t sep_len = strlen(sep_str);
+
+        // Format the number without grouping first
+        char raw[FMT_BUFFER_SIZE];
+        int rlen;
+        int negative = 0;
+        uint64_t uval;
+        if (value < 0)
+        {
+            negative = 1;
+            uval = (uint64_t)(-(value + 1)) + 1ULL;
+        }
+        else
+        {
+            uval = (uint64_t)value;
+        }
+        rlen = snprintf(raw, sizeof(raw), "%" PRIu64, uval);
+        if (rlen < 0) return rt_string_from_bytes("", 0);
+
+        // Count how many separators we need
+        int digits = rlen;
+        int groups = (digits - 1) / 3;
+        size_t out_len = (size_t)digits + (size_t)groups * sep_len + (negative ? 1 : 0);
+
+        char *buf = (char *)malloc(out_len + 1);
+        if (!buf) return rt_string_from_bytes("", 0);
+
+        char *dst = buf;
+        if (negative) *dst++ = '-';
+
+        int first_group = digits % 3;
+        if (first_group == 0) first_group = 3;
+
+        const char *src = raw;
+        for (int i = 0; i < first_group; ++i)
+            *dst++ = *src++;
+
+        while (*src)
+        {
+            memcpy(dst, sep_str, sep_len);
+            dst += sep_len;
+            *dst++ = *src++;
+            *dst++ = *src++;
+            *dst++ = *src++;
+        }
+        *dst = '\0';
+
+        rt_string result = rt_string_from_bytes(buf, (size_t)(dst - buf));
+        free(buf);
+        return result;
+    }
+
+    /// @brief Format a number as currency with symbol and thousands grouping.
+    rt_string rt_fmt_currency(double value, int64_t decimals, rt_string symbol)
+    {
+        if (decimals < 0) decimals = 0;
+        if (decimals > 20) decimals = 20;
+
+        const char *sym = symbol ? rt_string_cstr(symbol) : "$";
+        if (!sym) sym = "$";
+        size_t sym_len = strlen(sym);
+
+        // Separate integer and fractional parts
+        int negative = value < 0;
+        double abs_val = negative ? -value : value;
+
+        // Format the decimal part
+        char dec_buf[32];
+        int dlen = 0;
+        if (decimals > 0)
+        {
+            double frac = abs_val - floor(abs_val);
+            double multiplier = 1.0;
+            for (int64_t i = 0; i < decimals; ++i)
+                multiplier *= 10.0;
+            int64_t frac_int = (int64_t)(frac * multiplier + 0.5);
+            dlen = snprintf(dec_buf, sizeof(dec_buf), ".%0*" PRId64, (int)decimals, frac_int);
+        }
+
+        // Format the integer part with grouping
+        int64_t int_part = (int64_t)floor(abs_val);
+        rt_string comma = rt_string_from_bytes(",", 1);
+        rt_string grouped = rt_fmt_int_grouped(int_part, comma);
+        rt_string_unref(comma);
+        const char *grp_str = rt_string_cstr(grouped);
+        size_t grp_len = grp_str ? strlen(grp_str) : 0;
+
+        // Build final: [-]symbol + grouped + decimals
+        size_t total = (negative ? 1 : 0) + sym_len + grp_len + (size_t)dlen;
+        char *buf = (char *)malloc(total + 1);
+        if (!buf)
+        {
+            rt_string_unref(grouped);
+            return rt_string_from_bytes("", 0);
+        }
+
+        char *dst = buf;
+        if (negative) *dst++ = '-';
+        memcpy(dst, sym, sym_len); dst += sym_len;
+        if (grp_str) { memcpy(dst, grp_str, grp_len); dst += grp_len; }
+        if (dlen > 0) { memcpy(dst, dec_buf, (size_t)dlen); dst += dlen; }
+        *dst = '\0';
+
+        rt_string result = rt_string_from_bytes(buf, (size_t)(dst - buf));
+        free(buf);
+        rt_string_unref(grouped);
+        return result;
+    }
+
+    // English number word tables
+    static const char *ones[] = {
+        "", "one", "two", "three", "four", "five",
+        "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+        "sixteen", "seventeen", "eighteen", "nineteen"
+    };
+    static const char *tens_words[] = {
+        "", "", "twenty", "thirty", "forty", "fifty",
+        "sixty", "seventy", "eighty", "ninety"
+    };
+
+    static size_t words_chunk(char *buf, size_t cap, int64_t n)
+    {
+        if (n == 0) return 0;
+        size_t written = 0;
+        if (n >= 100)
+        {
+            int h = (int)(n / 100);
+            written += (size_t)snprintf(buf + written, cap - written, "%s hundred", ones[h]);
+            n %= 100;
+            if (n > 0) written += (size_t)snprintf(buf + written, cap - written, " ");
+        }
+        if (n >= 20)
+        {
+            int t = (int)(n / 10);
+            written += (size_t)snprintf(buf + written, cap - written, "%s", tens_words[t]);
+            n %= 10;
+            if (n > 0) written += (size_t)snprintf(buf + written, cap - written, "-%s", ones[n]);
+        }
+        else if (n > 0)
+        {
+            written += (size_t)snprintf(buf + written, cap - written, "%s", ones[n]);
+        }
+        return written;
+    }
+
+    /// @brief Convert an integer to English words.
+    rt_string rt_fmt_to_words(int64_t value)
+    {
+        if (value == 0)
+            return rt_string_from_bytes("zero", 4);
+
+        char buf[512];
+        size_t pos = 0;
+        int negative = 0;
+
+        if (value < 0)
+        {
+            negative = 1;
+            value = -value;
+        }
+
+        if (negative)
+            pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, "negative ");
+
+        static const char *scale[] = {"", " thousand", " million", " billion", " trillion"};
+        int64_t parts[5] = {0};
+        int part_count = 0;
+
+        int64_t temp = value;
+        while (temp > 0 && part_count < 5)
+        {
+            parts[part_count++] = temp % 1000;
+            temp /= 1000;
+        }
+
+        int first = 1;
+        for (int i = part_count - 1; i >= 0; --i)
+        {
+            if (parts[i] == 0) continue;
+            if (!first)
+                pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, " ");
+            pos += words_chunk(buf + pos, sizeof(buf) - pos, parts[i]);
+            pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, "%s", scale[i]);
+            first = 0;
+        }
+
+        return rt_string_from_bytes(buf, pos);
+    }
+
+    /// @brief Convert an integer to ordinal suffix.
+    rt_string rt_fmt_ordinal(int64_t value)
+    {
+        char buf[FMT_BUFFER_SIZE];
+        const char *suffix;
+        int64_t abs_val = value < 0 ? -value : value;
+        int64_t last_two = abs_val % 100;
+        int64_t last_one = abs_val % 10;
+
+        if (last_two >= 11 && last_two <= 13)
+            suffix = "th";
+        else if (last_one == 1)
+            suffix = "st";
+        else if (last_one == 2)
+            suffix = "nd";
+        else if (last_one == 3)
+            suffix = "rd";
+        else
+            suffix = "th";
+
+        int len = snprintf(buf, sizeof(buf), "%" PRId64 "%s", value, suffix);
+        if (len < 0 || (size_t)len >= sizeof(buf))
+            return rt_string_from_bytes("", 0);
+        return rt_string_from_bytes(buf, (size_t)len);
+    }
+
 #ifdef __cplusplus
 }
 #endif

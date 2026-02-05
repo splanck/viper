@@ -75,25 +75,44 @@ struct RtGate
     GateState *state = nullptr;
 };
 
+//===----------------------------------------------------------------------===//
+// Shared Validation Helper
+//===----------------------------------------------------------------------===//
+
+/// @brief Validate a threading primitive object and return its typed wrapper.
+/// @details Generic validation for all threading primitives (Gate, Barrier, RwLock).
+///          Traps with descriptive messages if the object or its internal state is null.
+/// @tparam T The typed wrapper type (RtGate, RtBarrier, RtRwLock).
+/// @param obj Opaque object pointer passed from the runtime.
+/// @param typeName Name of the type for error messages (e.g., "Gate").
+/// @param what Custom error message, or nullptr to use default.
+/// @return Valid typed pointer, or nullptr if validation fails.
+template <typename T>
+static T *requireObject(void *obj, const char *typeName, const char *what)
+{
+    if (!obj)
+    {
+        std::string msg = what ? what : (std::string(typeName) + ": null object");
+        rt_trap(msg.c_str());
+        return nullptr;
+    }
+    auto *typed = static_cast<T *>(obj);
+    if (!typed->state)
+    {
+        std::string msg = std::string(typeName) + ": invalid object";
+        rt_trap(msg.c_str());
+        return nullptr;
+    }
+    return typed;
+}
+
 /// @brief Validate a gate object pointer and return its typed wrapper.
-/// @details Traps with a descriptive message if the gate is null or invalid.
 /// @param gate Opaque gate pointer passed from the runtime.
 /// @param what Error string to use when trapping on NULL.
 /// @return Valid RtGate pointer, or nullptr if validation fails.
 static RtGate *require_gate(void *gate, const char *what)
 {
-    if (!gate)
-    {
-        rt_trap(what ? what : "Gate: null object");
-        return nullptr;
-    }
-    auto *g = static_cast<RtGate *>(gate);
-    if (!g->state)
-    {
-        rt_trap("Gate: invalid object");
-        return nullptr;
-    }
-    return g;
+    return requireObject<RtGate>(gate, "Gate", what);
 }
 
 /// @brief Finalizer invoked when a gate object is collected.
@@ -132,24 +151,12 @@ struct RtBarrier
 };
 
 /// @brief Validate a barrier object pointer and return its typed wrapper.
-/// @details Traps with a descriptive message if the barrier is null or invalid.
 /// @param barrier Opaque barrier pointer passed from the runtime.
 /// @param what Error string to use when trapping on NULL.
 /// @return Valid RtBarrier pointer, or nullptr if validation fails.
 static RtBarrier *require_barrier(void *barrier, const char *what)
 {
-    if (!barrier)
-    {
-        rt_trap(what ? what : "Barrier: null object");
-        return nullptr;
-    }
-    auto *b = static_cast<RtBarrier *>(barrier);
-    if (!b->state)
-    {
-        rt_trap("Barrier: invalid object");
-        return nullptr;
-    }
-    return b;
+    return requireObject<RtBarrier>(barrier, "Barrier", what);
 }
 
 /// @brief Finalizer invoked when a barrier object is collected.
@@ -199,24 +206,12 @@ struct RtRwLock
 };
 
 /// @brief Validate a reader-writer lock pointer and return its typed wrapper.
-/// @details Traps with a descriptive message if the lock is null or invalid.
 /// @param lock Opaque lock pointer passed from the runtime.
 /// @param what Error string to use when trapping on NULL.
 /// @return Valid RtRwLock pointer, or nullptr if validation fails.
 static RtRwLock *require_rwlock(void *lock, const char *what)
 {
-    if (!lock)
-    {
-        rt_trap(what ? what : "RwLock: null object");
-        return nullptr;
-    }
-    auto *rw = static_cast<RtRwLock *>(lock);
-    if (!rw->state)
-    {
-        rt_trap("RwLock: invalid object");
-        return nullptr;
-    }
-    return rw;
+    return requireObject<RtRwLock>(lock, "RwLock", what);
 }
 
 /// @brief Finalizer invoked when a reader-writer lock object is collected.
@@ -252,9 +247,10 @@ extern "C"
 
         auto *gate = static_cast<RtGate *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtGate)));
         if (!gate)
+        {
             rt_trap("Gate.New: alloc failed");
-        if (!gate)
-            return nullptr;
+            return nullptr; // Unreachable, but silences compiler warnings
+        }
 
         auto *state = new (std::nothrow) GateState(permits);
         if (!state)
@@ -435,9 +431,10 @@ extern "C"
         auto *barrier =
             static_cast<RtBarrier *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtBarrier)));
         if (!barrier)
+        {
             rt_trap("Barrier.New: alloc failed");
-        if (!barrier)
-            return nullptr;
+            return nullptr; // Unreachable, but silences compiler warnings
+        }
 
         auto *state = new (std::nothrow) BarrierState(parties);
         if (!state)
@@ -547,9 +544,10 @@ extern "C"
         auto *lock =
             static_cast<RtRwLock *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtRwLock)));
         if (!lock)
+        {
             rt_trap("RwLock.New: alloc failed");
-        if (!lock)
-            return nullptr;
+            return nullptr; // Unreachable, but silences compiler warnings
+        }
 
         auto *state = new (std::nothrow) RwLockState();
         if (!state)

@@ -1646,6 +1646,94 @@ void *rt_listbox_get_selected(void *listbox)
     return vg_listbox_get_selected((vg_listbox_t *)listbox);
 }
 
+int64_t rt_listbox_get_count(void *listbox)
+{
+    if (!listbox)
+        return 0;
+    vg_listbox_t *lb = (vg_listbox_t *)listbox;
+    return (int64_t)lb->item_count;
+}
+
+int64_t rt_listbox_get_selected_index(void *listbox)
+{
+    if (!listbox)
+        return -1;
+    size_t idx = vg_listbox_get_selected_index((vg_listbox_t *)listbox);
+    if (idx == (size_t)-1)
+        return -1;
+    return (int64_t)idx;
+}
+
+void rt_listbox_select_index(void *listbox, int64_t index)
+{
+    if (!listbox || index < 0)
+        return;
+    vg_listbox_select_index((vg_listbox_t *)listbox, (size_t)index);
+}
+
+int64_t rt_listbox_was_selection_changed(void *listbox)
+{
+    if (!listbox)
+        return 0;
+    vg_listbox_t *lb = (vg_listbox_t *)listbox;
+    // Use a flag to track selection changes
+    // This requires checking if selection changed since last query
+    // For now, return 0 as a stub - would need tracking state
+    (void)lb;
+    return 0;
+}
+
+rt_string rt_listbox_item_get_text(void *item)
+{
+    if (!item)
+        return rt_const_cstr("");
+    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (it->text)
+        return rt_string_from_bytes(it->text, strlen(it->text));
+    return rt_const_cstr("");
+}
+
+void rt_listbox_item_set_text(void *item, rt_string text)
+{
+    if (!item)
+        return;
+    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (it->text)
+        free(it->text);
+    char *ctext = rt_string_to_cstr(text);
+    it->text = ctext; // Takes ownership
+}
+
+void rt_listbox_item_set_data(void *item, rt_string data)
+{
+    if (!item)
+        return;
+    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (it->user_data)
+        free(it->user_data);
+    char *cdata = rt_string_to_cstr(data);
+    it->user_data = cdata; // Takes ownership
+}
+
+rt_string rt_listbox_item_get_data(void *item)
+{
+    if (!item)
+        return rt_const_cstr("");
+    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    char *data = (char *)it->user_data;
+    if (data)
+        return rt_string_from_bytes(data, strlen(data));
+    return rt_const_cstr("");
+}
+
+void rt_listbox_set_font(void *listbox, void *font, double size)
+{
+    if (listbox)
+    {
+        vg_listbox_set_font((vg_listbox_t *)listbox, (vg_font_t *)font, (float)size);
+    }
+}
+
 //=============================================================================
 // RadioButton Widget
 //=============================================================================

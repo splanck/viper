@@ -24,11 +24,21 @@ using namespace runtime;
 // Block Management
 //=============================================================================
 
+/// @brief Create a new basic block with a unique label derived from @p base.
+/// @details Allocates a new block in the current function being lowered. The
+///          block is not immediately set as the insertion point; use setBlock()
+///          to begin emitting instructions into it.
+/// @param base Base name for the block label (e.g., "then", "else", "loop").
+/// @return Index of the newly created block.
 size_t Lowerer::createBlock(const std::string &base)
 {
     return blockMgr_.createBlock(base);
 }
 
+/// @brief Set the current insertion point to the block at @p blockIdx.
+/// @details All subsequent instruction emissions will append to this block
+///          until setBlock() is called again with a different index.
+/// @param blockIdx Index of the block to make current (from createBlock()).
 void Lowerer::setBlock(size_t blockIdx)
 {
     blockMgr_.setBlock(blockIdx);
@@ -513,6 +523,12 @@ TypeRef Lowerer::reverseMapType(Type ilType)
     }
 }
 
+/// @brief Return the size in bytes of an IL type.
+/// @details Used for struct layout calculations and GEP offset computation.
+///          Sizes follow x86-64 conventions: 8 bytes for pointers and 64-bit
+///          integers/floats, 4 for i32, 2 for i16, 1 for i1.
+/// @param type IL type to measure.
+/// @return Size in bytes.
 size_t Lowerer::getILTypeSize(Type type)
 {
     switch (type.kind)
@@ -533,6 +549,12 @@ size_t Lowerer::getILTypeSize(Type type)
     }
 }
 
+/// @brief Return the alignment requirement in bytes for an IL type.
+/// @details Alignments follow x86-64 SysV ABI: types align to their natural
+///          size, with booleans promoted to 8-byte alignment to prevent
+///          misalignment when adjacent to pointer-sized fields.
+/// @param type IL type to query.
+/// @return Alignment in bytes.
 size_t Lowerer::getILTypeAlignment(Type type)
 {
     // All types align to their size, with a minimum of 8 for pointer-sized types
@@ -557,6 +579,12 @@ size_t Lowerer::getILTypeAlignment(Type type)
     }
 }
 
+/// @brief Round @p offset up to the next multiple of @p alignment.
+/// @details Used during struct layout to ensure each field starts at a
+///          properly aligned address. Delegates to il::support::alignUp.
+/// @param offset Current byte offset to align.
+/// @param alignment Required alignment (must be a power of 2).
+/// @return Smallest value >= @p offset that is a multiple of @p alignment.
 size_t Lowerer::alignTo(size_t offset, size_t alignment)
 {
     return il::support::alignUp(offset, alignment);
