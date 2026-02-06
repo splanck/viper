@@ -273,15 +273,15 @@ Lowerer::Value Lowerer::emitBox(Value val, Type type)
 Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticType)
 {
     // Check if this is a value type that needs heap allocation
-    if (semanticType && semanticType->kind == TypeKindSem::Value &&
-        ilType.kind == Type::Kind::Ptr)
+    if (semanticType && semanticType->kind == TypeKindSem::Value && ilType.kind == Type::Kind::Ptr)
     {
         // Look up the value type info
         const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
         if (info && info->totalSize > 0)
         {
             // Allocate heap memory via runtime
-            Value heapPtr = emitCallRet(Type(Type::Kind::Ptr), kBoxValueType,
+            Value heapPtr = emitCallRet(Type(Type::Kind::Ptr),
+                                        kBoxValueType,
                                         {Value::constInt(static_cast<int64_t>(info->totalSize))});
 
             // Copy all fields from stack to heap
@@ -336,8 +336,7 @@ LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
 LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticType)
 {
     // Check if this is a value type that needs copying from heap to stack
-    if (semanticType && semanticType->kind == TypeKindSem::Value &&
-        ilType.kind == Type::Kind::Ptr)
+    if (semanticType && semanticType->kind == TypeKindSem::Value && ilType.kind == Type::Kind::Ptr)
     {
         // Look up the value type info
         const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);

@@ -8,8 +8,8 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 26 (.hpp/.cpp)
-  - support/: 19 files
+- **Total source files**: 27 (.hpp/.cpp)
+  - support/: 20 files
   - common/: 5 files
   - parse/: 1 file
   - pass/: 1 file

@@ -36,8 +36,8 @@ extern "C"
     // Stream Type Constants
     //=========================================================================
 
-    #define RT_STREAM_TYPE_BINFILE   0
-    #define RT_STREAM_TYPE_MEMSTREAM 1
+#define RT_STREAM_TYPE_BINFILE 0
+#define RT_STREAM_TYPE_MEMSTREAM 1
 
     //=========================================================================
     // Stream Creation

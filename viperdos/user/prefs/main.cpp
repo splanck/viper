@@ -50,8 +50,8 @@ constexpr int CATEGORY_HEIGHT = 28;
 
 class Button3D {
   public:
-    static void draw(gui_window_t *win, int x, int y, int w, int h,
-                     const char *label, bool pressed) {
+    static void draw(
+        gui_window_t *win, int x, int y, int w, int h, const char *label, bool pressed) {
         uint32_t bg = pressed ? colors::GRAY_MED : colors::GRAY_LIGHT;
         gui_fill_rect(win, x, y, w, h, bg);
 
@@ -113,16 +113,25 @@ class ScreenPrefsPanel : public PrefsPanel {
         gui_draw_text(win, layout::CONTENT_X + 190, y, "Workbench Blue", colors::GRAY_DARK);
         y += 35;
 
-        gui_fill_rect(win, layout::CONTENT_X, y,
-                      layout::WIN_WIDTH - layout::CONTENT_X - 20, 50, colors::BLUE);
-        gui_draw_text(win, layout::CONTENT_X + 10, y + 10,
-                      "Screen preferences are read-only", colors::WHITE);
-        gui_draw_text(win, layout::CONTENT_X + 10, y + 28,
-                      "in this version of ViperDOS.", colors::WHITE);
+        gui_fill_rect(win,
+                      layout::CONTENT_X,
+                      y,
+                      layout::WIN_WIDTH - layout::CONTENT_X - 20,
+                      50,
+                      colors::BLUE);
+        gui_draw_text(
+            win, layout::CONTENT_X + 10, y + 10, "Screen preferences are read-only", colors::WHITE);
+        gui_draw_text(
+            win, layout::CONTENT_X + 10, y + 28, "in this version of ViperDOS.", colors::WHITE);
     }
 
-    const char *name() const override { return "Screen"; }
-    const char *icon() const override { return "[S]"; }
+    const char *name() const override {
+        return "Screen";
+    }
+
+    const char *icon() const override {
+        return "[S]";
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -166,8 +175,13 @@ class InputPrefsPanel : public PrefsPanel {
         gui_draw_text(win, layout::CONTENT_X + 120, y, "US English", colors::GRAY_DARK);
     }
 
-    const char *name() const override { return "Input"; }
-    const char *icon() const override { return "[I]"; }
+    const char *name() const override {
+        return "Input";
+    }
+
+    const char *icon() const override {
+        return "[I]";
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -213,8 +227,13 @@ class TimePrefsPanel : public PrefsPanel {
         gui_draw_text(win, layout::CONTENT_X + 110, y, "24-hour", colors::GRAY_DARK);
     }
 
-    const char *name() const override { return "Time"; }
-    const char *icon() const override { return "[T]"; }
+    const char *name() const override {
+        return "Time";
+    }
+
+    const char *icon() const override {
+        return "[T]";
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -238,8 +257,11 @@ class AboutPrefsPanel : public PrefsPanel {
         gui_draw_text(win, layout::CONTENT_X + 12, y + 35, "DOS", colors::WHITE);
 
         gui_draw_text(win, layout::CONTENT_X + 80, y + 5, "ViperDOS Workbench", colors::BLACK);
-        gui_draw_text(win, layout::CONTENT_X + 80, y + 22,
-                      "Version " VIPERDOS_VERSION_STRING, colors::GRAY_DARK);
+        gui_draw_text(win,
+                      layout::CONTENT_X + 80,
+                      y + 22,
+                      "Version " VIPERDOS_VERSION_STRING,
+                      colors::GRAY_DARK);
         gui_draw_text(win, layout::CONTENT_X + 80, y + 39, "Hybrid Kernel OS", colors::GRAY_DARK);
         y += 75;
 
@@ -247,7 +269,9 @@ class AboutPrefsPanel : public PrefsPanel {
         sys::mem_info(&memInfo);
 
         char buf[64];
-        snprintf(buf, sizeof(buf), "Memory: %llu MB total, %llu MB free",
+        snprintf(buf,
+                 sizeof(buf),
+                 "Memory: %llu MB total, %llu MB free",
                  memInfo.total_bytes / (1024 * 1024),
                  memInfo.free_bytes / (1024 * 1024));
         gui_draw_text(win, layout::CONTENT_X, y, buf, colors::BLACK);
@@ -262,8 +286,13 @@ class AboutPrefsPanel : public PrefsPanel {
         gui_draw_text(win, layout::CONTENT_X, y, "(C) 2025 ViperDOS Team", colors::GRAY_DARK);
     }
 
-    const char *name() const override { return "About"; }
-    const char *icon() const override { return "[?]"; }
+    const char *name() const override {
+        return "About";
+    }
+
+    const char *icon() const override {
+        return "[?]";
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -370,11 +399,19 @@ class PreferencesApp {
             bool selected = (i == m_currentPanel);
 
             if (selected) {
-                gui_fill_rect(m_window, 5, y, layout::SIDEBAR_WIDTH - 10,
-                              layout::CATEGORY_HEIGHT, colors::BLUE);
+                gui_fill_rect(m_window,
+                              5,
+                              y,
+                              layout::SIDEBAR_WIDTH - 10,
+                              layout::CATEGORY_HEIGHT,
+                              colors::BLUE);
             } else if (i == m_hoveredPanel) {
-                gui_fill_rect(m_window, 5, y, layout::SIDEBAR_WIDTH - 10,
-                              layout::CATEGORY_HEIGHT, colors::GRAY_LIGHT);
+                gui_fill_rect(m_window,
+                              5,
+                              y,
+                              layout::SIDEBAR_WIDTH - 10,
+                              layout::CATEGORY_HEIGHT,
+                              colors::GRAY_LIGHT);
             }
 
             uint32_t textColor = selected ? colors::WHITE : colors::BLACK;
@@ -384,36 +421,48 @@ class PreferencesApp {
             y += layout::CATEGORY_HEIGHT + 4;
         }
 
-        gui_draw_vline(m_window, layout::SIDEBAR_WIDTH - 1, 0, layout::WIN_HEIGHT, colors::GRAY_DARK);
+        gui_draw_vline(
+            m_window, layout::SIDEBAR_WIDTH - 1, 0, layout::WIN_HEIGHT, colors::GRAY_DARK);
     }
 
     void drawContent() {
-        gui_fill_rect(m_window, layout::SIDEBAR_WIDTH, 0,
+        gui_fill_rect(m_window,
+                      layout::SIDEBAR_WIDTH,
+                      0,
                       layout::WIN_WIDTH - layout::SIDEBAR_WIDTH,
-                      layout::WIN_HEIGHT - 45, colors::GRAY_LIGHT);
+                      layout::WIN_HEIGHT - 45,
+                      colors::GRAY_LIGHT);
 
         m_panels[m_currentPanel]->draw(m_window);
     }
 
     void drawBottomBar() {
-        gui_fill_rect(m_window, layout::SIDEBAR_WIDTH, layout::WIN_HEIGHT - 45,
-                      layout::WIN_WIDTH - layout::SIDEBAR_WIDTH, 45, colors::GRAY_LIGHT);
-        gui_draw_hline(m_window, layout::SIDEBAR_WIDTH, layout::WIN_WIDTH,
-                       layout::WIN_HEIGHT - 45, colors::GRAY_DARK);
+        gui_fill_rect(m_window,
+                      layout::SIDEBAR_WIDTH,
+                      layout::WIN_HEIGHT - 45,
+                      layout::WIN_WIDTH - layout::SIDEBAR_WIDTH,
+                      45,
+                      colors::GRAY_LIGHT);
+        gui_draw_hline(m_window,
+                       layout::SIDEBAR_WIDTH,
+                       layout::WIN_WIDTH,
+                       layout::WIN_HEIGHT - 45,
+                       colors::GRAY_DARK);
 
         int btnY = layout::WIN_HEIGHT - 35;
         int btnW = 70;
 
-        Button3D::draw(m_window, layout::WIN_WIDTH - 240, btnY, btnW,
-                       layout::BUTTON_HEIGHT, "Use", false);
-        Button3D::draw(m_window, layout::WIN_WIDTH - 160, btnY, btnW,
-                       layout::BUTTON_HEIGHT, "Cancel", false);
-        Button3D::draw(m_window, layout::WIN_WIDTH - 80, btnY, btnW,
-                       layout::BUTTON_HEIGHT, "Save", false);
+        Button3D::draw(
+            m_window, layout::WIN_WIDTH - 240, btnY, btnW, layout::BUTTON_HEIGHT, "Use", false);
+        Button3D::draw(
+            m_window, layout::WIN_WIDTH - 160, btnY, btnW, layout::BUTTON_HEIGHT, "Cancel", false);
+        Button3D::draw(
+            m_window, layout::WIN_WIDTH - 80, btnY, btnW, layout::BUTTON_HEIGHT, "Save", false);
     }
 
     int findPanelAt(int x, int y) {
-        if (x >= layout::SIDEBAR_WIDTH) return -1;
+        if (x >= layout::SIDEBAR_WIDTH)
+            return -1;
 
         int panelY = 15;
         for (int i = 0; i < NUM_PANELS; i++) {
@@ -426,7 +475,8 @@ class PreferencesApp {
     }
 
     bool handleClick(int x, int y, int button) {
-        if (button != 0) return false;
+        if (button != 0)
+            return false;
 
         int panelIdx = findPanelAt(x, y);
         if (panelIdx >= 0) {

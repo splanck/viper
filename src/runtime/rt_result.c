@@ -39,6 +39,7 @@ typedef struct
 {
     ResultVariant variant;
     ValueType value_type;
+
     union
     {
         void *ptr;
@@ -407,14 +408,14 @@ int8_t rt_result_equals(void *a, void *b)
 
     switch (ra->value_type)
     {
-    case VALUE_PTR:
-        return ra->value.ptr == rb->value.ptr ? 1 : 0;
-    case VALUE_STR:
-        return rt_str_cmp(ra->value.str, rb->value.str) == 0 ? 1 : 0;
-    case VALUE_I64:
-        return ra->value.i64 == rb->value.i64 ? 1 : 0;
-    case VALUE_F64:
-        return ra->value.f64 == rb->value.f64 ? 1 : 0;
+        case VALUE_PTR:
+            return ra->value.ptr == rb->value.ptr ? 1 : 0;
+        case VALUE_STR:
+            return rt_str_cmp(ra->value.str, rb->value.str) == 0 ? 1 : 0;
+        case VALUE_I64:
+            return ra->value.i64 == rb->value.i64 ? 1 : 0;
+        case VALUE_F64:
+            return ra->value.f64 == rb->value.f64 ? 1 : 0;
     }
     return 0;
 }
@@ -431,36 +432,36 @@ rt_string rt_result_to_string(void *obj)
     {
         switch (r->value_type)
         {
-        case VALUE_PTR:
-            snprintf(buf, sizeof(buf), "Ok(%p)", r->value.ptr);
-            break;
-        case VALUE_STR:
-            snprintf(buf, sizeof(buf), "Ok(\"%s\")", rt_string_cstr(r->value.str));
-            break;
-        case VALUE_I64:
-            snprintf(buf, sizeof(buf), "Ok(%lld)", (long long)r->value.i64);
-            break;
-        case VALUE_F64:
-            snprintf(buf, sizeof(buf), "Ok(%g)", r->value.f64);
-            break;
+            case VALUE_PTR:
+                snprintf(buf, sizeof(buf), "Ok(%p)", r->value.ptr);
+                break;
+            case VALUE_STR:
+                snprintf(buf, sizeof(buf), "Ok(\"%s\")", rt_string_cstr(r->value.str));
+                break;
+            case VALUE_I64:
+                snprintf(buf, sizeof(buf), "Ok(%lld)", (long long)r->value.i64);
+                break;
+            case VALUE_F64:
+                snprintf(buf, sizeof(buf), "Ok(%g)", r->value.f64);
+                break;
         }
     }
     else
     {
         switch (r->value_type)
         {
-        case VALUE_PTR:
-            snprintf(buf, sizeof(buf), "Err(%p)", r->value.ptr);
-            break;
-        case VALUE_STR:
-            snprintf(buf, sizeof(buf), "Err(\"%s\")", rt_string_cstr(r->value.str));
-            break;
-        case VALUE_I64:
-            snprintf(buf, sizeof(buf), "Err(%lld)", (long long)r->value.i64);
-            break;
-        case VALUE_F64:
-            snprintf(buf, sizeof(buf), "Err(%g)", r->value.f64);
-            break;
+            case VALUE_PTR:
+                snprintf(buf, sizeof(buf), "Err(%p)", r->value.ptr);
+                break;
+            case VALUE_STR:
+                snprintf(buf, sizeof(buf), "Err(\"%s\")", rt_string_cstr(r->value.str));
+                break;
+            case VALUE_I64:
+                snprintf(buf, sizeof(buf), "Err(%lld)", (long long)r->value.i64);
+                break;
+            case VALUE_F64:
+                snprintf(buf, sizeof(buf), "Err(%g)", r->value.f64);
+                break;
         }
     }
 

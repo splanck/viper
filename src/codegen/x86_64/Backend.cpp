@@ -235,9 +235,32 @@ CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
 /// @return Assembly text and diagnostics for the provided function.
 CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOptions &options)
 {
-    std::vector<ILFunction> functions{};
-    functions.push_back(func);
-    return emitModuleImpl(functions, options);
+    CodegenResult result{};
+
+    std::ostringstream asmStream{};
+    std::ostringstream errorStream{};
+
+    if (const auto warning = syntaxWarning(options); !warning.empty())
+    {
+        errorStream << warning;
+    }
+
+    const TargetInfo &target = hostTarget();
+    AsmEmitter::RoDataPool roData{};
+    LowerILToMIR lowering{target, roData};
+    AsmEmitter emitter{roData};
+
+    FrameInfo frame{};
+    MFunction machineFunc{};
+    runFunctionPipeline(func, lowering, target, options, frame, machineFunc);
+
+    emitter.emitFunction(asmStream, machineFunc, target);
+    emitter.emitRoData(asmStream);
+
+    result.asmText = asmStream.str();
+    result.errors = errorStream.str();
+
+    return result;
 }
 
 /// @brief Emit assembly for every function in an IL module.

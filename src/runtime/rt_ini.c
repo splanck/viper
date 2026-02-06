@@ -41,7 +41,8 @@ static const char *ini_trim(const char *start, size_t len, size_t *out_len)
 
 static size_t str_len(rt_string s)
 {
-    if (!s) return 0;
+    if (!s)
+        return 0;
     const char *c = rt_string_cstr(s);
     return c ? strlen(c) : 0;
 }
@@ -176,9 +177,11 @@ rt_string rt_ini_format(void *ini_map)
             rt_string val = (rt_string)rt_map_get(default_sec, key);
             const char *kc = rt_string_cstr(key);
             const char *vc = val ? rt_string_cstr(val) : "";
-            if (kc) rt_sb_append_cstr(&sb, kc);
+            if (kc)
+                rt_sb_append_cstr(&sb, kc);
             rt_sb_append_cstr(&sb, " = ");
-            if (vc) rt_sb_append_cstr(&sb, vc);
+            if (vc)
+                rt_sb_append_cstr(&sb, vc);
             rt_sb_append_bytes(&sb, "\n", 1);
         }
     }
@@ -197,7 +200,8 @@ rt_string rt_ini_format(void *ini_map)
 
         rt_sb_append_bytes(&sb, "\n[", 2);
         const char *sc = rt_string_cstr(sect_name);
-        if (sc) rt_sb_append_cstr(&sb, sc);
+        if (sc)
+            rt_sb_append_cstr(&sb, sc);
         rt_sb_append_bytes(&sb, "]\n", 2);
 
         void *keys = rt_map_keys(sect_map);
@@ -208,9 +212,11 @@ rt_string rt_ini_format(void *ini_map)
             rt_string val = (rt_string)rt_map_get(sect_map, key);
             const char *kc = rt_string_cstr(key);
             const char *vc = val ? rt_string_cstr(val) : "";
-            if (kc) rt_sb_append_cstr(&sb, kc);
+            if (kc)
+                rt_sb_append_cstr(&sb, kc);
             rt_sb_append_cstr(&sb, " = ");
-            if (vc) rt_sb_append_cstr(&sb, vc);
+            if (vc)
+                rt_sb_append_cstr(&sb, vc);
             rt_sb_append_bytes(&sb, "\n", 1);
         }
     }

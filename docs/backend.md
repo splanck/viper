@@ -966,10 +966,13 @@ viper codegen arm64 program.il -run-native
 ```
 src/codegen/
 ├── common/                        # Shared utilities
-│   ├── ArgNormalize.hpp           # Argument normalization
-│   ├── LabelUtil.hpp              # Label generation helpers
-│   ├── MachineIRBuilder.hpp       # MIR instruction builder
-│   └── MachineIRFormat.hpp        # MIR formatting utilities
+│   ├── Diagnostics.hpp/cpp        # Codegen diagnostic reporting
+│   ├── LabelUtil.hpp              # Label sanitization helpers
+│   ├── LinkerSupport.hpp/cpp      # Runtime symbol resolution for linking
+│   ├── ParallelCopyResolver.hpp   # Parallel copy resolution (phi lowering)
+│   ├── PassManager.hpp            # Abstract pass manager interface
+│   ├── RuntimeComponents.hpp      # Runtime component dependency tracking
+│   └── TargetInfoBase.hpp         # Base template for target register info
 │
 ├── aarch64/                       # ARM64 backend (see above)
 │
@@ -1170,4 +1173,4 @@ src/codegen/
 **Source Code:**
 
 - `src/codegen/x86_64/` — Backend implementation
-- `tests/codegen/` — Backend tests
+- `src/tests/codegen/` — Backend tests

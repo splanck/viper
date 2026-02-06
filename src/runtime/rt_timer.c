@@ -14,17 +14,19 @@
 #include <stdlib.h>
 
 /// Internal structure for Timer.
-struct rt_timer_impl {
-    int64_t duration;     // Total frames for the timer
-    int64_t elapsed;      // Frames elapsed since start
-    int8_t running;       // 1 if timer is running
-    int8_t repeating;     // 1 if timer auto-restarts
+struct rt_timer_impl
+{
+    int64_t duration; // Total frames for the timer
+    int64_t elapsed;  // Frames elapsed since start
+    int8_t running;   // 1 if timer is running
+    int8_t repeating; // 1 if timer auto-restarts
 };
 
 rt_timer rt_timer_new(void)
 {
     struct rt_timer_impl *timer = malloc(sizeof(struct rt_timer_impl));
-    if (!timer) {
+    if (!timer)
+    {
         return NULL;
     }
 
@@ -38,14 +40,16 @@ rt_timer rt_timer_new(void)
 
 void rt_timer_destroy(rt_timer timer)
 {
-    if (timer) {
+    if (timer)
+    {
         free(timer);
     }
 }
 
 void rt_timer_start(rt_timer timer, int64_t frames)
 {
-    if (!timer || frames <= 0) return;
+    if (!timer || frames <= 0)
+        return;
 
     timer->duration = frames;
     timer->elapsed = 0;
@@ -55,7 +59,8 @@ void rt_timer_start(rt_timer timer, int64_t frames)
 
 void rt_timer_start_repeating(rt_timer timer, int64_t frames)
 {
-    if (!timer || frames <= 0) return;
+    if (!timer || frames <= 0)
+        return;
 
     timer->duration = frames;
     timer->elapsed = 0;
@@ -65,32 +70,39 @@ void rt_timer_start_repeating(rt_timer timer, int64_t frames)
 
 void rt_timer_stop(rt_timer timer)
 {
-    if (!timer) return;
+    if (!timer)
+        return;
     timer->running = 0;
 }
 
 void rt_timer_reset(rt_timer timer)
 {
-    if (!timer) return;
+    if (!timer)
+        return;
     timer->elapsed = 0;
 }
 
 int8_t rt_timer_update(rt_timer timer)
 {
-    if (!timer || !timer->running) {
+    if (!timer || !timer->running)
+    {
         return 0;
     }
 
     timer->elapsed++;
 
-    if (timer->elapsed >= timer->duration) {
-        if (timer->repeating) {
+    if (timer->elapsed >= timer->duration)
+    {
+        if (timer->repeating)
+        {
             // Wrap around for repeating timers
             timer->elapsed = 0;
-        } else {
+        }
+        else
+        {
             timer->running = 0;
         }
-        return 1;  // Timer expired this frame
+        return 1; // Timer expired this frame
     }
 
     return 0;
@@ -103,7 +115,8 @@ int8_t rt_timer_is_running(rt_timer timer)
 
 int8_t rt_timer_is_expired(rt_timer timer)
 {
-    if (!timer) return 0;
+    if (!timer)
+        return 0;
     return (!timer->running && timer->elapsed >= timer->duration) ? 1 : 0;
 }
 
@@ -114,7 +127,8 @@ int64_t rt_timer_elapsed(rt_timer timer)
 
 int64_t rt_timer_remaining(rt_timer timer)
 {
-    if (!timer || timer->duration == 0) return 0;
+    if (!timer || timer->duration == 0)
+        return 0;
 
     int64_t remaining = timer->duration - timer->elapsed;
     return (remaining > 0) ? remaining : 0;
@@ -122,7 +136,8 @@ int64_t rt_timer_remaining(rt_timer timer)
 
 int64_t rt_timer_progress(rt_timer timer)
 {
-    if (!timer || timer->duration == 0) return 0;
+    if (!timer || timer->duration == 0)
+        return 0;
 
     int64_t progress = (timer->elapsed * 100) / timer->duration;
     return (progress > 100) ? 100 : progress;
@@ -140,6 +155,7 @@ int8_t rt_timer_is_repeating(rt_timer timer)
 
 void rt_timer_set_duration(rt_timer timer, int64_t frames)
 {
-    if (!timer || frames <= 0) return;
+    if (!timer || frames <= 0)
+        return;
     timer->duration = frames;
 }

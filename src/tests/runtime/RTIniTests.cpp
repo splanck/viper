@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_ini.h"
+#include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -31,7 +31,8 @@ static rt_string make_str(const char *s)
 
 static bool str_eq(rt_string s, const char *expected)
 {
-    if (!s) return expected == nullptr || *expected == '\0';
+    if (!s)
+        return expected == nullptr || *expected == '\0';
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
@@ -42,15 +43,13 @@ static bool str_eq(rt_string s, const char *expected)
 
 static void test_parse_basic()
 {
-    rt_string input = make_str(
-        "[database]\n"
-        "host = localhost\n"
-        "port = 5432\n"
-        "\n"
-        "[app]\n"
-        "name = MyApp\n"
-        "debug = true\n"
-    );
+    rt_string input = make_str("[database]\n"
+                               "host = localhost\n"
+                               "port = 5432\n"
+                               "\n"
+                               "[app]\n"
+                               "name = MyApp\n"
+                               "debug = true\n");
     void *ini = rt_ini_parse(input);
     assert(ini != nullptr);
 
@@ -74,12 +73,10 @@ static void test_parse_basic()
 
 static void test_parse_comments()
 {
-    rt_string input = make_str(
-        "; This is a comment\n"
-        "# This is also a comment\n"
-        "[section]\n"
-        "key = value\n"
-    );
+    rt_string input = make_str("; This is a comment\n"
+                               "# This is also a comment\n"
+                               "[section]\n"
+                               "key = value\n");
     void *ini = rt_ini_parse(input);
 
     rt_string sect = make_str("section");
@@ -95,12 +92,10 @@ static void test_parse_comments()
 
 static void test_parse_default_section()
 {
-    rt_string input = make_str(
-        "key1 = val1\n"
-        "key2 = val2\n"
-        "[named]\n"
-        "key3 = val3\n"
-    );
+    rt_string input = make_str("key1 = val1\n"
+                               "key2 = val2\n"
+                               "[named]\n"
+                               "key3 = val3\n");
     void *ini = rt_ini_parse(input);
 
     rt_string empty = make_str("");
@@ -116,10 +111,8 @@ static void test_parse_default_section()
 
 static void test_parse_whitespace_trimming()
 {
-    rt_string input = make_str(
-        "[  section  ]\n"
-        "  key  =  value with spaces  \n"
-    );
+    rt_string input = make_str("[  section  ]\n"
+                               "  key  =  value with spaces  \n");
     void *ini = rt_ini_parse(input);
 
     rt_string sect = make_str("section");
@@ -150,10 +143,8 @@ static void test_has_section()
 
 static void test_sections_list()
 {
-    rt_string input = make_str(
-        "[alpha]\na = 1\n"
-        "[beta]\nb = 2\n"
-    );
+    rt_string input = make_str("[alpha]\na = 1\n"
+                               "[beta]\nb = 2\n");
     void *ini = rt_ini_parse(input);
     void *sects = rt_ini_sections(ini);
     // Should have 3: "", "alpha", "beta"
@@ -271,7 +262,7 @@ static void test_get_missing_returns_empty()
 static void test_null_safety()
 {
     void *ini = rt_ini_parse(NULL);
-    assert(ini != nullptr); // Should return empty map
+    assert(ini != nullptr);       // Should return empty map
     assert(rt_map_len(ini) == 0); // No sections when input is NULL
 
     // Set/get should not crash on this empty map

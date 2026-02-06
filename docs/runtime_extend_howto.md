@@ -301,13 +301,14 @@ RT_METHOD("name", "signature", target_id)
 
 ### What rtgen Does
 
-The `rtgen` tool reads `runtime.def` and generates three `.inc` files:
+The `rtgen` tool reads `runtime.def` and generates four `.inc` files:
 
 | File | Purpose |
 |------|---------|
 | `RuntimeNameMap.inc` | Maps canonical names to C symbols for native codegen |
 | `RuntimeClasses.inc` | Class/method/property catalog for OOP dispatch |
 | `RuntimeSignatures.inc` | Function signatures for type checking |
+| `ZiaRuntimeExterns.inc` | Extern declarations for the Zia frontend |
 
 ### Generated Output Example
 
@@ -339,7 +340,7 @@ add_custom_command(
 ### Manual Regeneration
 
 ```bash
-./build/src/rtgen src/il/runtime/runtime.def src/il/runtime/generated/
+./build/src/tools/rtgen/rtgen src/il/runtime/runtime.def src/il/runtime/generated/
 ```
 
 ---
@@ -356,22 +357,17 @@ Both BASIC and Zia frontends use the generated runtime metadata to:
 
 ### BASIC Frontend: RuntimeMethodIndex
 
-The BASIC frontend uses `RuntimeMethodIndex` (`src/frontends/basic/sem/RuntimeMethodIndex.cpp`):
+The BASIC frontend uses `RuntimeMethodIndex` (`src/frontends/basic/sem/RuntimeMethodIndex.cpp`),
+which delegates to the IL-layer `RuntimeRegistry`:
 
 ```cpp
-// Seeded from generated RuntimeClasses
-void RuntimeMethodIndex::seed(const std::vector<il::runtime::RuntimeClass> &classes)
+// Lookup delegates to the centralized RuntimeRegistry
+std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(
+    std::string_view classQName, std::string_view method, std::size_t arity) const
 {
-    for (const auto &cls : classes)
-    {
-        for (const auto &m : cls.methods)
-        {
-            RuntimeMethodInfo info;
-            info.target = m.target;
-            parseSignature(m.signature, info);
-            map_[keyFor(cls.qname, m.name, info.args.size())] = std::move(info);
-        }
-    }
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+    auto parsed = registry.findMethod(classQName, method, arity);
+    // Convert IL types to BASIC types and return RuntimeMethodInfo
 }
 ```
 

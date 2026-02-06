@@ -39,16 +39,15 @@ TEST(Arm64Bugfix, VoidMainExitZero)
     const std::string in = outPath("arm64_bugfix_void_main.il");
     // A void main that calls a runtime function leaving a non-zero value in x0.
     // Before the fix, this would exit with whatever rt_term_say left in x0.
-    const std::string il =
-        "il 0.2.0\n"
-        "extern @Viper.Terminal.Say(str) -> void\n"
-        "global const str @.msg = \"hello\"\n"
-        "func @main() -> void {\n"
-        "entry_0:\n"
-        "  %t0 = const_str @.msg\n"
-        "  call @Viper.Terminal.Say(%t0)\n"
-        "  ret\n"
-        "}\n";
+    const std::string il = "il 0.2.0\n"
+                           "extern @Viper.Terminal.Say(str) -> void\n"
+                           "global const str @.msg = \"hello\"\n"
+                           "func @main() -> void {\n"
+                           "entry_0:\n"
+                           "  %t0 = const_str @.msg\n"
+                           "  call @Viper.Terminal.Say(%t0)\n"
+                           "  ret\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
@@ -62,22 +61,21 @@ TEST(Arm64Bugfix, BoolReturnMasked)
     const std::string in = outPath("arm64_bugfix_bool_return.il");
     // Calls rt_str_eq which returns bool (i1). If the masking works,
     // the comparison and conditional branch should function correctly.
-    const std::string il =
-        "il 0.2.0\n"
-        "extern @Viper.String.Equals(str, str) -> i1\n"
-        "global const str @.a = \"hello\"\n"
-        "global const str @.b = \"hello\"\n"
-        "func @main() -> i64 {\n"
-        "entry_0:\n"
-        "  %t0 = const_str @.a\n"
-        "  %t1 = const_str @.b\n"
-        "  %t2 = call @Viper.String.Equals(%t0, %t1)\n"
-        "  cbr %t2, yes_0, no_0\n"
-        "yes_0:\n"
-        "  ret 0\n"
-        "no_0:\n"
-        "  ret 1\n"
-        "}\n";
+    const std::string il = "il 0.2.0\n"
+                           "extern @Viper.String.Equals(str, str) -> i1\n"
+                           "global const str @.a = \"hello\"\n"
+                           "global const str @.b = \"hello\"\n"
+                           "func @main() -> i64 {\n"
+                           "entry_0:\n"
+                           "  %t0 = const_str @.a\n"
+                           "  %t1 = const_str @.b\n"
+                           "  %t2 = call @Viper.String.Equals(%t0, %t1)\n"
+                           "  cbr %t2, yes_0, no_0\n"
+                           "yes_0:\n"
+                           "  ret 0\n"
+                           "no_0:\n"
+                           "  ret 1\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));

@@ -16,7 +16,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - **Entity types**: Reference semantics with identity, methods, and inheritance
 - **Value types**: Copy semantics with stack allocation
 - **Generics**: Parameterized types for collections (`List[T]`, `Map[K, V]`)
-- **Modules**: File-based modules with import system
+- **Modules**: File-based modules with bind system
 - **C-like syntax**: Familiar braces, semicolons, and operators
 - **Runtime library**: Full access to Viper.* classes
 
@@ -882,7 +882,7 @@ GetKey();            // Read single key
 GetKeyTimeout(ms);   // Read key with timeout
 Clear();             // Clear screen
 SetPosition(r, c);   // Move cursor
-SetColor(code);      // Set text color
+SetColor(fg, bg);    // Set foreground/background color (0-15)
 SetCursorVisible(v); // Show/hide cursor
 BeginBatch();        // Start batch output
 EndBatch();          // End batch output
@@ -913,7 +913,7 @@ Cos(x);                  // Cosine
 ```viper
 bind Viper.Random;
 
-Next(max);             // Random integer [0, max)
+NextInt(max);          // Random integer [0, max)
 ```
 
 #### Collections
@@ -976,9 +976,9 @@ The following words are reserved and cannot be used as identifiers:
 
 ```
 and         as          break       continue    else
-entity      expose      extends     false       final
-for         func        guard       hide        if
-implements  import      in          interface   is
+bind        entity      expose      extends     false
+final       for         func        guard       hide
+if          implements  in          interface   is
 let         match       module      namespace   new
 not         null        or          override    return
 self        super       true        value       var
@@ -1001,6 +1001,7 @@ String
 ```
 module      ::= "module" IDENT ";" bind* decl*
 bind        ::= "bind" STRING ["as" IDENT] ";"
+              | "bind" qualifiedName ["as" IDENT] ["{" identList "}"] ";"
 ```
 
 ### Declarations

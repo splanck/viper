@@ -183,6 +183,7 @@ VM::ExecResult handleCall(VM &vm,
         struct SvHash
         {
             using is_transparent = void;
+
             size_t operator()(std::string_view sv) const
             {
                 return std::hash<std::string_view>{}(sv);
@@ -207,50 +208,50 @@ VM::ExecResult handleCall(VM &vm,
             bool handled = true;
             switch (fpIt->second)
             {
-            case FastPathId::InkeyStr:
-                out.str = rt_inkey_str();
-                break;
-            case FastPathId::TermLocate:
-                if (args.size() >= 2)
-                    rt_term_locate_i32(static_cast<int32_t>(args[0].i64),
-                                       static_cast<int32_t>(args[1].i64));
-                else
-                    handled = false;
-                break;
-            case FastPathId::TermColor:
-                if (args.size() >= 2)
-                    rt_term_color_i32(static_cast<int32_t>(args[0].i64),
-                                      static_cast<int32_t>(args[1].i64));
-                else
-                    handled = false;
-                break;
-            case FastPathId::TermCls:
-                rt_term_cls();
-                break;
-            case FastPathId::TimerMs:
-                out.i64 = rt_timer_ms();
-                break;
-            case FastPathId::SleepMs:
-                if (args.size() >= 1)
-                    rt_sleep_ms(static_cast<int32_t>(args[0].i64));
-                else
-                    handled = false;
-                break;
-            case FastPathId::Keypressed:
-                out.i64 = rt_keypressed();
-                break;
-            case FastPathId::TermAltScreen:
-                if (args.size() >= 1)
-                    rt_term_alt_screen_i32(static_cast<int32_t>(args[0].i64));
-                else
-                    handled = false;
-                break;
-            case FastPathId::TermCursorVisible:
-                if (args.size() >= 1)
-                    rt_term_cursor_visible_i32(static_cast<int32_t>(args[0].i64));
-                else
-                    handled = false;
-                break;
+                case FastPathId::InkeyStr:
+                    out.str = rt_inkey_str();
+                    break;
+                case FastPathId::TermLocate:
+                    if (args.size() >= 2)
+                        rt_term_locate_i32(static_cast<int32_t>(args[0].i64),
+                                           static_cast<int32_t>(args[1].i64));
+                    else
+                        handled = false;
+                    break;
+                case FastPathId::TermColor:
+                    if (args.size() >= 2)
+                        rt_term_color_i32(static_cast<int32_t>(args[0].i64),
+                                          static_cast<int32_t>(args[1].i64));
+                    else
+                        handled = false;
+                    break;
+                case FastPathId::TermCls:
+                    rt_term_cls();
+                    break;
+                case FastPathId::TimerMs:
+                    out.i64 = rt_timer_ms();
+                    break;
+                case FastPathId::SleepMs:
+                    if (args.size() >= 1)
+                        rt_sleep_ms(static_cast<int32_t>(args[0].i64));
+                    else
+                        handled = false;
+                    break;
+                case FastPathId::Keypressed:
+                    out.i64 = rt_keypressed();
+                    break;
+                case FastPathId::TermAltScreen:
+                    if (args.size() >= 1)
+                        rt_term_alt_screen_i32(static_cast<int32_t>(args[0].i64));
+                    else
+                        handled = false;
+                    break;
+                case FastPathId::TermCursorVisible:
+                    if (args.size() >= 1)
+                        rt_term_cursor_visible_i32(static_cast<int32_t>(args[0].i64));
+                    else
+                        handled = false;
+                    break;
             }
             if (handled)
             {

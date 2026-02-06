@@ -641,6 +641,20 @@ class Parser
     /// @return The parsed MethodDecl.
     DeclPtr parseMethodDecl();
 
+    /// @brief Parse a comma-separated interface list after 'implements'.
+    /// @param[out] interfaces Output vector of interface name strings.
+    /// @return True on success (or no 'implements' present), false on error.
+    bool parseInterfaceList(std::vector<std::string> &interfaces);
+
+    /// @brief Parse type body members (fields and methods) between braces.
+    /// @param[out] members Output member list.
+    /// @param defaultVisibility Default visibility (Public for value, Private for entity).
+    /// @param allowOverride Whether the 'override' modifier is permitted.
+    /// @return True on success.
+    bool parseMemberBlock(std::vector<DeclPtr> &members,
+                          Visibility defaultVisibility,
+                          bool allowOverride);
+
     /// @}
     //=========================================================================
     /// @name Member Variables

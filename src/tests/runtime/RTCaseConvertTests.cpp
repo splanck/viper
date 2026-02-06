@@ -290,10 +290,9 @@ static void test_acronym_handling()
     //   i=2: src[2]='L' upper, src[3]='P' upper, src[4]='a' lower -> ACRONYM boundary! Break.
     //   So word so far is "XML", break. Next word starts at i=3.
     //   i=3: src[3]='P' upper... collect normally until separator or camelCase
-    //   src[3]='P', src[4]='a' -> P is upper, a is lower -> not camelCase (P is not preceded by lower)
-    //   Actually wait: camelCase check is: islower(src[i]) && isupper(src[i+1])
-    //   At i=3: P is upper, not lower, so no break
-    //   At i=4: a is lower, r is lower -> no break
+    //   src[3]='P', src[4]='a' -> P is upper, a is lower -> not camelCase (P is not preceded by
+    //   lower) Actually wait: camelCase check is: islower(src[i]) && isupper(src[i+1]) At i=3: P is
+    //   upper, not lower, so no break At i=4: a is lower, r is lower -> no break
     //   ... collect "Parser"
     // So we get words: ["XML", "Parser"]
     // snake_case: "xml_parser"

@@ -11,7 +11,7 @@ architecture: **Lexing → Parsing → Semantic Analysis → Lowering → IL Emi
 - **Total Lines**: 44,260 LOC
 - **Total Files**: 151 (107 headers, 44 implementations)
 - **Main Subdirectories**: 8 (ast, builtins, constfold, lower, lower/builtins, lower/common, print, sem)
-- **Largest Files**: Lowerer.Procedure.cpp (1,147 LOC), ConstFolder.cpp (889 LOC), AST.cpp (928 LOC)
+- **Largest Files**: Lowerer_Procedure.cpp (1,147 LOC), ConstFolder.cpp (889 LOC), AST.cpp (928 LOC)
 - **Compilation Pipeline**: Lexer → Parser → SemanticAnalyzer → Lowerer → IL Module
 
 ---
@@ -186,19 +186,19 @@ src/frontends/basic/
 |--------------------------------|-------|---------------------------------------------------------|
 | **SemanticAnalyzer.hpp**       | 449   | Symbol table, type tracking, two-pass proc registration |
 | **SemanticAnalyzer.cpp**       | 329   | Main analysis loop & program entry                      |
-| **SemanticAnalyzer.Exprs.cpp** | 591   | Expression type inference & validation                  |
-| **SemanticAnalyzer.Procs.cpp** | 491   | Procedure signature registration & validation           |
+| **SemanticAnalyzer_Exprs.cpp** | 591   | Expression type inference & validation                  |
+| **SemanticAnalyzer_Procs.cpp** | 491   | Procedure signature registration & validation           |
 
 ### 4.2 Statement Analysis (1,108 LOC)
 
 | File                                   | Lines | Purpose                                |
 |----------------------------------------|-------|----------------------------------------|
-| **SemanticAnalyzer.Stmts.cpp**         | 295   | Main statement visitor dispatch        |
-| **SemanticAnalyzer.Stmts.Control.cpp** | 269   | IF, loops, SELECT CASE checking        |
-| **SemanticAnalyzer.Stmts.IO.cpp**      | 327   | PRINT, INPUT, file I/O validation      |
-| **SemanticAnalyzer.Stmts.Runtime.cpp** | 494   | DIM, arrays, runtime statements        |
-| **SemanticAnalyzer.Stmts.Shared.cpp**  | 187   | Shared validation logic                |
-| **SemanticAnalyzer.Builtins.cpp**      | 351   | Builtin function signature definitions |
+| **SemanticAnalyzer_Stmts.cpp**         | 295   | Main statement visitor dispatch        |
+| **SemanticAnalyzer_Stmts_Control.cpp** | 269   | IF, loops, SELECT CASE checking        |
+| **SemanticAnalyzer_Stmts_IO.cpp**      | 327   | PRINT, INPUT, file I/O validation      |
+| **SemanticAnalyzer_Stmts_Runtime.cpp** | 494   | DIM, arrays, runtime statements        |
+| **SemanticAnalyzer_Stmts_Shared.cpp**  | 187   | Shared validation logic                |
+| **SemanticAnalyzer_Builtins.cpp**      | 351   | Builtin function signature definitions |
 
 ### 4.3 Detailed Checking (1,462 LOC)
 
@@ -220,9 +220,9 @@ src/frontends/basic/
 |---------------------------|-------|---------------------------------------------------|
 | **Lowerer.hpp**           | 788   | Main lowerer class; IL IR builder interface       |
 | **Lowerer.cpp**           | 190   | Constructor, setup, accessors                     |
-| **Lowerer.Procedure.cpp** | 1,147 | Procedure lowering; block creation & jump targets |
-| **Lowerer.Program.cpp**   | 119   | Program entry & main block synthesis              |
-| **Lowerer.Statement.cpp** | 113   | Statement dispatch to specific lowerers           |
+| **Lowerer_Procedure.cpp** | 1,147 | Procedure lowering; block creation & jump targets |
+| **Lowerer_Program.cpp**   | 119   | Program entry & main block synthesis              |
+| **Lowerer_Statement.cpp** | 113   | Statement dispatch to specific lowerers           |
 
 ### 5.2 Expression Lowering (1,629 LOC)
 
@@ -324,7 +324,7 @@ src/frontends/basic/
 
 ### Naming Conventions
 
-1. **Category Prefix**: `SemanticAnalyzer.Stmts.IO.cpp` = semantic analysis for I/O statements
+1. **Category Prefix**: `SemanticAnalyzer_Stmts_IO.cpp` = semantic analysis for I/O statements
 2. **Visitor Pattern**: `Check_*.cpp` files implement semantic checks
 3. **Lowering Prefix**: `Lower*.cpp` = IL emission for specific constructs
 4. **Builtin Suffix**: `MathBuiltins.cpp` = definitions of math functions
@@ -334,7 +334,7 @@ src/frontends/basic/
 ```
 Lexing:       Lexer.hpp/cpp + Token system
 Parsing:      Parser.hpp + Parser_*.cpp (split by statement category)
-Semantics:    SemanticAnalyzer.hpp + SemanticAnalyzer.*.cpp + sem/*.cpp
+Semantics:    SemanticAnalyzer.hpp + SemanticAnalyzer_*.cpp + sem/*.cpp
 Lowering:     Lowerer.hpp + Lowerer.*.cpp + lower/*.cpp
 Support:      Type system, Name mangling, Diagnostics, Utilities
 ```
@@ -373,7 +373,7 @@ Support:      Type system, Name mangling, Diagnostics, Utilities
 ### Largest Components by LOC
 
 1. **lower/builtins/Common.cpp** (1,021) - Massive centralized builtin lowering
-2. **Lowerer.Procedure.cpp** (1,147) - Procedure boundary & block handling
+2. **Lowerer_Procedure.cpp** (1,147) - Procedure boundary & block handling
 3. **AST.cpp** (928) - AST node implementations
 4. **ConstFolder.cpp** (889) - Constant folding logic
 5. **lower/Scan_RuntimeNeeds.cpp** (797) - Complex runtime analysis
@@ -399,7 +399,7 @@ Support:      Type system, Name mangling, Diagnostics, Utilities
 
 ### Potential Issue Areas
 
-- **Large centralized files**: Common.cpp (1,021 LOC), Lowerer.Procedure.cpp (1,147 LOC)
+- **Large centralized files**: Common.cpp (1,021 LOC), Lowerer_Procedure.cpp (1,147 LOC)
 - **Multi-concern files**: AST.cpp mixes definitions & visitors (928 LOC)
 - **Complex lowering**: Expression/statement lowering split across many files
 - **Test coverage**: Recommend checking sem/ & lower/ test coverage

@@ -83,9 +83,9 @@ static double current_time_sec(void)
 /// @brief Internal rate limiter data.
 typedef struct
 {
-    double tokens;          ///< Current available tokens (fractional).
-    double max_tokens;      ///< Maximum token capacity.
-    double refill_per_sec;  ///< Tokens refilled per second.
+    double tokens;           ///< Current available tokens (fractional).
+    double max_tokens;       ///< Maximum token capacity.
+    double refill_per_sec;   ///< Tokens refilled per second.
     double last_refill_time; ///< Last time tokens were refilled.
 } rt_ratelimit_data;
 

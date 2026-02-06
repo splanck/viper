@@ -40,9 +40,11 @@ static void test_lazyseq_range()
         int64_t sum = 0;
         int64_t count = 0;
 
-        while (1) {
+        while (1)
+        {
             void *val = rt_lazyseq_next(seq, &has_more);
-            if (!has_more) break;
+            if (!has_more)
+                break;
             sum += *(int64_t *)val;
             count++;
         }
@@ -60,9 +62,11 @@ static void test_lazyseq_range()
         int8_t has_more;
         int64_t count = 0;
 
-        while (1) {
+        while (1)
+        {
             rt_lazyseq_next(seq, &has_more);
-            if (!has_more) break;
+            if (!has_more)
+                break;
             count++;
         }
 
@@ -101,9 +105,11 @@ static void test_lazyseq_repeat()
         int8_t has_more;
         int64_t count = 0;
 
-        while (1) {
+        while (1)
+        {
             void *val = rt_lazyseq_next(seq, &has_more);
-            if (!has_more) break;
+            if (!has_more)
+                break;
             test_result("Repeat returns same value", *(int *)val == 42);
             count++;
         }
@@ -138,7 +144,8 @@ static void test_lazyseq_iterate()
         int8_t has_more;
         int64_t vals[5];
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 5; i++)
+        {
             void *val = rt_lazyseq_next(seq, &has_more);
             vals[i] = *(int64_t *)val;
         }
@@ -203,9 +210,11 @@ static void test_lazyseq_transform()
         int8_t has_more;
         int64_t count = 0;
 
-        while (1) {
+        while (1)
+        {
             void *val = rt_lazyseq_next(filtered, &has_more);
-            if (!has_more) break;
+            if (!has_more)
+                break;
             test_result("Filter: value is even", (*(int64_t *)val % 2) == 0);
             count++;
         }

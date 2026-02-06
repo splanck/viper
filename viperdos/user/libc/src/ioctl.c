@@ -25,8 +25,8 @@
  */
 
 #include "../include/sys/ioctl.h"
-#include <stdarg.h>
 #include "syscall_internal.h"
+#include <stdarg.h>
 
 /* Syscall numbers */
 #define SYS_TTY_GET_SIZE 0x124

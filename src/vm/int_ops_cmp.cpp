@@ -38,32 +38,26 @@ namespace il::vm::detail::integer
     }
 
 // Signed / equality comparisons (operate on i64 directly)
-DEFINE_CMP_HANDLER(handleICmpEq,
-                   [](const Slot &a, const Slot &b) { return a.i64 == b.i64; })
-DEFINE_CMP_HANDLER(handleICmpNe,
-                   [](const Slot &a, const Slot &b) { return a.i64 != b.i64; })
-DEFINE_CMP_HANDLER(handleSCmpGT,
-                   [](const Slot &a, const Slot &b) { return a.i64 > b.i64; })
-DEFINE_CMP_HANDLER(handleSCmpLT,
-                   [](const Slot &a, const Slot &b) { return a.i64 < b.i64; })
-DEFINE_CMP_HANDLER(handleSCmpLE,
-                   [](const Slot &a, const Slot &b) { return a.i64 <= b.i64; })
-DEFINE_CMP_HANDLER(handleSCmpGE,
-                   [](const Slot &a, const Slot &b) { return a.i64 >= b.i64; })
+DEFINE_CMP_HANDLER(handleICmpEq, [](const Slot &a, const Slot &b) { return a.i64 == b.i64; })
+DEFINE_CMP_HANDLER(handleICmpNe, [](const Slot &a, const Slot &b) { return a.i64 != b.i64; })
+DEFINE_CMP_HANDLER(handleSCmpGT, [](const Slot &a, const Slot &b) { return a.i64 > b.i64; })
+DEFINE_CMP_HANDLER(handleSCmpLT, [](const Slot &a, const Slot &b) { return a.i64 < b.i64; })
+DEFINE_CMP_HANDLER(handleSCmpLE, [](const Slot &a, const Slot &b) { return a.i64 <= b.i64; })
+DEFINE_CMP_HANDLER(handleSCmpGE, [](const Slot &a, const Slot &b) { return a.i64 >= b.i64; })
 
 // Unsigned comparisons (cast to uint64_t before comparing)
-DEFINE_CMP_HANDLER(handleUCmpLT, [](const Slot &a, const Slot &b) {
-    return static_cast<uint64_t>(a.i64) < static_cast<uint64_t>(b.i64);
-})
-DEFINE_CMP_HANDLER(handleUCmpLE, [](const Slot &a, const Slot &b) {
-    return static_cast<uint64_t>(a.i64) <= static_cast<uint64_t>(b.i64);
-})
-DEFINE_CMP_HANDLER(handleUCmpGT, [](const Slot &a, const Slot &b) {
-    return static_cast<uint64_t>(a.i64) > static_cast<uint64_t>(b.i64);
-})
-DEFINE_CMP_HANDLER(handleUCmpGE, [](const Slot &a, const Slot &b) {
-    return static_cast<uint64_t>(a.i64) >= static_cast<uint64_t>(b.i64);
-})
+DEFINE_CMP_HANDLER(handleUCmpLT,
+                   [](const Slot &a, const Slot &b)
+                   { return static_cast<uint64_t>(a.i64) < static_cast<uint64_t>(b.i64); })
+DEFINE_CMP_HANDLER(handleUCmpLE,
+                   [](const Slot &a, const Slot &b)
+                   { return static_cast<uint64_t>(a.i64) <= static_cast<uint64_t>(b.i64); })
+DEFINE_CMP_HANDLER(handleUCmpGT,
+                   [](const Slot &a, const Slot &b)
+                   { return static_cast<uint64_t>(a.i64) > static_cast<uint64_t>(b.i64); })
+DEFINE_CMP_HANDLER(handleUCmpGE,
+                   [](const Slot &a, const Slot &b)
+                   { return static_cast<uint64_t>(a.i64) >= static_cast<uint64_t>(b.i64); })
 
 #undef DEFINE_CMP_HANDLER
 

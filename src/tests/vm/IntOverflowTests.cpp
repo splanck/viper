@@ -83,10 +83,10 @@ int main()
     assert(runOverflow(Opcode::IAddOvf, minVal + 1, -1) == minVal);
 
     // Overflowing cases - should trap
-    expectOverflowTrap(Opcode::IAddOvf, maxVal, 1);           // positive overflow
-    expectOverflowTrap(Opcode::IAddOvf, maxVal, maxVal);      // large positive overflow
-    expectOverflowTrap(Opcode::IAddOvf, minVal, -1);          // negative overflow
-    expectOverflowTrap(Opcode::IAddOvf, minVal, minVal);      // large negative overflow
+    expectOverflowTrap(Opcode::IAddOvf, maxVal, 1);      // positive overflow
+    expectOverflowTrap(Opcode::IAddOvf, maxVal, maxVal); // large positive overflow
+    expectOverflowTrap(Opcode::IAddOvf, minVal, -1);     // negative overflow
+    expectOverflowTrap(Opcode::IAddOvf, minVal, minVal); // large negative overflow
 
     //=========================================================================
     // ISubOvf tests (checked subtraction)
@@ -100,9 +100,9 @@ int main()
     assert(runOverflow(Opcode::ISubOvf, maxVal - 1, -1) == maxVal);
 
     // Overflowing cases - should trap
-    expectOverflowTrap(Opcode::ISubOvf, minVal, 1);           // negative overflow (MIN - 1)
-    expectOverflowTrap(Opcode::ISubOvf, maxVal, -1);          // positive overflow (MAX - (-1))
-    expectOverflowTrap(Opcode::ISubOvf, minVal, maxVal);      // large overflow
+    expectOverflowTrap(Opcode::ISubOvf, minVal, 1);      // negative overflow (MIN - 1)
+    expectOverflowTrap(Opcode::ISubOvf, maxVal, -1);     // positive overflow (MAX - (-1))
+    expectOverflowTrap(Opcode::ISubOvf, minVal, maxVal); // large overflow
 
     //=========================================================================
     // IMulOvf tests (checked multiplication)

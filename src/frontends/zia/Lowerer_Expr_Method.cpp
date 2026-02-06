@@ -412,8 +412,7 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
-                Value result =
-                    emitCallRet(Type(Type::Kind::I1), kSetHas, {baseValue, boxedValue});
+                Value result = emitCallRet(Type(Type::Kind::I1), kSetHas, {baseValue, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;

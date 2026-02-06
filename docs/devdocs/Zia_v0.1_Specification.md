@@ -1391,10 +1391,11 @@ weak node = someNode;     // ERROR: weak is a field modifier, not a variable mod
 
 ```ebnf
 (* Program structure *)
-program         = module_decl? import_decl* declaration* ;
+program         = module_decl? bind_decl* declaration* ;
 module_decl     = "module" qualified_name ";" ;
-import_decl     = "import" qualified_name ("as" IDENT)? ";" 
-                | "import" qualified_name ".{" IDENT ("," IDENT)* "}" ";" ;
+bind_decl       = "bind" qualified_name ("as" IDENT)? ";"
+                | "bind" qualified_name ".{" IDENT ("," IDENT)* "}" ";"
+                | "bind" STRING_LITERAL ("as" IDENT)? ";" ;
 
 (* Declarations *)
 declaration     = value_decl | entity_decl | interface_decl | func_decl ;
@@ -1493,7 +1494,7 @@ visibility      = "expose" | "hide" ;
 | Keyword | Usage |
 |---------|-------|
 | `module` | Module declaration |
-| `import` | Import declaration |
+| `bind` | Bind declaration (namespace or file import) |
 | `as` | Import alias, type cast |
 | `value` | Value type declaration |
 | `entity` | Entity type declaration |

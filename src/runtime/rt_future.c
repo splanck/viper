@@ -176,8 +176,8 @@ void rt_promise_set_error(void *obj, rt_string error)
 
     // Copy the error string
     const char *err_str = rt_string_cstr(error);
-    p->error = err_str ? rt_string_from_bytes(err_str, strlen(err_str))
-                       : rt_const_cstr("Unknown error");
+    p->error =
+        err_str ? rt_string_from_bytes(err_str, strlen(err_str)) : rt_const_cstr("Unknown error");
     p->done = 1;
     p->is_error = 1;
 

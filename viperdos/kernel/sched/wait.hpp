@@ -113,7 +113,7 @@ inline void wait_enqueue(WaitQueue *wq, task::Task *t) {
         // Mark for diagnostic purposes - the caller has a bug
         // Setting wait_timeout to a magic value that can be detected
         // This is a hack, but we can't include serial.hpp here
-        t->wait_timeout = 0xDEADBEEF;  // Magic marker for debugging
+        t->wait_timeout = 0xDEADBEEF; // Magic marker for debugging
     }
 
     // Set task state to blocked

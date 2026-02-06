@@ -353,8 +353,12 @@ rt_string rt_dateonly_to_string(void *obj)
 
     DateOnly *d = (DateOnly *)obj;
     char buf[32];
-    snprintf(buf, sizeof(buf), "%04lld-%02lld-%02lld",
-             (long long)d->year, (long long)d->month, (long long)d->day);
+    snprintf(buf,
+             sizeof(buf),
+             "%04lld-%02lld-%02lld",
+             (long long)d->year,
+             (long long)d->month,
+             (long long)d->day);
     return rt_string_from_bytes(buf, (int64_t)strlen(buf));
 }
 
@@ -367,13 +371,23 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt)
     const char *fmt_str = rt_string_cstr(fmt);
     int64_t fmt_len = rt_len(fmt);
 
-    static const char *month_names[] = {"", "January", "February", "March", "April",
-                                        "May", "June", "July", "August",
-                                        "September", "October", "November", "December"};
-    static const char *month_abbr[] = {"", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-    static const char *day_names[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
-                                      "Thursday", "Friday", "Saturday"};
+    static const char *month_names[] = {"",
+                                        "January",
+                                        "February",
+                                        "March",
+                                        "April",
+                                        "May",
+                                        "June",
+                                        "July",
+                                        "August",
+                                        "September",
+                                        "October",
+                                        "November",
+                                        "December"};
+    static const char *month_abbr[] = {
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    static const char *day_names[] = {
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
     static const char *day_abbr[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
     char buf[256];
@@ -387,47 +401,55 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt)
             char spec = fmt_str[i];
             switch (spec)
             {
-            case 'Y': // 4-digit year
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%04lld", (long long)d->year);
-                break;
-            case 'y': // 2-digit year
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)(d->year % 100));
-                break;
-            case 'm': // 2-digit month
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)d->month);
-                break;
-            case 'd': // 2-digit day
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)d->day);
-                break;
-            case 'B': // Full month name
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_names[d->month]);
-                break;
-            case 'b': // Abbreviated month name
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_abbr[d->month]);
-                break;
-            case 'A': // Full day name
-            {
-                int64_t dow = rt_dateonly_day_of_week(obj);
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_names[dow]);
-                break;
-            }
-            case 'a': // Abbreviated day name
-            {
-                int64_t dow = rt_dateonly_day_of_week(obj);
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_abbr[dow]);
-                break;
-            }
-            case 'j': // Day of year
-                buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%03lld",
-                                    (long long)rt_dateonly_day_of_year(obj));
-                break;
-            case '%': // Literal %
-                buf[buf_pos++] = '%';
-                break;
-            default:
-                buf[buf_pos++] = '%';
-                buf[buf_pos++] = spec;
-                break;
+                case 'Y': // 4-digit year
+                    buf_pos += snprintf(
+                        buf + buf_pos, 256 - (size_t)buf_pos, "%04lld", (long long)d->year);
+                    break;
+                case 'y': // 2-digit year
+                    buf_pos += snprintf(
+                        buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)(d->year % 100));
+                    break;
+                case 'm': // 2-digit month
+                    buf_pos += snprintf(
+                        buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)d->month);
+                    break;
+                case 'd': // 2-digit day
+                    buf_pos +=
+                        snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)d->day);
+                    break;
+                case 'B': // Full month name
+                    buf_pos +=
+                        snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_names[d->month]);
+                    break;
+                case 'b': // Abbreviated month name
+                    buf_pos +=
+                        snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_abbr[d->month]);
+                    break;
+                case 'A': // Full day name
+                {
+                    int64_t dow = rt_dateonly_day_of_week(obj);
+                    buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_names[dow]);
+                    break;
+                }
+                case 'a': // Abbreviated day name
+                {
+                    int64_t dow = rt_dateonly_day_of_week(obj);
+                    buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_abbr[dow]);
+                    break;
+                }
+                case 'j': // Day of year
+                    buf_pos += snprintf(buf + buf_pos,
+                                        256 - (size_t)buf_pos,
+                                        "%03lld",
+                                        (long long)rt_dateonly_day_of_year(obj));
+                    break;
+                case '%': // Literal %
+                    buf[buf_pos++] = '%';
+                    break;
+                default:
+                    buf[buf_pos++] = '%';
+                    buf[buf_pos++] = spec;
+                    break;
             }
         }
         else

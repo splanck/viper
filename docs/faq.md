@@ -8,7 +8,7 @@ Frequently asked questions about the Viper compiler toolchain.
 
 ### 1. What is Viper?
 
-Viper is an IL-based compiler toolchain that includes multiple language frontends (Zia, BASIC, and Pascal), an intermediate
+Viper is an IL-based compiler toolchain that includes multiple language frontends (Zia and BASIC), an intermediate
 language (IL), virtual machine, and native code generator. It's designed as a research and educational platform for
 exploring language implementation, compiler design, and runtime systems.
 
@@ -16,13 +16,13 @@ exploring language implementation, compiler design, and runtime systems.
 
 Viper uses a modern compiler architecture with an intermediate representation (IL) that separates language semantics
 from execution. Programs can run in a VM for development/debugging or be compiled to native code for performance. The IL
-layer makes it easy to add new language frontends—Zia, BASIC, and Pascal all compile to the same IL and share a common
+layer makes it easy to add new language frontends—Zia and BASIC both compile to the same IL and share a common
 runtime.
 
 ### 3. Is Viper suitable for production use?
 
-No. Viper is an experimental research project at an early stage. While it implements substantial subsets of BASIC and
-Pascal, it's intended for education, experimentation, and compiler research rather than production use.
+No. Viper is an experimental research project at an early stage. While it implements substantial subsets of Zia and
+BASIC, it's intended for education, experimentation, and compiler research rather than production use.
 
 ---
 
@@ -64,10 +64,8 @@ ilrun program.il
 - `/demos/zia/ladders/` - Donkey Kong-style platformer with multiple entities
 - `/demos/basic/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
 - `/examples/basic/` - BASIC example programs
-- `/examples/pascal/` - Pascal example programs (hello.pas, factorial.pas, fibonacci.pas)
 - `/src/tests/golden/zia/` - Zia test programs showing specific language features
 - `/src/tests/golden/basic/` - BASIC test programs showing specific language features
-- `/src/tests/data/pascal/` - Pascal test programs showing language features
 
 ### 7. What platforms does Viper support?
 
@@ -91,7 +89,7 @@ Zia is Viper's primary language, designed as a modern, clean systems programming
 - Strong static typing (Integer, Boolean, String, etc.)
 - Structured control flow (if/else, while, for, match)
 - Functions with type annotations
-- Import system for multi-file projects
+- Bind system for multi-file projects
 - First-class support for the Viper runtime library
 
 ### 9. How do I write a simple Zia program?
@@ -132,12 +130,12 @@ Use `expose` to make fields and methods visible outside the entity.
 
 ### 11. How do I organize multi-file Zia projects?
 
-Use modules and imports:
+Use modules and binds:
 
 ```zia
 module MyModule;
 
-import OtherModule;
+bind "./OtherModule";
 
 func useOther() {
     OtherModule.someFunction();
@@ -181,7 +179,7 @@ Key limitations to be aware of:
 - **Case-insensitive** identifiers (parameter names can collide with field names)
 - **No local array copying** from object fields (use class-level temp arrays as workaround)
 - **Object assignment creates references**, not copies (use `New` for independent objects)
-- **No SET/CALL keywords** (direct assignment and calls only)
+- **No SET/CALL keywords** (direct assignment only)
 - **Type suffixes required** for string functions (use `Str$`, `Chr$`, not `Str`, `Chr`)
 
 See `/bugs/basic_bugs.md` for documented issues and workarounds.
@@ -203,62 +201,12 @@ Paths are relative to the file containing the `AddFile` statement.
 
 ---
 
-## Pascal Language
-
-### 16. What Pascal dialect does Viper implement?
-
-Viper Pascal is inspired by standard Pascal with modern extensions. It includes:
-
-- Structured control flow (If/Then/Else, For/To/Downto, While/Do, Repeat/Until, Case)
-- Procedures and functions with parameters
-- Units for modular code organization
-- Exception handling (Try/Except/Finally, Raise)
-- Arrays and records
-- Pointer types
-- Strong typing with type declarations
-
-### 17. Does Viper Pascal support units?
-
-Yes! Viper Pascal supports units with separate interface and implementation sections:
-
-```pascal
-unit MyUnit;
-
-interface
-  function Square(x: Integer): Integer;
-
-implementation
-
-function Square(x: Integer): Integer;
-begin
-  Square := x * x
-end;
-
-end.
-```
-
-Use `uses` to import units into your program.
-
-### 18. What built-in functions are available in Pascal?
-
-Built-in functions include:
-
-- **Math**: `Abs`, `Sqr`, `Sqrt`, `Sin`, `Cos`, `Tan`, `Exp`, `Ln`, `Round`, `Trunc`
-- **String**: `Length`, `Copy`, `Pos`, `Concat`, `UpperCase`, `LowerCase`, `Trim`
-- **Conversion**: `ToString_Int`, `ToString_Double`, `ToInt`, `ToDouble`, `Chr`, `Ord`
-- **I/O**: `Write`, `WriteLn`, `Read`, `ReadLn`
-- **Ordinal**: `Succ`, `Pred`, `Inc`, `Dec`
-
-See `/src/frontends/pascal/BuiltinRegistry.cpp` for the complete list.
-
----
-
 ## IL (Intermediate Language)
 
 ### 19. What is the Viper IL?
 
 The Viper Intermediate Language is a low-level, typed, control-flow graph representation that sits between frontends (
-Zia, BASIC, Pascal) and backends (VM or native code). It's similar to LLVM IR or .NET CIL but designed specifically for this
+Zia, BASIC) and backends (VM or native code). It's similar to LLVM IR or .NET CIL but designed specifically for this
 project's needs.
 
 See `/docs/il-guide.md` for the complete IL specification.
@@ -280,7 +228,7 @@ Tools available:
 ### 21. How does the compilation pipeline work?
 
 ```
-Source (Zia/BASIC/Pascal) → Parser → Semantic Analysis → IL Generation → IL Transforms →
+Source (Zia/BASIC) → Parser → Semantic Analysis → IL Generation → IL Transforms →
   ├─→ VM Interpreter (for development/debugging)
   └─→ Native Codegen (for performance)
 ```
@@ -311,11 +259,11 @@ The VM supports source-level debugging:
 # (watch variables, step through code, inspect state)
 ```
 
-See VM debugging tests in `/tests/vm/` for examples.
+See VM debugging tests in `/src/tests/vm/` for examples.
 
 ### 24. What runtime functions are available?
 
-All three frontends (Zia, BASIC, Pascal) share the same runtime library. Built-in functions include:
+Both frontends (Zia, BASIC) share the same runtime library. Built-in functions include:
 
 - **Math**: `Sin`, `Cos`, `Tan`, `Sqrt`, `Abs`, `Round`, `Trunc`
 - **String**: `Length`/`Len`, `Copy`/`Mid$`, `Concat`, `Trim`
@@ -323,7 +271,7 @@ All three frontends (Zia, BASIC, Pascal) share the same runtime library. Built-i
 - **Graphics**: `Color`, `Locate`, `Cls`
 - **Conversion**: `ToString_Int`/`Str$`, `ToInt`/`Val`
 
-See the respective builtin registries in `/src/frontends/zia/`, `/src/frontends/basic/`, and `/src/frontends/pascal/`
+See the respective builtin registries in `/src/frontends/zia/` and `/src/frontends/basic/`
 for language-specific function lists.
 
 ---
@@ -341,7 +289,7 @@ See `/docs/frontend-howto.md` for detailed guidance.
 
 ### 26. How do I report bugs or request features?
 
-- **Bugs**: Add to `/bugs/basic_bugs.md` (BASIC) or open an issue (Pascal)
+- **Bugs**: Add to `/bugs/basic_bugs.md` (BASIC) or open an issue
 - **Features**: Open a discussion or create an issue describing the use case
 - **Contributing**: Follow the Conventional Commits format for commit messages
 
@@ -357,8 +305,6 @@ Key documentation files:
 - `/docs/zia-reference.md` - Zia language reference
 - `/docs/basic-language.md` - BASIC language tutorial
 - `/docs/basic-reference.md` - BASIC language reference
-- `/docs/experimental/pascal-language.md` - Pascal language tutorial
-- `/docs/experimental/pascal-reference.md` - Pascal language reference
 - `/CLAUDE.md` - Development workflow and contribution guidelines
 
 For code-level documentation, see header comments in source files.
@@ -380,12 +326,6 @@ cmake --build build -j
 ./build/src/tools/vbasic/vbasic program.bas
 ```
 
-**Build and run a Pascal program:**
-
-```bash
-./build/src/tools/vpascal/vpascal program.pas
-```
-
 **Run with debugging:**
 
 ```bash
@@ -397,7 +337,6 @@ cmake --build build -j
 ```bash
 ./build/src/tools/zia/zia program.zia --emit-il
 ./build/src/tools/vbasic/vbasic program.bas --emit-il
-./build/src/tools/vpascal/vpascal program.pas --emit-il
 ```
 
 **Run tests:**

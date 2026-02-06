@@ -21,9 +21,9 @@ typedef struct
 {
     void *vptr;
     uint8_t *bits;
-    int64_t bit_count;   // Total number of bits
-    int64_t hash_count;  // Number of hash functions
-    int64_t item_count;  // Items added
+    int64_t bit_count;  // Total number of bits
+    int64_t hash_count; // Number of hash functions
+    int64_t item_count; // Items added
 } rt_bloomfilter_impl;
 
 // ---------------------------------------------------------------------------
@@ -66,26 +66,31 @@ static void bloomfilter_finalizer(void *obj)
 
 void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate)
 {
-    if (expected_items < 1) expected_items = 1;
-    if (false_positive_rate <= 0.0) false_positive_rate = 0.01;
-    if (false_positive_rate >= 1.0) false_positive_rate = 0.5;
+    if (expected_items < 1)
+        expected_items = 1;
+    if (false_positive_rate <= 0.0)
+        false_positive_rate = 0.01;
+    if (false_positive_rate >= 1.0)
+        false_positive_rate = 0.5;
 
     // Optimal bit count: m = -n * ln(p) / (ln(2)^2)
     double n = (double)expected_items;
     double m = -n * log(false_positive_rate) / (log(2.0) * log(2.0));
     int64_t bit_count = (int64_t)ceil(m);
-    if (bit_count < 64) bit_count = 64;
+    if (bit_count < 64)
+        bit_count = 64;
 
     // Optimal hash count: k = (m/n) * ln(2)
     double k = ((double)bit_count / n) * log(2.0);
     int64_t hash_count = (int64_t)ceil(k);
-    if (hash_count < 1) hash_count = 1;
-    if (hash_count > 30) hash_count = 30;
+    if (hash_count < 1)
+        hash_count = 1;
+    if (hash_count > 30)
+        hash_count = 30;
 
     int64_t byte_count = (bit_count + 7) / 8;
 
-    rt_bloomfilter_impl *bf =
-        (rt_bloomfilter_impl *)rt_obj_new_i64(0, sizeof(rt_bloomfilter_impl));
+    rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)rt_obj_new_i64(0, sizeof(rt_bloomfilter_impl));
     bf->bits = (uint8_t *)calloc((size_t)byte_count, 1);
     bf->bit_count = bit_count;
     bf->hash_count = hash_count;
@@ -101,11 +106,13 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate)
 
 void rt_bloomfilter_add(void *filter, rt_string item)
 {
-    if (!filter || !item) return;
+    if (!filter || !item)
+        return;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
 
     const char *data = rt_string_cstr(item);
-    if (!data) return;
+    if (!data)
+        return;
     size_t len = strlen(data);
 
     for (int64_t i = 0; i < bf->hash_count; i++)
@@ -119,11 +126,13 @@ void rt_bloomfilter_add(void *filter, rt_string item)
 
 int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
 {
-    if (!filter || !item) return 0;
+    if (!filter || !item)
+        return 0;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
 
     const char *data = rt_string_cstr(item);
-    if (!data) return 0;
+    if (!data)
+        return 0;
     size_t len = strlen(data);
 
     for (int64_t i = 0; i < bf->hash_count; i++)
@@ -142,13 +151,15 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
 
 int64_t rt_bloomfilter_count(void *filter)
 {
-    if (!filter) return 0;
+    if (!filter)
+        return 0;
     return ((rt_bloomfilter_impl *)filter)->item_count;
 }
 
 double rt_bloomfilter_fpr(void *filter)
 {
-    if (!filter) return 0.0;
+    if (!filter)
+        return 0.0;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
 
     // Estimated FPR: (1 - e^(-kn/m))^k
@@ -156,13 +167,15 @@ double rt_bloomfilter_fpr(void *filter)
     double n = (double)bf->item_count;
     double k = (double)bf->hash_count;
 
-    if (n == 0.0) return 0.0;
+    if (n == 0.0)
+        return 0.0;
     return pow(1.0 - exp(-k * n / m), k);
 }
 
 void rt_bloomfilter_clear(void *filter)
 {
-    if (!filter) return;
+    if (!filter)
+        return;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
     int64_t byte_count = (bf->bit_count + 7) / 8;
     memset(bf->bits, 0, (size_t)byte_count);
@@ -171,7 +184,8 @@ void rt_bloomfilter_clear(void *filter)
 
 int64_t rt_bloomfilter_merge(void *filter, void *other)
 {
-    if (!filter || !other) return 0;
+    if (!filter || !other)
+        return 0;
     rt_bloomfilter_impl *a = (rt_bloomfilter_impl *)filter;
     rt_bloomfilter_impl *b = (rt_bloomfilter_impl *)other;
 

@@ -133,8 +133,8 @@ int main()
     assert(runTrunc1(-4) == 0);
 
     // Edge cases
-    assert(runTrunc1(std::numeric_limits<int64_t>::max()) == 1);  // MAX is odd
-    assert(runTrunc1(std::numeric_limits<int64_t>::min()) == 0);  // MIN is even
+    assert(runTrunc1(std::numeric_limits<int64_t>::max()) == 1); // MAX is odd
+    assert(runTrunc1(std::numeric_limits<int64_t>::min()) == 0); // MIN is even
 
     //=========================================================================
     // Zext1 tests (zero-extend i1 to i64)

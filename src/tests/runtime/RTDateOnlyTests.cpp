@@ -217,8 +217,10 @@ static void test_dateonly_queries()
         void *d = rt_dateonly_create(2024, 6, 15);
         void *start = rt_dateonly_start_of_year(d);
         void *end = rt_dateonly_end_of_year(d);
-        test_result("Start of year is Jan 1", rt_dateonly_month(start) == 1 && rt_dateonly_day(start) == 1);
-        test_result("End of year is Dec 31", rt_dateonly_month(end) == 12 && rt_dateonly_day(end) == 31);
+        test_result("Start of year is Jan 1",
+                    rt_dateonly_month(start) == 1 && rt_dateonly_day(start) == 1);
+        test_result("End of year is Dec 31",
+                    rt_dateonly_month(end) == 12 && rt_dateonly_day(end) == 31);
     }
 
     printf("\n");

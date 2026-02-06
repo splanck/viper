@@ -25,6 +25,7 @@
 #include "codegen/x86_64/passes/PassManager.hpp"
 
 #include <ostream>
+#include <stdexcept>
 #include <utility>
 
 namespace viper::codegen::x64::passes
@@ -136,8 +137,22 @@ bool PassManager::run(Module &module, Diagnostics &diags) const
 {
     for (const auto &pass : passes_)
     {
-        if (!pass->run(module, diags))
+        try
         {
+            if (!pass->run(module, diags))
+            {
+                return false;
+            }
+            // A pass may report errors via Diagnostics but still return true.
+            // Catch that case to avoid silent miscompilation.
+            if (diags.hasErrors())
+            {
+                return false;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            diags.error(std::string("pass threw exception: ") + e.what());
             return false;
         }
     }

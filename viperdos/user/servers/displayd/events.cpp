@@ -121,10 +121,7 @@ void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, bool pr
     }
 }
 
-void queue_menu_event(Surface *surf,
-                      uint8_t menu_index,
-                      uint8_t item_index,
-                      uint8_t action) {
+void queue_menu_event(Surface *surf, uint8_t menu_index, uint8_t item_index, uint8_t action) {
     QueuedEvent ev;
     ev.event_type = DISP_EVENT_MENU;
     ev.menu.type = DISP_EVENT_MENU;
@@ -151,23 +148,23 @@ void flush_events(Surface *surf) {
     QueuedEvent ev;
     while (surf->event_queue.pop(&ev)) {
         switch (ev.event_type) {
-        case DISP_EVENT_KEY:
-            sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
-            break;
-        case DISP_EVENT_MOUSE:
-            sys::channel_send(surf->event_channel, &ev.mouse, sizeof(ev.mouse), nullptr, 0);
-            break;
-        case DISP_EVENT_FOCUS:
-            sys::channel_send(surf->event_channel, &ev.focus, sizeof(ev.focus), nullptr, 0);
-            break;
-        case DISP_EVENT_CLOSE:
-            sys::channel_send(surf->event_channel, &ev.close, sizeof(ev.close), nullptr, 0);
-            break;
-        case DISP_EVENT_MENU:
-            sys::channel_send(surf->event_channel, &ev.menu, sizeof(ev.menu), nullptr, 0);
-            break;
-        default:
-            break;
+            case DISP_EVENT_KEY:
+                sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
+                break;
+            case DISP_EVENT_MOUSE:
+                sys::channel_send(surf->event_channel, &ev.mouse, sizeof(ev.mouse), nullptr, 0);
+                break;
+            case DISP_EVENT_FOCUS:
+                sys::channel_send(surf->event_channel, &ev.focus, sizeof(ev.focus), nullptr, 0);
+                break;
+            case DISP_EVENT_CLOSE:
+                sys::channel_send(surf->event_channel, &ev.close, sizeof(ev.close), nullptr, 0);
+                break;
+            case DISP_EVENT_MENU:
+                sys::channel_send(surf->event_channel, &ev.menu, sizeof(ev.menu), nullptr, 0);
+                break;
+            default:
+                break;
         }
     }
 }

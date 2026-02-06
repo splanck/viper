@@ -17,7 +17,7 @@ Complete language reference for Viper BASIC. This document describes **statement
 - **Assignment**: Requires `LET` keyword (e.g., `LET X = 2`)
 - **Function calls**: Use `Name(args)` with parentheses (required in expressions). For statement-form
   SUB calls, parentheses are required when passing arguments; the legacy paren-less form for zero-arg
-  SUBs is accepted in statement position. The optional `CALL` keyword may be used for readability.
+  SUBs is accepted in statement position.
 - **Built-ins**: Must be called with parentheses, even with zero arguments (`RND()`, `INKEY$()`)
 - **Arrays**: One-dimensional, zero-based; require `DIM` or `REDIM`
 - **Short-circuit operators**: `ANDALSO` and `ORELSE` (vs. `AND` and `OR`)
@@ -733,7 +733,7 @@ String manipulation:
 - `Viper.String.FromI16(i16)->str` — Convert int16 to string
 - `Viper.String.FromI32(i32)->str` — Convert int32 to string
 - `Viper.String.FromSingle(f32)->str` — Convert float to string
-- `Viper.String.Builder.New()->ptr` — Create a new StringBuilder instance
+- `Viper.Text.StringBuilder.New()->ptr` — Create a new StringBuilder instance
 
 #### Viper.Convert
 

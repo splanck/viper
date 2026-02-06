@@ -201,7 +201,7 @@ TargetInfo win64TargetInstance = makeWin64Target();
 ///          conceptually treating the object as immutable configuration data.
 ///
 /// @return Reference to the global SysV target descriptor.
-TargetInfo &sysvTarget() noexcept
+const TargetInfo &sysvTarget() noexcept
 {
     return sysvTargetInstance;
 }
@@ -212,7 +212,7 @@ TargetInfo &sysvTarget() noexcept
 ///          by @ref makeWin64Target().
 ///
 /// @return Reference to the global Windows x64 target descriptor.
-TargetInfo &win64Target() noexcept
+const TargetInfo &win64Target() noexcept
 {
     return win64TargetInstance;
 }
@@ -222,7 +222,7 @@ TargetInfo &win64Target() noexcept
 /// @details Returns win64Target() on Windows, sysvTarget() on other platforms.
 ///
 /// @return Reference to the appropriate target descriptor for the host.
-TargetInfo &hostTarget() noexcept
+const TargetInfo &hostTarget() noexcept
 {
 #if defined(_WIN32)
     return win64TargetInstance;

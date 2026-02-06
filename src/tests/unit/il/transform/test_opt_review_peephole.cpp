@@ -29,7 +29,10 @@ namespace
 {
 
 // Build a module with: cmp = op(a, b); cbr cmp, "true_bb", "false_bb"; ret in each
-Module buildCmpBrModule(Opcode cmpOp, Value lhs, Value rhs, Type::Kind resultTypeKind = Type::Kind::I1)
+Module buildCmpBrModule(Opcode cmpOp,
+                        Value lhs,
+                        Value rhs,
+                        Type::Kind resultTypeKind = Type::Kind::I1)
 {
     Module module;
     Function fn;

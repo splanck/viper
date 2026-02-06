@@ -180,7 +180,8 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
     // per-instruction. This avoids two costly setlocale() calls per traced step.
     if (this->cfg.enabled())
     {
-        savedCLocale_ = std::setlocale(LC_NUMERIC, nullptr) ? std::setlocale(LC_NUMERIC, nullptr) : "";
+        savedCLocale_ =
+            std::setlocale(LC_NUMERIC, nullptr) ? std::setlocale(LC_NUMERIC, nullptr) : "";
         std::setlocale(LC_NUMERIC, "C");
         savedStreamLocale_ = std::cerr.getloc();
         std::cerr.imbue(std::locale::classic());

@@ -158,7 +158,8 @@ static void test_lazy_null_handling()
 
     test_result("Get NULL returns NULL", rt_lazy_get(NULL) == NULL);
     test_result("IsEvaluated NULL returns 1", rt_lazy_is_evaluated(NULL) == 1);
-    test_result("GetStr NULL returns empty", strcmp(rt_string_cstr(rt_lazy_get_str(NULL)), "") == 0);
+    test_result("GetStr NULL returns empty",
+                strcmp(rt_string_cstr(rt_lazy_get_str(NULL)), "") == 0);
     test_result("GetI64 NULL returns 0", rt_lazy_get_i64(NULL) == 0);
 
     printf("\n");

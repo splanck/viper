@@ -11,15 +11,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
-#include "rt_trie.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trie.h"
 
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg) { rt_abort(msg); }
+extern "C" void vm_trap(const char *msg)
+{
+    rt_abort(msg);
+}
 
 static void rt_release_obj(void *p)
 {

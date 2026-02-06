@@ -271,23 +271,14 @@ struct MFunction
 
         /// @brief Look up the FP-relative offset for a local variable.
         /// @param tempId The IL temporary identifier.
-        /// @return FP-relative offset, or 0 if not found.
+        /// @return Negative FP-relative offset, or 0 if @p tempId is not a local.
+        /// @note 0 is safe as a sentinel because valid locals always have
+        ///       negative offsets (below the frame pointer).
         int getLocalOffset(unsigned tempId) const
         {
             for (const auto &L : locals)
                 if (L.tempId == tempId)
                     return L.offset;
-            return 0;
-        }
-
-        /// @brief Look up the FP-relative offset for a spill slot.
-        /// @param vreg Virtual register identifier.
-        /// @return FP-relative offset, or 0 if not found.
-        int getSpillOffset(uint16_t vreg) const
-        {
-            for (const auto &S : spills)
-                if (S.vreg == vreg)
-                    return S.offset;
             return 0;
         }
     } frame; ///< Stack frame layout.

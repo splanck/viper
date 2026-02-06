@@ -130,7 +130,8 @@ int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, doubl
 {
     if (!rect)
         return 0;
-    return px >= rect->x && px < rect->x + rect->width && py >= rect->y && py < rect->y + rect->height;
+    return px >= rect->x && px < rect->x + rect->width && py >= rect->y &&
+           py < rect->y + rect->height;
 }
 
 int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect other)
@@ -140,7 +141,8 @@ int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect othe
     return rt_collision_rect_overlaps_rect(rect, other->x, other->y, other->width, other->height);
 }
 
-int8_t rt_collision_rect_overlaps_rect(rt_collision_rect rect, double ox, double oy, double ow, double oh)
+int8_t rt_collision_rect_overlaps_rect(
+    rt_collision_rect rect, double ox, double oy, double ow, double oh)
 {
     if (!rect)
         return 0;
@@ -226,7 +228,8 @@ int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect
     if (!rect || !other)
         return 0;
 
-    return other->x >= rect->x && other->y >= rect->y && other->x + other->width <= rect->x + rect->width &&
+    return other->x >= rect->x && other->y >= rect->y &&
+           other->x + other->width <= rect->x + rect->width &&
            other->y + other->height <= rect->y + rect->height;
 }
 
@@ -234,8 +237,8 @@ int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect
 // Static collision helpers
 //=============================================================================
 
-int8_t rt_collision_rects_overlap(double x1, double y1, double w1, double h1, double x2, double y2, double w2,
-                                  double h2)
+int8_t rt_collision_rects_overlap(
+    double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2)
 {
     if (x1 + w1 <= x2 || x2 + w2 <= x1 || y1 + h1 <= y2 || y2 + h2 <= y1)
     {
@@ -249,7 +252,8 @@ int8_t rt_collision_point_in_rect(double px, double py, double rx, double ry, do
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
-int8_t rt_collision_circles_overlap(double x1, double y1, double r1, double x2, double y2, double r2)
+int8_t rt_collision_circles_overlap(
+    double x1, double y1, double r1, double x2, double y2, double r2)
 {
     double dx = x2 - x1;
     double dy = y2 - y1;
@@ -265,7 +269,8 @@ int8_t rt_collision_point_in_circle(double px, double py, double cx, double cy, 
     return dx * dx + dy * dy < r * r;
 }
 
-int8_t rt_collision_circle_rect(double cx, double cy, double r, double rx, double ry, double rw, double rh)
+int8_t rt_collision_circle_rect(
+    double cx, double cy, double r, double rx, double ry, double rw, double rh)
 {
     // Find closest point on rectangle to circle center
     double closest_x = cx;

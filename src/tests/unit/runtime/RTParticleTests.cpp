@@ -5,29 +5,35 @@
 
 #include "rt_particle.h"
 #include <cassert>
-#include <cstdio>
 #include <cmath>
+#include <cstdio>
 
 static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
-#define RUN_TEST(name) do { \
-    printf("  %s...", #name); \
-    test_##name(); \
-    printf(" OK\n"); \
-    tests_passed++; \
-} while(0)
+#define RUN_TEST(name)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %s...", #name);                                                                  \
+        test_##name();                                                                             \
+        printf(" OK\n");                                                                           \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define ASSERT(cond) do { \
-    if (!(cond)) { \
-        printf(" FAILED at line %d: %s\n", __LINE__, #cond); \
-        tests_failed++; \
-        return; \
-    } \
-} while(0)
+#define ASSERT(cond)                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-TEST(create_destroy) {
+TEST(create_destroy)
+{
     rt_particle_emitter pe = rt_particle_emitter_new(100);
     ASSERT(pe != NULL);
     ASSERT(rt_particle_emitter_count(pe) == 0);
@@ -35,7 +41,8 @@ TEST(create_destroy) {
     rt_particle_emitter_destroy(pe);
 }
 
-TEST(set_position) {
+TEST(set_position)
+{
     rt_particle_emitter pe = rt_particle_emitter_new(100);
     rt_particle_emitter_set_position(pe, 50.0, 75.0);
     ASSERT(fabs(rt_particle_emitter_x(pe) - 50.0) < 0.001);
@@ -43,7 +50,8 @@ TEST(set_position) {
     rt_particle_emitter_destroy(pe);
 }
 
-TEST(burst) {
+TEST(burst)
+{
     rt_particle_emitter pe = rt_particle_emitter_new(100);
     rt_particle_emitter_set_position(pe, 100.0, 100.0);
     rt_particle_emitter_set_lifetime(pe, 10, 20);
@@ -54,7 +62,8 @@ TEST(burst) {
     rt_particle_emitter_destroy(pe);
 }
 
-TEST(start_stop) {
+TEST(start_stop)
+{
     rt_particle_emitter pe = rt_particle_emitter_new(100);
     rt_particle_emitter_set_rate(pe, 5.0);
 
@@ -66,23 +75,26 @@ TEST(start_stop) {
     rt_particle_emitter_destroy(pe);
 }
 
-TEST(update_lifetime) {
+TEST(update_lifetime)
+{
     rt_particle_emitter pe = rt_particle_emitter_new(100);
-    rt_particle_emitter_set_lifetime(pe, 5, 5);  // Exact 5 frames
+    rt_particle_emitter_set_lifetime(pe, 5, 5); // Exact 5 frames
     rt_particle_emitter_set_velocity(pe, 0.0, 0.0, 0.0, 0.0);
 
     rt_particle_emitter_burst(pe, 10);
     ASSERT(rt_particle_emitter_count(pe) == 10);
 
     // Update 5 times, particles should die
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++)
+    {
         rt_particle_emitter_update(pe);
     }
     ASSERT(rt_particle_emitter_count(pe) == 0);
     rt_particle_emitter_destroy(pe);
 }
 
-TEST(clear) {
+TEST(clear)
+{
     rt_particle_emitter pe = rt_particle_emitter_new(100);
     rt_particle_emitter_set_lifetime(pe, 100, 100);
     rt_particle_emitter_burst(pe, 50);
@@ -93,28 +105,31 @@ TEST(clear) {
     rt_particle_emitter_destroy(pe);
 }
 
-TEST(continuous_emission) {
+TEST(continuous_emission)
+{
     rt_particle_emitter pe = rt_particle_emitter_new(100);
     rt_particle_emitter_set_lifetime(pe, 100, 100);
-    rt_particle_emitter_set_rate(pe, 10.0);  // 10 per frame
+    rt_particle_emitter_set_rate(pe, 10.0); // 10 per frame
     rt_particle_emitter_start(pe);
 
     rt_particle_emitter_update(pe);
-    ASSERT(rt_particle_emitter_count(pe) >= 9);  // ~10 particles
+    ASSERT(rt_particle_emitter_count(pe) >= 9); // ~10 particles
     ASSERT(rt_particle_emitter_count(pe) <= 11);
     rt_particle_emitter_destroy(pe);
 }
 
-TEST(max_particles) {
-    rt_particle_emitter pe = rt_particle_emitter_new(20);  // Max 20
+TEST(max_particles)
+{
+    rt_particle_emitter pe = rt_particle_emitter_new(20); // Max 20
     rt_particle_emitter_set_lifetime(pe, 100, 100);
 
-    rt_particle_emitter_burst(pe, 50);  // Try to emit 50
-    ASSERT(rt_particle_emitter_count(pe) == 20);  // Capped at 20
+    rt_particle_emitter_burst(pe, 50);           // Try to emit 50
+    ASSERT(rt_particle_emitter_count(pe) == 20); // Capped at 20
     rt_particle_emitter_destroy(pe);
 }
 
-int main() {
+int main()
+{
     printf("RTParticleTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(set_position);

@@ -826,7 +826,9 @@ src/vm/
 **Debugging:**
 
 - `debug/Debug.cpp` — Breakpoint management
+- `debug/DebugScript.cpp` — Debug scripting support
 - `debug/Trace.cpp` — Trace output formatting
+- `debug/VM_DebugUtils.cpp` — Debug utility helpers
 - `debug/VMDebug.cpp` — Debug integration
 
 ---

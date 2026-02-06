@@ -43,15 +43,14 @@ class KeyMapper {
     static constexpr uint16_t KEY_SPACE = 57;
 
     static bool isNavigation(uint16_t keycode) {
-        return keycode == KEY_LEFT || keycode == KEY_RIGHT ||
-               keycode == KEY_UP || keycode == KEY_DOWN ||
-               keycode == KEY_HOME || keycode == KEY_END ||
+        return keycode == KEY_LEFT || keycode == KEY_RIGHT || keycode == KEY_UP ||
+               keycode == KEY_DOWN || keycode == KEY_HOME || keycode == KEY_END ||
                keycode == KEY_PAGEUP || keycode == KEY_PAGEDOWN;
     }
 
     static bool isEditing(uint16_t keycode) {
-        return keycode == KEY_BACKSPACE || keycode == KEY_DELETE ||
-               keycode == KEY_ENTER || keycode == KEY_TAB;
+        return keycode == KEY_BACKSPACE || keycode == KEY_DELETE || keycode == KEY_ENTER ||
+               keycode == KEY_TAB;
     }
 
     static char toChar(uint16_t keycode, bool shift) {
@@ -90,18 +89,30 @@ class KeyMapper {
 
         // Punctuation with shift variants
         switch (keycode) {
-            case 12: return shift ? '_' : '-';
-            case 13: return shift ? '+' : '=';
-            case 26: return shift ? '{' : '[';
-            case 27: return shift ? '}' : ']';
-            case 39: return shift ? ':' : ';';
-            case 40: return shift ? '"' : '\'';
-            case 51: return shift ? '<' : ',';
-            case 52: return shift ? '>' : '.';
-            case 53: return shift ? '?' : '/';
-            case 43: return shift ? '|' : '\\';
-            case 41: return shift ? '~' : '`';
-            default: return 0;
+            case 12:
+                return shift ? '_' : '-';
+            case 13:
+                return shift ? '+' : '=';
+            case 26:
+                return shift ? '{' : '[';
+            case 27:
+                return shift ? '}' : ']';
+            case 39:
+                return shift ? ':' : ';';
+            case 40:
+                return shift ? '"' : '\'';
+            case 51:
+                return shift ? '<' : ',';
+            case 52:
+                return shift ? '>' : '.';
+            case 53:
+                return shift ? '?' : '/';
+            case 43:
+                return shift ? '|' : '\\';
+            case 41:
+                return shift ? '~' : '`';
+            default:
+                return 0;
         }
     }
 };
@@ -194,13 +205,16 @@ class MenuRegistrar {
 
   private:
     static void clearMenu(gui_menu_def_t &menu) {
-        for (int i = 0; i < 24; i++) menu.title[i] = '\0';
+        for (int i = 0; i < 24; i++)
+            menu.title[i] = '\0';
         menu.item_count = 0;
         menu._pad[0] = menu._pad[1] = menu._pad[2] = 0;
 
         for (int j = 0; j < GUI_MAX_MENU_ITEMS; j++) {
-            for (int k = 0; k < 32; k++) menu.items[j].label[k] = '\0';
-            for (int k = 0; k < 16; k++) menu.items[j].shortcut[k] = '\0';
+            for (int k = 0; k < 32; k++)
+                menu.items[j].label[k] = '\0';
+            for (int k = 0; k < 16; k++)
+                menu.items[j].shortcut[k] = '\0';
             menu.items[j].action = 0;
             menu.items[j].enabled = 0;
             menu.items[j].checked = 0;
@@ -328,10 +342,10 @@ class VEditApp {
                 event.mouse.y < dims::WIN_HEIGHT - dims::STATUSBAR_HEIGHT) {
                 int relX = event.mouse.x;
                 int relY = event.mouse.y - m_view->textAreaY();
-                m_editor.setCursorFromClick(
-                    relX, relY,
-                    m_view->textAreaX(m_editor.config().showLineNumbers),
-                    m_view->visibleLines());
+                m_editor.setCursorFromClick(relX,
+                                            relY,
+                                            m_view->textAreaX(m_editor.config().showLineNumbers),
+                                            m_view->visibleLines());
             }
             return true;
         }
@@ -366,9 +380,8 @@ class VEditApp {
         }
 
         if (handled) {
-            m_editor.ensureCursorVisible(
-                m_view->visibleLines(),
-                m_view->visibleCols(m_editor.config().showLineNumbers));
+            m_editor.ensureCursorVisible(m_view->visibleLines(),
+                                         m_view->visibleCols(m_editor.config().showLineNumbers));
         }
 
         return handled;

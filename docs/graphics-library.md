@@ -71,7 +71,7 @@ cmake --build build
 
 int main(void) {
     // Create window
-    vgfx_window_params_t params = vgfx_default_window_params();
+    vgfx_window_params_t params = vgfx_window_params_default();
     params.width = 800;
     params.height = 600;
     params.title = "My Window";
@@ -138,7 +138,7 @@ uint8_t* vgfx_get_framebuffer(vgfx_window_t window);
 ```c
 // Pixel operations
 void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color);
-vgfx_color_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y);
+int vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out_color);
 void vgfx_cls(vgfx_window_t window, vgfx_color_t color);
 
 // Lines and shapes
@@ -188,13 +188,13 @@ vgfx_color_t vgfx_rgb(uint8_t r, uint8_t g, uint8_t b);
 ```c
 typedef enum {
     VGFX_EVENT_NONE,
-    VGFX_EVENT_CLOSE,
     VGFX_EVENT_KEY_DOWN,
     VGFX_EVENT_KEY_UP,
+    VGFX_EVENT_MOUSE_MOVE,
     VGFX_EVENT_MOUSE_DOWN,
     VGFX_EVENT_MOUSE_UP,
-    VGFX_EVENT_MOUSE_MOVE,
     VGFX_EVENT_RESIZE,
+    VGFX_EVENT_CLOSE,
     VGFX_EVENT_FOCUS_GAINED,
     VGFX_EVENT_FOCUS_LOST
 } vgfx_event_type_t;

@@ -6,9 +6,11 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/TargetAArch64.hpp
-// Purpose: Define physical registers, register classes, and target metadata for the
-// Key invariants: To be documented.
-// Ownership/Lifetime: No heap ownership beyond the singleton target info; containers live for the
+// Purpose: Define physical registers, register classes, and target metadata for AArch64.
+// Key invariants: Register enums map 1:1 to hardware registers; TargetInfo singleton
+//   is immutable after initialization; AAPCS64 calling convention rules are encoded.
+// Ownership/Lifetime: No heap ownership; darwinTarget() returns a reference to a
+//   static singleton that lives for the duration of the program.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
@@ -301,7 +303,7 @@ class CallingConvention
 /// object that persists for the lifetime of the program.
 ///
 /// @return Reference to the Darwin target information singleton.
-[[nodiscard]] TargetInfo &darwinTarget() noexcept;
+[[nodiscard]] const TargetInfo &darwinTarget() noexcept;
 
 /// @brief Tests whether a physical register is a general-purpose register.
 /// @param reg The register to test.

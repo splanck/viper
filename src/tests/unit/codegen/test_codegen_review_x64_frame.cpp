@@ -44,16 +44,14 @@ static int countStackProbes(const MFunction &func)
             {
                 // Check if destination is RAX (probe target, not RBP frame restore)
                 const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
-                if (!dst || !dst->isPhys ||
-                    static_cast<PhysReg>(dst->idOrPhys) != PhysReg::RAX)
+                if (!dst || !dst->isPhys || static_cast<PhysReg>(dst->idOrPhys) != PhysReg::RAX)
                     continue;
 
                 // Check if source is (%rsp) with zero displacement
                 if (const auto *mem = std::get_if<OpMem>(&instr.operands[1]))
                 {
                     if (mem->base.isPhys &&
-                        static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RSP &&
-                        mem->disp == 0)
+                        static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RSP && mem->disp == 0)
                     {
                         ++count;
                     }

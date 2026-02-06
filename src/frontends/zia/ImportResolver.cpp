@@ -198,8 +198,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
                     // Aliased and unaliased binds for the same path serve
                     // different purposes (alias vs full import) and must
                     // both be kept so imported declarations can use either.
-                    if (existingBind.isNamespaceBind &&
-                        existingBind.path == transitiveBind.path &&
+                    if (existingBind.isNamespaceBind && existingBind.path == transitiveBind.path &&
                         existingBind.alias == transitiveBind.alias)
                     {
                         alreadyBound = true;

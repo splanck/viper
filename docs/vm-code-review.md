@@ -340,9 +340,9 @@ else
 
 #### Issue 7.1: Frame stack size (Line 103)
 
-**Code:** `static constexpr size_t kDefaultStackSize = 1024;`
-**Problem:** Fixed 1KB stack might be too small for complex programs
-**Recommendation:** Make configurable or increase to 4KB/8KB
+**Code:** `static constexpr size_t kDefaultStackSize = 65536;`
+**Status:** RESOLVED — Increased from 1KB to 64KB (see BUG-OOP-033).
+**Original problem:** Fixed 1KB stack was too small for complex programs.
 
 #### Issue 7.2: String map hash collisions (Lines 219-229)
 

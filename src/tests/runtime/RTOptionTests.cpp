@@ -119,14 +119,16 @@ static void test_option_unwrap_or()
     {
         void *o = rt_option_some_str(rt_const_cstr("hello"));
         rt_string result = rt_option_unwrap_or_str(o, rt_const_cstr("default"));
-        test_result("UnwrapOrStr on Some returns value", strcmp(rt_string_cstr(result), "hello") == 0);
+        test_result("UnwrapOrStr on Some returns value",
+                    strcmp(rt_string_cstr(result), "hello") == 0);
     }
 
     // Test 6: UnwrapOrStr on None
     {
         void *o = rt_option_none();
         rt_string result = rt_option_unwrap_or_str(o, rt_const_cstr("default"));
-        test_result("UnwrapOrStr on None returns default", strcmp(rt_string_cstr(result), "default") == 0);
+        test_result("UnwrapOrStr on None returns default",
+                    strcmp(rt_string_cstr(result), "default") == 0);
     }
 
     printf("\n");

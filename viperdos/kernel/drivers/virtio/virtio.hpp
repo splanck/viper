@@ -328,9 +328,9 @@ const DeviceInfo *get_device_info(usize index);
  * multiple VirtIO drivers. Tracks both physical and virtual addresses.
  */
 struct DmaBuffer {
-    u64 phys{0};   ///< Physical address (for device DMA)
+    u64 phys{0};       ///< Physical address (for device DMA)
     u8 *virt{nullptr}; ///< Virtual address (for CPU access)
-    u64 size{0};   ///< Buffer size in bytes
+    u64 size{0};       ///< Buffer size in bytes
 
     /// @brief Check if the buffer is allocated.
     bool is_valid() const {

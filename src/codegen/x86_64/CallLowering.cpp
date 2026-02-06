@@ -333,7 +333,7 @@ void lowerCall(MBasicBlock &block,
                     insertInstr(
                         MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
                     insertInstr(MInstr::make(
-                        MOpcode::CVTSI2SD, {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
+                        MOpcode::MOVQrx, {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
                 }
             }
             else
@@ -347,7 +347,7 @@ void lowerCall(MBasicBlock &block,
                     const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
                     insertInstr(
                         MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
-                    insertInstr(MInstr::make(MOpcode::CVTSI2SD, {scratchXmm, scratchGpr}));
+                    insertInstr(MInstr::make(MOpcode::MOVQrx, {scratchXmm, scratchGpr}));
                     insertInstr(MInstr::make(MOpcode::MOVSDrm, {dest, scratchXmm}));
                 }
             }

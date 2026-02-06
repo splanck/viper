@@ -1324,7 +1324,8 @@ static void generateSignatures(const ParseState &state,
         for (const auto &[overrideName, row] : overrides.rows)
         {
             // Check if override handler contains our C symbol
-            auto checkFields = [&](const std::optional<DescriptorFields> &fields) {
+            auto checkFields = [&](const std::optional<DescriptorFields> &fields)
+            {
                 if (fields && fields->handler.find("&" + func.c_symbol) != std::string::npos)
                 {
                     cSymbolToOverrideName[func.c_symbol] = overrideName;

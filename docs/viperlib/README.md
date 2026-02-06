@@ -18,7 +18,7 @@ implemented in C and exposed through the IL runtime system.
 | [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap` |
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
-| [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
+| [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Game Utilities](game.md)       | `Grid2D`, `Timer`, `StateMachine`, `Tween`, `ObjectPool`, `Quadtree` — game development abstractions |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
@@ -64,7 +64,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Bytes`](collections.md#vipercollectionsbytes)     | Instance | Byte array for binary data          |
 | [`Deque`](collections.md#vipercollectionsdeque)     | Instance | Double-ended queue                  |
 | [`Heap`](collections.md#vipercollectionsheap)       | Instance | Priority queue (min/max heap)       |
-| [`LazySeq`](collections.md#vipercollectionslazyseq) | Instance | Lazy on-demand sequence             |
+| [`LazySeq`](collections.md#viperlazyseq)            | Instance | Lazy on-demand sequence             |
 | [`List`](collections.md#vipercollectionslist)       | Instance | Dynamic array of objects            |
 | [`Map`](collections.md#vipercollectionsmap)         | Instance | String-keyed hash map               |
 | [`Queue`](collections.md#vipercollectionsqueue)     | Instance | FIFO collection                     |
@@ -259,6 +259,5 @@ implemented in C and exposed through the IL runtime system.
 
 - [Zia Language Reference](../zia-reference.md)
 - [BASIC Language Reference](../basic-reference.md)
-- [Pascal Language Reference](../experimental/pascal-reference.md)
 - [IL Guide](../il-guide.md)
 - [Getting Started](../getting-started.md)

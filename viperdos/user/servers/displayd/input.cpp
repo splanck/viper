@@ -241,7 +241,8 @@ void poll_mouse() {
                 debug_print_dec(surf->id);
                 debug_print(" z=");
                 debug_print_dec(surf->z_order);
-                if (surf->flags & SURFACE_FLAG_SYSTEM) debug_print(" SYSTEM");
+                if (surf->flags & SURFACE_FLAG_SYSTEM)
+                    debug_print(" SYSTEM");
             } else {
                 debug_print("NULL");
             }

@@ -18,7 +18,7 @@
 
 typedef struct
 {
-    rt_string key;  // NULL = empty slot
+    rt_string key; // NULL = empty slot
 } fs_slot;
 
 typedef struct
@@ -77,8 +77,7 @@ static rt_frozenset_impl *fs_alloc(int64_t count)
 {
     // Use ~50% load factor for good probe performance
     int64_t cap = fs_next_pow2(count < 4 ? 8 : count * 2);
-    rt_frozenset_impl *fs =
-        (rt_frozenset_impl *)rt_obj_new_i64(0, sizeof(rt_frozenset_impl));
+    rt_frozenset_impl *fs = (rt_frozenset_impl *)rt_obj_new_i64(0, sizeof(rt_frozenset_impl));
     fs->count = 0;
     fs->capacity = cap;
     fs->slots = (fs_slot *)calloc((size_t)cap, sizeof(fs_slot));

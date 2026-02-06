@@ -10,10 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_countmap.h"
-#include "rt_string.h"
+#include "rt_internal.h"
 #include "rt_seq.h"
+#include "rt_string.h"
 
 #include <cassert>
 #include <cstring>

@@ -4,7 +4,11 @@
 
 <div align="center">
 
-**Status: Release Candidate - Seeking Final Feedback**
+**Status: SUPERSEDED — See [Zia_v0.1_Specification.md](Zia_v0.1_Specification.md) for the final spec**
+
+> **Warning:** This RC1 document is outdated. Key differences from the final v0.1 spec include:
+> `Text` renamed to `String`, `Void` renamed to `Unit`, `import` changed to `bind`,
+> `where` guards changed to `if`, async/await deferred to v0.2, and cycle detection removed.
 
 *A modern language that's actually simple*
 

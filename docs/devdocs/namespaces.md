@@ -1223,5 +1223,5 @@ Viper BASIC namespaces provide:
 
 The system is designed to be simple, predictable, and compatible with BASIC's case-insensitive semantics.
 
-For more examples, see the golden tests in `tests/golden/basic/namespace_*.bas` and the e2e tests in
-`tests/e2e/test_namespace_e2e.cpp`.
+For more examples, see the golden tests in `src/tests/golden/basic/namespace_*.bas` and the e2e tests in
+`src/tests/e2e/test_namespace_e2e.cpp`.

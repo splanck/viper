@@ -13,10 +13,10 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <thread>
-#include <chrono>
 
 static void test_result(bool cond, const char *name)
 {
@@ -172,11 +172,12 @@ static void test_async_resolution()
     int value = 999;
 
     // Start a thread that will resolve the promise after a delay
-    std::thread resolver([promise, &value]()
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        rt_promise_set(promise, &value);
-    });
+    std::thread resolver(
+        [promise, &value]()
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            rt_promise_set(promise, &value);
+        });
 
     // Wait for the future
     int8_t result = rt_future_wait_for(future, 5000);
@@ -194,11 +195,12 @@ static void test_async_error()
     void *future = rt_promise_get_future(promise);
 
     // Start a thread that will fail the promise
-    std::thread resolver([promise]()
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        rt_promise_set_error(promise, rt_const_cstr("Async error"));
-    });
+    std::thread resolver(
+        [promise]()
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            rt_promise_set_error(promise, rt_const_cstr("Async error"));
+        });
 
     int8_t result = rt_future_wait_for(future, 5000);
     test_result(result == 1, "async_error: should resolve");

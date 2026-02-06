@@ -87,8 +87,7 @@ struct RtGate
 /// @param typeName Name of the type for error messages (e.g., "Gate").
 /// @param what Custom error message, or nullptr to use default.
 /// @return Valid typed pointer, or nullptr if validation fails.
-template <typename T>
-static T *requireObject(void *obj, const char *typeName, const char *what)
+template <typename T> static T *requireObject(void *obj, const char *typeName, const char *what)
 {
     if (!obj)
     {

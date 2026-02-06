@@ -18,9 +18,9 @@
 /// Internal slot structure.
 struct pool_slot
 {
-    int64_t data;     ///< User data.
+    int64_t data;      ///< User data.
     int64_t next_free; ///< Next free slot index (-1 if end).
-    int8_t active;    ///< 1 if acquired, 0 if free.
+    int8_t active;     ///< 1 if acquired, 0 if free.
 };
 
 /// Internal pool structure.

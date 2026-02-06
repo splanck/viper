@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_cancellation.h"
+#include "rt_internal.h"
 
 #include <cassert>
 

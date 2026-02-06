@@ -16,6 +16,7 @@
 #include "Format.hpp"
 
 #include "../TargetX64.hpp"
+#include "codegen/common/LabelUtil.hpp"
 
 #include <cstddef>
 #include <string>
@@ -61,30 +62,12 @@ std::string format_imm(std::int64_t v)
     return std::string{"$"} + std::to_string(v);
 }
 
-/// @brief Sanitize a label for assembly output.
-/// @details Replaces minus signs with 'N' to prevent them being interpreted
-///          as subtraction in assembly syntax.
-/// @param name Original label identifier.
-/// @return Sanitized copy suitable for assembly.
-std::string sanitize_label(std::string_view name)
-{
-    std::string result{name};
-    for (char &ch : result)
-    {
-        if (ch == '-')
-        {
-            ch = 'N';
-        }
-    }
-    return result;
-}
-
 /// @brief Convert a label name into an assembly operand.
 /// @param name Label identifier to emit.
 /// @return Sanitized copy of @p name as a standard symbol reference.
 std::string format_label(std::string_view name)
 {
-    return sanitize_label(name);
+    return viper::codegen::common::sanitizeLabel(name);
 }
 
 /// @brief Emit a RIP-relative reference to a label.
@@ -92,7 +75,7 @@ std::string format_label(std::string_view name)
 /// @return Formatted string using the `symbol(%rip)` syntax.
 std::string format_rip_label(std::string_view name)
 {
-    std::string result = sanitize_label(name);
+    std::string result = viper::codegen::common::sanitizeLabel(name);
     result += "(%rip)";
     return result;
 }

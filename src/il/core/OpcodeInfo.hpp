@@ -152,7 +152,7 @@ enum class VMDispatch : uint8_t
     FCmpOrd,  ///< Floating-point ordered comparison (neither is NaN).
     FCmpUno,  ///< Floating-point unordered comparison (either is NaN).
     ConstF64, ///< Load a constant 64-bit float.
-    Count ///< Sentinel enumerating the number of dispatch kinds.
+    Count     ///< Sentinel enumerating the number of dispatch kinds.
 };
 
 /// @brief Maximum number of operand categories stored per opcode.

@@ -24,15 +24,18 @@ static void times2_handler(void **args, void *result) {
 int main() {
   il::vm::ExternDesc ext;
   ext.name = "times2";
-  ext.signature = il::vm::signatures::make_signature("times2",
-      {il::vm::signatures::SigParam::Kind::I64},
-      {il::vm::signatures::SigParam::Kind::I64});
   ext.fn = reinterpret_cast<void *>(&times2_handler);
-  il::vm::RuntimeBridge::registerExtern(ext);
+
+  // Register in the process-global registry (shared by all VMs):
+  il::vm::registerExternIn(il::vm::processGlobalExternRegistry(), ext);
+
+  // Or register in a per-VM registry for isolation:
+  // auto reg = il::vm::createExternRegistry();
+  // il::vm::registerExternIn(*reg, ext);
 }
 ```
 
 When IL code calls `@times2`, the bridge validates arity and marshals
 arguments/results. Unknown names or mismatched arity trap with a clear message.
 
-See: `examples/externs/register_times2.cpp` and unit tests under `tests/unit/VM_ExternRegistryTests.cpp`.
+See: `examples/externs/register_times2.cpp` and unit tests under `src/tests/unit/VM_ExternRegistryTests.cpp`.

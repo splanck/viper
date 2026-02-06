@@ -11,14 +11,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_convert_coll.h"
-#include "rt_seq.h"
+#include "rt_deque.h"
 #include "rt_list.h"
+#include "rt_object.h"
+#include "rt_queue.h"
+#include "rt_ring.h"
+#include "rt_seq.h"
 #include "rt_set.h"
 #include "rt_stack.h"
-#include "rt_queue.h"
-#include "rt_deque.h"
-#include "rt_ring.h"
-#include "rt_object.h"
 
 #include <cassert>
 #include <cstdio>
@@ -288,7 +288,8 @@ static void test_null_handling()
     printf("Testing NULL handling:\n");
 
     void *list = rt_seq_to_list(NULL);
-    test_result("NULL seq to list returns empty list", list != NULL && rt_list_get_count(list) == 0);
+    test_result("NULL seq to list returns empty list",
+                list != NULL && rt_list_get_count(list) == 0);
 
     void *seq = rt_list_to_seq(NULL);
     test_result("NULL list to seq returns empty seq", seq != NULL && rt_seq_len(seq) == 0);

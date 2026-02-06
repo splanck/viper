@@ -133,8 +133,7 @@ static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic)
 
 void *rt_msgbus_new(void)
 {
-    rt_msgbus_impl *mb =
-        (rt_msgbus_impl *)rt_obj_new_i64(0, sizeof(rt_msgbus_impl));
+    rt_msgbus_impl *mb = (rt_msgbus_impl *)rt_obj_new_i64(0, sizeof(rt_msgbus_impl));
     mb->bucket_count = 32;
     mb->buckets = (mb_topic **)calloc(32, sizeof(mb_topic *));
     mb->next_id = 1;

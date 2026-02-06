@@ -82,8 +82,10 @@ rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference)
     else
         len = snprintf(buf, sizeof(buf), "%lld %s ago", (long long)value, unit);
 
-    if (len < 0) len = 0;
-    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    if (len < 0)
+        len = 0;
+    if (len >= (int)sizeof(buf))
+        len = (int)sizeof(buf) - 1;
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
@@ -193,7 +195,9 @@ rt_string rt_reltime_format_short(int64_t timestamp)
         len = snprintf(buf, sizeof(buf), "%lldy", (long long)(abs_diff / 31536000));
     }
 
-    if (len < 0) len = 0;
-    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    if (len < 0)
+        len = 0;
+    if (len >= (int)sizeof(buf))
+        len = (int)sizeof(buf) - 1;
     return rt_string_from_bytes(buf, (size_t)len);
 }

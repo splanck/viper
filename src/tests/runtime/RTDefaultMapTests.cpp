@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_defaultmap.h"
+#include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 

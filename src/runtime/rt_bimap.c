@@ -25,8 +25,7 @@
 #define BM_INITIAL_CAPACITY 16
 #define BM_LOAD_FACTOR_NUM 3
 #define BM_LOAD_FACTOR_DEN 4
-#define FNV_OFFSET_BASIS 0xcbf29ce484222325ULL
-#define FNV_PRIME 0x100000001b3ULL
+#include "rt_hash_util.h"
 
 typedef struct rt_bm_entry
 {
@@ -45,6 +44,7 @@ typedef struct rt_bimap_impl
     size_t fwd_capacity;
     size_t inv_capacity;
     size_t count;
+
     // Separate chains for inverse lookups
     struct rt_bm_inv_link
     {
@@ -56,16 +56,6 @@ typedef struct rt_bimap_impl
 // Inverse lookup chain node
 typedef struct rt_bm_inv_link rt_bm_inv_link;
 
-static uint64_t fnv1a(const char *data, size_t len)
-{
-    uint64_t hash = FNV_OFFSET_BASIS;
-    for (size_t i = 0; i < len; ++i)
-    {
-        hash ^= (uint8_t)data[i];
-        hash *= FNV_PRIME;
-    }
-    return hash;
-}
 
 static const char *get_str_data(rt_string s, size_t *out_len)
 {
@@ -101,7 +91,7 @@ static rt_bm_inv_link *find_inv(rt_bm_inv_link *head, const char *val, size_t va
 
 static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len)
 {
-    uint64_t h = fnv1a(val, val_len);
+    uint64_t h = rt_fnv1a(val, val_len);
     size_t idx = (size_t)(h % bm->inv_capacity);
     rt_bm_inv_link **pp = &bm->inv_chains[idx];
     while (*pp)
@@ -119,7 +109,7 @@ static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len)
 
 static void add_inv_link(rt_bimap_impl *bm, rt_bm_entry *entry)
 {
-    uint64_t h = fnv1a(entry->value, entry->value_len);
+    uint64_t h = rt_fnv1a(entry->value, entry->value_len);
     size_t idx = (size_t)(h % bm->inv_capacity);
     rt_bm_inv_link *link = (rt_bm_inv_link *)malloc(sizeof(rt_bm_inv_link));
     if (!link)
@@ -184,7 +174,7 @@ static void resize_fwd(rt_bimap_impl *bm)
         while (e)
         {
             rt_bm_entry *next = e->next;
-            uint64_t h = fnv1a(e->key, e->key_len);
+            uint64_t h = rt_fnv1a(e->key, e->key_len);
             size_t idx = (size_t)(h % new_cap);
             e->next = new_buckets[idx];
             new_buckets[idx] = e;
@@ -210,7 +200,7 @@ static void resize_inv(rt_bimap_impl *bm)
         while (l)
         {
             rt_bm_inv_link *next = l->next;
-            uint64_t h = fnv1a(l->entry->value, l->entry->value_len);
+            uint64_t h = rt_fnv1a(l->entry->value, l->entry->value_len);
             size_t idx = (size_t)(h % new_cap);
             l->next = new_chains[idx];
             new_chains[idx] = l;
@@ -300,7 +290,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value)
     entry->value_len = vlen;
 
     // Insert into forward table
-    uint64_t fh = fnv1a(kdata, klen);
+    uint64_t fh = rt_fnv1a(kdata, klen);
     size_t fidx = (size_t)(fh % bm->fwd_capacity);
     entry->next = bm->fwd_buckets[fidx];
     bm->fwd_buckets[fidx] = entry;
@@ -320,7 +310,7 @@ rt_string rt_bimap_get_by_key(void *obj, rt_string key)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % bm->fwd_capacity);
     rt_bm_entry *e = find_fwd(bm->fwd_buckets[idx], kdata, klen);
     if (!e)
@@ -338,7 +328,7 @@ rt_string rt_bimap_get_by_value(void *obj, rt_string value)
     size_t vlen;
     const char *vdata = get_str_data(value, &vlen);
 
-    uint64_t h = fnv1a(vdata, vlen);
+    uint64_t h = rt_fnv1a(vdata, vlen);
     size_t idx = (size_t)(h % bm->inv_capacity);
     rt_bm_inv_link *l = find_inv(bm->inv_chains[idx], vdata, vlen);
     if (!l)
@@ -356,7 +346,7 @@ int8_t rt_bimap_has_key(void *obj, rt_string key)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % bm->fwd_capacity);
     return find_fwd(bm->fwd_buckets[idx], kdata, klen) ? 1 : 0;
 }
@@ -370,7 +360,7 @@ int8_t rt_bimap_has_value(void *obj, rt_string value)
     size_t vlen;
     const char *vdata = get_str_data(value, &vlen);
 
-    uint64_t h = fnv1a(vdata, vlen);
+    uint64_t h = rt_fnv1a(vdata, vlen);
     size_t idx = (size_t)(h % bm->inv_capacity);
     return find_inv(bm->inv_chains[idx], vdata, vlen) ? 1 : 0;
 }
@@ -384,7 +374,7 @@ int8_t rt_bimap_remove_by_key(void *obj, rt_string key)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % bm->fwd_capacity);
 
     rt_bm_entry **pp = &bm->fwd_buckets[idx];
@@ -416,7 +406,7 @@ int8_t rt_bimap_remove_by_value(void *obj, rt_string value)
     const char *vdata = get_str_data(value, &vlen);
 
     // Find entry via inverse lookup
-    uint64_t vh = fnv1a(vdata, vlen);
+    uint64_t vh = rt_fnv1a(vdata, vlen);
     size_t vidx = (size_t)(vh % bm->inv_capacity);
     rt_bm_inv_link *l = find_inv(bm->inv_chains[vidx], vdata, vlen);
     if (!l)
@@ -425,7 +415,7 @@ int8_t rt_bimap_remove_by_value(void *obj, rt_string value)
     rt_bm_entry *entry = l->entry;
 
     // Remove from forward chain
-    uint64_t fh = fnv1a(entry->key, entry->key_len);
+    uint64_t fh = rt_fnv1a(entry->key, entry->key_len);
     size_t fidx = (size_t)(fh % bm->fwd_capacity);
     rt_bm_entry **pp = &bm->fwd_buckets[fidx];
     while (*pp)

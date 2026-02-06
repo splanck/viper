@@ -30,11 +30,11 @@
  */
 
 #include "../include/filebrowser.hpp"
+#include "../../../syscall.hpp"
 #include "../include/colors.hpp"
 #include "../include/desktop.hpp"
 #include "../include/icons.hpp"
 #include "../include/utils.hpp"
-#include "../../../syscall.hpp"
 #include <dirent.h>
 #include <gui.h>
 #include <stdint.h>

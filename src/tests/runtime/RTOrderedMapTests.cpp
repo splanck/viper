@@ -26,7 +26,8 @@ static rt_string make_str(const char *s)
 
 static bool str_eq(rt_string s, const char *expected)
 {
-    if (!s) return false;
+    if (!s)
+        return false;
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }

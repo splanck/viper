@@ -13,13 +13,13 @@
 /// Internal state machine implementation.
 struct rt_statemachine_impl
 {
-    int64_t current_state;         ///< Current state ID (-1 if none).
-    int64_t previous_state;        ///< Previous state ID (-1 if none).
-    int64_t frames_in_state;       ///< Frames since entering current state.
-    int8_t just_entered;           ///< Flag: just entered new state.
-    int8_t just_exited;            ///< Flag: just exited previous state.
-    int8_t states[RT_STATE_MAX];   ///< Registered states (1 = exists).
-    int64_t state_count;           ///< Number of registered states.
+    int64_t current_state;       ///< Current state ID (-1 if none).
+    int64_t previous_state;      ///< Previous state ID (-1 if none).
+    int64_t frames_in_state;     ///< Frames since entering current state.
+    int8_t just_entered;         ///< Flag: just entered new state.
+    int8_t just_exited;          ///< Flag: just exited previous state.
+    int8_t states[RT_STATE_MAX]; ///< Registered states (1 = exists).
+    int64_t state_count;         ///< Number of registered states.
 };
 
 rt_statemachine rt_statemachine_new(void)

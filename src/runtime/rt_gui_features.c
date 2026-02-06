@@ -974,4 +974,3 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index)
     }
     return rt_string_from_bytes("", 0);
 }
-

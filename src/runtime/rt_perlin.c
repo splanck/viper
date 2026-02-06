@@ -49,10 +49,14 @@ static double grad2(int hash, double x, double y)
     int h = hash & 3;
     switch (h)
     {
-        case 0: return  x + y;
-        case 1: return -x + y;
-        case 2: return  x - y;
-        case 3: return -x - y;
+        case 0:
+            return x + y;
+        case 1:
+            return -x + y;
+        case 2:
+            return x - y;
+        case 3:
+            return -x - y;
     }
     return 0;
 }
@@ -65,9 +69,9 @@ static void rt_perlin_finalize(void *obj)
 
 void *rt_perlin_new(int64_t seed)
 {
-    rt_perlin_impl *p = (rt_perlin_impl *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_perlin_impl));
-    if (!p) return NULL;
+    rt_perlin_impl *p = (rt_perlin_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_perlin_impl));
+    if (!p)
+        return NULL;
     p->vptr = NULL;
 
     // Initialize permutation table with 0..255
@@ -100,7 +104,8 @@ void *rt_perlin_new(int64_t seed)
 
 double rt_perlin_noise2d(void *obj, double x, double y)
 {
-    if (!obj) return 0.0;
+    if (!obj)
+        return 0.0;
     rt_perlin_impl *p = (rt_perlin_impl *)obj;
 
     int xi = (int)floor(x) & 255;
@@ -123,7 +128,8 @@ double rt_perlin_noise2d(void *obj, double x, double y)
 
 double rt_perlin_noise3d(void *obj, double x, double y, double z)
 {
-    if (!obj) return 0.0;
+    if (!obj)
+        return 0.0;
     rt_perlin_impl *p = (rt_perlin_impl *)obj;
 
     int xi = (int)floor(x) & 255;
@@ -137,30 +143,31 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z)
     double v = fade(yf);
     double w = fade(zf);
 
-    int a  = p->perm[xi] + yi;
+    int a = p->perm[xi] + yi;
     int aa = p->perm[a] + zi;
     int ab = p->perm[a + 1] + zi;
-    int b  = p->perm[xi + 1] + yi;
+    int b = p->perm[xi + 1] + yi;
     int ba = p->perm[b] + zi;
     int bb = p->perm[b + 1] + zi;
 
-    return lerp(w,
+    return lerp(
+        w,
         lerp(v,
-            lerp(u, grad3(p->perm[aa], xf, yf, zf),
-                    grad3(p->perm[ba], xf - 1, yf, zf)),
-            lerp(u, grad3(p->perm[ab], xf, yf - 1, zf),
-                    grad3(p->perm[bb], xf - 1, yf - 1, zf))),
+             lerp(u, grad3(p->perm[aa], xf, yf, zf), grad3(p->perm[ba], xf - 1, yf, zf)),
+             lerp(u, grad3(p->perm[ab], xf, yf - 1, zf), grad3(p->perm[bb], xf - 1, yf - 1, zf))),
         lerp(v,
-            lerp(u, grad3(p->perm[aa + 1], xf, yf, zf - 1),
-                    grad3(p->perm[ba + 1], xf - 1, yf, zf - 1)),
-            lerp(u, grad3(p->perm[ab + 1], xf, yf - 1, zf - 1),
-                    grad3(p->perm[bb + 1], xf - 1, yf - 1, zf - 1))));
+             lerp(u,
+                  grad3(p->perm[aa + 1], xf, yf, zf - 1),
+                  grad3(p->perm[ba + 1], xf - 1, yf, zf - 1)),
+             lerp(u,
+                  grad3(p->perm[ab + 1], xf, yf - 1, zf - 1),
+                  grad3(p->perm[bb + 1], xf - 1, yf - 1, zf - 1))));
 }
 
-double rt_perlin_octave2d(void *obj, double x, double y,
-                          int64_t octaves, double persistence)
+double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence)
 {
-    if (!obj || octaves <= 0) return 0.0;
+    if (!obj || octaves <= 0)
+        return 0.0;
 
     double total = 0.0;
     double frequency = 1.0;
@@ -178,10 +185,11 @@ double rt_perlin_octave2d(void *obj, double x, double y,
     return total / max_value;
 }
 
-double rt_perlin_octave3d(void *obj, double x, double y, double z,
-                          int64_t octaves, double persistence)
+double rt_perlin_octave3d(
+    void *obj, double x, double y, double z, int64_t octaves, double persistence)
 {
-    if (!obj || octaves <= 0) return 0.0;
+    if (!obj || octaves <= 0)
+        return 0.0;
 
     double total = 0.0;
     double frequency = 1.0;
@@ -190,8 +198,7 @@ double rt_perlin_octave3d(void *obj, double x, double y, double z,
 
     for (int64_t i = 0; i < octaves; ++i)
     {
-        total += rt_perlin_noise3d(obj, x * frequency, y * frequency, z * frequency)
-                 * amplitude;
+        total += rt_perlin_noise3d(obj, x * frequency, y * frequency, z * frequency) * amplitude;
         max_value += amplitude;
         amplitude *= persistence;
         frequency *= 2.0;

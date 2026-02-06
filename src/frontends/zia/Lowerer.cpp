@@ -62,8 +62,16 @@ namespace il::frontends::zia
 
 using namespace runtime;
 
+/// @brief Construct a Lowerer with a reference to the semantic analyzer and compiler options.
+/// @param sema The semantic analyzer providing type and symbol resolution.
+/// @param options Compiler options controlling code generation behaviour.
 Lowerer::Lowerer(Sema &sema, CompilerOptions options) : sema_(sema), options_(options) {}
 
+/// @brief Lower a complete Zia module AST to IL.
+/// @details Initializes the IL module, lowers all declarations, processes pending generic
+///          instantiations, emits string constants, and declares used external functions.
+/// @param module The analyzed module AST to lower.
+/// @return The generated IL module.
 Lowerer::Module Lowerer::lower(ModuleDecl &module)
 {
     // Initialize state

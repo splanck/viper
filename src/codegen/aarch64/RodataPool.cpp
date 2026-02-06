@@ -108,7 +108,6 @@
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 
-
 namespace viper::codegen::aarch64
 {
 

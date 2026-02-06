@@ -417,5 +417,3 @@ int64_t rt_treeview_node_is_expanded(void *node)
     vg_tree_node_t *n = (vg_tree_node_t *)node;
     return n->expanded ? 1 : 0;
 }
-
-

@@ -11,22 +11,28 @@ static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
-#define RUN_TEST(name) do { \
-    printf("  %s...", #name); \
-    test_##name(); \
-    printf(" OK\n"); \
-    tests_passed++; \
-} while(0)
+#define RUN_TEST(name)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %s...", #name);                                                                  \
+        test_##name();                                                                             \
+        printf(" OK\n");                                                                           \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define ASSERT(cond) do { \
-    if (!(cond)) { \
-        printf(" FAILED at line %d: %s\n", __LINE__, #cond); \
-        tests_failed++; \
-        return; \
-    } \
-} while(0)
+#define ASSERT(cond)                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-TEST(create_destroy) {
+TEST(create_destroy)
+{
     rt_spriteanim sa = rt_spriteanim_new();
     ASSERT(sa != NULL);
     ASSERT(rt_spriteanim_is_playing(sa) == 0);
@@ -34,16 +40,18 @@ TEST(create_destroy) {
     rt_spriteanim_destroy(sa);
 }
 
-TEST(setup) {
+TEST(setup)
+{
     rt_spriteanim sa = rt_spriteanim_new();
-    rt_spriteanim_setup(sa, 0, 7, 6);  // Frames 0-7, 6 ticks each
+    rt_spriteanim_setup(sa, 0, 7, 6); // Frames 0-7, 6 ticks each
 
     ASSERT(rt_spriteanim_frame_count(sa) == 8);
     ASSERT(rt_spriteanim_frame_duration(sa) == 6);
     rt_spriteanim_destroy(sa);
 }
 
-TEST(play_stop) {
+TEST(play_stop)
+{
     rt_spriteanim sa = rt_spriteanim_new();
     rt_spriteanim_setup(sa, 0, 3, 4);
 
@@ -56,9 +64,10 @@ TEST(play_stop) {
     rt_spriteanim_destroy(sa);
 }
 
-TEST(update_frames) {
+TEST(update_frames)
+{
     rt_spriteanim sa = rt_spriteanim_new();
-    rt_spriteanim_setup(sa, 0, 3, 2);  // 4 frames, 2 ticks each
+    rt_spriteanim_setup(sa, 0, 3, 2); // 4 frames, 2 ticks each
     rt_spriteanim_play(sa);
 
     ASSERT(rt_spriteanim_frame(sa) == 0);
@@ -74,48 +83,52 @@ TEST(update_frames) {
     rt_spriteanim_destroy(sa);
 }
 
-TEST(loop) {
+TEST(loop)
+{
     rt_spriteanim sa = rt_spriteanim_new();
-    rt_spriteanim_setup(sa, 0, 1, 1);  // 2 frames, 1 tick each
+    rt_spriteanim_setup(sa, 0, 1, 1); // 2 frames, 1 tick each
     rt_spriteanim_set_loop(sa, 1);
     rt_spriteanim_play(sa);
 
-    rt_spriteanim_update(sa);  // Frame 0 -> 1
-    rt_spriteanim_update(sa);  // Frame 1 -> 0 (loop)
+    rt_spriteanim_update(sa); // Frame 0 -> 1
+    rt_spriteanim_update(sa); // Frame 1 -> 0 (loop)
     ASSERT(rt_spriteanim_frame(sa) == 0);
     ASSERT(rt_spriteanim_is_finished(sa) == 0);
     rt_spriteanim_destroy(sa);
 }
 
-TEST(one_shot) {
+TEST(one_shot)
+{
     rt_spriteanim sa = rt_spriteanim_new();
     rt_spriteanim_setup(sa, 0, 1, 1);
     rt_spriteanim_set_loop(sa, 0);
     rt_spriteanim_play(sa);
 
-    rt_spriteanim_update(sa);  // Frame 0 -> 1
-    ASSERT(rt_spriteanim_update(sa) == 1);  // Finished
+    rt_spriteanim_update(sa);              // Frame 0 -> 1
+    ASSERT(rt_spriteanim_update(sa) == 1); // Finished
     ASSERT(rt_spriteanim_is_finished(sa) == 1);
-    ASSERT(rt_spriteanim_frame(sa) == 1);  // Stay at last frame
+    ASSERT(rt_spriteanim_frame(sa) == 1); // Stay at last frame
     rt_spriteanim_destroy(sa);
 }
 
-TEST(pingpong) {
+TEST(pingpong)
+{
     rt_spriteanim sa = rt_spriteanim_new();
-    rt_spriteanim_setup(sa, 0, 2, 1);  // 3 frames
+    rt_spriteanim_setup(sa, 0, 2, 1); // 3 frames
     rt_spriteanim_set_pingpong(sa, 1);
     rt_spriteanim_play(sa);
 
-    rt_spriteanim_update(sa);  // 0 -> 1
-    rt_spriteanim_update(sa);  // 1 -> 2
-    rt_spriteanim_update(sa);  // 2 -> 1 (reverse)
+    rt_spriteanim_update(sa); // 0 -> 1
+    rt_spriteanim_update(sa); // 1 -> 2
+    rt_spriteanim_update(sa); // 2 -> 1 (reverse)
     ASSERT(rt_spriteanim_frame(sa) == 1);
-    rt_spriteanim_update(sa);  // 1 -> 0
+    rt_spriteanim_update(sa); // 1 -> 0
     ASSERT(rt_spriteanim_frame(sa) == 0);
     rt_spriteanim_destroy(sa);
 }
 
-TEST(pause_resume) {
+TEST(pause_resume)
+{
     rt_spriteanim sa = rt_spriteanim_new();
     rt_spriteanim_setup(sa, 0, 3, 2);
     rt_spriteanim_play(sa);
@@ -127,17 +140,18 @@ TEST(pause_resume) {
     ASSERT(rt_spriteanim_is_paused(sa) == 1);
     rt_spriteanim_update(sa);
     rt_spriteanim_update(sa);
-    ASSERT(rt_spriteanim_frame(sa) == frame1);  // No change
+    ASSERT(rt_spriteanim_frame(sa) == frame1); // No change
 
     rt_spriteanim_resume(sa);
     ASSERT(rt_spriteanim_is_paused(sa) == 0);
     rt_spriteanim_destroy(sa);
 }
 
-TEST(speed) {
+TEST(speed)
+{
     rt_spriteanim sa = rt_spriteanim_new();
-    rt_spriteanim_setup(sa, 0, 3, 4);  // 4 ticks per frame
-    rt_spriteanim_set_speed(sa, 2.0);  // 2x speed
+    rt_spriteanim_setup(sa, 0, 3, 4); // 4 ticks per frame
+    rt_spriteanim_set_speed(sa, 2.0); // 2x speed
     rt_spriteanim_play(sa);
 
     // At 2x speed, each update counts as 2 ticks
@@ -153,21 +167,23 @@ TEST(speed) {
     rt_spriteanim_destroy(sa);
 }
 
-TEST(progress) {
+TEST(progress)
+{
     rt_spriteanim sa = rt_spriteanim_new();
-    rt_spriteanim_setup(sa, 0, 3, 1);  // 4 frames (0-3), 1 tick each
+    rt_spriteanim_setup(sa, 0, 3, 1); // 4 frames (0-3), 1 tick each
     rt_spriteanim_play(sa);
 
     // Progress = (current - start) * 100 / (end - start)
-    ASSERT(rt_spriteanim_progress(sa) == 0);   // Frame 0: 0/3 = 0%
-    rt_spriteanim_update(sa);  // Frame 1
-    ASSERT(rt_spriteanim_progress(sa) == 33);  // Frame 1: 1/3 = 33%
-    rt_spriteanim_update(sa);  // Frame 2
-    ASSERT(rt_spriteanim_progress(sa) == 66);  // Frame 2: 2/3 = 66%
+    ASSERT(rt_spriteanim_progress(sa) == 0);  // Frame 0: 0/3 = 0%
+    rt_spriteanim_update(sa);                 // Frame 1
+    ASSERT(rt_spriteanim_progress(sa) == 33); // Frame 1: 1/3 = 33%
+    rt_spriteanim_update(sa);                 // Frame 2
+    ASSERT(rt_spriteanim_progress(sa) == 66); // Frame 2: 2/3 = 66%
     rt_spriteanim_destroy(sa);
 }
 
-int main() {
+int main()
+{
     printf("RTSpriteAnimTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(setup);

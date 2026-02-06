@@ -47,7 +47,12 @@ static void generate_unique_id(char *buffer, size_t size)
     int pid = (int)getpid();
 #endif
 
-    snprintf(buffer, size, "%d_%llx_%llx", pid, (unsigned long long)timestamp, (unsigned long long)counter);
+    snprintf(buffer,
+             size,
+             "%d_%llx_%llx",
+             pid,
+             (unsigned long long)timestamp,
+             (unsigned long long)counter);
 }
 
 //=============================================================================

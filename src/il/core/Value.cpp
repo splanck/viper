@@ -242,6 +242,7 @@ size_t valueHash(const Value &v) noexcept
                 double d;
                 unsigned long long u;
             } bits{};
+
             bits.d = v.f64;
             h ^= static_cast<size_t>(bits.u);
             break;

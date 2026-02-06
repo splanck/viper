@@ -33,8 +33,8 @@ struct qt_item
 /// Quadtree node.
 struct qt_node
 {
-    int64_t x, y;          ///< Bounds top-left.
-    int64_t width, height; ///< Bounds dimensions.
+    int64_t x, y;                         ///< Bounds top-left.
+    int64_t width, height;                ///< Bounds dimensions.
     int64_t items[RT_QUADTREE_MAX_ITEMS]; ///< Item indices in this node.
     int64_t item_count;
     int64_t depth;
@@ -62,7 +62,8 @@ struct rt_quadtree_impl
 };
 
 /// Creates a new node.
-static struct qt_node *create_node(int64_t x, int64_t y, int64_t width, int64_t height, int64_t depth)
+static struct qt_node *create_node(
+    int64_t x, int64_t y, int64_t width, int64_t height, int64_t depth)
 {
     struct qt_node *node = malloc(sizeof(struct qt_node));
     if (!node)
@@ -119,15 +120,15 @@ static void clear_node(struct qt_node *node)
 /// Check if a rectangle intersects a node's bounds.
 static int8_t intersects(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
 {
-    return !(x >= node->x + node->width || x + w <= node->x ||
-             y >= node->y + node->height || y + h <= node->y);
+    return !(x >= node->x + node->width || x + w <= node->x || y >= node->y + node->height ||
+             y + h <= node->y);
 }
 
 /// Check if a rectangle is fully contained in a node.
 static int8_t contains(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
 {
-    return x >= node->x && x + w <= node->x + node->width &&
-           y >= node->y && y + h <= node->y + node->height;
+    return x >= node->x && x + w <= node->x + node->width && y >= node->y &&
+           y + h <= node->y + node->height;
 }
 
 /// Split a node into 4 children.
@@ -178,13 +179,15 @@ static int get_quadrant(struct qt_node *node, int64_t x, int64_t y, int64_t w, i
 }
 
 /// Insert item into node.
-static int8_t insert_into_node(struct rt_quadtree_impl *tree, struct qt_node *node, int64_t item_idx)
+static int8_t insert_into_node(struct rt_quadtree_impl *tree,
+                               struct qt_node *node,
+                               int64_t item_idx)
 {
     if (!node)
         return 0;
 
     struct qt_item *item = &tree->items[item_idx];
-    int64_t x = item->x - item->width / 2;  // Convert center to top-left
+    int64_t x = item->x - item->width / 2; // Convert center to top-left
     int64_t y = item->y - item->height / 2;
 
     // If node is split, try to insert into child
@@ -245,8 +248,8 @@ static int8_t insert_into_node(struct rt_quadtree_impl *tree, struct qt_node *no
 }
 
 /// Query items in a region.
-static void query_node(struct rt_quadtree_impl *tree, struct qt_node *node,
-                       int64_t x, int64_t y, int64_t w, int64_t h)
+static void query_node(
+    struct rt_quadtree_impl *tree, struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
 {
     if (!node || tree->result_count >= RT_QUADTREE_MAX_RESULTS)
         return;
@@ -265,8 +268,7 @@ static void query_node(struct rt_quadtree_impl *tree, struct qt_node *node,
         int64_t ix = item->x - item->width / 2;
         int64_t iy = item->y - item->height / 2;
 
-        if (!(ix >= x + w || ix + item->width <= x ||
-              iy >= y + h || iy + item->height <= y))
+        if (!(ix >= x + w || ix + item->width <= x || iy >= y + h || iy + item->height <= y))
         {
             tree->results[tree->result_count++] = item->id;
         }
@@ -317,8 +319,10 @@ static int8_t remove_from_node(struct rt_quadtree_impl *tree, struct qt_node *no
 }
 
 /// Collect all item pairs that could potentially collide.
-static void collect_pairs_node(struct rt_quadtree_impl *tree, struct qt_node *node,
-                               int64_t *ancestors, int64_t ancestor_count)
+static void collect_pairs_node(struct rt_quadtree_impl *tree,
+                               struct qt_node *node,
+                               int64_t *ancestors,
+                               int64_t ancestor_count)
 {
     if (!node || tree->pair_count >= MAX_PAIRS)
         return;
@@ -426,8 +430,8 @@ void rt_quadtree_clear(rt_quadtree tree)
         clear_node(tree->root);
 }
 
-int8_t rt_quadtree_insert(rt_quadtree tree, int64_t id, int64_t x, int64_t y,
-                          int64_t width, int64_t height)
+int8_t rt_quadtree_insert(
+    rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height)
 {
     if (!tree || tree->item_count >= MAX_TOTAL_ITEMS)
         return 0;
@@ -471,8 +475,8 @@ int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id)
     return 0;
 }
 
-int8_t rt_quadtree_update(rt_quadtree tree, int64_t id, int64_t x, int64_t y,
-                          int64_t width, int64_t height)
+int8_t rt_quadtree_update(
+    rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height)
 {
     if (!tree)
         return 0;
@@ -499,8 +503,8 @@ int8_t rt_quadtree_update(rt_quadtree tree, int64_t id, int64_t x, int64_t y,
     return 0;
 }
 
-int64_t rt_quadtree_query_rect(rt_quadtree tree, int64_t x, int64_t y,
-                                int64_t width, int64_t height)
+int64_t rt_quadtree_query_rect(
+    rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height)
 {
     if (!tree)
         return 0;

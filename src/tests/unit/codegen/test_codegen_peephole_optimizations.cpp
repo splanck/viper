@@ -42,8 +42,8 @@ TEST(PeepholeOptimizations, CbzFusionCmpZeroBeq)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(MInstr{MOpcode::CmpRI,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    block.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
     block.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(".Ltarget")}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -79,8 +79,8 @@ TEST(PeepholeOptimizations, CbnzFusionCmpZeroBne)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(MInstr{MOpcode::CmpRI,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    block.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
     block.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(".Ltarget")}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -115,8 +115,8 @@ TEST(PeepholeOptimizations, CbzFusionTstBeq)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(MInstr{MOpcode::TstRR,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
+    block.instrs.push_back(
+        MInstr{MOpcode::TstRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
     block.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(".Ltarget")}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -139,8 +139,8 @@ TEST(PeepholeOptimizations, CbzFusionSkipsNonZero)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(MInstr{MOpcode::CmpRI,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::immOp(5)}});
+    block.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(5)}});
     block.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(".Ltarget")}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -163,8 +163,8 @@ TEST(PeepholeOptimizations, CbzFusionSkipsLtCondition)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(MInstr{MOpcode::CmpRI,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    block.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
     block.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(".Ltarget")}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -191,14 +191,14 @@ TEST(PeepholeOptimizations, MaddFusionMulAdd)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(
-        MInstr{MOpcode::MulRRR,
-               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X0),
-                MOperand::regOp(PhysReg::X1)}});
-    block.instrs.push_back(
-        MInstr{MOpcode::AddRRR,
-               {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X2),
-                MOperand::regOp(PhysReg::X4)}});
+    block.instrs.push_back(MInstr{MOpcode::MulRRR,
+                                  {MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1)}});
+    block.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                  {MOperand::regOp(PhysReg::X3),
+                                   MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X4)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -225,14 +225,14 @@ TEST(PeepholeOptimizations, MaddFusionCommutative)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(
-        MInstr{MOpcode::MulRRR,
-               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X0),
-                MOperand::regOp(PhysReg::X1)}});
-    block.instrs.push_back(
-        MInstr{MOpcode::AddRRR,
-               {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X4),
-                MOperand::regOp(PhysReg::X2)}});
+    block.instrs.push_back(MInstr{MOpcode::MulRRR,
+                                  {MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1)}});
+    block.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                  {MOperand::regOp(PhysReg::X3),
+                                   MOperand::regOp(PhysReg::X4),
+                                   MOperand::regOp(PhysReg::X2)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -248,19 +248,19 @@ TEST(PeepholeOptimizations, MaddFusionSkipsWhenMulDstStillLive)
     MBasicBlock block{};
     block.name = ".Lentry";
 
-    block.instrs.push_back(
-        MInstr{MOpcode::MulRRR,
-               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X0),
-                MOperand::regOp(PhysReg::X1)}});
-    block.instrs.push_back(
-        MInstr{MOpcode::AddRRR,
-               {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X2),
-                MOperand::regOp(PhysReg::X4)}});
+    block.instrs.push_back(MInstr{MOpcode::MulRRR,
+                                  {MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1)}});
+    block.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                  {MOperand::regOp(PhysReg::X3),
+                                   MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X4)}});
     // x2 is still used here
-    block.instrs.push_back(
-        MInstr{MOpcode::AddRRR,
-               {MOperand::regOp(PhysReg::X5), MOperand::regOp(PhysReg::X2),
-                MOperand::regOp(PhysReg::X6)}});
+    block.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                  {MOperand::regOp(PhysReg::X5),
+                                   MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X6)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -402,8 +402,8 @@ TEST(PeepholeOptimizations, BranchInversion)
 
     MBasicBlock entry{};
     entry.name = ".Lentry";
-    entry.instrs.push_back(MInstr{MOpcode::CmpRR,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
     entry.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(".Lnext")}});
     entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(".Lother")}});
@@ -429,8 +429,8 @@ TEST(PeepholeOptimizations, BranchInversion)
     {
         if (instr.opc == MOpcode::BCond && instr.ops.size() == 2 &&
             instr.ops[0].kind == MOperand::Kind::Cond && instr.ops[0].cond &&
-            std::string(instr.ops[0].cond) == "ne" &&
-            instr.ops[1].kind == MOperand::Kind::Label && instr.ops[1].label == ".Lother")
+            std::string(instr.ops[0].cond) == "ne" && instr.ops[1].kind == MOperand::Kind::Label &&
+            instr.ops[1].label == ".Lother")
         {
             foundInvertedBranch = true;
         }
@@ -456,8 +456,8 @@ TEST(PeepholeOptimizations, BranchInversionSkipsNonNext)
 
     MBasicBlock entry{};
     entry.name = ".Lentry";
-    entry.instrs.push_back(MInstr{MOpcode::CmpRR,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
     entry.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(".Lother")}});
     entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(".Lnext")}});
@@ -493,10 +493,10 @@ TEST(PeepholeOptimizations, ImmFoldingAddRRR)
 
     block.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(42)}});
-    block.instrs.push_back(
-        MInstr{MOpcode::AddRRR,
-               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X0),
-                MOperand::regOp(PhysReg::X1)}});
+    block.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                  {MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -525,10 +525,10 @@ TEST(PeepholeOptimizations, ImmFoldingSubRRR)
 
     block.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(100)}});
-    block.instrs.push_back(
-        MInstr{MOpcode::SubRRR,
-               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X0),
-                MOperand::regOp(PhysReg::X1)}});
+    block.instrs.push_back(MInstr{MOpcode::SubRRR,
+                                  {MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -557,10 +557,10 @@ TEST(PeepholeOptimizations, ImmFoldingSkipsLargeImm)
 
     block.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(5000)}});
-    block.instrs.push_back(
-        MInstr{MOpcode::AddRRR,
-               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X0),
-                MOperand::regOp(PhysReg::X1)}});
+    block.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                  {MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -603,8 +603,10 @@ TEST(PeepholeOptimizations, EmitMadd)
     MBasicBlock block{};
     block.name = ".Lentry";
     block.instrs.push_back(MInstr{MOpcode::MAddRRRR,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1),
-                                   MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X3)}});
+                                  {MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1),
+                                   MOperand::regOp(PhysReg::X2),
+                                   MOperand::regOp(PhysReg::X3)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -625,8 +627,10 @@ TEST(PeepholeOptimizations, EmitCsel)
     MBasicBlock block{};
     block.name = ".Lentry";
     block.instrs.push_back(MInstr{MOpcode::Csel,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1),
-                                   MOperand::regOp(PhysReg::X2), MOperand::condOp("eq")}});
+                                  {MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X1),
+                                   MOperand::regOp(PhysReg::X2),
+                                   MOperand::condOp("eq")}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 
@@ -646,12 +650,12 @@ TEST(PeepholeOptimizations, EmitLdpStp)
     fn.name = "test_ldp_stp_emit";
     MBasicBlock block{};
     block.name = ".Lentry";
-    block.instrs.push_back(MInstr{MOpcode::LdpRegFpImm,
-                                  {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1),
-                                   MOperand::immOp(-16)}});
-    block.instrs.push_back(MInstr{MOpcode::StpRegFpImm,
-                                  {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X3),
-                                   MOperand::immOp(-32)}});
+    block.instrs.push_back(
+        MInstr{MOpcode::LdpRegFpImm,
+               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1), MOperand::immOp(-16)}});
+    block.instrs.push_back(
+        MInstr{MOpcode::StpRegFpImm,
+               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X3), MOperand::immOp(-32)}});
     block.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(block));
 

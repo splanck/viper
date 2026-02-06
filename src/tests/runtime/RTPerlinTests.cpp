@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
-#include "rt_perlin.h"
 #include "rt_object.h"
+#include "rt_perlin.h"
 
 #include <cassert>
 #include <cmath>

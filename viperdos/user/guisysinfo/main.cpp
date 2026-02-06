@@ -57,8 +57,14 @@ class Formatter {
         hours %= 24;
 
         if (days > 0) {
-            snprintf(buf, len, "%llu day%s, %llu:%02llu:%02llu",
-                     days, days == 1 ? "" : "s", hours, minutes, seconds);
+            snprintf(buf,
+                     len,
+                     "%llu day%s, %llu:%02llu:%02llu",
+                     days,
+                     days == 1 ? "" : "s",
+                     hours,
+                     minutes,
+                     seconds);
         } else {
             snprintf(buf, len, "%llu:%02llu:%02llu", hours, minutes, seconds);
         }
@@ -98,10 +104,21 @@ class SystemDataSource {
         m_uptimeMs = sys::uptime();
     }
 
-    const MemInfo &memInfo() const { return m_mem; }
-    int taskCount() const { return m_taskCount; }
-    uint64_t uptimeMs() const { return m_uptimeMs; }
-    const TaskInfo &task(int idx) const { return m_tasks[idx]; }
+    const MemInfo &memInfo() const {
+        return m_mem;
+    }
+
+    int taskCount() const {
+        return m_taskCount;
+    }
+
+    uint64_t uptimeMs() const {
+        return m_uptimeMs;
+    }
+
+    const TaskInfo &task(int idx) const {
+        return m_tasks[idx];
+    }
 
   private:
     MemInfo m_mem;
@@ -207,16 +224,16 @@ class SystemInfoView {
         y += 4;
 
         // Task list
-        int maxTasks = (data.taskCount() < layout::MAX_VISIBLE_TASKS)
-            ? data.taskCount() : layout::MAX_VISIBLE_TASKS;
+        int maxTasks = (data.taskCount() < layout::MAX_VISIBLE_TASKS) ? data.taskCount()
+                                                                      : layout::MAX_VISIBLE_TASKS;
 
         for (int i = 0; i < maxTasks; i++) {
             y = drawTaskRow(win, y, data.task(i));
         }
 
         if (data.taskCount() > layout::MAX_VISIBLE_TASKS) {
-            snprintf(buf, sizeof(buf), "... and %d more",
-                     data.taskCount() - layout::MAX_VISIBLE_TASKS);
+            snprintf(
+                buf, sizeof(buf), "... and %d more", data.taskCount() - layout::MAX_VISIBLE_TASKS);
             gui_draw_text(win, 60, y, buf, colors::GRAY_DARK);
         }
 
@@ -249,16 +266,20 @@ class SystemInfoView {
 
     const char *stateToString(uint32_t state) {
         switch (state) {
-            case TASK_STATE_READY: return "Ready";
-            case TASK_STATE_RUNNING: return "Running";
-            case TASK_STATE_BLOCKED: return "Blocked";
-            case TASK_STATE_EXITED: return "Exited";
-            default: return "???";
+            case TASK_STATE_READY:
+                return "Ready";
+            case TASK_STATE_RUNNING:
+                return "Running";
+            case TASK_STATE_BLOCKED:
+                return "Blocked";
+            case TASK_STATE_EXITED:
+                return "Exited";
+            default:
+                return "???";
         }
     }
 
-    void drawLabelValue(gui_window_t *win, int x, int y,
-                        const char *label, const char *value) {
+    void drawLabelValue(gui_window_t *win, int x, int y, const char *label, const char *value) {
         gui_draw_text(win, x, y, label, colors::BLACK);
         gui_draw_text(win, x + 100, y, value, colors::GRAY_DARK);
     }
@@ -277,8 +298,7 @@ class SystemInfoApp {
             return false;
         }
 
-        m_window = gui_create_window("System Information",
-                                     layout::WIN_WIDTH, layout::WIN_HEIGHT);
+        m_window = gui_create_window("System Information", layout::WIN_WIDTH, layout::WIN_HEIGHT);
         if (!m_window) {
             gui_shutdown();
             return false;

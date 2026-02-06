@@ -109,8 +109,7 @@ void setup_hardware_cursor() {
     }
     if (sys::set_cursor_image(cursor_pixels, CURSOR_SIZE, CURSOR_SIZE, 0, 0) == 0) {
         g_cursor_visible = false; // Disable software cursor
-        sys::move_hw_cursor(static_cast<uint32_t>(g_cursor_x),
-                            static_cast<uint32_t>(g_cursor_y));
+        sys::move_hw_cursor(static_cast<uint32_t>(g_cursor_x), static_cast<uint32_t>(g_cursor_y));
         debug_print("[displayd] Hardware cursor enabled\n");
     }
 }

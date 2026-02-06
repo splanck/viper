@@ -122,8 +122,8 @@ int main()
     assert(runCastSiNarrowChk(-2147483648, Type::Kind::I32) == -2147483648); // INT32_MIN
 
     // Values that overflow I32
-    expectInvalidCastTrapSi(2147483648LL, Type::Kind::I32);     // INT32_MAX + 1
-    expectInvalidCastTrapSi(-2147483649LL, Type::Kind::I32);    // INT32_MIN - 1
+    expectInvalidCastTrapSi(2147483648LL, Type::Kind::I32);  // INT32_MAX + 1
+    expectInvalidCastTrapSi(-2147483649LL, Type::Kind::I32); // INT32_MIN - 1
     expectInvalidCastTrapSi(std::numeric_limits<int64_t>::max(), Type::Kind::I32);
     expectInvalidCastTrapSi(std::numeric_limits<int64_t>::min(), Type::Kind::I32);
 
@@ -135,8 +135,8 @@ int main()
     assert(runCastSiNarrowChk(32767, Type::Kind::I16) == 32767);   // INT16_MAX
     assert(runCastSiNarrowChk(-32768, Type::Kind::I16) == -32768); // INT16_MIN
 
-    expectInvalidCastTrapSi(32768LL, Type::Kind::I16);   // INT16_MAX + 1
-    expectInvalidCastTrapSi(-32769LL, Type::Kind::I16);  // INT16_MIN - 1
+    expectInvalidCastTrapSi(32768LL, Type::Kind::I16);  // INT16_MAX + 1
+    expectInvalidCastTrapSi(-32769LL, Type::Kind::I16); // INT16_MIN - 1
 
     //=========================================================================
     // CastUiNarrowChk to I32 tests (unsigned narrowing)
@@ -145,7 +145,8 @@ int main()
     // Values that fit in unsigned 32-bit
     assert(runCastUiNarrowChk(0, Type::Kind::I32) == 0);
     assert(runCastUiNarrowChk(1, Type::Kind::I32) == 1);
-    assert(runCastUiNarrowChk(4294967295LL, Type::Kind::I32) == static_cast<int64_t>(4294967295LL)); // UINT32_MAX
+    assert(runCastUiNarrowChk(4294967295LL, Type::Kind::I32) ==
+           static_cast<int64_t>(4294967295LL)); // UINT32_MAX
 
     // Values that overflow unsigned 32-bit
     expectInvalidCastTrapUi(4294967296LL, Type::Kind::I32); // UINT32_MAX + 1

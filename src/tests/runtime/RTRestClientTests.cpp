@@ -47,15 +47,13 @@ static void test_new_client_empty_url()
     test_result(client != NULL, "new_client_empty: should create client with empty URL");
 
     rt_string base = rt_restclient_base_url(client);
-    test_result(strlen(rt_string_cstr(base)) == 0,
-                "new_client_empty: should have empty base URL");
+    test_result(strlen(rt_string_cstr(base)) == 0, "new_client_empty: should have empty base URL");
 }
 
 static void test_new_client_null()
 {
     rt_string base = rt_restclient_base_url(NULL);
-    test_result(strlen(rt_string_cstr(base)) == 0,
-                "null_client: should return empty string");
+    test_result(strlen(rt_string_cstr(base)) == 0, "null_client: should return empty string");
 }
 
 //=============================================================================
@@ -67,9 +65,8 @@ static void test_set_header()
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     // Setting a header shouldn't crash
-    rt_restclient_set_header(client,
-                             rt_const_cstr("X-Custom-Header"),
-                             rt_const_cstr("CustomValue"));
+    rt_restclient_set_header(
+        client, rt_const_cstr("X-Custom-Header"), rt_const_cstr("CustomValue"));
 
     test_result(true, "set_header: should set header without crash");
 }
@@ -78,9 +75,8 @@ static void test_del_header()
 {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
-    rt_restclient_set_header(client,
-                             rt_const_cstr("X-Custom-Header"),
-                             rt_const_cstr("CustomValue"));
+    rt_restclient_set_header(
+        client, rt_const_cstr("X-Custom-Header"), rt_const_cstr("CustomValue"));
 
     // Deleting a header shouldn't crash
     rt_restclient_del_header(client, rt_const_cstr("X-Custom-Header"));
@@ -91,9 +87,7 @@ static void test_del_header()
 static void test_null_client_headers()
 {
     // Operations on NULL client should be safe (no-op)
-    rt_restclient_set_header(NULL,
-                             rt_const_cstr("Header"),
-                             rt_const_cstr("Value"));
+    rt_restclient_set_header(NULL, rt_const_cstr("Header"), rt_const_cstr("Value"));
     rt_restclient_del_header(NULL, rt_const_cstr("Header"));
 
     test_result(true, "null_client_headers: should handle NULL safely");
@@ -118,9 +112,7 @@ static void test_set_auth_basic()
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     // Setting basic auth shouldn't crash
-    rt_restclient_set_auth_basic(client,
-                                 rt_const_cstr("username"),
-                                 rt_const_cstr("password"));
+    rt_restclient_set_auth_basic(client, rt_const_cstr("username"), rt_const_cstr("password"));
 
     test_result(true, "set_auth_basic: should set basic auth without crash");
 }
@@ -139,9 +131,7 @@ static void test_null_client_auth()
 {
     // Auth operations on NULL client should be safe
     rt_restclient_set_auth_bearer(NULL, rt_const_cstr("token"));
-    rt_restclient_set_auth_basic(NULL,
-                                 rt_const_cstr("user"),
-                                 rt_const_cstr("pass"));
+    rt_restclient_set_auth_basic(NULL, rt_const_cstr("user"), rt_const_cstr("pass"));
     rt_restclient_clear_auth(NULL);
 
     test_result(true, "null_client_auth: should handle NULL safely");

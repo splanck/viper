@@ -90,8 +90,6 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
                     std::ostream &err);
 
 /// @brief Execute a linked native binary and forward its output.
-int runExecutable(const std::string &exePath,
-                  std::ostream &out,
-                  std::ostream &err);
+int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &err);
 
 } // namespace viper::codegen::common

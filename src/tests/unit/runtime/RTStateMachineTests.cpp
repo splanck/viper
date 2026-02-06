@@ -11,22 +11,28 @@ static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
-#define RUN_TEST(name) do { \
-    printf("  %s...", #name); \
-    test_##name(); \
-    printf(" OK\n"); \
-    tests_passed++; \
-} while(0)
+#define RUN_TEST(name)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %s...", #name);                                                                  \
+        test_##name();                                                                             \
+        printf(" OK\n");                                                                           \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define ASSERT(cond) do { \
-    if (!(cond)) { \
-        printf(" FAILED at line %d: %s\n", __LINE__, #cond); \
-        tests_failed++; \
-        return; \
-    } \
-} while(0)
+#define ASSERT(cond)                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-TEST(create_destroy) {
+TEST(create_destroy)
+{
     rt_statemachine sm = rt_statemachine_new();
     ASSERT(sm != NULL);
     ASSERT(rt_statemachine_current(sm) == -1);
@@ -34,7 +40,8 @@ TEST(create_destroy) {
     rt_statemachine_destroy(sm);
 }
 
-TEST(add_states) {
+TEST(add_states)
+{
     rt_statemachine sm = rt_statemachine_new();
     ASSERT(rt_statemachine_add_state(sm, 0) == 1);
     ASSERT(rt_statemachine_add_state(sm, 1) == 1);
@@ -46,7 +53,8 @@ TEST(add_states) {
     rt_statemachine_destroy(sm);
 }
 
-TEST(set_initial) {
+TEST(set_initial)
+{
     rt_statemachine sm = rt_statemachine_new();
     rt_statemachine_add_state(sm, 0);
     rt_statemachine_add_state(sm, 1);
@@ -56,7 +64,8 @@ TEST(set_initial) {
     rt_statemachine_destroy(sm);
 }
 
-TEST(transition) {
+TEST(transition)
+{
     rt_statemachine sm = rt_statemachine_new();
     rt_statemachine_add_state(sm, 0);
     rt_statemachine_add_state(sm, 1);
@@ -76,7 +85,8 @@ TEST(transition) {
     rt_statemachine_destroy(sm);
 }
 
-TEST(frames_in_state) {
+TEST(frames_in_state)
+{
     rt_statemachine sm = rt_statemachine_new();
     rt_statemachine_add_state(sm, 0);
     rt_statemachine_set_initial(sm, 0);
@@ -89,7 +99,8 @@ TEST(frames_in_state) {
     rt_statemachine_destroy(sm);
 }
 
-TEST(is_state) {
+TEST(is_state)
+{
     rt_statemachine sm = rt_statemachine_new();
     rt_statemachine_add_state(sm, 0);
     rt_statemachine_add_state(sm, 1);
@@ -102,7 +113,8 @@ TEST(is_state) {
     rt_statemachine_destroy(sm);
 }
 
-int main() {
+int main()
+{
     printf("RTStateMachineTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(add_states);

@@ -103,11 +103,25 @@ class TaskDataSource {
         }
     }
 
-    int taskCount() const { return m_taskCount; }
-    int selectedTask() const { return m_selectedTask; }
-    int scrollOffset() const { return m_scrollOffset; }
-    const MemInfo &memInfo() const { return m_memInfo; }
-    const TaskInfo &task(int idx) const { return m_tasks[idx]; }
+    int taskCount() const {
+        return m_taskCount;
+    }
+
+    int selectedTask() const {
+        return m_selectedTask;
+    }
+
+    int scrollOffset() const {
+        return m_scrollOffset;
+    }
+
+    const MemInfo &memInfo() const {
+        return m_memInfo;
+    }
+
+    const TaskInfo &task(int idx) const {
+        return m_tasks[idx];
+    }
 
     void selectTask(int idx) {
         if (idx >= 0 && idx < m_taskCount) {
@@ -183,19 +197,23 @@ class TaskListView {
     }
 
     void drawTaskList(gui_window_t *win, const TaskDataSource &data) {
-        gui_fill_rect(win, 10, layout::LIST_TOP, layout::WIN_WIDTH - 20,
-                      layout::LIST_BOTTOM - layout::LIST_TOP, colors::WHITE);
+        gui_fill_rect(win,
+                      10,
+                      layout::LIST_TOP,
+                      layout::WIN_WIDTH - 20,
+                      layout::LIST_BOTTOM - layout::LIST_TOP,
+                      colors::WHITE);
 
         int maxVisible = maxVisibleRows();
         int y = layout::LIST_TOP + 2;
 
         for (int i = data.scrollOffset();
-             i < data.taskCount() && i < data.scrollOffset() + maxVisible; i++) {
-
+             i < data.taskCount() && i < data.scrollOffset() + maxVisible;
+             i++) {
             bool selected = (i == data.selectedTask());
             if (selected) {
-                gui_fill_rect(win, 11, y - 1, layout::WIN_WIDTH - 22,
-                              layout::ROW_HEIGHT, colors::BLUE);
+                gui_fill_rect(
+                    win, 11, y - 1, layout::WIN_WIDTH - 22, layout::ROW_HEIGHT, colors::BLUE);
             }
 
             drawTaskRow(win, data.task(i), y, selected);
@@ -281,7 +299,8 @@ class TaskListView {
         gui_draw_hline(win, 10, layout::WIN_WIDTH - 10, layout::LIST_TOP, colors::GRAY_DARK);
         gui_draw_hline(win, 10, layout::WIN_WIDTH - 10, layout::LIST_BOTTOM, colors::GRAY_DARK);
         gui_draw_vline(win, 10, layout::LIST_TOP, layout::LIST_BOTTOM, colors::GRAY_DARK);
-        gui_draw_vline(win, layout::WIN_WIDTH - 10, layout::LIST_TOP, layout::LIST_BOTTOM, colors::GRAY_DARK);
+        gui_draw_vline(
+            win, layout::WIN_WIDTH - 10, layout::LIST_TOP, layout::LIST_BOTTOM, colors::GRAY_DARK);
     }
 };
 
@@ -381,7 +400,8 @@ class TaskManagerApp {
     }
 
     bool handleClick(int x, int y, int button) {
-        if (button != 0) return false;
+        if (button != 0)
+            return false;
 
         // Check task list click
         int rowIdx = m_view.findTaskAt(y);

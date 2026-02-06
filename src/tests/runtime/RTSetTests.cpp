@@ -256,14 +256,12 @@ static void test_set_diff()
     void *diff = rt_set_diff(s1, s2);
     test_result("Diff has 1 element", rt_set_len(diff) == 1);
     test_result("Diff has 'a'", rt_set_has(diff, rt_box_str(rt_const_cstr("a"))) == 1);
-    test_result("Diff does not have 'b'",
-                rt_set_has(diff, rt_box_str(rt_const_cstr("b"))) == 0);
+    test_result("Diff does not have 'b'", rt_set_has(diff, rt_box_str(rt_const_cstr("b"))) == 0);
 
     // Reverse diff
     void *diff2 = rt_set_diff(s2, s1);
     test_result("Reverse diff has 1 element", rt_set_len(diff2) == 1);
-    test_result("Reverse diff has 'd'",
-                rt_set_has(diff2, rt_box_str(rt_const_cstr("d"))) == 1);
+    test_result("Reverse diff has 'd'", rt_set_has(diff2, rt_box_str(rt_const_cstr("d"))) == 1);
 
     printf("\n");
 }

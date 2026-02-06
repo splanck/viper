@@ -61,7 +61,7 @@ static void test_is_due_not_ready()
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("task1", 5);
 
-    rt_scheduler_schedule(s, t1, 5000); // 5 seconds from now
+    rt_scheduler_schedule(s, t1, 5000);      // 5 seconds from now
     assert(rt_scheduler_is_due(s, t1) == 0); // not due yet
 
     // Non-existent task
@@ -86,7 +86,7 @@ static void test_poll_returns_due()
     rt_string t1 = rt_string_from_bytes("fast", 4);
     rt_string t2 = rt_string_from_bytes("slow", 4);
 
-    rt_scheduler_schedule(s, t1, 0);   // due immediately
+    rt_scheduler_schedule(s, t1, 0);     // due immediately
     rt_scheduler_schedule(s, t2, 60000); // due in 60 seconds
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5));

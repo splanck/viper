@@ -102,7 +102,9 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv)
                     {
                         return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
                             il::support::Severity::Error,
-                            std::string("unknown flag: ") + std::string(arg), {}, {}});
+                            std::string("unknown flag: ") + std::string(arg),
+                            {},
+                            {}});
                     }
                     break;
             }

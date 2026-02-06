@@ -304,6 +304,14 @@ encodings:
     pattern: [ Reg, Reg ]
     flags: [ RequiresModRM, REXW ]
 
+  # GPR to XMM bit-pattern transfer (no conversion)
+  - opcode: MOVQrx
+    mnemonic: movq
+    form: RegReg
+    order: R_R
+    pattern: [ Reg, Reg ]
+    flags: [ RequiresModRM, REXW ]
+
   # Floating point move instructions
   - opcode: MOVSDrr
     mnemonic: movsd
@@ -324,4 +332,19 @@ encodings:
     form: MemReg
     order: M_R
     pattern: [ Mem, Reg ]
+    flags: [ RequiresModRM ]
+
+  # 128-bit XMM save/restore (unaligned) for callee-saved registers
+  - opcode: MOVUPSrm
+    mnemonic: movups
+    form: MemReg
+    order: M_R
+    pattern: [ Mem, Reg ]
+    flags: [ RequiresModRM ]
+
+  - opcode: MOVUPSmr
+    mnemonic: movups
+    form: RegMem
+    order: R_M
+    pattern: [ Reg, Mem ]
     flags: [ RequiresModRM ]

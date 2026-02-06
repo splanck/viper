@@ -371,8 +371,8 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
         }
 
         self.lowerer_.curLoc = arg->loc;
-        record = self.lowerer_.emitCallRet(
-            IlType(IlType::Kind::Str), kStringConcat, {record, comma});
+        record =
+            self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), kStringConcat, {record, comma});
         record = self.lowerer_.emitCallRet(
             IlType(IlType::Kind::Str), kStringConcat, {record, lowered.text});
     }
@@ -578,8 +578,7 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
         {
             // Convert string to double via kConvertToDouble
             lowerer_.requestHelper(il::runtime::RuntimeFeature::ToDouble);
-            Value f =
-                lowerer_.emitCallRet(IlType(IlType::Kind::F64), kConvertToDouble, {field});
+            Value f = lowerer_.emitCallRet(IlType(IlType::Kind::F64), kConvertToDouble, {field});
             lowerer_.emitStore(IlType(IlType::Kind::F64), target, f);
             lowerer_.requireStrReleaseMaybe();
             lowerer_.emitCall("rt_str_release_maybe", {field});
@@ -612,9 +611,8 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
     Value fields = lowerer_.emitAlloca(static_cast<int>(fieldCount * 8));
     // Split the input line into fields using the rt_* helper
     lowerer_.requestHelper(il::runtime::RuntimeFeature::SplitFields);
-    lowerer_.emitCallRet(IlType(IlType::Kind::I64),
-                         kStringSplitFields,
-                         {line, fields, Value::constInt(fieldCount)});
+    lowerer_.emitCallRet(
+        IlType(IlType::Kind::I64), kStringSplitFields, {line, fields, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
 

@@ -261,7 +261,7 @@ Evidence and Code Paths:
       length check immediately following.
 - Local/global/field resolution: `resolveVariableStorage` prefers local slots but can fall back to implicit field
   resolution (`resolveImplicitField`) when it fails to find a symbol, see:
-    - `src/frontends/basic/Lowerer.Procedure.cpp`: `resolveVariableStorage` and `resolveImplicitField`.
+    - `src/frontends/basic/Lowerer_Procedure.cpp`: `resolveVariableStorage` and `resolveImplicitField`.
 - Field-scope detection uses an exact field-name match (`isFieldInScope`), but symbol tables for locals can be
   incomplete during certain lowering orders, leading to the fallback path engaging.
 
@@ -436,7 +436,7 @@ Implementation Summary:
 Files:
 
 - `src/frontends/basic/Lowerer.hpp` — declared `findClassLayout` and `canonicalLayoutKey`.
-- `src/frontends/basic/Lowerer.Procedure.cpp` — defined canonicalization and lookup helpers.
+- `src/frontends/basic/Lowerer_Procedure.cpp` — defined canonicalization and lookup helpers.
 - `src/frontends/basic/Lower_OOP_Expr.cpp` — use canonical lookup; return typed null on failure; null-checks.
 - `src/frontends/basic/lower/Emit_Expr.cpp` — canonical lookup for array-field accesses.
 - `src/frontends/basic/LowerStmt_Runtime.cpp` — canonical lookup for member array paths.
@@ -1042,7 +1042,7 @@ TestIt()
 ```
 
 **Root Cause**:
-The issue was in the semantic analyzer's BUG-037 fix (`SemanticAnalyzer.Stmts.Runtime.cpp:68-96`).
+The issue was in the semantic analyzer's BUG-037 fix (`SemanticAnalyzer_Stmts_Runtime.cpp:68-96`).
 The BUG-037 fix was designed to detect undefined variables in method calls and suggest qualified
 call syntax. However, it was too aggressive - when a `MethodCallExpr` had a base `VarExpr` that
 wasn't in the semantic analyzer's `symbols_` set, it assumed it was a namespace-qualified call
@@ -1054,14 +1054,14 @@ symbol tracking differs from the lowerer's). Since the parser already correctly 
 `MethodCallExpr` (not a qualified `CallExpr`), the semantic analyzer shouldn't second-guess it.
 
 **Fix**:
-Modified `SemanticAnalyzer.Stmts.Runtime.cpp` to only emit the "unknown procedure" error for
+Modified `SemanticAnalyzer_Stmts_Runtime.cpp` to only emit the "unknown procedure" error for
 `MethodCallExpr` when the base variable name corresponds to a known class (indicating a static
 method call on a class). Otherwise, let the lowerer handle it - it has more complete symbol
 information and will correctly resolve object method calls.
 
 **Files Changed**:
 
-- `src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.cpp:68-109` - Relaxed BUG-037 check
+- `src/frontends/basic/SemanticAnalyzer_Stmts_Runtime.cpp:68-109` - Relaxed BUG-037 check
 - `src/tests/basic/CMakeLists.txt:1201-1209` - Updated test expectation for t04_cross_file_2
 
 **Test File**: `bugs/bug_testing/bug120_method_array_copy.bas`
@@ -1206,7 +1206,7 @@ field instead of the return value slot.
     - Creates symbol for "IsAlive" with type INTEGER
     - **Critical bug: Does NOT mark symbol as referenced**
 
-3. **Slot Allocation** (`Lowerer.Procedure.cpp:1231, 1257`):
+3. **Slot Allocation** (`Lowerer_Procedure.cpp:1231, 1257`):
     - `allocateLocalSlots()` only processes **referenced** symbols (line 1231/1257)
     - Skips "IsAlive" because `info.referenced == false`
     - **No slot allocated for return value**
@@ -1215,7 +1215,7 @@ field instead of the return value slot.
     - Processes `IsAlive = isAlive` assignment
     - Calls `resolveVariableStorage("IsAlive")`
 
-5. **Variable Resolution** (`Lowerer.Procedure.cpp:570-726`):
+5. **Variable Resolution** (`Lowerer_Procedure.cpp:570-726`):
     - Line 639: Finds "IsAlive" symbol in symbol table
     - Line 641: Checks `if (info->slotId)` → **FALSE** (no slot!)
     - Falls through past local symbols check
@@ -1258,7 +1258,7 @@ This ensures `allocateLocalSlots()` creates a slot for the return value.
 **Option 2**: Check for function name before field resolution:
 
 ```cpp
-// Lowerer.Procedure.cpp - before line 711 (resolveImplicitField)
+// Lowerer_Procedure.cpp - before line 711 (resolveImplicitField)
 if (auto *func = context().function()) {
     if (string_utils::iequals(name, func->name)) {
         // Allocate return value slot on-the-fly and return it
@@ -1654,7 +1654,7 @@ Fixed by correcting variable resolution order in `resolveVariableStorage` so tha
 module-level variables with the same name.
 
 **Root Cause Refined**:
-The actual issue was in `Lowerer::resolveVariableStorage` (Lowerer.Procedure.cpp:636). When accessing an array
+The actual issue was in `Lowerer::resolveVariableStorage` (Lowerer_Procedure.cpp:636). When accessing an array
 parameter, the code checked for module-level symbols BEFORE checking for local/parameter symbols. This caused function
 parameters to be bypassed when a module-level variable with the same name existed.
 
@@ -1673,7 +1673,7 @@ crashes.
 
 **Changes Made**:
 
-1. **Reordered symbol resolution** (`src/frontends/basic/Lowerer.Procedure.cpp:636-657`):
+1. **Reordered symbol resolution** (`src/frontends/basic/Lowerer_Procedure.cpp:636-657`):
     - Check local/parameter symbols FIRST via `findSymbol()`
     - Only fall back to module-level symbols if no local symbol found
     - For module-level symbols in @main, preserve existing behavior (use local slots for non-cross-proc globals,
@@ -1949,7 +1949,7 @@ The fix required comprehensive changes across the parser, semantic analysis, and
 
 **6. Field Symbol Management**:
 
-- Fixed `Lowerer.Procedure.cpp:456-457` to preserve `isObject` and `objectClass` when creating field symbols
+- Fixed `Lowerer_Procedure.cpp:456-457` to preserve `isObject` and `objectClass` when creating field symbols
 
 **7. Destructor Generation**:
 
@@ -1968,7 +1968,7 @@ The fix required comprehensive changes across the parser, semantic analysis, and
 - `src/frontends/basic/Semantic_OOP.cpp`
 - `src/frontends/basic/Lowerer.hpp`
 - `src/frontends/basic/Lowerer.cpp`
-- `src/frontends/basic/Lowerer.Procedure.cpp`
+- `src/frontends/basic/Lowerer_Procedure.cpp`
 - `src/frontends/basic/Lower_OOP_Emit.cpp`
 - `src/frontends/basic/Lower_OOP_Expr.cpp`
 - `src/frontends/basic/Lower_OOP_Scan.cpp`
@@ -2734,7 +2734,7 @@ Evidence:
     - `resolveObjectClass(const ArrayExpr&)` first checks `findSymbol(arr->name)` for `isObject/objectClass` (works only
       when symbol info carries object-array typing), then handles dotted member/implicit field via class layouts. There
       is no fallback to semantic analyzer for module-level arrays.
-- Files: `src/frontends/basic/Lowerer.Procedure.cpp`
+- Files: `src/frontends/basic/Lowerer_Procedure.cpp`
     - `resetLoweringState()` calls `resetSymbolState()` which erases non-literal symbols between procedures;
       `markSymbolReferenced/markArray` rebuilds entries without object element class.
     - `findSymbol` only searches the current procedure’s symbol map and the active field scope, not a global symbol

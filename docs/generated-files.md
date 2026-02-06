@@ -87,7 +87,7 @@ cmake -S . -B build
 cmake --build build -j --target generate_runtime_registry
 
 # Update the checked-in snapshot (source overrides)
-build/rtgen src/il/runtime/runtime.def src/il/runtime/generated
+build/src/rtgen src/il/runtime/runtime.def src/il/runtime/generated
 
 # Validate
 ctest --test-dir build -R runtime

@@ -27,7 +27,7 @@
 typedef struct rt_trie_node
 {
     struct rt_trie_node *children[TRIE_ALPHABET_SIZE];
-    void *value;       // Non-NULL if this node marks end of a key
+    void *value;        // Non-NULL if this node marks end of a key
     int8_t is_terminal; // 1 if a key ends here
 } rt_trie_node;
 
@@ -46,7 +46,8 @@ static rt_trie_node *new_node(void)
 
 static void free_node(rt_trie_node *node)
 {
-    if (!node) return;
+    if (!node)
+        return;
     for (int i = 0; i < TRIE_ALPHABET_SIZE; ++i)
         free_node(node->children[i]);
     if (node->value && rt_obj_release_check0(node->value))
@@ -68,7 +69,8 @@ static int has_children(rt_trie_node *node)
 /// Collect all keys under a node into a Seq.
 static void collect_keys(rt_trie_node *node, char *buf, size_t depth, void *seq)
 {
-    if (!node) return;
+    if (!node)
+        return;
     if (node->is_terminal)
     {
         rt_string key = rt_string_from_bytes(buf, depth);
@@ -87,8 +89,10 @@ static void collect_keys(rt_trie_node *node, char *buf, size_t depth, void *seq)
 /// Check if any descendant (or node itself) is a terminal.
 static int has_any_key(rt_trie_node *node)
 {
-    if (!node) return 0;
-    if (node->is_terminal) return 1;
+    if (!node)
+        return 0;
+    if (node->is_terminal)
+        return 1;
     for (int i = 0; i < TRIE_ALPHABET_SIZE; ++i)
     {
         if (has_any_key(node->children[i]))
@@ -99,7 +103,8 @@ static int has_any_key(rt_trie_node *node)
 
 static void rt_trie_finalize(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
     free_node(trie->root);
     trie->root = NULL;
@@ -108,9 +113,9 @@ static void rt_trie_finalize(void *obj)
 
 void *rt_trie_new(void)
 {
-    rt_trie_impl *trie = (rt_trie_impl *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_trie_impl));
-    if (!trie) return NULL;
+    rt_trie_impl *trie = (rt_trie_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_trie_impl));
+    if (!trie)
+        return NULL;
     trie->vptr = NULL;
     trie->root = new_node();
     trie->count = 0;
@@ -120,7 +125,8 @@ void *rt_trie_new(void)
 
 int64_t rt_trie_len(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     return (int64_t)((rt_trie_impl *)obj)->count;
 }
 
@@ -131,9 +137,11 @@ int8_t rt_trie_is_empty(void *obj)
 
 void rt_trie_put(void *obj, rt_string key, void *value)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return;
+    if (!trie->root)
+        return;
 
     const char *cstr = rt_string_cstr(key);
     size_t len = cstr ? strlen(cstr) : 0;
@@ -142,10 +150,12 @@ void rt_trie_put(void *obj, rt_string key, void *value)
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE) continue; // Skip non-ASCII
+        if (c >= TRIE_ALPHABET_SIZE)
+            continue; // Skip non-ASCII
         if (!node->children[c])
             node->children[c] = new_node();
-        if (!node->children[c]) return; // alloc fail
+        if (!node->children[c])
+            return; // alloc fail
         node = node->children[c];
     }
 
@@ -163,9 +173,11 @@ void rt_trie_put(void *obj, rt_string key, void *value)
 
 void *rt_trie_get(void *obj, rt_string key)
 {
-    if (!obj) return NULL;
+    if (!obj)
+        return NULL;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return NULL;
+    if (!trie->root)
+        return NULL;
 
     const char *cstr = rt_string_cstr(key);
     size_t len = cstr ? strlen(cstr) : 0;
@@ -183,9 +195,11 @@ void *rt_trie_get(void *obj, rt_string key)
 
 int8_t rt_trie_has(void *obj, rt_string key)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return 0;
+    if (!trie->root)
+        return 0;
 
     const char *cstr = rt_string_cstr(key);
     size_t len = cstr ? strlen(cstr) : 0;
@@ -203,9 +217,11 @@ int8_t rt_trie_has(void *obj, rt_string key)
 
 int8_t rt_trie_has_prefix(void *obj, rt_string prefix)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return 0;
+    if (!trie->root)
+        return 0;
 
     const char *cstr = rt_string_cstr(prefix);
     size_t len = cstr ? strlen(cstr) : 0;
@@ -224,9 +240,11 @@ int8_t rt_trie_has_prefix(void *obj, rt_string prefix)
 void *rt_trie_with_prefix(void *obj, rt_string prefix)
 {
     void *result = rt_seq_new();
-    if (!obj) return result;
+    if (!obj)
+        return result;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return result;
+    if (!trie->root)
+        return result;
 
     const char *cstr = rt_string_cstr(prefix);
     size_t plen = cstr ? strlen(cstr) : 0;
@@ -244,7 +262,8 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix)
     // Collect all keys under this node
     // Max key length: 4096 should be more than sufficient
     char *buf = (char *)malloc(4096);
-    if (!buf) return result;
+    if (!buf)
+        return result;
     if (plen > 0)
         memcpy(buf, cstr, plen);
     collect_keys(node, buf, plen, result);
@@ -254,9 +273,11 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix)
 
 rt_string rt_trie_longest_prefix(void *obj, rt_string str)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return rt_string_from_bytes("", 0);
+    if (!trie->root)
+        return rt_string_from_bytes("", 0);
 
     const char *cstr = rt_string_cstr(str);
     size_t len = cstr ? strlen(cstr) : 0;
@@ -291,9 +312,11 @@ rt_string rt_trie_longest_prefix(void *obj, rt_string str)
 
 int8_t rt_trie_remove(void *obj, rt_string key)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return 0;
+    if (!trie->root)
+        return 0;
 
     const char *cstr = rt_string_cstr(key);
     size_t len = cstr ? strlen(cstr) : 0;
@@ -328,7 +351,8 @@ int8_t rt_trie_remove(void *obj, rt_string key)
 
 void rt_trie_clear(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
     free_node(trie->root);
     trie->root = new_node();
@@ -338,12 +362,15 @@ void rt_trie_clear(void *obj)
 void *rt_trie_keys(void *obj)
 {
     void *result = rt_seq_new();
-    if (!obj) return result;
+    if (!obj)
+        return result;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
-    if (!trie->root) return result;
+    if (!trie->root)
+        return result;
 
     char *buf = (char *)malloc(4096);
-    if (!buf) return result;
+    if (!buf)
+        return result;
     collect_keys(trie->root, buf, 0, result);
     free(buf);
     return result;

@@ -8,7 +8,7 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 41 (.hpp/.cpp)
+- **Total source files**: 50 (.hpp/.cpp)
 
 ## Core Infrastructure
 
@@ -60,7 +60,12 @@ Last updated: 2026-01-15
 | `Sema_Decl.cpp`   | Declaration analysis                       |
 | `Sema_Expr.cpp`   | Expression type checking                   |
 | `Sema_Stmt.cpp`   | Statement analysis                         |
-| `Sema_Runtime.cpp`| Runtime function registration              |
+| `Sema_Expr_Advanced.cpp` | Advanced expression analysis (index, field, optional chain, etc.) |
+| `Sema_Expr_Call.cpp`     | Call expression analysis and collection method resolution |
+| `Sema_Expr_Ops.cpp`      | Operator expression analysis (binary, unary, ternary) |
+| `Sema_Generics.cpp`      | Generic type and function support           |
+| `Sema_Runtime.cpp`       | Runtime function registration               |
+| `Sema_TypeResolution.cpp`| Type resolution and closure capture collection |
 
 ## Import Resolution
 
@@ -68,6 +73,8 @@ Last updated: 2026-01-15
 |----------------------|-----------------------------------|
 | `ImportResolver.cpp` | Module import resolution impl     |
 | `ImportResolver.hpp` | Module import resolution          |
+| `RuntimeAdapter.cpp` | Type conversion bridge impl (IL types to Zia types) |
+| `RuntimeAdapter.hpp` | Type conversion utilities for RuntimeRegistry |
 
 ## IL Lowering
 
@@ -81,6 +88,8 @@ Last updated: 2026-01-15
 | `Lowerer_Expr.cpp`            | Expression lowering main dispatch           |
 | `Lowerer_Expr_Binary.cpp`     | Binary operator lowering                    |
 | `Lowerer_Expr_Call.cpp`       | Function/method call lowering               |
+| `Lowerer_Expr_Complex.cpp`   | Complex expression lowering (field, new, coalesce, lambda, etc.) |
+| `Lowerer_Expr_Method.cpp`    | Method call and type construction lowering  |
 | `Lowerer_Expr_Collections.cpp`| List/Map/Tuple literal and index lowering   |
 | `Lowerer_Expr_Literals.cpp`   | Literal expression lowering                 |
 | `Lowerer_Expr_Match.cpp`      | Match expression lowering                   |

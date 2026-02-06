@@ -709,8 +709,7 @@ void VM::inline_handle_ConstF64(ExecState &st)
     {
         trapUnimplemented(Opcode::ConstF64);
     }
-    ExecResult exec =
-        il::vm::detail::handleConstF64(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec = il::vm::detail::handleConstF64(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 

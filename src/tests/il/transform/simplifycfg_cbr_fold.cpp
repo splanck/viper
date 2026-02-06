@@ -75,7 +75,8 @@ TEST(IL, SimplifyCFGCbrFold)
     const bool isFoldedBranch = terminator.op == Opcode::Br && !terminator.labels.empty() &&
                                 terminator.labels.front() == "A";
     const bool isMergedRet = terminator.op == Opcode::Ret;
-    ASSERT_TRUE((isFoldedBranch || isMergedRet) && "Entry should branch to A or merge into its return");
+    ASSERT_TRUE((isFoldedBranch || isMergedRet) &&
+                "Entry should branch to A or merge into its return");
 
     for (const auto &block : fn.blocks)
         for (const auto &instr : block.instructions)

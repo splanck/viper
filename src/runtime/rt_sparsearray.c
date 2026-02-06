@@ -157,8 +157,7 @@ static sa_slot *sa_find(rt_sparse_impl *sa, int64_t key)
 
 void *rt_sparse_new(void)
 {
-    rt_sparse_impl *sa =
-        (rt_sparse_impl *)rt_obj_new_i64(0, sizeof(rt_sparse_impl));
+    rt_sparse_impl *sa = (rt_sparse_impl *)rt_obj_new_i64(0, sizeof(rt_sparse_impl));
     sa->count = 0;
     sa->capacity = 16;
     sa->slots = (sa_slot *)calloc(16, sizeof(sa_slot));

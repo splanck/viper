@@ -21,6 +21,10 @@ namespace il::frontends::zia
 // Declaration Analysis
 //=============================================================================
 
+/// @brief Analyze a bind declaration (file import or namespace bind).
+/// @details Routes to analyzeNamespaceBind() for namespace paths, or registers
+///          the file module name as a Module symbol for qualified access.
+/// @param decl The bind declaration to analyze.
 void Sema::analyzeBind(BindDecl &decl)
 {
     if (decl.path.empty())
@@ -102,6 +106,8 @@ void Sema::analyzeNamespaceBind(BindDecl &decl)
 
     // Store the bound namespace
     boundNamespaces_[ns] = decl.alias;
+    if (!decl.alias.empty())
+        aliasToNamespace_[decl.alias] = ns;
 
     if (!decl.specificItems.empty())
     {
@@ -149,6 +155,11 @@ void Sema::analyzeNamespaceBind(BindDecl &decl)
     }
 }
 
+/// @brief Check whether a runtime namespace exists.
+/// @details Scans type registry, runtime class catalog, and scope symbols
+///          for any entry matching the given namespace prefix.
+/// @param ns The namespace string to validate.
+/// @return True if any registered type, class, or method matches the namespace prefix.
 bool Sema::isValidRuntimeNamespace(const std::string &ns)
 {
     // A namespace is valid if any runtime class or method starts with "ns."
@@ -192,6 +203,10 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns)
     return false;
 }
 
+/// @brief Import all symbols from a runtime namespace into the current scope.
+/// @details Imports types from typeRegistry_, classes and methods from RuntimeRegistry,
+///          properties by display name, and sub-namespace prefixes from kRuntimeNameAliases.
+/// @param ns The namespace whose symbols should be imported.
 void Sema::importNamespaceSymbols(const std::string &ns)
 {
     // Import all symbols from this namespace
@@ -289,7 +304,6 @@ void Sema::importNamespaceSymbols(const std::string &ns)
                     importedSymbols_[shortName] = getter;
             }
         }
-
     }
 
     // Discover sub-namespace prefixes from standalone runtime functions
@@ -311,6 +325,8 @@ void Sema::importNamespaceSymbols(const std::string &ns)
     }
 }
 
+/// @brief Analyze a global variable declaration, type-checking its initializer.
+/// @param decl The global variable declaration to analyze.
 void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
 {
     // Analyze initializer if present
@@ -331,6 +347,11 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
     }
 }
 
+/// @brief Validate that a type implements all required interface methods.
+/// @details For each interface method, checks that the implementing type has a method
+///          with matching name and compatible signature, and that it is publicly visible.
+/// @param typeName The name of the implementing type.
+/// @param interfaces The list of interface names the type claims to implement.
 void Sema::validateInterfaceImplementations(const std::string &typeName,
                                             const SourceLoc &loc,
                                             const std::vector<std::string> &interfaces)
@@ -392,6 +413,8 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
     }
 }
 
+/// @brief Analyze a value type declaration body (fields, methods, interface validation).
+/// @param decl The value type declaration to analyze.
 void Sema::analyzeValueDecl(ValueDecl &decl)
 {
     // Generic types are registered in the first pass; skip body analysis
@@ -428,6 +451,12 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
     currentSelfType_ = nullptr;
 }
 
+/// @brief Register field and method type signatures for a type declaration.
+/// @details Populates fieldTypes_ and methodTypes_ maps with qualified keys
+///          (typeName.memberName) so cross-type member references resolve correctly.
+/// @tparam T The declaration type (EntityDecl, ValueDecl, or InterfaceDecl).
+/// @param decl The type declaration whose members should be registered.
+/// @param includeFields If true, register field types; false for interface-only registration.
 template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields)
 {
     // Register field types (if applicable)
@@ -474,6 +503,8 @@ template void Sema::registerTypeMembers<EntityDecl>(EntityDecl &, bool);
 template void Sema::registerTypeMembers<ValueDecl>(ValueDecl &, bool);
 template void Sema::registerTypeMembers<InterfaceDecl>(InterfaceDecl &, bool);
 
+/// @brief Register entity member signatures (fields and methods).
+/// @details Skips generic types, which are registered during instantiation.
 void Sema::registerEntityMembers(EntityDecl &decl)
 {
     // Skip member registration for generic types - done during instantiation
@@ -482,6 +513,8 @@ void Sema::registerEntityMembers(EntityDecl &decl)
     registerTypeMembers(decl, true);
 }
 
+/// @brief Register value member signatures (fields and methods).
+/// @details Skips generic types, which are registered during instantiation.
 void Sema::registerValueMembers(ValueDecl &decl)
 {
     // Skip member registration for generic types - done during instantiation
@@ -490,11 +523,17 @@ void Sema::registerValueMembers(ValueDecl &decl)
     registerTypeMembers(decl, true);
 }
 
+/// @brief Register interface member signatures (methods only, no fields).
 void Sema::registerInterfaceMembers(InterfaceDecl &decl)
 {
     registerTypeMembers(decl, false);
 }
 
+/// @brief Analyze an entity type declaration body.
+/// @details Handles base class inheritance by copying parent fields and methods into scope,
+///          pre-defines method symbols for intra-entity calls, then analyzes member bodies.
+///          Validates interface implementations after all members are analyzed.
+/// @param decl The entity declaration to analyze.
 void Sema::analyzeEntityDecl(EntityDecl &decl)
 {
     // Generic types are registered in the first pass; skip body analysis
@@ -620,6 +659,8 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
     currentSelfType_ = nullptr;
 }
 
+/// @brief Analyze an interface declaration, registering method signatures.
+/// @param decl The interface declaration to analyze.
 void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
 {
     auto selfType = types::interface(decl.name);
@@ -657,6 +698,8 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
     currentSelfType_ = nullptr;
 }
 
+/// @brief Analyze a function declaration body (parameters, return type, body statements).
+/// @param decl The function declaration to analyze.
 void Sema::analyzeFunctionDecl(FunctionDecl &decl)
 {
     // Generic functions are registered in the first pass; skip body analysis
@@ -695,6 +738,9 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
     expectedReturnType_ = nullptr;
 }
 
+/// @brief Analyze a field declaration (type resolution and initializer type checking).
+/// @param decl The field declaration to analyze.
+/// @param ownerType The type that owns this field.
 void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
 {
     TypeRef fieldType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
@@ -726,6 +772,9 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
     defineSymbol(decl.name, sym);
 }
 
+/// @brief Analyze a method declaration body (implicit self parameter, parameters, body).
+/// @param decl The method declaration to analyze.
+/// @param ownerType The type that owns this method, used as the type of 'self'.
 void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
 {
     currentSelfType_ = ownerType;

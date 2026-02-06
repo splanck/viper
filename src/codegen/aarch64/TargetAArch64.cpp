@@ -141,11 +141,9 @@ TargetInfo makeDarwinTarget()
         // v0-v7 used for args/returns (caller-saved); v8-v15 are callee-saved per AAPCS64;
         // v16-v31 are caller-saved (call-clobbered).
         PhysReg::V0,  PhysReg::V1,  PhysReg::V2,  PhysReg::V3,  PhysReg::V4,  PhysReg::V5,
-        PhysReg::V6,  PhysReg::V7,
-        PhysReg::V16, PhysReg::V17,
-        PhysReg::V18, PhysReg::V19, PhysReg::V20, PhysReg::V21, PhysReg::V22, PhysReg::V23,
-        PhysReg::V24, PhysReg::V25, PhysReg::V26, PhysReg::V27, PhysReg::V28, PhysReg::V29,
-        PhysReg::V30, PhysReg::V31,
+        PhysReg::V6,  PhysReg::V7,  PhysReg::V16, PhysReg::V17, PhysReg::V18, PhysReg::V19,
+        PhysReg::V20, PhysReg::V21, PhysReg::V22, PhysReg::V23, PhysReg::V24, PhysReg::V25,
+        PhysReg::V26, PhysReg::V27, PhysReg::V28, PhysReg::V29, PhysReg::V30, PhysReg::V31,
     };
     info.calleeSavedFPR = {
         // AArch64 Darwin preserves d8-d15 across calls; model as V8..V15.
@@ -186,7 +184,7 @@ TargetInfo darwinTargetInstance = makeDarwinTarget();
 
 /// @brief Get the singleton TargetInfo instance for Darwin/macOS AArch64.
 /// @return Reference to the pre-configured Darwin target information.
-TargetInfo &darwinTarget() noexcept
+const TargetInfo &darwinTarget() noexcept
 {
     return darwinTargetInstance;
 }

@@ -23,16 +23,20 @@
 #include "../MachineIR.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <unordered_map>
 
 namespace viper::codegen::x64::ra
 {
 
+/// @brief Sentinel value indicating an uninitialised virtual register slot.
+inline constexpr uint16_t kInvalidVReg = UINT16_MAX;
+
 /// @brief Half-open interval describing the lifetime of a virtual register.
 /// @invariant `start` <= `end` and both are measured in instruction indices.
 struct LiveInterval
 {
-    uint16_t vreg{0U};           ///< Virtual register identifier.
+    uint16_t vreg{kInvalidVReg}; ///< Virtual register identifier (kInvalidVReg if uninitialised).
     RegClass cls{RegClass::GPR}; ///< Register class constraining allocation.
     std::size_t start{0U};       ///< Index of the first instruction touching the vreg.
     std::size_t end{0U};         ///< Index just past the last instruction touching the vreg.

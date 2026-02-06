@@ -35,11 +35,17 @@ namespace il::frontends::zia
 // Scope Implementation
 //=============================================================================
 
+/// @brief Define a symbol in the current scope.
+/// @param name The symbol name to register.
+/// @param symbol The symbol metadata to associate with the name.
 void Scope::define(const std::string &name, Symbol symbol)
 {
     symbols_[name] = std::move(symbol);
 }
 
+/// @brief Look up a symbol by name, walking parent scopes.
+/// @param name The symbol name to search for.
+/// @return Pointer to the symbol if found, nullptr otherwise.
 Symbol *Scope::lookup(const std::string &name)
 {
     auto it = symbols_.find(name);
@@ -50,6 +56,9 @@ Symbol *Scope::lookup(const std::string &name)
     return nullptr;
 }
 
+/// @brief Look up a symbol only in the current scope (no parent walk).
+/// @param name The symbol name to search for.
+/// @return Pointer to the symbol if found in this scope, nullptr otherwise.
 Symbol *Scope::lookupLocal(const std::string &name)
 {
     auto it = symbols_.find(name);
@@ -68,6 +77,13 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
     registerBuiltins();
 }
 
+/// @brief Run multi-pass semantic analysis on a module.
+/// @details Pass 1: Register all top-level declarations (types, functions, globals).
+///          Pass 1b: Process namespace declarations (recursive multi-pass).
+///          Pass 2: Register member signatures (fields, method types) for type declarations.
+///          Pass 3: Analyze declaration bodies (function bodies, method bodies, initializers).
+/// @param module The module AST to analyze.
+/// @return True if analysis succeeded without errors, false otherwise.
 bool Sema::analyze(ModuleDecl &module)
 {
     currentModule_ = &module;
@@ -261,52 +277,19 @@ bool Sema::analyze(ModuleDecl &module)
 
     // Second pass: register all method/field signatures (before analyzing bodies)
     // This ensures cross-module method calls can be resolved regardless of declaration order
-    for (auto &decl : module.declarations)
-    {
-        switch (decl->kind)
-        {
-            case DeclKind::Value:
-                registerValueMembers(*static_cast<ValueDecl *>(decl.get()));
-                break;
-            case DeclKind::Entity:
-                registerEntityMembers(*static_cast<EntityDecl *>(decl.get()));
-                break;
-            case DeclKind::Interface:
-                registerInterfaceMembers(*static_cast<InterfaceDecl *>(decl.get()));
-                break;
-            default:
-                break;
-        }
-    }
+    registerMemberSignatures(module.declarations);
 
     // Third pass: analyze declarations (bodies)
-    for (auto &decl : module.declarations)
-    {
-        switch (decl->kind)
-        {
-            case DeclKind::Function:
-                analyzeFunctionDecl(*static_cast<FunctionDecl *>(decl.get()));
-                break;
-            case DeclKind::Value:
-                analyzeValueDecl(*static_cast<ValueDecl *>(decl.get()));
-                break;
-            case DeclKind::Entity:
-                analyzeEntityDecl(*static_cast<EntityDecl *>(decl.get()));
-                break;
-            case DeclKind::Interface:
-                analyzeInterfaceDecl(*static_cast<InterfaceDecl *>(decl.get()));
-                break;
-            case DeclKind::GlobalVar:
-                analyzeGlobalVarDecl(*static_cast<GlobalVarDecl *>(decl.get()));
-                break;
-            default:
-                break;
-        }
-    }
+    analyzeDeclarationBodies(module.declarations);
 
     return !hasError_;
 }
 
+/// @brief Get the resolved semantic type of an expression.
+/// @details Returns the cached type from exprTypes_, applying type parameter
+///          substitution if currently in a generic context.
+/// @param expr The expression to query.
+/// @return The resolved type, or unknown() if the expression has not been analyzed.
 TypeRef Sema::typeOf(const Expr *expr) const
 {
     auto it = exprTypes_.find(expr);
@@ -316,6 +299,9 @@ TypeRef Sema::typeOf(const Expr *expr) const
     return substituteTypeParams(it->second);
 }
 
+/// @brief Resolve a type AST node to a semantic type reference.
+/// @param node The type node to resolve.
+/// @return The resolved semantic type.
 TypeRef Sema::resolveType(const TypeNode *node) const
 {
     return const_cast<Sema *>(this)->resolveTypeNode(node);
@@ -325,12 +311,15 @@ TypeRef Sema::resolveType(const TypeNode *node) const
 // Scope Management
 //=============================================================================
 
+/// @brief Push a new child scope onto the scope stack.
 void Sema::pushScope()
 {
     scopes_.push_back(std::make_unique<Scope>(currentScope_));
     currentScope_ = scopes_.back().get();
 }
 
+/// @brief Pop the current scope, restoring its parent as the active scope.
+/// @pre There must be more than the global scope remaining.
 void Sema::popScope()
 {
     assert(scopes_.size() > 1 && "cannot pop global scope");
@@ -339,16 +328,27 @@ void Sema::popScope()
     assert(currentScope_ == scopes_.back().get() && "scope stack corrupted");
 }
 
+/// @brief Define a symbol in the current scope.
+/// @param name The symbol name to register.
+/// @param symbol The symbol metadata to associate with the name.
 void Sema::defineSymbol(const std::string &name, Symbol symbol)
 {
     currentScope_->define(name, std::move(symbol));
 }
 
+/// @brief Look up a symbol by name in the current scope chain.
+/// @param name The symbol name to search for.
+/// @return Pointer to the symbol if found, nullptr otherwise.
 Symbol *Sema::lookupSymbol(const std::string &name)
 {
     return currentScope_->lookup(name);
 }
 
+/// @brief Look up the type of a variable, respecting flow-sensitive type narrowing.
+/// @details Checks narrowed types first (from null-check analysis), then falls back
+///          to the declared type in scope.
+/// @param name The variable name to look up.
+/// @return The narrowed or declared type, or nullptr if not found.
 TypeRef Sema::lookupVarType(const std::string &name)
 {
     // Check narrowed types first (for flow-sensitive type analysis)
@@ -374,11 +374,13 @@ TypeRef Sema::lookupVarType(const std::string &name)
 // Type Narrowing (Flow-Sensitive Type Analysis)
 //=============================================================================
 
+/// @brief Push a new type narrowing scope for flow-sensitive analysis.
 void Sema::pushNarrowingScope()
 {
     narrowedTypes_.push_back({});
 }
 
+/// @brief Pop the current type narrowing scope.
 void Sema::popNarrowingScope()
 {
     if (!narrowedTypes_.empty())
@@ -387,6 +389,9 @@ void Sema::popNarrowingScope()
     }
 }
 
+/// @brief Narrow the type of a variable in the current narrowing scope.
+/// @param name The variable whose type is being narrowed.
+/// @param narrowedType The narrowed type to record.
 void Sema::narrowType(const std::string &name, TypeRef narrowedType)
 {
     if (!narrowedTypes_.empty())
@@ -395,6 +400,12 @@ void Sema::narrowType(const std::string &name, TypeRef narrowedType)
     }
 }
 
+/// @brief Try to extract a null-check pattern from a condition expression.
+/// @details Recognizes patterns: x != null, x == null, null != x, null == x.
+/// @param[in] cond The condition expression to analyze.
+/// @param[out] varName The variable name being null-checked.
+/// @param[out] isNotNull True if the pattern is != null, false if == null.
+/// @return True if a null-check pattern was recognized.
 bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull)
 {
     // Pattern: x != null or x == null
@@ -428,17 +439,20 @@ bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull
 // Error Reporting
 //=============================================================================
 
+/// @brief Report a semantic error at a source location.
 void Sema::error(SourceLoc loc, const std::string &message)
 {
     hasError_ = true;
     diag_.report({il::support::Severity::Error, message, loc, "V3000"});
 }
 
+/// @brief Report an "undefined identifier" error for the given name.
 void Sema::errorUndefined(SourceLoc loc, const std::string &name)
 {
     error(loc, "Undefined identifier: " + name);
 }
 
+/// @brief Report a type mismatch error showing expected vs actual types.
 void Sema::errorTypeMismatch(SourceLoc loc, TypeRef expected, TypeRef actual)
 {
     error(loc, "Type mismatch: expected " + expected->toString() + ", got " + actual->toString());
@@ -448,6 +462,9 @@ void Sema::errorTypeMismatch(SourceLoc loc, TypeRef expected, TypeRef actual)
 // Built-in Functions
 //=============================================================================
 
+/// @brief Register built-in functions and runtime library functions.
+/// @details Registers print, println, input, toString as built-in symbols,
+///          then loads all Viper.* runtime functions from runtime.def.
 void Sema::registerBuiltins()
 {
     // print(String) -> Void
@@ -499,6 +516,9 @@ void Sema::registerBuiltins()
 // Namespace Support
 //===----------------------------------------------------------------------===//
 
+/// @brief Qualify a name with the current namespace prefix.
+/// @param name The unqualified name.
+/// @return The qualified name (prefix.name), or the original name if no namespace is active.
 std::string Sema::qualifyName(const std::string &name) const
 {
     if (namespacePrefix_.empty())
@@ -506,6 +526,63 @@ std::string Sema::qualifyName(const std::string &name) const
     return namespacePrefix_ + "." + name;
 }
 
+/// @brief Pass 2: Register member signatures (fields, methods) for type declarations.
+/// @param declarations The declaration list to process.
+void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations)
+{
+    for (auto &decl : declarations)
+    {
+        switch (decl->kind)
+        {
+            case DeclKind::Value:
+                registerValueMembers(*static_cast<ValueDecl *>(decl.get()));
+                break;
+            case DeclKind::Entity:
+                registerEntityMembers(*static_cast<EntityDecl *>(decl.get()));
+                break;
+            case DeclKind::Interface:
+                registerInterfaceMembers(*static_cast<InterfaceDecl *>(decl.get()));
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+/// @brief Pass 3: Analyze declaration bodies (functions, types, globals).
+/// @param declarations The declaration list to process.
+void Sema::analyzeDeclarationBodies(std::vector<DeclPtr> &declarations)
+{
+    for (auto &decl : declarations)
+    {
+        switch (decl->kind)
+        {
+            case DeclKind::Function:
+                analyzeFunctionDecl(*static_cast<FunctionDecl *>(decl.get()));
+                break;
+            case DeclKind::Value:
+                analyzeValueDecl(*static_cast<ValueDecl *>(decl.get()));
+                break;
+            case DeclKind::Entity:
+                analyzeEntityDecl(*static_cast<EntityDecl *>(decl.get()));
+                break;
+            case DeclKind::Interface:
+                analyzeInterfaceDecl(*static_cast<InterfaceDecl *>(decl.get()));
+                break;
+            case DeclKind::GlobalVar:
+                analyzeGlobalVarDecl(*static_cast<GlobalVarDecl *>(decl.get()));
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+/// @brief Analyze a namespace declaration with recursive multi-pass processing.
+/// @details Saves the current namespace prefix, computes a new qualified prefix,
+///          then runs the same three-pass strategy (register, member sigs, bodies)
+///          on the namespace's nested declarations. Handles nested namespaces recursively.
+/// @param decl The namespace declaration to analyze.
 void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
 {
     // Save current namespace prefix
@@ -627,48 +704,10 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
     }
 
     // Second pass: register members for types
-    for (auto &innerDecl : decl.declarations)
-    {
-        switch (innerDecl->kind)
-        {
-            case DeclKind::Value:
-                registerValueMembers(*static_cast<ValueDecl *>(innerDecl.get()));
-                break;
-            case DeclKind::Entity:
-                registerEntityMembers(*static_cast<EntityDecl *>(innerDecl.get()));
-                break;
-            case DeclKind::Interface:
-                registerInterfaceMembers(*static_cast<InterfaceDecl *>(innerDecl.get()));
-                break;
-            default:
-                break;
-        }
-    }
+    registerMemberSignatures(decl.declarations);
 
     // Third pass: analyze bodies
-    for (auto &innerDecl : decl.declarations)
-    {
-        switch (innerDecl->kind)
-        {
-            case DeclKind::Function:
-                analyzeFunctionDecl(*static_cast<FunctionDecl *>(innerDecl.get()));
-                break;
-            case DeclKind::Value:
-                analyzeValueDecl(*static_cast<ValueDecl *>(innerDecl.get()));
-                break;
-            case DeclKind::Entity:
-                analyzeEntityDecl(*static_cast<EntityDecl *>(innerDecl.get()));
-                break;
-            case DeclKind::Interface:
-                analyzeInterfaceDecl(*static_cast<InterfaceDecl *>(innerDecl.get()));
-                break;
-            case DeclKind::GlobalVar:
-                analyzeGlobalVarDecl(*static_cast<GlobalVarDecl *>(innerDecl.get()));
-                break;
-            default:
-                break;
-        }
-    }
+    analyzeDeclarationBodies(decl.declarations);
 
     // Restore previous namespace prefix
     namespacePrefix_ = savedPrefix;

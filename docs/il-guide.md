@@ -290,17 +290,19 @@ Returning a non-zero `i64` sets the process exit code. `trap` reports an error a
 il 0.1
 func @main() -> i64 {
 entry:
-  trap "boom"             # aborts with message
+  trap                    # aborts execution
 }
 ```
 
-Running the above produces a non-zero exit and prints the message.
+Running the above produces a non-zero exit.
 
 **Line by line**
 
-- `trap "boom"` – raise a runtime trap with the message `boom`.
+- `trap` – raise a runtime trap, aborting execution immediately.
 
 `trap` aborts execution immediately with a non‑zero status; no `ret` is needed.
+To trap with a specific error code and message, use `trap.err` to create an error value
+and `trap.from_err` to terminate with it.
 
 **Gotcha:** After a `trap` the VM stops; no `ret` is required.
 
@@ -629,6 +631,7 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 | `scmp_lt`, `scmp_le`, `scmp_gt`, `scmp_ge`                       | `scmp_lt x, y` | `i1` signed compare                                   |
 | `ucmp_lt`, `ucmp_le`, `ucmp_gt`, `ucmp_ge`                       | `ucmp_lt x, y` | `i1` unsigned compare                                 |
 | `fcmp_lt`, `fcmp_le`, `fcmp_gt`, `fcmp_ge`, `fcmp_eq`, `fcmp_ne` | `fcmp_eq x, y` | `i1` (`NaN` makes `fcmp_eq` false and `fcmp_ne` true) |
+| `fcmp_ord`, `fcmp_uno`                                            | `fcmp_ord x, y`| `i1` (ordered: both non-NaN; unordered: either is NaN) |
 
 ```text
 %cond = scmp_lt %a, %b
@@ -639,7 +642,7 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 | Instr                   | Form                          | Result | Notes                                                   |
 |-------------------------|-------------------------------|--------|---------------------------------------------------------|
 | `sitofp`                | `sitofp x`                    | `f64`  | signed int to float                                     |
-| `fptosi`                | `fptosi x`                    | `i64`  | trap on NaN or overflow                                 |
+| `fptosi`                | `fptosi x`                    | `i64`  | float to signed int (undefined on NaN/overflow; use `cast.fp_to_si.rte.chk` for checked) |
 | `cast.si_to_fp`         | `cast.si_to_fp i16 x`         | `f64`  | signed int (any size) to float                          |
 | `cast.ui_to_fp`         | `cast.ui_to_fp i16 x`         | `f64`  | unsigned int to float                                   |
 | `cast.fp_to_si.rte.chk` | `cast.fp_to_si.rte.chk i32 x` | `i32`  | float to signed int (round-to-even, trap on overflow)   |
@@ -663,14 +666,16 @@ denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-ov
 |--------------|--------------------------|-------------------------------------------------|
 | `alloca`     | `alloca size`            | `ptr` (size < 0 traps; memory zero-initialized) |
 | `gep`        | `gep ptr, offs`          | `ptr` (no bounds checks)                        |
-| `idx.chk`    | `idx.chk idx, bound`     | — (trap if idx < 0 or idx >= bound)             |
+| `idx.chk`    | `idx.chk idx, lo, hi`    | `i64` (trap if idx < lo or idx >= hi)            |
 | `load`       | `load type, ptr`         | `type` (null or misaligned trap)                |
 | `store`      | `store type, ptr, value` | — (null or misaligned trap)                     |
 | `addr_of`    | `addr_of @global`        | `ptr`                                           |
+| `gaddr`      | `gaddr @global`          | `ptr` (address of mutable module-level global)  |
 | `const_str`  | `const_str @label`       | `str`                                           |
 | `const_null` | `const_null`             | `ptr`                                           |
+| `const.f64`  | `const.f64 3.14`         | `f64` (load floating-point constant)            |
 
-`idx.chk` performs bounds checking for array accesses, trapping if the index is out of range.
+`idx.chk` performs bounds checking for array accesses, trapping if the index is outside `[lo, hi)`. It returns the checked index value.
 
 `i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap. Stack
 allocations created by `alloca` are zero-initialized and live until the function returns.
@@ -1717,4 +1722,4 @@ Sources:
 - docs/il-guide.md#lowering
 - docs/il-guide.md#constfold
 - docs/il-guide.md#mem2reg
-- archive/docs/basic-to-il-examples.md
+- (archived: basic-to-il-examples.md — no longer available)

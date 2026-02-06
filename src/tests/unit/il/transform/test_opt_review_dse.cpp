@@ -34,8 +34,7 @@ il::transform::AnalysisRegistry makeDSERegistry()
 {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
-        "basic-aa",
-        [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
+        "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
     return registry;
 }
 

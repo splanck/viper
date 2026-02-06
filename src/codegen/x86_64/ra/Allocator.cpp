@@ -319,7 +319,8 @@ void LinearScanAllocator::releaseRegister(PhysReg phys, RegClass cls)
 void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
 {
     auto &active = activeFor(cls);
-    assert(!active.empty() && "spillOne called with empty active set — pool/active bookkeeping error");
+    assert(!active.empty() &&
+           "spillOne called with empty active set — pool/active bookkeeping error");
     if (active.empty())
     {
         return;
@@ -919,8 +920,10 @@ std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOpera
         case MOpcode::MOVZXrr32:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
+        case MOpcode::MOVQrx:
         case MOpcode::MOVSDrr:
         case MOpcode::MOVSDmr:
+        case MOpcode::MOVUPSmr:
             if (!roles.empty())
             {
                 roles[0] = OperandRole{false, true};
@@ -931,6 +934,7 @@ std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOpera
             }
             break;
         case MOpcode::MOVSDrm:
+        case MOpcode::MOVUPSrm:
             if (roles.size() > 1)
             {
                 roles[1] = OperandRole{true, false};

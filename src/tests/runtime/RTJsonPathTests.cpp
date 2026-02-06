@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
-#include "rt_jsonpath.h"
 #include "rt_json.h"
+#include "rt_jsonpath.h"
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"

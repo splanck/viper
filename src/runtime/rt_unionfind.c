@@ -47,10 +47,10 @@ static void unionfind_finalizer(void *obj)
 
 void *rt_unionfind_new(int64_t n)
 {
-    if (n < 1) n = 1;
+    if (n < 1)
+        n = 1;
 
-    rt_unionfind_impl *uf =
-        (rt_unionfind_impl *)rt_obj_new_i64(0, sizeof(rt_unionfind_impl));
+    rt_unionfind_impl *uf = (rt_unionfind_impl *)rt_obj_new_i64(0, sizeof(rt_unionfind_impl));
     uf->parent = (int64_t *)malloc((size_t)n * sizeof(int64_t));
     uf->rank = (int64_t *)calloc((size_t)n, sizeof(int64_t));
     uf->size = (int64_t *)malloc((size_t)n * sizeof(int64_t));
@@ -73,10 +73,12 @@ void *rt_unionfind_new(int64_t n)
 
 int64_t rt_unionfind_find(void *uf_ptr, int64_t x)
 {
-    if (!uf_ptr) return -1;
+    if (!uf_ptr)
+        return -1;
     rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
 
-    if (x < 0 || x >= uf->n) return -1;
+    if (x < 0 || x >= uf->n)
+        return -1;
 
     // Path compression (iterative)
     int64_t root = x;
@@ -100,13 +102,15 @@ int64_t rt_unionfind_find(void *uf_ptr, int64_t x)
 
 int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y)
 {
-    if (!uf_ptr) return 0;
+    if (!uf_ptr)
+        return 0;
     rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
 
     int64_t rx = rt_unionfind_find(uf, x);
     int64_t ry = rt_unionfind_find(uf, y);
 
-    if (rx < 0 || ry < 0 || rx == ry) return 0;
+    if (rx < 0 || ry < 0 || rx == ry)
+        return 0;
 
     // Union by rank
     if (uf->rank[rx] < uf->rank[ry])
@@ -132,7 +136,8 @@ int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y)
 
 int64_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
 {
-    if (!uf_ptr) return 0;
+    if (!uf_ptr)
+        return 0;
     int64_t rx = rt_unionfind_find(uf_ptr, x);
     int64_t ry = rt_unionfind_find(uf_ptr, y);
     return (rx >= 0 && rx == ry) ? 1 : 0;
@@ -140,21 +145,25 @@ int64_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
 
 int64_t rt_unionfind_count(void *uf_ptr)
 {
-    if (!uf_ptr) return 0;
+    if (!uf_ptr)
+        return 0;
     return ((rt_unionfind_impl *)uf_ptr)->sets;
 }
 
 int64_t rt_unionfind_set_size(void *uf_ptr, int64_t x)
 {
-    if (!uf_ptr) return 0;
+    if (!uf_ptr)
+        return 0;
     int64_t root = rt_unionfind_find(uf_ptr, x);
-    if (root < 0) return 0;
+    if (root < 0)
+        return 0;
     return ((rt_unionfind_impl *)uf_ptr)->size[root];
 }
 
 void rt_unionfind_reset(void *uf_ptr)
 {
-    if (!uf_ptr) return;
+    if (!uf_ptr)
+        return;
     rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
 
     for (int64_t i = 0; i < uf->n; i++)

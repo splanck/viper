@@ -61,8 +61,10 @@ static inline int64_t bytes_len(void *obj)
 //=============================================================================
 
 /// Derive a 32-byte key from password and salt using HKDF-SHA256.
-static void derive_key(const char *password, size_t password_len,
-                       const uint8_t *salt, size_t salt_len,
+static void derive_key(const char *password,
+                       size_t password_len,
+                       const uint8_t *salt,
+                       size_t salt_len,
                        uint8_t key[CIPHER_KEY_SIZE])
 {
     uint8_t prk[32];
@@ -120,10 +122,13 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password)
     memcpy(out_data + CIPHER_SALT_SIZE, nonce, CIPHER_NONCE_SIZE);
 
     // Encrypt: ciphertext goes after salt + nonce
-    rt_chacha20_poly1305_encrypt(key, nonce,
-                                  NULL, 0, // No AAD
-                                  plain_data, (size_t)plain_len,
-                                  out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
+    rt_chacha20_poly1305_encrypt(key,
+                                 nonce,
+                                 NULL,
+                                 0, // No AAD
+                                 plain_data,
+                                 (size_t)plain_len,
+                                 out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
 
     // Clear key from stack
     memset(key, 0, sizeof(key));
@@ -174,11 +179,13 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password)
     uint8_t *plain_data = bytes_data(result);
 
     // Decrypt and verify tag
-    long decrypt_result = rt_chacha20_poly1305_decrypt(
-        key, nonce,
-        NULL, 0, // No AAD
-        encrypted, (size_t)encrypted_len,
-        plain_data);
+    long decrypt_result = rt_chacha20_poly1305_decrypt(key,
+                                                       nonce,
+                                                       NULL,
+                                                       0, // No AAD
+                                                       encrypted,
+                                                       (size_t)encrypted_len,
+                                                       plain_data);
 
     // Clear key from stack
     memset(key, 0, sizeof(key));
@@ -227,10 +234,13 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes)
     memcpy(out_data, nonce, CIPHER_NONCE_SIZE);
 
     // Encrypt: ciphertext goes after nonce
-    rt_chacha20_poly1305_encrypt(key, nonce,
-                                  NULL, 0, // No AAD
-                                  plain_data, (size_t)plain_len,
-                                  out_data + CIPHER_NONCE_SIZE);
+    rt_chacha20_poly1305_encrypt(key,
+                                 nonce,
+                                 NULL,
+                                 0, // No AAD
+                                 plain_data,
+                                 (size_t)plain_len,
+                                 out_data + CIPHER_NONCE_SIZE);
 
     return result;
 }
@@ -272,11 +282,13 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes)
     uint8_t *plain_data = bytes_data(result);
 
     // Decrypt and verify tag
-    long decrypt_result = rt_chacha20_poly1305_decrypt(
-        key, nonce,
-        NULL, 0, // No AAD
-        encrypted, (size_t)encrypted_len,
-        plain_data);
+    long decrypt_result = rt_chacha20_poly1305_decrypt(key,
+                                                       nonce,
+                                                       NULL,
+                                                       0, // No AAD
+                                                       encrypted,
+                                                       (size_t)encrypted_len,
+                                                       plain_data);
 
     if (decrypt_result < 0)
     {

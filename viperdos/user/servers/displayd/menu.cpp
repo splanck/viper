@@ -136,8 +136,10 @@ void draw_menu_bar() {
     int32_t text_len = 0;
     for (const char *p = right_text; *p; p++)
         text_len++;
-    draw_text(
-        bar_x + static_cast<int32_t>(bar_w) - text_len * 8 - MENU_PADDING, bar_y + 4, right_text, COLOR_MENU_DISABLED);
+    draw_text(bar_x + static_cast<int32_t>(bar_w) - text_len * 8 - MENU_PADDING,
+              bar_y + 4,
+              right_text,
+              COLOR_MENU_DISABLED);
 }
 
 void draw_pulldown_menu() {

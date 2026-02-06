@@ -171,7 +171,9 @@ double rt_particle_emitter_rate(rt_particle_emitter emitter)
     return emitter ? emitter->rate : 0.0;
 }
 
-void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter, int64_t min_frames, int64_t max_frames)
+void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter,
+                                      int64_t min_frames,
+                                      int64_t max_frames)
 {
     if (!emitter)
         return;
@@ -183,8 +185,11 @@ void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter, int64_t min_f
     emitter->max_life = max_frames;
 }
 
-void rt_particle_emitter_set_velocity(rt_particle_emitter emitter, double min_speed, double max_speed,
-                                      double min_angle, double max_angle)
+void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
+                                      double min_speed,
+                                      double max_speed,
+                                      double min_angle,
+                                      double max_angle)
 {
     if (!emitter)
         return;
@@ -383,8 +388,12 @@ void rt_particle_emitter_clear(rt_particle_emitter emitter)
     emitter->rate_accumulator = 0.0;
 }
 
-int8_t rt_particle_emitter_get(rt_particle_emitter emitter, int64_t index, double *out_x, double *out_y,
-                               double *out_size, int64_t *out_color)
+int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
+                               int64_t index,
+                               double *out_x,
+                               double *out_y,
+                               double *out_size,
+                               int64_t *out_color)
 {
     if (!emitter)
         return 0;

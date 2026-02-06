@@ -238,9 +238,9 @@ bool ShellManager::poll_output(AnsiParser &parser) {
                 sys::channel_close(static_cast<int32_t>(handles[i]));
             }
         }
-        return true;  // Data was received and processed
+        return true; // Data was received and processed
     }
-    return false;  // No data available
+    return false; // No data available
 }
 
 void ShellManager::close() {

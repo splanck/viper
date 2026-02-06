@@ -55,6 +55,10 @@ namespace il::frontends::zia
 // Expression Parsing
 //===----------------------------------------------------------------------===//
 
+/// @brief Parse a match pattern, using speculation to distinguish structured patterns from expressions.
+/// @details Tries structured patterns (wildcard, constructor, binding) first; falls back to
+///          expression pattern if not followed by a guard or fat arrow.
+/// @return The parsed match arm pattern.
 MatchArm::Pattern Parser::parseMatchPattern()
 {
     MatchArm::Pattern pattern;
@@ -80,6 +84,9 @@ MatchArm::Pattern Parser::parseMatchPattern()
     return pattern;
 }
 
+/// @brief Parse a core (non-expression) match pattern: wildcard, constructor, binding, literal, or tuple.
+/// @param[out] out The parsed pattern result.
+/// @return True if a valid non-expression pattern was parsed, false otherwise.
 bool Parser::parsePatternCore(MatchArm::Pattern &out)
 {
     if (check(TokenKind::Identifier))
@@ -253,6 +260,8 @@ ExprPtr Parser::parseRange()
     return expr;
 }
 
+/// @brief Parse a null-coalescing expression (a ?? b).
+/// @return The parsed expression, potentially wrapping a CoalesceExpr.
 ExprPtr Parser::parseCoalesce()
 {
     ExprPtr expr = parseLogicalOr();
@@ -556,6 +565,11 @@ ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr)
     return parseBinaryFrom(std::move(expr));
 }
 
+/// @brief Parse binary operators from a pre-parsed left-hand expression.
+/// @details Used by parsePostfixAndBinaryFrom to handle match arm patterns that
+///          begin with an already-parsed primary expression.
+/// @param expr The left-hand expression to extend with binary operators.
+/// @return The extended expression.
 ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
 {
     // Parse multiplicative ops
@@ -683,6 +697,11 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
     return expr;
 }
 
+/// @brief Apply postfix operators to a base expression.
+/// @details Handles call, subscript, member access, optional chaining, is/as casts,
+///          and try expressions in a loop until no more postfix operators match.
+/// @param expr The base expression to extend.
+/// @return The expression with all postfix operations applied.
 ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
 {
     while (true)
@@ -1222,6 +1241,8 @@ ExprPtr Parser::parsePrimary()
     return nullptr;
 }
 
+/// @brief Parse a list literal expression ([elem, elem, ...]).
+/// @return The parsed ListLiteralExpr, or nullptr on error.
 ExprPtr Parser::parseListLiteral()
 {
     SourceLoc loc = peek().loc;
@@ -1281,6 +1302,10 @@ ExprPtr Parser::parseLambdaBody(SourceLoc loc, std::vector<LambdaParam> params)
     return std::make_unique<LambdaExpr>(loc, std::move(params), nullptr, std::move(body));
 }
 
+/// @brief Parse an interpolated string ("text${expr}text").
+/// @details Consumes StringStart, alternates between expressions and StringMid tokens,
+///          and builds a chain of BinaryExpr(Add) concatenations ending with StringEnd.
+/// @return The concatenated string expression, or nullptr on error.
 ExprPtr Parser::parseInterpolatedString()
 {
     SourceLoc loc = peek().loc;
@@ -1359,6 +1384,10 @@ ExprPtr Parser::parseInterpolatedString()
     return result;
 }
 
+/// @brief Parse a map literal ({key: value, ...}) or set literal ({elem, ...}).
+/// @details Disambiguates maps from sets by checking for a colon after the first element.
+///          An empty brace pair {} is parsed as an empty map.
+/// @return The parsed MapLiteralExpr or SetLiteralExpr, or nullptr on error.
 ExprPtr Parser::parseMapOrSetLiteral()
 {
     SourceLoc loc = peek().loc;

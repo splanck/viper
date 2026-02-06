@@ -72,12 +72,10 @@ static void test_find()
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     rt_string result = rt_compiled_pattern_find(pattern, rt_const_cstr("abc123def456"));
-    test_result(strcmp(rt_string_cstr(result), "123") == 0,
-                "find: should find first match");
+    test_result(strcmp(rt_string_cstr(result), "123") == 0, "find: should find first match");
 
     result = rt_compiled_pattern_find(pattern, rt_const_cstr("no digits here"));
-    test_result(strlen(rt_string_cstr(result)) == 0,
-                "find: should return empty on no match");
+    test_result(strlen(rt_string_cstr(result)) == 0, "find: should return empty on no match");
 }
 
 static void test_find_from()
@@ -85,8 +83,7 @@ static void test_find_from()
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     rt_string result = rt_compiled_pattern_find_from(pattern, rt_const_cstr("abc123def456"), 6);
-    test_result(strcmp(rt_string_cstr(result), "456") == 0,
-                "find_from: should find from position");
+    test_result(strcmp(rt_string_cstr(result), "456") == 0, "find_from: should find from position");
 }
 
 static void test_find_pos()
@@ -161,9 +158,8 @@ static void test_replace()
 {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
-    rt_string result = rt_compiled_pattern_replace(pattern,
-        rt_const_cstr("a1b2c3"),
-        rt_const_cstr("X"));
+    rt_string result =
+        rt_compiled_pattern_replace(pattern, rt_const_cstr("a1b2c3"), rt_const_cstr("X"));
     test_result(strcmp(rt_string_cstr(result), "aXbXcX") == 0,
                 "replace: should replace all matches");
 }
@@ -172,9 +168,8 @@ static void test_replace_first()
 {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
-    rt_string result = rt_compiled_pattern_replace_first(pattern,
-        rt_const_cstr("a1b2c3"),
-        rt_const_cstr("X"));
+    rt_string result =
+        rt_compiled_pattern_replace_first(pattern, rt_const_cstr("a1b2c3"), rt_const_cstr("X"));
     test_result(strcmp(rt_string_cstr(result), "aXb2c3") == 0,
                 "replace_first: should replace only first match");
 }
@@ -183,9 +178,8 @@ static void test_replace_no_match()
 {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
-    rt_string result = rt_compiled_pattern_replace(pattern,
-        rt_const_cstr("no digits"),
-        rt_const_cstr("X"));
+    rt_string result =
+        rt_compiled_pattern_replace(pattern, rt_const_cstr("no digits"), rt_const_cstr("X"));
     test_result(strcmp(rt_string_cstr(result), "no digits") == 0,
                 "replace_no_match: should return original on no match");
 }
@@ -221,9 +215,12 @@ static void test_split_limit()
     void *parts = rt_compiled_pattern_split_n(pattern, rt_const_cstr("a,b,c,d,e"), 3);
     test_result(rt_seq_len(parts) == 3, "split_limit: should split into 3 parts max");
 
-    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 0)), "a") == 0, "split_limit: part 0");
-    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 1)), "b") == 0, "split_limit: part 1");
-    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 2)), "c,d,e") == 0, "split_limit: part 2 (rest)");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 0)), "a") == 0,
+                "split_limit: part 0");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 1)), "b") == 0,
+                "split_limit: part 1");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 2)), "c,d,e") == 0,
+                "split_limit: part 2 (rest)");
 }
 
 //=============================================================================
@@ -288,18 +285,26 @@ static void test_quantifiers()
     void *quest = rt_compiled_pattern_new(rt_const_cstr("ab?c"));
 
     // a*
-    test_result(rt_compiled_pattern_is_match(star, rt_const_cstr("ac")), "quantifiers: * matches zero");
-    test_result(rt_compiled_pattern_is_match(star, rt_const_cstr("abc")), "quantifiers: * matches one");
-    test_result(rt_compiled_pattern_is_match(star, rt_const_cstr("abbbc")), "quantifiers: * matches many");
+    test_result(rt_compiled_pattern_is_match(star, rt_const_cstr("ac")),
+                "quantifiers: * matches zero");
+    test_result(rt_compiled_pattern_is_match(star, rt_const_cstr("abc")),
+                "quantifiers: * matches one");
+    test_result(rt_compiled_pattern_is_match(star, rt_const_cstr("abbbc")),
+                "quantifiers: * matches many");
 
     // a+
-    test_result(!rt_compiled_pattern_is_match(plus, rt_const_cstr("ac")), "quantifiers: + requires one");
-    test_result(rt_compiled_pattern_is_match(plus, rt_const_cstr("abc")), "quantifiers: + matches one");
-    test_result(rt_compiled_pattern_is_match(plus, rt_const_cstr("abbbc")), "quantifiers: + matches many");
+    test_result(!rt_compiled_pattern_is_match(plus, rt_const_cstr("ac")),
+                "quantifiers: + requires one");
+    test_result(rt_compiled_pattern_is_match(plus, rt_const_cstr("abc")),
+                "quantifiers: + matches one");
+    test_result(rt_compiled_pattern_is_match(plus, rt_const_cstr("abbbc")),
+                "quantifiers: + matches many");
 
     // a?
-    test_result(rt_compiled_pattern_is_match(quest, rt_const_cstr("ac")), "quantifiers: ? matches zero");
-    test_result(rt_compiled_pattern_is_match(quest, rt_const_cstr("abc")), "quantifiers: ? matches one");
+    test_result(rt_compiled_pattern_is_match(quest, rt_const_cstr("ac")),
+                "quantifiers: ? matches zero");
+    test_result(rt_compiled_pattern_is_match(quest, rt_const_cstr("abc")),
+                "quantifiers: ? matches one");
 }
 
 //=============================================================================

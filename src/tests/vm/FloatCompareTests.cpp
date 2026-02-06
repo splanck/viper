@@ -103,7 +103,7 @@ int main()
     assert(runFloatCompare(Opcode::FCmpEQ, 1.0, 1.0) == true);
     assert(runFloatCompare(Opcode::FCmpEQ, 1.0, 2.0) == false);
     assert(runFloatCompare(Opcode::FCmpEQ, 0.0, 0.0) == true);
-    assert(runFloatCompare(Opcode::FCmpEQ, -0.0, 0.0) == true);  // -0 == +0
+    assert(runFloatCompare(Opcode::FCmpEQ, -0.0, 0.0) == true); // -0 == +0
 
     // NaN comparisons (NaN != anything, including itself)
     assert(runFloatCompare(Opcode::FCmpEQ, nan, nan) == false);

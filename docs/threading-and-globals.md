@@ -260,14 +260,14 @@ If you need isolated external function sets:
 
 ## Source Code References
 
-| Component        | Location                           | Purpose                          |
-|------------------|------------------------------------|----------------------------------|
-| Active VM TLS    | `src/vm/VMContext.cpp:38`          | Thread-local active VM pointer   |
-| ActiveVMGuard    | `src/vm/VMContext.cpp:72-114`      | RAII guard for VM activation     |
-| ProgramState     | `src/vm/VM.hpp:~290`               | Shared globals + RtContext state |
-| Threads override | `src/vm/ThreadsRuntime.cpp`        | VM override for Thread.Start     |
-| Extern Registry  | `src/vm/RuntimeBridge.cpp:309-425` | Process-global function registry |
-| Frontend Options | `src/frontends/basic/Options.hpp`  | Atomic feature flags             |
+| Component        | Location                        | Purpose                          |
+|------------------|---------------------------------|----------------------------------|
+| Active VM TLS    | `src/vm/VMContext.cpp`          | Thread-local active VM pointer   |
+| ActiveVMGuard    | `src/vm/VMContext.cpp`          | RAII guard for VM activation     |
+| ProgramState     | `src/vm/VM.hpp`                 | Shared globals + RtContext state |
+| Threads override | `src/vm/ThreadsRuntime.cpp`     | VM override for Thread.Start     |
+| Extern Registry  | `src/vm/RuntimeBridge.cpp`      | Process-global function registry |
+| Frontend Options | `src/frontends/basic/Options.hpp` | Atomic feature flags           |
 
 ---
 

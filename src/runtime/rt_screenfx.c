@@ -27,22 +27,22 @@ static int64_t screenfx_rand(void)
 /// Internal effect structure.
 struct screenfx_effect
 {
-    rt_screenfx_type type;  ///< Effect type.
-    int64_t color;          ///< Color (RGBA).
-    int64_t intensity;      ///< Intensity (for shake).
-    int64_t duration;       ///< Total duration (ms).
-    int64_t elapsed;        ///< Elapsed time (ms).
-    int64_t decay;          ///< Decay rate (for shake).
+    rt_screenfx_type type; ///< Effect type.
+    int64_t color;         ///< Color (RGBA).
+    int64_t intensity;     ///< Intensity (for shake).
+    int64_t duration;      ///< Total duration (ms).
+    int64_t elapsed;       ///< Elapsed time (ms).
+    int64_t decay;         ///< Decay rate (for shake).
 };
 
 /// Internal manager structure.
 struct rt_screenfx_impl
 {
     struct screenfx_effect effects[RT_SCREENFX_MAX_EFFECTS];
-    int64_t shake_x;        ///< Current shake offset X.
-    int64_t shake_y;        ///< Current shake offset Y.
-    int64_t overlay_color;  ///< Current overlay color (RGB).
-    int64_t overlay_alpha;  ///< Current overlay alpha (0-255).
+    int64_t shake_x;       ///< Current shake offset X.
+    int64_t shake_y;       ///< Current shake offset Y.
+    int64_t overlay_color; ///< Current overlay color (RGB).
+    int64_t overlay_alpha; ///< Current overlay alpha (0-255).
 };
 
 rt_screenfx rt_screenfx_new(void)
@@ -117,68 +117,68 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
 
         switch (e->type)
         {
-        case RT_SCREENFX_SHAKE:
-        {
-            // Apply decay to intensity
-            int64_t decay_factor = 1000 - (progress * e->decay / 1000);
-            if (decay_factor < 0)
-                decay_factor = 0;
-            int64_t current_intensity = (e->intensity * decay_factor) / 1000;
-
-            if (current_intensity > max_shake_intensity)
-                max_shake_intensity = current_intensity;
-
-            // Random offset based on intensity
-            int64_t rx = (screenfx_rand() % 2001) - 1000; // -1000 to 1000
-            int64_t ry = (screenfx_rand() % 2001) - 1000;
-            fx->shake_x += (current_intensity * rx) / 1000;
-            fx->shake_y += (current_intensity * ry) / 1000;
-            break;
-        }
-
-        case RT_SCREENFX_FLASH:
-        {
-            // Flash starts bright and fades
-            int64_t alpha = ((e->color & 0xFF) * (1000 - progress)) / 1000;
-            if (alpha > max_overlay_alpha)
+            case RT_SCREENFX_SHAKE:
             {
-                max_overlay_alpha = alpha;
-                fx->overlay_color = e->color & 0xFFFFFF00;
-                fx->overlay_alpha = alpha;
-            }
-            break;
-        }
+                // Apply decay to intensity
+                int64_t decay_factor = 1000 - (progress * e->decay / 1000);
+                if (decay_factor < 0)
+                    decay_factor = 0;
+                int64_t current_intensity = (e->intensity * decay_factor) / 1000;
 
-        case RT_SCREENFX_FADE_IN:
-        {
-            // Fade from color to clear
-            int64_t base_alpha = e->color & 0xFF;
-            int64_t alpha = (base_alpha * (1000 - progress)) / 1000;
-            if (alpha > max_overlay_alpha)
+                if (current_intensity > max_shake_intensity)
+                    max_shake_intensity = current_intensity;
+
+                // Random offset based on intensity
+                int64_t rx = (screenfx_rand() % 2001) - 1000; // -1000 to 1000
+                int64_t ry = (screenfx_rand() % 2001) - 1000;
+                fx->shake_x += (current_intensity * rx) / 1000;
+                fx->shake_y += (current_intensity * ry) / 1000;
+                break;
+            }
+
+            case RT_SCREENFX_FLASH:
             {
-                max_overlay_alpha = alpha;
-                fx->overlay_color = e->color & 0xFFFFFF00;
-                fx->overlay_alpha = alpha;
+                // Flash starts bright and fades
+                int64_t alpha = ((e->color & 0xFF) * (1000 - progress)) / 1000;
+                if (alpha > max_overlay_alpha)
+                {
+                    max_overlay_alpha = alpha;
+                    fx->overlay_color = e->color & 0xFFFFFF00;
+                    fx->overlay_alpha = alpha;
+                }
+                break;
             }
-            break;
-        }
 
-        case RT_SCREENFX_FADE_OUT:
-        {
-            // Fade from clear to color
-            int64_t base_alpha = e->color & 0xFF;
-            int64_t alpha = (base_alpha * progress) / 1000;
-            if (alpha > max_overlay_alpha)
+            case RT_SCREENFX_FADE_IN:
             {
-                max_overlay_alpha = alpha;
-                fx->overlay_color = e->color & 0xFFFFFF00;
-                fx->overlay_alpha = alpha;
+                // Fade from color to clear
+                int64_t base_alpha = e->color & 0xFF;
+                int64_t alpha = (base_alpha * (1000 - progress)) / 1000;
+                if (alpha > max_overlay_alpha)
+                {
+                    max_overlay_alpha = alpha;
+                    fx->overlay_color = e->color & 0xFFFFFF00;
+                    fx->overlay_alpha = alpha;
+                }
+                break;
             }
-            break;
-        }
 
-        default:
-            break;
+            case RT_SCREENFX_FADE_OUT:
+            {
+                // Fade from clear to color
+                int64_t base_alpha = e->color & 0xFF;
+                int64_t alpha = (base_alpha * progress) / 1000;
+                if (alpha > max_overlay_alpha)
+                {
+                    max_overlay_alpha = alpha;
+                    fx->overlay_color = e->color & 0xFFFFFF00;
+                    fx->overlay_alpha = alpha;
+                }
+                break;
+            }
+
+            default:
+                break;
         }
     }
 }

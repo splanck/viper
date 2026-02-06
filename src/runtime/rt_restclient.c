@@ -11,13 +11,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_restclient.h"
+#include "rt_codec.h"
 #include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_network.h"
 #include "rt_seq.h"
 #include "rt_string.h"
-#include "rt_codec.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -29,9 +29,9 @@
 typedef struct
 {
     rt_string base_url;
-    void *headers;        // Map of default headers
+    void *headers; // Map of default headers
     int64_t timeout_ms;
-    void *last_response;  // Last HttpRes
+    void *last_response; // Last HttpRes
     int64_t last_status;
 } rest_client;
 
@@ -44,8 +44,10 @@ static rt_string join_url(rt_string base, rt_string path)
     const char *base_str = rt_string_cstr(base);
     const char *path_str = rt_string_cstr(path);
 
-    if (!base_str) base_str = "";
-    if (!path_str) path_str = "";
+    if (!base_str)
+        base_str = "";
+    if (!path_str)
+        path_str = "";
 
     size_t base_len = strlen(base_str);
     size_t path_len = strlen(path_str);
@@ -123,8 +125,7 @@ void *rt_restclient_new(rt_string base_url)
         rt_trap("RestClient: memory allocation failed");
 
     const char *url_str = rt_string_cstr(base_url);
-    client->base_url = url_str ? rt_string_from_bytes(url_str, strlen(url_str))
-                               : rt_const_cstr("");
+    client->base_url = url_str ? rt_string_from_bytes(url_str, strlen(url_str)) : rt_const_cstr("");
     client->headers = rt_map_new();
     client->timeout_ms = 30000; // 30 second default
     client->last_response = NULL;
@@ -135,31 +136,36 @@ void *rt_restclient_new(rt_string base_url)
 
 rt_string rt_restclient_base_url(void *obj)
 {
-    if (!obj) return rt_const_cstr("");
+    if (!obj)
+        return rt_const_cstr("");
     rest_client *client = (rest_client *)obj;
     return client->base_url;
 }
 
 void rt_restclient_set_header(void *obj, rt_string name, rt_string value)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rest_client *client = (rest_client *)obj;
     rt_map_set(client->headers, name, (void *)value);
 }
 
 void rt_restclient_del_header(void *obj, rt_string name)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rest_client *client = (rest_client *)obj;
     rt_map_remove(client->headers, name);
 }
 
 void rt_restclient_set_auth_bearer(void *obj, rt_string token)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
 
     const char *tok_str = rt_string_cstr(token);
-    if (!tok_str) tok_str = "";
+    if (!tok_str)
+        tok_str = "";
 
     size_t tok_len = strlen(tok_str);
     size_t total = 7 + tok_len; // "Bearer " + token
@@ -179,12 +185,15 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token)
 
 void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string password)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
 
     const char *user_str = rt_string_cstr(username);
     const char *pass_str = rt_string_cstr(password);
-    if (!user_str) user_str = "";
-    if (!pass_str) pass_str = "";
+    if (!user_str)
+        user_str = "";
+    if (!pass_str)
+        pass_str = "";
 
     // Create "username:password"
     size_t user_len = strlen(user_str);
@@ -226,13 +235,15 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
 
 void rt_restclient_clear_auth(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_restclient_del_header(obj, rt_const_cstr("Authorization"));
 }
 
 void rt_restclient_set_timeout(void *obj, int64_t timeout_ms)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rest_client *client = (rest_client *)obj;
     client->timeout_ms = timeout_ms;
 }
@@ -243,7 +254,8 @@ void rt_restclient_set_timeout(void *obj, int64_t timeout_ms)
 
 void *rt_restclient_get(void *obj, rt_string path)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("GET"), path);
@@ -252,7 +264,8 @@ void *rt_restclient_get(void *obj, rt_string path)
 
 void *rt_restclient_post(void *obj, rt_string path, rt_string body)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("POST"), path);
@@ -262,7 +275,8 @@ void *rt_restclient_post(void *obj, rt_string path, rt_string body)
 
 void *rt_restclient_put(void *obj, rt_string path, rt_string body)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("PUT"), path);
@@ -272,7 +286,8 @@ void *rt_restclient_put(void *obj, rt_string path, rt_string body)
 
 void *rt_restclient_patch(void *obj, rt_string path, rt_string body)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("PATCH"), path);
@@ -282,7 +297,8 @@ void *rt_restclient_patch(void *obj, rt_string path, rt_string body)
 
 void *rt_restclient_delete(void *obj, rt_string path)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("DELETE"), path);
@@ -291,7 +307,8 @@ void *rt_restclient_delete(void *obj, rt_string path)
 
 void *rt_restclient_head(void *obj, rt_string path)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("HEAD"), path);
@@ -304,7 +321,8 @@ void *rt_restclient_head(void *obj, rt_string path)
 
 void *rt_restclient_get_json(void *obj, rt_string path)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("GET"), path);
@@ -320,7 +338,8 @@ void *rt_restclient_get_json(void *obj, rt_string path)
 
 void *rt_restclient_post_json(void *obj, rt_string path, void *json_body)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("POST"), path);
@@ -344,7 +363,8 @@ void *rt_restclient_post_json(void *obj, rt_string path, void *json_body)
 
 void *rt_restclient_put_json(void *obj, rt_string path, void *json_body)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("PUT"), path);
@@ -368,7 +388,8 @@ void *rt_restclient_put_json(void *obj, rt_string path, void *json_body)
 
 void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("PATCH"), path);
@@ -392,7 +413,8 @@ void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body)
 
 void *rt_restclient_delete_json(void *obj, rt_string path)
 {
-    if (!obj) rt_trap("RestClient: null client");
+    if (!obj)
+        rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
 
     void *req = create_request(client, rt_const_cstr("DELETE"), path);
@@ -416,21 +438,24 @@ void *rt_restclient_delete_json(void *obj, rt_string path)
 
 int64_t rt_restclient_last_status(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rest_client *client = (rest_client *)obj;
     return client->last_status;
 }
 
 void *rt_restclient_last_response(void *obj)
 {
-    if (!obj) return NULL;
+    if (!obj)
+        return NULL;
     rest_client *client = (rest_client *)obj;
     return client->last_response;
 }
 
 int8_t rt_restclient_last_ok(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rest_client *client = (rest_client *)obj;
     return (client->last_status >= 200 && client->last_status < 300) ? 1 : 0;
 }

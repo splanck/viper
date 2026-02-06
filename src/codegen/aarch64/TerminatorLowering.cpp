@@ -342,9 +342,12 @@ void lowerTerminators(const il::core::Function &fn,
                         emitEdgeCopies(falseLbl, term.brArgs[1]);
 
                     // Try to lower compares to cmp + b.<cond>
-                    // NOTE: This optimization only works for the entry block (i == 0) where
-                    // block parameters are passed in argument registers. For loop headers
-                    // with phi nodes, parameters are loaded from spill slots, not registers.
+                    // CORRECTNESS: This optimization only fires in the entry block (i == 0)
+                    // because it emits CmpRR using physical arg registers (argOrder[idx]).
+                    // In non-entry blocks, block parameters are SSA phi nodes whose values
+                    // may be in spill slots or different registers — direct arg register
+                    // access would produce wrong comparisons. Relaxing this requires
+                    // materializing operands via materializeValueToVReg() first.
                     const auto &cond = term.operands[0];
                     bool loweredViaCompare = false;
                     const bool isEntryBlock = (i == 0);

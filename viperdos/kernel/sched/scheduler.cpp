@@ -66,15 +66,16 @@ namespace {
  */
 struct PerCpuScheduler {
     // Heaps for O(log n) task selection
-    sched::TaskHeap deadline_heap;  // SCHED_DEADLINE tasks
-    sched::TaskHeap cfs_heap;       // SCHED_OTHER tasks
+    sched::TaskHeap deadline_heap; // SCHED_DEADLINE tasks
+    sched::TaskHeap cfs_heap;      // SCHED_OTHER tasks
 
     // RT queues for FIFO ordering (SCHED_FIFO/RR only)
     struct {
         task::Task *head;
         task::Task *tail;
     } rt_queues[task::NUM_PRIORITY_QUEUES];
-    u8 rt_bitmap;  // Bitmap of non-empty RT queues
+
+    u8 rt_bitmap; // Bitmap of non-empty RT queues
 
     // Synchronization
     Spinlock lock;
@@ -87,13 +88,13 @@ struct PerCpuScheduler {
 
     // State
     bool initialized;
-    volatile u32 queue_count;  // Atomic for lock-free checks
+    volatile u32 queue_count; // Atomic for lock-free checks
 
     // CFS fairness tracking (Linux CFS-style)
     // min_vruntime: monotonically increasing baseline for fair scheduling
     // All task vruntimes are normalized relative to this value
     u64 min_vruntime;
-    u32 cfs_nr_running;  // Number of CFS tasks in heap (excludes idle)
+    u32 cfs_nr_running; // Number of CFS tasks in heap (excludes idle)
 };
 
 /**
@@ -154,7 +155,7 @@ u32 select_target_cpu(task::Task *t) {
 
     // If task is pinned to exactly one CPU, use it
     if (__builtin_popcount(affinity) == 1) {
-        return __builtin_ctz(affinity);  // Find the set bit
+        return __builtin_ctz(affinity); // Find the set bit
     }
 
     // If current CPU is in affinity mask and initialized, prefer it
@@ -167,8 +168,10 @@ u32 select_target_cpu(task::Task *t) {
     u32 min_load = 0xFFFFFFFF;
 
     for (u32 i = 0; i < cpu::MAX_CPUS; i++) {
-        if (!(affinity & (1u << i))) continue;
-        if (!per_cpu_sched[i].initialized) continue;
+        if (!(affinity & (1u << i)))
+            continue;
+        if (!per_cpu_sched[i].initialized)
+            continue;
 
         u32 load = __atomic_load_n(&per_cpu_sched[i].queue_count, __ATOMIC_RELAXED);
         if (load < min_load) {
@@ -232,108 +235,108 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
     bool inserted = false;
 
     switch (t->policy) {
-    case task::SchedPolicy::SCHED_DEADLINE:
-        inserted = sched::heap_insert(&sched.deadline_heap, t);
-        if (!inserted) {
-            serial::puts("[sched] WARNING: heap_insert failed for deadline task '");
-            serial::puts(t->name);
-            serial::puts("'\n");
-            return;
-        }
-        break;
+        case task::SchedPolicy::SCHED_DEADLINE:
+            inserted = sched::heap_insert(&sched.deadline_heap, t);
+            if (!inserted) {
+                serial::puts("[sched] WARNING: heap_insert failed for deadline task '");
+                serial::puts(t->name);
+                serial::puts("'\n");
+                return;
+            }
+            break;
 
-    case task::SchedPolicy::SCHED_OTHER: {
-        // CFS scheduling: use vruntime-based heap for fair scheduling
+        case task::SchedPolicy::SCHED_OTHER: {
+            // CFS scheduling: use vruntime-based heap for fair scheduling
 
-        // Sleeper fairness: if task slept and fell behind min_vruntime,
-        // normalize up to prevent it from stealing CPU time from tasks
-        // that have been running.
-        // Skip idle task - it should always have low vruntime as fallback.
-        if (!(t->flags & task::TASK_FLAG_IDLE)) {
+            // Sleeper fairness: if task slept and fell behind min_vruntime,
+            // normalize up to prevent it from stealing CPU time from tasks
+            // that have been running.
+            // Skip idle task - it should always have low vruntime as fallback.
+            if (!(t->flags & task::TASK_FLAG_IDLE)) {
 #ifdef VIPER_SCHED_DEBUG
-            // Debug: track displayd vruntime
-            // Names are paths like "/sys/displayd.sys" - check for substring
-            bool is_displayd = lib::strcontains(t->name, "displayd");
-            static u32 displayd_enq = 0;
+                // Debug: track displayd vruntime
+                // Names are paths like "/sys/displayd.sys" - check for substring
+                bool is_displayd = lib::strcontains(t->name, "displayd");
+                static u32 displayd_enq = 0;
 #endif
 
-            if (t->vruntime < sched.min_vruntime) {
+                if (t->vruntime < sched.min_vruntime) {
 #ifdef VIPER_SCHED_DEBUG
-                // Debug: show vruntime normalization for new/waking tasks
-                if (t->vruntime == 0) {
-                    // Brand new task - show the bump
-                    serial::puts("[cfs] NEW '");
-                    serial::puts(t->name);
-                    serial::puts("' vrt 0 -> ");
-                    serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
-                    serial::puts("M\n");
+                    // Debug: show vruntime normalization for new/waking tasks
+                    if (t->vruntime == 0) {
+                        // Brand new task - show the bump
+                        serial::puts("[cfs] NEW '");
+                        serial::puts(t->name);
+                        serial::puts("' vrt 0 -> ");
+                        serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
+                        serial::puts("M\n");
+                    }
+                    if (is_displayd) {
+                        displayd_enq++;
+                        if (displayd_enq <= 10 || (displayd_enq % 1000 == 0)) {
+                            serial::puts("[cfs] displayd enq#");
+                            serial::put_dec(displayd_enq);
+                            serial::puts(" vrt ");
+                            serial::put_dec(static_cast<u32>(t->vruntime / 1000000));
+                            serial::puts("M -> ");
+                            serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
+                            serial::puts("M\n");
+                        }
+                    }
+#endif
+                    t->vruntime = sched.min_vruntime;
                 }
-                if (is_displayd) {
+#ifdef VIPER_SCHED_DEBUG
+                else if (is_displayd) {
                     displayd_enq++;
                     if (displayd_enq <= 10 || (displayd_enq % 1000 == 0)) {
                         serial::puts("[cfs] displayd enq#");
                         serial::put_dec(displayd_enq);
                         serial::puts(" vrt ");
                         serial::put_dec(static_cast<u32>(t->vruntime / 1000000));
-                        serial::puts("M -> ");
+                        serial::puts("M (min=");
                         serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
-                        serial::puts("M\n");
+                        serial::puts("M)\n");
                     }
                 }
 #endif
-                t->vruntime = sched.min_vruntime;
+                // Note: We do NOT cap high vruntime down. High vruntime means
+                // the task ran a lot and should wait - that's fair scheduling.
             }
-#ifdef VIPER_SCHED_DEBUG
-            else if (is_displayd) {
-                displayd_enq++;
-                if (displayd_enq <= 10 || (displayd_enq % 1000 == 0)) {
-                    serial::puts("[cfs] displayd enq#");
-                    serial::put_dec(displayd_enq);
-                    serial::puts(" vrt ");
-                    serial::put_dec(static_cast<u32>(t->vruntime / 1000000));
-                    serial::puts("M (min=");
-                    serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
-                    serial::puts("M)\n");
-                }
+
+            inserted = sched::heap_insert(&sched.cfs_heap, t);
+            if (!inserted) {
+                serial::puts("[sched] WARNING: heap_insert failed for CFS task '");
+                serial::puts(t->name);
+                serial::puts("'\n");
+                return;
             }
-#endif
-            // Note: We do NOT cap high vruntime down. High vruntime means
-            // the task ran a lot and should wait - that's fair scheduling.
+
+            // Track CFS task count
+            if (!(t->flags & task::TASK_FLAG_IDLE)) {
+                sched.cfs_nr_running++;
+            }
+            break;
         }
 
-        inserted = sched::heap_insert(&sched.cfs_heap, t);
-        if (!inserted) {
-            serial::puts("[sched] WARNING: heap_insert failed for CFS task '");
-            serial::puts(t->name);
-            serial::puts("'\n");
-            return;
-        }
+        case task::SchedPolicy::SCHED_FIFO:
+        case task::SchedPolicy::SCHED_RR: {
+            // RT tasks: add to tail of priority queue (FIFO ordering)
+            u8 q_idx = priority_to_queue(t->priority);
+            auto &queue = sched.rt_queues[q_idx];
 
-        // Track CFS task count
-        if (!(t->flags & task::TASK_FLAG_IDLE)) {
-            sched.cfs_nr_running++;
+            t->next = nullptr;
+            t->prev = queue.tail;
+            if (queue.tail) {
+                queue.tail->next = t;
+            } else {
+                queue.head = t;
+            }
+            queue.tail = t;
+            sched.rt_bitmap |= (1u << q_idx);
+            inserted = true;
+            break;
         }
-        break;
-    }
-
-    case task::SchedPolicy::SCHED_FIFO:
-    case task::SchedPolicy::SCHED_RR: {
-        // RT tasks: add to tail of priority queue (FIFO ordering)
-        u8 q_idx = priority_to_queue(t->priority);
-        auto &queue = sched.rt_queues[q_idx];
-
-        t->next = nullptr;
-        t->prev = queue.tail;
-        if (queue.tail) {
-            queue.tail->next = t;
-        } else {
-            queue.head = t;
-        }
-        queue.tail = t;
-        sched.rt_bitmap |= (1u << q_idx);
-        inserted = true;
-        break;
-    }
     }
 
     if (inserted) {
@@ -486,7 +489,6 @@ task::Task *dequeue_percpu_locked(u32 cpu_id) {
     return nullptr;
 }
 
-
 /**
  * @brief Try to steal a task from another CPU's scheduler.
  *
@@ -510,7 +512,7 @@ task::Task *steal_task(u32 current_cpu) {
             continue;
 
         u32 load = __atomic_load_n(&per_cpu_sched[i].queue_count, __ATOMIC_RELAXED);
-        if (load > max_load && load >= 2) {  // Only steal if victim has 2+ tasks
+        if (load > max_load && load >= 2) { // Only steal if victim has 2+ tasks
             max_load = load;
             victim_cpu = i;
         }
@@ -702,7 +704,7 @@ void schedule() {
             // No work available, use idle task
             next = task::get_by_id(0);
             if (!next || next == current) {
-                return;  // Already idle
+                return; // Already idle
             }
         }
 

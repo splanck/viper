@@ -77,7 +77,7 @@ void LiveIntervals::run(const MFunction &func)
                 if (const auto *reg = std::get_if<OpReg>(&operand); reg && !reg->isPhys)
                 {
                     auto &interval = intervals_[reg->idOrPhys];
-                    if (interval.vreg == 0U && interval.end == 0U)
+                    if (interval.vreg == kInvalidVReg)
                     {
                         interval.vreg = reg->idOrPhys;
                         interval.cls = reg->cls;
@@ -94,7 +94,7 @@ void LiveIntervals::run(const MFunction &func)
                     if (!mem->base.isPhys)
                     {
                         auto &interval = intervals_[mem->base.idOrPhys];
-                        if (interval.vreg == 0U && interval.end == 0U)
+                        if (interval.vreg == kInvalidVReg)
                         {
                             interval.vreg = mem->base.idOrPhys;
                             interval.cls = mem->base.cls;
@@ -110,7 +110,7 @@ void LiveIntervals::run(const MFunction &func)
                     if (mem->hasIndex && !mem->index.isPhys)
                     {
                         auto &interval = intervals_[mem->index.idOrPhys];
-                        if (interval.vreg == 0U && interval.end == 0U)
+                        if (interval.vreg == kInvalidVReg)
                         {
                             interval.vreg = mem->index.idOrPhys;
                             interval.cls = mem->index.cls;

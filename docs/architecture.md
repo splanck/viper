@@ -39,7 +39,8 @@ Status notes:
 - src/vm — VM core (`VM.hpp/.cpp`), opcode handlers, debug/tracing, runtime bridge
 - src/codegen/x86_64 — X64 lowering, machine IR, register allocation pipeline
 - src/codegen/aarch64 — ARM64 lowering, machine IR, linear-scan register allocation
-- src/codegen/common — Shared codegen utilities (argument normalization, label utilities)
+- src/codegen/common — Shared codegen utilities (label utilities, linker support, diagnostics, target info)
+- src/bytecode — Bytecode compiler, module format, and bytecode VM
 - src/frontends/basic — BASIC frontend (lexer, parser, semantic analysis, IL lowerer)
 - src/frontends/zia — Zia frontend (lexer, parser, semantic analysis, IL lowerer)
 - src/frontends/common — Shared frontend utilities
@@ -51,12 +52,19 @@ Status notes:
 - src/tools/il-dis — IL disassembler (text pretty-printer)
 - src/tools/basic-ast-dump, src/tools/basic-lex-dump — BASIC developer utilities
 - src/runtime — C runtime and bridges used by the VM and IL externs
+- src/support — Shared utilities (diagnostics, arena, source manager, symbols, alignment)
+- src/common — Common infrastructure shared across subsystems
+- src/parse — Parsing utilities (Cursor)
+- src/pass — Pass manager infrastructure
+- src/lib/graphics — ViperGFX 2D graphics library
+- src/tui — Terminal UI utilities and components
 
 Public headers are under `include/viper/...`:
 
 - include/viper/il — Public IL APIs (Module, IRBuilder, Verify, IO)
-- include/viper/vm — Public VM surface (VM, OpcodeNames, Debug)
+- include/viper/vm — Public VM surface (VM, RuntimeBridge, OpcodeNames, Debug)
 - include/viper/runtime — C runtime headers (`rt.h`, `rt_oop.h`)
+- include/viper/diag — Diagnostic API (`BasicDiag.hpp`)
 
 ---
 
@@ -81,4 +89,4 @@ Public headers are under `include/viper/...`:
 - IL version: see `src/buildmeta/IL_VERSION` (current: 0.2.0)
 - Keep layering strict: frontends do not depend on VM/codegen; VM does not include codegen; codegen depends only on IL
   core/verify/support
-- See also: `/devdocs/architecture.md` for a deeper architectural discussion
+- See also: `devdocs/architecture.md` for a deeper architectural discussion

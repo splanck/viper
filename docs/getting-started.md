@@ -165,7 +165,7 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 - **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
 
-**Developer Documentation** (in `/devdocs`):
+**Developer Documentation** (in `docs/devdocs/`):
 
 - `architecture.md` — System architecture overview
 - `runtime-vm.md` — VM and runtime internals

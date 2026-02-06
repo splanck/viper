@@ -172,7 +172,8 @@ static void test_scanner_matching()
         void *s = rt_scanner_new(src);
 
         test_result("AcceptAny 'xyz' fails", rt_scanner_accept_any(s, rt_const_cstr("xyz")) == 0);
-        test_result("AcceptAny 'cba' succeeds", rt_scanner_accept_any(s, rt_const_cstr("cba")) == 1);
+        test_result("AcceptAny 'cba' succeeds",
+                    rt_scanner_accept_any(s, rt_const_cstr("cba")) == 1);
     }
 
     printf("\n");
@@ -252,7 +253,8 @@ static void test_scanner_tokens()
         void *s = rt_scanner_new(src);
 
         rt_string quoted = rt_scanner_read_quoted(s, '"');
-        test_result("ReadQuoted extracts content", strcmp(rt_string_cstr(quoted), "hello\nworld") == 0);
+        test_result("ReadQuoted extracts content",
+                    strcmp(rt_string_cstr(quoted), "hello\nworld") == 0);
     }
 
     // Test 6: ReadLine

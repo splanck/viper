@@ -130,16 +130,24 @@ void init_console_attached(i32 input_ch, i32 output_ch) {
     i32 tmp = input_ch;
     char tmp2[16];
     int ti = 0;
-    do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
-    while (ti > 0) buf[bi++] = tmp2[--ti];
+    do {
+        tmp2[ti++] = '0' + (tmp % 10);
+        tmp /= 10;
+    } while (tmp > 0);
+    while (ti > 0)
+        buf[bi++] = tmp2[--ti];
     buf[bi] = '\0';
     sys::print(buf);
     sys::print(" output=");
     bi = 0;
     tmp = output_ch;
     ti = 0;
-    do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
-    while (ti > 0) buf[bi++] = tmp2[--ti];
+    do {
+        tmp2[ti++] = '0' + (tmp % 10);
+        tmp /= 10;
+    } while (tmp > 0);
+    while (ti > 0)
+        buf[bi++] = tmp2[--ti];
     buf[bi] = '\0';
     sys::print(buf);
     sys::print("\n");
@@ -285,16 +293,24 @@ static void console_write_direct(const char *s, usize len) {
         u32 tmp = send_count;
         char tmp2[16];
         int ti = 0;
-        do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
-        while (ti > 0) buf2[bi++] = tmp2[--ti];
+        do {
+            tmp2[ti++] = '0' + (tmp % 10);
+            tmp /= 10;
+        } while (tmp > 0);
+        while (ti > 0)
+            buf2[bi++] = tmp2[--ti];
         buf2[bi] = '\0';
         sys::print(buf2);
         sys::print(" len=");
         bi = 0;
         tmp = static_cast<u32>(len);
         ti = 0;
-        do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
-        while (ti > 0) buf2[bi++] = tmp2[--ti];
+        do {
+            tmp2[ti++] = '0' + (tmp % 10);
+            tmp /= 10;
+        } while (tmp > 0);
+        while (ti > 0)
+            buf2[bi++] = tmp2[--ti];
         buf2[bi] = '\0';
         sys::print(buf2);
         sys::print("\n");

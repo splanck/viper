@@ -6,7 +6,7 @@ Last updated: 2026-02-05
 
 ## Overview
 
-- **Total source files**: 60 (.hpp/.cpp)
+- **Total source files**: 62 (.hpp/.cpp)
 - **Subdirectories**: SimplifyCFG/, analysis/
 
 ## Pass Infrastructure

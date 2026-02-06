@@ -368,8 +368,8 @@ bind Viper.Time;         // Import time functions
 
 func start() {
     Say("Hello from Zia!");           // No need for Viper.Terminal.Say()
-    var canvas = new Canvas(800, 600, "Game");
-    Clock.SleepMs(16);
+    var canvas = new Canvas("Game", 800, 600);
+    SleepMs(16);
 }
 ```
 
@@ -429,7 +429,7 @@ SetCursorVisible(0);    // Hide cursor
 ```viper
 bind Viper.Time;
 
-Clock.SleepMs(500);  // Sleep for 500 milliseconds
+SleepMs(500);        // Sleep for 500 milliseconds
 ```
 
 ### Math Functions

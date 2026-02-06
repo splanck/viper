@@ -16,10 +16,10 @@ enabled; you can toggle at CMake configure time or at runtime:
 Reading counters:
 
 ```c++
-il::vm::VM vm(module);
-vm.resetOpcodeCounts();
-vm.run();
-const auto &counts = vm.opcodeCounts();
+il::vm::Runner runner(module, config);
+runner.resetOpcodeCounts();
+runner.run();
+const auto &counts = runner.opcodeCounts();
 // counts[static_cast<size_t>(il::core::Opcode::Add)]
 ```
 

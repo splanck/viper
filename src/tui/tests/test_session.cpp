@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tui/term/session.hpp"
 #include "tests/TestHarness.hpp"
+#include "tui/term/session.hpp"
 #include <cstdlib>
 
 static void set_no_tty_env()

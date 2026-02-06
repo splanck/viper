@@ -62,7 +62,7 @@ Viper is a compiler infrastructure with multiple components:
 Source Language → Frontend → IL → VM/Codegen → Execution
 ```
 
-Viper currently includes three frontends: **Zia**, **BASIC**, and **Pascal**. All compile to the same IL and share the
+Viper currently includes two frontends: **Zia** and **BASIC**. Both compile to the same IL and share the
 runtime library.
 
 ### Prerequisites
@@ -633,7 +633,7 @@ target_include_directories(fe_yourfrontend PUBLIC
 
 # Enable C++20
 # PUBLIC = consumers also require C++20 (since your headers may use C++20 features)
-target_compile_features(fe_yourfrontend PUBLIC cxx_std_17)
+target_compile_features(fe_yourfrontend PUBLIC cxx_std_20)
 ```
 
 ### Register with viper Tool

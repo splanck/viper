@@ -29,9 +29,9 @@ extern void rt_trap(const char *msg);
 
 typedef struct
 {
-    int64_t type;    // RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
-    void *wrapped;   // The wrapped BinFile or MemStream
-    int8_t owns;     // Whether we own the wrapped object
+    int64_t type;  // RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
+    void *wrapped; // The wrapped BinFile or MemStream
+    int8_t owns;   // Whether we own the wrapped object
 } stream_impl;
 
 //=============================================================================

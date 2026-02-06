@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_fmt.h"
+#include "rt_internal.h"
 #include "rt_string.h"
 
 #include <cassert>

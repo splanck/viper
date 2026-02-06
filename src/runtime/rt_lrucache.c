@@ -30,47 +30,31 @@
 #define LRU_LOAD_FACTOR_NUM 3
 #define LRU_LOAD_FACTOR_DEN 4
 
-/// FNV-1a hash constants for 64-bit.
-#define FNV_OFFSET_BASIS 0xcbf29ce484222325ULL
-#define FNV_PRIME 0x100000001b3ULL
+#include "rt_hash_util.h"
 
 /// @brief Doubly-linked list node with hash table chaining.
 typedef struct rt_lru_node
 {
-    char *key;                ///< Owned copy of key string (null-terminated).
-    size_t key_len;           ///< Length of key string (excluding null terminator).
-    void *value;              ///< Retained reference to the value object.
-    struct rt_lru_node *prev; ///< Previous node in LRU order (toward head/MRU).
-    struct rt_lru_node *next; ///< Next node in LRU order (toward tail/LRU).
+    char *key;                       ///< Owned copy of key string (null-terminated).
+    size_t key_len;                  ///< Length of key string (excluding null terminator).
+    void *value;                     ///< Retained reference to the value object.
+    struct rt_lru_node *prev;        ///< Previous node in LRU order (toward head/MRU).
+    struct rt_lru_node *next;        ///< Next node in LRU order (toward tail/LRU).
     struct rt_lru_node *bucket_next; ///< Next node in hash bucket chain.
 } rt_lru_node;
 
 /// @brief LRU cache implementation structure.
 typedef struct rt_lrucache_impl
 {
-    void **vptr;            ///< Vtable pointer placeholder (for OOP compatibility).
-    rt_lru_node **buckets;  ///< Hash table buckets array.
-    size_t bucket_count;    ///< Number of hash table buckets.
-    size_t count;           ///< Current number of entries.
-    size_t max_cap;         ///< Maximum number of entries before eviction.
-    rt_lru_node *head;      ///< Most recently used node (doubly-linked list head).
-    rt_lru_node *tail;      ///< Least recently used node (doubly-linked list tail).
+    void **vptr;           ///< Vtable pointer placeholder (for OOP compatibility).
+    rt_lru_node **buckets; ///< Hash table buckets array.
+    size_t bucket_count;   ///< Number of hash table buckets.
+    size_t count;          ///< Current number of entries.
+    size_t max_cap;        ///< Maximum number of entries before eviction.
+    rt_lru_node *head;     ///< Most recently used node (doubly-linked list head).
+    rt_lru_node *tail;     ///< Least recently used node (doubly-linked list tail).
 } rt_lrucache_impl;
 
-// ---------------------------------------------------------------------------
-// Hash helpers
-// ---------------------------------------------------------------------------
-
-static uint64_t fnv1a(const char *data, size_t len)
-{
-    uint64_t hash = FNV_OFFSET_BASIS;
-    for (size_t i = 0; i < len; ++i)
-    {
-        hash ^= (uint8_t)data[i];
-        hash *= FNV_PRIME;
-    }
-    return hash;
-}
 
 static const char *get_key_data(rt_string key, size_t *out_len)
 {
@@ -146,7 +130,7 @@ static rt_lru_node *bucket_find(rt_lru_node *head, const char *key, size_t key_l
 /// Remove a node from its bucket chain.
 static void bucket_remove(rt_lrucache_impl *cache, rt_lru_node *node)
 {
-    uint64_t hash = fnv1a(node->key, node->key_len);
+    uint64_t hash = rt_fnv1a(node->key, node->key_len);
     size_t idx = hash % cache->bucket_count;
 
     rt_lru_node **prev_ptr = &cache->buckets[idx];
@@ -168,7 +152,7 @@ static void bucket_remove(rt_lrucache_impl *cache, rt_lru_node *node)
 /// Insert a node into its bucket chain.
 static void bucket_insert(rt_lrucache_impl *cache, rt_lru_node *node)
 {
-    uint64_t hash = fnv1a(node->key, node->key_len);
+    uint64_t hash = rt_fnv1a(node->key, node->key_len);
     size_t idx = hash % cache->bucket_count;
     node->bucket_next = cache->buckets[idx];
     cache->buckets[idx] = node;
@@ -192,7 +176,7 @@ static void maybe_resize(rt_lrucache_impl *cache)
         while (node)
         {
             rt_lru_node *next = node->bucket_next;
-            uint64_t hash = fnv1a(node->key, node->key_len);
+            uint64_t hash = rt_fnv1a(node->key, node->key_len);
             size_t idx = hash % new_bucket_count;
             node->bucket_next = new_buckets[idx];
             new_buckets[idx] = node;
@@ -269,8 +253,8 @@ void *rt_lrucache_new(int64_t capacity)
     if (capacity <= 0)
         capacity = 1; // Minimum capacity of 1
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_lrucache_impl));
+    rt_lrucache_impl *cache =
+        (rt_lrucache_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_lrucache_impl));
     if (!cache)
         return NULL;
 
@@ -278,8 +262,7 @@ void *rt_lrucache_new(int64_t capacity)
     cache->bucket_count = LRU_INITIAL_BUCKETS;
     // If requested capacity is large, start with more buckets to avoid
     // immediate resizing
-    while (cache->bucket_count * LRU_LOAD_FACTOR_NUM / LRU_LOAD_FACTOR_DEN
-           < (size_t)capacity)
+    while (cache->bucket_count * LRU_LOAD_FACTOR_NUM / LRU_LOAD_FACTOR_DEN < (size_t)capacity)
     {
         cache->bucket_count *= 2;
     }
@@ -334,7 +317,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value)
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
-    uint64_t hash = fnv1a(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % cache->bucket_count;
 
     // Check if key already exists
@@ -395,7 +378,7 @@ void *rt_lrucache_get(void *obj, rt_string key)
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
-    uint64_t hash = fnv1a(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % cache->bucket_count;
 
     rt_lru_node *node = bucket_find(cache->buckets[idx], key_data, key_len);
@@ -418,7 +401,7 @@ void *rt_lrucache_peek(void *obj, rt_string key)
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
-    uint64_t hash = fnv1a(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % cache->bucket_count;
 
     rt_lru_node *node = bucket_find(cache->buckets[idx], key_data, key_len);
@@ -436,7 +419,7 @@ int8_t rt_lrucache_has(void *obj, rt_string key)
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
-    uint64_t hash = fnv1a(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % cache->bucket_count;
 
     return bucket_find(cache->buckets[idx], key_data, key_len) ? 1 : 0;
@@ -453,7 +436,7 @@ int8_t rt_lrucache_remove(void *obj, rt_string key)
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
-    uint64_t hash = fnv1a(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % cache->bucket_count;
 
     rt_lru_node *node = bucket_find(cache->buckets[idx], key_data, key_len);

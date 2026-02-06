@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_bitset.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -296,11 +296,11 @@ static void test_null_safety()
     assert(rt_bitset_count(NULL) == 0);
     assert(rt_bitset_is_empty(NULL) == 1);
     assert(rt_bitset_get(NULL, 0) == 0);
-    rt_bitset_set(NULL, 0);      // No-op
-    rt_bitset_clear(NULL, 0);    // No-op
-    rt_bitset_toggle(NULL, 0);   // No-op
-    rt_bitset_set_all(NULL);     // No-op
-    rt_bitset_clear_all(NULL);   // No-op
+    rt_bitset_set(NULL, 0);    // No-op
+    rt_bitset_clear(NULL, 0);  // No-op
+    rt_bitset_toggle(NULL, 0); // No-op
+    rt_bitset_set_all(NULL);   // No-op
+    rt_bitset_clear_all(NULL); // No-op
 }
 
 static void test_negative_index()

@@ -20,13 +20,17 @@
 
 rt_string rt_numfmt_decimals(double n, int64_t decimals)
 {
-    if (decimals < 0) decimals = 0;
-    if (decimals > 20) decimals = 20;
+    if (decimals < 0)
+        decimals = 0;
+    if (decimals > 20)
+        decimals = 20;
 
     char buf[64];
     int len = snprintf(buf, sizeof(buf), "%.*f", (int)decimals, n);
-    if (len < 0) len = 0;
-    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    if (len < 0)
+        len = 0;
+    if (len >= (int)sizeof(buf))
+        len = (int)sizeof(buf) - 1;
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
@@ -37,7 +41,8 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals)
 rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
 {
     const char *sep_cstr = sep ? rt_string_cstr(sep) : ",";
-    if (!sep_cstr || *sep_cstr == '\0') sep_cstr = ",";
+    if (!sep_cstr || *sep_cstr == '\0')
+        sep_cstr = ",";
 
     int negative = n < 0;
     // Handle INT64_MIN
@@ -50,7 +55,8 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
     // Format the absolute number first
     char digits[32];
     int dlen = snprintf(digits, sizeof(digits), "%llu", (unsigned long long)abs_n);
-    if (dlen < 0) dlen = 0;
+    if (dlen < 0)
+        dlen = 0;
 
     size_t sep_len = strlen(sep_cstr);
     int num_seps = (dlen - 1) / 3;
@@ -58,10 +64,12 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    if (negative) rt_sb_append_cstr(&sb, "-");
+    if (negative)
+        rt_sb_append_cstr(&sb, "-");
 
     int first_group = dlen % 3;
-    if (first_group == 0) first_group = 3;
+    if (first_group == 0)
+        first_group = 3;
 
     rt_sb_append_bytes(&sb, digits, (size_t)first_group);
     int pos = first_group;
@@ -86,7 +94,8 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
 rt_string rt_numfmt_currency(double n, rt_string symbol)
 {
     const char *sym = symbol ? rt_string_cstr(symbol) : "$";
-    if (!sym) sym = "$";
+    if (!sym)
+        sym = "$";
 
     int negative = n < 0;
     double abs_n = fabs(n);
@@ -94,8 +103,10 @@ rt_string rt_numfmt_currency(double n, rt_string symbol)
     // Round to 2 decimal places
     char amount[64];
     int alen = snprintf(amount, sizeof(amount), "%.2f", abs_n);
-    if (alen < 0) alen = 0;
-    if (alen >= (int)sizeof(amount)) alen = (int)sizeof(amount) - 1;
+    if (alen < 0)
+        alen = 0;
+    if (alen >= (int)sizeof(amount))
+        alen = (int)sizeof(amount) - 1;
 
     // Find the decimal point
     char *dot = strchr(amount, '.');
@@ -104,12 +115,14 @@ rt_string rt_numfmt_currency(double n, rt_string symbol)
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    if (negative) rt_sb_append_cstr(&sb, "-");
+    if (negative)
+        rt_sb_append_cstr(&sb, "-");
     rt_sb_append_cstr(&sb, sym);
 
     // Add thousands separators to integer part
     int first_group = int_len % 3;
-    if (first_group == 0) first_group = 3;
+    if (first_group == 0)
+        first_group = 3;
 
     rt_sb_append_bytes(&sb, amount, (size_t)first_group);
     int pos = first_group;
@@ -151,8 +164,10 @@ rt_string rt_numfmt_percent(double n)
     else
         len = snprintf(buf, sizeof(buf), "%.1f%%", rounded);
 
-    if (len < 0) len = 0;
-    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    if (len < 0)
+        len = 0;
+    if (len >= (int)sizeof(buf))
+        len = (int)sizeof(buf) - 1;
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
@@ -180,8 +195,10 @@ rt_string rt_numfmt_ordinal(int64_t n)
 
     char buf[32];
     int len = snprintf(buf, sizeof(buf), "%lld%s", (long long)n, suffix);
-    if (len < 0) len = 0;
-    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    if (len < 0)
+        len = 0;
+    if (len >= (int)sizeof(buf))
+        len = (int)sizeof(buf) - 1;
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
@@ -189,26 +206,29 @@ rt_string rt_numfmt_ordinal(int64_t n)
 // rt_numfmt_to_words
 // ---------------------------------------------------------------------------
 
-static const char *const ones[] = {
-    "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-    "seventeen", "eighteen", "nineteen"};
+static const char *const ones[] = {"",        "one",     "two",       "three",    "four",
+                                   "five",    "six",     "seven",     "eight",    "nine",
+                                   "ten",     "eleven",  "twelve",    "thirteen", "fourteen",
+                                   "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"};
 
 static const char *const tens[] = {
     "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"};
 
 static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev)
 {
-    if (n == 0) return;
+    if (n == 0)
+        return;
 
-    if (*has_prev) rt_sb_append_cstr(sb, " ");
+    if (*has_prev)
+        rt_sb_append_cstr(sb, " ");
 
     if (n >= 100)
     {
         rt_sb_append_cstr(sb, ones[n / 100]);
         rt_sb_append_cstr(sb, " hundred");
         n %= 100;
-        if (n > 0) rt_sb_append_cstr(sb, " ");
+        if (n > 0)
+            rt_sb_append_cstr(sb, " ");
     }
 
     if (n >= 20)
@@ -231,7 +251,8 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev)
 
 rt_string rt_numfmt_to_words(int64_t n)
 {
-    if (n == 0) return rt_string_from_bytes("zero", 4);
+    if (n == 0)
+        return rt_string_from_bytes("zero", 4);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -243,7 +264,8 @@ rt_string rt_numfmt_to_words(int64_t n)
     else
         abs_n = (uint64_t)(negative ? -n : n);
 
-    if (negative) rt_sb_append_cstr(&sb, "negative ");
+    if (negative)
+        rt_sb_append_cstr(&sb, "negative ");
 
     // Break into groups of three
     static const char *const scale[] = {
@@ -261,7 +283,8 @@ rt_string rt_numfmt_to_words(int64_t n)
     int has_prev = 0;
     for (int i = num_groups - 1; i >= 0; i--)
     {
-        if (groups[i] == 0) continue;
+        if (groups[i] == 0)
+            continue;
         append_chunk(&sb, groups[i], &has_prev);
         if (i > 0 && scale[i][0] != '\0')
         {
@@ -296,12 +319,17 @@ rt_string rt_numfmt_bytes(int64_t bytes)
 
     if (unit_idx == 0)
     {
-        len = snprintf(buf, sizeof(buf), "%s%lld %s",
-                       bytes < 0 ? "-" : "", (long long)(bytes < 0 ? -bytes : bytes), units[0]);
+        len = snprintf(buf,
+                       sizeof(buf),
+                       "%s%lld %s",
+                       bytes < 0 ? "-" : "",
+                       (long long)(bytes < 0 ? -bytes : bytes),
+                       units[0]);
     }
     else
     {
-        if (bytes < 0) val = -val;
+        if (bytes < 0)
+            val = -val;
         // Use 1 decimal place for values >= 10, 2 for smaller
         if (fabs(val) >= 10.0)
             len = snprintf(buf, sizeof(buf), "%.1f %s", val, units[unit_idx]);
@@ -309,8 +337,10 @@ rt_string rt_numfmt_bytes(int64_t bytes)
             len = snprintf(buf, sizeof(buf), "%.2f %s", val, units[unit_idx]);
     }
 
-    if (len < 0) len = 0;
-    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    if (len < 0)
+        len = 0;
+    if (len >= (int)sizeof(buf))
+        len = (int)sizeof(buf) - 1;
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
@@ -320,8 +350,10 @@ rt_string rt_numfmt_bytes(int64_t bytes)
 
 rt_string rt_numfmt_pad(int64_t n, int64_t width)
 {
-    if (width < 1) width = 1;
-    if (width > 64) width = 64;
+    if (width < 1)
+        width = 1;
+    if (width > 64)
+        width = 64;
 
     char buf[128];
     int len;
@@ -331,7 +363,9 @@ rt_string rt_numfmt_pad(int64_t n, int64_t width)
     else
         len = snprintf(buf, sizeof(buf), "-%0*lld", (int)(width - 1), (long long)(-n));
 
-    if (len < 0) len = 0;
-    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    if (len < 0)
+        len = 0;
+    if (len >= (int)sizeof(buf))
+        len = (int)sizeof(buf) - 1;
     return rt_string_from_bytes(buf, (size_t)len);
 }

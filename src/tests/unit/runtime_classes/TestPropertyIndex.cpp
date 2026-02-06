@@ -6,9 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestPropertyIndex.cpp
-// Purpose: Verify RuntimePropertyIndex lookup for System.String.Length maps to Viper.String.get_Length.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
+// Purpose: Verify RuntimePropertyIndex lookup for System.String.Length maps to
+// Viper.String.get_Length. Key invariants: To be documented. Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

@@ -42,7 +42,9 @@ constexpr uint32_t MAX_MESSAGES_PER_BATCH = 256;
 
 class Debug {
   public:
-    static void print(const char *msg) { sys::print(msg); }
+    static void print(const char *msg) {
+        sys::print(msg);
+    }
 
     static void printDec(uint64_t val) {
         if (val == 0) {
@@ -80,9 +82,9 @@ static void clearBss() {
 class ConsoleServer {
   public:
     ConsoleServer()
-        : m_window(nullptr), m_windowWidth(0), m_windowHeight(0),
-          m_serviceChannel(-1), m_isPrimary(false), m_instanceId(0),
-          m_lastPresentTime(0), m_hadFirstShellOutput(false), m_shellSpawnTime(0) {}
+        : m_window(nullptr), m_windowWidth(0), m_windowHeight(0), m_serviceChannel(-1),
+          m_isPrimary(false), m_instanceId(0), m_lastPresentTime(0), m_hadFirstShellOutput(false),
+          m_shellSpawnTime(0) {}
 
     bool init() {
         sys::print("\033[0m"); // Reset console colors
@@ -173,8 +175,7 @@ class ConsoleServer {
             // Sleep if no work - but not during startup polling period
             if (!didWork) {
                 // During first 2 seconds after shell spawn, don't sleep - aggressively poll
-                bool inStartupPoll = m_shellManager.has_shell() &&
-                                     !m_hadFirstShellOutput &&
+                bool inStartupPoll = m_shellManager.has_shell() && !m_hadFirstShellOutput &&
                                      (now - m_shellSpawnTime) < 2000;
                 if (inStartupPoll) {
                     // Don't sleep - just continue polling
@@ -185,7 +186,7 @@ class ConsoleServer {
                         sys::sleep(remaining);
                     }
                 } else {
-                    sys::sleep(5);  // Brief sleep to let other tasks run
+                    sys::sleep(5); // Brief sleep to let other tasks run
                 }
             }
         }
@@ -222,8 +223,8 @@ class ConsoleServer {
 
         for (uint32_t i = 0; i < 50; i++) {
             handleCount = 4;
-            int64_t n = sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy),
-                                          handles, &handleCount);
+            int64_t n =
+                sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy), handles, &handleCount);
             if (n >= 0) {
                 Debug::print("[consoled] Received bootstrap caps\n");
                 sys::channel_close(BOOTSTRAP_RECV);
@@ -293,8 +294,8 @@ class ConsoleServer {
 
         // Check for existing consoled instance
         uint32_t existingHandle = 0xFFFFFFFF;
-        bool consoledExists = (sys::assign_get("CONSOLED", &existingHandle) == 0 &&
-                               existingHandle != 0xFFFFFFFF);
+        bool consoledExists =
+            (sys::assign_get("CONSOLED", &existingHandle) == 0 && existingHandle != 0xFFFFFFFF);
         if (consoledExists) {
             sys::channel_close(static_cast<int32_t>(existingHandle));
             m_instanceId = sys::uptime() % 1000;
@@ -313,7 +314,8 @@ class ConsoleServer {
                 digits[di++] = '0' + (id % 10);
                 id /= 10;
             } while (id > 0 && di < 4);
-            while (di > 0) *p++ = digits[--di];
+            while (di > 0)
+                *p++ = digits[--di];
             *p = '\0';
         }
 
@@ -399,16 +401,15 @@ class ConsoleServer {
 
         while (messagesProcessed < MAX_MESSAGES_PER_BATCH) {
             uint32_t handleCount = 4;
-            int64_t n = sys::channel_recv(m_serviceChannel, msgBuf, MAX_PAYLOAD,
-                                          handles, &handleCount);
+            int64_t n =
+                sys::channel_recv(m_serviceChannel, msgBuf, MAX_PAYLOAD, handles, &handleCount);
 
             if (n > 0) {
                 messagesProcessed++;
 
-                int32_t clientCh = (handleCount > 0) ?
-                    static_cast<int32_t>(handles[0]) : -1;
-                m_requestHandler.handle(clientCh, msgBuf,
-                                        static_cast<size_t>(n), handles, handleCount);
+                int32_t clientCh = (handleCount > 0) ? static_cast<int32_t>(handles[0]) : -1;
+                m_requestHandler.handle(
+                    clientCh, msgBuf, static_cast<size_t>(n), handles, handleCount);
 
                 for (uint32_t i = 0; i < handleCount; i++) {
                     if (handles[i] != 0xFFFFFFFF) {

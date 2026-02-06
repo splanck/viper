@@ -49,6 +49,13 @@ struct PeepholeStats
     std::size_t branchesToNextRemoved{0};
     std::size_t deadCodeEliminated{0};
     std::size_t coldBlocksMoved{0};
+
+    [[nodiscard]] std::size_t total() const noexcept
+    {
+        return movZeroToXor + cmpZeroToTest + arithmeticIdentities + strengthReductions +
+               identityMovesRemoved + consecutiveMovsFolded + branchesToNextRemoved +
+               deadCodeEliminated + coldBlocksMoved;
+    }
 };
 
 //-----------------------------------------------------------------------------
@@ -355,12 +362,14 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
         case MOpcode::MOVZXrr32:
         case MOpcode::MOVSDrr:
         case MOpcode::MOVSDmr:
+        case MOpcode::MOVUPSmr:
         case MOpcode::FADD:
         case MOpcode::FSUB:
         case MOpcode::FMUL:
         case MOpcode::FDIV:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
+        case MOpcode::MOVQrx:
             if (!instr.operands.empty() && samePhysReg(instr.operands[0], reg))
                 return true;
             break;
@@ -421,6 +430,7 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 
         case MOpcode::MOVrm:
         case MOpcode::MOVSDrm:
+        case MOpcode::MOVUPSrm:
             // mem, src - check src (operands[1] is the source register)
             if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
                 return true;
@@ -428,6 +438,7 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
+        case MOpcode::MOVQrx:
             // dst, src - check src
             if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
                 return true;
@@ -497,23 +508,36 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
     instr.operands.push_back(regOperand);
 }
 
+// Forward declaration — defined below tryArithmeticIdentity.
+[[nodiscard]] bool nextInstrReadsFlags(const std::vector<MInstr> &instrs, std::size_t idx) noexcept;
+
 /// @brief Rewrite arithmetic identity operations.
 ///
 /// Patterns:
-/// - add reg, #0 -> identity (mark for removal)
-/// - shl/shr/sar reg, #0 -> identity (mark for removal)
+/// - add reg, #0 -> identity (mark for removal), unless flags are read
+/// - shl/shr/sar reg, #0 -> identity (mark for removal), unless flags are read
 ///
-/// @param instr Instruction to check.
+/// ADD #0 and shift-by-0 set flags (ZF, SF, etc.). Removing these instructions
+/// is only safe when no subsequent instruction reads the flags before they are
+/// overwritten.
+///
+/// @param instrs Instruction vector for the basic block.
+/// @param idx Index of the instruction to check.
 /// @param stats Statistics to update.
 /// @return true if the instruction is an identity and should be removed.
-[[nodiscard]] bool tryArithmeticIdentity(const MInstr &instr, PeepholeStats &stats)
+[[nodiscard]] bool tryArithmeticIdentity(const std::vector<MInstr> &instrs,
+                                         std::size_t idx,
+                                         PeepholeStats &stats)
 {
+    const auto &instr = instrs[idx];
     switch (instr.opcode)
     {
         case MOpcode::ADDri:
-            // add reg, #0 -> no-op
+            // add reg, #0 -> no-op (but sets flags: ZF=1 iff reg==0, CF=0, OF=0)
             if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
             {
+                if (nextInstrReadsFlags(instrs, idx))
+                    return false;
                 ++stats.arithmeticIdentities;
                 return true;
             }
@@ -522,9 +546,11 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
         case MOpcode::SHLri:
         case MOpcode::SHRri:
         case MOpcode::SARri:
-            // shift by 0 -> no-op
+            // shift by 0 -> no-op (but sets flags)
             if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
             {
+                if (nextInstrReadsFlags(instrs, idx))
+                    return false;
                 ++stats.arithmeticIdentities;
                 return true;
             }
@@ -773,12 +799,14 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::MOVZXrr32:
         case MOpcode::MOVSDrr:
         case MOpcode::MOVSDmr:
+        case MOpcode::MOVUPSmr:
         case MOpcode::FADD:
         case MOpcode::FSUB:
         case MOpcode::FMUL:
         case MOpcode::FDIV:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
+        case MOpcode::MOVQrx:
         {
             const auto *reg = std::get_if<OpReg>(&instr.operands[0]);
             if (reg && reg->isPhys)
@@ -822,6 +850,7 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
         case MOpcode::MOVSDrr:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
+        case MOpcode::MOVQrx:
             // dst, src - use src
             if (instr.operands.size() >= 2)
                 addIfPhysReg(instr.operands[1]);
@@ -846,6 +875,7 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
 
         case MOpcode::MOVmr:
         case MOpcode::MOVSDmr:
+        case MOpcode::MOVUPSmr:
             // dst, mem - use mem's registers
             if (instr.operands.size() >= 2)
                 addMemRegs(instr.operands[1]);
@@ -853,6 +883,7 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
 
         case MOpcode::MOVrm:
         case MOpcode::MOVSDrm:
+        case MOpcode::MOVUPSrm:
             // mem, src - use both mem's registers and src
             if (instr.operands.size() >= 1)
                 addMemRegs(instr.operands[0]);
@@ -1037,7 +1068,8 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
 ///          impacting compile time.
 ///
 /// @param fn Machine function to optimise.
-void runPeepholes(MFunction &fn)
+/// @return Total number of transformations applied.
+std::size_t runPeepholes(MFunction &fn)
 {
     PeepholeStats stats;
 
@@ -1089,7 +1121,7 @@ void runPeepholes(MFunction &fn)
             }
 
             // Try arithmetic identity elimination (add #0, shift #0)
-            if (tryArithmeticIdentity(instr, stats))
+            if (tryArithmeticIdentity(instrs, i, stats))
             {
                 toRemove[i] = true;
                 continue;
@@ -1213,6 +1245,8 @@ void runPeepholes(MFunction &fn)
             ++stats.branchesToNextRemoved;
         }
     }
+
+    return stats.total();
 }
 
 } // namespace viper::codegen::x64

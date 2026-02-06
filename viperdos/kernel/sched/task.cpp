@@ -613,15 +613,19 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
         auto contains = [](const char *haystack, const char *needle) {
             for (const char *h = haystack; *h; h++) {
                 const char *p = h, *n = needle;
-                while (*n && *p == *n) { p++; n++; }
-                if (!*n) return true;
+                while (*n && *p == *n) {
+                    p++;
+                    n++;
+                }
+                if (!*n)
+                    return true;
             }
             return false;
         };
         if (contains(t->name, "displayd")) {
             t->policy = SchedPolicy::SCHED_RR;
             t->time_slice = RT_TIME_SLICE_DEFAULT;
-            t->priority = 32;  // High RT priority (queue 1)
+            t->priority = 32; // High RT priority (queue 1)
             serial::puts("[task] displayd set to SCHED_RR priority\n");
         }
         // Note: consoled and vinit now use SCHED_OTHER (CFS) by default
@@ -1146,7 +1150,7 @@ u32 reap_exited() {
             t.next = nullptr;
             t.prev = nullptr;
             t.hash_next = nullptr;
-            t.heap_index = static_cast<u32>(-1);  // Mark not in any heap
+            t.heap_index = static_cast<u32>(-1); // Mark not in any heap
 
             reaped++;
         }
@@ -1209,7 +1213,7 @@ void destroy(Task *t) {
     t->next = nullptr;
     t->prev = nullptr;
     t->hash_next = nullptr;
-    t->heap_index = static_cast<u32>(-1);  // Mark not in any heap
+    t->heap_index = static_cast<u32>(-1); // Mark not in any heap
 }
 
 /** @copydoc task::wakeup */

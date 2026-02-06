@@ -15,7 +15,7 @@ IL programs.
 
 Viper IL is a **typed, readable intermediate language** that serves as the core of the Viper toolchain:
 
-- **Frontends** (Zia, BASIC, Pascal, etc.) compile to IL
+- **Frontends** (Zia, BASIC, etc.) compile to IL
 - **VM** executes IL directly via bytecode interpretation
 - **Verifier** checks IL for safety and correctness
 - **Transforms** (SimplifyCFG, Liveness, etc.) optimize IL

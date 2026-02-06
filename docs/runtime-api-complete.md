@@ -3,8 +3,11 @@
 This document provides comprehensive documentation for all Viper runtime namespaces. It supplements the main runtime reference in `bible/appendices/d-runtime-reference.md`.
 
 **Auto-generated from:** `src/il/runtime/runtime.def`
-**Total Functions:** 1,418
-**Total Classes:** 98
+**Total Functions:** 2,493
+**Total Classes:** 186
+
+> **Note:** This document covers a subset of the runtime API. Many newer namespaces and functions
+> are not yet documented here. See `src/il/runtime/runtime.def` for the complete list.
 
 ---
 
@@ -13,7 +16,7 @@ This document provides comprehensive documentation for all Viper runtime namespa
 - [Viper.Bits](#viperbits) - Bitwise operations
 - [Viper.Box](#viperbox) - Value boxing/unboxing
 - [Viper.Convert](#viperconvert) - Type conversions
-- [Viper.DateTime](#viperdatetime) - Date and time operations
+- [Viper.Time.DateTime](#vipertimedatetime) - Date and time operations
 - [Viper.Diagnostics](#viperdiagnostics) - Assertions and debugging
 - [Viper.Exec](#viperexec) - Process execution
 - [Viper.Fmt](#viperfmt) - Number formatting
@@ -24,7 +27,7 @@ This document provides comprehensive documentation for all Viper runtime namespa
 - [Viper.Random](#viperrandom) - Random number generation
 - [Viper.Sound](#vipersound) - Audio playback
 - [Viper.String](#viperstring) - String manipulation
-- [Viper.Strings](#viperstrings) - String utilities
+- [Viper.String (Additional)](#viperstring-additional-utilities) - String utilities
 - [Viper.Text](#vipertext) - Text processing utilities
 - [Viper.Vec2](#vipervec2) - 2D vector math
 - [Viper.Vec3](#vipervec3) - 3D vector math
@@ -147,9 +150,11 @@ var s = Viper.Convert.ToString_Int(100);  // "100"
 
 ---
 
-## Viper.DateTime
+## Viper.Time.DateTime
 
 Date and time operations using Unix timestamps (seconds since epoch).
+
+> **Note:** The canonical namespace is `Viper.Time.DateTime`, not `Viper.DateTime`.
 
 ### Functions
 
@@ -664,9 +669,11 @@ var repeated = Viper.String.Repeat("-", 20);      // "--------------------"
 
 ---
 
-## Viper.Strings
+## Viper.String (Additional Utilities)
 
 Additional string utilities (conversion focus).
+
+> **Note:** These functions are part of the `Viper.String` namespace, not a separate `Viper.Strings`.
 
 ### Functions
 
@@ -1159,6 +1166,6 @@ var smallest = Viper.Collections.TreeMap.First(sorted);  // "apple"
 
 ## See Also
 
-- [Runtime Reference (Main)](bible/appendices/d-runtime-reference.md) - Terminal, File, Math, Collections, Network, etc.
 - [IL Runtime Specification](devdocs/runtime-vm.md) - Low-level VM runtime details
-- [Zia Language Guide](zia-guide.md) - Zia programming language reference
+- [Zia Language Reference](zia-reference.md) - Zia programming language reference
+- [Zia Getting Started](zia-getting-started.md) - Zia quick-start guide

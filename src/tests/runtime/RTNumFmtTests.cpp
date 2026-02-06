@@ -119,7 +119,9 @@ static void test_currency_euro()
 {
     rt_string sym = make_str("\xe2\x82\xac"); // Euro sign UTF-8
     rt_string r = rt_numfmt_currency(1000.00, sym);
-    assert(str_eq(r, "\xe2\x82\xac""1,000.00"));
+    assert(str_eq(r,
+                  "\xe2\x82\xac"
+                  "1,000.00"));
     rt_string_unref(r);
     rt_string_unref(sym);
 }
@@ -156,18 +158,42 @@ static void test_percent_zero()
 static void test_ordinal()
 {
     rt_string r;
-    r = rt_numfmt_ordinal(1); assert(str_eq(r, "1st")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(2); assert(str_eq(r, "2nd")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(3); assert(str_eq(r, "3rd")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(4); assert(str_eq(r, "4th")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(11); assert(str_eq(r, "11th")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(12); assert(str_eq(r, "12th")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(13); assert(str_eq(r, "13th")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(21); assert(str_eq(r, "21st")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(22); assert(str_eq(r, "22nd")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(100); assert(str_eq(r, "100th")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(101); assert(str_eq(r, "101st")); rt_string_unref(r);
-    r = rt_numfmt_ordinal(111); assert(str_eq(r, "111th")); rt_string_unref(r);
+    r = rt_numfmt_ordinal(1);
+    assert(str_eq(r, "1st"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(2);
+    assert(str_eq(r, "2nd"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(3);
+    assert(str_eq(r, "3rd"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(4);
+    assert(str_eq(r, "4th"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(11);
+    assert(str_eq(r, "11th"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(12);
+    assert(str_eq(r, "12th"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(13);
+    assert(str_eq(r, "13th"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(21);
+    assert(str_eq(r, "21st"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(22);
+    assert(str_eq(r, "22nd"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(100);
+    assert(str_eq(r, "100th"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(101);
+    assert(str_eq(r, "101st"));
+    rt_string_unref(r);
+    r = rt_numfmt_ordinal(111);
+    assert(str_eq(r, "111th"));
+    rt_string_unref(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -177,14 +203,30 @@ static void test_ordinal()
 static void test_to_words()
 {
     rt_string r;
-    r = rt_numfmt_to_words(0); assert(str_eq(r, "zero")); rt_string_unref(r);
-    r = rt_numfmt_to_words(1); assert(str_eq(r, "one")); rt_string_unref(r);
-    r = rt_numfmt_to_words(42); assert(str_eq(r, "forty-two")); rt_string_unref(r);
-    r = rt_numfmt_to_words(100); assert(str_eq(r, "one hundred")); rt_string_unref(r);
-    r = rt_numfmt_to_words(1000); assert(str_eq(r, "one thousand")); rt_string_unref(r);
-    r = rt_numfmt_to_words(1001); assert(str_eq(r, "one thousand one")); rt_string_unref(r);
-    r = rt_numfmt_to_words(1000000); assert(str_eq(r, "one million")); rt_string_unref(r);
-    r = rt_numfmt_to_words(-5); assert(str_eq(r, "negative five")); rt_string_unref(r);
+    r = rt_numfmt_to_words(0);
+    assert(str_eq(r, "zero"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(1);
+    assert(str_eq(r, "one"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(42);
+    assert(str_eq(r, "forty-two"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(100);
+    assert(str_eq(r, "one hundred"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(1000);
+    assert(str_eq(r, "one thousand"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(1001);
+    assert(str_eq(r, "one thousand one"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(1000000);
+    assert(str_eq(r, "one million"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(-5);
+    assert(str_eq(r, "negative five"));
+    rt_string_unref(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -194,12 +236,24 @@ static void test_to_words()
 static void test_bytes()
 {
     rt_string r;
-    r = rt_numfmt_bytes(0); assert(str_eq(r, "0 B")); rt_string_unref(r);
-    r = rt_numfmt_bytes(500); assert(str_eq(r, "500 B")); rt_string_unref(r);
-    r = rt_numfmt_bytes(1024); assert(str_eq(r, "1.00 KB")); rt_string_unref(r);
-    r = rt_numfmt_bytes(1536); assert(str_eq(r, "1.50 KB")); rt_string_unref(r);
-    r = rt_numfmt_bytes(1048576); assert(str_eq(r, "1.00 MB")); rt_string_unref(r);
-    r = rt_numfmt_bytes(1073741824); assert(str_eq(r, "1.00 GB")); rt_string_unref(r);
+    r = rt_numfmt_bytes(0);
+    assert(str_eq(r, "0 B"));
+    rt_string_unref(r);
+    r = rt_numfmt_bytes(500);
+    assert(str_eq(r, "500 B"));
+    rt_string_unref(r);
+    r = rt_numfmt_bytes(1024);
+    assert(str_eq(r, "1.00 KB"));
+    rt_string_unref(r);
+    r = rt_numfmt_bytes(1536);
+    assert(str_eq(r, "1.50 KB"));
+    rt_string_unref(r);
+    r = rt_numfmt_bytes(1048576);
+    assert(str_eq(r, "1.00 MB"));
+    rt_string_unref(r);
+    r = rt_numfmt_bytes(1073741824);
+    assert(str_eq(r, "1.00 GB"));
+    rt_string_unref(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,11 +263,21 @@ static void test_bytes()
 static void test_pad()
 {
     rt_string r;
-    r = rt_numfmt_pad(42, 5); assert(str_eq(r, "00042")); rt_string_unref(r);
-    r = rt_numfmt_pad(42, 2); assert(str_eq(r, "42")); rt_string_unref(r);
-    r = rt_numfmt_pad(42, 1); assert(str_eq(r, "42")); rt_string_unref(r);
-    r = rt_numfmt_pad(0, 3); assert(str_eq(r, "000")); rt_string_unref(r);
-    r = rt_numfmt_pad(-7, 4); assert(str_eq(r, "-007")); rt_string_unref(r);
+    r = rt_numfmt_pad(42, 5);
+    assert(str_eq(r, "00042"));
+    rt_string_unref(r);
+    r = rt_numfmt_pad(42, 2);
+    assert(str_eq(r, "42"));
+    rt_string_unref(r);
+    r = rt_numfmt_pad(42, 1);
+    assert(str_eq(r, "42"));
+    rt_string_unref(r);
+    r = rt_numfmt_pad(0, 3);
+    assert(str_eq(r, "000"));
+    rt_string_unref(r);
+    r = rt_numfmt_pad(-7, 4);
+    assert(str_eq(r, "-007"));
+    rt_string_unref(r);
 }
 
 int main()

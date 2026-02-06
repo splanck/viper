@@ -101,7 +101,8 @@ static void orderedmap_finalizer(void *obj)
     {
         rt_om_entry *next = e->next;
         free(e->key);
-        if (e->value) rt_obj_release_check0(e->value);
+        if (e->value)
+            rt_obj_release_check0(e->value);
         free(e);
         e = next;
     }
@@ -116,8 +117,7 @@ static void orderedmap_finalizer(void *obj)
 
 void *rt_orderedmap_new(void)
 {
-    rt_orderedmap_impl *m =
-        (rt_orderedmap_impl *)rt_obj_new_i64(0, sizeof(rt_orderedmap_impl));
+    rt_orderedmap_impl *m = (rt_orderedmap_impl *)rt_obj_new_i64(0, sizeof(rt_orderedmap_impl));
     m->capacity = 16;
     m->count = 0;
     m->buckets = (rt_om_entry **)calloc(16, sizeof(rt_om_entry *));
@@ -132,13 +132,15 @@ void *rt_orderedmap_new(void)
 
 int64_t rt_orderedmap_len(void *map)
 {
-    if (!map) return 0;
+    if (!map)
+        return 0;
     return ((rt_orderedmap_impl *)map)->count;
 }
 
 int64_t rt_orderedmap_is_empty(void *map)
 {
-    if (!map) return 1;
+    if (!map)
+        return 1;
     return ((rt_orderedmap_impl *)map)->count == 0 ? 1 : 0;
 }
 
@@ -148,11 +150,13 @@ int64_t rt_orderedmap_is_empty(void *map)
 
 void rt_orderedmap_set(void *map, rt_string key, void *value)
 {
-    if (!map || !key) return;
+    if (!map || !key)
+        return;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     const char *kstr = rt_string_cstr(key);
-    if (!kstr) return;
+    if (!kstr)
+        return;
     size_t klen = strlen(kstr);
 
     // Check for existing key
@@ -160,8 +164,10 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
     if (existing)
     {
         // Update value in-place (preserves order)
-        if (value) rt_obj_retain_maybe(value);
-        if (existing->value) rt_obj_release_check0(existing->value);
+        if (value)
+            rt_obj_retain_maybe(value);
+        if (existing->value)
+            rt_obj_release_check0(existing->value);
         existing->value = value;
         return;
     }
@@ -175,7 +181,8 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
     e->key = (char *)malloc(klen + 1);
     memcpy(e->key, kstr, klen + 1);
     e->key_len = klen;
-    if (value) rt_obj_retain_maybe(value);
+    if (value)
+        rt_obj_retain_maybe(value);
     e->value = value;
 
     // Add to hash chain
@@ -186,8 +193,10 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
     // Add to insertion-order list (tail)
     e->prev = m->tail;
     e->next = NULL;
-    if (m->tail) m->tail->next = e;
-    else m->head = e;
+    if (m->tail)
+        m->tail->next = e;
+    else
+        m->head = e;
     m->tail = e;
 
     m->count++;
@@ -199,11 +208,13 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
 
 void *rt_orderedmap_get(void *map, rt_string key)
 {
-    if (!map || !key) return NULL;
+    if (!map || !key)
+        return NULL;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     const char *kstr = rt_string_cstr(key);
-    if (!kstr) return NULL;
+    if (!kstr)
+        return NULL;
     size_t klen = strlen(kstr);
 
     rt_om_entry *e = om_find(m, kstr, klen);
@@ -212,11 +223,13 @@ void *rt_orderedmap_get(void *map, rt_string key)
 
 int64_t rt_orderedmap_has(void *map, rt_string key)
 {
-    if (!map || !key) return 0;
+    if (!map || !key)
+        return 0;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     const char *kstr = rt_string_cstr(key);
-    if (!kstr) return 0;
+    if (!kstr)
+        return 0;
     size_t klen = strlen(kstr);
 
     return om_find(m, kstr, klen) != NULL ? 1 : 0;
@@ -228,11 +241,13 @@ int64_t rt_orderedmap_has(void *map, rt_string key)
 
 int64_t rt_orderedmap_remove(void *map, rt_string key)
 {
-    if (!map || !key) return 0;
+    if (!map || !key)
+        return 0;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     const char *kstr = rt_string_cstr(key);
-    if (!kstr) return 0;
+    if (!kstr)
+        return 0;
     size_t klen = strlen(kstr);
 
     uint64_t idx = om_hash(kstr, klen) % (uint64_t)m->capacity;
@@ -247,13 +262,18 @@ int64_t rt_orderedmap_remove(void *map, rt_string key)
             *pp = e->hash_next;
 
             // Remove from insertion-order list
-            if (e->prev) e->prev->next = e->next;
-            else m->head = e->next;
-            if (e->next) e->next->prev = e->prev;
-            else m->tail = e->prev;
+            if (e->prev)
+                e->prev->next = e->next;
+            else
+                m->head = e->next;
+            if (e->next)
+                e->next->prev = e->prev;
+            else
+                m->tail = e->prev;
 
             free(e->key);
-            if (e->value) rt_obj_release_check0(e->value);
+            if (e->value)
+                rt_obj_release_check0(e->value);
             free(e);
             m->count--;
             return 1;
@@ -270,7 +290,8 @@ int64_t rt_orderedmap_remove(void *map, rt_string key)
 void *rt_orderedmap_keys(void *map)
 {
     void *seq = rt_seq_new();
-    if (!map) return seq;
+    if (!map)
+        return seq;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     rt_om_entry *e = m->head;
@@ -286,14 +307,17 @@ void *rt_orderedmap_keys(void *map)
 void *rt_orderedmap_values(void *map)
 {
     void *seq = rt_seq_new();
-    if (!map) return seq;
+    if (!map)
+        return seq;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     rt_om_entry *e = m->head;
     while (e)
     {
-        if (e->value) rt_seq_push(seq, e->value);
-        else rt_seq_push(seq, NULL);
+        if (e->value)
+            rt_seq_push(seq, e->value);
+        else
+            rt_seq_push(seq, NULL);
         e = e->next;
     }
     return seq;
@@ -301,10 +325,12 @@ void *rt_orderedmap_values(void *map)
 
 rt_string rt_orderedmap_key_at(void *map, int64_t index)
 {
-    if (!map) return NULL;
+    if (!map)
+        return NULL;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
-    if (index < 0 || index >= m->count) return NULL;
+    if (index < 0 || index >= m->count)
+        return NULL;
 
     rt_om_entry *e = m->head;
     for (int64_t i = 0; i < index; i++)
@@ -319,7 +345,8 @@ rt_string rt_orderedmap_key_at(void *map, int64_t index)
 
 void rt_orderedmap_clear(void *map)
 {
-    if (!map) return;
+    if (!map)
+        return;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     rt_om_entry *e = m->head;
@@ -327,7 +354,8 @@ void rt_orderedmap_clear(void *map)
     {
         rt_om_entry *next = e->next;
         free(e->key);
-        if (e->value) rt_obj_release_check0(e->value);
+        if (e->value)
+            rt_obj_release_check0(e->value);
         free(e);
         e = next;
     }

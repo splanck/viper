@@ -23,8 +23,7 @@ namespace viper::codegen::common
 
 /// @brief Abstract interface implemented by individual pipeline passes.
 /// @tparam ModuleT The backend-specific module state type.
-template <typename ModuleT>
-class Pass
+template <typename ModuleT> class Pass
 {
   public:
     virtual ~Pass() = default;
@@ -34,8 +33,7 @@ class Pass
 
 /// @brief Container sequencing registered passes for execution.
 /// @tparam ModuleT The backend-specific module state type.
-template <typename ModuleT>
-class PassManager
+template <typename ModuleT> class PassManager
 {
   public:
     /// @brief Add a pass to the manager; ownership is transferred.
@@ -45,12 +43,18 @@ class PassManager
     }
 
     /// @brief Execute all registered passes in order.
-    /// @return False when a pass signals failure; true otherwise.
+    /// @return False when a pass signals failure or diagnostics contain errors.
     bool run(ModuleT &module, Diagnostics &diags) const
     {
         for (const auto &pass : passes_)
         {
             if (!pass->run(module, diags))
+            {
+                return false;
+            }
+            // A pass may report errors via Diagnostics but still return true.
+            // Catch that case to avoid silent miscompilation.
+            if (diags.hasErrors())
             {
                 return false;
             }

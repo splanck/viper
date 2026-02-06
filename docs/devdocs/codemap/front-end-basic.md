@@ -6,7 +6,7 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 268 (.hpp/.cpp)
+- **Total source files**: 269 (.hpp/.cpp)
 - **Subdirectories**: ast/, builtins/, constfold/, detail/, diag/, lower/, passes/, print/, sem/, types/
 
 ## Core Infrastructure

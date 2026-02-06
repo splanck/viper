@@ -11,22 +11,28 @@ static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
-#define RUN_TEST(name) do { \
-    printf("  %s...", #name); \
-    test_##name(); \
-    printf(" OK\n"); \
-    tests_passed++; \
-} while(0)
+#define RUN_TEST(name)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %s...", #name);                                                                  \
+        test_##name();                                                                             \
+        printf(" OK\n");                                                                           \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define ASSERT(cond) do { \
-    if (!(cond)) { \
-        printf(" FAILED at line %d: %s\n", __LINE__, #cond); \
-        tests_failed++; \
-        return; \
-    } \
-} while(0)
+#define ASSERT(cond)                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-TEST(create_destroy) {
+TEST(create_destroy)
+{
     rt_objpool pool = rt_objpool_new(100);
     ASSERT(pool != NULL);
     ASSERT(rt_objpool_capacity(pool) == 100);
@@ -37,7 +43,8 @@ TEST(create_destroy) {
     rt_objpool_destroy(pool);
 }
 
-TEST(acquire_release) {
+TEST(acquire_release)
+{
     rt_objpool pool = rt_objpool_new(10);
 
     int64_t slot1 = rt_objpool_acquire(pool);
@@ -57,7 +64,8 @@ TEST(acquire_release) {
     rt_objpool_destroy(pool);
 }
 
-TEST(pool_full) {
+TEST(pool_full)
+{
     rt_objpool pool = rt_objpool_new(3);
 
     rt_objpool_acquire(pool);
@@ -65,23 +73,25 @@ TEST(pool_full) {
     rt_objpool_acquire(pool);
 
     ASSERT(rt_objpool_is_full(pool) == 1);
-    ASSERT(rt_objpool_acquire(pool) == -1);  // Full
+    ASSERT(rt_objpool_acquire(pool) == -1); // Full
 
     rt_objpool_destroy(pool);
 }
 
-TEST(slot_reuse) {
+TEST(slot_reuse)
+{
     rt_objpool pool = rt_objpool_new(5);
 
     int64_t slot1 = rt_objpool_acquire(pool);
     rt_objpool_release(pool, slot1);
     int64_t slot2 = rt_objpool_acquire(pool);
 
-    ASSERT(slot2 == slot1);  // Reused slot
+    ASSERT(slot2 == slot1); // Reused slot
     rt_objpool_destroy(pool);
 }
 
-TEST(clear) {
+TEST(clear)
+{
     rt_objpool pool = rt_objpool_new(10);
 
     rt_objpool_acquire(pool);
@@ -96,11 +106,13 @@ TEST(clear) {
     rt_objpool_destroy(pool);
 }
 
-TEST(iterate_active) {
+TEST(iterate_active)
+{
     rt_objpool pool = rt_objpool_new(10);
 
     int64_t slots[5];
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++)
+    {
         slots[i] = rt_objpool_acquire(pool);
     }
     // Release middle one
@@ -109,9 +121,10 @@ TEST(iterate_active) {
     // Iterate and count
     int count = 0;
     int64_t slot = rt_objpool_first_active(pool);
-    while (slot >= 0) {
+    while (slot >= 0)
+    {
         count++;
-        ASSERT(slot != slots[2]);  // Should not see released slot
+        ASSERT(slot != slots[2]); // Should not see released slot
         slot = rt_objpool_next_active(pool, slot);
     }
     ASSERT(count == 4);
@@ -119,7 +132,8 @@ TEST(iterate_active) {
     rt_objpool_destroy(pool);
 }
 
-TEST(user_data) {
+TEST(user_data)
+{
     rt_objpool pool = rt_objpool_new(10);
 
     int64_t slot = rt_objpool_acquire(pool);
@@ -133,7 +147,8 @@ TEST(user_data) {
     rt_objpool_destroy(pool);
 }
 
-TEST(invalid_operations) {
+TEST(invalid_operations)
+{
     rt_objpool pool = rt_objpool_new(5);
 
     // Release invalid slot
@@ -147,7 +162,8 @@ TEST(invalid_operations) {
     rt_objpool_destroy(pool);
 }
 
-TEST(capacity_limits) {
+TEST(capacity_limits)
+{
     // Test minimum capacity
     rt_objpool small = rt_objpool_new(0);
     ASSERT(rt_objpool_capacity(small) >= 1);
@@ -159,7 +175,8 @@ TEST(capacity_limits) {
     rt_objpool_destroy(large);
 }
 
-int main() {
+int main()
+{
     printf("RTObjPoolTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(acquire_release);

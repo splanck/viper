@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_html.h"
+#include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -72,8 +72,7 @@ static void test_to_text()
 static void test_extract_links()
 {
     rt_string input = rt_string_from_bytes(
-        "<a href=\"https://example.com\">Example</a> text <a href='https://test.org'>Test</a>",
-        82);
+        "<a href=\"https://example.com\">Example</a> text <a href='https://test.org'>Test</a>", 82);
     void *links = rt_html_extract_links(input);
     assert(rt_seq_len(links) == 2);
 
@@ -86,8 +85,7 @@ static void test_extract_links()
 
 static void test_extract_text()
 {
-    rt_string input = rt_string_from_bytes(
-        "<h1>Title</h1><p>Para 1</p><p>Para 2</p>", 41);
+    rt_string input = rt_string_from_bytes("<h1>Title</h1><p>Para 1</p><p>Para 2</p>", 41);
     rt_string tag = rt_string_from_bytes("p", 1);
     void *texts = rt_html_extract_text(input, tag);
     assert(rt_seq_len(texts) == 2);

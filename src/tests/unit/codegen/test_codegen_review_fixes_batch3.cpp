@@ -194,17 +194,16 @@ TEST(CodegenReviewBatch3, AArch64LabelSanitizesHyphens)
     // Second block with a hyphenated label
     MBasicBlock second{};
     second.name = ".Ltrap-cast-overflow";
-    second.instrs.push_back(
-        MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+    second.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
     fn.blocks.push_back(std::move(second));
 
     std::ostringstream oss;
     emitter.emitFunction(oss, fn);
     const std::string output = oss.str();
 
-    // The hyphenated labels must be sanitized (hyphens replaced with 'N')
-    EXPECT_TRUE(output.find(".LblockN1:") != std::string::npos);
-    EXPECT_TRUE(output.find(".LtrapNcastNoverflow:") != std::string::npos);
+    // The hyphenated labels must be sanitized (hyphens replaced with '_')
+    EXPECT_TRUE(output.find(".Lblock_1:") != std::string::npos);
+    EXPECT_TRUE(output.find(".Ltrap_cast_overflow:") != std::string::npos);
 
     // Verify the original hyphenated form does NOT appear as a label definition
     EXPECT_TRUE(output.find(".Lblock-1:") == std::string::npos);
@@ -239,8 +238,8 @@ TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized)
     const std::string output = oss.str();
 
     // Branch target and label definition must both be sanitized
-    EXPECT_TRUE(output.find("b .LtargetNblock") != std::string::npos);
-    EXPECT_TRUE(output.find(".LtargetNblock:") != std::string::npos);
+    EXPECT_TRUE(output.find("b .Ltarget_block") != std::string::npos);
+    EXPECT_TRUE(output.find(".Ltarget_block:") != std::string::npos);
 }
 
 TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized)
@@ -258,8 +257,8 @@ TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized)
     entry.name = ".Lentry";
 
     // cmp + conditional branch to hyphenated label
-    entry.instrs.push_back(MInstr{
-        MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
     entry.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(".Leq-target")}});
     entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -275,8 +274,8 @@ TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized)
     const std::string output = oss.str();
 
     // Both the b.eq target and label definition must be sanitized
-    EXPECT_TRUE(output.find("b.eq .LeqNtarget") != std::string::npos);
-    EXPECT_TRUE(output.find(".LeqNtarget:") != std::string::npos);
+    EXPECT_TRUE(output.find("b.eq .Leq_target") != std::string::npos);
+    EXPECT_TRUE(output.find(".Leq_target:") != std::string::npos);
 }
 
 int main(int argc, char **argv)

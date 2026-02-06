@@ -68,8 +68,7 @@ static int starts_with_ci(const char *s, const char *prefix)
 }
 
 /// @brief Create a new HTML node as a map with tag, text, attrs, children.
-static void *make_node(const char *tag, size_t tag_len,
-                       const char *text, size_t text_len)
+static void *make_node(const char *tag, size_t tag_len, const char *text, size_t text_len)
 {
     void *node = rt_map_new();
 
@@ -95,10 +94,21 @@ static void *make_node(const char *tag, size_t tag_len,
 static int is_self_closing_tag(const char *tag, size_t len)
 {
     // Common self-closing tags
-    static const char *self_closing[] = {
-        "br", "hr", "img", "input", "meta", "link",
-        "area", "base", "col", "embed", "param",
-        "source", "track", "wbr", NULL};
+    static const char *self_closing[] = {"br",
+                                         "hr",
+                                         "img",
+                                         "input",
+                                         "meta",
+                                         "link",
+                                         "area",
+                                         "base",
+                                         "col",
+                                         "embed",
+                                         "param",
+                                         "source",
+                                         "track",
+                                         "wbr",
+                                         NULL};
 
     for (int i = 0; self_closing[i]; i++)
     {
@@ -313,8 +323,8 @@ void *rt_html_parse(rt_string str)
             int all_ws = 1;
             for (size_t i = 0; i < text_len; i++)
             {
-                if (text_start[i] != ' ' && text_start[i] != '\t' &&
-                    text_start[i] != '\n' && text_start[i] != '\r')
+                if (text_start[i] != ' ' && text_start[i] != '\t' && text_start[i] != '\n' &&
+                    text_start[i] != '\r')
                 {
                     all_ws = 0;
                     break;
@@ -372,22 +382,22 @@ rt_string rt_html_escape(rt_string str)
     {
         switch (src[i])
         {
-        case '<':
-        case '>':
-            out_len += 4;
-            break; // &lt; &gt;
-        case '&':
-            out_len += 5;
-            break; // &amp;
-        case '"':
-            out_len += 6;
-            break; // &quot;
-        case '\'':
-            out_len += 5;
-            break; // &#39;
-        default:
-            out_len += 1;
-            break;
+            case '<':
+            case '>':
+                out_len += 4;
+                break; // &lt; &gt;
+            case '&':
+                out_len += 5;
+                break; // &amp;
+            case '"':
+                out_len += 6;
+                break; // &quot;
+            case '\'':
+                out_len += 5;
+                break; // &#39;
+            default:
+                out_len += 1;
+                break;
         }
     }
 
@@ -403,29 +413,29 @@ rt_string rt_html_escape(rt_string str)
     {
         switch (src[i])
         {
-        case '<':
-            memcpy(out + pos, "&lt;", 4);
-            pos += 4;
-            break;
-        case '>':
-            memcpy(out + pos, "&gt;", 4);
-            pos += 4;
-            break;
-        case '&':
-            memcpy(out + pos, "&amp;", 5);
-            pos += 5;
-            break;
-        case '"':
-            memcpy(out + pos, "&quot;", 6);
-            pos += 6;
-            break;
-        case '\'':
-            memcpy(out + pos, "&#39;", 5);
-            pos += 5;
-            break;
-        default:
-            out[pos++] = src[i];
-            break;
+            case '<':
+                memcpy(out + pos, "&lt;", 4);
+                pos += 4;
+                break;
+            case '>':
+                memcpy(out + pos, "&gt;", 4);
+                pos += 4;
+                break;
+            case '&':
+                memcpy(out + pos, "&amp;", 5);
+                pos += 5;
+                break;
+            case '"':
+                memcpy(out + pos, "&quot;", 6);
+                pos += 6;
+                break;
+            case '\'':
+                memcpy(out + pos, "&#39;", 5);
+                pos += 5;
+                break;
+            default:
+                out[pos++] = src[i];
+                break;
         }
     }
     out[pos] = '\0';
@@ -699,8 +709,8 @@ void *rt_html_extract_text(rt_string str, rt_string tag)
         {
             const char *start = p + 1;
             if (starts_with_ci(start, tag_name) &&
-                (start[tag_len] == '>' || start[tag_len] == ' ' ||
-                 start[tag_len] == '\t' || start[tag_len] == '/'))
+                (start[tag_len] == '>' || start[tag_len] == ' ' || start[tag_len] == '\t' ||
+                 start[tag_len] == '/'))
             {
                 const char *tag_end = strchr(p, '>');
                 if (!tag_end)

@@ -15,7 +15,8 @@
 #include <cassert>
 #include <cstdio>
 
-static void test_create_and_destroy() {
+static void test_create_and_destroy()
+{
     printf("  test_create_and_destroy...\n");
 
     rt_grid2d grid = rt_grid2d_new(10, 10, 0);
@@ -28,15 +29,18 @@ static void test_create_and_destroy() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_create_with_default_value() {
+static void test_create_with_default_value()
+{
     printf("  test_create_with_default_value...\n");
 
     rt_grid2d grid = rt_grid2d_new(5, 5, 42);
     assert(grid != nullptr);
 
     // All cells should have the default value
-    for (int64_t y = 0; y < 5; y++) {
-        for (int64_t x = 0; x < 5; x++) {
+    for (int64_t y = 0; y < 5; y++)
+    {
+        for (int64_t x = 0; x < 5; x++)
+        {
             assert(rt_grid2d_get(grid, x, y) == 42);
         }
     }
@@ -44,7 +48,8 @@ static void test_create_with_default_value() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_get_set() {
+static void test_get_set()
+{
     printf("  test_get_set...\n");
 
     rt_grid2d grid = rt_grid2d_new(10, 10, 0);
@@ -61,7 +66,8 @@ static void test_get_set() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_out_of_bounds_get() {
+static void test_out_of_bounds_get()
+{
     printf("  test_out_of_bounds_get...\n");
 
     rt_grid2d grid = rt_grid2d_new(5, 5, 99);
@@ -77,7 +83,8 @@ static void test_out_of_bounds_get() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_out_of_bounds_set_ignored() {
+static void test_out_of_bounds_set_ignored()
+{
     printf("  test_out_of_bounds_set_ignored...\n");
 
     rt_grid2d grid = rt_grid2d_new(5, 5, 0);
@@ -88,8 +95,10 @@ static void test_out_of_bounds_set_ignored() {
     rt_grid2d_set(grid, 5, 0, 999);
 
     // Verify no corruption - check all valid cells are still 0
-    for (int64_t y = 0; y < 5; y++) {
-        for (int64_t x = 0; x < 5; x++) {
+    for (int64_t y = 0; y < 5; y++)
+    {
+        for (int64_t x = 0; x < 5; x++)
+        {
             assert(rt_grid2d_get(grid, x, y) == 0);
         }
     }
@@ -97,7 +106,8 @@ static void test_out_of_bounds_set_ignored() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_in_bounds() {
+static void test_in_bounds()
+{
     printf("  test_in_bounds...\n");
 
     rt_grid2d grid = rt_grid2d_new(10, 8, 0);
@@ -115,7 +125,8 @@ static void test_in_bounds() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_fill() {
+static void test_fill()
+{
     printf("  test_fill...\n");
 
     rt_grid2d grid = rt_grid2d_new(5, 5, 0);
@@ -123,8 +134,10 @@ static void test_fill() {
 
     rt_grid2d_fill(grid, 7);
 
-    for (int64_t y = 0; y < 5; y++) {
-        for (int64_t x = 0; x < 5; x++) {
+    for (int64_t y = 0; y < 5; y++)
+    {
+        for (int64_t x = 0; x < 5; x++)
+        {
             assert(rt_grid2d_get(grid, x, y) == 7);
         }
     }
@@ -132,7 +145,8 @@ static void test_fill() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_clear() {
+static void test_clear()
+{
     printf("  test_clear...\n");
 
     rt_grid2d grid = rt_grid2d_new(5, 5, 99);
@@ -140,8 +154,10 @@ static void test_clear() {
 
     rt_grid2d_clear(grid);
 
-    for (int64_t y = 0; y < 5; y++) {
-        for (int64_t x = 0; x < 5; x++) {
+    for (int64_t y = 0; y < 5; y++)
+    {
+        for (int64_t x = 0; x < 5; x++)
+        {
             assert(rt_grid2d_get(grid, x, y) == 0);
         }
     }
@@ -149,7 +165,8 @@ static void test_clear() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_count() {
+static void test_count()
+{
     printf("  test_count...\n");
 
     rt_grid2d grid = rt_grid2d_new(5, 5, 0);
@@ -168,7 +185,8 @@ static void test_count() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_replace() {
+static void test_replace()
+{
     printf("  test_replace...\n");
 
     rt_grid2d grid = rt_grid2d_new(5, 5, 1);
@@ -189,7 +207,8 @@ static void test_replace() {
     rt_grid2d_destroy(grid);
 }
 
-static void test_copy_from() {
+static void test_copy_from()
+{
     printf("  test_copy_from...\n");
 
     rt_grid2d src = rt_grid2d_new(5, 5, 0);
@@ -215,7 +234,8 @@ static void test_copy_from() {
     rt_grid2d_destroy(dest);
 }
 
-static void test_copy_from_dimension_mismatch() {
+static void test_copy_from_dimension_mismatch()
+{
     printf("  test_copy_from_dimension_mismatch...\n");
 
     rt_grid2d src = rt_grid2d_new(5, 5, 0);
@@ -233,7 +253,8 @@ static void test_copy_from_dimension_mismatch() {
     rt_grid2d_destroy(dest);
 }
 
-static void test_invalid_dimensions() {
+static void test_invalid_dimensions()
+{
     printf("  test_invalid_dimensions...\n");
 
     assert(rt_grid2d_new(0, 10, 0) == nullptr);
@@ -242,7 +263,8 @@ static void test_invalid_dimensions() {
     assert(rt_grid2d_new(10, -1, 0) == nullptr);
 }
 
-static void test_tile_map_use_case() {
+static void test_tile_map_use_case()
+{
     printf("  test_tile_map_use_case...\n");
 
     // Simulate a simple tile map
@@ -254,18 +276,22 @@ static void test_tile_map_use_case() {
     assert(map != nullptr);
 
     // Set up borders
-    for (int64_t x = 0; x < 28; x++) {
+    for (int64_t x = 0; x < 28; x++)
+    {
         rt_grid2d_set(map, x, 0, TILE_WALL);
         rt_grid2d_set(map, x, 30, TILE_WALL);
     }
-    for (int64_t y = 0; y < 31; y++) {
+    for (int64_t y = 0; y < 31; y++)
+    {
         rt_grid2d_set(map, 0, y, TILE_WALL);
         rt_grid2d_set(map, 27, y, TILE_WALL);
     }
 
     // Fill interior with dots
-    for (int64_t y = 1; y < 30; y++) {
-        for (int64_t x = 1; x < 27; x++) {
+    for (int64_t y = 1; y < 30; y++)
+    {
+        for (int64_t x = 1; x < 27; x++)
+        {
             rt_grid2d_set(map, x, y, TILE_DOT);
         }
     }
@@ -286,7 +312,8 @@ static void test_tile_map_use_case() {
     rt_grid2d_destroy(map);
 }
 
-int main() {
+int main()
+{
     printf("RTGrid2DTests:\n");
 
     test_create_and_destroy();

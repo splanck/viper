@@ -26,12 +26,14 @@ typedef struct
 static line_array split_lines(const char *text)
 {
     line_array la = {NULL, 0};
-    if (!text || !*text) return la;
+    if (!text || !*text)
+        return la;
 
     // Count lines
     int count = 1;
     for (const char *p = text; *p; p++)
-        if (*p == '\n') count++;
+        if (*p == '\n')
+            count++;
 
     la.lines = (char **)malloc((size_t)count * sizeof(char *));
     la.count = 0;
@@ -46,7 +48,8 @@ static line_array split_lines(const char *text)
             memcpy(la.lines[la.count], start, len);
             la.lines[la.count][len] = '\0';
             la.count++;
-            if (*p == '\0') break;
+            if (*p == '\0')
+                break;
             start = p + 1;
         }
     }
@@ -80,9 +83,7 @@ static void compute_lcs_table(line_array *a, line_array *b, int **table)
             else if (strcmp(a->lines[i], b->lines[j]) == 0)
                 table[i][j] = table[i + 1][j + 1] + 1;
             else
-                table[i][j] = table[i + 1][j] > table[i][j + 1]
-                                   ? table[i + 1][j]
-                                   : table[i][j + 1];
+                table[i][j] = table[i + 1][j] > table[i][j + 1] ? table[i + 1][j] : table[i][j + 1];
         }
     }
 }
@@ -159,7 +160,8 @@ void *rt_diff_lines(rt_string a, rt_string b)
 
 rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context)
 {
-    if (context < 0) context = 3;
+    if (context < 0)
+        context = 3;
 
     void *diff = rt_diff_lines(a, b);
     int64_t len = rt_seq_len(diff);
@@ -215,7 +217,8 @@ int64_t rt_diff_count_changes(rt_string a, rt_string b)
 rt_string rt_diff_patch(rt_string original, void *diff)
 {
     (void)original;
-    if (!diff) return rt_string_from_bytes("", 0);
+    if (!diff)
+        return rt_string_from_bytes("", 0);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -227,12 +230,14 @@ rt_string rt_diff_patch(rt_string original, void *diff)
     {
         rt_string line = (rt_string)rt_seq_get(diff, i);
         const char *cstr = rt_string_cstr(line);
-        if (!cstr) continue;
+        if (!cstr)
+            continue;
 
         // Include lines that are same (' ') or added ('+')
         if (cstr[0] == ' ' || cstr[0] == '+')
         {
-            if (!first) rt_sb_append_cstr(&sb, "\n");
+            if (!first)
+                rt_sb_append_cstr(&sb, "\n");
             rt_sb_append_cstr(&sb, cstr + 1); // Skip prefix
             first = 0;
         }

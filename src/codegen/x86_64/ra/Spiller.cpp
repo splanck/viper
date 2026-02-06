@@ -276,8 +276,7 @@ void Spiller::spillValueWithReuse(RegClass cls,
 Operand Spiller::makeFrameOperand(int slot) const
 {
     const auto base = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
-    // Offset by 1000 slots to avoid collision with alloca placeholders
-    const int32_t offset = -static_cast<int32_t>((slot + 1000 + 1) * 8);
+    const int32_t offset = -static_cast<int32_t>((slot + kSpillSlotOffset + 1) * kSlotSizeBytes);
     return makeMemOperand(base, offset);
 }
 

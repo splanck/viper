@@ -24,8 +24,7 @@
 #define CM_INITIAL_CAPACITY 16
 #define CM_LOAD_FACTOR_NUM 3
 #define CM_LOAD_FACTOR_DEN 4
-#define FNV_OFFSET_BASIS 0xcbf29ce484222325ULL
-#define FNV_PRIME 0x100000001b3ULL
+#include "rt_hash_util.h"
 
 typedef struct rt_cm_entry
 {
@@ -40,20 +39,10 @@ typedef struct rt_countmap_impl
     void **vptr;
     rt_cm_entry **buckets;
     size_t capacity;
-    size_t count;       // distinct keys
-    int64_t total;      // sum of all counts
+    size_t count;  // distinct keys
+    int64_t total; // sum of all counts
 } rt_countmap_impl;
 
-static uint64_t fnv1a(const char *data, size_t len)
-{
-    uint64_t hash = FNV_OFFSET_BASIS;
-    for (size_t i = 0; i < len; ++i)
-    {
-        hash ^= (uint8_t)data[i];
-        hash *= FNV_PRIME;
-    }
-    return hash;
-}
 
 static const char *get_str_data(rt_string s, size_t *out_len)
 {
@@ -117,7 +106,7 @@ static void resize(rt_countmap_impl *cm)
         while (e)
         {
             rt_cm_entry *next = e->next;
-            uint64_t h = fnv1a(e->key, e->key_len);
+            uint64_t h = rt_fnv1a(e->key, e->key_len);
             size_t idx = (size_t)(h % new_cap);
             e->next = new_buckets[idx];
             new_buckets[idx] = e;
@@ -173,7 +162,7 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
@@ -220,7 +209,7 @@ int64_t rt_countmap_dec(void *obj, rt_string key)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry **pp = &cm->buckets[idx];
@@ -254,7 +243,7 @@ int64_t rt_countmap_get(void *obj, rt_string key)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
@@ -270,7 +259,7 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % cm->capacity);
 
     // Remove if count <= 0
@@ -420,7 +409,7 @@ int8_t rt_countmap_remove(void *obj, rt_string key)
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
 
-    uint64_t h = fnv1a(kdata, klen);
+    uint64_t h = rt_fnv1a(kdata, klen);
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry **pp = &cm->buckets[idx];

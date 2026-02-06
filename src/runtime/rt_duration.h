@@ -60,11 +60,8 @@ extern "C"
     /// @param seconds Seconds component (0-59).
     /// @param millis Milliseconds component (0-999).
     /// @return Duration value (milliseconds).
-    int64_t rt_duration_create(int64_t days,
-                               int64_t hours,
-                               int64_t minutes,
-                               int64_t seconds,
-                               int64_t millis);
+    int64_t rt_duration_create(
+        int64_t days, int64_t hours, int64_t minutes, int64_t seconds, int64_t millis);
 
     //=========================================================================
     // Duration Total Conversions

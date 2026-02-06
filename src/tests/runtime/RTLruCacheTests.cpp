@@ -186,7 +186,7 @@ static void test_get_promotes()
     rt_lrucache_get(cache, k1); // LRU order: a, c, b
 
     // Now k2 is the LRU, so adding k4 should evict k2
-    rt_lrucache_put(cache, k4, v4); // LRU order: d, a, c (b evicted)
+    rt_lrucache_put(cache, k4, v4);          // LRU order: d, a, c (b evicted)
     assert(rt_lrucache_has(cache, k1) == 1); // Promoted, not evicted
     assert(rt_lrucache_has(cache, k2) == 0); // Evicted
     assert(rt_lrucache_has(cache, k3) == 1);
@@ -222,7 +222,7 @@ static void test_peek_does_not_promote()
     // Peek at k1 - should NOT promote it
     assert(rt_lrucache_peek(cache, k1) == v1);
     // k1 is still LRU, so adding k4 should evict k1
-    rt_lrucache_put(cache, k4, v4); // LRU order: d, c, b (a evicted)
+    rt_lrucache_put(cache, k4, v4);          // LRU order: d, c, b (a evicted)
     assert(rt_lrucache_has(cache, k1) == 0); // Evicted (peek didn't promote)
     assert(rt_lrucache_has(cache, k2) == 1);
     assert(rt_lrucache_has(cache, k3) == 1);

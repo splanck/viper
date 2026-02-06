@@ -11,22 +11,28 @@ static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
-#define RUN_TEST(name) do { \
-    printf("  %s...", #name); \
-    test_##name(); \
-    printf(" OK\n"); \
-    tests_passed++; \
-} while(0)
+#define RUN_TEST(name)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %s...", #name);                                                                  \
+        test_##name();                                                                             \
+        printf(" OK\n");                                                                           \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define ASSERT(cond) do { \
-    if (!(cond)) { \
-        printf(" FAILED at line %d: %s\n", __LINE__, #cond); \
-        tests_failed++; \
-        return; \
-    } \
-} while(0)
+#define ASSERT(cond)                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-TEST(create_destroy) {
+TEST(create_destroy)
+{
     rt_buttongroup bg = rt_buttongroup_new();
     ASSERT(bg != NULL);
     ASSERT(rt_buttongroup_count(bg) == 0);
@@ -35,7 +41,8 @@ TEST(create_destroy) {
     rt_buttongroup_destroy(bg);
 }
 
-TEST(add_buttons) {
+TEST(add_buttons)
+{
     rt_buttongroup bg = rt_buttongroup_new();
     ASSERT(rt_buttongroup_add(bg, 1) == 1);
     ASSERT(rt_buttongroup_add(bg, 2) == 1);
@@ -50,7 +57,8 @@ TEST(add_buttons) {
     rt_buttongroup_destroy(bg);
 }
 
-TEST(select) {
+TEST(select)
+{
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
     rt_buttongroup_add(bg, 2);
@@ -72,7 +80,8 @@ TEST(select) {
     rt_buttongroup_destroy(bg);
 }
 
-TEST(clear_selection) {
+TEST(clear_selection)
+{
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
     rt_buttongroup_add(bg, 2);
@@ -84,7 +93,8 @@ TEST(clear_selection) {
     rt_buttongroup_destroy(bg);
 }
 
-TEST(select_next_prev) {
+TEST(select_next_prev)
+{
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 10);
     rt_buttongroup_add(bg, 20);
@@ -108,7 +118,8 @@ TEST(select_next_prev) {
     rt_buttongroup_destroy(bg);
 }
 
-TEST(remove) {
+TEST(remove)
+{
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
     rt_buttongroup_add(bg, 2);
@@ -122,7 +133,8 @@ TEST(remove) {
     rt_buttongroup_destroy(bg);
 }
 
-TEST(get_at) {
+TEST(get_at)
+{
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 100);
     rt_buttongroup_add(bg, 200);
@@ -135,7 +147,8 @@ TEST(get_at) {
     rt_buttongroup_destroy(bg);
 }
 
-int main() {
+int main()
+{
     printf("RTButtonGroupTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(add_buttons);

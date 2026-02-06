@@ -410,7 +410,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
     {
         // Check if the first part is a module alias or imported symbol that needs expansion
         // e.g., "T.Say" where T is an alias for "Viper.Terminal" becomes "Viper.Terminal.Say"
-        // or "Canvas.New" where Canvas is imported from Viper.Graphics becomes "Viper.Graphics.Canvas.New"
+        // or "Canvas.New" where Canvas is imported from Viper.Graphics becomes
+        // "Viper.Graphics.Canvas.New"
         auto dotPos = dottedName.find('.');
         if (dotPos != std::string::npos)
         {
@@ -418,14 +419,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             std::string rest = dottedName.substr(dotPos + 1);
 
             // Check if firstPart is a module alias (bound namespace with alias)
-            for (const auto &[ns, alias] : boundNamespaces_)
+            auto aliasIt = aliasToNamespace_.find(firstPart);
+            if (aliasIt != aliasToNamespace_.end())
             {
-                if (!alias.empty() && alias == firstPart)
-                {
-                    // Expand the alias: T.Say -> Viper.Terminal.Say
-                    dottedName = ns + "." + rest;
-                    break;
-                }
+                // Expand the alias: T.Say -> Viper.Terminal.Say
+                dottedName = aliasIt->second + "." + rest;
             }
 
             // Check if firstPart is an imported symbol (e.g., Canvas from Viper.Graphics)
@@ -546,8 +544,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 analyzeArgs();
                 // Validate string keys for methods that require them
                 if (method->returnKind == MethodReturnKind::ValueType ||
-                    method->returnKind == MethodReturnKind::Boolean ||
-                    fieldExpr->field == "set" || fieldExpr->field == "put")
+                    method->returnKind == MethodReturnKind::Boolean || fieldExpr->field == "set" ||
+                    fieldExpr->field == "put")
                 {
                     if (!expr->args.empty())
                     {
@@ -577,8 +575,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         // Handles runtime-specific methods (get_Len, Put, First, etc.) that aren't
         // in the built-in Zia-friendly method tables above.
         if (baseType && (baseType->kind == TypeKindSem::Set ||
-                         baseType->kind == TypeKindSem::List ||
-                         baseType->kind == TypeKindSem::Map))
+                         baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map))
         {
             std::string className;
             if (baseType->kind == TypeKindSem::Set)

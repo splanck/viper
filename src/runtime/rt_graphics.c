@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_action.h"
 #include "rt_graphics.h"
+#include "rt_action.h"
 #include "rt_font.h"
 #include "rt_input.h"
 #include "rt_object.h"
@@ -1885,8 +1885,10 @@ int64_t rt_color_darken(int64_t color, int64_t amount)
 int64_t rt_color_from_hex(rt_string hex)
 {
     const char *s = rt_string_cstr(hex);
-    if (!s) return 0;
-    if (*s == '#') s++;
+    if (!s)
+        return 0;
+    if (*s == '#')
+        s++;
     size_t len = strlen(s);
     unsigned long val = strtoul(s, NULL, 16);
     if (len == 6)
@@ -1920,40 +1922,44 @@ rt_string rt_color_to_hex(int64_t color)
     int64_t b = color & 0xFF;
     int len;
     if (a != 0 && a != 255)
-        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X",
-                       (int)r, (int)g, (int)b, (int)a);
+        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X", (int)r, (int)g, (int)b, (int)a);
     else
-        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X",
-                       (int)r, (int)g, (int)b);
+        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X", (int)r, (int)g, (int)b);
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
 int64_t rt_color_saturate(int64_t color, int64_t amount)
 {
-    if (amount < 0) amount = 0;
-    if (amount > 100) amount = 100;
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
     int64_t h, s, l;
     rgb_to_hsl(r, g, b, &h, &s, &l);
     s = s + amount;
-    if (s > 100) s = 100;
+    if (s > 100)
+        s = 100;
     hsl_to_rgb(h, s, l, &r, &g, &b);
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 int64_t rt_color_desaturate(int64_t color, int64_t amount)
 {
-    if (amount < 0) amount = 0;
-    if (amount > 100) amount = 100;
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
     int64_t h, s, l;
     rgb_to_hsl(r, g, b, &h, &s, &l);
     s = s - amount;
-    if (s < 0) s = 0;
+    if (s < 0)
+        s = 0;
     hsl_to_rgb(h, s, l, &r, &g, &b);
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }

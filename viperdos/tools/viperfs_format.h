@@ -32,13 +32,14 @@ using i64 = int64_t;
  *  @brief On-disk constants shared by the mkfs/fsck tools and kernel driver.
  *  @{
  */
-constexpr u32 VIPERFS_MAGIC = 0x53465056;   ///< "VPFS" magic number
-constexpr u32 VIPERFS_VERSION = 1;           ///< On-disk format version
-constexpr u64 BLOCK_SIZE = 4096;             ///< Block size in bytes
-constexpr u64 INODE_SIZE = 256;              ///< Inode size in bytes
+constexpr u32 VIPERFS_MAGIC = 0x53465056;                 ///< "VPFS" magic number
+constexpr u32 VIPERFS_VERSION = 1;                        ///< On-disk format version
+constexpr u64 BLOCK_SIZE = 4096;                          ///< Block size in bytes
+constexpr u64 INODE_SIZE = 256;                           ///< Inode size in bytes
 constexpr u64 INODES_PER_BLOCK = BLOCK_SIZE / INODE_SIZE; ///< Inodes per block
-constexpr u64 ROOT_INODE = 2;                ///< Root directory inode number
-constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64); ///< Block pointers per indirect block
+constexpr u64 ROOT_INODE = 2;                             ///< Root directory inode number
+constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64);  ///< Block pointers per indirect block
+
 /** @} */
 
 /**

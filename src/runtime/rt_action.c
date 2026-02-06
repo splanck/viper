@@ -26,14 +26,14 @@
 typedef enum
 {
     BIND_NONE = 0,
-    BIND_KEY,           // Keyboard key
-    BIND_MOUSE_BUTTON,  // Mouse button
-    BIND_MOUSE_X,       // Mouse X delta
-    BIND_MOUSE_Y,       // Mouse Y delta
-    BIND_SCROLL_X,      // Mouse scroll X
-    BIND_SCROLL_Y,      // Mouse scroll Y
-    BIND_PAD_BUTTON,    // Gamepad button
-    BIND_PAD_AXIS,      // Gamepad axis
+    BIND_KEY,            // Keyboard key
+    BIND_MOUSE_BUTTON,   // Mouse button
+    BIND_MOUSE_X,        // Mouse X delta
+    BIND_MOUSE_Y,        // Mouse Y delta
+    BIND_SCROLL_X,       // Mouse scroll X
+    BIND_SCROLL_Y,       // Mouse scroll Y
+    BIND_PAD_BUTTON,     // Gamepad button
+    BIND_PAD_AXIS,       // Gamepad axis
     BIND_PAD_BUTTON_AXIS // Gamepad button as axis
 } BindingType;
 
@@ -41,9 +41,9 @@ typedef enum
 typedef struct Binding
 {
     BindingType type;
-    int64_t code;       // Key/button/axis code
-    int64_t pad_index;  // Controller index (-1 for any)
-    double value;       // Axis value for key/button bindings, scale for analog
+    int64_t code;      // Key/button/axis code
+    int64_t pad_index; // Controller index (-1 for any)
+    double value;      // Axis value for key/button bindings, scale for analog
     struct Binding *next;
 } Binding;
 
@@ -71,7 +71,8 @@ static int8_t g_initialized = 0;
 
 static Action *find_action(const char *name)
 {
-    if (!name) return NULL;
+    if (!name)
+        return NULL;
     Action *a = g_actions;
     while (a)
     {
@@ -84,7 +85,8 @@ static Action *find_action(const char *name)
 
 static Action *find_action_str(rt_string name)
 {
-    if (!name) return NULL;
+    if (!name)
+        return NULL;
     int64_t name_len = rt_len(name);
     const char *name_data = name->data;
 
@@ -92,8 +94,7 @@ static Action *find_action_str(rt_string name)
     while (a)
     {
         size_t a_len = strlen(a->name);
-        if ((int64_t)a_len == name_len &&
-            memcmp(a->name, name_data, a_len) == 0)
+        if ((int64_t)a_len == name_len && memcmp(a->name, name_data, a_len) == 0)
             return a;
         a = a->next;
     }
@@ -102,11 +103,14 @@ static Action *find_action_str(rt_string name)
 
 static char *strdup_rt_string(rt_string s)
 {
-    if (!s) return NULL;
+    if (!s)
+        return NULL;
     int64_t len = rt_len(s);
-    if (len == 0) return NULL;
+    if (len == 0)
+        return NULL;
     char *result = (char *)malloc((size_t)len + 1);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
     memcpy(result, s->data, (size_t)len);
     result[len] = '\0';
     return result;
@@ -135,7 +139,8 @@ static void free_action(Action *a)
 static Binding *create_binding(BindingType type, int64_t code, int64_t pad_index, double value)
 {
     Binding *b = (Binding *)malloc(sizeof(Binding));
-    if (!b) return NULL;
+    if (!b)
+        return NULL;
     b->type = type;
     b->code = code;
     b->pad_index = pad_index;
@@ -462,10 +467,12 @@ int8_t rt_action_define(rt_string name)
         return 0; // Already exists
 
     Action *a = (Action *)malloc(sizeof(Action));
-    if (!a) return 0;
+    if (!a)
+        return 0;
 
     a->name = strdup_rt_string(name);
-    if (!a->name) {
+    if (!a->name)
+    {
         free(a);
         return 0;
     }
@@ -492,10 +499,12 @@ int8_t rt_action_define_axis(rt_string name)
         return 0; // Already exists
 
     Action *a = (Action *)malloc(sizeof(Action));
-    if (!a) return 0;
+    if (!a)
+        return 0;
 
     a->name = strdup_rt_string(name);
-    if (!a->name) {
+    if (!a->name)
+    {
         free(a);
         return 0;
     }
@@ -534,8 +543,7 @@ int8_t rt_action_remove(rt_string name)
     {
         Action *a = *pp;
         size_t a_len = strlen(a->name);
-        if ((int64_t)a_len == name_len &&
-            memcmp(a->name, name_data, a_len) == 0)
+        if ((int64_t)a_len == name_len && memcmp(a->name, name_data, a_len) == 0)
         {
             *pp = a->next;
             free_action(a);
@@ -556,7 +564,8 @@ int8_t rt_action_bind_key(rt_string action, int64_t key)
     if (!a || a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_KEY, key, 0, 1.0);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -567,7 +576,8 @@ int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value)
     if (!a || !a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_KEY, key, 0, value);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -590,7 +600,8 @@ int8_t rt_action_bind_mouse(rt_string action, int64_t button)
     if (!a || a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_MOUSE_BUTTON, button, 0, 1.0);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -609,7 +620,8 @@ int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity)
     if (!a || !a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_MOUSE_X, 0, 0, sensitivity);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -620,7 +632,8 @@ int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity)
     if (!a || !a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_MOUSE_Y, 0, 0, sensitivity);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -631,7 +644,8 @@ int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity)
     if (!a || !a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_SCROLL_X, 0, 0, sensitivity);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -642,7 +656,8 @@ int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity)
     if (!a || !a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_SCROLL_Y, 0, 0, sensitivity);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -657,7 +672,8 @@ int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t bu
     if (!a || a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_PAD_BUTTON, button, pad_index, 1.0);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -676,7 +692,8 @@ int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis
     if (!a || !a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_PAD_AXIS, axis, pad_index, scale);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -689,13 +706,17 @@ int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t ax
     return remove_binding(a, BIND_PAD_AXIS, axis, pad_index);
 }
 
-int8_t rt_action_bind_pad_button_axis(rt_string action, int64_t pad_index, int64_t button, double value)
+int8_t rt_action_bind_pad_button_axis(rt_string action,
+                                      int64_t pad_index,
+                                      int64_t button,
+                                      double value)
 {
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
     Binding *b = create_binding(BIND_PAD_BUTTON_AXIS, button, pad_index, value);
-    if (!b) return 0;
+    if (!b)
+        return 0;
     add_binding(a, b);
     return 1;
 }
@@ -986,8 +1007,7 @@ rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button)
         while (b)
         {
             if ((b->type == BIND_PAD_BUTTON || b->type == BIND_PAD_BUTTON_AXIS) &&
-                b->code == button &&
-                (b->pad_index == pad_index || b->pad_index == -1))
+                b->code == button && (b->pad_index == pad_index || b->pad_index == -1))
                 return rt_string_from_bytes(a->name, strlen(a->name));
             b = b->next;
         }

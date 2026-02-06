@@ -104,6 +104,7 @@
 
 #include "AsmEmitter.hpp"
 
+#include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
 #include <cstring>
@@ -147,19 +148,13 @@ static std::string mangleCallTarget(const std::string &name)
 }
 
 /// @brief Sanitize a label for assembly output.
-/// @details Replaces minus signs with 'N' to prevent them being interpreted
-///          as subtraction in assembly syntax. Matches x86_64 convention.
+/// @details Delegates to the common label sanitizer which replaces hyphens
+///          with underscores and handles other illegal assembly characters.
 /// @param name Original label identifier.
 /// @return Sanitized copy suitable for assembly.
 static std::string sanitizeLabel(const std::string &name)
 {
-    std::string result = name;
-    for (char &ch : result)
-    {
-        if (ch == '-')
-            ch = 'N';
-    }
-    return result;
+    return viper::codegen::common::sanitizeLabel(name);
 }
 
 void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const
@@ -843,8 +838,8 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
     if (fn.name == "main")
     {
         os << "  ; Initialize runtime context for native execution\n";
-        os << "  bl _rt_legacy_context\n";
-        os << "  bl _rt_set_current_context\n";
+        os << "  bl " << mangleSymbol("rt_legacy_context") << "\n";
+        os << "  bl " << mangleSymbol("rt_set_current_context") << "\n";
     }
 
     // Store the plan for use by Ret instructions
@@ -963,12 +958,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
                << rn(getReg(mi.ops[2])) << ", " << mi.ops[3].cond << "\n";
             return;
         case MOpcode::LdpRegFpImm:
-            os << "  ldp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1]))
-               << ", [x29, #" << getImm(mi.ops[2]) << "]\n";
+            os << "  ldp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", [x29, #"
+               << getImm(mi.ops[2]) << "]\n";
             return;
         case MOpcode::StpRegFpImm:
-            os << "  stp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1]))
-               << ", [x29, #" << getImm(mi.ops[2]) << "]\n";
+            os << "  stp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", [x29, #"
+               << getImm(mi.ops[2]) << "]\n";
             return;
         case MOpcode::LdpFprFpImm:
         {

@@ -54,7 +54,8 @@ std::vector<std::string> collectFiles(const fs::path &dir,
     if (!fs::is_directory(dir))
         return result;
 
-    for (auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
+    for (auto it =
+             fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
          it != fs::recursive_directory_iterator();
          ++it)
     {
@@ -93,7 +94,7 @@ bool hasZiaEntryPoint(const std::string &path)
         return false;
 
     // Match "func start(" or "func main(" with optional whitespace
-    std::regex entryPattern(R"(^\s*func\s+(start|main)\s*\()");
+    static const std::regex entryPattern(R"(^\s*func\s+(start|main)\s*\()");
     std::string line;
     while (std::getline(file, line))
     {
@@ -110,7 +111,7 @@ bool hasBasicAddFile(const std::string &path)
     if (!file.is_open())
         return false;
 
-    std::regex addFilePattern(R"(^\s*AddFile\s+)");
+    static const std::regex addFilePattern(R"(^\s*AddFile\s+)");
     std::string line;
     while (std::getline(file, line))
     {
@@ -130,9 +131,10 @@ bool hasBasicTopLevelCode(const std::string &path)
 
     // Simple heuristic: look for lines that aren't blank, comments,
     // SUB/FUNCTION/END SUB/END FUNCTION definitions, or AddFile/Dim
-    std::regex subFuncPattern(R"(^\s*(Sub|Function|End Sub|End Function)\b)", std::regex::icase);
-    std::regex execPattern(R"(^\s*(Print|Input|If|For|While|Do|Call|Let|Dim|Goto|GoSub|Return|AddFile)\b)",
-                           std::regex::icase);
+    static const std::regex subFuncPattern(R"(^\s*(Sub|Function|End Sub|End Function)\b)", std::regex::icase);
+    static const std::regex execPattern(
+        R"(^\s*(Print|Input|If|For|While|Do|Call|Let|Dim|Goto|GoSub|Return|AddFile)\b)",
+        std::regex::icase);
 
     std::string line;
     while (std::getline(file, line))
@@ -288,7 +290,8 @@ il::support::Expected<bool> parseBool(const std::string &val,
         return true;
     if (val == "off" || val == "false" || val == "no")
         return false;
-    return makeManifestErr(manifestPath, line,
+    return makeManifestErr(manifestPath,
+                           line,
                            "invalid value '" + val + "' for " + directive + "; expected on or off");
 }
 
@@ -342,7 +345,8 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         // Parse directive and value
         auto spacePos = line.find_first_of(" \t");
         if (spacePos == std::string::npos)
-            return makeManifestErr(manifestPath, lineNum, "directive missing value: '" + line + "'");
+            return makeManifestErr(
+                manifestPath, lineNum, "directive missing value: '" + line + "'");
 
         std::string directive = line.substr(0, spacePos);
         std::string value = line.substr(line.find_first_not_of(" \t", spacePos));
@@ -371,8 +375,10 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             else if (value == "basic")
                 config.lang = ProjectLang::Basic;
             else
-                return makeManifestErr(manifestPath, lineNum,
-                                       "invalid language '" + value + "'; expected 'zia' or 'basic'");
+                return makeManifestErr(manifestPath,
+                                       lineNum,
+                                       "invalid language '" + value +
+                                           "'; expected 'zia' or 'basic'");
         }
         else if (directive == "entry")
         {
@@ -395,14 +401,17 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'optimize'");
             hasOptimize = true;
             if (value != "O0" && value != "O1" && value != "O2")
-                return makeManifestErr(manifestPath, lineNum,
-                                       "invalid optimize level '" + value + "'; expected O0, O1, or O2");
+                return makeManifestErr(manifestPath,
+                                       lineNum,
+                                       "invalid optimize level '" + value +
+                                           "'; expected O0, O1, or O2");
             config.optimizeLevel = value;
         }
         else if (directive == "bounds-checks")
         {
             if (hasBoundsChecks)
-                return makeManifestErr(manifestPath, lineNum, "duplicate directive 'bounds-checks'");
+                return makeManifestErr(
+                    manifestPath, lineNum, "duplicate directive 'bounds-checks'");
             hasBoundsChecks = true;
             auto b = parseBool(value, manifestPath, lineNum, "bounds-checks");
             if (!b)
@@ -412,7 +421,8 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         else if (directive == "overflow-checks")
         {
             if (hasOverflowChecks)
-                return makeManifestErr(manifestPath, lineNum, "duplicate directive 'overflow-checks'");
+                return makeManifestErr(
+                    manifestPath, lineNum, "duplicate directive 'overflow-checks'");
             hasOverflowChecks = true;
             auto b = parseBool(value, manifestPath, lineNum, "overflow-checks");
             if (!b)
@@ -431,8 +441,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         }
         else
         {
-            return makeManifestErr(manifestPath, lineNum,
-                                   "unknown directive '" + directive + "'");
+            return makeManifestErr(manifestPath, lineNum, "unknown directive '" + directive + "'");
         }
     }
 
@@ -496,9 +505,9 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     // Entry point resolution
     if (!hasEntry)
     {
-        il::support::Expected<std::string> entry =
-            (config.lang == ProjectLang::Zia) ? findZiaEntry(config.sourceFiles)
-                                              : findBasicEntry(config.sourceFiles);
+        il::support::Expected<std::string> entry = (config.lang == ProjectLang::Zia)
+                                                       ? findZiaEntry(config.sourceFiles)
+                                                       : findBasicEntry(config.sourceFiles);
         if (!entry)
             return il::support::Expected<ProjectConfig>(entry.error());
         config.entryFile = std::move(entry.value());

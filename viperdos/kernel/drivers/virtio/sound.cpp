@@ -97,8 +97,8 @@ bool SoundDevice::init() {
     pcm_dma_ = alloc_dma_buffer(4); // 16KB
     status_dma_ = alloc_dma_buffer(1);
 
-    if (!cmd_dma_.is_valid() || !resp_dma_.is_valid() ||
-        !pcm_dma_.is_valid() || !status_dma_.is_valid()) {
+    if (!cmd_dma_.is_valid() || !resp_dma_.is_valid() || !pcm_dma_.is_valid() ||
+        !status_dma_.is_valid()) {
         serial::puts("[virtio-snd] Failed to allocate DMA buffers\n");
         free_dma_buffer(cmd_dma_);
         free_dma_buffer(resp_dma_);

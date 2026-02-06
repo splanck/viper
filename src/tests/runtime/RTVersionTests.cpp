@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
-#include "rt_version.h"
 #include "rt_string.h"
+#include "rt_version.h"
 
 #include <cassert>
 #include <cstring>

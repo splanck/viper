@@ -21,7 +21,6 @@ Source code organization for the Viper compiler toolchain.
 | Component                                            | Description                                |
 |------------------------------------------------------|--------------------------------------------|
 | [BASIC Frontend](codemap/front-end-basic.md)         | Lexer, parser, semantic analysis, lowering |
-| [Pascal Frontend](codemap/front-end-pascal.md)       | Pascal lexer, parser, semantics, lowering  |
 | [Zia Frontend](codemap/front-end-zia.md) | Zia compiler with entities, generics |
 | [Frontend Common](codemap/front-end-common.md)       | Shared utilities across frontends          |
 
@@ -43,7 +42,7 @@ Source code organization for the Viper compiler toolchain.
 
 | Component                       | Description                                                   |
 |---------------------------------|---------------------------------------------------------------|
-| [Tools](codemap/tools.md)       | CLI tools (viper, vbasic, vpascal, zia, ilrun, il-verify, il-dis) |
+| [Tools](codemap/tools.md)       | CLI tools (viper, vbasic, zia, ilrun, il-verify, il-dis) |
 | [Graphics](codemap/graphics.md) | ViperGFX 2D graphics library                      |
 | [TUI](codemap/tui.md)           | Minimal TUI utility + tests                       |
 

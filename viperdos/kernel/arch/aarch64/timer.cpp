@@ -18,7 +18,7 @@
 #include "gic.hpp"
 
 #ifndef CONFIG_TIMER_HEARTBEAT
-#define CONFIG_TIMER_HEARTBEAT 1  // DEBUG: Enable to see timer ticks
+#define CONFIG_TIMER_HEARTBEAT 1 // DEBUG: Enable to see timer ticks
 #endif
 
 // Suppress warnings for timer register read helpers that may not be used yet

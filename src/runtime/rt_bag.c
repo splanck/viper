@@ -32,9 +32,7 @@
 #define BAG_LOAD_FACTOR_NUM 3
 #define BAG_LOAD_FACTOR_DEN 4
 
-/// FNV-1a hash constants for 64-bit.
-#define FNV_OFFSET_BASIS 0xcbf29ce484222325ULL
-#define FNV_PRIME 0x100000001b3ULL
+#include "rt_hash_util.h"
 
 /// @brief Entry in the hash set (collision chain node).
 ///
@@ -78,37 +76,6 @@ typedef struct rt_bag_impl
     size_t count;           ///< Number of strings currently in the Bag.
 } rt_bag_impl;
 
-/// @brief Computes FNV-1a hash of a byte sequence.
-///
-/// FNV-1a (Fowler-Noll-Vo) is a fast, non-cryptographic hash function with
-/// good avalanche properties. It's used here to distribute strings evenly
-/// across the hash table buckets.
-///
-/// **Algorithm:**
-/// ```
-/// hash = FNV_OFFSET_BASIS
-/// for each byte:
-///     hash = hash XOR byte
-///     hash = hash * FNV_PRIME
-/// return hash
-/// ```
-///
-/// @param data Pointer to the byte sequence to hash.
-/// @param len Length of the byte sequence.
-///
-/// @return 64-bit hash value.
-///
-/// @note Time complexity: O(n) where n is the length of the input.
-static uint64_t fnv1a_hash(const char *data, size_t len)
-{
-    uint64_t hash = FNV_OFFSET_BASIS;
-    for (size_t i = 0; i < len; ++i)
-    {
-        hash ^= (uint8_t)data[i];
-        hash *= FNV_PRIME;
-    }
-    return hash;
-}
 
 /// @brief Extracts C string data and length from a Viper string.
 ///
@@ -224,7 +191,7 @@ static void bag_resize(rt_bag_impl *bag, size_t new_capacity)
         while (entry)
         {
             rt_bag_entry *next = entry->next;
-            uint64_t hash = fnv1a_hash(entry->key, entry->key_len);
+            uint64_t hash = rt_fnv1a(entry->key, entry->key_len);
             size_t idx = hash % new_capacity;
             entry->next = new_buckets[idx];
             new_buckets[idx] = entry;
@@ -403,7 +370,7 @@ int8_t rt_bag_put(void *obj, rt_string str)
 
     size_t key_len;
     const char *key_data = get_key_data(str, &key_len);
-    uint64_t hash = fnv1a_hash(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % bag->capacity;
 
     // Check if string already exists
@@ -482,7 +449,7 @@ int8_t rt_bag_drop(void *obj, rt_string str)
 
     size_t key_len;
     const char *key_data = get_key_data(str, &key_len);
-    uint64_t hash = fnv1a_hash(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % bag->capacity;
 
     rt_bag_entry **prev_ptr = &bag->buckets[idx];
@@ -548,7 +515,7 @@ int8_t rt_bag_has(void *obj, rt_string str)
 
     size_t key_len;
     const char *key_data = get_key_data(str, &key_len);
-    uint64_t hash = fnv1a_hash(key_data, key_len);
+    uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % bag->capacity;
 
     return find_entry(bag->buckets[idx], key_data, key_len) ? 1 : 0;

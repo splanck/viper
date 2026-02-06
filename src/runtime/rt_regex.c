@@ -1082,7 +1082,7 @@ static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, in
             }
             else
             {
-                ctx->next_group--;  // Revert group index
+                ctx->next_group--; // Revert group index
             }
             return matched;
         }
@@ -1106,10 +1106,7 @@ static bool find_match_groups(compiled_pattern *cp,
                               int max_groups,
                               int *num_groups)
 {
-    match_context_groups ctx = {
-        text, text_len, 0,
-        group_starts, group_ends, max_groups, 0
-    };
+    match_context_groups ctx = {text, text_len, 0, group_starts, group_ends, max_groups, 0};
 
     for (int i = start_from; i <= text_len; i++)
     {
@@ -1140,9 +1137,16 @@ bool re_find_match_with_groups(re_compiled_pattern *cp,
                                int max_groups,
                                int *num_groups)
 {
-    return find_match_groups(cp, text, text_len, start_from,
-                             match_start, match_end,
-                             group_starts, group_ends, max_groups, num_groups);
+    return find_match_groups(cp,
+                             text,
+                             text_len,
+                             start_from,
+                             match_start,
+                             match_end,
+                             group_starts,
+                             group_ends,
+                             max_groups,
+                             num_groups);
 }
 
 //=============================================================================

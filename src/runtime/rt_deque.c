@@ -24,10 +24,10 @@
 
 typedef struct
 {
-    void **data;     // Circular buffer
-    int64_t cap;     // Capacity
-    int64_t len;     // Number of elements
-    int64_t front;   // Index of front element
+    void **data;   // Circular buffer
+    int64_t cap;   // Capacity
+    int64_t len;   // Number of elements
+    int64_t front; // Index of front element
 } Deque;
 
 //=============================================================================

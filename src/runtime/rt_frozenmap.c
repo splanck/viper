@@ -18,7 +18,7 @@
 
 typedef struct
 {
-    rt_string key;  // NULL = empty slot
+    rt_string key; // NULL = empty slot
     void *value;
 } fm_slot;
 
@@ -80,8 +80,7 @@ static int64_t fm_next_pow2(int64_t n)
 static rt_frozenmap_impl *fm_alloc(int64_t count)
 {
     int64_t cap = fm_next_pow2(count < 4 ? 8 : count * 2);
-    rt_frozenmap_impl *fm =
-        (rt_frozenmap_impl *)rt_obj_new_i64(0, sizeof(rt_frozenmap_impl));
+    rt_frozenmap_impl *fm = (rt_frozenmap_impl *)rt_obj_new_i64(0, sizeof(rt_frozenmap_impl));
     fm->count = 0;
     fm->capacity = cap;
     fm->slots = (fm_slot *)calloc((size_t)cap, sizeof(fm_slot));

@@ -6,10 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
-#include "rt_toml.h"
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_toml.h"
 
 #include <cassert>
 #include <cstring>

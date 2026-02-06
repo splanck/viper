@@ -34,21 +34,6 @@ vbasic program.bas --emit-il
 vbasic program.bas -o program.il
 ```
 
-### vpascal
-
-Run or compile Pascal programs.
-
-```bash
-# Run a Pascal program
-vpascal program.pas
-
-# Emit IL
-vpascal program.pas --emit-il
-
-# Save IL to file
-vpascal program.pas -o program.il
-```
-
 ### ilrun
 
 Execute IL programs.
@@ -95,10 +80,8 @@ The CLI is organized around primary entry points:
 - `viper front zia -run <file.zia>` — Compile and execute Zia
 - `viper front basic -emit-il <file.bas>` — Lower BASIC to IL
 - `viper front basic -run <file.bas>` — Compile and execute BASIC
-- `viper front pascal -emit-il <file.pas>` — Lower Pascal to IL
-- `viper front pascal -run <file.pas>` — Compile and execute Pascal
 - `viper il-opt <in.il> -o <out.il>` — Run optimization passes
-- `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code (experimental; unvalidated on real x86)
+- `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code
 - `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
 
 ### viper -run
@@ -127,7 +110,7 @@ viper -run <file.il> [flags]
 
 ### viper front
 
-Compile programs from any supported frontend (zia, basic, pascal).
+Compile programs from any supported frontend (zia, basic).
 
 ```bash
 # Zia
@@ -137,10 +120,6 @@ viper front zia -run <file.zia> [--trace=il|src] [--stdin-from <file>]
 # BASIC
 viper front basic -emit-il <file.bas> [--bounds-checks]
 viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>]
-
-# Pascal
-viper front pascal -emit-il <file.pas> [--bounds-checks]
-viper front pascal -run <file.pas> [--trace=il|src] [--stdin-from <file>]
 ```
 
 ### viper il-opt

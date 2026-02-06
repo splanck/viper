@@ -6,7 +6,7 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 39 (.hpp/.cpp)
+- **Total source files**: 34 (.hpp/.cpp)
 
 ## User-Facing Tools
 
@@ -18,15 +18,6 @@ Last updated: 2026-01-15
 | `usage.cpp`      | Help text implementation               |
 | `usage.hpp`      | Help text and usage information        |
 | `cli_compat.cpp` | Compatibility shim for viper integration |
-
-### vpascal (`vpascal/`)
-
-| File             | Purpose                                 |
-|------------------|-----------------------------------------|
-| `main.cpp`       | Pascal interpreter/compiler entry point |
-| `usage.cpp`      | Help text implementation                |
-| `usage.hpp`      | Help text and usage information         |
-| `cli_compat.cpp` | Compatibility shim for viper integration  |
 
 ### zia (`zia/`)
 
@@ -68,7 +59,6 @@ Last updated: 2026-01-15
 | `break_spec.cpp`         | Breakpoint specification impl       |
 | `break_spec.hpp`         | Breakpoint specification parsing    |
 | `cmd_front_basic.cpp`    | BASIC frontend subcommand           |
-| `cmd_front_pascal.cpp`   | Pascal frontend subcommand          |
 | `cmd_front_zia.cpp`      | Zia frontend subcommand             |
 | `cmd_run_il.cpp`         | IL execution subcommand             |
 | `cmd_il_opt.cpp`         | IL optimization subcommand          |

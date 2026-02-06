@@ -126,7 +126,7 @@ This is not acceptable. The problem is architectural.
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ Zia/Pascal  │────▶│ Viper IL    │────▶│ IL Optimizer │
+│ Zia/BASIC   │────▶│ Viper IL    │────▶│ IL Optimizer │
 │ Source      │     │ (unchanged) │     │ (unchanged)  │
 └─────────────┘     └─────────────┘     └──────┬───────┘
                                                │

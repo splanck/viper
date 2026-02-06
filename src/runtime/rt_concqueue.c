@@ -60,8 +60,7 @@ static void cq_finalizer(void *obj)
 
 void *rt_concqueue_new(void)
 {
-    rt_concqueue_impl *cq =
-        (rt_concqueue_impl *)rt_obj_new_i64(0, sizeof(rt_concqueue_impl));
+    rt_concqueue_impl *cq = (rt_concqueue_impl *)rt_obj_new_i64(0, sizeof(rt_concqueue_impl));
     cq->head = NULL;
     cq->tail = NULL;
     cq->count = 0;

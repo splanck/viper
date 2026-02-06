@@ -5,13 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_debounce.h"
+#include "rt_internal.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <thread>
-#include <chrono>
 
 extern "C" void vm_trap(const char *msg)
 {

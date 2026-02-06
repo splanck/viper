@@ -115,8 +115,10 @@ void buildMultiArgCallModule(Module &module, int64_t a, int64_t b, int64_t c)
     builder.setInsertPoint(mainBB);
 
     const auto callResult = builder.reserveTempId();
-    builder.emitCall(
-        "sum3", {Value::constInt(a), Value::constInt(b), Value::constInt(c)}, Value::temp(callResult), {1, 1, 1});
+    builder.emitCall("sum3",
+                     {Value::constInt(a), Value::constInt(b), Value::constInt(c)},
+                     Value::temp(callResult),
+                     {1, 1, 1});
 
     Instr mainRet;
     mainRet.op = Opcode::Ret;

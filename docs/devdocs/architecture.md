@@ -6,7 +6,7 @@ last-verified: 2026-02-02
 
 # Viper Architecture Overview
 
-**Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (Zia, BASIC, Pascal) →
+**Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (Zia, BASIC) →
 intermediate language (IL) → optimization passes → execution on the VM interpreter → native code generation. It merges
 prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked
 pages.
@@ -15,7 +15,7 @@ If you're new to the IL, start with the [IL Quickstart](../il-quickstart.md).
 
 ## Project goals
 
-- Multi-language front ends (Zia, BASIC, Pascal) that all lower to a common IL "thin waist."
+- Multi-language front ends (Zia, BASIC) that all lower to a common IL "thin waist."
 - Interpreter backend that executes IL directly for fast bring-up, tests, and debugging.
 - Native backends that translate IL to assembly (x86-64 SysV and ARM64 AAPCS64), assembled and linked into runnable
   binaries.
@@ -26,18 +26,17 @@ If you're new to the IL, start with the [IL Quickstart](../il-quickstart.md).
 
 The core stages and artifacts:
 
-- **Front ends (Zia, BASIC, Pascal):** lex/parse → AST → semantic analysis (types, arity, lvalues).
+- **Front ends (Zia, BASIC):** lex/parse → AST → semantic analysis (types, arity, lvalues).
 - **Lowering:** AST → IL module (functions, blocks, instructions).
 - **Optimization passes:** constant folding, dead code elimination, peephole rewriting.
 - **Execution backends:**
     - **VM interpreter** — primary development/debugging target.
-    - **Code generation** — AArch64 validated (Apple Silicon); x86_64 implemented but experimental/unvalidated on real
-      x86.
+    - **Code generation** — AArch64 validated (Apple Silicon); x86_64 implemented and validated.
 
 ```text
 +-----------------------+        +-----------------------+
-|   Frontends (3)       |        |        Tools          |
-|  - Zia, BASIC, Pascal |        |  - CLI (driver)       |
+|   Frontends (2)       |        |        Tools          |
+|  - Zia, BASIC         |        |  - CLI (driver)       |
 |                       |        |  - IL verifier        |
 +-----------+-----------+        |  - Disassembler       |
             |                    +-----------+-----------+
@@ -84,7 +83,7 @@ When the native backend is enabled, the same IL feeds the code generator instead
 
 ## Source layout (where things live)
 
-- **Front ends:** `src/frontends/zia/`, `src/frontends/basic/`, `src/frontends/pascal/`.
+- **Front ends:** `src/frontends/zia/`, `src/frontends/basic/`.
 - **IL core:** `src/il/core/`, `src/il/io/`, `src/il/build/`, `src/il/verify/`.
 - **Passes:** `src/il/transform/`.
 - **VM:** `src/vm/`, `src/runtime/`.
@@ -475,7 +474,7 @@ Functional and validated end‑to‑end on Apple Silicon. Pipeline:
 - Contract: new front ends must emit valid IL and adhere to the runtime ABI.
 - BASIC specifics: keywords map to straightforward control flow and runtime calls; dynamic-leaning typing handled via
   coercions to the IL's small type set (`i64`, `f64`, `str`) plus runtime helpers.
-- Additional front ends (Zia and Pascal now implemented): reuse symbol-table utilities, keep desugaring consistent, and
+- Additional front ends: reuse symbol-table utilities, keep desugaring consistent, and
   avoid pushing complexity into the IL.
 
 ### IL details worth nailing early

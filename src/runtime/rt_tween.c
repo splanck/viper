@@ -22,15 +22,15 @@
 /// Internal structure for Tween.
 struct rt_tween_impl
 {
-    double from;           ///< Starting value.
-    double to;             ///< Ending value.
-    double current;        ///< Current interpolated value.
-    int64_t duration;      ///< Total duration in frames.
-    int64_t elapsed;       ///< Elapsed frames.
-    int64_t ease_type;     ///< Easing function type.
-    int8_t running;        ///< 1 if tween is running.
-    int8_t complete;       ///< 1 if tween has completed.
-    int8_t paused;         ///< 1 if tween is paused.
+    double from;       ///< Starting value.
+    double to;         ///< Ending value.
+    double current;    ///< Current interpolated value.
+    int64_t duration;  ///< Total duration in frames.
+    int64_t elapsed;   ///< Elapsed frames.
+    int64_t ease_type; ///< Easing function type.
+    int8_t running;    ///< 1 if tween is running.
+    int8_t complete;   ///< 1 if tween has completed.
+    int8_t paused;     ///< 1 if tween is paused.
 };
 
 // Forward declaration of public easing function
@@ -102,7 +102,8 @@ void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, in
     tween->paused = 0;
 }
 
-void rt_tween_start_i64(rt_tween tween, int64_t from, int64_t to, int64_t duration, int64_t ease_type)
+void rt_tween_start_i64(
+    rt_tween tween, int64_t from, int64_t to, int64_t duration, int64_t ease_type)
 {
     rt_tween_start(tween, (double)from, (double)to, duration, ease_type);
 }
@@ -258,46 +259,46 @@ double rt_tween_ease(double t, int64_t ease_type)
 
     switch (ease_type)
     {
-    case RT_EASE_LINEAR:
-        return ease_linear(t);
-    case RT_EASE_IN_QUAD:
-        return ease_in_quad(t);
-    case RT_EASE_OUT_QUAD:
-        return ease_out_quad(t);
-    case RT_EASE_IN_OUT_QUAD:
-        return ease_in_out_quad(t);
-    case RT_EASE_IN_CUBIC:
-        return ease_in_cubic(t);
-    case RT_EASE_OUT_CUBIC:
-        return ease_out_cubic(t);
-    case RT_EASE_IN_OUT_CUBIC:
-        return ease_in_out_cubic(t);
-    case RT_EASE_IN_SINE:
-        return ease_in_sine(t);
-    case RT_EASE_OUT_SINE:
-        return ease_out_sine(t);
-    case RT_EASE_IN_OUT_SINE:
-        return ease_in_out_sine(t);
-    case RT_EASE_IN_EXPO:
-        return ease_in_expo(t);
-    case RT_EASE_OUT_EXPO:
-        return ease_out_expo(t);
-    case RT_EASE_IN_OUT_EXPO:
-        return ease_in_out_expo(t);
-    case RT_EASE_IN_BACK:
-        return ease_in_back(t);
-    case RT_EASE_OUT_BACK:
-        return ease_out_back(t);
-    case RT_EASE_IN_OUT_BACK:
-        return ease_in_out_back(t);
-    case RT_EASE_IN_BOUNCE:
-        return ease_in_bounce(t);
-    case RT_EASE_OUT_BOUNCE:
-        return ease_out_bounce(t);
-    case RT_EASE_IN_OUT_BOUNCE:
-        return ease_in_out_bounce(t);
-    default:
-        return t;
+        case RT_EASE_LINEAR:
+            return ease_linear(t);
+        case RT_EASE_IN_QUAD:
+            return ease_in_quad(t);
+        case RT_EASE_OUT_QUAD:
+            return ease_out_quad(t);
+        case RT_EASE_IN_OUT_QUAD:
+            return ease_in_out_quad(t);
+        case RT_EASE_IN_CUBIC:
+            return ease_in_cubic(t);
+        case RT_EASE_OUT_CUBIC:
+            return ease_out_cubic(t);
+        case RT_EASE_IN_OUT_CUBIC:
+            return ease_in_out_cubic(t);
+        case RT_EASE_IN_SINE:
+            return ease_in_sine(t);
+        case RT_EASE_OUT_SINE:
+            return ease_out_sine(t);
+        case RT_EASE_IN_OUT_SINE:
+            return ease_in_out_sine(t);
+        case RT_EASE_IN_EXPO:
+            return ease_in_expo(t);
+        case RT_EASE_OUT_EXPO:
+            return ease_out_expo(t);
+        case RT_EASE_IN_OUT_EXPO:
+            return ease_in_out_expo(t);
+        case RT_EASE_IN_BACK:
+            return ease_in_back(t);
+        case RT_EASE_OUT_BACK:
+            return ease_out_back(t);
+        case RT_EASE_IN_OUT_BACK:
+            return ease_in_out_back(t);
+        case RT_EASE_IN_BOUNCE:
+            return ease_in_bounce(t);
+        case RT_EASE_OUT_BOUNCE:
+            return ease_out_bounce(t);
+        case RT_EASE_IN_OUT_BOUNCE:
+            return ease_in_out_bounce(t);
+        default:
+            return t;
     }
 }
 

@@ -686,14 +686,17 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
         char *joined = (char *)malloc(total_len);
         if (joined)
         {
-            joined[0] = '\0';
+            size_t off = 0;
             for (size_t i = 0; i < count; i++)
             {
                 if (i > 0)
-                    strcat(joined, ";");
-                strcat(joined, paths[i]);
+                    joined[off++] = ';';
+                size_t len = strlen(paths[i]);
+                memcpy(joined + off, paths[i], len);
+                off += len;
             }
-            result = rt_string_from_bytes(joined, strlen(joined));
+            joined[off] = '\0';
+            result = rt_string_from_bytes(joined, off);
             free(joined);
         }
         for (size_t i = 0; i < count; i++)
@@ -1240,5 +1243,3 @@ void rt_findbar_focus(void *bar)
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     vg_findreplacebar_focus(data->bar);
 }
-
-

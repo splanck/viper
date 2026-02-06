@@ -1401,8 +1401,8 @@ std::size_t reorderBlocks(MFunction &fn)
 /// @param stats Statistics to update.
 /// @return true if fusion was applied (2 instrs → 1).
 [[nodiscard]] bool tryCbzCbnzFusion(std::vector<MInstr> &instrs,
-                                     std::size_t idx,
-                                     PeepholeStats &stats)
+                                    std::size_t idx,
+                                    PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;
@@ -1535,8 +1535,8 @@ std::size_t reorderBlocks(MFunction &fn)
 /// @param stats Statistics to update.
 /// @return true if merge was applied.
 [[nodiscard]] bool tryLdpStpMerge(std::vector<MInstr> &instrs,
-                                   std::size_t idx,
-                                   PeepholeStats &stats)
+                                  std::size_t idx,
+                                  PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;
@@ -1634,9 +1634,7 @@ std::size_t reorderBlocks(MFunction &fn)
 /// @param idx Index of the mul instruction.
 /// @param stats Statistics to update.
 /// @return true if fusion was applied.
-[[nodiscard]] bool tryMaddFusion(std::vector<MInstr> &instrs,
-                                  std::size_t idx,
-                                  PeepholeStats &stats)
+[[nodiscard]] bool tryMaddFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;
@@ -1823,9 +1821,8 @@ PeepholeStats runPeephole(MFunction &fn)
 
             if (secondLast.opc == MOpcode::BCond && secondLast.ops.size() == 2 &&
                 secondLast.ops[0].kind == MOperand::Kind::Cond &&
-                secondLast.ops[1].kind == MOperand::Kind::Label &&
-                last.opc == MOpcode::Br && last.ops.size() == 1 &&
-                last.ops[0].kind == MOperand::Kind::Label)
+                secondLast.ops[1].kind == MOperand::Kind::Label && last.opc == MOpcode::Br &&
+                last.ops.size() == 1 && last.ops[0].kind == MOperand::Kind::Label)
             {
                 // Check if bcond's target is the next block (fall-through)
                 if (secondLast.ops[1].label == nextBlock.name)
@@ -1835,8 +1832,9 @@ PeepholeStats runPeephole(MFunction &fn)
                     {
                         // Invert: b.cond .Lnext; b .Lother → b.!cond .Lother
                         secondLast.ops[0] = MOperand::condOp(inv);
-                        secondLast.ops[1] = last.ops[0]; // retarget to unconditional branch's target
-                        block.instrs.pop_back();         // remove the unconditional branch
+                        secondLast.ops[1] =
+                            last.ops[0];         // retarget to unconditional branch's target
+                        block.instrs.pop_back(); // remove the unconditional branch
                         ++stats.branchInversions;
                         continue; // skip the branch-to-next check below
                     }

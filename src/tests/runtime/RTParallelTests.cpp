@@ -152,7 +152,9 @@ static void test_map_order_preserved()
         if (actual != expected)
         {
             printf("  Order mismatch at index %d: expected %ld, got %ld\n",
-                   i, (long)expected, (long)actual);
+                   i,
+                   (long)expected,
+                   (long)actual);
             test_result(false, "map_order: order must be preserved");
         }
     }
@@ -203,9 +205,20 @@ static std::atomic<int> g_invoke_a{0};
 static std::atomic<int> g_invoke_b{0};
 static std::atomic<int> g_invoke_c{0};
 
-static void invoke_set_a() { g_invoke_a = 1; }
-static void invoke_set_b() { g_invoke_b = 1; }
-static void invoke_set_c() { g_invoke_c = 1; }
+static void invoke_set_a()
+{
+    g_invoke_a = 1;
+}
+
+static void invoke_set_b()
+{
+    g_invoke_b = 1;
+}
+
+static void invoke_set_c()
+{
+    g_invoke_c = 1;
+}
 
 static void test_invoke_basic()
 {

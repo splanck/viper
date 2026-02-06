@@ -16,8 +16,8 @@
 #include "rt_seq.h"
 
 #include <cassert>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed)
@@ -209,11 +209,10 @@ static void test_seq_apply()
         void *seq = make_int_seq(values, 4);
 
         void *result = rt_seq_apply(seq, square_value);
-        test_result("Apply square - values",
-                    unbox_int(rt_seq_get(result, 0)) == 1 &&
-                    unbox_int(rt_seq_get(result, 1)) == 4 &&
-                    unbox_int(rt_seq_get(result, 2)) == 9 &&
-                    unbox_int(rt_seq_get(result, 3)) == 16);
+        test_result(
+            "Apply square - values",
+            unbox_int(rt_seq_get(result, 0)) == 1 && unbox_int(rt_seq_get(result, 1)) == 4 &&
+                unbox_int(rt_seq_get(result, 2)) == 9 && unbox_int(rt_seq_get(result, 3)) == 16);
     }
 
     printf("\n");

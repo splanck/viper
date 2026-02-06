@@ -86,9 +86,9 @@ TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues)
     block.label = ".Lentry";
 
     // SUBrr v1, 42
-    MInstr sub = MInstr::make(
-        MOpcode::SUBrr,
-        std::vector<Operand>{makeVRegOperand(RegClass::GPR, 1), makeImmOperand(42)});
+    MInstr sub =
+        MInstr::make(MOpcode::SUBrr,
+                     std::vector<Operand>{makeVRegOperand(RegClass::GPR, 1), makeImmOperand(42)});
     block.instructions.push_back(std::move(sub));
     func.addBlock(std::move(block));
 

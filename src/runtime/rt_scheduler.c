@@ -84,8 +84,8 @@ static int64_t current_time_ms(void)
 /// @brief A single scheduled task entry.
 typedef struct sched_entry
 {
-    rt_string name;          ///< Retained task name string.
-    int64_t due_time_ms;     ///< Absolute time when this task is due.
+    rt_string name;           ///< Retained task name string.
+    int64_t due_time_ms;      ///< Absolute time when this task is due.
     struct sched_entry *next; ///< Next entry in linked list.
 } sched_entry;
 

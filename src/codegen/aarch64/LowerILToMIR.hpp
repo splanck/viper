@@ -7,8 +7,9 @@
 //
 // File: codegen/aarch64/LowerILToMIR.hpp
 // Purpose: Minimal IL→MIR lowering adapter for AArch64 (Phase A).
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
+// Key invariants: Stateless between lowerFunction() calls; all per-function
+//   state is cleared at the start of each call. TargetInfo must outlive this object.
+// Ownership/Lifetime: Non-owning; holds a pointer to an externally-owned TargetInfo.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

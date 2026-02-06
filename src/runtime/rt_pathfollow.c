@@ -26,18 +26,18 @@ struct waypoint
 struct rt_pathfollow_impl
 {
     struct waypoint points[RT_PATHFOLLOW_MAX_POINTS];
-    int64_t point_count;         ///< Number of waypoints.
-    rt_pathfollow_mode mode;     ///< Path mode.
-    int64_t speed;               ///< Speed (units/sec, fixed-point).
-    int8_t active;               ///< Is following active.
-    int8_t finished;             ///< Has reached end (ONCE mode).
-    int8_t reverse;              ///< Direction for PINGPONG.
-    int64_t current_x;           ///< Current X position.
-    int64_t current_y;           ///< Current Y position.
-    int64_t segment;             ///< Current segment index.
-    int64_t segment_progress;    ///< Progress within segment (0-1000).
-    int64_t total_length;        ///< Total path length (cached).
-    int64_t *segment_lengths;    ///< Cached segment lengths.
+    int64_t point_count;      ///< Number of waypoints.
+    rt_pathfollow_mode mode;  ///< Path mode.
+    int64_t speed;            ///< Speed (units/sec, fixed-point).
+    int8_t active;            ///< Is following active.
+    int8_t finished;          ///< Has reached end (ONCE mode).
+    int8_t reverse;           ///< Direction for PINGPONG.
+    int64_t current_x;        ///< Current X position.
+    int64_t current_y;        ///< Current Y position.
+    int64_t segment;          ///< Current segment index.
+    int64_t segment_progress; ///< Progress within segment (0-1000).
+    int64_t total_length;     ///< Total path length (cached).
+    int64_t *segment_lengths; ///< Cached segment lengths.
 };
 
 /// Integer square root approximation.
@@ -92,8 +92,8 @@ static void recalculate_lengths(rt_pathfollow path)
     path->total_length = 0;
     for (int64_t i = 0; i < segments; i++)
     {
-        path->segment_lengths[i] = distance(path->points[i].x, path->points[i].y,
-                                            path->points[i + 1].x, path->points[i + 1].y);
+        path->segment_lengths[i] = distance(
+            path->points[i].x, path->points[i].y, path->points[i + 1].x, path->points[i + 1].y);
         path->total_length += path->segment_lengths[i];
     }
 }
@@ -413,10 +413,10 @@ void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress)
     // Update position
     int64_t seg = path->segment;
     int64_t p = path->segment_progress;
-    path->current_x = path->points[seg].x +
-                      ((path->points[seg + 1].x - path->points[seg].x) * p) / 1000;
-    path->current_y = path->points[seg].y +
-                      ((path->points[seg + 1].y - path->points[seg].y) * p) / 1000;
+    path->current_x =
+        path->points[seg].x + ((path->points[seg + 1].x - path->points[seg].x) * p) / 1000;
+    path->current_y =
+        path->points[seg].y + ((path->points[seg + 1].y - path->points[seg].y) * p) / 1000;
 }
 
 int64_t rt_pathfollow_get_segment(rt_pathfollow path)

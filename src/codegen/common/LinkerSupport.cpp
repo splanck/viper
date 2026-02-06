@@ -79,8 +79,7 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text)
             start = i;
             boundary = (start == 0) ? std::string_view::npos : (start - 1);
         }
-        else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' &&
-                 text[i + 3] == '_')
+        else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' && text[i + 3] == '_')
         {
             start = i + 1;
             boundary = (i == 0) ? std::string_view::npos : (i - 1);
@@ -107,8 +106,7 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName)
 {
     if (!buildDir.empty())
-        return buildDir / "src/runtime" /
-               (std::string("lib") + std::string(libBaseName) + ".a");
+        return buildDir / "src/runtime" / (std::string("lib") + std::string(libBaseName) + ".a");
     return std::filesystem::path("src/runtime") /
            (std::string("lib") + std::string(libBaseName) + ".a");
 }
@@ -193,8 +191,8 @@ void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd)
 {
     for (auto it = ctx.requiredComponents.rbegin(); it != ctx.requiredComponents.rend(); ++it)
     {
-        const std::filesystem::path path = runtimeArchivePath(ctx.buildDir,
-                                                              archiveNameForComponent(*it));
+        const std::filesystem::path path =
+            runtimeArchivePath(ctx.buildDir, archiveNameForComponent(*it));
         if (fileExists(path))
             cmd.push_back(path.string());
     }
@@ -253,9 +251,7 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
     return rr.exit_code == 0 ? 0 : 1;
 }
 
-int runExecutable(const std::string &exePath,
-                  std::ostream &out,
-                  std::ostream &err)
+int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &err)
 {
     const RunResult rr = run_process({exePath});
     if (rr.exit_code == -1)

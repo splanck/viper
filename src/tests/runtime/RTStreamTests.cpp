@@ -118,9 +118,8 @@ static void test_memory_stream_basic()
         test_result("ToBytes works", bytes != NULL);
         test_result("ToBytes correct length", rt_bytes_len(bytes) == 3);
         test_result("ToBytes correct data",
-                    rt_bytes_get(bytes, 0) == 'X' &&
-                    rt_bytes_get(bytes, 1) == 'Y' &&
-                    rt_bytes_get(bytes, 2) == 'Z');
+                    rt_bytes_get(bytes, 0) == 'X' && rt_bytes_get(bytes, 1) == 'Y' &&
+                        rt_bytes_get(bytes, 2) == 'Z');
     }
 
     // Test 5: EOF detection

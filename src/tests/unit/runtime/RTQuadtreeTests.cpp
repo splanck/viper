@@ -11,29 +11,36 @@ static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
-#define RUN_TEST(name) do { \
-    printf("  %s...", #name); \
-    test_##name(); \
-    printf(" OK\n"); \
-    tests_passed++; \
-} while(0)
+#define RUN_TEST(name)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %s...", #name);                                                                  \
+        test_##name();                                                                             \
+        printf(" OK\n");                                                                           \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define ASSERT(cond) do { \
-    if (!(cond)) { \
-        printf(" FAILED at line %d: %s\n", __LINE__, #cond); \
-        tests_failed++; \
-        return; \
-    } \
-} while(0)
+#define ASSERT(cond)                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-TEST(create_destroy) {
-    rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);  // 1000x1000
+TEST(create_destroy)
+{
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000); // 1000x1000
     ASSERT(tree != NULL);
     ASSERT(rt_quadtree_item_count(tree) == 0);
     rt_quadtree_destroy(tree);
 }
 
-TEST(insert) {
+TEST(insert)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     ASSERT(rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000) == 1);
@@ -44,7 +51,8 @@ TEST(insert) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(insert_out_of_bounds) {
+TEST(insert_out_of_bounds)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
 
     // Completely outside bounds
@@ -53,7 +61,8 @@ TEST(insert_out_of_bounds) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(remove) {
+TEST(remove)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -70,7 +79,8 @@ TEST(remove) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(query_rect) {
+TEST(query_rect)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -90,7 +100,8 @@ TEST(query_rect) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(query_point) {
+TEST(query_point)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 20000, 20000);
@@ -104,7 +115,8 @@ TEST(query_point) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(update) {
+TEST(update)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -123,7 +135,8 @@ TEST(update) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(clear) {
+TEST(clear)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -136,13 +149,14 @@ TEST(clear) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(get_pairs) {
+TEST(get_pairs)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     // Insert overlapping items
     rt_quadtree_insert(tree, 1, 100000, 100000, 50000, 50000);
-    rt_quadtree_insert(tree, 2, 120000, 120000, 50000, 50000);  // Overlaps with 1
-    rt_quadtree_insert(tree, 3, 800000, 800000, 50000, 50000);  // Far away
+    rt_quadtree_insert(tree, 2, 120000, 120000, 50000, 50000); // Overlaps with 1
+    rt_quadtree_insert(tree, 3, 800000, 800000, 50000, 50000); // Far away
 
     int64_t pair_count = rt_quadtree_get_pairs(tree);
     ASSERT(pair_count > 0);
@@ -156,11 +170,13 @@ TEST(get_pairs) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(many_items) {
+TEST(many_items)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     // Insert many items
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 100; i++)
+    {
         int64_t x = (i % 10) * 100000;
         int64_t y = (i / 10) * 100000;
         rt_quadtree_insert(tree, i, x, y, 10000, 10000);
@@ -175,7 +191,8 @@ TEST(many_items) {
     rt_quadtree_destroy(tree);
 }
 
-TEST(invalid_result_index) {
+TEST(invalid_result_index)
+{
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -188,7 +205,8 @@ TEST(invalid_result_index) {
     rt_quadtree_destroy(tree);
 }
 
-int main() {
+int main()
+{
     printf("RTQuadtreeTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(insert);

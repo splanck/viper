@@ -378,8 +378,7 @@ rt_string rt_scanner_read_ident(void *obj)
     while (s->pos < s->len)
     {
         c = s->data[s->pos];
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-            (c >= '0' && c <= '9') || c == '_')
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')
             s->pos++;
         else
             break;
@@ -516,27 +515,27 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote)
             char actual;
             switch (esc)
             {
-            case 'n':
-                actual = '\n';
-                break;
-            case 't':
-                actual = '\t';
-                break;
-            case 'r':
-                actual = '\r';
-                break;
-            case '\\':
-                actual = '\\';
-                break;
-            case '"':
-                actual = '"';
-                break;
-            case '\'':
-                actual = '\'';
-                break;
-            default:
-                actual = esc;
-                break;
+                case 'n':
+                    actual = '\n';
+                    break;
+                case 't':
+                    actual = '\t';
+                    break;
+                case 'r':
+                    actual = '\r';
+                    break;
+                case '\\':
+                    actual = '\\';
+                    break;
+                case '"':
+                    actual = '"';
+                    break;
+                case '\'':
+                    actual = '\'';
+                    break;
+                default:
+                    actual = esc;
+                    break;
             }
             if (buf_pos < 4095)
                 buf[buf_pos++] = actual;

@@ -524,5 +524,3 @@ void rt_widget_reset_cursor(void *widget)
         return;
     // Reset widget cursor to default
 }
-
-

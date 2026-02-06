@@ -85,9 +85,12 @@ std::cout << result.ilSource << "\n";
 | `minBlocks`          | 1       | Minimum basic blocks                   |
 | `maxBlocks`          | 4       | Maximum basic blocks                   |
 | `includeComparisons` | true    | Include comparison operations          |
-| `includeControlFlow` | true    | Include branches (not yet implemented) |
-| `minConstant`        | -1000   | Minimum constant value                 |
-| `maxConstant`        | 1000    | Maximum constant value                 |
+| `includeControlFlow` | true    | Include branches and control flow       |
+| `minConstant`        | -10     | Minimum constant value                 |
+| `maxConstant`        | 10      | Maximum constant value                 |
+| `includeFloats`      | false   | Include floating-point operations      |
+| `includeBitwise`     | true    | Include bitwise operations             |
+| `includeShifts`      | true    | Include shift operations               |
 
 #### Generated Operations
 

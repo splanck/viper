@@ -197,7 +197,9 @@ namespace viper::codegen::x64
     {
         return value;
     }
-    return value + (align - remainder);
+    // For negative values, C++ remainder is negative (e.g., -20 % 16 = -4).
+    // Subtracting a negative remainder rounds toward +inf correctly.
+    return (remainder > 0) ? value + (align - remainder) : value - remainder;
 }
 
 /// \brief Round bytes up to the nearest multiple of align, returning size_t.

@@ -38,21 +38,6 @@ Start by running an existing BASIC program through the toolchain:
 
 These steps demonstrate the full BASIC → IL → VM loop.
 
-<a id="pascal-tutorial"></a>
-
-## Pascal Tutorial
-
-Start by running an existing Pascal program:
-
-1. Inspect [`examples/pascal/hello.pas`](../../examples/pascal/hello.pas) to see a minimal program.
-2. Lower it to IL with `viper front pascal -emit-il examples/pascal/hello.pas -o hello.il`.
-3. Execute the Pascal source directly with `viper front pascal -run examples/pascal/hello.pas` or run the emitted IL
-   via `viper -run hello.il`.
-4. Explore more examples like [`examples/pascal/factorial.pas`](../../examples/pascal/factorial.pas) and
-   [`examples/pascal/oop_shapes.pas`](../../examples/pascal/oop_shapes.pas) to see functions and OOP in action.
-
-These steps demonstrate the full Pascal → IL → VM loop.
-
 <a id="il-tutorial"></a>
 
 ## IL Tutorial
@@ -76,7 +61,6 @@ All runnable examples live under the repository's [`examples/`](../../examples/)
 
 - Zia programs: [`demos/zia/`](../../demos/zia/) — substantial demos including games, graphics, and applications.
 - BASIC programs: [`examples/basic/`](../../examples/basic/) — simple examples suitable for `viper front basic`.
-- Pascal programs: [`examples/pascal/`](../../examples/pascal/) — examples including OOP and recursion.
 - IL modules: [`examples/il/`](../../examples/il/) — ready to run with `viper -run`.
 
 ### Game Demos
@@ -92,6 +76,5 @@ Sources:
 
 - docs/tutorials-examples.md#zia-tutorial
 - docs/tutorials-examples.md#basic-tutorial
-- docs/tutorials-examples.md#pascal-tutorial
 - docs/tutorials-examples.md#il-tutorial
 - docs/tutorials-examples.md#examples

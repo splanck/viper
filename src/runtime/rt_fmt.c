@@ -455,7 +455,8 @@ extern "C"
             uval = (uint64_t)value;
         }
         rlen = snprintf(raw, sizeof(raw), "%" PRIu64, uval);
-        if (rlen < 0) return rt_string_from_bytes("", 0);
+        if (rlen < 0)
+            return rt_string_from_bytes("", 0);
 
         // Count how many separators we need
         int digits = rlen;
@@ -463,13 +464,16 @@ extern "C"
         size_t out_len = (size_t)digits + (size_t)groups * sep_len + (negative ? 1 : 0);
 
         char *buf = (char *)malloc(out_len + 1);
-        if (!buf) return rt_string_from_bytes("", 0);
+        if (!buf)
+            return rt_string_from_bytes("", 0);
 
         char *dst = buf;
-        if (negative) *dst++ = '-';
+        if (negative)
+            *dst++ = '-';
 
         int first_group = digits % 3;
-        if (first_group == 0) first_group = 3;
+        if (first_group == 0)
+            first_group = 3;
 
         const char *src = raw;
         for (int i = 0; i < first_group; ++i)
@@ -493,11 +497,14 @@ extern "C"
     /// @brief Format a number as currency with symbol and thousands grouping.
     rt_string rt_fmt_currency(double value, int64_t decimals, rt_string symbol)
     {
-        if (decimals < 0) decimals = 0;
-        if (decimals > 20) decimals = 20;
+        if (decimals < 0)
+            decimals = 0;
+        if (decimals > 20)
+            decimals = 20;
 
         const char *sym = symbol ? rt_string_cstr(symbol) : "$";
-        if (!sym) sym = "$";
+        if (!sym)
+            sym = "$";
         size_t sym_len = strlen(sym);
 
         // Separate integer and fractional parts
@@ -535,10 +542,20 @@ extern "C"
         }
 
         char *dst = buf;
-        if (negative) *dst++ = '-';
-        memcpy(dst, sym, sym_len); dst += sym_len;
-        if (grp_str) { memcpy(dst, grp_str, grp_len); dst += grp_len; }
-        if (dlen > 0) { memcpy(dst, dec_buf, (size_t)dlen); dst += dlen; }
+        if (negative)
+            *dst++ = '-';
+        memcpy(dst, sym, sym_len);
+        dst += sym_len;
+        if (grp_str)
+        {
+            memcpy(dst, grp_str, grp_len);
+            dst += grp_len;
+        }
+        if (dlen > 0)
+        {
+            memcpy(dst, dec_buf, (size_t)dlen);
+            dst += dlen;
+        }
         *dst = '\0';
 
         rt_string result = rt_string_from_bytes(buf, (size_t)(dst - buf));
@@ -548,34 +565,33 @@ extern "C"
     }
 
     // English number word tables
-    static const char *ones[] = {
-        "", "one", "two", "three", "four", "five",
-        "six", "seven", "eight", "nine", "ten",
-        "eleven", "twelve", "thirteen", "fourteen", "fifteen",
-        "sixteen", "seventeen", "eighteen", "nineteen"
-    };
+    static const char *ones[] = {"",        "one",     "two",       "three",    "four",
+                                 "five",    "six",     "seven",     "eight",    "nine",
+                                 "ten",     "eleven",  "twelve",    "thirteen", "fourteen",
+                                 "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"};
     static const char *tens_words[] = {
-        "", "", "twenty", "thirty", "forty", "fifty",
-        "sixty", "seventy", "eighty", "ninety"
-    };
+        "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"};
 
     static size_t words_chunk(char *buf, size_t cap, int64_t n)
     {
-        if (n == 0) return 0;
+        if (n == 0)
+            return 0;
         size_t written = 0;
         if (n >= 100)
         {
             int h = (int)(n / 100);
             written += (size_t)snprintf(buf + written, cap - written, "%s hundred", ones[h]);
             n %= 100;
-            if (n > 0) written += (size_t)snprintf(buf + written, cap - written, " ");
+            if (n > 0)
+                written += (size_t)snprintf(buf + written, cap - written, " ");
         }
         if (n >= 20)
         {
             int t = (int)(n / 10);
             written += (size_t)snprintf(buf + written, cap - written, "%s", tens_words[t]);
             n %= 10;
-            if (n > 0) written += (size_t)snprintf(buf + written, cap - written, "-%s", ones[n]);
+            if (n > 0)
+                written += (size_t)snprintf(buf + written, cap - written, "-%s", ones[n]);
         }
         else if (n > 0)
         {
@@ -617,7 +633,8 @@ extern "C"
         int first = 1;
         for (int i = part_count - 1; i >= 0; --i)
         {
-            if (parts[i] == 0) continue;
+            if (parts[i] == 0)
+                continue;
             if (!first)
                 pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, " ");
             pos += words_chunk(buf + pos, sizeof(buf) - pos, parts[i]);

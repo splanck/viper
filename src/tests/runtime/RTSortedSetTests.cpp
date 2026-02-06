@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_sortedset.h"
 #include "rt_seq.h"
+#include "rt_sortedset.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -128,14 +128,20 @@ static void test_sortedset_floor_ceil()
     rt_sortedset_put(set, rt_const_cstr("f"));
 
     // Floor: greatest element <= given
-    test_result("Floor(d) is d", strcmp(rt_string_cstr(rt_sortedset_floor(set, rt_const_cstr("d"))), "d") == 0);
-    test_result("Floor(c) is b", strcmp(rt_string_cstr(rt_sortedset_floor(set, rt_const_cstr("c"))), "b") == 0);
-    test_result("Floor(a) is empty", strlen(rt_string_cstr(rt_sortedset_floor(set, rt_const_cstr("a")))) == 0);
+    test_result("Floor(d) is d",
+                strcmp(rt_string_cstr(rt_sortedset_floor(set, rt_const_cstr("d"))), "d") == 0);
+    test_result("Floor(c) is b",
+                strcmp(rt_string_cstr(rt_sortedset_floor(set, rt_const_cstr("c"))), "b") == 0);
+    test_result("Floor(a) is empty",
+                strlen(rt_string_cstr(rt_sortedset_floor(set, rt_const_cstr("a")))) == 0);
 
     // Ceil: least element >= given
-    test_result("Ceil(d) is d", strcmp(rt_string_cstr(rt_sortedset_ceil(set, rt_const_cstr("d"))), "d") == 0);
-    test_result("Ceil(c) is d", strcmp(rt_string_cstr(rt_sortedset_ceil(set, rt_const_cstr("c"))), "d") == 0);
-    test_result("Ceil(g) is empty", strlen(rt_string_cstr(rt_sortedset_ceil(set, rt_const_cstr("g")))) == 0);
+    test_result("Ceil(d) is d",
+                strcmp(rt_string_cstr(rt_sortedset_ceil(set, rt_const_cstr("d"))), "d") == 0);
+    test_result("Ceil(c) is d",
+                strcmp(rt_string_cstr(rt_sortedset_ceil(set, rt_const_cstr("c"))), "d") == 0);
+    test_result("Ceil(g) is empty",
+                strlen(rt_string_cstr(rt_sortedset_ceil(set, rt_const_cstr("g")))) == 0);
 
     printf("\n");
 }
@@ -150,14 +156,20 @@ static void test_sortedset_lower_higher()
     rt_sortedset_put(set, rt_const_cstr("f"));
 
     // Lower: greatest element < given (strictly)
-    test_result("Lower(d) is b", strcmp(rt_string_cstr(rt_sortedset_lower(set, rt_const_cstr("d"))), "b") == 0);
-    test_result("Lower(e) is d", strcmp(rt_string_cstr(rt_sortedset_lower(set, rt_const_cstr("e"))), "d") == 0);
-    test_result("Lower(b) is empty", strlen(rt_string_cstr(rt_sortedset_lower(set, rt_const_cstr("b")))) == 0);
+    test_result("Lower(d) is b",
+                strcmp(rt_string_cstr(rt_sortedset_lower(set, rt_const_cstr("d"))), "b") == 0);
+    test_result("Lower(e) is d",
+                strcmp(rt_string_cstr(rt_sortedset_lower(set, rt_const_cstr("e"))), "d") == 0);
+    test_result("Lower(b) is empty",
+                strlen(rt_string_cstr(rt_sortedset_lower(set, rt_const_cstr("b")))) == 0);
 
     // Higher: least element > given (strictly)
-    test_result("Higher(d) is f", strcmp(rt_string_cstr(rt_sortedset_higher(set, rt_const_cstr("d"))), "f") == 0);
-    test_result("Higher(c) is d", strcmp(rt_string_cstr(rt_sortedset_higher(set, rt_const_cstr("c"))), "d") == 0);
-    test_result("Higher(f) is empty", strlen(rt_string_cstr(rt_sortedset_higher(set, rt_const_cstr("f")))) == 0);
+    test_result("Higher(d) is f",
+                strcmp(rt_string_cstr(rt_sortedset_higher(set, rt_const_cstr("d"))), "f") == 0);
+    test_result("Higher(c) is d",
+                strcmp(rt_string_cstr(rt_sortedset_higher(set, rt_const_cstr("c"))), "d") == 0);
+    test_result("Higher(f) is empty",
+                strlen(rt_string_cstr(rt_sortedset_higher(set, rt_const_cstr("f")))) == 0);
 
     printf("\n");
 }
@@ -279,7 +291,8 @@ static void test_sortedset_is_subset()
     test_result("set1 is subset of set2", rt_sortedset_is_subset(set1, set2) == 1);
     test_result("set2 is not subset of set1", rt_sortedset_is_subset(set2, set1) == 0);
     test_result("set1 is not subset of set3", rt_sortedset_is_subset(set1, set3) == 0);
-    test_result("Empty is subset of anything", rt_sortedset_is_subset(rt_sortedset_new(), set1) == 1);
+    test_result("Empty is subset of anything",
+                rt_sortedset_is_subset(rt_sortedset_new(), set1) == 1);
 
     printf("\n");
 }

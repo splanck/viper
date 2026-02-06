@@ -150,7 +150,9 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                     {
                         return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                             il::support::Severity::Error,
-                            std::string("unknown flag: ") + std::string(arg), {}, {}});
+                            std::string("unknown flag: ") + std::string(arg),
+                            {},
+                            {}});
                     }
                     break;
             }
@@ -241,8 +243,8 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
     if (!result.succeeded())
     {
         result.diagnostics.printAll(std::cerr, &sm);
-        return il::support::Expected<il::core::Module>(il::support::Diagnostic{
-            il::support::Severity::Error, "compilation failed", {}, {}});
+        return il::support::Expected<il::core::Module>(
+            il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
 
     return std::move(result.module);
@@ -257,8 +259,8 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     if (!source)
     {
         il::support::printDiag(source.error(), std::cerr, &sm);
-        return il::support::Expected<il::core::Module>(il::support::Diagnostic{
-            il::support::Severity::Error, "failed to load source", {}, {}});
+        return il::support::Expected<il::core::Module>(
+            il::support::Diagnostic{il::support::Severity::Error, "failed to load source", {}, {}});
     }
 
     if (noRuntimeNamespaces)
@@ -275,8 +277,8 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     {
         if (result.emitter)
             result.emitter->printAll(std::cerr);
-        return il::support::Expected<il::core::Module>(il::support::Diagnostic{
-            il::support::Severity::Error, "compilation failed", {}, {}});
+        return il::support::Expected<il::core::Module>(
+            il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
 
     // Apply SimplifyCFG for BASIC (matches cmd_front_basic.cpp behavior)

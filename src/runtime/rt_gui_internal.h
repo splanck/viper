@@ -52,6 +52,7 @@ static inline int viperdos_strcasecmp(const char *s1, const char *s2)
     }
     return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
 }
+
 #define strcasecmp viperdos_strcasecmp
 #else
 #include <strings.h>

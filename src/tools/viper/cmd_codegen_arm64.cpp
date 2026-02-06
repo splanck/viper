@@ -23,7 +23,6 @@
 #include "codegen/aarch64/Peephole.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/RodataPool.hpp"
-#include "codegen/common/ArgNormalize.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "codegen/common/LinkerSupport.hpp"
 #include "common/RunProcess.hpp"
@@ -489,7 +488,13 @@ int emitAndMaybeLink(const Options &opts)
                        : 1;
         }
         // Link directly to executable
-        return linkToExe(asmPath, outPath, std::cout, std::cerr) == 0 ? 0 : 1;
+        const int lrc = linkToExe(asmPath, outPath, std::cout, std::cerr);
+        if (lrc == 0 && !opts.emit_asm)
+        {
+            std::error_code ec;
+            std::filesystem::remove(asmPath, ec);
+        }
+        return lrc == 0 ? 0 : 1;
     }
 
     // Otherwise, link to a default executable path and run (or just link if run_native=false)
@@ -502,6 +507,14 @@ int emitAndMaybeLink(const Options &opts)
     }
     if (linkToExe(asmPath, exe.string(), std::cout, std::cerr) != 0)
         return 1;
+
+    // Clean up intermediate assembly file after successful linking.
+    if (!opts.emit_asm)
+    {
+        std::error_code ec;
+        std::filesystem::remove(asmPath, ec);
+    }
+
     if (!opts.run_native)
         return 0;
     const int rc = viper::codegen::common::runExecutable(exe.string(), std::cout, std::cerr);

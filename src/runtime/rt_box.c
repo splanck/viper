@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_box.h"
+#include "rt_hash_util.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_string.h"
@@ -204,18 +205,6 @@ void *rt_box_value_type(int64_t size)
 // Content-aware hashing and equality for boxed values
 //===----------------------------------------------------------------------===//
 
-/// @brief FNV-1a hash for byte sequences.
-static size_t fnv1a_hash(const void *data, size_t len)
-{
-    const uint8_t *bytes = (const uint8_t *)data;
-    size_t hash = 0xcbf29ce484222325ULL; // FNV offset basis
-    for (size_t i = 0; i < len; i++)
-    {
-        hash ^= bytes[i];
-        hash *= 0x100000001b3ULL; // FNV prime
-    }
-    return hash;
-}
 
 /// @brief Check if a heap-allocated element is a boxed value.
 /// Safe for non-heap pointers: checks magic before accessing header fields.
@@ -238,9 +227,9 @@ size_t rt_box_hash(void *elem)
         {
             case RT_BOX_I64:
             case RT_BOX_I1:
-                return fnv1a_hash(&box->data.i64_val, sizeof(int64_t));
+                return (size_t)rt_fnv1a(&box->data.i64_val, sizeof(int64_t));
             case RT_BOX_F64:
-                return fnv1a_hash(&box->data.f64_val, sizeof(double));
+                return (size_t)rt_fnv1a(&box->data.f64_val, sizeof(double));
             case RT_BOX_STR:
             {
                 rt_string s = box->data.str_val;
@@ -249,7 +238,7 @@ size_t rt_box_hash(void *elem)
                 const char *cstr = rt_string_cstr(s);
                 if (!cstr)
                     return 0;
-                return fnv1a_hash(cstr, strlen(cstr));
+                return (size_t)rt_fnv1a(cstr, strlen(cstr));
             }
             default:
                 break;

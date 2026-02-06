@@ -79,6 +79,7 @@ void rt_gui_ensure_default_font(void)
         }
     }
 }
+
 void rt_gui_app_destroy(void *app_ptr)
 {
     if (!app_ptr)
@@ -116,6 +117,7 @@ static void render_widget_tree(vgfx_window_t window,
                                float parent_abs_x,
                                float parent_abs_y);
 void rt_gui_set_last_clicked(void *widget);
+
 // Declared in rt_gui_internal.h, defined in rt_gui_system.c
 
 
@@ -640,4 +642,3 @@ static void render_widget_tree(vgfx_window_t window,
         child = child->next_sibling;
     }
 }
-

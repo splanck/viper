@@ -179,7 +179,8 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len)
             return NULL;
         }
 
-        uint32_t triple = ((uint32_t)a << 18) | ((uint32_t)b << 12) | ((uint32_t)c << 6) | (uint32_t)d;
+        uint32_t triple =
+            ((uint32_t)a << 18) | ((uint32_t)b << 12) | ((uint32_t)c << 6) | (uint32_t)d;
 
         if (j < olen)
             output[j++] = (triple >> 16) & 0xFF;
@@ -229,7 +230,8 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     // Build output: "PBKDF2$iterations$salt_b64$hash_b64"
     // Max: 6 + 1 + 10 + 1 + 24 + 1 + 44 + 1 = 88 chars
     char buffer[128];
-    snprintf(buffer, sizeof(buffer), "PBKDF2$%lld$%s$%s", (long long)iterations, salt_b64, hash_b64);
+    snprintf(
+        buffer, sizeof(buffer), "PBKDF2$%lld$%s$%s", (long long)iterations, salt_b64, hash_b64);
 
     free(salt_b64);
     free(hash_b64);

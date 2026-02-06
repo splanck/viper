@@ -1067,5 +1067,3 @@ int64_t rt_toolbaritem_was_clicked(void *item)
     }
     return 0;
 }
-
-

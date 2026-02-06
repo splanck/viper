@@ -477,8 +477,7 @@ static bool try_bootstrap_channels(i32 *out_input_ch, i32 *out_output_ch) {
     u32 bootstrap_handles[8];
     u32 bootstrap_count = 0;
     for (i32 i = 0; i < entry_count && bootstrap_count < 8; i++) {
-        if (entries[i].kind == CAP_KIND_CHANNEL &&
-            (entries[i].rights & CAP_RIGHT_READ) != 0) {
+        if (entries[i].kind == CAP_KIND_CHANNEL && (entries[i].rights & CAP_RIGHT_READ) != 0) {
             bootstrap_handles[bootstrap_count++] = entries[i].handle;
         }
     }
@@ -490,11 +489,8 @@ static bool try_bootstrap_channels(i32 *out_input_ch, i32 *out_output_ch) {
     for (u32 attempt = 0; attempt < 500; attempt++) {
         for (u32 i = 0; i < bootstrap_count; i++) {
             u32 handle_count = 4;
-            i64 n = sys::channel_recv(static_cast<i32>(bootstrap_handles[i]),
-                                      msg,
-                                      sizeof(msg),
-                                      handles,
-                                      &handle_count);
+            i64 n = sys::channel_recv(
+                static_cast<i32>(bootstrap_handles[i]), msg, sizeof(msg), handles, &handle_count);
 
             if (n >= 0 && handle_count >= 2) {
                 *out_input_ch = static_cast<i32>(handles[0]);

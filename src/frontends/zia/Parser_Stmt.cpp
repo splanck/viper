@@ -19,6 +19,10 @@ namespace il::frontends::zia
 // Statement Parsing
 //===----------------------------------------------------------------------===//
 
+/// @brief Parse a statement, dispatching to the appropriate parser based on the leading token.
+/// @details Handles blocks, var/final declarations, Java-style declarations, if, while, for,
+///          return, guard, match, break, continue, print/println, and expression statements.
+/// @return The parsed statement, or nullptr on error.
 StmtPtr Parser::parseStatement()
 {
     SourceLoc loc = peek().loc;
@@ -110,6 +114,10 @@ StmtPtr Parser::parseStatement()
     return std::make_unique<ExprStmt>(loc, std::move(expr));
 }
 
+/// @brief Parse a braced statement block ({ stmt; stmt; ... }).
+/// @details Includes error recovery: on parse failure, skips to the next semicolon or brace
+///          to continue parsing subsequent statements.
+/// @return The parsed BlockStmt, or nullptr on error.
 StmtPtr Parser::parseBlock()
 {
     Token lbraceTok;
@@ -149,6 +157,8 @@ StmtPtr Parser::parseBlock()
     return std::make_unique<BlockStmt>(loc, std::move(statements));
 }
 
+/// @brief Parse a local variable declaration (var x: Type = expr; or final x = expr;).
+/// @return The parsed VarStmt, or nullptr on error.
 StmtPtr Parser::parseVarDecl()
 {
     Token kwTok = advance(); // consume var/final
@@ -188,6 +198,9 @@ StmtPtr Parser::parseVarDecl()
         loc, std::move(name), std::move(type), std::move(init), isFinal);
 }
 
+/// @brief Parse a Java-style local variable declaration (Type name = expr;).
+/// @details Used speculatively; returns nullptr if the token sequence does not match.
+/// @return The parsed VarStmt, or nullptr if not a valid Java-style declaration.
 StmtPtr Parser::parseJavaStyleVarDecl()
 {
     SourceLoc loc = peek().loc;
@@ -222,6 +235,8 @@ StmtPtr Parser::parseJavaStyleVarDecl()
     return std::make_unique<VarStmt>(loc, std::move(name), std::move(type), std::move(init), false);
 }
 
+/// @brief Parse an if statement with optional else clause (if cond { body } else { body }).
+/// @return The parsed IfStmt, or nullptr on error.
 StmtPtr Parser::parseIfStmt()
 {
     Token ifTok = advance(); // consume 'if'
@@ -248,6 +263,8 @@ StmtPtr Parser::parseIfStmt()
         loc, std::move(condition), std::move(thenBranch), std::move(elseBranch));
 }
 
+/// @brief Parse a while loop (while condition { body }).
+/// @return The parsed WhileStmt, or nullptr on error.
 StmtPtr Parser::parseWhileStmt()
 {
     Token whileTok = advance(); // consume 'while'
@@ -265,6 +282,11 @@ StmtPtr Parser::parseWhileStmt()
     return std::make_unique<WhileStmt>(loc, std::move(condition), std::move(body));
 }
 
+/// @brief Parse a for statement, supporting both C-style and for-in forms.
+/// @details C-style: for (init; cond; update) { body }
+///          For-in: for x in collection { body }
+///          For-in tuple: for (k, v) in map { body }
+/// @return The parsed ForStmt or ForInStmt, or nullptr on error.
 StmtPtr Parser::parseForStmt()
 {
     Token forTok = advance(); // consume 'for'
@@ -453,6 +475,8 @@ StmtPtr Parser::parseForStmt()
     return stmt;
 }
 
+/// @brief Parse a return statement (return [expr];).
+/// @return The parsed ReturnStmt, or nullptr on error.
 StmtPtr Parser::parseReturnStmt()
 {
     Token returnTok = advance(); // consume 'return'
@@ -472,6 +496,9 @@ StmtPtr Parser::parseReturnStmt()
     return std::make_unique<ReturnStmt>(loc, std::move(value));
 }
 
+/// @brief Parse a guard statement (guard condition else { body }).
+/// @details The else block must contain a control flow exit (return, break, continue).
+/// @return The parsed GuardStmt, or nullptr on error.
 StmtPtr Parser::parseGuardStmt()
 {
     Token guardTok = advance(); // consume 'guard'
@@ -497,6 +524,10 @@ StmtPtr Parser::parseGuardStmt()
     return std::make_unique<GuardStmt>(loc, std::move(condition), std::move(elseBlock));
 }
 
+/// @brief Parse a match statement (match expr { pattern => body; ... }).
+/// @details Each arm consists of a pattern, optional guard (if condition), and a body
+///          that is either a block or a single expression followed by a semicolon.
+/// @return The parsed MatchStmt, or nullptr on error.
 StmtPtr Parser::parseMatchStmt()
 {
     Token matchTok = advance(); // consume 'match'

@@ -57,11 +57,11 @@ constexpr u64 MQ = 1ULL << 22;        ///< Multiple queue pairs available
  * virtqueues. It provides metadata for checksum offload and GSO.
  */
 struct NetHeader {
-    u8 flags;       ///< Header flags (net_hdr_flags)
-    u8 gso_type;    ///< GSO type (net_gso)
-    u16 hdr_len;    ///< Ethernet + IP + TCP/UDP header length
-    u16 gso_size;   ///< GSO segment size (MSS)
-    u16 csum_start; ///< Offset to start checksumming from
+    u8 flags;        ///< Header flags (net_hdr_flags)
+    u8 gso_type;     ///< GSO type (net_gso)
+    u16 hdr_len;     ///< Ethernet + IP + TCP/UDP header length
+    u16 gso_size;    ///< GSO segment size (MSS)
+    u16 csum_start;  ///< Offset to start checksumming from
     u16 csum_offset; ///< Offset from csum_start to store checksum
 } __attribute__((packed));
 
@@ -69,18 +69,18 @@ struct NetHeader {
  * @brief VirtIO-net header flags.
  */
 namespace net_hdr_flags {
-constexpr u8 NEEDS_CSUM = 1;  ///< Packet needs checksum
-constexpr u8 DATA_VALID = 2;  ///< Checksum is valid (RX only)
+constexpr u8 NEEDS_CSUM = 1; ///< Packet needs checksum
+constexpr u8 DATA_VALID = 2; ///< Checksum is valid (RX only)
 } // namespace net_hdr_flags
 
 /**
  * @brief VirtIO-net GSO type values.
  */
 namespace net_gso {
-constexpr u8 NONE = 0;   ///< No GSO
-constexpr u8 TCPV4 = 1;  ///< TCP over IPv4
-constexpr u8 UDP = 3;    ///< UDP
-constexpr u8 TCPV6 = 4;  ///< TCP over IPv6
+constexpr u8 NONE = 0;  ///< No GSO
+constexpr u8 TCPV4 = 1; ///< TCP over IPv4
+constexpr u8 UDP = 3;   ///< UDP
+constexpr u8 TCPV6 = 4; ///< TCP over IPv6
 } // namespace net_gso
 
 /**
@@ -90,18 +90,18 @@ constexpr u8 TCPV6 = 4;  ///< TCP over IPv6
  * The config space is read from the device's MMIO config region.
  */
 struct NetConfig {
-    u8 mac[6];                ///< Device MAC address (if MAC feature)
-    u16 status;               ///< Link status (if STATUS feature)
-    u16 max_virtqueue_pairs;  ///< Max queue pairs (if MQ feature)
-    u16 mtu;                  ///< Maximum transmission unit
+    u8 mac[6];               ///< Device MAC address (if MAC feature)
+    u16 status;              ///< Link status (if STATUS feature)
+    u16 max_virtqueue_pairs; ///< Max queue pairs (if MQ feature)
+    u16 mtu;                 ///< Maximum transmission unit
 } __attribute__((packed));
 
 /**
  * @brief VirtIO-net link status bits.
  */
 namespace net_status {
-constexpr u16 LINK_UP = 1;   ///< Link is up
-constexpr u16 ANNOUNCE = 2;  ///< Announce gratuitous ARP
+constexpr u16 LINK_UP = 1;  ///< Link is up
+constexpr u16 ANNOUNCE = 2; ///< Announce gratuitous ARP
 } // namespace net_status
 
 } // namespace virtio

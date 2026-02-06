@@ -19,7 +19,8 @@
 // LazySeq Types
 //=============================================================================
 
-typedef enum {
+typedef enum
+{
     LAZYSEQ_GENERATOR,  // User-provided generator function
     LAZYSEQ_RANGE,      // Integer range
     LAZYSEQ_REPEAT,     // Repeated value
@@ -35,72 +36,85 @@ typedef enum {
 } lazyseq_type;
 
 /// Internal structure for LazySeq.
-struct rt_lazyseq_impl {
+struct rt_lazyseq_impl
+{
     lazyseq_type type;
-    int64_t index;        // Current position
-    int8_t exhausted;     // 1 if sequence ended
-    int8_t peeked;        // 1 if we have a peeked value
-    void *peek_value;     // Cached peeked value
+    int64_t index;    // Current position
+    int8_t exhausted; // 1 if sequence ended
+    int8_t peeked;    // 1 if we have a peeked value
+    void *peek_value; // Cached peeked value
 
-    union {
+    union
+    {
         // Generator
-        struct {
+        struct
+        {
             rt_lazyseq_gen_fn gen;
             void *state;
         } generator;
 
         // Range
-        struct {
+        struct
+        {
             int64_t current;
             int64_t end;
             int64_t step;
         } range;
 
         // Repeat
-        struct {
+        struct
+        {
             void *value;
             int64_t remaining; // -1 for infinite
         } repeat;
 
         // Iterate
-        struct {
+        struct
+        {
             void *current;
             void *(*fn)(void *);
             int8_t started;
         } iterate;
 
         // Map/Filter
-        struct {
+        struct
+        {
             rt_lazyseq source;
-            union {
+
+            union
+            {
                 void *(*map_fn)(void *);
                 int8_t (*filter_fn)(void *);
             };
         } transform;
 
         // Take/Drop
-        struct {
+        struct
+        {
             rt_lazyseq source;
             int64_t limit;
             int64_t consumed;
         } bounded;
 
         // TakeWhile/DropWhile
-        struct {
+        struct
+        {
             rt_lazyseq source;
             int8_t (*pred)(void *);
             int8_t done;
         } predicated;
 
         // Concat
-        struct {
+        struct
+        {
             rt_lazyseq first;
             rt_lazyseq second;
             int8_t on_second;
         } concat;
 
         // Zip
-        struct {
+        struct
+        {
             rt_lazyseq seq1;
             rt_lazyseq seq2;
             void *(*combine)(void *, void *);
@@ -115,7 +129,8 @@ struct rt_lazyseq_impl {
 static rt_lazyseq alloc_lazyseq(lazyseq_type type)
 {
     struct rt_lazyseq_impl *seq = calloc(1, sizeof(struct rt_lazyseq_impl));
-    if (!seq) return NULL;
+    if (!seq)
+        return NULL;
     seq->type = type;
     return seq;
 }
@@ -135,10 +150,12 @@ static void *range_value_ptr(int64_t val)
 
 rt_lazyseq rt_lazyseq_new(rt_lazyseq_gen_fn gen, void *state)
 {
-    if (!gen) return NULL;
+    if (!gen)
+        return NULL;
 
     rt_lazyseq seq = alloc_lazyseq(LAZYSEQ_GENERATOR);
-    if (!seq) return NULL;
+    if (!seq)
+        return NULL;
 
     seq->data.generator.gen = gen;
     seq->data.generator.state = state;
@@ -147,10 +164,12 @@ rt_lazyseq rt_lazyseq_new(rt_lazyseq_gen_fn gen, void *state)
 
 rt_lazyseq rt_lazyseq_range(int64_t start, int64_t end, int64_t step)
 {
-    if (step == 0) return NULL;
+    if (step == 0)
+        return NULL;
 
     rt_lazyseq seq = alloc_lazyseq(LAZYSEQ_RANGE);
-    if (!seq) return NULL;
+    if (!seq)
+        return NULL;
 
     seq->data.range.current = start;
     seq->data.range.end = end;
@@ -161,7 +180,8 @@ rt_lazyseq rt_lazyseq_range(int64_t start, int64_t end, int64_t step)
 rt_lazyseq rt_lazyseq_repeat(void *value, int64_t count)
 {
     rt_lazyseq seq = alloc_lazyseq(LAZYSEQ_REPEAT);
-    if (!seq) return NULL;
+    if (!seq)
+        return NULL;
 
     seq->data.repeat.value = value;
     seq->data.repeat.remaining = count;
@@ -170,10 +190,12 @@ rt_lazyseq rt_lazyseq_repeat(void *value, int64_t count)
 
 rt_lazyseq rt_lazyseq_iterate(void *seed, void *(*fn)(void *))
 {
-    if (!fn) return NULL;
+    if (!fn)
+        return NULL;
 
     rt_lazyseq seq = alloc_lazyseq(LAZYSEQ_ITERATE);
-    if (!seq) return NULL;
+    if (!seq)
+        return NULL;
 
     seq->data.iterate.current = seed;
     seq->data.iterate.fn = fn;
@@ -183,10 +205,12 @@ rt_lazyseq rt_lazyseq_iterate(void *seed, void *(*fn)(void *))
 
 void rt_lazyseq_destroy(rt_lazyseq seq)
 {
-    if (!seq) return;
+    if (!seq)
+        return;
 
     // Recursively destroy nested sequences
-    switch (seq->type) {
+    switch (seq->type)
+    {
         case LAZYSEQ_MAP:
         case LAZYSEQ_FILTER:
             rt_lazyseq_destroy(seq->data.transform.source);
@@ -220,85 +244,112 @@ void rt_lazyseq_destroy(rt_lazyseq seq)
 
 void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more)
 {
-    if (!seq || seq->exhausted) {
-        if (has_more) *has_more = 0;
+    if (!seq || seq->exhausted)
+    {
+        if (has_more)
+            *has_more = 0;
         return NULL;
     }
 
     // Return peeked value if available
-    if (seq->peeked) {
+    if (seq->peeked)
+    {
         seq->peeked = 0;
         seq->index++;
-        if (has_more) *has_more = 1;
+        if (has_more)
+            *has_more = 1;
         return seq->peek_value;
     }
 
     void *result = NULL;
     int8_t more = 1;
 
-    switch (seq->type) {
-        case LAZYSEQ_GENERATOR: {
+    switch (seq->type)
+    {
+        case LAZYSEQ_GENERATOR:
+        {
             result = seq->data.generator.gen(seq->data.generator.state, seq->index, &more);
             break;
         }
 
-        case LAZYSEQ_RANGE: {
+        case LAZYSEQ_RANGE:
+        {
             int64_t cur = seq->data.range.current;
             int64_t end = seq->data.range.end;
             int64_t step = seq->data.range.step;
 
-            if ((step > 0 && cur >= end) || (step < 0 && cur <= end)) {
+            if ((step > 0 && cur >= end) || (step < 0 && cur <= end))
+            {
                 more = 0;
-            } else {
+            }
+            else
+            {
                 result = range_value_ptr(cur);
                 seq->data.range.current = cur + step;
             }
             break;
         }
 
-        case LAZYSEQ_REPEAT: {
-            if (seq->data.repeat.remaining == 0) {
+        case LAZYSEQ_REPEAT:
+        {
+            if (seq->data.repeat.remaining == 0)
+            {
                 more = 0;
-            } else {
+            }
+            else
+            {
                 result = seq->data.repeat.value;
-                if (seq->data.repeat.remaining > 0) {
+                if (seq->data.repeat.remaining > 0)
+                {
                     seq->data.repeat.remaining--;
                 }
             }
             break;
         }
 
-        case LAZYSEQ_ITERATE: {
-            if (!seq->data.iterate.started) {
+        case LAZYSEQ_ITERATE:
+        {
+            if (!seq->data.iterate.started)
+            {
                 seq->data.iterate.started = 1;
                 result = seq->data.iterate.current;
-            } else {
+            }
+            else
+            {
                 seq->data.iterate.current = seq->data.iterate.fn(seq->data.iterate.current);
                 result = seq->data.iterate.current;
             }
             break;
         }
 
-        case LAZYSEQ_MAP: {
+        case LAZYSEQ_MAP:
+        {
             int8_t src_more;
             void *elem = rt_lazyseq_next(seq->data.transform.source, &src_more);
-            if (src_more) {
+            if (src_more)
+            {
                 result = seq->data.transform.map_fn(elem);
-            } else {
+            }
+            else
+            {
                 more = 0;
             }
             break;
         }
 
-        case LAZYSEQ_FILTER: {
-            while (1) {
+        case LAZYSEQ_FILTER:
+        {
+            while (1)
+            {
                 int8_t src_more;
                 void *elem = rt_lazyseq_next(seq->data.transform.source, &src_more);
-                if (!src_more) {
+                if (!src_more)
+                {
                     more = 0;
                     break;
                 }
-                if (seq->data.transform.filter_fn(elem)) {
+                if (seq->data.transform.filter_fn(elem))
+                {
                     result = elem;
                     break;
                 }
@@ -306,33 +357,44 @@ void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more)
             break;
         }
 
-        case LAZYSEQ_TAKE: {
-            if (seq->data.bounded.consumed >= seq->data.bounded.limit) {
+        case LAZYSEQ_TAKE:
+        {
+            if (seq->data.bounded.consumed >= seq->data.bounded.limit)
+            {
                 more = 0;
-            } else {
+            }
+            else
+            {
                 int8_t src_more;
                 result = rt_lazyseq_next(seq->data.bounded.source, &src_more);
-                if (src_more) {
+                if (src_more)
+                {
                     seq->data.bounded.consumed++;
-                } else {
+                }
+                else
+                {
                     more = 0;
                 }
             }
             break;
         }
 
-        case LAZYSEQ_DROP: {
+        case LAZYSEQ_DROP:
+        {
             // Skip elements on first access
-            while (seq->data.bounded.consumed < seq->data.bounded.limit) {
+            while (seq->data.bounded.consumed < seq->data.bounded.limit)
+            {
                 int8_t src_more;
                 rt_lazyseq_next(seq->data.bounded.source, &src_more);
-                if (!src_more) {
+                if (!src_more)
+                {
                     more = 0;
                     break;
                 }
                 seq->data.bounded.consumed++;
             }
-            if (more) {
+            if (more)
+            {
                 int8_t src_more;
                 result = rt_lazyseq_next(seq->data.bounded.source, &src_more);
                 more = src_more;
@@ -340,39 +402,53 @@ void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more)
             break;
         }
 
-        case LAZYSEQ_TAKE_WHILE: {
-            if (seq->data.predicated.done) {
+        case LAZYSEQ_TAKE_WHILE:
+        {
+            if (seq->data.predicated.done)
+            {
                 more = 0;
-            } else {
+            }
+            else
+            {
                 int8_t src_more;
                 void *elem = rt_lazyseq_next(seq->data.predicated.source, &src_more);
-                if (!src_more || !seq->data.predicated.pred(elem)) {
+                if (!src_more || !seq->data.predicated.pred(elem))
+                {
                     seq->data.predicated.done = 1;
                     more = 0;
-                } else {
+                }
+                else
+                {
                     result = elem;
                 }
             }
             break;
         }
 
-        case LAZYSEQ_DROP_WHILE: {
-            if (!seq->data.predicated.done) {
+        case LAZYSEQ_DROP_WHILE:
+        {
+            if (!seq->data.predicated.done)
+            {
                 // Skip elements while predicate is true
-                while (1) {
+                while (1)
+                {
                     int8_t src_more;
                     void *elem = rt_lazyseq_next(seq->data.predicated.source, &src_more);
-                    if (!src_more) {
+                    if (!src_more)
+                    {
                         more = 0;
                         break;
                     }
-                    if (!seq->data.predicated.pred(elem)) {
+                    if (!seq->data.predicated.pred(elem))
+                    {
                         seq->data.predicated.done = 1;
                         result = elem;
                         break;
                     }
                 }
-            } else {
+            }
+            else
+            {
                 int8_t src_more;
                 result = rt_lazyseq_next(seq->data.predicated.source, &src_more);
                 more = src_more;
@@ -380,11 +456,14 @@ void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more)
             break;
         }
 
-        case LAZYSEQ_CONCAT: {
-            if (!seq->data.concat.on_second) {
+        case LAZYSEQ_CONCAT:
+        {
+            if (!seq->data.concat.on_second)
+            {
                 int8_t src_more;
                 result = rt_lazyseq_next(seq->data.concat.first, &src_more);
-                if (src_more) {
+                if (src_more)
+                {
                     break;
                 }
                 seq->data.concat.on_second = 1;
@@ -395,64 +474,80 @@ void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more)
             break;
         }
 
-        case LAZYSEQ_ZIP: {
+        case LAZYSEQ_ZIP:
+        {
             int8_t more1, more2;
             void *elem1 = rt_lazyseq_next(seq->data.zip.seq1, &more1);
             void *elem2 = rt_lazyseq_next(seq->data.zip.seq2, &more2);
-            if (more1 && more2) {
+            if (more1 && more2)
+            {
                 result = seq->data.zip.combine(elem1, elem2);
-            } else {
+            }
+            else
+            {
                 more = 0;
             }
             break;
         }
     }
 
-    if (!more) {
+    if (!more)
+    {
         seq->exhausted = 1;
-    } else {
+    }
+    else
+    {
         seq->index++;
     }
 
-    if (has_more) *has_more = more;
+    if (has_more)
+        *has_more = more;
     return result;
 }
 
 void *rt_lazyseq_peek(rt_lazyseq seq, int8_t *has_more)
 {
-    if (!seq) {
-        if (has_more) *has_more = 0;
+    if (!seq)
+    {
+        if (has_more)
+            *has_more = 0;
         return NULL;
     }
 
-    if (seq->peeked) {
-        if (has_more) *has_more = 1;
+    if (seq->peeked)
+    {
+        if (has_more)
+            *has_more = 1;
         return seq->peek_value;
     }
 
     int8_t more;
     void *val = rt_lazyseq_next(seq, &more);
 
-    if (more) {
+    if (more)
+    {
         seq->peeked = 1;
         seq->peek_value = val;
         seq->index--; // Undo the increment from next
     }
 
-    if (has_more) *has_more = more;
+    if (has_more)
+        *has_more = more;
     return val;
 }
 
 void rt_lazyseq_reset(rt_lazyseq seq)
 {
-    if (!seq) return;
+    if (!seq)
+        return;
 
     seq->index = 0;
     seq->exhausted = 0;
     seq->peeked = 0;
     seq->peek_value = NULL;
 
-    switch (seq->type) {
+    switch (seq->type)
+    {
         case LAZYSEQ_RANGE:
             // Cannot reset range without original start value
             // This is a limitation
@@ -507,10 +602,12 @@ int8_t rt_lazyseq_is_exhausted(rt_lazyseq seq)
 
 rt_lazyseq rt_lazyseq_map(rt_lazyseq seq, void *(*fn)(void *))
 {
-    if (!seq || !fn) return NULL;
+    if (!seq || !fn)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_MAP);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.transform.source = seq;
     result->data.transform.map_fn = fn;
@@ -519,10 +616,12 @@ rt_lazyseq rt_lazyseq_map(rt_lazyseq seq, void *(*fn)(void *))
 
 rt_lazyseq rt_lazyseq_filter(rt_lazyseq seq, int8_t (*pred)(void *))
 {
-    if (!seq || !pred) return NULL;
+    if (!seq || !pred)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_FILTER);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.transform.source = seq;
     result->data.transform.filter_fn = pred;
@@ -531,10 +630,12 @@ rt_lazyseq rt_lazyseq_filter(rt_lazyseq seq, int8_t (*pred)(void *))
 
 rt_lazyseq rt_lazyseq_take(rt_lazyseq seq, int64_t n)
 {
-    if (!seq || n < 0) return NULL;
+    if (!seq || n < 0)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_TAKE);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.bounded.source = seq;
     result->data.bounded.limit = n;
@@ -544,10 +645,12 @@ rt_lazyseq rt_lazyseq_take(rt_lazyseq seq, int64_t n)
 
 rt_lazyseq rt_lazyseq_drop(rt_lazyseq seq, int64_t n)
 {
-    if (!seq || n < 0) return NULL;
+    if (!seq || n < 0)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_DROP);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.bounded.source = seq;
     result->data.bounded.limit = n;
@@ -557,10 +660,12 @@ rt_lazyseq rt_lazyseq_drop(rt_lazyseq seq, int64_t n)
 
 rt_lazyseq rt_lazyseq_take_while(rt_lazyseq seq, int8_t (*pred)(void *))
 {
-    if (!seq || !pred) return NULL;
+    if (!seq || !pred)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_TAKE_WHILE);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.predicated.source = seq;
     result->data.predicated.pred = pred;
@@ -570,10 +675,12 @@ rt_lazyseq rt_lazyseq_take_while(rt_lazyseq seq, int8_t (*pred)(void *))
 
 rt_lazyseq rt_lazyseq_drop_while(rt_lazyseq seq, int8_t (*pred)(void *))
 {
-    if (!seq || !pred) return NULL;
+    if (!seq || !pred)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_DROP_WHILE);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.predicated.source = seq;
     result->data.predicated.pred = pred;
@@ -583,10 +690,12 @@ rt_lazyseq rt_lazyseq_drop_while(rt_lazyseq seq, int8_t (*pred)(void *))
 
 rt_lazyseq rt_lazyseq_concat(rt_lazyseq first, rt_lazyseq second)
 {
-    if (!first || !second) return NULL;
+    if (!first || !second)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_CONCAT);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.concat.first = first;
     result->data.concat.second = second;
@@ -596,10 +705,12 @@ rt_lazyseq rt_lazyseq_concat(rt_lazyseq first, rt_lazyseq second)
 
 rt_lazyseq rt_lazyseq_zip(rt_lazyseq seq1, rt_lazyseq seq2, void *(*combine)(void *, void *))
 {
-    if (!seq1 || !seq2 || !combine) return NULL;
+    if (!seq1 || !seq2 || !combine)
+        return NULL;
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_ZIP);
-    if (!result) return NULL;
+    if (!result)
+        return NULL;
 
     result->data.zip.seq1 = seq1;
     result->data.zip.seq2 = seq2;
@@ -613,14 +724,17 @@ rt_lazyseq rt_lazyseq_zip(rt_lazyseq seq1, rt_lazyseq seq2, void *(*combine)(voi
 
 void *rt_lazyseq_to_seq(rt_lazyseq seq)
 {
-    if (!seq) return rt_seq_new();
+    if (!seq)
+        return rt_seq_new();
 
     void *result = rt_seq_new();
     int8_t has_more;
 
-    while (1) {
+    while (1)
+    {
         void *elem = rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
+        if (!has_more)
+            break;
         rt_seq_push(result, elem);
     }
 
@@ -629,15 +743,18 @@ void *rt_lazyseq_to_seq(rt_lazyseq seq)
 
 void *rt_lazyseq_to_seq_n(rt_lazyseq seq, int64_t n)
 {
-    if (!seq || n <= 0) return rt_seq_new();
+    if (!seq || n <= 0)
+        return rt_seq_new();
 
     void *result = rt_seq_with_capacity(n);
     int8_t has_more;
     int64_t count = 0;
 
-    while (count < n) {
+    while (count < n)
+    {
         void *elem = rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
+        if (!has_more)
+            break;
         rt_seq_push(result, elem);
         count++;
     }
@@ -647,14 +764,17 @@ void *rt_lazyseq_to_seq_n(rt_lazyseq seq, int64_t n)
 
 void *rt_lazyseq_fold(rt_lazyseq seq, void *init, void *(*fn)(void *, void *))
 {
-    if (!seq || !fn) return init;
+    if (!seq || !fn)
+        return init;
 
     void *acc = init;
     int8_t has_more;
 
-    while (1) {
+    while (1)
+    {
         void *elem = rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
+        if (!has_more)
+            break;
         acc = fn(acc, elem);
     }
 
@@ -663,14 +783,17 @@ void *rt_lazyseq_fold(rt_lazyseq seq, void *init, void *(*fn)(void *, void *))
 
 int64_t rt_lazyseq_count(rt_lazyseq seq)
 {
-    if (!seq) return 0;
+    if (!seq)
+        return 0;
 
     int64_t count = 0;
     int8_t has_more;
 
-    while (1) {
+    while (1)
+    {
         rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
+        if (!has_more)
+            break;
         count++;
     }
 
@@ -679,49 +802,63 @@ int64_t rt_lazyseq_count(rt_lazyseq seq)
 
 void rt_lazyseq_foreach(rt_lazyseq seq, void (*fn)(void *))
 {
-    if (!seq || !fn) return;
+    if (!seq || !fn)
+        return;
 
     int8_t has_more;
 
-    while (1) {
+    while (1)
+    {
         void *elem = rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
+        if (!has_more)
+            break;
         fn(elem);
     }
 }
 
 void *rt_lazyseq_find(rt_lazyseq seq, int8_t (*pred)(void *), int8_t *found)
 {
-    if (!seq || !pred) {
-        if (found) *found = 0;
+    if (!seq || !pred)
+    {
+        if (found)
+            *found = 0;
         return NULL;
     }
 
     int8_t has_more;
 
-    while (1) {
+    while (1)
+    {
         void *elem = rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
-        if (pred(elem)) {
-            if (found) *found = 1;
+        if (!has_more)
+            break;
+        if (pred(elem))
+        {
+            if (found)
+                *found = 1;
             return elem;
         }
     }
 
-    if (found) *found = 0;
+    if (found)
+        *found = 0;
     return NULL;
 }
 
 int8_t rt_lazyseq_any(rt_lazyseq seq, int8_t (*pred)(void *))
 {
-    if (!seq || !pred) return 0;
+    if (!seq || !pred)
+        return 0;
 
     int8_t has_more;
 
-    while (1) {
+    while (1)
+    {
         void *elem = rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
-        if (pred(elem)) return 1;
+        if (!has_more)
+            break;
+        if (pred(elem))
+            return 1;
     }
 
     return 0;
@@ -729,14 +866,18 @@ int8_t rt_lazyseq_any(rt_lazyseq seq, int8_t (*pred)(void *))
 
 int8_t rt_lazyseq_all(rt_lazyseq seq, int8_t (*pred)(void *))
 {
-    if (!seq || !pred) return 1;
+    if (!seq || !pred)
+        return 1;
 
     int8_t has_more;
 
-    while (1) {
+    while (1)
+    {
         void *elem = rt_lazyseq_next(seq, &has_more);
-        if (!has_more) break;
-        if (!pred(elem)) return 0;
+        if (!has_more)
+            break;
+        if (!pred(elem))
+            return 0;
     }
 
     return 1;

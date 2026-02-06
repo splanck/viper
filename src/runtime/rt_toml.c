@@ -184,8 +184,8 @@ void *rt_toml_parse(rt_string src)
                     }
                     target = parent;
 
-                    rt_string child_key = make_str(dot + 1,
-                        (int64_t)(strlen(name_cstr) - (size_t)(dot - name_cstr) - 1));
+                    rt_string child_key = make_str(
+                        dot + 1, (int64_t)(strlen(name_cstr) - (size_t)(dot - name_cstr) - 1));
                     void *child = rt_map_new();
                     rt_map_set(target, child_key, child);
                     current_section = child;

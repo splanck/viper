@@ -12,8 +12,8 @@
 
 #pragma once
 
-#include "../include/types.hpp"
 #include "../console/serial.hpp"
+#include "../include/types.hpp"
 #include "task.hpp"
 
 /**
@@ -183,7 +183,7 @@ inline bool heap_insert(TaskHeap *heap, task::Task *t) {
         serial::puts("' idx=");
         serial::put_dec(t->heap_index);
         serial::puts("\n");
-        return false;  // Already in a heap
+        return false; // Already in a heap
     }
 
     // Add at end
@@ -274,7 +274,7 @@ inline void heap_update(TaskHeap *heap, task::Task *t, u64 old_key) {
 
     // Verify task is actually at the claimed position
     if (heap->nodes[t->heap_index] != t) {
-        return;  // Corruption detected - heap_index is stale
+        return; // Corruption detected - heap_index is stale
     }
 
     u64 new_key = heap->key_func(t);

@@ -1973,9 +1973,8 @@ static int is_separator(char c)
 // Helper: split a string into words, handling camelCase boundaries too.
 // Writes words into a flat buffer with null terminators, returns word count.
 // words[] points into buf.
-static int split_words(const char *src, size_t len,
-                       char *buf, size_t buf_cap,
-                       const char **words, int max_words)
+static int split_words(
+    const char *src, size_t len, char *buf, size_t buf_cap, const char **words, int max_words)
 {
     int wcount = 0;
     size_t bpos = 0;
@@ -1986,7 +1985,8 @@ static int split_words(const char *src, size_t len,
         // Skip separators
         while (i < len && is_separator(src[i]))
             ++i;
-        if (i >= len) break;
+        if (i >= len)
+            break;
 
         // Start of a word
         words[wcount] = buf + bpos;
@@ -1997,22 +1997,26 @@ static int split_words(const char *src, size_t len,
             // Detect camelCase boundary: lowercase followed by uppercase
             if (i + 1 < len && islower((unsigned char)src[i]) && isupper((unsigned char)src[i + 1]))
             {
-                if (bpos < buf_cap) buf[bpos++] = src[i];
+                if (bpos < buf_cap)
+                    buf[bpos++] = src[i];
                 ++i;
                 break; // End this word, next word starts with uppercase
             }
             // Detect ACRONYM boundary: multiple uppercase followed by lowercase
-            if (i + 2 < len && isupper((unsigned char)src[i]) && isupper((unsigned char)src[i + 1])
-                && islower((unsigned char)src[i + 2]))
+            if (i + 2 < len && isupper((unsigned char)src[i]) &&
+                isupper((unsigned char)src[i + 1]) && islower((unsigned char)src[i + 2]))
             {
-                if (bpos < buf_cap) buf[bpos++] = src[i];
+                if (bpos < buf_cap)
+                    buf[bpos++] = src[i];
                 ++i;
                 break;
             }
-            if (bpos < buf_cap) buf[bpos++] = src[i];
+            if (bpos < buf_cap)
+                buf[bpos++] = src[i];
             ++i;
         }
-        if (bpos < buf_cap) buf[bpos++] = '\0';
+        if (bpos < buf_cap)
+            buf[bpos++] = '\0';
         ++wcount;
     }
 
@@ -2021,11 +2025,14 @@ static int split_words(const char *src, size_t len,
 
 rt_string rt_str_camel_case(rt_string str)
 {
-    if (!str) return rt_string_from_bytes("", 0);
+    if (!str)
+        return rt_string_from_bytes("", 0);
     const char *src = rt_string_cstr(str);
-    if (!src) return rt_string_from_bytes("", 0);
+    if (!src)
+        return rt_string_from_bytes("", 0);
     size_t len = strlen(src);
-    if (len == 0) return rt_string_from_bytes("", 0);
+    if (len == 0)
+        return rt_string_from_bytes("", 0);
 
     char *wbuf = (char *)malloc(len + 256);
     const char *words[128];
@@ -2038,10 +2045,11 @@ rt_string rt_str_camel_case(rt_string str)
     {
         const char *word = words[w];
         size_t wlen = strlen(word);
-        if (wlen == 0) continue;
+        if (wlen == 0)
+            continue;
 
         char first = (w == 0) ? (char)tolower((unsigned char)word[0])
-                               : (char)toupper((unsigned char)word[0]);
+                              : (char)toupper((unsigned char)word[0]);
         rt_sb_append_bytes(&sb, &first, 1);
         for (size_t j = 1; j < wlen; ++j)
         {
@@ -2058,11 +2066,14 @@ rt_string rt_str_camel_case(rt_string str)
 
 rt_string rt_str_pascal_case(rt_string str)
 {
-    if (!str) return rt_string_from_bytes("", 0);
+    if (!str)
+        return rt_string_from_bytes("", 0);
     const char *src = rt_string_cstr(str);
-    if (!src) return rt_string_from_bytes("", 0);
+    if (!src)
+        return rt_string_from_bytes("", 0);
     size_t len = strlen(src);
-    if (len == 0) return rt_string_from_bytes("", 0);
+    if (len == 0)
+        return rt_string_from_bytes("", 0);
 
     char *wbuf = (char *)malloc(len + 256);
     const char *words[128];
@@ -2075,7 +2086,8 @@ rt_string rt_str_pascal_case(rt_string str)
     {
         const char *word = words[w];
         size_t wlen = strlen(word);
-        if (wlen == 0) continue;
+        if (wlen == 0)
+            continue;
 
         char first = (char)toupper((unsigned char)word[0]);
         rt_sb_append_bytes(&sb, &first, 1);
@@ -2094,11 +2106,14 @@ rt_string rt_str_pascal_case(rt_string str)
 
 rt_string rt_str_snake_case(rt_string str)
 {
-    if (!str) return rt_string_from_bytes("", 0);
+    if (!str)
+        return rt_string_from_bytes("", 0);
     const char *src = rt_string_cstr(str);
-    if (!src) return rt_string_from_bytes("", 0);
+    if (!src)
+        return rt_string_from_bytes("", 0);
     size_t len = strlen(src);
-    if (len == 0) return rt_string_from_bytes("", 0);
+    if (len == 0)
+        return rt_string_from_bytes("", 0);
 
     char *wbuf = (char *)malloc(len + 256);
     const char *words[128];
@@ -2109,7 +2124,8 @@ rt_string rt_str_snake_case(rt_string str)
 
     for (int w = 0; w < wc; ++w)
     {
-        if (w > 0) rt_sb_append_bytes(&sb, "_", 1);
+        if (w > 0)
+            rt_sb_append_bytes(&sb, "_", 1);
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j)
@@ -2127,11 +2143,14 @@ rt_string rt_str_snake_case(rt_string str)
 
 rt_string rt_str_kebab_case(rt_string str)
 {
-    if (!str) return rt_string_from_bytes("", 0);
+    if (!str)
+        return rt_string_from_bytes("", 0);
     const char *src = rt_string_cstr(str);
-    if (!src) return rt_string_from_bytes("", 0);
+    if (!src)
+        return rt_string_from_bytes("", 0);
     size_t len = strlen(src);
-    if (len == 0) return rt_string_from_bytes("", 0);
+    if (len == 0)
+        return rt_string_from_bytes("", 0);
 
     char *wbuf = (char *)malloc(len + 256);
     const char *words[128];
@@ -2142,7 +2161,8 @@ rt_string rt_str_kebab_case(rt_string str)
 
     for (int w = 0; w < wc; ++w)
     {
-        if (w > 0) rt_sb_append_bytes(&sb, "-", 1);
+        if (w > 0)
+            rt_sb_append_bytes(&sb, "-", 1);
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j)
@@ -2160,11 +2180,14 @@ rt_string rt_str_kebab_case(rt_string str)
 
 rt_string rt_str_screaming_snake(rt_string str)
 {
-    if (!str) return rt_string_from_bytes("", 0);
+    if (!str)
+        return rt_string_from_bytes("", 0);
     const char *src = rt_string_cstr(str);
-    if (!src) return rt_string_from_bytes("", 0);
+    if (!src)
+        return rt_string_from_bytes("", 0);
     size_t len = strlen(src);
-    if (len == 0) return rt_string_from_bytes("", 0);
+    if (len == 0)
+        return rt_string_from_bytes("", 0);
 
     char *wbuf = (char *)malloc(len + 256);
     const char *words[128];
@@ -2175,7 +2198,8 @@ rt_string rt_str_screaming_snake(rt_string str)
 
     for (int w = 0; w < wc; ++w)
     {
-        if (w > 0) rt_sb_append_bytes(&sb, "_", 1);
+        if (w > 0)
+            rt_sb_append_bytes(&sb, "_", 1);
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j)

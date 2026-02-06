@@ -490,7 +490,10 @@ static bool send_request_recv_reply(const void *req,
         int i = 15;
         buf[i] = '\0';
         uint32_t v = req_count;
-        do { buf[--i] = '0' + (v % 10); v /= 10; } while (v > 0);
+        do {
+            buf[--i] = '0' + (v % 10);
+            v /= 10;
+        } while (v > 0);
         sys::print(&buf[i]);
         sys::print(" waiting for reply...\n");
     }
@@ -505,7 +508,10 @@ static bool send_request_recv_reply(const void *req,
                 int bi = 15;
                 buf[bi] = '\0';
                 uint32_t v = i;
-                do { buf[--bi] = '0' + (v % 10); v /= 10; } while (v > 0);
+                do {
+                    buf[--bi] = '0' + (v % 10);
+                    v /= 10;
+                } while (v > 0);
                 sys::print(&buf[bi]);
                 sys::print(" iterations\n");
             }
@@ -525,7 +531,10 @@ static bool send_request_recv_reply(const void *req,
                 int bi = 15;
                 buf[bi] = '\0';
                 int64_t v = -n;
-                do { buf[--bi] = '0' + (v % 10); v /= 10; } while (v > 0);
+                do {
+                    buf[--bi] = '0' + (v % 10);
+                    v /= 10;
+                } while (v > 0);
                 sys::print(&buf[bi]);
                 sys::print("\n");
             }

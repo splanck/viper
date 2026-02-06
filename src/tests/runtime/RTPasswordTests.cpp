@@ -121,10 +121,10 @@ static void test_password_verify()
 
     // Test 4: Long password works
     {
-        rt_string password = rt_const_cstr(
-            "This is a very long password that exceeds the normal length "
-            "that most people would use for their passwords, but it should "
-            "still work correctly with the PBKDF2 algorithm.");
+        rt_string password =
+            rt_const_cstr("This is a very long password that exceeds the normal length "
+                          "that most people would use for their passwords, but it should "
+                          "still work correctly with the PBKDF2 algorithm.");
         rt_string hash = rt_password_hash(password);
         int8_t result = rt_password_verify(password, hash);
         test_result("Long password verifies", result == 1);

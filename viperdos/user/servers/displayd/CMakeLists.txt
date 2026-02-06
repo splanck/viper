@@ -2,17 +2,17 @@
 # Provides window management and compositing
 
 add_executable(displayd.sys
-    main.cpp
-    state.cpp
-    graphics.cpp
-    cursor.cpp
-    surface.cpp
-    window.cpp
-    menu.cpp
-    compositor.cpp
-    events.cpp
-    input.cpp
-    ipc.cpp
+        main.cpp
+        state.cpp
+        graphics.cpp
+        cursor.cpp
+        surface.cpp
+        window.cpp
+        menu.cpp
+        compositor.cpp
+        events.cpp
+        input.cpp
+        ipc.cpp
 )
 
 target_compile_options(displayd.sys PRIVATE ${USER_COMPILE_OPTIONS})

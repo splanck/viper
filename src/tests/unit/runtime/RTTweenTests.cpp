@@ -5,31 +5,37 @@
 
 #include "rt_tween.h"
 #include <cassert>
-#include <cstdio>
 #include <cmath>
+#include <cstdio>
 
 static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
-#define RUN_TEST(name) do { \
-    printf("  %s...", #name); \
-    test_##name(); \
-    printf(" OK\n"); \
-    tests_passed++; \
-} while(0)
+#define RUN_TEST(name)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %s...", #name);                                                                  \
+        test_##name();                                                                             \
+        printf(" OK\n");                                                                           \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define ASSERT(cond) do { \
-    if (!(cond)) { \
-        printf(" FAILED at line %d: %s\n", __LINE__, #cond); \
-        tests_failed++; \
-        return; \
-    } \
-} while(0)
+#define ASSERT(cond)                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
 #define ASSERT_NEAR(a, b, eps) ASSERT(fabs((a) - (b)) < (eps))
 
-TEST(create_destroy) {
+TEST(create_destroy)
+{
     rt_tween tw = rt_tween_new();
     ASSERT(tw != NULL);
     ASSERT(rt_tween_is_running(tw) == 0);
@@ -37,7 +43,8 @@ TEST(create_destroy) {
     rt_tween_destroy(tw);
 }
 
-TEST(start_linear) {
+TEST(start_linear)
+{
     rt_tween tw = rt_tween_new();
     rt_tween_start(tw, 0.0, 100.0, 10, RT_EASE_LINEAR);
 
@@ -45,28 +52,33 @@ TEST(start_linear) {
     ASSERT_NEAR(rt_tween_value(tw), 0.0, 0.1);
 
     // Update 5 frames (50%)
-    for (int i = 0; i < 5; i++) rt_tween_update(tw);
+    for (int i = 0; i < 5; i++)
+        rt_tween_update(tw);
     ASSERT_NEAR(rt_tween_value(tw), 50.0, 1.0);
     ASSERT(rt_tween_progress(tw) == 50);
 
     // Update to completion
-    for (int i = 0; i < 5; i++) rt_tween_update(tw);
+    for (int i = 0; i < 5; i++)
+        rt_tween_update(tw);
     ASSERT_NEAR(rt_tween_value(tw), 100.0, 0.1);
     ASSERT(rt_tween_is_complete(tw) == 1);
     ASSERT(rt_tween_is_running(tw) == 0);
     rt_tween_destroy(tw);
 }
 
-TEST(start_i64) {
+TEST(start_i64)
+{
     rt_tween tw = rt_tween_new();
     rt_tween_start_i64(tw, 0, 200, 20, RT_EASE_LINEAR);
 
-    for (int i = 0; i < 10; i++) rt_tween_update(tw);
+    for (int i = 0; i < 10; i++)
+        rt_tween_update(tw);
     ASSERT(rt_tween_value_i64(tw) == 100);
     rt_tween_destroy(tw);
 }
 
-TEST(pause_resume) {
+TEST(pause_resume)
+{
     rt_tween tw = rt_tween_new();
     rt_tween_start(tw, 0.0, 100.0, 10, RT_EASE_LINEAR);
 
@@ -87,11 +99,13 @@ TEST(pause_resume) {
     rt_tween_destroy(tw);
 }
 
-TEST(stop_reset) {
+TEST(stop_reset)
+{
     rt_tween tw = rt_tween_new();
     rt_tween_start(tw, 0.0, 100.0, 10, RT_EASE_LINEAR);
 
-    for (int i = 0; i < 5; i++) rt_tween_update(tw);
+    for (int i = 0; i < 5; i++)
+        rt_tween_update(tw);
     rt_tween_stop(tw);
     ASSERT(rt_tween_is_running(tw) == 0);
 
@@ -101,7 +115,8 @@ TEST(stop_reset) {
     rt_tween_destroy(tw);
 }
 
-TEST(ease_functions) {
+TEST(ease_functions)
+{
     // Test that different easing types produce different curves
     double t = 0.5;
     double linear = rt_tween_ease(t, RT_EASE_LINEAR);
@@ -113,14 +128,16 @@ TEST(ease_functions) {
     ASSERT(out_quad > linear); // ease-out is faster at midpoint
 }
 
-TEST(lerp_i64) {
+TEST(lerp_i64)
+{
     ASSERT(rt_tween_lerp_i64(0, 100, 0.0) == 0);
     ASSERT(rt_tween_lerp_i64(0, 100, 0.5) == 50);
     ASSERT(rt_tween_lerp_i64(0, 100, 1.0) == 100);
     ASSERT(rt_tween_lerp_i64(-100, 100, 0.5) == 0);
 }
 
-int main() {
+int main()
+{
     printf("RTTweenTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(start_linear);

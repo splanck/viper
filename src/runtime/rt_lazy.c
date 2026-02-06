@@ -31,6 +31,7 @@ typedef struct
     int8_t evaluated;
     ValueType value_type;
     void *(*supplier)(void);
+
     union
     {
         void *ptr;

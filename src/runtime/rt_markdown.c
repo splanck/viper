@@ -21,21 +21,21 @@ static void append_escaped(rt_string_builder *sb, char c)
 {
     switch (c)
     {
-    case '<':
-        rt_sb_append_cstr(sb, "&lt;");
-        break;
-    case '>':
-        rt_sb_append_cstr(sb, "&gt;");
-        break;
-    case '&':
-        rt_sb_append_cstr(sb, "&amp;");
-        break;
-    case '"':
-        rt_sb_append_cstr(sb, "&quot;");
-        break;
-    default:
-        rt_sb_append_bytes(sb, &c, 1);
-        break;
+        case '<':
+            rt_sb_append_cstr(sb, "&lt;");
+            break;
+        case '>':
+            rt_sb_append_cstr(sb, "&gt;");
+            break;
+        case '&':
+            rt_sb_append_cstr(sb, "&amp;");
+            break;
+        case '"':
+            rt_sb_append_cstr(sb, "&quot;");
+            break;
+        default:
+            rt_sb_append_bytes(sb, &c, 1);
+            break;
     }
 }
 
@@ -362,8 +362,7 @@ void *rt_markdown_extract_links(rt_string md)
                     url_end++;
                 if (*url_end == ')')
                 {
-                    rt_string url = rt_string_from_bytes(url_start,
-                        (int64_t)(url_end - url_start));
+                    rt_string url = rt_string_from_bytes(url_start, (int64_t)(url_end - url_start));
                     rt_seq_push(seq, url);
                     p = url_end + 1;
                     continue;

@@ -38,10 +38,7 @@ void queue_close_event(Surface *surf);
 void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, bool pressed);
 
 // Queue a menu event to a surface
-void queue_menu_event(Surface *surf,
-                      uint8_t menu_index,
-                      uint8_t item_index,
-                      uint8_t action);
+void queue_menu_event(Surface *surf, uint8_t menu_index, uint8_t item_index, uint8_t action);
 
 // Flush queued events to client via IPC
 void flush_events(Surface *surf);

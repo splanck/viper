@@ -24,6 +24,7 @@ namespace viper::codegen::x64
 {
 
 /// \brief Run conservative Machine IR peepholes for Phase A bring-up.
-void runPeepholes(MFunction &fn);
+/// \return Total number of transformations applied across all passes.
+std::size_t runPeepholes(MFunction &fn);
 
 } // namespace viper::codegen::x64

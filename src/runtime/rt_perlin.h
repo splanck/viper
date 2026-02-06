@@ -49,8 +49,7 @@ extern "C"
     /// @param octaves Number of octaves (layers of detail).
     /// @param persistence Amplitude multiplier per octave (typically 0.5).
     /// @return Noise value.
-    double rt_perlin_octave2d(void *obj, double x, double y,
-                              int64_t octaves, double persistence);
+    double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence);
 
     /// @brief Generate fractal/octave 3D noise.
     /// @param obj PerlinNoise pointer.
@@ -60,8 +59,8 @@ extern "C"
     /// @param octaves Number of octaves.
     /// @param persistence Amplitude multiplier per octave.
     /// @return Noise value.
-    double rt_perlin_octave3d(void *obj, double x, double y, double z,
-                              int64_t octaves, double persistence);
+    double rt_perlin_octave3d(
+        void *obj, double x, double y, double z, int64_t octaves, double persistence);
 
 #ifdef __cplusplus
 }

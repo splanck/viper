@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_daterange.h"
+#include "rt_internal.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -63,7 +63,7 @@ static void test_contains()
     void *r = rt_daterange_new(JAN_1, JAN_31);
     assert(rt_daterange_contains(r, JAN_15) == 1);
     assert(rt_daterange_contains(r, JAN_1) == 1);  // inclusive start
-    assert(rt_daterange_contains(r, JAN_31) == 1);  // inclusive end
+    assert(rt_daterange_contains(r, JAN_31) == 1); // inclusive end
     assert(rt_daterange_contains(r, FEB_1) == 0);
     assert(rt_daterange_contains(r, JAN_1 - 1) == 0);
 }

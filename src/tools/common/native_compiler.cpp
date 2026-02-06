@@ -12,8 +12,8 @@
 
 #include "tools/common/native_compiler.hpp"
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
 #include "codegen/x86_64/CodegenPipeline.hpp"
+#include "tools/viper/cmd_codegen_arm64.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -45,9 +45,7 @@ std::string generateTempIlPath()
     return (dir / ("viper_build_" + std::to_string(pid) + ".il")).string();
 }
 
-int compileToNative(const std::string &ilPath,
-                    const std::string &outputPath,
-                    TargetArch arch)
+int compileToNative(const std::string &ilPath, const std::string &outputPath, TargetArch arch)
 {
     if (arch == TargetArch::ARM64)
     {

@@ -213,7 +213,8 @@ bool is_in_heap(u64 addr) {
  * @brief Dump first 32 bytes at an address as hex.
  */
 void debug_dump_memory(const char *label, u64 addr) {
-    if (addr == 0) return;
+    if (addr == 0)
+        return;
     serial::puts("[kheap-memdump] ");
     serial::puts(label);
     serial::puts(" at 0x");
@@ -222,7 +223,8 @@ void debug_dump_memory(const char *label, u64 addr) {
 
     u8 *p = reinterpret_cast<u8 *>(addr);
     for (int i = 0; i < 32; i++) {
-        if (i > 0 && i % 8 == 0) serial::puts(" ");
+        if (i > 0 && i % 8 == 0)
+            serial::puts(" ");
         serial::put_hex(p[i]);
         serial::puts(" ");
     }
@@ -254,7 +256,8 @@ void debug_start_watching(u64 addr) {
  * Call this after key operations to detect when corruption first occurs.
  */
 void debug_check_corruption_addr(const char *context) {
-    if (!watching || CORRUPTION_WATCH_ADDR == 0) return;
+    if (!watching || CORRUPTION_WATCH_ADDR == 0)
+        return;
 
     BlockHeader *hdr = reinterpret_cast<BlockHeader *>(CORRUPTION_WATCH_ADDR);
 

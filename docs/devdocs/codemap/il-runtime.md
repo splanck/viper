@@ -6,8 +6,8 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 18 (.hpp/.cpp)
-- **Subdirectories**: classes/, signatures/
+- **Total source files**: 21 (.hpp/.cpp)
+- **Subdirectories**: classes/, generated/, signatures/
 
 ## Signature Registry
 

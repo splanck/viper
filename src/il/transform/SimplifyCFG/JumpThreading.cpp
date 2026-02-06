@@ -274,8 +274,7 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx)
             auto *targetBlock = findBlock(F, newTarget);
             if (!targetBlock)
                 continue;
-            auto newArgs =
-                computeThreadedArgs(*pred, block, *targetBlock, targetBranchIdx);
+            auto newArgs = computeThreadedArgs(*pred, block, *targetBlock, targetBranchIdx);
 
             // Find which branch index in pred goes to this block
             il::core::Instr *predTerm = findTerminator(*pred);

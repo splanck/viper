@@ -499,12 +499,10 @@ void ISel::lowerCompareAndBranch(MFunction &func) const
                     ensureMovzxAfterSetcc(block, idx);
                     break;
                 case MOpcode::TESTrr:
-                    if (instr.operands.size() >= 2 && isImm(instr.operands[1]))
-                    {
-                        // Replace TEST with CMP against zero when a constant sneaks through.
-                        instr.opcode = MOpcode::CMPri;
-                        instr.operands[1] = makeImmOperand(0);
-                    }
+                    // TESTrr should always have two register operands (self-test).
+                    // Do NOT rewrite to CMP $0 if an immediate sneaks through:
+                    // TEST computes (reg AND imm) while CMP computes (reg - 0),
+                    // which set different flags for non-zero masks.
                     break;
                 default:
                     break;
@@ -706,8 +704,8 @@ void ISel::foldSibAddressing(MFunction &func) const
 
                 const ShlInfo &shlInfo = shlIt->second;
 
-                // Check that the ADD and SHL results are single-use
-                auto addUseIt = useCount.find(addInfo.baseVreg);
+                // Check that the ADD result and SHL result are single-use
+                auto addUseIt = useCount.find(baseId);
                 auto shlUseIt = useCount.find(addInfo.shiftedVreg);
                 if (addUseIt == useCount.end() || shlUseIt == useCount.end())
                 {

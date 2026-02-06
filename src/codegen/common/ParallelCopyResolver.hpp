@@ -24,8 +24,7 @@ namespace viper::codegen::common
 
 /// @brief A single parallel copy assignment from source to destination.
 /// @tparam RegClassT The backend-specific register class enum type.
-template <typename RegClassT>
-struct CopyPair
+template <typename RegClassT> struct CopyPair
 {
     std::uint16_t srcV; ///< Source virtual register number.
     std::uint16_t dstV; ///< Destination virtual register number.
@@ -34,8 +33,7 @@ struct CopyPair
 
 /// @brief Interface for emitting resolved copy instructions.
 /// @tparam RegClassT The backend-specific register class enum type.
-template <typename RegClassT>
-struct CopyEmitter
+template <typename RegClassT> struct CopyEmitter
 {
     virtual void movVRegToVReg(RegClassT cls, std::uint16_t src, std::uint16_t dst) = 0;
     virtual void movVRegToTemp(RegClassT cls, std::uint16_t src) = 0;
@@ -199,8 +197,7 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
 /// @brief Materialises a sequence of moves from parallel copy assignments.
 /// @tparam RegClassT The backend-specific register class enum type.
 template <typename RegClassT>
-inline void resolveParallelCopies(std::vector<CopyPair<RegClassT>> pairs,
-                                  CopyEmitter<RegClassT> &E)
+inline void resolveParallelCopies(std::vector<CopyPair<RegClassT>> pairs, CopyEmitter<RegClassT> &E)
 {
     const auto total = static_cast<std::uint32_t>(pairs.size());
     if (total == 0U)

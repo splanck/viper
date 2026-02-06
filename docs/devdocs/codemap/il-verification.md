@@ -6,7 +6,7 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 50 (.hpp/.cpp)
+- **Total source files**: 49 (.hpp/.cpp)
 - **Subdirectories**: generated/
 
 ## Main Verifier

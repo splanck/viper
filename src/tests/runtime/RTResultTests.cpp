@@ -129,14 +129,16 @@ static void test_result_unwrap_or()
     {
         void *r = rt_result_ok_str(rt_const_cstr("hello"));
         rt_string result = rt_result_unwrap_or_str(r, rt_const_cstr("default"));
-        test_result("UnwrapOrStr on Ok returns value", strcmp(rt_string_cstr(result), "hello") == 0);
+        test_result("UnwrapOrStr on Ok returns value",
+                    strcmp(rt_string_cstr(result), "hello") == 0);
     }
 
     // Test 6: UnwrapOrStr on Err
     {
         void *r = rt_result_err_str(rt_const_cstr("error"));
         rt_string result = rt_result_unwrap_or_str(r, rt_const_cstr("default"));
-        test_result("UnwrapOrStr on Err returns default", strcmp(rt_string_cstr(result), "default") == 0);
+        test_result("UnwrapOrStr on Err returns default",
+                    strcmp(rt_string_cstr(result), "default") == 0);
     }
 
     printf("\n");

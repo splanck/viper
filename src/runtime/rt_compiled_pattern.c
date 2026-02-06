@@ -199,9 +199,16 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
     int group_ends[MAX_CAPTURE_GROUPS];
     int match_start, match_end, num_groups;
 
-    if (re_find_match_with_groups(cpo->pattern, txt_str, text_len, (int)start,
-                                   &match_start, &match_end,
-                                   group_starts, group_ends, MAX_CAPTURE_GROUPS, &num_groups))
+    if (re_find_match_with_groups(cpo->pattern,
+                                  txt_str,
+                                  text_len,
+                                  (int)start,
+                                  &match_start,
+                                  &match_end,
+                                  group_starts,
+                                  group_ends,
+                                  MAX_CAPTURE_GROUPS,
+                                  &num_groups))
     {
         // Group 0 is the full match
         rt_string full_match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
@@ -210,9 +217,8 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
         // Add captured groups
         for (int i = 0; i < num_groups; i++)
         {
-            rt_string group = rt_string_from_bytes(
-                txt_str + group_starts[i],
-                group_ends[i] - group_starts[i]);
+            rt_string group =
+                rt_string_from_bytes(txt_str + group_starts[i], group_ends[i] - group_starts[i]);
             rt_seq_push(seq, (void *)group);
         }
     }

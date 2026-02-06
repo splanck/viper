@@ -20,13 +20,15 @@ typeRegistry_["Viper.Bits"] = types::runtimeClass("Viper.Bits");
 typeRegistry_["Viper.Collections.Bytes"] = types::runtimeClass("Viper.Collections.Bytes");
 typeRegistry_["Viper.Collections.BiMap"] = types::runtimeClass("Viper.Collections.BiMap");
 typeRegistry_["Viper.Collections.BitSet"] = types::runtimeClass("Viper.Collections.BitSet");
-typeRegistry_["Viper.Collections.BloomFilter"] = types::runtimeClass("Viper.Collections.BloomFilter");
+typeRegistry_["Viper.Collections.BloomFilter"] =
+    types::runtimeClass("Viper.Collections.BloomFilter");
 typeRegistry_["Viper.Collections.UnionFind"] = types::runtimeClass("Viper.Collections.UnionFind");
 typeRegistry_["Viper.Collections.OrderedMap"] = types::runtimeClass("Viper.Collections.OrderedMap");
 typeRegistry_["Viper.Collections.DefaultMap"] = types::runtimeClass("Viper.Collections.DefaultMap");
 typeRegistry_["Viper.Collections.FrozenSet"] = types::runtimeClass("Viper.Collections.FrozenSet");
 typeRegistry_["Viper.Collections.FrozenMap"] = types::runtimeClass("Viper.Collections.FrozenMap");
-typeRegistry_["Viper.Collections.SparseArray"] = types::runtimeClass("Viper.Collections.SparseArray");
+typeRegistry_["Viper.Collections.SparseArray"] =
+    types::runtimeClass("Viper.Collections.SparseArray");
 typeRegistry_["Viper.Collections.WeakMap"] = types::runtimeClass("Viper.Collections.WeakMap");
 typeRegistry_["Viper.Collections.Bag"] = types::runtimeClass("Viper.Collections.Bag");
 typeRegistry_["Viper.Collections.CountMap"] = types::runtimeClass("Viper.Collections.CountMap");
@@ -158,7 +160,8 @@ typeRegistry_["Viper.Text.StringBuilder"] = types::runtimeClass("Viper.Text.Stri
 typeRegistry_["Viper.Text.Pattern"] = types::runtimeClass("Viper.Text.Pattern");
 typeRegistry_["Viper.Text.CompiledPattern"] = types::runtimeClass("Viper.Text.CompiledPattern");
 typeRegistry_["Viper.Text.Template"] = types::runtimeClass("Viper.Text.Template");
-typeRegistry_["Viper.Threads.ConcurrentQueue"] = types::runtimeClass("Viper.Threads.ConcurrentQueue");
+typeRegistry_["Viper.Threads.ConcurrentQueue"] =
+    types::runtimeClass("Viper.Threads.ConcurrentQueue");
 typeRegistry_["Viper.Threads.Monitor"] = types::runtimeClass("Viper.Threads.Monitor");
 typeRegistry_["Viper.Threads.SafeI64"] = types::runtimeClass("Viper.Threads.SafeI64");
 typeRegistry_["Viper.Threads.Gate"] = types::runtimeClass("Viper.Threads.Gate");
@@ -168,7 +171,8 @@ typeRegistry_["Viper.Threads.Thread"] = types::runtimeClass("Viper.Threads.Threa
 typeRegistry_["Viper.Threads.Promise"] = types::runtimeClass("Viper.Threads.Promise");
 typeRegistry_["Viper.Threads.Future"] = types::runtimeClass("Viper.Threads.Future");
 typeRegistry_["Viper.Threads.Parallel"] = types::runtimeClass("Viper.Threads.Parallel");
-typeRegistry_["Viper.Threads.CancellationToken"] = types::runtimeClass("Viper.Threads.CancellationToken");
+typeRegistry_["Viper.Threads.CancellationToken"] =
+    types::runtimeClass("Viper.Threads.CancellationToken");
 typeRegistry_["Viper.Threads.Debouncer"] = types::runtimeClass("Viper.Threads.Debouncer");
 typeRegistry_["Viper.Threads.Throttler"] = types::runtimeClass("Viper.Threads.Throttler");
 typeRegistry_["Viper.Time.Clock"] = types::runtimeClass("Viper.Time.Clock");
@@ -251,7 +255,8 @@ defineExternFunction("Viper.Collections.BitSet.get_Count", types::integer());
 defineExternFunction("Viper.Collections.BitSet.Get", types::boolean());
 defineExternFunction("Viper.Collections.BitSet.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Collections.BitSet.get_Len", types::integer());
-defineExternFunction("Viper.Collections.BitSet.New", types::runtimeClass("Viper.Collections.BitSet"));
+defineExternFunction("Viper.Collections.BitSet.New",
+                     types::runtimeClass("Viper.Collections.BitSet"));
 defineExternFunction("Viper.Collections.BitSet.Not", types::ptr());
 defineExternFunction("Viper.Collections.BitSet.Or", types::ptr());
 defineExternFunction("Viper.Collections.BitSet.Set", types::voidType());
@@ -259,21 +264,24 @@ defineExternFunction("Viper.Collections.BitSet.SetAll", types::voidType());
 defineExternFunction("Viper.Collections.BitSet.Toggle", types::voidType());
 defineExternFunction("Viper.Collections.BitSet.ToString", types::string());
 defineExternFunction("Viper.Collections.BitSet.Xor", types::ptr());
-defineExternFunction("Viper.Collections.BloomFilter.New", types::runtimeClass("Viper.Collections.BloomFilter"));
+defineExternFunction("Viper.Collections.BloomFilter.New",
+                     types::runtimeClass("Viper.Collections.BloomFilter"));
 defineExternFunction("Viper.Collections.BloomFilter.Add", types::voidType());
 defineExternFunction("Viper.Collections.BloomFilter.MightContain", types::boolean());
 defineExternFunction("Viper.Collections.BloomFilter.get_Count", types::integer());
 defineExternFunction("Viper.Collections.BloomFilter.Fpr", types::number());
 defineExternFunction("Viper.Collections.BloomFilter.Clear", types::voidType());
 defineExternFunction("Viper.Collections.BloomFilter.Merge", types::integer());
-defineExternFunction("Viper.Collections.UnionFind.New", types::runtimeClass("Viper.Collections.UnionFind"));
+defineExternFunction("Viper.Collections.UnionFind.New",
+                     types::runtimeClass("Viper.Collections.UnionFind"));
 defineExternFunction("Viper.Collections.UnionFind.Find", types::integer());
 defineExternFunction("Viper.Collections.UnionFind.Union", types::integer());
 defineExternFunction("Viper.Collections.UnionFind.Connected", types::integer());
 defineExternFunction("Viper.Collections.UnionFind.get_Count", types::integer());
 defineExternFunction("Viper.Collections.UnionFind.SetSize", types::integer());
 defineExternFunction("Viper.Collections.UnionFind.Reset", types::voidType());
-defineExternFunction("Viper.Collections.OrderedMap.New", types::runtimeClass("Viper.Collections.OrderedMap"));
+defineExternFunction("Viper.Collections.OrderedMap.New",
+                     types::runtimeClass("Viper.Collections.OrderedMap"));
 defineExternFunction("Viper.Collections.OrderedMap.get_Len", types::integer());
 defineExternFunction("Viper.Collections.OrderedMap.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Collections.OrderedMap.Set", types::voidType());
@@ -284,13 +292,17 @@ defineExternFunction("Viper.Collections.OrderedMap.Keys", types::ptr());
 defineExternFunction("Viper.Collections.OrderedMap.Values", types::ptr());
 defineExternFunction("Viper.Collections.OrderedMap.KeyAt", types::string());
 defineExternFunction("Viper.Collections.OrderedMap.Clear", types::voidType());
-defineExternFunction("Viper.Collections.Bytes.Clone", types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Collections.Bytes.Clone",
+                     types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Collections.Bytes.Copy", types::voidType());
 defineExternFunction("Viper.Collections.Bytes.Fill", types::voidType());
 defineExternFunction("Viper.Collections.Bytes.Find", types::integer());
-defineExternFunction("Viper.Collections.Bytes.FromBase64", types::runtimeClass("Viper.Collections.Bytes"));
-defineExternFunction("Viper.Collections.Bytes.FromHex", types::runtimeClass("Viper.Collections.Bytes"));
-defineExternFunction("Viper.Collections.Bytes.FromStr", types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Collections.Bytes.FromBase64",
+                     types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Collections.Bytes.FromHex",
+                     types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Collections.Bytes.FromStr",
+                     types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Collections.Bytes.Get", types::integer());
 defineExternFunction("Viper.Collections.Bytes.get_Len", types::integer());
 defineExternFunction("Viper.Collections.Bytes.New", types::runtimeClass("Viper.Collections.Bytes"));
@@ -299,7 +311,8 @@ defineExternFunction("Viper.Collections.Bytes.Slice", types::ptr());
 defineExternFunction("Viper.Collections.Bytes.ToBase64", types::string());
 defineExternFunction("Viper.Collections.Bytes.ToHex", types::string());
 defineExternFunction("Viper.Collections.Bytes.ToStr", types::string());
-defineExternFunction("Viper.Collections.FrozenSet.FromSeq", types::runtimeClass("Viper.Collections.FrozenSet"));
+defineExternFunction("Viper.Collections.FrozenSet.FromSeq",
+                     types::runtimeClass("Viper.Collections.FrozenSet"));
 defineExternFunction("Viper.Collections.FrozenSet.Empty", types::ptr());
 defineExternFunction("Viper.Collections.FrozenSet.get_Len", types::integer());
 defineExternFunction("Viper.Collections.FrozenSet.get_IsEmpty", types::boolean());
@@ -310,7 +323,8 @@ defineExternFunction("Viper.Collections.FrozenSet.Intersect", types::ptr());
 defineExternFunction("Viper.Collections.FrozenSet.Diff", types::ptr());
 defineExternFunction("Viper.Collections.FrozenSet.IsSubset", types::boolean());
 defineExternFunction("Viper.Collections.FrozenSet.Equals", types::boolean());
-defineExternFunction("Viper.Collections.FrozenMap.FromSeqs", types::runtimeClass("Viper.Collections.FrozenMap"));
+defineExternFunction("Viper.Collections.FrozenMap.FromSeqs",
+                     types::runtimeClass("Viper.Collections.FrozenMap"));
 defineExternFunction("Viper.Collections.FrozenMap.Empty", types::ptr());
 defineExternFunction("Viper.Collections.FrozenMap.get_Len", types::integer());
 defineExternFunction("Viper.Collections.FrozenMap.get_IsEmpty", types::boolean());
@@ -332,7 +346,8 @@ defineExternFunction("Viper.Collections.Bag.get_Len", types::integer());
 defineExternFunction("Viper.Collections.Bag.Merge", types::ptr());
 defineExternFunction("Viper.Collections.Bag.New", types::runtimeClass("Viper.Collections.Bag"));
 defineExternFunction("Viper.Collections.Bag.Put", types::boolean());
-defineExternFunction("Viper.Collections.SparseArray.New", types::runtimeClass("Viper.Collections.SparseArray"));
+defineExternFunction("Viper.Collections.SparseArray.New",
+                     types::runtimeClass("Viper.Collections.SparseArray"));
 defineExternFunction("Viper.Collections.SparseArray.get_Len", types::integer());
 defineExternFunction("Viper.Collections.SparseArray.Get", types::ptr());
 defineExternFunction("Viper.Collections.SparseArray.Set", types::voidType());
@@ -341,7 +356,8 @@ defineExternFunction("Viper.Collections.SparseArray.Remove", types::boolean());
 defineExternFunction("Viper.Collections.SparseArray.Indices", types::ptr());
 defineExternFunction("Viper.Collections.SparseArray.Values", types::ptr());
 defineExternFunction("Viper.Collections.SparseArray.Clear", types::voidType());
-defineExternFunction("Viper.Collections.WeakMap.New", types::runtimeClass("Viper.Collections.WeakMap"));
+defineExternFunction("Viper.Collections.WeakMap.New",
+                     types::runtimeClass("Viper.Collections.WeakMap"));
 defineExternFunction("Viper.Collections.WeakMap.get_Len", types::integer());
 defineExternFunction("Viper.Collections.WeakMap.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Collections.WeakMap.Set", types::voidType());
@@ -387,7 +403,8 @@ defineExternFunction("Viper.Collections.LruCache.Has", types::boolean());
 defineExternFunction("Viper.Collections.LruCache.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Collections.LruCache.Keys", types::ptr());
 defineExternFunction("Viper.Collections.LruCache.get_Len", types::integer());
-defineExternFunction("Viper.Collections.LruCache.New", types::runtimeClass("Viper.Collections.LruCache"));
+defineExternFunction("Viper.Collections.LruCache.New",
+                     types::runtimeClass("Viper.Collections.LruCache"));
 defineExternFunction("Viper.Collections.LruCache.Peek", types::ptr());
 defineExternFunction("Viper.Collections.LruCache.Put", types::voidType());
 defineExternFunction("Viper.Collections.LruCache.Remove", types::boolean());
@@ -407,7 +424,8 @@ defineExternFunction("Viper.Collections.BiMap.RemoveByValue", types::boolean());
 defineExternFunction("Viper.Collections.BiMap.Keys", types::ptr());
 defineExternFunction("Viper.Collections.BiMap.Values", types::ptr());
 defineExternFunction("Viper.Collections.BiMap.Clear", types::voidType());
-defineExternFunction("Viper.Collections.CountMap.New", types::runtimeClass("Viper.Collections.CountMap"));
+defineExternFunction("Viper.Collections.CountMap.New",
+                     types::runtimeClass("Viper.Collections.CountMap"));
 defineExternFunction("Viper.Collections.CountMap.get_Len", types::integer());
 defineExternFunction("Viper.Collections.CountMap.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Collections.CountMap.Inc", types::integer());
@@ -430,7 +448,8 @@ defineExternFunction("Viper.Collections.MultiMap.get_IsEmpty", types::boolean())
 defineExternFunction("Viper.Collections.MultiMap.get_KeyCount", types::integer());
 defineExternFunction("Viper.Collections.MultiMap.Keys", types::ptr());
 defineExternFunction("Viper.Collections.MultiMap.get_Len", types::integer());
-defineExternFunction("Viper.Collections.MultiMap.New", types::runtimeClass("Viper.Collections.MultiMap"));
+defineExternFunction("Viper.Collections.MultiMap.New",
+                     types::runtimeClass("Viper.Collections.MultiMap"));
 defineExternFunction("Viper.Collections.MultiMap.Put", types::voidType());
 defineExternFunction("Viper.Collections.MultiMap.RemoveAll", types::boolean());
 defineExternFunction("Viper.Collections.Map.Get", types::ptr());
@@ -517,7 +536,8 @@ defineExternFunction("Viper.Collections.Stack.New", types::runtimeClass("Viper.C
 defineExternFunction("Viper.Collections.Stack.Peek", types::ptr());
 defineExternFunction("Viper.Collections.Stack.Pop", types::ptr());
 defineExternFunction("Viper.Collections.Stack.Push", types::voidType());
-defineExternFunction("Viper.Collections.TreeMap.New", types::runtimeClass("Viper.Collections.TreeMap"));
+defineExternFunction("Viper.Collections.TreeMap.New",
+                     types::runtimeClass("Viper.Collections.TreeMap"));
 defineExternFunction("Viper.Collections.TreeMap.get_Len", types::integer());
 defineExternFunction("Viper.Collections.TreeMap.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Collections.TreeMap.Set", types::voidType());
@@ -543,7 +563,8 @@ defineExternFunction("Viper.Collections.Trie.New", types::runtimeClass("Viper.Co
 defineExternFunction("Viper.Collections.Trie.Put", types::voidType());
 defineExternFunction("Viper.Collections.Trie.Remove", types::boolean());
 defineExternFunction("Viper.Collections.Trie.WithPrefix", types::ptr());
-defineExternFunction("Viper.Collections.DefaultMap.New", types::runtimeClass("Viper.Collections.DefaultMap"));
+defineExternFunction("Viper.Collections.DefaultMap.New",
+                     types::runtimeClass("Viper.Collections.DefaultMap"));
 defineExternFunction("Viper.Collections.DefaultMap.get_Len", types::integer());
 defineExternFunction("Viper.Collections.DefaultMap.Get", types::ptr());
 defineExternFunction("Viper.Collections.DefaultMap.Set", types::voidType());
@@ -552,7 +573,8 @@ defineExternFunction("Viper.Collections.DefaultMap.Remove", types::integer());
 defineExternFunction("Viper.Collections.DefaultMap.Keys", types::ptr());
 defineExternFunction("Viper.Collections.DefaultMap.GetDefault", types::ptr());
 defineExternFunction("Viper.Collections.DefaultMap.Clear", types::voidType());
-defineExternFunction("Viper.Collections.SortedSet.New", types::runtimeClass("Viper.Collections.SortedSet"));
+defineExternFunction("Viper.Collections.SortedSet.New",
+                     types::runtimeClass("Viper.Collections.SortedSet"));
 defineExternFunction("Viper.Collections.SortedSet.get_Len", types::integer());
 defineExternFunction("Viper.Collections.SortedSet.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Collections.SortedSet.Clear", types::voidType());
@@ -567,7 +589,8 @@ defineExternFunction("Viper.Collections.SortedSet.Lower", types::string());
 defineExternFunction("Viper.Collections.SortedSet.Higher", types::string());
 defineExternFunction("Viper.Collections.SortedSet.At", types::string());
 defineExternFunction("Viper.Collections.SortedSet.IndexOf", types::integer());
-defineExternFunction("Viper.Collections.SortedSet.Items", types::runtimeClass("Viper.Collections.Seq"));
+defineExternFunction("Viper.Collections.SortedSet.Items",
+                     types::runtimeClass("Viper.Collections.Seq"));
 defineExternFunction("Viper.Collections.SortedSet.Range", types::ptr());
 defineExternFunction("Viper.Collections.SortedSet.Take", types::ptr());
 defineExternFunction("Viper.Collections.SortedSet.Skip", types::ptr());
@@ -590,7 +613,8 @@ defineExternFunction("Viper.Collections.Deque.Set", types::voidType());
 defineExternFunction("Viper.Collections.Deque.Clear", types::voidType());
 defineExternFunction("Viper.Collections.Deque.Has", types::boolean());
 defineExternFunction("Viper.Collections.Deque.Reverse", types::voidType());
-defineExternFunction("Viper.Collections.Deque.Clone", types::runtimeClass("Viper.Collections.Deque"));
+defineExternFunction("Viper.Collections.Deque.Clone",
+                     types::runtimeClass("Viper.Collections.Deque"));
 
 // ===========================================================================
 // Viper.Convert
@@ -632,16 +656,21 @@ defineExternFunction("Viper.Crypto.Hash.HmacSHA1", types::string());
 defineExternFunction("Viper.Crypto.Hash.HmacSHA1Bytes", types::string());
 defineExternFunction("Viper.Crypto.Hash.HmacSHA256", types::string());
 defineExternFunction("Viper.Crypto.Hash.HmacSHA256Bytes", types::string());
-defineExternFunction("Viper.Crypto.KeyDerive.Pbkdf2SHA256", types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Crypto.KeyDerive.Pbkdf2SHA256",
+                     types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Crypto.KeyDerive.Pbkdf2SHA256Str", types::string());
 defineExternFunction("Viper.Crypto.Rand.Bytes", types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Crypto.Rand.Int", types::integer());
 defineExternFunction("Viper.Crypto.Cipher.Encrypt", types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Crypto.Cipher.Decrypt", types::runtimeClass("Viper.Collections.Bytes"));
-defineExternFunction("Viper.Crypto.Cipher.EncryptWithKey", types::runtimeClass("Viper.Collections.Bytes"));
-defineExternFunction("Viper.Crypto.Cipher.DecryptWithKey", types::runtimeClass("Viper.Collections.Bytes"));
-defineExternFunction("Viper.Crypto.Cipher.GenerateKey", types::runtimeClass("Viper.Collections.Bytes"));
-defineExternFunction("Viper.Crypto.Cipher.DeriveKey", types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Crypto.Cipher.EncryptWithKey",
+                     types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Crypto.Cipher.DecryptWithKey",
+                     types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Crypto.Cipher.GenerateKey",
+                     types::runtimeClass("Viper.Collections.Bytes"));
+defineExternFunction("Viper.Crypto.Cipher.DeriveKey",
+                     types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Crypto.Aes.Encrypt", types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Crypto.Aes.Decrypt", types::runtimeClass("Viper.Collections.Bytes"));
 defineExternFunction("Viper.Crypto.Aes.EncryptStr", types::runtimeClass("Viper.Collections.Bytes"));
@@ -1030,7 +1059,8 @@ defineExternFunction("Viper.GUI.FindBar.ReplaceAll", types::integer());
 defineExternFunction("Viper.GUI.FindBar.GetMatchCount", types::integer());
 defineExternFunction("Viper.GUI.FindBar.GetCurrentMatch", types::integer());
 defineExternFunction("Viper.GUI.FindBar.Focus", types::voidType());
-defineExternFunction("Viper.GUI.CommandPalette.New", types::runtimeClass("Viper.GUI.CommandPalette"));
+defineExternFunction("Viper.GUI.CommandPalette.New",
+                     types::runtimeClass("Viper.GUI.CommandPalette"));
 defineExternFunction("Viper.GUI.CommandPalette.Destroy", types::voidType());
 defineExternFunction("Viper.GUI.CommandPalette.AddCommand", types::voidType());
 defineExternFunction("Viper.GUI.CommandPalette.AddCommandWithShortcut", types::voidType());
@@ -1190,7 +1220,8 @@ defineExternFunction("Viper.Game.SmoothValue.Update", types::voidType());
 defineExternFunction("Viper.Game.SmoothValue.get_AtTarget", types::boolean());
 defineExternFunction("Viper.Game.SmoothValue.get_Velocity", types::number());
 defineExternFunction("Viper.Game.SmoothValue.Impulse", types::voidType());
-defineExternFunction("Viper.Game.ParticleEmitter.New", types::runtimeClass("Viper.Game.ParticleEmitter"));
+defineExternFunction("Viper.Game.ParticleEmitter.New",
+                     types::runtimeClass("Viper.Game.ParticleEmitter"));
 defineExternFunction("Viper.Game.ParticleEmitter.Destroy", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.SetPosition", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.get_X", types::number());
@@ -1215,7 +1246,8 @@ defineExternFunction("Viper.Game.ParticleEmitter.Update", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.get_Count", types::integer());
 defineExternFunction("Viper.Game.ParticleEmitter.Clear", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.Get", types::boolean());
-defineExternFunction("Viper.Game.SpriteAnimation.New", types::runtimeClass("Viper.Game.SpriteAnimation"));
+defineExternFunction("Viper.Game.SpriteAnimation.New",
+                     types::runtimeClass("Viper.Game.SpriteAnimation"));
 defineExternFunction("Viper.Game.SpriteAnimation.Destroy", types::voidType());
 defineExternFunction("Viper.Game.SpriteAnimation.Setup", types::voidType());
 defineExternFunction("Viper.Game.SpriteAnimation.set_Loop", types::voidType());
@@ -1240,7 +1272,8 @@ defineExternFunction("Viper.Game.SpriteAnimation.get_Progress", types::integer()
 defineExternFunction("Viper.Game.SpriteAnimation.set_Speed", types::voidType());
 defineExternFunction("Viper.Game.SpriteAnimation.get_Speed", types::number());
 defineExternFunction("Viper.Game.SpriteAnimation.get_FrameChanged", types::boolean());
-defineExternFunction("Viper.Game.CollisionRect.New", types::runtimeClass("Viper.Game.CollisionRect"));
+defineExternFunction("Viper.Game.CollisionRect.New",
+                     types::runtimeClass("Viper.Game.CollisionRect"));
 defineExternFunction("Viper.Game.CollisionRect.Destroy", types::voidType());
 defineExternFunction("Viper.Game.CollisionRect.get_X", types::number());
 defineExternFunction("Viper.Game.CollisionRect.get_Y", types::number());
@@ -1408,7 +1441,8 @@ defineExternFunction("Viper.Graphics.Pixels.Clear", types::voidType());
 defineExternFunction("Viper.Graphics.Pixels.Clone", types::runtimeClass("Viper.Graphics.Pixels"));
 defineExternFunction("Viper.Graphics.Pixels.Copy", types::voidType());
 defineExternFunction("Viper.Graphics.Pixels.Fill", types::voidType());
-defineExternFunction("Viper.Graphics.Pixels.FromBytes", types::runtimeClass("Viper.Graphics.Pixels"));
+defineExternFunction("Viper.Graphics.Pixels.FromBytes",
+                     types::runtimeClass("Viper.Graphics.Pixels"));
 defineExternFunction("Viper.Graphics.Pixels.Get", types::integer());
 defineExternFunction("Viper.Graphics.Pixels.get_Height", types::integer());
 defineExternFunction("Viper.Graphics.Pixels.New", types::runtimeClass("Viper.Graphics.Pixels"));
@@ -1429,7 +1463,8 @@ defineExternFunction("Viper.Graphics.Pixels.Tint", types::ptr());
 defineExternFunction("Viper.Graphics.Pixels.Blur", types::ptr());
 defineExternFunction("Viper.Graphics.Pixels.Resize", types::ptr());
 defineExternFunction("Viper.Graphics.Sprite.New", types::runtimeClass("Viper.Graphics.Sprite"));
-defineExternFunction("Viper.Graphics.Sprite.FromFile", types::runtimeClass("Viper.Graphics.Sprite"));
+defineExternFunction("Viper.Graphics.Sprite.FromFile",
+                     types::runtimeClass("Viper.Graphics.Sprite"));
 defineExternFunction("Viper.Graphics.Sprite.get_X", types::integer());
 defineExternFunction("Viper.Graphics.Sprite.set_X", types::voidType());
 defineExternFunction("Viper.Graphics.Sprite.get_Y", types::integer());
@@ -1492,8 +1527,10 @@ defineExternFunction("Viper.Graphics.Camera.ToWorldY", types::integer());
 defineExternFunction("Viper.Graphics.Camera.Move", types::voidType());
 defineExternFunction("Viper.Graphics.Camera.SetBounds", types::voidType());
 defineExternFunction("Viper.Graphics.Camera.ClearBounds", types::voidType());
-defineExternFunction("Viper.Graphics.SceneNode.New", types::runtimeClass("Viper.Graphics.SceneNode"));
-defineExternFunction("Viper.Graphics.SceneNode.FromSprite", types::runtimeClass("Viper.Graphics.SceneNode"));
+defineExternFunction("Viper.Graphics.SceneNode.New",
+                     types::runtimeClass("Viper.Graphics.SceneNode"));
+defineExternFunction("Viper.Graphics.SceneNode.FromSprite",
+                     types::runtimeClass("Viper.Graphics.SceneNode"));
 defineExternFunction("Viper.Graphics.SceneNode.get_X", types::integer());
 defineExternFunction("Viper.Graphics.SceneNode.set_X", types::voidType());
 defineExternFunction("Viper.Graphics.SceneNode.get_Y", types::integer());
@@ -1540,7 +1577,8 @@ defineExternFunction("Viper.Graphics.Scene.Draw", types::voidType());
 defineExternFunction("Viper.Graphics.Scene.DrawWithCamera", types::voidType());
 defineExternFunction("Viper.Graphics.Scene.Update", types::voidType());
 defineExternFunction("Viper.Graphics.Scene.Clear", types::voidType());
-defineExternFunction("Viper.Graphics.SpriteBatch.New", types::runtimeClass("Viper.Graphics.SpriteBatch"));
+defineExternFunction("Viper.Graphics.SpriteBatch.New",
+                     types::runtimeClass("Viper.Graphics.SpriteBatch"));
 defineExternFunction("Viper.Graphics.SpriteBatch.Begin", types::voidType());
 defineExternFunction("Viper.Graphics.SpriteBatch.End", types::voidType());
 defineExternFunction("Viper.Graphics.SpriteBatch.Draw", types::voidType());
@@ -2192,7 +2230,8 @@ defineExternFunction("Viper.Math.BigInt.Sqrt", types::ptr());
 // ===========================================================================
 // Viper.Network
 // ===========================================================================
-defineExternFunction("Viper.Network.RetryPolicy.New", types::runtimeClass("Viper.Network.RetryPolicy"));
+defineExternFunction("Viper.Network.RetryPolicy.New",
+                     types::runtimeClass("Viper.Network.RetryPolicy"));
 defineExternFunction("Viper.Network.RetryPolicy.Exponential", types::ptr());
 defineExternFunction("Viper.Network.RetryPolicy.get_CanRetry", types::boolean());
 defineExternFunction("Viper.Network.RetryPolicy.NextDelay", types::integer());
@@ -2201,7 +2240,8 @@ defineExternFunction("Viper.Network.RetryPolicy.get_MaxRetries", types::integer(
 defineExternFunction("Viper.Network.RetryPolicy.Reset", types::voidType());
 defineExternFunction("Viper.Network.RetryPolicy.get_TotalAttempts", types::integer());
 defineExternFunction("Viper.Network.RetryPolicy.get_IsExhausted", types::boolean());
-defineExternFunction("Viper.Network.RateLimiter.New", types::runtimeClass("Viper.Network.RateLimiter"));
+defineExternFunction("Viper.Network.RateLimiter.New",
+                     types::runtimeClass("Viper.Network.RateLimiter"));
 defineExternFunction("Viper.Network.RateLimiter.TryAcquire", types::boolean());
 defineExternFunction("Viper.Network.RateLimiter.TryAcquireN", types::boolean());
 defineExternFunction("Viper.Network.RateLimiter.get_Available", types::integer());
@@ -2548,8 +2588,10 @@ defineExternFunction("Viper.Text.Toml.Get", types::ptr());
 defineExternFunction("Viper.Text.Toml.GetStr", types::string());
 defineExternFunction("Viper.Text.Markdown.ToHtml", types::string());
 defineExternFunction("Viper.Text.Markdown.ToText", types::string());
-defineExternFunction("Viper.Text.Markdown.ExtractLinks", types::runtimeClass("Viper.Collections.Seq"));
-defineExternFunction("Viper.Text.Markdown.ExtractHeadings", types::runtimeClass("Viper.Collections.Seq"));
+defineExternFunction("Viper.Text.Markdown.ExtractLinks",
+                     types::runtimeClass("Viper.Collections.Seq"));
+defineExternFunction("Viper.Text.Markdown.ExtractHeadings",
+                     types::runtimeClass("Viper.Collections.Seq"));
 defineExternFunction("Viper.Text.JsonPath.Get", types::ptr());
 defineExternFunction("Viper.Text.JsonPath.GetOr", types::ptr());
 defineExternFunction("Viper.Text.JsonPath.Has", types::boolean());
@@ -2573,7 +2615,8 @@ defineExternFunction("Viper.Text.StringBuilder.AppendLine", types::ptr());
 defineExternFunction("Viper.Text.StringBuilder.Clear", types::voidType());
 defineExternFunction("Viper.Text.StringBuilder.get_Capacity", types::integer());
 defineExternFunction("Viper.Text.StringBuilder.get_Length", types::integer());
-defineExternFunction("Viper.Text.StringBuilder.New", types::runtimeClass("Viper.Text.StringBuilder"));
+defineExternFunction("Viper.Text.StringBuilder.New",
+                     types::runtimeClass("Viper.Text.StringBuilder"));
 defineExternFunction("Viper.Text.StringBuilder.ToString", types::string());
 defineExternFunction("Viper.Text.Pattern.IsMatch", types::boolean());
 defineExternFunction("Viper.Text.Pattern.Find", types::string());
@@ -2594,7 +2637,8 @@ defineExternFunction("Viper.Text.Template.Escape", types::string());
 // ===========================================================================
 // Viper.Threads
 // ===========================================================================
-defineExternFunction("Viper.Threads.ConcurrentQueue.New", types::runtimeClass("Viper.Threads.ConcurrentQueue"));
+defineExternFunction("Viper.Threads.ConcurrentQueue.New",
+                     types::runtimeClass("Viper.Threads.ConcurrentQueue"));
 defineExternFunction("Viper.Threads.ConcurrentQueue.get_Len", types::integer());
 defineExternFunction("Viper.Threads.ConcurrentQueue.get_IsEmpty", types::boolean());
 defineExternFunction("Viper.Threads.ConcurrentQueue.Enqueue", types::voidType());
@@ -2603,7 +2647,8 @@ defineExternFunction("Viper.Threads.ConcurrentQueue.Dequeue", types::ptr());
 defineExternFunction("Viper.Threads.ConcurrentQueue.DequeueTimeout", types::ptr());
 defineExternFunction("Viper.Threads.ConcurrentQueue.Peek", types::ptr());
 defineExternFunction("Viper.Threads.ConcurrentQueue.Clear", types::voidType());
-defineExternFunction("Viper.Threads.CancellationToken.New", types::runtimeClass("Viper.Threads.CancellationToken"));
+defineExternFunction("Viper.Threads.CancellationToken.New",
+                     types::runtimeClass("Viper.Threads.CancellationToken"));
 defineExternFunction("Viper.Threads.CancellationToken.get_IsCancelled", types::boolean());
 defineExternFunction("Viper.Threads.CancellationToken.Cancel", types::voidType());
 defineExternFunction("Viper.Threads.CancellationToken.Reset", types::voidType());
@@ -2840,4 +2885,3 @@ defineExternFunction("Viper.Time.GetTickCount", types::integer());
 defineExternFunction("Viper.Game.Grid2D.get_Len", types::integer());
 defineExternFunction("Viper.Game.ButtonGroup.get_Len", types::integer());
 defineExternFunction("Viper.Game.ParticleEmitter.get_Len", types::integer());
-

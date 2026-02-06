@@ -19,7 +19,10 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg) { rt_abort(msg); }
+extern "C" void vm_trap(const char *msg)
+{
+    rt_abort(msg);
+}
 
 static void rt_release_obj(void *p)
 {

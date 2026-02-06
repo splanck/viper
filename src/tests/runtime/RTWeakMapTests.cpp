@@ -6,9 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
-#include "rt_weakmap.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_weakmap.h"
 
 #include <cassert>
 #include <cstdio>

@@ -61,7 +61,7 @@ task::Task *wait_wake_one(WaitQueue *wq) {
         serial::puts("' was in heap when blocked! heap_index=");
         serial::put_dec(t->heap_index);
         serial::puts("\n");
-        t->wait_timeout = 0;  // Clear the marker
+        t->wait_timeout = 0; // Clear the marker
     }
 
     // Verify heap_index is -1 before enqueueing
@@ -113,7 +113,7 @@ u32 wait_wake_all(WaitQueue *wq) {
                 serial::puts("' heap_index=");
                 serial::put_dec(t->heap_index);
                 serial::puts(" at wake_all (should be -1)!\n");
-                continue;  // Skip this task
+                continue; // Skip this task
             }
             t->state = task::TaskState::Ready;
             scheduler::enqueue(t);
@@ -192,7 +192,7 @@ u32 check_wait_timeouts(u64 current_tick) {
                 serial::puts("' heap_index=");
                 serial::put_dec(t->heap_index);
                 serial::puts(" at timeout wake (should be -1)!\n");
-                continue;  // Skip this task
+                continue; // Skip this task
             }
 
             // Wake the task

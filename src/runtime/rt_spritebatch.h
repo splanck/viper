@@ -66,8 +66,13 @@ extern "C"
     /// @param scale_x Horizontal scale (100 = 100%).
     /// @param scale_y Vertical scale (100 = 100%).
     /// @param rotation Rotation in degrees.
-    void rt_spritebatch_draw_ex(void *batch, void *sprite, int64_t x, int64_t y,
-                                 int64_t scale_x, int64_t scale_y, int64_t rotation);
+    void rt_spritebatch_draw_ex(void *batch,
+                                void *sprite,
+                                int64_t x,
+                                int64_t y,
+                                int64_t scale_x,
+                                int64_t scale_y,
+                                int64_t rotation);
 
     /// @brief Draw a Pixels buffer directly.
     /// @param batch SpriteBatch object.
@@ -85,10 +90,14 @@ extern "C"
     /// @param sy Source Y.
     /// @param sw Source width.
     /// @param sh Source height.
-    void rt_spritebatch_draw_region(void *batch, void *pixels,
-                                     int64_t dx, int64_t dy,
-                                     int64_t sx, int64_t sy,
-                                     int64_t sw, int64_t sh);
+    void rt_spritebatch_draw_region(void *batch,
+                                    void *pixels,
+                                    int64_t dx,
+                                    int64_t dy,
+                                    int64_t sx,
+                                    int64_t sy,
+                                    int64_t sw,
+                                    int64_t sh);
 
     //=========================================================================
     // SpriteBatch Properties

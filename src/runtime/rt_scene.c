@@ -30,11 +30,11 @@ typedef struct scene_node_impl
     // Local transform (relative to parent)
     int64_t x;
     int64_t y;
-    int64_t scale_x;     // 100 = 100%
-    int64_t scale_y;     // 100 = 100%
-    int64_t rotation;    // degrees
-    int64_t depth;       // Z-order
-    int8_t visible;      // visibility flag
+    int64_t scale_x;  // 100 = 100%
+    int64_t scale_y;  // 100 = 100%
+    int64_t rotation; // degrees
+    int64_t depth;    // Z-order
+    int8_t visible;   // visibility flag
 
     // Cached world transform
     int64_t world_x;
@@ -49,8 +49,8 @@ typedef struct scene_node_impl
     void *children; // Seq of child nodes
 
     // Content
-    void *sprite;    // Attached sprite (nullable)
-    rt_string name;  // Tag/identifier
+    void *sprite;   // Attached sprite (nullable)
+    rt_string name; // Tag/identifier
 } scene_node_impl;
 
 typedef struct scene_impl

@@ -37,10 +37,7 @@ Module buildTcoStringSelfAssignModule()
         countdownParams.push_back(Param{"n", Type(Type::Kind::I32), 0});
         countdownParams.push_back(Param{"s", Type(Type::Kind::Str), 1});
 
-        Function &fn = builder.startFunction(
-            "countdown",
-            Type(Type::Kind::I32),
-            countdownParams);
+        Function &fn = builder.startFunction("countdown", Type(Type::Kind::I32), countdownParams);
 
         // Create all blocks first to avoid reference invalidation from vector realloc
         builder.createBlock(fn, "entry", countdownParams);

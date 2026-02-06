@@ -950,8 +950,8 @@ bool lowerIdxChk(const il::core::Instr &ins,
         return false;
 
     // Check if lo is constant 0 (common optimization)
-    const bool loIsZero = ins.operands[1].kind == il::core::Value::Kind::ConstInt &&
-                          ins.operands[1].i64 == 0;
+    const bool loIsZero =
+        ins.operands[1].kind == il::core::Value::Kind::ConstInt && ins.operands[1].i64 == 0;
 
     if (!loIsZero)
     {
@@ -986,9 +986,9 @@ bool lowerIdxChk(const il::core::Instr &ins,
     {
         // Optimized case: just check idx >= hi (unsigned)
         // cmp idx, hi; b.hs trap (unsigned >=)
-        out.instrs.push_back(MInstr{MOpcode::CmpRR,
-                                    {MOperand::vregOp(RegClass::GPR, idxV),
-                                     MOperand::vregOp(RegClass::GPR, hiV)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::CmpRR,
+                   {MOperand::vregOp(RegClass::GPR, idxV), MOperand::vregOp(RegClass::GPR, hiV)}});
         out.instrs.push_back(
             MInstr{MOpcode::BCond, {MOperand::condOp("hs"), MOperand::labelOp(trapLabel)}});
     }
@@ -996,16 +996,16 @@ bool lowerIdxChk(const il::core::Instr &ins,
     {
         // General case: check idx < lo OR idx >= hi
         // cmp idx, lo; b.lt trap
-        out.instrs.push_back(MInstr{MOpcode::CmpRR,
-                                    {MOperand::vregOp(RegClass::GPR, idxV),
-                                     MOperand::vregOp(RegClass::GPR, loV)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::CmpRR,
+                   {MOperand::vregOp(RegClass::GPR, idxV), MOperand::vregOp(RegClass::GPR, loV)}});
         out.instrs.push_back(
             MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(trapLabel)}});
 
         // cmp idx, hi; b.ge trap
-        out.instrs.push_back(MInstr{MOpcode::CmpRR,
-                                    {MOperand::vregOp(RegClass::GPR, idxV),
-                                     MOperand::vregOp(RegClass::GPR, hiV)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::CmpRR,
+                   {MOperand::vregOp(RegClass::GPR, idxV), MOperand::vregOp(RegClass::GPR, hiV)}});
         out.instrs.push_back(
             MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
     }
@@ -1013,9 +1013,9 @@ bool lowerIdxChk(const il::core::Instr &ins,
     // Result is the index value (pass-through)
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
-    out.instrs.push_back(MInstr{MOpcode::MovRR,
-                                {MOperand::vregOp(RegClass::GPR, dst),
-                                 MOperand::vregOp(RegClass::GPR, idxV)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::GPR, idxV)}});
 
     // Create trap block AFTER all uses of `out` — emplace_back may reallocate
     // the blocks vector, invalidating the `out` reference.

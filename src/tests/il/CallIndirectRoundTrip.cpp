@@ -16,8 +16,8 @@
 #include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
-#include "viper/vm/VM.hpp"
 #include "tests/TestHarness.hpp"
+#include "viper/vm/VM.hpp"
 #include <sstream>
 #include <string>
 

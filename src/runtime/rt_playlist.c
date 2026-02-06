@@ -25,15 +25,15 @@
 
 typedef struct
 {
-    void *tracks;         // Seq of path strings
-    int64_t current;      // Current track index (-1 if none)
-    void *music;          // Currently loaded Music object
-    int64_t volume;       // Playback volume (0-100)
-    int8_t shuffle;       // Shuffle mode
-    int64_t repeat;       // 0=none, 1=all, 2=one
-    int8_t playing;       // Currently playing
-    int8_t paused;        // Paused state
-    void *shuffle_order;  // Shuffled index sequence
+    void *tracks;        // Seq of path strings
+    int64_t current;     // Current track index (-1 if none)
+    void *music;         // Currently loaded Music object
+    int64_t volume;      // Playback volume (0-100)
+    int8_t shuffle;      // Shuffle mode
+    int64_t repeat;      // 0=none, 1=all, 2=one
+    int8_t playing;      // Currently playing
+    int8_t paused;       // Paused state
+    void *shuffle_order; // Shuffled index sequence
 } playlist_impl;
 
 //=============================================================================
@@ -497,8 +497,10 @@ void rt_playlist_set_volume(void *obj, int64_t volume)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
     pl->volume = volume;
 
     if (pl->music)
@@ -539,8 +541,10 @@ void rt_playlist_set_repeat(void *obj, int64_t mode)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (mode < 0) mode = 0;
-    if (mode > 2) mode = 2;
+    if (mode < 0)
+        mode = 0;
+    if (mode > 2)
+        mode = 2;
     pl->repeat = mode;
 }
 

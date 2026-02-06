@@ -131,9 +131,9 @@ static void test_deque_mixed_operations()
     // Test: Push and pop from both ends
     {
         void *d = rt_deque_new();
-        rt_deque_push_back(d, &a);   // [a]
-        rt_deque_push_front(d, &b);  // [b, a]
-        rt_deque_push_back(d, &c);   // [b, a, c]
+        rt_deque_push_back(d, &a);      // [a]
+        rt_deque_push_front(d, &b);     // [b, a]
+        rt_deque_push_back(d, &c);      // [b, a, c]
         rt_deque_push_front(d, &d_val); // [d, b, a, c]
 
         test_result("Mixed push len", rt_deque_len(d) == 4);

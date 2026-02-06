@@ -11,7 +11,7 @@ last-verified: 2025-11-25
 ## Contributing
 
 - The repository includes a lightweight `Analysis` library in `src/il/analysis`.
-  Run the tests under `tests/analysis` when modifying these utilities.
+  Run the tests under `src/tests/analysis` when modifying these utilities.
 
 <a id="style-guide"></a>
 
@@ -23,7 +23,7 @@ must follow these rules when adding new code or updating existing files.
 
 ### File naming
 
-Use `.cpp` for implementation files and `.hpp` for headers. Do not use `.cc` or `.h`.
+Use `.cpp` for implementation files and `.hpp` for headers. Do not use `.cc`. Use `.hpp` for C++ headers and `.h` for C runtime headers.
 
 ### File headers
 
@@ -404,8 +404,8 @@ arguments.
 Use the factorial example to inspect recursive calls.
 
 ```sh
-viper -run tests/e2e/factorial.bas --trace=src \
-    --break-src tests/e2e/factorial.bas:5 \
+viper -run src/tests/e2e/factorial.bas --trace=src \
+    --break-src src/tests/e2e/factorial.bas:5 \
     --debug-cmds examples/il/debug_script.txt
 ```
 

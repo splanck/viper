@@ -40,8 +40,14 @@ TEST(CodegenReviewFix, CallerSavedFPRExcludesV8toV15)
     const auto &ti = darwinTarget();
 
     // Specifically verify V8-V15 are absent from callerSavedFPR
-    const PhysReg calleeSaved[] = {PhysReg::V8,  PhysReg::V9,  PhysReg::V10, PhysReg::V11,
-                                   PhysReg::V12, PhysReg::V13, PhysReg::V14, PhysReg::V15};
+    const PhysReg calleeSaved[] = {PhysReg::V8,
+                                   PhysReg::V9,
+                                   PhysReg::V10,
+                                   PhysReg::V11,
+                                   PhysReg::V12,
+                                   PhysReg::V13,
+                                   PhysReg::V14,
+                                   PhysReg::V15};
     for (auto reg : calleeSaved)
     {
         bool inCallerSaved = std::find(ti.callerSavedFPR.begin(), ti.callerSavedFPR.end(), reg) !=
@@ -55,8 +61,14 @@ TEST(CodegenReviewFix, CallerSavedFPRIncludesV0toV7)
     const auto &ti = darwinTarget();
 
     // V0-V7 are caller-saved (argument/return registers)
-    const PhysReg argRegs[] = {PhysReg::V0, PhysReg::V1, PhysReg::V2, PhysReg::V3,
-                               PhysReg::V4, PhysReg::V5, PhysReg::V6, PhysReg::V7};
+    const PhysReg argRegs[] = {PhysReg::V0,
+                               PhysReg::V1,
+                               PhysReg::V2,
+                               PhysReg::V3,
+                               PhysReg::V4,
+                               PhysReg::V5,
+                               PhysReg::V6,
+                               PhysReg::V7};
     for (auto reg : argRegs)
     {
         bool inCallerSaved = std::find(ti.callerSavedFPR.begin(), ti.callerSavedFPR.end(), reg) !=
@@ -70,10 +82,22 @@ TEST(CodegenReviewFix, CallerSavedFPRIncludesV16toV31)
     const auto &ti = darwinTarget();
 
     // V16-V31 are caller-saved
-    const PhysReg highRegs[] = {PhysReg::V16, PhysReg::V17, PhysReg::V18, PhysReg::V19,
-                                PhysReg::V20, PhysReg::V21, PhysReg::V22, PhysReg::V23,
-                                PhysReg::V24, PhysReg::V25, PhysReg::V26, PhysReg::V27,
-                                PhysReg::V28, PhysReg::V29, PhysReg::V30, PhysReg::V31};
+    const PhysReg highRegs[] = {PhysReg::V16,
+                                PhysReg::V17,
+                                PhysReg::V18,
+                                PhysReg::V19,
+                                PhysReg::V20,
+                                PhysReg::V21,
+                                PhysReg::V22,
+                                PhysReg::V23,
+                                PhysReg::V24,
+                                PhysReg::V25,
+                                PhysReg::V26,
+                                PhysReg::V27,
+                                PhysReg::V28,
+                                PhysReg::V29,
+                                PhysReg::V30,
+                                PhysReg::V31};
     for (auto reg : highRegs)
     {
         bool inCallerSaved = std::find(ti.callerSavedFPR.begin(), ti.callerSavedFPR.end(), reg) !=

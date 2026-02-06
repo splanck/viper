@@ -854,11 +854,21 @@ class ModuleAdapter
 } // namespace
 
 /// @brief Execute Phase A lowering for the provided pipeline module.
-bool LoweringPass::run(Module &module, Diagnostics &)
+/// @details Catches unsupported-feature exceptions thrown by the adapter and
+///          reports them through the diagnostics sink rather than propagating.
+bool LoweringPass::run(Module &module, Diagnostics &diags)
 {
-    ModuleAdapter adapter{};
-    module.lowered = adapter.adapt(module.il);
-    return true;
+    try
+    {
+        ModuleAdapter adapter{};
+        module.lowered = adapter.adapt(module.il);
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        diags.error(std::string("lowering: ") + e.what());
+        return false;
+    }
 }
 
 } // namespace viper::codegen::x64::passes

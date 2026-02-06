@@ -365,10 +365,9 @@ bool lowerInstruction(const il::core::Instr &ins,
 
                 const uint16_t tmpGpr = ctx.nextVRegId++;
                 // Use MovRI - the emitter will handle movz/movk sequence automatically
-                bbOut().instrs.push_back(
-                    MInstr{MOpcode::MovRI,
-                           {MOperand::vregOp(RegClass::GPR, tmpGpr),
-                            MOperand::immOp(static_cast<long long>(bits))}});
+                bbOut().instrs.push_back(MInstr{MOpcode::MovRI,
+                                                {MOperand::vregOp(RegClass::GPR, tmpGpr),
+                                                 MOperand::immOp(static_cast<long long>(bits))}});
                 // Use fmov to transfer GPR to FPR
                 bbOut().instrs.push_back(MInstr{MOpcode::FMovGR,
                                                 {MOperand::vregOp(RegClass::FPR, dst),
@@ -385,8 +384,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
             bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRI,
-                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(0)}});
+                MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(0)}});
             return true;
         }
         case Opcode::GAddr:
@@ -401,9 +399,8 @@ bool lowerInstruction(const il::core::Instr &ins,
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::AdrPage,
-                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::labelOp(sym)}});
+            bbOut().instrs.push_back(MInstr{
+                MOpcode::AdrPage, {MOperand::vregOp(RegClass::GPR, dst), MOperand::labelOp(sym)}});
             bbOut().instrs.push_back(MInstr{MOpcode::AddPageOff,
                                             {MOperand::vregOp(RegClass::GPR, dst),
                                              MOperand::vregOp(RegClass::GPR, dst),
@@ -744,11 +741,11 @@ bool lowerInstruction(const il::core::Instr &ins,
                                 MOpcode::MovRI,
                                 {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
                             const uint16_t masked = ctx.nextVRegId++;
-                            bbOut().instrs.push_back(MInstr{
-                                MOpcode::AndRRR,
-                                {MOperand::vregOp(RegClass::GPR, masked),
-                                 MOperand::vregOp(RegClass::GPR, dst),
-                                 MOperand::vregOp(RegClass::GPR, mask)}});
+                            bbOut().instrs.push_back(
+                                MInstr{MOpcode::AndRRR,
+                                       {MOperand::vregOp(RegClass::GPR, masked),
+                                        MOperand::vregOp(RegClass::GPR, dst),
+                                        MOperand::vregOp(RegClass::GPR, mask)}});
                             ctx.tempVReg[*ins.result] = masked;
                         }
                     }
@@ -879,15 +876,14 @@ bool lowerInstruction(const il::core::Instr &ins,
                     if (ins.type.kind == il::core::Type::Kind::I1)
                     {
                         const uint16_t mask = ctx.nextVRegId++;
-                        bbOut().instrs.push_back(MInstr{
-                            MOpcode::MovRI,
-                            {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::MovRI,
+                                   {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
                         const uint16_t masked = ctx.nextVRegId++;
-                        bbOut().instrs.push_back(MInstr{
-                            MOpcode::AndRRR,
-                            {MOperand::vregOp(RegClass::GPR, masked),
-                             MOperand::vregOp(RegClass::GPR, dst),
-                             MOperand::vregOp(RegClass::GPR, mask)}});
+                        bbOut().instrs.push_back(MInstr{MOpcode::AndRRR,
+                                                        {MOperand::vregOp(RegClass::GPR, masked),
+                                                         MOperand::vregOp(RegClass::GPR, dst),
+                                                         MOperand::vregOp(RegClass::GPR, mask)}});
                         ctx.tempVReg[*ins.result] = masked;
                     }
                 }
@@ -959,9 +955,8 @@ bool lowerInstruction(const il::core::Instr &ins,
             // Bug #3 fix: for void main, zero x0 so the process exit code is 0
             if (ins.operands.empty() && ctx.mf.name == "main")
             {
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::MovRI,
-                    {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
             }
             bbOut().instrs.push_back(MInstr{MOpcode::Ret, {}});
             return true;

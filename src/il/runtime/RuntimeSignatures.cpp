@@ -52,46 +52,41 @@
 #include "rt_array_obj.h"
 #include "rt_array_str.h"
 #include "rt_audio.h"
-#include "rt_playlist.h"
 #include "rt_bag.h"
 #include "rt_bigint.h"
+#include "rt_bimap.h"
 #include "rt_binfile.h"
 #include "rt_bits.h"
-#include "rt_bimap.h"
 #include "rt_bitset.h"
 #include "rt_bloomfilter.h"
 #include "rt_box.h"
 #include "rt_buttongroup.h"
-#include "rt_collision.h"
 #include "rt_bytes.h"
 #include "rt_camera.h"
 #include "rt_cancellation.h"
 #include "rt_channel.h"
 #include "rt_cipher.h"
 #include "rt_codec.h"
-#include "rt_compress.h"
-#include "rt_countmap.h"
+#include "rt_collision.h"
 #include "rt_compiled_pattern.h"
+#include "rt_compress.h"
+#include "rt_concqueue.h"
 #include "rt_context.h"
 #include "rt_countdown.h"
-#include "rt_daterange.h"
-#include "rt_defaultmap.h"
-#include "rt_diff.h"
-#include "rt_frozenmap.h"
-#include "rt_frozenset.h"
-#include "rt_sparsearray.h"
-#include "rt_concqueue.h"
+#include "rt_countmap.h"
 #include "rt_csv.h"
-#include "rt_datetime.h"
-#include "rt_ini.h"
 #include "rt_dateonly.h"
+#include "rt_daterange.h"
+#include "rt_datetime.h"
 #include "rt_debounce.h"
 #include "rt_debug.h"
+#include "rt_defaultmap.h"
 #include "rt_deque.h"
+#include "rt_diff.h"
 #include "rt_dir.h"
 #include "rt_duration.h"
-#include "rt_error.h"
 #include "rt_easing.h"
+#include "rt_error.h"
 #include "rt_exc.h"
 #include "rt_exec.h"
 #include "rt_file.h"
@@ -100,6 +95,9 @@
 #include "rt_fmt.h"
 #include "rt_format.h"
 #include "rt_fp.h"
+#include "rt_frozenmap.h"
+#include "rt_frozenset.h"
+#include "rt_future.h"
 #include "rt_glob.h"
 #include "rt_graphics.h"
 #include "rt_grid2d.h"
@@ -108,13 +106,13 @@
 #include "rt_hash.h"
 #include "rt_heap.h"
 #include "rt_html.h"
+#include "rt_ini.h"
 #include "rt_input.h"
 #include "rt_inputmgr.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_jsonpath.h"
-#include "rt_markdown.h"
 #include "rt_keyderive.h"
 #include "rt_lazy.h"
 #include "rt_lazyseq.h"
@@ -124,79 +122,81 @@
 #include "rt_log.h"
 #include "rt_lrucache.h"
 #include "rt_machine.h"
-#include "rt_msgbus.h"
 #include "rt_map.h"
-#include "rt_multimap.h"
+#include "rt_markdown.h"
 #include "rt_mat3.h"
 #include "rt_mat4.h"
 #include "rt_math.h"
 #include "rt_memstream.h"
 #include "rt_modvar.h"
+#include "rt_msgbus.h"
+#include "rt_multimap.h"
 #include "rt_network.h"
-#include "rt_numfmt.h"
 #include "rt_ns_bridge.h"
 #include "rt_numeric.h"
+#include "rt_numfmt.h"
 #include "rt_object.h"
 #include "rt_objpool.h"
 #include "rt_oop.h"
 #include "rt_option.h"
 #include "rt_orderedmap.h"
 #include "rt_output.h"
+#include "rt_parallel.h"
 #include "rt_parse.h"
-#include "rt_password.h"
-#include "rt_perlin.h"
 #include "rt_particle.h"
-#include "rt_pathfollow.h"
+#include "rt_password.h"
 #include "rt_path.h"
+#include "rt_pathfollow.h"
+#include "rt_perlin.h"
 #include "rt_pixels.h"
+#include "rt_playlist.h"
 #include "rt_pluralize.h"
 #include "rt_pqueue.h"
 #include "rt_printf_compat.h"
-#include "rt_queue.h"
 #include "rt_quadtree.h"
+#include "rt_queue.h"
 #include "rt_rand.h"
 #include "rt_random.h"
+#include "rt_ratelimit.h"
 #include "rt_regex.h"
 #include "rt_reltime.h"
-#include "rt_ratelimit.h"
 #include "rt_restclient.h"
-#include "rt_retry.h"
 #include "rt_result.h"
+#include "rt_retry.h"
 #include "rt_ring.h"
-#include "rt_seq.h"
-#include "rt_seq_functional.h"
-#include "rt_screenfx.h"
-#include "rt_scheduler.h"
 #include "rt_scanner.h"
 #include "rt_scene.h"
+#include "rt_scheduler.h"
+#include "rt_screenfx.h"
+#include "rt_seq.h"
+#include "rt_seq_functional.h"
 #include "rt_set.h"
-#include "rt_sortedset.h"
 #include "rt_smoothvalue.h"
+#include "rt_sortedset.h"
+#include "rt_sparsearray.h"
 #include "rt_sprite.h"
 #include "rt_spriteanim.h"
 #include "rt_spritebatch.h"
 #include "rt_stack.h"
+#include "rt_statemachine.h"
 #include "rt_stopwatch.h"
 #include "rt_stream.h"
 #include "rt_string.h"
-#include "rt_statemachine.h"
 #include "rt_string_builder.h"
-#include "rt_template.h"
 #include "rt_tempfile.h"
+#include "rt_template.h"
 #include "rt_textwrap.h"
-#include "rt_toml.h"
 #include "rt_threadpool.h"
-#include "rt_future.h"
-#include "rt_parallel.h"
 #include "rt_threads.h"
 #include "rt_tilemap.h"
 #include "rt_timer.h"
-#include "rt_tween.h"
-#include "rt_unionfind.h"
 #include "rt_tls.h"
+#include "rt_toml.h"
 #include "rt_trap.h"
 #include "rt_treemap.h"
 #include "rt_trie.h"
+#include "rt_tween.h"
+#include "rt_unionfind.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
 #include "rt_version.h"
@@ -1549,35 +1549,44 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
     DescriptorRow{"rt_register_class_with_base_rs",
                   std::nullopt,
                   "void(i64,ptr,str,i64,i64)",
-                  &DirectHandler<&rt_register_class_with_base_rs, void, int, void **, rt_string, int64_t, int64_t>::invoke,
+                  &DirectHandler<&rt_register_class_with_base_rs,
+                                 void,
+                                 int,
+                                 void **,
+                                 rt_string,
+                                 int64_t,
+                                 int64_t>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_register_class_direct",
-                  std::nullopt,
-                  "void(i64,ptr,ptr,i64)",
-                  &DirectHandler<&rt_register_class_direct, void, int, void **, const char *, int>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"rt_register_interface_direct",
-                  std::nullopt,
-                  "void(i64,ptr,i64)",
-                  &DirectHandler<&rt_register_interface_direct, void, int, const char *, int>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"rt_register_interface_impl",
-                  std::nullopt,
-                  "void(i64,i64,ptr)",
-                  &DirectHandler<&rt_register_interface_impl, void, long long, long long, void **>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
+    DescriptorRow{
+        "rt_register_class_direct",
+        std::nullopt,
+        "void(i64,ptr,ptr,i64)",
+        &DirectHandler<&rt_register_class_direct, void, int, void **, const char *, int>::invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
+    DescriptorRow{
+        "rt_register_interface_direct",
+        std::nullopt,
+        "void(i64,ptr,i64)",
+        &DirectHandler<&rt_register_interface_direct, void, int, const char *, int>::invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
+    DescriptorRow{
+        "rt_register_interface_impl",
+        std::nullopt,
+        "void(i64,i64,ptr)",
+        &DirectHandler<&rt_register_interface_impl, void, long long, long long, void **>::invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
     DescriptorRow{"rt_bind_interface",
                   std::nullopt,
                   "void(i64,i64,ptr)",
@@ -1849,8 +1858,11 @@ struct Descriptor
 ///          array without constructing dynamic state at runtime.
 /// @brief Constexpr merge sort helper - merge two sorted ranges.
 template <std::size_t N>
-constexpr void mergeRanges(std::array<Descriptor, N> &arr, std::array<Descriptor, N> &temp, std::size_t left,
-                           std::size_t mid, std::size_t right)
+constexpr void mergeRanges(std::array<Descriptor, N> &arr,
+                           std::array<Descriptor, N> &temp,
+                           std::size_t left,
+                           std::size_t mid,
+                           std::size_t right)
 {
     std::size_t i = left, j = mid, k = left;
     while (i < mid && j < right)
@@ -1870,7 +1882,9 @@ constexpr void mergeRanges(std::array<Descriptor, N> &arr, std::array<Descriptor
 
 /// @brief Constexpr merge sort - O(n log n) complexity.
 template <std::size_t N>
-constexpr void mergeSort(std::array<Descriptor, N> &arr, std::array<Descriptor, N> &temp, std::size_t left,
+constexpr void mergeSort(std::array<Descriptor, N> &arr,
+                         std::array<Descriptor, N> &temp,
+                         std::size_t left,
                          std::size_t right)
 {
     if (right - left <= 1)

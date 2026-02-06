@@ -65,16 +65,16 @@ constexpr u8 UNSUPP = 2; ///< Request type not supported
  * advertises supported features and the device confirms which are enabled.
  */
 namespace blk_features {
-constexpr u64 SIZE_MAX = 1ULL << 1;     ///< Max size of any single segment
-constexpr u64 SEG_MAX = 1ULL << 2;      ///< Max number of segments in a request
-constexpr u64 GEOMETRY = 1ULL << 4;     ///< Legacy geometry available
-constexpr u64 RO = 1ULL << 5;           ///< Disk is read-only
-constexpr u64 BLK_SIZE = 1ULL << 6;     ///< Block size available in config
-constexpr u64 FLUSH = 1ULL << 9;        ///< Cache flush command supported
-constexpr u64 TOPOLOGY = 1ULL << 10;    ///< Topology info available
-constexpr u64 CONFIG_WCE = 1ULL << 11;  ///< Writeback caching config
-constexpr u64 MQ = 1ULL << 12;          ///< Multiple queues supported
-constexpr u64 DISCARD = 1ULL << 13;     ///< Discard command supported
+constexpr u64 SIZE_MAX = 1ULL << 1;      ///< Max size of any single segment
+constexpr u64 SEG_MAX = 1ULL << 2;       ///< Max number of segments in a request
+constexpr u64 GEOMETRY = 1ULL << 4;      ///< Legacy geometry available
+constexpr u64 RO = 1ULL << 5;            ///< Disk is read-only
+constexpr u64 BLK_SIZE = 1ULL << 6;      ///< Block size available in config
+constexpr u64 FLUSH = 1ULL << 9;         ///< Cache flush command supported
+constexpr u64 TOPOLOGY = 1ULL << 10;     ///< Topology info available
+constexpr u64 CONFIG_WCE = 1ULL << 11;   ///< Writeback caching config
+constexpr u64 MQ = 1ULL << 12;           ///< Multiple queues supported
+constexpr u64 DISCARD = 1ULL << 13;      ///< Discard command supported
 constexpr u64 WRITE_ZEROES = 1ULL << 14; ///< Write zeroes command supported
 } // namespace blk_features
 

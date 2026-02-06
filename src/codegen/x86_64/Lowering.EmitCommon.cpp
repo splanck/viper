@@ -104,13 +104,13 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls)
         if (cls == RegClass::XMM)
         {
             // XMM registers cannot be loaded directly from immediates.
-            // Move the immediate to a GPR first, then convert to floating-point.
+            // Move the bit-pattern to a GPR first, then transfer to XMM unchanged.
             const VReg gprTmp = builder().makeTempVReg(RegClass::GPR);
             const Operand gprOp = makeVRegOperand(gprTmp.cls, gprTmp.id);
             builder().append(
                 MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(gprOp), clone(operand)}));
             builder().append(
-                MInstr::make(MOpcode::CVTSI2SD, std::vector<Operand>{clone(tmpOp), clone(gprOp)}));
+                MInstr::make(MOpcode::MOVQrx, std::vector<Operand>{clone(tmpOp), clone(gprOp)}));
         }
         else
         {
@@ -295,12 +295,12 @@ void EmitCommon::emitBinary(
         if (cls == RegClass::XMM)
         {
             // XMM registers cannot be loaded directly from immediates.
-            // Move the immediate to a GPR first, then convert to floating-point.
+            // Move the bit-pattern to a GPR first, then transfer to XMM unchanged.
             const VReg gprTmp = builder().makeTempVReg(RegClass::GPR);
             const Operand gprOp = makeVRegOperand(gprTmp.cls, gprTmp.id);
             builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(gprOp), lhs}));
             builder().append(
-                MInstr::make(MOpcode::CVTSI2SD, std::vector<Operand>{clone(dest), clone(gprOp)}));
+                MInstr::make(MOpcode::MOVQrx, std::vector<Operand>{clone(dest), clone(gprOp)}));
         }
         else
         {
@@ -505,10 +505,15 @@ void EmitCommon::emitSelect(const ILInstr &instr)
         return;
     }
 
+    // Materialise FP operands into XMM vregs — MOVSDrr requires registers,
+    // and the ISel lowerXmmSelect pattern requires OpReg for both values.
+    const Operand matFalse = materialise(clone(falseVal), RegClass::XMM);
+    const Operand matTrue = materialise(clone(trueVal), RegClass::XMM);
+
     std::vector<Operand> movOperands{};
     movOperands.push_back(clone(dest));
-    movOperands.push_back(clone(falseVal));
-    movOperands.push_back(clone(trueVal));
+    movOperands.push_back(clone(matFalse));
+    movOperands.push_back(clone(matTrue));
     builder().append(MInstr::make(MOpcode::MOVSDrr, std::move(movOperands)));
 
     builder().append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{clone(cond), cond}));

@@ -164,7 +164,7 @@ keeps a magic tag, refcount, length, and capacity alongside every payload and va
 `VIPER_RC_DEBUG=1` (enabled for Debug builds). Array handles behave like strings: assignment and parameter passing
 retain, scope exits release, and `rt_arr_i32_resize` only clones when the refcount shows shared ownership. The
 architecture overview dives deeper into retain/release rules and copy-on-resize
-semantics—see [Architecture §Runtime memory model](architecture.md#runtime-memory-model).
+semantics—see [Architecture §Runtime memory model](../architecture.md#runtime-memory-model).
 
 <a id="vm-internals"></a>
 

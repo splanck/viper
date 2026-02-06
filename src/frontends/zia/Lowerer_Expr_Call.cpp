@@ -287,8 +287,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 if (equalsIgnoreCase(fieldExpr->field, "length"))
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
-                    Value result = emitCallRet(
-                        Type(Type::Kind::I64), kStringLength, {baseResult.value});
+                    Value result =
+                        emitCallRet(Type(Type::Kind::I64), kStringLength, {baseResult.value});
                     return {result, Type(Type::Kind::I64)};
                 }
             }
@@ -360,10 +360,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
         {
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
-            if (baseType && (baseType->name.find("Viper.") == 0 ||
-                             baseType->kind == TypeKindSem::Set ||
-                             baseType->kind == TypeKindSem::List ||
-                             baseType->kind == TypeKindSem::Map))
+            if (baseType &&
+                (baseType->name.find("Viper.") == 0 || baseType->kind == TypeKindSem::Set ||
+                 baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map))
             {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 args.push_back(baseResult.value);

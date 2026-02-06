@@ -216,8 +216,12 @@ rt_string rt_version_to_string(void *ver)
     rt_version_impl *v = (rt_version_impl *)ver;
 
     char buf[256];
-    int written = snprintf(buf, sizeof(buf), "%lld.%lld.%lld",
-                           (long long)v->major, (long long)v->minor, (long long)v->patch);
+    int written = snprintf(buf,
+                           sizeof(buf),
+                           "%lld.%lld.%lld",
+                           (long long)v->major,
+                           (long long)v->minor,
+                           (long long)v->patch);
     if (v->prerelease)
         written += snprintf(buf + written, sizeof(buf) - (size_t)written, "-%s", v->prerelease);
     if (v->build)
@@ -355,17 +359,12 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint)
         int8_t result = 0;
         if (c->major > 0)
         {
-            result = (v->major == c->major &&
-                      rt_version_cmp(ver, cv) >= 0)
-                         ? 1
-                         : 0;
+            result = (v->major == c->major && rt_version_cmp(ver, cv) >= 0) ? 1 : 0;
         }
         else if (c->minor > 0)
         {
-            result = (v->major == 0 && v->minor == c->minor &&
-                      rt_version_cmp(ver, cv) >= 0)
-                         ? 1
-                         : 0;
+            result =
+                (v->major == 0 && v->minor == c->minor && rt_version_cmp(ver, cv) >= 0) ? 1 : 0;
         }
         else
         {
@@ -386,10 +385,8 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint)
             return 0;
 
         rt_version_impl *c = (rt_version_impl *)cv;
-        int8_t result = (v->major == c->major && v->minor == c->minor &&
-                         rt_version_cmp(ver, cv) >= 0)
-                            ? 1
-                            : 0;
+        int8_t result =
+            (v->major == c->major && v->minor == c->minor && rt_version_cmp(ver, cv) >= 0) ? 1 : 0;
         rt_obj_release_check0(cv);
         rt_obj_free(cv);
         return result;
@@ -489,7 +486,11 @@ rt_string rt_version_bump_patch(void *ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
     char buf[64];
-    snprintf(buf, sizeof(buf), "%lld.%lld.%lld",
-             (long long)v->major, (long long)v->minor, (long long)(v->patch + 1));
+    snprintf(buf,
+             sizeof(buf),
+             "%lld.%lld.%lld",
+             (long long)v->major,
+             (long long)v->minor,
+             (long long)(v->patch + 1));
     return rt_string_from_bytes(buf, strlen(buf));
 }

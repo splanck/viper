@@ -31,10 +31,10 @@
 /// @brief BitSet implementation structure.
 typedef struct rt_bitset_impl
 {
-    void **vptr;        ///< Vtable pointer placeholder.
-    uint64_t *words;    ///< Array of 64-bit words storing the bits.
-    size_t word_count;  ///< Number of words allocated.
-    size_t bit_count;   ///< Logical number of bits.
+    void **vptr;       ///< Vtable pointer placeholder.
+    uint64_t *words;   ///< Array of 64-bit words storing the bits.
+    size_t word_count; ///< Number of words allocated.
+    size_t bit_count;  ///< Logical number of bits.
 } rt_bitset_impl;
 
 // ---------------------------------------------------------------------------
@@ -76,8 +76,7 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits)
         return;
 
     // Zero new words
-    memset(new_words + bs->word_count, 0,
-           (grow - bs->word_count) * sizeof(uint64_t));
+    memset(new_words + bs->word_count, 0, (grow - bs->word_count) * sizeof(uint64_t));
 
     bs->words = new_words;
     bs->word_count = grow;
@@ -108,8 +107,7 @@ void *rt_bitset_new(int64_t nbits)
     if (nbits <= 0)
         nbits = 64; // Default to 64 bits
 
-    rt_bitset_impl *bs = (rt_bitset_impl *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_bitset_impl));
+    rt_bitset_impl *bs = (rt_bitset_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bitset_impl));
     if (!bs)
         return NULL;
 

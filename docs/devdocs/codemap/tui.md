@@ -6,7 +6,7 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 101 (.hpp/.cpp)
+- **Total source files**: 108 (.hpp/.cpp)
 - **Subdirectories**: include/, src/, apps/, tests/
 
 ## Application Entry Point (`apps/`)

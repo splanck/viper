@@ -565,6 +565,12 @@ PipelineResult CodegenPipeline::run()
         else
         {
             result.exit_code = 0;
+            // Clean up intermediate assembly after successful object file creation.
+            if (!opts_.emit_asm)
+            {
+                std::error_code ec;
+                std::filesystem::remove(asmPath, ec);
+            }
         }
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -592,6 +598,14 @@ PipelineResult CodegenPipeline::run()
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
+    }
+
+    // Clean up the intermediate assembly file after successful linking,
+    // unless the user explicitly requested assembly output via -S.
+    if (!opts_.emit_asm)
+    {
+        std::error_code ec;
+        std::filesystem::remove(asmPath, ec);
     }
 
     if (!opts_.run_native)

@@ -11,12 +11,15 @@ Native code generation backends for x86_64 and AArch64.
 
 ## Common Utilities (`src/codegen/common/`)
 
-| File                   | Purpose                                                 |
-|------------------------|---------------------------------------------------------|
-| `ArgNormalize.hpp`     | Argument normalization utilities shared across backends |
-| `LabelUtil.hpp`        | Deterministic label generation for blocks and jumps     |
-| `MachineIRBuilder.hpp` | Helper to construct Machine IR programmatically         |
-| `MachineIRFormat.hpp`  | Helpers for formatted MIR printing                      |
+| File                        | Purpose                                                 |
+|-----------------------------|---------------------------------------------------------|
+| `Diagnostics.hpp/cpp`       | Codegen-specific diagnostic reporting                   |
+| `LabelUtil.hpp`             | Deterministic label generation for blocks and jumps     |
+| `LinkerSupport.hpp/cpp`     | Platform linker invocation and object file support      |
+| `ParallelCopyResolver.hpp`  | Parallel copy resolution for SSA deconstruction         |
+| `PassManager.hpp`           | Codegen pass manager interface                          |
+| `RuntimeComponents.hpp`     | Runtime component descriptors for codegen               |
+| `TargetInfoBase.hpp`        | Base class for target-specific information              |
 
 ## AArch64 Backend (`src/codegen/aarch64/`)
 

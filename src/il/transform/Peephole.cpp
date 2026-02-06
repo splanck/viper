@@ -428,13 +428,11 @@ void peephole(Module &m)
                                     }
                                 }
                                 // Also try float constant comparisons
-                                if (!known &&
-                                    def.operands[0].kind == Value::Kind::ConstFloat &&
+                                if (!known && def.operands[0].kind == Value::Kind::ConstFloat &&
                                     def.operands[1].kind == Value::Kind::ConstFloat)
                                 {
                                     if (evaluateFloatComparison(
-                                            def.op, def.operands[0].f64,
-                                            def.operands[1].f64, v))
+                                            def.op, def.operands[0].f64, def.operands[1].f64, v))
                                     {
                                         known = true;
                                         defIdx = j;

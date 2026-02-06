@@ -134,12 +134,18 @@ namespace
             return "CVTSI2SD";
         case MOpcode::CVTTSD2SI:
             return "CVTTSD2SI";
+        case MOpcode::MOVQrx:
+            return "MOVQrx";
         case MOpcode::MOVSDrr:
             return "MOVSDrr";
         case MOpcode::MOVSDrm:
             return "MOVSDrm";
         case MOpcode::MOVSDmr:
             return "MOVSDmr";
+        case MOpcode::MOVUPSrm:
+            return "MOVUPSrm";
+        case MOpcode::MOVUPSmr:
+            return "MOVUPSmr";
     }
     return "<unknown>";
 }

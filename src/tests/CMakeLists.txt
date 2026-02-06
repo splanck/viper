@@ -74,87 +74,87 @@ if (NOT WIN32)
 
     # ── Group 1: il_codegen_aarch64 only ────────────────────────────────
     set(_AARCH64_CODEGEN_ONLY_TESTS
-        test_target_aarch64
-        test_emit_aarch64_minimal
-        test_emit_aarch64_mir_minimal
-        test_emit_aarch64_frameplan
-        test_emit_aarch64_mir_bitwise
-        test_emit_aarch64_mir_branches
-        test_emit_aarch64_mir_frameplan
-        test_codegen_arm64_peephole
-        test_aarch64_rodata_pool
-        test_codegen_review_fixes
+            test_target_aarch64
+            test_emit_aarch64_minimal
+            test_emit_aarch64_mir_minimal
+            test_emit_aarch64_frameplan
+            test_emit_aarch64_mir_bitwise
+            test_emit_aarch64_mir_branches
+            test_emit_aarch64_mir_frameplan
+            test_codegen_arm64_peephole
+            test_aarch64_rodata_pool
+            test_codegen_review_fixes
     )
-    foreach(_test IN LISTS _AARCH64_CODEGEN_ONLY_TESTS)
+    foreach (_test IN LISTS _AARCH64_CODEGEN_ONLY_TESTS)
         _aarch64_add_test(${_test}
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
-            "il_codegen_aarch64")
-    endforeach()
+                ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
+                "il_codegen_aarch64")
+    endforeach ()
 
     # ── Group 2: il_codegen_aarch64 + viper_cmd_arm64 ──────────────────
     set(_AARCH64_CMD_TESTS
-        test_codegen_arm64_cli
-        test_codegen_arm64_add_params
-        test_codegen_arm64_ret_param
-        test_codegen_arm64_add_imm
-        test_codegen_arm64_bitwise
-        test_codegen_arm64_params_wide
-        test_codegen_arm64_ovf
-        test_codegen_arm64_shift_imm
-        test_codegen_arm64_stack_locals
-        test_codegen_arm64_stack_locals_cli
-        test_codegen_arm64_gep_load_store
-        test_codegen_arm64_array_access
-        test_codegen_arm64_const_str_addr
-        test_codegen_arm64_mir_dump
-        test_codegen_arm64_ra_many_temps
-        test_codegen_arm64_icmp
-        test_codegen_arm64_large_imm
-        test_codegen_arm64_icmp_imm
-        test_codegen_arm64_switch
-        test_codegen_arm64_trap_eh
-        test_codegen_arm64_run_native
-        test_codegen_arm64_bugfix
-        test_codegen_arm64_cbr
-        test_codegen_arm64_call
-        test_codegen_arm64_call_args
-        test_codegen_arm64_call_mid_block
-        test_codegen_arm64_cf_if_else_phi
-        test_codegen_arm64_select
-        test_codegen_arm64_cf_loop_phi
-        test_codegen_arm64_call_temp_args
-        test_codegen_arm64_print_str
-        test_codegen_arm64_dead_strip
-        test_codegen_arm64_modvar_addr
-        test_codegen_arm64_emit_and_link
-        test_codegen_arm64_arr_obj_len
-        test_codegen_arm64_obj_field_gep
-        test_codegen_arm64_arr_obj_put_get
-        test_codegen_arm64_call_stack_args
-        test_codegen_arm64_call_convention
-        test_codegen_arm64_fp
-        test_codegen_arm64_indirect_call
-        test_codegen_arm64_idxchk
-        test_codegen_arm64_division
-        test_codegen_arm64_exception_handling
-        test_codegen_arm64_string_store_refcount
-        test_codegen_arm64_sub_mul
-        test_codegen_arm64_shift_reg
-        test_codegen_arm64_fp_cmp_all
-        test_codegen_arm64_gaddr_constnull
-        test_codegen_arm64_spill_fpr
-        test_codegen_arm64_cross_block_phi_spill
-        test_codegen_arm64_unsigned_cmp
-        test_codegen_arm64_peephole_comprehensive
-        test_codegen_arm64_abi_mixed_args
-        test_codegen_arm64_rodata_literals
-        test_codegen_arm64_callee_saved
+            test_codegen_arm64_cli
+            test_codegen_arm64_add_params
+            test_codegen_arm64_ret_param
+            test_codegen_arm64_add_imm
+            test_codegen_arm64_bitwise
+            test_codegen_arm64_params_wide
+            test_codegen_arm64_ovf
+            test_codegen_arm64_shift_imm
+            test_codegen_arm64_stack_locals
+            test_codegen_arm64_stack_locals_cli
+            test_codegen_arm64_gep_load_store
+            test_codegen_arm64_array_access
+            test_codegen_arm64_const_str_addr
+            test_codegen_arm64_mir_dump
+            test_codegen_arm64_ra_many_temps
+            test_codegen_arm64_icmp
+            test_codegen_arm64_large_imm
+            test_codegen_arm64_icmp_imm
+            test_codegen_arm64_switch
+            test_codegen_arm64_trap_eh
+            test_codegen_arm64_run_native
+            test_codegen_arm64_bugfix
+            test_codegen_arm64_cbr
+            test_codegen_arm64_call
+            test_codegen_arm64_call_args
+            test_codegen_arm64_call_mid_block
+            test_codegen_arm64_cf_if_else_phi
+            test_codegen_arm64_select
+            test_codegen_arm64_cf_loop_phi
+            test_codegen_arm64_call_temp_args
+            test_codegen_arm64_print_str
+            test_codegen_arm64_dead_strip
+            test_codegen_arm64_modvar_addr
+            test_codegen_arm64_emit_and_link
+            test_codegen_arm64_arr_obj_len
+            test_codegen_arm64_obj_field_gep
+            test_codegen_arm64_arr_obj_put_get
+            test_codegen_arm64_call_stack_args
+            test_codegen_arm64_call_convention
+            test_codegen_arm64_fp
+            test_codegen_arm64_indirect_call
+            test_codegen_arm64_idxchk
+            test_codegen_arm64_division
+            test_codegen_arm64_exception_handling
+            test_codegen_arm64_string_store_refcount
+            test_codegen_arm64_sub_mul
+            test_codegen_arm64_shift_reg
+            test_codegen_arm64_fp_cmp_all
+            test_codegen_arm64_gaddr_constnull
+            test_codegen_arm64_spill_fpr
+            test_codegen_arm64_cross_block_phi_spill
+            test_codegen_arm64_unsigned_cmp
+            test_codegen_arm64_peephole_comprehensive
+            test_codegen_arm64_abi_mixed_args
+            test_codegen_arm64_rodata_literals
+            test_codegen_arm64_callee_saved
     )
-    foreach(_test IN LISTS _AARCH64_CMD_TESTS)
+    foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_test(${_test}
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
-            "il_codegen_aarch64;viper_cmd_arm64")
-    endforeach()
+                ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
+                "il_codegen_aarch64;viper_cmd_arm64")
+    endforeach ()
 
     # Temporarily disabled: flaky on some environments while AArch64 cast tests
     # also covered by VM and IL suites.
@@ -172,37 +172,37 @@ if (NOT WIN32)
 
     # Environment.IsNative should distinguish VM vs native paths
     _aarch64_add_test_common(test_codegen_env_is_native
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp
-        "il_codegen_aarch64;viper_cmd_arm64")
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp
+            "il_codegen_aarch64;viper_cmd_arm64")
 
     # Property-based differential testing: VM vs ARM64 native
     # This test must run alone (RUN_SERIAL) to avoid resource contention with other
     # codegen tests that use the same assembler/linker toolchain.
     _aarch64_add_test_common(test_diff_vm_native_property
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp
-        "il_codegen_aarch64;viper_cmd_arm64")
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp
+            "il_codegen_aarch64;viper_cmd_arm64")
     set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow")
 
     # x86-64 runtime map (lives here because it requires non-Windows host)
     _aarch64_add_test_common(test_emit_x86_runtime_map
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp
-        "viper_codegen_x86_64")
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp
+            "viper_codegen_x86_64")
 
     # Optimizer pipeline differential testing (VM baseline vs O0/O1/O2)
     _aarch64_add_test_common(test_il_opt_equivalence
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp
-        "il_transform;viper::il_verify")
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp
+            "il_transform;viper::il_verify")
 
     # ── ARM64 end-to-end demo tests ────────────────────────────────────
     set(_AARCH64_E2E_TESTS
-        test_arm64_demos
-        test_arm64_demos_run
+            test_arm64_demos
+            test_arm64_demos_run
     )
-    foreach(_test IN LISTS _AARCH64_E2E_TESTS)
+    foreach (_test IN LISTS _AARCH64_E2E_TESTS)
         _aarch64_add_test(${_test}
-            ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${_test}.cpp
-            "viper_common")
-    endforeach()
+                ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${_test}.cpp
+                "viper_common")
+    endforeach ()
 
 endif () # NOT WIN32 - ARM64 tests
 
@@ -226,78 +226,78 @@ endif ()
 
 # ── BASIC OOP unit tests ────────────────────────────────────────────────
 viper_add_test(test_basic_oop_parsing
-    SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp
-    TEST_NAME unit_basic_oop_parsing
-    LIBS fe_basic)
+        SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp
+        TEST_NAME unit_basic_oop_parsing
+        LIBS fe_basic)
 
 viper_add_test(test_basic_oop_lowering
-    SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Lowering.cpp
-    TEST_NAME unit_basic_oop_lowering
-    LIBS fe_basic)
+        SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Lowering.cpp
+        TEST_NAME unit_basic_oop_lowering
+        LIBS fe_basic)
 
 # NOTE: The following tests were previously compiled but never registered with
 # ctest due to a viper_add_ctest(name name) no-op pattern. They have pre-existing
 # failures that need investigation. NO_CTEST preserves the old behavior.
 viper_add_test(test_basic_oop_string_array_field NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_string_array_field.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_string_array_field.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_oop_object_array_field NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_object_array_field.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_object_array_field.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_global_string_array_sub_store
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_global_string_array_sub_store.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_global_string_array_sub_store.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_select_case_object_assign
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_select_case_object_assign.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_select_case_object_assign.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_input_typing NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_input_typing.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_input_typing.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_nested_member_method_call NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_nested_member_method_call.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_nested_member_method_call.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_class_return
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_class_return.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_class_return.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_lower_builtin_dispatch
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp
+        LIBS fe_basic)
 
 # ── Runtime class catalog and binding tests ─────────────────────────────
 viper_add_test(test_runtime_class_catalog NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestRuntimeClassCatalog.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestRuntimeClassCatalog.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_runtime_property_binding
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestPropertyBinding.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestPropertyBinding.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_runtime_method_binding
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestMethodBinding.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestMethodBinding.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_runtime_catalog_targets_resolve NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_frontends_basic_runtime_property_diag
-    ${CMAKE_CURRENT_SOURCE_DIR}/frontends/basic/RuntimePropertyDiagTests.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/frontends/basic/RuntimePropertyDiagTests.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_basic_semantic_new_ctor
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_semantic_new_ctor.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_semantic_new_ctor.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_run_process_quotes
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_run_process_quotes.cpp
-    LIBS viper_common)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_run_process_quotes.cpp
+        LIBS viper_common)
 
 add_test(NAME smoke_basic_oop
         COMMAND $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
@@ -339,32 +339,32 @@ viper_add_golden_suite_tests()
 # ctest due to a viper_add_ctest(name name) no-op pattern. They have pre-existing
 # failures. NO_CTEST preserves the old behavior until they are fixed.
 viper_add_test(test_oop_static_members NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestStaticMembers.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestStaticMembers.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_oop_properties NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestProperties.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestProperties.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_oop_overloads
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverloads.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverloads.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_oop_inheritance
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestInheritance.cpp
-    LIBS fe_basic viper_test_common)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestInheritance.cpp
+        LIBS fe_basic viper_test_common)
 
 viper_add_test(test_oop_destructor_dispose NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorDispose.cpp
-    LIBS fe_basic)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorDispose.cpp
+        LIBS fe_basic)
 
 viper_add_test(test_oop_destructor_chain NO_CTEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorChain.cpp
-    LIBS fe_basic viper_test_common)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorChain.cpp
+        LIBS fe_basic viper_test_common)
 
 viper_add_test(test_oop_dispose
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDispose.cpp
-    LIBS fe_basic viper_test_common)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDispose.cpp
+        LIBS fe_basic viper_test_common)
 
 # Shell script tests - skip on Windows
 if (NOT WIN32)

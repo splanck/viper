@@ -32,7 +32,7 @@ namespace viper::codegen::common
 /// **Character Handling:**
 /// - Alphanumeric characters [A-Za-z0-9] are preserved as-is
 /// - Underscores (_), periods (.), and dollar signs ($) are preserved
-/// - Hyphens (-) are silently removed (common in IL block names like "entry-0")
+/// - Hyphens (-) are replaced with underscores (common in IL block names like "entry-0")
 /// - All other characters are replaced with underscores (_)
 ///
 /// **Label Validity:**
@@ -46,7 +46,7 @@ namespace viper::codegen::common
 /// @par Example Usage:
 /// @code
 /// sanitizeLabel("main")           // Returns "main"
-/// sanitizeLabel("entry-0")        // Returns "entry0" (hyphen removed)
+/// sanitizeLabel("entry-0")        // Returns "entry_0" (hyphen to underscore)
 /// sanitizeLabel("123start")       // Returns "L123start" (L prefix added)
 /// sanitizeLabel("foo::bar")       // Returns "foo__bar" (colons -> underscores)
 /// sanitizeLabel("loop", "_42")    // Returns "loop_42" (suffix appended)
@@ -73,7 +73,7 @@ inline std::string sanitizeLabel(std::string_view in, std::string_view suffix = 
         }
         else if (ch == '-')
         {
-            // drop
+            out.push_back('_');
         }
         else
         {

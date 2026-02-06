@@ -23,8 +23,8 @@ struct rt_spriteanim_impl
     int64_t frame_duration; ///< Frames to display each animation frame.
     int64_t frame_counter;  ///< Counter for frame timing.
 
-    double speed;         ///< Playback speed multiplier.
-    double speed_accum;   ///< Accumulator for fractional speed.
+    double speed;       ///< Playback speed multiplier.
+    double speed_accum; ///< Accumulator for fractional speed.
 
     int8_t playing;       ///< 1 if animation is playing.
     int8_t paused;        ///< 1 if animation is paused.
@@ -67,7 +67,10 @@ void rt_spriteanim_destroy(rt_spriteanim anim)
         free(anim);
 }
 
-void rt_spriteanim_setup(rt_spriteanim anim, int64_t start_frame, int64_t end_frame, int64_t frame_duration)
+void rt_spriteanim_setup(rt_spriteanim anim,
+                         int64_t start_frame,
+                         int64_t end_frame,
+                         int64_t frame_duration)
 {
     if (!anim)
         return;

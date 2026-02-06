@@ -346,11 +346,11 @@ store str, %b_slot, %sB
 
 ### Control
 
-**`br`** — Conditional or unconditional branch to labels.
+**`br`** — Unconditional branch to a target label.
 
 ```il
-br label exit
-br label exit
+br exit
+br loop_header(%i)
 ```
 
 **`call`** — Call a function; arguments must match parameter types.
@@ -370,8 +370,8 @@ br label exit
 **`cbr`** — Conditional branch; takes a boolean condition and two target labels.
 
 ```il
-cbr %eq, label then1, label else0
-cbr %c, label loop_body, label done
+cbr %eq, then1, else0
+cbr %c, loop_body, done
 ```
 
 **`ret`** — Return from function.
@@ -407,8 +407,8 @@ eh.pop
 **`eh.push`** — Push error handler onto stack; specifies label to branch to on error.
 
 ```il
-eh.push label bad
-eh.push label handler
+eh.push ^bad
+eh.push ^handler
 ```
 
 **`trap`** — Unconditional trap; immediately terminates execution with error.
@@ -589,8 +589,8 @@ il 0.1.2
 **`resume.label`** — Resume execution at specified label after error; used with ON ERROR GOTO/RESUME.
 
 ```il
-resume.label %tok, label after(%err)
-resume.label %tok, label target(%err)
+resume.label %tok, ^after(%err)
+resume.label %tok, ^target(%err)
 ```
 
 **`resume.next`** — Resume execution at next statement after error; used with RESUME NEXT.
@@ -660,9 +660,9 @@ target "wasm32-unknown-unknown"
 
 The verifier enforces structural and type rules. Typical checks include:
 
-- Block must end with a terminator (`ret`, `br`, or `switch`).
-- Types of operands must match instruction variants (e.g., `add.i64`).
-- PHI nodes must list all predecessors in order.
+- Block must end with a terminator (`ret`, `br`, `cbr`, `switch.i32`, `trap`, `trap.from_err`, or `resume.*`).
+- Operand types must match instruction requirements (e.g., `add` takes two `i64` operands).
+- Block parameters must be passed correctly by all predecessor branches.
 - Branch targets must be valid labels in the same function.
 - Calls must match callee signature exactly.
 

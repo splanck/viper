@@ -16,7 +16,6 @@ Last updated: 2026-01-15
 |----------------------|---------------------------------|
 | `basic-language.md`  | BASIC language tutorial         |
 | `basic-reference.md` | Complete BASIC specification    |
-| `zia-tutorial.md`    | Zia language tutorial           |
 | `zia-reference.md`   | Complete Zia specification      |
 | `il-quickstart.md`   | Fast introduction to Viper IL   |
 | `il-guide.md`        | Comprehensive IL specification  |

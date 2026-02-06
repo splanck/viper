@@ -550,6 +550,14 @@ class Sema
     /// @brief Register interface member signatures for cross-module resolution.
     void registerInterfaceMembers(InterfaceDecl &decl);
 
+    /// @brief Pass 2: Register member signatures (fields, methods) for type declarations.
+    /// @param declarations The declaration list to process.
+    void registerMemberSignatures(std::vector<DeclPtr> &declarations);
+
+    /// @brief Pass 3: Analyze declaration bodies (functions, types, globals).
+    /// @param declarations The declaration list to process.
+    void analyzeDeclarationBodies(std::vector<DeclPtr> &declarations);
+
     /// @brief Analyze an entity type declaration.
     /// @param decl The entity type declaration.
     ///
@@ -1127,6 +1135,10 @@ class Sema
     /// @details Maps namespace prefix to optional alias. Empty alias means
     /// full namespace import (all symbols imported without prefix).
     std::unordered_map<std::string, std::string> boundNamespaces_;
+
+    /// @brief Reverse map from alias to namespace for O(1) alias resolution.
+    /// @details Populated alongside boundNamespaces_ for non-empty aliases.
+    std::unordered_map<std::string, std::string> aliasToNamespace_;
 
     /// @brief Symbols imported from bound namespaces.
     /// @details Maps short name (e.g., "Say") to full qualified name

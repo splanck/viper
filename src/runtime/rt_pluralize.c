@@ -29,29 +29,51 @@ typedef struct
     const char *plural;
 } irregular_t;
 
-static const irregular_t irregulars[] = {
-    {"child", "children"},   {"foot", "feet"},       {"goose", "geese"},
-    {"man", "men"},          {"mouse", "mice"},      {"ox", "oxen"},
-    {"person", "people"},    {"tooth", "teeth"},     {"woman", "women"},
-    {"cactus", "cacti"},     {"focus", "foci"},      {"fungus", "fungi"},
-    {"nucleus", "nuclei"},   {"radius", "radii"},    {"stimulus", "stimuli"},
-    {"analysis", "analyses"},{"basis", "bases"},     {"crisis", "crises"},
-    {"diagnosis", "diagnoses"},{"thesis", "theses"}, {"phenomenon", "phenomena"},
-    {"criterion", "criteria"},{"datum", "data"},     {"medium", "media"},
-    {"appendix", "appendices"},{"index", "indices"},
-    {"matrix", "matrices"},  {"vertex", "vertices"},
-    {"die", "dice"},         {"leaf", "leaves"},     {"life", "lives"},
-    {"knife", "knives"},     {"wife", "wives"},      {"half", "halves"},
-    {"wolf", "wolves"},      {"shelf", "shelves"},   {"self", "selves"},
-    {NULL, NULL}};
+static const irregular_t irregulars[] = {{"child", "children"},
+                                         {"foot", "feet"},
+                                         {"goose", "geese"},
+                                         {"man", "men"},
+                                         {"mouse", "mice"},
+                                         {"ox", "oxen"},
+                                         {"person", "people"},
+                                         {"tooth", "teeth"},
+                                         {"woman", "women"},
+                                         {"cactus", "cacti"},
+                                         {"focus", "foci"},
+                                         {"fungus", "fungi"},
+                                         {"nucleus", "nuclei"},
+                                         {"radius", "radii"},
+                                         {"stimulus", "stimuli"},
+                                         {"analysis", "analyses"},
+                                         {"basis", "bases"},
+                                         {"crisis", "crises"},
+                                         {"diagnosis", "diagnoses"},
+                                         {"thesis", "theses"},
+                                         {"phenomenon", "phenomena"},
+                                         {"criterion", "criteria"},
+                                         {"datum", "data"},
+                                         {"medium", "media"},
+                                         {"appendix", "appendices"},
+                                         {"index", "indices"},
+                                         {"matrix", "matrices"},
+                                         {"vertex", "vertices"},
+                                         {"die", "dice"},
+                                         {"leaf", "leaves"},
+                                         {"life", "lives"},
+                                         {"knife", "knives"},
+                                         {"wife", "wives"},
+                                         {"half", "halves"},
+                                         {"wolf", "wolves"},
+                                         {"shelf", "shelves"},
+                                         {"self", "selves"},
+                                         {NULL, NULL}};
 
 // Uncountable nouns
 static const char *uncountables[] = {
-    "sheep", "fish", "deer", "series", "species", "money", "rice",
-    "information", "equipment", "news", "advice", "furniture",
-    "luggage", "traffic", "music", "software", "hardware",
-    "knowledge", "weather", "research", "evidence", "homework",
-    NULL};
+    "sheep",   "fish",        "deer",      "series",   "species",  "money",
+    "rice",    "information", "equipment", "news",     "advice",   "furniture",
+    "luggage", "traffic",     "music",     "software", "hardware", "knowledge",
+    "weather", "research",    "evidence",  "homework", NULL};
 
 static int str_ends_with(const char *str, size_t len, const char *suffix)
 {

@@ -497,7 +497,7 @@ static void test_jaro_winkler()
     // MARTHA vs MARHTA: Jaro-Winkler should be higher than Jaro
     double jaro = rt_str_jaro(make_str("MARTHA"), make_str("MARHTA"));
     double jw2 = rt_str_jaro_winkler(make_str("MARTHA"), make_str("MARHTA"));
-    assert(jw2 >= jaro); // Winkler bonus for common prefix "MAR"
+    assert(jw2 >= jaro);              // Winkler bonus for common prefix "MAR"
     assert(jw2 > 0.96 && jw2 < 0.98); // Should be ~0.9611
 
     // Completely different -> close to 0.0

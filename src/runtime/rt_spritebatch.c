@@ -38,13 +38,13 @@ typedef enum
 typedef struct
 {
     batch_item_type type;
-    void *source;      // Sprite or Pixels object
-    int64_t x;         // Destination X
-    int64_t y;         // Destination Y
-    int64_t scale_x;   // Scale X (100 = 100%)
-    int64_t scale_y;   // Scale Y (100 = 100%)
-    int64_t rotation;  // Rotation in degrees
-    int64_t depth;     // For depth sorting
+    void *source;     // Sprite or Pixels object
+    int64_t x;        // Destination X
+    int64_t y;        // Destination Y
+    int64_t scale_x;  // Scale X (100 = 100%)
+    int64_t scale_y;  // Scale Y (100 = 100%)
+    int64_t rotation; // Rotation in degrees
+    int64_t depth;    // For depth sorting
     // For region drawing
     int64_t src_x;
     int64_t src_y;
@@ -87,7 +87,8 @@ static void ensure_capacity(spritebatch_impl *batch, int64_t needed)
     if (new_capacity < batch->count + needed)
         new_capacity = batch->count + needed;
 
-    batch_item *new_items = (batch_item *)realloc(batch->items, (size_t)new_capacity * sizeof(batch_item));
+    batch_item *new_items =
+        (batch_item *)realloc(batch->items, (size_t)new_capacity * sizeof(batch_item));
     if (!new_items)
         rt_trap("SpriteBatch: memory allocation failed");
 
@@ -168,58 +169,64 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas)
 
         switch (item->type)
         {
-        case BATCH_ITEM_SPRITE:
-            if (item->source)
-            {
-                // Save original sprite state
-                int64_t old_x = rt_sprite_get_x(item->source);
-                int64_t old_y = rt_sprite_get_y(item->source);
-                int64_t old_sx = rt_sprite_get_scale_x(item->source);
-                int64_t old_sy = rt_sprite_get_scale_y(item->source);
-                int64_t old_rot = rt_sprite_get_rotation(item->source);
-
-                // Apply batch transform
-                rt_sprite_set_x(item->source, item->x);
-                rt_sprite_set_y(item->source, item->y);
-                rt_sprite_set_scale_x(item->source, item->scale_x);
-                rt_sprite_set_scale_y(item->source, item->scale_y);
-                rt_sprite_set_rotation(item->source, item->rotation);
-
-                // Draw
-                rt_sprite_draw(item->source, canvas);
-
-                // Restore original state
-                rt_sprite_set_x(item->source, old_x);
-                rt_sprite_set_y(item->source, old_y);
-                rt_sprite_set_scale_x(item->source, old_sx);
-                rt_sprite_set_scale_y(item->source, old_sy);
-                rt_sprite_set_rotation(item->source, old_rot);
-            }
-            break;
-
-        case BATCH_ITEM_PIXELS:
-            if (item->source)
-            {
-                if (batch->alpha < 255 || batch->tint_color != 0)
+            case BATCH_ITEM_SPRITE:
+                if (item->source)
                 {
-                    // With alpha/tint, use alpha blit
-                    rt_canvas_blit_alpha(canvas, item->x, item->y, item->source);
-                }
-                else
-                {
-                    // Simple blit
-                    rt_canvas_blit(canvas, item->x, item->y, item->source);
-                }
-            }
-            break;
+                    // Save original sprite state
+                    int64_t old_x = rt_sprite_get_x(item->source);
+                    int64_t old_y = rt_sprite_get_y(item->source);
+                    int64_t old_sx = rt_sprite_get_scale_x(item->source);
+                    int64_t old_sy = rt_sprite_get_scale_y(item->source);
+                    int64_t old_rot = rt_sprite_get_rotation(item->source);
 
-        case BATCH_ITEM_REGION:
-            if (item->source)
-            {
-                rt_canvas_blit_region(canvas, item->x, item->y, item->source,
-                                       item->src_x, item->src_y, item->src_w, item->src_h);
-            }
-            break;
+                    // Apply batch transform
+                    rt_sprite_set_x(item->source, item->x);
+                    rt_sprite_set_y(item->source, item->y);
+                    rt_sprite_set_scale_x(item->source, item->scale_x);
+                    rt_sprite_set_scale_y(item->source, item->scale_y);
+                    rt_sprite_set_rotation(item->source, item->rotation);
+
+                    // Draw
+                    rt_sprite_draw(item->source, canvas);
+
+                    // Restore original state
+                    rt_sprite_set_x(item->source, old_x);
+                    rt_sprite_set_y(item->source, old_y);
+                    rt_sprite_set_scale_x(item->source, old_sx);
+                    rt_sprite_set_scale_y(item->source, old_sy);
+                    rt_sprite_set_rotation(item->source, old_rot);
+                }
+                break;
+
+            case BATCH_ITEM_PIXELS:
+                if (item->source)
+                {
+                    if (batch->alpha < 255 || batch->tint_color != 0)
+                    {
+                        // With alpha/tint, use alpha blit
+                        rt_canvas_blit_alpha(canvas, item->x, item->y, item->source);
+                    }
+                    else
+                    {
+                        // Simple blit
+                        rt_canvas_blit(canvas, item->x, item->y, item->source);
+                    }
+                }
+                break;
+
+            case BATCH_ITEM_REGION:
+                if (item->source)
+                {
+                    rt_canvas_blit_region(canvas,
+                                          item->x,
+                                          item->y,
+                                          item->source,
+                                          item->src_x,
+                                          item->src_y,
+                                          item->src_w,
+                                          item->src_h);
+                }
+                break;
         }
     }
 
@@ -236,8 +243,13 @@ void rt_spritebatch_draw_scaled(void *batch_ptr, void *sprite, int64_t x, int64_
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, scale, scale, 0);
 }
 
-void rt_spritebatch_draw_ex(void *batch_ptr, void *sprite, int64_t x, int64_t y,
-                             int64_t scale_x, int64_t scale_y, int64_t rotation)
+void rt_spritebatch_draw_ex(void *batch_ptr,
+                            void *sprite,
+                            int64_t x,
+                            int64_t y,
+                            int64_t scale_x,
+                            int64_t scale_y,
+                            int64_t rotation)
 {
     if (!batch_ptr || !sprite)
         return;
@@ -281,10 +293,14 @@ void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_
     add_item(batch, &item);
 }
 
-void rt_spritebatch_draw_region(void *batch_ptr, void *pixels,
-                                 int64_t dx, int64_t dy,
-                                 int64_t sx, int64_t sy,
-                                 int64_t sw, int64_t sh)
+void rt_spritebatch_draw_region(void *batch_ptr,
+                                void *pixels,
+                                int64_t dx,
+                                int64_t dy,
+                                int64_t sx,
+                                int64_t sy,
+                                int64_t sw,
+                                int64_t sh)
 {
     if (!batch_ptr || !pixels)
         return;

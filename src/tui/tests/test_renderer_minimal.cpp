@@ -17,8 +17,8 @@
 #include "tui/render/screen.hpp"
 #include "tui/term/term_io.hpp"
 
-#include <algorithm>
 #include "tests/TestHarness.hpp"
+#include <algorithm>
 #include <string>
 
 using viper::tui::render::Renderer;

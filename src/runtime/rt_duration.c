@@ -53,11 +53,8 @@ int64_t rt_duration_from_days(int64_t days)
     return days * MS_PER_DAY;
 }
 
-int64_t rt_duration_create(int64_t days,
-                           int64_t hours,
-                           int64_t minutes,
-                           int64_t seconds,
-                           int64_t millis)
+int64_t rt_duration_create(
+    int64_t days, int64_t hours, int64_t minutes, int64_t seconds, int64_t millis)
 {
     return days * MS_PER_DAY + hours * MS_PER_HOUR + minutes * MS_PER_MINUTE +
            seconds * MS_PER_SECOND + millis;
@@ -271,9 +268,10 @@ rt_string rt_duration_to_iso(int64_t duration)
         *p++ = '-';
     *p++ = 'P';
 
+    char *end = buffer + sizeof(buffer);
     if (days > 0)
     {
-        p += sprintf(p, "%lldD", (long long)days);
+        p += snprintf(p, (size_t)(end - p), "%lldD", (long long)days);
     }
 
     if (hours > 0 || minutes > 0 || seconds > 0 || millis > 0)
@@ -281,21 +279,21 @@ rt_string rt_duration_to_iso(int64_t duration)
         *p++ = 'T';
         if (hours > 0)
         {
-            p += sprintf(p, "%lldH", (long long)hours);
+            p += snprintf(p, (size_t)(end - p), "%lldH", (long long)hours);
         }
         if (minutes > 0)
         {
-            p += sprintf(p, "%lldM", (long long)minutes);
+            p += snprintf(p, (size_t)(end - p), "%lldM", (long long)minutes);
         }
         if (seconds > 0 || millis > 0)
         {
             if (millis > 0)
             {
-                p += sprintf(p, "%lld.%03lldS", (long long)seconds, (long long)millis);
+                p += snprintf(p, (size_t)(end - p), "%lld.%03lldS", (long long)seconds, (long long)millis);
             }
             else
             {
-                p += sprintf(p, "%lldS", (long long)seconds);
+                p += snprintf(p, (size_t)(end - p), "%lldS", (long long)seconds);
             }
         }
     }

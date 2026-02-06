@@ -125,14 +125,41 @@ struct SlotKeyHash
     return RegClass::GPR;
 }
 
-/// @brief Compute the stack offset that stores a callee-saved register.
-/// @details Spill slots are allocated consecutively below %rbp.  Each slot
-///          occupies eight bytes and stores one callee-saved value.
-/// @param index Zero-based index of the callee-saved register spill slot.
-/// @return Negative byte offset relative to %rbp.
-[[nodiscard]] int calleeSavedOffset(std::size_t index)
+/// @brief Byte size needed to spill one callee-saved register.
+/// @details GPR registers need 8 bytes; XMM registers need 16 bytes to
+///          preserve the full 128-bit value (using MOVUPS).
+[[nodiscard]] int calleeSaveSlotSize(PhysReg reg)
 {
-    return -static_cast<int>((index + 1) * kSlotSizeBytes);
+    return isXMM(reg) ? 16 : kSlotSizeBytes;
+}
+
+/// @brief Compute stack offsets for all callee-saved register spill slots.
+/// @details GPR slots are 8 bytes; XMM slots are 16 bytes.  Offsets are
+///          cumulative, all negative, relative to %rbp.
+/// @param regs Ordered list of callee-saved registers.
+/// @return Vector of byte offsets (all negative) relative to %rbp.
+[[nodiscard]] std::vector<int> calleeSavedOffsets(const std::vector<PhysReg> &regs)
+{
+    std::vector<int> offsets;
+    offsets.reserve(regs.size());
+    int running = 0;
+    for (auto reg : regs)
+    {
+        running += calleeSaveSlotSize(reg);
+        offsets.push_back(-running);
+    }
+    return offsets;
+}
+
+/// @brief Compute total bytes occupied by callee-saved register slots.
+[[nodiscard]] int totalCalleeSavedBytes(const std::vector<PhysReg> &regs)
+{
+    int total = 0;
+    for (auto reg : regs)
+    {
+        total += calleeSaveSlotSize(reg);
+    }
+    return total;
 }
 
 } // namespace
@@ -158,10 +185,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     std::set<int> xmmSpillSlots{};
     int maxAllocaSlotIndex = -1; // Track the highest alloca slot index
 
-    // The Spiller uses a 1000 offset to distinguish spill slots from alloca slots:
-    // - Alloca slots: slotIndex = resultId (0, 1, 2, ...)
-    // - Spill slots: slotIndex = spillSlot + 1000 (1000, 1001, 1002, ...)
-    constexpr int kSpillSlotOffset = 1000;
+    // Alloca slots use indices 0..N; spill slots use kSpillSlotOffset+0, kSpillSlotOffset+1, ...
+    // (kSpillSlotOffset is defined in TargetX64.hpp)
 
     for (auto &block : func.blocks)
     {
@@ -173,7 +198,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 if (auto *reg = std::get_if<OpReg>(&operand); reg && reg->isPhys)
                 {
                     const auto phys = static_cast<PhysReg>(reg->idOrPhys);
-                    if (phys != PhysReg::RBP && phys != PhysReg::RSP && isCalleeSaved(calleeSavedSet, phys))
+                    if (phys != PhysReg::RBP && phys != PhysReg::RSP &&
+                        isCalleeSaved(calleeSavedSet, phys))
                     {
                         usedCalleeSaved.insert(phys);
                     }
@@ -250,7 +276,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
         }
     }
 
-    const int calleeSavedBytes = static_cast<int>(frame.usedCalleeSaved.size()) * kSlotSizeBytes;
+    const int calleeSavedBytes = totalCalleeSavedBytes(frame.usedCalleeSaved);
 
     std::unordered_map<SlotKey, int, SlotKeyHash> slotOffsets{};
 
@@ -414,16 +440,16 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
             const int pages = (frame.frameSize + kPageSize - 1) / kPageSize;
             for (int p = 0; p < pages; ++p)
             {
-                prologue.push_back(MInstr::make(
-                    MOpcode::ADDri, {rspOperand, makeImmOperand(-kPageSize)}));
+                prologue.push_back(
+                    MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kPageSize)}));
                 // Touch the page via: mov (%rsp), %rax  (load to clobber-safe register)
-                prologue.push_back(MInstr::make(
-                    MOpcode::MOVmr, {raxOperand, makeMemOperand(rspBase, 0)}));
+                prologue.push_back(
+                    MInstr::make(MOpcode::MOVmr, {raxOperand, makeMemOperand(rspBase, 0)}));
             }
             // Set RSP to exact target position (may differ from page-aligned probe)
             prologue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
-            prologue.push_back(MInstr::make(
-                MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
+            prologue.push_back(
+                MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
         }
         else
         {
@@ -433,10 +459,11 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
 #endif
     }
 
+    const auto csOffsets = calleeSavedOffsets(frame.usedCalleeSaved);
     for (std::size_t idx = 0; idx < frame.usedCalleeSaved.size(); ++idx)
     {
         const auto reg = frame.usedCalleeSaved[idx];
-        const int offset = calleeSavedOffset(idx);
+        const int offset = csOffsets[idx];
         if (isGPR(reg))
         {
             prologue.push_back(MInstr::make(
@@ -445,9 +472,9 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         }
         else
         {
-            // XMM callee-saved register: use MOVSD to save 64-bit value
+            // XMM callee-saved register: use MOVUPS to save full 128-bit value
             prologue.push_back(MInstr::make(
-                MOpcode::MOVSDrm,
+                MOpcode::MOVUPSrm,
                 {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::XMM, reg)}));
         }
     }
@@ -478,7 +505,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     for (std::size_t idx = frame.usedCalleeSaved.size(); idx > 0; --idx)
     {
         const auto reg = frame.usedCalleeSaved[idx - 1];
-        const int offset = calleeSavedOffset(idx - 1);
+        const int offset = csOffsets[idx - 1];
         if (isGPR(reg))
         {
             epilogue.push_back(MInstr::make(
@@ -487,9 +514,9 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         }
         else
         {
-            // XMM callee-saved register: use MOVSD to restore 64-bit value
+            // XMM callee-saved register: use MOVUPS to restore full 128-bit value
             epilogue.push_back(MInstr::make(
-                MOpcode::MOVSDmr,
+                MOpcode::MOVUPSmr,
                 {makePhysOperand(RegClass::XMM, reg), makeMemOperand(rbpBase, offset)}));
         }
     }

@@ -40,6 +40,7 @@ typedef struct
 {
     OptionVariant variant;
     ValueType value_type;
+
     union
     {
         void *ptr;
@@ -333,14 +334,14 @@ void *rt_option_ok_or(void *obj, void *err)
     {
         switch (o->value_type)
         {
-        case VALUE_PTR:
-            return rt_result_ok(o->value.ptr);
-        case VALUE_STR:
-            return rt_result_ok_str(o->value.str);
-        case VALUE_I64:
-            return rt_result_ok_i64(o->value.i64);
-        case VALUE_F64:
-            return rt_result_ok_f64(o->value.f64);
+            case VALUE_PTR:
+                return rt_result_ok(o->value.ptr);
+            case VALUE_STR:
+                return rt_result_ok_str(o->value.str);
+            case VALUE_I64:
+                return rt_result_ok_i64(o->value.i64);
+            case VALUE_F64:
+                return rt_result_ok_f64(o->value.f64);
         }
     }
     return rt_result_err(err);
@@ -355,14 +356,14 @@ void *rt_option_ok_or_str(void *obj, rt_string err)
     {
         switch (o->value_type)
         {
-        case VALUE_PTR:
-            return rt_result_ok(o->value.ptr);
-        case VALUE_STR:
-            return rt_result_ok_str(o->value.str);
-        case VALUE_I64:
-            return rt_result_ok_i64(o->value.i64);
-        case VALUE_F64:
-            return rt_result_ok_f64(o->value.f64);
+            case VALUE_PTR:
+                return rt_result_ok(o->value.ptr);
+            case VALUE_STR:
+                return rt_result_ok_str(o->value.str);
+            case VALUE_I64:
+                return rt_result_ok_i64(o->value.i64);
+            case VALUE_F64:
+                return rt_result_ok_f64(o->value.f64);
         }
     }
     return rt_result_err_str(err);
@@ -400,14 +401,14 @@ int8_t rt_option_equals(void *a, void *b)
 
     switch (oa->value_type)
     {
-    case VALUE_PTR:
-        return oa->value.ptr == ob->value.ptr ? 1 : 0;
-    case VALUE_STR:
-        return rt_str_cmp(oa->value.str, ob->value.str) == 0 ? 1 : 0;
-    case VALUE_I64:
-        return oa->value.i64 == ob->value.i64 ? 1 : 0;
-    case VALUE_F64:
-        return oa->value.f64 == ob->value.f64 ? 1 : 0;
+        case VALUE_PTR:
+            return oa->value.ptr == ob->value.ptr ? 1 : 0;
+        case VALUE_STR:
+            return rt_str_cmp(oa->value.str, ob->value.str) == 0 ? 1 : 0;
+        case VALUE_I64:
+            return oa->value.i64 == ob->value.i64 ? 1 : 0;
+        case VALUE_F64:
+            return oa->value.f64 == ob->value.f64 ? 1 : 0;
     }
     return 0;
 }
@@ -427,18 +428,18 @@ rt_string rt_option_to_string(void *obj)
 
     switch (o->value_type)
     {
-    case VALUE_PTR:
-        snprintf(buf, sizeof(buf), "Some(%p)", o->value.ptr);
-        break;
-    case VALUE_STR:
-        snprintf(buf, sizeof(buf), "Some(\"%s\")", rt_string_cstr(o->value.str));
-        break;
-    case VALUE_I64:
-        snprintf(buf, sizeof(buf), "Some(%lld)", (long long)o->value.i64);
-        break;
-    case VALUE_F64:
-        snprintf(buf, sizeof(buf), "Some(%g)", o->value.f64);
-        break;
+        case VALUE_PTR:
+            snprintf(buf, sizeof(buf), "Some(%p)", o->value.ptr);
+            break;
+        case VALUE_STR:
+            snprintf(buf, sizeof(buf), "Some(\"%s\")", rt_string_cstr(o->value.str));
+            break;
+        case VALUE_I64:
+            snprintf(buf, sizeof(buf), "Some(%lld)", (long long)o->value.i64);
+            break;
+        case VALUE_F64:
+            snprintf(buf, sizeof(buf), "Some(%g)", o->value.f64);
+            break;
     }
 
     return rt_string_from_bytes(buf, (int64_t)strlen(buf));

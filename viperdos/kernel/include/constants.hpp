@@ -150,9 +150,9 @@ constexpr u64 FWCFG_BASE = 0x09020000;
 
 // VirtIO MMIO region
 constexpr u64 VIRTIO_MMIO_BASE = 0x0a000000;
-constexpr u64 VIRTIO_MMIO_END = 0x0a004000;  // End of scan range
-constexpr u64 VIRTIO_DEVICE_STRIDE = 0x200;  // Spacing between devices
-constexpr u32 VIRTIO_IRQ_BASE = 48;          // IRQs 48-79 for devices
+constexpr u64 VIRTIO_MMIO_END = 0x0a004000; // End of scan range
+constexpr u64 VIRTIO_DEVICE_STRIDE = 0x200; // Spacing between devices
+constexpr u32 VIRTIO_IRQ_BASE = 48;         // IRQs 48-79 for devices
 constexpr u32 VIRTIO_MAX_DEVICES = 32;
 
 // RTC (PL031)

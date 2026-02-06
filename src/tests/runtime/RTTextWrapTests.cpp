@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_textwrap.h"
 #include "rt_string.h"
+#include "rt_textwrap.h"
 
 #include <cassert>
 #include <cstdio>
@@ -71,7 +71,8 @@ static void test_indent()
     {
         rt_string text = rt_const_cstr("Line1\nLine2");
         rt_string result = rt_textwrap_indent(text, rt_const_cstr("> "));
-        test_result("Indent multiple lines", strcmp(rt_string_cstr(result), "> Line1\n> Line2") == 0);
+        test_result("Indent multiple lines",
+                    strcmp(rt_string_cstr(result), "> Line1\n> Line2") == 0);
     }
 
     printf("\n");
@@ -213,7 +214,8 @@ static void test_hang()
         // First line should not have indent
         test_result("Hang first line no indent", strncmp(rt_string_cstr(result), "First", 5) == 0);
         // Subsequent lines should have indent
-        test_result("Hang has indented lines", strstr(rt_string_cstr(result), "    Second") != NULL);
+        test_result("Hang has indented lines",
+                    strstr(rt_string_cstr(result), "    Second") != NULL);
     }
 
     printf("\n");
