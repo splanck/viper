@@ -27,6 +27,8 @@
 #include "vm/control_flow.hpp"
 #include "vm/ops/common/Branching.hpp"
 
+#include "support/small_vector.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -256,7 +258,7 @@ VM::ExecResult handleSwitchI32(VM &vm,
     }
 #endif
 
-    std::vector<il::vm::ops::common::Case> cases;
+    il::support::SmallVector<il::vm::ops::common::Case, 16> cases;
     cases.reserve(in.labels.size());
     auto makeTarget = [&](size_t labelIndex)
     {

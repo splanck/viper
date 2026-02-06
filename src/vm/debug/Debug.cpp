@@ -139,7 +139,9 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 void DebugCtrl::addBreakSrcLine(std::string file, uint32_t line)
 {
     auto [normFile, base] = normalizePathWithBase(std::move(file));
+    const size_t idx = srcLineBPs_.size();
     srcLineBPs_.push_back({std::move(normFile), std::move(base), line});
+    srcLineBPsByLine_[line].push_back(idx);
 }
 
 /// @brief Query whether any source-level breakpoints exist.
@@ -201,14 +203,15 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
         return false;
     }
 
-    // Resolve the instruction's source file, normalize the path, and derive its
-    // basename. A breakpoint matches if both the line number and either the
-    // normalized path or basename are equal.
+    // O(1) lookup by line number, then check file matches for that line only.
+    auto lineIt = srcLineBPsByLine_.find(line);
+    if (lineIt == srcLineBPsByLine_.end())
+        return false;
+
     auto [normFile, base] = normalizePathWithBase(std::string(pathView));
-    for (const auto &bp : srcLineBPs_)
+    for (const size_t bpIdx : lineIt->second)
     {
-        if (line != bp.line)
-            continue;
+        const auto &bp = srcLineBPs_[bpIdx];
         if (normFile == bp.normFile || base == bp.base)
         {
             lastHitSrc_ = std::make_pair(fileId, line);

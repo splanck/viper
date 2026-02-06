@@ -29,6 +29,7 @@
 #include "viper/vm/debug/Debug.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/VM.hpp"
+#include "vm/VMConstants.hpp"
 
 #include <cassert>
 #include <filesystem>
@@ -100,7 +101,7 @@ std::optional<Slot> VM::handleDebugBreak(
             if (!script || script->empty())
             {
                 Slot s{};
-                s.i64 = 10;
+                s.i64 = kDebugBreakpointSentinel;
                 return s;
             }
             auto act = script->nextAction();
@@ -125,7 +126,7 @@ std::optional<Slot> VM::handleDebugBreak(
         }
         std::cerr << " fn=@" << fr.func->name << " blk=" << bb.label << " ip=#" << ip << "\n";
         Slot s{};
-        s.i64 = 10;
+        s.i64 = kDebugBreakpointSentinel;
         return s;
     }
     return std::nullopt;
@@ -151,15 +152,20 @@ std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool
         {
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
             Slot s{};
-            s.i64 = 1;
+            s.i64 = kDebugPauseSentinel;
             return s;
         }
         if (st.ip == 0 && st.bb)
             transferBlockParams(st.fr, *st.bb);
         if (st.ip == 0 && stepBudget == 0 && !st.skipBreakOnce)
+        {
             if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, nullptr))
                 return br;
-        st.skipBreakOnce = false;
+        }
+        else if (st.skipBreakOnce)
+        {
+            st.skipBreakOnce = false;
+        }
         if (in)
             if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, in))
                 return br;
@@ -175,7 +181,7 @@ std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool
             if (!script || script->empty())
             {
                 Slot s{};
-                s.i64 = 10;
+                s.i64 = kDebugBreakpointSentinel;
                 return s;
             }
             auto act = script->nextAction();

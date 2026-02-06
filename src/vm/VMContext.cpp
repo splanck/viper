@@ -465,7 +465,7 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             auto it = programState_->strMap.find(value.str);
             if (it == programState_->strMap.end())
             {
-                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
+                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func ? fr.func->name : std::string{}, "");
             }
             else
             {

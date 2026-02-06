@@ -100,6 +100,9 @@ class TraceSink
     /// @brief Construct a sink configured with @p cfg.
     explicit TraceSink(TraceConfig cfg = {});
 
+    /// @brief Restore locale settings captured at construction.
+    ~TraceSink();
+
     /// @brief Prepare per-function lookup tables for tracing @p fr.
     void onFramePrepared(const Frame &fr);
 
@@ -136,6 +139,11 @@ class TraceSink
                        std::unordered_map<const il::core::Instr *, InstrLocation>>
         instrLocations; ///< Per-function instruction lookup cache.
     std::unordered_map<uint32_t, FileCacheEntry> fileCache; ///< Cached source files.
+
+    // Session-level locale state (set once at construction, restored at destruction)
+    bool localeSet_ = false;
+    std::string savedCLocale_;
+    std::locale savedStreamLocale_;
 };
 
 /// @brief Breakpoint identified by a block label symbol.
@@ -247,6 +255,7 @@ class DebugCtrl
 
     const il::support::SourceManager *sm_ = nullptr;
     std::vector<SrcLineBP> srcLineBPs_;
+    std::unordered_map<uint32_t, std::vector<size_t>> srcLineBPsByLine_; ///< Line -> indices into srcLineBPs_
     mutable std::optional<std::pair<uint32_t, uint32_t>> lastHitSrc_;
 
     // -------------------------------------------------------------------------

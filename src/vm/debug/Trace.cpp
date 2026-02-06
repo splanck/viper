@@ -176,6 +176,26 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
 #ifdef _WIN32
     _setmode(_fileno(stderr), _O_BINARY);
 #endif
+    // Set the C locale for numeric formatting once at session start rather than
+    // per-instruction. This avoids two costly setlocale() calls per traced step.
+    if (this->cfg.enabled())
+    {
+        savedCLocale_ = std::setlocale(LC_NUMERIC, nullptr) ? std::setlocale(LC_NUMERIC, nullptr) : "";
+        std::setlocale(LC_NUMERIC, "C");
+        savedStreamLocale_ = std::cerr.getloc();
+        std::cerr.imbue(std::locale::classic());
+        localeSet_ = true;
+    }
+}
+
+TraceSink::~TraceSink()
+{
+    if (localeSet_)
+    {
+        if (!savedCLocale_.empty())
+            std::setlocale(LC_NUMERIC, savedCLocale_.c_str());
+        std::cerr.imbue(savedStreamLocale_);
+    }
 }
 
 /// @brief Precompute instruction source locations for a prepared frame.
@@ -270,7 +290,7 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
 {
     if (!cfg.enabled())
         return;
-    LocaleGuard lg(std::cerr);
+    // Locale is set once at session start (constructor), no per-step guard needed.
     std::cerr << std::noboolalpha << std::dec;
     const auto *fn = fr.func;
     if (!fn)

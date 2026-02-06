@@ -182,7 +182,6 @@ void jump(Frame &frame, Target target)
                                     instr ? instr->loc : il::support::SourceLoc{},
                                     fnName,
                                     blk);
-        std::terminate();
     }
 }
 

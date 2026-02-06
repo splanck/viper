@@ -246,7 +246,7 @@ template <typename T>
     {
         return {false, static_cast<int64_t>(idx)};
     }
-    return {true, static_cast<int64_t>(idx)};
+    return {true, static_cast<int64_t>(idx - lo)};
 }
 
 /// @brief Check whether a signed 64-bit value fits in a narrower signed type.

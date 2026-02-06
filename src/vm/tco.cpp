@@ -121,10 +121,12 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
         if (isStr)
         {
             auto &dest = fr.params[id];
-            if (dest)
-                rt_str_release_maybe(dest->str);
+            // Retain new value before releasing old to prevent dangling pointer
+            // when args[i] aliases fr.params[id] (self-assignment during tail call).
             Slot retained = args[i];
             rt_str_retain_maybe(retained.str);
+            if (dest)
+                rt_str_release_maybe(dest->str);
             dest = retained;
         }
         else

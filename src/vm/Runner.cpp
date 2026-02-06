@@ -21,6 +21,7 @@
 #include "support/source_manager.hpp"
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
+#include "vm/VMConstants.hpp"
 #include "vm/VMContext.hpp"
 
 #include <functional>
@@ -139,9 +140,9 @@ class Runner::Impl
             return {StepStatus::Advanced};
 
         const auto code = maybe->i64;
-        if (code == 10)
+        if (code == kDebugBreakpointSentinel)
             return {StepStatus::BreakpointHit};
-        if (code == 1)
+        if (code == kDebugPauseSentinel)
             return {StepStatus::Paused};
 
         // Any other concrete result means function returned (halted).
@@ -302,12 +303,12 @@ std::optional<std::string> Runner::lastTrapMessage() const
     return impl->lastTrapMessage();
 }
 
-const auto &Runner::opcodeCounts() const
+const std::array<uint64_t, il::core::kNumOpcodes> &Runner::opcodeCounts() const
 {
 #if VIPER_VM_OPCOUNTS
     return impl->opcodeCounts();
 #else
-    static const std::array<uint64_t, 0> kEmpty{};
+    static const std::array<uint64_t, il::core::kNumOpcodes> kEmpty{};
     return kEmpty;
 #endif
 }

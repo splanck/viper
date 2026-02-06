@@ -73,4 +73,14 @@ constexpr size_t kStackBufferPoolSize = 8;
 ///          for functions with similar SSA counts. Keeps up to 16 buffers.
 constexpr size_t kRegisterFilePoolSize = 16;
 
+/// @brief Sentinel value for debug break results indicating a breakpoint hit.
+/// @details Returned via Slot::i64 from debug hooks to signal that execution
+///          should pause because a breakpoint was reached.
+constexpr int64_t kDebugBreakpointSentinel = 10;
+
+/// @brief Sentinel value for debug break results indicating a generic pause.
+/// @details Returned via Slot::i64 from debug hooks to signal that execution
+///          should pause for non-breakpoint reasons (e.g., step limit exceeded).
+constexpr int64_t kDebugPauseSentinel = 1;
+
 } // namespace il::vm

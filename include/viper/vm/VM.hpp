@@ -43,8 +43,10 @@
 
 #include "viper/vm/debug/Debug.hpp"
 
+#include "il/core/Opcode.hpp"
 #include "support/source_location.hpp"
 #include "viper/vm/RuntimeBridge.hpp"
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -123,7 +125,7 @@ class Runner
     /// What: Read-only view of per-opcode execution counts.
     /// Why:  Aid performance tuning and hot-spot analysis.
     /// How:  Returns an internal map-like container owned by the runner.
-    [[nodiscard]] const auto &opcodeCounts() const;
+    [[nodiscard]] const std::array<uint64_t, il::core::kNumOpcodes> &opcodeCounts() const;
 
     /// What: Reset all opcode execution counters to zero.
     /// Why:  Start a fresh measurement window.

@@ -428,6 +428,16 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_vm_addr_of_arith ${_VIPER_VM_DIR}/AddrOfTests.cpp)
     target_link_libraries(test_vm_addr_of_arith PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_addr_of_arith test_vm_addr_of_arith)
+
+    # Bounds check normalization tests (non-zero lower bound)
+    viper_add_test(test_vm_bounds_check_normalize ${_VIPER_VM_DIR}/BoundsCheckNormalizeTests.cpp)
+    target_link_libraries(test_vm_bounds_check_normalize PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_bounds_check_normalize test_vm_bounds_check_normalize)
+
+    # TCO string retain/release ordering tests
+    viper_add_test(test_vm_tco_string_retain ${_VIPER_VM_DIR}/TcoStringRetainTests.cpp)
+    target_link_libraries(test_vm_tco_string_retain PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_tco_string_retain test_vm_tco_string_retain)
 endfunction()
 
 function(viper_add_vm_path_tests)

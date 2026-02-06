@@ -56,6 +56,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 #include "vm/VMConfig.hpp"
+#include "vm/VMConstants.hpp"
 #include "vm/ViperStringHandle.hpp"
 #include "vm/control_flow.hpp"
 
@@ -390,7 +391,7 @@ class VM
         void requestPause()
         {
             Slot s{};
-            s.i64 = 1; // generic pause sentinel
+            s.i64 = kDebugPauseSentinel;
             pendingResult = s;
             hasPendingResult = true;
             exitRequested = true;

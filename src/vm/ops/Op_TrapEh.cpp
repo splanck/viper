@@ -196,9 +196,13 @@ VM::ExecResult handleResumeSame(VM &vm,
         trapInvalidResume(fr, in, bb, "resume.same: resume target is no longer available");
         return {};
     }
+    // Save token fields before invalidating to prevent use-after-invalidate
+    // when token aliases fr.resumeState.
+    const auto *savedBlock = token->block;
+    const auto savedFaultIp = token->faultIp;
     fr.resumeState.valid = false;
-    bb = token->block;
-    ip = token->faultIp;
+    bb = savedBlock;
+    ip = savedFaultIp;
     VM::ExecResult result{};
     result.jumped = true;
     return result;
@@ -236,9 +240,13 @@ VM::ExecResult handleResumeNext(VM &vm,
         trapInvalidResume(fr, in, bb, "resume.next: resume target is no longer available");
         return {};
     }
+    // Save token fields before invalidating to prevent use-after-invalidate
+    // when token aliases fr.resumeState.
+    const auto *savedBlock = token->block;
+    const auto savedNextIp = token->nextIp;
     fr.resumeState.valid = false;
-    bb = token->block;
-    ip = token->nextIp;
+    bb = savedBlock;
+    ip = savedNextIp;
     VM::ExecResult result{};
     result.jumped = true;
     return result;

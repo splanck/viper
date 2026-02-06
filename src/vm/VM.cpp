@@ -532,7 +532,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
         if (!state.hasPendingResult)
         {
             Slot s{};
-            s.i64 = 1;
+            s.i64 = kDebugPauseSentinel;
             state.pendingResult = s;
             state.hasPendingResult = true;
         }

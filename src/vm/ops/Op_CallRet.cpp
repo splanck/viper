@@ -36,6 +36,8 @@
 #include <cstdint>
 #include <cstring>
 #include <span>
+#include <string_view>
+#include <unordered_map>
 
 // SmallArgBuffer: Uses SmallVector<Slot, 8> to avoid heap allocation for most function
 // calls (those with <=8 arguments). The APIs now accept std::span<const Slot>.
@@ -162,78 +164,99 @@ VM::ExecResult handleCall(VM &vm,
         // These functions are called frequently in game loops. Bypassing the
         // RuntimeBridge eliminates descriptor lookup, argument marshalling, and
         // context guard overhead - typically ~10-20x faster.
+        // Uses a static hash map for O(1) lookup instead of sequential string
+        // comparisons.
 
-        // rt_inkey_str: Non-blocking keyboard poll (called every frame in games)
-        if (in.callee == "rt_inkey_str")
+        enum class FastPathId : uint8_t
         {
-            out.str = rt_inkey_str();
-            ops::storeResult(fr, in, out);
-            return {};
-        }
+            InkeyStr,
+            TermLocate,
+            TermColor,
+            TermCls,
+            TimerMs,
+            SleepMs,
+            Keypressed,
+            TermAltScreen,
+            TermCursorVisible
+        };
 
-        // rt_term_locate_i32: Cursor positioning (called per-character in games)
-        if (in.callee == "rt_term_locate_i32" && args.size() >= 2)
+        struct SvHash
         {
-            rt_term_locate_i32(static_cast<int32_t>(args[0].i64),
-                               static_cast<int32_t>(args[1].i64));
-            ops::storeResult(fr, in, out);
-            return {};
-        }
+            using is_transparent = void;
+            size_t operator()(std::string_view sv) const
+            {
+                return std::hash<std::string_view>{}(sv);
+            }
+        };
 
-        // rt_term_color_i32: Color setting (called frequently in games)
-        if (in.callee == "rt_term_color_i32" && args.size() >= 2)
-        {
-            rt_term_color_i32(static_cast<int32_t>(args[0].i64), static_cast<int32_t>(args[1].i64));
-            ops::storeResult(fr, in, out);
-            return {};
-        }
+        static const std::unordered_map<std::string_view, FastPathId> kFastPathMap = {
+            {"rt_inkey_str", FastPathId::InkeyStr},
+            {"rt_term_locate_i32", FastPathId::TermLocate},
+            {"rt_term_color_i32", FastPathId::TermColor},
+            {"rt_term_cls", FastPathId::TermCls},
+            {"rt_timer_ms", FastPathId::TimerMs},
+            {"rt_sleep_ms", FastPathId::SleepMs},
+            {"rt_keypressed", FastPathId::Keypressed},
+            {"rt_term_alt_screen_i32", FastPathId::TermAltScreen},
+            {"rt_term_cursor_visible_i32", FastPathId::TermCursorVisible},
+        };
 
-        // rt_term_cls: Clear screen
-        if (in.callee == "rt_term_cls")
+        auto fpIt = kFastPathMap.find(std::string_view(in.callee));
+        if (fpIt != kFastPathMap.end())
         {
-            rt_term_cls();
-            ops::storeResult(fr, in, out);
-            return {};
-        }
-
-        // rt_timer_ms: Timer (called for frame timing)
-        if (in.callee == "rt_timer_ms")
-        {
-            out.i64 = rt_timer_ms();
-            ops::storeResult(fr, in, out);
-            return {};
-        }
-
-        // rt_sleep_ms: Sleep (frame rate limiting)
-        if (in.callee == "rt_sleep_ms" && args.size() >= 1)
-        {
-            rt_sleep_ms(static_cast<int32_t>(args[0].i64));
-            ops::storeResult(fr, in, out);
-            return {};
-        }
-
-        // rt_keypressed: Check if key available (game input)
-        if (in.callee == "rt_keypressed")
-        {
-            out.i64 = rt_keypressed();
-            ops::storeResult(fr, in, out);
-            return {};
-        }
-
-        // rt_term_alt_screen_i32: Alt screen toggle (game mode entry/exit)
-        if (in.callee == "rt_term_alt_screen_i32" && args.size() >= 1)
-        {
-            rt_term_alt_screen_i32(static_cast<int32_t>(args[0].i64));
-            ops::storeResult(fr, in, out);
-            return {};
-        }
-
-        // rt_term_cursor_visible_i32: Cursor visibility
-        if (in.callee == "rt_term_cursor_visible_i32" && args.size() >= 1)
-        {
-            rt_term_cursor_visible_i32(static_cast<int32_t>(args[0].i64));
-            ops::storeResult(fr, in, out);
-            return {};
+            bool handled = true;
+            switch (fpIt->second)
+            {
+            case FastPathId::InkeyStr:
+                out.str = rt_inkey_str();
+                break;
+            case FastPathId::TermLocate:
+                if (args.size() >= 2)
+                    rt_term_locate_i32(static_cast<int32_t>(args[0].i64),
+                                       static_cast<int32_t>(args[1].i64));
+                else
+                    handled = false;
+                break;
+            case FastPathId::TermColor:
+                if (args.size() >= 2)
+                    rt_term_color_i32(static_cast<int32_t>(args[0].i64),
+                                      static_cast<int32_t>(args[1].i64));
+                else
+                    handled = false;
+                break;
+            case FastPathId::TermCls:
+                rt_term_cls();
+                break;
+            case FastPathId::TimerMs:
+                out.i64 = rt_timer_ms();
+                break;
+            case FastPathId::SleepMs:
+                if (args.size() >= 1)
+                    rt_sleep_ms(static_cast<int32_t>(args[0].i64));
+                else
+                    handled = false;
+                break;
+            case FastPathId::Keypressed:
+                out.i64 = rt_keypressed();
+                break;
+            case FastPathId::TermAltScreen:
+                if (args.size() >= 1)
+                    rt_term_alt_screen_i32(static_cast<int32_t>(args[0].i64));
+                else
+                    handled = false;
+                break;
+            case FastPathId::TermCursorVisible:
+                if (args.size() >= 1)
+                    rt_term_cursor_visible_i32(static_cast<int32_t>(args[0].i64));
+                else
+                    handled = false;
+                break;
+            }
+            if (handled)
+            {
+                ops::storeResult(fr, in, out);
+                return {};
+            }
         }
 
         // End of fast path - fall through to generic RuntimeBridge
