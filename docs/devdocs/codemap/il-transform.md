@@ -2,7 +2,7 @@
 
 Optimization passes (`src/il/transform/`) for IL programs.
 
-Last updated: 2026-01-15
+Last updated: 2026-02-05
 
 ## Overview
 
@@ -35,7 +35,7 @@ Last updated: 2026-01-15
 | `Mem2Reg.cpp`    | Stack slot promotion implementation                            |
 | `Mem2Reg.hpp`    | Stack slot promotion to SSA                                    |
 | `Peephole.cpp`   | Local algebraic simplifications implementation                 |
-| `Peephole.hpp`   | Local algebraic simplifications (57 rules including float ops) |
+| `Peephole.hpp`   | Local algebraic simplifications (57 rules: int/float/unsigned)  |
 | `EarlyCSE.cpp`   | Early CSE implementation                                       |
 | `EarlyCSE.hpp`   | Early common subexpression elimination                         |
 | `GVN.cpp`        | Global value numbering implementation                          |
@@ -51,9 +51,9 @@ Last updated: 2026-01-15
 | `CheckOpt.hpp`    | Optimization verification and checking       |
 | `LateCleanup.cpp` | Late-stage cleanup implementation            |
 | `LateCleanup.hpp` | Late-stage cleanup transformations           |
-| `CallEffects.hpp` | Call effect analysis utilities               |
-| `ValueKey.cpp`    | Value keying implementation                  |
-| `ValueKey.hpp`    | Value keying for CSE and GVN                 |
+| `CallEffects.hpp` | Call effect analysis with early-exit optimization |
+| `ValueKey.cpp`    | Value keying with cached commutative normalization |
+| `ValueKey.hpp`    | Value keying for CSE and GVN                      |
 
 ## Loop Passes
 

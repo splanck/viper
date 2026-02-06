@@ -271,8 +271,11 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx)
             const std::string &newTarget = term.labels[targetBranchIdx];
 
             // Compute the arguments for the threaded jump
+            auto *targetBlock = findBlock(F, newTarget);
+            if (!targetBlock)
+                continue;
             auto newArgs =
-                computeThreadedArgs(*pred, block, *findBlock(F, newTarget), targetBranchIdx);
+                computeThreadedArgs(*pred, block, *targetBlock, targetBranchIdx);
 
             // Find which branch index in pred goes to this block
             il::core::Instr *predTerm = findTerminator(*pred);

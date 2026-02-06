@@ -121,9 +121,9 @@ bool runDSE(Function &F, AnalysisManager &AM)
         // Backward scan in the block
         std::unordered_set<Addr, AddrHash, AddrEq> killed;
 
-        for (int i = static_cast<int>(B.instructions.size()) - 1; i >= 0; --i)
+        for (std::size_t i = B.instructions.size(); i-- > 0;)
         {
-            Instr &I = B.instructions[static_cast<std::size_t>(i)];
+            Instr &I = B.instructions[i];
 
             // Loads block further elimination for the specific address
             if (isLoadFromTempPtr(I))

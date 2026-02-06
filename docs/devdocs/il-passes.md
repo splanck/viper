@@ -22,8 +22,13 @@
   aliases only null.
 - `typeSizeBytes` exposes conservative byte widths (i1/i16/i32/i64/f64/ptr/str) for passes to thread sizes into
   `alias(...)`.
-- ModRef consults callee attributes plus runtime signature table; `pure` -> `NoModRef`, `readonly` -> `Ref`, everything
-  else -> `ModRef`.
+- ModRef uses a priority cascade for call effect classification:
+  1. Instruction-level `CallAttr` flags (pure, readonly) are checked first
+  2. Module-level function attributes are authoritative when the callee is defined locally
+  3. Runtime signature table is consulted only for external (non-module) functions
+  `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
+- Runtime signature lookup uses a cached hash map for O(1) amortized lookups, rebuilt automatically when new signatures
+  are registered.
 
 ## SimplifyCFG
 
@@ -94,8 +99,13 @@ The peephole pass applies 57 pattern-based algebraic simplifications:
 - **Bitwise identities**: `x & -1 = x`, `x | 0 = x`, `x ^ 0 = x`, `x & 0 = 0`, `x ^ x = 0`, `x | x = x`
 - **Shift identities**: `x << 0 = x`, `x >> 0 = x`, `0 << y = 0`, `0 >> y = 0`
 - **Division identities**: `x / 1 = x`, `x % 1 = 0`, `0 / x = 0`, `0 % x = 0`
-- **Reflexive comparisons**: `x == x = true`, `x < x = false`, etc. for signed, unsigned, and float
+- **Reflexive comparisons**: `x == x = true`, `x < x = false`, etc. for signed, unsigned, and float comparisons
+  (ICmpEq/Ne, SCmpLT/LE/GT/GE, UCmpLT/LE/GT/GE, FCmpEQ/NE/LT/LE/GT/GE)
 - **Float arithmetic**: `x * 1.0 = x`, `x / 1.0 = x`, `x + 0.0 = x`, `x - 0.0 = x`
+
+The pass also simplifies CBr terminators when the branch condition is a comparison of two constants:
+- Integer constant comparisons (signed and unsigned) fold the branch to an unconditional jump
+- Float constant comparisons fold the branch to an unconditional jump
 
 The pass is table-driven, making it easy to add new rules without modifying core logic.
 
@@ -109,12 +119,23 @@ Constant folding evaluates pure operations at compile time:
 - **Intrinsics**: `sin`, `cos`, `tan`, `sqrt`, `pow`, `floor`, `ceil`, `abs`, `log`, `exp`, `min`, `max`, `clamp`, `sgn`
 - **Type conversions**: int/float casts with constant operands
 
+## SCCP (Sparse Conditional Constant Propagation)
+
+Propagates constants through the IL using sparse conditional evaluation:
+
+- Identifies executable regions of the CFG and evaluates instructions whose operands become constant
+- Folds conditional branches with known conditions; rewrites block parameters (SSA phi nodes)
+- Float division by zero is folded to IEEE 754 infinity/NaN rather than left as overdefined, enabling
+  further optimization of code paths that depend on the result
+- Trapping operations (SDivChk0, UDivChk0) are never folded when the divisor is zero to preserve trap semantics
+
 ## DSE (Dead Store Elimination)
 
 Two-level dead store elimination:
 
 1. **Intra-block DSE**: Backward scan within each basic block finds stores that are overwritten before being read.
    Uses BasicAA for alias disambiguation and is conservative about calls that may modify or reference memory.
+   Uses `size_t` loop counters for safe unsigned backward iteration.
 
 2. **Cross-block DSE**: Forward dataflow analysis identifies stores to non-escaping allocas that are provably dead
    because they are overwritten on all paths before being read. Uses escape analysis to ensure safety.
@@ -137,6 +158,7 @@ Threads jumps through blocks with predictable branch conditions:
   to bypass the intermediate block and jump directly to the known successor
 - Eliminates unnecessary control flow and can enable further simplifications
 - Runs in aggressive mode alongside other SimplifyCFG transformations
+- Null-safe: target block lookups guard against missing labels to avoid crashes on malformed CFG
 
 ## CheckOpt
 
@@ -149,3 +171,50 @@ Threads jumps through blocks with predictable branch conditions:
   restricted to loop headers with canonical preheaders. EH-sensitive opcodes (resume/eh push/pop) keep loops ineligible.
 - Tests: `tests/unit/il/transform/checkopt_redundancy.cpp` covers nested-loop redundancies, non-dominating siblings (no
   elimination), and trap-preservation cases.
+
+## ValueKey (CSE/GVN Support)
+
+Expression identity keys used by EarlyCSE and GVN:
+
+- Commutative operations (Add, Mul, And, Or, Xor, ICmpEq/Ne, FAdd, FMul, FCmpEQ/NE) have operands
+  normalized by a deterministic ranking function so `add a,b` and `add b,a` produce the same key
+- Ranking caches computed values to avoid redundant tuple construction
+- `isSafeCSEOpcode` whitelist restricts CSE to pure, non-trapping operations with no memory effects
+- `makeValueKey` rejects terminators, side-effecting, and memory operations
+
+## CallEffects
+
+Unified API for querying call instruction side effects:
+
+- Combines instruction-level `CallAttr` flags, `HelperEffects` constexpr table, and runtime signature registry
+- Short-circuits: when all flags (pure, readonly, nothrow) are already classified, skips the O(n) registry scan
+- `canEliminateIfUnused()` gates DCE; `canReorderWithMemory()` gates LICM and code motion
+
+## IndVarSimplify
+
+Induction variable optimization and strength reduction:
+
+- Null-safe: guards against deleted instructions when looking up address expressions
+
+## LoopInfo
+
+Loop detection and nesting analysis:
+
+- blockLabels vector contains no duplicates (important for self-loops where latch == header)
+- Members hash set provides O(1) `contains()` queries
+- Latch labels tracked separately from body membership
+
+## Optimization Review Test Coverage
+
+Regression tests covering fixes from the comprehensive IL optimization review
+(`tests/unit/il/transform/test_opt_review_*.cpp`):
+
+| Test File | Tests | Coverage |
+|-----------|-------|---------|
+| `test_opt_review_basicaa.cpp` | 7 | Priority cascade, ModRef classification, alias queries |
+| `test_opt_review_sccp.cpp` | 4 | FDiv by zero → infinity/NaN, normal FDiv folding |
+| `test_opt_review_peephole.cpp` | 20 | UCmp/FCmp constant folding in CBr, reflexive comparisons |
+| `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
+| `test_opt_review_valuekey.cpp` | 8 | Commutative normalization, safe opcode classification |
+| `test_opt_review_dse.cpp` | 4 | Dead store elimination, load-intervened stores, different allocas |
+| `test_opt_review_calleffects.cpp` | 5 | Pure/readonly/conservative classification, by-name lookup |

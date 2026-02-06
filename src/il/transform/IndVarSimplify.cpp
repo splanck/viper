@@ -451,7 +451,10 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         unsigned nextId = viper::il::nextTempId(function);
         Param addrParam{"addr", header->instructions.front().type, nextId++};
         // Note: Use the add instruction's type for the carried value
-        addrParam.type = findInstrByResult(*header, addrExpr->addrId)->type;
+        const auto *addrInstr = findInstrByResult(*header, addrExpr->addrId);
+        if (!addrInstr)
+            continue;
+        addrParam.type = addrInstr->type;
         header->params.push_back(addrParam);
         const unsigned addrParamId = addrParam.id;
 

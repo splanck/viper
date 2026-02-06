@@ -211,6 +211,8 @@ static void replaceAll(Function &f, unsigned id, const Value &v)
 /// @returns True if the comparison was evaluated, false if opcode not supported.
 static bool evaluateComparison(Opcode op, long long l, long long r, long long &out)
 {
+    auto ul = static_cast<unsigned long long>(l);
+    auto ur = static_cast<unsigned long long>(r);
     switch (op)
     {
         case Opcode::ICmpEq:
@@ -229,6 +231,46 @@ static bool evaluateComparison(Opcode op, long long l, long long r, long long &o
             out = (l > r);
             return true;
         case Opcode::SCmpGE:
+            out = (l >= r);
+            return true;
+        case Opcode::UCmpLT:
+            out = (ul < ur);
+            return true;
+        case Opcode::UCmpLE:
+            out = (ul <= ur);
+            return true;
+        case Opcode::UCmpGT:
+            out = (ul > ur);
+            return true;
+        case Opcode::UCmpGE:
+            out = (ul >= ur);
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// @brief Evaluate a float comparison opcode with two constant operands.
+static bool evaluateFloatComparison(Opcode op, double l, double r, long long &out)
+{
+    switch (op)
+    {
+        case Opcode::FCmpEQ:
+            out = (l == r);
+            return true;
+        case Opcode::FCmpNE:
+            out = (l != r);
+            return true;
+        case Opcode::FCmpLT:
+            out = (l < r);
+            return true;
+        case Opcode::FCmpLE:
+            out = (l <= r);
+            return true;
+        case Opcode::FCmpGT:
+            out = (l > r);
+            return true;
+        case Opcode::FCmpGE:
             out = (l >= r);
             return true;
         default:
@@ -380,6 +422,19 @@ void peephole(Module &m)
                                     isConstInt(def.operands[1], r))
                                 {
                                     if (evaluateComparison(def.op, l, r, v))
+                                    {
+                                        known = true;
+                                        defIdx = j;
+                                    }
+                                }
+                                // Also try float constant comparisons
+                                if (!known &&
+                                    def.operands[0].kind == Value::Kind::ConstFloat &&
+                                    def.operands[1].kind == Value::Kind::ConstFloat)
+                                {
+                                    if (evaluateFloatComparison(
+                                            def.op, def.operands[0].f64,
+                                            def.operands[1].f64, v))
                                     {
                                         known = true;
                                         defIdx = j;

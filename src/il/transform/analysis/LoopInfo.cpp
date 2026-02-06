@@ -173,8 +173,8 @@ LoopInfo computeLoopInfo(Module &module, Function &function)
             {
                 worklist.push_back(latch);
                 visited[latch] = true;
+                loop.blockLabels.push_back(latch->label);
             }
-            loop.blockLabels.push_back(latch->label);
             loop.latchLabels.push_back(latch->label);
         }
 

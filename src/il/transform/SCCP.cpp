@@ -582,8 +582,8 @@ static FoldResult foldFloatArithmetic(Opcode op, const FoldContext &ctx)
         case Opcode::FMul:
             return FoldResult::constant(Value::constFloat(lhs * rhs));
         case Opcode::FDiv:
-            return rhs == 0.0 ? FoldResult::unknown()
-                              : FoldResult::constant(Value::constFloat(lhs / rhs));
+            // IEEE 754: x/0 produces ±inf or NaN; let the C++ runtime handle it.
+            return FoldResult::constant(Value::constFloat(lhs / rhs));
         default:
             return FoldResult::unknown();
     }

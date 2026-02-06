@@ -688,6 +688,56 @@ function(viper_add_il_utils_test)
             test_il_constfold_enhanced PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_constfold_enhanced test_il_constfold_enhanced)
 
+    # IL optimization review regression tests
+    viper_add_test(
+            test_il_opt_review_basicaa
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_basicaa.cpp)
+    target_link_libraries(
+            test_il_opt_review_basicaa PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_opt_review_basicaa test_il_opt_review_basicaa)
+
+    viper_add_test(
+            test_il_opt_review_sccp
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_sccp.cpp)
+    target_link_libraries(
+            test_il_opt_review_sccp PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_opt_review_sccp test_il_opt_review_sccp)
+
+    viper_add_test(
+            test_il_opt_review_peephole
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_peephole.cpp)
+    target_link_libraries(
+            test_il_opt_review_peephole PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_opt_review_peephole test_il_opt_review_peephole)
+
+    viper_add_test(
+            test_il_opt_review_loopinfo
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_loopinfo.cpp)
+    target_link_libraries(
+            test_il_opt_review_loopinfo PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_opt_review_loopinfo test_il_opt_review_loopinfo)
+
+    viper_add_test(
+            test_il_opt_review_valuekey
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_valuekey.cpp)
+    target_link_libraries(
+            test_il_opt_review_valuekey PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_opt_review_valuekey test_il_opt_review_valuekey)
+
+    viper_add_test(
+            test_il_opt_review_dse
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_dse.cpp)
+    target_link_libraries(
+            test_il_opt_review_dse PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_opt_review_dse test_il_opt_review_dse)
+
+    viper_add_test(
+            test_il_opt_review_calleffects
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_calleffects.cpp)
+    target_link_libraries(
+            test_il_opt_review_calleffects PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_opt_review_calleffects test_il_opt_review_calleffects)
+
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_opcode_info test_il_opcode_info)

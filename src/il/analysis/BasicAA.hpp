@@ -250,35 +250,34 @@ inline BasicAA::CallEffect BasicAA::queryFunctionEffect(const il::core::Function
 
 inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) const
 {
-    CallEffect effect;
-    for (const auto &signature : il::runtime::signatures::all_signatures())
+    // Build a lookup table on first call to avoid O(n) scans.
+    // Rebuild when the signature registry grows (e.g. dynamic registration in tests).
+    static std::unordered_map<std::string, CallEffect> table;
+    static std::size_t lastSize = 0;
+
+    const auto &sigs = il::runtime::signatures::all_signatures();
+    if (sigs.size() != lastSize)
     {
-        if (signature.name == name)
-        {
-            effect.pure = signature.pure;
-            effect.readonly = signature.readonly;
-            break;
-        }
+        table.clear();
+        for (const auto &sig : sigs)
+            table.emplace(sig.name, CallEffect{sig.pure, sig.readonly});
+        lastSize = sigs.size();
     }
-    return effect;
+
+    auto it = table.find(std::string(name));
+    if (it != table.end())
+        return it->second;
+    return {};
 }
 
 inline BasicAA::CallEffect BasicAA::computeCalleeEffect(std::string_view name) const
 {
-    CallEffect effect;
-
+    // Module-level analysis is authoritative when the callee is defined locally.
+    // Fall back to the runtime signature table only for external functions.
     if (const auto *fn = findFunction(name))
-    {
-        const CallEffect fnEffect = queryFunctionEffect(*fn);
-        effect.pure = effect.pure || fnEffect.pure;
-        effect.readonly = effect.readonly || fnEffect.readonly;
-    }
+        return queryFunctionEffect(*fn);
 
-    const CallEffect runtimeEffect = queryRuntimeEffect(name);
-    effect.pure = effect.pure || runtimeEffect.pure;
-    effect.readonly = effect.readonly || runtimeEffect.readonly;
-
-    return effect;
+    return queryRuntimeEffect(name);
 }
 
 inline bool BasicAA::constOffset(const il::core::Value &v, long long &out)

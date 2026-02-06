@@ -2,7 +2,7 @@
 
 Static analysis utilities (`src/il/analysis/`) for IL programs.
 
-Last updated: 2026-01-15
+Last updated: 2026-02-05
 
 ## Overview
 
@@ -26,6 +26,14 @@ Last updated: 2026-01-15
 
 ## Alias Analysis
 
-| File          | Purpose                          |
-|---------------|----------------------------------|
-| `BasicAA.hpp` | Conservative alias analysis shim |
+| File          | Purpose                                                                     |
+|---------------|-----------------------------------------------------------------------------|
+| `BasicAA.hpp` | SSA-based alias analysis with alloca/param/global tracking and ModRef queries |
+
+### BasicAA Details
+
+- **Alias queries**: Classifies pointer pairs as NoAlias/MayAlias/MustAlias using SSA def-chain analysis
+- **Base tracking**: Follows GEP/AddrOf/GAddr chains up to depth 8 to identify allocation bases
+- **ModRef queries**: Priority cascade — module functions authoritative, runtime signatures as fallback
+- **Caching**: Runtime signature effects cached in hash map, rebuilt on registry changes
+- **Tests**: `tests/analysis/BasicAATests.cpp`, `tests/unit/il/transform/test_opt_review_basicaa.cpp`

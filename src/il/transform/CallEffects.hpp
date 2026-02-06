@@ -80,6 +80,10 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr)
     effects.readonly = effects.readonly || helperEffects.readonly;
     effects.nothrow = effects.nothrow || helperEffects.nothrow;
 
+    // Skip slower registry scan when already fully classified.
+    if (effects.pure && effects.readonly && effects.nothrow)
+        return effects;
+
     // 3. Check runtime signature registry (comprehensive, slightly slower)
     for (const auto &sig : il::runtime::signatures::all_signatures())
     {
@@ -108,6 +112,10 @@ inline CallEffects classifyCalleeEffects(std::string_view callee)
     effects.pure = helperEffects.pure;
     effects.readonly = helperEffects.readonly;
     effects.nothrow = helperEffects.nothrow;
+
+    // Skip slower registry scan when already fully classified.
+    if (effects.pure && effects.readonly && effects.nothrow)
+        return effects;
 
     // 2. Check runtime signature registry (comprehensive)
     for (const auto &sig : il::runtime::signatures::all_signatures())

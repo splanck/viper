@@ -196,7 +196,9 @@ static std::vector<Value> normaliseOperands(const Instr &instr)
         return {0, 0ULL, std::string{}};
     };
 
-    if (!(rank(ops[0]) >= rank(ops[1])))
+    auto r0 = rank(ops[0]);
+    auto r1 = rank(ops[1]);
+    if (!(r0 >= r1))
         std::swap(ops[0], ops[1]);
     return ops;
 }
