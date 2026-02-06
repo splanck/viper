@@ -45,6 +45,7 @@
 #include "../include/stdlib.h"
 #include "../include/string.h"
 #include "../include/unistd.h"
+#include "syscall_internal.h"
 
 /* Action types */
 #define SPAWN_ACTION_CLOSE 1
@@ -369,9 +370,6 @@ int posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *file_actio
 /* ============================================================
  * Spawn functions
  * ============================================================ */
-
-/* Syscall wrapper */
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
 
 /* Kernel syscall number for process spawning */
 #define SYS_TASK_SPAWN 0x03

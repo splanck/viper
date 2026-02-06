@@ -23,9 +23,7 @@
  */
 
 #include "../include/sys/random.h"
-
-/* Syscall helpers */
-extern long __syscall2(long num, long arg0, long arg1);
+#include "syscall_internal.h"
 
 /* Syscall numbers */
 #define SYS_GETRANDOM 0xE4

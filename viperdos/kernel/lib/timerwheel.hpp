@@ -134,6 +134,7 @@ class TimerWheel {
 
     // Timer storage
     TimerEntry timers_[MAX_TIMERS];
+    TimerEntry *id_map_[MAX_TIMERS + 1] = {}; ///< O(1) lookup by timer ID
     u32 next_id_;
     u32 active_count_;
 

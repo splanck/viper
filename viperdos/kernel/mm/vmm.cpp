@@ -51,18 +51,22 @@ constexpr u64 L2_SHIFT = 21;
 constexpr u64 L3_SHIFT = 12;
 constexpr u64 INDEX_MASK = 0x1FF; // 9 bits
 
+/// @brief Extract the level-0 page table index (bits [47:39]) from a virtual address.
 inline u64 l0_index(u64 va) {
     return (va >> L0_SHIFT) & INDEX_MASK;
 }
 
+/// @brief Extract the level-1 page table index (bits [38:30]) from a virtual address.
 inline u64 l1_index(u64 va) {
     return (va >> L1_SHIFT) & INDEX_MASK;
 }
 
+/// @brief Extract the level-2 page table index (bits [29:21]) from a virtual address.
 inline u64 l2_index(u64 va) {
     return (va >> L2_SHIFT) & INDEX_MASK;
 }
 
+/// @brief Extract the level-3 page table index (bits [20:12]) from a virtual address.
 inline u64 l3_index(u64 va) {
     return (va >> L3_SHIFT) & INDEX_MASK;
 }
@@ -243,7 +247,9 @@ void init() {
     serial::puts("[vmm] VMM initialized (identity mapping active)\n");
 }
 
-// Internal unlocked version for use when lock is already held
+/// @brief Map a single page (lock must already be held by the caller).
+/// @details Walks or creates L1/L2/L3 tables with rollback on allocation failure.
+///   Invalidates the TLB entry for the mapped virtual address.
 static bool map_page_unlocked(u64 virt, u64 phys, u64 flags) {
     if (!pgt_root) {
         serial::puts("[vmm] ERROR: VMM not initialized!\n");
@@ -386,7 +392,10 @@ void unmap_block_2mb(u64 virt) {
     invalidate_all();
 }
 
-// Internal unlocked unmap implementation with page table cleanup
+/// @brief Unmap a single page and free empty page tables (lock must be held).
+/// @details Clears the L3 entry and then cascades upward, freeing empty L3/L2/L1
+///   tables to reclaim memory. Interrupts should be disabled during this operation
+///   to prevent TLB inconsistencies.
 static void unmap_page_unlocked(u64 virt) {
     if (!pgt_root)
         return;

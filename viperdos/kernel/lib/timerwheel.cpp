@@ -8,6 +8,12 @@
 #include "../arch/aarch64/timer.hpp"
 #include "../console/serial.hpp"
 
+// Linker-defined kernel text section bounds (from kernel.ld)
+extern "C" {
+extern char __text_start[];
+extern char __text_end[];
+}
+
 /**
  * @file timerwheel.cpp
  * @brief Hierarchical timer wheel implementation.
@@ -25,6 +31,7 @@ TimerWheel g_wheel;
 bool g_initialized = false;
 } // namespace
 
+/// @brief Initialize the timer wheel, clearing all slots and setting the base time.
 void TimerWheel::init(u64 current_time_ms) {
     // Initialize timer storage
     for (u32 i = 0; i < MAX_TIMERS; i++) {
@@ -32,6 +39,11 @@ void TimerWheel::init(u64 current_time_ms) {
         timers_[i].id = 0;
         timers_[i].next = nullptr;
         timers_[i].prev = nullptr;
+    }
+
+    // Initialize ID lookup map
+    for (u32 i = 0; i <= MAX_TIMERS; i++) {
+        id_map_[i] = nullptr;
     }
 
     // Initialize wheel slots
@@ -51,6 +63,7 @@ void TimerWheel::init(u64 current_time_ms) {
     active_count_ = 0;
 }
 
+/// @brief Find an unused timer entry in the fixed-size timer pool.
 TimerEntry *TimerWheel::alloc_timer() {
     for (u32 i = 0; i < MAX_TIMERS; i++) {
         if (!timers_[i].active) {
@@ -60,15 +73,15 @@ TimerEntry *TimerWheel::alloc_timer() {
     return nullptr;
 }
 
+/// @brief Look up a timer entry by its unique ID using the O(1) id_map_.
 TimerEntry *TimerWheel::find_timer(u32 id) {
-    for (u32 i = 0; i < MAX_TIMERS; i++) {
-        if (timers_[i].active && timers_[i].id == id) {
-            return &timers_[i];
-        }
+    if (id > 0 && id <= MAX_TIMERS && id_map_[id]) {
+        return id_map_[id];
     }
     return nullptr;
 }
 
+/// @brief Unlink a timer entry from whichever wheel slot or overflow list it belongs to.
 void TimerWheel::remove_from_slot(TimerEntry *entry) {
     if (!entry)
         return;
@@ -105,6 +118,10 @@ void TimerWheel::remove_from_slot(TimerEntry *entry) {
     entry->prev = nullptr;
 }
 
+/// @brief Insert a timer entry into the correct wheel slot based on its delta.
+/// @details Level 0 (wheel0_) handles timers expiring within 256ms.
+///   Level 1 (wheel1_) handles timers expiring within ~16.4 seconds.
+///   Timers beyond that go into the overflow list and are cascaded later.
 void TimerWheel::add_to_wheel(TimerEntry *entry) {
     if (!entry)
         return;
@@ -136,6 +153,9 @@ void TimerWheel::add_to_wheel(TimerEntry *entry) {
     *slot = entry;
 }
 
+/// @brief Schedule a timer to fire at the given absolute time.
+/// @details If expire_time_ms is in the past, the callback fires immediately
+///   and 0 is returned. Otherwise returns a non-zero timer ID for cancellation.
 u32 TimerWheel::schedule(u64 expire_time_ms, TimerCallback callback, void *context) {
     if (expire_time_ms <= current_time_) {
         // Already expired - fire immediately
@@ -155,9 +175,12 @@ u32 TimerWheel::schedule(u64 expire_time_ms, TimerCallback callback, void *conte
     entry->callback = callback;
     entry->context = context;
     entry->id = next_id_++;
-    if (next_id_ == 0)
-        next_id_ = 1; // Skip 0
+    if (next_id_ > MAX_TIMERS)
+        next_id_ = 1; // Wrap within id_map_ range, skip 0
     entry->active = true;
+
+    // Populate O(1) ID lookup map
+    id_map_[entry->id] = entry;
 
     add_to_wheel(entry);
     active_count_++;
@@ -165,6 +188,7 @@ u32 TimerWheel::schedule(u64 expire_time_ms, TimerCallback callback, void *conte
     return entry->id;
 }
 
+/// @brief Cancel a pending timer by ID. Returns false if the timer was not found.
 bool TimerWheel::cancel(u32 timer_id) {
     if (timer_id == 0)
         return false;
@@ -172,6 +196,11 @@ bool TimerWheel::cancel(u32 timer_id) {
     TimerEntry *entry = find_timer(timer_id);
     if (!entry)
         return false;
+
+    // Clear O(1) ID lookup map before resetting ID
+    if (entry->id <= MAX_TIMERS) {
+        id_map_[entry->id] = nullptr;
+    }
 
     remove_from_slot(entry);
     entry->active = false;
@@ -181,6 +210,11 @@ bool TimerWheel::cancel(u32 timer_id) {
     return true;
 }
 
+/// @brief Cascade timers from a higher wheel level down to lower levels.
+/// @details Level 1 cascade: moves all timers from the current wheel1_ slot
+///   into wheel0_ (they now expire within the next 256 ticks). Level 2 cascade:
+///   moves overflow timers into the appropriate wheel1_ or wheel0_ slots.
+///   This is called when the lower wheel wraps around.
 void TimerWheel::cascade(u32 level) {
     if (level == 1) {
         // Cascade from level 1 to level 0
@@ -209,6 +243,9 @@ void TimerWheel::cascade(u32 level) {
     }
 }
 
+/// @brief Advance the timer wheel to the given time, firing all expired timers.
+/// @details Processes each tick individually, cascading as needed, and fires
+///   callbacks for expired timers in the current wheel0_ slot.
 void TimerWheel::tick(u64 current_time_ms) {
     // Process all ticks between last time and current time
     while (current_time_ < current_time_ms) {
@@ -238,6 +275,11 @@ void TimerWheel::tick(u64 current_time_ms) {
                 TimerCallback cb = head->callback;
                 void *ctx = head->context;
 
+                // Clear O(1) ID lookup map before resetting ID
+                if (head->id <= MAX_TIMERS) {
+                    id_map_[head->id] = nullptr;
+                }
+
                 // Mark as inactive before calling
                 head->active = false;
                 head->id = 0;
@@ -249,9 +291,7 @@ void TimerWheel::tick(u64 current_time_ms) {
                 // Validate callback is in kernel text section before calling
                 // to protect against memory corruption
                 u64 cb_addr = reinterpret_cast<u64>(cb);
-                constexpr u64 KERNEL_TEXT_START = 0x40000000;
-                constexpr u64 KERNEL_TEXT_END = 0x40800000;
-                if (cb && cb_addr >= KERNEL_TEXT_START && cb_addr < KERNEL_TEXT_END) {
+                if (cb && cb_addr >= (u64)__text_start && cb_addr < (u64)__text_end) {
                     cb(ctx);
                 } else if (cb) {
                     serial::puts("[timerwheel] WARNING: Invalid callback ptr ");
@@ -272,16 +312,19 @@ void TimerWheel::tick(u64 current_time_ms) {
 
 // Global interface functions
 
+/// @brief Return a reference to the global timer wheel singleton.
 TimerWheel &get_wheel() {
     return g_wheel;
 }
 
+/// @brief Initialize the global timer wheel with the current system time.
 void init(u64 current_time_ms) {
     g_wheel.init(current_time_ms);
     g_initialized = true;
     serial::puts("[timerwheel] Timer wheel initialized\n");
 }
 
+/// @brief Schedule a timer with a relative timeout (converted to absolute internally).
 u32 schedule(u64 timeout_ms, TimerCallback callback, void *context) {
     if (!g_initialized)
         return 0;
@@ -291,12 +334,14 @@ u32 schedule(u64 timeout_ms, TimerCallback callback, void *context) {
     return g_wheel.schedule(now + timeout_ms, callback, context);
 }
 
+/// @brief Cancel a pending timer by ID via the global wheel.
 bool cancel(u32 timer_id) {
     if (!g_initialized)
         return false;
     return g_wheel.cancel(timer_id);
 }
 
+/// @brief Advance the global timer wheel to the given time, firing expired timers.
 void tick(u64 current_time_ms) {
     if (!g_initialized)
         return;

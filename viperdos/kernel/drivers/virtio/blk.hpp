@@ -316,6 +316,21 @@ class BlkDevice : public Device {
         u32 type, u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data);
 
     /**
+     * @brief Common device initialization sequence.
+     *
+     * @details
+     * Shared setup used by both init() and init_user_disk(). Computes
+     * device_index/IRQ, reads capacity, negotiates features, and
+     * initializes the virtqueue. Does NOT allocate request buffers,
+     * register IRQ handlers, or mark the device DRIVER_OK.
+     *
+     * @param base MMIO base address of the device.
+     * @param label Human-readable label for log messages (e.g. "block device", "user disk").
+     * @return true on success, false on failure.
+     */
+    bool init_common(u64 base, const char *label);
+
+    /**
      * @brief Find an unused request slot.
      *
      * @return Slot index on success, -1 if none available.

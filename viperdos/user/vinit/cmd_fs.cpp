@@ -63,7 +63,7 @@
 /**
  * @brief Check if path is exactly "/sys" or starts with "/sys/".
  */
-static bool is_sys_path(const char *path) {
+bool is_sys_path(const char *path) {
     if (!path || path[0] != '/')
         return false;
     if (path[1] == 's' && path[2] == 'y' && path[3] == 's') {

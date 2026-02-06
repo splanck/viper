@@ -34,11 +34,7 @@
 
 #include "../include/sys/stat.h"
 #include "../include/fcntl.h"
-
-/* Syscall helpers */
-extern long __syscall1(long num, long arg0);
-extern long __syscall2(long num, long arg0, long arg1);
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
+#include "syscall_internal.h"
 
 /* libc ↔ fsd bridge */
 extern int __viper_fsd_is_available(void);

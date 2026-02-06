@@ -600,6 +600,9 @@ update_legacy:
 }
 } // namespace
 
+/// @brief Initialize the kernel heap with an initial 64KB allocation from the PMM.
+/// @details Sets up segregated free lists by size class and per-CPU arenas
+///   for lock-free small allocations. All memory is 16-byte aligned.
 void init() {
     serial::puts("[kheap] Initializing kernel heap with free list allocator\n");
 
@@ -660,6 +663,9 @@ void init() {
     serial::puts("[kheap] Per-CPU arenas enabled\n");
 }
 
+/// @brief Allocate size bytes from the kernel heap (16-byte aligned).
+/// @details Tries the per-CPU arena first for small allocations, then falls
+///   back to the global segregated free list. Expands the heap if needed.
 void *kmalloc(u64 size) {
     if (size == 0)
         return nullptr;
@@ -886,6 +892,7 @@ found:
     return best->header.data();
 }
 
+/// @brief Allocate zero-initialized memory from the kernel heap.
 void *kzalloc(u64 size) {
     void *ptr = kmalloc(size);
     if (ptr) {
@@ -894,6 +901,10 @@ void *kzalloc(u64 size) {
     return ptr;
 }
 
+/// @brief Resize a heap allocation, copying data if a new block is needed.
+/// @details If ptr is null, behaves like kmalloc. If new_size is 0, frees ptr.
+///   Block headers use magic values (BLOCK_MAGIC_ALLOC / BLOCK_MAGIC_FREE) for
+///   corruption detection.
 void *krealloc(void *ptr, u64 new_size) {
     if (ptr == nullptr) {
         return kmalloc(new_size);
@@ -935,6 +946,10 @@ void *krealloc(void *ptr, u64 new_size) {
     return new_ptr;
 }
 
+/// @brief Free a kernel heap allocation.
+/// @details Validates the block header magic (BLOCK_MAGIC_ALLOC=0xA110CA7E),
+///   detects double-free and corruption, returns small blocks to per-CPU arenas
+///   when possible, and coalesces adjacent free blocks.
 void kfree(void *ptr) {
     if (ptr == nullptr)
         return;
@@ -1085,16 +1100,19 @@ void kfree(void *ptr) {
     debug_check_corruption_addr("kfree_done");
 }
 
+/// @brief Return the total bytes currently allocated from the heap.
 u64 get_used() {
     SpinlockGuard guard(heap_lock);
     return total_allocated;
 }
 
+/// @brief Return the total bytes currently free in the heap.
 u64 get_available() {
     SpinlockGuard guard(heap_lock);
     return total_free;
 }
 
+/// @brief Retrieve comprehensive heap statistics under the heap lock.
 void get_stats(u64 *out_total_size, u64 *out_used, u64 *out_free, u64 *out_free_blocks) {
     SpinlockGuard guard(heap_lock);
     if (out_total_size)
@@ -1107,6 +1125,7 @@ void get_stats(u64 *out_total_size, u64 *out_used, u64 *out_free, u64 *out_free_
         *out_free_blocks = free_block_count;
 }
 
+/// @brief Print a diagnostic dump of all heap regions and free blocks to serial.
 void dump() {
     SpinlockGuard guard(heap_lock);
 
@@ -1154,6 +1173,7 @@ void dump() {
     }
 }
 
+/// @brief Check a watched heap address for corruption (debugging aid).
 void debug_check_watch_addr(const char *context) {
     debug_check_corruption_addr(context);
 }

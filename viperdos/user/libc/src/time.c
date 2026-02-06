@@ -30,10 +30,7 @@
  */
 
 #include "../include/time.h"
-
-/* Syscall helpers - defined in syscall.S */
-extern long __syscall0(long num);
-extern long __syscall1(long num, long arg0);
+#include "syscall_internal.h"
 
 /* Syscall numbers */
 #define SYS_TIME_NOW 0x30

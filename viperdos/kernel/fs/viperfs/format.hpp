@@ -7,6 +7,7 @@
 //
 // File: kernel/fs/viperfs/format.hpp
 // Purpose: On-disk format definitions for the ViperFS filesystem.
+// NOTE: Host-side tools use tools/viperfs_format.h — keep layouts in sync.
 // Key invariants: Block size 4KB; inode size 256 bytes; structures packed.
 // Ownership/Lifetime: Header-only; defines on-disk ABI.
 // Links: kernel/fs/viperfs/viperfs.hpp

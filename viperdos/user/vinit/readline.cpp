@@ -15,6 +15,7 @@ int last_rc = RC_OK;
 const char *last_error = nullptr;
 char current_dir[MAX_PATH_LEN] = "/";
 
+/// @brief Refresh the current_dir buffer from the kernel working directory.
 void refresh_current_dir() {
     if (sys::getcwd(current_dir, sizeof(current_dir)) < 0) {
         current_dir[0] = '/';
@@ -30,6 +31,8 @@ static char history[HISTORY_SIZE][HISTORY_LINE_LEN];
 static usize history_count = 0;
 static usize history_index = 0;
 
+/// @brief Add a command line to the circular history buffer.
+/// @param line Null-terminated command string (empty lines are ignored).
 void history_add(const char *line) {
     if (strlen(line) == 0)
         return;
@@ -51,6 +54,9 @@ void history_add(const char *line) {
     history_count++;
 }
 
+/// @brief Retrieve a command from history by absolute index.
+/// @param index Zero-based absolute index into the history.
+/// @return Pointer to the history string, or nullptr if out of range.
 const char *history_get(usize index) {
     if (index >= history_count)
         return nullptr;
@@ -64,6 +70,10 @@ const char *history_get(usize index) {
 // Line Editing Helpers
 // =============================================================================
 
+/// @brief Redraw the edit buffer from a given cursor position to the end.
+/// @param buf The line buffer contents.
+/// @param len Current length of the line.
+/// @param pos Cursor position from which to start redrawing.
 static void redraw_line_from(const char *buf, usize len, usize pos) {
     for (usize i = pos; i < len; i++) {
         print_char(buf[i]);
@@ -74,18 +84,27 @@ static void redraw_line_from(const char *buf, usize len, usize pos) {
     }
 }
 
+/// @brief Move the terminal cursor left by n columns using ANSI escapes.
+/// @param n Number of columns to move left.
 static void cursor_left(usize n) {
     while (n--) {
         print_str("\033[D");
     }
 }
 
+/// @brief Move the terminal cursor right by n columns using ANSI escapes.
+/// @param n Number of columns to move right.
 static void cursor_right(usize n) {
     while (n--) {
         print_str("\033[C");
     }
 }
 
+/// @brief Replace the current edit buffer with a new string, updating display.
+/// @param buf The line buffer to overwrite.
+/// @param len Pointer to current line length (updated on return).
+/// @param pos Pointer to current cursor position (updated on return).
+/// @param newline Replacement string to display.
 static void replace_line(char *buf, usize *len, usize *pos, const char *newline) {
     cursor_left(*pos);
     for (usize i = 0; i < *len; i++)
@@ -113,6 +132,8 @@ static const char *commands[] = {"Assign", "Avail",  "Caps",    "chdir",  "Cls",
                                  "Type",   "Uptime", "Version", "Why"};
 static const usize num_commands = sizeof(commands) / sizeof(commands[0]);
 
+/// @brief Compute the length of the common prefix between two strings.
+/// @return Number of leading characters that are identical.
 static usize common_prefix(const char *a, const char *b) {
     usize i = 0;
     while (a[i] && b[i] && a[i] == b[i])
@@ -130,8 +151,8 @@ static constexpr i32 KEY_DOWN_ARROW = -108;
 static constexpr i32 KEY_LEFT_ARROW = -105;
 static constexpr i32 KEY_RIGHT_ARROW = -106;
 
-// Get a character from the appropriate input source
-// Returns positive for ASCII chars, negative for special keys
+/// @brief Get one input character, blocking until available.
+/// @return Positive value for ASCII chars, negative for special key codes.
 static i32 get_input_char() {
     if (is_console_ready()) {
         return getchar_from_console();
@@ -140,7 +161,8 @@ static i32 get_input_char() {
     }
 }
 
-// Try to get a character without blocking (for CRLF handling)
+/// @brief Try to get one input character without blocking (for CRLF handling).
+/// @return Character value if available, or negative if none ready.
 static i32 try_get_input_char() {
     if (is_console_ready()) {
         return try_getchar_from_console();
@@ -153,6 +175,10 @@ static i32 try_get_input_char() {
 // Readline
 // =============================================================================
 
+/// @brief Read a line of input with full line-editing, history, and tab completion.
+/// @param buf Buffer to store the resulting null-terminated line.
+/// @param maxlen Maximum buffer capacity including the null terminator.
+/// @return Length of the line (excluding the null terminator).
 usize readline(char *buf, usize maxlen) {
     usize len = 0;
     usize pos = 0;

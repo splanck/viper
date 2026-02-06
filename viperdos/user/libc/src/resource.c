@@ -34,11 +34,7 @@
 #include "../include/sys/resource.h"
 #include "../include/errno.h"
 #include "../include/string.h"
-
-/* Syscall helpers */
-extern long __syscall2(long num, long arg0, long arg1);
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
+#include "syscall_internal.h"
 
 /* Syscall numbers */
 #define SYS_GETRLIMIT 0xF0

@@ -5,6 +5,7 @@
 #include "../../version.h"
 #include "vinit.hpp"
 
+/// @brief Display a list of all available shell commands and key bindings.
 void cmd_help() {
     print_str("\nViperDOS Shell Commands:\n\n");
     print_str("  chdir [path]   - Change directory (default: /)\n");
@@ -44,6 +45,7 @@ void cmd_help() {
     print_str("  Ctrl+K         - Kill to end\n\n");
 }
 
+/// @brief Display the numbered command history list.
 void cmd_history() {
     for (usize i = 0; i < HISTORY_SIZE; i++) {
         const char *hist = history_get(i);
@@ -57,11 +59,14 @@ void cmd_history() {
     }
 }
 
+/// @brief Clear the terminal screen using ANSI escape sequences.
 void cmd_cls() {
     print_str("\033[2J\033[H");
     last_rc = RC_OK;
 }
 
+/// @brief Print the given text to the console, followed by a newline.
+/// @param args Text to display, or nullptr for a blank line.
 void cmd_echo(const char *args) {
     if (args)
         print_str(args);
@@ -69,12 +74,14 @@ void cmd_echo(const char *args) {
     last_rc = RC_OK;
 }
 
+/// @brief Display the ViperDOS version string and build date.
 void cmd_version() {
     print_str(VIPERDOS_VERSION_FULL " (" VIPERDOS_BUILD_DATE ")\n");
     print_str("Platform: AArch64\n");
     last_rc = RC_OK;
 }
 
+/// @brief Display system uptime in days, hours, minutes, and seconds.
 void cmd_uptime() {
     u64 ms = sys::uptime();
     u64 secs = ms / 1000;
@@ -110,6 +117,7 @@ void cmd_uptime() {
     last_rc = RC_OK;
 }
 
+/// @brief Explain the last error by showing the return code and message.
 void cmd_why() {
     if (last_rc == RC_OK) {
         print_str("No error.\n");
@@ -124,6 +132,7 @@ void cmd_why() {
     }
 }
 
+/// @brief Display memory availability including free, used, and total bytes.
 void cmd_avail() {
     MemInfo info;
     if (sys::mem_info(&info) != 0) {
@@ -159,6 +168,7 @@ void cmd_avail() {
     last_rc = RC_OK;
 }
 
+/// @brief Display a table of running tasks with ID, state, priority, and name.
 void cmd_status() {
     TaskInfo tasks[16];
     i32 count = sys::task_list(tasks, 16);
@@ -230,6 +240,8 @@ void cmd_status() {
     last_rc = RC_OK;
 }
 
+/// @brief List the capability table showing handles, kinds, rights, and generations.
+/// @param args Reserved for future handle filtering (currently unused).
 void cmd_caps(const char *args) {
     (void)args; // Reserved for future filtering
     i32 count = sys::cap_list(nullptr, 0);
@@ -296,16 +308,20 @@ void cmd_caps(const char *args) {
     last_rc = RC_OK;
 }
 
+/// @brief Display the current date (stub -- not yet implemented).
 void cmd_date() {
     print_str("DATE: Date/time not yet available\n");
     last_rc = RC_OK;
 }
 
+/// @brief Display the current time (stub -- not yet implemented).
 void cmd_time() {
     print_str("TIME: Date/time not yet available\n");
     last_rc = RC_OK;
 }
 
+/// @brief Show server status table, or restart a named server.
+/// @param args Server name to restart, or nullptr/empty to list all servers.
 void cmd_servers(const char *args) {
     // If argument provided, restart that server
     if (args && *args) {

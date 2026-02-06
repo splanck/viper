@@ -15,6 +15,9 @@
 
 namespace syscall {
 
+/// @brief Configure an audio stream's sample rate, channels, and bit depth.
+/// @details The third argument (a2) uses packed encoding: low 8 bits hold the
+///   channel count, next 8 bits hold the bit depth (e.g. 16 or 24).
 SyscallResult sys_audio_configure(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     u32 stream_id = static_cast<u32>(a0);
     u32 sample_rate = static_cast<u32>(a1);
@@ -33,6 +36,7 @@ SyscallResult sys_audio_configure(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Prepare an audio stream for playback after configuration.
 SyscallResult sys_audio_prepare(u64 a0, u64, u64, u64, u64, u64) {
     u32 stream_id = static_cast<u32>(a0);
 
@@ -47,6 +51,7 @@ SyscallResult sys_audio_prepare(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Start playback on an already-prepared audio stream.
 SyscallResult sys_audio_start(u64 a0, u64, u64, u64, u64, u64) {
     u32 stream_id = static_cast<u32>(a0);
 
@@ -61,6 +66,7 @@ SyscallResult sys_audio_start(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Stop playback on an active audio stream.
 SyscallResult sys_audio_stop(u64 a0, u64, u64, u64, u64, u64) {
     u32 stream_id = static_cast<u32>(a0);
 
@@ -75,6 +81,7 @@ SyscallResult sys_audio_stop(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Release an audio stream, freeing its device-side resources.
 SyscallResult sys_audio_release(u64 a0, u64, u64, u64, u64, u64) {
     u32 stream_id = static_cast<u32>(a0);
 
@@ -89,6 +96,9 @@ SyscallResult sys_audio_release(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Write PCM audio data to a stream.
+/// @details Routes through the audio mixer when available for multi-stream
+///   support, otherwise writes directly to the device. Returns bytes written.
 SyscallResult sys_audio_write(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     u32 stream_id = static_cast<u32>(a0);
     const void *buf = reinterpret_cast<const void *>(a1);
@@ -117,6 +127,7 @@ SyscallResult sys_audio_write(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     return ok_u64(static_cast<u64>(written));
 }
 
+/// @brief Set the global audio output volume (0-255 in low 8 bits of a0).
 SyscallResult sys_audio_set_volume(u64 a0, u64, u64, u64, u64, u64) {
     u8 volume = static_cast<u8>(a0 & 0xFF);
 
@@ -129,6 +140,9 @@ SyscallResult sys_audio_set_volume(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Query audio device info: availability, stream count, and volume.
+/// @details Returns a triple (available, num_output_streams, volume) packed
+///   into the result registers. Returns all zeros if no device is present.
 SyscallResult sys_audio_get_info(u64, u64, u64, u64, u64, u64) {
     // Returns packed info: available (bool), num_output_streams, current volume
     auto *dev = virtio::sound_device();

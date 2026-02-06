@@ -282,6 +282,24 @@ void BuddyAllocator::free_pages(u64 addr, u32 order) {
         return;
     }
 
+    // Double-free detection: check if block is already in a free list
+    for (u32 o = 0; o < MAX_ORDER; o++) {
+        FreeBlock *blk = free_areas_[o].free_list;
+        while (blk) {
+            if (reinterpret_cast<u64>(blk) == addr) {
+                serial::puts("[buddy] WARNING: double-free detected at ");
+                serial::put_hex(addr);
+                serial::puts(" order=");
+                serial::put_dec(order);
+                serial::puts(", already free at order=");
+                serial::put_dec(o);
+                serial::puts("\n");
+                return;
+            }
+            blk = blk->next;
+        }
+    }
+
     // Add to free list and try to coalesce
     try_coalesce(addr, order);
 }

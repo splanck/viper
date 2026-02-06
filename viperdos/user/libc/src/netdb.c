@@ -36,9 +36,7 @@
 #include "../include/stdio.h"
 #include "../include/stdlib.h"
 #include "../include/string.h"
-
-/* Kernel DNS syscall */
-extern long __syscall2(long num, long arg0, long arg1);
+#include "syscall_internal.h"
 #define SYS_DNS_RESOLVE 0x55
 
 /* Thread-local h_errno */

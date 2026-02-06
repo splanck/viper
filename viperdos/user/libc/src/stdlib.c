@@ -35,10 +35,7 @@
 
 #include "../include/stdlib.h"
 #include "../include/string.h"
-
-/* Syscall helpers - defined in syscall.S */
-extern long __syscall1(long num, long arg0);
-extern long __syscall2(long num, long arg0, long arg1);
+#include "syscall_internal.h"
 
 /* Syscall numbers from viperdos/syscall_nums.hpp */
 #define SYS_TASK_EXIT 0x01

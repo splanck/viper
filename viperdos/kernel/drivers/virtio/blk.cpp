@@ -35,6 +35,12 @@ namespace kc = kernel::constants;
 // Expected capacity for system disk (2MB = 4096 sectors)
 constexpr u64 SYSTEM_DISK_SECTORS = 4096;
 
+/** @brief Timeout for interrupt-driven completion (iteration count, ~100ms at typical speeds). */
+static constexpr u32 BLK_INTERRUPT_TIMEOUT = 100000;
+
+/** @brief Timeout for polled completion fallback (iteration count, ~10s). */
+static constexpr u32 BLK_POLL_TIMEOUT = 10000000;
+
 namespace virtio {
 
 /**
@@ -106,6 +112,70 @@ BlkDevice *blk_device() {
     return g_blk_initialized ? &g_blk_device : nullptr;
 }
 
+/**
+ * @brief Common device initialization: IRQ calc, config read, feature
+ *        negotiation, and virtqueue setup.
+ *
+ * @details
+ * Called after basic_init() succeeds. Does everything up to (but not
+ * including) request-buffer allocation, DRIVER_OK, and IRQ registration.
+ */
+bool BlkDevice::init_common(u64 base, const char *label) {
+    // Calculate device index for IRQ (device base - VIRTIO_BASE) / VIRTIO_STRIDE
+    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
+                                     kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
+    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
+
+    serial::puts("[virtio-blk] Initializing ");
+    serial::puts(label);
+    serial::puts(" at ");
+    serial::put_hex(base);
+    serial::puts(" (IRQ ");
+    serial::put_dec(irq_num_);
+    serial::puts(")\n");
+
+    // Read configuration
+    capacity_ = read_config64(0); // offset 0: capacity
+    sector_size_ = 512;
+
+    // Check for read-only
+    write32(reg::DEVICE_FEATURES_SEL, 0);
+    u32 features = read32(reg::DEVICE_FEATURES);
+    readonly_ = (features & blk_features::RO) != 0;
+
+    serial::puts("[virtio-blk] ");
+    serial::puts(label);
+    serial::puts(" capacity: ");
+    serial::put_dec(capacity_);
+    serial::puts(" sectors (");
+    serial::put_dec((capacity_ * sector_size_) / (1024 * 1024));
+    serial::puts(" MB)\n");
+
+    if (readonly_) {
+        serial::puts("[virtio-blk] Device is read-only\n");
+    }
+
+    // Negotiate features - we just need basic read/write
+    if (!negotiate_features(0)) {
+        serial::puts("[virtio-blk] ");
+        serial::puts(label);
+        serial::puts(" feature negotiation failed\n");
+        set_status(status::FAILED);
+        return false;
+    }
+
+    // Initialize virtqueue
+    if (!vq_.init(this, 0, 128)) {
+        serial::puts("[virtio-blk] ");
+        serial::puts(label);
+        serial::puts(" virtqueue init failed\n");
+        set_status(status::FAILED);
+        return false;
+    }
+
+    return true;
+}
+
 /** @copydoc virtio::BlkDevice::init */
 bool BlkDevice::init() {
     // Two-disk architecture: find the SYSTEM disk (2MB = 4096 sectors)
@@ -127,50 +197,8 @@ bool BlkDevice::init() {
         return false;
     }
 
-    // Calculate device index for IRQ (device base - VIRTIO_BASE) / VIRTIO_STRIDE
-    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
-                                     kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
-    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
-
-    serial::puts("[virtio-blk] Initializing block device at ");
-    serial::put_hex(base);
-    serial::puts(" (IRQ ");
-    serial::put_dec(irq_num_);
-    serial::puts(")\n");
-
-    // Read configuration
-    capacity_ = read_config64(0); // offset 0: capacity
-
-    // Try to read block size from config
-    // This is optional - default is 512
-    sector_size_ = 512;
-
-    // Check for read-only
-    write32(reg::DEVICE_FEATURES_SEL, 0);
-    u32 features = read32(reg::DEVICE_FEATURES);
-    readonly_ = (features & blk_features::RO) != 0;
-
-    serial::puts("[virtio-blk] Capacity: ");
-    serial::put_dec(capacity_);
-    serial::puts(" sectors (");
-    serial::put_dec((capacity_ * sector_size_) / (1024 * 1024));
-    serial::puts(" MB)\n");
-
-    if (readonly_) {
-        serial::puts("[virtio-blk] Device is read-only\n");
-    }
-
-    // Negotiate features - we just need basic read/write
-    if (!negotiate_features(0)) {
-        serial::puts("[virtio-blk] Feature negotiation failed\n");
-        set_status(status::FAILED);
-        return false;
-    }
-
-    // Initialize virtqueue
-    if (!vq_.init(this, 0, 128)) {
-        serial::puts("[virtio-blk] Virtqueue init failed\n");
-        set_status(status::FAILED);
+    // Shared config/feature/virtqueue setup
+    if (!init_common(base, "block device")) {
         return false;
     }
 
@@ -226,6 +254,8 @@ void BlkDevice::handle_interrupt() {
 // Block Request Helpers
 // =============================================================================
 
+/// @brief Find an unused request slot in the pending requests array.
+/// @details Returns -1 if all MAX_PENDING slots are occupied.
 i32 BlkDevice::find_free_request_slot() {
     for (usize i = 0; i < MAX_PENDING; i++) {
         if (!async_requests_[i].in_use) {
@@ -235,12 +265,13 @@ i32 BlkDevice::find_free_request_slot() {
     return -1;
 }
 
+/// @brief Wait for a block I/O request to complete (interrupt + polling fallback).
+/// @details First waits up to BLK_INTERRUPT_TIMEOUT iterations using WFI for
+///   an interrupt. If that times out, polls the used ring for up to
+///   BLK_POLL_TIMEOUT iterations. These are iteration counts, not wall-clock time.
 bool BlkDevice::wait_for_completion_internal(i32 desc_head) {
-    constexpr u32 INTERRUPT_TIMEOUT = 100000;
-    constexpr u32 POLL_TIMEOUT = 10000000;
-
     // First, try to wait for interrupt
-    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++) {
+    for (u32 i = 0; i < BLK_INTERRUPT_TIMEOUT; i++) {
         if (io_complete_ && completed_desc_ == desc_head) {
             return true;
         }
@@ -248,7 +279,7 @@ bool BlkDevice::wait_for_completion_internal(i32 desc_head) {
     }
 
     // Fallback to polling if interrupt didn't fire
-    for (u32 i = 0; i < POLL_TIMEOUT; i++) {
+    for (u32 i = 0; i < BLK_POLL_TIMEOUT; i++) {
         i32 completed = vq_.poll_used();
         if (completed == desc_head) {
             return true;
@@ -600,11 +631,9 @@ i32 BlkDevice::wait_complete(RequestHandle handle) {
     PendingRequest &req = requests_[handle];
 
     // Wait for completion: interrupt-driven with polling fallback
-    constexpr u32 INTERRUPT_TIMEOUT = 100000;
-    constexpr u32 POLL_TIMEOUT = 10000000;
 
     // First, try to wait for interrupt
-    for (u32 i = 0; i < INTERRUPT_TIMEOUT && !async.completed; i++) {
+    for (u32 i = 0; i < BLK_INTERRUPT_TIMEOUT && !async.completed; i++) {
         // Check if interrupt handler marked it complete
         if (io_complete_ && completed_desc_ == async.desc_head) {
             // Mark this specific request as completed
@@ -617,7 +646,7 @@ i32 BlkDevice::wait_complete(RequestHandle handle) {
 
     // Fallback to polling if not yet completed
     if (!async.completed) {
-        for (u32 i = 0; i < POLL_TIMEOUT && !async.completed; i++) {
+        for (u32 i = 0; i < BLK_POLL_TIMEOUT && !async.completed; i++) {
             i32 completed = vq_.poll_used();
             if (completed == async.desc_head) {
                 async.completed = true;
@@ -744,43 +773,8 @@ bool BlkDevice::init_user_disk() {
         return false;
     }
 
-    // Calculate device index for IRQ
-    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
-                                     kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
-    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
-
-    serial::puts("[virtio-blk] Initializing user disk at ");
-    serial::put_hex(base);
-    serial::puts(" (IRQ ");
-    serial::put_dec(irq_num_);
-    serial::puts(")\n");
-
-    // Read configuration
-    capacity_ = read_config64(0);
-    sector_size_ = 512;
-
-    // Check for read-only
-    write32(reg::DEVICE_FEATURES_SEL, 0);
-    u32 features = read32(reg::DEVICE_FEATURES);
-    readonly_ = (features & blk_features::RO) != 0;
-
-    serial::puts("[virtio-blk] User disk capacity: ");
-    serial::put_dec(capacity_);
-    serial::puts(" sectors (");
-    serial::put_dec((capacity_ * sector_size_) / (1024 * 1024));
-    serial::puts(" MB)\n");
-
-    // Negotiate features
-    if (!negotiate_features(0)) {
-        serial::puts("[virtio-blk] User disk feature negotiation failed\n");
-        set_status(status::FAILED);
-        return false;
-    }
-
-    // Initialize virtqueue
-    if (!vq_.init(this, 0, 128)) {
-        serial::puts("[virtio-blk] User disk virtqueue init failed\n");
-        set_status(status::FAILED);
+    // Shared config/feature/virtqueue setup
+    if (!init_common(base, "user disk")) {
         return false;
     }
 

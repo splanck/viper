@@ -48,14 +48,17 @@ static void net_irq_handler(u32) {
     }
 }
 
+/// @brief Return the global network device instance, or nullptr if not initialized.
 NetDevice *net_device() {
     return g_net_initialized ? &g_net_device : nullptr;
 }
 
+/// @brief Check whether the virtio-net driver has been successfully initialized.
 bool net_is_available() {
     return g_net_initialized;
 }
 
+/// @brief Probe for and initialize the virtio-net device (idempotent).
 void net_init() {
     if (g_net_initialized)
         return;
@@ -72,6 +75,9 @@ void net_init() {
 // NetDevice Initialization Helpers
 // =============================================================================
 
+/// @brief Read the MAC address from device config, or use a default if unavailable.
+/// @details If the device advertises the MAC feature, reads 6 bytes from the
+///   virtio config space; otherwise falls back to DEFAULT_MAC from constants.
 bool NetDevice::init_mac_address(bool has_mac) {
     if (has_mac) {
         for (int i = 0; i < 6; i++)
@@ -87,6 +93,7 @@ bool NetDevice::init_mac_address(bool has_mac) {
     return true;
 }
 
+/// @brief Initialize the RX (queue 0) and TX (queue 1) virtqueues.
 bool NetDevice::init_virtqueues() {
     if (!rx_vq_.init(this, 0, kc::virtio::NET_VIRTQUEUE_SIZE)) {
         set_status(status::FAILED);
@@ -99,6 +106,7 @@ bool NetDevice::init_virtqueues() {
     return true;
 }
 
+/// @brief Allocate and initialize the RX buffer pool and descriptor-to-buffer mapping.
 bool NetDevice::init_rx_buffers() {
     usize rx_pool_size = RX_BUFFER_COUNT * sizeof(RxBuffer);
     rx_buffers_phys_ = pmm::alloc_pages((rx_pool_size + 4095) / 4096);
@@ -126,6 +134,7 @@ bool NetDevice::init_rx_buffers() {
     return true;
 }
 
+/// @brief Allocate TX header and data buffers (one page each).
 bool NetDevice::init_tx_buffers() {
     tx_header_phys_ = pmm::alloc_pages(1);
     if (!tx_header_phys_) {
@@ -148,6 +157,7 @@ bool NetDevice::init_tx_buffers() {
 // NetDevice Main Initialization
 // =============================================================================
 
+/// @brief Full device initialization: probe, feature negotiation, queue setup, and IRQ.
 bool NetDevice::init() {
     u64 base = find_device(device_type::NET);
     if (!base)
@@ -196,6 +206,7 @@ bool NetDevice::init() {
     return true;
 }
 
+/// @brief Tear down the network device (disable IRQ, destroy virtqueues).
 void NetDevice::destroy() {
     if (irq_num_ != 0) {
         gic::disable_irq(irq_num_);
@@ -207,12 +218,16 @@ void NetDevice::destroy() {
     // Note: We don't free pmm pages as the kernel doesn't track them dynamically
 }
 
+/// @brief Copy the 6-byte MAC address into the caller's buffer.
 void NetDevice::get_mac(u8 *mac_out) const {
     for (int i = 0; i < 6; i++) {
         mac_out[i] = mac_[i];
     }
 }
 
+/// @brief Submit an RX buffer to the device via a descriptor in the RX virtqueue.
+/// @details Maps the buffer index to a descriptor index in desc_to_buffer_ for
+///   O(1) lookup when processing completions.
 void NetDevice::queue_rx_buffer(usize idx) {
     if (idx >= RX_BUFFER_COUNT)
         return;
@@ -244,6 +259,7 @@ void NetDevice::queue_rx_buffer(usize idx) {
     rx_vq_.submit(desc);
 }
 
+/// @brief Refill all unused RX buffer slots and notify the device.
 void NetDevice::refill_rx_buffers() {
     for (usize i = 0; i < RX_BUFFER_COUNT; i++) {
         if (!rx_buffers_[i].in_use) {
@@ -253,6 +269,9 @@ void NetDevice::refill_rx_buffers() {
     rx_vq_.kick();
 }
 
+/// @brief Transmit an Ethernet frame via the TX virtqueue.
+/// @details Uses a two-descriptor chain (header + data). Polls for completion
+///   up to NET_INIT_POLL_ITERATIONS iterations before giving up.
 bool NetDevice::transmit(const void *data, usize len) {
     if (len > kc::net::ETH_FRAME_MAX) {
         return false;
@@ -311,6 +330,9 @@ bool NetDevice::transmit(const void *data, usize len) {
     return true;
 }
 
+/// @brief Poll the RX used ring for completed buffers and enqueue received packets.
+/// @details Uses O(1) descriptor-to-buffer lookup. Strips the virtio net header
+///   and queues raw Ethernet frames in the circular rx_queue_.
 void NetDevice::poll_rx() {
     while (true) {
         i32 desc = rx_vq_.poll_used();
@@ -359,6 +381,8 @@ void NetDevice::poll_rx() {
     refill_rx_buffers();
 }
 
+/// @brief Dequeue a received Ethernet frame, copying up to max_len bytes.
+/// @details Returns the number of bytes copied, or 0 if no packet is available.
 i32 NetDevice::receive(void *buf, usize max_len) {
     // Check if we have received packets
     if (rx_queue_head_ == rx_queue_tail_ || !rx_queue_[rx_queue_head_].valid) {
@@ -381,6 +405,7 @@ i32 NetDevice::receive(void *buf, usize max_len) {
     return copy_len;
 }
 
+/// @brief Handle a virtio-net interrupt: acknowledge, then poll RX for new packets.
 void NetDevice::handle_interrupt() {
     // Acknowledge interrupt
     u32 isr = read_isr();
@@ -394,10 +419,12 @@ void NetDevice::handle_interrupt() {
     }
 }
 
+/// @brief Check whether any received packets are pending in the RX queue.
 bool NetDevice::has_rx_data() const {
     return rx_queue_head_ != rx_queue_tail_ && rx_queue_[rx_queue_head_].valid;
 }
 
+/// @brief Return whether the network link is up (currently always true).
 bool NetDevice::link_up() const {
     // For simplicity, assume link is always up
     return true;

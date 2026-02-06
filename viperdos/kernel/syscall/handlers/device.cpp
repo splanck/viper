@@ -43,6 +43,7 @@ struct IrqState {
 static IrqState irq_states[gic::MAX_IRQS];
 static bool irq_states_initialized = false;
 
+/// @brief Lazily initialize the IRQ state array (idempotent).
 static void init_irq_states() {
     if (irq_states_initialized)
         return;
@@ -57,6 +58,8 @@ static void init_irq_states() {
     irq_states_initialized = true;
 }
 
+/// @brief Kernel-side IRQ callback that disables the IRQ and wakes one waiter.
+/// @details Called in interrupt context; acquires the per-IRQ spinlock.
 static void user_irq_handler(u32 irq) {
     if (irq >= gic::MAX_IRQS)
         return;
@@ -114,6 +117,8 @@ static const DeviceMmioRegion known_devices[] = {
 };
 static constexpr u32 KNOWN_DEVICE_COUNT = sizeof(known_devices) / sizeof(known_devices[0]);
 
+/// @brief Check whether the given viper has a Device capability with the required rights.
+/// @details Scans the entire capability table for a matching Device entry.
 static bool has_device_cap(viper::Viper *v, cap::Rights required) {
     if (!v || !v->cap_table)
         return false;
@@ -148,6 +153,7 @@ static DmaAllocation dma_allocations[MAX_DMA_ALLOCATIONS];
 static Spinlock dma_lock;
 static bool dma_initialized = false;
 
+/// @brief Lazily initialize the DMA allocation tracking table (idempotent).
 static void init_dma_allocations() {
     if (dma_initialized)
         return;
@@ -174,6 +180,7 @@ static ShmMapping shm_mappings[MAX_SHM_MAPPINGS];
 static Spinlock shm_lock;
 static bool shm_mappings_initialized = false;
 
+/// @brief Lazily initialize the shared memory mapping table (idempotent).
 static void init_shm_mappings() {
     if (shm_mappings_initialized)
         return;
@@ -187,6 +194,8 @@ static void init_shm_mappings() {
     shm_mappings_initialized = true;
 }
 
+/// @brief Record a new shared memory mapping in the tracking table.
+/// @details Rejects duplicates (same viper_id + virt_addr). Thread-safe via shm_lock.
 static bool track_shm_mapping(u32 viper_id, u64 virt_addr, u64 size, kobj::SharedMemory *shm) {
     init_shm_mappings();
     SpinlockGuard guard(shm_lock);
@@ -212,6 +221,8 @@ static bool track_shm_mapping(u32 viper_id, u64 virt_addr, u64 size, kobj::Share
     return false;
 }
 
+/// @brief Remove a shared memory mapping from the tracking table and return its metadata.
+/// @details Thread-safe via shm_lock. Writes size and shm pointer to out params.
 static bool untrack_shm_mapping(u32 viper_id,
                                 u64 virt_addr,
                                 u64 *out_size,
@@ -247,6 +258,10 @@ static bool untrack_shm_mapping(u32 viper_id,
 // Device Syscall Handlers
 // =============================================================================
 
+/// @brief Map a device MMIO region into the calling process's address space.
+/// @details Validates that the physical address falls within a known device region.
+///   If user_virt is 0, an address is auto-assigned in the 0x100000000 range.
+///   Requires CAP_DEVICE_ACCESS. Size capped at 16 MB.
 SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     u64 phys_addr = a0;
     u64 size = a1;
@@ -298,6 +313,9 @@ SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     return ok_u64(virt_aligned + (phys_addr - phys_aligned));
 }
 
+/// @brief Register the calling task as the owner of a hardware IRQ line.
+/// @details Only SPI IRQs (>= 32) are allowed. Requires CAP_IRQ_ACCESS.
+///   Installs a kernel handler and enables the IRQ via the GIC.
 SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
 
@@ -339,6 +357,9 @@ SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Block the calling task until the registered IRQ fires.
+/// @details If an IRQ is already pending, returns immediately. Otherwise
+///   enqueues the task on the IRQ's wait queue and yields.
 SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
     u64 timeout_ms = a1;
@@ -385,6 +406,8 @@ SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Acknowledge and re-enable a previously fired IRQ.
+/// @details Must be called by the IRQ owner after handling the interrupt.
 SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
 
@@ -412,6 +435,8 @@ SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Unregister a previously registered IRQ, disabling it and clearing ownership.
+/// @details Wakes all tasks blocked on this IRQ's wait queue.
 SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
 
@@ -446,6 +471,10 @@ SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Allocate physically contiguous DMA memory and map it into user space.
+/// @details Scans the DMA allocation table (starting at 0x200000000) for a free
+///   virtual address slot. Requires CAP_DMA_ACCESS. Optionally writes the
+///   physical address to the user-supplied output pointer. Size capped at 16 MB.
 SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64) {
     u64 size = a0;
     u64 *phys_out = reinterpret_cast<u64 *>(a1);
@@ -518,6 +547,8 @@ SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64) {
     return ok_u64(virt_addr);
 }
 
+/// @brief Free a previously allocated DMA region by virtual address.
+/// @details Unmaps the region from user space and returns physical pages to the PMM.
 SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_addr = a0;
 
@@ -556,6 +587,8 @@ SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Translate a user-space virtual address to its physical address.
+/// @details Requires CAP_DMA_ACCESS. Uses the process address space page tables.
 SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_addr = a0;
 
@@ -581,6 +614,9 @@ SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64) {
     return ok_u64(phys_addr);
 }
 
+/// @brief Enumerate known device MMIO regions into a user buffer.
+/// @details If devices is null, returns the total device count.
+///   Otherwise fills the buffer with name, physical address, size, and IRQ info.
 SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64) {
     struct DeviceEnumInfo {
         char name[32];
@@ -632,6 +668,10 @@ SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64) {
 // Shared Memory Syscalls
 // =============================================================================
 
+/// @brief Create a shared memory object and map it into the caller's address space.
+/// @details Scans the 0x7000000000-0x8000000000 virtual range for a contiguous
+///   free region. Returns handle, virtual address, and size in the result registers.
+///   The shared memory is reference-counted. Size capped at 64 MB.
 SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64) {
     u64 size = a0;
 
@@ -722,6 +762,9 @@ SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64) {
     return result;
 }
 
+/// @brief Map an existing shared memory object into the caller's address space.
+/// @details Scans the address space for a free virtual region. Protection is
+///   derived from the capability rights (CAP_WRITE grants write access).
 SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
@@ -805,6 +848,9 @@ SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64) {
     return result;
 }
 
+/// @brief Unmap a shared memory region from the caller's address space.
+/// @details Decrements the reference count; the physical memory is freed
+///   when no more references exist.
 SyscallResult sys_shm_unmap(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_addr = a0;
 
@@ -830,6 +876,7 @@ SyscallResult sys_shm_unmap(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Close a shared memory capability handle and release its reference.
 SyscallResult sys_shm_close(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 

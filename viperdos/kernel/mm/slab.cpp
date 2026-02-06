@@ -120,6 +120,57 @@ void free_slab(Slab *slab) {
 }
 
 /**
+ * @brief Walk a cache's slab list and free all empty slabs back to PMM.
+ *
+ * @details
+ * Iterates the slab_list, removes any slab with in_use == 0, frees its
+ * page, and fixes up the partial_list pointer if it referenced a freed slab.
+ *
+ * @note Caller must hold cache->lock.
+ * @param cache The slab cache to reap from.
+ * @return Number of pages reclaimed.
+ */
+u64 reap_slab_list(SlabCache *cache) {
+    u64 pages_reclaimed = 0;
+
+    Slab **prev_ptr = &cache->slab_list;
+    Slab *slab = cache->slab_list;
+
+    while (slab) {
+        Slab *next = slab->next;
+
+        if (slab->in_use == 0) {
+            // This slab is empty - remove it from slab_list
+            *prev_ptr = next;
+
+            // Also remove from partial_list if present
+            if (cache->partial_list == slab) {
+                cache->partial_list = nullptr;
+                // Find another partial slab
+                for (Slab *s = cache->slab_list; s; s = s->next) {
+                    if (s->free_list) {
+                        cache->partial_list = s;
+                        break;
+                    }
+                }
+            }
+
+            // Free the slab page back to PMM
+            free_slab(slab);
+            pages_reclaimed++;
+
+            // Don't update prev_ptr since we removed current
+            slab = next;
+        } else {
+            prev_ptr = &slab->next;
+            slab = next;
+        }
+    }
+
+    return pages_reclaimed;
+}
+
+/**
  * @brief Find a free cache slot.
  */
 SlabCache *find_free_cache_slot() {
@@ -481,42 +532,7 @@ u64 cache_reap(SlabCache *cache) {
 
     SpinlockGuard guard(cache->lock);
 
-    u64 pages_reclaimed = 0;
-
-    // Find and remove empty slabs (in_use == 0)
-    Slab **prev_ptr = &cache->slab_list;
-    Slab *slab = cache->slab_list;
-
-    while (slab) {
-        Slab *next = slab->next;
-
-        if (slab->in_use == 0) {
-            // This slab is empty - remove it from slab_list
-            *prev_ptr = next;
-
-            // Also remove from partial_list if present
-            if (cache->partial_list == slab) {
-                cache->partial_list = nullptr;
-                // Find another partial slab
-                for (Slab *s = cache->slab_list; s; s = s->next) {
-                    if (s->free_list) {
-                        cache->partial_list = s;
-                        break;
-                    }
-                }
-            }
-
-            // Free the slab page back to PMM
-            free_slab(slab);
-            pages_reclaimed++;
-
-            // Don't update prev_ptr since we removed current
-            slab = next;
-        } else {
-            prev_ptr = &slab->next;
-            slab = next;
-        }
-    }
+    u64 pages_reclaimed = reap_slab_list(cache);
 
     if (pages_reclaimed > 0) {
         serial::puts("[slab] Reaped ");
@@ -540,44 +556,10 @@ u64 reap() {
 
     for (usize i = 0; i < MAX_CACHES; i++) {
         if (caches[i].active) {
-            // Release global lock before per-cache reap to avoid deadlock
-            // (cache_reap takes cache lock, and we iterate caches under global)
-            // Since we're under global lock, the cache won't be destroyed
-
-            // Actually, we can just call cache_reap which handles its own lock
-            // But we need to be careful about lock ordering
-            // For simplicity, do it inline here
-
             SlabCache *cache = &caches[i];
             SpinlockGuard cache_guard(cache->lock);
 
-            Slab **prev_ptr = &cache->slab_list;
-            Slab *slab = cache->slab_list;
-
-            while (slab) {
-                Slab *next = slab->next;
-
-                if (slab->in_use == 0) {
-                    *prev_ptr = next;
-
-                    if (cache->partial_list == slab) {
-                        cache->partial_list = nullptr;
-                        for (Slab *s = cache->slab_list; s; s = s->next) {
-                            if (s->free_list) {
-                                cache->partial_list = s;
-                                break;
-                            }
-                        }
-                    }
-
-                    free_slab(slab);
-                    total_reclaimed++;
-                    slab = next;
-                } else {
-                    prev_ptr = &slab->next;
-                    slab = next;
-                }
-            }
+            total_reclaimed += reap_slab_list(cache);
         }
     }
 

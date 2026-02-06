@@ -25,7 +25,6 @@
  * - `<file>` (legacy): add a host file to the image root directory.
  */
 
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,125 +33,7 @@
 #include <string>
 #include <vector>
 
-// Types
-using u8 = uint8_t;
-using u16 = uint16_t;
-using u32 = uint32_t;
-using u64 = uint64_t;
-
-/** @name Filesystem constants
- *  @brief On-disk constants shared by the mkfs tool and kernel ViperFS driver.
- *  @{
- */
-constexpr u32 VIPERFS_MAGIC = 0x53465056; // "VPFS"
-constexpr u32 VIPERFS_VERSION = 1;
-constexpr u64 BLOCK_SIZE = 4096;
-constexpr u64 INODE_SIZE = 256;
-constexpr u64 INODES_PER_BLOCK = BLOCK_SIZE / INODE_SIZE;
-constexpr u64 ROOT_INODE = 2;
-
-/** @} */
-
-/**
- * @brief ViperFS superblock (block 0).
- *
- * @details
- * The superblock describes the overall filesystem layout and key parameters.
- * It is written as one full 4 KiB block so it can be read with a single disk
- * I/O operation.
- *
- * Fields are written in little-endian host order (the tool targets typical
- * little-endian systems used for development).
- */
-struct __attribute__((packed)) Superblock {
-    u32 magic;
-    u32 version;
-    u64 block_size;
-    u64 total_blocks;
-    u64 free_blocks;
-    u64 inode_count;
-    u64 root_inode;
-    u64 bitmap_start;
-    u64 bitmap_blocks;
-    u64 inode_table_start;
-    u64 inode_table_blocks;
-    u64 data_start;
-    u8 uuid[16];
-    char label[64];
-    u8 _reserved[3928]; // Adjusted for packed struct
-};
-
-static_assert(sizeof(Superblock) == 4096, "Superblock must be 4096 bytes");
-
-/**
- * @brief Mode bit definitions stored in @ref Inode::mode.
- *
- * @details
- * This is a small, filesystem-local permission/type model. The kernel may map
- * these into higher-level VFS permissions.
- */
-namespace mode {
-constexpr u32 TYPE_FILE = 0x8000;
-constexpr u32 TYPE_DIR = 0x4000;
-constexpr u32 PERM_READ = 0x0004;
-constexpr u32 PERM_WRITE = 0x0002;
-constexpr u32 PERM_EXEC = 0x0001;
-} // namespace mode
-
-/**
- * @brief On-disk inode record.
- *
- * @details
- * Inodes are fixed-size (256 bytes) and stored in a contiguous inode table.
- * Each inode contains basic metadata and pointers to file data blocks:
- * - 12 direct block pointers.
- * - One single-indirect block pointer.
- * - Double/triple indirect pointers are reserved for future use.
- */
-struct __attribute__((packed)) Inode {
-    u64 inode_num;
-    u32 mode;
-    u32 flags;
-    u64 size;
-    u64 blocks;
-    u64 atime;
-    u64 mtime;
-    u64 ctime;
-    u64 direct[12];
-    u64 indirect;
-    u64 double_indirect;
-    u64 triple_indirect;
-    u64 generation;
-    u8 _reserved[72]; // Adjusted for packed struct (256 - 184 = 72)
-};
-
-static_assert(sizeof(Inode) == 256, "Inode must be 256 bytes");
-
-/** @brief Directory entry type values stored in @ref DirEntry::file_type. */
-namespace file_type {
-constexpr u8 FILE = 1;
-constexpr u8 DIR = 2;
-} // namespace file_type
-
-/**
- * @brief Directory entry header used in directory data blocks.
- *
- * @details
- * Directory blocks contain a sequence of variable-length records. Each record
- * begins with this header and is followed by `name_len` bytes of name data.
- *
- * `rec_len` specifies the total size of the record, allowing the reader to
- * skip to the next entry. Records are aligned to 8 bytes.
- */
-struct __attribute__((packed)) DirEntry {
-    u64 inode;
-    u16 rec_len;
-    u8 name_len;
-    u8 file_type;
-    // name follows
-};
-
-static_assert(sizeof(DirEntry) == 12, "DirEntry header must be 12 bytes");
+#include "viperfs_format.h"
 
 /**
  * @brief Abstraction for writing a ViperFS disk image file.
@@ -168,6 +49,13 @@ class DiskImage {
     u64 total_blocks;
     u64 next_free_block;
     u64 next_free_inode;
+
+    // Layout fields computed during create(), reused during finalize()
+    u64 bitmap_start;
+    u64 bitmap_blocks;
+    u64 inode_table_start;
+    u64 inode_table_blocks;
+    u64 data_start;
 
     std::vector<u8> bitmap;
     std::vector<Inode> inodes;
@@ -201,16 +89,16 @@ class DiskImage {
         // Calculate layout
         // Block 0: superblock
         // Block 1-N: bitmap (1 bit per block)
-        u64 bitmap_blocks = (total_blocks + BLOCK_SIZE * 8 - 1) / (BLOCK_SIZE * 8);
+        bitmap_blocks = (total_blocks + BLOCK_SIZE * 8 - 1) / (BLOCK_SIZE * 8);
 
         // Inode table: 1 inode table block per 64 data blocks (heuristic)
-        u64 inode_table_blocks = (total_blocks / 64) + 1;
+        inode_table_blocks = (total_blocks / 64) + 1;
         if (inode_table_blocks < 4)
             inode_table_blocks = 4;
 
-        u64 bitmap_start = 1;
-        u64 inode_table_start = bitmap_start + bitmap_blocks;
-        u64 data_start = inode_table_start + inode_table_blocks;
+        bitmap_start = 1;
+        inode_table_start = bitmap_start + bitmap_blocks;
+        data_start = inode_table_start + inode_table_blocks;
 
         printf("Creating ViperFS image:\n");
         printf("  Total blocks: %lu\n", total_blocks);
@@ -357,10 +245,9 @@ class DiskImage {
      * Writes the in-memory bitmap and inode arrays to their on-disk locations,
      * extends the file to its full size, and closes the output file handle.
      *
-     * @param bitmap_start First bitmap block index.
-     * @param inode_table_start First inode table block index.
+     * Uses the layout fields stored during create().
      */
-    void finalize(u64 bitmap_start, u64 inode_table_start) {
+    void finalize() {
         // Write bitmap
         for (size_t i = 0; i < bitmap.size() / BLOCK_SIZE; i++) {
             write_block(bitmap_start + i, &bitmap[i * BLOCK_SIZE]);
@@ -451,6 +338,39 @@ std::string get_basename(const std::string &path) {
 // Forward declarations
 u64 ensure_directory_exists(DiskImage &img, const std::string &path);
 u64 add_directory(DiskImage &img, u64 parent_ino, const char *name);
+
+/**
+ * @brief Initialize a directory data block with '.' and '..' entries.
+ *
+ * @details
+ * Every directory block starts with a '.' entry pointing to itself and a '..'
+ * entry pointing to its parent. The '..' entry's rec_len spans the remainder
+ * of the block, allowing new entries to be appended by splitting it.
+ *
+ * @param dir_block Output buffer (must be at least BLOCK_SIZE bytes, zero-initialized).
+ * @param self_ino Inode number of this directory ('.' target).
+ * @param parent_ino Inode number of parent directory ('..' target).
+ */
+void init_dir_block(u8 *dir_block, u64 self_ino, u64 parent_ino) {
+    size_t pos = 0;
+
+    // Entry for "."
+    DirEntry *dot = reinterpret_cast<DirEntry *>(dir_block + pos);
+    dot->inode = self_ino;
+    dot->name_len = 1;
+    dot->file_type = file_type::DIR;
+    dot->rec_len = 16; // 12 + 1 + padding to 8-byte alignment
+    memcpy(dir_block + pos + sizeof(DirEntry), ".", 1);
+    pos += dot->rec_len;
+
+    // Entry for ".."
+    DirEntry *dotdot = reinterpret_cast<DirEntry *>(dir_block + pos);
+    dotdot->inode = parent_ino;
+    dotdot->name_len = 2;
+    dotdot->file_type = file_type::DIR;
+    dotdot->rec_len = BLOCK_SIZE - pos; // Rest of block
+    memcpy(dir_block + pos + sizeof(DirEntry), "..", 2);
+}
 
 /**
  * @brief Add an entry to an existing directory inode.
@@ -552,24 +472,7 @@ u64 add_directory(DiskImage &img, u64 parent_ino, const char *name) {
 
     // Create directory data block with . and ..
     u8 dir_block[BLOCK_SIZE] = {};
-    size_t pos = 0;
-
-    // Entry for "."
-    DirEntry *dot = reinterpret_cast<DirEntry *>(dir_block + pos);
-    dot->inode = ino;
-    dot->name_len = 1;
-    dot->file_type = file_type::DIR;
-    dot->rec_len = 16; // 12 + 1 + padding
-    memcpy(dir_block + pos + sizeof(DirEntry), ".", 1);
-    pos += dot->rec_len;
-
-    // Entry for ".."
-    DirEntry *dotdot = reinterpret_cast<DirEntry *>(dir_block + pos);
-    dotdot->inode = parent_ino;
-    dotdot->name_len = 2;
-    dotdot->file_type = file_type::DIR;
-    dotdot->rec_len = BLOCK_SIZE - pos; // Rest of block
-    memcpy(dir_block + pos + sizeof(DirEntry), "..", 2);
+    init_dir_block(dir_block, ino, parent_ino);
 
     // Allocate and write data block
     u64 data_block = img.alloc_block();
@@ -654,26 +557,9 @@ void create_root_dir(DiskImage &img) {
     root.mode = mode::TYPE_DIR | mode::PERM_READ | mode::PERM_WRITE | mode::PERM_EXEC;
     root.atime = root.mtime = root.ctime = now;
 
-    // Create directory data block with . and ..
+    // Create directory data block with . and .. (root's parent is itself)
     u8 dir_block[BLOCK_SIZE] = {};
-    size_t pos = 0;
-
-    // Entry for "."
-    DirEntry *dot = reinterpret_cast<DirEntry *>(dir_block + pos);
-    dot->inode = ROOT_INODE;
-    dot->name_len = 1;
-    dot->file_type = file_type::DIR;
-    dot->rec_len = 16; // 12 + 1 + padding
-    memcpy(dir_block + pos + sizeof(DirEntry), ".", 1);
-    pos += dot->rec_len;
-
-    // Entry for ".."
-    DirEntry *dotdot = reinterpret_cast<DirEntry *>(dir_block + pos);
-    dotdot->inode = ROOT_INODE;
-    dotdot->name_len = 2;
-    dotdot->file_type = file_type::DIR;
-    dotdot->rec_len = BLOCK_SIZE - pos; // Rest of block
-    memcpy(dir_block + pos + sizeof(DirEntry), "..", 2);
+    init_dir_block(dir_block, ROOT_INODE, ROOT_INODE);
 
     // Allocate and write data block
     u64 data_block = img.alloc_block();
@@ -982,15 +868,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Calculate layout again for finalize
-    u64 bitmap_blocks = (img.total_blocks + BLOCK_SIZE * 8 - 1) / (BLOCK_SIZE * 8);
-    u64 inode_table_blocks = (img.total_blocks / 64) + 1;
-    if (inode_table_blocks < 4)
-        inode_table_blocks = 4;
-    u64 bitmap_start = 1;
-    u64 inode_table_start = bitmap_start + bitmap_blocks;
-    u64 data_start = inode_table_start + inode_table_blocks;
-
     // Count actual free blocks from bitmap
     u64 used_blocks = 0;
     for (u64 i = 0; i < img.total_blocks; i++) {
@@ -1007,17 +884,17 @@ int main(int argc, char **argv) {
     sb.block_size = BLOCK_SIZE;
     sb.total_blocks = img.total_blocks;
     sb.free_blocks = actual_free_blocks;
-    sb.inode_count = inode_table_blocks * INODES_PER_BLOCK;
+    sb.inode_count = img.inode_table_blocks * INODES_PER_BLOCK;
     sb.root_inode = ROOT_INODE;
-    sb.bitmap_start = bitmap_start;
-    sb.bitmap_blocks = bitmap_blocks;
-    sb.inode_table_start = inode_table_start;
-    sb.inode_table_blocks = inode_table_blocks;
-    sb.data_start = data_start;
+    sb.bitmap_start = img.bitmap_start;
+    sb.bitmap_blocks = img.bitmap_blocks;
+    sb.inode_table_start = img.inode_table_start;
+    sb.inode_table_blocks = img.inode_table_blocks;
+    sb.data_start = img.data_start;
     strncpy(sb.label, "ViperDOS", sizeof(sb.label) - 1);
     img.write_block(0, &sb);
 
-    img.finalize(bitmap_start, inode_table_start);
+    img.finalize();
 
     printf("Created %s (%lu MB, %lu blocks used, %lu free)\n",
            image_path,

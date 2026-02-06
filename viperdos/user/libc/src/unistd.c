@@ -38,13 +38,7 @@
 
 #include "../include/unistd.h"
 #include "../include/termios.h"
-
-/* Syscall helpers - defined in syscall.S */
-extern long __syscall0(long num);
-extern long __syscall1(long num, long arg0);
-extern long __syscall2(long num, long arg0, long arg1);
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-extern long __syscall5(long num, long arg0, long arg1, long arg2, long arg3, long arg4);
+#include "syscall_internal.h"
 
 /* libc ↔ fsd bridge */
 extern int __viper_fsd_is_available(void);

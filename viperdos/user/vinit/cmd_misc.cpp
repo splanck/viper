@@ -73,14 +73,6 @@ extern "C" {
 }
 
 /**
- * @brief Check if path is a /sys path (system disk).
- */
-static bool is_sys_path(const char *path) {
-    return path && path[0] == '/' && path[1] == 's' && path[2] == 'y' && path[3] == 's' &&
-           path[4] == '/';
-}
-
-/**
  * @brief Build args string with PWD prefix for spawned processes.
  * Format: "PWD=/current/dir;original_args" or "PWD=/current/dir" if no args.
  */

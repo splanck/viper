@@ -9,6 +9,7 @@
 #include "../arch/aarch64/timer.hpp"
 #include "../console/serial.hpp"
 #include "../lib/spinlock.hpp"
+#include "../lib/str.hpp"
 #include "../mm/pmm.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
@@ -249,20 +250,15 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
         // that have been running.
         // Skip idle task - it should always have low vruntime as fallback.
         if (!(t->flags & task::TASK_FLAG_IDLE)) {
+#ifdef VIPER_SCHED_DEBUG
             // Debug: track displayd vruntime
             // Names are paths like "/sys/displayd.sys" - check for substring
-            auto contains = [](const char *haystack, const char *needle) {
-                for (const char *h = haystack; *h; h++) {
-                    const char *p = h, *n = needle;
-                    while (*n && *p == *n) { p++; n++; }
-                    if (!*n) return true;
-                }
-                return false;
-            };
-            bool is_displayd = contains(t->name, "displayd");
+            bool is_displayd = lib::strcontains(t->name, "displayd");
             static u32 displayd_enq = 0;
+#endif
 
             if (t->vruntime < sched.min_vruntime) {
+#ifdef VIPER_SCHED_DEBUG
                 // Debug: show vruntime normalization for new/waking tasks
                 if (t->vruntime == 0) {
                     // Brand new task - show the bump
@@ -284,8 +280,11 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
                         serial::puts("M\n");
                     }
                 }
+#endif
                 t->vruntime = sched.min_vruntime;
-            } else if (is_displayd) {
+            }
+#ifdef VIPER_SCHED_DEBUG
+            else if (is_displayd) {
                 displayd_enq++;
                 if (displayd_enq <= 10 || (displayd_enq % 1000 == 0)) {
                     serial::puts("[cfs] displayd enq#");
@@ -297,6 +296,7 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
                     serial::puts("M)\n");
                 }
             }
+#endif
             // Note: We do NOT cap high vruntime down. High vruntime means
             // the task ran a lot and should wait - that's fair scheduling.
         }
@@ -426,18 +426,11 @@ task::Task *dequeue_percpu_locked(u32 cpu_id) {
             if (!(t->flags & task::TASK_FLAG_IDLE)) {
                 sched.cfs_nr_running--;
 
+#ifdef VIPER_SCHED_DEBUG
                 // Debug: track key task dequeues
                 // Names are paths like "/sys/displayd.sys" - check for substring
-                auto contains = [](const char *haystack, const char *needle) {
-                    for (const char *h = haystack; *h; h++) {
-                        const char *p = h, *n = needle;
-                        while (*n && *p == *n) { p++; n++; }
-                        if (!*n) return true;
-                    }
-                    return false;
-                };
-                bool is_displayd = contains(t->name, "displayd");
-                bool is_workbench = contains(t->name, "workbench");
+                bool is_displayd = lib::strcontains(t->name, "displayd");
+                bool is_workbench = lib::strcontains(t->name, "workbench");
                 static u32 displayd_deq = 0;
                 static u32 workbench_deq = 0;
                 static u32 total_deq = 0;
@@ -477,6 +470,7 @@ task::Task *dequeue_percpu_locked(u32 cpu_id) {
                     serial::put_dec(total_deq);
                     serial::puts("\n");
                 }
+#endif
 
                 // Advance min_vruntime as this task is about to run
                 // This ensures min_vruntime monotonically increases
@@ -726,16 +720,9 @@ void schedule() {
 
     // Put current task back in ready queue if it's still runnable
     if (current) {
+#ifdef VIPER_SCHED_DEBUG
         // Debug: check if displayd is being skipped
-        auto contains = [](const char *haystack, const char *needle) {
-            for (const char *h = haystack; *h; h++) {
-                const char *p = h, *n = needle;
-                while (*n && *p == *n) { p++; n++; }
-                if (!*n) return true;
-            }
-            return false;
-        };
-        bool is_displayd = contains(current->name, "displayd");
+        bool is_displayd = lib::strcontains(current->name, "displayd");
         static u32 displayd_sched = 0;
         if (is_displayd) {
             displayd_sched++;
@@ -749,6 +736,7 @@ void schedule() {
                 serial::puts("\n");
             }
         }
+#endif
 
         if (current->state == task::TaskState::Running) {
             // Account for CPU time used (consumed time slice)
@@ -765,11 +753,14 @@ void schedule() {
                 serial::puts(current->name);
                 serial::puts("' exited\n");
             }
-        } else if (is_displayd && displayd_sched >= 26400 && displayd_sched < 26420) {
+        }
+#ifdef VIPER_SCHED_DEBUG
+        else if (is_displayd && displayd_sched >= 26400 && displayd_sched < 26420) {
             serial::puts("[sched] displayd NOT re-enqueued, state=");
             serial::put_dec(static_cast<u32>(current->state));
             serial::puts("\n");
         }
+#endif
         // Blocked tasks are on wait queues, not re-enqueued here
     }
 

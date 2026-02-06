@@ -34,10 +34,7 @@
 #include "../include/errno.h"
 #include "../include/netinet/in.h"
 #include "../include/string.h"
-
-/* Kernel socket syscalls */
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
+#include "syscall_internal.h"
 #define SYS_SOCKET_CREATE 0x50
 #define SYS_SOCKET_CONNECT 0x51
 #define SYS_SOCKET_SEND 0x52

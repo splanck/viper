@@ -40,14 +40,7 @@
 #include "../include/stdlib.h"
 #include "../include/sys/select.h"
 #include "../include/time.h"
-
-/* Syscall helpers */
-extern long __syscall0(long num);
-extern long __syscall1(long num, long arg0);
-extern long __syscall2(long num, long arg0, long arg1);
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
-extern long __syscall5(long num, long arg0, long arg1, long arg2, long arg3, long arg4);
+#include "syscall_internal.h"
 
 /* Socket FD helpers (libc virtual socket FDs). */
 extern int __viper_socket_is_fd(int fd);

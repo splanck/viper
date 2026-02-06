@@ -155,4 +155,22 @@ inline char *strcpy_safe(char *dest, const char *src, usize max) {
     return dest;
 }
 
+/**
+ * @brief Check if haystack contains needle as a substring.
+ *
+ * @param haystack String to search within.
+ * @param needle Substring to search for.
+ * @return True if needle is found in haystack.
+ */
+inline bool strcontains(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return false;
+    for (const char *h = haystack; *h; h++) {
+        const char *p = h;
+        const char *n = needle;
+        while (*n && *p == *n) { p++; n++; }
+        if (!*n) return true;
+    }
+    return false;
+}
+
 } // namespace lib

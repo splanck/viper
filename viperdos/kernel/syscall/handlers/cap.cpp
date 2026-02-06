@@ -18,6 +18,9 @@
 
 namespace syscall {
 
+/// @brief Derive a new capability handle with reduced rights from an existing one.
+/// @details Generation-based handle validation ensures stale handles are rejected.
+///   The new handle can only have a subset of the source handle's rights.
 SyscallResult sys_cap_derive(u64 a0, u64 a1, u64, u64, u64, u64) {
     cap::Handle src = static_cast<cap::Handle>(a0);
     cap::Rights new_rights = static_cast<cap::Rights>(a1);
@@ -32,6 +35,9 @@ SyscallResult sys_cap_derive(u64 a0, u64 a1, u64, u64, u64, u64) {
     return ok_u64(static_cast<u64>(new_handle));
 }
 
+/// @brief Revoke a capability and all handles derived from it.
+/// @details Returns the number of handles revoked (including descendants).
+///   Uses generation-based validation to detect stale handles.
 SyscallResult sys_cap_revoke(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
@@ -46,6 +52,9 @@ SyscallResult sys_cap_revoke(u64 a0, u64, u64, u64, u64, u64) {
     return ok_u64(static_cast<u64>(revoked));
 }
 
+/// @brief Query the kind, rights, and generation of a capability handle.
+/// @details Writes a CapInfo structure to the user-supplied output pointer.
+///   Generation-based validation rejects handles whose slot has been reused.
 SyscallResult sys_cap_query(u64 a0, u64 a1, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
     CapInfo *info = reinterpret_cast<CapInfo *>(a1);
@@ -66,6 +75,9 @@ SyscallResult sys_cap_query(u64 a0, u64 a1, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief List all valid capabilities in the current process's cap table.
+/// @details Iterates the cap table, filling the user buffer with handle/kind/rights
+///   tuples. Reconstructs full handles using slot index and generation counter.
 SyscallResult sys_cap_list(u64 a0, u64 a1, u64, u64, u64, u64) {
     CapListEntry *entries = reinterpret_cast<CapListEntry *>(a0);
     u32 max_entries = static_cast<u32>(a1);
@@ -87,6 +99,8 @@ SyscallResult sys_cap_list(u64 a0, u64 a1, u64, u64, u64, u64) {
     return ok_u64(static_cast<u64>(count));
 }
 
+/// @brief Get the current process's capability bounding set.
+/// @details The bounding set limits which rights can appear in new capabilities.
 SyscallResult sys_cap_get_bound(u64, u64, u64, u64, u64, u64) {
     viper::Viper *v = viper::current();
     if (!v) {
@@ -97,6 +111,8 @@ SyscallResult sys_cap_get_bound(u64, u64, u64, u64, u64, u64) {
     return ok_u64(static_cast<u64>(bounding_set));
 }
 
+/// @brief Irrevocably drop rights from the capability bounding set.
+/// @details Once dropped, these rights cannot be regained by the process.
 SyscallResult sys_cap_drop_bound(u64 a0, u64, u64, u64, u64, u64) {
     u32 rights_to_drop = static_cast<u32>(a0);
 
@@ -113,6 +129,7 @@ SyscallResult sys_cap_drop_bound(u64 a0, u64, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Query the current value of a resource limit for the calling process.
 SyscallResult sys_getrlimit(u64 a0, u64, u64, u64, u64, u64) {
     viper::ResourceLimit resource = static_cast<viper::ResourceLimit>(a0);
 
@@ -124,6 +141,7 @@ SyscallResult sys_getrlimit(u64 a0, u64, u64, u64, u64, u64) {
     return ok_u64(static_cast<u64>(result));
 }
 
+/// @brief Set a resource limit for the calling process.
 SyscallResult sys_setrlimit(u64 a0, u64 a1, u64, u64, u64, u64) {
     viper::ResourceLimit resource = static_cast<viper::ResourceLimit>(a0);
     u64 new_limit = a1;
@@ -136,6 +154,7 @@ SyscallResult sys_setrlimit(u64 a0, u64 a1, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Query the current resource usage for a given resource type.
 SyscallResult sys_getrusage(u64 a0, u64, u64, u64, u64, u64) {
     viper::ResourceLimit resource = static_cast<viper::ResourceLimit>(a0);
 

@@ -34,9 +34,7 @@
 #include "../include/fcntl.h"
 #include "../include/string.h"
 #include "../include/unistd.h"
-
-/* Syscall helpers */
-extern long __syscall1(long num, long arg0);
+#include "syscall_internal.h"
 #define SYS_GETCHAR 0xF1
 #define SYS_PUTCHAR 0xF2
 

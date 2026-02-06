@@ -17,7 +17,6 @@
  * - `fsck.viperfs -v <image>` - Verbose output
  */
 
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -26,82 +25,7 @@
 #include <string>
 #include <vector>
 
-// Types
-using u8 = uint8_t;
-using u16 = uint16_t;
-using u32 = uint32_t;
-using u64 = uint64_t;
-using i64 = int64_t;
-
-// Filesystem constants (must match mkfs.viperfs and kernel)
-constexpr u32 VIPERFS_MAGIC = 0x53465056; // "VPFS"
-constexpr u32 VIPERFS_VERSION = 1;
-constexpr u64 BLOCK_SIZE = 4096;
-constexpr u64 INODE_SIZE = 256;
-constexpr u64 INODES_PER_BLOCK = BLOCK_SIZE / INODE_SIZE;
-constexpr u64 ROOT_INODE = 2;
-constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64);
-
-// Mode bits
-namespace mode {
-constexpr u32 TYPE_MASK = 0xF000;
-constexpr u32 TYPE_DIR = 0x4000;
-} // namespace mode
-
-// File types
-namespace file_type {
-constexpr u8 FILE = 1;
-constexpr u8 DIR = 2;
-constexpr u8 LINK = 7;
-} // namespace file_type
-
-// On-disk structures
-struct __attribute__((packed)) Superblock {
-    u32 magic;
-    u32 version;
-    u64 block_size;
-    u64 total_blocks;
-    u64 free_blocks;
-    u64 inode_count;
-    u64 root_inode;
-    u64 bitmap_start;
-    u64 bitmap_blocks;
-    u64 inode_table_start;
-    u64 inode_table_blocks;
-    u64 data_start;
-    u8 uuid[16];
-    char label[64];
-    u8 _reserved[3928];
-};
-
-static_assert(sizeof(Superblock) == 4096, "Superblock must be 4096 bytes");
-
-struct __attribute__((packed)) Inode {
-    u64 inode_num;
-    u32 mode;
-    u32 flags;
-    u64 size;
-    u64 blocks;
-    u64 atime;
-    u64 mtime;
-    u64 ctime;
-    u64 direct[12];
-    u64 indirect;
-    u64 double_indirect;
-    u64 triple_indirect;
-    u64 generation;
-    u8 _reserved[72];
-};
-
-static_assert(sizeof(Inode) == 256, "Inode must be 256 bytes");
-
-struct __attribute__((packed)) DirEntry {
-    u64 inode;
-    u16 rec_len;
-    u8 name_len;
-    u8 file_type;
-    // name follows
-};
+#include "viperfs_format.h"
 
 // Global state
 FILE *disk_fp = nullptr;
@@ -115,6 +39,7 @@ int error_count = 0;
 int warning_count = 0;
 bool verbose = false;
 
+/// @brief Log an error message to stderr and increment the error counter.
 void report_error(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -125,6 +50,7 @@ void report_error(const char *fmt, ...) {
     error_count++;
 }
 
+/// @brief Log a warning message to stderr and increment the warning counter.
 void report_warning(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -135,6 +61,7 @@ void report_warning(const char *fmt, ...) {
     warning_count++;
 }
 
+/// @brief Print a diagnostic message to stdout when verbose mode is enabled.
 void verbose_log(const char *fmt, ...) {
     if (!verbose)
         return;
@@ -145,6 +72,8 @@ void verbose_log(const char *fmt, ...) {
     va_end(args);
 }
 
+/// @brief Read a single block from the disk image into the given buffer.
+/// @return true on success, false on I/O error (buffer is zeroed on failure).
 bool read_block(u64 block, void *data) {
     if (fseek(disk_fp, block * BLOCK_SIZE, SEEK_SET) != 0) {
         return false;
@@ -156,20 +85,24 @@ bool read_block(u64 block, void *data) {
     return true;
 }
 
+/// @brief Check whether a block is marked as used in the on-disk bitmap.
 bool is_block_used_disk(u64 block) {
     return (disk_bitmap[block / 8] & (1 << (block % 8))) != 0;
 }
 
+/// @brief Mark a block as used in the computed (expected) bitmap.
 void mark_block_computed(u64 block) {
     if (block < sb.total_blocks) {
         computed_bitmap[block / 8] |= (1 << (block % 8));
     }
 }
 
+/// @brief Check whether a block is marked as used in the computed bitmap.
 bool is_block_computed(u64 block) {
     return (computed_bitmap[block / 8] & (1 << (block % 8))) != 0;
 }
 
+/// @brief Record that a block is owned by the given inode and mark it in the computed bitmap.
 void claim_block(u64 block, u64 inode_num) {
     if (block == 0 || block >= sb.total_blocks)
         return;
@@ -177,6 +110,7 @@ void claim_block(u64 block, u64 inode_num) {
     mark_block_computed(block);
 }
 
+/// @brief Read a single block pointer from an indirect block at the given index.
 u64 read_indirect_ptr(u64 block, u64 index) {
     if (block == 0)
         return 0;
@@ -190,6 +124,7 @@ u64 read_indirect_ptr(u64 block, u64 index) {
 // Forward declarations
 void check_directory(u64 ino, const std::string &path);
 
+/// @brief Resolve a logical block index to a physical block number via direct/indirect pointers.
 u64 get_block_ptr(Inode *inode, u64 block_idx) {
     // Direct blocks (0-11)
     if (block_idx < 12) {
@@ -216,6 +151,8 @@ u64 get_block_ptr(Inode *inode, u64 block_idx) {
     return 0;
 }
 
+/// @brief Validate all block pointers (direct, indirect, double-indirect) for an inode.
+/// @details Claims each referenced block and reports invalid or out-of-range pointers.
 void check_inode_blocks(u64 ino, Inode *inode) {
     if (inode->size == 0)
         return;
@@ -305,6 +242,9 @@ void check_inode_blocks(u64 ino, Inode *inode) {
     }
 }
 
+/// @brief Recursively check a directory: verify entries, '.' / '..' presence, and child inodes.
+/// @param ino Inode number of the directory to check.
+/// @param path Human-readable path for error messages.
 void check_directory(u64 ino, const std::string &path) {
     if (visited_inodes.count(ino)) {
         report_error("Directory cycle detected at inode %lu (%s)", ino, path.c_str());
@@ -440,6 +380,8 @@ void check_directory(u64 ino, const std::string &path) {
     }
 }
 
+/// @brief Read and validate the superblock: magic, version, block size, and layout.
+/// @return true if the superblock is usable, false on fatal error.
 bool check_superblock() {
     printf("Checking superblock...\n");
 
@@ -497,6 +439,8 @@ bool check_superblock() {
     return true;
 }
 
+/// @brief Load the on-disk block bitmap and initialize the computed bitmap.
+/// @return true on success, false if bitmap blocks could not be read.
 bool load_bitmap() {
     printf("Loading block bitmap...\n");
 
@@ -519,6 +463,8 @@ bool load_bitmap() {
     return true;
 }
 
+/// @brief Load all inodes from the inode table blocks into memory.
+/// @return true on success, false if inode table blocks could not be read.
 bool load_inodes() {
     printf("Loading inode table...\n");
 
@@ -555,6 +501,7 @@ bool load_inodes() {
     return true;
 }
 
+/// @brief Walk the directory tree from the root inode and detect orphaned inodes.
 void check_directory_tree() {
     printf("Checking directory tree...\n");
 
@@ -576,6 +523,7 @@ void check_directory_tree() {
     printf("  Directory tree checked (%zu inodes visited)\n", visited_inodes.size());
 }
 
+/// @brief Compare computed vs on-disk block bitmaps and detect allocation inconsistencies.
 void check_block_allocation() {
     printf("Checking block allocation...\n");
 
@@ -642,6 +590,7 @@ void check_block_allocation() {
     printf("    Actual free: %llu blocks\n", (unsigned long long)actual_free);
 }
 
+/// @brief Print command-line usage information to stderr.
 void print_usage(const char *prog) {
     fprintf(stderr, "Usage: %s [-v] <image>\n", prog);
     fprintf(stderr, "\n");

@@ -51,6 +51,11 @@ static u32 posix_to_vma_prot(u32 posix_prot) {
     return vma;
 }
 
+/// @brief Map anonymous memory into the calling process's address space.
+/// @details Supports MAP_FIXED (use exact address) and MAP_ANONYMOUS (only mode
+///   supported). When MAP_FIXED is not set, the address is auto-assigned from
+///   v->mmap_next which advances monotonically. Demand-paging handles the
+///   actual physical allocation on first access.
 SyscallResult sys_mmap(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5) {
     u64 addr = a0;
     usize len = static_cast<usize>(a1);
@@ -118,6 +123,8 @@ SyscallResult sys_mmap(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5) {
     return ok_u64(map_addr);
 }
 
+/// @brief Unmap a previously mapped memory region from the process's address space.
+/// @details Removes both the page table mappings and the VMA tracking entries.
 SyscallResult sys_munmap(u64 a0, u64 a1, u64, u64, u64, u64) {
     u64 addr = page_align_down(a0);
     usize len = static_cast<usize>(page_align_up(a1));
@@ -147,6 +154,9 @@ SyscallResult sys_munmap(u64 a0, u64 a1, u64, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Change protection flags on an existing memory mapping.
+/// @details Updates both the VMA protection metadata and the actual page table
+///   entries (PTE) for already-faulted pages, including TLB invalidation.
 SyscallResult sys_mprotect(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     u64 addr = page_align_down(a0);
     usize len = static_cast<usize>(page_align_up(a1));
@@ -205,21 +215,25 @@ SyscallResult sys_mprotect(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     return SyscallResult::ok();
 }
 
+/// @brief Synchronize a mapped region to backing store (no-op for anonymous mappings).
 SyscallResult sys_msync(u64, u64, u64, u64, u64, u64) {
     // No-op: all mappings are anonymous or in-memory
     return SyscallResult::ok();
 }
 
+/// @brief Provide memory usage hints to the kernel (no-op, advisory only).
 SyscallResult sys_madvise(u64, u64, u64, u64, u64, u64) {
     // No-op: advisory only
     return SyscallResult::ok();
 }
 
+/// @brief Lock pages in physical memory (no-op, all pages are already pinned).
 SyscallResult sys_mlock(u64, u64, u64, u64, u64, u64) {
     // No-op: all pages are already locked in physical memory
     return SyscallResult::ok();
 }
 
+/// @brief Unlock pages from physical memory (no-op).
 SyscallResult sys_munlock(u64, u64, u64, u64, u64, u64) {
     // No-op
     return SyscallResult::ok();

@@ -35,9 +35,7 @@
 #include "../include/sys/utsname.h"
 #include "../include/errno.h"
 #include "../include/string.h"
-
-/* Syscall helpers */
-extern long __syscall1(long num, long arg0);
+#include "syscall_internal.h"
 
 /* Syscall number for uname */
 #define SYS_UNAME 0xE8

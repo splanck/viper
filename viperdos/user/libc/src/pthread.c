@@ -33,12 +33,7 @@
 
 #include "../include/pthread.h"
 #include "../include/string.h"
-
-/* Syscall wrappers */
-extern long __syscall0(long num);
-extern long __syscall1(long num, long arg0);
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-extern long __syscall6(long num, long a0, long a1, long a2, long a3, long a4, long a5);
+#include "syscall_internal.h"
 
 /* Syscall numbers */
 #define SYS_THREAD_CREATE 0xB0
@@ -121,6 +116,14 @@ static void thread_wrapper(void) {
  * Thread functions
  */
 
+/**
+ * @brief Create a new thread with its own stack and TCB.
+ * @param thread Receives the new thread's ID on success.
+ * @param attr Thread attributes (stack size, detach state), or NULL for defaults.
+ * @param start_routine Function the new thread will execute.
+ * @param arg Argument passed to start_routine.
+ * @return 0 on success, or an error code (EINVAL, ENOMEM, EAGAIN).
+ */
 int pthread_create(pthread_t *thread,
                    const pthread_attr_t *attr,
                    void *(*start_routine)(void *),
@@ -183,6 +186,12 @@ int pthread_create(pthread_t *thread,
     return 0;
 }
 
+/**
+ * @brief Wait for a thread to terminate and retrieve its return value.
+ * @param thread Thread ID to wait for.
+ * @param retval If non-NULL, receives the thread's exit value.
+ * @return 0 on success, EINVAL on error.
+ */
 int pthread_join(pthread_t thread, void **retval) {
     long result = __syscall1(SYS_THREAD_JOIN, (long)thread);
     if (result < 0) {
@@ -194,6 +203,10 @@ int pthread_join(pthread_t thread, void **retval) {
     return 0;
 }
 
+/**
+ * @brief Terminate the calling thread, invoking TLS destructors first.
+ * @param retval Value returned to any thread calling pthread_join.
+ */
 void pthread_exit(void *retval) {
     /* Invoke TLS key destructors (Issue #79 fix)
      * POSIX requires destructors to be called up to PTHREAD_DESTRUCTOR_ITERATIONS times
@@ -222,6 +235,11 @@ void pthread_exit(void *retval) {
     exit(0);
 }
 
+/**
+ * @brief Mark a thread as detached so its resources are freed on exit.
+ * @param thread Thread ID to detach.
+ * @return 0 on success, EINVAL on error.
+ */
 int pthread_detach(pthread_t thread) {
     long result = __syscall1(SYS_THREAD_DETACH, (long)thread);
     if (result < 0) {
@@ -230,11 +248,13 @@ int pthread_detach(pthread_t thread) {
     return 0;
 }
 
+/** @brief Return the thread ID of the calling thread. */
 pthread_t pthread_self(void) {
     long result = __syscall0(SYS_THREAD_SELF);
     return (pthread_t)result;
 }
 
+/** @brief Test whether two thread IDs refer to the same thread. */
 int pthread_equal(pthread_t t1, pthread_t t2) {
     return t1 == t2;
 }
@@ -243,6 +263,7 @@ int pthread_equal(pthread_t t1, pthread_t t2) {
  * Thread attributes
  */
 
+/** @brief Initialize thread attributes with default values. */
 int pthread_attr_init(pthread_attr_t *attr) {
     if (!attr)
         return EINVAL;
@@ -251,11 +272,13 @@ int pthread_attr_init(pthread_attr_t *attr) {
     return 0;
 }
 
+/** @brief Destroy thread attributes (no-op in this implementation). */
 int pthread_attr_destroy(pthread_attr_t *attr) {
     (void)attr;
     return 0;
 }
 
+/** @brief Set the detach state in thread attributes (joinable or detached). */
 int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate) {
     if (!attr)
         return EINVAL;
@@ -265,6 +288,7 @@ int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate) {
     return 0;
 }
 
+/** @brief Get the detach state from thread attributes. */
 int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate) {
     if (!attr || !detachstate)
         return EINVAL;
@@ -272,6 +296,7 @@ int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate) {
     return 0;
 }
 
+/** @brief Set the stack size in thread attributes (minimum 4096 bytes). */
 int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize) {
     if (!attr || stacksize < 4096)
         return EINVAL;
@@ -279,6 +304,7 @@ int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize) {
     return 0;
 }
 
+/** @brief Get the stack size from thread attributes. */
 int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *stacksize) {
     if (!attr || !stacksize)
         return EINVAL;
@@ -290,6 +316,7 @@ int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *stacksize) {
  * Mutex functions (single-core, so these work as simple flags)
  */
 
+/** @brief Initialize a mutex with the given attributes (or defaults). */
 int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr) {
     if (!mutex)
         return EINVAL;
@@ -298,6 +325,7 @@ int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr) 
     return 0;
 }
 
+/** @brief Destroy a mutex. Returns EBUSY if the mutex is still locked. */
 int pthread_mutex_destroy(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
@@ -306,6 +334,7 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex) {
     return 0;
 }
 
+/** @brief Lock a mutex. Supports normal, recursive, and error-checking types. */
 int pthread_mutex_lock(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
@@ -326,6 +355,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
     return 0;
 }
 
+/** @brief Try to lock a mutex without blocking. Returns EBUSY if already held. */
 int pthread_mutex_trylock(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
@@ -338,6 +368,7 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
     return 0;
 }
 
+/** @brief Unlock a mutex. For recursive mutexes, decrements the lock count. */
 int pthread_mutex_unlock(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
@@ -360,6 +391,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
  * Mutex attributes
  */
 
+/** @brief Initialize mutex attributes with default type (PTHREAD_MUTEX_NORMAL). */
 int pthread_mutexattr_init(pthread_mutexattr_t *attr) {
     if (!attr)
         return EINVAL;
@@ -367,11 +399,13 @@ int pthread_mutexattr_init(pthread_mutexattr_t *attr) {
     return 0;
 }
 
+/** @brief Destroy mutex attributes (no-op in this implementation). */
 int pthread_mutexattr_destroy(pthread_mutexattr_t *attr) {
     (void)attr;
     return 0;
 }
 
+/** @brief Set the mutex type (normal, recursive, or error-checking). */
 int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type) {
     if (!attr)
         return EINVAL;
@@ -381,6 +415,7 @@ int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type) {
     return 0;
 }
 
+/** @brief Get the mutex type from mutex attributes. */
 int pthread_mutexattr_gettype(const pthread_mutexattr_t *attr, int *type) {
     if (!attr || !type)
         return EINVAL;
@@ -392,6 +427,7 @@ int pthread_mutexattr_gettype(const pthread_mutexattr_t *attr, int *type) {
  * Condition variable functions
  */
 
+/** @brief Initialize a condition variable (stub for single-core system). */
 int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr) {
     (void)attr;
     if (!cond)
@@ -400,11 +436,13 @@ int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr) {
     return 0;
 }
 
+/** @brief Destroy a condition variable (no-op). */
 int pthread_cond_destroy(pthread_cond_t *cond) {
     (void)cond;
     return 0;
 }
 
+/** @brief Wait on a condition variable (returns immediately on single-core). */
 int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
     (void)cond;
     (void)mutex;
@@ -412,6 +450,7 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
     return 0;
 }
 
+/** @brief Timed wait on a condition variable (returns immediately on single-core). */
 int pthread_cond_timedwait(pthread_cond_t *cond,
                            pthread_mutex_t *mutex,
                            const struct timespec *abstime) {
@@ -421,11 +460,13 @@ int pthread_cond_timedwait(pthread_cond_t *cond,
     return 0;
 }
 
+/** @brief Signal one thread waiting on a condition variable (no-op). */
 int pthread_cond_signal(pthread_cond_t *cond) {
     (void)cond;
     return 0;
 }
 
+/** @brief Wake all threads waiting on a condition variable (no-op). */
 int pthread_cond_broadcast(pthread_cond_t *cond) {
     (void)cond;
     return 0;
@@ -435,6 +476,7 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
  * Condition variable attributes
  */
 
+/** @brief Initialize condition variable attributes with defaults. */
 int pthread_condattr_init(pthread_condattr_t *attr) {
     if (!attr)
         return EINVAL;
@@ -442,6 +484,7 @@ int pthread_condattr_init(pthread_condattr_t *attr) {
     return 0;
 }
 
+/** @brief Destroy condition variable attributes (no-op). */
 int pthread_condattr_destroy(pthread_condattr_t *attr) {
     (void)attr;
     return 0;
@@ -451,6 +494,7 @@ int pthread_condattr_destroy(pthread_condattr_t *attr) {
  * Read-write lock functions
  */
 
+/** @brief Initialize a read-write lock with reader/writer counters at zero. */
 int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr) {
     (void)attr;
     if (!rwlock)
@@ -460,6 +504,7 @@ int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *at
     return 0;
 }
 
+/** @brief Destroy a read-write lock. Returns EBUSY if still held. */
 int pthread_rwlock_destroy(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
@@ -468,6 +513,7 @@ int pthread_rwlock_destroy(pthread_rwlock_t *rwlock) {
     return 0;
 }
 
+/** @brief Acquire a read lock (increments reader count). */
 int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
@@ -475,6 +521,7 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock) {
     return 0;
 }
 
+/** @brief Try to acquire a read lock without blocking. Returns EBUSY if a writer holds it. */
 int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
@@ -484,6 +531,7 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock) {
     return 0;
 }
 
+/** @brief Acquire a write lock (sets writer flag). */
 int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
@@ -491,6 +539,7 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock) {
     return 0;
 }
 
+/** @brief Try to acquire a write lock without blocking. Returns EBUSY if held by any thread. */
 int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
@@ -500,6 +549,7 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock) {
     return 0;
 }
 
+/** @brief Release a read or write lock. */
 int pthread_rwlock_unlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
@@ -515,6 +565,7 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock) {
  * Once control
  */
 
+/** @brief Execute init_routine exactly once, regardless of how many threads call this. */
 int pthread_once(pthread_once_t *once_control, void (*init_routine)(void)) {
     if (!once_control || !init_routine)
         return EINVAL;
@@ -530,6 +581,12 @@ int pthread_once(pthread_once_t *once_control, void (*init_routine)(void)) {
  * Thread-local storage (per-thread via TPIDR_EL0 / TCB)
  */
 
+/**
+ * @brief Create a thread-local storage key with an optional destructor.
+ * @param key Receives the new TLS key on success.
+ * @param destructor Called with the key's value when a thread exits, or NULL.
+ * @return 0 on success, EAGAIN if all TLS slots are in use.
+ */
 int pthread_key_create(pthread_key_t *key, void (*destructor)(void *)) {
     if (!key)
         return EINVAL;
@@ -547,6 +604,7 @@ int pthread_key_create(pthread_key_t *key, void (*destructor)(void *)) {
     return EAGAIN;
 }
 
+/** @brief Delete a thread-local storage key, freeing the slot for reuse. */
 int pthread_key_delete(pthread_key_t key) {
     if (key >= TLS_KEYS_MAX || !tls_key_used[key])
         return EINVAL;
@@ -556,6 +614,7 @@ int pthread_key_delete(pthread_key_t key) {
     return 0;
 }
 
+/** @brief Get the calling thread's value for a TLS key. */
 void *pthread_getspecific(pthread_key_t key) {
     if (key >= TLS_KEYS_MAX || !tls_key_used[key])
         return 0;
@@ -568,6 +627,7 @@ void *pthread_getspecific(pthread_key_t key) {
     return main_tls_values[key];
 }
 
+/** @brief Set the calling thread's value for a TLS key. */
 int pthread_setspecific(pthread_key_t key, const void *value) {
     if (key >= TLS_KEYS_MAX || !tls_key_used[key])
         return EINVAL;
@@ -586,11 +646,13 @@ int pthread_setspecific(pthread_key_t key, const void *value) {
  * Cancellation (not supported)
  */
 
+/** @brief Request cancellation of a thread (not supported; returns ENOSYS). */
 int pthread_cancel(pthread_t thread) {
     (void)thread;
     return ENOSYS;
 }
 
+/** @brief Set the cancellation state (stub; cancellation is always disabled). */
 int pthread_setcancelstate(int state, int *oldstate) {
     (void)state;
     if (oldstate)
@@ -598,6 +660,7 @@ int pthread_setcancelstate(int state, int *oldstate) {
     return 0;
 }
 
+/** @brief Set the cancellation type (stub; cancellation not supported). */
 int pthread_setcanceltype(int type, int *oldtype) {
     (void)type;
     if (oldtype)
@@ -605,6 +668,7 @@ int pthread_setcanceltype(int type, int *oldtype) {
     return 0;
 }
 
+/** @brief Test for pending cancellation (no-op; cancellation not supported). */
 void pthread_testcancel(void) {
     /* No cancellation support */
 }

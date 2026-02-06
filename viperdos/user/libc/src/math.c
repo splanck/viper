@@ -61,36 +61,44 @@ static inline double bits_to_double(unsigned long long bits) {
  * Basic operations
  */
 
+/** @brief Compute the absolute value of a double. */
 double fabs(double x) {
     return __builtin_fabs(x);
 }
 
+/** @brief Compute the absolute value of a float. */
 float fabsf(float x) {
     return __builtin_fabsf(x);
 }
 
+/** @brief Compute the floating-point remainder of x / y. */
 double fmod(double x, double y) {
     return __builtin_fmod(x, y);
 }
 
+/** @brief Compute the floating-point remainder of x / y (float version). */
 float fmodf(float x, float y) {
     return __builtin_fmodf(x, y);
 }
 
+/** @brief Compute the IEEE 754 remainder of x / y. */
 double remainder(double x, double y) {
     /* IEEE 754 remainder: x - n*y where n is nearest integer to x/y */
     double n = round(x / y);
     return x - n * y;
 }
 
+/** @brief Return the larger of x and y. */
 double fmax(double x, double y) {
     return __builtin_fmax(x, y);
 }
 
+/** @brief Return the smaller of x and y. */
 double fmin(double x, double y) {
     return __builtin_fmin(x, y);
 }
 
+/** @brief Return the positive difference max(x - y, 0). */
 double fdim(double x, double y) {
     return (x > y) ? (x - y) : 0.0;
 }
@@ -99,58 +107,72 @@ double fdim(double x, double y) {
  * Rounding functions
  */
 
+/** @brief Round x upward to the nearest integer. */
 double ceil(double x) {
     return __builtin_ceil(x);
 }
 
+/** @brief Round x upward to the nearest integer (float version). */
 float ceilf(float x) {
     return __builtin_ceilf(x);
 }
 
+/** @brief Round x downward to the nearest integer. */
 double floor(double x) {
     return __builtin_floor(x);
 }
 
+/** @brief Round x downward to the nearest integer (float version). */
 float floorf(float x) {
     return __builtin_floorf(x);
 }
 
+/** @brief Truncate x toward zero to the nearest integer. */
 double trunc(double x) {
     return __builtin_trunc(x);
 }
 
+/** @brief Truncate x toward zero to the nearest integer (float version). */
 float truncf(float x) {
     return __builtin_truncf(x);
 }
 
+/** @brief Round x to the nearest integer, rounding halfway cases away from zero. */
 double round(double x) {
     return __builtin_round(x);
 }
 
+/** @brief Round x to the nearest integer (float version). */
 float roundf(float x) {
     return __builtin_roundf(x);
 }
 
+/** @brief Round x to the nearest long integer. */
 long lround(double x) {
     return (long)round(x);
 }
 
+/** @brief Round x to the nearest long long integer. */
 long long llround(double x) {
     return (long long)round(x);
 }
 
+/** @brief Round x to the nearest integer using the current rounding mode. */
 double nearbyint(double x) {
     return __builtin_nearbyint(x);
 }
 
+/** @brief Round x to the nearest integer, possibly raising inexact. */
 double rint(double x) {
     return __builtin_rint(x);
 }
 
+/** @brief Round x to the nearest long integer using the current rounding mode. */
 long lrint(double x) {
     return (long)rint(x);
 }
 
+/** @brief Round x to the nearest long long integer using the current rounding mode. */
 long long llrint(double x) {
     return (long long)rint(x);
 }
@@ -159,14 +181,17 @@ long long llrint(double x) {
  * Power functions
  */
 
+/** @brief Compute the square root of x. */
 double sqrt(double x) {
     return __builtin_sqrt(x);
 }
 
+/** @brief Compute the square root of x (float version). */
 float sqrtf(float x) {
     return __builtin_sqrtf(x);
 }
 
+/** @brief Compute the cube root of x using Newton-Raphson iteration. */
 double cbrt(double x) {
     /* Cube root using Newton-Raphson */
     if (x == 0.0 || !isfinite(x))
@@ -188,6 +213,7 @@ double cbrt(double x) {
     return neg ? -y : y;
 }
 
+/** @brief Compute sqrt(x*x + y*y) with overflow protection. */
 double hypot(double x, double y) {
     /* sqrt(x^2 + y^2) with overflow protection */
     x = fabs(x);
@@ -206,6 +232,11 @@ double hypot(double x, double y) {
     return x * sqrt(1.0 + r * r);
 }
 
+/**
+ * @brief Raise base to the power of exponent.
+ * @details Uses binary exponentiation for small integer exponents,
+ *          otherwise computes exp(exponent * log(base)).
+ */
 double pow(double base, double exponent) {
     /* Handle special cases */
     if (exponent == 0.0)
@@ -247,6 +278,7 @@ double pow(double base, double exponent) {
     return exp(exponent * log(base));
 }
 
+/** @brief Raise base to the power of exponent (float version). */
 float powf(float base, float exponent) {
     return (float)pow((double)base, (double)exponent);
 }
@@ -258,6 +290,7 @@ float powf(float base, float exponent) {
 /* Constants for exp approximation */
 #define EXP_POLY_DEGREE 13
 
+/** @brief Compute e raised to the power x using argument reduction and Taylor series. */
 double exp(double x) {
     /* Handle special cases */
     if (isnan(x))
@@ -286,14 +319,17 @@ double exp(double x) {
     return ldexp(sum, (int)k);
 }
 
+/** @brief Compute e raised to the power x (float version). */
 float expf(float x) {
     return (float)exp((double)x);
 }
 
+/** @brief Compute 2 raised to the power x. */
 double exp2(double x) {
     return pow(2.0, x);
 }
 
+/** @brief Compute e^x - 1, with improved accuracy for small x. */
 double expm1(double x) {
     /* e^x - 1, accurate for small x */
     if (fabs(x) < 1e-10) {
@@ -302,6 +338,7 @@ double expm1(double x) {
     return exp(x) - 1.0;
 }
 
+/** @brief Compute the natural logarithm of x using argument reduction and series expansion. */
 double log(double x) {
     /* Handle special cases */
     if (x < 0.0)
@@ -338,18 +375,22 @@ double log(double x) {
     return sum + e * 0.693147180559945309417232121458;
 }
 
+/** @brief Compute the natural logarithm of x (float version). */
 float logf(float x) {
     return (float)log((double)x);
 }
 
+/** @brief Compute the base-10 logarithm of x. */
 double log10(double x) {
     return log(x) * 0.43429448190325182765; /* log10(e) */
 }
 
+/** @brief Compute the base-2 logarithm of x. */
 double log2(double x) {
     return log(x) * 1.44269504088896340736; /* log2(e) */
 }
 
+/** @brief Compute ln(1 + x), with improved accuracy for small x. */
 double log1p(double x) {
     /* ln(1 + x), accurate for small x */
     if (fabs(x) < 1e-10) {
@@ -362,7 +403,7 @@ double log1p(double x) {
  * Trigonometric functions
  */
 
-/* Reduce angle to [-pi, pi] */
+/** @brief Reduce an angle (in radians) to the range [-pi, pi]. */
 static double reduce_angle(double x) {
     double twopi = 2.0 * M_PI;
     x = fmod(x, twopi);
@@ -373,6 +414,7 @@ static double reduce_angle(double x) {
     return x;
 }
 
+/** @brief Compute the sine of x (radians) using Taylor series with range reduction. */
 double sin(double x) {
     if (!isfinite(x))
         return NAN;
@@ -395,10 +437,12 @@ double sin(double x) {
     return sum;
 }
 
+/** @brief Compute the sine of x (float version). */
 float sinf(float x) {
     return (float)sin((double)x);
 }
 
+/** @brief Compute the cosine of x (radians) using Taylor series with range reduction. */
 double cos(double x) {
     if (!isfinite(x))
         return NAN;
@@ -421,10 +465,12 @@ double cos(double x) {
     return sum;
 }
 
+/** @brief Compute the cosine of x (float version). */
 float cosf(float x) {
     return (float)cos((double)x);
 }
 
+/** @brief Compute the tangent of x (radians). */
 double tan(double x) {
     double c = cos(x);
     if (c == 0.0)
@@ -432,10 +478,12 @@ double tan(double x) {
     return sin(x) / c;
 }
 
+/** @brief Compute the tangent of x (float version). */
 float tanf(float x) {
     return (float)tan((double)x);
 }
 
+/** @brief Compute the arc sine of x; result in [-pi/2, pi/2]. */
 double asin(double x) {
     if (x < -1.0 || x > 1.0)
         return NAN;
@@ -448,20 +496,24 @@ double asin(double x) {
     return atan(x / sqrt(1.0 - x * x));
 }
 
+/** @brief Compute the arc sine of x (float version). */
 float asinf(float x) {
     return (float)asin((double)x);
 }
 
+/** @brief Compute the arc cosine of x; result in [0, pi]. */
 double acos(double x) {
     if (x < -1.0 || x > 1.0)
         return NAN;
     return M_PI_2 - asin(x);
 }
 
+/** @brief Compute the arc cosine of x (float version). */
 float acosf(float x) {
     return (float)acos((double)x);
 }
 
+/** @brief Compute the arc tangent of x; result in [-pi/2, pi/2]. */
 double atan(double x) {
     /* Handle special cases */
     if (isnan(x))
@@ -518,10 +570,12 @@ double atan(double x) {
     return result;
 }
 
+/** @brief Compute the arc tangent of x (float version). */
 float atanf(float x) {
     return (float)atan((double)x);
 }
 
+/** @brief Compute the arc tangent of y/x, using signs to determine the quadrant. */
 double atan2(double y, double x) {
     /* Handle special cases */
     if (isnan(x) || isnan(y))
@@ -544,6 +598,7 @@ double atan2(double y, double x) {
     }
 }
 
+/** @brief Compute the arc tangent of y/x (float version). */
 float atan2f(float y, float x) {
     return (float)atan2((double)y, (double)x);
 }
@@ -552,6 +607,7 @@ float atan2f(float y, float x) {
  * Hyperbolic functions
  */
 
+/** @brief Compute the hyperbolic sine of x. */
 double sinh(double x) {
     if (fabs(x) < 1e-10) {
         return x; /* Taylor: sinh(x) ≈ x for small x */
@@ -560,11 +616,13 @@ double sinh(double x) {
     return (ex - 1.0 / ex) / 2.0;
 }
 
+/** @brief Compute the hyperbolic cosine of x. */
 double cosh(double x) {
     double ex = exp(x);
     return (ex + 1.0 / ex) / 2.0;
 }
 
+/** @brief Compute the hyperbolic tangent of x. */
 double tanh(double x) {
     if (x > 20.0)
         return 1.0;
@@ -574,6 +632,7 @@ double tanh(double x) {
     return (ex - 1.0) / (ex + 1.0);
 }
 
+/** @brief Compute the inverse hyperbolic sine of x. */
 double asinh(double x) {
     /* asinh(x) = ln(x + sqrt(x^2 + 1)) */
     if (fabs(x) < 1e-10)
@@ -581,12 +640,14 @@ double asinh(double x) {
     return log(x + sqrt(x * x + 1.0));
 }
 
+/** @brief Compute the inverse hyperbolic cosine of x (x must be >= 1). */
 double acosh(double x) {
     if (x < 1.0)
         return NAN;
     return log(x + sqrt(x * x - 1.0));
 }
 
+/** @brief Compute the inverse hyperbolic tangent of x (|x| must be < 1). */
 double atanh(double x) {
     if (x <= -1.0 || x >= 1.0)
         return NAN;
@@ -597,6 +658,10 @@ double atanh(double x) {
  * Floating-point manipulation functions
  */
 
+/**
+ * @brief Decompose x into a normalized fraction in [0.5, 1) and a power of 2.
+ * @param exp Receives the exponent such that x = fraction * 2^exp.
+ */
 double frexp(double x, int *exp) {
     if (x == 0.0 || !isfinite(x)) {
         *exp = 0;
@@ -612,6 +677,7 @@ double frexp(double x, int *exp) {
     return bits_to_double(bits);
 }
 
+/** @brief Multiply x by 2 raised to the power exp. */
 double ldexp(double x, int exp) {
     if (x == 0.0 || !isfinite(x))
         return x;
@@ -629,6 +695,11 @@ double ldexp(double x, int exp) {
     return bits_to_double(bits);
 }
 
+/**
+ * @brief Split x into integer and fractional parts.
+ * @param iptr Receives the integer part (with the same sign as x).
+ * @return The fractional part of x.
+ */
 double modf(double x, double *iptr) {
     double i = trunc(x);
     if (iptr)
@@ -636,10 +707,12 @@ double modf(double x, double *iptr) {
     return x - i;
 }
 
+/** @brief Scale x by FLT_RADIX raised to the power n (equivalent to ldexp). */
 double scalbn(double x, int n) {
     return ldexp(x, n);
 }
 
+/** @brief Extract the exponent of x as a signed integer. */
 int ilogb(double x) {
     if (x == 0.0)
         return -2147483647 - 1; /* FP_ILOGB0 */
@@ -651,10 +724,12 @@ int ilogb(double x) {
     return exp - 1;
 }
 
+/** @brief Extract the exponent of x as a double. */
 double logb(double x) {
     return (double)ilogb(x);
 }
 
+/** @brief Return x with the sign of y. */
 double copysign(double x, double y) {
     return __builtin_copysign(x, y);
 }
@@ -663,6 +738,7 @@ double copysign(double x, double y) {
  * Error and gamma functions (basic implementations)
  */
 
+/** @brief Compute the error function of x using Horner's method approximation. */
 double erf(double x) {
     /* Approximation using Horner's method */
     /* erf(x) ≈ 1 - (a1*t + a2*t^2 + a3*t^3 + a4*t^4 + a5*t^5) * e^(-x^2) */
@@ -683,11 +759,12 @@ double erf(double x) {
     return sign * y;
 }
 
+/** @brief Compute the complementary error function: 1 - erf(x). */
 double erfc(double x) {
     return 1.0 - erf(x);
 }
 
-/* Lanczos approximation for gamma function */
+/** @brief Compute the gamma function of x using the Lanczos approximation. */
 double tgamma(double x) {
     if (x <= 0.0 && x == floor(x)) {
         return NAN; /* Undefined for non-positive integers */
@@ -720,6 +797,7 @@ double tgamma(double x) {
     return sqrt(2.0 * M_PI) * pow(t, x + 0.5) * exp(-t) * sum;
 }
 
+/** @brief Compute the natural log of the absolute value of gamma(x). */
 double lgamma(double x) {
     return log(fabs(tgamma(x)));
 }

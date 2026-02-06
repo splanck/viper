@@ -34,10 +34,7 @@
 #include "../include/sys/mman.h"
 #include "../include/errno.h"
 #include "../include/fcntl.h"
-
-/* Syscall helpers */
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
+#include "syscall_internal.h"
 
 /* Syscall numbers (0x150 block) */
 #define SYS_MMAP 0x150

@@ -131,6 +131,7 @@ void cmd_rename(const char *args);
 
 // Path utilities
 bool normalize_path(const char *path, const char *cwd, char *out, usize out_size);
+bool is_sys_path(const char *path);
 
 // Misc commands
 void cmd_run(const char *path);
