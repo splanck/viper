@@ -212,7 +212,9 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                 if (o1.kind == il::core::Value::Kind::Temp &&
                     o0.kind == il::core::Value::Kind::ConstInt)
                 {
-                    if (isAdd || isShl || isLShr || isAShr)
+                    // Only commutative operations can swap operands.
+                    // Shifts (shl, lshr, ashr) are NOT commutative: `5 << x` != `x << 5`.
+                    if (isAdd)
                     {
                         for (size_t i = 0; i < bb.params.size(); ++i)
                             if (bb.params[i].id == o1.id && i < kMaxGPRArgs)

@@ -40,6 +40,7 @@ target_include_directories(viper_pass PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 
+add_subdirectory(codegen/common)
 add_subdirectory(codegen/x86_64)
 add_subdirectory(codegen/aarch64)
 
@@ -328,7 +329,7 @@ add_dependencies(il_codegen_x86_64 generate_runtime_registry)
 
 add_library(viper_cmd_arm64 STATIC
         tools/viper/cmd_codegen_arm64.cpp)
-target_link_libraries(viper_cmd_arm64 PRIVATE viper_common_opts viper_common il_tools_common il_codegen_aarch64 viper::il_full)
+target_link_libraries(viper_cmd_arm64 PRIVATE viper_common_opts viper_common viper_codegen_common il_tools_common il_codegen_aarch64 viper::il_full)
 
 add_library(viper_native_compiler STATIC
         tools/common/native_compiler.cpp)

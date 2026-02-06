@@ -28,6 +28,7 @@
 #include "common/IntegerHelpers.hpp"
 #include "il/core/Global.hpp"
 
+#include <cassert>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -187,6 +188,7 @@ class ModuleAdapter
             case Opcode::UCmpLE:
                 return 9;
             default:
+                assert(false && "unknown comparison opcode in condCodeFor");
                 return 0;
         }
     }

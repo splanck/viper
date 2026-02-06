@@ -25,7 +25,6 @@ add_library(viper_codegen_x86_64 STATIC
         Peephole.cpp
         Backend.cpp
         CodegenPipeline.cpp
-        passes/PassManager.cpp
         passes/LoweringPass.cpp
         passes/LegalizePass.cpp
         passes/RegAllocPass.cpp
@@ -37,7 +36,7 @@ target_include_directories(viper_codegen_x86_64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
 )
 
-target_link_libraries(viper_codegen_x86_64 PUBLIC viper_common)
+target_link_libraries(viper_codegen_x86_64 PUBLIC viper_common viper_codegen_common)
 
 set_target_properties(viper_codegen_x86_64 PROPERTIES
         CXX_STANDARD 20

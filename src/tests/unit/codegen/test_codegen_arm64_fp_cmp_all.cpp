@@ -148,8 +148,11 @@ TEST(Arm64FPCmpAll, CmpBranch)
     const std::string asmText = readFile(out);
     // Should have fcmp
     EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
-    // Should have conditional branch
-    EXPECT_NE(asmText.find("b."), std::string::npos);
+    // Should have conditional branch (b.cond or cbnz/cbz after peephole fusion)
+    const bool hasBCond = asmText.find("b.") != std::string::npos;
+    const bool hasCbz = asmText.find("cbz ") != std::string::npos;
+    const bool hasCbnz = asmText.find("cbnz ") != std::string::npos;
+    EXPECT_TRUE(hasBCond || hasCbz || hasCbnz);
 }
 
 // Test: Chained FP comparisons

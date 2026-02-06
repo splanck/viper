@@ -149,18 +149,17 @@ bool computeTempTo(const il::core::Instr &prod,
         else if (o1.kind == il::core::Value::Kind::Temp &&
                  o0.kind == il::core::Value::Kind::ConstInt)
         {
+            // Only commutative ops (add) can swap operands.
+            // Shifts are NOT commutative: `const << param` != `param << const`.
+            // Sub with const first is also not supported.
+            if (prod.op == Opcode::Shl || prod.op == Opcode::LShr || prod.op == Opcode::AShr ||
+                prod.op == Opcode::Sub || prod.op == Opcode::ISubOvf)
+                return false;
             int ip = indexOfParam(bb, o1.id);
             if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs)
             {
-                if (prod.op == Opcode::Shl)
-                    ri_emit(MOpcode::LslRI, static_cast<unsigned>(ip), o0.i64);
-                else if (prod.op == Opcode::LShr)
-                    ri_emit(MOpcode::LsrRI, static_cast<unsigned>(ip), o0.i64);
-                else if (prod.op == Opcode::AShr)
-                    ri_emit(MOpcode::AsrRI, static_cast<unsigned>(ip), o0.i64);
-                else if (prod.op == Opcode::Add || prod.op == Opcode::IAddOvf)
+                if (prod.op == Opcode::Add || prod.op == Opcode::IAddOvf)
                     ri_emit(MOpcode::AddRI, static_cast<unsigned>(ip), o0.i64);
-                // Sub with const first not supported
                 return true;
             }
         }
@@ -459,9 +458,10 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
 
         if (!supported)
         {
-            bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
-            ctx.fb.finalize();
-            return ctx.mf;
+            // Cannot handle these stack args in the fast path — fall back to
+            // generic vreg-based lowering instead of emitting a bare Ret
+            // (which would silently skip the call).
+            return std::nullopt;
         }
 
         bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(binI.callee)}});

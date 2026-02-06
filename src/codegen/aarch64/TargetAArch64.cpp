@@ -138,11 +138,11 @@ TargetInfo makeDarwinTarget()
         // X30 (LR) not generally callee-saved as it's saved/restored via prologue/epilogue.
     };
     info.callerSavedFPR = {
-        // v0-v7 used for args/returns; v8-v15 also caller-saved per AAPCS64; v16+ call-clobbered on
-        // Darwin.
+        // v0-v7 used for args/returns (caller-saved); v8-v15 are callee-saved per AAPCS64;
+        // v16-v31 are caller-saved (call-clobbered).
         PhysReg::V0,  PhysReg::V1,  PhysReg::V2,  PhysReg::V3,  PhysReg::V4,  PhysReg::V5,
-        PhysReg::V6,  PhysReg::V7,  PhysReg::V8,  PhysReg::V9,  PhysReg::V10, PhysReg::V11,
-        PhysReg::V12, PhysReg::V13, PhysReg::V14, PhysReg::V15, PhysReg::V16, PhysReg::V17,
+        PhysReg::V6,  PhysReg::V7,
+        PhysReg::V16, PhysReg::V17,
         PhysReg::V18, PhysReg::V19, PhysReg::V20, PhysReg::V21, PhysReg::V22, PhysReg::V23,
         PhysReg::V24, PhysReg::V25, PhysReg::V26, PhysReg::V27, PhysReg::V28, PhysReg::V29,
         PhysReg::V30, PhysReg::V31,

@@ -510,7 +510,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             const RegClass cls = regClassFor(kind);
             if (cls == RegClass::XMM)
             {
-                if (xmmArgIdx < target_->maxXMMArgs)
+                if (xmmArgIdx < target_->maxFPArgs)
                 {
                     const PhysReg argReg = target_->f64ArgOrder[xmmArgIdx++];
                     entryParamToPhysReg[paramId] =
@@ -519,9 +519,9 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
                 else
                 {
                     // Stack-passed XMM argument
-                    // On Windows x64: [RBP + 48 + stackArgIdx*8] after standard prologue
-                    // (16 for old RBP + ret addr, 32 for shadow space)
-                    const int32_t offset = 48 + static_cast<int32_t>(stackArgIdx * 8);
+                    // SysV AMD64: [RBP + 16 + stackArgIdx*8] after standard prologue
+                    // (8 for saved RBP + 8 for return address, no shadow space)
+                    const int32_t offset = 16 + static_cast<int32_t>(stackArgIdx * 8);
                     stackParams.push_back({paramId, offset, kind});
                     ++stackArgIdx;
                 }
@@ -537,8 +537,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
                 else
                 {
                     // Stack-passed GPR argument
-                    // On Windows x64: [RBP + 48 + stackArgIdx*8] after standard prologue
-                    const int32_t offset = 48 + static_cast<int32_t>(stackArgIdx * 8);
+                    // SysV AMD64: [RBP + 16 + stackArgIdx*8] after standard prologue
+                    const int32_t offset = 16 + static_cast<int32_t>(stackArgIdx * 8);
                     stackParams.push_back({paramId, offset, kind});
                     ++stackArgIdx;
                 }

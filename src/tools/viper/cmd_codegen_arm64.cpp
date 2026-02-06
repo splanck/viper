@@ -25,7 +25,7 @@
 #include "codegen/aarch64/RodataPool.hpp"
 #include "codegen/common/ArgNormalize.hpp"
 #include "codegen/common/LabelUtil.hpp"
-#include "codegen/common/RuntimeComponents.hpp"
+#include "codegen/common/LinkerSupport.hpp"
 #include "common/RunProcess.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
@@ -33,7 +33,6 @@
 #include "tools/common/ArgvView.hpp"
 #include "tools/common/module_loader.hpp"
 
-#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -42,7 +41,6 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace viper::tools::ilc
@@ -186,236 +184,24 @@ static bool writeTextFile(const std::string &path, const std::string &text, std:
     return true;
 }
 
-/// @brief Assemble an AArch64 assembly file into an object file.
-/// @details Invokes the system C compiler with `-arch arm64 -c` to assemble
-///          @p asmPath into @p objPath. Standard output is forwarded to @p out,
-///          and stderr is forwarded on Windows where the toolchain uses it.
-/// @param asmPath Path to the input `.s` file.
-/// @param objPath Output `.o` path.
-/// @param out Stream receiving tool output on success.
-/// @param err Stream receiving tool diagnostics on failure.
-/// @return 0 on success, 1 on assembler failure, -1 if the tool could not launch.
-static int assembleToObj(const std::string &asmPath,
-                         const std::string &objPath,
-                         std::ostream &out,
-                         std::ostream &err)
-{
-    const RunResult rr = run_process({"cc", "-arch", "arm64", "-c", asmPath, "-o", objPath});
-    if (rr.exit_code == -1)
-    {
-        err << "error: failed to launch system assembler command\n";
-        return -1;
-    }
-    if (!rr.out.empty())
-        out << rr.out;
-#if defined(_WIN32)
-    if (!rr.err.empty())
-        err << rr.err;
-#endif
-    return rr.exit_code == 0 ? 0 : 1;
-}
-
 /// @brief Link assembly into a native executable, adding runtime archives as needed.
-/// @details Scans the emitted assembly for referenced runtime symbols, selects
-///          the minimal set of runtime archives to link, and (when a build
-///          directory is available) triggers a cmake build for missing archives.
-///          The resulting `cc` invocation links in dependency order and applies
-///          platform-specific flags for dead code elimination and graphics
-///          frameworks. Diagnostics are sent to @p err and summarized via
-///          the returned status code.
-/// @param asmPath Path to the generated assembly file.
-/// @param exePath Destination path for the linked executable.
-/// @param out Stream receiving linker output on success.
-/// @param err Stream receiving linker diagnostics on failure.
-/// @return 0 on success, 1 on link failure, -1 if the tool could not launch.
+/// @details Delegates to shared linker support for symbol scanning, component
+///          resolution, archive discovery, and cmake builds. Constructs the
+///          arm64-specific link command and invokes the system linker.
 static int linkToExe(const std::string &asmPath,
                      const std::string &exePath,
                      std::ostream &out,
                      std::ostream &err)
 {
-    auto file_exists = [](const std::filesystem::path &path) -> bool
-    {
-        std::error_code ec;
-        return std::filesystem::exists(path, ec);
-    };
+    using namespace viper::codegen::common;
 
-    auto read_file = [&](const std::filesystem::path &path, std::string &dst) -> bool
-    {
-        std::ifstream in(path, std::ios::binary);
-        if (!in)
-            return false;
-        std::ostringstream ss;
-        ss << in.rdbuf();
-        dst = ss.str();
-        return true;
-    };
+    LinkContext ctx;
+    if (const int rc = prepareLinkContext(asmPath, ctx, out, err); rc != 0)
+        return rc;
 
-    auto find_build_dir = [&]() -> std::optional<std::filesystem::path>
-    {
-        std::error_code ec;
-        std::filesystem::path cur = std::filesystem::current_path(ec);
-        if (!ec)
-        {
-            for (int depth = 0; depth < 8; ++depth)
-            {
-                if (file_exists(cur / "CMakeCache.txt"))
-                    return cur;
-                if (!cur.has_parent_path())
-                    break;
-                cur = cur.parent_path();
-            }
-        }
-
-        // Fallback for running from repo root with the default build directory.
-        const std::filesystem::path defaultBuild = std::filesystem::path("build");
-        if (file_exists(defaultBuild / "CMakeCache.txt"))
-            return defaultBuild;
-
-        return std::nullopt;
-    };
-
-    auto parse_runtime_symbols = [](std::string_view text) -> std::unordered_set<std::string>
-    {
-        auto is_ident = [](unsigned char c) -> bool { return std::isalnum(c) || c == '_'; };
-
-        std::unordered_set<std::string> symbols;
-        for (std::size_t i = 0; i + 3 < text.size(); ++i)
-        {
-            std::size_t start = std::string_view::npos;
-            std::size_t boundary = std::string_view::npos;
-            if (text[i] == 'r' && text[i + 1] == 't' && text[i + 2] == '_')
-            {
-                start = i;
-                boundary = (start == 0) ? std::string_view::npos : (start - 1);
-            }
-            else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' &&
-                     text[i + 3] == '_')
-            {
-                start = i + 1;
-                boundary = (i == 0) ? std::string_view::npos : (i - 1);
-            }
-
-            if (start == std::string_view::npos)
-                continue;
-            if (boundary != std::string_view::npos &&
-                is_ident(static_cast<unsigned char>(text[boundary])))
-                continue;
-
-            std::size_t j = start;
-            while (j < text.size() && is_ident(static_cast<unsigned char>(text[j])))
-                ++j;
-
-            if (j > start)
-                symbols.emplace(text.substr(start, j - start));
-            i = j;
-        }
-        return symbols;
-    };
-
-    // Use common runtime component classification
-    using RtComponent = viper::codegen::RtComponent;
-
-    std::string asmText;
-    if (!read_file(asmPath, asmText))
-    {
-        err << "error: unable to read '" << asmPath << "' for runtime library selection\n";
-        return 1;
-    }
-
-    const std::unordered_set<std::string> symbols = parse_runtime_symbols(asmText);
-
-    const auto requiredComponents = viper::codegen::resolveRequiredComponents(symbols);
-
-    const std::optional<std::filesystem::path> buildDirOpt = find_build_dir();
-    const std::filesystem::path buildDir = buildDirOpt.value_or(std::filesystem::path{});
-
-    auto runtime_archive_path = [&](std::string_view libBaseName) -> std::filesystem::path
-    {
-        if (!buildDir.empty())
-            return buildDir / "src/runtime" /
-                   (std::string("lib") + std::string(libBaseName) + ".a");
-        return std::filesystem::path("src/runtime") /
-               (std::string("lib") + std::string(libBaseName) + ".a");
-    };
-
-    std::vector<std::pair<std::string, std::filesystem::path>> requiredArchives;
-    for (auto comp : requiredComponents)
-    {
-        auto name = viper::codegen::archiveNameForComponent(comp);
-        requiredArchives.emplace_back(std::string(name), runtime_archive_path(name));
-    }
-
-    auto hasComponent = [&](RtComponent c) {
-        for (auto rc : requiredComponents)
-            if (rc == c) return true;
-        return false;
-    };
-
-    std::vector<std::string> missingTargets;
-    if (!buildDir.empty())
-    {
-        for (const auto &[tgt, path] : requiredArchives)
-        {
-            if (!file_exists(path))
-                missingTargets.push_back(tgt);
-        }
-        if (hasComponent(RtComponent::Graphics))
-        {
-            const std::filesystem::path gfxLib = buildDir / "lib" / "libvipergfx.a";
-            if (!file_exists(gfxLib))
-                missingTargets.push_back("vipergfx");
-        }
-        if (!missingTargets.empty())
-        {
-            std::vector<std::string> cmd = {"cmake", "--build", buildDir.string(), "--target"};
-            cmd.insert(cmd.end(), missingTargets.begin(), missingTargets.end());
-            const RunResult build = run_process(cmd);
-            if (!build.out.empty())
-                out << build.out;
-#if defined(_WIN32)
-            if (!build.err.empty())
-                err << build.err;
-#endif
-            if (build.exit_code != 0)
-            {
-                err << "error: failed to build required runtime libraries in '" << buildDir.string()
-                    << "'\n";
-                return 1;
-            }
-        }
-    }
-
-    // Link order: dependents first, base last.
     std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", asmPath};
-    auto appendArchiveIf = [&](std::string_view name)
-    {
-        const std::filesystem::path path = runtime_archive_path(name);
-        if (file_exists(path))
-            linkCmd.push_back(path.string());
-    };
-
-    // Reverse the component order for linking (dependents before their dependencies).
-    for (auto it = requiredComponents.rbegin(); it != requiredComponents.rend(); ++it)
-        appendArchiveIf(viper::codegen::archiveNameForComponent(*it));
-
-    if (hasComponent(RtComponent::Graphics))
-    {
-        std::filesystem::path gfxLib;
-        if (!buildDir.empty())
-            gfxLib = buildDir / "lib" / "libvipergfx.a";
-        else
-            gfxLib = std::filesystem::path("lib") / "libvipergfx.a";
-        if (file_exists(gfxLib))
-            linkCmd.push_back(gfxLib.string());
-#if defined(__APPLE__)
-        linkCmd.push_back("-framework");
-        linkCmd.push_back("Cocoa");
-        linkCmd.push_back("-framework");
-        linkCmd.push_back("IOKit");
-        linkCmd.push_back("-framework");
-        linkCmd.push_back("CoreFoundation");
-#endif
-    }
+    appendArchives(ctx, linkCmd);
+    appendGraphicsLibs(ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation"});
 
 #if defined(__APPLE__)
     linkCmd.push_back("-Wl,-dead_strip");
@@ -439,30 +225,6 @@ static int linkToExe(const std::string &asmPath,
         err << rr.err;
 #endif
     return rr.exit_code == 0 ? 0 : 1;
-}
-
-/// @brief Execute a linked native binary and forward its output.
-/// @details Runs the executable at @p exePath and forwards its stdout/stderr
-///          to @p out/@p err so the CLI behaves similarly to the VM runner.
-/// @param exePath Path to the executable to run.
-/// @param out Stream receiving program stdout.
-/// @param err Stream receiving program stderr or launcher diagnostics.
-/// @return Exit code from the program, or -1 if launching failed.
-static int runExe(const std::string &exePath, std::ostream &out, std::ostream &err)
-{
-    const RunResult rr = run_process({exePath});
-    if (rr.exit_code == -1)
-    {
-        err << "error: failed to execute '" << exePath << "'\n";
-        return -1;
-    }
-    if (!rr.out.empty())
-        out << rr.out;
-#if defined(_WIN32)
-    if (!rr.err.empty())
-        err << rr.err;
-#endif
-    return rr.exit_code;
 }
 
 /// @brief Emit assembly and optionally assemble, link, and run native output.
@@ -721,7 +483,10 @@ int emitAndMaybeLink(const Options &opts)
         const std::string &outPath = *opts.output_o;
         if (std::filesystem::path(outPath).extension() == ".o")
         {
-            return assembleToObj(asmPath, outPath, std::cout, std::cerr) == 0 ? 0 : 1;
+            return viper::codegen::common::invokeAssembler(
+                       {"cc", "-arch", "arm64"}, asmPath, outPath, std::cout, std::cerr) == 0
+                       ? 0
+                       : 1;
         }
         // Link directly to executable
         return linkToExe(asmPath, outPath, std::cout, std::cerr) == 0 ? 0 : 1;
@@ -739,7 +504,7 @@ int emitAndMaybeLink(const Options &opts)
         return 1;
     if (!opts.run_native)
         return 0;
-    const int rc = runExe(exe.string(), std::cout, std::cerr);
+    const int rc = viper::codegen::common::runExecutable(exe.string(), std::cout, std::cerr);
     return rc == -1 ? 1 : rc;
 }
 

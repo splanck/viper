@@ -73,9 +73,9 @@ struct SlotKeyHash
 [[nodiscard]] std::unordered_set<PhysReg> buildCalleeSavedSet(const TargetInfo &target)
 {
     std::unordered_set<PhysReg> result{};
-    result.reserve(target.calleeSavedGPR.size() + target.calleeSavedXMM.size());
+    result.reserve(target.calleeSavedGPR.size() + target.calleeSavedFPR.size());
     result.insert(target.calleeSavedGPR.begin(), target.calleeSavedGPR.end());
-    result.insert(target.calleeSavedXMM.begin(), target.calleeSavedXMM.end());
+    result.insert(target.calleeSavedFPR.begin(), target.calleeSavedFPR.end());
     return result;
 }
 
@@ -242,7 +242,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
             frame.usedCalleeSaved.push_back(reg);
         }
     }
-    for (auto reg : target.calleeSavedXMM)
+    for (auto reg : target.calleeSavedFPR)
     {
         if (usedCalleeSaved.contains(reg))
         {
@@ -401,15 +401,29 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
         }
 #else
-        // Unix/macOS: emit inline stack probing for large frames
+        // Unix/macOS: emit inline stack probing for large frames.
+        // Touch each page from RSP downward so the OS can grow the stack and detect
+        // overflows via the guard page rather than jumping past it.
         if (frame.frameSize > kPageSize)
         {
-            // Probe loop: touch each page from current RSP down to RSP - frameSize
-            // This is a conservative approach that ensures the OS can grow the stack.
-            // For simplicity, we just do the allocation and rely on the OS signal handler.
-            // A more robust approach would emit a probe loop.
-            prologue.push_back(
-                MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
+            const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
+            // Iterative probe: subtract kPageSize at a time and touch, then set
+            // RSP to the final target.  Since MIR has no loop construct, we unroll
+            // the probe sequence (bounded by frame.frameSize / kPageSize which is
+            // capped by real-world stack sizes, typically < 256 iterations for 1MB).
+            const int pages = (frame.frameSize + kPageSize - 1) / kPageSize;
+            for (int p = 0; p < pages; ++p)
+            {
+                prologue.push_back(MInstr::make(
+                    MOpcode::ADDri, {rspOperand, makeImmOperand(-kPageSize)}));
+                // Touch the page via: mov (%rsp), %rax  (load to clobber-safe register)
+                prologue.push_back(MInstr::make(
+                    MOpcode::MOVmr, {raxOperand, makeMemOperand(rspBase, 0)}));
+            }
+            // Set RSP to exact target position (may differ from page-aligned probe)
+            prologue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
+            prologue.push_back(MInstr::make(
+                MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
         }
         else
         {

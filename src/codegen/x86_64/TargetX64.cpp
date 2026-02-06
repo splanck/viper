@@ -58,7 +58,7 @@ TargetInfo makeSysVTarget()
         PhysReg::R15,
         PhysReg::RBP,
     };
-    info.callerSavedXMM = {
+    info.callerSavedFPR = {
         PhysReg::XMM0,
         PhysReg::XMM1,
         PhysReg::XMM2,
@@ -76,7 +76,7 @@ TargetInfo makeSysVTarget()
         PhysReg::XMM14,
         PhysReg::XMM15,
     };
-    info.calleeSavedXMM = {};
+    info.calleeSavedFPR = {};
     info.intArgOrder = {
         PhysReg::RDI,
         PhysReg::RSI,
@@ -100,7 +100,7 @@ TargetInfo makeSysVTarget()
     info.stackAlignment = 16U;
     info.hasRedZone = true; // Phase A: do not rely on red zone.
     info.maxGPRArgs = kMaxGPRArgsSysV;
-    info.maxXMMArgs = kMaxXMMArgsSysV;
+    info.maxFPArgs = kMaxFPArgsSysV;
     info.shadowSpace = 0;
     return info;
 }
@@ -137,7 +137,7 @@ TargetInfo makeWin64Target()
         PhysReg::R15,
     };
     // Windows x64: XMM0-XMM5 are caller-saved (volatile)
-    info.callerSavedXMM = {
+    info.callerSavedFPR = {
         PhysReg::XMM0,
         PhysReg::XMM1,
         PhysReg::XMM2,
@@ -146,7 +146,7 @@ TargetInfo makeWin64Target()
         PhysReg::XMM5,
     };
     // Windows x64: XMM6-XMM15 are callee-saved (non-volatile)
-    info.calleeSavedXMM = {
+    info.calleeSavedFPR = {
         PhysReg::XMM6,
         PhysReg::XMM7,
         PhysReg::XMM8,
@@ -183,7 +183,7 @@ TargetInfo makeWin64Target()
     info.stackAlignment = 16U;
     info.hasRedZone = false; // Windows x64 has no red zone
     info.maxGPRArgs = kMaxGPRArgsWin64;
-    info.maxXMMArgs = kMaxXMMArgsWin64;
+    info.maxFPArgs = kMaxFPArgsWin64;
     info.shadowSpace = 32; // 32-byte shadow space required
     return info;
 }

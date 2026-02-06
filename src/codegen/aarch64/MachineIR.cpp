@@ -225,6 +225,20 @@ namespace viper::codegen::aarch64
             return "AdrPage";
         case MOpcode::AddPageOff:
             return "AddPageOff";
+        case MOpcode::Cbnz:
+            return "Cbnz";
+        case MOpcode::MAddRRRR:
+            return "MAddRRRR";
+        case MOpcode::Csel:
+            return "Csel";
+        case MOpcode::LdpRegFpImm:
+            return "LdpRegFpImm";
+        case MOpcode::StpRegFpImm:
+            return "StpRegFpImm";
+        case MOpcode::LdpFprFpImm:
+            return "LdpFprFpImm";
+        case MOpcode::StpFprFpImm:
+            return "StpFprFpImm";
     }
     return "<unknown>";
 }

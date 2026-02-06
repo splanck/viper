@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include "codegen/common/TargetInfoBase.hpp"
+
 #include <array>
 #include <vector>
 
@@ -99,7 +101,7 @@ inline constexpr std::size_t kMaxGPRArgsSysV = 6;
 /// \brief Maximum number of floating-point arguments passed in registers (SysV).
 /// \details The SysV AMD64 ABI allows up to 8 floating-point arguments in
 ///          XMM registers (XMM0-XMM7). Additional arguments go on the stack.
-inline constexpr std::size_t kMaxXMMArgsSysV = 8;
+inline constexpr std::size_t kMaxFPArgsSysV = 8;
 
 /// \brief Maximum number of integer/pointer arguments passed in registers (Windows).
 /// \details The Windows x64 ABI allows up to 4 integer arguments in registers
@@ -109,46 +111,28 @@ inline constexpr std::size_t kMaxGPRArgsWin64 = 4;
 /// \brief Maximum number of floating-point arguments passed in registers (Windows).
 /// \details The Windows x64 ABI allows up to 4 floating-point arguments in
 ///          XMM registers (XMM0-XMM3). Additional arguments go on the stack.
-inline constexpr std::size_t kMaxXMMArgsWin64 = 4;
+inline constexpr std::size_t kMaxFPArgsWin64 = 4;
 
 /// \brief Platform-appropriate max GPR args.
 #if defined(_WIN32)
 inline constexpr std::size_t kMaxGPRArgs = kMaxGPRArgsWin64;
-inline constexpr std::size_t kMaxXMMArgs = kMaxXMMArgsWin64;
+inline constexpr std::size_t kMaxFPArgs = kMaxFPArgsWin64;
 #else
 inline constexpr std::size_t kMaxGPRArgs = kMaxGPRArgsSysV;
-inline constexpr std::size_t kMaxXMMArgs = kMaxXMMArgsSysV;
+inline constexpr std::size_t kMaxFPArgs = kMaxFPArgsSysV;
 #endif
 
 /// \brief Captures the architectural contract for an x86-64 ABI.
 /// \invariant Vectors are populated once during singleton creation and remain constant.
-struct TargetInfo
+struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, 6, 8>
 {
-    /// \brief Caller-saved general purpose registers.
-    std::vector<PhysReg> callerSavedGPR{};
-    /// \brief Callee-saved general purpose registers.
-    std::vector<PhysReg> calleeSavedGPR{};
-    /// \brief Caller-saved XMM registers.
-    std::vector<PhysReg> callerSavedXMM{};
-    /// \brief Callee-saved XMM registers.
-    std::vector<PhysReg> calleeSavedXMM{};
-    /// \brief ABI argument order for integer and pointer values.
-    std::array<PhysReg, 6> intArgOrder{};
-    /// \brief ABI argument order for 64-bit floating-point values.
-    std::array<PhysReg, 8> f64ArgOrder{};
-    /// \brief Register used to return integer and pointer values.
-    PhysReg intReturnReg{PhysReg::RAX};
-    /// \brief Register used to return 64-bit floating-point values.
-    PhysReg f64ReturnReg{PhysReg::XMM0};
-    /// \brief Required stack alignment at call boundaries (bytes).
-    unsigned stackAlignment{16U};
     /// \brief Whether the ABI specifies a red zone.
     /// Phase A: do not rely on red zone.
     bool hasRedZone{true};
     /// \brief Maximum integer arguments in registers.
     std::size_t maxGPRArgs{6};
     /// \brief Maximum floating-point arguments in registers.
-    std::size_t maxXMMArgs{8};
+    std::size_t maxFPArgs{8};
     /// \brief Shadow space required before call (Windows only).
     std::size_t shadowSpace{0};
 };

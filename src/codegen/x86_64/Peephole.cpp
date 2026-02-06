@@ -536,18 +536,55 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
     return false;
 }
 
+/// @brief Check if any following instruction in this block reads flags.
+/// @details IMUL and SHL set flags differently (IMUL sets CF/OF for overflow,
+///          SHL sets CF to last shifted bit and OF based on sign change).
+///          Transforming IMUL to SHL is only safe when no subsequent instruction
+///          reads the flags before they are overwritten by another flag-setting
+///          instruction or a block boundary.
+/// @param instrs Instruction vector for the basic block.
+/// @param idx Index of the instruction being considered for rewrite.
+/// @return true if a subsequent instruction reads flags before they are overwritten.
+[[nodiscard]] bool nextInstrReadsFlags(const std::vector<MInstr> &instrs, std::size_t idx) noexcept
+{
+    for (std::size_t j = idx + 1; j < instrs.size(); ++j)
+    {
+        const auto opc = instrs[j].opcode;
+        // Instructions that read flags
+        if (opc == MOpcode::JCC || opc == MOpcode::SETcc || opc == MOpcode::CMOVNErr)
+            return true;
+        // Instructions that overwrite flags — safe to stop scanning
+        if (opc == MOpcode::CMPrr || opc == MOpcode::CMPri || opc == MOpcode::TESTrr ||
+            opc == MOpcode::ADDrr || opc == MOpcode::ADDri || opc == MOpcode::SUBrr ||
+            opc == MOpcode::ANDrr || opc == MOpcode::ANDri || opc == MOpcode::ORrr ||
+            opc == MOpcode::ORri || opc == MOpcode::XORrr || opc == MOpcode::XORri ||
+            opc == MOpcode::XORrr32 || opc == MOpcode::IMULrr)
+            return false;
+        // LABEL is a potential branch target — conservatively assume flags are read
+        if (opc == MOpcode::LABEL)
+            return true;
+    }
+    return false;
+}
+
 /// @brief Apply strength reduction: mul by power-of-2 -> shift left.
 ///
 /// Pattern: imul dst, src where src is a known power-of-2 constant -> shl dst, #log2(src)
 ///
-/// @param instr Instruction to check and potentially rewrite.
+/// This transformation is only safe when no subsequent instruction reads the
+/// flags set by IMUL, because SHL sets CF/OF with different semantics.
+///
+/// @param instrs Instruction vector for the basic block.
+/// @param idx Index of the instruction to check and potentially rewrite.
 /// @param knownConsts Map of registers to known constant values.
 /// @param stats Statistics to update.
 /// @return true if reduction was applied.
-[[nodiscard]] bool tryStrengthReduction(MInstr &instr,
+[[nodiscard]] bool tryStrengthReduction(std::vector<MInstr> &instrs,
+                                        std::size_t idx,
                                         const RegConstMap &knownConsts,
                                         PeepholeStats &stats)
 {
+    auto &instr = instrs[idx];
     if (instr.opcode != MOpcode::IMULrr)
         return false;
     if (instr.operands.size() != 2)
@@ -560,6 +597,12 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
 
     int shiftAmount = log2IfPowerOf2(*srcConst);
     if (shiftAmount < 0 || shiftAmount > 63)
+        return false;
+
+    // Check if any following instruction reads flags set by IMUL.
+    // SHL sets CF/OF differently than IMUL, so the transformation is unsafe
+    // when flags are consumed.
+    if (nextInstrReadsFlags(instrs, idx))
         return false;
 
     // Rewrite: imul dst, src -> shl dst, #shift
@@ -1053,7 +1096,7 @@ void runPeepholes(MFunction &fn)
             }
 
             // Try strength reduction (mul power-of-2 -> shift)
-            (void)tryStrengthReduction(instr, knownConsts, stats);
+            (void)tryStrengthReduction(instrs, i, knownConsts, stats);
         }
 
         // Pass 2: Try to fold consecutive moves

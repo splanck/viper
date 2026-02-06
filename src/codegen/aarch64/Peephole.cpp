@@ -32,6 +32,7 @@
 #include "Peephole.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -142,7 +143,18 @@ namespace
         case MOpcode::FCvtZU:
         case MOpcode::FRintN:
         case MOpcode::MSubRRRR:
+        case MOpcode::MAddRRRR:
+        case MOpcode::Csel:
             if (!instr.ops.empty() && samePhysReg(instr.ops[0], reg))
+                return true;
+            break;
+
+        // LDP defines two registers (ops[0] and ops[1])
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::LdpFprFpImm:
+            if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
+                return true;
+            if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
             break;
 
@@ -157,12 +169,15 @@ namespace
         case MOpcode::Blr:
         case MOpcode::Ret:
         case MOpcode::Cbz:
+        case MOpcode::Cbnz:
         case MOpcode::StrRegFpImm:
         case MOpcode::StrFprFpImm:
         case MOpcode::StrRegBaseImm:
         case MOpcode::StrFprBaseImm:
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
+        case MOpcode::StpRegFpImm:
+        case MOpcode::StpFprFpImm:
         case MOpcode::SubSpImm:
         case MOpcode::AddSpImm:
             break;
@@ -284,7 +299,8 @@ namespace
             break;
 
         case MOpcode::MSubRRRR:
-            // dst, mul1, mul2, sub - check mul1, mul2, sub
+        case MOpcode::MAddRRRR:
+            // dst, mul1, mul2, acc - check mul1, mul2, acc
             for (std::size_t i = 1; i < instr.ops.size() && i <= 3; ++i)
             {
                 if (samePhysReg(instr.ops[i], reg))
@@ -296,6 +312,34 @@ namespace
             // dst, base, label - check base
             if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
+            break;
+
+        case MOpcode::Cbnz:
+            // cbnz reg, label - check reg
+            if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
+                return true;
+            break;
+
+        case MOpcode::Csel:
+            // csel dst, trueReg, falseReg, cond - check trueReg and falseReg
+            if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
+                return true;
+            if (instr.ops.size() >= 3 && samePhysReg(instr.ops[2], reg))
+                return true;
+            break;
+
+        case MOpcode::StpRegFpImm:
+        case MOpcode::StpFprFpImm:
+            // stp src1, src2, [fp, #imm] - check both sources
+            if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
+                return true;
+            if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
+                return true;
+            break;
+
+        // LdpRegFpImm/LdpFprFpImm are def-only (no source regs beyond FP)
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::LdpFprFpImm:
             break;
 
         default:
@@ -445,15 +489,26 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
         case MOpcode::AdrPage:
         case MOpcode::AddPageOff:
         case MOpcode::MSubRRRR:
+        case MOpcode::MAddRRRR:
+        case MOpcode::Csel:
             if (!instr.ops.empty() && isPhysReg(instr.ops[0]))
                 knownConsts.erase(instr.ops[0].reg.idOrPhys);
+            break;
+        // LDP defines two registers
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::LdpFprFpImm:
+            if (instr.ops.size() >= 1 && isPhysReg(instr.ops[0]))
+                knownConsts.erase(instr.ops[0].reg.idOrPhys);
+            if (instr.ops.size() >= 2 && isPhysReg(instr.ops[1]))
+                knownConsts.erase(instr.ops[1].reg.idOrPhys);
             break;
         default:
             break;
     }
 
     // Calls invalidate all caller-saved registers (x0-x18)
-    if (instr.opc == MOpcode::Bl)
+    // Both direct (Bl) and indirect (Blr) calls clobber caller-saved state.
+    if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
     {
         for (uint16_t i = 0; i <= 18; ++i)
             knownConsts.erase(i);
@@ -601,7 +656,7 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
         // Check for call instructions after the second move
         for (std::size_t i = idx + 2; i < instrs.size(); ++i)
         {
-            if (instrs[i].opc == MOpcode::Bl)
+            if (instrs[i].opc == MOpcode::Bl || instrs[i].opc == MOpcode::Blr)
                 return false; // Call instruction found, don't fold
             if (definesReg(instrs[i], r1))
                 break; // r1 is redefined before any call, safe to check further
@@ -750,8 +805,35 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
 
         case MOpcode::MSubRRRR:
-            // msub dst, m1, m2, sub
+        case MOpcode::MAddRRRR:
+            // msub/madd dst, m1, m2, acc
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
+
+        case MOpcode::Csel:
+            // csel dst, trueReg, falseReg, cond
+            if (idx == 0)
+                return {false, true};
+            if (idx == 1 || idx == 2)
+                return {true, false};
+            return {false, false}; // cond
+
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::LdpFprFpImm:
+            // ldp r1, r2, [fp, #imm]
+            if (idx == 0 || idx == 1)
+                return {false, true}; // both dests
+            return {false, false};    // imm
+
+        case MOpcode::StpRegFpImm:
+        case MOpcode::StpFprFpImm:
+            // stp r1, r2, [fp, #imm]
+            if (idx == 0 || idx == 1)
+                return {true, false}; // both sources
+            return {false, false};    // imm
+
+        case MOpcode::Cbnz:
+            // cbnz reg, label
+            return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
 
         case MOpcode::AdrPage:
             // adr dst, label
@@ -821,10 +903,10 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
     {
         // Skip non-register instructions
         if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Ret ||
-            instr.opc == MOpcode::Bl)
+            instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
         {
-            // Calls clobber caller-saved registers, invalidate all copy info
-            if (instr.opc == MOpcode::Bl)
+            // Both direct (Bl) and indirect (Blr) calls clobber caller-saved registers.
+            if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
                 copyOrigin.clear();
             continue;
         }
@@ -956,6 +1038,8 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         case MOpcode::StrFprBaseImm:
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
+        case MOpcode::StpRegFpImm:
+        case MOpcode::StpFprFpImm:
             return true;
 
         // Call instructions - may have arbitrary effects
@@ -968,6 +1052,7 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         case MOpcode::BCond:
         case MOpcode::Ret:
         case MOpcode::Cbz:
+        case MOpcode::Cbnz:
             return true;
 
         // Stack manipulation
@@ -988,6 +1073,8 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrRegBaseImm:
         case MOpcode::LdrFprBaseImm:
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::LdpFprFpImm:
             return true;
 
         // Address-loading instructions (adrp/add for PC-relative addressing)
@@ -1073,6 +1160,10 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         case MOpcode::FCvtZU:
         case MOpcode::FRintN:
         case MOpcode::MSubRRRR:
+        case MOpcode::MAddRRRR:
+        case MOpcode::Csel:
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::LdpFprFpImm:
             if (!instr.ops.empty() && isPhysReg(instr.ops[0]))
                 return instr.ops[0];
             break;
@@ -1260,6 +1351,354 @@ std::size_t reorderBlocks(MFunction &fn)
     return coldIndices.size();
 }
 
+/// @brief Invert AArch64 condition code string.
+/// @return Inverted condition, or nullptr if unrecognized.
+[[nodiscard]] const char *invertCondition(const char *cond) noexcept
+{
+    if (!cond)
+        return nullptr;
+    // Map each condition to its inverse
+    if (std::strcmp(cond, "eq") == 0)
+        return "ne";
+    if (std::strcmp(cond, "ne") == 0)
+        return "eq";
+    if (std::strcmp(cond, "lt") == 0)
+        return "ge";
+    if (std::strcmp(cond, "ge") == 0)
+        return "lt";
+    if (std::strcmp(cond, "gt") == 0)
+        return "le";
+    if (std::strcmp(cond, "le") == 0)
+        return "gt";
+    if (std::strcmp(cond, "hi") == 0)
+        return "ls";
+    if (std::strcmp(cond, "ls") == 0)
+        return "hi";
+    if (std::strcmp(cond, "hs") == 0)
+        return "lo";
+    if (std::strcmp(cond, "lo") == 0)
+        return "hs";
+    if (std::strcmp(cond, "mi") == 0)
+        return "pl";
+    if (std::strcmp(cond, "pl") == 0)
+        return "mi";
+    if (std::strcmp(cond, "vs") == 0)
+        return "vc";
+    if (std::strcmp(cond, "vc") == 0)
+        return "vs";
+    return nullptr;
+}
+
+/// @brief Try to fuse cmp+bcond into cbz/cbnz.
+///
+/// Pattern:
+///   cmp xN, #0    (or tst xN, xN)
+///   b.eq label  → cbz xN, label
+///   b.ne label  → cbnz xN, label
+///
+/// @param instrs Instructions in the basic block.
+/// @param idx Index of the CmpRI or TstRR instruction.
+/// @param stats Statistics to update.
+/// @return true if fusion was applied (2 instrs → 1).
+[[nodiscard]] bool tryCbzCbnzFusion(std::vector<MInstr> &instrs,
+                                     std::size_t idx,
+                                     PeepholeStats &stats)
+{
+    if (idx + 1 >= instrs.size())
+        return false;
+
+    const auto &cmpInstr = instrs[idx];
+    const auto &brInstr = instrs[idx + 1];
+
+    // Check for cmp xN, #0 or tst xN, xN
+    bool isCmpZero = false;
+    MOperand regOp;
+
+    if (cmpInstr.opc == MOpcode::CmpRI && cmpInstr.ops.size() == 2 && isPhysReg(cmpInstr.ops[0]) &&
+        isImmValue(cmpInstr.ops[1], 0))
+    {
+        isCmpZero = true;
+        regOp = cmpInstr.ops[0];
+    }
+    else if (cmpInstr.opc == MOpcode::TstRR && cmpInstr.ops.size() == 2 &&
+             isPhysReg(cmpInstr.ops[0]) && samePhysReg(cmpInstr.ops[0], cmpInstr.ops[1]))
+    {
+        isCmpZero = true;
+        regOp = cmpInstr.ops[0];
+    }
+
+    if (!isCmpZero)
+        return false;
+
+    // Must only fuse GPR compares (CBZ/CBNZ are integer-only)
+    if (regOp.reg.cls != RegClass::GPR)
+        return false;
+
+    // Check for b.eq or b.ne
+    if (brInstr.opc != MOpcode::BCond || brInstr.ops.size() != 2)
+        return false;
+    if (brInstr.ops[0].kind != MOperand::Kind::Cond || brInstr.ops[1].kind != MOperand::Kind::Label)
+        return false;
+
+    const char *cond = brInstr.ops[0].cond;
+    if (!cond)
+        return false;
+
+    MOpcode fusedOpc;
+    if (std::strcmp(cond, "eq") == 0)
+        fusedOpc = MOpcode::Cbz;
+    else if (std::strcmp(cond, "ne") == 0)
+        fusedOpc = MOpcode::Cbnz;
+    else
+        return false; // Only eq/ne can be fused to cbz/cbnz
+
+    // Rewrite: replace cmp+bcond with cbz/cbnz
+    instrs[idx].opc = fusedOpc;
+    instrs[idx].ops.clear();
+    instrs[idx].ops.push_back(regOp);
+    instrs[idx].ops.push_back(brInstr.ops[1]); // label
+
+    // Mark the bcond for removal by converting to identity (handled by next pass)
+    instrs[idx + 1].opc = MOpcode::Br;
+    instrs[idx + 1].ops.clear();
+    // Actually, easier to just erase it. Mark it by setting a sentinel:
+    // We'll return true and let the caller handle removal.
+    // For simplicity, replace bcond with the fused cbz and shift remaining.
+    instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx + 1));
+    ++stats.cbzFusions;
+    return true;
+}
+
+/// @brief Try to fold an RRR operation into RI when one operand is a known constant.
+///
+/// Patterns:
+///   add dst, lhs, rhs where rhs is known const → add dst, lhs, #const
+///   sub dst, lhs, rhs where rhs is known const → sub dst, lhs, #const
+///
+/// Only applies when the immediate fits in 12-bit unsigned range (0-4095).
+///
+/// @param instr Instruction to check and potentially rewrite.
+/// @param knownConsts Map of registers to known constant values.
+/// @param stats Statistics to update.
+/// @return true if folding was applied.
+[[nodiscard]] bool tryImmediateFolding(MInstr &instr,
+                                       const RegConstMap &knownConsts,
+                                       PeepholeStats &stats)
+{
+    if (instr.ops.size() != 3)
+        return false;
+
+    // Only fold add/sub for now (shift folding would need different checks)
+    MOpcode riOpc;
+    switch (instr.opc)
+    {
+        case MOpcode::AddRRR:
+            riOpc = MOpcode::AddRI;
+            break;
+        case MOpcode::SubRRR:
+            riOpc = MOpcode::SubRI;
+            break;
+        default:
+            return false;
+    }
+
+    // Check if rhs (ops[2]) is a known constant
+    auto rhsConst = getConstValue(instr.ops[2], knownConsts);
+    if (!rhsConst)
+        return false;
+
+    // AArch64 add/sub immediate: 12-bit unsigned (0-4095)
+    long long val = *rhsConst;
+    if (val < 0 || val > 4095)
+        return false;
+
+    // Rewrite: RRR → RI
+    instr.opc = riOpc;
+    instr.ops[2] = MOperand::immOp(val);
+    ++stats.immFoldings;
+    return true;
+}
+
+/// @brief Try to merge consecutive ldr/str into ldp/stp.
+///
+/// Pattern:
+///   ldr x1, [fp, #off1]
+///   ldr x2, [fp, #off2]
+///   where off2 == off1 + 8 → ldp x1, x2, [fp, #off1]
+///
+/// Also handles str→stp and FPR variants.
+///
+/// Constraints: LDP/STP immediate is 7-bit signed, scaled by 8 (range: -512..504).
+///
+/// @param instrs Instructions in the basic block.
+/// @param idx Index of the first instruction to check.
+/// @param stats Statistics to update.
+/// @return true if merge was applied.
+[[nodiscard]] bool tryLdpStpMerge(std::vector<MInstr> &instrs,
+                                   std::size_t idx,
+                                   PeepholeStats &stats)
+{
+    if (idx + 1 >= instrs.size())
+        return false;
+
+    auto &first = instrs[idx];
+    auto &second = instrs[idx + 1];
+
+    // Determine the pairing opcodes
+    MOpcode pairOpc;
+    bool isLoad = false;
+    bool isFPR = false;
+
+    if (first.opc == MOpcode::LdrRegFpImm && second.opc == MOpcode::LdrRegFpImm)
+    {
+        pairOpc = MOpcode::LdpRegFpImm;
+        isLoad = true;
+    }
+    else if (first.opc == MOpcode::StrRegFpImm && second.opc == MOpcode::StrRegFpImm)
+    {
+        pairOpc = MOpcode::StpRegFpImm;
+    }
+    else if (first.opc == MOpcode::LdrFprFpImm && second.opc == MOpcode::LdrFprFpImm)
+    {
+        pairOpc = MOpcode::LdpFprFpImm;
+        isLoad = true;
+        isFPR = true;
+    }
+    else if (first.opc == MOpcode::StrFprFpImm && second.opc == MOpcode::StrFprFpImm)
+    {
+        pairOpc = MOpcode::StpFprFpImm;
+        isFPR = true;
+    }
+    else
+    {
+        return false;
+    }
+
+    // Extract register and offset
+    // Load: ops[0]=reg, ops[1]=imm offset
+    // Store: ops[0]=reg, ops[1]=imm offset
+    if (first.ops.size() != 2 || second.ops.size() != 2)
+        return false;
+    if (!isPhysReg(first.ops[0]) || !isPhysReg(second.ops[0]))
+        return false;
+    if (first.ops[1].kind != MOperand::Kind::Imm || second.ops[1].kind != MOperand::Kind::Imm)
+        return false;
+
+    long long off1 = first.ops[1].imm;
+    long long off2 = second.ops[1].imm;
+
+    // Check for adjacency: off2 must be off1 + 8 (scaled by element size = 8 bytes)
+    if (off2 != off1 + 8)
+        return false;
+
+    // LDP/STP signed 7-bit scaled offset: range is -512..504 for 8-byte elements
+    if (off1 < -512 || off1 > 504)
+        return false;
+
+    // For loads, make sure the second load doesn't read from the register the first
+    // load writes to (data dependency). Also ensure they don't write the same register.
+    if (isLoad)
+    {
+        if (samePhysReg(first.ops[0], second.ops[0]))
+            return false; // can't ldp into the same register
+    }
+
+    (void)isFPR; // Used for opcode selection above
+
+    // Rewrite: pair the two instructions
+    first.opc = pairOpc;
+    MOperand reg1 = first.ops[0];
+    MOperand reg2 = second.ops[0];
+    MOperand offset = first.ops[1]; // use the lower offset
+    first.ops.clear();
+    first.ops.push_back(reg1);
+    first.ops.push_back(reg2);
+    first.ops.push_back(offset);
+
+    // Remove the second instruction
+    instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx + 1));
+    ++stats.ldpStpMerges;
+    return true;
+}
+
+/// @brief Try to fuse mul+add into madd.
+///
+/// Pattern:
+///   mul tmp, a, b
+///   add dst, tmp, c   → madd dst, a, b, c
+///   add dst, c, tmp   → madd dst, a, b, c
+///
+/// Only applies when tmp is not used after the add (dead after fusion).
+///
+/// @param instrs Instructions in the basic block.
+/// @param idx Index of the mul instruction.
+/// @param stats Statistics to update.
+/// @return true if fusion was applied.
+[[nodiscard]] bool tryMaddFusion(std::vector<MInstr> &instrs,
+                                  std::size_t idx,
+                                  PeepholeStats &stats)
+{
+    if (idx + 1 >= instrs.size())
+        return false;
+
+    auto &mulInstr = instrs[idx];
+    auto &addInstr = instrs[idx + 1];
+
+    // First must be mul dst, a, b
+    if (mulInstr.opc != MOpcode::MulRRR || mulInstr.ops.size() != 3)
+        return false;
+    // Second must be add dst2, x, y
+    if (addInstr.opc != MOpcode::AddRRR || addInstr.ops.size() != 3)
+        return false;
+
+    if (!isPhysReg(mulInstr.ops[0]))
+        return false;
+
+    const MOperand &mulDst = mulInstr.ops[0];
+    const MOperand &mulA = mulInstr.ops[1];
+    const MOperand &mulB = mulInstr.ops[2];
+
+    // Check if mul's dst is used by add as one of its source operands
+    MOperand addend; // the non-mul operand in the add
+    bool mulDstInLhs = samePhysReg(addInstr.ops[1], mulDst);
+    bool mulDstInRhs = samePhysReg(addInstr.ops[2], mulDst);
+
+    if (mulDstInLhs && !mulDstInRhs)
+    {
+        addend = addInstr.ops[2];
+    }
+    else if (mulDstInRhs && !mulDstInLhs)
+    {
+        addend = addInstr.ops[1];
+    }
+    else
+    {
+        return false; // mul dst not used by add, or used in both (self-add)
+    }
+
+    // Check that mul's dst is not used after the add instruction
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
+    {
+        if (usesReg(instrs[i], mulDst))
+            return false; // still live
+        if (definesReg(instrs[i], mulDst))
+            break; // redefined, safe
+    }
+
+    // Rewrite: mul+add → madd
+    const MOperand addDst = addInstr.ops[0];
+    mulInstr.opc = MOpcode::MAddRRRR;
+    mulInstr.ops.clear();
+    mulInstr.ops.push_back(addDst); // dst
+    mulInstr.ops.push_back(mulA);   // mul operand 1
+    mulInstr.ops.push_back(mulB);   // mul operand 2
+    mulInstr.ops.push_back(addend); // accumulator
+
+    instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx + 1));
+    ++stats.maddFusions;
+    return true;
+}
+
 } // namespace
 
 PeepholeStats runPeephole(MFunction &fn)
@@ -1292,11 +1731,45 @@ PeepholeStats runPeephole(MFunction &fn)
 
             // Try strength reduction (mul power-of-2 -> shift)
             (void)tryStrengthReduction(instr, knownConsts, stats);
+
+            // Try immediate folding (add/sub RRR -> RI when operand is known const)
+            (void)tryImmediateFolding(instr, knownConsts, stats);
         }
 
         // Pass 1.5: Copy propagation - replace uses with original sources
         // TODO: Disabled pending investigation of correctness issues
         // propagateCopies(instrs, stats);
+
+        // Pass 1.6: CBZ/CBNZ fusion (cmp #0 + b.eq/ne → cbz/cbnz)
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
+        {
+            if (tryCbzCbnzFusion(instrs, i, stats))
+            {
+                // Fusion erased one instruction; recheck at same index
+                if (i > 0)
+                    --i;
+            }
+        }
+
+        // Pass 1.7: MADD fusion (mul + add → madd)
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
+        {
+            if (tryMaddFusion(instrs, i, stats))
+            {
+                if (i > 0)
+                    --i;
+            }
+        }
+
+        // Pass 1.8: LDP/STP merging (consecutive ldr/str with adjacent offsets)
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
+        {
+            if (tryLdpStpMerge(instrs, i, stats))
+            {
+                if (i > 0)
+                    --i;
+            }
+        }
 
         // Pass 2: Try to fold consecutive moves
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
@@ -1331,7 +1804,7 @@ PeepholeStats runPeephole(MFunction &fn)
         removeDeadInstructions(instrs, stats);
     }
 
-    // Pass 5: Remove branches to the immediately following block
+    // Pass 5: Branch inversion and branch-to-next removal.
     // This must be done after per-block passes since it looks at adjacent blocks.
     for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
     {
@@ -1341,7 +1814,37 @@ PeepholeStats runPeephole(MFunction &fn)
         if (block.instrs.empty())
             continue;
 
-        // Check if the last instruction is an unconditional branch to the next block
+        // Branch inversion: b.cond .Ltarget; b .Lfallthrough
+        // when .Ltarget == next block → b.!cond .Lfallthrough (remove b .Lfallthrough)
+        if (block.instrs.size() >= 2)
+        {
+            auto &secondLast = block.instrs[block.instrs.size() - 2];
+            auto &last = block.instrs[block.instrs.size() - 1];
+
+            if (secondLast.opc == MOpcode::BCond && secondLast.ops.size() == 2 &&
+                secondLast.ops[0].kind == MOperand::Kind::Cond &&
+                secondLast.ops[1].kind == MOperand::Kind::Label &&
+                last.opc == MOpcode::Br && last.ops.size() == 1 &&
+                last.ops[0].kind == MOperand::Kind::Label)
+            {
+                // Check if bcond's target is the next block (fall-through)
+                if (secondLast.ops[1].label == nextBlock.name)
+                {
+                    const char *inv = invertCondition(secondLast.ops[0].cond);
+                    if (inv)
+                    {
+                        // Invert: b.cond .Lnext; b .Lother → b.!cond .Lother
+                        secondLast.ops[0] = MOperand::condOp(inv);
+                        secondLast.ops[1] = last.ops[0]; // retarget to unconditional branch's target
+                        block.instrs.pop_back();         // remove the unconditional branch
+                        ++stats.branchInversions;
+                        continue; // skip the branch-to-next check below
+                    }
+                }
+            }
+        }
+
+        // Remove branches to the immediately following block
         auto &lastInstr = block.instrs.back();
         if (isBranchTo(lastInstr, nextBlock.name))
         {

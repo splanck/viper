@@ -179,7 +179,7 @@ void lowerCall(MBasicBlock &block,
         }
         else // XMM
         {
-            if (preXmmUsed < target.maxXMMArgs)
+            if (preXmmUsed < target.maxFPArgs)
             {
                 ++preXmmUsed;
             }
@@ -264,7 +264,7 @@ void lowerCall(MBasicBlock &block,
         }
         else // XMM
         {
-            if (xmmUsed < target.maxXMMArgs)
+            if (xmmUsed < target.maxFPArgs)
             {
                 const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
                 if (!arg.isImm)
@@ -324,7 +324,7 @@ void lowerCall(MBasicBlock &block,
         }
         else // XMM
         {
-            if (xmmUsed < target.maxXMMArgs)
+            if (xmmUsed < target.maxFPArgs)
             {
                 const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
                 if (arg.isImm)

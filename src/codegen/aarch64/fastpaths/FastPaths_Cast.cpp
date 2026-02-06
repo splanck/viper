@@ -105,6 +105,12 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
             if (pIdx >= 0)
                 src = ctx.argOrder[static_cast<std::size_t>(pIdx)];
         }
+        // Save the original source value into scratch BEFORE modifying X0.
+        // When src == X0, the LSL+ASR below would clobber it, making the
+        // subsequent comparison always equal (never trapping on overflow).
+        bbMir.instrs.push_back(
+            MInstr{MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src)}});
+
         if (src != PhysReg::X0)
             bbMir.instrs.push_back(
                 MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
@@ -120,9 +126,7 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
                 {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::immOp(sh)}});
         }
 
-        // Compare restored value to source in scratch register
-        bbMir.instrs.push_back(
-            MInstr{MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src)}});
+        // Compare sign-extended value against the saved original
         bbMir.instrs.push_back(
             MInstr{MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(kScratchGPR)}});
 

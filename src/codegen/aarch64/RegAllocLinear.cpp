@@ -122,6 +122,7 @@
 
 #include "FrameBuilder.hpp"
 #include <algorithm>
+#include <cassert>
 #include <deque>
 #include <unordered_map>
 #include <unordered_set>
@@ -175,10 +176,10 @@ static bool isArgRegister(PhysReg r, const TargetInfo &ti)
 // Opcode classification helpers
 //-----------------------------------------------------------------------------
 
-/// @brief Check if an opcode uses a use-def-def register pattern.
+/// @brief Check if an opcode is a three-operand ALU operation (dst = src1 op src2).
 /// @param opc The machine opcode to check.
-/// @return True for three-operand ALU operations (dst = src1 op src2).
-static bool isUseDefDefLike(MOpcode opc)
+/// @return True for three-operand ALU operations where operand 0 is def-only.
+static bool isThreeAddrRRR(MOpcode opc)
 {
     switch (opc)
     {
@@ -190,6 +191,9 @@ static bool isUseDefDefLike(MOpcode opc)
         case MOpcode::AndRRR:
         case MOpcode::OrrRRR:
         case MOpcode::EorRRR:
+        case MOpcode::LslvRRR:
+        case MOpcode::LsrvRRR:
+        case MOpcode::AsrvRRR:
             return true;
         default:
             return false;
@@ -369,13 +373,8 @@ struct RegPools
     {
         // Allocator is responsible for ensuring pressure is handled before requesting.
         // Do not ever return the global scratch register here.
-        if (gprFree.empty())
-        {
-            // As a last resort, prefer a callee-saved slot that is not the scratch.
-            // This path should be unreachable when maybeSpillForPressure is used correctly.
-            // Choose X19 which is callee-saved and never used as global scratch.
-            return PhysReg::X19;
-        }
+        assert(!gprFree.empty() &&
+               "GPR pool exhausted — maybeSpillForPressure should have freed a register");
         auto r = gprFree.front();
         gprFree.pop_front();
         return r;
@@ -390,8 +389,8 @@ struct RegPools
     ///       O(n) linear search through ti.calleeSavedGPR.
     PhysReg takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/)
     {
-        if (gprFree.empty())
-            return PhysReg::X19;
+        assert(!gprFree.empty() &&
+               "GPR pool exhausted — maybeSpillForPressure should have freed a register");
 
         // Try to find a callee-saved register first using O(1) set lookup
         for (auto it = gprFree.begin(); it != gprFree.end(); ++it)
@@ -909,20 +908,22 @@ class LinearAllocator
                 break;
         }
 
-        if (isUseDefDefLike(ins.opc))
+        // AArch64 3-address ALU: dst = lhs op rhs
+        // Operand 0 is def-only (not read by the instruction).
+        if (isThreeAddrRRR(ins.opc))
         {
             if (idx == 0)
-                return {true, true};
+                return {false, true};
             if (idx == 1 || idx == 2)
                 return {true, false};
         }
 
-        // FP RRR behave like integer RRR
+        // FP RRR behave like integer RRR (3-address: dst = lhs op rhs)
         if (ins.opc == MOpcode::FAddRRR || ins.opc == MOpcode::FSubRRR ||
             ins.opc == MOpcode::FMulRRR || ins.opc == MOpcode::FDivRRR)
         {
             if (idx == 0)
-                return {true, true};
+                return {false, true};
             if (idx == 1 || idx == 2)
                 return {true, false};
         }
@@ -976,22 +977,51 @@ class LinearAllocator
             return {false, false};    // label is neither
         }
 
-        // MSubRRRR: msub dst, mul1, mul2, sub => dst = sub - mul1*mul2
-        // Operands: [0]=dst (def), [1]=mul1 (use), [2]=mul2 (use), [3]=sub (use)
-        if (ins.opc == MOpcode::MSubRRRR)
+        // MSubRRRR / MAddRRRR: msub/madd dst, mul1, mul2, acc
+        // Operands: [0]=dst (def), [1]=mul1 (use), [2]=mul2 (use), [3]=acc (use)
+        if (ins.opc == MOpcode::MSubRRRR || ins.opc == MOpcode::MAddRRRR)
         {
             if (idx == 0)
                 return {false, true}; // dst is def-only
             return {true, false};     // all others are use-only
         }
 
-        // Cbz: cbz reg, label => branch if reg is zero
+        // Cbz / Cbnz: cbz/cbnz reg, label => branch if reg is zero/nonzero
         // Operands: [0]=reg (use), [1]=label
-        if (ins.opc == MOpcode::Cbz)
+        if (ins.opc == MOpcode::Cbz || ins.opc == MOpcode::Cbnz)
         {
             if (idx == 0)
                 return {true, false}; // reg is use
             return {false, false};    // label is neither
+        }
+
+        // Csel: csel dst, trueReg, falseReg, cond
+        // Operands: [0]=dst (def), [1]=trueReg (use), [2]=falseReg (use), [3]=cond
+        if (ins.opc == MOpcode::Csel)
+        {
+            if (idx == 0)
+                return {false, true}; // dst is def-only
+            if (idx == 1 || idx == 2)
+                return {true, false}; // sources are use-only
+            return {false, false};    // cond is neither
+        }
+
+        // LdpRegFpImm / LdpFprFpImm: ldp r1, r2, [fp, #offset]
+        // Operands: [0]=r1 (def), [1]=r2 (def), [2]=offset (imm)
+        if (ins.opc == MOpcode::LdpRegFpImm || ins.opc == MOpcode::LdpFprFpImm)
+        {
+            if (idx == 0 || idx == 1)
+                return {false, true}; // both dests are def-only
+            return {false, false};    // offset
+        }
+
+        // StpRegFpImm / StpFprFpImm: stp r1, r2, [fp, #offset]
+        // Operands: [0]=r1 (use), [1]=r2 (use), [2]=offset (imm)
+        if (ins.opc == MOpcode::StpRegFpImm || ins.opc == MOpcode::StpFprFpImm)
+        {
+            if (idx == 0 || idx == 1)
+                return {true, false}; // both sources are use-only
+            return {false, false};    // offset
         }
 
         return {true, false};

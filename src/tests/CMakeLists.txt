@@ -83,6 +83,7 @@ if (NOT WIN32)
         test_emit_aarch64_mir_frameplan
         test_codegen_arm64_peephole
         test_aarch64_rodata_pool
+        test_codegen_review_fixes
     )
     foreach(_test IN LISTS _AARCH64_CODEGEN_ONLY_TESTS)
         _aarch64_add_test(${_test}

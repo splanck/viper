@@ -384,6 +384,38 @@ if (NOT TARGET test_codegen_x86_64_lowering_rules)
     viper_add_ctest(test_codegen_x86_64_lowering_rules test_codegen_x86_64_lowering_rules)
 endif ()
 
+if (NOT TARGET test_codegen_review_x64_frame)
+    viper_add_test(
+            test_codegen_review_x64_frame
+            ${VIPER_TESTS_DIR}/unit/codegen/test_codegen_review_x64_frame.cpp)
+    target_link_libraries(test_codegen_review_x64_frame PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_review_x64_frame test_codegen_review_x64_frame)
+endif ()
+
+if (NOT TARGET test_codegen_review_fixes_batch2)
+    viper_add_test(
+            test_codegen_review_fixes_batch2
+            ${VIPER_TESTS_DIR}/unit/codegen/test_codegen_review_fixes_batch2.cpp)
+    target_link_libraries(test_codegen_review_fixes_batch2 PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_review_fixes_batch2 test_codegen_review_fixes_batch2)
+endif ()
+
+if (NOT TARGET test_codegen_review_fixes_batch3)
+    viper_add_test(
+            test_codegen_review_fixes_batch3
+            ${VIPER_TESTS_DIR}/unit/codegen/test_codegen_review_fixes_batch3.cpp)
+    target_link_libraries(test_codegen_review_fixes_batch3 PRIVATE viper_codegen_x86_64 il_codegen_aarch64)
+    viper_add_ctest(test_codegen_review_fixes_batch3 test_codegen_review_fixes_batch3)
+endif ()
+
+if (NOT TARGET test_codegen_peephole_optimizations)
+    viper_add_test(
+            test_codegen_peephole_optimizations
+            ${VIPER_TESTS_DIR}/unit/codegen/test_codegen_peephole_optimizations.cpp)
+    target_link_libraries(test_codegen_peephole_optimizations PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_codegen_peephole_optimizations test_codegen_peephole_optimizations)
+endif ()
+
 # Bytecode VM tests
 if (NOT TARGET test_bytecode_vm)
     viper_add_test(test_bytecode_vm ${VIPER_TESTS_DIR}/unit/test_bytecode_vm.cpp)

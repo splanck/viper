@@ -146,6 +146,22 @@ static std::string mangleCallTarget(const std::string &name)
     return mangleSymbol(mapRuntimeSymbol(name));
 }
 
+/// @brief Sanitize a label for assembly output.
+/// @details Replaces minus signs with 'N' to prevent them being interpreted
+///          as subtraction in assembly syntax. Matches x86_64 convention.
+/// @param name Original label identifier.
+/// @return Sanitized copy suitable for assembly.
+static std::string sanitizeLabel(const std::string &name)
+{
+    std::string result = name;
+    for (char &ch : result)
+    {
+        if (ch == '-')
+            ch = 'N';
+    }
+    return result;
+}
+
 void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const
 {
     // Keep directives minimal and assembler-agnostic for testing.
@@ -425,7 +441,10 @@ void AsmEmitter::emitSubSp(std::ostream &os, long long bytes) const
 {
     // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
     // For larger frames, we need to break it into multiple instructions.
-    constexpr long long kMaxImm = 4095;
+    // Use 4080 (not 4095) to maintain 16-byte SP alignment between steps —
+    // AArch64 requires SP to be 16-byte aligned when accessed via SP-relative
+    // addressing, and a signal/interrupt between steps would see misaligned SP.
+    constexpr long long kMaxImm = 4080;
     while (bytes > kMaxImm)
     {
         os << "  sub sp, sp, #" << kMaxImm << "\n";
@@ -441,7 +460,8 @@ void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const
 {
     // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
     // For larger frames, we need to break it into multiple instructions.
-    constexpr long long kMaxImm = 4095;
+    // Use 4080 (not 4095) to maintain 16-byte SP alignment — see emitSubSp.
+    constexpr long long kMaxImm = 4080;
     while (bytes > kMaxImm)
     {
         os << "  add sp, sp, #" << kMaxImm << "\n";
@@ -696,10 +716,12 @@ void AsmEmitter::emitFMovRR(std::ostream &os, PhysReg dst, PhysReg src) const
 
 void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const
 {
+    const auto savedFlags = os.flags();
     os << std::fixed;
     os << "  fmov ";
     printD(os, dst);
     os << ", #" << imm << "\n";
+    os.flags(savedFlags);
 }
 
 void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const
@@ -840,9 +862,8 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
 {
     if (!bb.name.empty())
-        os << bb.name << ":\n";
+        os << sanitizeLabel(bb.name) << ":\n";
     for (const auto &mi : bb.instrs)
-        /// @brief Emits instruction.
         emitInstruction(os, mi);
 }
 
@@ -905,7 +926,8 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             os << "  blr " << rn(getReg(mi.ops[0])) << "\n";
             return;
         case MOpcode::Cbz:
-            os << "  cbz " << rn(getReg(mi.ops[0])) << ", " << mi.ops[1].label << "\n";
+            os << "  cbz " << rn(getReg(mi.ops[0])) << ", " << sanitizeLabel(mi.ops[1].label)
+               << "\n";
             return;
         case MOpcode::LslvRRR:
             emitLslvRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
@@ -922,6 +944,50 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         case MOpcode::FRintN:
             emitFRintN(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
             return;
+        case MOpcode::Br:
+            os << "  b " << sanitizeLabel(mi.ops[0].label) << "\n";
+            return;
+        case MOpcode::BCond:
+            os << "  b." << mi.ops[0].cond << " " << sanitizeLabel(mi.ops[1].label) << "\n";
+            return;
+        case MOpcode::Cbnz:
+            os << "  cbnz " << rn(getReg(mi.ops[0])) << ", " << sanitizeLabel(mi.ops[1].label)
+               << "\n";
+            return;
+        case MOpcode::MAddRRRR:
+            os << "  madd " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
+               << rn(getReg(mi.ops[2])) << ", " << rn(getReg(mi.ops[3])) << "\n";
+            return;
+        case MOpcode::Csel:
+            os << "  csel " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
+               << rn(getReg(mi.ops[2])) << ", " << mi.ops[3].cond << "\n";
+            return;
+        case MOpcode::LdpRegFpImm:
+            os << "  ldp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1]))
+               << ", [x29, #" << getImm(mi.ops[2]) << "]\n";
+            return;
+        case MOpcode::StpRegFpImm:
+            os << "  stp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1]))
+               << ", [x29, #" << getImm(mi.ops[2]) << "]\n";
+            return;
+        case MOpcode::LdpFprFpImm:
+        {
+            os << "  ldp ";
+            printD(os, getReg(mi.ops[0]));
+            os << ", ";
+            printD(os, getReg(mi.ops[1]));
+            os << ", [x29, #" << getImm(mi.ops[2]) << "]\n";
+            return;
+        }
+        case MOpcode::StpFprFpImm:
+        {
+            os << "  stp ";
+            printD(os, getReg(mi.ops[0]));
+            os << ", ";
+            printD(os, getReg(mi.ops[1]));
+            os << ", [x29, #" << getImm(mi.ops[2]) << "]\n";
+            return;
+        }
         default:
             break;
     }

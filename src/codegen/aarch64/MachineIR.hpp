@@ -111,6 +111,14 @@ enum class MOpcode
     // Address materialisation for globals (Mach-O style)
     AdrPage,    // dst, label  => adrp dst, label@PAGE
     AddPageOff, // dst, base, label => add dst, base, label@PAGEOFF
+    // --- Peephole optimization opcodes ---
+    Cbnz,        // cbnz reg, label (compare and branch if not zero)
+    MAddRRRR,    // madd dst, mul1, mul2, add (dst = add + mul1*mul2)
+    Csel,        // csel dst, trueReg, falseReg, cond
+    LdpRegFpImm, // ldp reg1, reg2, [fp, #offset]
+    StpRegFpImm, // stp reg1, reg2, [fp, #offset]
+    LdpFprFpImm, // ldp d1, d2, [fp, #offset]
+    StpFprFpImm, // stp d1, d2, [fp, #offset]
 };
 
 /// @brief Represents a machine register (physical or virtual).

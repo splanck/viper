@@ -97,8 +97,8 @@ class LinearScanAllocator
     /// @details Indexed by static_cast<int>(PhysReg). Avoids linear search in CALL handling.
     std::bitset<32> callerSavedGPRBits_{};
 
-    /// @brief Precomputed bitset of caller-saved XMM registers for O(1) lookup.
-    std::bitset<32> callerSavedXMMBits_{};
+    /// @brief Precomputed bitset of caller-saved FPR registers for O(1) lookup.
+    std::bitset<32> callerSavedFPRBits_{};
 
     /// @brief Populate the free-register pools from the target description.
     /// @details Queries the @ref TargetInfo to enumerate allocatable registers for each class

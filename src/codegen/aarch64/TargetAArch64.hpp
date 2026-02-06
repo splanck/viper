@@ -15,7 +15,8 @@
 
 #pragma once
 
-#include <array>
+#include "codegen/common/TargetInfoBase.hpp"
+
 #include <optional>
 #include <vector>
 
@@ -190,36 +191,8 @@ inline constexpr PhysReg kScratchFPR = PhysReg::V16;
 ///
 /// @see CallingConvention for a higher-level interface to calling convention rules
 /// @see darwinTarget() for the macOS/Darwin target instance
-struct TargetInfo
+struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs>
 {
-    /// @brief Caller-saved GPRs that may be clobbered by function calls.
-    /// Functions can use these freely without saving/restoring.
-    std::vector<PhysReg> callerSavedGPR{};
-
-    /// @brief Callee-saved GPRs that must be preserved across function calls.
-    /// If a function uses these, it must save and restore them in the prologue/epilogue.
-    std::vector<PhysReg> calleeSavedGPR{};
-
-    /// @brief Caller-saved FPRs that may be clobbered by function calls.
-    std::vector<PhysReg> callerSavedFPR{};
-
-    /// @brief Callee-saved FPRs (only D-register portion is preserved per AAPCS64).
-    std::vector<PhysReg> calleeSavedFPR{};
-
-    /// @brief Order of GPRs for passing integer/pointer arguments (x0-x7).
-    std::array<PhysReg, kMaxGPRArgs> intArgOrder{};
-
-    /// @brief Order of FPRs for passing floating-point arguments (v0-v7).
-    std::array<PhysReg, kMaxFPRArgs> f64ArgOrder{};
-
-    /// @brief Register for returning integer/pointer values (x0).
-    PhysReg intReturnReg{PhysReg::X0};
-
-    /// @brief Register for returning floating-point values (v0/d0).
-    PhysReg f64ReturnReg{PhysReg::V0};
-
-    /// @brief Required stack alignment in bytes (16 for AAPCS64).
-    unsigned stackAlignment{16U};
 };
 
 // =============================================================================

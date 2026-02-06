@@ -134,8 +134,10 @@ TEST(Arm64CLI, ArrayAccess_StructInArray)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect: mul for struct size scaling, multiple adds
-    EXPECT_NE(asmText.find("mul "), std::string::npos);
+    // Expect: mul or madd (peephole fuses mul+add → madd) for struct size scaling
+    const bool hasMul = asmText.find("mul ") != std::string::npos;
+    const bool hasMadd = asmText.find("madd ") != std::string::npos;
+    EXPECT_TRUE(hasMul || hasMadd);
     EXPECT_NE(asmText.find(" add "), std::string::npos);
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
 }

@@ -256,7 +256,11 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
     }
     assert(stringLiterals.size() == stringLengths.size());
     static_cast<void>(stringLengths);
+#if defined(__APPLE__)
+    os << ".section __TEXT,__const\n";
+#else
     os << ".section .rodata\n";
+#endif
     for (std::size_t i = 0; i < stringLiterals.size(); ++i)
     {
         std::string label;
@@ -1102,6 +1106,7 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
         case 11:
             return "np";
         default:
+            assert(false && "unknown condition code in conditionSuffix");
             return "e";
     }
 }

@@ -42,13 +42,19 @@ struct PeepholeStats
     int branchesToNextRemoved{0};   ///< Number of branches to next block removed.
     int blocksReordered{0};         ///< Number of blocks reordered for layout.
     int copiesPropagated{0};        ///< Number of copy propagations applied.
+    int cbzFusions{0};              ///< Number of cmp+b.cond → cbz/cbnz fusions.
+    int maddFusions{0};             ///< Number of mul+add → madd fusions.
+    int ldpStpMerges{0};            ///< Number of ldr/str pairs merged into ldp/stp.
+    int branchInversions{0};        ///< Number of branch inversions applied.
+    int immFoldings{0};             ///< Number of RRR→RI immediate foldings.
 
     /// @brief Total number of optimizations applied.
     [[nodiscard]] int total() const noexcept
     {
         return identityMovesRemoved + identityFMovesRemoved + consecutiveMovsFolded +
                deadInstructionsRemoved + cmpZeroToTst + arithmeticIdentities + strengthReductions +
-               branchesToNextRemoved + blocksReordered + copiesPropagated;
+               branchesToNextRemoved + blocksReordered + copiesPropagated + cbzFusions +
+               maddFusions + ldpStpMerges + branchInversions + immFoldings;
     }
 };
 

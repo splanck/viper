@@ -212,26 +212,40 @@ bool materializeValueToVReg(const il::core::Value &v,
         // If it's a function entry param (in entry block), move from ABI phys -> vreg.
         // This only applies to entry block parameters, not block parameters in other blocks.
         int pIdx = indexOfParam(bb, v.id);
-        if (pIdx >= 0 && pIdx < static_cast<int>(ti.intArgOrder.size()))
+        if (pIdx >= 0 && pIdx < static_cast<int>(bb.params.size()))
         {
             // Determine param type
             RegClass cls = RegClass::GPR;
-            if (pIdx < static_cast<int>(bb.params.size()) &&
-                bb.params[static_cast<std::size_t>(pIdx)].type.kind == il::core::Type::Kind::F64)
+            if (bb.params[static_cast<std::size_t>(pIdx)].type.kind == il::core::Type::Kind::F64)
             {
                 cls = RegClass::FPR;
             }
+
+            // AAPCS64: GPR and FPR arguments use independent register sequences.
+            // Count how many args of the same class precede this parameter.
+            int classIdx = 0;
+            for (int i = 0; i < pIdx; ++i)
+            {
+                const bool paramIsFP =
+                    bb.params[static_cast<std::size_t>(i)].type.kind == il::core::Type::Kind::F64;
+                if ((cls == RegClass::FPR) == paramIsFP)
+                    ++classIdx;
+            }
+
+            const auto &argOrder = (cls == RegClass::FPR) ? ti.f64ArgOrder : ti.intArgOrder;
+            if (classIdx >= static_cast<int>(argOrder.size()))
+                return false; // Stack parameter — not yet handled here
+
             outVReg = nextVRegId++;
             outCls = cls;
+            const PhysReg src = argOrder[static_cast<std::size_t>(classIdx)];
             if (cls == RegClass::GPR)
             {
-                const PhysReg src = ti.intArgOrder[static_cast<std::size_t>(pIdx)];
                 out.instrs.push_back(
                     MInstr{MOpcode::MovRR, {MOperand::vregOp(cls, outVReg), MOperand::regOp(src)}});
             }
             else
             {
-                const PhysReg src = ti.f64ArgOrder[static_cast<std::size_t>(pIdx)];
                 out.instrs.push_back(MInstr{
                     MOpcode::FMovRR, {MOperand::vregOp(cls, outVReg), MOperand::regOp(src)}});
             }
@@ -687,11 +701,6 @@ bool lowerSRemChk0(const il::core::Instr &ins,
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
-    // Create trap block
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-
     // Compute quotient: sdiv tmp, lhs, rhs
     const uint16_t quotient = ctx.nextVRegId++;
     out.instrs.push_back(MInstr{MOpcode::SDivRRR,
@@ -707,6 +716,12 @@ bool lowerSRemChk0(const il::core::Instr &ins,
                                  MOperand::vregOp(RegClass::GPR, quotient),
                                  MOperand::vregOp(RegClass::GPR, rhs),
                                  MOperand::vregOp(RegClass::GPR, lhs)}});
+
+    // Create trap block AFTER all uses of `out` — emplace_back may reallocate
+    // the blocks vector, invalidating the `out` reference.
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = trapLabel;
+    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 
     return true;
 }
@@ -756,11 +771,6 @@ bool lowerSDivChk0(const il::core::Instr &ins,
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
-    // Create trap block
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-
     // Compute division: sdiv dst, lhs, rhs
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
@@ -768,6 +778,12 @@ bool lowerSDivChk0(const il::core::Instr &ins,
                                 {MOperand::vregOp(RegClass::GPR, dst),
                                  MOperand::vregOp(RegClass::GPR, lhs),
                                  MOperand::vregOp(RegClass::GPR, rhs)}});
+
+    // Create trap block AFTER all uses of `out` — emplace_back may reallocate
+    // the blocks vector, invalidating the `out` reference.
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = trapLabel;
+    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 
     return true;
 }
@@ -817,11 +833,6 @@ bool lowerUDivChk0(const il::core::Instr &ins,
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
-    // Create trap block
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-
     // Compute division: udiv dst, lhs, rhs
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
@@ -829,6 +840,12 @@ bool lowerUDivChk0(const il::core::Instr &ins,
                                 {MOperand::vregOp(RegClass::GPR, dst),
                                  MOperand::vregOp(RegClass::GPR, lhs),
                                  MOperand::vregOp(RegClass::GPR, rhs)}});
+
+    // Create trap block AFTER all uses of `out` — emplace_back may reallocate
+    // the blocks vector, invalidating the `out` reference.
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = trapLabel;
+    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 
     return true;
 }
@@ -878,11 +895,6 @@ bool lowerURemChk0(const il::core::Instr &ins,
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
-    // Create trap block
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-
     // Compute quotient: udiv tmp, lhs, rhs
     const uint16_t quotient = ctx.nextVRegId++;
     out.instrs.push_back(MInstr{MOpcode::UDivRRR,
@@ -898,6 +910,12 @@ bool lowerURemChk0(const il::core::Instr &ins,
                                  MOperand::vregOp(RegClass::GPR, quotient),
                                  MOperand::vregOp(RegClass::GPR, rhs),
                                  MOperand::vregOp(RegClass::GPR, lhs)}});
+
+    // Create trap block AFTER all uses of `out` — emplace_back may reallocate
+    // the blocks vector, invalidating the `out` reference.
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = trapLabel;
+    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 
     return true;
 }
@@ -992,17 +1010,18 @@ bool lowerIdxChk(const il::core::Instr &ins,
             MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
     }
 
-    // Create trap block
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-
     // Result is the index value (pass-through)
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
     out.instrs.push_back(MInstr{MOpcode::MovRR,
                                 {MOperand::vregOp(RegClass::GPR, dst),
                                  MOperand::vregOp(RegClass::GPR, idxV)}});
+
+    // Create trap block AFTER all uses of `out` — emplace_back may reallocate
+    // the blocks vector, invalidating the `out` reference.
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = trapLabel;
+    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 
     return true;
 }

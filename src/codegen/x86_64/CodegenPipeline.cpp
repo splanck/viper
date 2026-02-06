@@ -23,7 +23,7 @@
 
 #include "codegen/x86_64/CodegenPipeline.hpp"
 
-#include "codegen/common/RuntimeComponents.hpp"
+#include "codegen/common/LinkerSupport.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
@@ -32,14 +32,12 @@
 #include "common/RunProcess.hpp"
 #include "tools/common/module_loader.hpp"
 
-#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <optional>
 #include <sstream>
 #include <string_view>
-#include <unordered_set>
 
 #if !defined(_WIN32)
 #include <sys/wait.h>
@@ -360,195 +358,33 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     const RunResult link = run_process(cmd);
 #else
-    auto fileExists = [](const std::filesystem::path &path) -> bool
-    {
-        std::error_code ec;
-        return std::filesystem::exists(path, ec);
-    };
+    using namespace viper::codegen::common;
 
-    auto readFile = [&](const std::filesystem::path &path, std::string &dst) -> bool
-    {
-        std::ifstream in(path, std::ios::binary);
-        if (!in)
-            return false;
-        std::ostringstream ss;
-        ss << in.rdbuf();
-        dst = ss.str();
-        return true;
-    };
-
-    auto findBuildDir = [&]() -> std::optional<std::filesystem::path>
-    {
-        std::error_code ec;
-        std::filesystem::path cur = std::filesystem::current_path(ec);
-        if (!ec)
-        {
-            for (int depth = 0; depth < 8; ++depth)
-            {
-                if (fileExists(cur / "CMakeCache.txt"))
-                    return cur;
-                if (!cur.has_parent_path())
-                    break;
-                cur = cur.parent_path();
-            }
-        }
-
-        const std::filesystem::path defaultBuild = std::filesystem::path("build");
-        if (fileExists(defaultBuild / "CMakeCache.txt"))
-            return defaultBuild;
-
-        return std::nullopt;
-    };
-
-    auto parseRuntimeSymbols = [](std::string_view text) -> std::unordered_set<std::string>
-    {
-        auto isIdent = [](unsigned char c) -> bool { return std::isalnum(c) || c == '_'; };
-
-        std::unordered_set<std::string> symbols;
-        for (std::size_t i = 0; i + 3 < text.size(); ++i)
-        {
-            std::size_t start = std::string_view::npos;
-            std::size_t boundary = std::string_view::npos;
-            if (text[i] == 'r' && text[i + 1] == 't' && text[i + 2] == '_')
-            {
-                start = i;
-                boundary = (start == 0) ? std::string_view::npos : (start - 1);
-            }
-            else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' &&
-                     text[i + 3] == '_')
-            {
-                start = i + 1;
-                boundary = (i == 0) ? std::string_view::npos : (i - 1);
-            }
-
-            if (start == std::string_view::npos)
-                continue;
-            if (boundary != std::string_view::npos &&
-                isIdent(static_cast<unsigned char>(text[boundary])))
-                continue;
-
-            std::size_t j = start;
-            while (j < text.size() && isIdent(static_cast<unsigned char>(text[j])))
-                ++j;
-
-            if (j > start)
-                symbols.emplace(text.substr(start, j - start));
-            i = j;
-        }
-        return symbols;
-    };
-
-    std::string asmText;
-    if (!readFile(asmPath, asmText))
-    {
-        err << "error: unable to read '" << asmPath.string() << "' for runtime library selection\n";
-        return 1;
-    }
-
-    const std::unordered_set<std::string> symbols = parseRuntimeSymbols(asmText);
-
-    const auto requiredComponents = viper::codegen::resolveRequiredComponents(symbols);
-
-    const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
-    const std::filesystem::path buildDir = buildDirOpt.value_or(std::filesystem::path{});
-
-    auto runtimeArchivePath = [&](std::string_view libBaseName) -> std::filesystem::path
-    {
-        if (!buildDir.empty())
-            return buildDir / "src/runtime" /
-                   (std::string("lib") + std::string(libBaseName) + ".a");
-        return std::filesystem::path("src/runtime") /
-               (std::string("lib") + std::string(libBaseName) + ".a");
-    };
-
-    std::vector<std::pair<std::string, std::filesystem::path>> requiredArchives;
-    for (auto comp : requiredComponents)
-    {
-        auto name = viper::codegen::archiveNameForComponent(comp);
-        requiredArchives.emplace_back(std::string(name), runtimeArchivePath(name));
-    }
-
-    auto hasComponent = [&](RtComponent c) {
-        for (auto rc : requiredComponents)
-            if (rc == c) return true;
-        return false;
-    };
-
-    std::vector<std::string> missingTargets;
-    if (!buildDir.empty())
-    {
-        for (const auto &[tgt, path] : requiredArchives)
-        {
-            if (!fileExists(path))
-                missingTargets.push_back(tgt);
-        }
-        if (hasComponent(RtComponent::Graphics))
-        {
-            const std::filesystem::path gfxLib = buildDir / "lib" / "libvipergfx.a";
-            if (!fileExists(gfxLib))
-                missingTargets.push_back("vipergfx");
-        }
-        if (!missingTargets.empty())
-        {
-            std::vector<std::string> cmd = {"cmake", "--build", buildDir.string(), "--target"};
-            cmd.insert(cmd.end(), missingTargets.begin(), missingTargets.end());
-            const RunResult build = run_process(cmd);
-            if (!build.out.empty())
-                out << build.out;
-#if defined(_WIN32)
-            if (!build.err.empty())
-                err << build.err;
-#endif
-            if (build.exit_code != 0)
-            {
-                err << "error: failed to build required runtime libraries in '" << buildDir.string()
-                    << "'\n";
-                return 1;
-            }
-        }
-    }
+    LinkContext ctx;
+    if (const int rc = prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0)
+        return rc;
 
     std::vector<std::string> cmd = {kCcCommand, asmPath.string()};
-    auto appendArchiveIf = [&](std::string_view name)
+    appendArchives(ctx, cmd);
     {
-        const std::filesystem::path path = runtimeArchivePath(name);
-        if (fileExists(path))
-            cmd.push_back(path.string());
-    };
-
-    // Reverse the component order for linking (dependents before their dependencies).
-    for (auto it = requiredComponents.rbegin(); it != requiredComponents.rend(); ++it)
-        appendArchiveIf(viper::codegen::archiveNameForComponent(*it));
-
-    if (hasComponent(RtComponent::Graphics))
-    {
-        std::filesystem::path gfxLib;
-        if (!buildDir.empty())
-            gfxLib = buildDir / "lib" / "libvipergfx.a";
-        else
-            gfxLib = std::filesystem::path("lib") / "libvipergfx.a";
-        if (fileExists(gfxLib))
-            cmd.push_back(gfxLib.string());
+        std::vector<std::string> frameworks;
 #if defined(__APPLE__)
-        cmd.push_back("-framework");
-        cmd.push_back("Cocoa");
+        frameworks.push_back("Cocoa");
 #endif
+        appendGraphicsLibs(ctx, cmd, frameworks);
     }
 
 #if defined(__APPLE__)
     cmd.push_back("-Wl,-dead_strip");
-    // Set stack size (default 8MB for better recursion support)
-    // macOS requires size in hex
     const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
     std::ostringstream stackArg;
     stackArg << "-Wl,-stack_size,0x" << std::hex << effStack;
     cmd.push_back(stackArg.str());
 #else
     cmd.push_back("-Wl,--gc-sections");
-    if (hasComponent(RtComponent::Threads))
+    if (hasComponent(ctx, RtComponent::Threads))
         cmd.push_back("-pthread");
     cmd.push_back("-lm");
-    // Set stack size (default 8MB for better recursion support)
     const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
     cmd.push_back("-Wl,-z,stack-size=" + std::to_string(effStack));
 #endif

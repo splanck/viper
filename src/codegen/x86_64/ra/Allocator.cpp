@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <limits>
 
 /// @file
 /// @brief Implements the x86-64 linear-scan register allocator.
@@ -91,8 +92,8 @@ LinearScanAllocator::LinearScanAllocator(MFunction &func,
     // This avoids O(n) linear search through vectors on every call instruction.
     for (PhysReg reg : target_.callerSavedGPR)
         callerSavedGPRBits_.set(static_cast<std::size_t>(reg));
-    for (PhysReg reg : target_.callerSavedXMM)
-        callerSavedXMMBits_.set(static_cast<std::size_t>(reg));
+    for (PhysReg reg : target_.callerSavedFPR)
+        callerSavedFPRBits_.set(static_cast<std::size_t>(reg));
 }
 
 /// @brief Execute the allocation pipeline over the entire function.
@@ -210,8 +211,8 @@ void LinearScanAllocator::buildPools()
                                   [](PhysReg reg) { return isReservedGPR(reg); }),
                    freeGPR_.end());
 
-    appendRegs(freeXMM_, target_.callerSavedXMM);
-    appendRegs(freeXMM_, target_.calleeSavedXMM);
+    appendRegs(freeXMM_, target_.callerSavedFPR);
+    appendRegs(freeXMM_, target_.calleeSavedFPR);
 }
 
 /// @brief Access the register pool matching a class.
@@ -307,24 +308,46 @@ void LinearScanAllocator::releaseRegister(PhysReg phys, RegClass cls)
 }
 
 /// @brief Spill one active virtual register to free a physical register.
-/// @details The allocator selects the earliest active value, requests that the
-///          spiller emit a store, and returns the freed register to the pool.
-///          Values that already lack a physical register are skipped to avoid
-///          redundant work. Uses lifetime-based slot reuse when interval info
-///          is available to reduce stack frame size.
+/// @details The allocator selects the active value whose live interval ends
+///          furthest from the current point (Belady-style heuristic), requests
+///          that the spiller emit a store, and returns the freed register to the
+///          pool.  Values that already lack a physical register are skipped to
+///          avoid redundant work. Uses lifetime-based slot reuse when interval
+///          info is available to reduce stack frame size.
 /// @param cls Register class experiencing pressure.
 /// @param prefix Instruction list capturing generated spill code.
 void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
 {
     auto &active = activeFor(cls);
+    assert(!active.empty() && "spillOne called with empty active set — pool/active bookkeeping error");
     if (active.empty())
     {
         return;
     }
-    // Use begin() iterator since unordered_set doesn't have front()
-    auto victimIt = active.begin();
-    const uint16_t victimId = *victimIt;
-    active.erase(victimIt);
+    // Deterministic victim selection: pick the active vreg whose live interval
+    // ends furthest from the current instruction (Belady-style heuristic).
+    // Ties are broken by vreg ID for determinism, since unordered_set iteration
+    // order is implementation-defined.
+    uint16_t victimId = 0;
+    bool found = false;
+    std::size_t furthestEnd = 0;
+    for (uint16_t vreg : active)
+    {
+        auto stateIt = states_.find(vreg);
+        if (stateIt == states_.end() || !stateIt->second.hasPhys)
+            continue;
+        const auto *interval = intervals_.lookup(vreg);
+        const std::size_t end = interval ? interval->end : std::numeric_limits<std::size_t>::max();
+        if (!found || end > furthestEnd || (end == furthestEnd && vreg > victimId))
+        {
+            furthestEnd = end;
+            victimId = vreg;
+            found = true;
+        }
+    }
+    if (!found)
+        return;
+    active.erase(victimId);
     auto it = states_.find(victimId);
     if (it == states_.end())
     {
@@ -531,7 +554,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             // Use precomputed bitsets for O(1) caller-saved lookup instead of O(n) linear search
             auto isCallerSaved = [this](PhysReg reg, RegClass cls)
             {
-                const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedXMMBits_;
+                const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
                 return bits.test(static_cast<std::size_t>(reg));
             };
 

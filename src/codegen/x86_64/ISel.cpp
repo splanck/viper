@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -144,8 +145,13 @@ void canonicaliseAddSub(MInstr &instr)
         case MOpcode::SUBrr:
             if (auto *imm = asImm(instr.operands[1]))
             {
-                imm->val = -imm->val;
-                instr.opcode = MOpcode::ADDri;
+                // Guard against INT64_MIN: negation of the minimum signed value
+                // is undefined behaviour in C++.  Leave the SUB form intact.
+                if (imm->val != std::numeric_limits<int64_t>::min())
+                {
+                    imm->val = -imm->val;
+                    instr.opcode = MOpcode::ADDri;
+                }
             }
             break;
         default:
