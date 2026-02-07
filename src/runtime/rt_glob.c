@@ -149,7 +149,7 @@ static void glob_recursive_helper(rt_string base_dir,
 {
     // List all entries in current directory
     rt_string current_dir;
-    if (rt_len(rel_path) == 0)
+    if (rt_str_len(rel_path) == 0)
     {
         current_dir = rt_string_ref(base_dir);
     }
@@ -168,15 +168,15 @@ static void glob_recursive_helper(rt_string base_dir,
 
         // Build relative path for matching
         rt_string entry_rel;
-        if (rt_len(rel_path) == 0)
+        if (rt_str_len(rel_path) == 0)
         {
             entry_rel = rt_string_ref(name);
         }
         else
         {
             rt_string slash = rt_const_cstr("/");
-            rt_string temp = rt_concat(rt_string_ref(rel_path), slash);
-            entry_rel = rt_concat(temp, rt_string_ref(name));
+            rt_string temp = rt_str_concat(rt_string_ref(rel_path), slash);
+            entry_rel = rt_str_concat(temp, rt_string_ref(name));
         }
 
         // Check if this entry matches the pattern

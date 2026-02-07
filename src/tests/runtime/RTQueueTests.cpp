@@ -58,14 +58,14 @@ static void test_add_increases_length()
     void *queue = rt_queue_new();
 
     int a = 10, b = 20, c = 30;
-    rt_queue_add(queue, &a);
+    rt_queue_push(queue, &a);
     assert(rt_queue_len(queue) == 1);
     assert(rt_queue_is_empty(queue) == 0);
 
-    rt_queue_add(queue, &b);
+    rt_queue_push(queue, &b);
     assert(rt_queue_len(queue) == 2);
 
-    rt_queue_add(queue, &c);
+    rt_queue_push(queue, &c);
     assert(rt_queue_len(queue) == 3);
 }
 
@@ -74,20 +74,20 @@ static void test_fifo_order()
     void *queue = rt_queue_new();
 
     int a = 10, b = 20, c = 30;
-    rt_queue_add(queue, &a);
-    rt_queue_add(queue, &b);
-    rt_queue_add(queue, &c);
+    rt_queue_push(queue, &a);
+    rt_queue_push(queue, &b);
+    rt_queue_push(queue, &c);
 
     // FIFO: first added should be taken first
-    void *taken = rt_queue_take(queue);
+    void *taken = rt_queue_pop(queue);
     assert(taken == &a);
     assert(rt_queue_len(queue) == 2);
 
-    taken = rt_queue_take(queue);
+    taken = rt_queue_pop(queue);
     assert(taken == &b);
     assert(rt_queue_len(queue) == 1);
 
-    taken = rt_queue_take(queue);
+    taken = rt_queue_pop(queue);
     assert(taken == &c);
     assert(rt_queue_len(queue) == 0);
     assert(rt_queue_is_empty(queue) == 1);
@@ -98,8 +98,8 @@ static void test_peek_returns_front_without_removing()
     void *queue = rt_queue_new();
 
     int a = 10, b = 20;
-    rt_queue_add(queue, &a);
-    rt_queue_add(queue, &b);
+    rt_queue_push(queue, &a);
+    rt_queue_push(queue, &b);
 
     // Peek should return front element (first added)
     assert(rt_queue_peek(queue) == &a);
@@ -112,7 +112,7 @@ static void test_peek_returns_front_without_removing()
     assert(rt_queue_len(queue) == 2);
 
     // Take and peek again
-    rt_queue_take(queue);
+    rt_queue_pop(queue);
     assert(rt_queue_peek(queue) == &b);
     assert(rt_queue_len(queue) == 1);
 }
@@ -122,9 +122,9 @@ static void test_clear_empties_queue()
     void *queue = rt_queue_new();
 
     int a = 10, b = 20, c = 30;
-    rt_queue_add(queue, &a);
-    rt_queue_add(queue, &b);
-    rt_queue_add(queue, &c);
+    rt_queue_push(queue, &a);
+    rt_queue_push(queue, &b);
+    rt_queue_push(queue, &c);
 
     assert(rt_queue_len(queue) == 3);
     assert(rt_queue_is_empty(queue) == 0);
@@ -144,12 +144,12 @@ static void test_add_after_clear()
     void *queue = rt_queue_new();
 
     int a = 10, b = 20;
-    rt_queue_add(queue, &a);
-    rt_queue_add(queue, &b);
+    rt_queue_push(queue, &a);
+    rt_queue_push(queue, &b);
     rt_queue_clear(queue);
 
     int c = 30;
-    rt_queue_add(queue, &c);
+    rt_queue_push(queue, &c);
     assert(rt_queue_len(queue) == 1);
     assert(rt_queue_peek(queue) == &c);
 }
@@ -163,11 +163,11 @@ static void test_wrap_around()
     for (int i = 0; i < 10; ++i)
     {
         vals[i] = i;
-        rt_queue_add(queue, &vals[i]);
+        rt_queue_push(queue, &vals[i]);
     }
     for (int i = 0; i < 8; ++i)
     {
-        void *taken = rt_queue_take(queue);
+        void *taken = rt_queue_pop(queue);
         assert(taken == &vals[i]);
     }
 
@@ -177,15 +177,15 @@ static void test_wrap_around()
     for (int i = 0; i < 10; ++i)
     {
         more[i] = 100 + i;
-        rt_queue_add(queue, &more[i]);
+        rt_queue_push(queue, &more[i]);
     }
 
     // Take remaining and verify FIFO order
-    assert(rt_queue_take(queue) == &vals[8]);
-    assert(rt_queue_take(queue) == &vals[9]);
+    assert(rt_queue_pop(queue) == &vals[8]);
+    assert(rt_queue_pop(queue) == &vals[9]);
     for (int i = 0; i < 10; ++i)
     {
-        void *taken = rt_queue_take(queue);
+        void *taken = rt_queue_pop(queue);
         assert(taken == &more[i]);
     }
     assert(rt_queue_is_empty(queue) == 1);
@@ -200,7 +200,7 @@ static void test_capacity_growth()
     for (int i = 0; i < 100; ++i)
     {
         vals[i] = i;
-        rt_queue_add(queue, &vals[i]);
+        rt_queue_push(queue, &vals[i]);
     }
 
     assert(rt_queue_len(queue) == 100);
@@ -208,7 +208,7 @@ static void test_capacity_growth()
     // Verify FIFO order by taking all
     for (int i = 0; i < 100; ++i)
     {
-        void *taken = rt_queue_take(queue);
+        void *taken = rt_queue_pop(queue);
         assert(taken == &vals[i]);
     }
 
@@ -224,11 +224,11 @@ static void test_growth_with_wrap_around()
     for (int i = 0; i < 8; ++i)
     {
         first[i] = i;
-        rt_queue_add(queue, &first[i]);
+        rt_queue_push(queue, &first[i]);
     }
     for (int i = 0; i < 6; ++i)
     {
-        rt_queue_take(queue);
+        rt_queue_pop(queue);
     }
 
     // Now add enough to trigger growth with wrapped data
@@ -236,17 +236,17 @@ static void test_growth_with_wrap_around()
     for (int i = 0; i < 20; ++i)
     {
         second[i] = 100 + i;
-        rt_queue_add(queue, &second[i]);
+        rt_queue_push(queue, &second[i]);
     }
 
     // Verify remaining first elements
-    assert(rt_queue_take(queue) == &first[6]);
-    assert(rt_queue_take(queue) == &first[7]);
+    assert(rt_queue_pop(queue) == &first[6]);
+    assert(rt_queue_pop(queue) == &first[7]);
 
     // Verify second elements
     for (int i = 0; i < 20; ++i)
     {
-        void *taken = rt_queue_take(queue);
+        void *taken = rt_queue_pop(queue);
         assert(taken == &second[i]);
     }
 
@@ -266,13 +266,13 @@ static void test_null_handling()
 static void test_take_empty_traps()
 {
     void *queue = rt_queue_new();
-    EXPECT_TRAP(rt_queue_take(queue));
+    EXPECT_TRAP(rt_queue_pop(queue));
 
     // Also test after adding and taking
     int a = 10;
-    rt_queue_add(queue, &a);
-    rt_queue_take(queue);
-    EXPECT_TRAP(rt_queue_take(queue));
+    rt_queue_push(queue, &a);
+    rt_queue_pop(queue);
+    EXPECT_TRAP(rt_queue_pop(queue));
 }
 
 static void test_peek_empty_traps()
@@ -282,7 +282,7 @@ static void test_peek_empty_traps()
 
     // Also test after clear
     int a = 10;
-    rt_queue_add(queue, &a);
+    rt_queue_push(queue, &a);
     rt_queue_clear(queue);
     EXPECT_TRAP(rt_queue_peek(queue));
 }
@@ -291,8 +291,8 @@ static void test_null_queue_traps()
 {
     int a = 10;
 
-    EXPECT_TRAP(rt_queue_add(nullptr, &a));
-    EXPECT_TRAP(rt_queue_take(nullptr));
+    EXPECT_TRAP(rt_queue_push(nullptr, &a));
+    EXPECT_TRAP(rt_queue_pop(nullptr));
     EXPECT_TRAP(rt_queue_peek(nullptr));
 }
 
@@ -301,10 +301,10 @@ static void test_add_null_value()
     void *queue = rt_queue_new();
 
     // Adding null value should be allowed
-    rt_queue_add(queue, nullptr);
+    rt_queue_push(queue, nullptr);
     assert(rt_queue_len(queue) == 1);
     assert(rt_queue_peek(queue) == nullptr);
-    assert(rt_queue_take(queue) == nullptr);
+    assert(rt_queue_pop(queue) == nullptr);
     assert(rt_queue_is_empty(queue) == 1);
 }
 
@@ -314,18 +314,18 @@ static void test_interleaved_operations()
 
     int a = 1, b = 2, c = 3, d = 4;
 
-    rt_queue_add(queue, &a);
-    rt_queue_add(queue, &b);
-    assert(rt_queue_take(queue) == &a);
+    rt_queue_push(queue, &a);
+    rt_queue_push(queue, &b);
+    assert(rt_queue_pop(queue) == &a);
 
-    rt_queue_add(queue, &c);
-    rt_queue_add(queue, &d);
+    rt_queue_push(queue, &c);
+    rt_queue_push(queue, &d);
     assert(rt_queue_peek(queue) == &b);
     assert(rt_queue_len(queue) == 3);
 
-    assert(rt_queue_take(queue) == &b);
-    assert(rt_queue_take(queue) == &c);
-    assert(rt_queue_take(queue) == &d);
+    assert(rt_queue_pop(queue) == &b);
+    assert(rt_queue_pop(queue) == &c);
+    assert(rt_queue_pop(queue) == &d);
     assert(rt_queue_is_empty(queue) == 1);
 }
 

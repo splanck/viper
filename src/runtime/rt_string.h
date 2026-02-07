@@ -30,8 +30,8 @@
 // points to the payload portion, with the header located at a negative offset.
 //
 // String Operations:
-// - Creation: rt_string_from_bytes, rt_str_empty, rt_concat
-// - Manipulation: rt_str_mid, rt_str_left, rt_str_right, rt_str_upper/lower
+// - Creation: rt_string_from_bytes, rt_str_empty, rt_str_concat
+// - Manipulation: rt_str_mid, rt_str_left, rt_str_right, rt_str_ucase/rt_str_lcase
 // - Comparison: rt_str_eq, rt_str_lt, rt_str_le, rt_str_gt, rt_str_ge
 // - Conversion: rt_str_str (integer to string), rt_val (string to number)
 // - Inspection: rt_str_len, rt_str_data
@@ -111,7 +111,7 @@ extern "C"
     /// @brief Return the number of bytes stored in @p s (excluding the terminator).
     /// @param s String to measure; NULL returns 0.
     /// @return Length in bytes.
-    int64_t rt_len(rt_string s);
+    int64_t rt_str_len(rt_string s);
 
     /// @brief Return 1 when @p s is empty or NULL; 0 otherwise.
     int64_t rt_str_is_empty(rt_string s);
@@ -120,42 +120,42 @@ extern "C"
     /// @param a Left operand; released on success.
     /// @param b Right operand; released on success.
     /// @return Newly allocated concatenation result.
-    rt_string rt_concat(rt_string a, rt_string b);
+    rt_string rt_str_concat(rt_string a, rt_string b);
 
     /// @brief Slice substring of @p s starting at @p start with length @p len.
     /// @param s Source string; consumed when returning a new allocation.
     /// @param start Zero-based starting offset.
     /// @param len Number of bytes to copy.
     /// @return Substring or shared empty string when @p len == 0.
-    rt_string rt_substr(rt_string s, int64_t start, int64_t len);
+    rt_string rt_str_substr(rt_string s, int64_t start, int64_t len);
 
     /// @brief Identity constructor for strings; used by Viper.Strings.FromStr.
-    rt_string rt_from_str(rt_string s);
+    rt_string rt_str_clone(rt_string s);
 
     /// @brief Return leftmost @p n characters of @p s.
     /// @param s Source string; traps if NULL.
     /// @param n Count of characters to copy.
     /// @return Prefix view or shared empty string if @p n == 0.
-    rt_string rt_left(rt_string s, int64_t n);
+    rt_string rt_str_left(rt_string s, int64_t n);
 
     /// @brief Return rightmost @p n characters of @p s.
     /// @param s Source string; traps if NULL.
     /// @param n Count of characters to copy.
     /// @return Suffix view or shared empty string if @p n == 0.
-    rt_string rt_right(rt_string s, int64_t n);
+    rt_string rt_str_right(rt_string s, int64_t n);
 
     /// @brief Return substring starting at @p start to the end of @p s.
     /// @param s Source string; traps if NULL.
     /// @param start Zero-based offset where slicing begins.
     /// @return Trailing slice or shared empty string if @p start >= len.
-    rt_string rt_mid2(rt_string s, int64_t start);
+    rt_string rt_str_mid(rt_string s, int64_t start);
 
     /// @brief Return substring starting at @p start with length @p len.
     /// @param s Source string; traps if NULL.
     /// @param start Zero-based offset where slicing begins.
     /// @param len Number of characters to copy.
     /// @return Substring respecting bounds; may share storage.
-    rt_string rt_mid3(rt_string s, int64_t start, int64_t len);
+    rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len);
 
     /// @brief Find @p needle within @p hay starting at 1-based index @p start.
     /// @param start 1-based starting position (clamped to valid range).
@@ -175,42 +175,42 @@ extern "C"
     /// @param hay Haystack string.
     /// @param needle Needle string.
     /// @return 1-based match index or 0 when not found.
-    int64_t rt_instr2(rt_string hay, rt_string needle);
+    int64_t rt_str_index_of(rt_string hay, rt_string needle);
 
     /// @brief Remove leading spaces and tabs.
     /// @param s Source string; traps if NULL.
     /// @return Newly allocated trimmed string.
-    rt_string rt_ltrim(rt_string s);
+    rt_string rt_str_ltrim(rt_string s);
 
     /// @brief Remove trailing spaces and tabs.
     /// @param s Source string; traps if NULL.
     /// @return Newly allocated trimmed string.
-    rt_string rt_rtrim(rt_string s);
+    rt_string rt_str_rtrim(rt_string s);
 
     /// @brief Remove leading and trailing spaces and tabs.
     /// @param s Source string; traps if NULL.
     /// @return Newly allocated trimmed string.
-    rt_string rt_trim(rt_string s);
+    rt_string rt_str_trim(rt_string s);
 
     /// @brief Convert ASCII characters to uppercase.
     /// @param s Source string; traps if NULL.
     /// @return Newly allocated uppercase string.
-    rt_string rt_ucase(rt_string s);
+    rt_string rt_str_ucase(rt_string s);
 
     /// @brief Convert ASCII characters to lowercase.
     /// @param s Source string; traps if NULL.
     /// @return Newly allocated lowercase string.
-    rt_string rt_lcase(rt_string s);
+    rt_string rt_str_lcase(rt_string s);
 
     /// @brief Create single-character string from ASCII code @p code.
     /// @param code Value 0-255 specifying the character.
     /// @return Newly allocated string of length one.
-    rt_string rt_chr(int64_t code);
+    rt_string rt_str_chr(int64_t code);
 
     /// @brief Return ASCII code of the first character in @p s.
     /// @param s Source string; traps if NULL.
     /// @return Value 0-255 or 0 if empty.
-    int64_t rt_asc(rt_string s);
+    int64_t rt_str_asc(rt_string s);
 
     /// @brief Compare @p a and @p b for equality.
     /// @param a First operand.
@@ -361,7 +361,7 @@ extern "C"
     /// @param sep Separator string.
     /// @param seq Sequence of strings to join.
     /// @return Newly allocated joined string.
-    rt_string rt_strings_join(rt_string sep, void *seq);
+    rt_string rt_str_join(rt_string sep, void *seq);
 
     /// @brief Repeat string count times.
     /// @param str Source string.

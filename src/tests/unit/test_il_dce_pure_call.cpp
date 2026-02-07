@@ -148,14 +148,14 @@ void testUnknownCalleePreserved()
 void testReadonlyCallPreserved()
 {
     // rt_len is readonly (reads string memory) but not pure
-    Module m = buildTestModule("rt_len", false);
-    assert(hasCallTo(m, "rt_len") && "Precondition: call should exist before DCE");
+    Module m = buildTestModule("rt_str_len", false);
+    assert(hasCallTo(m, "rt_str_len") && "Precondition: call should exist before DCE");
 
     il::transform::dce(m);
 
     // Readonly calls may still have observable effects (memory reads)
     // They should NOT be eliminated by DCE since they might observe state
-    assert(hasCallTo(m, "rt_len") && "Readonly call should be preserved (not pure)");
+    assert(hasCallTo(m, "rt_str_len") && "Readonly call should be preserved (not pure)");
 }
 
 /// @brief Test: Multiple pure math functions are eliminated.

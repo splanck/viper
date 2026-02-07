@@ -47,12 +47,12 @@ static std::string capture(void (*fn)())
 
 static void call_left_negative()
 {
-    rt_left(rt_const_cstr("A"), -1);
+    rt_str_left(rt_const_cstr("A"), -1);
 }
 
 static void call_mid_negative()
 {
-    rt_mid3(rt_const_cstr("A"), -1, 1);
+    rt_str_mid_len(rt_const_cstr("A"), -1, 1);
 }
 
 int main()
@@ -66,16 +66,16 @@ int main()
     assert(ok);
 
     rt_string sample = rt_const_cstr("ABCDEF");
-    rt_string start_one = rt_mid2(sample, 1);
+    rt_string start_one = rt_str_mid(sample, 1);
     assert(rt_str_eq(start_one, sample));
 
-    rt_string start_len = rt_mid2(sample, 6);
+    rt_string start_len = rt_str_mid(sample, 6);
     assert(rt_str_eq(start_len, rt_const_cstr("F")));
 
-    rt_string start_len_with_count = rt_mid3(sample, 6, 5);
+    rt_string start_len_with_count = rt_str_mid_len(sample, 6, 5);
     assert(rt_str_eq(start_len_with_count, rt_const_cstr("F")));
 
-    rt_string start_beyond = rt_mid3(sample, 7, 3);
+    rt_string start_beyond = rt_str_mid_len(sample, 7, 3);
     assert(rt_str_eq(start_beyond, rt_str_empty()));
 
     return 0;

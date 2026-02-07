@@ -5,11 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: vm/VMConfig.hpp
-// Purpose: Defines compile-time configuration flags for the VM subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: Shared header; no owning object or runtime state.
-// Links: docs/architecture.md
+// This file defines compile-time configuration flags and hook macros for
+// the Viper VM subsystem. It controls dispatch strategy selection, pre/post
+// instruction hooks for profiling and polling, tail-call optimization, and
+// opcode execution counting.
+//
+// The VM dispatch hooks (VIPER_VM_DISPATCH_BEFORE and VIPER_VM_DISPATCH_AFTER)
+// are injected at every instruction boundary regardless of dispatch strategy
+// (switch, computed goto, or table). They compile to empty blocks by default
+// and can be overridden by the build system or embedding application.
+//
+// The VIPER_VM_DISPATCH_AFTER hook provides the polling mechanism: when
+// interruptEveryN is non-zero in the runtime config, the hook periodically
+// invokes the pollCallback to check for pause requests. This enables
+// cooperative multitasking and debugger integration.
+//
+// Key invariants:
+//   - Hooks compile away to no-ops when not enabled.
+//   - VIPER_VM_TAILCALL defaults to 1 (tail-call optimization enabled).
+//   - VIPER_VM_OPCOUNTS defaults to 1 (opcode counting available).
+//   - When opcode counting is enabled, DISPATCH_BEFORE is redefined to
+//     increment per-opcode counters (gated by runtime config flag).
+//
+// Ownership: Header-only; no owning objects or runtime state.
 //
 //===----------------------------------------------------------------------===//
 

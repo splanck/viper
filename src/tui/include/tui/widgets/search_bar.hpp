@@ -5,11 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/widgets/search_bar.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the SearchBar widget for Viper's TUI framework.
+// The search bar provides an interactive text search interface bound to
+// a TextBuffer and TextView, displaying a query input prefixed with '/'
+// and navigating through matches as the user types.
+//
+// As the user types, matches are incrementally computed via the text
+// search utilities (findAll). The matched ranges are highlighted in the
+// associated TextView. Pressing Enter advances to the next match.
+//
+// Key invariants:
+//   - The search bar borrows TextBuffer, TextView, and Theme references.
+//   - Match highlighting is updated on every keystroke via setHighlights().
+//   - Empty queries clear all highlights.
+//   - Regex mode can be toggled via setRegex().
+//
+// Ownership: SearchBar borrows all external references (TextBuffer,
+// TextView, Theme). It owns the query string and match results.
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,7 +38,10 @@
 
 namespace viper::tui::widgets
 {
-/// @brief Widget accepting search text and navigating matches.
+/// @brief Interactive text search widget with incremental match highlighting.
+/// @details Provides a '/' prefixed query input that searches through a TextBuffer
+///          and highlights matches in the associated TextView. Supports both literal
+///          substring and regex search modes. Pressing Enter navigates to the next match.
 class SearchBar : public ui::Widget
 {
   public:

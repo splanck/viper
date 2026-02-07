@@ -5,11 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/widgets/label.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the Label widget for Viper's TUI framework.
+// Label is a simple read-only text display widget that renders a single
+// string using the theme's normal style.
+//
+// Labels are non-focusable and do not handle input events. They are
+// commonly used for static text, headings, or descriptive captions
+// within container layouts.
+//
+// Key invariants:
+//   - Labels do not accept focus (wantsFocus returns false).
+//   - Text is rendered at the top-left of the layout rectangle.
+//   - Text exceeding the widget width is truncated (no wrapping).
+//
+// Ownership: Label owns its text string by value and borrows the
+// Theme reference (must outlive the widget).
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,7 +33,10 @@
 namespace viper::tui::widgets
 {
 
-/// @brief Displays read-only text.
+/// @brief Simple read-only text display widget.
+/// @details Renders a single line of text at the top-left of its layout rectangle
+///          using the theme's normal style. Non-focusable and non-interactive.
+///          Used for static labels, headings, and descriptive text in the UI.
 class Label : public ui::Widget
 {
   public:

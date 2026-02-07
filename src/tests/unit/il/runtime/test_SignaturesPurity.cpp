@@ -54,13 +54,13 @@ TEST(SignaturesPurity, MathHelpersArePure)
 TEST(SignaturesPurity, ReadonlyStringHelpers)
 {
     il::runtime::signatures::register_string_signatures();
-    const auto *lenSig = findSignature("rt_len");
+    const auto *lenSig = findSignature("rt_str_len");
     ASSERT_NE(lenSig, nullptr);
     EXPECT_TRUE(lenSig->readonly);
     EXPECT_TRUE(lenSig->nothrow);
     EXPECT_FALSE(lenSig->pure);
 
-    const auto *instrSig = findSignature("rt_instr2");
+    const auto *instrSig = findSignature("rt_str_index_of");
     ASSERT_NE(instrSig, nullptr);
     EXPECT_TRUE(instrSig->readonly);
     EXPECT_TRUE(instrSig->nothrow);

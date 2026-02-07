@@ -121,7 +121,7 @@ The runtime library now includes 44 classes (up from 14). New additions:
 **Text** (`Viper.Text.*`):
 - `Codec` — Base64, Hex, URL encoding
 - `Csv` — CSV parsing and formatting
-- `Guid` — UUID generation
+- `Uuid` — UUID generation
 
 **Crypto** (`Viper.Crypto.*`):
 - `Hash` — CRC32, MD5, SHA1, SHA256

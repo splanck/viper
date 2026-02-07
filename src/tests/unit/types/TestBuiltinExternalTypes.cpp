@@ -26,7 +26,7 @@ int main()
     seedRuntimeTypeCatalog(ns);
 
     // Canonical types should be present under their fully-qualified names
-    assert(ns.typeExists("Viper.Object"));
+    assert(ns.typeExists("Viper.Core.Object"));
     assert(ns.typeExists("Viper.String"));
     assert(ns.typeExists("Viper.Text.StringBuilder"));
     assert(ns.typeExists("Viper.IO.File"));

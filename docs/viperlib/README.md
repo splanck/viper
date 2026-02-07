@@ -27,7 +27,7 @@ implemented in C and exposed through the IL runtime system.
 | [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `Json`, `Pattern`, `StringBuilder`, `Template` |
+| [Text Processing](text.md)      | `Codec`, `Csv`, `Uuid`, `Json`, `Pattern`, `StringBuilder`, `Template` |
 | [Threads](threads.md)           | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`                                                   |

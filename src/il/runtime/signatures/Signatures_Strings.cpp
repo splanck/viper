@@ -53,13 +53,13 @@ using Kind = SigParam::Kind;
 ///          registration obtain a process-wide view of the runtime string ABI.
 void register_string_signatures()
 {
-    register_signature(make_signature("rt_len", {Kind::Ptr}, {Kind::I64}, true, true));
-    register_signature(make_signature("rt_substr", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_len", {Kind::Ptr}, {Kind::I64}, true, true));
+    register_signature(make_signature("rt_str_substr", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_trap", {Kind::Ptr}));
-    register_signature(make_signature("rt_concat", {Kind::Ptr, Kind::Ptr}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_concat", {Kind::Ptr, Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_csv_quote_alloc", {Kind::Ptr}, {Kind::Ptr}));
     register_signature(
-        make_signature("rt_split_fields", {Kind::Ptr, Kind::Ptr, Kind::I64}, {Kind::I64}));
+        make_signature("rt_str_split_fields", {Kind::Ptr, Kind::Ptr, Kind::I64}, {Kind::I64}));
     register_signature(make_signature("rt_to_int", {Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_to_double", {Kind::Ptr}, {Kind::F64}));
     register_signature(make_signature("rt_parse_int64", {Kind::Ptr, Kind::Ptr}, {Kind::I32}));
@@ -73,21 +73,21 @@ void register_string_signatures()
     register_signature(make_signature("rt_const_cstr", {Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_str_retain_maybe", {Kind::Ptr}));
     register_signature(make_signature("rt_str_release_maybe", {Kind::Ptr}));
-    register_signature(make_signature("rt_left", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_right", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_mid2", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_mid3", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_left", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_right", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_mid", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_mid_len", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(
-        make_signature("rt_instr2", {Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
+        make_signature("rt_str_index_of", {Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
     register_signature(
         make_signature("rt_instr3", {Kind::I64, Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
-    register_signature(make_signature("rt_ltrim", {Kind::Ptr}, {Kind::Ptr}));
-    register_signature(make_signature("rt_rtrim", {Kind::Ptr}, {Kind::Ptr}));
-    register_signature(make_signature("rt_trim", {Kind::Ptr}, {Kind::Ptr}));
-    register_signature(make_signature("rt_ucase", {Kind::Ptr}, {Kind::Ptr}));
-    register_signature(make_signature("rt_lcase", {Kind::Ptr}, {Kind::Ptr}));
-    register_signature(make_signature("rt_chr", {Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_asc", {Kind::Ptr}, {Kind::I64}));
+    register_signature(make_signature("rt_str_ltrim", {Kind::Ptr}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_rtrim", {Kind::Ptr}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_trim", {Kind::Ptr}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_ucase", {Kind::Ptr}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_lcase", {Kind::Ptr}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_chr", {Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_str_asc", {Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_str_eq", {Kind::Ptr, Kind::Ptr}, {Kind::I1}, true, true));
     register_signature(
         make_signature("rt_str_lt", {Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));

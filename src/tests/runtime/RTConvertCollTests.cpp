@@ -67,9 +67,9 @@ static void test_seq_to_list()
 
     void *list = rt_seq_to_list(seq);
     test_result("List created", list != NULL);
-    test_result("List has 3 elements", rt_list_get_count(list) == 3);
-    test_result("First element correct", rt_list_get_item(list, 0) == val1);
-    test_result("Third element correct", rt_list_get_item(list, 2) == val3);
+    test_result("List has 3 elements", rt_list_len(list) == 3);
+    test_result("First element correct", rt_list_get(list, 0) == val1);
+    test_result("Third element correct", rt_list_get(list, 2) == val3);
 
     printf("\n");
 }
@@ -153,8 +153,8 @@ static void test_list_to_seq()
     printf("Testing List to Seq:\n");
 
     void *list = rt_ns_list_new();
-    rt_list_add(list, val1);
-    rt_list_add(list, val2);
+    rt_list_push(list, val1);
+    rt_list_push(list, val2);
 
     void *seq = rt_list_to_seq(list);
     test_result("Seq created", seq != NULL);
@@ -169,8 +169,8 @@ static void test_list_to_set()
     printf("Testing List to Set:\n");
 
     void *list = rt_ns_list_new();
-    rt_list_add(list, val1);
-    rt_list_add(list, val1); // Duplicate
+    rt_list_push(list, val1);
+    rt_list_push(list, val1); // Duplicate
 
     void *set = rt_list_to_set(list);
     test_result("Set created", set != NULL);
@@ -263,7 +263,7 @@ static void test_list_of()
 
     void *list = rt_list_of(2, val1, val2);
     test_result("List created", list != NULL);
-    test_result("List has 2 elements", rt_list_get_count(list) == 2);
+    test_result("List has 2 elements", rt_list_len(list) == 2);
 
     printf("\n");
 }
@@ -289,7 +289,7 @@ static void test_null_handling()
 
     void *list = rt_seq_to_list(NULL);
     test_result("NULL seq to list returns empty list",
-                list != NULL && rt_list_get_count(list) == 0);
+                list != NULL && rt_list_len(list) == 0);
 
     void *seq = rt_list_to_seq(NULL);
     test_result("NULL list to seq returns empty seq", seq != NULL && rt_seq_len(seq) == 0);

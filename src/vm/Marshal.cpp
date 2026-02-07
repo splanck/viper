@@ -186,7 +186,7 @@ StringRef fromViperString(const ViperString &str)
     const char *data = rt_string_cstr(str);
     if (!data)
         return {};
-    const int64_t length = rt_len(str);
+    const int64_t length = rt_str_len(str);
     if (length < 0)
     {
         RuntimeBridge::trap(

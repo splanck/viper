@@ -75,7 +75,7 @@ static void cleanup_list(void *list)
 
 static void assert_item(void *list, int64_t index, void *expected)
 {
-    void *got = rt_list_get_item(list, index);
+    void *got = rt_list_get(list, index);
     assert(got == expected);
     rt_release_obj(got);
 }
@@ -88,11 +88,11 @@ static void test_has_empty_and_nonempty()
     void *a = new_obj();
     void *b = new_obj();
 
-    assert(rt_list_get_count(list) == 0);
+    assert(rt_list_len(list) == 0);
     assert(rt_list_has(list, a) == 0);
 
-    rt_list_add(list, a);
-    assert(rt_list_get_count(list) == 1);
+    rt_list_push(list, a);
+    assert(rt_list_len(list) == 1);
     assert(rt_list_has(list, a) == 1);
     assert(rt_list_has(list, b) == 0);
 
@@ -111,9 +111,9 @@ static void test_find_returns_index_or_minus1()
     void *c = new_obj();
     void *d = new_obj();
 
-    rt_list_add(list, a);
-    rt_list_add(list, b);
-    rt_list_add(list, c);
+    rt_list_push(list, a);
+    rt_list_push(list, b);
+    rt_list_push(list, c);
 
     assert(rt_list_find(list, a) == 0);
     assert(rt_list_find(list, b) == 1);
@@ -137,16 +137,16 @@ static void test_insert_begin_middle_end()
     void *c = new_obj();
 
     rt_list_insert(list, 0, a);
-    assert(rt_list_get_count(list) == 1);
+    assert(rt_list_len(list) == 1);
     assert_item(list, 0, a);
 
     rt_list_insert(list, 1, c); // append (index == Count)
-    assert(rt_list_get_count(list) == 2);
+    assert(rt_list_len(list) == 2);
     assert_item(list, 0, a);
     assert_item(list, 1, c);
 
     rt_list_insert(list, 1, b); // middle
-    assert(rt_list_get_count(list) == 3);
+    assert(rt_list_len(list) == 3);
     assert_item(list, 0, a);
     assert_item(list, 1, b);
     assert_item(list, 2, c);
@@ -167,16 +167,16 @@ static void test_remove_returns_bool_and_removes_first_only()
     void *c = new_obj();
     void *missing = new_obj();
 
-    rt_list_add(list, a);
-    rt_list_add(list, b);
-    rt_list_add(list, a);
-    rt_list_add(list, c);
+    rt_list_push(list, a);
+    rt_list_push(list, b);
+    rt_list_push(list, a);
+    rt_list_push(list, c);
 
-    assert(rt_list_get_count(list) == 4);
+    assert(rt_list_len(list) == 4);
     assert(rt_list_remove(list, missing) == 0);
 
     assert(rt_list_remove(list, a) == 1);
-    assert(rt_list_get_count(list) == 3);
+    assert(rt_list_len(list) == 3);
     assert_item(list, 0, b);
     assert_item(list, 1, a);
     assert_item(list, 2, c);
@@ -214,7 +214,7 @@ static void test_list_finalizer_releases_elements()
     void *a = new_obj();
     rt_obj_set_finalizer(a, count_finalizer);
 
-    rt_list_add(list, a);
+    rt_list_push(list, a);
     rt_release_obj(a); // list should now be the only owner
     assert(g_finalizer_calls == 0);
 

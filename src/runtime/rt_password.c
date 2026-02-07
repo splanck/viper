@@ -217,7 +217,7 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
 
     // Derive key
     const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_len(password);
+    size_t pwd_len = (size_t)rt_str_len(password);
 
     uint8_t hash[HASH_LENGTH];
     pbkdf2_sha256((const uint8_t *)pwd, pwd_len, salt, SALT_LENGTH, iterations, hash, HASH_LENGTH);
@@ -301,7 +301,7 @@ int8_t rt_password_verify(rt_string password, rt_string hash)
 
     // Compute hash with same parameters
     const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_len(password);
+    size_t pwd_len = (size_t)rt_str_len(password);
 
     uint8_t computed[HASH_LENGTH];
     pbkdf2_sha256((const uint8_t *)pwd, pwd_len, salt, salt_len, iterations, computed, HASH_LENGTH);

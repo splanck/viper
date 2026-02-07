@@ -6,14 +6,14 @@ func start() {
     Viper.Terminal.Say("=== List Operations Test ===");
 
     var list: Ptr = Viper.Collections.List.New();
-    Viper.Collections.List.Add(list, 100);
-    Viper.Collections.List.Add(list, 200);
+    Viper.Collections.List.Push(list, 100);
+    Viper.Collections.List.Push(list, 200);
 
-    var count: Integer = Viper.Collections.List.get_Count(list);
+    var count: Integer = Viper.Collections.List.Len(list);
     Viper.Terminal.Say("Count: " + Viper.String.FromInt(count));
 
-    var v0: Integer = Viper.Box.ToI64(Viper.Collections.List.get_Item(list, 0));
-    var v1: Integer = Viper.Box.ToI64(Viper.Collections.List.get_Item(list, 1));
+    var v0: Integer = Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 0));
+    var v1: Integer = Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 1));
 
     Viper.Terminal.Say("v0 = " + Viper.String.FromInt(v0));
     Viper.Terminal.Say("v1 = " + Viper.String.FromInt(v1));

@@ -249,7 +249,7 @@ static void test_join_basic()
     rt_seq_push(seq, (void *)make_str("c"));
 
     rt_string sep = make_str(",");
-    rt_string result = rt_strings_join(sep, seq);
+    rt_string result = rt_str_join(sep, seq);
     assert(str_eq(result, "a,b,c"));
 }
 
@@ -261,7 +261,7 @@ static void test_join_empty_sep()
     rt_seq_push(seq, (void *)make_str("c"));
 
     rt_string sep = make_str("");
-    rt_string result = rt_strings_join(sep, seq);
+    rt_string result = rt_str_join(sep, seq);
     assert(str_eq(result, "abc"));
 }
 
@@ -270,7 +270,7 @@ static void test_join_empty_seq()
     void *seq = rt_seq_new();
 
     rt_string sep = make_str(",");
-    rt_string result = rt_strings_join(sep, seq);
+    rt_string result = rt_str_join(sep, seq);
     assert(str_eq(result, ""));
 }
 
@@ -280,7 +280,7 @@ static void test_split_join_roundtrip()
     rt_string delim = make_str(":");
 
     void *parts = rt_str_split(original, delim);
-    rt_string rejoined = rt_strings_join(delim, parts);
+    rt_string rejoined = rt_str_join(delim, parts);
 
     assert(str_eq(rejoined, "hello:world:test"));
 }

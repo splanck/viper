@@ -27,8 +27,8 @@ namespace il::runtime
 
 /// @brief Canonical runtime class name for Viper.String.
 inline constexpr std::string_view RTCLASS_STRING = "Viper.String";
-/// @brief Canonical runtime class name for Viper.Object.
-inline constexpr std::string_view RTCLASS_OBJECT = "Viper.Object";
+/// @brief Canonical runtime class name for Viper.Core.Object.
+inline constexpr std::string_view RTCLASS_OBJECT = "Viper.Core.Object";
 /// @brief Canonical runtime class name for Viper.Text.StringBuilder.
 inline constexpr std::string_view RTCLASS_STRINGBUILDER = "Viper.Text.StringBuilder";
 /// @brief Canonical runtime class name for Viper.IO.File.
@@ -42,10 +42,10 @@ inline constexpr std::string_view RTCLASS_MATH = "Viper.Math";
 // RTCLASS_CONSOLE deprecated - Console consolidated into Terminal
 /// @brief Canonical runtime class name for Viper.Terminal (legacy Console alias).
 inline constexpr std::string_view RTCLASS_CONSOLE = "Viper.Terminal";
-/// @brief Canonical runtime class name for Viper.Convert.
-inline constexpr std::string_view RTCLASS_CONVERT = "Viper.Convert";
-/// @brief Canonical runtime class name for Viper.Random.
-inline constexpr std::string_view RTCLASS_RANDOM = "Viper.Random";
+/// @brief Canonical runtime class name for Viper.Core.Convert.
+inline constexpr std::string_view RTCLASS_CONVERT = "Viper.Core.Convert";
+/// @brief Canonical runtime class name for Viper.Math.Random.
+inline constexpr std::string_view RTCLASS_RANDOM = "Viper.Math.Random";
 /// @brief Canonical runtime class name for Viper.Environment.
 inline constexpr std::string_view RTCLASS_ENVIRONMENT = "Viper.Environment";
 /// @brief Canonical runtime class name for Viper.DateTime.
@@ -60,10 +60,10 @@ inline constexpr std::string_view RTCLASS_TERMINAL = "Viper.Terminal";
 inline constexpr std::string_view RTCLASS_TIME = "Viper.Time"; // Deprecated, use RTCLASS_CLOCK
 /// @brief Canonical runtime class name for Viper.Time.Clock.
 inline constexpr std::string_view RTCLASS_CLOCK = "Viper.Time.Clock";
-/// @brief Canonical runtime class name for Viper.Diagnostics.Stopwatch.
-inline constexpr std::string_view RTCLASS_STOPWATCH = "Viper.Diagnostics.Stopwatch";
-/// @brief Canonical runtime class name for Viper.Text.Guid.
-inline constexpr std::string_view RTCLASS_GUID = "Viper.Text.Guid";
+/// @brief Canonical runtime class name for Viper.Core.Diagnostics.Stopwatch.
+inline constexpr std::string_view RTCLASS_STOPWATCH = "Viper.Core.Diagnostics.Stopwatch";
+/// @brief Canonical runtime class name for Viper.Text.Uuid.
+inline constexpr std::string_view RTCLASS_UUID = "Viper.Text.Uuid";
 
 // Utility namespace prefixes
 /// @brief Namespace prefix for Viper.String helpers.

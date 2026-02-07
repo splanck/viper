@@ -1,39 +1,39 @@
 il 0.2.0
-extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.Terminal.PrintI64(i64) -> void
-extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.String.get_Length(str) -> i64
-extern @Viper.String.Substring(str, i64, i64) -> str
-extern @Viper.String.Left(str, i64) -> str
-extern @Viper.String.Right(str, i64) -> str
-extern @Viper.String.Mid(str, i64) -> str
-extern @Viper.String.MidLen(str, i64, i64) -> str
-extern @Viper.String.Trim(str) -> str
-extern @Viper.String.TrimStart(str) -> str
-extern @Viper.String.TrimEnd(str) -> str
-extern @Viper.String.ToUpper(str) -> str
-extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.Asc(str) -> i64
+extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
 extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
-extern @Viper.String.Chr(i64) -> str
-extern @Viper.String.Asc(str) -> i64
-extern @Viper.String.Replace(str, str, str) -> str
-extern @Viper.String.StartsWith(str, str) -> i1
-extern @Viper.String.EndsWith(str, str) -> i1
-extern @Viper.String.Has(str, str) -> i1
-extern @Viper.String.Count(str, str) -> i64
-extern @Viper.String.PadLeft(str, i64, str) -> str
-extern @Viper.String.PadRight(str, i64, str) -> str
-extern @Viper.String.Split(str, str) -> ptr
-extern @Viper.String.Repeat(str, i64) -> str
-extern @Viper.String.Flip(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.Right(str, i64) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
+extern @Viper.String.Count(str, str) -> i64
+extern @Viper.String.EndsWith(str, str) -> i1
+extern @Viper.String.Flip(str) -> str
+extern @Viper.String.Has(str, str) -> i1
+extern @Viper.String.PadLeft(str, i64, str) -> str
+extern @Viper.String.PadRight(str, i64, str) -> str
+extern @Viper.String.Repeat(str, i64) -> str
+extern @Viper.String.Replace(str, str, str) -> str
+extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.StartsWith(str, str) -> i1
+extern @Viper.String.Substring(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.ToUpper(str) -> str
 extern @Viper.String.Join(str, ptr) -> str
-extern @rt_left(str, i64) -> str
-extern @rt_right(str, i64) -> str
-extern @rt_mid2(str, i64) -> str
-extern @rt_mid3(str, i64, i64) -> str
+extern @Viper.Terminal.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @rt_str_left(str, i64) -> str
+extern @rt_str_right(str, i64) -> str
+extern @rt_str_mid(str, i64) -> str
+extern @rt_str_mid_len(str, i64, i64) -> str
 extern @rt_str_empty() -> str
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
@@ -80,7 +80,7 @@ L30:
   .loc 1 3 15
   %t7 = load str, %t0
   .loc 1 3 22
-  %t8 = call @rt_mid3(%t7, 2, 3)
+  %t8 = call @rt_str_mid_len(%t7, 2, 3)
   .loc 1 3 22
   call @Viper.Terminal.PrintStr(%t8)
   .loc 1 3 22
@@ -93,7 +93,7 @@ L40:
   .loc 1 4 15
   %t10 = load str, %t0
   .loc 1 4 10
-  %t11 = call @rt_mid2(%t10, 3)
+  %t11 = call @rt_str_mid(%t10, 3)
   .loc 1 4 10
   call @Viper.Terminal.PrintStr(%t11)
   .loc 1 4 10
@@ -106,7 +106,7 @@ L50:
   .loc 1 5 16
   %t13 = load str, %t0
   .loc 1 5 10
-  %t14 = call @rt_left(%t13, 2)
+  %t14 = call @rt_str_left(%t13, 2)
   .loc 1 5 10
   call @Viper.Terminal.PrintStr(%t14)
   .loc 1 5 10
@@ -119,7 +119,7 @@ L60:
   .loc 1 6 17
   %t16 = load str, %t0
   .loc 1 6 10
-  %t17 = call @rt_right(%t16, 2)
+  %t17 = call @rt_str_right(%t16, 2)
   .loc 1 6 10
   call @Viper.Terminal.PrintStr(%t17)
   .loc 1 6 10

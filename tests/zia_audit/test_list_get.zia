@@ -1,14 +1,14 @@
 module TestListGet;
 
-// Test: Just List get_Item
+// Test: Just List Get
 
 func start() {
-    Viper.Terminal.Say("=== List get_Item Test ===");
+    Viper.Terminal.Say("=== List Get Test ===");
 
     var list: Ptr = Viper.Collections.List.New();
-    Viper.Collections.List.Add(list, 100);
+    Viper.Collections.List.Push(list, 100);
 
-    var item: Ptr = Viper.Collections.List.get_Item(list, 0);
+    var item: Ptr = Viper.Collections.List.Get(list, 0);
     Viper.Terminal.Say("Got item");
 
     Viper.Terminal.Say("RESULT: ok");

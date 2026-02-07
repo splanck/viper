@@ -26,7 +26,7 @@ sh.Push("c")
 sh.Push("d")
 sh.Push("e")
 
-Viper.Random.Seed(1)
+Viper.Math.Random.Seed(1)
 sh.Shuffle()
 PRINT Viper.String.Join("|", sh)
 

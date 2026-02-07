@@ -21,7 +21,7 @@ int main()
 {
     rt_string s1 = rt_const_cstr("ABCD");
     rt_string s2 = rt_const_cstr("BC");
-    assert(rt_instr2(s1, s2) == 2);
+    assert(rt_str_index_of(s1, s2) == 2);
 
     rt_string s3 = rt_const_cstr("ABABAB");
     rt_string s4 = rt_const_cstr("AB");
@@ -36,7 +36,7 @@ int main()
 
     rt_string s5 = rt_const_cstr("ABC");
     rt_string s6 = rt_const_cstr("X");
-    assert(rt_instr2(s5, s6) == 0);
+    assert(rt_str_index_of(s5, s6) == 0);
 
     return 0;
 }

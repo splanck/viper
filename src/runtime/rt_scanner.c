@@ -40,7 +40,7 @@ void *rt_scanner_new(rt_string source)
 
     s->source = source;
     s->data = rt_string_cstr(source);
-    s->len = rt_len(source);
+    s->len = rt_str_len(source);
     s->pos = 0;
     return s;
 }
@@ -196,7 +196,7 @@ rt_string rt_scanner_read_until_any(void *obj, rt_string delims)
     Scanner *s = (Scanner *)obj;
 
     const char *delim_str = rt_string_cstr(delims);
-    int64_t delim_len = rt_len(delims);
+    int64_t delim_len = rt_str_len(delims);
 
     int64_t start = s->pos;
     while (s->pos < s->len)
@@ -259,7 +259,7 @@ int8_t rt_scanner_match_str(void *obj, rt_string str)
     Scanner *s = (Scanner *)obj;
 
     const char *str_data = rt_string_cstr(str);
-    int64_t str_len = rt_len(str);
+    int64_t str_len = rt_str_len(str);
 
     if (s->pos + str_len > s->len)
         return 0;
@@ -281,7 +281,7 @@ int8_t rt_scanner_accept_str(void *obj, rt_string str)
     if (!rt_scanner_match_str(obj, str))
         return 0;
     Scanner *s = (Scanner *)obj;
-    s->pos += rt_len(str);
+    s->pos += rt_str_len(str);
     return 1;
 }
 
@@ -294,7 +294,7 @@ int8_t rt_scanner_accept_any(void *obj, rt_string chars)
         return 0;
 
     const char *char_str = rt_string_cstr(chars);
-    int64_t char_len = rt_len(chars);
+    int64_t char_len = rt_str_len(chars);
     char c = s->data[s->pos];
 
     for (int64_t i = 0; i < char_len; i++)

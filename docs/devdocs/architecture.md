@@ -111,7 +111,7 @@ Subcomponents and duties:
 - **Lowering:** walks the AST and emits IL instructions via the IR builder.
 
 Intrinsic functions like `LEN`, `LEFT$`, and `MID$` are looked up in a static registry during semantic analysis. They
-lower to runtime calls such as `rt_len` and `rt_substr`.
+lower to runtime calls such as `rt_str_len` and `rt_str_substr`.
 
 Diagnostics flow through `DiagnosticEmitter`, which tracks file and line information. Errors stop compilation before
 lowering, keeping the emitted IL well-formed.
@@ -171,7 +171,7 @@ numeric values are 64-bit.
 Initial runtime surface (all prefixed `rt_`):
 
 - Console: `rt_print_str`, `rt_print_i64`, `rt_print_f64`, `rt_input_line`.
-- Strings: `rt_len`, `rt_concat`, `rt_substr`, `rt_to_int`, `rt_int_to_str`, `rt_f64_to_str`.
+- Strings: `rt_str_len`, `rt_str_concat`, `rt_str_substr`, `rt_to_int`, `rt_int_to_str`, `rt_f64_to_str`.
 - Memory: `rt_alloc`, `rt_free`.
 - Optional math helpers: `rt_sin`, `rt_cos`, `rt_pow_f64_chkdom`, etc.
 

@@ -67,23 +67,23 @@ arc.AddFile("note.txt", notePath)
 arc.AddDir("logs/")
 arc.Finish()
 
-Viper.Diagnostics.Assert(Viper.IO.Archive.IsZip(archivePath), "zip.iszip")
+Viper.Core.Diagnostics.Assert(Viper.IO.Archive.IsZip(archivePath), "zip.iszip")
 
 DIM arc2 AS Viper.IO.Archive
 arc2 = Viper.IO.Archive.Open(archivePath)
-Viper.Diagnostics.Assert(arc2.Path <> "", "zip.path")
-Viper.Diagnostics.Assert(arc2.Count >= 3, "zip.count")
+Viper.Core.Diagnostics.Assert(arc2.Path <> "", "zip.path")
+Viper.Core.Diagnostics.Assert(arc2.Count >= 3, "zip.count")
 DIM names AS Viper.Collections.Seq
 names = arc2.Names
-Viper.Diagnostics.Assert(names.Len >= 3, "zip.names")
-Viper.Diagnostics.Assert(arc2.Has("hello.txt"), "zip.has")
-Viper.Diagnostics.AssertEqStr(arc2.ReadStr("hello.txt"), "hi", "zip.readstr")
+Viper.Core.Diagnostics.Assert(names.Len >= 3, "zip.names")
+Viper.Core.Diagnostics.Assert(arc2.Has("hello.txt"), "zip.has")
+Viper.Core.Diagnostics.AssertEqStr(arc2.ReadStr("hello.txt"), "hi", "zip.readstr")
 DIM bin AS Viper.Collections.Bytes
 bin = arc2.Read("data.bin")
-Viper.Diagnostics.AssertEq(bin.Len, 4, "zip.read")
+Viper.Core.Diagnostics.AssertEq(bin.Len, 4, "zip.read")
 DIM info AS Viper.Collections.Map
 info = arc2.Info("hello.txt")
-Viper.Diagnostics.Assert(info.Has("size"), "zip.info")
+Viper.Core.Diagnostics.Assert(info.Has("size"), "zip.info")
 
 DIM outDir AS STRING
 outDir = Viper.IO.Path.Join(base, "out")
@@ -91,18 +91,18 @@ Viper.IO.Dir.MakeAll(outDir)
 arc2.ExtractAll(outDir)
 DIM extracted AS STRING
 extracted = Viper.IO.Path.Join(outDir, "hello.txt")
-Viper.Diagnostics.Assert(Viper.IO.File.Exists(extracted), "zip.extractall")
+Viper.Core.Diagnostics.Assert(Viper.IO.File.Exists(extracted), "zip.extractall")
 DIM extractedNote AS STRING
 extractedNote = Viper.IO.Path.Join(base, "note_extracted.txt")
 arc2.Extract("note.txt", extractedNote)
-Viper.Diagnostics.Assert(Viper.IO.File.Exists(extractedNote), "zip.extract")
+Viper.Core.Diagnostics.Assert(Viper.IO.File.Exists(extractedNote), "zip.extract")
 
 DIM arcBytes AS Viper.Collections.Bytes
 arcBytes = Viper.IO.File.ReadAllBytes(archivePath)
-Viper.Diagnostics.Assert(Viper.IO.Archive.IsZipBytes(arcBytes), "zip.iszipbytes")
+Viper.Core.Diagnostics.Assert(Viper.IO.Archive.IsZipBytes(arcBytes), "zip.iszipbytes")
 DIM arc3 AS Viper.IO.Archive
 arc3 = Viper.IO.Archive.FromBytes(arcBytes)
-Viper.Diagnostics.AssertEqStr(arc3.ReadStr("hello.txt"), "hi", "zip.frombytes")
+Viper.Core.Diagnostics.AssertEqStr(arc3.ReadStr("hello.txt"), "hi", "zip.frombytes")
 
 DIM text AS STRING
 text = "The quick brown fox jumps over the lazy dog."
@@ -114,37 +114,37 @@ DIM gz AS Viper.Collections.Bytes
 gz = Viper.IO.Compress.Gzip(textBytes)
 DIM gun AS Viper.Collections.Bytes
 gun = Viper.IO.Compress.Gunzip(gz)
-Viper.Diagnostics.AssertEqStr(gun.ToHex(), textBytes.ToHex(), "gzip")
+Viper.Core.Diagnostics.AssertEqStr(gun.ToHex(), textBytes.ToHex(), "gzip")
 
 DIM gz2 AS Viper.Collections.Bytes
 gz2 = Viper.IO.Compress.GzipLvl(textBytes, 9)
 DIM gun2 AS Viper.Collections.Bytes
 gun2 = Viper.IO.Compress.Gunzip(gz2)
-Viper.Diagnostics.AssertEqStr(gun2.ToHex(), textBytes.ToHex(), "gzip.lvl")
+Viper.Core.Diagnostics.AssertEqStr(gun2.ToHex(), textBytes.ToHex(), "gzip.lvl")
 
 DIM def AS Viper.Collections.Bytes
 def = Viper.IO.Compress.Deflate(textBytes)
 DIM inf AS Viper.Collections.Bytes
 inf = Viper.IO.Compress.Inflate(def)
-Viper.Diagnostics.AssertEqStr(inf.ToHex(), textBytes.ToHex(), "deflate")
+Viper.Core.Diagnostics.AssertEqStr(inf.ToHex(), textBytes.ToHex(), "deflate")
 
 DIM def2 AS Viper.Collections.Bytes
 def2 = Viper.IO.Compress.DeflateLvl(textBytes, 9)
 DIM inf2 AS Viper.Collections.Bytes
 inf2 = Viper.IO.Compress.Inflate(def2)
-Viper.Diagnostics.AssertEqStr(inf2.ToHex(), textBytes.ToHex(), "deflate.lvl")
+Viper.Core.Diagnostics.AssertEqStr(inf2.ToHex(), textBytes.ToHex(), "deflate.lvl")
 
 DIM gzStr AS Viper.Collections.Bytes
 gzStr = Viper.IO.Compress.GzipStr(text)
 DIM gunStr AS STRING
 gunStr = Viper.IO.Compress.GunzipStr(gzStr)
-Viper.Diagnostics.AssertEqStr(gunStr, text, "gzipstr")
+Viper.Core.Diagnostics.AssertEqStr(gunStr, text, "gzipstr")
 
 DIM defStr AS Viper.Collections.Bytes
 defStr = Viper.IO.Compress.DeflateStr(text)
 DIM infStr AS STRING
 infStr = Viper.IO.Compress.InflateStr(defStr)
-Viper.Diagnostics.AssertEqStr(infStr, text, "deflatestr")
+Viper.Core.Diagnostics.AssertEqStr(infStr, text, "deflatestr")
 
 Viper.IO.Dir.RemoveAll(base)
 

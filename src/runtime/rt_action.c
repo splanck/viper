@@ -87,7 +87,7 @@ static Action *find_action_str(rt_string name)
 {
     if (!name)
         return NULL;
-    int64_t name_len = rt_len(name);
+    int64_t name_len = rt_str_len(name);
     const char *name_data = name->data;
 
     Action *a = g_actions;
@@ -105,7 +105,7 @@ static char *strdup_rt_string(rt_string s)
 {
     if (!s)
         return NULL;
-    int64_t len = rt_len(s);
+    int64_t len = rt_str_len(s);
     if (len == 0)
         return NULL;
     char *result = (char *)malloc((size_t)len + 1);
@@ -460,7 +460,7 @@ int8_t rt_action_define(rt_string name)
     if (!g_initialized)
         rt_action_init();
 
-    if (!name || rt_len(name) == 0)
+    if (!name || rt_str_len(name) == 0)
         return 0;
 
     if (find_action_str(name))
@@ -492,7 +492,7 @@ int8_t rt_action_define_axis(rt_string name)
     if (!g_initialized)
         rt_action_init();
 
-    if (!name || rt_len(name) == 0)
+    if (!name || rt_str_len(name) == 0)
         return 0;
 
     if (find_action_str(name))
@@ -535,7 +535,7 @@ int8_t rt_action_remove(rt_string name)
     if (!name)
         return 0;
 
-    int64_t name_len = rt_len(name);
+    int64_t name_len = rt_str_len(name);
     const char *name_data = name->data;
 
     Action **pp = &g_actions;
@@ -812,7 +812,7 @@ rt_string rt_action_bindings_str(rt_string action)
             case BIND_KEY:
             {
                 rt_string key_name = rt_keyboard_key_name(b->code);
-                int64_t key_len = rt_len(key_name);
+                int64_t key_len = rt_str_len(key_name);
                 if (key_len > 0 && key_len < 60)
                 {
                     memcpy(temp, key_name->data, (size_t)key_len);

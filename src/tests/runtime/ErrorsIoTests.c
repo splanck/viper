@@ -121,7 +121,7 @@ static void ensure_read_line_trims_crlf(void)
     assert(line != NULL);
     const char *cstr = rt_string_cstr(line);
     assert(strcmp(cstr, "hello world") == 0);
-    assert(rt_len(line) == (int64_t)strlen("hello world"));
+    assert(rt_str_len(line) == (int64_t)strlen("hello world"));
 
     rt_string_unref(line);
 

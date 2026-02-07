@@ -2,7 +2,7 @@
 module slider;
 
 bind Viper.Graphics;
-bind Viper.Convert;
+bind Viper.Core.Convert;
 
 bind "../config";
 
@@ -161,7 +161,7 @@ entity Slider {
         gfx.Text( x, textY, label, config.UI_TEXT_DIM);
 
         // Draw value at right side
-        var valStr = Viper.Convert.ToString_Int(value);
+        var valStr = Viper.Core.Convert.ToString_Int(value);
         var valX = x + width - 24;
         gfx.Text( valX, textY, valStr, config.UI_TEXT);
     }

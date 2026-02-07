@@ -5,11 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/render/renderer.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the Renderer class, which converts ScreenBuffer diffs
+// into ANSI terminal escape sequences for Viper's TUI. The Renderer is the
+// final stage of the rendering pipeline, translating abstract cell changes
+// into concrete terminal output.
+//
+// The Renderer maintains minimal state: the current cursor position and
+// active text style. It only emits escape sequences when the style or
+// position changes, minimizing terminal I/O bandwidth.
+//
+// Rendering modes:
+//   - truecolor (24-bit): Uses SGR 38;2;r;g;b and 48;2;r;g;b sequences
+//   - 256-color (default): Maps RGBA colors to the nearest 256-color index
+//
+// Key invariants:
+//   - draw() processes DiffSpans from the ScreenBuffer to emit only changes.
+//   - Cursor position is tracked to avoid redundant cursor movement sequences.
+//   - Style state is tracked to avoid redundant SGR attribute sequences.
+//
+// Ownership: Renderer borrows a TermIO reference for output. It holds no
+// other resources.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,7 +36,11 @@
 namespace viper::tui::render
 {
 
-/// @brief Writes ScreenBuffer diffs as ANSI sequences to a terminal.
+/// @brief Converts ScreenBuffer diffs into ANSI escape sequences for terminal output.
+/// @details The final stage of the TUI rendering pipeline. Computes differential
+///          updates by processing DiffSpan records from the ScreenBuffer, emitting
+///          only the escape sequences needed to update changed cells. Tracks cursor
+///          position and active style to minimize redundant output.
 class Renderer
 {
   public:

@@ -6,11 +6,11 @@ func start() {
     Viper.Terminal.Say("=== Box Test ===");
 
     // Box an integer
-    var boxed: Ptr = Viper.Box.I64(42);
+    var boxed: Ptr = Viper.Core.Box.I64(42);
     Viper.Terminal.Say("Boxed");
 
     // Unbox it
-    var unboxed: Integer = Viper.Box.ToI64(boxed);
+    var unboxed: Integer = Viper.Core.Box.ToI64(boxed);
     Viper.Terminal.Say("Unboxed: " + Viper.String.FromInt(unboxed));
 
     if (unboxed == 42) {

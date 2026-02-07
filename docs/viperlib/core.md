@@ -23,14 +23,14 @@ Base class for all Viper reference types. Provides fundamental object operations
 | Method          | Signature         | Description                                    |
 |-----------------|-------------------|------------------------------------------------|
 | `Equals(other)` | `Boolean(Object)` | Compares this object with another for equality |
-| `GetHashCode()` | `Integer()`       | Returns a hash code for the object             |
+| `HashCode()` | `Integer()`       | Returns a hash code for the object             |
 | `ToString()`    | `String()`        | Returns a string representation of the object  |
 
 ### Static Functions
 
 | Function                             | Signature                 | Description                                               |
 |--------------------------------------|---------------------------|-----------------------------------------------------------|
-| `Viper.Object.ReferenceEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
+| `Viper.Object.RefEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
 
 ### Zia Example
 
@@ -48,10 +48,10 @@ IF obj1.Equals(obj2) THEN
 END IF
 
 PRINT obj1.ToString()
-PRINT obj1.GetHashCode()
+PRINT obj1.HashCode()
 
 ' Static function call - check if same instance
-IF Viper.Object.ReferenceEquals(obj1, obj2) THEN
+IF Viper.Object.RefEquals(obj1, obj2) THEN
     PRINT "Same object instance"
 END IF
 ```

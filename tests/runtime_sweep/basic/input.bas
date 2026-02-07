@@ -181,7 +181,7 @@ END FUNCTION
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Diagnostics.Assert(FALSE, msg)
+        Viper.Core.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
@@ -291,58 +291,58 @@ keySum = keySum + Viper.Input.Keyboard.KEY_NUMMUL
 keySum = keySum + Viper.Input.Keyboard.KEY_NUMDIV
 keySum = keySum + Viper.Input.Keyboard.KEY_NUMENTER
 keySum = keySum + Viper.Input.Keyboard.KEY_NUMDOT
-Viper.Diagnostics.Assert(keySum > 0, "key.sum")
-Viper.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_A, 65, "key.a")
-Viper.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_0, 48, "key.0")
-Viper.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_SPACE, 32, "key.space")
-Viper.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_F1, 290, "key.f1")
-Viper.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_UNKNOWN, 0, "key.unknown")
+Viper.Core.Diagnostics.Assert(keySum > 0, "key.sum")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_A, 65, "key.a")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_0, 48, "key.0")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_SPACE, 32, "key.space")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_F1, 290, "key.f1")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_UNKNOWN, 0, "key.unknown")
 
 DIM down AS INTEGER
 down = Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(IsBool(down), "key.isdown")
+Viper.Core.Diagnostics.Assert(IsBool(down), "key.isdown")
 DIM up AS INTEGER
 up = Viper.Input.Keyboard.IsUp(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(IsBool(up), "key.isup")
+Viper.Core.Diagnostics.Assert(IsBool(up), "key.isup")
 DIM anyDown AS INTEGER
 anyDown = Viper.Input.Keyboard.AnyDown()
-Viper.Diagnostics.Assert(IsBool(anyDown), "key.anydown")
+Viper.Core.Diagnostics.Assert(IsBool(anyDown), "key.anydown")
 DIM downKey AS INTEGER
 downKey = Viper.Input.Keyboard.GetDown()
-Viper.Diagnostics.Assert(downKey >= 0, "key.getdown")
+Viper.Core.Diagnostics.Assert(downKey >= 0, "key.getdown")
 DIM wasPressed AS INTEGER
 wasPressed = Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(IsBool(wasPressed), "key.waspressed")
+Viper.Core.Diagnostics.Assert(IsBool(wasPressed), "key.waspressed")
 DIM wasReleased AS INTEGER
 wasReleased = Viper.Input.Keyboard.WasReleased(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(IsBool(wasReleased), "key.wasreleased")
+Viper.Core.Diagnostics.Assert(IsBool(wasReleased), "key.wasreleased")
 DIM pressed AS Viper.Collections.Seq
 pressed = Viper.Input.Keyboard.GetPressed()
-Viper.Diagnostics.Assert(pressed.Len >= 0, "key.getpressed")
+Viper.Core.Diagnostics.Assert(pressed.Len >= 0, "key.getpressed")
 DIM released AS Viper.Collections.Seq
 released = Viper.Input.Keyboard.GetReleased()
-Viper.Diagnostics.Assert(released.Len >= 0, "key.getreleased")
+Viper.Core.Diagnostics.Assert(released.Len >= 0, "key.getreleased")
 Viper.Input.Keyboard.EnableTextInput()
 canvas.Poll()
 DIM text AS STRING
 text = Viper.Input.Keyboard.GetText()
-Viper.Diagnostics.Assert(text.Length >= 0, "key.gettext")
+Viper.Core.Diagnostics.Assert(text.Length >= 0, "key.gettext")
 Viper.Input.Keyboard.DisableTextInput()
 DIM shiftDown AS INTEGER
 shiftDown = Viper.Input.Keyboard.Shift()
-Viper.Diagnostics.Assert(IsBool(shiftDown), "key.shift")
+Viper.Core.Diagnostics.Assert(IsBool(shiftDown), "key.shift")
 DIM ctrlDown AS INTEGER
 ctrlDown = Viper.Input.Keyboard.Ctrl()
-Viper.Diagnostics.Assert(IsBool(ctrlDown), "key.ctrl")
+Viper.Core.Diagnostics.Assert(IsBool(ctrlDown), "key.ctrl")
 DIM altDown AS INTEGER
 altDown = Viper.Input.Keyboard.Alt()
-Viper.Diagnostics.Assert(IsBool(altDown), "key.alt")
+Viper.Core.Diagnostics.Assert(IsBool(altDown), "key.alt")
 DIM caps AS INTEGER
 caps = Viper.Input.Keyboard.CapsLock()
-Viper.Diagnostics.Assert(IsBool(caps), "key.caps")
+Viper.Core.Diagnostics.Assert(IsBool(caps), "key.caps")
 DIM keyName AS STRING
 keyName = Viper.Input.Keyboard.KeyName(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.AssertEqStr(keyName, "A", "key.name")
+Viper.Core.Diagnostics.AssertEqStr(keyName, "A", "key.name")
 
 DIM btnSum AS INTEGER
 btnSum = 0
@@ -351,16 +351,16 @@ btnSum = btnSum + Viper.Input.Mouse.BUTTON_RIGHT
 btnSum = btnSum + Viper.Input.Mouse.BUTTON_MIDDLE
 btnSum = btnSum + Viper.Input.Mouse.BUTTON_X1
 btnSum = btnSum + Viper.Input.Mouse.BUTTON_X2
-Viper.Diagnostics.Assert(btnSum > 0, "mouse.btnsum")
+Viper.Core.Diagnostics.Assert(btnSum > 0, "mouse.btnsum")
 Viper.Input.Mouse.Hide()
 Viper.Input.Mouse.Show()
 DIM hidden AS INTEGER
 hidden = Viper.Input.Mouse.IsHidden()
-Viper.Diagnostics.Assert(IsBool(hidden), "mouse.hidden")
+Viper.Core.Diagnostics.Assert(IsBool(hidden), "mouse.hidden")
 Viper.Input.Mouse.Capture()
 DIM captured AS INTEGER
 captured = Viper.Input.Mouse.IsCaptured()
-Viper.Diagnostics.Assert(IsBool(captured), "mouse.captured")
+Viper.Core.Diagnostics.Assert(IsBool(captured), "mouse.captured")
 Viper.Input.Mouse.Release()
 Viper.Input.Mouse.SetPos(1, 1)
 DIM mx AS INTEGER
@@ -373,10 +373,10 @@ DIM dy AS INTEGER
 dy = Viper.Input.Mouse.DeltaY()
 DIM mdown AS INTEGER
 mdown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.BUTTON_LEFT)
-Viper.Diagnostics.Assert(IsBool(mdown), "mouse.isdown")
+Viper.Core.Diagnostics.Assert(IsBool(mdown), "mouse.isdown")
 DIM mup AS INTEGER
 mup = Viper.Input.Mouse.IsUp(Viper.Input.Mouse.BUTTON_LEFT)
-Viper.Diagnostics.Assert(IsBool(mup), "mouse.isup")
+Viper.Core.Diagnostics.Assert(IsBool(mup), "mouse.isup")
 DIM leftDown AS INTEGER
 leftDown = Viper.Input.Mouse.Left()
 DIM rightDown AS INTEGER
@@ -395,19 +395,19 @@ DIM wheelX AS INTEGER
 wheelX = Viper.Input.Mouse.WheelX()
 DIM wheelY AS INTEGER
 wheelY = Viper.Input.Mouse.WheelY()
-Viper.Diagnostics.Assert(leftDown = leftDown, "mouse.left")
-Viper.Diagnostics.Assert(rightDown = rightDown, "mouse.right")
-Viper.Diagnostics.Assert(middleDown = middleDown, "mouse.middle")
-Viper.Diagnostics.Assert(wasPressM = wasPressM, "mouse.waspressed")
-Viper.Diagnostics.Assert(wasRelM = wasRelM, "mouse.wasreleased")
-Viper.Diagnostics.Assert(wasClick = wasClick, "mouse.wasclicked")
-Viper.Diagnostics.Assert(wasDbl = wasDbl, "mouse.wasdouble")
-Viper.Diagnostics.Assert(wheelX = wheelX, "mouse.wheelx")
-Viper.Diagnostics.Assert(wheelY = wheelY, "mouse.wheely")
-Viper.Diagnostics.Assert(mx = mx, "mouse.x")
-Viper.Diagnostics.Assert(my = my, "mouse.y")
-Viper.Diagnostics.Assert(dx = dx, "mouse.dx")
-Viper.Diagnostics.Assert(dy = dy, "mouse.dy")
+Viper.Core.Diagnostics.Assert(leftDown = leftDown, "mouse.left")
+Viper.Core.Diagnostics.Assert(rightDown = rightDown, "mouse.right")
+Viper.Core.Diagnostics.Assert(middleDown = middleDown, "mouse.middle")
+Viper.Core.Diagnostics.Assert(wasPressM = wasPressM, "mouse.waspressed")
+Viper.Core.Diagnostics.Assert(wasRelM = wasRelM, "mouse.wasreleased")
+Viper.Core.Diagnostics.Assert(wasClick = wasClick, "mouse.wasclicked")
+Viper.Core.Diagnostics.Assert(wasDbl = wasDbl, "mouse.wasdouble")
+Viper.Core.Diagnostics.Assert(wheelX = wheelX, "mouse.wheelx")
+Viper.Core.Diagnostics.Assert(wheelY = wheelY, "mouse.wheely")
+Viper.Core.Diagnostics.Assert(mx = mx, "mouse.x")
+Viper.Core.Diagnostics.Assert(my = my, "mouse.y")
+Viper.Core.Diagnostics.Assert(dx = dx, "mouse.dx")
+Viper.Core.Diagnostics.Assert(dy = dy, "mouse.dy")
 
 DIM padSum AS INTEGER
 padSum = 0
@@ -426,16 +426,16 @@ padSum = padSum + Viper.Input.Pad.PAD_DOWN
 padSum = padSum + Viper.Input.Pad.PAD_LEFT
 padSum = padSum + Viper.Input.Pad.PAD_RIGHT
 padSum = padSum + Viper.Input.Pad.PAD_GUIDE
-Viper.Diagnostics.Assert(padSum > 0, "pad.sum")
+Viper.Core.Diagnostics.Assert(padSum > 0, "pad.sum")
 DIM padCount AS INTEGER
 padCount = Viper.Input.Pad.Count()
-Viper.Diagnostics.Assert(padCount >= 0, "pad.count")
+Viper.Core.Diagnostics.Assert(padCount >= 0, "pad.count")
 DIM padConnected AS INTEGER
 padConnected = Viper.Input.Pad.IsConnected(0)
-Viper.Diagnostics.Assert(padConnected = 0 OR padConnected = 1, "pad.connected")
+Viper.Core.Diagnostics.Assert(padConnected = 0 OR padConnected = 1, "pad.connected")
 DIM padName AS STRING
 padName = Viper.Input.Pad.Name(0)
-Viper.Diagnostics.Assert(padName.Length >= 0, "pad.name")
+Viper.Core.Diagnostics.Assert(padName.Length >= 0, "pad.name")
 DIM padDown AS INTEGER
 padDown = Viper.Input.Pad.IsDown(0, Viper.Input.Pad.PAD_A)
 DIM padUp AS INTEGER
@@ -444,10 +444,10 @@ DIM padPressed AS INTEGER
 padPressed = Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.PAD_A)
 DIM padReleased AS INTEGER
 padReleased = Viper.Input.Pad.WasReleased(0, Viper.Input.Pad.PAD_A)
-Viper.Diagnostics.Assert(padDown = padDown, "pad.isdown")
-Viper.Diagnostics.Assert(padUp = padUp, "pad.isup")
-Viper.Diagnostics.Assert(padPressed = padPressed, "pad.waspressed")
-Viper.Diagnostics.Assert(padReleased = padReleased, "pad.wasreleased")
+Viper.Core.Diagnostics.Assert(padDown = padDown, "pad.isdown")
+Viper.Core.Diagnostics.Assert(padUp = padUp, "pad.isup")
+Viper.Core.Diagnostics.Assert(padPressed = padPressed, "pad.waspressed")
+Viper.Core.Diagnostics.Assert(padReleased = padReleased, "pad.wasreleased")
 DIM lx AS DOUBLE
 lx = Viper.Input.Pad.LeftX(0)
 DIM ly AS DOUBLE
@@ -460,12 +460,12 @@ DIM lt AS DOUBLE
 lt = Viper.Input.Pad.LeftTrigger(0)
 DIM rt AS DOUBLE
 rt = Viper.Input.Pad.RightTrigger(0)
-Viper.Diagnostics.Assert(lx >= -1 AND lx <= 1, "pad.leftx")
-Viper.Diagnostics.Assert(ly >= -1 AND ly <= 1, "pad.lefty")
-Viper.Diagnostics.Assert(rx >= -1 AND rx <= 1, "pad.rightx")
-Viper.Diagnostics.Assert(ry >= -1 AND ry <= 1, "pad.righty")
-Viper.Diagnostics.Assert(lt >= 0 AND lt <= 1, "pad.lefttrigger")
-Viper.Diagnostics.Assert(rt >= 0 AND rt <= 1, "pad.righttrigger")
+Viper.Core.Diagnostics.Assert(lx >= -1 AND lx <= 1, "pad.leftx")
+Viper.Core.Diagnostics.Assert(ly >= -1 AND ly <= 1, "pad.lefty")
+Viper.Core.Diagnostics.Assert(rx >= -1 AND rx <= 1, "pad.rightx")
+Viper.Core.Diagnostics.Assert(ry >= -1 AND ry <= 1, "pad.righty")
+Viper.Core.Diagnostics.Assert(lt >= 0 AND lt <= 1, "pad.lefttrigger")
+Viper.Core.Diagnostics.Assert(rt >= 0 AND rt <= 1, "pad.righttrigger")
 Viper.Input.Pad.SetDeadzone(0.2)
 DIM dz AS DOUBLE
 dz = Viper.Input.Pad.GetDeadzone()

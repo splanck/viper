@@ -473,7 +473,7 @@ static void test_current()
 
     // Save current directory
     rt_string original = rt_dir_current();
-    test_result("current returns non-empty", rt_len(original) > 0);
+    test_result("current returns non-empty", rt_str_len(original) > 0);
 
     // Create test directory
     const char *base = get_test_base();

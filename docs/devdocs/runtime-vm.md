@@ -45,22 +45,22 @@ This document describes the C ABI provided by the runtime library (documented; e
 
 | Symbol       | Signature              | Semantics                                                                                |
 |--------------|------------------------|------------------------------------------------------------------------------------------|
-| `@rt_len`    | `str -> i64`           | Return length of string in bytes                                                         |
-| `@rt_concat` | `str, str -> str`      | Concatenate two strings; consumes both operands                                          |
-| `@rt_substr` | `str, i64, i64 -> str` | Extract substring from start (0-based) with given length                                 |
-| `@rt_left`   | `str, i64 -> str`      | Return leftmost n characters                                                             |
-| `@rt_right`  | `str, i64 -> str`      | Return rightmost n characters                                                            |
-| `@rt_mid2`   | `str, i64 -> str`      | Return substring from start (1-based) to end                                             |
-| `@rt_mid3`   | `str, i64, i64 -> str` | Return substring from start (1-based) with length                                        |
-| `@rt_instr2` | `str, str -> i64`      | Find needle in haystack starting at position 1; returns 1-based index or 0               |
-| `@rt_instr3` | `i64, str, str -> i64` | Find needle in haystack starting at given position (1-based); returns 1-based index or 0 |
-| `@rt_ltrim`  | `str -> str`           | Remove leading whitespace (spaces and tabs)                                              |
-| `@rt_rtrim`  | `str -> str`           | Remove trailing whitespace (spaces and tabs)                                             |
-| `@rt_trim`   | `str -> str`           | Remove leading and trailing whitespace                                                   |
-| `@rt_ucase`  | `str -> str`           | Convert ASCII characters to uppercase                                                    |
-| `@rt_lcase`  | `str -> str`           | Convert ASCII characters to lowercase                                                    |
-| `@rt_chr`    | `i64 -> str`           | Create single-character string from ASCII code (0-255)                                   |
-| `@rt_asc`    | `str -> i64`           | Return ASCII code of first character (0-255), or 0 if empty                              |
+| `@rt_str_len`           | `str -> i64`           | Return length of string in bytes                                                         |
+| `@rt_str_concat`        | `str, str -> str`      | Concatenate two strings; consumes both operands                                          |
+| `@rt_str_substr`        | `str, i64, i64 -> str` | Extract substring from start (0-based) with given length                                 |
+| `@rt_str_left`          | `str, i64 -> str`      | Return leftmost n characters                                                             |
+| `@rt_str_right`         | `str, i64 -> str`      | Return rightmost n characters                                                            |
+| `@rt_str_mid`           | `str, i64 -> str`      | Return substring from start (1-based) to end                                             |
+| `@rt_str_mid_len`       | `str, i64, i64 -> str` | Return substring from start (1-based) with length                                        |
+| `@rt_str_index_of`      | `str, str -> i64`      | Find needle in haystack starting at position 1; returns 1-based index or 0               |
+| `@rt_str_index_of_from` | `i64, str, str -> i64` | Find needle in haystack starting at given position (1-based); returns 1-based index or 0 |
+| `@rt_str_ltrim`         | `str -> str`           | Remove leading whitespace (spaces and tabs)                                              |
+| `@rt_str_rtrim`         | `str -> str`           | Remove trailing whitespace (spaces and tabs)                                             |
+| `@rt_str_trim`          | `str -> str`           | Remove leading and trailing whitespace                                                   |
+| `@rt_str_ucase`         | `str -> str`           | Convert ASCII characters to uppercase                                                    |
+| `@rt_str_lcase`         | `str -> str`           | Convert ASCII characters to lowercase                                                    |
+| `@rt_str_chr`           | `i64 -> str`           | Create single-character string from ASCII code (0-255)                                   |
+| `@rt_str_asc`           | `str -> i64`           | Return ASCII code of first character (0-255), or 0 if empty                              |
 | `@rt_str_eq` | `str, str -> i1`       | Compare two strings for equality; returns 1 if equal, 0 otherwise                        |
 
 ### String conversion
@@ -87,7 +87,7 @@ This document describes the C ABI provided by the runtime library (documented; e
 | `@rt_println_i32`  | `i32 -> void`          | Print 32-bit integer with newline                 |
 | `@rt_println_str`  | `ptr -> void`          | Print C string with newline (ptr is const char*)  |
 | `@rt_input_line`   | `void -> str`          | Read a line from stdin (without trailing newline) |
-| `@rt_split_fields` | `str, ptr, i64 -> i64` | Split comma-separated fields; returns count       |
+| `@rt_str_split_fields` | `str, ptr, i64 -> i64` | Split comma-separated fields; returns count       |
 
 ### File I/O
 

@@ -8,7 +8,7 @@
 
 - [Viper.Text.Codec](#vipertextcodec)
 - [Viper.Text.Csv](#vipertextcsv)
-- [Viper.Text.Guid](#vipertextguid)
+- [Viper.Text.Uuid](#vipertextuuid)
 - [Viper.Text.Html](#vipertexthtml)
 - [Viper.Text.Json](#vipertextjson)
 - [Viper.Text.JsonPath](#vipertextjsonpath)
@@ -193,7 +193,7 @@ PRINT tsv.Count     ' Output: 3
 
 ---
 
-## Viper.Text.Guid
+## Viper.Text.Uuid
 
 UUID version 4 (random) generation and manipulation per RFC 4122.
 
@@ -210,59 +210,59 @@ UUID version 4 (random) generation and manipulation per RFC 4122.
 | Method             | Signature         | Description                            |
 |--------------------|-------------------|----------------------------------------|
 | `New()`            | `String()`        | Generate a new random UUID v4          |
-| `IsValid(guid)`    | `Boolean(String)` | Check if string is a valid GUID format |
-| `ToBytes(guid)`    | `Bytes(String)`   | Convert GUID string to 16-byte array   |
-| `FromBytes(bytes)` | `String(Bytes)`   | Convert 16-byte array to GUID string   |
+| `IsValid(guid)`    | `Boolean(String)` | Check if string is a valid UUID format |
+| `ToBytes(guid)`    | `Bytes(String)`   | Convert UUID string to 16-byte array   |
+| `FromBytes(bytes)` | `String(Bytes)`   | Convert 16-byte array to UUID string   |
 
 ### Notes
 
-- Generated GUIDs follow UUID version 4 format (random)
+- Generated UUIDs follow UUID version 4 format (random)
 - Format: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx` where:
     - `4` indicates version 4 (random UUID)
     - `y` is one of `8`, `9`, `a`, or `b` (variant indicator)
 - All hex characters are lowercase
 - Uses cryptographically secure random source where available (/dev/urandom on Unix, CryptGenRandom on Windows)
-- `ToBytes()` traps if the GUID format is invalid
+- `ToBytes()` traps if the UUID format is invalid
 - `FromBytes()` traps if the Bytes object is not exactly 16 bytes
 
 ### Zia Example
 
 ```zia
-module GuidDemo;
+module UuidDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Guid as Guid;
+bind Viper.Text.Uuid as Uuid;
 bind Viper.Fmt as Fmt;
 
 func start() {
-    var id = Guid.New();
-    Say("GUID: " + id);                                    // e.g. a1b2c3d4-...
-    Say("Valid: " + Fmt.Bool(Guid.IsValid(id)));            // true
-    Say("Invalid: " + Fmt.Bool(Guid.IsValid("not-guid"))); // false
+    var id = Uuid.New();
+    Say("UUID: " + id);                                    // e.g. a1b2c3d4-...
+    Say("Valid: " + Fmt.Bool(Uuid.IsValid(id)));            // true
+    Say("Invalid: " + Fmt.Bool(Uuid.IsValid("not-uuid"))); // false
 }
 ```
 
 ### BASIC Example
 
 ```basic
-' Generate a new GUID
-DIM id AS STRING = Viper.Text.Guid.New()
+' Generate a new UUID
+DIM id AS STRING = Viper.Text.Uuid.New()
 PRINT id  ' Example: "550e8400-e29b-41d4-a716-446655440000"
 
-' Check if a string is a valid GUID
-DIM valid AS INTEGER = Viper.Text.Guid.IsValid(id)
+' Check if a string is a valid UUID
+DIM valid AS INTEGER = Viper.Text.Uuid.IsValid(id)
 PRINT valid  ' Output: 1 (true)
 
-DIM invalid AS INTEGER = Viper.Text.Guid.IsValid("not-a-guid")
+DIM invalid AS INTEGER = Viper.Text.Uuid.IsValid("not-a-uuid")
 PRINT invalid  ' Output: 0 (false)
 
-' Get the empty/nil GUID
-DIM empty AS STRING = Viper.Text.Guid.Empty
+' Get the empty/nil UUID
+DIM empty AS STRING = Viper.Text.Uuid.Empty
 PRINT empty  ' Output: "00000000-0000-0000-0000-000000000000"
 
 ' Convert to/from bytes for storage or transmission
-DIM bytes AS OBJECT = Viper.Text.Guid.ToBytes(id)
-DIM restored AS STRING = Viper.Text.Guid.FromBytes(bytes)
+DIM bytes AS OBJECT = Viper.Text.Uuid.ToBytes(id)
+DIM restored AS STRING = Viper.Text.Uuid.FromBytes(bytes)
 PRINT restored = id  ' Output: 1 (true)
 ```
 

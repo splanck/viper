@@ -18,23 +18,23 @@
 
 int main()
 {
-    rt_string lt = rt_ltrim(rt_const_cstr(" hi"));
+    rt_string lt = rt_str_ltrim(rt_const_cstr(" hi"));
     assert(rt_str_eq(lt, rt_const_cstr("hi")));
 
-    rt_string rt = rt_rtrim(rt_const_cstr("hi "));
+    rt_string rt = rt_str_rtrim(rt_const_cstr("hi "));
     assert(rt_str_eq(rt, rt_const_cstr("hi")));
 
-    rt_string t = rt_trim(rt_const_cstr(" hi "));
+    rt_string t = rt_str_trim(rt_const_cstr(" hi "));
     assert(rt_str_eq(t, rt_const_cstr("hi")));
 
-    rt_string u = rt_ucase(rt_const_cstr("Abc!"));
+    rt_string u = rt_str_ucase(rt_const_cstr("Abc!"));
     assert(rt_str_eq(u, rt_const_cstr("ABC!")));
 
-    rt_string l = rt_lcase(rt_const_cstr("AbC!"));
+    rt_string l = rt_str_lcase(rt_const_cstr("AbC!"));
     assert(rt_str_eq(l, rt_const_cstr("abc!")));
 
     rt_string empty = rt_const_cstr("");
-    rt_string et = rt_trim(empty);
+    rt_string et = rt_str_trim(empty);
     assert(rt_str_eq(et, empty));
 
     return 0;

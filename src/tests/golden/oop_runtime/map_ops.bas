@@ -12,13 +12,13 @@ v2 = NEW Viper.Collections.List()
 
 m.Set("a", a)
 
-IF Viper.Object.ReferenceEquals(m.GetOr("a", dflt), a) THEN
+IF Viper.Core.Object.RefEquals(m.GetOr("a", dflt), a) THEN
   PRINT 1
 ELSE
   PRINT 0
 END IF
 
-IF Viper.Object.ReferenceEquals(m.GetOr("missing", dflt), dflt) THEN
+IF Viper.Core.Object.RefEquals(m.GetOr("missing", dflt), dflt) THEN
   PRINT 1
 ELSE
   PRINT 0
@@ -36,7 +36,7 @@ ELSE
   PRINT 0
 END IF
 
-IF Viper.Object.ReferenceEquals(m.GetOr("k", dflt), v1) THEN
+IF Viper.Core.Object.RefEquals(m.GetOr("k", dflt), v1) THEN
   PRINT 1
 ELSE
   PRINT 0
@@ -48,7 +48,7 @@ ELSE
   PRINT 0
 END IF
 
-IF Viper.Object.ReferenceEquals(m.GetOr("k", dflt), v1) THEN
+IF Viper.Core.Object.RefEquals(m.GetOr("k", dflt), v1) THEN
   PRINT 1
 ELSE
   PRINT 0

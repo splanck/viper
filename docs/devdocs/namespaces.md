@@ -894,7 +894,7 @@ For backward compatibility, legacy `rt_*` function names are maintained as alias
 
 - `rt_print_str` → `Viper.Terminal.PrintStr`
 - `rt_print_i64` → `Viper.Terminal.PrintI64`
-- `rt_len` → `Viper.String.Len`
+- `rt_str_len` → `Viper.String.Len`
 
 New code should use the canonical `Viper.*` names.
 

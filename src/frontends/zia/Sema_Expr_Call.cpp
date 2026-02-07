@@ -13,6 +13,7 @@
 
 #include "frontends/zia/Sema.hpp"
 
+#include <algorithm>
 #include <string_view>
 
 namespace il::frontends::zia
@@ -52,6 +53,7 @@ const CollectionMethodInfo listMethods[] = {
     {"last", MethodReturnKind::ElementType},
     {"pop", MethodReturnKind::ElementType},
     // Methods returning Integer
+    {"len", MethodReturnKind::Integer},
     {"count", MethodReturnKind::Integer},
     {"size", MethodReturnKind::Integer},
     {"length", MethodReturnKind::Integer},
@@ -62,6 +64,7 @@ const CollectionMethodInfo listMethods[] = {
     {"contains", MethodReturnKind::Boolean},
     {"remove", MethodReturnKind::Boolean},
     // Methods returning Void
+    {"push", MethodReturnKind::Void},
     {"add", MethodReturnKind::Void},
     {"insert", MethodReturnKind::Void},
     {"set", MethodReturnKind::Void},
@@ -87,6 +90,7 @@ const CollectionMethodInfo mapMethods[] = {
     {"has", MethodReturnKind::Boolean},
     {"remove", MethodReturnKind::Boolean},
     // Methods returning Integer
+    {"len", MethodReturnKind::Integer},
     {"size", MethodReturnKind::Integer},
     {"count", MethodReturnKind::Integer},
     {"length", MethodReturnKind::Integer},
@@ -103,6 +107,7 @@ const CollectionMethodInfo setMethods[] = {
     {"add", MethodReturnKind::Boolean},
     {"remove", MethodReturnKind::Boolean},
     // Methods returning Integer
+    {"len", MethodReturnKind::Integer},
     {"size", MethodReturnKind::Integer},
     {"count", MethodReturnKind::Integer},
     {"length", MethodReturnKind::Integer},
@@ -122,13 +127,22 @@ const CollectionMethodInfo stringMethods[] = {
 /// @param methods The method table to search.
 /// @param methodName The method name to find.
 /// @return The method info if found, nullptr otherwise.
+/// @brief Case-insensitive string_view equality check.
+bool iequals(std::string_view a, std::string_view b)
+{
+    if (a.size() != b.size())
+        return false;
+    return std::equal(a.begin(), a.end(), b.begin(),
+                      [](char ca, char cb) { return std::tolower(ca) == std::tolower(cb); });
+}
+
 template <std::size_t N>
 const CollectionMethodInfo *findMethod(const CollectionMethodInfo (&methods)[N],
                                        std::string_view methodName)
 {
     for (const auto &m : methods)
     {
-        if (m.name == methodName)
+        if (iequals(m.name, methodName))
             return &m;
     }
     return nullptr;

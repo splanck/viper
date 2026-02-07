@@ -48,14 +48,14 @@ basePort = 49200 + (Viper.Time.DateTime.NowMs() MOD 1000)
 
 DIM server1 AS Viper.Network.TcpServer
 server1 = Viper.Network.TcpServer.ListenAt("127.0.0.1", basePort)
-Viper.Diagnostics.Assert(server1.IsListening, "tcpserver.listenat")
+Viper.Core.Diagnostics.Assert(server1.IsListening, "tcpserver.listenat")
 
 DIM client1 AS Viper.Network.Tcp
 client1 = Viper.Network.Tcp.ConnectFor("127.0.0.1", basePort, 1000)
 
 DIM serverConn1 AS Viper.Network.Tcp
 serverConn1 = server1.AcceptFor(1000)
-Viper.Diagnostics.AssertNotNull(serverConn1, "tcpserver.acceptfor")
+Viper.Core.Diagnostics.AssertNotNull(serverConn1, "tcpserver.acceptfor")
 
 serverConn1.Close()
 client1.Close()
@@ -63,21 +63,21 @@ server1.Close()
 
 DIM server2 AS Viper.Network.TcpServer
 server2 = Viper.Network.TcpServer.Listen(basePort + 1)
-Viper.Diagnostics.Assert(server2.IsListening, "tcpserver.listen")
-Viper.Diagnostics.AssertEq(server2.Port, basePort + 1, "tcpserver.port")
-Viper.Diagnostics.Assert(server2.Address <> "", "tcpserver.address")
+Viper.Core.Diagnostics.Assert(server2.IsListening, "tcpserver.listen")
+Viper.Core.Diagnostics.AssertEq(server2.Port, basePort + 1, "tcpserver.port")
+Viper.Core.Diagnostics.Assert(server2.Address <> "", "tcpserver.address")
 
 DIM client2 AS Viper.Network.Tcp
 client2 = Viper.Network.Tcp.Connect("127.0.0.1", basePort + 1)
 
 DIM serverConn2 AS Viper.Network.Tcp
 serverConn2 = server2.Accept()
-Viper.Diagnostics.AssertNotNull(serverConn2, "tcpserver.accept")
+Viper.Core.Diagnostics.AssertNotNull(serverConn2, "tcpserver.accept")
 
-Viper.Diagnostics.Assert(client2.IsOpen, "tcp.isopen")
-Viper.Diagnostics.Assert(client2.Port = basePort + 1, "tcp.port")
-Viper.Diagnostics.Assert(client2.LocalPort > 0, "tcp.localport")
-Viper.Diagnostics.Assert(client2.Host <> "", "tcp.host")
+Viper.Core.Diagnostics.Assert(client2.IsOpen, "tcp.isopen")
+Viper.Core.Diagnostics.Assert(client2.Port = basePort + 1, "tcp.port")
+Viper.Core.Diagnostics.Assert(client2.LocalPort > 0, "tcp.localport")
+Viper.Core.Diagnostics.Assert(client2.Host <> "", "tcp.host")
 
 client2.SetRecvTimeout(1000)
 client2.SetSendTimeout(1000)
@@ -93,7 +93,7 @@ payload.Set(3, 103)
 
 DIM sent AS INTEGER
 sent = client2.Send(payload)
-Viper.Diagnostics.AssertEq(sent, 4, "tcp.send")
+Viper.Core.Diagnostics.AssertEq(sent, 4, "tcp.send")
 
 DIM avail AS INTEGER
 avail = serverConn2.Available
@@ -104,31 +104,31 @@ WHILE avail < 4 AND tries < 100
     avail = serverConn2.Available
     tries = tries + 1
 WEND
-Viper.Diagnostics.Assert(avail >= 4, "tcp.available")
+Viper.Core.Diagnostics.Assert(avail >= 4, "tcp.available")
 
 DIM recvBytes AS Viper.Collections.Bytes
 recvBytes = serverConn2.Recv(4)
-Viper.Diagnostics.AssertEq(recvBytes.Len, 4, "tcp.recv")
+Viper.Core.Diagnostics.AssertEq(recvBytes.Len, 4, "tcp.recv")
 
 sent = client2.Send(payload)
 DIM recvExact AS Viper.Collections.Bytes
 recvExact = serverConn2.RecvExact(4)
-Viper.Diagnostics.AssertEq(recvExact.Len, 4, "tcp.recvexact")
+Viper.Core.Diagnostics.AssertEq(recvExact.Len, 4, "tcp.recvexact")
 
 client2.SendStr("line\n")
 DIM line AS STRING
 line = serverConn2.RecvLine()
-Viper.Diagnostics.AssertEqStr(line, "line", "tcp.recvline")
+Viper.Core.Diagnostics.AssertEqStr(line, "line", "tcp.recvline")
 
 client2.SendStr("word")
 DIM word AS STRING
 word = serverConn2.RecvStr(4)
-Viper.Diagnostics.AssertEqStr(word, "word", "tcp.recvstr")
+Viper.Core.Diagnostics.AssertEqStr(word, "word", "tcp.recvstr")
 
 serverConn2.SendAll(payload)
 DIM back AS Viper.Collections.Bytes
 back = client2.RecvExact(4)
-Viper.Diagnostics.AssertEq(back.Len, 4, "tcp.sendall")
+Viper.Core.Diagnostics.AssertEq(back.Len, 4, "tcp.sendall")
 
 client2.Close()
 serverConn2.Close()
@@ -136,13 +136,13 @@ server2.Close()
 
 DIM udpBind AS Viper.Network.Udp
 udpBind = Viper.Network.Udp.Bind(0)
-Viper.Diagnostics.Assert(udpBind.IsBound, "udp.bind")
+Viper.Core.Diagnostics.Assert(udpBind.IsBound, "udp.bind")
 
 DIM udpServer AS Viper.Network.Udp
 udpServer = Viper.Network.Udp.BindAt("127.0.0.1", 0)
-Viper.Diagnostics.Assert(udpServer.IsBound, "udp.bindat")
-Viper.Diagnostics.Assert(udpServer.Port > 0, "udp.port")
-Viper.Diagnostics.Assert(udpServer.Address <> "", "udp.address")
+Viper.Core.Diagnostics.Assert(udpServer.IsBound, "udp.bindat")
+Viper.Core.Diagnostics.Assert(udpServer.Port > 0, "udp.port")
+Viper.Core.Diagnostics.Assert(udpServer.Address <> "", "udp.address")
 
 DIM udpClient AS Viper.Network.Udp
 udpClient = Viper.Network.Udp.New()
@@ -163,12 +163,12 @@ msg = "ping"
 udpClient.SendToStr("127.0.0.1", udpPort, msg)
 DIM udpRecv1 AS Viper.Collections.Bytes
 udpRecv1 = udpServer.RecvFrom(32)
-Viper.Diagnostics.AssertEqStr(udpRecv1.ToStr(), msg, "udp.recvfrom")
+Viper.Core.Diagnostics.AssertEqStr(udpRecv1.ToStr(), msg, "udp.recvfrom")
 
 DIM senderHost AS STRING
 senderHost = udpServer.SenderHost()
-Viper.Diagnostics.Assert(senderHost <> "", "udp.senderhost")
-Viper.Diagnostics.Assert(udpServer.SenderPort() > 0, "udp.senderport")
+Viper.Core.Diagnostics.Assert(senderHost <> "", "udp.senderhost")
+Viper.Core.Diagnostics.Assert(udpServer.SenderPort() > 0, "udp.senderport")
 
 DIM msgBytes AS Viper.Collections.Bytes
 msgBytes = NEW Viper.Collections.Bytes(4)
@@ -179,16 +179,16 @@ msgBytes.Set(3, 103)
 udpClient.SendTo("127.0.0.1", udpPort, msgBytes)
 DIM udpRecv2 AS Viper.Collections.Bytes
 udpRecv2 = udpServer.Recv(32)
-Viper.Diagnostics.AssertEqStr(udpRecv2.ToStr(), "pong", "udp.recv")
+Viper.Core.Diagnostics.AssertEqStr(udpRecv2.ToStr(), "pong", "udp.recv")
 
 udpClient.SendToStr("127.0.0.1", udpPort, "data")
 DIM udpRecv3 AS Viper.Collections.Bytes
 udpRecv3 = udpServer.RecvFor(32, 1000)
-IF Viper.Object.ReferenceEquals(udpRecv3, NOTHING) THEN
+IF Viper.Core.Object.RefEquals(udpRecv3, NOTHING) THEN
     udpRecv3 = udpServer.Recv(32)
 END IF
-Viper.Diagnostics.AssertNotNull(udpRecv3, "udp.recvfor")
-Viper.Diagnostics.AssertEqStr(udpRecv3.ToStr(), "data", "udp.recvfor")
+Viper.Core.Diagnostics.AssertNotNull(udpRecv3, "udp.recvfor")
+Viper.Core.Diagnostics.AssertEqStr(udpRecv3.ToStr(), "data", "udp.recvfor")
 
 udpClient.Close()
 udpServer.Close()

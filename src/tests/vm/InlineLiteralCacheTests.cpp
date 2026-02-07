@@ -123,7 +123,7 @@ void runLiteralCacheScenario(const std::string &literal, int64_t iterations)
     assert(prePopulated != nullptr);
 
     // Verify the pre-populated string matches the literal
-    assert(rt_len(prePopulated) == static_cast<int64_t>(literal.size()));
+    assert(rt_str_len(prePopulated) == static_cast<int64_t>(literal.size()));
     const char *data = rt_string_cstr(prePopulated);
     assert(data != nullptr);
     assert(std::memcmp(data, literal.data(), literal.size()) == 0);

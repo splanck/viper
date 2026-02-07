@@ -1,5 +1,5 @@
 ' EXPECT_EXIT: 1
-' COVER: Viper.Diagnostics.Trap
+' COVER: Viper.Core.Diagnostics.Trap
 
-Viper.Diagnostics.Trap("expected trap")
+Viper.Core.Diagnostics.Trap("expected trap")
 END

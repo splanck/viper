@@ -23,7 +23,7 @@
 int main()
 {
     const char *il = R"(il 0.1
-extern @rt_len(str) -> i64
+extern @rt_str_len(str) -> i64
 
 global const str @g = "hello"
 
@@ -67,7 +67,7 @@ merge(%val: i64, %flag: i64):
   %call = call @bump(%val)
   %fcmp = fcmp_gt %fsub, %as_float
   %str = const_str @g
-  %len = call @rt_len(%str)
+  %len = call @rt_str_len(%str)
   %ptr = load ptr, %slot0
   %ptr_bits = load i64, %slot0
   %ptr_nonzero = scmp_gt %ptr_bits, 0

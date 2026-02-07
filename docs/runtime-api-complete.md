@@ -283,8 +283,8 @@ Viper.Terminal.Say("Date: " + output);
 
 // With arguments
 var args = Viper.Collections.List.New();
-Viper.Collections.List.Add(args, "-l");
-Viper.Collections.List.Add(args, "-a");
+Viper.Collections.List.Push(args, "-l");
+Viper.Collections.List.Push(args, "-a");
 var listing = Viper.Exec.CaptureArgs("ls", args);
 
 // Shell command (supports pipes, redirects)
@@ -978,9 +978,9 @@ Ordered list (similar to Seq but with different API).
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `New()` | `obj()` | Create empty list |
-| `get_Count(list)` | `i64(obj)` | Get count |
-| `get_Item(list, idx)` | `obj(obj, i64)` | Get item at index |
-| `set_Item(list, idx, val)` | `void(obj, i64, obj)` | Set item at index |
+| `get_Len(list)` | `i64(obj)` | Get count |
+| `Get(list, idx)` | `obj(obj, i64)` | Get item at index |
+| `Set(list, idx, val)` | `void(obj, i64, obj)` | Set item at index |
 | `Add(list, val)` | `void(obj, obj)` | Add to end |
 | `Insert(list, idx, val)` | `void(obj, i64, obj)` | Insert at index |
 | `Remove(list, val)` | `bool(obj, obj)` | Remove first occurrence |
@@ -1127,9 +1127,9 @@ var first = Viper.Collections.Seq.First(items);
 
 // List for simple collections
 var numbers = Viper.Collections.List.New();
-Viper.Collections.List.Add(numbers, 1);
-Viper.Collections.List.Add(numbers, 2);
-var count = Viper.Collections.List.get_Count(numbers);
+Viper.Collections.List.Push(numbers, 1);
+Viper.Collections.List.Push(numbers, 2);
+var count = Viper.Collections.List.get_Len(numbers);
 
 // Map for key-value storage
 var config = Viper.Collections.Map.New();

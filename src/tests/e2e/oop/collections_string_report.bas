@@ -11,12 +11,12 @@ DIM p2 AS Person
 p1 = NEW Person()
 p2 = NEW Person()
 
-list.Add(p1)
-list.Add(p2)
+list.Push(p1)
+list.Push(p2)
 
 PRINT list.Len
-PRINT list.get_Item(0).ToString()
-PRINT list.get_Item(1).Equals(p2)
+PRINT list.Get(0).ToString()
+PRINT list.Get(1).Equals(p2)
 
 DIM s1 AS STRING
 DIM s2 AS STRING

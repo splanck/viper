@@ -207,7 +207,7 @@ static void test_custom_newline()
 
     // Verify newline was set
     rt_string nl = rt_linewriter_newline(lw);
-    assert(rt_len(nl) == 2);
+    assert(rt_str_len(nl) == 2);
     assert(strncmp(rt_string_cstr(nl), "\r\n", 2) == 0);
 
     // Write lines with custom newline
@@ -398,7 +398,7 @@ static void test_null_handling()
     // Null writer get_NewLine returns default
     rt_string nl = rt_linewriter_newline(nullptr);
     assert(nl != nullptr);
-    assert(rt_len(nl) > 0);
+    assert(rt_str_len(nl) > 0);
 }
 
 int main()

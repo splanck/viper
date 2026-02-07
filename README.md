@@ -231,7 +231,7 @@ All frontends share the **Viper Runtime**, providing a growing set of modules:
 | **Network** | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url` | Networking and sockets |
 | **Sound** | `Audio`, `Music`, `Sound`, `Voice` | Audio playback and sound effects |
 | **System** | `Environment`, `Exec`, `Machine`, `Terminal` | System interaction and console I/O |
-| **Text** | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template` | String building and text encoding |
+| **Text** | `Codec`, `Csv`, `Uuid`, `Pattern`, `StringBuilder`, `Template` | String building and text encoding |
 | **Threads** | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread` | Concurrent programming primitives |
 | **Time** | `Clock`, `Countdown`, `DateTime`, `Stopwatch` | Time utilities and measurement |
 | **Utilities** | `Convert`, `Fmt`, `Log`, `Parse` | Conversion, formatting, parsing, logging |

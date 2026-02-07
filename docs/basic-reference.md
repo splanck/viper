@@ -276,20 +276,20 @@ runtime does not check element types.
 
 Properties:
 
-- `Count: i64` → `Viper.Collections.List.get_Count(obj)`
+- `Len: i64` → `Viper.Collections.List.get_Len(obj)`
 
 Methods:
 
-- `Add(obj value) -> void` → `Viper.Collections.List.Add(obj,obj)`
+- `Push(obj value) -> void` → `Viper.Collections.List.Push(obj,obj)`
 - `Clear() -> void` → `Viper.Collections.List.Clear(obj)`
 - `RemoveAt(i64 index) -> void` → `Viper.Collections.List.RemoveAt(obj,i64)`
-- `get_Item(i64 index) -> obj` → `Viper.Collections.List.get_Item(obj,i64)`
-- `set_Item(i64 index, obj value) -> void` → `Viper.Collections.List.set_Item(obj,i64,obj)`
+- `Get(i64 index) -> obj` → `Viper.Collections.List.Get(obj,i64)`
+- `Set(i64 index, obj value) -> void` → `Viper.Collections.List.Set(obj,i64,obj)`
 
 Semantics:
 
 - Indexes are zero-based. Negative or out-of-range indexes trap at runtime (bounds error).
-- `Clear()` resets `Count` to 0.
+- `Clear()` resets `Len` to 0.
 - Elements are stored as opaque references; no automatic type conversions are performed.
 
 ### GOTO
@@ -809,7 +809,7 @@ LET sb = NEW Viper.Text.StringBuilder()
 
 ### Migration Note
 
-Legacy `rt_*` function names (e.g., `rt_print_str`, `rt_len`) are maintained as aliases to their canonical `Viper.*`
+Legacy `rt_*` function names (e.g., `rt_print_str`, `rt_str_len`) are maintained as aliases to their canonical `Viper.*`
 counterparts. New code should use the canonical names.
 
 ## Reserved Root

@@ -67,7 +67,7 @@ extern "C"
     /// @param out_fields Destination array receiving at most @p max_fields entries.
     /// @param max_fields Number of fields expected; must be >= 0.
     /// @return Total number of fields discovered in @p line.
-    int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields);
+    int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields);
 
     // =========================================================================
     // Viper.Terminal I/O Functions

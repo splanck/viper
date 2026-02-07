@@ -5,11 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/ui/event.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the Event struct, the generic input event wrapper used
+// throughout Viper's TUI widget system. Events encapsulate terminal input
+// (key presses, modifiers) and are routed through the widget tree by the
+// App and FocusManager.
+//
+// The Event struct currently wraps a single KeyEvent, but is designed as
+// an extensible envelope that may later include mouse events, paste events,
+// or custom application events.
+//
+// Key invariants:
+//   - Events are value types and are cheap to copy.
+//   - The key field is always valid (default-constructed if no key data).
+//
+// Ownership: Event owns its KeyEvent by value; no heap allocation.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +28,10 @@
 
 namespace viper::tui::ui
 {
+/// @brief Generic input event wrapper for the TUI widget system.
+/// @details Encapsulates terminal input data routed through the widget tree.
+///          Currently wraps a KeyEvent; designed for future extension to include
+///          mouse, paste, and custom events.
 struct Event
 {
     term::KeyEvent key{};

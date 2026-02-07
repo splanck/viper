@@ -34,7 +34,7 @@ int main()
     {
         close(fds[0]);
         dup2(fds[1], 2);
-        rt_chr(-1);
+        rt_str_chr(-1);
         _exit(0);
     }
     close(fds[1]);

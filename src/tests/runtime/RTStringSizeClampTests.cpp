@@ -25,19 +25,19 @@ int main()
     rt_string sample = rt_const_cstr("ABCDE");
     int64_t huge = (int64_t)SIZE_MAX + 42;
 
-    rt_string full = rt_substr(sample, 0, huge);
+    rt_string full = rt_str_substr(sample, 0, huge);
     assert(rt_str_eq(full, sample));
 
-    rt_string tail = rt_substr(sample, 2, huge);
+    rt_string tail = rt_str_substr(sample, 2, huge);
     assert(rt_str_eq(tail, rt_const_cstr("CDE")));
 
-    rt_string left = rt_left(sample, huge);
+    rt_string left = rt_str_left(sample, huge);
     assert(rt_str_eq(left, sample));
 
-    rt_string right = rt_right(sample, huge);
+    rt_string right = rt_str_right(sample, huge);
     assert(rt_str_eq(right, sample));
 
-    rt_string mid = rt_mid3(sample, 2, huge);
+    rt_string mid = rt_str_mid_len(sample, 2, huge);
     assert(rt_str_eq(mid, rt_const_cstr("BCDE")));
 
     return 0;

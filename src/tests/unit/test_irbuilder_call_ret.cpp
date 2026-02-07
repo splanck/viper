@@ -21,14 +21,14 @@ int main()
     using namespace il::core;
     Module m;
     il::build::IRBuilder b(m);
-    b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    b.addExtern("rt_str_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
     b.addGlobalStr("g", "hi");
     auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = b.addBlock(fn, "entry");
     b.setInsertPoint(bb);
     Value s = b.emitConstStr("g", {});
     Value dst = Value::temp(0);
-    b.emitCall("rt_len", {s}, dst, {});
+    b.emitCall("rt_str_len", {s}, dst, {});
     b.emitRet(dst, {});
     assert(bb.instructions.size() >= 2);
     const Instr &call = bb.instructions[1];

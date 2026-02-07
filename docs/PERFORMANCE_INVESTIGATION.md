@@ -328,7 +328,7 @@ for (size_t i = start_idx; i + needle_len <= hay_len; ++i)
         return (int64_t)(i + 1);
 ```
 
-**Used by:** `rt_instr2()`, `rt_instr3()`, `rt_str_index_of_from()`, `rt_str_has()`, `rt_str_count()`, `rt_replace()`
+**Used by:** `rt_str_index_of()`, `rt_str_index_of_from()`, `rt_str_has()`, `rt_str_count()`, `rt_replace()`
 
 **Impact:** 10-100x slower than Boyer-Moore for large strings.
 

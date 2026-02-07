@@ -29,12 +29,12 @@ TEST(RuntimeClassListBinding, EmitsListExterns)
     const char *kSrc = R"BASIC(
 10 DIM l AS Viper.Collections.List
 20 l = NEW Viper.Collections.List()
-30 l.Add(l)
+30 l.Push(l)
 40 PRINT l.Len
 50 l.RemoveAt(0)
 60 l.Clear()
-70 PRINT l.get_Item(0)
-80 l.set_Item(0, l)
+70 PRINT l.Get(0)
+80 l.Set(0, l)
 90 END
 )BASIC";
     std::string source(kSrc);
@@ -42,12 +42,12 @@ TEST(RuntimeClassListBinding, EmitsListExterns)
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.New"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Add"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Push"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.get_Len"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.RemoveAt"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Clear"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.get_Item"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.set_Item"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Get"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Set"));
 }
 
 int main(int argc, char **argv)

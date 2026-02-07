@@ -626,11 +626,11 @@ void *rt_yaml_parse(rt_string text)
 {
     clear_error();
 
-    if (!text || rt_len(text) == 0)
+    if (!text || rt_str_len(text) == 0)
         return NULL; // YAML null
 
     const char *cstr = rt_string_cstr(text);
-    int64_t len = rt_len(text);
+    int64_t len = rt_str_len(text);
 
     yaml_parser p;
     parser_init(&p, cstr, (size_t)len);
@@ -647,7 +647,7 @@ int8_t rt_yaml_is_valid(rt_string text)
 {
     clear_error();
 
-    if (!text || rt_len(text) == 0)
+    if (!text || rt_str_len(text) == 0)
         return 1; // Empty is valid
 
     void *result = rt_yaml_parse(text);

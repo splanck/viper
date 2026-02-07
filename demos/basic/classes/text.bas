@@ -16,10 +16,10 @@ sb.Clear()
 PRINT "After Clear, Length: "; sb.Length
 PRINT
 
-' === Guid ===
-PRINT "=== Guid ==="
-PRINT "New GUID: "; Viper.Text.Guid.New()
-PRINT "New GUID: "; Viper.Text.Guid.New()
+' === Uuid ===
+PRINT "=== Uuid ==="
+PRINT "New GUID: "; Viper.Text.Uuid.New()
+PRINT "New GUID: "; Viper.Text.Uuid.New()
 PRINT
 
 ' === Codec (Base64/Hex) ===

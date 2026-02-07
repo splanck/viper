@@ -21,8 +21,8 @@ ELSE
 END IF
 
 ' Seed list: [a, c]
-l.Add(a)
-l.Add(c)
+l.Push(a)
+l.Push(c)
 
 PRINT l.Find(a)
 PRINT l.Find(b)
@@ -47,7 +47,7 @@ ELSE
 END IF
 
 ' Add duplicate and remove only first occurrence: [a, b, c, d, a] -> remove(a) -> [b, c, d, a]
-l.Add(a)
+l.Push(a)
 PRINT l.Len
 
 IF l.Remove(a) THEN

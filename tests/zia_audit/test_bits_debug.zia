@@ -3,18 +3,18 @@ module TestBitsDebug;
 func start() {
     Viper.Terminal.Say("Testing Bits.Not and Bits.Flip:");
 
-    var not0: Integer = Viper.Bits.Not(0);
+    var not0: Integer = Viper.Math.Bits.Not(0);
     Viper.Terminal.Say("Bits.Not(0) = " + Viper.String.FromInt(not0));
 
-    var flip0: Integer = Viper.Bits.Flip(0);
+    var flip0: Integer = Viper.Math.Bits.Flip(0);
     Viper.Terminal.Say("Bits.Flip(0) = " + Viper.String.FromInt(flip0));
 
     var langNot0: Integer = ~0;
     Viper.Terminal.Say("~0 = " + Viper.String.FromInt(langNot0));
 
-    var not1: Integer = Viper.Bits.Not(1);
+    var not1: Integer = Viper.Math.Bits.Not(1);
     Viper.Terminal.Say("Bits.Not(1) = " + Viper.String.FromInt(not1));
 
-    var flip1: Integer = Viper.Bits.Flip(1);
+    var flip1: Integer = Viper.Math.Bits.Flip(1);
     Viper.Terminal.Say("Bits.Flip(1) = " + Viper.String.FromInt(flip1));
 }

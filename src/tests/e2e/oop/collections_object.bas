@@ -13,19 +13,19 @@ DIM p2 AS App.Person
 p1 = NEW App.Person()
 p2 = NEW App.Person()
 
-list.Add(p1)
-list.Add(p2)
+list.Push(p1)
+list.Push(p2)
 
-PRINT list.Count              REM 2
-PRINT list.get_Item(0).ToString()   REM "App.Person"
-PRINT list.get_Item(1).Equals(p2)   REM 1
-PRINT list.get_Item(0).Equals(p2)   REM 0
+PRINT list.Len              REM 2
+PRINT list.Get(0).ToString()   REM "App.Person"
+PRINT list.Get(1).Equals(p2)   REM 1
+PRINT list.Get(0).Equals(p2)   REM 0
 
 list.RemoveAt(0)
-PRINT list.Count              REM 1
+PRINT list.Len              REM 1
 
-list.set_Item(0, p1)
-PRINT list.get_Item(0).Equals(p1)   REM 1
+list.Set(0, p1)
+PRINT list.Get(0).Equals(p1)   REM 1
 
 list.Clear()
-PRINT list.Count              REM 0
+PRINT list.Len              REM 0

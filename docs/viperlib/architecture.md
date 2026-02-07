@@ -62,7 +62,7 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 
 | Class                         | Description                                                 |
 |-------------------------------|-------------------------------------------------------------|
-| `Viper.Object`                | Base class with Equals, GetHashCode, ToString               |
+| `Viper.Object`                | Base class with Equals, HashCode, ToString               |
 | `Viper.String`                | String manipulation (Substring, Trim, Replace, etc.)        |
 | `Viper.Strings`               | Static string utilities (Join, FromInt, etc.)               |
 | `Viper.Math`                  | Math functions (Sin, Cos, Sqrt, etc.) and constants (Pi, E) |
@@ -86,7 +86,7 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.IO.LineWriter`         | Buffered text file writing                                  |
 | `Viper.Text.StringBuilder`    | Efficient string concatenation                              |
 | `Viper.Text.Codec`            | Base64, Hex, URL encoding/decoding                          |
-| `Viper.Text.Guid`             | UUID v4 generation                                          |
+| `Viper.Text.Uuid`             | UUID v4 generation                                          |
 | `Viper.Crypto.Hash`           | MD5, SHA1, SHA256, CRC32 hashing                            |
 | `Viper.Graphics.Canvas`       | Window and 2D drawing                                       |
 | `Viper.Graphics.Color`        | RGB/RGBA color creation                                     |

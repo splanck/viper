@@ -40,7 +40,7 @@ int main()
     printf("  is_embedded=%d\n", is_embedded);
 
     printf("Test 2: Check length\n");
-    int64_t len = rt_len(small);
+    int64_t len = rt_str_len(small);
     printf("  len=%lld\n", (long long)len);
     assert(len == 5);
 
@@ -61,9 +61,9 @@ int main()
     printf("Test 5: Concat two small strings\n");
     rt_string a = rt_string_from_bytes("foo", 3);
     rt_string b = rt_string_from_bytes("bar", 3);
-    rt_string ab = rt_concat(a, b);
+    rt_string ab = rt_str_concat(a, b);
     printf("  ab->heap=%p\n", (void *)ab->heap);
-    len = rt_len(ab);
+    len = rt_str_len(ab);
     printf("  len=%lld\n", (long long)len);
     assert(len == 6);
     cstr = rt_string_cstr(ab);

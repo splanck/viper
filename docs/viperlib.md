@@ -20,7 +20,7 @@ The Viper Runtime Library documentation has been reorganized into separate files
 | [Mathematics](viperlib/math.md)          | `BigInt`, `Bits`, `Mat3`, `Mat4`, `Math`, `Random`, `Vec2`, `Vec3`        |
 | [Network](viperlib/network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](viperlib/system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Guid`, `Html`, `Json`, `JsonPath`, `Markdown`, `Pattern`, `StringBuilder`, `Template`, `Toml`, `Xml`, `Yaml` |
-| [Threads](viperlib/threads.md)           | `Barrier`, `CancellationToken`, `Channel`, `Debouncer`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
+| [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Uuid`, `Html`, `Json`, `JsonPath`, `Markdown`, `Pattern`, `StringBuilder`, `Template`, `Toml`, `Xml`, `Yaml` |
+| [Threads](viperlib/threads.md)           | `Barrier`, `CancelToken`, `Channel`, `Debouncer`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](viperlib/time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](viperlib/utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |

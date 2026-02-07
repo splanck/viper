@@ -79,7 +79,7 @@ TEST(RuntimeClassCatalogBasic, ContainsCanonicalTypes)
                             [&](const auto &c)
                             { return std::string(c.qname) == qname; }) != cat.end();
     };
-    EXPECT_TRUE(hasQ("Viper.Object"));
+    EXPECT_TRUE(hasQ("Viper.Core.Object"));
     EXPECT_TRUE(hasQ("Viper.IO.File"));
     EXPECT_TRUE(hasQ("Viper.Collections.List"));
 }

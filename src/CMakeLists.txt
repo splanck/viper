@@ -14,6 +14,8 @@ set(RTGEN_OUTPUTS
         "${RTGEN_OUTPUT_DIR}/RuntimeNameMap.inc"
         "${RTGEN_OUTPUT_DIR}/RuntimeClasses.inc"
         "${RTGEN_OUTPUT_DIR}/RuntimeSignatures.inc"
+        "${RTGEN_OUTPUT_DIR}/RuntimeNames.hpp"
+        "${RTGEN_OUTPUT_DIR}/ZiaRuntimeExterns.inc"
 )
 
 add_custom_command(

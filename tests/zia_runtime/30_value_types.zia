@@ -234,8 +234,8 @@ func start() {
     // Test 14: Value types in Lists
     //=========================================================================
     var points = new List[Point]();
-    points.Add(new Point(1, 2));
-    points.Add(new Point(3, 4));
+    points.Push(new Point(1, 2));
+    points.Push(new Point(3, 4));
     assertEqInt(points.Length(), 2, "list_length");
 
     var p0: Point = points.Get(0);

@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "il/runtime/generated/RuntimeNames.hpp"
+#include "il/runtime/RuntimeNames.hpp"
 
 namespace il::frontends::basic::runtime
 {
@@ -23,8 +23,16 @@ namespace il::frontends::basic::runtime
 // Import all generated names into this namespace
 using namespace il::runtime::names;
 
-// Aliases for removed String.From* functions (use Convert.ToString_* canonical names)
-inline constexpr const char *kStringFromInt = kConvertToStringInt;
-inline constexpr const char *kStringFromDouble = kConvertToStringDouble;
+// Aliases for removed String.From* functions (use Core.Convert canonical names)
+inline constexpr const char *kStringFromInt = kCoreConvertToStringInt;
+inline constexpr const char *kStringFromDouble = kCoreConvertToStringDouble;
+
+// Core.Convert short aliases
+inline constexpr const char *kConvertToDouble = kCoreConvertToDouble;
+inline constexpr const char *kConvertToInt = kCoreConvertToInt;
+
+// Core.Parse short aliases
+inline constexpr const char *kParseDouble = kCoreParseDouble;
+inline constexpr const char *kParseInt64 = kCoreParseInt64;
 
 } // namespace il::frontends::basic::runtime

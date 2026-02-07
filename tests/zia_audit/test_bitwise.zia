@@ -33,51 +33,51 @@ func start() {
     check("Bitwise NOT ~0", ~0, -1);
 
     // Viper.Bits runtime functions
-    check("Bits.And", Viper.Bits.And(0xFF, 0x0F), 0x0F);
-    check("Bits.Or", Viper.Bits.Or(0xF0, 0x0F), 0xFF);
-    check("Bits.Xor", Viper.Bits.Xor(0xFF, 0x0F), 0xF0);
-    check("Bits.Not 0", Viper.Bits.Not(0), -1);
+    check("Bits.And", Viper.Math.Bits.And(0xFF, 0x0F), 0x0F);
+    check("Bits.Or", Viper.Math.Bits.Or(0xF0, 0x0F), 0xFF);
+    check("Bits.Xor", Viper.Math.Bits.Xor(0xFF, 0x0F), 0xF0);
+    check("Bits.Not 0", Viper.Math.Bits.Not(0), -1);
     // Bits.Flip is BIT REVERSAL (reverse bit order), not bitwise NOT
     // Flip(0) = 0 because reversing zeros = zeros
     // Flip(1) = -9223372036854775808 (0x8000000000000000) because bit 0 moves to bit 63
-    check("Bits.Flip 0", Viper.Bits.Flip(0), 0);
+    check("Bits.Flip 0", Viper.Math.Bits.Flip(0), 0);
 
     // Shift operations
-    check("Bits.Shl 1 << 4", Viper.Bits.Shl(1, 4), 16);
-    check("Bits.Shl 0xFF << 8", Viper.Bits.Shl(0xFF, 8), 0xFF00);
-    check("Bits.Shr 16 >> 2", Viper.Bits.Shr(16, 2), 4);
-    check("Bits.Shr -16 >> 2", Viper.Bits.Shr(-16, 2), -4);  // Arithmetic shift
+    check("Bits.Shl 1 << 4", Viper.Math.Bits.Shl(1, 4), 16);
+    check("Bits.Shl 0xFF << 8", Viper.Math.Bits.Shl(0xFF, 8), 0xFF00);
+    check("Bits.Shr 16 >> 2", Viper.Math.Bits.Shr(16, 2), 4);
+    check("Bits.Shr -16 >> 2", Viper.Math.Bits.Shr(-16, 2), -4);  // Arithmetic shift
 
     // Bit manipulation
-    check("Bits.Set 0 bit 3", Viper.Bits.Set(0, 3), 8);
-    check("Bits.Set 0 bit 0", Viper.Bits.Set(0, 0), 1);
-    check("Bits.Clear 0xFF bit 0", Viper.Bits.Clear(0xFF, 0), 0xFE);
-    check("Bits.Clear 0xFF bit 7", Viper.Bits.Clear(0xFF, 7), 0x7F);
-    check("Bits.Toggle 0 bit 3", Viper.Bits.Toggle(0, 3), 8);
-    check("Bits.Toggle 8 bit 3", Viper.Bits.Toggle(8, 3), 0);
+    check("Bits.Set 0 bit 3", Viper.Math.Bits.Set(0, 3), 8);
+    check("Bits.Set 0 bit 0", Viper.Math.Bits.Set(0, 0), 1);
+    check("Bits.Clear 0xFF bit 0", Viper.Math.Bits.Clear(0xFF, 0), 0xFE);
+    check("Bits.Clear 0xFF bit 7", Viper.Math.Bits.Clear(0xFF, 7), 0x7F);
+    check("Bits.Toggle 0 bit 3", Viper.Math.Bits.Toggle(0, 3), 8);
+    check("Bits.Toggle 8 bit 3", Viper.Math.Bits.Toggle(8, 3), 0);
 
     // Bit queries
-    checkBool("Bits.Get 8 bit 3", Viper.Bits.Get(8, 3), true);
-    checkBool("Bits.Get 8 bit 0", Viper.Bits.Get(8, 0), false);
-    checkBool("Bits.Get 0xFF bit 7", Viper.Bits.Get(0xFF, 7), true);
+    checkBool("Bits.Get 8 bit 3", Viper.Math.Bits.Get(8, 3), true);
+    checkBool("Bits.Get 8 bit 0", Viper.Math.Bits.Get(8, 0), false);
+    checkBool("Bits.Get 0xFF bit 7", Viper.Math.Bits.Get(0xFF, 7), true);
 
     // Bit counting
-    check("Bits.Count 0", Viper.Bits.Count(0), 0);
-    check("Bits.Count 1", Viper.Bits.Count(1), 1);
-    check("Bits.Count 0xFF", Viper.Bits.Count(0xFF), 8);
-    check("Bits.Count 0xFFFF", Viper.Bits.Count(0xFFFF), 16);
+    check("Bits.Count 0", Viper.Math.Bits.Count(0), 0);
+    check("Bits.Count 1", Viper.Math.Bits.Count(1), 1);
+    check("Bits.Count 0xFF", Viper.Math.Bits.Count(0xFF), 8);
+    check("Bits.Count 0xFFFF", Viper.Math.Bits.Count(0xFFFF), 16);
 
     // Leading/trailing zeros
-    check("Bits.LeadZ 1", Viper.Bits.LeadZ(1), 63);
+    check("Bits.LeadZ 1", Viper.Math.Bits.LeadZ(1), 63);
     // NOTE: Can't test min i64 value - both decimal and hex literals overflow
     // BUG: 0x8000000000000000 should be valid hex for min signed i64 but isn't accepted
-    check("Bits.TrailZ 1", Viper.Bits.TrailZ(1), 0);
-    check("Bits.TrailZ 8", Viper.Bits.TrailZ(8), 3);
-    check("Bits.TrailZ 16", Viper.Bits.TrailZ(16), 4);
+    check("Bits.TrailZ 1", Viper.Math.Bits.TrailZ(1), 0);
+    check("Bits.TrailZ 8", Viper.Math.Bits.TrailZ(8), 3);
+    check("Bits.TrailZ 16", Viper.Math.Bits.TrailZ(16), 4);
 
     // Rotation
-    check("Bits.Rotl 1 by 4", Viper.Bits.Rotl(1, 4), 16);
-    check("Bits.Rotr 16 by 4", Viper.Bits.Rotr(16, 4), 1);
+    check("Bits.Rotl 1 by 4", Viper.Math.Bits.Rotl(1, 4), 16);
+    check("Bits.Rotr 16 by 4", Viper.Math.Bits.Rotr(16, 4), 1);
 
     // Report results
     Viper.Terminal.Say("=== Results ===");

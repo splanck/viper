@@ -327,7 +327,7 @@ static char *build_cmdline(const char *program, void *args)
     for (int64_t i = 0; i < nargs; i++)
     {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
-        len += rt_len(arg_str) + 3; // quotes + space
+        len += rt_str_len(arg_str) + 3; // quotes + space
     }
 
     char *cmdline = (char *)malloc(len + 1);
@@ -348,7 +348,7 @@ static char *build_cmdline(const char *program, void *args)
     {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
         const char *arg = rt_string_cstr(arg_str);
-        int64_t alen = rt_len(arg_str);
+        int64_t alen = rt_str_len(arg_str);
 
         *p++ = ' ';
         *p++ = '"';
@@ -546,7 +546,7 @@ int64_t rt_exec_run(rt_string program)
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_len(program) == 0)
+    if (!prog_str || rt_str_len(program) == 0)
     {
         rt_trap("Exec.Run: empty program");
         return -1;
@@ -601,7 +601,7 @@ rt_string rt_exec_capture(rt_string program)
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_len(program) == 0)
+    if (!prog_str || rt_str_len(program) == 0)
     {
         rt_trap("Exec.Capture: empty program");
         return rt_string_from_bytes("", 0);
@@ -662,7 +662,7 @@ int64_t rt_exec_run_args(rt_string program, void *args)
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_len(program) == 0)
+    if (!prog_str || rt_str_len(program) == 0)
     {
         rt_trap("Exec.RunArgs: empty program");
         return -1;
@@ -713,7 +713,7 @@ rt_string rt_exec_capture_args(rt_string program, void *args)
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_len(program) == 0)
+    if (!prog_str || rt_str_len(program) == 0)
     {
         rt_trap("Exec.CaptureArgs: empty program");
         return rt_string_from_bytes("", 0);
@@ -782,7 +782,7 @@ int64_t rt_exec_shell(rt_string command)
     }
 
     // Empty command is valid (returns immediately)
-    if (rt_len(command) == 0)
+    if (rt_str_len(command) == 0)
     {
         return 0;
     }
@@ -868,7 +868,7 @@ rt_string rt_exec_shell_capture(rt_string command)
     }
 
     // Empty command returns empty string
-    if (rt_len(command) == 0)
+    if (rt_str_len(command) == 0)
     {
         return rt_string_from_bytes("", 0);
     }

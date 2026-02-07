@@ -503,7 +503,7 @@ static void test_empty_file()
 
     // Read empty file as text
     rt_string text = rt_io_file_read_all_text(path);
-    test_result("empty text read", rt_len(text) == 0);
+    test_result("empty text read", rt_str_len(text) == 0);
 
     // Read empty file as bytes
     void *bytes = rt_file_read_bytes(path);
@@ -529,7 +529,7 @@ static void test_nonexistent()
 
     // Read operations should return empty/default values
     rt_string text = rt_io_file_read_all_text(path);
-    test_result("read text returns empty", rt_len(text) == 0);
+    test_result("read text returns empty", rt_str_len(text) == 0);
 
     void *bytes = rt_file_read_bytes(path);
     test_result("read bytes returns empty", rt_bytes_len(bytes) == 0);

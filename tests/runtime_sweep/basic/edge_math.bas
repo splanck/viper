@@ -126,22 +126,22 @@ PRINT ""
 ' === Bits edge cases ===
 PRINT "=== Bits Edge Cases ==="
 
-iresult = Viper.Bits.Shl(1, 63)
+iresult = Viper.Math.Bits.Shl(1, 63)
 PRINT "Shl(1, 63): "; iresult
 
-iresult = Viper.Bits.Shl(1, 64)
+iresult = Viper.Math.Bits.Shl(1, 64)
 PRINT "Shl(1, 64): "; iresult
 
-iresult = Viper.Bits.Shl(1, -1)
+iresult = Viper.Math.Bits.Shl(1, -1)
 PRINT "Shl(1, -1): "; iresult
 
-iresult = Viper.Bits.Shr(-1, 1)
+iresult = Viper.Math.Bits.Shr(-1, 1)
 PRINT "Shr(-1, 1): "; iresult
 
-iresult = Viper.Bits.Count(0)
+iresult = Viper.Math.Bits.Count(0)
 PRINT "Count(0): "; iresult
 
-iresult = Viper.Bits.Count(-1)
+iresult = Viper.Math.Bits.Count(-1)
 PRINT "Count(-1): "; iresult
 
 PRINT ""

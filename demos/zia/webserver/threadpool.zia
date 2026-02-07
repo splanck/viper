@@ -101,7 +101,7 @@ func pool_init(handler: Ptr, numWorkers: Integer) {
     var i = 0;
     while i < pool_workerCount {
         var worker = Threads.Thread.Start(&pool_workerLoop, 0);
-        Collections.List.Add(pool_workers, worker);
+        Collections.List.Push(pool_workers, worker);
         i = i + 1;
     }
 }
@@ -109,7 +109,7 @@ func pool_init(handler: Ptr, numWorkers: Integer) {
 // Submit a connection to be handled by the pool
 func pool_submit(conn: Ptr) {
     Threads.Monitor.Enter(pool_queue);
-    Collections.List.Add(pool_queue, conn);
+    Collections.List.Push(pool_queue, conn);
     // Signal one waiting worker
     Threads.Monitor.Pause(pool_queue);
     Threads.Monitor.Exit(pool_queue);

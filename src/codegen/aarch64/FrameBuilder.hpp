@@ -5,11 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: codegen/aarch64/FrameBuilder.hpp
-// Purpose: Centralise AArch64 frame layout construction for Machine IR.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the FrameBuilder class, which centralizes AArch64
+// stack frame layout construction for the Viper codegen backend. FrameBuilder
+// manages the allocation of local variable slots, register spill slots, and
+// outgoing argument areas according to the AAPCS64 (ARM Architecture
+// Procedure Call Standard for 64-bit) requirements.
+//
+// Stack layout is constructed incrementally: locals are added during IL-to-MIR
+// lowering, spill slots are added during register allocation, and outgoing
+// argument space is reserved based on the maximum call argument count.
+// The finalize() method computes the total frame size with proper alignment.
+//
+// All slots are addressed as negative offsets from the frame pointer (x29).
+// The first local slot begins at [x29, #-8] and subsequent slots grow
+// downward. This matches the AAPCS64 convention where the frame pointer
+// points to the saved frame pointer/link register pair.
+//
+// Key invariants:
+//   - All offsets are negative (below the frame pointer).
+//   - Stack slots are 8-byte aligned minimum; 16-byte overall frame alignment.
+//   - addLocal() and ensureSpill() must be called before finalize().
+//   - finalize() must be called exactly once before prologue/epilogue emission.
+//
+// Ownership: FrameBuilder borrows the MFunction reference and mutates its
+// frame layout data. The MFunction must outlive the FrameBuilder.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,10 +40,17 @@
 namespace viper::codegen::aarch64
 {
 
-/// @brief Centralizes AArch64 stack frame layout construction.
+/// @brief Centralizes AArch64 stack frame layout construction for codegen.
+/// @details Manages incremental allocation of local variable slots, register spill
+///          slots, and outgoing argument areas following AAPCS64 conventions. All
+///          slots use negative offsets from the frame pointer (x29). The builder
+///          tracks the next available offset and ensures proper alignment.
 ///
-/// Manages allocation of local variables, spill slots, and outgoing argument
-/// areas according to AAPCS64 stack layout requirements.
+///          Usage flow:
+///          1. During MIR lowering: addLocal() for each alloca instruction
+///          2. During register allocation: ensureSpill() for each spilled vreg
+///          3. After call lowering: setMaxOutgoingBytes() for stack arguments
+///          4. Before prologue emission: finalize() to compute total frame size
 ///
 /// @invariant All offsets are negative (below the frame pointer).
 /// @invariant Stack slots are 8-byte aligned minimum; 16-byte alignment is

@@ -5,11 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/widgets/splitter.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the HSplitter and VSplitter widgets for Viper's TUI
+// framework, which divide a rectangular area into two resizable child regions.
+//
+// HSplitter splits horizontally (left | right) and VSplitter splits
+// vertically (top | bottom). Both use a ratio parameter (0.0 to 1.0) to
+// control the proportional division of space, clamped to [0.05, 0.95] to
+// prevent either child from being completely hidden.
+//
+// Splitter widgets support keyboard-driven ratio adjustment: pressing
+// the appropriate arrow keys shifts the split position. The SplitterBase
+// CRTP template provides shared painting and event dispatch logic.
+//
+// Key invariants:
+//   - The ratio is clamped to [0.05, 0.95] on every adjustment.
+//   - Both children receive layout() calls during the parent's layout.
+//   - Paint order is first child then second child (no z-ordering).
+//
+// Ownership: Each splitter owns its two child widgets via unique_ptr.
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,10 +52,11 @@ inline float clampRatio(float r)
 }
 } // namespace detail
 
-/// @brief Base template for splitter widgets that share common logic.
-/// @tparam Derived CRTP derived class type for static polymorphism.
-/// @details Provides shared ratio management, child painting, and event bridging.
-///          Derived classes implement axis-specific layout and key handling.
+/// @brief CRTP base class providing shared logic for horizontal and vertical splitters.
+/// @details Implements common paint (delegates to both children) and event dispatch
+///          (forwards to the derived class's onKeyEvent handler). The ratio_ member
+///          controls proportional space allocation between the two children.
+/// @tparam Derived The concrete splitter type (HSplitter or VSplitter) for static dispatch.
 template <typename Derived> class SplitterBase : public ui::Widget
 {
   public:
@@ -66,7 +80,10 @@ template <typename Derived> class SplitterBase : public ui::Widget
     float ratio_{0.5F};
 };
 
-/// @brief Split container dividing area into left and right parts.
+/// @brief Horizontal splitter dividing its area into left and right child regions.
+/// @details The ratio parameter controls what fraction of the total width is allocated
+///          to the left child. The right child receives the remainder. Keyboard input
+///          (Left/Right arrow keys) adjusts the split ratio interactively.
 class HSplitter : public SplitterBase<HSplitter>
 {
   public:
@@ -88,7 +105,10 @@ class HSplitter : public SplitterBase<HSplitter>
     std::unique_ptr<ui::Widget> second_{}; // right
 };
 
-/// @brief Split container dividing area into top and bottom parts.
+/// @brief Vertical splitter dividing its area into top and bottom child regions.
+/// @details The ratio parameter controls what fraction of the total height is allocated
+///          to the top child. The bottom child receives the remainder. Keyboard input
+///          (Up/Down arrow keys) adjusts the split ratio interactively.
 class VSplitter : public SplitterBase<VSplitter>
 {
   public:

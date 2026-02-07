@@ -5,11 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/support/function_ref.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the FunctionRef class template, a lightweight
+// non-owning callable reference for Viper's TUI framework. FunctionRef
+// provides a type-erased view of a callable (lambda, function pointer,
+// or functor) without incurring the heap allocation overhead of
+// std::function.
+//
+// FunctionRef is designed for use in callback parameters where the
+// callable's lifetime is guaranteed to exceed the FunctionRef's usage
+// (e.g., within a single function call). It is similar to the C++26
+// std::function_ref proposal.
+//
+// Key invariants:
+//   - The referenced callable must remain alive for the duration of
+//     the FunctionRef's use (dangling references are undefined behavior).
+//   - FunctionRef is trivially copyable (pointer-sized).
+//   - Supports both function pointers and arbitrary callables.
+//
+// Ownership: FunctionRef does not own the callable. It stores a void*
+// pointer to the callable object and a function pointer for type-erased
+// invocation.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,24 +36,38 @@
 
 namespace viper::tui
 {
-/// @brief Non-owning reference to a callable with the specified signature.
-///
-/// FunctionRef allows passing inline lambdas or function objects without incurring
-/// heap allocations. The referenced callable must remain alive for the duration of
-/// the FunctionRef use.
+/// @brief Non-owning, lightweight reference to a callable with a given signature.
+/// @details Provides type-erased callable access without heap allocation, similar to
+///          the C++26 std::function_ref proposal. The referenced callable must outlive
+///          the FunctionRef. Ideal for callback parameters in functions where the
+///          caller controls the callable's lifetime.
+/// @tparam Signature The function signature (e.g., bool(int, float)).
 template <typename Signature> class FunctionRef;
 
-/// @brief Specialization handling invocation of callables matching the signature.
+/// @brief Specialization implementing the callable reference for a specific signature.
+/// @details Stores a type-erased void pointer to the callable and a static dispatch
+///          function that casts back to the original type for invocation. Supports
+///          construction from both function pointers and arbitrary callable objects.
+/// @tparam Ret Return type of the callable.
+/// @tparam Args Parameter types of the callable.
 template <typename Ret, typename... Args> class FunctionRef<Ret(Args...)>
 {
   public:
-    /// @brief Construct from a function pointer.
+    /// @brief Construct from a plain function pointer matching the signature.
+    /// @details Stores the function pointer cast to void* and uses a dedicated
+    ///          dispatch function for invocation. The function pointer must remain
+    ///          valid for the lifetime of this reference.
+    /// @param fn Function pointer to reference.
     FunctionRef(Ret (*fn)(Args...)) noexcept
         : obj_(reinterpret_cast<void *>(fn)), callback_(&invokeFunctionPtr)
     {
     }
 
-    /// @brief Construct from any callable matching the signature.
+    /// @brief Construct from any callable object (lambda, functor) matching the signature.
+    /// @details Takes the address of the callable and stores it with a type-erased
+    ///          dispatch function. The callable must outlive this FunctionRef.
+    /// @tparam Callable The type of the callable object.
+    /// @param callable The callable to reference. Must outlive this object.
     template <
         typename Callable,
         typename = std::enable_if_t<!std::is_same_v<std::remove_cvref_t<Callable>, FunctionRef>>>
@@ -48,7 +77,11 @@ template <typename Ret, typename... Args> class FunctionRef<Ret(Args...)>
     {
     }
 
-    /// @brief Invoke the referenced callable.
+    /// @brief Invoke the referenced callable with the given arguments.
+    /// @details Dispatches through the stored function pointer, casting the void*
+    ///          back to the original callable type for invocation.
+    /// @param args Arguments forwarded to the callable.
+    /// @return The callable's return value.
     Ret operator()(Args... args) const
     {
         return callback_(obj_, std::forward<Args>(args)...);

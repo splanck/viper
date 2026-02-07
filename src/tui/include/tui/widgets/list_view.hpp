@@ -5,11 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/widgets/list_view.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the ListView widget for Viper's TUI framework.
+// ListView displays a vertical scrollable list of string items with
+// keyboard navigation and selection support.
+//
+// The widget supports single and range selection: clicking or pressing
+// Enter selects a single item, while Shift+arrow keys extend the
+// selection range. A custom ItemRenderer can be installed to control
+// how each item is painted.
+//
+// Key invariants:
+//   - The cursor index is always within [0, items_.size()).
+//   - Selection state is maintained per-item via a boolean vector.
+//   - The default renderer highlights the cursor and selected items.
+//
+// Ownership: ListView owns items and selection state by value. It
+// borrows the Theme reference (must outlive the widget). The optional
+// ItemRenderer is owned via std::function.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,7 +37,10 @@
 namespace viper::tui::widgets
 {
 
-/// @brief Displays a vertical list of items with keyboard navigation.
+/// @brief Vertical scrollable list widget with keyboard navigation and selection.
+/// @details Displays a list of string items with cursor-based navigation (Up/Down),
+///          single selection (Enter), and range selection (Shift+arrows). Supports
+///          custom item rendering via an installable ItemRenderer callback.
 class ListView : public ui::Widget
 {
   public:

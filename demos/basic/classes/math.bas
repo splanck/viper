@@ -38,30 +38,30 @@ PRINT
 
 ' === Random Numbers ===
 PRINT "=== Random Numbers ==="
-PRINT "Random.Next(): "; Viper.Random.Next()
-PRINT "Random.Next(): "; Viper.Random.Next()
-PRINT "Random.NextInt(100): "; Viper.Random.NextInt(100)
-PRINT "Random.NextInt(100): "; Viper.Random.NextInt(100)
+PRINT "Random.Next(): "; Viper.Math.Random.Next()
+PRINT "Random.Next(): "; Viper.Math.Random.Next()
+PRINT "Random.NextInt(100): "; Viper.Math.Random.NextInt(100)
+PRINT "Random.NextInt(100): "; Viper.Math.Random.NextInt(100)
 PRINT
 
 ' === Bit Operations ===
 PRINT "=== Bit Operations ==="
-PRINT "Bits.And(12, 10): "; Viper.Bits.And(12, 10)
-PRINT "Bits.Or(12, 10): "; Viper.Bits.Or(12, 10)
-PRINT "Bits.Xor(12, 10): "; Viper.Bits.Xor(12, 10)
-PRINT "Bits.Not(0): "; Viper.Bits.Not(0)
-PRINT "Bits.Shl(1, 4): "; Viper.Bits.Shl(1, 4)
-PRINT "Bits.Shr(16, 2): "; Viper.Bits.Shr(16, 2)
-PRINT "Bits.Count(255): "; Viper.Bits.Count(255)
+PRINT "Bits.And(12, 10): "; Viper.Math.Bits.And(12, 10)
+PRINT "Bits.Or(12, 10): "; Viper.Math.Bits.Or(12, 10)
+PRINT "Bits.Xor(12, 10): "; Viper.Math.Bits.Xor(12, 10)
+PRINT "Bits.Not(0): "; Viper.Math.Bits.Not(0)
+PRINT "Bits.Shl(1, 4): "; Viper.Math.Bits.Shl(1, 4)
+PRINT "Bits.Shr(16, 2): "; Viper.Math.Bits.Shr(16, 2)
+PRINT "Bits.Count(255): "; Viper.Math.Bits.Count(255)
 PRINT
 
 ' === Vec2 (2D Vectors) ===
 PRINT "=== Vec2 (2D Vectors) ==="
-DIM v1 AS Viper.Vec2
-DIM v2 AS Viper.Vec2
-DIM v3 AS Viper.Vec2
-v1 = NEW Viper.Vec2(3.0, 4.0)
-v2 = NEW Viper.Vec2(1.0, 2.0)
+DIM v1 AS Viper.Math.Vec2
+DIM v2 AS Viper.Math.Vec2
+DIM v3 AS Viper.Math.Vec2
+v1 = NEW Viper.Math.Vec2(3.0, 4.0)
+v2 = NEW Viper.Math.Vec2(1.0, 2.0)
 PRINT "v1 = (3, 4), v2 = (1, 2)"
 PRINT "v1.Len: "; v1.Len()
 v3 = v1.Add(v2)
@@ -71,11 +71,11 @@ PRINT
 
 ' === Vec3 (3D Vectors) ===
 PRINT "=== Vec3 (3D Vectors) ==="
-DIM a AS Viper.Vec3
-DIM b AS Viper.Vec3
-DIM c AS Viper.Vec3
-a = NEW Viper.Vec3(1.0, 2.0, 3.0)
-b = NEW Viper.Vec3(2.0, 0.0, 1.0)
+DIM a AS Viper.Math.Vec3
+DIM b AS Viper.Math.Vec3
+DIM c AS Viper.Math.Vec3
+a = NEW Viper.Math.Vec3(1.0, 2.0, 3.0)
+b = NEW Viper.Math.Vec3(2.0, 0.0, 1.0)
 PRINT "a = (1, 2, 3), b = (2, 0, 1)"
 PRINT "a.Len: "; a.Len()
 c = a.Cross(b)

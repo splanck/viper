@@ -326,7 +326,7 @@ All runtime functions use `rt_*` prefix in C, but IL calls use `Viper.*` namespa
 
 | IL Call | C Function | Signature |
 |---------|------------|-----------|
-| `Viper.String.Concat` | `rt_concat` | `str(str,str)` |
+| `Viper.String.Concat` | `rt_str_concat` | `str(str,str)` |
 | `Viper.Collections.Seq.New` | `rt_seq_new` | `obj()` |
 | `Viper.Threads.Thread.Start` | `rt_thread_start` | `obj(ptr,ptr)` |
 
@@ -1533,11 +1533,11 @@ for (num in nums) {
 
 ; Push 1 (boxed)
 %box1 = call obj @Viper.Box.I64(1)
-call void @Viper.Collections.List.Add(%list, %box1)
+call void @Viper.Collections.List.Push(%list, %box1)
 
 ; Push 2 (boxed)
 %box2 = call obj @Viper.Box.I64(2)
-call void @Viper.Collections.List.Add(%list, %box2)
+call void @Viper.Collections.List.Push(%list, %box2)
 
 ; Access nums[0] (unbox)
 %box = call obj @Viper.Collections.List.get_Item(%list, 0)

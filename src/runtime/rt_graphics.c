@@ -397,7 +397,7 @@ int64_t rt_canvas_text_width(rt_string text)
 {
     if (!text)
         return 0;
-    return rt_len(text) * 8;
+    return rt_str_len(text) * 8;
 }
 
 int64_t rt_canvas_text_height(void)

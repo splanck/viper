@@ -161,11 +161,11 @@ static void test_boundary_cases()
     // Name of invalid/disconnected controller
     rt_string name = rt_pad_name(0);
     assert(name != nullptr);
-    assert(rt_len(name) == 0);
+    assert(rt_str_len(name) == 0);
 
     name = rt_pad_name(-1);
     assert(name != nullptr);
-    assert(rt_len(name) == 0);
+    assert(rt_str_len(name) == 0);
 
     printf("test_boundary_cases: PASSED\n");
 }

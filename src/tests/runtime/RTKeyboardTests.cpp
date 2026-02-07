@@ -122,22 +122,22 @@ static void test_key_name()
     rt_string name_a = rt_keyboard_key_name(rt_keyboard_key_a());
     assert(name_a != nullptr);
     // Should return "A"
-    assert(rt_len(name_a) == 1);
+    assert(rt_str_len(name_a) == 1);
 
     rt_string name_space = rt_keyboard_key_name(rt_keyboard_key_space());
     assert(name_space != nullptr);
     // Should return "Space"
-    assert(rt_len(name_space) == 5);
+    assert(rt_str_len(name_space) == 5);
 
     rt_string name_enter = rt_keyboard_key_name(rt_keyboard_key_enter());
     assert(name_enter != nullptr);
     // Should return "Enter"
-    assert(rt_len(name_enter) == 5);
+    assert(rt_str_len(name_enter) == 5);
 
     rt_string name_f1 = rt_keyboard_key_name(rt_keyboard_key_f1());
     assert(name_f1 != nullptr);
     // Should return "F1"
-    assert(rt_len(name_f1) == 2);
+    assert(rt_str_len(name_f1) == 2);
 
     // Unknown key should return "Unknown"
     rt_string name_unknown = rt_keyboard_key_name(-999);
@@ -175,7 +175,7 @@ static void test_text_input()
     // Initially text input is disabled, so GetText should return empty
     rt_string text = rt_keyboard_get_text();
     assert(text != nullptr);
-    assert(rt_len(text) == 0);
+    assert(rt_str_len(text) == 0);
 
     // Enable text input
     rt_keyboard_enable_text_input();

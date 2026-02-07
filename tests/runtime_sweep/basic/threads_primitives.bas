@@ -36,31 +36,31 @@
 
 DIM gate AS Viper.Threads.Gate
 gate = Viper.Threads.Gate.New(1)
-Viper.Diagnostics.AssertEq(gate.Permits, 1, "gate.permits")
+Viper.Core.Diagnostics.AssertEq(gate.Permits, 1, "gate.permits")
 
 DIM got AS INTEGER
 got = gate.TryEnter()
-Viper.Diagnostics.Assert(got <> 0, "gate.tryenter")
-Viper.Diagnostics.AssertEq(gate.Permits, 0, "gate.permits.after")
+Viper.Core.Diagnostics.Assert(got <> 0, "gate.tryenter")
+Viper.Core.Diagnostics.AssertEq(gate.Permits, 0, "gate.permits.after")
 
 gate.Leave()
-Viper.Diagnostics.AssertEq(gate.Permits, 1, "gate.leave")
+Viper.Core.Diagnostics.AssertEq(gate.Permits, 1, "gate.leave")
 
-Viper.Diagnostics.Assert(gate.TryEnterFor(1) <> 0, "gate.tryenterfor")
+Viper.Core.Diagnostics.Assert(gate.TryEnterFor(1) <> 0, "gate.tryenterfor")
 gate.Leave()
 
 gate.Enter()
-Viper.Diagnostics.AssertEq(gate.Permits, 0, "gate.enter")
+Viper.Core.Diagnostics.AssertEq(gate.Permits, 0, "gate.enter")
 gate.Leave(1)
-Viper.Diagnostics.AssertEq(gate.Permits, 1, "gate.leavemany")
+Viper.Core.Diagnostics.AssertEq(gate.Permits, 1, "gate.leavemany")
 
 DIM barrier AS Viper.Threads.Barrier
 barrier = Viper.Threads.Barrier.New(1)
-Viper.Diagnostics.AssertEq(barrier.Parties, 1, "barrier.parties")
-Viper.Diagnostics.AssertEq(barrier.Waiting, 0, "barrier.waiting")
+Viper.Core.Diagnostics.AssertEq(barrier.Parties, 1, "barrier.parties")
+Viper.Core.Diagnostics.AssertEq(barrier.Waiting, 0, "barrier.waiting")
 DIM arriveIndex AS INTEGER
 arriveIndex = barrier.Arrive()
-Viper.Diagnostics.Assert(arriveIndex >= 0, "barrier.arrive")
+Viper.Core.Diagnostics.Assert(arriveIndex >= 0, "barrier.arrive")
 barrier.Reset()
 
 DIM lockObj AS Viper.Collections.List
@@ -68,11 +68,11 @@ lockObj = NEW Viper.Collections.List()
 
 DIM ok AS INTEGER
 ok = Viper.Threads.Monitor.TryEnter(lockObj)
-Viper.Diagnostics.Assert(ok <> 0, "monitor.tryenter")
+Viper.Core.Diagnostics.Assert(ok <> 0, "monitor.tryenter")
 Viper.Threads.Monitor.Exit(lockObj)
 
 ok = Viper.Threads.Monitor.TryEnterFor(lockObj, 1)
-Viper.Diagnostics.Assert(ok <> 0, "monitor.tryenterfor")
+Viper.Core.Diagnostics.Assert(ok <> 0, "monitor.tryenterfor")
 Viper.Threads.Monitor.Exit(lockObj)
 
 Viper.Threads.Monitor.Enter(lockObj)
@@ -80,38 +80,38 @@ Viper.Threads.Monitor.Pause(lockObj)
 Viper.Threads.Monitor.PauseAll(lockObj)
 DIM waitOk AS INTEGER
 waitOk = Viper.Threads.Monitor.WaitFor(lockObj, 1)
-Viper.Diagnostics.Assert(waitOk = 0 OR waitOk = 1 OR waitOk = -1, "monitor.waitfor")
+Viper.Core.Diagnostics.Assert(waitOk = 0 OR waitOk = 1 OR waitOk = -1, "monitor.waitfor")
 Viper.Threads.Monitor.Exit(lockObj)
 
 DIM rw AS Viper.Threads.RwLock
 rw = Viper.Threads.RwLock.New()
-Viper.Diagnostics.AssertEq(rw.Readers, 0, "rw.readers")
-Viper.Diagnostics.Assert(rw.IsWriteLocked = FALSE, "rw.writelocked")
+Viper.Core.Diagnostics.AssertEq(rw.Readers, 0, "rw.readers")
+Viper.Core.Diagnostics.Assert(rw.IsWriteLocked = FALSE, "rw.writelocked")
 
 rw.ReadEnter()
-Viper.Diagnostics.AssertEq(rw.Readers, 1, "rw.readenter")
+Viper.Core.Diagnostics.AssertEq(rw.Readers, 1, "rw.readenter")
 rw.ReadExit()
 
-Viper.Diagnostics.Assert(rw.TryReadEnter() <> 0, "rw.tryread")
+Viper.Core.Diagnostics.Assert(rw.TryReadEnter() <> 0, "rw.tryread")
 rw.ReadExit()
 
-Viper.Diagnostics.Assert(rw.TryWriteEnter() <> 0, "rw.trywrite")
+Viper.Core.Diagnostics.Assert(rw.TryWriteEnter() <> 0, "rw.trywrite")
 rw.WriteExit()
 
 rw.WriteEnter()
-Viper.Diagnostics.Assert(rw.IsWriteLocked, "rw.writeenter")
+Viper.Core.Diagnostics.Assert(rw.IsWriteLocked, "rw.writeenter")
 rw.WriteExit()
 
 DIM cell AS Viper.Threads.SafeI64
 cell = Viper.Threads.SafeI64.New(10)
-Viper.Diagnostics.AssertEq(cell.Get(), 10, "safe.get")
+Viper.Core.Diagnostics.AssertEq(cell.Get(), 10, "safe.get")
 cell.Set(5)
-Viper.Diagnostics.AssertEq(cell.Get(), 5, "safe.set")
-Viper.Diagnostics.AssertEq(cell.Add(7), 12, "safe.add")
+Viper.Core.Diagnostics.AssertEq(cell.Get(), 5, "safe.set")
+Viper.Core.Diagnostics.AssertEq(cell.Add(7), 12, "safe.add")
 DIM prev AS INTEGER
 prev = cell.CompareExchange(12, 1)
-Viper.Diagnostics.AssertEq(prev, 12, "safe.cas")
-Viper.Diagnostics.AssertEq(cell.Get(), 1, "safe.cas.value")
+Viper.Core.Diagnostics.AssertEq(prev, 12, "safe.cas")
+Viper.Core.Diagnostics.AssertEq(cell.Get(), 1, "safe.cas.value")
 
 Viper.Threads.Thread.Sleep(1)
 Viper.Threads.Thread.Yield()

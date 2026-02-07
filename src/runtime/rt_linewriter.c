@@ -297,7 +297,7 @@ void rt_linewriter_write(void *obj, rt_string text)
         return;
 
     const char *data = rt_string_cstr(text);
-    int64_t len = rt_len(text);
+    int64_t len = rt_str_len(text);
     if (data && len > 0)
     {
         fwrite(data, 1, (size_t)len, lw->fp);
@@ -358,7 +358,7 @@ void rt_linewriter_write_ln(void *obj, rt_string text)
     if (text)
     {
         const char *data = rt_string_cstr(text);
-        int64_t len = rt_len(text);
+        int64_t len = rt_str_len(text);
         if (data && len > 0)
         {
             fwrite(data, 1, (size_t)len, lw->fp);
@@ -369,7 +369,7 @@ void rt_linewriter_write_ln(void *obj, rt_string text)
     if (lw->newline)
     {
         const char *nl = rt_string_cstr(lw->newline);
-        int64_t nl_len = rt_len(lw->newline);
+        int64_t nl_len = rt_str_len(lw->newline);
         if (nl && nl_len > 0)
         {
             fwrite(nl, 1, (size_t)nl_len, lw->fp);

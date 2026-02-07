@@ -96,7 +96,7 @@ int main()
 
     Slot strArg{};
     strArg.str = hello;
-    Slot lenResult = callBridge("rt_len", {strArg}, Type::Kind::I64, {Type::Kind::Str});
+    Slot lenResult = callBridge("rt_str_len", {strArg}, Type::Kind::I64, {Type::Kind::Str});
     assert(lenResult.i64 == 5);
     rt_string_unref(hello);
 
@@ -107,7 +107,7 @@ int main()
     assert(strNumberResult.str != nullptr);
     rt_string numberStr = strNumberResult.str;
     // Use rt_len API which handles both SSO and heap-backed strings
-    std::string numberText(rt_string_cstr(numberStr), static_cast<size_t>(rt_len(numberStr)));
+    std::string numberText(rt_string_cstr(numberStr), static_cast<size_t>(rt_str_len(numberStr)));
     assert(numberText == "12345");
     rt_string_unref(numberStr);
 
@@ -189,7 +189,7 @@ int main()
     const std::string embeddedLiteral("abc\0def", 7);
     il::vm::ViperString embedded = il::vm::toViperString(embeddedLiteral);
     assert(embedded != nullptr);
-    const int64_t runtimeLen = rt_len(embedded);
+    const int64_t runtimeLen = rt_str_len(embedded);
     assert(runtimeLen == static_cast<int64_t>(embeddedLiteral.size()));
     std::string roundTrip(embedded->data, static_cast<size_t>(runtimeLen));
     assert(roundTrip == embeddedLiteral);
@@ -200,7 +200,7 @@ int main()
         il::vm::StringRef trimmed{backing.data() + 1, backing.size() - 2};
         il::vm::ViperString substrHandle = il::vm::toViperString(trimmed);
         assert(substrHandle != nullptr);
-        const int64_t substrLen = rt_len(substrHandle);
+        const int64_t substrLen = rt_str_len(substrHandle);
         assert(substrLen == static_cast<int64_t>(trimmed.size()));
         std::string substrRoundTrip(substrHandle->data, static_cast<size_t>(substrLen));
         assert(substrRoundTrip == trimmed);
@@ -214,7 +214,7 @@ int main()
         il::vm::StringRef window{storage.data() + 1, 3};
         il::vm::ViperString windowHandle = il::vm::toViperString(window);
         assert(windowHandle != nullptr);
-        const int64_t windowLen = rt_len(windowHandle);
+        const int64_t windowLen = rt_str_len(windowHandle);
         assert(windowLen == static_cast<int64_t>(window.size()));
         auto *windowImpl = reinterpret_cast<rt_string_impl *>(windowHandle);
         assert(windowImpl->data != window.data());
@@ -239,7 +239,7 @@ int main()
         assert(nonLiteralEmpty.data() != nullptr);
         il::vm::ViperString nonLiteralHandle = il::vm::toViperString(nonLiteralEmpty);
         assert(nonLiteralHandle != nullptr);
-        assert(rt_len(nonLiteralHandle) == 0);
+        assert(rt_str_len(nonLiteralHandle) == 0);
         assert(nonLiteralHandle != emptyString);
         rt_string_unref(nonLiteralHandle);
     }
@@ -387,7 +387,7 @@ int main()
 
         assert(frame.regs[0].str != nullptr);
         // Use rt_len API which handles both SSO and heap-backed strings
-        const int64_t mutatedLen = rt_len(frame.regs[0].str);
+        const int64_t mutatedLen = rt_str_len(frame.regs[0].str);
         std::string_view mutatedView(rt_string_cstr(frame.regs[0].str),
                                      static_cast<size_t>(mutatedLen));
         assert(mutatedView == kMutatedText);

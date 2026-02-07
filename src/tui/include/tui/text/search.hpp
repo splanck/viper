@@ -5,11 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/text/search.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the text search utilities for Viper's TUI editor,
+// providing both literal and regex-based search over TextBuffer contents.
+//
+// The findAll() function returns all non-overlapping matches of a query
+// within the buffer. The findNext() function finds the first match at or
+// after a given byte offset, enabling incremental forward search.
+//
+// When useRegex is true, the query string is interpreted as an ECMAScript
+// regular expression. When false, it is treated as a literal substring.
+//
+// Key invariants:
+//   - Match offsets are byte positions within the buffer's content.
+//   - Matches returned by findAll() are non-overlapping and in order.
+//   - Invalid regex patterns result in an empty result set.
+//
+// Ownership: Match structs are plain value types with no heap allocation.
+// Functions operate on const TextBuffer references without mutation.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,7 +37,9 @@
 
 namespace viper::tui::text
 {
-/// @brief Match result range in bytes.
+/// @brief Byte-range result of a text search operation.
+/// @details Represents a contiguous match within the text buffer, stored as
+///          a starting byte offset and a length in bytes.
 struct Match
 {
     size_t start{0};

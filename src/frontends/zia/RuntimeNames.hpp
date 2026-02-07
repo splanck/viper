@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "il/runtime/generated/RuntimeNames.hpp"
+#include "il/runtime/RuntimeNames.hpp"
 
 namespace il::frontends::zia::runtime
 {
@@ -35,14 +35,32 @@ using namespace il::runtime::names;
 
 // String aliases
 inline constexpr const char *kStringContains = kStringHas;
-inline constexpr const char *kStringFromInt = kConvertToStringInt;
-inline constexpr const char *kStringFromNum = kConvertToStringDouble;
+inline constexpr const char *kStringFromInt = kCoreConvertToStringInt;
+inline constexpr const char *kStringFromNum = kCoreConvertToStringDouble;
+
+// Core.Object aliases
+inline constexpr const char *kObjectToString = kCoreObjectToString;
+
+// Core.Box short aliases
+inline constexpr const char *kBoxI64 = kCoreBoxI64;
+inline constexpr const char *kBoxF64 = kCoreBoxF64;
+inline constexpr const char *kBoxI1 = kCoreBoxI1;
+inline constexpr const char *kBoxStr = kCoreBoxStr;
+inline constexpr const char *kBoxValueType = kCoreBoxValueType;
+
+// Core.Convert short aliases
+inline constexpr const char *kConvertToDouble = kCoreConvertToDouble;
+inline constexpr const char *kConvertToInt = kCoreConvertToInt;
+
+// Core.Parse short aliases
+inline constexpr const char *kParseDouble = kCoreParseDouble;
+inline constexpr const char *kParseInt64 = kCoreParseInt64;
 
 // Collections - short names for convenience
 inline constexpr const char *kListNew = kCollectionsListNew;
-inline constexpr const char *kListAdd = kCollectionsListAdd;
-inline constexpr const char *kListGet = kCollectionsListGetItem;
-inline constexpr const char *kListSet = kCollectionsListSetItem;
+inline constexpr const char *kListAdd = kCollectionsListPush;
+inline constexpr const char *kListGet = kCollectionsListGet;
+inline constexpr const char *kListSet = kCollectionsListSet;
 inline constexpr const char *kListCount = kCollectionsListGetLen;
 inline constexpr const char *kListClear = kCollectionsListClear;
 inline constexpr const char *kListRemoveAt = kCollectionsListRemoveAt;
@@ -54,8 +72,8 @@ inline constexpr const char *kListFind = kCollectionsListFind;
 inline constexpr const char *kSetNew = kCollectionsSetNew;
 inline constexpr const char *kSetCount = kCollectionsSetGetLen;
 inline constexpr const char *kSetHas = kCollectionsSetHas;
-inline constexpr const char *kSetPut = kCollectionsSetPut;
-inline constexpr const char *kSetDrop = kCollectionsSetDrop;
+inline constexpr const char *kSetPut = kCollectionsSetAdd;
+inline constexpr const char *kSetDrop = kCollectionsSetRemove;
 inline constexpr const char *kSetClear = kCollectionsSetClear;
 
 inline constexpr const char *kMapNew = kCollectionsMapNew;
@@ -74,14 +92,13 @@ inline constexpr const char *kSeqLen = kCollectionsSeqGetLen;
 inline constexpr const char *kSeqGet = kCollectionsSeqGet;
 
 // Boxing - unbox aliases
-inline constexpr const char *kUnboxI64 = kBoxToI64;
-inline constexpr const char *kUnboxF64 = kBoxToF64;
-inline constexpr const char *kUnboxI1 = kBoxToI1;
-inline constexpr const char *kUnboxStr = kBoxToStr;
+inline constexpr const char *kUnboxI64 = kCoreBoxToI64;
+inline constexpr const char *kUnboxF64 = kCoreBoxToF64;
+inline constexpr const char *kUnboxI1 = kCoreBoxToI1;
+inline constexpr const char *kUnboxStr = kCoreBoxToStr;
 
-// Math - random aliases (Viper.Random.* instead of Viper.Math.Random*)
-inline constexpr const char *kMathRandom = kRandomNext;
-inline constexpr const char *kMathRandomRange = kRandomRange;
+// Math - random aliases (Viper.Math.Random.*)
+inline constexpr const char *kMathRandom = kMathRandomNext;
 
 // System - aliases to Time functions
 inline constexpr const char *kSystemSleep = kTimeSleepMs;

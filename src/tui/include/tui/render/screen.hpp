@@ -5,11 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/render/screen.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the screen buffer and cell types for Viper's TUI
+// rendering system. The ScreenBuffer provides a 2D grid of styled character
+// cells that widgets paint into. The Renderer then diffs the current
+// buffer against a previous snapshot to compute minimal ANSI escape
+// sequences for terminal output.
+//
+// The rendering pipeline works as follows:
+//   1. ScreenBuffer::clear() resets all cells to a background style
+//   2. Widgets paint characters and styles into the buffer via at()
+//   3. snapshotPrev() saves the current state for diffing
+//   4. After the next paint, computeDiff() identifies changed regions
+//   5. The Renderer emits ANSI sequences only for changed spans
+//
+// Key invariants:
+//   - Cell coordinates are 0-based (y=row, x=column).
+//   - at() performs no bounds checking; callers must respect dimensions.
+//   - snapshotPrev() must be called before computeDiff() for valid results.
+//   - Wide characters (width > 1) occupy their cell; trailing cells are
+//     the caller's responsibility.
+//
+// Ownership: ScreenBuffer owns its cell grids (current and previous)
+// by value via std::vector. RGBA, Style, and Cell are trivial value types.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,6 +37,10 @@
 
 namespace viper::tui::render
 {
+/// @brief 32-bit RGBA color value for terminal cell styling.
+/// @details Represents a color with red, green, blue, and alpha channels.
+///          Alpha defaults to 255 (fully opaque). Used for both foreground
+///          and background colors in the Style struct.
 struct RGBA
 {
     uint8_t r{0};
@@ -31,7 +52,10 @@ struct RGBA
 bool operator==(const RGBA &a, const RGBA &b);
 bool operator!=(const RGBA &a, const RGBA &b);
 
-/// @brief Attribute flags for styled cells.
+/// @brief Bitflags for terminal text attributes applied to cells.
+/// @details Can be combined with bitwise OR to apply multiple attributes
+///          simultaneously (e.g., Bold | Italic for bold italic text).
+///          These map to standard ANSI/VT text attribute codes.
 enum Attr : uint16_t
 {
     AttrNone = 0,
@@ -45,7 +69,10 @@ enum Attr : uint16_t
     Strike = 1 << 7
 };
 
-/// @brief Visual style for a cell.
+/// @brief Visual style applied to a terminal cell, combining colors and attributes.
+/// @details Contains foreground color, background color, and text attribute flags.
+///          Styles are compared for equality during diff computation to minimize
+///          terminal escape sequence output.
 struct Style
 {
     RGBA fg{};
@@ -56,7 +83,11 @@ struct Style
 bool operator==(const Style &a, const Style &b);
 bool operator!=(const Style &a, const Style &b);
 
-/// @brief Single character cell with style and width.
+/// @brief Single character cell in the screen buffer with style and display width.
+/// @details Represents one position in the terminal grid. The character is stored
+///          as a UTF-32 code point to support the full Unicode range. Width indicates
+///          how many terminal columns the character occupies (1 for most characters,
+///          2 for wide CJK characters, 0 for combining marks).
 struct Cell
 {
     char32_t ch{U' '};
@@ -67,11 +98,17 @@ struct Cell
 bool operator==(const Cell &a, const Cell &b);
 bool operator!=(const Cell &a, const Cell &b);
 
-/// @brief 2D grid of styled cells with diff computation.
+/// @brief 2D grid of styled character cells with differential update support.
+/// @details Provides the primary rendering surface for the TUI widget system.
+///          Widgets paint into the buffer via at(), and the Renderer uses
+///          snapshotPrev()/computeDiff() to emit only the changed portions
+///          to the terminal, minimizing I/O overhead.
 class ScreenBuffer
 {
   public:
-    /// @brief Span of changed cells within a row.
+    /// @brief Describes a contiguous horizontal span of changed cells within a row.
+    /// @details Used by computeDiff() to report regions that need to be redrawn.
+    ///          The Renderer iterates these spans to emit targeted ANSI sequences.
     struct DiffSpan
     {
         int row{0};

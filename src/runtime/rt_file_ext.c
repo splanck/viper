@@ -609,14 +609,14 @@ void *rt_file_read_lines(rt_string path)
     void *seq = rt_seq_new();
 
     rt_string content = rt_io_file_read_all_text(path);
-    if (!content || rt_len(content) == 0)
+    if (!content || rt_str_len(content) == 0)
         return seq;
 
     const char *data = rt_string_cstr(content);
     if (!data)
         return seq;
 
-    size_t len = (size_t)rt_len(content);
+    size_t len = (size_t)rt_str_len(content);
     size_t line_start = 0;
 
     for (size_t i = 0; i <= len; i++)

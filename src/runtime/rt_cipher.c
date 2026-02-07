@@ -92,7 +92,7 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password)
     }
 
     const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_len(password);
+    size_t pwd_len = (size_t)rt_str_len(password);
     if (pwd_len == 0)
     {
         rt_trap("Cipher.Encrypt: password is empty");
@@ -145,7 +145,7 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password)
     }
 
     const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_len(password);
+    size_t pwd_len = (size_t)rt_str_len(password);
     if (pwd_len == 0)
     {
         rt_trap("Cipher.Decrypt: password is empty");
@@ -319,7 +319,7 @@ void *rt_cipher_derive_key(rt_string password, void *salt_bytes)
     }
 
     const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_len(password);
+    size_t pwd_len = (size_t)rt_str_len(password);
     if (pwd_len == 0)
     {
         rt_trap("Cipher.DeriveKey: password is empty");

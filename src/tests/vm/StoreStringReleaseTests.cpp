@@ -52,7 +52,7 @@ int main()
     builder.addExtern("rt_str_i32_alloc", Type(Type::Kind::Str), {Type(Type::Kind::I32)});
     builder.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
     builder.addExtern(
-        "rt_left", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+        "rt_str_left", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
 
     builder.addGlobalStr("literal", "sample");
 
@@ -104,7 +104,7 @@ int main()
 
     const Value literalValue = builder.emitConstStr("literal", kLoc(8));
     const unsigned literalId = literalValue.id;
-    builder.emitCall("rt_left", {literalValue, Value::constInt(64)}, std::nullopt, kLoc(9));
+    builder.emitCall("rt_str_left", {literalValue, Value::constInt(64)}, std::nullopt, kLoc(9));
     builder.emitCall("rt_str_release_maybe", {literalValue}, std::nullopt, kLoc(10));
 
     builder.emitRet(std::optional<Value>{Value::constInt(0)}, kLoc(11));

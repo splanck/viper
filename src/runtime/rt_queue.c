@@ -170,8 +170,8 @@ static void queue_grow(rt_queue_impl *q)
 /// @note The Queue does not own the elements stored in it.
 /// @note Thread safety: Not thread-safe. External synchronization required.
 ///
-/// @see rt_queue_add For adding elements
-/// @see rt_queue_take For removing elements
+/// @see rt_queue_push For adding elements
+/// @see rt_queue_pop For removing elements
 /// @see rt_queue_finalize For cleanup behavior
 void *rt_queue_new(void)
 {
@@ -210,8 +210,8 @@ void *rt_queue_new(void)
 /// @note O(1) time complexity.
 ///
 /// @see rt_queue_is_empty For a boolean check
-/// @see rt_queue_add For operations that increase the count
-/// @see rt_queue_take For operations that decrease the count
+/// @see rt_queue_push For operations that increase the count
+/// @see rt_queue_pop For operations that decrease the count
 int64_t rt_queue_len(void *obj)
 {
     if (!obj)
@@ -235,7 +235,7 @@ int64_t rt_queue_len(void *obj)
 /// @note O(1) time complexity.
 ///
 /// @see rt_queue_len For the exact count
-/// @see rt_queue_take For removing elements (traps if empty)
+/// @see rt_queue_pop For removing elements (traps if empty)
 /// @see rt_queue_peek For viewing front element (traps if empty)
 int8_t rt_queue_is_empty(void *obj)
 {
@@ -267,9 +267,9 @@ int8_t rt_queue_is_empty(void *obj)
 /// @note Traps with "Queue.Add: null queue" if obj is NULL.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_queue_take For the removal operation
+/// @see rt_queue_pop For the removal operation
 /// @see rt_queue_peek For viewing without removing
-void rt_queue_add(void *obj, void *val)
+void rt_queue_push(void *obj, void *val)
 {
     if (!obj)
         rt_trap("Queue.Add: null queue");
@@ -312,10 +312,10 @@ void rt_queue_add(void *obj, void *val)
 /// @note Traps if the Queue is empty or obj is NULL.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_queue_add For the insertion operation
+/// @see rt_queue_push For the insertion operation
 /// @see rt_queue_peek For viewing without removing
 /// @see rt_queue_is_empty For checking before take
-void *rt_queue_take(void *obj)
+void *rt_queue_pop(void *obj)
 {
     if (!obj)
         rt_trap("Queue.Take: null queue");
@@ -362,7 +362,7 @@ void *rt_queue_take(void *obj)
 /// @note Traps if the Queue is empty or obj is NULL.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_queue_take For removing while retrieving
+/// @see rt_queue_pop For removing while retrieving
 /// @see rt_queue_is_empty For checking before peek
 void *rt_queue_peek(void *obj)
 {

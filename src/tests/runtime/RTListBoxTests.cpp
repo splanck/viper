@@ -36,11 +36,11 @@ static void test_list_find_boxed_strings()
     void *banana = rt_box_str(rt_const_cstr("banana"));
     void *cherry = rt_box_str(rt_const_cstr("cherry"));
 
-    rt_list_add(list, apple1);
-    rt_list_add(list, banana);
-    rt_list_add(list, cherry);
+    rt_list_push(list, apple1);
+    rt_list_push(list, banana);
+    rt_list_push(list, cherry);
 
-    test_result("Count is 3", rt_list_get_count(list) == 3);
+    test_result("Count is 3", rt_list_len(list) == 3);
 
     // Create DIFFERENT boxed strings with same content
     void *apple2 = rt_box_str(rt_const_cstr("apple"));
@@ -74,9 +74,9 @@ static void test_list_find_boxed_integers()
     void *i99 = rt_box_i64(99);
     void *i0 = rt_box_i64(0);
 
-    rt_list_add(list, i42a);
-    rt_list_add(list, i99);
-    rt_list_add(list, i0);
+    rt_list_push(list, i42a);
+    rt_list_push(list, i99);
+    rt_list_push(list, i0);
 
     void *i42b = rt_box_i64(42);
     void *i99b = rt_box_i64(99);
@@ -104,8 +104,8 @@ static void test_list_find_boxed_floats()
 
     void *f1a = rt_box_f64(3.14);
     void *f2 = rt_box_f64(2.718);
-    rt_list_add(list, f1a);
-    rt_list_add(list, f2);
+    rt_list_push(list, f1a);
+    rt_list_push(list, f2);
 
     void *f1b = rt_box_f64(3.14);
     test_result("f1a != f1b (different pointers)", f1a != f1b);
@@ -131,18 +131,18 @@ static void test_list_remove_boxed()
     void *i10 = rt_box_i64(10);
     void *i20 = rt_box_i64(20);
     void *i30 = rt_box_i64(30);
-    rt_list_add(list, i10);
-    rt_list_add(list, i20);
-    rt_list_add(list, i30);
+    rt_list_push(list, i10);
+    rt_list_push(list, i20);
+    rt_list_push(list, i30);
 
-    test_result("Count is 3", rt_list_get_count(list) == 3);
+    test_result("Count is 3", rt_list_len(list) == 3);
 
     // Remove by content-equal boxed value (different pointer)
     void *i20b = rt_box_i64(20);
     test_result("i20 != i20b (different pointers)", i20 != i20b);
     int8_t removed = rt_list_remove(list, i20b);
     test_result("Remove i20b returns 1", removed == 1);
-    test_result("Count is 2", rt_list_get_count(list) == 2);
+    test_result("Count is 2", rt_list_len(list) == 2);
 
     // Verify i20 is gone
     void *i20c = rt_box_i64(20);
@@ -168,7 +168,7 @@ static void test_list_find_boxed_booleans()
     void *list = rt_ns_list_new();
 
     void *btrue1 = rt_box_i1(1);
-    rt_list_add(list, btrue1);
+    rt_list_push(list, btrue1);
 
     void *btrue2 = rt_box_i1(1);
     void *bfalse = rt_box_i1(0);

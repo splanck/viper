@@ -34,8 +34,8 @@ DIM gTurnCount AS INTEGER
 ' Dice Rolling - uses Viper.Random
 ' ====================================================================
 SUB RollDice()
-    gDie1 = Viper.Random.NextInt(6) + 1
-    gDie2 = Viper.Random.NextInt(6) + 1
+    gDie1 = Viper.Math.Random.NextInt(6) + 1
+    gDie2 = Viper.Math.Random.NextInt(6) + 1
 
     IF gDie1 = gDie2 THEN
         gIsDoubles = 1
@@ -306,7 +306,7 @@ END SUB
 ' ====================================================================
 SUB InitGame()
     ' Seed random number generator with current time
-    Viper.Random.Seed(Viper.Time.DateTime.NowMs())
+    Viper.Math.Random.Seed(Viper.Time.DateTime.NowMs())
 
     ' Initialize board and players
     InitBoard()
@@ -798,7 +798,7 @@ END SUB
 ' ====================================================================
 SUB ProcessChance(p AS Player)
     DIM card AS INTEGER
-    card = Viper.Random.NextInt(8)
+    card = Viper.Math.Random.NextInt(8)
 
     SELECT CASE card
         CASE 0
@@ -845,7 +845,7 @@ END SUB
 ' ====================================================================
 SUB ProcessCommunityChest(p AS Player)
     DIM card AS INTEGER
-    card = Viper.Random.NextInt(8)
+    card = Viper.Math.Random.NextInt(8)
 
     SELECT CASE card
         CASE 0

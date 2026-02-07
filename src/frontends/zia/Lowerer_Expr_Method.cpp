@@ -38,6 +38,7 @@ enum class CollectionMethod
     Get,
     Set,
     Add,
+    Push,
     Remove,
     RemoveAt,
     Insert,
@@ -48,7 +49,9 @@ enum class CollectionMethod
     Size,
     Count,
     Length,
+    Len,
     Clear,
+    Pop,
     // Map methods
     Put,
     GetOr,
@@ -84,6 +87,8 @@ const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable(
         {"get", CollectionMethod::Get},
         {"set", CollectionMethod::Set},
         {"add", CollectionMethod::Add},
+        {"push", CollectionMethod::Push},
+        {"pop", CollectionMethod::Pop},
         {"remove", CollectionMethod::Remove},
         {"removeat", CollectionMethod::RemoveAt},
         {"insert", CollectionMethod::Insert},
@@ -94,6 +99,7 @@ const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable(
         {"size", CollectionMethod::Size},
         {"count", CollectionMethod::Count},
         {"length", CollectionMethod::Length},
+        {"len", CollectionMethod::Len},
         {"clear", CollectionMethod::Clear},
         // Map-specific methods
         {"put", CollectionMethod::Put},
@@ -142,13 +148,11 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 Value boxed =
                     emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexResult.value});
-                TypeRef elemType = baseType->elementType();
-                if (elemType)
-                {
-                    Type ilElemType = mapType(elemType);
-                    return emitUnboxValue(boxed, ilElemType, elemType);
-                }
-                return LowerResult{boxed, Type(Type::Kind::Ptr)};
+                TypeRef elemType = baseType ? baseType->elementType() : nullptr;
+                if (!elemType)
+                    elemType = sema_.typeOf(expr);
+                Type ilElemType = mapType(elemType);
+                return emitUnboxValue(boxed, ilElemType, elemType);
             }
             break;
 
@@ -224,6 +228,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::Add:
+        case CollectionMethod::Push:
         {
             std::vector<Value> args;
             args.reserve(expr->args.size() + 1);
@@ -241,6 +246,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
         case CollectionMethod::Size:
         case CollectionMethod::Count:
         case CollectionMethod::Length:
+        case CollectionMethod::Len:
         {
             std::vector<Value> args;
             args.push_back(baseValue);
@@ -340,6 +346,7 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
         case CollectionMethod::Size:
         case CollectionMethod::Count:
         case CollectionMethod::Length:
+        case CollectionMethod::Len:
         {
             Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {baseValue});
             return LowerResult{result, Type(Type::Kind::I64)};
@@ -443,6 +450,7 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
         case CollectionMethod::Size:
         case CollectionMethod::Count:
         case CollectionMethod::Length:
+        case CollectionMethod::Len:
         {
             Value result = emitCallRet(Type(Type::Kind::I64), kSetCount, {baseValue});
             return LowerResult{result, Type(Type::Kind::I64)};

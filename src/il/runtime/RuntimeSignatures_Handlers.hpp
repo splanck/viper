@@ -177,4 +177,11 @@ void invokeRtStrFAlloc(void **args, void *result);
 void invokeRtRoundEven(void **args, void *result);
 void invokeRtPowF64Chkdom(void **args, void *result);
 
+/// @brief VM adapter for Pow that manages the hidden bool* parameter internally.
+/// @details The C function rt_pow_f64_chkdom takes a hidden bool* status pointer
+///          that native codegen passes via a hidden ABI parameter.  The VM only
+///          passes the two visible f64 arguments, so this adapter allocates a
+///          local bool and traps on domain errors.
+void vmInvokeRtPow(void **args, void *result);
+
 } // namespace il::runtime

@@ -84,7 +84,7 @@ int main()
     builder.addExtern("rt_line_input_ch_err",
                       Type(Type::Kind::I32),
                       {Type(Type::Kind::I32), Type(Type::Kind::Ptr)});
-    builder.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    builder.addExtern("rt_str_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
     builder.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
 
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -116,7 +116,7 @@ int main()
     entry.instructions.push_back(loadLine);
 
     const unsigned lengthId = builder.reserveTempId();
-    builder.emitCall("rt_len", {Value::temp(lineId)}, Value::temp(lengthId), kLoc(4));
+    builder.emitCall("rt_str_len", {Value::temp(lineId)}, Value::temp(lengthId), kLoc(4));
 
     builder.emitCall("rt_str_release_maybe", {Value::temp(lineId)}, std::nullopt, kLoc(5));
     builder.emitRet(std::optional<Value>{Value::temp(lengthId)}, kLoc(6));

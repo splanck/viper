@@ -85,7 +85,7 @@ static inline char *rt_string_to_cstr(rt_string str)
 {
     if (!str)
         return NULL;
-    size_t len = (size_t)rt_len(str);
+    size_t len = (size_t)rt_str_len(str);
     char *result = malloc(len + 1);
     if (!result)
         return NULL;

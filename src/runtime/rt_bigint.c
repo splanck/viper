@@ -176,7 +176,7 @@ void *rt_bigint_from_str(rt_string str)
     if (!s)
         return NULL;
 
-    int64_t slen = rt_len(str);
+    int64_t slen = rt_str_len(str);
     if (slen == 0)
         return NULL;
 

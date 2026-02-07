@@ -74,7 +74,7 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert)
     // Find Viper.Convert in the catalog
     auto it = std::find_if(cat.begin(),
                            cat.end(),
-                           [](const auto &c) { return std::string(c.qname) == "Viper.Convert"; });
+                           [](const auto &c) { return std::string(c.qname) == "Viper.Core.Convert"; });
     ASSERT_NE(it, cat.end());
 
     // Verify expected conversion methods are present
@@ -108,24 +108,24 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets)
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
     // Test Convert.ToInt64(str: String) -> Int
-    auto ti = midx.find("Viper.Convert", "ToInt64", 1);
+    auto ti = midx.find("Viper.Core.Convert", "ToInt64", 1);
     ASSERT_TRUE(ti.has_value());
-    EXPECT_EQ(ti->target, std::string("Viper.Convert.ToInt"));
+    EXPECT_EQ(ti->target, std::string("Viper.Core.Convert.ToInt"));
 
     // Test Convert.ToDouble(str: String) -> Float
-    auto td = midx.find("Viper.Convert", "ToDouble", 1);
+    auto td = midx.find("Viper.Core.Convert", "ToDouble", 1);
     ASSERT_TRUE(td.has_value());
-    EXPECT_EQ(td->target, std::string("Viper.Convert.ToDouble"));
+    EXPECT_EQ(td->target, std::string("Viper.Core.Convert.ToDouble"));
 
     // Test Convert.ToString_Int(i: Int) -> String
-    auto tsi = midx.find("Viper.Convert", "ToString_Int", 1);
+    auto tsi = midx.find("Viper.Core.Convert", "ToString_Int", 1);
     ASSERT_TRUE(tsi.has_value());
-    EXPECT_EQ(tsi->target, std::string("Viper.Convert.ToString_Int"));
+    EXPECT_EQ(tsi->target, std::string("Viper.Core.Convert.ToString_Int"));
 
     // Test Convert.ToString_Double(f: Float) -> String
-    auto tsd = midx.find("Viper.Convert", "ToString_Double", 1);
+    auto tsd = midx.find("Viper.Core.Convert", "ToString_Double", 1);
     ASSERT_TRUE(tsd.has_value());
-    EXPECT_EQ(tsd->target, std::string("Viper.Convert.ToString_Double"));
+    EXPECT_EQ(tsd->target, std::string("Viper.Core.Convert.ToString_Double"));
 }
 
 /// @brief Test entry point.

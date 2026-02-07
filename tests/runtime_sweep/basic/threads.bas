@@ -21,10 +21,10 @@ END SUB
 DIM t AS Viper.Threads.Thread
 t = Viper.Threads.Thread.Start(ADDRESSOF WorkerThread, NOTHING)
 
-Viper.Diagnostics.Assert(t.Id > 0, "thread.id")
+Viper.Core.Diagnostics.Assert(t.Id > 0, "thread.id")
 DIM alive AS INTEGER
 alive = t.IsAlive
-Viper.Diagnostics.Assert(alive = 0 OR alive = 1 OR alive = -1, "thread.isalive")
+Viper.Core.Diagnostics.Assert(alive = 0 OR alive = 1 OR alive = -1, "thread.isalive")
 
 DIM joined AS INTEGER
 joined = t.JoinFor(1)
@@ -35,7 +35,7 @@ IF joined = 0 THEN
     t.Join()
 END IF
 
-Viper.Diagnostics.Assert(threadRan.Get() = 1, "thread.ran")
+Viper.Core.Diagnostics.Assert(threadRan.Get() = 1, "thread.ran")
 
 DIM sharedCounter AS Viper.Threads.SafeI64
 sharedCounter = NEW Viper.Threads.SafeI64(0)
@@ -55,7 +55,7 @@ t2 = Viper.Threads.Thread.Start(ADDRESSOF IncrementWorker, NOTHING)
 t1.Join()
 t2.Join()
 
-Viper.Diagnostics.AssertEq(sharedCounter.Get(), 200, "thread.sharedcounter")
+Viper.Core.Diagnostics.AssertEq(sharedCounter.Get(), 200, "thread.sharedcounter")
 
 PRINT "RESULT: ok"
 END

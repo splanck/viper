@@ -18,11 +18,11 @@
 
 int main()
 {
-    rt_string c = rt_chr(65);
+    rt_string c = rt_str_chr(65);
     assert(rt_str_eq(c, rt_const_cstr("A")));
 
-    assert(rt_asc(rt_const_cstr("A")) == 65);
-    assert(rt_asc(rt_const_cstr("")) == 0);
+    assert(rt_str_asc(rt_const_cstr("A")) == 65);
+    assert(rt_str_asc(rt_const_cstr("")) == 0);
 
     return 0;
 }

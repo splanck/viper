@@ -29,9 +29,9 @@
 DIM canvas AS Viper.Graphics.Canvas
 canvas = NEW Viper.Graphics.Canvas("Runtime Canvas", 64, 48)
 
-Viper.Diagnostics.AssertEq(canvas.Width, 64, "canvas.width")
-Viper.Diagnostics.AssertEq(canvas.Height, 48, "canvas.height")
-Viper.Diagnostics.Assert(canvas.ShouldClose = 0 OR canvas.ShouldClose = 1, "canvas.shouldclose")
+Viper.Core.Diagnostics.AssertEq(canvas.Width, 64, "canvas.width")
+Viper.Core.Diagnostics.AssertEq(canvas.Height, 48, "canvas.height")
+Viper.Core.Diagnostics.Assert(canvas.ShouldClose = 0 OR canvas.ShouldClose = 1, "canvas.shouldclose")
 
 DIM red AS INTEGER
 DIM green AS INTEGER
@@ -52,42 +52,42 @@ canvas.Plot(5, 5, green)
 
 DIM evt AS INTEGER
 evt = canvas.Poll()
-Viper.Diagnostics.Assert(evt >= 0, "canvas.poll")
+Viper.Core.Diagnostics.Assert(evt >= 0, "canvas.poll")
 
 DIM held AS INTEGER
 held = canvas.KeyHeld(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(held = 0 OR held = 1, "canvas.keyheld")
+Viper.Core.Diagnostics.Assert(held = 0 OR held = 1, "canvas.keyheld")
 
 canvas.Flip()
 
 DIM pixels AS Viper.Graphics.Pixels
 pixels = NEW Viper.Graphics.Pixels(4, 3)
-Viper.Diagnostics.AssertEq(pixels.Width, 4, "pixels.width")
-Viper.Diagnostics.AssertEq(pixels.Height, 3, "pixels.height")
+Viper.Core.Diagnostics.AssertEq(pixels.Width, 4, "pixels.width")
+Viper.Core.Diagnostics.AssertEq(pixels.Height, 3, "pixels.height")
 
 pixels.Fill(red)
-Viper.Diagnostics.AssertEq(pixels.Get(0, 0), red, "pixels.fill")
+Viper.Core.Diagnostics.AssertEq(pixels.Get(0, 0), red, "pixels.fill")
 
 pixels.Set(1, 1, blue)
-Viper.Diagnostics.AssertEq(pixels.Get(1, 1), blue, "pixels.set")
+Viper.Core.Diagnostics.AssertEq(pixels.Get(1, 1), blue, "pixels.set")
 
 DIM src AS Viper.Graphics.Pixels
 src = NEW Viper.Graphics.Pixels(2, 2)
 src.Fill(green)
 
 pixels.Copy(2, 0, src, 0, 0, 2, 2)
-Viper.Diagnostics.AssertEq(pixels.Get(2, 0), green, "pixels.copy")
+Viper.Core.Diagnostics.AssertEq(pixels.Get(2, 0), green, "pixels.copy")
 
 DIM clone AS Viper.Graphics.Pixels
 clone = pixels.Clone()
-Viper.Diagnostics.AssertEq(clone.Get(1, 1), blue, "pixels.clone")
+Viper.Core.Diagnostics.AssertEq(clone.Get(1, 1), blue, "pixels.clone")
 
 pixels.Clear()
-Viper.Diagnostics.AssertEq(pixels.Get(0, 0), 0, "pixels.clear")
+Viper.Core.Diagnostics.AssertEq(pixels.Get(0, 0), 0, "pixels.clear")
 
 DIM buf AS Viper.Collections.Bytes
 buf = clone.ToBytes()
-Viper.Diagnostics.AssertEq(buf.Len, 4 * 3 * 4, "pixels.tobytes")
+Viper.Core.Diagnostics.AssertEq(buf.Len, 4 * 3 * 4, "pixels.tobytes")
 
 PRINT "RESULT: ok"
 END

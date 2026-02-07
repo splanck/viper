@@ -27,7 +27,7 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width)
         width = 1;
 
     const char *src = rt_string_cstr(text);
-    int64_t src_len = rt_len(text);
+    int64_t src_len = rt_str_len(text);
 
     // Allocate result buffer (worst case: same size + newlines)
     char *result = (char *)malloc((size_t)(src_len * 2 + 1));
@@ -104,7 +104,7 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width)
     void *lines = rt_seq_new();
 
     const char *src = rt_string_cstr(wrapped);
-    int64_t len = rt_len(wrapped);
+    int64_t len = rt_str_len(wrapped);
     int64_t start = 0;
 
     for (int64_t i = 0; i <= len; i++)
@@ -133,9 +133,9 @@ rt_string rt_textwrap_fill(rt_string text, int64_t width)
 rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
 {
     const char *src = rt_string_cstr(text);
-    int64_t src_len = rt_len(text);
+    int64_t src_len = rt_str_len(text);
     const char *pre = rt_string_cstr(prefix);
-    int64_t pre_len = rt_len(prefix);
+    int64_t pre_len = rt_str_len(prefix);
 
     // Count lines
     int64_t line_count = 1;
@@ -182,7 +182,7 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
 rt_string rt_textwrap_dedent(rt_string text)
 {
     const char *src = rt_string_cstr(text);
-    int64_t src_len = rt_len(text);
+    int64_t src_len = rt_str_len(text);
 
     // Find minimum indentation (excluding empty lines)
     int64_t min_indent = -1;
@@ -264,9 +264,9 @@ rt_string rt_textwrap_dedent(rt_string text)
 rt_string rt_textwrap_hang(rt_string text, rt_string prefix)
 {
     const char *src = rt_string_cstr(text);
-    int64_t src_len = rt_len(text);
+    int64_t src_len = rt_str_len(text);
     const char *pre = rt_string_cstr(prefix);
-    int64_t pre_len = rt_len(prefix);
+    int64_t pre_len = rt_str_len(prefix);
 
     // Count lines
     int64_t line_count = 0;
@@ -317,8 +317,8 @@ rt_string rt_textwrap_truncate(rt_string text, int64_t width)
 
 rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix)
 {
-    int64_t text_len = rt_len(text);
-    int64_t suffix_len = rt_len(suffix);
+    int64_t text_len = rt_str_len(text);
+    int64_t suffix_len = rt_str_len(suffix);
 
     if (text_len <= width)
         return text;
@@ -327,28 +327,28 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
         return suffix;
 
     int64_t keep = width - suffix_len;
-    rt_string kept = rt_substr(text, 0, keep);
-    return rt_concat(kept, suffix);
+    rt_string kept = rt_str_substr(text, 0, keep);
+    return rt_str_concat(kept, suffix);
 }
 
 rt_string rt_textwrap_shorten(rt_string text, int64_t width)
 {
-    int64_t text_len = rt_len(text);
+    int64_t text_len = rt_str_len(text);
 
     if (text_len <= width)
         return text;
 
     if (width < 5)
-        return rt_substr(text, 0, width);
+        return rt_str_substr(text, 0, width);
 
     int64_t left = (width - 3) / 2;
     int64_t right = width - 3 - left;
 
-    rt_string left_part = rt_substr(text, 0, left);
-    rt_string right_part = rt_substr(text, text_len - right, right);
+    rt_string left_part = rt_str_substr(text, 0, left);
+    rt_string right_part = rt_str_substr(text, text_len - right, right);
 
-    rt_string result = rt_concat(left_part, rt_const_cstr("..."));
-    return rt_concat(result, right_part);
+    rt_string result = rt_str_concat(left_part, rt_const_cstr("..."));
+    return rt_str_concat(result, right_part);
 }
 
 //=============================================================================
@@ -357,7 +357,7 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width)
 
 rt_string rt_textwrap_left(rt_string text, int64_t width)
 {
-    int64_t text_len = rt_len(text);
+    int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return text;
 
@@ -372,12 +372,12 @@ rt_string rt_textwrap_left(rt_string text, int64_t width)
     rt_string padding = rt_string_from_bytes(spaces, pad);
     free(spaces);
 
-    return rt_concat(text, padding);
+    return rt_str_concat(text, padding);
 }
 
 rt_string rt_textwrap_right(rt_string text, int64_t width)
 {
-    int64_t text_len = rt_len(text);
+    int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return text;
 
@@ -392,12 +392,12 @@ rt_string rt_textwrap_right(rt_string text, int64_t width)
     rt_string padding = rt_string_from_bytes(spaces, pad);
     free(spaces);
 
-    return rt_concat(padding, text);
+    return rt_str_concat(padding, text);
 }
 
 rt_string rt_textwrap_center(rt_string text, int64_t width)
 {
-    int64_t text_len = rt_len(text);
+    int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return text;
 
@@ -426,8 +426,8 @@ rt_string rt_textwrap_center(rt_string text, int64_t width)
     free(left_spaces);
     free(right_spaces);
 
-    rt_string result = rt_concat(left_padding, text);
-    return rt_concat(result, right_padding);
+    rt_string result = rt_str_concat(left_padding, text);
+    return rt_str_concat(result, right_padding);
 }
 
 //=============================================================================
@@ -437,7 +437,7 @@ rt_string rt_textwrap_center(rt_string text, int64_t width)
 int64_t rt_textwrap_line_count(rt_string text)
 {
     const char *src = rt_string_cstr(text);
-    int64_t len = rt_len(text);
+    int64_t len = rt_str_len(text);
     int64_t count = 1;
 
     for (int64_t i = 0; i < len; i++)
@@ -452,7 +452,7 @@ int64_t rt_textwrap_line_count(rt_string text)
 int64_t rt_textwrap_max_line_len(rt_string text)
 {
     const char *src = rt_string_cstr(text);
-    int64_t len = rt_len(text);
+    int64_t len = rt_str_len(text);
     int64_t max_len = 0;
     int64_t current_len = 0;
 

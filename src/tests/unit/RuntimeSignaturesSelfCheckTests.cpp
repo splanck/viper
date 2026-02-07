@@ -84,7 +84,7 @@ TEST(RuntimeSignaturesSelfCheck, LookupByNameWorks)
     const char *knownFunctions[] = {
         "rt_print_str",
         "rt_print_i64",
-        "rt_concat",
+        "rt_str_concat",
         "rt_str_eq",
     };
 

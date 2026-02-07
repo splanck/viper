@@ -108,7 +108,7 @@ void test_new_and_initial_state(void)
 
     // ToString on empty should give empty string
     rt_string result = rt_text_sb_to_string(sb);
-    ASSERT_EQ(0, rt_len(result));
+    ASSERT_EQ(0, rt_str_len(result));
 
     TEST_END();
 }
@@ -125,7 +125,7 @@ void test_append_single(void)
     ASSERT_EQ(5, rt_text_sb_get_length(sb));
 
     rt_string result = rt_text_sb_to_string(sb);
-    ASSERT_EQ(5, rt_len(result));
+    ASSERT_EQ(5, rt_str_len(result));
     ASSERT_STR_EQ("Hello", rt_string_cstr(result));
 
     TEST_END();
@@ -145,7 +145,7 @@ void test_append_multiple(void)
     ASSERT_EQ(13, rt_text_sb_get_length(sb));
 
     rt_string result = rt_text_sb_to_string(sb);
-    ASSERT_EQ(13, rt_len(result));
+    ASSERT_EQ(13, rt_str_len(result));
     ASSERT_STR_EQ("Hello, World!", rt_string_cstr(result));
 
     TEST_END();
@@ -165,7 +165,7 @@ void test_append_line(void)
     ASSERT_EQ(4, rt_text_sb_get_length(sb));
 
     rt_string result = rt_text_sb_to_string(sb);
-    ASSERT_EQ(4, rt_len(result));
+    ASSERT_EQ(4, rt_str_len(result));
     ASSERT_STR_EQ("a\nb\n", rt_string_cstr(result));
 
     TEST_END();

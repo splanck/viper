@@ -369,7 +369,7 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt)
 
     DateOnly *d = (DateOnly *)obj;
     const char *fmt_str = rt_string_cstr(fmt);
-    int64_t fmt_len = rt_len(fmt);
+    int64_t fmt_len = rt_str_len(fmt);
 
     static const char *month_names[] = {"",
                                         "January",

@@ -699,7 +699,7 @@ bind Viper.String         // String operations (Split, Replace, Trim, etc.)
 bind Viper.Text.Codec     // Base64, Hex, URL encoding
 bind Viper.Text.Csv       // CSV parsing/formatting
 bind Viper.Text.StringBuilder // Efficient string building
-bind Viper.Text.Guid      // GUID generation
+bind Viper.Text.Uuid      // UUID generation
 bind Viper.Convert        // Type conversions
 bind Viper.Fmt            // Number formatting
 

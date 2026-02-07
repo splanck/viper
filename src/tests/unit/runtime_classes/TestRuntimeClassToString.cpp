@@ -44,7 +44,7 @@ TEST(RuntimeClasses, ToString_UsesRegisteredQName)
     ASSERT_TRUE(bytes != nullptr);
 
     // Expect exact qualified name
-    std::string got(bytes, bytes + rt_len(s));
+    std::string got(bytes, bytes + rt_str_len(s));
     ASSERT_TRUE(got == "A.Person");
 
     rt_set_current_context(nullptr);

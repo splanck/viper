@@ -36,7 +36,7 @@
 ///          string containing the encoded character.
 /// @param code Integer code point representing the desired byte.
 /// @return Newly allocated runtime string containing the encoded byte.
-rt_string rt_chr(int64_t code)
+rt_string rt_str_chr(int64_t code)
 {
     if (code < 0 || code > 255)
     {
@@ -56,11 +56,11 @@ rt_string rt_chr(int64_t code)
 ///          produce zero, matching the legacy BASIC semantics.
 /// @param s Runtime string handle to inspect.
 /// @return Integer value of the first byte, or zero when the string is empty.
-int64_t rt_asc(rt_string s)
+int64_t rt_str_asc(rt_string s)
 {
     if (!s)
-        rt_trap("rt_asc: null");
-    size_t len = (size_t)rt_len(s);
+        rt_trap("rt_str_asc: null");
+    size_t len = (size_t)rt_str_len(s);
     if (len == 0 || !s->data)
         return 0;
     return (int64_t)(unsigned char)s->data[0];

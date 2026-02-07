@@ -5,11 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/version.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the viper_tui_version() function, which returns the
+// compile-time version string for the ViperTUI library. The version string
+// follows semantic versioning and is embedded during the build process.
+//
+// Key invariants:
+//   - The returned string has static storage duration and is always non-null.
+//   - The string is null-terminated and valid for the lifetime of the process.
+//
+// Ownership: No dynamic resources; the version string lives in the
+// read-only data segment.
 //
 //===----------------------------------------------------------------------===//
 

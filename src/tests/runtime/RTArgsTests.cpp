@@ -36,7 +36,7 @@ int main()
     rt_args_push(NULL);
     assert(rt_args_count() == 1);
     rt_string s0 = rt_args_get(0);
-    assert(rt_len(s0) == 0);
+    assert(rt_str_len(s0) == 0);
     rt_string_unref(s0);
 
     // Push two arguments and read them back

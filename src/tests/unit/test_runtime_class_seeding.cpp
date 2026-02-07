@@ -60,7 +60,7 @@ int main()
     assert(m->args.size() == 2);
 
     // 5) Canonical Viper.* types appear in TypeRegistry as builtin externals
-    assert(tyreg.kindOf("Viper.Object") == TypeKind::BuiltinExternalType);
+    assert(tyreg.kindOf("Viper.Core.Object") == TypeKind::BuiltinExternalType);
     assert(tyreg.kindOf("Viper.IO.File") == TypeKind::BuiltinExternalType);
     assert(tyreg.kindOf("Viper.Collections.List") == TypeKind::BuiltinExternalType);
 

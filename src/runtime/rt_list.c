@@ -109,8 +109,8 @@ static void rt_list_finalize(void *obj)
 /// @note The List uses rt_arr_obj for storage with automatic reference management.
 /// @note Thread safety: Not thread-safe. External synchronization required.
 ///
-/// @see rt_list_add For adding elements
-/// @see rt_list_get_item For accessing elements
+/// @see rt_list_push For adding elements
+/// @see rt_list_get For accessing elements
 /// @see rt_list_finalize For cleanup behavior
 void *rt_ns_list_new(void)
 {
@@ -143,9 +143,9 @@ static inline rt_list_impl *as_list(void *p)
 ///
 /// @note O(1) time complexity.
 ///
-/// @see rt_list_add For operations that increase the count
+/// @see rt_list_push For operations that increase the count
 /// @see rt_list_remove_at For operations that decrease the count
-int64_t rt_list_get_count(void *list)
+int64_t rt_list_len(void *list)
 {
     if (!list)
         return 0;
@@ -221,7 +221,7 @@ void rt_list_clear(void *list)
 ///
 /// @see rt_list_insert For inserting at arbitrary positions
 /// @see rt_list_remove_at For removing elements
-void rt_list_add(void *list, void *elem)
+void rt_list_push(void *list, void *elem)
 {
     if (!list)
         return;
@@ -256,23 +256,23 @@ void rt_list_add(void *list, void *elem)
 /// @return The element at the specified index.
 ///
 /// @note O(1) time complexity.
-/// @note Traps with "rt_list_get_item: null list" if list is NULL.
-/// @note Traps with "rt_list_get_item: negative index" if index < 0.
-/// @note Traps with "rt_list_get_item: index out of bounds" if index >= count.
+/// @note Traps with "rt_list_get: null list" if list is NULL.
+/// @note Traps with "rt_list_get: negative index" if index < 0.
+/// @note Traps with "rt_list_get: index out of bounds" if index >= count.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_list_set_item For modifying an element
-/// @see rt_list_get_count For getting the valid index range
-void *rt_list_get_item(void *list, int64_t index)
+/// @see rt_list_set For modifying an element
+/// @see rt_list_len For getting the valid index range
+void *rt_list_get(void *list, int64_t index)
 {
     if (!list)
-        rt_trap("rt_list_get_item: null list");
+        rt_trap("rt_list_get: null list");
     if (index < 0)
-        rt_trap("rt_list_get_item: negative index");
+        rt_trap("rt_list_get: negative index");
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len)
-        rt_trap("rt_list_get_item: index out of bounds");
+        rt_trap("rt_list_get: index out of bounds");
     return rt_arr_obj_get(L->arr, (size_t)index);
 }
 
@@ -298,23 +298,23 @@ void *rt_list_get_item(void *list, int64_t index)
 ///
 /// @note O(1) time complexity.
 /// @note The old element's reference is released, the new one is retained.
-/// @note Traps with "rt_list_set_item: null list" if list is NULL.
-/// @note Traps with "rt_list_set_item: negative index" if index < 0.
-/// @note Traps with "rt_list_set_item: index out of bounds" if index >= count.
+/// @note Traps with "rt_list_set: null list" if list is NULL.
+/// @note Traps with "rt_list_set: negative index" if index < 0.
+/// @note Traps with "rt_list_set: index out of bounds" if index >= count.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_list_get_item For reading an element
-/// @see rt_list_add For adding new elements
-void rt_list_set_item(void *list, int64_t index, void *elem)
+/// @see rt_list_get For reading an element
+/// @see rt_list_push For adding new elements
+void rt_list_set(void *list, int64_t index, void *elem)
 {
     if (!list)
-        rt_trap("rt_list_set_item: null list");
+        rt_trap("rt_list_set: null list");
     if (index < 0)
-        rt_trap("rt_list_set_item: negative index");
+        rt_trap("rt_list_set: negative index");
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len)
-        rt_trap("rt_list_set_item: index out of bounds");
+        rt_trap("rt_list_set: index out of bounds");
     rt_arr_obj_put(L->arr, (size_t)index, elem);
 }
 
@@ -352,7 +352,7 @@ void rt_list_set_item(void *list, int64_t index, void *elem)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_list_remove For removing by element value
-/// @see rt_list_add For adding elements
+/// @see rt_list_push For adding elements
 void rt_list_remove_at(void *list, int64_t index)
 {
     if (!list)
@@ -493,7 +493,7 @@ int8_t rt_list_has(void *list, void *elem)
 /// @note Traps with "List.Insert: memory allocation failed" on allocation failure.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_list_add For appending to the end (O(1))
+/// @see rt_list_push For appending to the end (O(1))
 /// @see rt_list_remove_at For removing at an index
 void rt_list_insert(void *list, int64_t index, void *elem)
 {
@@ -610,7 +610,7 @@ void *rt_list_slice(void *list, int64_t start, int64_t end)
     for (int64_t i = start; i < end; i++)
     {
         void *elem = rt_arr_obj_get(L->arr, (size_t)i);
-        rt_list_add(result, elem);
+        rt_list_push(result, elem);
     }
 
     return result;

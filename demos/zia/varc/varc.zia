@@ -188,8 +188,8 @@ func createArchiveEx(archivePath: String, filePaths: Ptr, compress: Boolean, pas
         // Use a helper function to avoid type reassignment issues
         var storedData = processFileData(fileData, compress, password);
 
-        Collections.List.Add(allStored, storedData);
-        Collections.List.Add(allOriginal, fileData);
+        Collections.List.Push(allStored, storedData);
+        Collections.List.Push(allOriginal, fileData);
 
         var storedLen = Collections.Bytes.get_Len(storedData);
         var pathLen = String.Length(filePath);
@@ -569,7 +569,7 @@ func cmdCreate(startIdx: Integer, argCount: Integer) -> Integer {
             i = i + 1;
         } else {
             // Add to file list
-            Collections.List.Add(files, arg);
+            Collections.List.Push(files, arg);
             i = i + 1;
         }
     }
@@ -741,8 +741,8 @@ func cmdSelfTest() -> Integer {
     Terminal.Say("");
 
     var files = Collections.List.New();
-    Collections.List.Add(files, file1);
-    Collections.List.Add(files, file2);
+    Collections.List.Push(files, file1);
+    Collections.List.Push(files, file2);
 
     // Test 1: Create uncompressed archive
     Terminal.Say("--- Test 1: Create Uncompressed Archive ---");

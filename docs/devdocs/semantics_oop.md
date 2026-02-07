@@ -95,7 +95,7 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
 The following built‑in classes are available under the `Viper.*` namespace:
 
 - `Viper.Object` — Base class for all objects
-    - Methods: `ToString()`, `Equals(obj)`, `GetHashCode()`, `ReferenceEquals(obj,obj)`
+    - Methods: `ToString()`, `Equals(obj)`, `HashCode()`, `RefEquals(obj,obj)`
 - `Viper.String` — Managed string type
     - Properties: `Length`, `IsEmpty`
     - Methods: `Substring(i64,i64)`, `Concat(str)`

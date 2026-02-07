@@ -15,16 +15,16 @@ s2 = s.Substring(6, 4)
 
 DIM list AS Viper.Collections.List
 list = NEW Viper.Collections.List()
-list.Add(s1)
-list.Add(s2)
+list.Push(s1)
+list.Push(s2)
 
-PRINT list.Count
-PRINT list.get_Item(0)
-PRINT list.get_Item(1)
+PRINT list.Len
+PRINT list.Get(0)
+PRINT list.Get(1)
 
 REM Build a simple report string using Concat and StringBuilder
 DIM joined AS STRING
-joined = list.get_Item(0).Concat("-").Concat(list.get_Item(1))
+joined = list.Get(0).Concat("-").Concat(list.Get(1))
 
 sb = Viper.Text.StringBuilder.Append(sb, "report:")
 sb = Viper.Text.StringBuilder.Append(sb, " ")

@@ -1,5 +1,5 @@
 ' EXPECT_EXIT: 1
-' COVER: Viper.Diagnostics.AssertFail
+' COVER: Viper.Core.Diagnostics.AssertFail
 
-Viper.Diagnostics.AssertFail("expected assert fail")
+Viper.Core.Diagnostics.AssertFail("expected assert fail")
 END

@@ -75,7 +75,7 @@ static void feed_and_check(size_t len, bool with_newline)
     std::string data = with_newline ? input + "\n" : input;
     rt_string s = read_line(data);
     assert(s);
-    assert(rt_len(s) == (int64_t)input.size());
+    assert(rt_str_len(s) == (int64_t)input.size());
     assert(std::memcmp(s->data, input.data(), input.size()) == 0);
 }
 
@@ -85,7 +85,7 @@ static void feed_crlf_and_check(size_t len)
     std::string data = input + "\r\n";
     rt_string s = read_line(data);
     assert(s);
-    assert(rt_len(s) == (int64_t)input.size());
+    assert(rt_str_len(s) == (int64_t)input.size());
     assert(std::memcmp(s->data, input.data(), input.size()) == 0);
     assert(std::memchr(s->data, '\r', input.size()) == nullptr);
 }
@@ -94,7 +94,7 @@ static void feed_empty_newline_returns_empty_string()
 {
     rt_string s = read_line("\n");
     assert(s);
-    assert(rt_len(s) == 0);
+    assert(rt_str_len(s) == 0);
     assert(s->data[0] == '\0');
 }
 

@@ -124,14 +124,14 @@ static void test_capture_args()
     rt_string output = rt_exec_capture_args(prog, args);
 
     // Try /usr/bin/echo if /bin/echo failed
-    if (rt_len(output) == 0)
+    if (rt_str_len(output) == 0)
     {
         prog = make_string("/usr/bin/echo");
         output = rt_exec_capture_args(prog, args);
     }
 
     // If we got output, verify it
-    if (rt_len(output) > 0)
+    if (rt_str_len(output) > 0)
     {
         const char *out_str = rt_string_cstr(output);
         assert(strstr(out_str, "test") != nullptr);
@@ -153,7 +153,7 @@ static void test_shell_capture_empty()
     rt_string cmd = make_string("");
     rt_string output = rt_exec_shell_capture(cmd);
     assert(output != nullptr);
-    assert(rt_len(output) == 0);
+    assert(rt_str_len(output) == 0);
 }
 
 static void test_nonexistent_program()
@@ -170,7 +170,7 @@ static void test_capture_nonexistent()
     rt_string prog = make_string("/nonexistent/program/path");
     rt_string output = rt_exec_capture(prog);
     assert(output != nullptr);
-    assert(rt_len(output) == 0);
+    assert(rt_str_len(output) == 0);
 }
 
 static void test_shell_exit_code()

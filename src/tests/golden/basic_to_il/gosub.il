@@ -1,37 +1,38 @@
 il 0.2.0
-extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.Terminal.PrintI64(i64) -> void
-extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.String.get_Length(str) -> i64
-extern @Viper.String.Substring(str, i64, i64) -> str
-extern @Viper.String.Left(str, i64) -> str
-extern @Viper.String.Right(str, i64) -> str
-extern @Viper.String.Mid(str, i64) -> str
-extern @Viper.String.MidLen(str, i64, i64) -> str
-extern @Viper.String.Trim(str) -> str
-extern @Viper.String.TrimStart(str) -> str
-extern @Viper.String.TrimEnd(str) -> str
-extern @Viper.String.ToUpper(str) -> str
-extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.Asc(str) -> i64
+extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
 extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
-extern @Viper.String.Chr(i64) -> str
-extern @Viper.String.Asc(str) -> i64
-extern @Viper.String.Replace(str, str, str) -> str
-extern @Viper.String.StartsWith(str, str) -> i1
-extern @Viper.String.EndsWith(str, str) -> i1
-extern @Viper.String.Has(str, str) -> i1
-extern @Viper.String.Count(str, str) -> i64
-extern @Viper.String.PadLeft(str, i64, str) -> str
-extern @Viper.String.PadRight(str, i64, str) -> str
-extern @Viper.String.Split(str, str) -> ptr
-extern @Viper.String.Repeat(str, i64) -> str
-extern @Viper.String.Flip(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.Right(str, i64) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
+extern @Viper.String.Count(str, str) -> i64
+extern @Viper.String.EndsWith(str, str) -> i1
+extern @Viper.String.Flip(str) -> str
+extern @Viper.String.Has(str, str) -> i1
+extern @Viper.String.PadLeft(str, i64, str) -> str
+extern @Viper.String.PadRight(str, i64, str) -> str
+extern @Viper.String.Repeat(str, i64) -> str
+extern @Viper.String.Replace(str, str, str) -> str
+extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.StartsWith(str, str) -> i1
+extern @Viper.String.Substring(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.ToUpper(str) -> str
 extern @Viper.String.Join(str, ptr) -> str
+extern @Viper.Terminal.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
-extern @Viper.Diagnostics.Trap(str) -> void
+extern @Viper.Core.Diagnostics.Trap(str) -> void
 global const str @.L0 = "gosub: stack overflow"
 global const str @.L1 = "Back"
 global const str @.L2 = "\n"
@@ -181,7 +182,7 @@ gosub_overflow:
   .loc 1 3 4
   %t6 = const_str @.L0
   .loc 1 3 4
-  call @Viper.Diagnostics.Trap(%t6)
+  call @Viper.Core.Diagnostics.Trap(%t6)
   .loc 1 3 4
   trap
 gosub_push:
@@ -201,7 +202,7 @@ gosub_overflow1:
   .loc 1 5 4
   %t14 = const_str @.L0
   .loc 1 5 4
-  call @Viper.Diagnostics.Trap(%t14)
+  call @Viper.Core.Diagnostics.Trap(%t14)
   .loc 1 5 4
   trap
 gosub_push1:
@@ -221,7 +222,7 @@ gosub_overflow2:
   .loc 1 9 5
   %t24 = const_str @.L0
   .loc 1 9 5
-  call @Viper.Diagnostics.Trap(%t24)
+  call @Viper.Core.Diagnostics.Trap(%t24)
   .loc 1 9 5
   trap
 gosub_push2:
@@ -241,7 +242,7 @@ gosub_ret_empty:
   .loc 1 11 5
   %t32 = const_str @.L6
   .loc 1 11 5
-  call @Viper.Diagnostics.Trap(%t32)
+  call @Viper.Core.Diagnostics.Trap(%t32)
   .loc 1 11 5
   trap
 gosub_ret_cont:
@@ -264,7 +265,7 @@ gosub_ret_empty1:
   .loc 1 13 5
   %t41 = const_str @.L6
   .loc 1 13 5
-  call @Viper.Diagnostics.Trap(%t41)
+  call @Viper.Core.Diagnostics.Trap(%t41)
   .loc 1 13 5
   trap
 gosub_ret_cont1:
@@ -287,7 +288,7 @@ gosub_ret_empty2:
   .loc 1 15 5
   %t50 = const_str @.L6
   .loc 1 15 5
-  call @Viper.Diagnostics.Trap(%t50)
+  call @Viper.Core.Diagnostics.Trap(%t50)
   .loc 1 15 5
   trap
 gosub_ret_cont2:

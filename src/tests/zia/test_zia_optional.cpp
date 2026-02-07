@@ -141,7 +141,7 @@ func start() {
             {
                 for (const auto &instr : block.instructions)
                 {
-                    if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Box.I64")
+                    if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Core.Box.I64")
                     {
                         foundBox = true;
                     }

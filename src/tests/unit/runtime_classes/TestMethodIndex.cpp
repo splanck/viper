@@ -29,7 +29,7 @@
 /// | Method         | Arity | Expected Target                 | Return |
 /// |----------------|-------|---------------------------------|--------|
 /// | Equals(obj)    | 1     | Viper.Object.Equals             | Bool   |
-/// | GetHashCode()  | 0     | Viper.Object.GetHashCode        | Int    |
+/// | HashCode()     | 0     | Viper.Object.HashCode           | Int    |
 /// | ToString()     | 0     | Viper.Object.ToString           | String |
 /// | ReferenceEquals| 2     | NOT FOUND (static function)     | N/A    |
 ///
@@ -108,23 +108,23 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets)
     runtimeMethodIndex().seed();
 
     // Test Object.Equals(other: Object) -> Boolean
-    auto eq = runtimeMethodIndex().find("Viper.Object", "Equals", 1);
+    auto eq = runtimeMethodIndex().find("Viper.Core.Object", "Equals", 1);
     ASSERT_TRUE(eq.has_value());
-    EXPECT_EQ(eq->target, std::string("Viper.Object.Equals"));
+    EXPECT_EQ(eq->target, std::string("Viper.Core.Object.Equals"));
 
-    // Test Object.GetHashCode() -> Int
-    auto hc = runtimeMethodIndex().find("Viper.Object", "GetHashCode", 0);
+    // Test Object.HashCode() -> Int
+    auto hc = runtimeMethodIndex().find("Viper.Core.Object", "HashCode", 0);
     ASSERT_TRUE(hc.has_value());
-    EXPECT_EQ(hc->target, std::string("Viper.Object.GetHashCode"));
+    EXPECT_EQ(hc->target, std::string("Viper.Core.Object.HashCode"));
 
     // Test Object.ToString() -> String
-    auto ts = runtimeMethodIndex().find("Viper.Object", "ToString", 0);
+    auto ts = runtimeMethodIndex().find("Viper.Core.Object", "ToString", 0);
     ASSERT_TRUE(ts.has_value());
-    EXPECT_EQ(ts->target, std::string("Viper.Object.ToString"));
+    EXPECT_EQ(ts->target, std::string("Viper.Core.Object.ToString"));
 
     // ReferenceEquals is a static function, not an instance method.
     // It should NOT be found via the method index (which is for instance methods).
-    auto re = runtimeMethodIndex().find("Viper.Object", "ReferenceEquals", 2);
+    auto re = runtimeMethodIndex().find("Viper.Core.Object", "ReferenceEquals", 2);
     EXPECT_FALSE(re.has_value());
 }
 

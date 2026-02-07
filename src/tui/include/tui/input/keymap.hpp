@@ -5,11 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/input/keymap.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the Keymap class and supporting types for Viper's TUI
+// command binding system. Keymap maps key chords (key + modifiers) to named
+// commands, supporting both global bindings and per-widget bindings.
+//
+// Commands are registered with a unique string identifier, a display name,
+// and a callback. Key chords are then bound to command identifiers at either
+// the global scope or for a specific widget. When input arrives, the keymap
+// checks widget-specific bindings first, then global bindings, executing
+// the first matching command's callback.
+//
+// This two-level binding system enables context-sensitive shortcuts where
+// a key combination can mean different things depending on the focused widget,
+// while still supporting application-wide shortcuts.
+//
+// Key invariants:
+//   - Command identifiers are unique strings within the keymap.
+//   - Widget bindings take priority over global bindings.
+//   - handle() returns true if a command was executed, false otherwise.
+//
+// Ownership: Keymap owns all Command entries and binding maps by value.
+// Widget pointers in per-widget bindings are non-owning.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,7 +44,11 @@ namespace viper::tui::input
 
 using CommandId = std::string;
 
-/// @brief Key plus modifiers defining a command trigger.
+/// @brief Combination of a key code, modifier flags, and optional codepoint defining
+///        a keyboard shortcut trigger.
+/// @details Used as the key in binding maps. Two KeyChords are equal if all three
+///          fields match. The codepoint field is used for character-based shortcuts
+///          (e.g., Ctrl+S where codepoint = 's').
 struct KeyChord
 {
     term::KeyEvent::Code code{term::KeyEvent::Code::Unknown};
@@ -43,7 +63,10 @@ struct KeyChordHash
     std::size_t operator()(const KeyChord &kc) const;
 };
 
-/// @brief Command entry with display name and callback.
+/// @brief Registered command with identifier, display name, and invocation callback.
+/// @details Commands are the targets of key bindings. The id is used for programmatic
+///          lookup, the name is displayed in the command palette, and the action
+///          callback is invoked when the command is triggered.
 struct Command
 {
     CommandId id{};
@@ -51,21 +74,43 @@ struct Command
     std::function<void()> action{};
 };
 
-/// @brief Keymap supporting global and widget scoped bindings.
+/// @brief Two-level key binding system supporting global and per-widget command dispatch.
+/// @details Manages a registry of named commands and maps key chords to command
+///          identifiers. Supports both global bindings (active regardless of focus)
+///          and widget-specific bindings (active only when a particular widget has focus).
+///          Widget bindings take priority over global bindings when both match.
 class Keymap
 {
   public:
-    /// @brief Register a command with identifier, name, and callback.
+    /// @brief Register a new command with the keymap.
+    /// @details Adds a command entry with a unique identifier, display name, and
+    ///          action callback. Overwrites any existing command with the same id.
+    /// @param id Unique string identifier for the command.
+    /// @param name Human-readable name displayed in the command palette.
+    /// @param action Callback invoked when the command is executed.
     void registerCommand(CommandId id, std::string name, std::function<void()> action);
 
-    /// @brief Bind a key chord to a command globally.
+    /// @brief Bind a key chord to a command at the global scope.
+    /// @details Global bindings are checked when no widget-specific binding matches.
+    /// @param kc The key chord that triggers the command.
+    /// @param id The command identifier to execute when the chord is pressed.
     void bindGlobal(const KeyChord &kc, const CommandId &id);
 
-    /// @brief Bind a key chord to a command for specific widget.
+    /// @brief Bind a key chord to a command for a specific widget.
+    /// @details Widget bindings take priority over global bindings when the specified
+    ///          widget has focus.
+    /// @param w The widget this binding applies to. Must outlive the keymap.
+    /// @param kc The key chord that triggers the command.
+    /// @param id The command identifier to execute when the chord is pressed.
     void bindWidget(ui::Widget *w, const KeyChord &kc, const CommandId &id);
 
-    /// @brief Handle a key for a widget, executing mapped command.
-    /// @return True if a command executed.
+    /// @brief Attempt to handle a key event by finding and executing a bound command.
+    /// @details Checks widget-specific bindings for the given widget first, then falls
+    ///          back to global bindings. If a matching binding is found, the associated
+    ///          command's action callback is invoked.
+    /// @param w The currently focused widget (checked for widget-specific bindings).
+    /// @param key The key event to match against bindings.
+    /// @return True if a command was found and executed; false otherwise.
     bool handle(ui::Widget *w, const term::KeyEvent &key) const;
 
     /// @brief Execute command by identifier.

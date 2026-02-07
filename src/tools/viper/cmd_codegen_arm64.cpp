@@ -202,10 +202,16 @@ static int linkToExe(const std::string &asmPath,
     appendArchives(ctx, linkCmd);
     appendGraphicsLibs(ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation"});
 
+    // C++ runtime archives (e.g. Threads) need the C++ standard library.
+    if (hasComponent(ctx, codegen::RtComponent::Threads))
+        linkCmd.push_back("-lc++");
+
 #if defined(__APPLE__)
     linkCmd.push_back("-Wl,-dead_strip");
 #elif !defined(_WIN32)
     linkCmd.push_back("-Wl,--gc-sections");
+    if (hasComponent(ctx, codegen::RtComponent::Threads))
+        linkCmd.push_back("-pthread");
 #endif
 
     linkCmd.push_back("-o");
@@ -420,7 +426,7 @@ int emitAndMaybeLink(const Options &opts)
         }
         // Remap common runtime calls when producing a native object/binary
         const char *runtime_funcs[] = {"rt_trap",
-                                       "rt_concat",
+                                       "rt_str_concat",
                                        "rt_print",
                                        "rt_input",
                                        "rt_malloc",

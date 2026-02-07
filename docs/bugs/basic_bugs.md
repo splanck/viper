@@ -504,7 +504,7 @@ for_body:
   store str, %t13, %t11
   %t14 = load str, %t12
   %t15 = load str, %t13
-  %t16 = call @rt_concat(%t14, %t15)
+  %t16 = call @rt_str_concat(%t14, %t15)
   store str, %s, %t16
   br for_next
 ```
@@ -537,13 +537,13 @@ string operations.
 **Fix**:
 
 - Removed per-iteration `alloca` spills in string concatenation lowering. Concatenation now passes operands directly to
-  `rt_concat`, which consumes (releases) both inputs safely.
+  `rt_str_concat`, which consumes (releases) both inputs safely.
 
 Code change:
 
 - File: `src/frontends/basic/LowerExprNumeric.cpp`
 - Section: `NumericExprLowering::lowerStringBinary` for `BinaryExpr::Op::Add`.
-- Replaced stack slot spills/loads with a direct call: `rt_concat(lhs.value, rhs.value)`.
+- Replaced stack slot spills/loads with a direct call: `rt_str_concat(lhs.value, rhs.value)`.
 
 Impact:
 

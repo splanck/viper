@@ -51,7 +51,7 @@ Value lowerLen(LowerCtx &ctx, ArrayRef<Value> args)
     (void)args;
     ctx.setResultType(Type(Type::Kind::I64));
     std::vector<Value> callArgs{ctx.argValue(0)};
-    return ctx.emitCallRet(Type(Type::Kind::I64), "rt_len", callArgs, ctx.call().loc);
+    return ctx.emitCallRet(Type(Type::Kind::I64), "rt_str_len", callArgs, ctx.call().loc);
 }
 
 /// @brief Lower the MID$ builtin, handling both two- and three-argument forms.
@@ -91,13 +91,13 @@ Value lowerMid(LowerCtx &ctx, ArrayRef<Value> args)
         const il::support::SourceLoc lengthLoc = ctx.argLoc(2);
         ctx.ensureI64(2, lengthLoc);
         callArgs.push_back(ctx.argValue(2));
-        runtime = "rt_mid3";
+        runtime = "rt_str_mid_len";
         callLoc = lengthLoc;
         ctx.requestHelper(RuntimeFeature::Mid3);
     }
     else
     {
-        runtime = "rt_mid2";
+        runtime = "rt_str_mid";
         ctx.requestHelper(RuntimeFeature::Mid2);
     }
     return ctx.emitCallRet(Type(Type::Kind::Str), runtime, callArgs, callLoc);
@@ -122,7 +122,7 @@ Value lowerLeft(LowerCtx &ctx, ArrayRef<Value> args)
     ctx.ensureI64(1, countLoc);
     std::vector<Value> callArgs{source, ctx.argValue(1)};
     ctx.requestHelper(RuntimeFeature::Left);
-    return ctx.emitCallRet(Type(Type::Kind::Str), "rt_left", callArgs, ctx.call().loc);
+    return ctx.emitCallRet(Type(Type::Kind::Str), "rt_str_left", callArgs, ctx.call().loc);
 }
 
 /// @brief Lower the RIGHT$ builtin that extracts a suffix of a string.
@@ -144,7 +144,7 @@ Value lowerRight(LowerCtx &ctx, ArrayRef<Value> args)
     ctx.ensureI64(1, countLoc);
     std::vector<Value> callArgs{source, ctx.argValue(1)};
     ctx.requestHelper(RuntimeFeature::Right);
-    return ctx.emitCallRet(Type(Type::Kind::Str), "rt_right", callArgs, ctx.call().loc);
+    return ctx.emitCallRet(Type(Type::Kind::Str), "rt_str_right", callArgs, ctx.call().loc);
 }
 
 /// @brief Lower the STR$ builtin that formats numeric values to strings.
@@ -237,7 +237,7 @@ Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args)
     else
     {
         callArgs = {ctx.argValue(0), ctx.argValue(1)};
-        runtime = "rt_instr2";
+        runtime = "rt_str_index_of";
         callLoc = ctx.argLoc(1);
         ctx.requestHelper(RuntimeFeature::Instr2);
     }
@@ -272,7 +272,7 @@ Value lowerTrim(LowerCtx &ctx, ArrayRef<Value> args, const char *runtime, Runtim
 /// @return Runtime call result representing the trimmed string.
 Value lowerLTrim(LowerCtx &ctx, ArrayRef<Value> args)
 {
-    return lowerTrim(ctx, args, "rt_ltrim", RuntimeFeature::Ltrim);
+    return lowerTrim(ctx, args, "rt_str_ltrim", RuntimeFeature::Ltrim);
 }
 
 /// @brief Lower the RTRIM$ builtin that trims trailing whitespace.
@@ -282,7 +282,7 @@ Value lowerLTrim(LowerCtx &ctx, ArrayRef<Value> args)
 /// @return String value returned by the runtime helper.
 Value lowerRTrim(LowerCtx &ctx, ArrayRef<Value> args)
 {
-    return lowerTrim(ctx, args, "rt_rtrim", RuntimeFeature::Rtrim);
+    return lowerTrim(ctx, args, "rt_str_rtrim", RuntimeFeature::Rtrim);
 }
 
 /// @brief Lower the TRIM$ builtin that removes whitespace on both sides.
@@ -292,7 +292,7 @@ Value lowerRTrim(LowerCtx &ctx, ArrayRef<Value> args)
 /// @return Runtime-produced string result.
 Value lowerTrimBoth(LowerCtx &ctx, ArrayRef<Value> args)
 {
-    return lowerTrim(ctx, args, "rt_trim", RuntimeFeature::Trim);
+    return lowerTrim(ctx, args, "rt_str_trim", RuntimeFeature::Trim);
 }
 
 /// @brief Lower the UCASE$ builtin that upper-cases a string argument.
@@ -302,7 +302,7 @@ Value lowerTrimBoth(LowerCtx &ctx, ArrayRef<Value> args)
 /// @return Upper-cased string emitted by the runtime helper.
 Value lowerUcase(LowerCtx &ctx, ArrayRef<Value> args)
 {
-    return lowerTrim(ctx, args, "rt_ucase", RuntimeFeature::Ucase);
+    return lowerTrim(ctx, args, "rt_str_ucase", RuntimeFeature::Ucase);
 }
 
 /// @brief Lower the LCASE$ builtin that converts a string to lower case.
@@ -312,7 +312,7 @@ Value lowerUcase(LowerCtx &ctx, ArrayRef<Value> args)
 /// @return Lower-cased string emitted by the runtime helper.
 Value lowerLcase(LowerCtx &ctx, ArrayRef<Value> args)
 {
-    return lowerTrim(ctx, args, "rt_lcase", RuntimeFeature::Lcase);
+    return lowerTrim(ctx, args, "rt_str_lcase", RuntimeFeature::Lcase);
 }
 
 /// @brief Lower the CHR$ builtin that turns a character code into a string.
@@ -332,7 +332,7 @@ Value lowerChr(LowerCtx &ctx, ArrayRef<Value> args)
     ctx.ensureI64(0, loc);
     std::vector<Value> callArgs{ctx.argValue(0)};
     ctx.requestHelper(RuntimeFeature::Chr);
-    return ctx.emitCallRet(Type(Type::Kind::Str), "rt_chr", callArgs, ctx.call().loc);
+    return ctx.emitCallRet(Type(Type::Kind::Str), "rt_str_chr", callArgs, ctx.call().loc);
 }
 
 /// @brief Lower the ASC builtin that yields the code point of a string.
@@ -349,7 +349,7 @@ Value lowerAsc(LowerCtx &ctx, ArrayRef<Value> args)
     ctx.setResultType(Type(Type::Kind::I64));
     std::vector<Value> callArgs{ctx.argValue(0)};
     ctx.requestHelper(RuntimeFeature::Asc);
-    return ctx.emitCallRet(Type(Type::Kind::I64), "rt_asc", callArgs, ctx.call().loc);
+    return ctx.emitCallRet(Type(Type::Kind::I64), "rt_str_asc", callArgs, ctx.call().loc);
 }
 
 // Note: not constexpr because std::string is not constexpr in MSVC's STL

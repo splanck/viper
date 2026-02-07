@@ -6,12 +6,12 @@ func main() {
     Viper.Terminal.Say("=== List Pattern Test ===");
 
     var list = Viper.Collections.List.New();
-    Viper.Collections.List.Add(list, Viper.Box.I64(100));
+    Viper.Collections.List.Push(list, Viper.Core.Box.I64(100));
 
-    var item = Viper.Collections.List.get_Item(list, 0);
+    var item = Viper.Collections.List.Get(list, 0);
     Viper.Terminal.Say("Got item");
 
-    var value = Viper.Box.ToI64(item);
+    var value = Viper.Core.Box.ToI64(item);
     Viper.Terminal.Say("Value: " + Viper.String.FromInt(value));
 
     if (value == 100) {

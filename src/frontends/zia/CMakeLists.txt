@@ -50,3 +50,4 @@ target_link_libraries(fe_zia PUBLIC
         il_transform
         fe_common
 )
+add_dependencies(fe_zia generate_runtime_registry)

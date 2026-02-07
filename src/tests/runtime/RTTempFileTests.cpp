@@ -36,7 +36,7 @@ static void test_tempfile()
     // Test 1: Dir returns a valid path
     {
         rt_string dir = rt_tempfile_dir();
-        test_result("Dir returns non-empty", rt_len(dir) > 0);
+        test_result("Dir returns non-empty", rt_str_len(dir) > 0);
         test_result("Dir exists", rt_dir_exists(dir) == 1);
     }
 

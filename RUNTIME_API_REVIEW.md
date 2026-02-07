@@ -392,7 +392,7 @@ Viper (root)
 ├── Text
 │   ├── Codec               # Base64/Hex/URL encoding (static)
 │   ├── Csv                 # CSV parsing (static)
-│   ├── Guid                # UUID generation (static)
+│   ├── Uuid                # UUID generation (static)
 │   ├── Json                # JSON parsing (static)
 │   ├── Pattern             # Regex (static)
 │   ├── StringBuilder       # Mutable string builder

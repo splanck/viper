@@ -5,11 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/widgets/tree_view.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the TreeView widget and TreeNode data structure for
+// Viper's TUI framework. TreeView displays a hierarchical tree of labeled
+// nodes with expand/collapse functionality, similar to a file explorer.
+//
+// Each TreeNode contains a label, child nodes, and expansion state.
+// The TreeView renders visible nodes (expanded subtrees) with indentation
+// proportional to depth and supports keyboard navigation (Up/Down arrows,
+// Enter to toggle expansion).
+//
+// Key invariants:
+//   - Root nodes are the top-level entries in the tree.
+//   - Only expanded nodes' children are visible and navigable.
+//   - The cursor index is always within the visible node list bounds.
+//   - Parent pointers are maintained by the add() method.
+//
+// Ownership: TreeView owns root TreeNodes via unique_ptr. TreeNode owns
+// its children via unique_ptr and stores a non-owning parent pointer.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,7 +37,10 @@
 namespace viper::tui::widgets
 {
 
-/// @brief Node in TreeView hierarchy.
+/// @brief Node in a hierarchical tree structure with label, children, and expansion state.
+/// @details Each node contains a display label, a vector of child nodes owned via
+///          unique_ptr, a non-owning parent pointer for traversal, and a flag indicating
+///          whether the node's children are visible (expanded).
 struct TreeNode
 {
     std::string label{};
@@ -38,7 +53,10 @@ struct TreeNode
     TreeNode *add(std::unique_ptr<TreeNode> child);
 };
 
-/// @brief Displays a tree of nodes with expand/collapse controls.
+/// @brief Hierarchical tree display widget with keyboard navigation and expand/collapse.
+/// @details Renders a tree of labeled nodes with indentation proportional to depth.
+///          Supports Up/Down arrow navigation, Enter to toggle node expansion, and
+///          Left/Right arrows to collapse/expand. Only expanded subtrees are visible.
 class TreeView : public ui::Widget
 {
   public:

@@ -5,11 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/ui/focus.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the FocusManager class for Viper's TUI. The focus
+// manager maintains a circular ring of focusable widgets and tracks which
+// widget currently has keyboard focus.
+//
+// Widgets register with the focus manager via registerWidget(). Only widgets
+// that return true from wantsFocus() are added to the ring. The focus
+// manager supports Tab-style navigation via next() and prev(), which cycle
+// through the ring and return the newly focused widget.
+//
+// The App calls next()/prev() in response to Tab/Shift+Tab key events and
+// notifies widgets of focus changes via Widget::onFocusChanged().
+//
+// Key invariants:
+//   - The ring contains only widgets with wantsFocus() == true.
+//   - current() returns nullptr when the ring is empty.
+//   - Unregistering the currently focused widget adjusts the index safely.
+//
+// Ownership: FocusManager stores non-owning raw pointers to widgets. The
+// widgets must outlive their registration in the manager.
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,23 +36,35 @@ namespace viper::tui::ui
 {
 class Widget;
 
-/// @brief Tracks focusable widgets in registration order.
+/// @brief Manages a circular ring of focusable widgets for keyboard navigation.
+/// @details Maintains a list of registered focusable widgets and tracks the
+///          current focus position. Supports forward and backward traversal
+///          for Tab/Shift+Tab focus cycling.
 class FocusManager
 {
   public:
     /// @brief Register a widget if it wants focus.
+    /// @details Only adds the widget to the ring if widget->wantsFocus()
+    ///          returns true. Duplicate registrations are not checked.
+    /// @param w Widget to register. Must remain valid while registered.
     void registerWidget(Widget *w);
 
-    /// @brief Unregister a widget (safe to call during destruction).
+    /// @brief Remove a widget from the focus ring.
+    /// @details Safe to call during widget destruction. Adjusts the focus
+    ///          index if the removed widget was at or before the current position.
+    /// @param w Widget to unregister.
     void unregisterWidget(Widget *w);
 
-    /// @brief Advance to the next focusable widget.
+    /// @brief Advance focus to the next widget in the ring.
+    /// @return Pointer to the newly focused widget, or nullptr if ring is empty.
     [[nodiscard]] Widget *next();
 
-    /// @brief Move to the previous focusable widget.
+    /// @brief Move focus to the previous widget in the ring.
+    /// @return Pointer to the newly focused widget, or nullptr if ring is empty.
     [[nodiscard]] Widget *prev();
 
-    /// @brief Return currently focused widget, if any.
+    /// @brief Get the currently focused widget.
+    /// @return Pointer to the focused widget, or nullptr if no widget has focus.
     [[nodiscard]] Widget *current() const;
 
   private:

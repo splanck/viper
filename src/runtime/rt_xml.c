@@ -885,14 +885,14 @@ static void *parse_document(const char *input, size_t len)
 
 void *rt_xml_parse(rt_string text)
 {
-    if (!text || rt_len(text) == 0)
+    if (!text || rt_str_len(text) == 0)
     {
         set_error("Empty XML input");
         return NULL;
     }
 
     const char *cstr = rt_string_cstr(text);
-    int64_t len = rt_len(text);
+    int64_t len = rt_str_len(text);
 
     return parse_document(cstr, (size_t)len);
 }
@@ -1038,9 +1038,9 @@ rt_string rt_xml_text_content(void *node)
     {
         void *child = rt_seq_get(n->children, i);
         rt_string child_text = rt_xml_text_content(child);
-        if (child_text && rt_len(child_text) > 0)
+        if (child_text && rt_str_len(child_text) > 0)
         {
-            rt_string new_result = rt_concat(result, child_text);
+            rt_string new_result = rt_str_concat(result, child_text);
             if (rt_obj_release_check0((void *)result))
                 rt_obj_free((void *)result);
             if (rt_obj_release_check0((void *)child_text))
@@ -1351,7 +1351,7 @@ void rt_xml_set_text(void *node, rt_string text)
     }
 
     // Add text node
-    if (text && rt_len(text) > 0)
+    if (text && rt_str_len(text) > 0)
     {
         void *text_node = rt_xml_text(text);
         if (text_node)

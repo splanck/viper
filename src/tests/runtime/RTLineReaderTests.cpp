@@ -73,20 +73,20 @@ static void test_read_lf_lines()
     assert(lr != nullptr);
 
     rt_string line1 = rt_linereader_read(lr);
-    assert(rt_len(line1) == 5);
+    assert(rt_str_len(line1) == 5);
     assert(strncmp(rt_string_cstr(line1), "line1", 5) == 0);
 
     rt_string line2 = rt_linereader_read(lr);
-    assert(rt_len(line2) == 5);
+    assert(rt_str_len(line2) == 5);
     assert(strncmp(rt_string_cstr(line2), "line2", 5) == 0);
 
     rt_string line3 = rt_linereader_read(lr);
-    assert(rt_len(line3) == 5);
+    assert(rt_str_len(line3) == 5);
     assert(strncmp(rt_string_cstr(line3), "line3", 5) == 0);
 
     // Reading at EOF should return empty string and set eof
     rt_string empty = rt_linereader_read(lr);
-    assert(rt_len(empty) == 0);
+    assert(rt_str_len(empty) == 0);
     assert(rt_linereader_eof(lr) == 1);
 
     rt_linereader_close(lr);
@@ -106,15 +106,15 @@ static void test_read_crlf_lines()
     assert(lr != nullptr);
 
     rt_string line1 = rt_linereader_read(lr);
-    assert(rt_len(line1) == 5);
+    assert(rt_str_len(line1) == 5);
     assert(strncmp(rt_string_cstr(line1), "line1", 5) == 0);
 
     rt_string line2 = rt_linereader_read(lr);
-    assert(rt_len(line2) == 5);
+    assert(rt_str_len(line2) == 5);
     assert(strncmp(rt_string_cstr(line2), "line2", 5) == 0);
 
     rt_string line3 = rt_linereader_read(lr);
-    assert(rt_len(line3) == 5);
+    assert(rt_str_len(line3) == 5);
     assert(strncmp(rt_string_cstr(line3), "line3", 5) == 0);
 
     rt_linereader_close(lr);
@@ -134,15 +134,15 @@ static void test_read_cr_lines()
     assert(lr != nullptr);
 
     rt_string line1 = rt_linereader_read(lr);
-    assert(rt_len(line1) == 5);
+    assert(rt_str_len(line1) == 5);
     assert(strncmp(rt_string_cstr(line1), "line1", 5) == 0);
 
     rt_string line2 = rt_linereader_read(lr);
-    assert(rt_len(line2) == 5);
+    assert(rt_str_len(line2) == 5);
     assert(strncmp(rt_string_cstr(line2), "line2", 5) == 0);
 
     rt_string line3 = rt_linereader_read(lr);
-    assert(rt_len(line3) == 5);
+    assert(rt_str_len(line3) == 5);
     assert(strncmp(rt_string_cstr(line3), "line3", 5) == 0);
 
     rt_linereader_close(lr);
@@ -162,20 +162,20 @@ static void test_read_mixed_endings()
     assert(lr != nullptr);
 
     rt_string l1 = rt_linereader_read(lr);
-    assert(rt_len(l1) == 2);
+    assert(rt_str_len(l1) == 2);
     assert(strncmp(rt_string_cstr(l1), "lf", 2) == 0);
 
     rt_string l2 = rt_linereader_read(lr);
-    assert(rt_len(l2) == 4);
+    assert(rt_str_len(l2) == 4);
     assert(strncmp(rt_string_cstr(l2), "crlf", 4) == 0);
 
     rt_string l3 = rt_linereader_read(lr);
-    assert(rt_len(l3) == 2);
+    assert(rt_str_len(l3) == 2);
     assert(strncmp(rt_string_cstr(l3), "cr", 2) == 0);
 
     // Last line without newline
     rt_string l4 = rt_linereader_read(lr);
-    assert(rt_len(l4) == 3);
+    assert(rt_str_len(l4) == 3);
     assert(strncmp(rt_string_cstr(l4), "end", 3) == 0);
 
     rt_linereader_close(lr);
@@ -254,7 +254,7 @@ static void test_peek_then_read_line()
 
     // Read full line (should still work with peeked char)
     rt_string line = rt_linereader_read(lr);
-    assert(rt_len(line) == 5);
+    assert(rt_str_len(line) == 5);
     assert(strncmp(rt_string_cstr(line), "hello", 5) == 0);
 
     rt_linereader_close(lr);
@@ -273,7 +273,7 @@ static void test_read_all()
     assert(lr != nullptr);
 
     rt_string all = rt_linereader_read_all(lr);
-    assert(rt_len(all) == (int64_t)strlen(content));
+    assert(rt_str_len(all) == (int64_t)strlen(content));
     assert(strncmp(rt_string_cstr(all), content, strlen(content)) == 0);
 
     assert(rt_linereader_eof(lr) == 1);
@@ -295,11 +295,11 @@ static void test_read_all_partial()
 
     // Read first line
     rt_string line1 = rt_linereader_read(lr);
-    assert(rt_len(line1) == 5);
+    assert(rt_str_len(line1) == 5);
 
     // Read remaining with ReadAll
     rt_string rest = rt_linereader_read_all(lr);
-    assert(rt_len(rest) == strlen("line2\nline3\n"));
+    assert(rt_str_len(rest) == strlen("line2\nline3\n"));
 
     rt_linereader_close(lr);
     cleanup_test_file();
@@ -324,7 +324,7 @@ static void test_read_all_with_peek()
 
     // ReadAll should include the peeked char
     rt_string rest = rt_linereader_read_all(lr);
-    assert(rt_len(rest) == 5);
+    assert(rt_str_len(rest) == 5);
     assert(strncmp(rt_string_cstr(rest), "BCDEF", 5) == 0);
 
     rt_linereader_close(lr);
@@ -342,7 +342,7 @@ static void test_empty_file()
 
     // Read should return empty and set EOF
     rt_string line = rt_linereader_read(lr);
-    assert(rt_len(line) == 0);
+    assert(rt_str_len(line) == 0);
     assert(rt_linereader_eof(lr) == 1);
 
     rt_linereader_close(lr);
@@ -362,20 +362,20 @@ static void test_empty_lines()
     assert(lr != nullptr);
 
     rt_string l1 = rt_linereader_read(lr);
-    assert(rt_len(l1) == 0);
+    assert(rt_str_len(l1) == 0);
     assert(rt_linereader_eof(lr) == 0);
 
     rt_string l2 = rt_linereader_read(lr);
-    assert(rt_len(l2) == 0);
+    assert(rt_str_len(l2) == 0);
     assert(rt_linereader_eof(lr) == 0);
 
     rt_string l3 = rt_linereader_read(lr);
-    assert(rt_len(l3) == 0);
+    assert(rt_str_len(l3) == 0);
     assert(rt_linereader_eof(lr) == 0);
 
     // Now we're at EOF
     rt_string l4 = rt_linereader_read(lr);
-    assert(rt_len(l4) == 0);
+    assert(rt_str_len(l4) == 0);
     assert(rt_linereader_eof(lr) == 1);
 
     rt_linereader_close(lr);
@@ -404,7 +404,7 @@ static void test_long_line()
     assert(lr != nullptr);
 
     rt_string line = rt_linereader_read(lr);
-    assert(rt_len(line) == 999);
+    assert(rt_str_len(line) == 999);
 
     rt_linereader_close(lr);
     cleanup_test_file();

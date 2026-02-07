@@ -31,7 +31,7 @@ static void test_os()
 
     const char *os_str = rt_string_cstr(os);
     assert(os_str != nullptr);
-    assert(rt_len(os) > 0);
+    assert(rt_str_len(os) > 0);
 
     // OS should be one of the known values
     bool valid = strcmp(os_str, "linux") == 0 || strcmp(os_str, "macos") == 0 ||
@@ -49,7 +49,7 @@ static void test_os_ver()
     const char *ver_str = rt_string_cstr(ver);
     assert(ver_str != nullptr);
     // Version might be "unknown" but should be a valid string
-    assert(rt_len(ver) > 0 || strcmp(ver_str, "") == 0);
+    assert(rt_str_len(ver) > 0 || strcmp(ver_str, "") == 0);
 
     printf("OS Version: %s\n", ver_str);
 }
@@ -95,7 +95,7 @@ static void test_temp()
     const char *temp_str = rt_string_cstr(temp);
     assert(temp_str != nullptr);
     // Temp directory should exist
-    assert(rt_len(temp) > 0);
+    assert(rt_str_len(temp) > 0);
 
     printf("Temp: %s\n", temp_str);
 }

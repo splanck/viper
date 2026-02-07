@@ -517,7 +517,7 @@ static int readkey_nonblocking(int *out)
 
 /// @brief Block for a single keystroke and return it as a BASIC string.
 /// @details Delegates to @ref readkey_blocking and wraps the resulting byte via
-///          @ref rt_chr so the runtime's string interning and ownership
+///          @ref rt_str_chr so the runtime's string interning and ownership
 ///          conventions are respected. Flushes output first to ensure any
 ///          pending screen updates are visible before blocking.
 rt_string rt_getkey_str(void)
@@ -525,7 +525,7 @@ rt_string rt_getkey_str(void)
     // Flush output before blocking for input so user sees current state
     rt_output_flush();
     int code = readkey_blocking();
-    return rt_chr((int64_t)code);
+    return rt_str_chr((int64_t)code);
 }
 
 #if defined(_WIN32)
@@ -543,7 +543,7 @@ rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
     {
         // Negative timeout means block indefinitely
         int code = readkey_blocking();
-        return rt_chr((int64_t)code);
+        return rt_str_chr((int64_t)code);
     }
 
     HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
@@ -557,7 +557,7 @@ rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
         if (_kbhit())
         {
             int code = _getch() & 0xFF;
-            return rt_chr((int64_t)code);
+            return rt_str_chr((int64_t)code);
         }
     }
     // Timeout or error
@@ -578,7 +578,7 @@ rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
     {
         // Negative timeout means block indefinitely
         int code = readkey_blocking();
-        return rt_chr((int64_t)code);
+        return rt_str_chr((int64_t)code);
     }
 
     struct termios orig, raw;
@@ -612,7 +612,7 @@ rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
         ssize_t n = read(fd, &ch, 1);
         tcsetattr(fd, TCSANOW, &orig);
         if (n == 1)
-            return rt_chr((int64_t)ch);
+            return rt_str_chr((int64_t)ch);
     }
     else
     {
@@ -626,7 +626,7 @@ rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
 
 /// @brief Non-blocking key read that returns "" when no key is pending.
 /// @details Uses @ref readkey_nonblocking to poll the console.  When a key is
-///          available it is converted using @ref rt_chr; otherwise the canonical
+///          available it is converted using @ref rt_str_chr; otherwise the canonical
 ///          empty string from @ref rt_const_cstr is returned. Flushes output
 ///          first to ensure the screen is up-to-date when polling.
 rt_string rt_inkey_str(void)
@@ -636,7 +636,7 @@ rt_string rt_inkey_str(void)
     int code = 0;
     int ok = readkey_nonblocking(&code);
     if (ok)
-        return rt_chr((int64_t)code);
+        return rt_str_chr((int64_t)code);
     return rt_const_cstr(""); // use your runtime's empty-string helper
 }
 

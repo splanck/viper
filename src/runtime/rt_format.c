@@ -136,7 +136,7 @@ rt_string rt_csv_quote_alloc(rt_string value)
     if (value)
     {
         data = rt_string_cstr(value);
-        len = (size_t)rt_len(value);
+        len = (size_t)rt_str_len(value);
     }
 
     size_t extra = 0;

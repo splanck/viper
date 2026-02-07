@@ -246,7 +246,7 @@ static void test_bindings_str()
 
     rt_string jump4 = make_str("jump");
     rt_string bindings = rt_action_bindings_str(jump4);
-    assert(rt_len(bindings) > 0);
+    assert(rt_str_len(bindings) > 0);
 
     rt_action_clear();
 }
@@ -264,11 +264,11 @@ static void test_key_bound_to()
     rt_action_bind_key(jump2, VIPER_KEY_SPACE);
 
     rt_string bound = rt_action_key_bound_to(VIPER_KEY_SPACE);
-    assert(rt_len(bound) > 0);
+    assert(rt_str_len(bound) > 0);
 
     // Unbound key should return empty
     rt_string unbound = rt_action_key_bound_to(VIPER_KEY_A);
-    assert(rt_len(unbound) == 0);
+    assert(rt_str_len(unbound) == 0);
 
     rt_action_clear();
 }

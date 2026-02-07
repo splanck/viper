@@ -418,7 +418,7 @@ rt_string rt_str_empty(void)
 ///          64-bit integer to match the runtime ABI.
 /// @param s Runtime string handle.
 /// @return Length in characters (bytes).
-int64_t rt_len(rt_string s)
+int64_t rt_str_len(rt_string s)
 {
     size_t len = rt_string_len_bytes(s);
     if (len > (size_t)INT64_MAX)
@@ -427,12 +427,12 @@ int64_t rt_len(rt_string s)
 }
 
 /// @brief Return 1 when the runtime string is empty; 0 otherwise.
-/// @details Null handles are treated as empty to match rt_len semantics.
+/// @details Null handles are treated as empty to match rt_str_len semantics.
 /// @param s Runtime string handle.
 /// @return 1 if empty; 0 otherwise.
 int64_t rt_str_is_empty(rt_string s)
 {
-    return rt_len(s) == 0 ? 1 : 0;
+    return rt_str_len(s) == 0 ? 1 : 0;
 }
 
 /// @brief Identity constructor from an existing runtime string handle.
@@ -440,7 +440,7 @@ int64_t rt_str_is_empty(rt_string s)
 ///          handle unchanged. Callers manage ownership according to IL/VM rules.
 /// @param s Runtime string handle.
 /// @return The same handle.
-rt_string rt_from_str(rt_string s)
+rt_string rt_str_clone(rt_string s)
 {
     return s;
 }
@@ -458,19 +458,19 @@ rt_string rt_from_str(rt_string s)
 /// @param a First operand; released after concatenation when non-null.
 /// @param b Second operand; released after concatenation when non-null.
 /// @return Newly allocated string containing `a + b`, or `a` reused in-place.
-rt_string rt_concat(rt_string a, rt_string b)
+rt_string rt_str_concat(rt_string a, rt_string b)
 {
     size_t len_a = rt_string_len_bytes(a);
     size_t len_b = rt_string_len_bytes(b);
     if (len_a > SIZE_MAX - len_b)
     {
-        rt_trap("rt_concat: length overflow");
+        rt_trap("rt_str_concat: length overflow");
         return NULL;
     }
     size_t total = len_a + len_b;
     if (total == SIZE_MAX)
     {
-        rt_trap("rt_concat: length overflow");
+        rt_trap("rt_str_concat: length overflow");
         return NULL;
     }
 
@@ -518,10 +518,10 @@ rt_string rt_concat(rt_string a, rt_string b)
 /// @param start Zero-based starting index (negative values treated as zero).
 /// @param len Requested length (negative values treated as zero).
 /// @return Newly allocated substring or shared handles for empty/full slices.
-rt_string rt_substr(rt_string s, int64_t start, int64_t len)
+rt_string rt_str_substr(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
-        rt_trap("rt_substr: null");
+        rt_trap("rt_str_substr: null");
     if (start < 0)
         start = 0;
     if (len < 0)
@@ -545,11 +545,11 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
 /// @brief Implement BASIC's `LEFT$` intrinsic.
 /// @details Validates the arguments, returning a shared empty string when
 ///          `n == 0`, the original string when `n` exceeds the length, and
-///          otherwise delegates to @ref rt_substr.
+///          otherwise delegates to @ref rt_str_substr.
 /// @param s Source string handle.
 /// @param n Number of characters to take from the left.
 /// @return Resulting string.
-rt_string rt_left(rt_string s, int64_t n)
+rt_string rt_str_left(rt_string s, int64_t n)
 {
     if (!s)
         rt_trap("LEFT$: null string");
@@ -570,16 +570,16 @@ rt_string rt_left(rt_string s, int64_t n)
     size_t take = (size_t)requested;
     if (take >= slen)
         return rt_string_ref(s);
-    return rt_substr(s, 0, n);
+    return rt_str_substr(s, 0, n);
 }
 
 /// @brief Implement BASIC's `RIGHT$` intrinsic.
-/// @details Mirrors @ref rt_left but slices from the end of the string.  Rejects
+/// @details Mirrors @ref rt_str_left but slices from the end of the string.  Rejects
 ///          negative lengths with a descriptive trap message.
 /// @param s Source string handle.
 /// @param n Number of characters to take from the right.
 /// @return Resulting string.
-rt_string rt_right(rt_string s, int64_t n)
+rt_string rt_str_right(rt_string s, int64_t n)
 {
     if (!s)
         rt_trap("RIGHT$: null string");
@@ -601,7 +601,7 @@ rt_string rt_right(rt_string s, int64_t n)
     if (take >= len)
         return rt_string_ref(s);
     size_t start = len - take;
-    return rt_substr(s, (int64_t)start, n);
+    return rt_str_substr(s, (int64_t)start, n);
 }
 
 /// @brief Implement BASIC's two-argument `MID$` overload.
@@ -612,7 +612,7 @@ rt_string rt_right(rt_string s, int64_t n)
 /// @param s Source string handle.
 /// @param start One-based starting position.
 /// @return Resulting substring.
-rt_string rt_mid2(rt_string s, int64_t start)
+rt_string rt_str_mid(rt_string s, int64_t start)
 {
     if (!s)
         rt_trap("MID$: null string");
@@ -632,18 +632,18 @@ rt_string rt_mid2(rt_string s, int64_t start)
         return rt_empty_string();
     size_t start_idx = (size_t)start_idx_u;
     size_t n = len - start_idx;
-    return rt_substr(s, (int64_t)start_idx, (int64_t)n);
+    return rt_str_substr(s, (int64_t)start_idx, (int64_t)n);
 }
 
 /// @brief Implement BASIC's three-argument `MID$` overload.
-/// @details Applies the same one-based semantics as @ref rt_mid2 while
+/// @details Applies the same one-based semantics as @ref rt_str_mid while
 ///          respecting the requested length.  Negative lengths trigger traps and
 ///          slices that extend beyond the source string are clamped.
 /// @param s Source string handle.
 /// @param start One-based starting position.
 /// @param len Requested substring length.
 /// @return Resulting substring.
-rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
+rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len)
 {
     if (!s)
         rt_trap("MID$: null string");
@@ -688,7 +688,7 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
         else
             len = (int64_t)req_len;
     }
-    return rt_substr(s, (int64_t)start_idx, len);
+    return rt_str_substr(s, (int64_t)start_idx, len);
 }
 
 /// @brief Search for a substring using zero-based indexing.
@@ -739,7 +739,7 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
 /// @param hay Haystack string.
 /// @param needle Needle string.
 /// @return One-based index of the first match, or zero when absent.
-int64_t rt_instr2(rt_string hay, rt_string needle)
+int64_t rt_str_index_of(rt_string hay, rt_string needle)
 {
     if (!hay || !needle)
         return 0;
@@ -782,19 +782,19 @@ static int is_trim_ws(char c)
 }
 
 /// @brief Trim leading spaces and tabs from a string.
-/// @details Walks the leading whitespace and delegates to @ref rt_substr to
+/// @details Walks the leading whitespace and delegates to @ref rt_str_substr to
 ///          materialise the trimmed view.
 /// @param s Source string.
 /// @return Trimmed string handle.
-rt_string rt_ltrim(rt_string s)
+rt_string rt_str_ltrim(rt_string s)
 {
     if (!s)
-        rt_trap("rt_ltrim: null");
+        rt_trap("rt_str_ltrim: null");
     size_t slen = rt_string_len_bytes(s);
     size_t i = 0;
     while (i < slen && is_trim_ws(s->data[i]))
         ++i;
-    return rt_substr(s, (int64_t)i, (int64_t)(slen - i));
+    return rt_str_substr(s, (int64_t)i, (int64_t)(slen - i));
 }
 
 /// @brief Trim trailing spaces and tabs from a string.
@@ -802,25 +802,25 @@ rt_string rt_ltrim(rt_string s)
 ///          the retained prefix.
 /// @param s Source string.
 /// @return Trimmed string handle.
-rt_string rt_rtrim(rt_string s)
+rt_string rt_str_rtrim(rt_string s)
 {
     if (!s)
-        rt_trap("rt_rtrim: null");
+        rt_trap("rt_str_rtrim: null");
     size_t end = rt_string_len_bytes(s);
     while (end > 0 && is_trim_ws(s->data[end - 1]))
         --end;
-    return rt_substr(s, 0, (int64_t)end);
+    return rt_str_substr(s, 0, (int64_t)end);
 }
 
 /// @brief Trim both leading and trailing spaces and tabs from a string.
 /// @details Calculates the slice indices in-place and delegates to
-///          @ref rt_substr to allocate the final result.
+///          @ref rt_str_substr to allocate the final result.
 /// @param s Source string.
 /// @return Trimmed string handle.
-rt_string rt_trim(rt_string s)
+rt_string rt_str_trim(rt_string s)
 {
     if (!s)
-        rt_trap("rt_trim: null");
+        rt_trap("rt_str_trim: null");
     size_t slen = rt_string_len_bytes(s);
     size_t start = 0;
     size_t end = slen;
@@ -828,7 +828,7 @@ rt_string rt_trim(rt_string s)
         ++start;
     while (end > start && is_trim_ws(s->data[end - 1]))
         --end;
-    return rt_substr(s, (int64_t)start, (int64_t)(end - start));
+    return rt_str_substr(s, (int64_t)start, (int64_t)(end - start));
 }
 
 /// @brief Convert a single byte to uppercase (ASCII + Latin-1 Supplement).
@@ -858,10 +858,10 @@ static unsigned char to_upper_latin1(unsigned char c)
 ///          passed through unchanged - full Unicode case mapping requires ICU.
 /// @param s Source string.
 /// @return Newly allocated uppercase string.
-rt_string rt_ucase(rt_string s)
+rt_string rt_str_ucase(rt_string s)
 {
     if (!s)
-        rt_trap("rt_ucase: null");
+        rt_trap("rt_str_ucase: null");
     size_t len = rt_string_len_bytes(s);
     rt_string r = rt_string_alloc(len, len + 1);
     for (size_t i = 0; i < len; ++i)
@@ -906,10 +906,10 @@ static unsigned char to_lower_latin1(unsigned char c)
 ///          passed through unchanged - full Unicode case mapping requires ICU.
 /// @param s Source string.
 /// @return Newly allocated lowercase string.
-rt_string rt_lcase(rt_string s)
+rt_string rt_str_lcase(rt_string s)
 {
     if (!s)
-        rt_trap("rt_lcase: null");
+        rt_trap("rt_str_lcase: null");
     size_t len = rt_string_len_bytes(s);
     rt_string r = rt_string_alloc(len, len + 1);
     for (size_t i = 0; i < len; ++i)
@@ -1364,7 +1364,7 @@ void *rt_str_split(rt_string str, rt_string delim)
 /// @param sep Separator string.
 /// @param seq Sequence of strings to join.
 /// @return Newly allocated joined string.
-rt_string rt_strings_join(rt_string sep, void *seq)
+rt_string rt_str_join(rt_string sep, void *seq)
 {
     if (!seq)
         return rt_empty_string();
@@ -1383,7 +1383,7 @@ rt_string rt_strings_join(rt_string sep, void *seq)
         size_t item_len = item ? rt_string_len_bytes(item) : 0;
         if (total > SIZE_MAX - item_len)
         {
-            rt_trap("rt_strings_join: length overflow");
+            rt_trap("rt_str_join: length overflow");
             return NULL;
         }
         total += item_len;
@@ -1391,7 +1391,7 @@ rt_string rt_strings_join(rt_string sep, void *seq)
         {
             if (total > SIZE_MAX - sep_len)
             {
-                rt_trap("rt_strings_join: length overflow");
+                rt_trap("rt_str_join: length overflow");
                 return NULL;
             }
             total += sep_len;

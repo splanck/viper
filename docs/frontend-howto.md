@@ -608,7 +608,7 @@ target_sources(fe_yourfrontend PRIVATE
 # Key dependencies:
 # - viper_il_full: Full IL infrastructure (Module, Function, BasicBlock, etc.)
 # - il_build: IRBuilder API (emitCall, emitRet, startFunction, etc.)
-# - il_runtime: Runtime function signatures (rt_print_i64, rt_concat, etc.)
+# - il_runtime: Runtime function signatures (rt_print_i64, rt_str_concat, etc.)
 #
 # Why PUBLIC? Because your headers (Lowerer.hpp, Parser.hpp) will include IL
 # headers (il/core/Module.hpp, il/build/IRBuilder.hpp), so any code that
@@ -842,7 +842,7 @@ int cmdFrontYourFrontend(int argc, char **argv) {
         //
         // The VM interprets IL instructions directly. It:
         // - Calls @main() function (must exist and return i64)
-        // - Loads runtime functions via FFI (rt_print_i64, rt_concat, etc.)
+        // - Loads runtime functions via FFI (rt_print_i64, rt_str_concat, etc.)
         // - Returns the i64 result from @main (typically 0 for success)
         //
         // RunConfig can customize VM behavior (heap size, stack depth, etc.).
@@ -3034,24 +3034,24 @@ Viper provides a C-based runtime library with common functionality.
 
 ```cpp
 // Declare in IL:
-builder.addExtern("rt_concat", Type(Type::Kind::Str),
+builder.addExtern("rt_str_concat", Type(Type::Kind::Str),
                  {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
 // Call:
-// %result = call @rt_concat(%str1, %str2)
+// %result = call @rt_str_concat(%str1, %str2)
 
 // Available functions:
-rt_concat(str, str) -> str          // String concatenation
+rt_str_concat(str, str) -> str      // String concatenation
 rt_str_eq(str, str) -> i1           // Equality
 rt_str_lt(str, str) -> i1           // Less than
-rt_len(str) -> i64                  // Length in bytes
-rt_left(str, i64) -> str            // Left substring
-rt_right(str, i64) -> str           // Right substring
-rt_mid3(str, i64, i64) -> str       // Substring (start, len)
-rt_ucase(str) -> str                // Uppercase
-rt_lcase(str) -> str                // Lowercase
-rt_chr(i64) -> str                  // Int → char
-rt_asc(str) -> i64                  // First char → int
+rt_str_len(str) -> i64              // Length in bytes
+rt_str_left(str, i64) -> str        // Left substring
+rt_str_right(str, i64) -> str       // Right substring
+rt_str_mid_len(str, i64, i64) -> str // Substring (start, len)
+rt_str_ucase(str) -> str            // Uppercase
+rt_str_lcase(str) -> str            // Lowercase
+rt_str_chr(i64) -> str              // Int → char
+rt_str_asc(str) -> i64              // First char → int
 rt_val(str) -> f64                  // Parse double
 rt_str_from_i64(i64) -> str         // Int → string
 rt_str_from_f64(f64) -> str         // Float → string
@@ -3161,12 +3161,12 @@ rt_pow(f64, f64) -> f64             // Power
 ```cpp
 void Lowerer::lowerStringConcat(Value lhs, Value rhs) {
     // Declare runtime function
-    builder_.addExtern("rt_concat", Type(Type::Kind::Str),
+    builder_.addExtern("rt_str_concat", Type(Type::Kind::Str),
                       {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
     // Emit call
     unsigned resultId = nextTempId_++;
-    builder_.emitCall("rt_concat", {lhs, rhs},
+    builder_.emitCall("rt_str_concat", {lhs, rhs},
                      Value::temp(resultId), currentSourceLoc);
 
     return Value::temp(resultId);

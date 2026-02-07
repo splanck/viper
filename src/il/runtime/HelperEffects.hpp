@@ -32,7 +32,7 @@ struct HelperEffects
 };
 
 /// @brief Lookup helper side-effect metadata by symbol name.
-/// @param name Runtime helper symbol (e.g., "rt_len").
+/// @param name Runtime helper symbol (e.g., "rt_str_len").
 /// @return Effect classification; default-initialised when unknown.
 /// @details This table provides fast constexpr lookup for common runtime helpers.
 ///          For comprehensive metadata, also consult the runtime signature registry.
@@ -72,22 +72,22 @@ inline HelperEffects classifyHelperEffects(std::string_view name)
 
         // String inspection: readonly (reads string memory), not pure
         // These read string contents but don't modify anything.
-        Entry{"rt_len", HelperEffects{true, true, false}},
-        Entry{"rt_instr2", HelperEffects{true, true, false}},
+        Entry{"rt_str_len", HelperEffects{true, true, false}},
+        Entry{"rt_str_index_of", HelperEffects{true, true, false}},
         Entry{"rt_instr3", HelperEffects{true, true, false}},
         Entry{"rt_str_eq", HelperEffects{true, true, false}},
         Entry{"rt_str_lt", HelperEffects{true, true, false}},
         Entry{"rt_str_le", HelperEffects{true, true, false}},
         Entry{"rt_str_gt", HelperEffects{true, true, false}},
         Entry{"rt_str_ge", HelperEffects{true, true, false}},
-        Entry{"rt_asc", HelperEffects{true, true, false}},
+        Entry{"rt_str_asc", HelperEffects{true, true, false}},
 
         // Array length queries: readonly (reads array header)
         Entry{"rt_arr_i32_len", HelperEffects{true, true, false}},
         Entry{"rt_arr_str_len", HelperEffects{true, true, false}},
 
         // Conversion helpers: nothrow only (may allocate, not pure)
-        Entry{"rt_chr", HelperEffects{true, false, false}},
+        Entry{"rt_str_chr", HelperEffects{true, false, false}},
         Entry{"rt_to_int", HelperEffects{true, false, false}},
         Entry{"rt_to_double", HelperEffects{true, false, false}},
         Entry{"rt_val", HelperEffects{true, false, false}},

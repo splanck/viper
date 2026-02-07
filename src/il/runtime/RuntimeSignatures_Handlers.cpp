@@ -462,4 +462,21 @@ void invokeRtPowF64Chkdom(void **args, void *result)
         *reinterpret_cast<double *>(result) = value;
 }
 
+void vmInvokeRtPow(void **args, void *result)
+{
+    const auto basePtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
+    const auto expPtr = args ? reinterpret_cast<const double *>(args[1]) : nullptr;
+    const double base = basePtr ? *basePtr : 0.0;
+    const double exponent = expPtr ? *expPtr : 0.0;
+    bool ok = true;
+    const double value = rt_pow_f64_chkdom(base, exponent, &ok);
+    if (!ok)
+    {
+        rt_trap("Pow: domain error or overflow");
+        return;
+    }
+    if (result)
+        *reinterpret_cast<double *>(result) = value;
+}
+
 } // namespace il::runtime

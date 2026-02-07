@@ -69,9 +69,9 @@ int main()
     assert(retrieved2 != nullptr);
     assert(retrieved3 != nullptr);
 
-    assert(rt_len(retrieved1) == 5);
-    assert(rt_len(retrieved2) == 5);
-    assert(rt_len(retrieved3) == 4);
+    assert(rt_str_len(retrieved1) == 5);
+    assert(rt_str_len(retrieved2) == 5);
+    assert(rt_str_len(retrieved3) == 4);
 
     // Release retrieved handles (since get retains)
     rt_str_release_maybe(retrieved1);
@@ -84,7 +84,7 @@ int main()
     rt_str_release_maybe(new_str);
 
     rt_string check = rt_arr_str_get(arr, 1);
-    assert(rt_len(check) == 7);
+    assert(rt_str_len(check) == 7);
     rt_str_release_maybe(check);
 
     // Test 6: Put NULL into a slot

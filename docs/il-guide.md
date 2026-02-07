@@ -1319,7 +1319,7 @@ the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). Ne
 
 - `@rt_print_str` → `@Viper.Terminal.PrintStr`
 - `@rt_print_i64` → `@Viper.Terminal.PrintI64`
-- `@rt_len` → `@Viper.String.Len`
+- `@rt_str_len` → `@Viper.String.Len`
 
 #### Example 1 — Hello, arithmetic, and a conditional branch
 
@@ -1587,9 +1587,9 @@ done:
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
-extern @rt_len(str) -> i64
-extern @rt_concat(str, str) -> str
-extern @rt_substr(str, i64, i64) -> str
+extern @rt_str_len(str) -> i64
+extern @rt_str_concat(str, str) -> str
+extern @rt_str_substr(str, i64, i64) -> str
 extern @rt_str_eq(str, str) -> i1
 global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
@@ -1607,16 +1607,16 @@ entry:
   store str, %b_slot, %sB
   %sSpace = const_str @.L2
   %a0 = load str, %a_slot
-  %c0 = call @rt_concat(%a0, %sSpace)
+  %c0 = call @rt_str_concat(%a0, %sSpace)
   store str, %c_slot, %c0
   %b0 = load str, %b_slot
-  %c1 = call @rt_concat(%c0, %b0)
+  %c1 = call @rt_str_concat(%c0, %b0)
   store str, %c_slot, %c1
   call @rt_print_str(%c1)
-  %len = call @rt_len(%c1)
+  %len = call @rt_str_len(%c1)
   store i64, %l_slot, %len
   call @rt_print_i64(%len)
-  %first = call @rt_substr(%c1, 0, 1)
+  %first = call @rt_str_substr(%c1, 0, 1)
   call @rt_print_str(%first)
   %target = const_str @.L3
   %eq = call @rt_str_eq(%c1, %target)

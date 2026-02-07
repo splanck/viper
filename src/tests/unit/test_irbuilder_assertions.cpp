@@ -60,11 +60,11 @@ static void test_valid_extern_creation()
 
     // Add unique externs
     b.addExtern("rt_print", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    b.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
+    b.addExtern("rt_str_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
 
     assert(m.externs.size() == 2);
     assert(m.externs[0].name == "rt_print");
-    assert(m.externs[1].name == "rt_len");
+    assert(m.externs[1].name == "rt_str_len");
 
     std::cout << "  test_valid_extern_creation: PASSED\n";
 }

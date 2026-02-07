@@ -29,12 +29,12 @@ extern "C"
     void *rt_ns_list_new(void);
 
     /// What: Get the number of elements in the list.
-    /// Why:  Expose List.Count property to the runtime.
+    /// Why:  Expose List.Len property to the runtime.
     /// How:  Returns the current logical length stored by the list.
     ///
     /// @param list Opaque List object pointer.
     /// @return Number of elements currently in the list.
-    int64_t rt_list_get_count(void *list);
+    int64_t rt_list_len(void *list);
 
     /// What: Append @p elem to the end of the list.
     /// Why:  Support dynamic growth for collection operations.
@@ -44,7 +44,7 @@ extern "C"
     /// @param list Opaque List object pointer.
     /// @param elem Opaque object element pointer (may be NULL to represent empty slot).
     /// @post Count increases by 1 on success.
-    void rt_list_add(void *list, void *elem);
+    void rt_list_push(void *list, void *elem);
 
     /// What: Remove all elements from the list.
     /// Why:  Provide a fast way to reuse list storage without reallocation.
@@ -70,7 +70,7 @@ extern "C"
     /// @param list  Opaque List object pointer.
     /// @param index 0-based index; must satisfy 0 <= index < Count.
     /// @return The element pointer (may be NULL); caller must release.
-    void *rt_list_get_item(void *list, int64_t index);
+    void *rt_list_get(void *list, int64_t index);
 
     /// What: Set the element at @p index to @p elem.
     /// Why:  Provide indexed update with correct reference management.
@@ -79,7 +79,7 @@ extern "C"
     /// @param list  Opaque List object pointer.
     /// @param index 0-based index; must satisfy 0 <= index < Count.
     /// @param elem  Replacement element pointer (may be NULL).
-    void rt_list_set_item(void *list, int64_t index, void *elem);
+    void rt_list_set(void *list, int64_t index, void *elem);
 
     /// What: Check whether the list contains @p elem.
     /// Why:  Provide a common membership query for Viper.Collections.List.

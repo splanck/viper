@@ -33,15 +33,15 @@ extern "C"
     /// @return 1 if empty, 0 otherwise.
     int8_t rt_queue_is_empty(void *obj);
 
-    /// @brief Add an element to the back of the queue.
+    /// @brief Push an element to the back of the queue.
     /// @param obj Opaque Queue object pointer.
-    /// @param val Element to add.
-    void rt_queue_add(void *obj, void *val);
+    /// @param val Element to push.
+    void rt_queue_push(void *obj, void *val);
 
-    /// @brief Remove and return the front element from the queue.
+    /// @brief Pop and return the front element from the queue.
     /// @param obj Opaque Queue object pointer.
     /// @return The removed element; traps if empty.
-    void *rt_queue_take(void *obj);
+    void *rt_queue_pop(void *obj);
 
     /// @brief Return the front element without removing it.
     /// @param obj Opaque Queue object pointer.

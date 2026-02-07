@@ -57,7 +57,7 @@ int64_t rt_to_int(rt_string s)
     if (!s)
         rt_trap("rt_to_int: null");
     const char *p = s->data;
-    size_t len = (size_t)rt_len(s);
+    size_t len = (size_t)rt_str_len(s);
     size_t i = 0;
     while (i < len && isspace((unsigned char)p[i]))
         ++i;

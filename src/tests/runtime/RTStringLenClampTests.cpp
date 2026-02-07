@@ -40,11 +40,11 @@ int main(void)
 
 #if SIZE_MAX > INT64_MAX
     hdr->len = (size_t)INT64_MAX + 17;
-    int64_t reported = rt_len(fabricated);
+    int64_t reported = rt_str_len(fabricated);
     assert(reported == INT64_MAX);
 #else
     hdr->len = long_len;
-    int64_t reported = rt_len(fabricated);
+    int64_t reported = rt_str_len(fabricated);
     assert(reported == (int64_t)long_len);
 #endif
 

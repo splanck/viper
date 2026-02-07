@@ -99,7 +99,7 @@ int main()
     // Test isVarArgCallee returns false for non-vararg callees
     assert(!il::runtime::isVarArgCallee("rt_print_str") &&
            "rt_print_str should not be identified as vararg");
-    assert(!il::runtime::isVarArgCallee("rt_concat") &&
+    assert(!il::runtime::isVarArgCallee("rt_str_concat") &&
            "rt_concat should not be identified as vararg");
     assert(!il::runtime::isVarArgCallee("unknown_function") &&
            "unknown function should not be identified as vararg");

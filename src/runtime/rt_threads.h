@@ -174,14 +174,14 @@ extern "C"
     /// @return Updated value after addition.
     int64_t rt_safe_i64_add(void *obj, int64_t delta);
 
-    /// @brief Compare-and-exchange the stored value.
+    /// @brief Compare-and-swap the stored value.
     /// @details If the current value equals @p expected, it is replaced with
     ///          @p desired. The previous value is always returned so callers
-    ///          can detect whether the exchange occurred.
+    ///          can detect whether the swap occurred.
     /// @param obj SafeI64 object pointer.
     /// @param expected Expected current value.
     /// @param desired Value to store if the expectation matches.
-    /// @return The value observed before the exchange.
+    /// @return The value observed before the swap.
     int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired);
 
     // =========================================================================

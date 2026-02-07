@@ -3,10 +3,10 @@ module RuntimeTest03;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.Collections.List.Add
-// COVER: Viper.Collections.List.get_Item
-// COVER: Viper.Collections.List.set_Item
-// COVER: Viper.Collections.List.Count
+// COVER: Viper.Collections.List.Push
+// COVER: Viper.Collections.List.Get
+// COVER: Viper.Collections.List.Set
+// COVER: Viper.Collections.List.Len
 // COVER: Viper.Collections.List.RemoveAt
 // COVER: Viper.Collections.List.Clear
 // COVER: Viper.Collections.Map.Set

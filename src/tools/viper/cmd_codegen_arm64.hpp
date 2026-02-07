@@ -5,11 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/ilc/cmd_codegen_arm64.hpp
-// Purpose: Declare the arm64 (AArch64) code generation subcommand for ilc.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the entry point for the `ilc codegen arm64` CLI
+// subcommand, which drives AArch64 native code generation from Viper IL.
+//
+// The subcommand accepts an IL file path and optional flags controlling
+// output format (-S for assembly, -o for object/executable), optimization
+// level, and native execution (-run-native). It loads the IL module,
+// invokes the AArch64 codegen pipeline, and optionally assembles and
+// links the output.
+//
+// Key invariants:
+//   - Returns 0 on success, non-zero on any error.
+//   - Error diagnostics are written to stderr.
+//   - The subcommand does not modify the input IL file.
+//
+// Ownership: The function borrows argv strings for the duration of the call.
+// All generated files are written to the paths specified by command-line flags.
 //
 //===----------------------------------------------------------------------===//
 

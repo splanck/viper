@@ -57,7 +57,7 @@
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Diagnostics.Assert(FALSE, msg)
+        Viper.Core.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
@@ -85,21 +85,21 @@ bf.Flush()
 bf.Close()
 
 bf = Viper.IO.BinFile.Open(binPath, "r")
-Viper.Diagnostics.AssertEq(bf.Size, 4, "bin.size")
-Viper.Diagnostics.AssertEq(bf.Pos, 0, "bin.pos0")
+Viper.Core.Diagnostics.AssertEq(bf.Size, 4, "bin.size")
+Viper.Core.Diagnostics.AssertEq(bf.Pos, 0, "bin.pos0")
 DIM b0 AS INTEGER
 b0 = bf.ReadByte()
-Viper.Diagnostics.AssertEq(b0, 202, "bin.readbyte")
+Viper.Core.Diagnostics.AssertEq(b0, 202, "bin.readbyte")
 DIM readBuf AS Viper.Collections.Bytes
 readBuf = NEW Viper.Collections.Bytes(2)
 DIM readCount AS INTEGER
 readCount = bf.Read(readBuf, 0, 2)
-Viper.Diagnostics.AssertEq(readCount, 2, "bin.read")
-Viper.Diagnostics.AssertEqStr(readBuf.ToHex(), "fe01", "bin.read.hex")
+Viper.Core.Diagnostics.AssertEq(readCount, 2, "bin.read")
+Viper.Core.Diagnostics.AssertEqStr(readBuf.ToHex(), "fe01", "bin.read.hex")
 DIM newPos AS INTEGER
 newPos = bf.Seek(0, 0)
-Viper.Diagnostics.AssertEq(newPos, 0, "bin.seek")
-Viper.Diagnostics.Assert(bf.Eof = FALSE, "bin.eof")
+Viper.Core.Diagnostics.AssertEq(newPos, 0, "bin.seek")
+Viper.Core.Diagnostics.Assert(bf.Eof = FALSE, "bin.eof")
 bf.Close()
 
 DIM linesPath AS STRING
@@ -117,16 +117,16 @@ DIM reader AS Viper.IO.LineReader
 reader = Viper.IO.LineReader.Open(linesPath)
 DIM peek AS INTEGER
 peek = reader.PeekChar()
-Viper.Diagnostics.Assert(peek >= 0, "line.peek")
+Viper.Core.Diagnostics.Assert(peek >= 0, "line.peek")
 DIM ch AS INTEGER
 ch = reader.ReadChar()
-Viper.Diagnostics.Assert(ch >= 0, "line.readchar")
+Viper.Core.Diagnostics.Assert(ch >= 0, "line.readchar")
 DIM line AS STRING
 line = reader.Read()
 DIM rest AS STRING
 rest = reader.ReadAll()
 reader.Close()
-Viper.Diagnostics.Assert(reader.Eof, "line.eof")
+Viper.Core.Diagnostics.Assert(reader.Eof, "line.eof")
 
 DIM ms AS Viper.IO.MemStream
 ms = Viper.IO.MemStream.New()
@@ -146,32 +146,32 @@ msBytes.Set(0, 7)
 msBytes.Set(1, 8)
 ms.WriteBytes(msBytes)
 
-Viper.Diagnostics.Assert(ms.Len > 0, "ms.len")
-Viper.Diagnostics.Assert(ms.Capacity >= ms.Len, "ms.capacity")
+Viper.Core.Diagnostics.Assert(ms.Len > 0, "ms.len")
+Viper.Core.Diagnostics.Assert(ms.Capacity >= ms.Len, "ms.capacity")
 
 ms.Seek(0)
-Viper.Diagnostics.AssertEq(ms.ReadI8(), -5, "ms.readi8")
-Viper.Diagnostics.AssertEq(ms.ReadU8(), 250, "ms.readu8")
-Viper.Diagnostics.AssertEq(ms.ReadI16(), -1234, "ms.readi16")
-Viper.Diagnostics.AssertEq(ms.ReadU16(), 65530, "ms.readu16")
-Viper.Diagnostics.AssertEq(ms.ReadI32(), -123456, "ms.readi32")
-Viper.Diagnostics.AssertEq(ms.ReadU32(), 4000000000, "ms.readu32")
-Viper.Diagnostics.AssertEq(ms.ReadI64(), -123456789, "ms.readi64")
+Viper.Core.Diagnostics.AssertEq(ms.ReadI8(), -5, "ms.readi8")
+Viper.Core.Diagnostics.AssertEq(ms.ReadU8(), 250, "ms.readu8")
+Viper.Core.Diagnostics.AssertEq(ms.ReadI16(), -1234, "ms.readi16")
+Viper.Core.Diagnostics.AssertEq(ms.ReadU16(), 65530, "ms.readu16")
+Viper.Core.Diagnostics.AssertEq(ms.ReadI32(), -123456, "ms.readi32")
+Viper.Core.Diagnostics.AssertEq(ms.ReadU32(), 4000000000, "ms.readu32")
+Viper.Core.Diagnostics.AssertEq(ms.ReadI64(), -123456789, "ms.readi64")
 AssertApprox(ms.ReadF32(), 1.5, 0.0001, "ms.readf32")
 AssertApprox(ms.ReadF64(), 2.25, 0.0001, "ms.readf64")
-Viper.Diagnostics.AssertEqStr(ms.ReadStr(2), "hi", "ms.readstr")
+Viper.Core.Diagnostics.AssertEqStr(ms.ReadStr(2), "hi", "ms.readstr")
 DIM rb AS Viper.Collections.Bytes
 rb = ms.ReadBytes(2)
-Viper.Diagnostics.AssertEqStr(rb.ToHex(), "0708", "ms.readbytes")
+Viper.Core.Diagnostics.AssertEqStr(rb.ToHex(), "0708", "ms.readbytes")
 
 ms.Skip(0)
 DIM allBytes AS Viper.Collections.Bytes
 allBytes = ms.ToBytes()
-Viper.Diagnostics.Assert(allBytes.Len >= 0, "ms.tobytes")
+Viper.Core.Diagnostics.Assert(allBytes.Len >= 0, "ms.tobytes")
 
 ms.Clear()
-Viper.Diagnostics.AssertEq(ms.Len, 0, "ms.clear")
-Viper.Diagnostics.AssertEq(ms.Pos, 0, "ms.pos0")
+Viper.Core.Diagnostics.AssertEq(ms.Len, 0, "ms.clear")
+Viper.Core.Diagnostics.AssertEq(ms.Pos, 0, "ms.pos0")
 
 Viper.IO.Dir.RemoveAll(base)
 

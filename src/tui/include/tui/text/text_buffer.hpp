@@ -5,11 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/text/text_buffer.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the TextBuffer class, the central text management
+// abstraction for Viper's TUI editor. TextBuffer orchestrates three
+// underlying data structures:
+//   - PieceTable: efficient insert/erase operations on the text content
+//   - LineIndex: tracks line boundaries for fast line-number lookups
+//   - EditHistory: supports transactional undo/redo of edit operations
+//
+// TextBuffer provides a unified API for loading text, performing edits,
+// querying line contents, and managing undo/redo transactions. The
+// LineView inner class enables zero-copy iteration over line segments
+// from the piece table without materializing full line strings.
+//
+// Key invariants:
+//   - Line numbers are 0-based; lineCount() returns at least 1 for
+//     an empty buffer (representing one empty line).
+//   - Edit operations (insert/erase) automatically update both the
+//     piece table and the line index atomically.
+//   - Undo/redo replay edits in reverse/forward order via the history.
+//
+// Ownership: TextBuffer owns its PieceTable, LineIndex, and EditHistory
+// by value. External references (e.g., from TextView) must not outlive
+// the buffer.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,11 +45,19 @@
 
 namespace viper::tui::text
 {
-/// @brief Text buffer orchestrating piece table, line index, and history.
+/// @brief High-level text buffer orchestrating piece table storage, line indexing,
+///        and undo/redo history for the TUI text editor.
+/// @details Provides the primary editing API used by views and widgets. Edits are
+///          recorded into transactions that can be undone and redone. The buffer
+///          maintains a line index that is incrementally updated on each edit,
+///          enabling efficient line-based access without scanning the entire text.
 class TextBuffer
 {
   public:
-    /// @brief Lightweight view over a single line.
+    /// @brief Lightweight, non-owning view over a single line in the piece table.
+    /// @details Provides segment-based iteration for rendering without copying the
+    ///          entire line into a contiguous string. This is critical for performance
+    ///          when rendering large files where lines span multiple piece table pieces.
     class LineView
     {
       public:
@@ -56,28 +81,58 @@ class TextBuffer
         std::size_t length_{};
     };
 
-    /// @brief Load initial content, replacing current buffer.
+    /// @brief Replace the entire buffer content with new text.
+    /// @details Resets the piece table, rebuilds the line index, and clears the
+    ///          edit history. Any existing undo/redo state is discarded.
+    /// @param text The new content to load into the buffer.
     void load(std::string text);
 
-    /// @brief Insert text at byte position.
+    /// @brief Insert text at the specified byte position.
+    /// @details Inserts into the piece table, updates the line index for any new
+    ///          newline characters, and records the operation for undo if a
+    ///          transaction is active.
+    /// @param pos Byte offset where the text will be inserted (0-based).
+    /// @param text The text to insert at the given position.
     void insert(std::size_t pos, std::string_view text);
 
-    /// @brief Erase len bytes starting at pos.
+    /// @brief Erase a range of bytes from the buffer.
+    /// @details Removes bytes from the piece table, adjusts the line index for
+    ///          any removed newline characters, and records the operation for undo.
+    /// @param pos Starting byte offset of the range to erase.
+    /// @param len Number of bytes to erase starting from pos.
     void erase(std::size_t pos, std::size_t len);
 
-    /// @brief Begin a transaction grouping subsequent edits.
+    /// @brief Begin a transaction grouping subsequent edits for atomic undo.
+    /// @details All insert and erase operations performed between beginTxn() and
+    ///          endTxn() are grouped into a single transaction. When the user
+    ///          invokes undo(), all operations in the transaction are reversed
+    ///          atomically. Must be paired with endTxn().
     void beginTxn();
 
-    /// @brief End current transaction and record for undo.
+    /// @brief End the current transaction and commit it to the undo stack.
+    /// @details Finalizes the current transaction. If it contains operations, the
+    ///          transaction is pushed onto the undo stack. Empty transactions are
+    ///          silently discarded.
     void endTxn();
 
-    /// @brief Undo last transaction.
+    /// @brief Undo the last committed transaction.
+    /// @details Replays all operations in the most recent transaction in reverse
+    ///          order, moving the transaction to the redo stack.
+    /// @return True if a transaction was undone; false if the undo stack was empty.
     [[nodiscard]] bool undo();
 
-    /// @brief Redo last undone transaction.
+    /// @brief Redo the last undone transaction.
+    /// @details Replays all operations in the most recently undone transaction in
+    ///          forward order, moving it back to the undo stack.
+    /// @return True if a transaction was redone; false if the redo stack was empty.
     [[nodiscard]] bool redo();
 
     /// @brief Get line content without trailing newline.
+    /// @details Extracts the text of the specified line by looking up start/end
+    ///          offsets in the line index and reading from the piece table.
+    ///          If lineNo is out of range (>= lineCount()), returns an empty string.
+    /// @param lineNo Zero-based line number.
+    /// @return The line text as a contiguous string, excluding trailing newline.
     [[nodiscard]] std::string getLine(std::size_t lineNo) const;
 
     /// @brief Visit each indexed line with a lightweight view.
@@ -102,10 +157,14 @@ class TextBuffer
     /// @brief Retrieve line metadata and segment iterator for a line.
     [[nodiscard]] LineView lineView(std::size_t lineNo) const;
 
-    /// @brief Get full buffer content.
+    /// @brief Materialize the entire buffer content as a contiguous string.
+    /// @details Concatenates all piece table segments into a single string.
+    ///          Allocates memory proportional to the buffer size.
+    /// @return The full text content of the buffer.
     [[nodiscard]] std::string str() const;
 
-    /// @brief Total byte length.
+    /// @brief Get the total number of bytes in the buffer.
+    /// @return Byte count of all content in the piece table.
     [[nodiscard]] std::size_t size() const;
 
   private:

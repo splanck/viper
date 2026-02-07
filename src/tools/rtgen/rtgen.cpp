@@ -52,6 +52,7 @@ struct RuntimeFunc
     std::string c_symbol;  // C runtime symbol (e.g., "rt_print_str")
     std::string canonical; // Canonical Viper.* name (e.g., "Viper.Console.PrintStr")
     std::string signature; // Type signature (e.g., "void(str)")
+    std::string lowering;  // Lowering kind: "always" or "" (default: manual)
 };
 
 struct RuntimeAlias
@@ -102,25 +103,6 @@ struct DescriptorFields
     std::string trapClass;
 };
 
-struct RowOverride
-{
-    std::optional<DescriptorFields> always;
-    std::optional<DescriptorFields> dual_if;
-    std::optional<DescriptorFields> dual_else;
-};
-
-struct OverrideData
-{
-    std::vector<std::string> order;
-    std::unordered_map<std::string, RowOverride> rows;
-};
-
-enum class DualState
-{
-    None,
-    If,
-    Else,
-};
 
 //===----------------------------------------------------------------------===//
 // Parser State
@@ -332,11 +314,11 @@ static std::optional<std::string> extractParens(std::string_view line, std::stri
 
 static void parseRtFunc(ParseState &state, const std::string &args)
 {
-    // RT_FUNC(id, c_symbol, canonical, signature)
+    // RT_FUNC(id, c_symbol, canonical, signature [, lowering])
     auto parts = split(args, ',');
-    if (parts.size() != 4)
+    if (parts.size() < 4 || parts.size() > 5)
     {
-        state.error("RT_FUNC requires 4 arguments: id, c_symbol, canonical, signature");
+        state.error("RT_FUNC requires 4-5 arguments: id, c_symbol, canonical, signature [, lowering]");
     }
 
     RuntimeFunc func;
@@ -344,6 +326,8 @@ static void parseRtFunc(ParseState &state, const std::string &args)
     func.c_symbol = parts[1];
     func.canonical = parts[2];
     func.signature = parts[3];
+    if (parts.size() == 5)
+        func.lowering = parts[4];
 
     // Remove quotes from canonical and signature
     if (func.canonical.size() >= 2 && func.canonical.front() == '"')
@@ -850,7 +834,7 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
         if (!entry.is_regular_file())
             continue;
         const fs::path path = entry.path();
-        if (path.extension() != ".h")
+        if (path.extension() != ".h" && path.extension() != ".hpp")
             continue;
 
         std::ifstream in(path);
@@ -889,119 +873,6 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
     return result;
 }
 
-static std::optional<std::pair<std::string, DescriptorFields>> parseDescriptorRowBlock(
-    std::string_view block)
-{
-    size_t open = block.find('{');
-    size_t close = block.rfind('}');
-    if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
-        return std::nullopt;
-
-    std::string_view inner = block.substr(open + 1, close - open - 1);
-    std::vector<std::string> fields = splitTopLevel(inner, ',');
-    if (fields.size() < 8)
-        return std::nullopt;
-
-    DescriptorFields row;
-    std::string name = stripQuotes(fields[0]);
-    row.signatureId = trim(fields[1]);
-    row.spec = trim(fields[2]);
-    row.handler = trim(fields[3]);
-    row.lowering = trim(fields[4]);
-    row.hidden = trim(fields[5]);
-    row.hiddenCount = trim(fields[6]);
-    row.trapClass = trim(fields[7]);
-
-    return std::make_pair(name, row);
-}
-
-static OverrideData loadSignatureOverrides(const fs::path &path)
-{
-    OverrideData data;
-    std::ifstream in(path);
-    if (!in)
-    {
-        std::cerr << "warning: signature overrides not found: " << path << "\n";
-        return data;
-    }
-
-    DualState state = DualState::None;
-    std::size_t rows_seen = 0;
-    std::size_t rows_parsed = 0;
-    std::string line;
-    while (std::getline(in, line))
-    {
-        std::string_view view = trimView(line);
-        if (startsWith(view, "#if") && view.find("VIPER_RUNTIME_NS_DUAL") != std::string_view::npos)
-        {
-            state = DualState::If;
-            continue;
-        }
-        if (startsWith(view, "#else") && state != DualState::None)
-        {
-            state = DualState::Else;
-            continue;
-        }
-        if (startsWith(view, "#endif"))
-        {
-            state = DualState::None;
-            continue;
-        }
-
-        if (line.find("DescriptorRow") == std::string::npos)
-            continue;
-        ++rows_seen;
-
-        std::string block = line;
-        int brace_depth = 0;
-        for (char c : line)
-        {
-            if (c == '{')
-                brace_depth++;
-            else if (c == '}')
-                brace_depth--;
-        }
-
-        while (brace_depth > 0 && std::getline(in, line))
-        {
-            block.append("\n");
-            block.append(line);
-            for (char c : line)
-            {
-                if (c == '{')
-                    brace_depth++;
-                else if (c == '}')
-                    brace_depth--;
-            }
-        }
-
-        auto parsed = parseDescriptorRowBlock(block);
-        if (!parsed)
-            continue;
-        ++rows_parsed;
-
-        const std::string &name = parsed->first;
-        const DescriptorFields &fields = parsed->second;
-
-        if (std::find(data.order.begin(), data.order.end(), name) == data.order.end())
-            data.order.push_back(name);
-
-        RowOverride &row = data.rows[name];
-        if (state == DualState::If)
-            row.dual_if = fields;
-        else if (state == DualState::Else)
-            row.dual_else = fields;
-        else
-            row.always = fields;
-    }
-
-    if (rows_seen > 0 && rows_parsed == 0)
-    {
-        std::cerr << "warning: failed to parse any DescriptorRow blocks from " << path << "\n";
-    }
-
-    return data;
-}
 
 //===----------------------------------------------------------------------===//
 // Code Generation
@@ -1012,6 +883,7 @@ struct RuntimeEntry
     std::string name;
     std::string c_symbol;
     std::string signature;
+    std::string lowering; // "always" or "" (default: manual)
 };
 
 static std::string fileHeader(const std::string &filename, const std::string &purpose)
@@ -1053,12 +925,12 @@ static std::string buildConsumingStringHandlerExpr(const std::string &c_symbol,
 }
 
 /// @brief Check if a runtime function consumes its string arguments.
-/// @details Functions like rt_concat release their string arguments after use,
+/// @details Functions like rt_str_concat release their string arguments after use,
 ///          so the VM must retain them before the call to prevent use-after-free.
 static bool needsConsumingStringHandler(const std::string &c_symbol)
 {
-    // rt_concat releases both of its string arguments after use
-    return c_symbol == "rt_concat";
+    // rt_str_concat releases both of its string arguments after use
+    return c_symbol == "rt_str_concat";
 }
 
 static DescriptorFields buildDefaultDescriptor(
@@ -1109,7 +981,7 @@ static DescriptorFields buildDefaultDescriptor(
                              : buildDirectHandlerExpr(entry.c_symbol, fallback);
     }
 
-    fields.lowering = "kManualLowering";
+    fields.lowering = (entry.lowering == "always") ? "kAlwaysLowering" : "kManualLowering";
     fields.hidden = "nullptr";
     fields.hiddenCount = "0";
     fields.trapClass = "RuntimeTrapClass::None";
@@ -1132,12 +1004,6 @@ static void emitDescriptorRow(std::ostream &out,
     out << pad << "              " << fields.trapClass << "},\n";
 }
 
-static bool fieldsEqual(const DescriptorFields &a, const DescriptorFields &b)
-{
-    return a.signatureId == b.signatureId && a.spec == b.spec && a.handler == b.handler &&
-           a.lowering == b.lowering && a.hidden == b.hidden && a.hiddenCount == b.hiddenCount &&
-           a.trapClass == b.trapClass;
-}
 
 static void generateNameMap(const ParseState &state, const fs::path &outDir)
 {
@@ -1280,9 +1146,6 @@ static void generateSignatures(const ParseState &state,
 {
     fs::path outPath = outDir / "RuntimeSignatures.inc";
     const fs::path runtimeDir = inputPath.parent_path();
-    const fs::path overridesPath = runtimeDir / "generated" / "RuntimeSignatures.inc";
-    OverrideData overrides = loadSignatureOverrides(overridesPath);
-    std::cout << "rtgen: Loaded " << overrides.rows.size() << " signature overrides\n";
 
     std::ofstream out(outPath);
     if (!out)
@@ -1299,50 +1162,15 @@ static void generateSignatures(const ParseState &state,
     auto cSignatures = loadRuntimeCSignatures(runtimeHeaders);
     auto rtSigMap = buildRtSigMap(runtimeDir);
 
+    // Build entries from functions and aliases
     std::unordered_map<std::string, RuntimeEntry> entries;
     entries.reserve(state.functions.size() + state.aliases.size());
 
-    // Build a lookup from C symbol to any override (for fallback when canonical name changes)
-    std::unordered_map<std::string, std::string> cSymbolToOverrideName;
-    for (const auto &[name, row] : overrides.rows)
-    {
-        // Extract C symbol from handler string like "&DirectHandler<&rt_split_fields, ...>::invoke"
-        size_t ampPos = name.find('&');
-        if (ampPos == std::string::npos)
-        {
-            // Name might be the C symbol itself (like "rt_split_fields")
-            if (name.substr(0, 3) == "rt_")
-            {
-                cSymbolToOverrideName[name] = name;
-            }
-        }
-    }
-    // Also index by canonical name patterns (extract C symbol from existing overrides)
-    for (const auto &func : state.functions)
-    {
-        // Check if there's an override for any previous canonical name with this C symbol
-        for (const auto &[overrideName, row] : overrides.rows)
-        {
-            // Check if override handler contains our C symbol
-            auto checkFields = [&](const std::optional<DescriptorFields> &fields)
-            {
-                if (fields && fields->handler.find("&" + func.c_symbol) != std::string::npos)
-                {
-                    cSymbolToOverrideName[func.c_symbol] = overrideName;
-                }
-            };
-            checkFields(row.always);
-            checkFields(row.dual_if);
-            checkFields(row.dual_else);
-        }
-    }
-
-    // Map from C symbol to function entry for legacy alias lookups
     std::unordered_map<std::string, const RuntimeFunc *> cSymbolToFunc;
     for (const auto &func : state.functions)
     {
         entries.emplace(func.canonical,
-                        RuntimeEntry{func.canonical, func.c_symbol, func.signature});
+                        RuntimeEntry{func.canonical, func.c_symbol, func.signature, func.lowering});
         cSymbolToFunc[func.c_symbol] = &func;
     }
     for (const auto &alias : state.aliases)
@@ -1352,122 +1180,26 @@ static void generateSignatures(const ParseState &state,
             continue;
         const auto &target = state.functions[it->second];
         entries.emplace(alias.canonical,
-                        RuntimeEntry{alias.canonical, target.c_symbol, target.signature});
+                        RuntimeEntry{alias.canonical, target.c_symbol, target.signature, target.lowering});
     }
 
-    std::set<std::string> seen;
+    // Emit canonical entries in definition order
     std::vector<std::string> orderedNames;
     orderedNames.reserve(entries.size());
-
-    // Include names from overrides if they still exist in current entries OR are C symbol
-    // aliases (rt_*) that correspond to valid functions (needed for VIPER_RUNTIME_NS_DUAL builds).
-    for (const auto &name : overrides.order)
-    {
-        bool shouldInclude = entries.count(name);
-        // C symbol names (rt_*) should be included if they have a valid function mapping
-        if (!shouldInclude && name.substr(0, 3) == "rt_")
-        {
-            shouldInclude = cSymbolToFunc.count(name) > 0;
-            // Also add to entries so the lookup later works
-            if (shouldInclude)
-            {
-                const auto &func = *cSymbolToFunc[name];
-                entries.emplace(name, RuntimeEntry{name, func.c_symbol, func.signature});
-            }
-        }
-        if (shouldInclude && seen.insert(name).second)
-            orderedNames.push_back(name);
-    }
-
     for (const auto &func : state.functions)
-    {
-        if (seen.insert(func.canonical).second)
-            orderedNames.push_back(func.canonical);
-    }
-
+        orderedNames.push_back(func.canonical);
     for (const auto &alias : state.aliases)
-    {
-        if (seen.insert(alias.canonical).second)
-            orderedNames.push_back(alias.canonical);
-    }
+        orderedNames.push_back(alias.canonical);
 
     for (const auto &name : orderedNames)
     {
-        auto overrideIt = overrides.rows.find(name);
-
-        // Fallback: if no override by canonical name, try to find by C symbol
-        if (overrideIt == overrides.rows.end())
-        {
-            auto entryIt = entries.find(name);
-            if (entryIt != entries.end())
-            {
-                const std::string &cSym = entryIt->second.c_symbol;
-                auto fallbackIt = cSymbolToOverrideName.find(cSym);
-                if (fallbackIt != cSymbolToOverrideName.end())
-                {
-                    overrideIt = overrides.rows.find(fallbackIt->second);
-                }
-            }
-        }
-
-        if (overrideIt == overrides.rows.end())
-        {
-            auto entryIt = entries.find(name);
-            if (entryIt == entries.end())
-                continue;
-
-            const RuntimeEntry &entry = entryIt->second;
-            DescriptorFields defaultFields = buildDefaultDescriptor(entry, cSignatures, rtSigMap);
-            emitDescriptorRow(out, name, defaultFields);
+        auto entryIt = entries.find(name);
+        if (entryIt == entries.end())
             continue;
-        }
 
-        const RowOverride &row = overrideIt->second;
-        if (row.always)
-        {
-            emitDescriptorRow(out, name, *row.always);
-            continue;
-        }
-
-        const bool hasIf = row.dual_if.has_value();
-        const bool hasElse = row.dual_else.has_value();
-
-        if (hasIf && hasElse)
-        {
-            if (fieldsEqual(*row.dual_if, *row.dual_else))
-            {
-                emitDescriptorRow(out, name, *row.dual_if);
-            }
-            else
-            {
-                out << "#if VIPER_RUNTIME_NS_DUAL\n";
-                emitDescriptorRow(out, name, *row.dual_if);
-                out << "#else\n";
-                emitDescriptorRow(out, name, *row.dual_else);
-                out << "#endif\n";
-            }
-        }
-        else if (hasIf)
-        {
-            out << "#if VIPER_RUNTIME_NS_DUAL\n";
-            emitDescriptorRow(out, name, *row.dual_if);
-            out << "#endif\n";
-        }
-        else if (hasElse)
-        {
-            out << "#if !VIPER_RUNTIME_NS_DUAL\n";
-            emitDescriptorRow(out, name, *row.dual_else);
-            out << "#endif\n";
-        }
-        else
-        {
-            auto entryIt = entries.find(name);
-            if (entryIt == entries.end())
-                continue;
-            DescriptorFields defaultFields =
-                buildDefaultDescriptor(entryIt->second, cSignatures, rtSigMap);
-            emitDescriptorRow(out, name, defaultFields);
-        }
+        const RuntimeEntry &entry = entryIt->second;
+        DescriptorFields fields = buildDefaultDescriptor(entry, cSignatures, rtSigMap);
+        emitDescriptorRow(out, name, fields);
     }
 
     std::cout << "  Generated " << outPath << "\n";

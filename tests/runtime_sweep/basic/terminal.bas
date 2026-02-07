@@ -43,22 +43,22 @@ Viper.Terminal.EndBatch()
 
 DIM line1 AS STRING
 line1 = Viper.Terminal.ReadLine()
-Viper.Diagnostics.AssertEqStr(line1, "first", "term.readline")
+Viper.Core.Diagnostics.AssertEqStr(line1, "first", "term.readline")
 
 DIM ans AS STRING
 ans = Viper.Terminal.Ask("prompt>")
-Viper.Diagnostics.AssertEqStr(ans, "second", "term.ask")
+Viper.Core.Diagnostics.AssertEqStr(ans, "second", "term.ask")
 
 DIM key AS STRING
 key = Viper.Terminal.GetKey()
-Viper.Diagnostics.Assert(key <> "", "term.getkey")
+Viper.Core.Diagnostics.Assert(key <> "", "term.getkey")
 
 DIM key2 AS STRING
 key2 = Viper.Terminal.GetKeyTimeout(0)
 DIM key3 AS STRING
 key3 = Viper.Terminal.InKey()
-Viper.Diagnostics.Assert(key2 = key2, "term.getkeytimeout")
-Viper.Diagnostics.Assert(key3 = key3, "term.inkey")
+Viper.Core.Diagnostics.Assert(key2 = key2, "term.getkeytimeout")
+Viper.Core.Diagnostics.Assert(key3 = key3, "term.inkey")
 
 PRINT "RESULT: ok"
 END

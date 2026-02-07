@@ -57,8 +57,8 @@ int main()
     auto names = collectExternNames(module);
     assert(names.count("rt_arr_i64_set") == 1);
     // Accept either legacy aliases or canonical runtime names
-    assert(names.count("rt_split_fields") == 1 || names.count("Viper.String.SplitFields") == 1);
-    assert(names.count("rt_to_int") == 1 || names.count("Viper.Convert.ToInt") == 1);
+    assert(names.count("rt_str_split_fields") == 1 || names.count("Viper.String.SplitFields") == 1);
+    assert(names.count("rt_to_int") == 1 || names.count("Viper.Core.Convert.ToInt") == 1);
 
     const std::string stringHelpers[] = {
         "rt_str_i16_alloc",
@@ -69,7 +69,7 @@ int main()
         "Viper.String.FromI16",
         "Viper.String.FromI32",
         "Viper.String.FromSingle",
-        "Viper.Convert.ToString_Double",
+        "Viper.Core.Convert.ToString_Double",
     };
     bool foundStringHelper = false;
     for (const auto &helper : stringHelpers)

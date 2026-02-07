@@ -162,5 +162,7 @@ target_link_libraries(fe_basic PUBLIC viper_il_full il_build il_runtime fe_commo
 target_include_directories(fe_basic PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
+add_dependencies(fe_basic generate_runtime_registry)

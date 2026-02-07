@@ -8,7 +8,7 @@ bind Viper.Text.JsonPath as JP;
 bind Viper.Text.Json as Json;
 bind Viper.Text.Toml as Toml;
 bind Viper.Collections.Seq as Seq;
-bind Viper.Box as Box;
+bind Viper.Core.Box as Box;
 bind Viper.Fmt as Fmt;
 
 // EXPECT_OUT: RESULT: ok

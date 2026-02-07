@@ -289,7 +289,7 @@ rt_string rt_input_line(void)
 /// @param out_fields Destination array receiving up to @p max_fields entries.
 /// @param max_fields Maximum number of fields to populate; negative values are treated as zero.
 /// @return Total number of fields present in @p line.
-int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields)
+int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields)
 {
     if (max_fields <= 0)
     {
@@ -297,7 +297,7 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
     }
     else if (!out_fields)
     {
-        rt_trap("rt_split_fields: null output");
+        rt_trap("rt_str_split_fields: null output");
     }
 
     const char *data = "";

@@ -19,7 +19,7 @@
 #include "vm/RuntimeBridge.hpp"
 
 #include "il/core/Module.hpp"
-#include "il/runtime/generated/RuntimeNames.hpp"
+#include "il/runtime/RuntimeNames.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt.hpp"
 #include "rt_threads.h"

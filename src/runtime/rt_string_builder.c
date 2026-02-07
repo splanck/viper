@@ -449,7 +449,7 @@ void *rt_text_sb_append(void *sb, rt_string s)
 
     // Get the string data - rt_string is a pointer to struct with data field
     const char *str_data = s ? s->data : NULL;
-    size_t str_len = s ? rt_len(s) : 0;
+    size_t str_len = s ? rt_str_len(s) : 0;
 
     if (str_data && str_len > 0)
     {
@@ -489,7 +489,7 @@ void *rt_text_sb_append_line(void *sb, rt_string s)
         return sb;
 
     const char *str_data = s ? s->data : NULL;
-    size_t str_len = s ? (size_t)rt_len(s) : 0;
+    size_t str_len = s ? (size_t)rt_str_len(s) : 0;
 
     // Reserve enough space for string bytes + '\n' + NUL terminator.
     size_t required = builder->len + str_len + 2;

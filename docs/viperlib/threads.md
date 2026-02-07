@@ -15,7 +15,7 @@
 - [Viper.Threads.Promise](#viperthreadspromise)
 - [Viper.Threads.Future](#viperthreadsfuture)
 - [Viper.Threads.Parallel](#viperthreadsparallel)
-- [Viper.Threads.CancellationToken](#viperthreadscancellationtoken)
+- [Viper.Threads.CancelToken](#viperthreadscanceltoken)
 - [Viper.Threads.Debouncer](#viperthreadsdebouncer)
 - [Viper.Threads.Throttler](#viperthreadsthrottler)
 - [Viper.Threads.Scheduler](#viperthreadsscheduler)
@@ -719,12 +719,12 @@ pool.Shutdown()
 
 ---
 
-## Viper.Threads.CancellationToken
+## Viper.Threads.CancelToken
 
 Cooperative cancellation token for signaling cancellation to long-running or asynchronous operations. Thread-safe via atomic operations.
 
 **Type:** Instance class
-**Constructor:** `Viper.Threads.CancellationToken.New()`
+**Constructor:** `Viper.Threads.CancelToken.New()`
 
 ### Properties
 
@@ -738,7 +738,7 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 |---------------------------|------------------------|----------------------------------------------------------|
 | `Cancel()`                | `Void()`               | Request cancellation (irreversible once set)              |
 | `Reset()`                 | `Void()`               | Reset the token for reuse                                |
-| `Linked()`                | `CancellationToken()`  | Create a child token that cancels when parent cancels    |
+| `Linked()`                | `CancelToken()`  | Create a child token that cancels when parent cancels    |
 | `Check()`                 | `Boolean()`            | Check if this or parent token is cancelled               |
 | `ThrowIfCancelled()`      | `Void()`               | Trap if the token has been cancelled                     |
 
@@ -751,13 +751,13 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 
 ### Zia Example
 
-> CancellationToken is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for cancellation patterns.
+> CancelToken is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for cancellation patterns.
 
 ### BASIC Example
 
 ```basic
 ' Create a cancellation token
-DIM token AS OBJECT = Viper.Threads.CancellationToken.New()
+DIM token AS OBJECT = Viper.Threads.CancelToken.New()
 
 ' Pass to a long-running operation
 SUB ProcessItems(items AS OBJECT, cancel AS OBJECT)
@@ -775,7 +775,7 @@ END SUB
 token.Cancel()
 
 ' Linked tokens for hierarchical cancellation
-DIM parentToken AS OBJECT = Viper.Threads.CancellationToken.New()
+DIM parentToken AS OBJECT = Viper.Threads.CancelToken.New()
 DIM childToken AS OBJECT = parentToken.Linked()
 
 parentToken.Cancel()

@@ -27,7 +27,7 @@
 // - ABI compatibility: Documents the calling convention expected by the callee
 //
 // Common External Functions:
-// - String operations: rt_concat, rt_str_len, rt_str_eq
+// - String operations: rt_str_concat, rt_str_len, rt_str_eq
 // - Math functions: rt_pow_f64_chkdom, rt_sqrt_chk_f64, rt_abs_i64_chk
 // - I/O operations: rt_print_str, rt_print_i64, rt_input_str
 // - Memory management: rt_array_alloc, rt_string_from_bytes

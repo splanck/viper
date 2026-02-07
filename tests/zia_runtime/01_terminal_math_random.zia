@@ -36,9 +36,9 @@ bind "./_support";
 // COVER: Viper.Math.Max
 // COVER: Viper.Math.MinInt
 // COVER: Viper.Math.MaxInt
-// COVER: Viper.Random.Seed
-// COVER: Viper.Random.NextInt
-// COVER: Viper.Random.Next
+// COVER: Viper.Math.Random.Seed
+// COVER: Viper.Math.Random.NextInt
+// COVER: Viper.Math.Random.Next
 // COVER: Viper.Time.SleepMs
 // COVER: Viper.Time.Clock.Sleep
 
@@ -77,14 +77,14 @@ func start() {
     assertEqInt(Viper.Math.MinInt(1, 2), 1, "minint");
     assertEqInt(Viper.Math.MaxInt(1, 2), 2, "maxint");
 
-    Viper.Random.Seed(123);
-    var a = Viper.Random.NextInt(100);
-    var b = Viper.Random.NextInt(100);
-    var n = Viper.Random.Next();
-    Viper.Random.Seed(123);
-    var c = Viper.Random.NextInt(100);
-    var d = Viper.Random.NextInt(100);
-    var n2 = Viper.Random.Next();
+    Viper.Math.Random.Seed(123);
+    var a = Viper.Math.Random.NextInt(100);
+    var b = Viper.Math.Random.NextInt(100);
+    var n = Viper.Math.Random.Next();
+    Viper.Math.Random.Seed(123);
+    var c = Viper.Math.Random.NextInt(100);
+    var d = Viper.Math.Random.NextInt(100);
+    var n2 = Viper.Math.Random.Next();
     assertEqInt(a, c, "rand1");
     assertEqInt(b, d, "rand2");
     assertApprox(n, n2, 0.0000001, "randf");

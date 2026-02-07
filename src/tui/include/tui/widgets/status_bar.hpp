@@ -5,11 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/widgets/status_bar.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the StatusBar widget for Viper's TUI framework.
+// The status bar displays a single-line informational strip, typically
+// positioned at the bottom of the screen, with left-aligned and
+// right-aligned text segments.
+//
+// Common uses include showing the current file name on the left and
+// cursor position or mode indicator on the right. The bar fills its
+// entire allocated width with the theme's accent style.
+//
+// Key invariants:
+//   - The bar occupies exactly one row of its layout rectangle.
+//   - Left and right text are truncated if they exceed available width.
+//   - The bar does not accept focus (wantsFocus returns false by default).
+//
+// Ownership: StatusBar owns its text strings by value and borrows
+// the Theme reference (must outlive the widget).
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,7 +33,11 @@
 
 namespace viper::tui::widgets
 {
-/// @brief Displays status information at the bottom line.
+/// @brief Single-line status display widget with left and right text segments.
+/// @details Renders a horizontal bar spanning the full width of its layout rectangle,
+///          displaying left-aligned text on the left and right-aligned text on the right.
+///          Styled using the theme's accent role. Typically placed at the bottom of the
+///          screen to show file information, cursor position, or mode indicators.
 class StatusBar : public ui::Widget
 {
   public:

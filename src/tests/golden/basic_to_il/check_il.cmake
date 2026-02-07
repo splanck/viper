@@ -21,7 +21,7 @@ string(REPLACE "\r" "\n" expected "${expected}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out "${out}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" expected "${expected}")
 ## Normalize legacy rt_* aliases to canonical Viper.* names in both expected and output.
-set(_aliases rt_print_str;rt_print_i64;rt_print_f64;rt_len;rt_substr;rt_trap;rt_concat;rt_input_line;rt_to_int;rt_to_double;rt_parse_int64;rt_parse_double;rt_int_to_str;rt_f64_to_str;rt_split_fields;rt_str_i16_alloc;rt_str_i32_alloc;rt_str_f_alloc)
+set(_aliases rt_print_str;rt_print_i64;rt_print_f64;rt_str_len;rt_str_substr;rt_trap;rt_str_concat;rt_input_line;rt_to_int;rt_to_double;rt_parse_int64;rt_parse_double;rt_int_to_str;rt_f64_to_str;rt_str_split_fields;rt_str_i16_alloc;rt_str_i32_alloc;rt_str_f_alloc)
 set(_canon Viper.Terminal.PrintStr;Viper.Terminal.PrintI64;Viper.Terminal.PrintF64;Viper.String.get_Length;Viper.String.Substring;Viper.Diagnostics.Trap;Viper.String.Concat;Viper.Terminal.ReadLine;Viper.Convert.ToInt;Viper.Convert.ToDouble;Viper.Parse.Int64;Viper.Parse.Double;Viper.Convert.ToString_Int;Viper.Convert.ToString_Double;Viper.String.SplitFields;Viper.String.FromI16;Viper.String.FromI32;Viper.String.FromSingle)
 list(LENGTH _aliases _n)
 math(EXPR _last "${_n} - 1")

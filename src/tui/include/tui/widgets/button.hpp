@@ -5,11 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/include/tui/widgets/button.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// This file declares the Button widget for Viper's TUI framework.
+// Button displays a labeled interactive element with a border that can
+// be activated by pressing Enter when focused.
+//
+// The button renders its label text centered within a bordered rectangle
+// using theme-appropriate styles. When the user presses Enter while the
+// button has focus, the registered onClick callback is invoked.
+//
+// Key invariants:
+//   - The button is always focusable (wantsFocus returns true).
+//   - The onClick callback may be empty (activation is a no-op).
+//   - The border consumes 1 cell on each side of the button area.
+//
+// Ownership: Button owns its label string and callback by value.
+// The Theme reference is borrowed (must outlive the widget).
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,7 +34,11 @@
 namespace viper::tui::widgets
 {
 
-/// @brief Simple button with border and onClick handler.
+/// @brief Interactive button widget with border, label, and activation callback.
+/// @details Renders a bordered rectangle with centered label text. When focused,
+///          responds to Enter/Return key presses by invoking the onClick callback.
+///          Styled using the theme's normal and accent roles for unfocused and
+///          focused states respectively.
 class Button : public ui::Widget
 {
   public:
