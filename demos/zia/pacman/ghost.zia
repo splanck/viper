@@ -10,7 +10,7 @@ module ghost;
 
 bind Viper.Game;
 bind Viper.Graphics;
-bind Viper.Random;
+bind Viper.Math.Random;
 
 bind "./config";
 bind "./utils";

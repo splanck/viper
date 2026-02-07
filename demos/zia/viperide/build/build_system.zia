@@ -1,0 +1,234 @@
+module build_system;
+
+bind Str = Viper.String;
+bind Exec = Viper.Exec;
+bind Convert = Viper.Core.Convert;
+
+// ============================================================================
+// BuildSystem — compile and run Zia/BASIC programs from the IDE
+// ============================================================================
+// Handles compilation, error parsing, and running programs.
+// Uses Exec.ShellCapture to run the zia compiler.
+// ============================================================================
+
+entity BuildSystem {
+    // Build state
+    expose Boolean isBuilding;
+    expose Boolean isRunning;
+    expose Boolean lastBuildSuccess;
+
+    // Build output
+    expose String buildOutput;
+    expose String compilerPath;
+
+    // Parsed diagnostics
+    expose List[Diagnostic] diagnostics;
+
+    expose func init() {
+        isBuilding = false;
+        isRunning = false;
+        lastBuildSuccess = false;
+        buildOutput = "";
+        compilerPath = "zia";
+        diagnostics = [];
+    }
+
+    // Build a Zia file. Returns true if compilation succeeded.
+    expose func Build(filePath: String) -> Boolean {
+        isBuilding = true;
+        diagnostics = [];
+
+        // Construct the compile command
+        var cmd = compilerPath + " " + filePath + " --emit-il 2>&1";
+
+        // Run the compiler and capture output
+        buildOutput = Exec.ShellCapture(cmd);
+
+        // Check for errors in output
+        lastBuildSuccess = ParseBuildOutput();
+
+        isBuilding = false;
+        return lastBuildSuccess;
+    }
+
+    // Build and run a Zia file.
+    expose func BuildAndRun(filePath: String) -> Boolean {
+        isBuilding = true;
+        diagnostics = [];
+
+        // Just run the file directly (zia will compile and run)
+        var cmd = compilerPath + " " + filePath + " 2>&1";
+        buildOutput = Exec.ShellCapture(cmd);
+
+        // Check for errors
+        lastBuildSuccess = ParseBuildOutput();
+
+        isBuilding = false;
+        return lastBuildSuccess;
+    }
+
+    // Parse build output for errors and warnings.
+    // Returns true if no errors found.
+    func ParseBuildOutput() -> Boolean {
+        var hasErrors = false;
+
+        // Split output into lines and look for error patterns
+        // Format: "file.zia:line:col: error[code]: message"
+        var output = buildOutput;
+        var pos = 0;
+        var len = Str.Length(output);
+
+        while pos < len {
+            // Find the end of this line
+            var lineEnd = FindLineEnd(output, pos);
+            var line = Str.Substring(output, pos, lineEnd - pos);
+
+            // Try to parse as diagnostic
+            var diag = ParseDiagnosticLine(line);
+            if diag != null {
+                diagnostics.add(diag);
+                if diag.severity == 0 {
+                    hasErrors = true;
+                }
+            }
+
+            pos = lineEnd + 1;
+        }
+
+        return hasErrors == false;
+    }
+
+    // Find the end of a line in the string.
+    func FindLineEnd(s: String, start: Integer) -> Integer {
+        var len = Str.Length(s);
+        var pos = start;
+        while pos < len {
+            var ch = Str.Substring(s, pos, 1);
+            if ch == "\n" {
+                return pos;
+            }
+            pos = pos + 1;
+        }
+        return len;
+    }
+
+    // Parse a single line for diagnostic info.
+    // Format: "file.zia:line:col: error[code]: message"
+    func ParseDiagnosticLine(line: String) -> Diagnostic? {
+        // Look for " error[" or " warning["
+        var errorIdx = Str.IndexOf(line, " error[");
+        var warnIdx = Str.IndexOf(line, " warning[");
+
+        if errorIdx <= 0 and warnIdx <= 0 {
+            return null;
+        }
+
+        var diag = new Diagnostic();
+
+        if errorIdx > 0 {
+            diag.severity = 0;  // Error
+            // Parse file:line:col before " error["
+            ParseLocation(line, errorIdx - 1, diag);
+            // Extract message after the bracket
+            var msgStart = Str.IndexOf(line, "]: ");
+            if msgStart > 0 {
+                diag.message = Str.Substring(line, msgStart + 2, Str.Length(line) - msgStart - 2);
+            }
+        } else if warnIdx > 0 {
+            diag.severity = 1;  // Warning
+            ParseLocation(line, warnIdx - 1, diag);
+            var msgStart = Str.IndexOf(line, "]: ");
+            if msgStart > 0 {
+                diag.message = Str.Substring(line, msgStart + 2, Str.Length(line) - msgStart - 2);
+            }
+        }
+
+        return diag;
+    }
+
+    // Parse "file:line:col" from the start of a string.
+    func ParseLocation(line: String, endPos: Integer, diag: Diagnostic) {
+        // Find first colon (end of filename)
+        var firstColon = Str.IndexOf(line, ":");
+        if firstColon <= 0 {
+            return;
+        }
+
+        diag.filePath = Str.Substring(line, 0, firstColon - 1);
+
+        // Find second colon (end of line number)
+        var rest = Str.Substring(line, firstColon, Str.Length(line) - firstColon);
+        var secondColon = Str.IndexOf(rest, ":");
+        if secondColon <= 0 {
+            return;
+        }
+
+        var lineStr = Str.Substring(rest, 0, secondColon - 1);
+        diag.line = Convert.ToInt(lineStr);
+
+        // Find third colon (end of column)
+        var rest2 = Str.Substring(rest, secondColon, Str.Length(rest) - secondColon);
+        var thirdColon = Str.IndexOf(rest2, ":");
+        if thirdColon > 0 {
+            var colStr = Str.Substring(rest2, 0, thirdColon - 1);
+            diag.column = Convert.ToInt(colStr);
+        }
+    }
+
+    // Get the number of errors.
+    expose func GetErrorCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < diagnostics.count() {
+            var diag = diagnostics.get(i);
+            if diag.severity == 0 {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    // Get the number of warnings.
+    expose func GetWarningCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < diagnostics.count() {
+            var diag = diagnostics.get(i);
+            if diag.severity == 1 {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    // Get the build output text.
+    expose func GetOutput() -> String {
+        return buildOutput;
+    }
+
+    // Clear diagnostics.
+    expose func ClearDiagnostics() {
+        diagnostics = [];
+    }
+}
+
+// Diagnostic — represents a compiler error or warning
+entity Diagnostic {
+    expose String filePath;
+    expose Integer line;
+    expose Integer column;
+    expose Integer severity;   // 0=error, 1=warning, 2=info
+    expose String message;
+    expose String code;
+
+    expose func init() {
+        filePath = "";
+        line = 0;
+        column = 0;
+        severity = 0;
+        message = "";
+        code = "";
+    }
+}
