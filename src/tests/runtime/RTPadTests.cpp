@@ -158,14 +158,20 @@ static void test_boundary_cases()
     rt_pad_stop_vibration(-1);
     rt_pad_stop_vibration(999);
 
-    // Name of invalid/disconnected controller
-    rt_string name = rt_pad_name(0);
+    // Name of invalid index should always be empty
+    rt_string name = rt_pad_name(-1);
     assert(name != nullptr);
     assert(rt_str_len(name) == 0);
 
-    name = rt_pad_name(-1);
+    name = rt_pad_name(999);
     assert(name != nullptr);
     assert(rt_str_len(name) == 0);
+
+    // Pad 0 name depends on hardware: empty if disconnected, non-empty if connected
+    name = rt_pad_name(0);
+    assert(name != nullptr);
+    if (!rt_pad_is_connected(0))
+        assert(rt_str_len(name) == 0);
 
     printf("test_boundary_cases: PASSED\n");
 }
@@ -196,11 +202,11 @@ static void test_poll()
 {
     rt_pad_init();
 
-    // Poll should not crash (stub implementation doesn't connect controllers)
+    // Poll should not crash
     rt_pad_poll();
 
-    // After poll, should still have no controllers (stub)
-    assert(rt_pad_count() == 0);
+    // Controller count depends on hardware; just verify it's in valid range
+    assert(rt_pad_count() >= 0 && rt_pad_count() <= VIPER_PAD_MAX);
 
     printf("test_poll: PASSED\n");
 }

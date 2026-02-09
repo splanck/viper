@@ -171,11 +171,16 @@ std::string toString(const Value &v)
             {
                 while (!s.empty() && s.back() == '0')
                     s.pop_back();
+                // Keep at least ".0" so float constants are unambiguous.
                 if (!s.empty() && s.back() == '.')
-                    s.pop_back();
+                    s += '0';
             }
-            // Do not force a fractional part for integral-valued floats.
-            // The IL grammar and opcode typing disambiguate numeric kinds.
+            else if (s.find('e') == std::string::npos && s.find('E') == std::string::npos)
+            {
+                // Integral-valued float with no decimal or exponent; append .0
+                // so consumers can distinguish float from integer literals.
+                s += ".0";
+            }
             return s;
         }
         case Value::Kind::ConstStr:

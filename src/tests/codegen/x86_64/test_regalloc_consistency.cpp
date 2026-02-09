@@ -78,7 +78,7 @@ void addPressureFunction(MFunction &func)
 
 int main()
 {
-    TargetInfo &target = sysvTarget();
+    const TargetInfo &target = sysvTarget();
 
     MFunction simple{};
     addSimpleFunction(simple);

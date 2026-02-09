@@ -868,8 +868,16 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <Xinput.h>
+// Ensure architecture is defined before including Windows headers (MSVC C11 workaround)
+#if defined(_M_AMD64) && !defined(_AMD64_)
+#define _AMD64_
+#elif defined(_M_IX86) && !defined(_X86_)
+#define _X86_
+#elif defined(_M_ARM64) && !defined(_ARM64_)
+#define _ARM64_
+#endif
 #include <windows.h>
+#include <Xinput.h>
 
 static void platform_pad_poll(void)
 {

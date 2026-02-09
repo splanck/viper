@@ -8,6 +8,7 @@
 #include "rt_daterange.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string_builder.h"
 
 #include <stdio.h>
@@ -156,8 +157,8 @@ rt_string rt_daterange_to_string(void *range)
     time_t st = (time_t)r->start;
     time_t et = (time_t)r->end;
     struct tm ts, te;
-    gmtime_r(&st, &ts);
-    gmtime_r(&et, &te);
+    rt_gmtime_r(&st, &ts);
+    rt_gmtime_r(&et, &te);
 
     int len = snprintf(buf,
                        sizeof(buf),

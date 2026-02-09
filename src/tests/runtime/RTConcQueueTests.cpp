@@ -12,7 +12,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
-#include <pthread.h>
+#include <thread>
 
 extern "C" void vm_trap(const char *msg)
 {
@@ -83,23 +83,14 @@ static void test_timeout_empty()
     assert(result == NULL);
 }
 
-// Producer thread function
-struct producer_args
+static void producer_fn(void *queue, int count)
 {
-    void *queue;
-    int count;
-};
-
-static void *producer_fn(void *arg)
-{
-    struct producer_args *pa = (struct producer_args *)arg;
-    for (int i = 0; i < pa->count; i++)
+    for (int i = 0; i < count; i++)
     {
         char buf[32];
         snprintf(buf, sizeof(buf), "item_%d", i);
-        rt_concqueue_enqueue(pa->queue, make_str(buf));
+        rt_concqueue_enqueue(queue, make_str(buf));
     }
-    return NULL;
 }
 
 static void test_concurrent_produce_consume()
@@ -107,9 +98,7 @@ static void test_concurrent_produce_consume()
     void *q = rt_concqueue_new();
     const int N = 100;
 
-    struct producer_args args = {q, N};
-    pthread_t producer;
-    pthread_create(&producer, NULL, producer_fn, &args);
+    std::thread producer(producer_fn, q, N);
 
     // Consumer: dequeue all N items
     int received = 0;
@@ -119,7 +108,7 @@ static void test_concurrent_produce_consume()
         if (item)
             received++;
     }
-    pthread_join(producer, NULL);
+    producer.join();
 
     assert(received == N);
     assert(rt_concqueue_len(q) == 0);

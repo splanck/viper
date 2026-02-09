@@ -89,6 +89,7 @@ echo.
 
 REM Build Zia demos
 call :build_zia_demo paint "%ZIA_DIR%\paint\main.zia"
+call :build_zia_demo pacman-zia "%ZIA_DIR%\pacman\main_modular.zia"
 
 echo ==============================================
 if %FAILED%==0 (

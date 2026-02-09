@@ -13,11 +13,11 @@ func @main() -> i64 {
 entry:
   call @rt_print_i64(5)
   call @rt_print_f64(1.5)
-  call @rt_print_f64(1)
-  call @rt_print_f64(2)
-  call @rt_print_f64(3)
-  call @rt_print_f64(1024)
+  call @rt_print_f64(1.0)
+  call @rt_print_f64(2.0)
+  call @rt_print_f64(3.0)
+  call @rt_print_f64(1024.0)
   call @rt_print_f64(0.0)
-  call @rt_print_f64(1)
+  call @rt_print_f64(1.0)
   ret 0
 }

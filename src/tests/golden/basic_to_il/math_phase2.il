@@ -68,7 +68,7 @@ L20:
   br L30
 L30:
   .loc 1 3 10
-  %t4 = call @rt_pow_f64_chkdom(2, 10)
+  %t4 = call @rt_pow_f64_chkdom(2.0, 10.0)
   .loc 1 3 10
   call @Viper.Terminal.PrintF64(%t4)
   .loc 1 3 10

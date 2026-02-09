@@ -11,15 +11,37 @@
 
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 // --- Helper: current time in milliseconds ---
 
 static int64_t current_time_ms(void)
 {
+#if defined(_WIN32)
+    static LARGE_INTEGER freq = {0};
+    LARGE_INTEGER counter;
+    if (freq.QuadPart == 0)
+        QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
+#else
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
+#ifdef CLOCK_MONOTONIC
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+        return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
+#endif
+    if (clock_gettime(CLOCK_REALTIME, &ts) == 0)
+        return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
+    return 0;
+#endif
 }
 
 // --- Debouncer ---

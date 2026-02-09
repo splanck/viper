@@ -9,10 +9,18 @@
 
 #include "rt_internal.h"
 
-#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <pthread.h>
 #include <time.h>
+#endif
 
 // --- Node for linked list queue ---
 
@@ -28,9 +36,28 @@ typedef struct
     cq_node *head;
     cq_node *tail;
     int64_t count;
+#if defined(_WIN32)
+    CRITICAL_SECTION mutex;
+    CONDITION_VARIABLE cond;
+#else
     pthread_mutex_t mutex;
     pthread_cond_t cond;
+#endif
 } rt_concqueue_impl;
+
+// --- Platform abstraction macros ---
+
+#if defined(_WIN32)
+#define CQ_LOCK(cq) EnterCriticalSection(&(cq)->mutex)
+#define CQ_UNLOCK(cq) LeaveCriticalSection(&(cq)->mutex)
+#define CQ_SIGNAL(cq) WakeConditionVariable(&(cq)->cond)
+#define CQ_WAIT(cq) SleepConditionVariableCS(&(cq)->cond, &(cq)->mutex, INFINITE)
+#else
+#define CQ_LOCK(cq) pthread_mutex_lock(&(cq)->mutex)
+#define CQ_UNLOCK(cq) pthread_mutex_unlock(&(cq)->mutex)
+#define CQ_SIGNAL(cq) pthread_cond_signal(&(cq)->cond)
+#define CQ_WAIT(cq) pthread_cond_wait(&(cq)->cond, &(cq)->mutex)
+#endif
 
 // --- Internal helpers ---
 
@@ -38,7 +65,7 @@ static void cq_finalizer(void *obj)
 {
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     cq_node *n = cq->head;
     while (n)
     {
@@ -50,10 +77,15 @@ static void cq_finalizer(void *obj)
     cq->head = NULL;
     cq->tail = NULL;
     cq->count = 0;
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_UNLOCK(cq);
 
+#if defined(_WIN32)
+    DeleteCriticalSection(&cq->mutex);
+    // CONDITION_VARIABLE does not need explicit destruction on Windows
+#else
     pthread_mutex_destroy(&cq->mutex);
     pthread_cond_destroy(&cq->cond);
+#endif
 }
 
 // --- Public API ---
@@ -64,8 +96,13 @@ void *rt_concqueue_new(void)
     cq->head = NULL;
     cq->tail = NULL;
     cq->count = 0;
+#if defined(_WIN32)
+    InitializeCriticalSection(&cq->mutex);
+    InitializeConditionVariable(&cq->cond);
+#else
     pthread_mutex_init(&cq->mutex, NULL);
     pthread_cond_init(&cq->cond, NULL);
+#endif
     rt_obj_set_finalizer(cq, cq_finalizer);
     return (void *)cq;
 }
@@ -75,9 +112,9 @@ int64_t rt_concqueue_len(void *obj)
     if (!obj)
         return 0;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     int64_t len = cq->count;
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_UNLOCK(cq);
     return len;
 }
 
@@ -97,15 +134,15 @@ void rt_concqueue_enqueue(void *obj, void *item)
     rt_obj_retain_maybe(item);
     node->next = NULL;
 
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     if (cq->tail)
         cq->tail->next = node;
     else
         cq->head = node;
     cq->tail = node;
     cq->count++;
-    pthread_cond_signal(&cq->cond);
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_SIGNAL(cq);
+    CQ_UNLOCK(cq);
 }
 
 void *rt_concqueue_try_dequeue(void *obj)
@@ -114,10 +151,10 @@ void *rt_concqueue_try_dequeue(void *obj)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     if (!cq->head)
     {
-        pthread_mutex_unlock(&cq->mutex);
+        CQ_UNLOCK(cq);
         return NULL;
     }
 
@@ -126,7 +163,7 @@ void *rt_concqueue_try_dequeue(void *obj)
     if (!cq->head)
         cq->tail = NULL;
     cq->count--;
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_UNLOCK(cq);
 
     void *value = node->value;
     free(node);
@@ -139,16 +176,16 @@ void *rt_concqueue_dequeue(void *obj)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     while (!cq->head)
-        pthread_cond_wait(&cq->cond, &cq->mutex);
+        CQ_WAIT(cq);
 
     cq_node *node = cq->head;
     cq->head = node->next;
     if (!cq->head)
         cq->tail = NULL;
     cq->count--;
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_UNLOCK(cq);
 
     void *value = node->value;
     free(node);
@@ -161,6 +198,18 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
+#if defined(_WIN32)
+    CQ_LOCK(cq);
+    while (!cq->head)
+    {
+        if (!SleepConditionVariableCS(&cq->cond, &cq->mutex, (DWORD)timeout_ms))
+        {
+            // Timeout or error
+            CQ_UNLOCK(cq);
+            return NULL;
+        }
+    }
+#else
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += timeout_ms / 1000;
@@ -171,24 +220,25 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms)
         ts.tv_nsec -= 1000000000L;
     }
 
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     while (!cq->head)
     {
         int rc = pthread_cond_timedwait(&cq->cond, &cq->mutex, &ts);
         if (rc != 0)
         {
             // Timeout or error
-            pthread_mutex_unlock(&cq->mutex);
+            CQ_UNLOCK(cq);
             return NULL;
         }
     }
+#endif
 
     cq_node *node = cq->head;
     cq->head = node->next;
     if (!cq->head)
         cq->tail = NULL;
     cq->count--;
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_UNLOCK(cq);
 
     void *value = node->value;
     free(node);
@@ -201,9 +251,9 @@ void *rt_concqueue_peek(void *obj)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     void *value = cq->head ? cq->head->value : NULL;
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_UNLOCK(cq);
     return value;
 }
 
@@ -213,7 +263,7 @@ void rt_concqueue_clear(void *obj)
         return;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
-    pthread_mutex_lock(&cq->mutex);
+    CQ_LOCK(cq);
     cq_node *n = cq->head;
     while (n)
     {
@@ -225,5 +275,5 @@ void rt_concqueue_clear(void *obj)
     cq->head = NULL;
     cq->tail = NULL;
     cq->count = 0;
-    pthread_mutex_unlock(&cq->mutex);
+    CQ_UNLOCK(cq);
 }

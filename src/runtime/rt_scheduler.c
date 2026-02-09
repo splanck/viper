@@ -47,7 +47,15 @@
 
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 extern void rt_trap(const char *msg);
 
@@ -60,9 +68,9 @@ static int64_t current_time_ms(void)
 {
 #if defined(_WIN32)
     static LARGE_INTEGER freq = {0};
+    LARGE_INTEGER counter;
     if (freq.QuadPart == 0)
         QueryPerformanceFrequency(&freq);
-    LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
     return (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
 #else
