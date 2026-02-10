@@ -261,6 +261,7 @@ void usage()
         << "viper v" << VIPER_VERSION_STR << "\n"
         << "Usage: viper run <target> [options] [-- program-args...]\n"
         << "       viper build <target> [-o output] [options]\n"
+        << "       viper init <project-name> [--lang zia|basic]\n"
         << "\n"
         << "  <target> is a .zia file, .bas file, directory, or viper.project path.\n"
         << "  If omitted, defaults to current directory.\n"
@@ -366,6 +367,10 @@ int main(int argc, char **argv)
     if (cmd == "build")
     {
         return cmdBuild(argc - 2, argv + 2);
+    }
+    if (cmd == "init")
+    {
+        return cmdInit(argc - 2, argv + 2);
     }
     if (cmd == "-run")
     {

@@ -160,6 +160,16 @@ int cmdRun(int argc, char **argv);
 /// @return `0` on success, non-zero on failure.
 int cmdBuild(int argc, char **argv);
 
+/// @brief Handle `viper init` subcommand.
+///
+/// Scaffolds a new Viper project with a viper.project manifest and an
+/// entry-point source file.
+///
+/// @param argc Number of arguments following `init`.
+/// @param argv Array of argument strings.
+/// @return `0` on success, non-zero on failure.
+int cmdInit(int argc, char **argv);
+
 /// @brief Print usage information for viper.
 ///
 /// Called when no or invalid arguments are supplied to `viper` or when a handler

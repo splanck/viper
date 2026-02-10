@@ -351,6 +351,7 @@ set(VIPER_CLI_SOURCES
         tools/viper/cmd_il_opt.cpp
         tools/viper/cmd_codegen_x64.cpp
         tools/viper/cmd_bench.cpp
+        tools/viper/cmd_init.cpp
         tools/viper/cli.cpp
         tools/viper/break_spec.cpp)
 
