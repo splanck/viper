@@ -13,6 +13,7 @@ add_library(viper_codegen_x86_64 STATIC
         CallLowering.cpp
         ISel.cpp
         LowerDiv.cpp
+        LowerOvf.cpp
         LowerILToMIR.cpp
         LoweringRuleTable.cpp
         Lowering.EmitCommon.cpp

@@ -612,6 +612,9 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params)
     win->event_tail = 0;
     win->event_overflow = 0;
 
+    /* Initialize close state */
+    win->close_requested = 0;
+
     /* Initialize input state (all keys/buttons released) */
     memset(win->key_state, 0, sizeof(win->key_state));
     memset(win->mouse_button_state, 0, sizeof(win->mouse_button_state));
@@ -847,6 +850,14 @@ int32_t vgfx_event_overflow_count(vgfx_window_t window)
     int32_t count = window->event_overflow;
     window->event_overflow = 0; /* Reset after reading */
     return count;
+}
+
+int32_t vgfx_close_requested(vgfx_window_t window)
+{
+    if (!window)
+        return 0;
+
+    return window->close_requested;
 }
 
 //===----------------------------------------------------------------------===//

@@ -33,6 +33,14 @@ Build and test:
 ./scripts/build_viper.sh
 ```
 
+Create a new project:
+
+```bash
+viper init my-app          # Zia project (default)
+viper init my-app --lang basic  # BASIC project
+viper run my-app
+```
+
 Run a BASIC program:
 
 ```bash

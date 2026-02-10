@@ -375,18 +375,24 @@ class ModuleAdapter
             // Arithmetic operations
             case il::core::Opcode::Add:
             case il::core::Opcode::FAdd:
-            case il::core::Opcode::IAddOvf:
                 adaptBinaryArithmetic(instr, out, "add");
+                break;
+            case il::core::Opcode::IAddOvf:
+                adaptBinaryArithmetic(instr, out, "iadd.ovf");
                 break;
             case il::core::Opcode::Sub:
             case il::core::Opcode::FSub:
-            case il::core::Opcode::ISubOvf:
                 adaptBinaryArithmetic(instr, out, "sub");
+                break;
+            case il::core::Opcode::ISubOvf:
+                adaptBinaryArithmetic(instr, out, "isub.ovf");
                 break;
             case il::core::Opcode::Mul:
             case il::core::Opcode::FMul:
-            case il::core::Opcode::IMulOvf:
                 adaptBinaryArithmetic(instr, out, "mul");
+                break;
+            case il::core::Opcode::IMulOvf:
+                adaptBinaryArithmetic(instr, out, "imul.ovf");
                 break;
             case il::core::Opcode::FDiv:
                 adaptFDiv(instr, out);

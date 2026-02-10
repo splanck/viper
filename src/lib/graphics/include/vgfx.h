@@ -583,6 +583,15 @@ extern "C"
     /// @return Number of dropped events (0 if none)
     int32_t vgfx_event_overflow_count(vgfx_window_t window);
 
+    /// @brief Check whether the window close button has been pressed.
+    /// @details Returns non-zero if the platform backend received a close
+    ///          request (e.g. WM_CLOSE on Win32, windowShouldClose on macOS,
+    ///          WM_DELETE_WINDOW on X11).  This flag is sticky — once set it
+    ///          remains set for the lifetime of the window.
+    /// @param window Window handle
+    /// @return Non-zero if close was requested, 0 otherwise
+    int32_t vgfx_close_requested(vgfx_window_t window);
+
     //===----------------------------------------------------------------------===//
     // Color Utilities
     //===----------------------------------------------------------------------===//

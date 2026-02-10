@@ -85,8 +85,13 @@ set(IL_COMPILE_FLAGS)
 set(IL_LINK_FLAGS)
 
 if(MSVC)
+  # Global MSVC flags: synchronous PDB writes (prevents parallel build races)
+  # and UTF-8 source encoding. These must apply to ALL targets including
+  # sub-libraries that don't link viper_common_opts.
+  add_compile_options(/FS /utf-8)
+
   # MSVC-specific compiler flags
-  list(APPEND IL_COMPILE_FLAGS /W4 /permissive- /utf-8)
+  list(APPEND IL_COMPILE_FLAGS /W4 /permissive-)
   # Suppress common benign warnings
   list(APPEND IL_COMPILE_FLAGS
     /wd4100  # unreferenced formal parameter (like -Wno-unused-parameter)

@@ -75,6 +75,9 @@ The unified compiler driver provides advanced functionality.
 
 The CLI is organized around primary entry points:
 
+- `viper init <name> [--lang zia|basic]` — Scaffold a new project
+- `viper run <file|dir>` — Run a program or project
+- `viper build <file> [-o out.il]` — Compile to IL
 - `viper -run <file.il>` — Execute an IL module
 - `viper front zia -emit-il <file.zia>` — Lower Zia to IL
 - `viper front zia -run <file.zia>` — Compile and execute Zia
@@ -83,6 +86,28 @@ The CLI is organized around primary entry points:
 - `viper il-opt <in.il> -o <out.il>` — Run optimization passes
 - `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code
 - `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
+
+### viper init
+
+Scaffold a new Viper project.
+
+```bash
+viper init <project-name> [--lang zia|basic]
+```
+
+| Option          | Description                        | Default |
+|-----------------|------------------------------------|---------|
+| `--lang zia`    | Create a Zia project               | `zia`   |
+| `--lang basic`  | Create a BASIC project             | —       |
+
+Creates a project directory containing:
+- `viper.project` — Project manifest (name, version, language, entry point)
+- `main.zia` or `main.bas` — Entry-point source file with a hello-world template
+
+```bash
+viper init my-app
+viper run my-app
+```
 
 ### viper -run
 

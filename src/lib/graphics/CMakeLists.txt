@@ -77,6 +77,11 @@ target_include_directories(vipergfx
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# MSVC: force synchronous PDB writes and UTF-8 source encoding
+if (MSVC)
+    target_compile_options(vipergfx PRIVATE /utf-8 /FS)
+endif ()
+
 # Link platform-specific libraries
 target_link_libraries(vipergfx PRIVATE ${VGFX_PLATFORM_LIBS})
 

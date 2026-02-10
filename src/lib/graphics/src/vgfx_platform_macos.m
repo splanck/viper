@@ -323,6 +323,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 
     /* Mark close as requested (can be checked by the application) */
     platform->close_requested = 1;
+    _vgfxWindow->close_requested = 1;
 
     /* Enqueue CLOSE event for the application to handle */
     vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = vgfx_platform_now_ms()};

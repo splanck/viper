@@ -9,6 +9,13 @@ echo Building Viper on Windows
 echo ==========================================
 echo.
 
+REM Clean previous build
+if exist build (
+    echo Removing previous build directory...
+    rmdir /s /q build
+    echo.
+)
+
 REM Configure
 echo Configuring with CMake...
 cmake -S . -B build

@@ -753,6 +753,10 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
         case MOpcode::CQO:
+        // Overflow-checked arithmetic pseudos (expand to include JCC)
+        case MOpcode::ADDOvfrr:
+        case MOpcode::SUBOvfrr:
+        case MOpcode::IMULOvfrr:
         // Parallel copy pseudo (used in phi lowering)
         case MOpcode::PX_COPY:
             return true;

@@ -527,6 +527,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 if ((Atom)event.xclient.data.l[0] == x11->wm_delete_window)
                 {
                     x11->close_requested = 1;
+                    win->close_requested = 1;
 
                     vgfx_event_t vgfx_event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
                     vgfx_internal_enqueue_event(win, &vgfx_event);

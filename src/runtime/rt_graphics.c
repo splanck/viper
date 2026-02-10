@@ -143,8 +143,19 @@ void rt_canvas_flip(void *canvas_ptr)
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
-        vgfx_update(canvas->gfx_win);
+    if (!canvas->gfx_win)
+        return;
+
+    vgfx_update(canvas->gfx_win);
+
+    /* Auto-handle window close — applications don't need to check */
+    if (vgfx_close_requested(canvas->gfx_win))
+    {
+        vgfx_destroy_window(canvas->gfx_win);
+        canvas->gfx_win = NULL;
+        canvas->should_close = 1;
+        exit(0);
+    }
 }
 
 void rt_canvas_clear(void *canvas_ptr, int64_t color)

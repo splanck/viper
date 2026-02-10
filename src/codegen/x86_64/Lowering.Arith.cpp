@@ -127,6 +127,31 @@ void emitCmpExplicit(const ILInstr &instr, MIRBuilder &builder)
     emit.emitCmp(instr, cls, 1);
 }
 
+/// @brief Lower an overflow-checked integer add.
+/// @details Emits the ADDOvfrr pseudo-op which the post-lowering pass will
+///          expand into ADD + JO (trap on overflow).
+void emitAddOvf(const ILInstr &instr, MIRBuilder &builder)
+{
+    EmitCommon emit(builder);
+    emit.emitBinary(instr, MOpcode::ADDOvfrr, MOpcode::ADDOvfrr, RegClass::GPR, false);
+}
+
+/// @brief Lower an overflow-checked integer subtract.
+/// @details Emits the SUBOvfrr pseudo-op.
+void emitSubOvf(const ILInstr &instr, MIRBuilder &builder)
+{
+    EmitCommon emit(builder);
+    emit.emitBinary(instr, MOpcode::SUBOvfrr, MOpcode::SUBOvfrr, RegClass::GPR, false);
+}
+
+/// @brief Lower an overflow-checked integer multiply.
+/// @details Emits the IMULOvfrr pseudo-op.
+void emitMulOvf(const ILInstr &instr, MIRBuilder &builder)
+{
+    EmitCommon emit(builder);
+    emit.emitBinary(instr, MOpcode::IMULOvfrr, MOpcode::IMULOvfrr, RegClass::GPR, false);
+}
+
 void emitDivFamily(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon(builder).emitDivRem(instr, instr.opcode);

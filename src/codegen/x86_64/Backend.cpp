@@ -50,6 +50,10 @@ namespace viper::codegen::x64
 ///          facade can invoke the pass without introducing additional headers.
 void lowerSignedDivRem(MFunction &fn);
 
+/// @brief Lower overflow-checked arithmetic pseudos into guarded sequences.
+/// @details Declared here and implemented in @ref LowerOvf.cpp.
+void lowerOverflowOps(MFunction &fn);
+
 namespace
 {
 
@@ -152,6 +156,7 @@ void runFunctionPipeline(const ILFunction &ilFunc,
     isel.lowerSelect(machineFunc);
 
     lowerSignedDivRem(machineFunc);
+    lowerOverflowOps(machineFunc);
 
     const AllocationResult allocResult = allocate(machineFunc, target);
 

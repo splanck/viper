@@ -163,8 +163,8 @@ struct OpFmt
 // Include the generated OpFmt table
 #include "generated/OpFmtTable.inc"
 
-/// @brief Number of MOpcode values (MOVrr=0 to MOVSDmr=51, plus 1).
-constexpr std::size_t kMOpcodeCount = 52;
+/// @brief Number of MOpcode values (MOVrr=0 to IMULOvfrr=54, plus 1).
+constexpr std::size_t kMOpcodeCount = 55;
 
 /// @brief Build a compile-time lookup table mapping MOpcode -> index in kOpFmt.
 /// @details Returns kOpFmt.size() (invalid index) for opcodes not in the table.
@@ -1105,6 +1105,10 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
             return "p";
         case 11:
             return "np";
+        case 12:
+            return "o";
+        case 13:
+            return "no";
         default:
             assert(false && "unknown condition code in conditionSuffix");
             return "e";

@@ -700,10 +700,31 @@ class LinearAllocator
 
     uint16_t selectFurthestVictim(RegClass cls)
     {
-        // TEMPORARILY DISABLED: FEP heuristic has bugs causing crashes in complex programs.
-        // Fall back to LRU which is conservative but correct.
-        // TODO: Debug and re-enable FEP for better performance.
-        return selectLRUVictim(cls);
+        auto &states = (cls == RegClass::GPR) ? gprStates_ : fprStates_;
+        uint16_t victim = UINT16_MAX;
+        unsigned furthestDist = 0;
+
+        for (auto &kv : states)
+        {
+            if (!kv.second.hasPhys)
+                continue;
+
+            unsigned dist = getNextUseDistance(kv.first, cls);
+            // Prefer spilling vregs that are never used again (UINT_MAX distance),
+            // then those used furthest in the future.
+            if (dist > furthestDist)
+            {
+                furthestDist = dist;
+                victim = kv.first;
+            }
+        }
+
+        // If no FEP candidate found (shouldn't happen if there are active vregs),
+        // fall back to LRU.
+        if (victim == UINT16_MAX)
+            return selectLRUVictim(cls);
+
+        return victim;
     }
 
     void maybeSpillForPressure(RegClass cls, std::vector<MInstr> &prefix)

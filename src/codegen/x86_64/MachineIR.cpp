@@ -146,6 +146,12 @@ namespace
             return "MOVUPSrm";
         case MOpcode::MOVUPSmr:
             return "MOVUPSmr";
+        case MOpcode::ADDOvfrr:
+            return "ADDOvfrr";
+        case MOpcode::SUBOvfrr:
+            return "SUBOvfrr";
+        case MOpcode::IMULOvfrr:
+            return "IMULOvfrr";
     }
     return "<unknown>";
 }

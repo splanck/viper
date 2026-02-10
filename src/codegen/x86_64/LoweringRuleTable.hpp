@@ -97,6 +97,15 @@ void emitSub(const ILInstr &instr, MIRBuilder &builder);
 /// @param builder The MIR builder to append instructions to.
 void emitMul(const ILInstr &instr, MIRBuilder &builder);
 
+/// @brief Emits overflow-checked integer addition pseudo-op.
+void emitAddOvf(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits overflow-checked integer subtraction pseudo-op.
+void emitSubOvf(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits overflow-checked integer multiplication pseudo-op.
+void emitMulOvf(const ILInstr &instr, MIRBuilder &builder);
+
 /// @brief Emits x86-64 MIR for IL `fdiv` instruction (floating-point division).
 ///
 /// Generates a DIVSD (divide scalar double) instruction for 64-bit floating-point
@@ -601,7 +610,7 @@ struct RuleSpec
 ///
 /// @see lookupRuleSpec() to find a rule for an instruction
 /// @see matchesRuleSpec() for the rule matching implementation
-inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 39>{
+inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 42>{
     // === Arithmetic Operations ===
     RuleSpec{"add",
              OperandShape{2U,
@@ -636,6 +645,40 @@ inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 39>{
              RuleFlags::None,
              &emitMul,
              "mul"},
+    // === Overflow-Checked Arithmetic ===
+    RuleSpec{"iadd.ovf",
+             OperandShape{2U,
+                          2U,
+                          2U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitAddOvf,
+             "iadd.ovf"},
+    RuleSpec{"isub.ovf",
+             OperandShape{2U,
+                          2U,
+                          2U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitSubOvf,
+             "isub.ovf"},
+    RuleSpec{"imul.ovf",
+             OperandShape{2U,
+                          2U,
+                          2U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitMulOvf,
+             "imul.ovf"},
     RuleSpec{"fdiv",
              OperandShape{2U,
                           2U,

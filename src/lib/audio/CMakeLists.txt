@@ -79,6 +79,11 @@ target_include_directories(viperaud
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# MSVC: force synchronous PDB writes and UTF-8 source encoding
+if (MSVC)
+    target_compile_options(viperaud PRIVATE /utf-8 /FS)
+endif ()
+
 # Link platform-specific libraries
 target_link_libraries(viperaud PRIVATE ${VAUD_PLATFORM_LIBS})
 

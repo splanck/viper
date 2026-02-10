@@ -784,7 +784,9 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
 
         case MOpcode::StrRegFpImm:
         case MOpcode::StrFprFpImm:
-            // str src, [fp, #imm]
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprSpImm:
+            // str src, [fp/sp, #imm] — src is a use, not a def
             return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
 
         case MOpcode::StrRegBaseImm:
@@ -858,6 +860,11 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::AddFpImm:
             // add dst, fp, imm
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(false, false);
+
+        case MOpcode::SubSpImm:
+        case MOpcode::AddSpImm:
+            // sub/add sp, sp, imm — no register operands to classify
+            return {false, false};
 
         default:
             // Conservative: assume first operand is def, rest are uses
@@ -977,27 +984,12 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         }
 
         // For other instructions, propagate copies in source operands
-        // and invalidate copy info for defined registers
+        // and invalidate copy info for defined registers.
+        // IMPORTANT: Propagate uses BEFORE invalidating defs so that
+        // read-modify-write instructions (e.g. add x0, x0, #5) still
+        // see the copy info for the input operand.
 
-        // First pass: collect definitions to invalidate
-        for (std::size_t i = 0; i < instr.ops.size(); ++i)
-        {
-            const auto &op = instr.ops[i];
-            if (!isPhysReg(op))
-                continue;
-
-            auto [isUse, isDef] = classifyOperand(instr, i);
-            if (isDef)
-            {
-                // This register is redefined, invalidate its copy info
-                // and all copies that depend on it
-                uint32_t key = regKey(op);
-                invalidateDependents(key);
-                copyOrigin.erase(key);
-            }
-        }
-
-        // Second pass: propagate copies in uses
+        // First pass: propagate copies in uses
         for (std::size_t i = 0; i < instr.ops.size(); ++i)
         {
             auto &op = instr.ops[i];
@@ -1015,6 +1007,24 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
                     op = it->second;
                     ++propagated;
                 }
+            }
+        }
+
+        // Second pass: invalidate definitions
+        for (std::size_t i = 0; i < instr.ops.size(); ++i)
+        {
+            const auto &op = instr.ops[i];
+            if (!isPhysReg(op))
+                continue;
+
+            auto [isUse, isDef] = classifyOperand(instr, i);
+            if (isDef)
+            {
+                // This register is redefined, invalidate its copy info
+                // and all copies that depend on it
+                uint32_t key = regKey(op);
+                invalidateDependents(key);
+                copyOrigin.erase(key);
             }
         }
     }
@@ -1735,8 +1745,7 @@ PeepholeStats runPeephole(MFunction &fn)
         }
 
         // Pass 1.5: Copy propagation - replace uses with original sources
-        // TODO: Disabled pending investigation of correctness issues
-        // propagateCopies(instrs, stats);
+        propagateCopies(instrs, stats);
 
         // Pass 1.6: CBZ/CBNZ fusion (cmp #0 + b.eq/ne → cbz/cbnz)
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)

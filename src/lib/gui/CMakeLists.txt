@@ -109,6 +109,8 @@ if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
             -Wextra
             -Wno-unused-parameter
     )
+elseif (MSVC)
+    target_compile_options(vipergui PRIVATE /utf-8 /FS)
 endif ()
 
 # Tests

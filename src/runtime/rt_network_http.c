@@ -428,7 +428,7 @@ static char *build_request(rt_http_req_t *req)
 
     // Host header
     char host_header[300];
-    if (req->url.port != 80)
+    if (req->url.port != 80 && req->url.port != 443)
         snprintf(host_header, sizeof(host_header), "Host: %s:%d\r\n", req->url.host, req->url.port);
     else
         snprintf(host_header, sizeof(host_header), "Host: %s\r\n", req->url.host);

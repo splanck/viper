@@ -45,6 +45,47 @@ This should display the Viper version and IL version without errors.
 
 ---
 
+## Create a New Project
+
+Use `viper init` to scaffold a new project:
+
+```sh
+viper init my-app
+```
+
+This creates a project directory with a manifest and entry-point source file:
+
+```
+my-app/
+  viper.project    # Project manifest (name, version, language, entry point)
+  main.zia         # Entry-point source file
+```
+
+Run the new project:
+
+```sh
+viper run my-app
+```
+
+### Options
+
+| Option          | Description                        | Default |
+|-----------------|------------------------------------|---------|
+| `--lang zia`    | Create a Zia project               | `zia`   |
+| `--lang basic`  | Create a BASIC project             | —       |
+
+### Examples
+
+```sh
+# Create a Zia project (default)
+viper init my-app
+
+# Create a BASIC project
+viper init calculator --lang basic
+```
+
+---
+
 ## Quick Start: Run Your First Program
 
 ### BASIC
@@ -116,6 +157,7 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**,
 | Tool        | Purpose                                   | Example                     |
 |-------------|-------------------------------------------|-----------------------------|
 | `viper`     | Unified compiler driver — run and build   | `viper run program.zia`     |
+| `viper init`| Scaffold a new project                    | `viper init my-app`         |
 | `vbasic`    | Run/compile BASIC programs                | `vbasic script.bas`         |
 | `zia`       | Run/compile Zia programs                  | `zia program.zia`           |
 | `ilrun`     | Execute IL programs                       | `ilrun program.il`          |

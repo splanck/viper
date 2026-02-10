@@ -260,6 +260,9 @@ class BytecodeVM
     DebugCallback debugCallback_;
     std::unordered_map<std::string, std::set<uint32_t>> breakpoints_; // funcName -> set of PCs
 
+    // Global variable storage - one BCSlot per global, indexed by global index
+    std::vector<BCSlot> globals_;
+
     // String literal cache - stores proper rt_string objects for string constants
     // The cache is indexed by string pool index and stores rt_string pointers
     // that the runtime expects (not raw C strings)

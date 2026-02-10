@@ -134,6 +134,23 @@ void BytecodeVM::load(const BytecodeModule *module)
     sp_ = valueStack_.data();
     fp_ = nullptr;
 
+    // Initialize global variable storage
+    globals_.clear();
+    if (module_)
+    {
+        globals_.resize(module_->globals.size());
+        for (size_t i = 0; i < module_->globals.size(); ++i)
+        {
+            globals_[i].i64 = 0; // Zero-initialize
+            const auto &gi = module_->globals[i];
+            if (!gi.initData.empty())
+            {
+                size_t copySize = std::min<size_t>(gi.initData.size(), sizeof(BCSlot));
+                std::memcpy(&globals_[i], gi.initData.data(), copySize);
+            }
+        }
+    }
+
     // Initialize string cache with proper rt_string objects
     initStringCache();
 }
@@ -1257,16 +1274,27 @@ void BytecodeVM::run()
             //==================================================================
             case BCOpcode::LOAD_GLOBAL:
             {
-                // TODO: Implement global variable storage
-                sp_->ptr = nullptr;
-                sp_++;
+                uint16_t idx = decodeArg16(instr);
+                if (idx < globals_.size())
+                {
+                    *sp_++ = globals_[idx];
+                }
+                else
+                {
+                    sp_->i64 = 0;
+                    sp_++;
+                }
                 break;
             }
 
             case BCOpcode::STORE_GLOBAL:
             {
-                // TODO: Implement global variable storage
-                sp_--;
+                uint16_t idx = decodeArg16(instr);
+                BCSlot val = *--sp_;
+                if (idx < globals_.size())
+                {
+                    globals_[idx] = val;
+                }
                 break;
             }
 
@@ -2055,13 +2083,30 @@ L_LOAD_ONE:
     DISPATCH();
 
 L_LOAD_GLOBAL:
-    sp->ptr = nullptr; // TODO
+{
+    uint16_t gIdx = decodeArg16(instr);
+    if (gIdx < globals_.size())
+    {
+        *sp = globals_[gIdx];
+    }
+    else
+    {
+        sp->i64 = 0;
+    }
     sp++;
     DISPATCH();
+}
 
 L_STORE_GLOBAL:
-    sp--; // TODO
+{
+    sp--;
+    uint16_t gIdx = decodeArg16(instr);
+    if (gIdx < globals_.size())
+    {
+        globals_[gIdx] = *sp;
+    }
     DISPATCH();
+}
 
     // Integer Arithmetic
 L_ADD_I64:

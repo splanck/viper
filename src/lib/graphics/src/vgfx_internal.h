@@ -197,6 +197,15 @@ struct vgfx_window
     int64_t next_frame_deadline;
 
     //===------------------------------------------------------------------===//
+    // Close State
+    //===------------------------------------------------------------------===//
+
+    /// @brief Flag set by platform backends when the user clicks the window
+    ///        close button (or equivalent).  Checked by the runtime to
+    ///        auto-terminate without requiring application-level handling.
+    int32_t close_requested;
+
+    //===------------------------------------------------------------------===//
     // Platform-Specific Data
     //===------------------------------------------------------------------===//
 

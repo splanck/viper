@@ -209,6 +209,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             {
                 w32->close_requested = 1;
             }
+            win->close_requested = 1;
 
             vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);

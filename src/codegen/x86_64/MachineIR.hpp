@@ -134,7 +134,10 @@ enum class MOpcode
     MOVSDrm,   ///< Move scalar double register to memory.
     MOVSDmr,   ///< Move scalar double memory to register.
     MOVUPSrm,  ///< Store 128-bit XMM to memory (unaligned).
-    MOVUPSmr   ///< Load 128-bit XMM from memory (unaligned).
+    MOVUPSmr,  ///< Load 128-bit XMM from memory (unaligned).
+    ADDOvfrr,  ///< Signed addition pseudo with overflow check (dest, lhs, rhs).
+    SUBOvfrr,  ///< Signed subtraction pseudo with overflow check (dest, lhs, rhs).
+    IMULOvfrr  ///< Signed multiplication pseudo with overflow check (dest, lhs, rhs).
 };
 
 /// \brief Machine instruction: opcode with ordered operands.
