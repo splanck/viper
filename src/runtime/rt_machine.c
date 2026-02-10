@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 // Define feature test macros before any includes
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -32,7 +32,10 @@
 #ifdef _WIN32
 #include <windows.h>
 #elif defined(__viperdos__)
-// TODO: ViperDOS - include system info headers when available
+// ViperDOS provides POSIX-compatible system info APIs.
+#include <sys/types.h>
+#include <sys/utsname.h>
+#include <unistd.h>
 #else
 #include <pwd.h>
 #include <sys/types.h>
@@ -152,11 +155,8 @@ rt_string rt_machine_os_ver(void)
     }
     return make_str("unknown");
 
-#elif defined(__viperdos__)
-    // TODO: ViperDOS - implement version query syscall
-    return make_str("0.2.7");
-
 #else
+    // Unix and ViperDOS: use uname.
     struct utsname uts;
     if (uname(&uts) == 0)
     {

@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,8 +82,7 @@ typedef SSIZE_T ssize_t;
 // mode_t for Windows (off_t is defined in sys/types.h as _off_t)
 typedef unsigned short mode_t;
 #elif defined(__viperdos__)
-// TODO: ViperDOS - include file I/O headers when available
-// ViperDOS has POSIX-like file I/O syscalls
+// ViperDOS provides POSIX-compatible file I/O via libc.
 #include <sys/stat.h>
 #include <sys/types.h>
 typedef long ssize_t;
@@ -320,13 +320,13 @@ void rt_file_init(RtFile *file)
 /// @param mode BASIC mode string (e.g., "r", "w", "a").
 /// @param out_err Optional error destination.
 /// @return `true` on success; otherwise `false` with @p out_err populated.
-bool rt_file_open(
+int8_t rt_file_open(
     RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err)
 {
     if (!file || !path || !mode)
     {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
-        return false;
+        return 0;
     }
 
     int flags = 0;
@@ -334,7 +334,7 @@ bool rt_file_open(
     {
         file->fd = -1;
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
-        return false;
+        return 0;
     }
 
     mode_t perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
@@ -345,12 +345,12 @@ bool rt_file_open(
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
         file->fd = -1;
-        return false;
+        return 0;
     }
 
     file->fd = fd;
     rt_file_set_ok(out_err);
-    return true;
+    return 1;
 }
 
 /// @brief Close an open runtime file handle.
@@ -359,17 +359,17 @@ bool rt_file_open(
 /// @param file Handle to close.
 /// @param out_err Optional error destination.
 /// @return `true` when the handle is closed or already closed; otherwise `false`.
-bool rt_file_close(RtFile *file, RtError *out_err)
+int8_t rt_file_close(RtFile *file, RtError *out_err)
 {
     if (!file)
     {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
-        return false;
+        return 0;
     }
     if (file->fd < 0)
     {
         rt_file_set_ok(out_err);
-        return true;
+        return 1;
     }
 
     errno = 0;
@@ -378,12 +378,12 @@ bool rt_file_close(RtFile *file, RtError *out_err)
     {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
-        return false;
+        return 0;
     }
 
     file->fd = -1;
     rt_file_set_ok(out_err);
-    return true;
+    return 1;
 }
 
 /// @brief Read a single byte from a file descriptor.
@@ -394,15 +394,15 @@ bool rt_file_close(RtFile *file, RtError *out_err)
 /// @param out_byte Destination for the read byte.
 /// @param out_err Optional error destination.
 /// @return `true` when a byte was read; `false` on EOF or error.
-bool rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
+int8_t rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
 {
     if (!out_byte)
     {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
-        return false;
+        return 0;
     }
     if (!rt_file_check_fd(file, out_err))
-        return false;
+        return 0;
 
     for (;;)
     {
@@ -413,19 +413,19 @@ bool rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
         {
             *out_byte = byte;
             rt_file_set_ok(out_err);
-            return true;
+            return 1;
         }
         if (n == 0)
         {
             rt_file_set_error(out_err, Err_EOF, 0);
-            return false;
+            return 0;
         }
         if (n < 0 && errno == EINTR)
             continue;
 
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
-        return false;
+        return 0;
     }
 }
 
@@ -438,17 +438,17 @@ bool rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
 /// @param out_line Receives the allocated runtime string on success.
 /// @param out_err Optional error destination.
 /// @return `true` on success; `false` on EOF or error.
-bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
+int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
 {
     if (out_line)
         *out_line = NULL;
     if (!out_line)
     {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
-        return false;
+        return 0;
     }
     if (!rt_file_check_fd(file, out_err))
-        return false;
+        return 0;
 
     size_t cap = 128;
     size_t len = 0;
@@ -562,15 +562,15 @@ cleanup:
 /// @param origin One of `SEEK_SET`, `SEEK_CUR`, or `SEEK_END`.
 /// @param out_err Optional error destination.
 /// @return `true` on success; otherwise `false`.
-bool rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
+int8_t rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
 {
     if (!rt_file_check_fd(file, out_err))
-        return false;
+        return 0;
 
     if (!rt_file_offset_in_range(offset))
     {
         rt_file_set_error(out_err, Err_InvalidOperation, ERANGE);
-        return false;
+        return 0;
     }
 
     errno = 0;
@@ -580,11 +580,11 @@ bool rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
     {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
-        return false;
+        return 0;
     }
 
     rt_file_set_ok(out_err);
-    return true;
+    return 1;
 }
 
 /// @brief Write a byte buffer to a file descriptor, retrying short writes.
@@ -596,20 +596,20 @@ bool rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
 /// @param len Number of bytes to write.
 /// @param out_err Optional error destination.
 /// @return `true` when all bytes are written; otherwise `false`.
-bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err)
+int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err)
 {
     if (len == 0)
     {
         rt_file_set_ok(out_err);
-        return true;
+        return 1;
     }
     if (!data)
     {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
-        return false;
+        return 0;
     }
     if (!rt_file_check_fd(file, out_err))
-        return false;
+        return 0;
 
     size_t written = 0;
     while (written < len)
@@ -628,16 +628,16 @@ bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_e
                 continue;
             int err = errno ? errno : EIO;
             rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
-            return false;
+            return 0;
         }
         if (n == 0)
         {
             rt_file_set_error(out_err, Err_IOError, EIO);
-            return false;
+            return 0;
         }
         written += (size_t)n;
     }
 
     rt_file_set_ok(out_err);
-    return true;
+    return 1;
 }

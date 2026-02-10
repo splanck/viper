@@ -14,7 +14,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 | `src/bytecode/`        | Bytecode VM: compiler, module format, and high-performance interpreter   |
 | `src/codegen/`         | Native code generation backends (`x86_64/`, `aarch64/`, `common/`)       |
 | `src/frontends/`       | Language frontends: `basic/`, `zia/`, `common/`                    |
-| `src/runtime/`         | C runtime library (strings, arrays, I/O, numeric, OOP)                   |
+| `src/runtime/`         | C runtime library (strings, collections, I/O, math, graphics, audio, input, networking, threading, text, time, crypto, GC, serialization, physics, async) |
 | `src/support/`         | Shared support: diagnostics, arena, source manager, symbols, result      |
 | `src/common/`          | Cross-cutting utils (mangling, integer helpers, process runner)          |
 | `src/parse/`           | Cursor utilities used by frontends (`include/viper/parse/Cursor.h`)      |

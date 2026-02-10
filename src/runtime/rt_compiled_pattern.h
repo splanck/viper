@@ -18,7 +18,6 @@
 #define VIPER_RT_COMPILED_PATTERN_H
 
 #include "rt_string.h"
-#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -48,8 +47,8 @@ extern "C"
     /// @brief Test if this pattern matches anywhere in text.
     /// @param obj CompiledPattern pointer.
     /// @param text Text to search.
-    /// @return true if pattern matches anywhere in text.
-    bool rt_compiled_pattern_is_match(void *obj, rt_string text);
+    /// @return 1 if pattern matches anywhere in text, 0 otherwise.
+    int8_t rt_compiled_pattern_is_match(void *obj, rt_string text);
 
     /// @brief Find first match of this pattern in text.
     /// @param obj CompiledPattern pointer.

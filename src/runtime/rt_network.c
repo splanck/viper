@@ -6,9 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 // Enable multicast support (ip_mreq, IP_ADD_MEMBERSHIP, etc.)
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
 #define _DARWIN_C_SOURCE 1 // macOS: expose BSD extensions
-#define _GNU_SOURCE 1      // Linux: expose ip_mreq
+#define _GNU_SOURCE 1      // Linux/ViperDOS: expose ip_mreq
 #endif
 
 ///
@@ -64,19 +64,28 @@ typedef SOCKET socket_t;
 #define PERM_DENIED WSAEACCES
 
 #elif defined(__viperdos__)
-// TODO: ViperDOS - include network headers when available
-// ViperDOS has BSD-style socket API in kernel/net/
+// ViperDOS provides BSD-style socket APIs via libc.
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 typedef int socket_t;
 #define INVALID_SOCK (-1)
 #define SOCK_ERROR (-1)
-#define CLOSE_SOCKET(s) (-1)  // TODO: ViperDOS - implement close
-#define GET_LAST_ERROR() (-1) // TODO: ViperDOS - implement errno
-#define WOULD_BLOCK (0)
-#define EINPROGRESS_VAL (-1)
-#define CONN_REFUSED (-1)
-#define ADDR_IN_USE (-1)
-#define PERM_DENIED (-1)
+#define CLOSE_SOCKET(s) close(s)
+#define GET_LAST_ERROR() errno
+#define WOULD_BLOCK (errno == EAGAIN || errno == EWOULDBLOCK)
+#define EINPROGRESS_VAL EINPROGRESS
+#define CONN_REFUSED ECONNREFUSED
+#define ADDR_IN_USE EADDRINUSE
+#define PERM_DENIED EACCES
 
 #else
 #include <arpa/inet.h>

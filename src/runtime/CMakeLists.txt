@@ -40,6 +40,7 @@ set(RT_BASE_SOURCES
         rt_args.c
         rt_log.c
         rt_msgbus.c
+        rt_gc.c
 )
 
 set(RT_ARRAY_SOURCES
@@ -66,6 +67,7 @@ set(RT_OOP_SOURCES
 set(RT_COLLECTIONS_SOURCES
         rt_bag.c
         rt_convert_coll.c
+        rt_iter.c
         rt_bitset.c
         rt_deque.c
         rt_list.c
@@ -115,6 +117,7 @@ set(RT_TEXT_SOURCES
         rt_guid.c
         rt_hash.c
         rt_json.c
+        rt_json_stream.c
         rt_xml.c
         rt_yaml.c
         rt_keyderive.c
@@ -136,6 +139,7 @@ set(RT_TEXT_SOURCES
         rt_markdown.c
         rt_jsonpath.c
         rt_html.c
+        rt_serialize.c
 )
 
 set(RT_IO_FS_SOURCES
@@ -176,12 +180,17 @@ set(RT_GRAPHICS_SOURCES
         rt_input.c
         rt_input_pad.c
         rt_inputmgr.c
+        rt_keychord.c
         rt_mat3.c
         rt_mat4.c
         rt_vec2.c
         rt_vec3.c
+        rt_quat.c
+        rt_spline.c
+        rt_physics2d.c
         rt_pixels.c
         rt_sprite.c
+        rt_spritesheet.c
         rt_camera.c
         rt_tilemap.c
         rt_scene.c
@@ -194,7 +203,9 @@ set(RT_AUDIO_SOURCES
 )
 
 set(RT_THREADS_SOURCES
+        rt_async.c
         rt_channel.c
+        rt_concmap.c
         rt_future.c
         rt_monitor.c
         rt_parallel.c

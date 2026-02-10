@@ -132,14 +132,13 @@ void rt_trap_stack_overflow(void)
 
 #elif defined(__viperdos__)
 
-// ViperDOS stack safety implementation
-// TODO: ViperDOS - implement using signal handling or kernel stack guard pages
-// For now, provide a minimal implementation that traps on overflow
+// ViperDOS stack safety implementation.
+// Signal-based guard pages require ViperDOS signal handler trampoline.
+// For now, init is a no-op; overflow traps explicitly.
 
 void rt_init_stack_safety(void)
 {
-    // TODO: ViperDOS - register stack guard handler when kernel support is available
-    // No-op until ViperDOS signal/exception handling is implemented
+    // No-op until ViperDOS signal handler trampoline is available.
 }
 
 void rt_trap_stack_overflow(void)

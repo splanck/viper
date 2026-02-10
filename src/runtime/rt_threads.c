@@ -121,65 +121,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#if defined(__viperdos__)
-
-// TODO: ViperDOS - implement threading using ViperDOS task/thread syscalls
-
-void *rt_thread_start(void *entry, void *arg)
-{
-    (void)entry;
-    (void)arg;
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-    return NULL;
-}
-
-void rt_thread_join(void *thread)
-{
-    (void)thread;
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-}
-
-int8_t rt_thread_try_join(void *thread)
-{
-    (void)thread;
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-    return 0;
-}
-
-int8_t rt_thread_join_for(void *thread, int64_t ms)
-{
-    (void)thread;
-    (void)ms;
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-    return 0;
-}
-
-int64_t rt_thread_get_id(void *thread)
-{
-    (void)thread;
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-    return 0;
-}
-
-int8_t rt_thread_get_is_alive(void *thread)
-{
-    (void)thread;
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-    return 0;
-}
-
-void rt_thread_sleep(int64_t ms)
-{
-    (void)ms;
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-}
-
-void rt_thread_yield(void)
-{
-    rt_trap("Viper.Threads.Thread: unsupported on this platform");
-}
-
-#elif defined(_WIN32)
+#if defined(_WIN32)
 
 //===----------------------------------------------------------------------===//
 // Windows Threading Implementation

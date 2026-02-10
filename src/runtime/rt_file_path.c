@@ -75,12 +75,12 @@ const char *rt_file_mode_string(int32_t mode)
 ///                  must be non-null or the function fails.
 /// @return `true` when the mode string is valid and the flags were written;
 ///         otherwise `false`.
-bool rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out)
+int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out)
 {
     if (flags_out)
         *flags_out = 0;
     if (!mode || !mode[0] || !flags_out)
-        return false;
+        return 0;
 
     int flags = 0;
     switch (mode[0])
@@ -95,21 +95,21 @@ bool rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out)
             flags = O_WRONLY | O_CREAT | O_APPEND;
             break;
         default:
-            return false;
+            return 0;
     }
 
-    bool plus = false;
-    bool binary = false;
+    int plus = 0;
+    int binary = 0;
     for (const char *p = mode + 1; *p; ++p)
     {
         if (*p == '+')
-            plus = true;
+            plus = 1;
         else if (*p == 'b')
-            binary = true;
+            binary = 1;
         else if (*p == 't')
             continue;
         else
-            return false;
+            return 0;
     }
 
     if (plus)
@@ -134,7 +134,7 @@ bool rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out)
     flags |= O_CLOEXEC;
 
     *flags_out = flags;
-    return true;
+    return 1;
 }
 
 /// @brief Obtain a borrowed C string view from a @ref ViperString path value.
@@ -145,15 +145,15 @@ bool rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out)
 /// @param path Runtime string handle describing a filesystem path.
 /// @param out_path Optional output pointer updated to the borrowed C string.
 /// @return `true` when the path handle is valid, otherwise `false`.
-bool rt_file_path_from_vstr(const ViperString *path, const char **out_path)
+int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path)
 {
     if (out_path)
         *out_path = NULL;
     if (!path || !path->data)
-        return false;
+        return 0;
     if (out_path)
         *out_path = path->data;
-    return true;
+    return 1;
 }
 
 /// @brief Provide a byte-oriented view over a @ref ViperString buffer.

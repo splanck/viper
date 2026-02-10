@@ -97,39 +97,39 @@ static void test_enabled()
 
     // At DEBUG level, all levels are enabled
     rt_log_set_level(rt_log_level_debug());
-    assert(rt_log_enabled(rt_log_level_debug()) == true);
-    assert(rt_log_enabled(rt_log_level_info()) == true);
-    assert(rt_log_enabled(rt_log_level_warn()) == true);
-    assert(rt_log_enabled(rt_log_level_error()) == true);
+    assert(rt_log_enabled(rt_log_level_debug()) == 1);
+    assert(rt_log_enabled(rt_log_level_info()) == 1);
+    assert(rt_log_enabled(rt_log_level_warn()) == 1);
+    assert(rt_log_enabled(rt_log_level_error()) == 1);
 
     // At INFO level, DEBUG is disabled
     rt_log_set_level(rt_log_level_info());
-    assert(rt_log_enabled(rt_log_level_debug()) == false);
-    assert(rt_log_enabled(rt_log_level_info()) == true);
-    assert(rt_log_enabled(rt_log_level_warn()) == true);
-    assert(rt_log_enabled(rt_log_level_error()) == true);
+    assert(rt_log_enabled(rt_log_level_debug()) == 0);
+    assert(rt_log_enabled(rt_log_level_info()) == 1);
+    assert(rt_log_enabled(rt_log_level_warn()) == 1);
+    assert(rt_log_enabled(rt_log_level_error()) == 1);
 
     // At WARN level, DEBUG and INFO are disabled
     rt_log_set_level(rt_log_level_warn());
-    assert(rt_log_enabled(rt_log_level_debug()) == false);
-    assert(rt_log_enabled(rt_log_level_info()) == false);
-    assert(rt_log_enabled(rt_log_level_warn()) == true);
-    assert(rt_log_enabled(rt_log_level_error()) == true);
+    assert(rt_log_enabled(rt_log_level_debug()) == 0);
+    assert(rt_log_enabled(rt_log_level_info()) == 0);
+    assert(rt_log_enabled(rt_log_level_warn()) == 1);
+    assert(rt_log_enabled(rt_log_level_error()) == 1);
 
     // At ERROR level, only ERROR is enabled
     rt_log_set_level(rt_log_level_error());
-    assert(rt_log_enabled(rt_log_level_debug()) == false);
-    assert(rt_log_enabled(rt_log_level_info()) == false);
-    assert(rt_log_enabled(rt_log_level_warn()) == false);
-    assert(rt_log_enabled(rt_log_level_error()) == true);
+    assert(rt_log_enabled(rt_log_level_debug()) == 0);
+    assert(rt_log_enabled(rt_log_level_info()) == 0);
+    assert(rt_log_enabled(rt_log_level_warn()) == 0);
+    assert(rt_log_enabled(rt_log_level_error()) == 1);
 
     // At OFF level, nothing is enabled
     rt_log_set_level(rt_log_level_off());
-    assert(rt_log_enabled(rt_log_level_debug()) == false);
-    assert(rt_log_enabled(rt_log_level_info()) == false);
-    assert(rt_log_enabled(rt_log_level_warn()) == false);
-    assert(rt_log_enabled(rt_log_level_error()) == false);
-    assert(rt_log_enabled(rt_log_level_off()) == false);
+    assert(rt_log_enabled(rt_log_level_debug()) == 0);
+    assert(rt_log_enabled(rt_log_level_info()) == 0);
+    assert(rt_log_enabled(rt_log_level_warn()) == 0);
+    assert(rt_log_enabled(rt_log_level_error()) == 0);
+    assert(rt_log_enabled(rt_log_level_off()) == 0);
 
     // Restore original level
     rt_log_set_level(original);

@@ -98,8 +98,9 @@
 #define PATH_MAX MAX_PATH
 #endif
 #elif defined(__viperdos__)
-// TODO: ViperDOS - include appropriate headers when available
-// ViperDOS uses POSIX-like APIs
+// ViperDOS provides POSIX-compatible directory APIs via libc.
+#include <dirent.h>
+#include <unistd.h>
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -164,8 +165,7 @@ int64_t rt_dir_exists(rt_string path)
 #ifdef _WIN32
     return (st.st_mode & _S_IFDIR) != 0;
 #elif defined(__viperdos__)
-    // TODO: ViperDOS - check S_ISDIR equivalent
-    return (st.st_mode & 0040000) != 0; // S_IFDIR = 0040000
+    return S_ISDIR(st.st_mode);
 #else
     return S_ISDIR(st.st_mode);
 #endif
@@ -229,8 +229,10 @@ void rt_dir_make(rt_string path)
         rt_trap("Dir.Make: failed to create directory");
     }
 #elif defined(__viperdos__)
-    // TODO: ViperDOS - implement mkdir syscall wrapper
-    rt_trap("Dir.Make: not implemented on ViperDOS");
+    if (mkdir(cpath, 0755) != 0 && errno != EEXIST)
+    {
+        rt_trap("Dir.Make: failed to create directory");
+    }
 #else
     if (mkdir(cpath, 0755) != 0 && errno != EEXIST)
     {
@@ -335,10 +337,12 @@ void rt_dir_make_all(rt_string path)
                     return;
                 }
 #elif defined(__viperdos__)
-                // TODO: ViperDOS - implement mkdir syscall wrapper
-                free(tmp);
-                rt_trap("Dir.MakeAll: not implemented on ViperDOS");
-                return;
+                if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
+                {
+                    free(tmp);
+                    rt_trap("Dir.MakeAll: failed to create intermediate directory");
+                    return;
+                }
 #else
                 if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
                 {
@@ -365,10 +369,12 @@ void rt_dir_make_all(rt_string path)
             return;
         }
 #elif defined(__viperdos__)
-        // TODO: ViperDOS - implement mkdir syscall wrapper
-        free(tmp);
-        rt_trap("Dir.MakeAll: not implemented on ViperDOS");
-        return;
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
+        {
+            free(tmp);
+            rt_trap("Dir.MakeAll: failed to create directory");
+            return;
+        }
 #else
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
         {
@@ -437,8 +443,10 @@ void rt_dir_remove(rt_string path)
         rt_trap("Dir.Remove: failed to remove directory");
     }
 #elif defined(__viperdos__)
-    // TODO: ViperDOS - implement rmdir syscall wrapper
-    rt_trap("Dir.Remove: not implemented on ViperDOS");
+    if (rmdir(cpath) != 0)
+    {
+        rt_trap("Dir.Remove: failed to remove directory");
+    }
 #else
     if (rmdir(cpath) != 0)
     {
@@ -461,8 +469,7 @@ static void delete_file(const char *path)
 #ifdef _WIN32
     (void)_unlink(path);
 #elif defined(__viperdos__)
-    // TODO: ViperDOS - implement unlink syscall wrapper
-    (void)path;
+    (void)unlink(path);
 #else
     (void)unlink(path);
 #endif
@@ -568,15 +575,16 @@ void rt_dir_remove_all(rt_string path)
     FindClose(h);
     _rmdir(cpath);
 #elif defined(__viperdos__)
-    // TODO: ViperDOS - implement directory enumeration (opendir/readdir equivalent)
-    // For now, just trap as not implemented
-    (void)cpath;
-    rt_trap("Dir.RemoveAll: not implemented on ViperDOS");
+    // ViperDOS: Use POSIX directory APIs from libc (same as Unix).
+    // Falls through to the shared Unix implementation.
 #else
+    // Shared Unix/ViperDOS implementation.
+#endif
+
+#if !defined(_WIN32)
     DIR *dir = opendir(cpath);
     if (!dir)
     {
-        // Try to remove anyway
         rmdir(cpath);
         return;
     }
@@ -593,7 +601,6 @@ void rt_dir_remove_all(rt_string path)
         struct stat st;
         if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode))
         {
-            // Recurse into subdirectory
             rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
             rt_dir_remove_all(sub);
             rt_string_unref(sub);
@@ -689,10 +696,8 @@ void *rt_dir_list(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperdos__)
-    // TODO: ViperDOS - implement directory listing (opendir/readdir equivalent)
-    (void)cpath;
 #else
+    // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         return result;
@@ -791,8 +796,7 @@ void *rt_dir_entries_seq(rt_string path)
     if ((st.st_mode & _S_IFDIR) == 0)
         rt_trap("Viper.IO.Dir.Entries: directory not found");
 #elif defined(__viperdos__)
-    // TODO: ViperDOS - check S_ISDIR equivalent
-    if ((st.st_mode & 0040000) == 0)
+    if (!S_ISDIR(st.st_mode))
         rt_trap("Viper.IO.Dir.Entries: directory not found");
 #else
     if (!S_ISDIR(st.st_mode))
@@ -825,10 +829,8 @@ void *rt_dir_entries_seq(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperdos__)
-    // TODO: ViperDOS - implement directory enumeration
-    (void)cpath;
 #else
+    // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         rt_trap("Viper.IO.Dir.Entries: failed to open directory");
@@ -925,10 +927,8 @@ void *rt_dir_files(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperdos__)
-    // TODO: ViperDOS - implement directory file listing
-    (void)cpath;
 #else
+    // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         return result;
@@ -939,7 +939,6 @@ void *rt_dir_files(rt_string path)
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
-        // Use stat to determine if entry is a regular file
         char full[PATH_MAX];
         snprintf(full, PATH_MAX, "%s/%s", cpath, ent->d_name);
         struct stat st;
@@ -1057,10 +1056,8 @@ void *rt_dir_dirs(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperdos__)
-    // TODO: ViperDOS - implement directory subdirectory listing
-    (void)cpath;
 #else
+    // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         return result;
@@ -1071,7 +1068,6 @@ void *rt_dir_dirs(rt_string path)
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
-        // Use stat to determine if entry is a directory
         char full[PATH_MAX];
         snprintf(full, PATH_MAX, "%s/%s", cpath, ent->d_name);
         struct stat st;
@@ -1160,11 +1156,8 @@ rt_string rt_dir_current(void)
         rt_trap("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
-#elif defined(__viperdos__)
-    // TODO: ViperDOS - implement getcwd syscall wrapper
-    rt_trap("Dir.Current: not implemented on ViperDOS");
-    return rt_str_empty();
 #else
+    // Unix and ViperDOS: use POSIX getcwd.
     if (getcwd(buffer, PATH_MAX) == NULL)
     {
         rt_trap("Dir.Current: failed to get current directory");
@@ -1236,8 +1229,10 @@ void rt_dir_set_current(rt_string path)
         rt_trap("Dir.SetCurrent: failed to change directory");
     }
 #elif defined(__viperdos__)
-    // TODO: ViperDOS - implement chdir syscall wrapper
-    rt_trap("Dir.SetCurrent: not implemented on ViperDOS");
+    if (chdir(cpath) != 0)
+    {
+        rt_trap("Dir.SetCurrent: failed to change directory");
+    }
 #else
     if (chdir(cpath) != 0)
     {

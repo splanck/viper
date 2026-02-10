@@ -343,7 +343,7 @@ extern "C"
     /// @return True if messages at this level would be output, false otherwise.
     ///
     /// @note Returns false for LEVEL_OFF (4) - that level is never "enabled".
-    bool rt_log_enabled(int64_t level)
+    int8_t rt_log_enabled(int64_t level)
     {
         return level >= g_log_level && level < RT_LOG_OFF;
     }

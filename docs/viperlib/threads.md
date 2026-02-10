@@ -14,6 +14,8 @@
 - [Viper.Threads.RwLock](#viperthreadsrwlock)
 - [Viper.Threads.Promise](#viperthreadspromise)
 - [Viper.Threads.Future](#viperthreadsfuture)
+- [Viper.Threads.Async](#viperthreadsasync)
+- [Viper.Threads.ConcurrentMap](#viperthreadsconcurrentmap)
 - [Viper.Threads.Parallel](#viperthreadsparallel)
 - [Viper.Threads.CancelToken](#viperthreadscanceltoken)
 - [Viper.Threads.Debouncer](#viperthreadsdebouncer)
@@ -1008,6 +1010,66 @@ LOOP WHILE sched.Pending > 0
 - **Game timers:** Schedule game events (spawn, power-up expiry)
 - **Retry scheduling:** Schedule retry attempts with delays
 - **Batch processing:** Accumulate work and process after delay
+
+---
+
+## Viper.Threads.Async
+
+Async task combinators for running operations on background threads and composing their results. Built on
+Future/Promise and the thread pool.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                     | Signature                          | Description                                         |
+|----------------------------|------------------------------------|-----------------------------------------------------|
+| `Run(callback, arg)`       | `Future(Ptr, Ptr)`                 | Run a callback on a background thread               |
+| `WaitAll(futures)`         | `Void(Seq)`                        | Block until all futures in the Seq complete          |
+| `WaitAny(futures)`         | `Integer(Seq)`                     | Block until any future completes; returns its index  |
+| `Map(future, fn, arg)`     | `Future(Future, Ptr, Ptr)`         | Apply a transformation when a future completes       |
+
+### Notes
+
+- All methods are thread-safe.
+- `Run` spawns work on a background thread and returns immediately with a Future.
+- `WaitAll` blocks the calling thread until every future in the Seq has resolved.
+- `Map` chains a transformation: when the input future resolves, `fn` is called with the result.
+
+---
+
+## Viper.Threads.ConcurrentMap
+
+Thread-safe string-keyed hash map for concurrent access from multiple threads.
+
+**Type:** Instance class
+**Constructor:** `Viper.Threads.ConcurrentMap.New()`
+
+### Properties
+
+| Property  | Type    | Description                            |
+|-----------|---------|----------------------------------------|
+| `Len`     | Integer | Number of key-value pairs in the map   |
+| `IsEmpty` | Boolean | Returns true if the map has no entries |
+
+### Methods
+
+| Method            | Signature              | Description                                                |
+|-------------------|------------------------|------------------------------------------------------------|
+| `Set(key, value)` | `Void(String, Object)` | Thread-safe insert or update                               |
+| `Get(key)`        | `Object(String)`       | Thread-safe lookup; returns NULL if not found               |
+| `Has(key)`        | `Boolean(String)`      | Thread-safe existence check                                |
+| `Remove(key)`     | `Boolean(String)`      | Thread-safe removal; returns true if found                  |
+| `Clear()`         | `Void()`               | Thread-safe removal of all entries                          |
+| `Keys()`          | `Seq()`                | Get snapshot of all keys (may not reflect concurrent writes)|
+
+### Notes
+
+- Uses mutex protection; safe for concurrent reads and writes from any thread.
+- Keys are copied on insert (not retained by reference).
+- Values are retained (reference count incremented) while in the map.
+- Uses FNV-1a hash with separate chaining for collision resolution.
+- For single-threaded use, prefer `Viper.Collections.Map` which has no locking overhead.
 
 ---
 

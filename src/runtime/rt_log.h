@@ -23,7 +23,6 @@
 
 #include "rt_string.h"
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -64,8 +63,8 @@ extern "C"
 
     /// @brief Check if a log level is enabled.
     /// @param level Level to check.
-    /// @return true if messages at this level would be logged.
-    bool rt_log_enabled(int64_t level);
+    /// @return 1 if messages at this level would be logged, 0 otherwise.
+    int8_t rt_log_enabled(int64_t level);
 
     /// @brief Get the DEBUG level constant.
     /// @return 0.

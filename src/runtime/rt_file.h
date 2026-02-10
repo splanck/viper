@@ -72,7 +72,6 @@
 #include "rt_error.h"
 #include "rt_string.h"
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -98,45 +97,45 @@ extern "C"
     /// @param basic_mode BASIC OPEN mode enumerator when available; pass RT_F_UNSPECIFIED for plain
     /// stdio semantics.
     /// @param out_err Optional error record receiving failure details.
-    /// @return True on success; false when an error is reported via @p out_err.
-    bool rt_file_open(
+    /// @return 1 on success; 0 when an error is reported via @p out_err.
+    int8_t rt_file_open(
         RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err);
 
     /// @brief Close @p file when open.
     /// @param file Handle to close; remains valid for reuse after success.
     /// @param out_err Optional error record receiving failure details.
-    /// @return True on success; false when closing fails.
-    bool rt_file_close(RtFile *file, RtError *out_err);
+    /// @return 1 on success; 0 when closing fails.
+    int8_t rt_file_close(RtFile *file, RtError *out_err);
 
     /// @brief Read a single byte from @p file.
     /// @param file Handle to read.
     /// @param out_byte Output byte when successful.
     /// @param out_err Optional error record receiving failure details.
-    /// @return True when a byte is read; false on EOF or error.
-    bool rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err);
+    /// @return 1 when a byte is read; 0 on EOF or error.
+    int8_t rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err);
 
     /// @brief Read a single line terminated by '\n' (newline excluded) from @p file.
     /// @param file Handle to read.
     /// @param out_line Receives newly allocated runtime string; NULL on failure.
     /// @param out_err Optional error record receiving failure details.
-    /// @return True when a line is produced; false on EOF or error.
-    bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err);
+    /// @return 1 when a line is produced; 0 on EOF or error.
+    int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err);
 
     /// @brief Seek to @p offset relative to @p origin within @p file.
     /// @param file Handle to reposition.
     /// @param offset Byte offset to apply.
     /// @param origin One of SEEK_SET, SEEK_CUR, or SEEK_END.
     /// @param out_err Optional error record receiving failure details.
-    /// @return True on success; false on error.
-    bool rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err);
+    /// @return 1 on success; 0 on error.
+    int8_t rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err);
 
     /// @brief Write @p len bytes from @p data to @p file.
     /// @param file Handle to write.
     /// @param data Buffer containing bytes to write.
     /// @param len Number of bytes to write.
     /// @param out_err Optional error record receiving failure details.
-    /// @return True when the entire buffer is written; false otherwise.
-    bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err);
+    /// @return 1 when the entire buffer is written; 0 otherwise.
+    int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err);
 
     /// @brief Enumerates BASIC OPEN modes understood by the runtime wrapper API.
     enum RtFileMode
@@ -189,13 +188,13 @@ extern "C"
     /// @param channel Numeric channel identifier previously passed to OPEN.
     /// @param out_at_eof Receives the cached EOF state on success.
     /// @return 0 on success; error code aligned with @ref Err otherwise.
-    int32_t rt_file_channel_get_eof(int32_t channel, bool *out_at_eof);
+    int32_t rt_file_channel_get_eof(int32_t channel, int8_t *out_at_eof);
 
     /// @brief Update the cached EOF flag for @p channel.
     /// @param channel Numeric channel identifier previously passed to OPEN.
     /// @param at_eof New EOF state to record.
     /// @return 0 on success; error code aligned with @ref Err otherwise.
-    int32_t rt_file_channel_set_eof(int32_t channel, bool at_eof);
+    int32_t rt_file_channel_set_eof(int32_t channel, int8_t at_eof);
 
 #ifdef __cplusplus
 }

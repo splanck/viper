@@ -37,18 +37,8 @@ extern void rt_trap(const char *msg);
 #pragma comment(lib, "ws2_32.lib")
 #define close closesocket
 typedef int socklen_t;
-#elif defined(__viperdos__)
-// ViperDOS: Socket support not yet implemented
-// TODO: ViperDOS - include network headers when available
-// WebSocket functionality will be available once networking is implemented
-typedef int socklen_t;
-#define close(fd) (-1)
-#define socket(domain, type, protocol) (-1)
-#define connect(fd, addr, len) (-1)
-#define send(fd, buf, len, flags) (-1)
-#define recv(fd, buf, len, flags) (-1)
-#define poll(fds, nfds, timeout) (-1)
 #else
+// Unix and ViperDOS: use BSD socket APIs.
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -194,8 +184,69 @@ static long ws_recv(rt_ws_impl *ws, void *buffer, size_t len)
     }
 }
 
-/// @brief Create TCP connection to host:port.
-static int create_tcp_socket(const char *host, int port)
+/// @brief Wait for socket to become readable or writable with timeout.
+/// @return 1 if ready, 0 if timeout, -1 on error.
+static int ws_wait_socket(int fd, int timeout_ms, int for_write)
+{
+#if 0  // removed: ViperDOS now provides select() via libc
+#else
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET((unsigned)fd, &fds);
+
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    int result;
+    if (for_write)
+        result = select(fd + 1, NULL, &fds, NULL, &tv);
+    else
+        result = select(fd + 1, &fds, NULL, NULL, &tv);
+
+    return result;
+#endif
+}
+
+/// @brief Set socket to non-blocking mode.
+static void ws_set_nonblocking(int fd, int nonblocking)
+{
+#ifdef _WIN32
+    u_long mode = nonblocking ? 1 : 0;
+    ioctlsocket(fd, FIONBIO, &mode);
+#else
+    // Unix and ViperDOS: use fcntl.
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (nonblocking)
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    else
+        fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+#endif
+}
+
+/// @brief Set socket receive/send timeout.
+static void ws_set_socket_timeout(int fd, int timeout_ms, int is_recv)
+{
+#ifdef _WIN32
+    DWORD tv = (DWORD)timeout_ms;
+    setsockopt(fd, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+#else
+    // Unix and ViperDOS: use setsockopt with timeval.
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    setsockopt(fd, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+}
+
+/// @brief Clear socket timeout (set to 0 = no timeout).
+static void ws_clear_socket_timeout(int fd, int is_recv)
+{
+    ws_set_socket_timeout(fd, 0, is_recv);
+}
+
+/// @brief Create TCP connection to host:port with optional timeout.
+static int create_tcp_socket(const char *host, int port, int64_t timeout_ms)
 {
     struct addrinfo hints, *res, *p;
     memset(&hints, 0, sizeof(hints));
@@ -215,11 +266,55 @@ static int create_tcp_socket(const char *host, int port)
         if (fd < 0)
             continue;
 
-        if (connect(fd, p->ai_addr, p->ai_addrlen) == 0)
-            break;
+        if (timeout_ms > 0)
+        {
+            // Non-blocking connect with timeout
+            ws_set_nonblocking(fd, 1);
 
-        close(fd);
-        fd = -1;
+            int rc = connect(fd, p->ai_addr, (int)p->ai_addrlen);
+            if (rc == 0)
+            {
+                // Connected immediately
+                ws_set_nonblocking(fd, 0);
+                break;
+            }
+
+#ifdef _WIN32
+            int err = WSAGetLastError();
+            if (err == WSAEWOULDBLOCK)
+#else
+            int err = errno;
+            if (err == EINPROGRESS)
+#endif
+            {
+                int ready = ws_wait_socket(fd, (int)timeout_ms, 1);
+                if (ready > 0)
+                {
+                    // Check if connect succeeded
+                    int so_error = 0;
+                    socklen_t len = sizeof(so_error);
+                    getsockopt(fd, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
+                    if (so_error == 0)
+                    {
+                        ws_set_nonblocking(fd, 0);
+                        break;
+                    }
+                }
+            }
+
+            ws_set_nonblocking(fd, 0);
+            close(fd);
+            fd = -1;
+        }
+        else
+        {
+            // Blocking connect (no timeout)
+            if (connect(fd, p->ai_addr, (int)p->ai_addrlen) == 0)
+                break;
+
+            close(fd);
+            fd = -1;
+        }
     }
 
     freeaddrinfo(res);
@@ -497,8 +592,6 @@ void *rt_ws_connect(rt_string url)
 
 void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
 {
-    (void)timeout_ms; // TODO: implement timeout
-
     const char *url_cstr = rt_string_cstr(url);
     if (!url_cstr)
     {
@@ -540,8 +633,8 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
 
     rt_obj_set_finalizer(ws, rt_ws_finalize);
 
-    // Connect TCP
-    ws->socket_fd = create_tcp_socket(host, port);
+    // Connect TCP (with timeout)
+    ws->socket_fd = create_tcp_socket(host, port, timeout_ms);
     if (ws->socket_fd < 0)
     {
         free(host);
@@ -550,6 +643,13 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
             rt_obj_free(ws);
         rt_trap("WebSocket: connection failed");
         return NULL;
+    }
+
+    // Set socket-level recv/send timeout for handshake phase
+    if (timeout_ms > 0)
+    {
+        ws_set_socket_timeout(ws->socket_fd, (int)timeout_ms, 1);
+        ws_set_socket_timeout(ws->socket_fd, (int)timeout_ms, 0);
     }
 
     // TLS handshake if secure
@@ -594,6 +694,13 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
 
     free(host);
     free(path);
+
+    // Clear socket timeouts now that handshake is complete
+    if (timeout_ms > 0)
+    {
+        ws_clear_socket_timeout(ws->socket_fd, 1);
+        ws_clear_socket_timeout(ws->socket_fd, 0);
+    }
 
     ws->is_open = 1;
     return ws;
@@ -749,8 +856,20 @@ rt_string rt_ws_recv(void *obj)
 
 rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms)
 {
-    // TODO: implement timeout
-    (void)timeout_ms;
+    if (!obj)
+        return NULL;
+    rt_ws_impl *ws = (rt_ws_impl *)obj;
+    if (!ws->is_open)
+        return NULL;
+
+    // Wait for data to arrive with timeout
+    if (timeout_ms > 0)
+    {
+        int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
+        if (ready <= 0)
+            return NULL; // Timeout or error
+    }
+
     return rt_ws_recv(obj);
 }
 
@@ -798,8 +917,20 @@ void *rt_ws_recv_bytes(void *obj)
 
 void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms)
 {
-    // TODO: implement timeout
-    (void)timeout_ms;
+    if (!obj)
+        return NULL;
+    rt_ws_impl *ws = (rt_ws_impl *)obj;
+    if (!ws->is_open)
+        return NULL;
+
+    // Wait for data to arrive with timeout
+    if (timeout_ms > 0)
+    {
+        int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
+        if (ready <= 0)
+            return NULL; // Timeout or error
+    }
+
     return rt_ws_recv_bytes(obj);
 }
 

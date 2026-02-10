@@ -786,11 +786,11 @@ int64_t rt_bits_swap(int64_t val)
 /// @see rt_bits_set For setting a bit to 1
 /// @see rt_bits_clear For clearing a bit to 0
 /// @see rt_bits_toggle For flipping a bit
-bool rt_bits_get(int64_t val, int64_t bit)
+int8_t rt_bits_get(int64_t val, int64_t bit)
 {
-    // Return true if bit is set (bit position 0-63)
+    // Return 1 if bit is set (bit position 0-63)
     if (bit < 0 || bit >= 64)
-        return false;
+        return 0;
     return ((uint64_t)val >> bit) & 1;
 }
 

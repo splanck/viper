@@ -208,16 +208,16 @@ static void test_swap()
 
 static void test_get()
 {
-    assert(rt_bits_get(1, 0) == true);
-    assert(rt_bits_get(1, 1) == false);
-    assert(rt_bits_get(2, 0) == false);
-    assert(rt_bits_get(2, 1) == true);
-    assert(rt_bits_get(0xFF, 7) == true);
-    assert(rt_bits_get(0xFF, 8) == false);
-    assert(rt_bits_get(-1, 63) == true);
+    assert(rt_bits_get(1, 0) == 1);
+    assert(rt_bits_get(1, 1) == 0);
+    assert(rt_bits_get(2, 0) == 0);
+    assert(rt_bits_get(2, 1) == 1);
+    assert(rt_bits_get(0xFF, 7) == 1);
+    assert(rt_bits_get(0xFF, 8) == 0);
+    assert(rt_bits_get(-1, 63) == 1);
     // Out of range
-    assert(rt_bits_get(1, 64) == false);
-    assert(rt_bits_get(1, -1) == false);
+    assert(rt_bits_get(1, 64) == 0);
+    assert(rt_bits_get(1, -1) == 0);
     printf("test_get: PASSED\n");
 }
 

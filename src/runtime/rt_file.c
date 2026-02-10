@@ -29,6 +29,7 @@
 
 #include "rt_context.h"
 #include "rt_internal.h"
+#include <stdbool.h>
 #include <stdlib.h>
 
 typedef struct RtFileChannelEntry
@@ -345,7 +346,7 @@ int32_t rt_file_channel_fd(int32_t channel, int *out_fd)
 /// @brief Query whether @p channel is currently positioned at EOF.
 /// @details Resolves the channel and exposes the cached EOF flag maintained by
 ///          read helpers, mirroring the VM's "sticky" EOF semantics.
-int32_t rt_file_channel_get_eof(int32_t channel, bool *out_at_eof)
+int32_t rt_file_channel_get_eof(int32_t channel, int8_t *out_at_eof)
 {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
@@ -359,7 +360,7 @@ int32_t rt_file_channel_get_eof(int32_t channel, bool *out_at_eof)
 /// @brief Mutate the cached EOF state for @p channel.
 /// @details Resolves the channel and updates the cached flag, enabling seek
 ///          helpers to force EOF on or off without performing another read.
-int32_t rt_file_channel_set_eof(int32_t channel, bool at_eof)
+int32_t rt_file_channel_set_eof(int32_t channel, int8_t at_eof)
 {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);

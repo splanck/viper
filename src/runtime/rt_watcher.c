@@ -48,8 +48,7 @@
 #elif defined(_WIN32)
 #include <windows.h>
 #elif defined(__viperdos__)
-// TODO: ViperDOS - file system watching not yet implemented
-// Would need kernel support for file change notifications
+// ViperDOS: file watching deferred until kernel inotify-like support exists.
 #else
 // Stub platform
 #endif

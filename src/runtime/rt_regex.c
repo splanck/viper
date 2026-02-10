@@ -1213,7 +1213,7 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str)
 // Public API
 //=============================================================================
 
-bool rt_pattern_is_match(rt_string pattern, rt_string text)
+int8_t rt_pattern_is_match(rt_string pattern, rt_string text)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);

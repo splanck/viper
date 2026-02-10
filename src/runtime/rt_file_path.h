@@ -35,7 +35,6 @@
 
 #include "rt_string.h"
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -54,14 +53,14 @@ extern "C"
     /// @param basic_mode BASIC OPEN mode enumerator when known; pass a negative value when not
     /// applicable.
     /// @param flags_out Receives resolved flag bits on success.
-    /// @return True when the mode string is valid; false otherwise.
-    bool rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out);
+    /// @return 1 when the mode string is valid; 0 otherwise.
+    int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out);
 
     /// @brief Extract a filesystem path pointer from a runtime string.
     /// @param path Runtime string containing the path; may be NULL.
     /// @param out_path Receives pointer to the UTF-8 data on success.
-    /// @return True when a valid path pointer is produced.
-    bool rt_file_path_from_vstr(const ViperString *path, const char **out_path);
+    /// @return 1 when a valid path pointer is produced, 0 otherwise.
+    int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path);
 
     /// @brief Produce a byte view for a runtime string suitable for writing to a file.
     /// @param s Runtime string; may be NULL.

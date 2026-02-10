@@ -18,6 +18,8 @@
 - [Viper.Text.Template](#vipertexttemplate)
 - [Viper.Text.Toml](#vipertexttoml)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
+- [Viper.Text.JsonStream](#vipertextjsonstream)
+- [Viper.Text.Serialize](#vipertextserialize)
 
 ---
 
@@ -1254,6 +1256,176 @@ FOR i = 1 TO 1000
     result = result + "item "  ' Creates new string each iteration
 NEXT i
 ```
+
+---
+
+## Viper.Text.JsonStream
+
+SAX-style streaming JSON parser for processing large or incremental JSON data without loading the entire document into memory. Uses a pull-based token stream.
+
+**Type:** Instance class (requires `New(json)`)
+
+### Constructor
+
+| Method       | Signature             | Description                           |
+|--------------|-----------------------|---------------------------------------|
+| `New(json)`  | `JsonStream(String)`  | Create a streaming parser from a JSON string |
+
+### Properties
+
+| Property  | Type                  | Description                              |
+|-----------|-----------------------|------------------------------------------|
+| `Depth`   | `Integer` (read-only) | Current nesting depth (0 = top level)    |
+| `HasNext` | `Boolean` (read-only) | True if more tokens remain               |
+
+### Methods
+
+| Method          | Signature        | Description                                      |
+|-----------------|------------------|--------------------------------------------------|
+| `Next()`        | `Integer()`      | Advance to next token; returns token type         |
+| `TokenType()`   | `Integer()`      | Get current token type                            |
+| `StringValue()` | `String()`       | Get string value of current token (key/string)    |
+| `NumberValue()` | `Double()`       | Get numeric value of current token                |
+| `BoolValue()`   | `Boolean()`      | Get boolean value of current token                |
+| `Skip()`        | `Void()`         | Skip current value (object, array, or primitive)  |
+| `Error()`       | `String()`       | Get error message if token is ERROR               |
+
+### Token Types
+
+| Constant       | Value | Description      |
+|----------------|-------|------------------|
+| `TOK_NONE`         | 0  | No token yet              |
+| `TOK_OBJECT_START` | 1  | `{` — object begins      |
+| `TOK_OBJECT_END`   | 2  | `}` — object ends        |
+| `TOK_ARRAY_START`  | 3  | `[` — array begins       |
+| `TOK_ARRAY_END`    | 4  | `]` — array ends         |
+| `TOK_KEY`          | 5  | Object key string         |
+| `TOK_STRING`       | 6  | String value              |
+| `TOK_NUMBER`       | 7  | Numeric value             |
+| `TOK_BOOL`         | 8  | Boolean value             |
+| `TOK_NULL`         | 9  | Null value                |
+| `TOK_ERROR`        | 10 | Parse error               |
+| `TOK_END`          | 11 | End of input              |
+
+### Notes
+
+- Pull-based: call `Next()` to advance to each token
+- Use `Skip()` to efficiently skip over objects or arrays you don't need
+- `Depth` tracks nesting level for structural navigation
+- More memory-efficient than `Json.Parse()` for large documents
+- Tokens are consumed in order — no random access
+
+### BASIC Example
+
+```basic
+' Stream through a JSON document
+DIM json AS STRING = "{""name"": ""Alice"", ""scores"": [95, 87, 92]}"
+DIM stream AS OBJECT = NEW Viper.Text.JsonStream(json)
+
+DO WHILE stream.HasNext
+    DIM tok AS INTEGER = stream.Next()
+
+    SELECT CASE tok
+    CASE 5  ' TOK_KEY
+        DIM key AS STRING = stream.StringValue()
+        IF key = "scores" THEN
+            ' Process the scores array
+            stream.Next()  ' consume ARRAY_START
+            DO WHILE stream.Next() <> 4  ' until ARRAY_END
+                PRINT "Score: "; stream.NumberValue()
+            LOOP
+        END IF
+    END SELECT
+LOOP
+```
+
+### When to Use JsonStream vs Json
+
+| Scenario                        | Recommendation              |
+|---------------------------------|-----------------------------|
+| Small JSON (< 100 KB)          | Use `Json.Parse()` (simpler)|
+| Large JSON (> 1 MB)            | Use `JsonStream` (less memory) |
+| Need only specific fields       | Use `JsonStream` with `Skip()` |
+| Need full random access         | Use `Json.Parse()`          |
+| Processing JSON line-by-line    | Use `JsonStream`            |
+
+---
+
+## Viper.Text.Serialize
+
+Unified serialization interface for converting data between JSON, XML, YAML, TOML, and CSV formats. Provides format-agnostic parsing, formatting, validation, and round-trip conversion with auto-detection.
+
+**Type:** Static utility class
+
+### Format Constants
+
+| Constant       | Value | Description      |
+|----------------|-------|------------------|
+| `FORMAT_JSON`  | 0     | JSON (RFC 8259)  |
+| `FORMAT_XML`   | 1     | XML (subset)     |
+| `FORMAT_YAML`  | 2     | YAML (1.2 subset)|
+| `FORMAT_TOML`  | 3     | TOML (v1.0)      |
+| `FORMAT_CSV`   | 4     | CSV (RFC 4180)   |
+
+### Methods
+
+| Method                              | Signature                        | Description                                    |
+|-------------------------------------|----------------------------------|------------------------------------------------|
+| `Parse(text, format)`               | `Object(String, Integer)`        | Parse text in specified format into a value     |
+| `Format(value, format)`             | `String(Object, Integer)`        | Format value as compact text in given format    |
+| `FormatPretty(value, format, indent)` | `String(Object, Integer, Integer)` | Format with indentation                    |
+| `IsValid(text, format)`             | `Boolean(String, Integer)`       | Check if text is valid for given format         |
+| `Detect(text)`                      | `Integer(String)`                | Auto-detect format from content (-1 if unknown) |
+| `AutoParse(text)`                   | `Object(String)`                 | Parse by auto-detecting the format              |
+| `Convert(text, from, to)`           | `String(String, Integer, Integer)` | Convert between formats                      |
+| `FormatName(format)`                | `String(Integer)`                | Get format name ("json", "xml", etc.)           |
+| `MimeType(format)`                  | `String(Integer)`                | Get MIME type ("application/json", etc.)        |
+| `FormatFromName(name)`              | `Integer(String)`                | Look up format by name (case-insensitive)       |
+| `Error()`                           | `String()`                       | Get last error message (empty if none)          |
+
+### Notes
+
+- **Auto-detection heuristics:** `{`/`[` → JSON, `<` → XML, `---` → YAML, `[section]`/`key = value` → TOML, commas → CSV
+- `Parse()` returns NULL on error; check `Error()` for details
+- `Convert()` is a convenience for `Format(Parse(text, from), to)`
+- All returned strings are newly allocated
+- Dispatches to the format-specific parsers (Json, Xml, Yaml, Toml, Csv) internally
+
+### BASIC Example
+
+```basic
+' Parse JSON data
+DIM json AS STRING = "{""name"": ""Alice"", ""age"": 30}"
+DIM data AS OBJECT = Viper.Text.Serialize.Parse(json, 0)  ' FORMAT_JSON
+
+' Convert JSON to TOML
+DIM toml AS STRING = Viper.Text.Serialize.Convert(json, 0, 3)  ' JSON → TOML
+PRINT toml
+
+' Auto-detect and parse
+DIM unknown AS STRING = "{""key"": ""value""}"
+DIM detected AS INTEGER = Viper.Text.Serialize.Detect(unknown)
+PRINT Viper.Text.Serialize.FormatName(detected)  ' Output: "json"
+
+DIM parsed AS OBJECT = Viper.Text.Serialize.AutoParse(unknown)
+
+' Pretty-print as JSON
+DIM pretty AS STRING = Viper.Text.Serialize.FormatPretty(data, 0, 2)
+PRINT pretty
+
+' Validate before parsing
+IF Viper.Text.Serialize.IsValid(userInput, 0) THEN
+    DIM safe AS OBJECT = Viper.Text.Serialize.Parse(userInput, 0)
+END IF
+```
+
+### Use Cases
+
+- **Format conversion:** Convert config files between JSON/YAML/TOML
+- **API flexibility:** Accept data in any supported format
+- **Auto-detection:** Process files without knowing their format in advance
+- **Validation:** Check input format before processing
+- **Round-trip:** Parse → modify → reformat data
 
 ---
 

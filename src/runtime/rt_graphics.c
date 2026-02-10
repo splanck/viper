@@ -2014,9 +2014,9 @@ void rt_canvas_clear_clip_rect(void *canvas_ptr)
 
 void rt_canvas_set_title(void *canvas_ptr, rt_string title)
 {
-    // TODO: Implement set title when vgfx adds support
-    (void)canvas_ptr;
-    (void)title;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->gfx_win && title)
+        vgfx_set_title(canvas->gfx_win, rt_string_cstr(title));
 }
 
 void *rt_canvas_screenshot(void *canvas_ptr)
@@ -2037,14 +2037,16 @@ void *rt_canvas_screenshot(void *canvas_ptr)
 
 void rt_canvas_fullscreen(void *canvas_ptr)
 {
-    // TODO: Implement fullscreen when vgfx adds support
-    (void)canvas_ptr;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->gfx_win)
+        vgfx_set_fullscreen(canvas->gfx_win, 1);
 }
 
 void rt_canvas_windowed(void *canvas_ptr)
 {
-    // TODO: Implement windowed when vgfx adds support
-    (void)canvas_ptr;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->gfx_win)
+        vgfx_set_fullscreen(canvas->gfx_win, 0);
 }
 
 void rt_canvas_gradient_h(

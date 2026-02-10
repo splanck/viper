@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-01-15
+last-verified: 2026-02-09
 ---
 
 # C++ Project Overview
@@ -25,7 +25,8 @@ Status notes:
 - Frontends — BASIC and Zia front ends lowering to IL
 - Codegen — Native code generation backends (AArch64 validated; x86_64 experimental)
 - Tools — CLI entry points (viper, vbasic, zia, ilrun, il-verify, il-dis, BASIC/Zia helpers)
-- Runtime — C runtime library and ABI bridge used by IL and VM
+- Runtime — C runtime library and ABI bridge used by IL and VM (includes cycle-detecting GC, unified serialization,
+  concurrent collections, 2D physics, async combinators, and full ViperDOS platform support)
 
 ---
 
@@ -51,7 +52,8 @@ Status notes:
 - src/tools/il-verify — Standalone IL verifier CLI
 - src/tools/il-dis — IL disassembler (text pretty-printer)
 - src/tools/basic-ast-dump, src/tools/basic-lex-dump — BASIC developer utilities
-- src/runtime — C runtime and bridges used by the VM and IL externs
+- src/runtime — C runtime and bridges used by the VM and IL externs (190+ files: memory/GC, strings, collections,
+  math, I/O, graphics, audio, input, networking, threading, text, time, crypto, serialization, physics, async)
 - src/support — Shared utilities (diagnostics, arena, source manager, symbols, alignment)
 - src/common — Common infrastructure shared across subsystems
 - src/parse — Parsing utilities (Cursor)

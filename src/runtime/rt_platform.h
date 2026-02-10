@@ -499,9 +499,9 @@ static inline void rt_windows_sleep_ms(int64_t ms)
 
 #elif RT_PLATFORM_VIPERDOS
 
-// ViperDOS platform
-// TODO: ViperDOS - include appropriate system headers
-// TODO: ViperDOS - may need custom implementations for some functions
+// ViperDOS platform — provides POSIX-compatible APIs via libc.
+#include <sys/time.h>
+#include <unistd.h>
 
 #define RT_PATH_SEPARATOR '/'
 #define RT_PATH_SEPARATOR_STR "/"

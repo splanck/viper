@@ -36,8 +36,11 @@
 #define isatty _isatty
 #define fileno _fileno
 #elif defined(__viperdos__)
-// TODO: ViperDOS - include terminal control headers when available
-// ViperDOS will need termios-like APIs for console I/O
+// ViperDOS provides POSIX-compatible terminal APIs via libc.
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <termios.h>
+#include <unistd.h>
 #else
 #include <sys/ioctl.h>
 #include <sys/select.h>
@@ -65,7 +68,7 @@
 //
 // =============================================================================
 
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
 /// @brief Cached original terminal settings (before raw mode).
 static struct termios g_orig_termios;
 

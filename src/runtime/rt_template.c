@@ -354,26 +354,26 @@ rt_string rt_template_render_with(rt_string tmpl, void *values, rt_string prefix
         tmpl_str, tmpl_len, values, false, prefix_str, prefix_len, suffix_str, suffix_len);
 }
 
-bool rt_template_has(rt_string tmpl, rt_string key)
+int8_t rt_template_has(rt_string tmpl, rt_string key)
 {
     if (!tmpl)
-        return false;
+        return 0;
     if (!key)
-        return false;
+        return 0;
 
     const char *tmpl_str = rt_string_cstr(tmpl);
     if (!tmpl_str)
-        return false;
+        return 0;
 
     const char *key_str = rt_string_cstr(key);
     if (!key_str)
-        return false;
+        return 0;
 
     int tmpl_len = (int)strlen(tmpl_str);
     int key_len = (int)strlen(key_str);
 
     if (key_len == 0)
-        return false;
+        return 0;
 
     int pos = 0;
     while (pos < tmpl_len)
@@ -396,13 +396,13 @@ bool rt_template_has(rt_string tmpl, rt_string key)
         if (placeholder_key_len == key_len &&
             memcmp(tmpl_str + trimmed_start, key_str, key_len) == 0)
         {
-            return true;
+            return 1;
         }
 
         pos = end + 2;
     }
 
-    return false;
+    return 0;
 }
 
 void *rt_template_keys(rt_string tmpl)

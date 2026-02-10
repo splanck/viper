@@ -63,7 +63,7 @@ rt_string rt_compiled_pattern_get_pattern(void *obj)
 // Matching Operations
 //=============================================================================
 
-bool rt_compiled_pattern_is_match(void *obj, rt_string text)
+int8_t rt_compiled_pattern_is_match(void *obj, rt_string text)
 {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");

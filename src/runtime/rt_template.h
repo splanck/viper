@@ -25,7 +25,6 @@
 
 #include "rt_string.h"
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -62,9 +61,9 @@ extern "C"
     /// @brief Check if template contains a placeholder for key.
     /// @param tmpl Template string.
     /// @param key Placeholder key to check for.
-    /// @return true if template contains {{key}}, false otherwise.
+    /// @return 1 if template contains {{key}}, 0 otherwise.
     /// @note Uses default {{ }} delimiters.
-    bool rt_template_has(rt_string tmpl, rt_string key);
+    int8_t rt_template_has(rt_string tmpl, rt_string key);
 
     /// @brief Extract all placeholder keys from template.
     /// @param tmpl Template string.

@@ -80,7 +80,7 @@ int main(void)
     assert(eof_rc == Err_EOF);
     assert(eof_line == NULL);
 
-    bool at_eof = false;
+    int8_t at_eof = 0;
     int32_t eof_query_rc = rt_file_channel_get_eof(6, &at_eof);
     assert(eof_query_rc == Err_None);
     assert(at_eof);
@@ -93,7 +93,7 @@ int main(void)
     int32_t write_after_eof_rc = rt_println_ch_err(6, suffix);
     assert(write_after_eof_rc == Err_None);
 
-    bool at_eof_after_write = true;
+    int8_t at_eof_after_write = 1;
     int32_t eof_after_write_rc = rt_file_channel_get_eof(6, &at_eof_after_write);
     assert(eof_after_write_rc == Err_None);
     assert(!at_eof_after_write);

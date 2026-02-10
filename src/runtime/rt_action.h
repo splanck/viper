@@ -284,6 +284,19 @@ extern "C"
     rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button);
 
     //=========================================================================
+    // Persistence (Save/Load)
+    //=========================================================================
+
+    /// @brief Serialize all actions and bindings to a JSON string.
+    /// @return JSON string representing current action configuration.
+    rt_string rt_action_save(void);
+
+    /// @brief Load actions and bindings from a JSON string.
+    /// @param json JSON string previously produced by rt_action_save.
+    /// @return 1 on success, 0 on parse error.
+    int8_t rt_action_load(rt_string json);
+
+    //=========================================================================
     // Axis Constant Getters (for runtime.def)
     //=========================================================================
 

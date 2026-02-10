@@ -457,7 +457,7 @@ int rt_eof_ch(int ch)
     if (status != 0)
         return status;
 
-    bool cached = false;
+    int8_t cached = 0;
     status = rt_file_channel_get_eof(ch, &cached);
     if (status != 0)
         return status;
@@ -470,27 +470,27 @@ int rt_eof_ch(int ch)
         if (end < 0)
         {
             (void)lseek(fd, cur, SEEK_SET);
-            rt_file_channel_set_eof(ch, false);
+            rt_file_channel_set_eof(ch, 0);
             return (int32_t)Err_IOError;
         }
         if (lseek(fd, cur, SEEK_SET) < 0)
         {
-            rt_file_channel_set_eof(ch, false);
+            rt_file_channel_set_eof(ch, 0);
             return (int32_t)Err_IOError;
         }
         if (end <= cur)
         {
-            rt_file_channel_set_eof(ch, true);
+            rt_file_channel_set_eof(ch, 1);
             return -1;
         }
-        rt_file_channel_set_eof(ch, false);
+        rt_file_channel_set_eof(ch, 0);
         return 0;
     }
 
     if (errno == ESPIPE || errno == EINVAL)
         return cached ? -1 : 0;
 
-    rt_file_channel_set_eof(ch, false);
+    rt_file_channel_set_eof(ch, 0);
     return (int32_t)Err_IOError;
 }
 
@@ -603,7 +603,7 @@ int32_t rt_seek_ch_err(int ch, int64_t pos)
         return (int32_t)Err_IOError;
     }
 
-    (void)rt_file_channel_set_eof(ch, false);
+    (void)rt_file_channel_set_eof(ch, 0);
     return 0;
 }
 

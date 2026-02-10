@@ -41,16 +41,16 @@ static rt_string make_str(const char *s)
 static void test_try_int_valid()
 {
     int64_t result = 0;
-    assert(rt_parse_try_int(make_str("42"), &result) == true);
+    assert(rt_parse_try_int(make_str("42"), &result) == 1);
     assert(result == 42);
 
-    assert(rt_parse_try_int(make_str("-123"), &result) == true);
+    assert(rt_parse_try_int(make_str("-123"), &result) == 1);
     assert(result == -123);
 
-    assert(rt_parse_try_int(make_str("  100  "), &result) == true);
+    assert(rt_parse_try_int(make_str("  100  "), &result) == 1);
     assert(result == 100);
 
-    assert(rt_parse_try_int(make_str("0"), &result) == true);
+    assert(rt_parse_try_int(make_str("0"), &result) == 1);
     assert(result == 0);
 
     printf("test_try_int_valid: PASSED\n");
@@ -59,11 +59,11 @@ static void test_try_int_valid()
 static void test_try_int_invalid()
 {
     int64_t result = 999;
-    assert(rt_parse_try_int(make_str(""), &result) == false);
-    assert(rt_parse_try_int(make_str("abc"), &result) == false);
-    assert(rt_parse_try_int(make_str("12.34"), &result) == false);
-    assert(rt_parse_try_int(make_str("12abc"), &result) == false);
-    assert(rt_parse_try_int(make_str("   "), &result) == false);
+    assert(rt_parse_try_int(make_str(""), &result) == 0);
+    assert(rt_parse_try_int(make_str("abc"), &result) == 0);
+    assert(rt_parse_try_int(make_str("12.34"), &result) == 0);
+    assert(rt_parse_try_int(make_str("12abc"), &result) == 0);
+    assert(rt_parse_try_int(make_str("   "), &result) == 0);
 
     printf("test_try_int_invalid: PASSED\n");
 }
@@ -75,19 +75,19 @@ static void test_try_int_invalid()
 static void test_try_num_valid()
 {
     double result = 0.0;
-    assert(rt_parse_try_num(make_str("3.14"), &result) == true);
+    assert(rt_parse_try_num(make_str("3.14"), &result) == 1);
     assert(fabs(result - 3.14) < 0.001);
 
-    assert(rt_parse_try_num(make_str("-2.5"), &result) == true);
+    assert(rt_parse_try_num(make_str("-2.5"), &result) == 1);
     assert(fabs(result - (-2.5)) < 0.001);
 
-    assert(rt_parse_try_num(make_str("42"), &result) == true);
+    assert(rt_parse_try_num(make_str("42"), &result) == 1);
     assert(fabs(result - 42.0) < 0.001);
 
-    assert(rt_parse_try_num(make_str("1e10"), &result) == true);
+    assert(rt_parse_try_num(make_str("1e10"), &result) == 1);
     assert(fabs(result - 1e10) < 1.0);
 
-    assert(rt_parse_try_num(make_str("  .5  "), &result) == true);
+    assert(rt_parse_try_num(make_str("  .5  "), &result) == 1);
     assert(fabs(result - 0.5) < 0.001);
 
     printf("test_try_num_valid: PASSED\n");
@@ -96,10 +96,10 @@ static void test_try_num_valid()
 static void test_try_num_invalid()
 {
     double result = 999.0;
-    assert(rt_parse_try_num(make_str(""), &result) == false);
-    assert(rt_parse_try_num(make_str("abc"), &result) == false);
-    assert(rt_parse_try_num(make_str("12.34.56"), &result) == false);
-    assert(rt_parse_try_num(make_str("   "), &result) == false);
+    assert(rt_parse_try_num(make_str(""), &result) == 0);
+    assert(rt_parse_try_num(make_str("abc"), &result) == 0);
+    assert(rt_parse_try_num(make_str("12.34.56"), &result) == 0);
+    assert(rt_parse_try_num(make_str("   "), &result) == 0);
 
     printf("test_try_num_invalid: PASSED\n");
 }
@@ -110,63 +110,63 @@ static void test_try_num_invalid()
 
 static void test_try_bool_true_values()
 {
-    bool result = false;
-    assert(rt_parse_try_bool(make_str("true"), &result) == true);
-    assert(result == true);
+    int8_t result = 0;
+    assert(rt_parse_try_bool(make_str("true"), &result) == 1);
+    assert(result == 1);
 
-    assert(rt_parse_try_bool(make_str("TRUE"), &result) == true);
-    assert(result == true);
+    assert(rt_parse_try_bool(make_str("TRUE"), &result) == 1);
+    assert(result == 1);
 
-    assert(rt_parse_try_bool(make_str("True"), &result) == true);
-    assert(result == true);
+    assert(rt_parse_try_bool(make_str("True"), &result) == 1);
+    assert(result == 1);
 
-    assert(rt_parse_try_bool(make_str("yes"), &result) == true);
-    assert(result == true);
+    assert(rt_parse_try_bool(make_str("yes"), &result) == 1);
+    assert(result == 1);
 
-    assert(rt_parse_try_bool(make_str("YES"), &result) == true);
-    assert(result == true);
+    assert(rt_parse_try_bool(make_str("YES"), &result) == 1);
+    assert(result == 1);
 
-    assert(rt_parse_try_bool(make_str("1"), &result) == true);
-    assert(result == true);
+    assert(rt_parse_try_bool(make_str("1"), &result) == 1);
+    assert(result == 1);
 
-    assert(rt_parse_try_bool(make_str("on"), &result) == true);
-    assert(result == true);
+    assert(rt_parse_try_bool(make_str("on"), &result) == 1);
+    assert(result == 1);
 
     printf("test_try_bool_true_values: PASSED\n");
 }
 
 static void test_try_bool_false_values()
 {
-    bool result = true;
-    assert(rt_parse_try_bool(make_str("false"), &result) == true);
-    assert(result == false);
+    int8_t result = 1;
+    assert(rt_parse_try_bool(make_str("false"), &result) == 1);
+    assert(result == 0);
 
-    assert(rt_parse_try_bool(make_str("FALSE"), &result) == true);
-    assert(result == false);
+    assert(rt_parse_try_bool(make_str("FALSE"), &result) == 1);
+    assert(result == 0);
 
-    assert(rt_parse_try_bool(make_str("no"), &result) == true);
-    assert(result == false);
+    assert(rt_parse_try_bool(make_str("no"), &result) == 1);
+    assert(result == 0);
 
-    assert(rt_parse_try_bool(make_str("NO"), &result) == true);
-    assert(result == false);
+    assert(rt_parse_try_bool(make_str("NO"), &result) == 1);
+    assert(result == 0);
 
-    assert(rt_parse_try_bool(make_str("0"), &result) == true);
-    assert(result == false);
+    assert(rt_parse_try_bool(make_str("0"), &result) == 1);
+    assert(result == 0);
 
-    assert(rt_parse_try_bool(make_str("off"), &result) == true);
-    assert(result == false);
+    assert(rt_parse_try_bool(make_str("off"), &result) == 1);
+    assert(result == 0);
 
     printf("test_try_bool_false_values: PASSED\n");
 }
 
 static void test_try_bool_invalid()
 {
-    bool result = true;
-    assert(rt_parse_try_bool(make_str(""), &result) == false);
-    assert(rt_parse_try_bool(make_str("abc"), &result) == false);
-    assert(rt_parse_try_bool(make_str("maybe"), &result) == false);
-    assert(rt_parse_try_bool(make_str("2"), &result) == false);
-    assert(rt_parse_try_bool(make_str("   "), &result) == false);
+    int8_t result = 1;
+    assert(rt_parse_try_bool(make_str(""), &result) == 0);
+    assert(rt_parse_try_bool(make_str("abc"), &result) == 0);
+    assert(rt_parse_try_bool(make_str("maybe"), &result) == 0);
+    assert(rt_parse_try_bool(make_str("2"), &result) == 0);
+    assert(rt_parse_try_bool(make_str("   "), &result) == 0);
 
     printf("test_try_bool_invalid: PASSED\n");
 }
@@ -206,12 +206,12 @@ static void test_num_or()
 
 static void test_bool_or()
 {
-    assert(rt_parse_bool_or(make_str("true"), false) == true);
-    assert(rt_parse_bool_or(make_str("false"), true) == false);
-    assert(rt_parse_bool_or(make_str("abc"), true) == true);
-    assert(rt_parse_bool_or(make_str("abc"), false) == false);
-    assert(rt_parse_bool_or(make_str("yes"), false) == true);
-    assert(rt_parse_bool_or(make_str("no"), true) == false);
+    assert(rt_parse_bool_or(make_str("true"), 0) == 1);
+    assert(rt_parse_bool_or(make_str("false"), 1) == 0);
+    assert(rt_parse_bool_or(make_str("abc"), 1) == 1);
+    assert(rt_parse_bool_or(make_str("abc"), 0) == 0);
+    assert(rt_parse_bool_or(make_str("yes"), 0) == 1);
+    assert(rt_parse_bool_or(make_str("no"), 1) == 0);
 
     printf("test_bool_or: PASSED\n");
 }
@@ -222,13 +222,13 @@ static void test_bool_or()
 
 static void test_is_int()
 {
-    assert(rt_parse_is_int(make_str("42")) == true);
-    assert(rt_parse_is_int(make_str("-123")) == true);
-    assert(rt_parse_is_int(make_str("  100  ")) == true);
-    assert(rt_parse_is_int(make_str("0")) == true);
-    assert(rt_parse_is_int(make_str("abc")) == false);
-    assert(rt_parse_is_int(make_str("12.34")) == false);
-    assert(rt_parse_is_int(make_str("")) == false);
+    assert(rt_parse_is_int(make_str("42")) == 1);
+    assert(rt_parse_is_int(make_str("-123")) == 1);
+    assert(rt_parse_is_int(make_str("  100  ")) == 1);
+    assert(rt_parse_is_int(make_str("0")) == 1);
+    assert(rt_parse_is_int(make_str("abc")) == 0);
+    assert(rt_parse_is_int(make_str("12.34")) == 0);
+    assert(rt_parse_is_int(make_str("")) == 0);
 
     printf("test_is_int: PASSED\n");
 }
@@ -239,12 +239,12 @@ static void test_is_int()
 
 static void test_is_num()
 {
-    assert(rt_parse_is_num(make_str("3.14")) == true);
-    assert(rt_parse_is_num(make_str("-2.5")) == true);
-    assert(rt_parse_is_num(make_str("42")) == true);
-    assert(rt_parse_is_num(make_str("1e10")) == true);
-    assert(rt_parse_is_num(make_str("abc")) == false);
-    assert(rt_parse_is_num(make_str("")) == false);
+    assert(rt_parse_is_num(make_str("3.14")) == 1);
+    assert(rt_parse_is_num(make_str("-2.5")) == 1);
+    assert(rt_parse_is_num(make_str("42")) == 1);
+    assert(rt_parse_is_num(make_str("1e10")) == 1);
+    assert(rt_parse_is_num(make_str("abc")) == 0);
+    assert(rt_parse_is_num(make_str("")) == 0);
 
     printf("test_is_num: PASSED\n");
 }

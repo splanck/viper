@@ -61,7 +61,6 @@
 
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -93,8 +92,8 @@ extern "C"
 
     /// @brief Helper returning whether @p error encodes success.
     /// @param error Error record to inspect.
-    /// @return True when the error represents success.
-    static inline bool rt_ok(RtError error)
+    /// @return 1 when the error represents success, 0 otherwise.
+    static inline int8_t rt_ok(RtError error)
     {
         return error.kind == Err_None;
     }

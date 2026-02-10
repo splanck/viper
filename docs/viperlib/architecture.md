@@ -97,6 +97,55 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 
 ---
 
+## Memory Management
+
+### Reference Counting
+
+Viper uses atomic reference counting for memory management. Every heap-allocated object has a header containing a
+reference count and a magic word (`RT_MAGIC = 0x52504956`). When the reference count drops to zero, the object is freed.
+
+### Cycle-Detecting Garbage Collector
+
+Reference counting cannot reclaim cycles (A → B → A). The cycle-detecting GC (`rt_gc`) supplements reference counting
+with periodic collection passes using the **trial deletion** algorithm:
+
+1. **Track**: Objects that may form cycles register with `rt_gc_track(obj, traverse_fn)`, providing a callback that
+   visits the object's children.
+2. **Trial decrement**: For each tracked object, initialize `trial_rc = 1`. Traverse children and trial-decrement their
+   `trial_rc`.
+3. **Scan**: Objects with `trial_rc > 0` are reachable from outside the tracked set — mark them black and propagate
+   reachability to their children.
+4. **Collect**: Objects still white (unreachable) are cycle members — free them.
+
+The collector is invoked explicitly via `rt_gc_collect()` and returns the number of freed objects. Statistics are
+available via `rt_gc_total_collected()` and `rt_gc_pass_count()`.
+
+### Zeroing Weak References
+
+The GC provides zeroing weak references via `rt_weakref`. When a target object is collected, all weak references
+pointing to it are automatically set to NULL. This prevents dangling pointer access.
+
+```
+rt_weakref *ref = rt_weakref_new(target);
+void *obj = rt_weakref_get(ref);    // returns target, or NULL if collected
+int alive = rt_weakref_alive(ref);  // 1 if target still alive
+rt_weakref_free(ref);               // release the weak ref handle
+```
+
+Weak references use a per-target bucket chain in a hash table, protected by a global mutex.
+
+### Collection Ownership Rules
+
+| Collection | Retains elements? | Notes                              |
+|------------|-------------------|------------------------------------|
+| Seq        | No                | Caller manages element lifetimes   |
+| List       | No                | Caller manages element lifetimes   |
+| Map        | Yes (values)      | Keys are copied strings            |
+| Set        | Yes               | Elements retained while in set     |
+| WeakMap    | No                | Values are weak references         |
+
+---
+
 ## Type Reference
 
 | Viper Type | IL Type | Description             |

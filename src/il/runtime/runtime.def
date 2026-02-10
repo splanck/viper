@@ -528,6 +528,27 @@ RT_FUNC(StackPop,     rt_stack_pop,      "Viper.Collections.Stack.Pop",         
 RT_FUNC(StackPush,    rt_stack_push,     "Viper.Collections.Stack.Push",        "void(obj,obj)")
 
 //=============================================================================
+// COLLECTIONS - ITERATOR
+//=============================================================================
+
+RT_FUNC(IterFromSeq,       rt_iter_from_seq,        "Viper.Collections.Iterator.FromSeq",       "obj(obj)")
+RT_FUNC(IterFromList,      rt_iter_from_list,       "Viper.Collections.Iterator.FromList",      "obj(obj)")
+RT_FUNC(IterFromDeque,     rt_iter_from_deque,      "Viper.Collections.Iterator.FromDeque",     "obj(obj)")
+RT_FUNC(IterFromMapKeys,   rt_iter_from_map_keys,   "Viper.Collections.Iterator.FromMapKeys",   "obj(obj)")
+RT_FUNC(IterFromMapValues, rt_iter_from_map_values,  "Viper.Collections.Iterator.FromMapValues", "obj(obj)")
+RT_FUNC(IterFromSet,       rt_iter_from_set,        "Viper.Collections.Iterator.FromSet",       "obj(obj)")
+RT_FUNC(IterFromStack,     rt_iter_from_stack,      "Viper.Collections.Iterator.FromStack",     "obj(obj)")
+RT_FUNC(IterFromRing,      rt_iter_from_ring,       "Viper.Collections.Iterator.FromRing",      "obj(obj)")
+RT_FUNC(IterHasNext,       rt_iter_has_next,        "Viper.Collections.Iterator.HasNext",       "i1(obj)")
+RT_FUNC(IterNext,          rt_iter_next,            "Viper.Collections.Iterator.Next",          "obj(obj)")
+RT_FUNC(IterPeek,          rt_iter_peek,            "Viper.Collections.Iterator.Peek",          "obj(obj)")
+RT_FUNC(IterReset,         rt_iter_reset,           "Viper.Collections.Iterator.Reset",         "void(obj)")
+RT_FUNC(IterIndex,         rt_iter_index,           "Viper.Collections.Iterator.get_Index",     "i64(obj)")
+RT_FUNC(IterCount,         rt_iter_count,           "Viper.Collections.Iterator.get_Count",     "i64(obj)")
+RT_FUNC(IterToSeq,         rt_iter_to_seq,          "Viper.Collections.Iterator.ToSeq",         "obj(obj)")
+RT_FUNC(IterSkip,          rt_iter_skip,            "Viper.Collections.Iterator.Skip",          "i64(obj,i64)")
+
+//=============================================================================
 // COLLECTIONS - TREEMAP
 //=============================================================================
 
@@ -944,6 +965,21 @@ RT_FUNC(PixelsGrayscale, rt_pixels_grayscale,  "Viper.Graphics.Pixels.Grayscale"
 RT_FUNC(PixelsTint,      rt_pixels_tint,       "Viper.Graphics.Pixels.Tint",      "obj(obj,i64)")
 RT_FUNC(PixelsBlur,      rt_pixels_blur,       "Viper.Graphics.Pixels.Blur",      "obj(obj,i64)")
 RT_FUNC(PixelsResize,    rt_pixels_resize,     "Viper.Graphics.Pixels.Resize",    "obj(obj,i64,i64)")
+
+//=============================================================================
+// GRAPHICS - SPRITESHEET
+//=============================================================================
+
+RT_FUNC(SpriteSheetNew,          rt_spritesheet_new,          "Viper.Graphics.SpriteSheet.New",          "obj(obj)")
+RT_FUNC(SpriteSheetFromGrid,     rt_spritesheet_from_grid,    "Viper.Graphics.SpriteSheet.FromGrid",     "obj(obj,i64,i64)")
+RT_FUNC(SpriteSheetSetRegion,    rt_spritesheet_set_region,   "Viper.Graphics.SpriteSheet.SetRegion",    "void(obj,str,i64,i64,i64,i64)")
+RT_FUNC(SpriteSheetGetRegion,    rt_spritesheet_get_region,   "Viper.Graphics.SpriteSheet.GetRegion",    "obj(obj,str)")
+RT_FUNC(SpriteSheetHasRegion,    rt_spritesheet_has_region,   "Viper.Graphics.SpriteSheet.HasRegion",    "i1(obj,str)")
+RT_FUNC(SpriteSheetRegionCount,  rt_spritesheet_region_count, "Viper.Graphics.SpriteSheet.get_RegionCount", "i64(obj)")
+RT_FUNC(SpriteSheetWidth,        rt_spritesheet_width,        "Viper.Graphics.SpriteSheet.get_Width",    "i64(obj)")
+RT_FUNC(SpriteSheetHeight,       rt_spritesheet_height,       "Viper.Graphics.SpriteSheet.get_Height",   "i64(obj)")
+RT_FUNC(SpriteSheetRegionNames,  rt_spritesheet_region_names, "Viper.Graphics.SpriteSheet.RegionNames",  "obj(obj)")
+RT_FUNC(SpriteSheetRemoveRegion, rt_spritesheet_remove_region,"Viper.Graphics.SpriteSheet.RemoveRegion", "i1(obj,str)")
 
 //=============================================================================
 // GRAPHICS - SPRITE
@@ -2276,6 +2312,21 @@ RT_FUNC(JsonIsValid,        rt_json_is_valid,         "Viper.Text.Json.IsValid",
 RT_FUNC(JsonTypeOf,         rt_json_type_of,          "Viper.Text.Json.TypeOf",         "str(obj)")
 
 //=============================================================================
+// TEXT - JSON Stream (SAX-style streaming parser)
+//=============================================================================
+
+RT_FUNC(JsonStreamNew,          rt_json_stream_new,           "Viper.Text.JsonStream.New",           "obj(str)")
+RT_FUNC(JsonStreamNext,         rt_json_stream_next,          "Viper.Text.JsonStream.Next",          "i64(obj)")
+RT_FUNC(JsonStreamTokenType,    rt_json_stream_token_type,    "Viper.Text.JsonStream.TokenType",     "i64(obj)")
+RT_FUNC(JsonStreamStringValue,  rt_json_stream_string_value,  "Viper.Text.JsonStream.StringValue",   "str(obj)")
+RT_FUNC(JsonStreamNumberValue,  rt_json_stream_number_value,  "Viper.Text.JsonStream.NumberValue",   "f64(obj)")
+RT_FUNC(JsonStreamBoolValue,    rt_json_stream_bool_value,    "Viper.Text.JsonStream.BoolValue",     "i1(obj)")
+RT_FUNC(JsonStreamDepth,        rt_json_stream_depth,         "Viper.Text.JsonStream.Depth",         "i64(obj)")
+RT_FUNC(JsonStreamSkip,         rt_json_stream_skip,          "Viper.Text.JsonStream.Skip",          "void(obj)")
+RT_FUNC(JsonStreamHasNext,      rt_json_stream_has_next,      "Viper.Text.JsonStream.HasNext",       "i1(obj)")
+RT_FUNC(JsonStreamError,        rt_json_stream_error,         "Viper.Text.JsonStream.Error",         "str(obj)")
+
+//=============================================================================
 // TEXT - XML
 //=============================================================================
 
@@ -2443,6 +2494,23 @@ RT_FUNC(ConcQueueDequeue,        rt_concqueue_dequeue,        "Viper.Threads.Con
 RT_FUNC(ConcQueueDequeueTimeout, rt_concqueue_dequeue_timeout,"Viper.Threads.ConcurrentQueue.DequeueTimeout", "obj(obj,i64)")
 RT_FUNC(ConcQueuePeek,           rt_concqueue_peek,           "Viper.Threads.ConcurrentQueue.Peek",           "obj(obj)")
 RT_FUNC(ConcQueueClear,          rt_concqueue_clear,          "Viper.Threads.ConcurrentQueue.Clear",          "void(obj)")
+
+//=============================================================================
+// CONCURRENT MAP (thread-safe hash map)
+//=============================================================================
+
+RT_FUNC(ConcMapNew,          rt_concmap_new,            "Viper.Threads.ConcurrentMap.New",            "obj()")
+RT_FUNC(ConcMapLen,          rt_concmap_len,            "Viper.Threads.ConcurrentMap.get_Len",        "i64(obj)")
+RT_FUNC(ConcMapIsEmpty,      rt_concmap_is_empty,       "Viper.Threads.ConcurrentMap.get_IsEmpty",    "i1(obj)")
+RT_FUNC(ConcMapSet,          rt_concmap_set,            "Viper.Threads.ConcurrentMap.Set",            "void(obj,str,obj)")
+RT_FUNC(ConcMapGet,          rt_concmap_get,            "Viper.Threads.ConcurrentMap.Get",            "obj(obj,str)")
+RT_FUNC(ConcMapGetOr,        rt_concmap_get_or,         "Viper.Threads.ConcurrentMap.GetOr",          "obj(obj,str,obj)")
+RT_FUNC(ConcMapHas,          rt_concmap_has,            "Viper.Threads.ConcurrentMap.Has",            "i1(obj,str)")
+RT_FUNC(ConcMapSetIfMissing, rt_concmap_set_if_missing, "Viper.Threads.ConcurrentMap.SetIfMissing",   "i1(obj,str,obj)")
+RT_FUNC(ConcMapRemove,       rt_concmap_remove,         "Viper.Threads.ConcurrentMap.Remove",         "i1(obj,str)")
+RT_FUNC(ConcMapClear,        rt_concmap_clear,          "Viper.Threads.ConcurrentMap.Clear",          "void(obj)")
+RT_FUNC(ConcMapKeys,         rt_concmap_keys,           "Viper.Threads.ConcurrentMap.Keys",           "obj(obj)")
+RT_FUNC(ConcMapValues,       rt_concmap_values,         "Viper.Threads.ConcurrentMap.Values",         "obj(obj)")
 
 // Cancellation Token
 RT_FUNC(CancelNew,               rt_cancellation_new,              "Viper.Threads.CancelToken.New",              "obj()")
@@ -2743,6 +2811,46 @@ RT_FUNC(Mat4Neg,              rt_mat4_neg,              "Viper.Math.Mat4.Neg",  
 RT_FUNC(Mat4Eq,               rt_mat4_eq,               "Viper.Math.Mat4.Eq",              "i1(obj,obj,f64)")
 
 //=============================================================================
+// QUAT (Quaternion rotation)
+//=============================================================================
+
+RT_FUNC(QuatNew,             rt_quat_new,             "Viper.Math.Quat.New",             "obj(f64,f64,f64,f64)")
+RT_FUNC(QuatIdentity,        rt_quat_identity,        "Viper.Math.Quat.Identity",        "obj()")
+RT_FUNC(QuatFromAxisAngle,   rt_quat_from_axis_angle, "Viper.Math.Quat.FromAxisAngle",   "obj(obj,f64)")
+RT_FUNC(QuatFromEuler,       rt_quat_from_euler,      "Viper.Math.Quat.FromEuler",       "obj(f64,f64,f64)")
+RT_FUNC(QuatX,               rt_quat_x,               "Viper.Math.Quat.get_X",           "f64(obj)")
+RT_FUNC(QuatY,               rt_quat_y,               "Viper.Math.Quat.get_Y",           "f64(obj)")
+RT_FUNC(QuatZ,               rt_quat_z,               "Viper.Math.Quat.get_Z",           "f64(obj)")
+RT_FUNC(QuatW,               rt_quat_w,               "Viper.Math.Quat.get_W",           "f64(obj)")
+RT_FUNC(QuatMul,             rt_quat_mul,             "Viper.Math.Quat.Mul",             "obj(obj,obj)")
+RT_FUNC(QuatConjugate,       rt_quat_conjugate,       "Viper.Math.Quat.Conjugate",       "obj(obj)")
+RT_FUNC(QuatInverse,         rt_quat_inverse,         "Viper.Math.Quat.Inverse",         "obj(obj)")
+RT_FUNC(QuatNorm,            rt_quat_norm,            "Viper.Math.Quat.Norm",            "obj(obj)")
+RT_FUNC(QuatLen,             rt_quat_len,             "Viper.Math.Quat.Len",             "f64(obj)")
+RT_FUNC(QuatLenSq,           rt_quat_len_sq,          "Viper.Math.Quat.LenSq",           "f64(obj)")
+RT_FUNC(QuatDot,             rt_quat_dot,             "Viper.Math.Quat.Dot",             "f64(obj,obj)")
+RT_FUNC(QuatSlerp,           rt_quat_slerp,           "Viper.Math.Quat.Slerp",           "obj(obj,obj,f64)")
+RT_FUNC(QuatLerp,            rt_quat_lerp,            "Viper.Math.Quat.Lerp",            "obj(obj,obj,f64)")
+RT_FUNC(QuatRotateVec3,      rt_quat_rotate_vec3,     "Viper.Math.Quat.RotateVec3",      "obj(obj,obj)")
+RT_FUNC(QuatToMat4,          rt_quat_to_mat4,         "Viper.Math.Quat.ToMat4",          "obj(obj)")
+RT_FUNC(QuatAxis,            rt_quat_axis,            "Viper.Math.Quat.Axis",            "obj(obj)")
+RT_FUNC(QuatAngle,           rt_quat_angle,           "Viper.Math.Quat.Angle",           "f64(obj)")
+
+//=============================================================================
+// SPLINE (Curve interpolation)
+//=============================================================================
+
+RT_FUNC(SplineCatmullRom,    rt_spline_catmull_rom,   "Viper.Math.Spline.CatmullRom",    "obj(obj)")
+RT_FUNC(SplineBezier,        rt_spline_bezier,        "Viper.Math.Spline.Bezier",        "obj(obj,obj,obj,obj)")
+RT_FUNC(SplineLinear,        rt_spline_linear,        "Viper.Math.Spline.Linear",        "obj(obj)")
+RT_FUNC(SplineEval,          rt_spline_eval,          "Viper.Math.Spline.Eval",          "obj(obj,f64)")
+RT_FUNC(SplineTangent,       rt_spline_tangent,       "Viper.Math.Spline.Tangent",       "obj(obj,f64)")
+RT_FUNC(SplinePointCount,    rt_spline_point_count,   "Viper.Math.Spline.get_PointCount","i64(obj)")
+RT_FUNC(SplinePointAt,       rt_spline_point_at,      "Viper.Math.Spline.PointAt",       "obj(obj,i64)")
+RT_FUNC(SplineArcLength,     rt_spline_arc_length,    "Viper.Math.Spline.ArcLength",     "f64(obj,f64,f64,i64)")
+RT_FUNC(SplineSample,        rt_spline_sample,        "Viper.Math.Spline.Sample",        "obj(obj,i64)")
+
+//=============================================================================
 //=============================================================================
 //
 RT_FUNC(KeyboardIsDown, rt_keyboard_is_down, "Viper.Input.Keyboard.IsDown", "i1(i64)")
@@ -2957,6 +3065,8 @@ RT_FUNC(ActionBindingCount, rt_action_binding_count, "Viper.Input.Action.Binding
 RT_FUNC(ActionKeyBoundTo, rt_action_key_bound_to, "Viper.Input.Action.KeyBoundTo", "str(i64)")
 RT_FUNC(ActionMouseBoundTo, rt_action_mouse_bound_to, "Viper.Input.Action.MouseBoundTo", "str(i64)")
 RT_FUNC(ActionPadButtonBoundTo, rt_action_pad_button_bound_to, "Viper.Input.Action.PadButtonBoundTo", "str(i64,i64)")
+RT_FUNC(ActionSave, rt_action_save, "Viper.Input.Action.Save", "str()")
+RT_FUNC(ActionLoad, rt_action_load, "Viper.Input.Action.Load", "i1(str)")
 RT_FUNC(ActionAxisLeftX, rt_action_axis_left_x, "Viper.Input.Action.get_AXIS_LEFT_X", "i64()")
 RT_FUNC(ActionAxisLeftY, rt_action_axis_left_y, "Viper.Input.Action.get_AXIS_LEFT_Y", "i64()")
 RT_FUNC(ActionAxisRightX, rt_action_axis_right_x, "Viper.Input.Action.get_AXIS_RIGHT_X", "i64()")
@@ -3185,6 +3295,37 @@ RT_FUNC(CollisionDistance, rt_collision_distance, "Viper.Game.Collision.Distance
 RT_FUNC(CollisionDistanceSquared, rt_collision_distance_squared, "Viper.Game.Collision.DistanceSquared", "f64(f64,f64,f64,f64)")
 
 //=============================================================================
+// PHYSICS 2D
+//=============================================================================
+
+// World
+RT_FUNC(Physics2DWorldNew,        rt_physics2d_world_new,        "Viper.Game.Physics2D.World.New",        "obj(f64,f64)")
+RT_FUNC(Physics2DWorldStep,       rt_physics2d_world_step,       "Viper.Game.Physics2D.World.Step",       "void(obj,f64)")
+RT_FUNC(Physics2DWorldAdd,        rt_physics2d_world_add,        "Viper.Game.Physics2D.World.Add",        "void(obj,obj)")
+RT_FUNC(Physics2DWorldRemove,     rt_physics2d_world_remove,     "Viper.Game.Physics2D.World.Remove",     "void(obj,obj)")
+RT_FUNC(Physics2DWorldBodyCount,  rt_physics2d_world_body_count, "Viper.Game.Physics2D.World.get_BodyCount", "i64(obj)")
+RT_FUNC(Physics2DWorldSetGravity, rt_physics2d_world_set_gravity,"Viper.Game.Physics2D.World.SetGravity", "void(obj,f64,f64)")
+
+// Body
+RT_FUNC(Physics2DBodyNew,            rt_physics2d_body_new,            "Viper.Game.Physics2D.Body.New",            "obj(f64,f64,f64,f64,f64)")
+RT_FUNC(Physics2DBodyX,              rt_physics2d_body_x,              "Viper.Game.Physics2D.Body.get_X",          "f64(obj)")
+RT_FUNC(Physics2DBodyY,              rt_physics2d_body_y,              "Viper.Game.Physics2D.Body.get_Y",          "f64(obj)")
+RT_FUNC(Physics2DBodyW,              rt_physics2d_body_w,              "Viper.Game.Physics2D.Body.get_Width",      "f64(obj)")
+RT_FUNC(Physics2DBodyH,              rt_physics2d_body_h,              "Viper.Game.Physics2D.Body.get_Height",     "f64(obj)")
+RT_FUNC(Physics2DBodyVX,             rt_physics2d_body_vx,             "Viper.Game.Physics2D.Body.get_VX",         "f64(obj)")
+RT_FUNC(Physics2DBodyVY,             rt_physics2d_body_vy,             "Viper.Game.Physics2D.Body.get_VY",         "f64(obj)")
+RT_FUNC(Physics2DBodySetPos,         rt_physics2d_body_set_pos,        "Viper.Game.Physics2D.Body.SetPos",         "void(obj,f64,f64)")
+RT_FUNC(Physics2DBodySetVel,         rt_physics2d_body_set_vel,        "Viper.Game.Physics2D.Body.SetVel",         "void(obj,f64,f64)")
+RT_FUNC(Physics2DBodyApplyForce,     rt_physics2d_body_apply_force,    "Viper.Game.Physics2D.Body.ApplyForce",     "void(obj,f64,f64)")
+RT_FUNC(Physics2DBodyApplyImpulse,   rt_physics2d_body_apply_impulse,  "Viper.Game.Physics2D.Body.ApplyImpulse",   "void(obj,f64,f64)")
+RT_FUNC(Physics2DBodyRestitution,    rt_physics2d_body_restitution,    "Viper.Game.Physics2D.Body.get_Restitution","f64(obj)")
+RT_FUNC(Physics2DBodySetRestitution, rt_physics2d_body_set_restitution,"Viper.Game.Physics2D.Body.set_Restitution","void(obj,f64)")
+RT_FUNC(Physics2DBodyFriction,       rt_physics2d_body_friction,       "Viper.Game.Physics2D.Body.get_Friction",   "f64(obj)")
+RT_FUNC(Physics2DBodySetFriction,    rt_physics2d_body_set_friction,   "Viper.Game.Physics2D.Body.set_Friction",   "void(obj,f64)")
+RT_FUNC(Physics2DBodyIsStatic,       rt_physics2d_body_is_static,      "Viper.Game.Physics2D.Body.get_IsStatic",   "i1(obj)")
+RT_FUNC(Physics2DBodyMass,           rt_physics2d_body_mass,           "Viper.Game.Physics2D.Body.get_Mass",       "f64(obj)")
+
+//=============================================================================
 // Phase 4: Game Development Abstractions - Object Management & Spatial
 //=============================================================================
 
@@ -3300,6 +3441,21 @@ RT_FUNC(InputMgrConfirm, rt_inputmgr_confirm, "Viper.Input.Manager.get_Confirm",
 RT_FUNC(InputMgrCancel, rt_inputmgr_cancel, "Viper.Input.Manager.get_Cancel", "i1(obj)")
 RT_FUNC(InputMgrAxisX, rt_inputmgr_axis_x, "Viper.Input.Manager.get_AxisX", "f64(obj)")
 RT_FUNC(InputMgrAxisY, rt_inputmgr_axis_y, "Viper.Input.Manager.get_AxisY", "f64(obj)")
+
+//=============================================================================
+// INPUT - Key Chord / Combo Detection
+//=============================================================================
+
+RT_FUNC(KeyChordNew,          rt_keychord_new,           "Viper.Input.KeyChord.New",           "obj()")
+RT_FUNC(KeyChordDefine,       rt_keychord_define,        "Viper.Input.KeyChord.Define",        "void(obj,str,obj)")
+RT_FUNC(KeyChordDefineCombo,  rt_keychord_define_combo,  "Viper.Input.KeyChord.DefineCombo",   "void(obj,str,obj,i64)")
+RT_FUNC(KeyChordUpdate,       rt_keychord_update,        "Viper.Input.KeyChord.Update",        "void(obj)")
+RT_FUNC(KeyChordActive,       rt_keychord_active,        "Viper.Input.KeyChord.Active",        "i1(obj,str)")
+RT_FUNC(KeyChordTriggered,    rt_keychord_triggered,     "Viper.Input.KeyChord.Triggered",     "i1(obj,str)")
+RT_FUNC(KeyChordProgress,     rt_keychord_progress,      "Viper.Input.KeyChord.Progress",      "i64(obj,str)")
+RT_FUNC(KeyChordRemove,       rt_keychord_remove,        "Viper.Input.KeyChord.Remove",        "i1(obj,str)")
+RT_FUNC(KeyChordClear,        rt_keychord_clear,         "Viper.Input.KeyChord.Clear",         "void(obj)")
+RT_FUNC(KeyChordCount,        rt_keychord_count,         "Viper.Input.KeyChord.get_Count",     "i64(obj)")
 
 RT_FUNC(ArchiveOpen, rt_archive_open, "Viper.IO.Archive.Open", "obj(str)")
 RT_FUNC(ArchiveCreate, rt_archive_create, "Viper.IO.Archive.Create", "obj(str)")
@@ -3889,6 +4045,18 @@ RT_CLASS_BEGIN("Viper.Collections.Stack", Stack, "obj", StackNew)
     RT_METHOD("Peek", "obj()", StackPeek)
     RT_METHOD("Pop", "obj()", StackPop)
     RT_METHOD("Push", "void(obj)", StackPush)
+RT_CLASS_END()
+
+// Viper.Collections.Iterator - unified collection iterator
+RT_CLASS_BEGIN("Viper.Collections.Iterator", Iterator, "obj", none)
+    RT_PROP("Index", "i64", IterIndex, none)
+    RT_PROP("Count", "i64", IterCount, none)
+    RT_METHOD("HasNext", "i1()", IterHasNext)
+    RT_METHOD("Next", "obj()", IterNext)
+    RT_METHOD("Peek", "obj()", IterPeek)
+    RT_METHOD("Reset", "void()", IterReset)
+    RT_METHOD("ToSeq", "obj()", IterToSeq)
+    RT_METHOD("Skip", "i64(i64)", IterSkip)
 RT_CLASS_END()
 
 // Viper.Collections.TreeMap - sorted key-value map
@@ -5083,6 +5251,10 @@ RT_CLASS_BEGIN("Viper.Input.Action", Action, "none", none)
     RT_METHOD("MouseBoundTo", "str(i64)", ActionMouseBoundTo)
     RT_METHOD("PadButtonBoundTo", "str(i64,i64)", ActionPadButtonBoundTo)
 
+    // Persistence
+    RT_METHOD("Save", "str()", ActionSave)
+    RT_METHOD("Load", "i1(str)", ActionLoad)
+
     // Gamepad axis constants
     RT_PROP("AXIS_LEFT_X", "i64", ActionAxisLeftX, none)
     RT_PROP("AXIS_LEFT_Y", "i64", ActionAxisLeftY, none)
@@ -5273,6 +5445,45 @@ RT_CLASS_BEGIN("Viper.Game.Collision", Collision, "obj", none)
     RT_METHOD("DistanceSquared", "f64(f64,f64,f64,f64)", CollisionDistanceSquared)
 RT_CLASS_END()
 
+// Viper.Graphics.SpriteSheet - sprite atlas with named regions
+RT_CLASS_BEGIN("Viper.Graphics.SpriteSheet", SpriteSheet, "obj", SpriteSheetNew)
+    RT_PROP("RegionCount", "i64", SpriteSheetRegionCount, none)
+    RT_PROP("Width", "i64", SpriteSheetWidth, none)
+    RT_PROP("Height", "i64", SpriteSheetHeight, none)
+    RT_METHOD("SetRegion", "void(str,i64,i64,i64,i64)", SpriteSheetSetRegion)
+    RT_METHOD("GetRegion", "obj(str)", SpriteSheetGetRegion)
+    RT_METHOD("HasRegion", "i1(str)", SpriteSheetHasRegion)
+    RT_METHOD("RegionNames", "obj()", SpriteSheetRegionNames)
+    RT_METHOD("RemoveRegion", "i1(str)", SpriteSheetRemoveRegion)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.World - 2D physics world
+RT_CLASS_BEGIN("Viper.Game.Physics2D.World", Physics2DWorld, "obj", Physics2DWorldNew)
+    RT_PROP("BodyCount", "i64", Physics2DWorldBodyCount, none)
+    RT_METHOD("Step", "void(f64)", Physics2DWorldStep)
+    RT_METHOD("Add", "void(obj)", Physics2DWorldAdd)
+    RT_METHOD("Remove", "void(obj)", Physics2DWorldRemove)
+    RT_METHOD("SetGravity", "void(f64,f64)", Physics2DWorldSetGravity)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.Body - 2D rigid body
+RT_CLASS_BEGIN("Viper.Game.Physics2D.Body", Physics2DBody, "obj", Physics2DBodyNew)
+    RT_PROP("X", "f64", Physics2DBodyX, none)
+    RT_PROP("Y", "f64", Physics2DBodyY, none)
+    RT_PROP("Width", "f64", Physics2DBodyW, none)
+    RT_PROP("Height", "f64", Physics2DBodyH, none)
+    RT_PROP("VX", "f64", Physics2DBodyVX, none)
+    RT_PROP("VY", "f64", Physics2DBodyVY, none)
+    RT_PROP("Restitution", "f64", Physics2DBodyRestitution, Physics2DBodySetRestitution)
+    RT_PROP("Friction", "f64", Physics2DBodyFriction, Physics2DBodySetFriction)
+    RT_PROP("IsStatic", "i1", Physics2DBodyIsStatic, none)
+    RT_PROP("Mass", "f64", Physics2DBodyMass, none)
+    RT_METHOD("SetPos", "void(f64,f64)", Physics2DBodySetPos)
+    RT_METHOD("SetVel", "void(f64,f64)", Physics2DBodySetVel)
+    RT_METHOD("ApplyForce", "void(f64,f64)", Physics2DBodyApplyForce)
+    RT_METHOD("ApplyImpulse", "void(f64,f64)", Physics2DBodyApplyImpulse)
+RT_CLASS_END()
+
 // Viper.Input.Manager - high-level input manager
 RT_CLASS_BEGIN("Viper.Input.Manager", InputMgr, "obj", InputMgrNew)
     RT_PROP("DebounceDelay", "i64", InputMgrGetDebounceDelay, InputMgrSetDebounceDelay)
@@ -5307,6 +5518,19 @@ RT_CLASS_BEGIN("Viper.Input.Manager", InputMgr, "obj", InputMgrNew)
     RT_METHOD("PadRightY", "f64(i64)", InputMgrPadRightY)
     RT_METHOD("PadLeftTrigger", "f64(i64)", InputMgrPadLeftTrigger)
     RT_METHOD("PadRightTrigger", "f64(i64)", InputMgrPadRightTrigger)
+RT_CLASS_END()
+
+// Viper.Input.KeyChord - key chord and combo detection
+RT_CLASS_BEGIN("Viper.Input.KeyChord", KeyChord, "obj", KeyChordNew)
+    RT_PROP("Count", "i64", KeyChordCount, none)
+    RT_METHOD("Active", "i1(str)", KeyChordActive)
+    RT_METHOD("Clear", "void()", KeyChordClear)
+    RT_METHOD("Define", "void(str,obj)", KeyChordDefine)
+    RT_METHOD("DefineCombo", "void(str,obj,i64)", KeyChordDefineCombo)
+    RT_METHOD("Progress", "i64(str)", KeyChordProgress)
+    RT_METHOD("Remove", "i1(str)", KeyChordRemove)
+    RT_METHOD("Triggered", "i1(str)", KeyChordTriggered)
+    RT_METHOD("Update", "void()", KeyChordUpdate)
 RT_CLASS_END()
 
 // Viper.IO.Dir - directory operations
@@ -5773,6 +5997,19 @@ RT_CLASS_BEGIN("Viper.Text.Json", Json, "obj", none)
     RT_METHOD("TypeOf", "str(obj)", JsonTypeOf)
 RT_CLASS_END()
 
+// Viper.Text.JsonStream - SAX-style streaming JSON parser
+RT_CLASS_BEGIN("Viper.Text.JsonStream", JsonStream, "obj(str)", JsonStreamNew)
+    RT_PROP("Depth", "i64", JsonStreamDepth, none)
+    RT_PROP("TokenType", "i64", JsonStreamTokenType, none)
+    RT_METHOD("BoolValue", "i1(obj)", JsonStreamBoolValue)
+    RT_METHOD("Error", "str(obj)", JsonStreamError)
+    RT_METHOD("HasNext", "i1(obj)", JsonStreamHasNext)
+    RT_METHOD("Next", "i64(obj)", JsonStreamNext)
+    RT_METHOD("NumberValue", "f64(obj)", JsonStreamNumberValue)
+    RT_METHOD("Skip", "void(obj)", JsonStreamSkip)
+    RT_METHOD("StringValue", "str(obj)", JsonStreamStringValue)
+RT_CLASS_END()
+
 // Viper.Text.Uuid - UUID generation and manipulation
 RT_CLASS_BEGIN("Viper.Text.Uuid", Uuid, "obj", none)
     RT_PROP("Empty", "str", UuidEmpty, none)
@@ -5900,6 +6137,21 @@ RT_CLASS_BEGIN("Viper.Threads.ConcurrentQueue", ConcurrentQueue, "obj", ConcQueu
     RT_METHOD("TryDequeue", "obj()", ConcQueueTryDequeue)
 RT_CLASS_END()
 
+// Viper.Threads.ConcurrentMap - thread-safe hash map
+RT_CLASS_BEGIN("Viper.Threads.ConcurrentMap", ConcurrentMap, "obj", ConcMapNew)
+    RT_PROP("IsEmpty", "i1", ConcMapIsEmpty, none)
+    RT_PROP("Len", "i64", ConcMapLen, none)
+    RT_METHOD("Clear", "void()", ConcMapClear)
+    RT_METHOD("Get", "obj(str)", ConcMapGet)
+    RT_METHOD("GetOr", "obj(str,obj)", ConcMapGetOr)
+    RT_METHOD("Has", "i1(str)", ConcMapHas)
+    RT_METHOD("Keys", "obj()", ConcMapKeys)
+    RT_METHOD("Remove", "i1(str)", ConcMapRemove)
+    RT_METHOD("Set", "void(str,obj)", ConcMapSet)
+    RT_METHOD("SetIfMissing", "i1(str,obj)", ConcMapSetIfMissing)
+    RT_METHOD("Values", "obj()", ConcMapValues)
+RT_CLASS_END()
+
 // Viper.Threads.Monitor - FIFO-fair, re-entrant monitor primitive
 RT_CLASS_BEGIN("Viper.Threads.Monitor", ThreadsMonitor, "obj", none)
     RT_METHOD("Enter", "void(obj)", MonitorEnter)
@@ -5992,6 +6244,8 @@ RT_CLASS_BEGIN("Viper.Threads.Parallel", ThreadsParallel, "obj", none)
     RT_METHOD("InvokePool", "void(obj,obj)", ParallelInvokePool)
     RT_METHOD("For", "void(i64,i64,ptr)", ParallelFor)
     RT_METHOD("ForPool", "void(i64,i64,ptr,obj)", ParallelForPool)
+    RT_METHOD("Reduce", "obj(obj,ptr,obj)", ParallelReduce)
+    RT_METHOD("ReducePool", "obj(obj,ptr,obj,obj)", ParallelReducePool)
     RT_METHOD("DefaultWorkers", "i64()", ParallelDefaultWorkers)
     RT_METHOD("DefaultPool", "obj()", ParallelDefaultPool)
 RT_CLASS_END()
@@ -6082,6 +6336,43 @@ RT_CLASS_BEGIN("Viper.Math.Vec3", Vec3, "obj", Vec3New)
     RT_METHOD("Dist", "f64(obj)", Vec3Dist)
     RT_METHOD("Lerp", "obj(obj,f64)", Vec3Lerp)
     RT_METHOD("Neg", "obj()", Vec3Neg)
+RT_CLASS_END()
+
+// Viper.Math.Quat - quaternion rotation math
+RT_CLASS_BEGIN("Viper.Math.Quat", Quat, "obj", QuatNew)
+    RT_PROP("X", "f64", QuatX, none)
+    RT_PROP("Y", "f64", QuatY, none)
+    RT_PROP("Z", "f64", QuatZ, none)
+    RT_PROP("W", "f64", QuatW, none)
+    RT_METHOD("Identity", "obj()", QuatIdentity)
+    RT_METHOD("FromAxisAngle", "obj(obj,f64)", QuatFromAxisAngle)
+    RT_METHOD("FromEuler", "obj(f64,f64,f64)", QuatFromEuler)
+    RT_METHOD("Mul", "obj(obj)", QuatMul)
+    RT_METHOD("Conjugate", "obj()", QuatConjugate)
+    RT_METHOD("Inverse", "obj()", QuatInverse)
+    RT_METHOD("Norm", "obj()", QuatNorm)
+    RT_METHOD("Len", "f64()", QuatLen)
+    RT_METHOD("LenSq", "f64()", QuatLenSq)
+    RT_METHOD("Dot", "f64(obj)", QuatDot)
+    RT_METHOD("Slerp", "obj(obj,f64)", QuatSlerp)
+    RT_METHOD("Lerp", "obj(obj,f64)", QuatLerp)
+    RT_METHOD("RotateVec3", "obj(obj)", QuatRotateVec3)
+    RT_METHOD("ToMat4", "obj()", QuatToMat4)
+    RT_METHOD("Axis", "obj()", QuatAxis)
+    RT_METHOD("Angle", "f64()", QuatAngle)
+RT_CLASS_END()
+
+// Viper.Math.Spline - curve interpolation
+RT_CLASS_BEGIN("Viper.Math.Spline", Spline, "obj", none)
+    RT_METHOD("CatmullRom", "obj(obj)", SplineCatmullRom)
+    RT_METHOD("Bezier", "obj(obj,obj,obj,obj)", SplineBezier)
+    RT_METHOD("Linear", "obj(obj)", SplineLinear)
+    RT_METHOD("Eval", "obj(obj,f64)", SplineEval)
+    RT_METHOD("Tangent", "obj(obj,f64)", SplineTangent)
+    RT_PROP("PointCount", "i64", SplinePointCount, none)
+    RT_METHOD("PointAt", "obj(obj,i64)", SplinePointAt)
+    RT_METHOD("ArcLength", "f64(obj,f64,f64,i64)", SplineArcLength)
+    RT_METHOD("Sample", "obj(obj,i64)", SplineSample)
 RT_CLASS_END()
 
 // Viper.Network.Tcp - TCP client connection

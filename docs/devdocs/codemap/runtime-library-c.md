@@ -3,11 +3,11 @@
 Portable C runtime library (`src/runtime/`) providing core types, collections, I/O, text, math,
 graphics, audio, input, networking, system, diagnostics, crypto, time, and threading support.
 
-Last updated: 2026-02-04
+Last updated: 2026-02-09
 
 ## Overview
 
-- **Total source files**: 183 (.c/.h/.cpp/.hpp)
+- **Total source files**: 203 (.c/.h/.cpp/.hpp)
 
 ## Memory Management
 
@@ -23,6 +23,8 @@ Last updated: 2026-02-04
 | `rt_box.h`      | Boxed value type declarations                        |
 | `rt_pool.c`     | Object pool for efficient allocation                 |
 | `rt_pool.h`     | Object pool declarations                             |
+| `rt_gc.c`       | Cycle-detecting garbage collector (trial deletion algorithm) |
+| `rt_gc.h`       | GC and zeroing weak reference declarations           |
 
 ## String Operations
 
@@ -76,6 +78,10 @@ Last updated: 2026-02-04
 | `rt_seq_functional.h` | Seq functional wrapper declarations         |
 | `rt_pqueue.c`         | Priority queue implementation               |
 | `rt_pqueue.h`         | Priority queue declarations                 |
+| `rt_iter.c`           | Unified stateful iterator protocol for collections |
+| `rt_iter.h`           | Iterator declarations                       |
+| `rt_concmap.c`        | Thread-safe concurrent hash map with string keys |
+| `rt_concmap.h`        | Concurrent map declarations                 |
 
 ## Numeric Operations
 
@@ -96,6 +102,10 @@ Last updated: 2026-02-04
 | `rt_vec2.h`        | 2D vector declarations                           |
 | `rt_vec3.c`        | 3D vector math operations                        |
 | `rt_vec3.h`        | 3D vector declarations                           |
+| `rt_quat.c`        | Quaternion math for 3D rotations (SLERP, Euler, axis-angle) |
+| `rt_quat.h`        | Quaternion declarations                          |
+| `rt_spline.c`      | Spline interpolation (Catmull-Rom, cubic Bezier, linear) |
+| `rt_spline.h`      | Spline declarations                              |
 
 ## Formatting & Output
 
@@ -154,6 +164,10 @@ Last updated: 2026-02-04
 | `rt_template.h`| Template declarations                |
 | `rt_guid.c`    | GUID/UUID generation                 |
 | `rt_guid.h`    | GUID declarations                    |
+| `rt_json_stream.c` | SAX-style streaming JSON parser  |
+| `rt_json_stream.h` | Streaming JSON parser declarations |
+| `rt_serialize.c`    | Unified serialization interface (JSON/XML/YAML/TOML/CSV) |
+| `rt_serialize.h`    | Serialization interface declarations |
 
 ## Archive & Compression
 
@@ -206,8 +220,10 @@ Last updated: 2026-02-04
 | `rt_sprite.h`  | Sprite declarations              |
 | `rt_tilemap.c` | Tilemap rendering for 2D games   |
 | `rt_tilemap.h` | Tilemap declarations             |
-| `rt_camera.c`  | 2D camera for viewport control   |
-| `rt_camera.h`  | Camera declarations              |
+| `rt_camera.c`       | 2D camera for viewport control   |
+| `rt_camera.h`       | Camera declarations              |
+| `rt_spritesheet.c`  | Sprite sheet/atlas region extraction |
+| `rt_spritesheet.h`  | Sprite sheet declarations        |
 
 ## Audio
 
@@ -230,6 +246,8 @@ Last updated: 2026-02-04
 | `rt_input.c`    | Keyboard and mouse input |
 | `rt_input.h`    | Input declarations       |
 | `rt_input_pad.c`| Gamepad/controller input |
+| `rt_keychord.c` | Key chord and combo detection |
+| `rt_keychord.h` | Key chord declarations   |
 
 ## Networking
 
@@ -282,6 +300,8 @@ Last updated: 2026-02-04
 | `rt_threads_primitives.cpp`| Low-level threading primitives (C++ implementation) |
 | `rt_monitor.c`             | FIFO-fair, re-entrant monitor backing `Monitor`     |
 | `rt_safe_i64.c`            | FIFO-serialized safe integer backing `SafeI64`      |
+| `rt_async.c`               | Async task combinators (Run, WaitAll, WaitAny, Map) |
+| `rt_async.h`               | Async task declarations                             |
 
 ## Diagnostics & Errors
 
@@ -295,6 +315,13 @@ Last updated: 2026-02-04
 | `rt_debug.h` | Debug declarations                  |
 | `rt_exc.c`   | Exception handling support          |
 | `rt_exc.h`   | Exception declarations              |
+
+## Game
+
+| File              | Purpose                                          |
+|-------------------|--------------------------------------------------|
+| `rt_physics2d.c`  | 2D physics engine with rigid bodies and AABB collision |
+| `rt_physics2d.h`  | Physics 2D declarations                          |
 
 ## C++ Interface
 

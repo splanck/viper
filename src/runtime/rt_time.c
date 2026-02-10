@@ -168,25 +168,34 @@ int64_t rt_clock_ticks_us(void)
 
 #elif defined(__viperdos__)
 
-// ViperDOS time implementation
-// TODO: ViperDOS - implement using ViperDOS syscalls (sys_clock_gettime or similar)
+// ViperDOS time implementation — uses POSIX-compatible libc APIs.
+#include <errno.h>
+#include <time.h>
 
 void rt_sleep_ms(int32_t ms)
 {
-    // TODO: ViperDOS - implement sleep using nanosleep syscall
-    (void)ms;
+    if (ms < 0)
+        ms = 0;
+    struct timespec req;
+    req.tv_sec = ms / 1000;
+    req.tv_nsec = (long)(ms % 1000) * 1000000L;
+    while (nanosleep(&req, &req) == -1 && errno == EINTR)
+    {
+    }
 }
 
 int64_t rt_timer_ms(void)
 {
-    // TODO: ViperDOS - implement using monotonic clock syscall
-    return 0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
 }
 
 int64_t rt_clock_ticks_us(void)
 {
-    // TODO: ViperDOS - implement using monotonic clock syscall with microsecond precision
-    return 0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000 + (int64_t)(ts.tv_nsec / 1000);
 }
 
 #else

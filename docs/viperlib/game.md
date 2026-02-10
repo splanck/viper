@@ -20,6 +20,8 @@
 - [Viper.Game.ScreenFX](#vipergamescreenfx)
 - [Viper.Game.PathFollower](#vipergamepathfollower)
 - [Viper.Game.Quadtree](#vipergamequadtree)
+- [Viper.Game.Physics2D](#vipergamephysics2d)
+- [Viper.Game.SpriteSheet](#vipergamespritesheet)
 
 ---
 
@@ -1637,6 +1639,185 @@ DO WHILE slot >= 0
     slot = bullets.NextActive(slot)
 LOOP
 ```
+
+---
+
+## Viper.Game.Physics2D
+
+Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision detection. Uses fixed-timestep Euler integration and impulse-based collision resolution.
+
+**Type:** Compound — `Physics2D.World` (instance) + `Physics2D.Body` (instance)
+
+### World Constructor
+
+| Method              | Signature                  | Description                                    |
+|---------------------|----------------------------|------------------------------------------------|
+| `NewWorld(gx, gy)`  | `World(Double, Double)`    | Create world with gravity vector               |
+
+### World Properties
+
+| Property    | Type                  | Description                  |
+|-------------|-----------------------|------------------------------|
+| `BodyCount` | `Integer` (read-only) | Number of bodies in the world|
+
+### World Methods
+
+| Method               | Signature          | Description                             |
+|----------------------|--------------------|-----------------------------------------|
+| `Step(dt)`           | `Void(Double)`     | Advance simulation by dt seconds        |
+| `Add(body)`          | `Void(Body)`       | Add a body to the world                 |
+| `Remove(body)`       | `Void(Body)`       | Remove a body from the world            |
+| `SetGravity(gx, gy)` | `Void(Double,Double)` | Change gravity vector                |
+
+### Body Constructor
+
+| Method                        | Signature                          | Description                              |
+|-------------------------------|------------------------------------|------------------------------------------|
+| `NewBody(x, y, w, h, mass)`  | `Body(Dbl,Dbl,Dbl,Dbl,Dbl)`       | Create body at position with size/mass   |
+
+### Body Properties
+
+| Property      | Type                   | Description                              |
+|---------------|------------------------|------------------------------------------|
+| `X`           | `Double` (read-only)   | X position                               |
+| `Y`           | `Double` (read-only)   | Y position                               |
+| `Width`       | `Double` (read-only)   | Body width                               |
+| `Height`      | `Double` (read-only)   | Body height                              |
+| `VX`          | `Double` (read-only)   | X velocity                               |
+| `VY`          | `Double` (read-only)   | Y velocity                               |
+| `Mass`        | `Double` (read-only)   | Body mass (0 = static)                   |
+| `IsStatic`    | `Boolean` (read-only)  | True if mass is 0 (immovable)            |
+| `Restitution` | `Double` (read/write)  | Bounciness (0-1)                         |
+| `Friction`    | `Double` (read/write)  | Surface friction (0-1)                   |
+
+### Body Methods
+
+| Method                     | Signature              | Description                         |
+|----------------------------|------------------------|-------------------------------------|
+| `SetPos(x, y)`            | `Void(Double,Double)`  | Set body position                   |
+| `SetVel(vx, vy)`          | `Void(Double,Double)`  | Set body velocity                   |
+| `ApplyForce(fx, fy)`      | `Void(Double,Double)`  | Apply force (accumulated until step)|
+| `ApplyImpulse(ix, iy)`    | `Void(Double,Double)`  | Apply instant velocity change       |
+
+### Notes
+
+- **Static bodies** (mass = 0) are immovable — use for floors, walls, platforms
+- **Dynamic bodies** (mass > 0) are affected by gravity, forces, and collisions
+- `Step(dt)` performs integration and AABB collision detection/resolution
+- Collision response uses impulse-based resolution with restitution and friction
+- Fixed timestep recommended (e.g., `Step(1.0 / 60.0)` for 60 FPS)
+
+### BASIC Example
+
+```basic
+' Create a physics world with downward gravity
+DIM world AS OBJECT = Viper.Game.Physics2D.NewWorld(0.0, 9.8)
+
+' Create a static floor
+DIM floor AS OBJECT = Viper.Game.Physics2D.NewBody(0.0, 500.0, 800.0, 50.0, 0.0)
+world.Add(floor)
+
+' Create a dynamic ball
+DIM ball AS OBJECT = Viper.Game.Physics2D.NewBody(400.0, 50.0, 20.0, 20.0, 1.0)
+ball.Restitution = 0.8  ' Bouncy
+world.Add(ball)
+
+' Apply an initial impulse
+ball.ApplyImpulse(50.0, 0.0)
+
+' Game loop
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    world.Step(1.0 / 60.0)
+
+    canvas.Clear(&H000020)
+    canvas.BoxFilled(floor.X, floor.Y, floor.Width, floor.Height, &H888888)
+    canvas.BoxFilled(ball.X, ball.Y, ball.Width, ball.Height, &HFF0000)
+    canvas.Flip()
+LOOP
+```
+
+---
+
+## Viper.Game.SpriteSheet
+
+Sprite sheet/atlas for named region extraction from a single texture. Defines named rectangular regions within an atlas image and extracts them as individual `Pixels` buffers.
+
+**Type:** Instance class (requires `New(atlas)` or `FromGrid(atlas, frameW, frameH)`)
+
+### Constructors
+
+| Method                          | Signature                         | Description                                     |
+|---------------------------------|-----------------------------------|-------------------------------------------------|
+| `New(atlas)`                    | `SpriteSheet(Pixels)`             | Create from atlas Pixels buffer                 |
+| `FromGrid(atlas, frameW, frameH)` | `SpriteSheet(Pixels, Int, Int)` | Create with uniform grid (auto-named "0", "1", ...) |
+
+### Properties
+
+| Property      | Type                  | Description                              |
+|---------------|-----------------------|------------------------------------------|
+| `RegionCount` | `Integer` (read-only) | Number of defined regions                |
+| `Width`       | `Integer` (read-only) | Width of the underlying atlas            |
+| `Height`      | `Integer` (read-only) | Height of the underlying atlas           |
+
+### Methods
+
+| Method                             | Signature                      | Description                                 |
+|------------------------------------|--------------------------------|---------------------------------------------|
+| `SetRegion(name, x, y, w, h)`     | `Void(String,Int,Int,Int,Int)` | Define a named region                       |
+| `GetRegion(name)`                  | `Pixels(String)`               | Extract region as new Pixels (NULL if missing)|
+| `HasRegion(name)`                  | `Boolean(String)`              | Check if region name exists                 |
+| `RemoveRegion(name)`               | `Boolean(String)`              | Remove a region; false if not found         |
+| `RegionNames()`                    | `Seq()`                        | Get all region names as a Seq               |
+
+### Notes
+
+- `FromGrid()` automatically slices the atlas into equal cells and names them `"0"`, `"1"`, etc. (left-to-right, top-to-bottom)
+- `GetRegion()` returns a new Pixels object each call — cache results for repeated use
+- Region coordinates are in pixels, relative to the atlas top-left corner
+- Backed by a single atlas Pixels object — regions share the source data
+
+### BASIC Example
+
+```basic
+' Load an atlas image
+DIM atlas AS OBJECT = Viper.Graphics.Pixels.Load("sprites.png")
+
+' Method 1: Manual region definition
+DIM sheet AS OBJECT = Viper.Game.SpriteSheet.New(atlas)
+sheet.SetRegion("player_idle", 0, 0, 32, 48)
+sheet.SetRegion("player_walk1", 32, 0, 32, 48)
+sheet.SetRegion("player_walk2", 64, 0, 32, 48)
+sheet.SetRegion("enemy", 0, 48, 32, 32)
+
+' Extract a region
+DIM idle AS OBJECT = sheet.GetRegion("player_idle")
+
+' Check what's available
+PRINT sheet.RegionCount  ' Output: 4
+IF sheet.HasRegion("enemy") THEN
+    DIM enemy AS OBJECT = sheet.GetRegion("enemy")
+END IF
+
+' Method 2: Uniform grid layout
+DIM gridSheet AS OBJECT = Viper.Game.SpriteSheet.FromGrid(atlas, 32, 32)
+' Regions auto-named "0", "1", "2", ... (left-to-right, top-to-bottom)
+DIM frame0 AS OBJECT = gridSheet.GetRegion("0")
+DIM frame1 AS OBJECT = gridSheet.GetRegion("1")
+
+' List all region names
+DIM names AS OBJECT = gridSheet.RegionNames()
+FOR i = 0 TO names.Len - 1
+    PRINT names.Get(i)
+NEXT
+```
+
+### Use Cases
+
+- **Character animation:** Define walk, idle, attack frames from a sprite sheet
+- **Tile sets:** Extract tiles from a uniform grid atlas
+- **UI elements:** Store buttons, icons, and decorations in a single texture
+- **Game objects:** Keep all enemy sprites in one atlas for efficient loading
 
 ---
 

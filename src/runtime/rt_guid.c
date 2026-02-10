@@ -169,12 +169,8 @@ static void get_random_bytes(uint8_t *buf, size_t len)
     }
     // Fallback: thread-safe PRNG (RACE-011 fix)
     fallback_random_bytes(buf, len);
-#elif defined(__viperdos__)
-    // ViperDOS: Use rt_secure_random_bytes if available, otherwise fallback
-    // TODO: ViperDOS - implement using VirtIO-RNG or getrandom syscall when available
-    // For now, use the thread-safe fallback PRNG
-    fallback_random_bytes(buf, len);
 #else
+    // Unix and ViperDOS: use /dev/urandom
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0)
     {

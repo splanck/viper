@@ -21,7 +21,6 @@
 
 #include "rt_string.h"
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -32,20 +31,20 @@ extern "C"
     /// @brief Try to parse an integer from string, storing result at out_value.
     /// @param s Input string to parse.
     /// @param out_value Pointer to store parsed integer (must not be NULL).
-    /// @return true if parsing succeeded, false otherwise.
-    bool rt_parse_try_int(rt_string s, int64_t *out_value);
+    /// @return 1 if parsing succeeded, 0 otherwise.
+    int8_t rt_parse_try_int(rt_string s, int64_t *out_value);
 
     /// @brief Try to parse a number from string, storing result at out_value.
     /// @param s Input string to parse.
     /// @param out_value Pointer to store parsed double (must not be NULL).
-    /// @return true if parsing succeeded, false otherwise.
-    bool rt_parse_try_num(rt_string s, double *out_value);
+    /// @return 1 if parsing succeeded, 0 otherwise.
+    int8_t rt_parse_try_num(rt_string s, double *out_value);
 
     /// @brief Try to parse a boolean from string, storing result at out_value.
     /// @param s Input string to parse (true/false/yes/no/1/0, case insensitive).
     /// @param out_value Pointer to store parsed boolean (must not be NULL).
-    /// @return true if parsing succeeded, false otherwise.
-    bool rt_parse_try_bool(rt_string s, bool *out_value);
+    /// @return 1 if parsing succeeded, 0 otherwise.
+    int8_t rt_parse_try_bool(rt_string s, int8_t *out_value);
 
     /// @brief Parse an integer from string, returning default on failure.
     /// @param s Input string to parse.
@@ -63,17 +62,17 @@ extern "C"
     /// @param s Input string to parse (true/false/yes/no/1/0, case insensitive).
     /// @param default_value Value to return if parsing fails.
     /// @return Parsed boolean or default_value.
-    bool rt_parse_bool_or(rt_string s, bool default_value);
+    int8_t rt_parse_bool_or(rt_string s, int8_t default_value);
 
     /// @brief Check if string represents a valid integer.
     /// @param s Input string to check.
-    /// @return true if string can be parsed as an integer.
-    bool rt_parse_is_int(rt_string s);
+    /// @return 1 if string can be parsed as an integer, 0 otherwise.
+    int8_t rt_parse_is_int(rt_string s);
 
     /// @brief Check if string represents a valid number.
     /// @param s Input string to check.
-    /// @return true if string can be parsed as a number.
-    bool rt_parse_is_num(rt_string s);
+    /// @return 1 if string can be parsed as a number, 0 otherwise.
+    int8_t rt_parse_is_num(rt_string s);
 
     /// @brief Parse an integer with specified radix, returning default on failure.
     /// @param s Input string to parse.

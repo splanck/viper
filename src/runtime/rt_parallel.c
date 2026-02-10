@@ -81,6 +81,25 @@ typedef struct
 #endif
 } invoke_task;
 
+// Task context for reduce
+typedef struct
+{
+    void **items;
+    int64_t start;
+    int64_t end;
+    void *(*func)(void *, void *);
+    void *identity;
+    void *result;
+#ifdef _WIN32
+    volatile LONG *remaining;
+    HANDLE event;
+#else
+    volatile int *remaining;
+    pthread_mutex_t *mutex;
+    pthread_cond_t *cond;
+#endif
+} reduce_task;
+
 // Task context for parallel for
 typedef struct
 {
@@ -202,6 +221,32 @@ static void invoke_callback(void *arg)
 {
     invoke_task *task = (invoke_task *)arg;
     task->func();
+
+#ifdef _WIN32
+    if (InterlockedDecrement(task->remaining) == 0)
+    {
+        SetEvent(task->event);
+    }
+#else
+    pthread_mutex_lock(task->mutex);
+    (*task->remaining)--;
+    if (*task->remaining == 0)
+    {
+        pthread_cond_signal(task->cond);
+    }
+    pthread_mutex_unlock(task->mutex);
+#endif
+}
+
+static void reduce_callback(void *arg)
+{
+    reduce_task *task = (reduce_task *)arg;
+    void *accum = task->identity;
+    for (int64_t i = task->start; i < task->end; i++)
+    {
+        accum = task->func(accum, task->items[i]);
+    }
+    task->result = accum;
 
 #ifdef _WIN32
     if (InterlockedDecrement(task->remaining) == 0)
@@ -451,6 +496,118 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
 void rt_parallel_invoke(void *funcs)
 {
     rt_parallel_invoke_pool(funcs, NULL);
+}
+
+//=============================================================================
+// Parallel Reduce
+//=============================================================================
+
+void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
+{
+    if (!seq || !func)
+        return identity;
+
+    int64_t count = rt_seq_len(seq);
+    if (count == 0)
+        return identity;
+
+    /* For small sequences, reduce serially. */
+    void *(*combine)(void *, void *) = (void *(*)(void *, void *))func;
+    if (count <= 4)
+    {
+        void *accum = identity;
+        for (int64_t i = 0; i < count; i++)
+        {
+            accum = combine(accum, rt_seq_get(seq, i));
+        }
+        return accum;
+    }
+
+    void *actual_pool = pool ? pool : rt_parallel_default_pool();
+    int64_t nworkers = rt_parallel_default_workers();
+    if (nworkers > count)
+        nworkers = count;
+
+    /* Extract items array for chunk access. */
+    void **items = (void **)malloc((size_t)count * sizeof(void *));
+    if (!items)
+        rt_trap("Parallel.Reduce: memory allocation failed");
+    for (int64_t i = 0; i < count; i++)
+    {
+        items[i] = rt_seq_get(seq, i);
+    }
+
+#ifdef _WIN32
+    volatile LONG remaining = (LONG)nworkers;
+    HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
+#else
+    volatile int remaining = (int)nworkers;
+    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+#endif
+
+    reduce_task *tasks = (reduce_task *)malloc((size_t)nworkers * sizeof(reduce_task));
+    if (!tasks)
+    {
+        free(items);
+        rt_trap("Parallel.Reduce: memory allocation failed");
+    }
+
+    int64_t chunk = count / nworkers;
+    int64_t remainder = count % nworkers;
+    int64_t offset = 0;
+
+    for (int64_t i = 0; i < nworkers; i++)
+    {
+        int64_t chunk_size = chunk + (i < remainder ? 1 : 0);
+        tasks[i].items = items;
+        tasks[i].start = offset;
+        tasks[i].end = offset + chunk_size;
+        tasks[i].func = combine;
+        tasks[i].identity = identity;
+        tasks[i].result = identity;
+#ifdef _WIN32
+        tasks[i].remaining = &remaining;
+        tasks[i].event = event;
+#else
+        tasks[i].remaining = &remaining;
+        tasks[i].mutex = &mutex;
+        tasks[i].cond = &cond;
+#endif
+        rt_threadpool_submit(actual_pool, reduce_callback, &tasks[i]);
+        offset += chunk_size;
+    }
+
+    /* Wait for completion. */
+#ifdef _WIN32
+    WaitForSingleObject(event, INFINITE);
+    CloseHandle(event);
+#else
+    pthread_mutex_lock(&mutex);
+    while (remaining > 0)
+    {
+        pthread_cond_wait(&cond, &mutex);
+    }
+    pthread_mutex_unlock(&mutex);
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&cond);
+#endif
+
+    /* Combine partial results on main thread. */
+    void *result = tasks[0].result;
+    for (int64_t i = 1; i < nworkers; i++)
+    {
+        result = combine(result, tasks[i].result);
+    }
+
+    free(tasks);
+    free(items);
+    return result;
+}
+
+void *rt_parallel_reduce(void *seq, void *func, void *identity)
+{
+    return rt_parallel_reduce_pool(seq, func, identity, NULL);
 }
 
 //=============================================================================

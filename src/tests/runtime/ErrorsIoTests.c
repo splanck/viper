@@ -38,7 +38,7 @@ static void ensure_missing_open_sets_file_not_found(void)
     RtFile file;
     rt_file_init(&file);
     RtError err = {Err_None, 0};
-    bool ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
+    int8_t ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
     assert(!ok);
     assert(err.kind == Err_FileNotFound);
     assert(err.code != 0);
@@ -54,7 +54,7 @@ static void ensure_read_byte_reports_eof(void)
     RtFile file;
     rt_file_init(&file);
     RtError err = {Err_None, 0};
-    bool ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
+    int8_t ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
     assert(ok);
 
     uint8_t value = 0xFF;
@@ -80,7 +80,7 @@ static void ensure_read_line_reports_eof(void)
     RtFile file;
     rt_file_init(&file);
     RtError err = {Err_None, 0};
-    bool ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
+    int8_t ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
     assert(ok);
 
     rt_string line = NULL;
@@ -112,7 +112,7 @@ static void ensure_read_line_trims_crlf(void)
     RtFile file;
     rt_file_init(&file);
     RtError err = {Err_None, 0};
-    bool ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
+    int8_t ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
     assert(ok);
 
     rt_string line = NULL;
@@ -137,7 +137,7 @@ static void ensure_invalid_handle_surfaces_ioerror(void)
     file.fd = -1;
 
     RtError err = {Err_None, 0};
-    bool ok = rt_file_seek(&file, 0, SEEK_SET, &err);
+    int8_t ok = rt_file_seek(&file, 0, SEEK_SET, &err);
     assert(!ok);
     assert(err.kind == Err_IOError);
     assert(err.code != 0);
@@ -155,7 +155,7 @@ static void ensure_seek_out_of_range_reports_invalid_operation(void)
     RtFile file;
     rt_file_init(&file);
     RtError err = {Err_None, 0};
-    bool ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
+    int8_t ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
     assert(ok);
 
 #if defined(OFF_MAX) && (OFF_MAX < INT64_MAX)

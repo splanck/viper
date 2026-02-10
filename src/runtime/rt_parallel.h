@@ -80,6 +80,23 @@ extern "C"
     /// @param pool Thread pool to use (or NULL for default).
     void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool);
 
+    /// @brief Reduce a sequence in parallel using a binary combine function.
+    /// @details Splits the sequence into chunks, reduces each chunk in parallel,
+    /// then combines partial results on the calling thread.
+    /// @param seq Sequence of items to reduce.
+    /// @param func Binary function combining two items (signature: void*(*)(void*, void*)).
+    /// @param identity Identity element for the reduce operation.
+    /// @return The final reduced value.
+    void *rt_parallel_reduce(void *seq, void *func, void *identity);
+
+    /// @brief Reduce a sequence in parallel with a custom thread pool.
+    /// @param seq Sequence of items to reduce.
+    /// @param func Binary combine function.
+    /// @param identity Identity element.
+    /// @param pool Thread pool to use (or NULL for default).
+    /// @return The final reduced value.
+    void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool);
+
     /// @brief Get the default number of parallel workers.
     /// @return Number of CPU cores, or 4 if detection fails.
     int64_t rt_parallel_default_workers(void);

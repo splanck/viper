@@ -2,7 +2,7 @@
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-01-21
+> **Last updated:** 2026-02-09
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -22,13 +22,13 @@ implemented in C and exposed through the IL runtime system.
 | [Game Utilities](game.md)       | `Grid2D`, `Timer`, `StateMachine`, `Tween`, `ObjectPool`, `Quadtree` — game development abstractions |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
-| [Input](input.md)               | `Keyboard`, `Mouse`, `Pad`, `Manager` — input for games and interactive apps |
+| [Input](input.md)               | `Keyboard`, `KeyChord`, `Mouse`, `Pad`, `Manager` — input for games and interactive apps |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
-| [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
+| [Mathematics](math.md)          | `Bits`, `Math`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3`          |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `Csv`, `Uuid`, `Json`, `Pattern`, `StringBuilder`, `Template` |
-| [Threads](threads.md)           | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread` |
+| [Text Processing](text.md)      | `Codec`, `Csv`, `Uuid`, `Json`, `JsonStream`, `Pattern`, `Serialize`, `StringBuilder`, `Template` |
+| [Threads](threads.md)           | `Async`, `Barrier`, `ConcurrentMap`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Thread` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`                                                   |
 
@@ -55,6 +55,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Terminal`](system.md#viperterminal)       | Static   | Terminal input/output                         |
 | [`Vec2`](math.md#vipervec2)                 | Instance | 2D vector math                                |
 | [`Vec3`](math.md#vipervec3)                 | Instance | 3D vector math                                |
+| [`Quaternion`](math.md#viperquaternion)     | Instance | Quaternion math for 3D rotations              |
 
 ### Viper.Collections
 
@@ -105,7 +106,9 @@ implemented in C and exposed through the IL runtime system.
 | [`Quadtree`](game.md#vipergamequadtree)                   | Instance | Spatial partitioning for collision      |
 | [`ScreenFX`](game.md#vipergamescreenfx)                   | Instance | Screen effects (shake, flash, fade)     |
 | [`SmoothValue`](game.md#vipergamesmoothvalue)             | Instance | Smooth value interpolation              |
+| [`Physics2D`](game.md#vipergamephysics2d)                 | Instance | 2D rigid body physics engine            |
 | [`SpriteAnimation`](game.md#vipergamespriteanimation)     | Instance | Frame-based sprite animation controller |
+| [`SpriteSheet`](game.md#vipergamespritesheet)             | Instance | Sprite sheet with frame extraction      |
 | [`StateMachine`](game.md#vipergamestatemachine)           | Instance | Finite state machine for game states    |
 | [`Timer`](game.md#vipergametimer)                         | Instance | Frame-based game timers                 |
 | [`Tween`](game.md#vipergametween)                         | Instance | Animation tweening with easing          |
@@ -158,6 +161,7 @@ implemented in C and exposed through the IL runtime system.
 |-----------------------------------------------|----------|------------------------------------|
 | [`Action`](input.md#viperinputaction)         | Static   | Device-agnostic action mapping     |
 | [`Keyboard`](input.md#viperinputkeyboard)     | Static   | Keyboard input for games and UI    |
+| [`KeyChord`](input.md#viperinputkeychord)     | Instance | Key chord and combo detection      |
 | [`Manager`](input.md#viperinputmanager)       | Instance | Unified input with debouncing      |
 | [`Mouse`](input.md#viperinputmouse)           | Static   | Mouse input for games and UI       |
 | [`Pad`](input.md#viperinputpad)               | Static   | Gamepad/controller input           |
@@ -213,6 +217,9 @@ implemented in C and exposed through the IL runtime system.
 | [`RwLock`](threads.md#viperthreadsrwlock)     | Instance | Reader-writer lock                           |
 | [`SafeI64`](threads.md#viperthreadssafei64)   | Instance | FIFO-serialized safe integer cell            |
 | [`Thread`](threads.md#viperthreadsthread)     | Instance | OS thread handle + join/sleep/yield helpers  |
+| [`Async`](threads.md#viperthreadsasync)       | Static   | Async task combinators (run, wait-all, map)  |
+| [`ConcurrentMap`](threads.md#viperthreadsconcurrentmap) | Instance | Thread-safe string-keyed hash map  |
+| [`Pool`](threads.md#viperthreadspool)         | Instance | Thread pool for parallel task execution      |
 
 ### Viper.Time
 

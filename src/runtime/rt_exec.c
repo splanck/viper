@@ -100,7 +100,12 @@
 #define popen _popen
 #define pclose _pclose
 #elif defined(__viperdos__)
-// TODO: ViperDOS - include process control headers when available
+// ViperDOS provides POSIX-compatible process APIs via libc.
+#include <errno.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char **environ;
 #else
 #include <errno.h>
 #include <spawn.h>
@@ -155,28 +160,7 @@ static char *read_pipe_output(FILE *fp, size_t *out_len)
     return buf;
 }
 
-#if defined(__viperdos__)
-
-// ViperDOS process execution stubs
-// TODO: ViperDOS - implement process execution using task_spawn syscall
-
-static int64_t exec_spawn(const char *program, void *args)
-{
-    // TODO: ViperDOS - implement using task_spawn or similar syscall
-    (void)program;
-    (void)args;
-    return -1;
-}
-
-static rt_string exec_capture_spawn(const char *program, void *args)
-{
-    // TODO: ViperDOS - implement process capture
-    (void)program;
-    (void)args;
-    return rt_string_from_bytes("", 0);
-}
-
-#elif !defined(_WIN32)
+#if !defined(_WIN32)
 
 /// @brief Build argv array from program and Seq of arguments.
 /// Caller must free the returned array (but not individual strings).
@@ -791,12 +775,8 @@ int64_t rt_exec_shell(rt_string command)
     // On Windows, system() uses cmd.exe
     int result = system(cmd_str);
     return (int64_t)result;
-#elif defined(__viperdos__)
-    // TODO: ViperDOS - implement shell execution
-    (void)cmd_str;
-    return -1;
 #else
-    // On POSIX, system() uses /bin/sh -c
+    // On POSIX/ViperDOS, system() uses the shell
     int result = system(cmd_str);
     if (result == -1)
     {

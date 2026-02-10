@@ -26,7 +26,6 @@
 
 #include "rt_string.h"
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -37,9 +36,9 @@ extern "C"
     /// @brief Test if pattern matches anywhere in text.
     /// @param pattern Regex pattern string.
     /// @param text Text to search.
-    /// @return true if pattern matches anywhere in text.
+    /// @return 1 if pattern matches anywhere in text, 0 otherwise.
     /// @note Traps on invalid pattern syntax.
-    bool rt_pattern_is_match(rt_string pattern, rt_string text);
+    int8_t rt_pattern_is_match(rt_string pattern, rt_string text);
 
     /// @brief Find first match of pattern in text.
     /// @param pattern Regex pattern string.

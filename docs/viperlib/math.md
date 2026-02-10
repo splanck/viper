@@ -8,6 +8,7 @@
 
 - [Viper.Bits](#viperbits)
 - [Viper.Math](#vipermath)
+- [Viper.Quaternion](#viperquaternion)
 - [Viper.Random](#viperrandom)
 - [Viper.Vec2](#vipervec2)
 - [Viper.Vec3](#vipervec3)
@@ -606,8 +607,79 @@ PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50,
 
 ---
 
+## Viper.Quaternion
+
+Quaternion math for 3D rotations, avoiding gimbal lock. Quaternions represent orientations in 3D space and support
+smooth interpolation via SLERP.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Quaternion.New(w, x, y, z)` or `Viper.Quaternion.Identity()`
+
+### Static Constructors
+
+| Method                  | Signature                   | Description                                              |
+|-------------------------|-----------------------------|----------------------------------------------------------|
+| `New(w, x, y, z)`      | `obj(f64, f64, f64, f64)`   | Create quaternion from components                        |
+| `Identity()`            | `obj()`                     | Create identity quaternion (1, 0, 0, 0)                  |
+| `FromAxisAngle(ax, ay, az, angle)` | `obj(f64, f64, f64, f64)` | Create from axis-angle (angle in radians)     |
+| `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`   | Create from Euler angles (radians)                       |
+
+### Properties
+
+| Property | Type  | Description              |
+|----------|-------|--------------------------|
+| `W`      | `f64` | W (scalar) component     |
+| `X`      | `f64` | X (vector i) component   |
+| `Y`      | `f64` | Y (vector j) component   |
+| `Z`      | `f64` | Z (vector k) component   |
+
+### Methods
+
+| Method                  | Signature            | Description                                                |
+|-------------------------|----------------------|------------------------------------------------------------|
+| `Mul(other)`            | `obj(obj)`           | Multiply (compose) two quaternion rotations                |
+| `Conjugate()`           | `obj()`              | Return conjugate (inverse for unit quaternions)            |
+| `Norm()`                | `obj()`              | Normalize to unit length                                   |
+| `Len()`                 | `f64()`              | Magnitude of the quaternion                                |
+| `LenSq()`              | `f64()`              | Squared magnitude (avoids sqrt)                            |
+| `Dot(other)`            | `f64(obj)`           | Dot product with another quaternion                        |
+| `Slerp(other, t)`       | `obj(obj, f64)`      | Spherical linear interpolation (t=0 returns self)          |
+| `RotateVec3(v)`          | `Vec3(obj)`          | Rotate a Vec3 by this quaternion                           |
+| `ToEuler()`             | `Vec3()`             | Convert to Euler angles (pitch, yaw, roll) in radians      |
+| `ToAxisAngle()`          | `obj()`              | Convert to (ax, ay, az, angle) representation              |
+
+### Notes
+
+- Quaternions are immutable — all operations return new quaternions.
+- `Mul` composes rotations: `a.Mul(b)` applies rotation `b` then rotation `a`.
+- `Slerp` performs smooth interpolation along the shortest arc on the unit sphere.
+- `Norm()` returns identity for zero-length quaternions.
+- Use `FromAxisAngle` for intuitive rotation specification.
+
+### BASIC Example
+
+```basic
+' Create quaternion from axis-angle (90 degrees around Y axis)
+DIM q AS OBJECT = Viper.Quaternion.FromAxisAngle(0.0, 1.0, 0.0, Viper.Math.Rad(90.0))
+
+' Rotate a vector
+DIM v AS OBJECT = Viper.Vec3.New(1.0, 0.0, 0.0)
+DIM rotated AS OBJECT = q.RotateVec3(v)
+PRINT "Rotated: ("; rotated.X; ", "; rotated.Y; ", "; rotated.Z; ")"
+' Approximately (0, 0, -1) for 90-degree Y rotation
+
+' Compose rotations
+DIM q2 AS OBJECT = Viper.Quaternion.FromAxisAngle(1.0, 0.0, 0.0, Viper.Math.Rad(45.0))
+DIM combined AS OBJECT = q.Mul(q2)
+
+' Smooth interpolation between orientations
+DIM halfway AS OBJECT = Viper.Quaternion.Identity().Slerp(q, 0.5)
+```
+
+---
+
 ## See Also
 
-- [Graphics](graphics.md) - Use `Vec2`, `Vec3`, `Mat3`, and `Mat4` with `Canvas` and `Pixels` for 2D/3D graphics
+- [Graphics](graphics.md) - Use `Vec2`, `Vec3`, `Mat3`, `Mat4`, and `Quaternion` with `Canvas` and `Pixels` for 2D/3D graphics
 - [Cryptography](crypto.md) - `Rand` for cryptographically secure randomness
 

@@ -7,6 +7,7 @@
 ## Contents
 
 - [Viper.Input.Keyboard](#viperinputkeyboard)
+- [Viper.Input.KeyChord](#viperinputkeychord)
 - [Viper.Input.Mouse](#viperinputmouse)
 - [Viper.Input.Pad](#viperinputpad)
 - [Viper.Input.Action](#viperinputaction)
@@ -327,6 +328,70 @@ The Keyboard class automatically integrates with Canvas. When you call `Canvas.P
 4. Text input buffer is updated
 
 You don't need to explicitly initialize the keyboard - it's ready when you create a Canvas.
+
+---
+
+## Viper.Input.KeyChord
+
+Key chord (simultaneous) and combo (sequential) detection for complex input patterns. Supports named chords with
+configurable timing windows.
+
+**Type:** Instance class
+**Constructor:** `Viper.Input.KeyChord.New()`
+
+### Methods
+
+| Method                             | Signature                          | Description                                           |
+|------------------------------------|------------------------------------|-------------------------------------------------------|
+| `AddChord(name, keys, count)`       | `Void(String, Seq, Integer)`       | Register a named chord (simultaneous key combination) |
+| `AddCombo(name, keys, count, ms)`   | `Void(String, Seq, Integer, Integer)` | Register a named combo (sequential, with timeout)  |
+| `Update()`                          | `Void()`                           | Update detection state (call once per frame)          |
+| `IsTriggered(name)`                 | `Boolean(String)`                  | Check if a named chord/combo was triggered this frame |
+| `Clear()`                           | `Void()`                           | Remove all registered chords and combos               |
+
+### Notes
+
+- **Chords** detect simultaneous key presses (e.g., Ctrl+Shift+S). All keys must be held down at the same time.
+- **Combos** detect sequential key presses within a timing window (e.g., ↑↑↓↓). Keys must be pressed in order within
+  the timeout.
+- Call `Update()` once per frame after `Canvas.Poll()` to refresh detection state.
+- `IsTriggered` returns true only on the frame when the chord/combo is detected.
+
+### BASIC Example
+
+```basic
+DIM detector AS OBJECT = Viper.Input.KeyChord.New()
+
+' Register Ctrl+S chord (keys 341=Left Ctrl, 83=S)
+DIM saveKeys AS OBJECT = NEW Viper.Collections.Seq()
+saveKeys.Push(341)
+saveKeys.Push(83)
+detector.AddChord("save", saveKeys, 2)
+
+' Register Konami code combo (timing window: 1000ms)
+DIM konamiKeys AS OBJECT = NEW Viper.Collections.Seq()
+' ↑↑↓↓ (265, 265, 264, 264)
+konamiKeys.Push(265)
+konamiKeys.Push(265)
+konamiKeys.Push(264)
+konamiKeys.Push(264)
+detector.AddCombo("konami", konamiKeys, 4, 1000)
+
+' In game loop
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    detector.Update()
+
+    IF detector.IsTriggered("save") THEN
+        SaveGame()
+    END IF
+    IF detector.IsTriggered("konami") THEN
+        PRINT "Cheat activated!"
+    END IF
+
+    canvas.Flip()
+LOOP
+```
 
 ---
 

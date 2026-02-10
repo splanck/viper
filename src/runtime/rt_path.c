@@ -89,7 +89,8 @@
 #define PATH_SEP '\\'
 #define PATH_SEP_STR "\\"
 #elif defined(__viperdos__)
-// TODO: ViperDOS - include path utilities when available
+// ViperDOS: POSIX path utilities available via libc.
+#include <unistd.h>
 #define PATH_SEP '/'
 #define PATH_SEP_STR "/"
 #else

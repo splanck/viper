@@ -48,65 +48,65 @@ extern "C"
     }
 
     /// @brief Check if string has only trailing whitespace after cursor.
-    static inline bool is_end_of_input(const char *s)
+    static inline int is_end_of_input(const char *s)
     {
         s = skip_whitespace(s);
         return *s == '\0';
     }
 
     /// @brief Case-insensitive string comparison.
-    static inline bool str_eq_ci(const char *a, const char *b)
+    static inline int str_eq_ci(const char *a, const char *b)
     {
         while (*a && *b)
         {
             if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
-                return false;
+                return 0;
             ++a;
             ++b;
         }
         return *a == *b;
     }
 
-    bool rt_parse_try_int(rt_string s, int64_t *out_value)
+    int8_t rt_parse_try_int(rt_string s, int64_t *out_value)
     {
         if (!out_value)
-            return false;
+            return 0;
 
         const char *text = rt_string_cstr(s);
         if (!text)
-            return false;
+            return 0;
 
         const char *cursor = skip_whitespace(text);
         if (*cursor == '\0')
-            return false;
+            return 0;
 
         errno = 0;
         char *endptr = NULL;
         long long parsed = strtoll(cursor, &endptr, 10);
 
         if (errno == ERANGE)
-            return false;
+            return 0;
         if (!endptr || endptr == cursor)
-            return false;
+            return 0;
         if (!is_end_of_input(endptr))
-            return false;
+            return 0;
 
         *out_value = (int64_t)parsed;
-        return true;
+        return 1;
     }
 
-    bool rt_parse_try_num(rt_string s, double *out_value)
+    int8_t rt_parse_try_num(rt_string s, double *out_value)
     {
         if (!out_value)
-            return false;
+            return 0;
 
         const char *text = rt_string_cstr(s);
         if (!text)
-            return false;
+            return 0;
 
         const char *cursor = skip_whitespace(text);
         if (*cursor == '\0')
-            return false;
+            return 0;
 
         errno = 0;
         char *endptr = NULL;
@@ -115,13 +115,13 @@ extern "C"
 #if defined(_WIN32)
         _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
         if (!c_locale)
-            return false;
+            return 0;
         value = _strtod_l(cursor, &endptr, c_locale);
         _free_locale(c_locale);
 #else
     locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
     if (!c_locale)
-        return false;
+        return 0;
     locale_t previous = uselocale(c_locale);
     value = strtod(cursor, &endptr);
     uselocale(previous);
@@ -129,28 +129,28 @@ extern "C"
 #endif
 
         if (errno == ERANGE || !isfinite(value))
-            return false;
+            return 0;
         if (!endptr || endptr == cursor)
-            return false;
+            return 0;
         if (!is_end_of_input(endptr))
-            return false;
+            return 0;
 
         *out_value = value;
-        return true;
+        return 1;
     }
 
-    bool rt_parse_try_bool(rt_string s, bool *out_value)
+    int8_t rt_parse_try_bool(rt_string s, int8_t *out_value)
     {
         if (!out_value)
-            return false;
+            return 0;
 
         const char *text = rt_string_cstr(s);
         if (!text)
-            return false;
+            return 0;
 
         const char *cursor = skip_whitespace(text);
         if (*cursor == '\0')
-            return false;
+            return 0;
 
         // Extract the word (until whitespace or end)
         char word[16];
@@ -161,25 +161,25 @@ extern "C"
 
         // Check for trailing non-whitespace
         if (!is_end_of_input(cursor))
-            return false;
+            return 0;
 
         // Check for true values
         if (str_eq_ci(word, "true") || str_eq_ci(word, "yes") || str_eq_ci(word, "1") ||
             str_eq_ci(word, "on"))
         {
-            *out_value = true;
-            return true;
+            *out_value = 1;
+            return 1;
         }
 
         // Check for false values
         if (str_eq_ci(word, "false") || str_eq_ci(word, "no") || str_eq_ci(word, "0") ||
             str_eq_ci(word, "off"))
         {
-            *out_value = false;
-            return true;
+            *out_value = 0;
+            return 1;
         }
 
-        return false;
+        return 0;
     }
 
     int64_t rt_parse_int_or(rt_string s, int64_t default_value)
@@ -198,21 +198,21 @@ extern "C"
         return default_value;
     }
 
-    bool rt_parse_bool_or(rt_string s, bool default_value)
+    int8_t rt_parse_bool_or(rt_string s, int8_t default_value)
     {
-        bool result;
+        int8_t result;
         if (rt_parse_try_bool(s, &result))
             return result;
         return default_value;
     }
 
-    bool rt_parse_is_int(rt_string s)
+    int8_t rt_parse_is_int(rt_string s)
     {
         int64_t dummy;
         return rt_parse_try_int(s, &dummy);
     }
 
-    bool rt_parse_is_num(rt_string s)
+    int8_t rt_parse_is_num(rt_string s)
     {
         double dummy;
         return rt_parse_try_num(s, &dummy);

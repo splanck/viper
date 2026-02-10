@@ -12,7 +12,6 @@
 
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -63,7 +62,7 @@ extern "C"
     int64_t rt_bits_swap(int64_t val);
 
     /// @brief Get bit at position (0-63).
-    bool rt_bits_get(int64_t val, int64_t bit);
+    int8_t rt_bits_get(int64_t val, int64_t bit);
 
     /// @brief Set bit at position (0-63).
     int64_t rt_bits_set(int64_t val, int64_t bit);
