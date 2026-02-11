@@ -19,38 +19,46 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" {
-#include "rt_internal.h"
+extern "C"
+{
 #include "rt_gc.h"
+#include "rt_internal.h"
+#include "rt_machine.h"
 #include "rt_object.h"
 #include "rt_platform.h"
-#include "rt_string.h"
 #include "rt_serialize.h"
-#include "rt_machine.h"
+#include "rt_string.h"
 
-void vm_trap(const char *msg) {
-    fprintf(stderr, "TRAP: %s\n", msg);
-    rt_abort(msg);
-}
+    void vm_trap(const char *msg)
+    {
+        fprintf(stderr, "TRAP: %s\n", msg);
+        rt_abort(msg);
+    }
 }
 
 static int tests_run = 0;
 static int tests_passed = 0;
 
-#define ASSERT(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { \
-        fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg); \
-    } else { \
-        tests_passed++; \
-    } \
-} while(0)
+#define ASSERT(cond, msg)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 //=============================================================================
 // Platform detection
 //=============================================================================
 
-static void test_platform_detection() {
+static void test_platform_detection()
+{
 #ifdef _WIN32
     ASSERT(RT_PLATFORM_WINDOWS == 1, "Windows detected");
     ASSERT(RT_PLATFORM_VIPERDOS == 0, "not ViperDOS on Windows");
@@ -70,7 +78,8 @@ static void test_platform_detection() {
 // Machine info
 //=============================================================================
 
-static void test_machine_os_name() {
+static void test_machine_os_name()
+{
     rt_string os = rt_machine_os();
     ASSERT(os != NULL, "OS name not null");
     ASSERT(rt_str_len(os) > 0, "OS name not empty");
@@ -87,7 +96,8 @@ static void test_machine_os_name() {
 #endif
 }
 
-static void test_machine_os_version() {
+static void test_machine_os_version()
+{
     rt_string ver = rt_machine_os_ver();
     ASSERT(ver != NULL, "OS version not null");
     ASSERT(rt_str_len(ver) > 0, "OS version not empty");
@@ -97,11 +107,13 @@ static void test_machine_os_version() {
 // Serialization format detection (platform-independent)
 //=============================================================================
 
-static rt_string make_str(const char *s) {
+static rt_string make_str(const char *s)
+{
     return rt_string_from_bytes(s, (int64_t)strlen(s));
 }
 
-static void test_serialize_detect() {
+static void test_serialize_detect()
+{
     ASSERT(rt_serialize_detect(make_str("{\"a\":1}")) == RT_FORMAT_JSON, "detect JSON");
     ASSERT(rt_serialize_detect(make_str("<root/>")) == RT_FORMAT_XML, "detect XML");
     ASSERT(rt_serialize_detect(make_str("---\nkey: val")) == RT_FORMAT_YAML, "detect YAML");
@@ -110,11 +122,15 @@ static void test_serialize_detect() {
     ASSERT(rt_serialize_detect(make_str("")) == -1, "detect empty");
 }
 
-static void test_serialize_format_names() {
-    ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_JSON)), "json") == 0, "json name");
+static void test_serialize_format_names()
+{
+    ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_JSON)), "json") == 0,
+           "json name");
     ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_XML)), "xml") == 0, "xml name");
-    ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_YAML)), "yaml") == 0, "yaml name");
-    ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_TOML)), "toml") == 0, "toml name");
+    ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_YAML)), "yaml") == 0,
+           "yaml name");
+    ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_TOML)), "toml") == 0,
+           "toml name");
     ASSERT(strcmp(rt_string_cstr(rt_serialize_format_name(RT_FORMAT_CSV)), "csv") == 0, "csv name");
 }
 
@@ -122,16 +138,23 @@ static void test_serialize_format_names() {
 // GC weak ref integration
 //=============================================================================
 
-struct simple_node { void *child; };
+struct simple_node
+{
+    void *child;
+};
 
-extern "C" {
-static void node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
-    struct simple_node *n = (struct simple_node *)obj;
-    if (n->child) visitor(n->child, ctx);
-}
+extern "C"
+{
+    static void node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx)
+    {
+        struct simple_node *n = (struct simple_node *)obj;
+        if (n->child)
+            visitor(n->child, ctx);
+    }
 }
 
-static void test_gc_weakref_integration() {
+static void test_gc_weakref_integration()
+{
     // Create a cycle: a -> b -> a
     void *a = rt_obj_new_i64(0, (int64_t)sizeof(struct simple_node));
     void *b = rt_obj_new_i64(0, (int64_t)sizeof(struct simple_node));
@@ -156,7 +179,8 @@ static void test_gc_weakref_integration() {
     rt_weakref_free(wb);
 }
 
-static void test_gc_stats() {
+static void test_gc_stats()
+{
     int64_t passes = rt_gc_pass_count();
     rt_gc_collect();
     ASSERT(rt_gc_pass_count() > passes, "pass count incremented");
@@ -166,7 +190,8 @@ static void test_gc_stats() {
 // Main
 //=============================================================================
 
-int main() {
+int main()
+{
     test_platform_detection();
     test_machine_os_name();
     test_machine_os_version();

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_frozenmap.h
+// File: src/runtime/rt_frozenmap.h
 // Purpose: Runtime functions for immutable string-keyed map.
 // Key invariants: Once created, cannot be modified. O(1) average lookup.
 // Ownership/Lifetime: Retains keys and values. Created from existing Map or Seqs.

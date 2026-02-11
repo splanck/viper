@@ -249,8 +249,7 @@ static void test_point_at()
 static void test_bezier_point_count()
 {
     void *s = rt_spline_bezier(
-        rt_vec2_new(0.0, 0.0), rt_vec2_new(1.0, 1.0),
-        rt_vec2_new(2.0, 1.0), rt_vec2_new(3.0, 0.0));
+        rt_vec2_new(0.0, 0.0), rt_vec2_new(1.0, 1.0), rt_vec2_new(2.0, 1.0), rt_vec2_new(3.0, 0.0));
     assert(rt_spline_point_count(s) == 4);
     printf("test_bezier_point_count: PASSED\n");
 }
@@ -278,8 +277,7 @@ static void test_bezier_tangent()
 {
     /* Straight-line bezier: tangent should be in the positive X direction */
     void *s = rt_spline_bezier(
-        rt_vec2_new(0.0, 0.0), rt_vec2_new(1.0, 0.0),
-        rt_vec2_new(2.0, 0.0), rt_vec2_new(3.0, 0.0));
+        rt_vec2_new(0.0, 0.0), rt_vec2_new(1.0, 0.0), rt_vec2_new(2.0, 0.0), rt_vec2_new(3.0, 0.0));
 
     void *t = rt_spline_tangent(s, 0.5);
     /* For a straight line, tangent Y should be ~0 */

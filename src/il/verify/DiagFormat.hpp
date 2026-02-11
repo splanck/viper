@@ -5,27 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares diagnostic formatting utilities for the IL verifier. These
-// helpers generate human-readable error messages that provide context about where
-// verification failures occurred within the IL module hierarchy.
-//
-// Effective error reporting requires identifying not just what failed, but where
-// the failure occurred. IL programs are organized as modules containing functions
-// containing basic blocks containing instructions. The formatting utilities in
-// this file construct diagnostic messages that include this hierarchical context,
-// making verification errors easier to locate and fix.
-//
-// Key Responsibilities:
-// - Format block-level diagnostics with function and block label context
-// - Format instruction-level diagnostics with function, block, and instruction
-// - Generate compact instruction snippets for error message inclusion
-// - Provide consistent diagnostic formatting across all verifier components
-//
-// Design Notes:
-// All formatters are stateless pure functions accepting const references to IL
-// structures. They never modify the IL or take ownership. The formatted strings
-// are designed for command-line output and follow a consistent pattern:
-// "function 'name' block 'label': instruction 'snippet': message".
+// File: il/verify/DiagFormat.hpp
+// Purpose: Diagnostic formatting utilities for the IL verifier -- generates
+//          human-readable error messages with hierarchical context (function,
+//          block label, instruction snippet). Consistent format:
+//          "function 'name' block 'label': instruction 'snippet': message".
+// Key invariants:
+//   - All formatters are stateless pure functions; never modify IL or take
+//     ownership.
+// Ownership/Lifetime: Stateless free functions returning std::string values.
+// Links: il/core/fwd.hpp
 //
 //===----------------------------------------------------------------------===//
 

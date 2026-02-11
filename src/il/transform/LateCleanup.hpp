@@ -5,16 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the LateCleanup pass, a thin wrapper around SimplifyCFG
-// and DCE tuned for late-pipeline cleanup. The pass now runs a bounded
-// fixpoint: multiple iterations of CFG simplification followed by dead code
-// elimination, stopping early when no further reduction is observed. A small
-// stats hook records IL size before/after so callers can inspect how much
-// cleanup occurred.
-//
-// LateCleanup is designed to run at the tail of the O2 pipeline to clean up
-// trivial dead code and CFG noise created by earlier passes (inlining, GVN,
-// check-opt, etc.).
+// File: il/transform/LateCleanup.hpp
+// Purpose: Late-pipeline cleanup module pass -- bounded fixpoint of
+//          SimplifyCFG + DCE designed for the tail of the O2 pipeline.
+//          Records IL size before/after for diagnostics via LateCleanupStats.
+// Key invariants:
+//   - Iteration count is capped to avoid unbounded work.
+//   - Stops early when no further reduction is observed.
+// Ownership/Lifetime: ModulePass instantiated by the registry. Optional
+//          LateCleanupStats pointer is borrowed; must outlive run().
+// Links: il/transform/PassRegistry.hpp, il/transform/SimplifyCFG.hpp,
+//        il/transform/DCE.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,15 +30,19 @@ namespace il::transform
 {
 
 /// @brief Aggregate size information collected while running LateCleanup.
+/// @details Captures instruction and block counts before the first iteration,
+///          after the final iteration, and at each intermediate step.  This
+///          allows callers to evaluate the effectiveness of the late-cleanup
+///          fixpoint and to produce diagnostics or pass-pipeline statistics.
 struct LateCleanupStats
 {
-    unsigned iterations = 0;
-    std::size_t instrBefore = 0;
-    std::size_t blocksBefore = 0;
-    std::size_t instrAfter = 0;
-    std::size_t blocksAfter = 0;
-    std::vector<std::size_t> instrPerIter;
-    std::vector<std::size_t> blocksPerIter;
+    unsigned iterations = 0;               ///< Number of SimplifyCFG+DCE iterations that executed.
+    std::size_t instrBefore = 0;           ///< Total instruction count before the first iteration.
+    std::size_t blocksBefore = 0;          ///< Total basic-block count before the first iteration.
+    std::size_t instrAfter = 0;            ///< Total instruction count after the final iteration.
+    std::size_t blocksAfter = 0;           ///< Total basic-block count after the final iteration.
+    std::vector<std::size_t> instrPerIter; ///< Instruction count snapshot after each iteration.
+    std::vector<std::size_t> blocksPerIter; ///< Basic-block count snapshot after each iteration.
 };
 
 /// @brief Late-pipeline cleanup pass combining CFG simplification and DCE.

@@ -90,29 +90,112 @@ std::optional<Type::Kind> kindFromClass(TypeClass typeClass);
 /// @return Matching type or std::nullopt when the class depends on instruction metadata.
 std::optional<Type> typeFromClass(TypeClass typeClass);
 
-// Arithmetic helpers.
+// --- Arithmetic verification helpers ---
+
+/// @brief Verify that all operands of the current instruction match a given type kind.
+/// @param ctx Verification context with the instruction to check.
+/// @param kind Expected type kind for every operand.
+/// @return Success when all operands conform; diagnostic error otherwise.
 [[nodiscard]] Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind);
+
+/// @brief Verify a binary arithmetic instruction (e.g., add, sub, mul, div).
+/// @details Checks that both operands match @p operandKind and the result type
+///          matches @p resultType. Produces a diagnostic on type mismatch.
+/// @param ctx Verification context containing the binary instruction.
+/// @param operandKind Required type kind for both left and right operands.
+/// @param resultType Expected result type of the computation.
+/// @return Success when types are valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkBinary(const VerifyCtx &ctx,
                                          Type::Kind operandKind,
                                          Type resultType);
+
+/// @brief Verify a unary arithmetic instruction (e.g., neg, not, abs).
+/// @details Checks that the single operand matches @p operandKind and the
+///          result type matches @p resultType.
+/// @param ctx Verification context containing the unary instruction.
+/// @param operandKind Required type kind for the operand.
+/// @param resultType Expected result type of the computation.
+/// @return Success when types are valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkUnary(const VerifyCtx &ctx,
                                         Type::Kind operandKind,
                                         Type resultType);
+
+/// @brief Verify an index-bounds-check instruction (idx.chk).
+/// @details Validates that the index and bound operands are integers and
+///          that the instruction metadata is consistent.
+/// @param ctx Verification context containing the idx.chk instruction.
+/// @return Success when operand types and metadata are valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkIdxChk(const VerifyCtx &ctx);
 
-// Memory helpers.
+// --- Memory operation verification helpers ---
+
+/// @brief Verify an alloca instruction allocates a valid local variable.
+/// @param ctx Verification context containing the alloca instruction.
+/// @return Success when type and metadata are valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkAlloca(const VerifyCtx &ctx);
+
+/// @brief Verify a GEP (get-element-pointer) instruction.
+/// @details Checks that the base operand is a pointer type and that the index
+///          operand is an integer, producing a pointer result.
+/// @param ctx Verification context containing the GEP instruction.
+/// @return Success when base and index types are valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkGEP(const VerifyCtx &ctx);
+
+/// @brief Verify a load instruction reads from a valid pointer.
+/// @details Confirms the operand is a pointer type and the result type matches
+///          the declared element type of the load.
+/// @param ctx Verification context containing the load instruction.
+/// @return Success when pointer and result types are consistent; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkLoad(const VerifyCtx &ctx);
+
+/// @brief Verify a store instruction writes through a valid pointer.
+/// @details Confirms the address operand is a pointer and the value operand
+///          type is compatible with the store's declared type annotation.
+/// @param ctx Verification context containing the store instruction.
+/// @return Success when address and value types match; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkStore(const VerifyCtx &ctx);
+
+/// @brief Verify an addr.of instruction that takes the address of a value.
+/// @param ctx Verification context containing the addr.of instruction.
+/// @return Success when operand and result types are valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkAddrOf(const VerifyCtx &ctx);
+
+/// @brief Verify a const.str instruction that loads a string constant.
+/// @details Checks that the global string label references a valid global and
+///          the result type is the string type.
+/// @param ctx Verification context containing the const.str instruction.
+/// @return Success when the string reference is valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkConstStr(const VerifyCtx &ctx);
+
+/// @brief Verify a const.null instruction that produces a null pointer.
+/// @param ctx Verification context containing the const.null instruction.
+/// @return Success when the result type is a pointer; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkConstNull(const VerifyCtx &ctx);
 
-// Runtime helpers.
+// --- Runtime call verification helpers ---
+
+/// @brief Verify a call instruction (call.extern or call.func).
+/// @details Validates callee existence, argument count, argument types, and
+///          return type against the callee's declared signature.
+/// @param ctx Verification context containing the call instruction.
+/// @return Success when the call matches the callee signature; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkCall(const VerifyCtx &ctx);
+
+/// @brief Verify a trap instruction that triggers a runtime error.
+/// @details Checks the trap kind annotation is valid and operand types are
+///          consistent with the trap classification.
+/// @param ctx Verification context containing the trap instruction.
+/// @return Success when trap metadata is well-formed; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkTrapKind(const VerifyCtx &ctx);
+
+/// @brief Verify a trap.err instruction that raises a user-level error.
+/// @param ctx Verification context containing the trap.err instruction.
+/// @return Success when operand types conform to error-raising semantics.
 [[nodiscard]] Expected<void> checkTrapErr(const VerifyCtx &ctx);
+
+/// @brief Verify a trap.from.err instruction that re-raises from an error context.
+/// @param ctx Verification context containing the trap.from.err instruction.
+/// @return Success when the error context and operands are valid.
 [[nodiscard]] Expected<void> checkTrapFromErr(const VerifyCtx &ctx);
 
 /// @brief Default validator that records the declared instruction result type.

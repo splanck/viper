@@ -1,5 +1,9 @@
 # Viper BASIC OOP Implementation - Bug Report
 
+> **Historical snapshot (2025-12-05).** Many of the bugs described here have since been fixed. In particular,
+> inheritance field access was fixed (see Lower_OOP_Scan.cpp BUG-OOP-001 fix), and INTERFACE/IMPLEMENTS parsing
+> was added. See `bugs/oop_bugs.md` for current resolved status.
+
 **Date:** 2025-12-05
 **Tested with:** vbasic compiler (VM execution)
 

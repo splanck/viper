@@ -155,7 +155,7 @@ Lexer → Parser → SemanticAnalyzer → ConstFolder (opt) → Lowerer → IL M
 All files referenced in these documents are located in:
 
 ```
-/Users/stephen/git/viper/src/frontends/basic/
+src/frontends/basic/
 ```
 
 Subdirectories:

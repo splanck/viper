@@ -5,30 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Loop-Invariant Code Motion (LICM) optimization pass.
-// LICM moves loop-invariant computations from inside loops to preheader blocks,
-// reducing redundant computation on each loop iteration and improving performance.
-//
-// When a loop repeatedly computes the same value that doesn't depend on the loop
-// iteration, that computation can be moved outside the loop to execute only once.
-// LICM identifies such loop-invariant instructions (those whose operands are
-// either loop-invariant or defined outside the loop) and hoists them to loop
-// preheaders, maintaining program semantics while reducing execution cost.
-//
-// Key Responsibilities:
-// - Identify natural loops within functions using loop analysis
-// - Detect loop-invariant instructions whose operands don't change per iteration
-// - Hoist eligible invariant instructions to loop preheaders
-// - Preserve program semantics (only hoist when provably safe)
-// - Maintain SSA form and dominance relationships
-//
-// Design Notes:
-// The pass operates conservatively, hoisting only instructions with no side
-// effects and whose results are guaranteed to be computed on all loop iterations.
-// It requires loop structure analysis (identifying headers, preheaders, latches)
-// and uses dataflow information to determine invariance. The implementation works
-// with the pass manager's analysis caching system to efficiently query loop
-// structure without recomputation.
+// File: il/transform/LICM.hpp
+// Purpose: Loop-Invariant Code Motion -- function pass that hoists
+//          loop-invariant, side-effect-free instructions to loop preheaders,
+//          reducing redundant computation per iteration. Loads are hoisted
+//          only when the loop contains no aliasing memory writes.
+// Key invariants:
+//   - Only hoists instructions that are pure, non-trapping, and whose operands
+//     are defined outside the loop or are themselves loop-invariant.
+//   - Assumes LoopSimplify has provided dedicated preheader/latch blocks.
+// Ownership/Lifetime: Stateless FunctionPass; instantiated by the registry.
+// Links: il/transform/PassRegistry.hpp, il/transform/analysis/LoopInfo.hpp,
+//        il/analysis/BasicAA.hpp
 //
 //===----------------------------------------------------------------------===//
 

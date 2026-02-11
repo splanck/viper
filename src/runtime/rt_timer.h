@@ -4,13 +4,17 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_timer.h
-/// @brief Frame-based timer utilities for games.
-///
-/// Provides countdown timers, repeating timers, and elapsed time tracking
-/// based on frame counts rather than wall-clock time.
-///
+//
+// File: src/runtime/rt_timer.h
+// Purpose: Frame-based timer utilities for countdown, repeating, and elapsed
+//   time tracking based on frame counts rather than wall-clock time.
+// Key invariants: Duration >= 1 frame. rt_timer_update() called once per
+//   frame. Expiration is a one-shot edge (returns 1 only on the expiring
+//   frame). Progress reported as integer percentage [0, 100].
+// Ownership/Lifetime: Caller owns the rt_timer handle and must free it with
+//   rt_timer_destroy().
+// Links: docs/viperlib.md
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef VIPER_RT_TIMER_H
@@ -26,75 +30,103 @@ extern "C"
     /// Opaque handle to a Timer instance.
     typedef struct rt_timer_impl *rt_timer;
 
-    /// Creates a new timer (initially stopped).
-    /// @return A new Timer instance.
+    /// @brief Allocates and initializes a new Timer in the stopped state.
+    /// @return A new Timer handle. The caller must free it with
+    ///   rt_timer_destroy().
     rt_timer rt_timer_new(void);
 
-    /// Destroys a timer and frees its memory.
-    /// @param timer The timer to destroy.
+    /// @brief Destroys a Timer and releases its memory.
+    /// @param timer The timer to destroy. Passing NULL is a no-op.
     void rt_timer_destroy(rt_timer timer);
 
-    /// Starts a countdown timer.
-    /// @param timer The timer.
-    /// @param frames Number of frames until expiration.
+    /// @brief Starts a one-shot countdown timer.
+    ///
+    /// The timer counts down from the given duration and expires once.
+    /// Calling this on a running timer restarts it with the new duration.
+    /// @param timer The timer to start.
+    /// @param frames Number of frames until expiration. Must be >= 1.
     void rt_timer_start(rt_timer timer, int64_t frames);
 
-    /// Starts a repeating timer that auto-restarts when expired.
-    /// @param timer The timer.
-    /// @param frames Number of frames per cycle.
+    /// @brief Starts a repeating countdown timer that auto-restarts on
+    ///   expiration.
+    ///
+    /// Each time the timer's countdown reaches zero, it fires (update returns
+    /// 1) and immediately restarts for another cycle.
+    /// @param timer The timer to start.
+    /// @param frames Number of frames per cycle. Must be >= 1.
     void rt_timer_start_repeating(rt_timer timer, int64_t frames);
 
-    /// Stops the timer.
-    /// @param timer The timer.
+    /// @brief Stops the timer and resets its elapsed time.
+    /// @param timer The timer to stop. Subsequent calls to rt_timer_update()
+    ///   will return 0 until the timer is started again.
     void rt_timer_stop(rt_timer timer);
 
-    /// Resets the timer to its initial duration without stopping.
-    /// @param timer The timer.
+    /// @brief Resets the timer's elapsed count to zero without changing its
+    ///   running/stopped state or duration.
+    ///
+    /// If the timer is running, it effectively restarts the current countdown
+    /// from the beginning.
+    /// @param timer The timer to reset.
     void rt_timer_reset(rt_timer timer);
 
-    /// Updates the timer (call once per frame).
-    /// @param timer The timer.
-    /// @return 1 if the timer just expired this frame, 0 otherwise.
+    /// @brief Advances the timer by one frame and checks for expiration.
+    ///
+    /// Must be called exactly once per game frame while the timer is running.
+    /// For repeating timers, automatically restarts the countdown on each
+    /// expiration.
+    /// @param timer The timer to update.
+    /// @return 1 if the timer expired on this frame, 0 otherwise. For
+    ///   repeating timers, returns 1 on each cycle completion.
     int8_t rt_timer_update(rt_timer timer);
 
-    /// Checks if the timer is currently running.
-    /// @param timer The timer.
-    /// @return 1 if running, 0 if stopped.
+    /// @brief Queries whether the timer is currently counting down.
+    /// @param timer The timer to query.
+    /// @return 1 if the timer is running (started and not yet stopped),
+    ///   0 if stopped.
     int8_t rt_timer_is_running(rt_timer timer);
 
-    /// Checks if the timer has expired.
-    /// @param timer The timer.
-    /// @return 1 if expired (remaining <= 0), 0 otherwise.
+    /// @brief Queries whether the timer has reached its expiration point.
+    /// @param timer The timer to query.
+    /// @return 1 if the timer has expired (elapsed >= duration), 0 otherwise.
+    ///   For repeating timers, this may only be briefly true before the timer
+    ///   auto-restarts.
     int8_t rt_timer_is_expired(rt_timer timer);
 
-    /// Gets the number of frames elapsed since start.
-    /// @param timer The timer.
-    /// @return Elapsed frames.
+    /// @brief Retrieves the number of frames elapsed since the timer was
+    ///   started or last reset.
+    /// @param timer The timer to query.
+    /// @return Elapsed frames, in [0, duration]. Returns 0 if not started.
     int64_t rt_timer_elapsed(rt_timer timer);
 
-    /// Gets the number of frames remaining.
-    /// @param timer The timer.
-    /// @return Remaining frames (0 if expired).
+    /// @brief Retrieves the number of frames remaining before expiration.
+    /// @param timer The timer to query.
+    /// @return Remaining frames. Returns 0 if the timer has already expired
+    ///   or has not been started.
     int64_t rt_timer_remaining(rt_timer timer);
 
-    /// Gets the progress as a percentage (0-100).
-    /// @param timer The timer.
-    /// @return Progress percentage (100 = complete).
+    /// @brief Retrieves the timer's progress as an integer percentage.
+    /// @param timer The timer to query.
+    /// @return A value from 0 (just started) to 100 (fully elapsed / expired).
     int64_t rt_timer_progress(rt_timer timer);
 
-    /// Gets the total duration of the timer.
-    /// @param timer The timer.
-    /// @return Total frames.
+    /// @brief Retrieves the total duration the timer was configured with.
+    /// @param timer The timer to query.
+    /// @return Total countdown duration in frames.
     int64_t rt_timer_duration(rt_timer timer);
 
-    /// Checks if this is a repeating timer.
-    /// @param timer The timer.
-    /// @return 1 if repeating, 0 otherwise.
+    /// @brief Queries whether the timer is set to repeat automatically.
+    /// @param timer The timer to query.
+    /// @return 1 if the timer was started with rt_timer_start_repeating(),
+    ///   0 if it is a one-shot timer.
     int8_t rt_timer_is_repeating(rt_timer timer);
 
-    /// Sets the timer duration without restarting.
-    /// @param timer The timer.
-    /// @param frames New duration in frames.
+    /// @brief Changes the timer's duration without restarting or stopping it.
+    ///
+    /// The new duration takes effect on the current or next countdown cycle.
+    /// If the elapsed time already exceeds the new duration, the timer will
+    /// expire on the next update.
+    /// @param timer The timer to modify.
+    /// @param frames New duration in frames. Must be >= 1.
     void rt_timer_set_duration(rt_timer timer, int64_t frames);
 
 #ifdef __cplusplus

@@ -76,7 +76,6 @@ typedef struct rt_bag_impl
     size_t count;           ///< Number of strings currently in the Bag.
 } rt_bag_impl;
 
-
 /// @brief Extracts C string data and length from a Viper string.
 ///
 /// Helper function to safely get the underlying character data from a

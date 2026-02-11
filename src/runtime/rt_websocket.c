@@ -188,7 +188,7 @@ static long ws_recv(rt_ws_impl *ws, void *buffer, size_t len)
 /// @return 1 if ready, 0 if timeout, -1 on error.
 static int ws_wait_socket(int fd, int timeout_ms, int for_write)
 {
-#if 0  // removed: ViperDOS now provides select() via libc
+#if 0 // removed: ViperDOS now provides select() via libc
 #else
     fd_set fds;
     FD_ZERO(&fds);

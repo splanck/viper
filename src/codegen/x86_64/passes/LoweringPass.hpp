@@ -24,6 +24,10 @@ namespace viper::codegen::x64::passes
 class LoweringPass final : public Pass
 {
   public:
+    /// @brief Run the lowering pass: translate IL functions into MIR functions.
+    /// @param module The codegen module containing the IL to lower.
+    /// @param diags Diagnostic sink for reporting lowering errors.
+    /// @return True if lowering succeeded for all functions, false on error.
     bool run(Module &module, Diagnostics &diags) override;
 };
 

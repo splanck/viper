@@ -446,7 +446,8 @@ std::vector<std::string> Parser::parseGenericParams()
 }
 
 /// @brief Parse generic type parameters with optional constraints ([T: Comparable, U]).
-/// @param[out] constraints Parallel vector of constraint interface names (empty string = unconstrained).
+/// @param[out] constraints Parallel vector of constraint interface names (empty string =
+/// unconstrained).
 /// @return The list of type parameter names, or empty if no brackets present.
 std::vector<std::string> Parser::parseGenericParamsWithConstraints(
     std::vector<std::string> &constraints)

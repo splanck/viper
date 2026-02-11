@@ -6,12 +6,12 @@
 
 ## Contents
 
-- [Viper.Diagnostics](#viperdiagnostics)
+- [Viper.Core.Diagnostics](#vipercorediagnostics)
 - [Viper.Time.Stopwatch](time.md#vipertimestopwatch)
 
 ---
 
-## Viper.Diagnostics
+## Viper.Core.Diagnostics
 
 Runtime assertion helpers that terminate execution when a condition fails.
 
@@ -50,9 +50,9 @@ bind Viper.Terminal;
 
 func start() {
     // Diagnostics uses fully-qualified calls
-    Viper.Diagnostics.Assert(true, "this should pass");
-    Viper.Diagnostics.AssertEq(42, 42, "integers match");
-    Viper.Diagnostics.AssertEqStr("hello", "hello", "strings match");
+    Viper.Core.Diagnostics.Assert(true, "this should pass");
+    Viper.Core.Diagnostics.AssertEq(42, 42, "integers match");
+    Viper.Core.Diagnostics.AssertEqStr("hello", "hello", "strings match");
     Say("All assertions passed!");
 }
 ```
@@ -63,11 +63,11 @@ func start() {
 DIM value AS INTEGER
 value = 5
 
-Viper.Diagnostics.Assert(value > 0, "value must be positive")
-Viper.Diagnostics.AssertEq(value, 5, "value mismatch")
+Viper.Core.Diagnostics.Assert(value > 0, "value must be positive")
+Viper.Core.Diagnostics.AssertEq(value, 5, "value mismatch")
 
 ' Force a trap
-' Viper.Diagnostics.AssertFail("not implemented")
+' Viper.Core.Diagnostics.AssertFail("not implemented")
 ```
 
 ---

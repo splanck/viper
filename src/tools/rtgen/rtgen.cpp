@@ -103,7 +103,6 @@ struct DescriptorFields
     std::string trapClass;
 };
 
-
 //===----------------------------------------------------------------------===//
 // Parser State
 //===----------------------------------------------------------------------===//
@@ -318,7 +317,8 @@ static void parseRtFunc(ParseState &state, const std::string &args)
     auto parts = split(args, ',');
     if (parts.size() < 4 || parts.size() > 5)
     {
-        state.error("RT_FUNC requires 4-5 arguments: id, c_symbol, canonical, signature [, lowering]");
+        state.error(
+            "RT_FUNC requires 4-5 arguments: id, c_symbol, canonical, signature [, lowering]");
     }
 
     RuntimeFunc func;
@@ -873,7 +873,6 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
     return result;
 }
 
-
 //===----------------------------------------------------------------------===//
 // Code Generation
 //===----------------------------------------------------------------------===//
@@ -1003,7 +1002,6 @@ static void emitDescriptorRow(std::ostream &out,
     out << pad << "              " << fields.hiddenCount << ",\n";
     out << pad << "              " << fields.trapClass << "},\n";
 }
-
 
 static void generateNameMap(const ParseState &state, const fs::path &outDir)
 {
@@ -1179,8 +1177,9 @@ static void generateSignatures(const ParseState &state,
         if (it == state.func_by_id.end())
             continue;
         const auto &target = state.functions[it->second];
-        entries.emplace(alias.canonical,
-                        RuntimeEntry{alias.canonical, target.c_symbol, target.signature, target.lowering});
+        entries.emplace(
+            alias.canonical,
+            RuntimeEntry{alias.canonical, target.c_symbol, target.signature, target.lowering});
     }
 
     // Emit canonical entries in definition order

@@ -64,15 +64,15 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 |-------------------------------|-------------------------------------------------------------|
 | `Viper.Object`                | Base class with Equals, HashCode, ToString               |
 | `Viper.String`                | String manipulation (Substring, Trim, Replace, etc.)        |
-| `Viper.Strings`               | Static string utilities (Join, FromInt, etc.)               |
+| `Viper.String` (static)       | Static string utilities (Join, FromStr, Equals, etc.)       |
 | `Viper.Math`                  | Math functions (Sin, Cos, Sqrt, etc.) and constants (Pi, E) |
 | `Viper.Terminal`              | Terminal I/O (Say, Print, Ask, ReadLine)                    |
 | `Viper.Convert`               | Type conversion (ToInt, ToDouble)                           |
 | `Viper.Environment`           | Command-line args, environment variables, process exit      |
-| `Viper.Random`                | Random number generation                                    |
+| `Viper.Math.Random`           | Random number generation                                    |
 | `Viper.Collections.Seq`       | Dynamic array with Push, Pop, Get, Set                      |
 | `Viper.Collections.Stack`     | LIFO with Push, Pop, Peek                                   |
-| `Viper.Collections.Queue`     | FIFO with Add, Take, Peek                                   |
+| `Viper.Collections.Queue`     | FIFO with Push, Pop, Peek                                   |
 | `Viper.Collections.Map`       | String-keyed dictionary                                     |
 | `Viper.Collections.Bytes`     | Efficient byte array                                        |
 | `Viper.Collections.Bag`       | String set with union, intersection, difference             |
@@ -92,8 +92,10 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.Graphics.Color`        | RGB/RGBA color creation                                     |
 | `Viper.Graphics.Pixels`       | Software image buffer for pixel manipulation                |
 | `Viper.Time.Clock`            | Sleep and tick counting                                     |
-| `Viper.DateTime`              | Date/time creation and formatting                           |
-| `Viper.Diagnostics.Stopwatch` | Benchmarking timer                                          |
+| `Viper.Time.DateTime`         | Date/time creation and formatting                           |
+| `Viper.Time.Stopwatch`        | Benchmarking timer                                          |
+| `Viper.Core.Diagnostics`      | Runtime assertions and traps                                |
+| `Viper.Core.Box`              | Boxing primitives for generic collections                   |
 
 ---
 

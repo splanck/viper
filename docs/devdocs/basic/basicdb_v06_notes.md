@@ -1,11 +1,14 @@
 # BasicDB v0.6 Refactoring - Blocked by BUG-030
 
+> **Historical (2025-11-14).** BUG-030 has since been FIXED. Module-level variables now work correctly in
+> SUB/FUNCTION procedures. The blocker described here no longer applies.
+
 ## Goal
 
 Refactor BasicDB from v0.5 (490 lines with 50 individual variables) to v0.6 using parallel arrays after STRING array
 support was added (BUG-033 RESOLVED).
 
-## Status: BLOCKED
+## Status: BLOCKED (at time of writing; BUG-030 has since been resolved)
 
 ## Findings
 

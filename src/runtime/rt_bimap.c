@@ -56,7 +56,6 @@ typedef struct rt_bimap_impl
 // Inverse lookup chain node
 typedef struct rt_bm_inv_link rt_bm_inv_link;
 
-
 static const char *get_str_data(rt_string s, size_t *out_len)
 {
     const char *cstr = rt_string_cstr(s);

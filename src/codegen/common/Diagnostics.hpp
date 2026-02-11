@@ -8,6 +8,9 @@
 // File: codegen/common/Diagnostics.hpp
 // Purpose: Target-independent diagnostic sink for codegen passes.
 // Key invariants: Errors trigger pipeline short-circuit; warnings do not.
+// Ownership/Lifetime: Owned by caller; typically lives for the duration of a
+//                     single pass-manager run.
+// Links: codegen/common/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//
 

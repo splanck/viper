@@ -5,33 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the PipelineExecutor class, which coordinates execution of
-// optimization pass pipelines on IL modules. The executor resolves pass names to
-// registered pass instances, manages analysis caching and invalidation, and provides
-// instrumentation hooks for debugging and verification.
-//
-// A pass pipeline is an ordered sequence of transformation and analysis passes.
-// The PipelineExecutor takes a pipeline specification (list of pass names), looks
-// up each pass in the registry, instantiates pass objects, executes them in order,
-// and maintains analysis results between passes based on preservation information.
-// Instrumentation hooks enable printing IR before/after passes and verifying
-// correctness after each transformation.
-//
-// Key Responsibilities:
-// - Resolve pass names to registered pass factories
-// - Instantiate module and function passes for pipeline execution
-// - Execute passes in specified order on the module
-// - Manage analysis caching and invalidation based on PreservedAnalyses
-// - Invoke instrumentation hooks (print before/after, verification)
-// - Coordinate between module-level and function-level passes
-//
-// Design Notes:
-// The executor is configured with const references to registries (passes and
-// analyses) and instrumentation callbacks. It doesn't own the registries, only
-// borrows them during pipeline execution. The executor creates a single
-// AnalysisManager per module for the pipeline run, enabling analysis result
-// sharing across passes. The instrumentation structure allows customizable
-// debugging without coupling the executor to specific output mechanisms.
+// File: il/transform/PipelineExecutor.hpp
+// Purpose: Coordinates execution of optimisation pass pipelines on IL modules.
+//          Resolves pass names to registered factories, manages analysis
+//          caching/invalidation via AnalysisManager, and invokes
+//          instrumentation hooks (IR printing, verification, metrics).
+// Key invariants:
+//   - Pass and analysis registries are borrowed by const reference and must
+//     outlive the executor.
+//   - A single AnalysisManager is created per pipeline run.
+// Ownership/Lifetime: PipelineExecutor borrows registries and instrumentation
+//          callbacks; does not own them. Caller owns the Module.
+// Links: il/transform/PassRegistry.hpp, il/transform/AnalysisManager.hpp
 //
 //===----------------------------------------------------------------------===//
 

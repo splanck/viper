@@ -35,6 +35,20 @@ struct AllocationResult
 };
 
 /// \brief Allocate registers for \p func using a basic linear-scan strategy.
+///
+/// @details Computes live intervals for every virtual register, then walks
+///          them in start-point order assigning physical registers from the
+///          available pool. When no register is free the interval with the
+///          longest remaining range is spilled. After allocation, all virtual
+///          register references in @p func are rewritten to their assigned
+///          physical registers.
+///
+/// @param func   The machine function whose virtual registers are allocated.
+///               Modified in-place with spill/reload instructions as needed.
+/// @param target ABI metadata providing allocatable register sets and
+///               callee-saved information.
+/// @return An AllocationResult containing the vreg-to-phys mapping and the
+///         number of spill slots consumed per register class.
 [[nodiscard]] AllocationResult allocate(MFunction &func, const TargetInfo &target);
 
 } // namespace viper::codegen::x64

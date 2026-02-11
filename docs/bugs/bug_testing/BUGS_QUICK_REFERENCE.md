@@ -1,5 +1,8 @@
 # Quick Reference: Outstanding Bugs (2025-11-15)
 
+> **Historical snapshot.** Most bugs listed here have been fixed in subsequent sessions (November-December 2025).
+> See `bugs/oop_bugs.md` and `bugs/basic_resolved.md` for current status.
+
 ## CRITICAL (Must Fix for OOP)
 
 ### BUG-047: IF/THEN crashes inside class methods

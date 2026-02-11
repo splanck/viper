@@ -24,6 +24,10 @@ namespace viper::codegen::x64::passes
 class LegalizePass final : public Pass
 {
   public:
+    /// @brief Run the legalization pass: validate and normalize MIR for x86-64 constraints.
+    /// @param module The codegen module containing MIR functions to legalize.
+    /// @param diags Diagnostic sink for reporting legalization errors.
+    /// @return True if legalization succeeded, false on error.
     bool run(Module &module, Diagnostics &diags) override;
 };
 

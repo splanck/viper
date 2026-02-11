@@ -8,10 +8,10 @@
 // File: include/viper/vm/internal/OpHelpers.hpp
 // Purpose: Provide reusable helpers for decoding VM operands and emitting common
 //          traps used by opcode handlers.
-// Invariants: Helpers only operate on operands belonging to the active frame and
-//             never retain references beyond the call site.
-// Ownership: Functions access VM state through the existing handler access layer
-//            without introducing new global state.
+// Key invariants: Helpers only operate on operands belonging to the active frame
+//                 and never retain references beyond the call site.
+// Ownership/Lifetime: Functions access VM state through the existing handler
+//                     access layer without introducing new global state.
 // Links: docs/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
@@ -33,14 +33,24 @@ namespace il::vm::internal
 {
 namespace detail
 {
+/// @brief Emit a trap with diagnostic context from the current instruction and frame.
+/// @param kind Classification of the trap (e.g., overflow, divide-by-zero).
+/// @param message Human-readable description of the failure.
+/// @param instr Instruction that triggered the trap.
+/// @param frame Active frame containing function metadata.
+/// @param block Current basic block pointer, may be null.
 void trapWithMessage(TrapKind kind,
                      const char *message,
                      const il::core::Instr &instr,
                      Frame &frame,
                      const il::core::BasicBlock *block);
 
+/// @brief Type traits for loading from and storing to Slot union members.
+/// @tparam T Target C++ type selecting the appropriate Slot field.
+/// @tparam Enable SFINAE selector.
 template <typename T, typename Enable = void> struct SlotTraits;
 
+/// @brief SlotTraits specialization for non-bool integral types (maps to Slot::i64).
 template <typename T>
 struct SlotTraits<T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>>>
 {
@@ -55,6 +65,7 @@ struct SlotTraits<T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T
     }
 };
 
+/// @brief SlotTraits specialization for floating-point types (maps to Slot::f64).
 template <typename T> struct SlotTraits<T, std::enable_if_t<std::is_floating_point_v<T>>>
 {
     [[nodiscard]] static T load(const Slot &slot) noexcept
@@ -68,6 +79,7 @@ template <typename T> struct SlotTraits<T, std::enable_if_t<std::is_floating_poi
     }
 };
 
+/// @brief SlotTraits specialization for bool (maps to Slot::i64, 0/1).
 template <> struct SlotTraits<bool, void>
 {
     [[nodiscard]] static bool load(const Slot &slot) noexcept

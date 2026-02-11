@@ -5,18 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Global Value Numbering (GVN) + Redundant Load Elimination — function pass
-//
-// This pass performs dominator-tree based global value numbering to eliminate
-// redundant, side-effect-free computations across basic blocks. In addition, it
-// performs simple redundant load elimination using BasicAA to disambiguate
-// memory and invalidate available loads on intervening stores or calls that may
-// clobber memory.
-//
-// The algorithm traverses the dominator tree in preorder, maintains a table of
-// canonical value expressions, and replaces later equivalent expressions with
-// the dominating SSA value. For loads, it memoises available (ptr,type) reads
-// and reuses a dominating value when no clobber is observed.
+// File: il/transform/GVN.hpp
+// Purpose: Global Value Numbering + Redundant Load Elimination -- function
+//          pass that eliminates redundant pure computations across basic
+//          blocks using dominator-tree preorder traversal, and removes
+//          redundant loads via BasicAA memory disambiguation.
+// Key invariants:
+//   - Only eliminates side-effect-free, non-trapping computations.
+//   - Available loads are invalidated by intervening stores/calls that may
+//     clobber memory per BasicAA.
+// Ownership/Lifetime: Stateless FunctionPass; instantiated by the registry.
+// Links: il/transform/PassRegistry.hpp, il/analysis/BasicAA.hpp,
+//        il/analysis/Dominators.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,14 +27,28 @@
 namespace il::transform
 {
 
+/// @brief Global Value Numbering pass that eliminates redundant computations.
+/// @details Traverses the dominator tree in preorder, assigning value numbers
+///          to pure instructions. Instructions with duplicate value numbers are
+///          replaced with the dominating equivalent. Also performs redundant load
+///          elimination using BasicAA memory disambiguation to track available
+///          memory values.
 class GVN : public FunctionPass
 {
   public:
+    /// @brief Return the pass identifier string ("gvn").
+    /// @return A string view identifying this pass in the registry.
     std::string_view id() const override;
+
+    /// @brief Run GVN on a single function.
+    /// @param function The function to optimize by eliminating redundant values.
+    /// @param analysis The analysis manager providing dominator tree and alias info.
+    /// @return A PreservedAnalyses set indicating which analyses remain valid.
     PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override;
 };
 
-/// Register GVN with the pass registry under identifier "gvn".
+/// @brief Register the GVN pass with the pass registry under identifier "gvn".
+/// @param registry The pass registry to register with.
 void registerGVNPass(PassRegistry &registry);
 
 } // namespace il::transform

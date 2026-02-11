@@ -736,6 +736,7 @@ void *rt_pixels_load_png(void *path)
             int64_t len;
             uint8_t *data;
         } bytes_t;
+
         bytes_t *b = (bytes_t *)comp_bytes;
         memcpy(b->data, idat_buf + 2, deflate_len);
     }
@@ -752,6 +753,7 @@ void *rt_pixels_load_png(void *path)
         int64_t len;
         uint8_t *data;
     } bytes_t;
+
     bytes_t *raw = (bytes_t *)raw_bytes;
 
     int channels = (color_type == 6) ? 4 : 3; // RGBA vs RGB
@@ -862,7 +864,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
             dst[x * 4 + 0] = (uint8_t)((pixel >> 24) & 0xFF); // R
             dst[x * 4 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
             dst[x * 4 + 2] = (uint8_t)((pixel >> 8) & 0xFF);  // B
-            dst[x * 4 + 3] = (uint8_t)(pixel & 0xFF);          // A
+            dst[x * 4 + 3] = (uint8_t)(pixel & 0xFF);         // A
         }
     }
 
@@ -879,6 +881,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
             int64_t len;
             uint8_t *data;
         } bytes_t;
+
         bytes_t *b = (bytes_t *)raw_bytes;
         memcpy(b->data, raw, raw_len);
     }
@@ -893,6 +896,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         int64_t len;
         uint8_t *data;
     } bytes_t;
+
     bytes_t *comp = (bytes_t *)comp_bytes;
 
     // Build zlib stream: 2-byte header + deflate data + 4-byte adler32
@@ -937,13 +941,15 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         crc_table_init = 1;
     }
 
-    // Helper: compute CRC over type + data
-    #define PNG_CRC(type_data, len) do { \
-        uint32_t crc = 0xFFFFFFFF; \
-        for (size_t _i = 0; _i < (size_t)(len); _i++) \
-            crc = crc_table[(crc ^ (type_data)[_i]) & 0xFF] ^ (crc >> 8); \
-        chunk_crc = crc ^ 0xFFFFFFFF; \
-    } while(0)
+// Helper: compute CRC over type + data
+#define PNG_CRC(type_data, len)                                                                    \
+    do                                                                                             \
+    {                                                                                              \
+        uint32_t crc = 0xFFFFFFFF;                                                                 \
+        for (size_t _i = 0; _i < (size_t)(len); _i++)                                              \
+            crc = crc_table[(crc ^ (type_data)[_i]) & 0xFF] ^ (crc >> 8);                          \
+        chunk_crc = crc ^ 0xFFFFFFFF;                                                              \
+    } while (0)
 
     FILE *out = fopen(filepath, "wb");
     if (!out)
@@ -959,10 +965,14 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     // Write IHDR chunk
     {
         uint8_t ihdr[13];
-        ihdr[0] = (uint8_t)(w >> 24); ihdr[1] = (uint8_t)(w >> 16);
-        ihdr[2] = (uint8_t)(w >> 8);  ihdr[3] = (uint8_t)w;
-        ihdr[4] = (uint8_t)(h >> 24); ihdr[5] = (uint8_t)(h >> 16);
-        ihdr[6] = (uint8_t)(h >> 8);  ihdr[7] = (uint8_t)h;
+        ihdr[0] = (uint8_t)(w >> 24);
+        ihdr[1] = (uint8_t)(w >> 16);
+        ihdr[2] = (uint8_t)(w >> 8);
+        ihdr[3] = (uint8_t)w;
+        ihdr[4] = (uint8_t)(h >> 24);
+        ihdr[5] = (uint8_t)(h >> 16);
+        ihdr[6] = (uint8_t)(h >> 8);
+        ihdr[7] = (uint8_t)h;
         ihdr[8] = 8;  // bit depth
         ihdr[9] = 6;  // color type = RGBA
         ihdr[10] = 0; // compression
@@ -979,15 +989,19 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
 
         uint32_t chunk_crc;
         PNG_CRC(type_data, 17);
-        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24), (uint8_t)(chunk_crc >> 16),
-                              (uint8_t)(chunk_crc >> 8), (uint8_t)chunk_crc};
+        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24),
+                              (uint8_t)(chunk_crc >> 16),
+                              (uint8_t)(chunk_crc >> 8),
+                              (uint8_t)chunk_crc};
         fwrite(crc_buf, 1, 4, out);
     }
 
     // Write IDAT chunk
     {
-        uint8_t len_buf[4] = {(uint8_t)(zlib_len >> 24), (uint8_t)(zlib_len >> 16),
-                              (uint8_t)(zlib_len >> 8), (uint8_t)zlib_len};
+        uint8_t len_buf[4] = {(uint8_t)(zlib_len >> 24),
+                              (uint8_t)(zlib_len >> 16),
+                              (uint8_t)(zlib_len >> 8),
+                              (uint8_t)zlib_len};
         fwrite(len_buf, 1, 4, out);
 
         size_t td_len = 4 + zlib_len;
@@ -1004,8 +1018,10 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
 
         uint32_t chunk_crc;
         PNG_CRC(type_data, td_len);
-        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24), (uint8_t)(chunk_crc >> 16),
-                              (uint8_t)(chunk_crc >> 8), (uint8_t)chunk_crc};
+        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24),
+                              (uint8_t)(chunk_crc >> 16),
+                              (uint8_t)(chunk_crc >> 8),
+                              (uint8_t)chunk_crc};
         fwrite(crc_buf, 1, 4, out);
         free(type_data);
     }
@@ -1018,7 +1034,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         fwrite(iend, 1, 12, out);
     }
 
-    #undef PNG_CRC
+#undef PNG_CRC
 
     fflush(out);
     fclose(out);

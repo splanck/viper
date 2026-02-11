@@ -181,7 +181,7 @@ PRINT s3$
 **Notes**:
 
 - String variables must use $ suffix for type inference (see BUG-001)
-- The & operator is not supported (see BUG-002)
+- The & operator is now supported (BUG-002 resolved)
 
 ### Test 011: Division and Power Operators
 

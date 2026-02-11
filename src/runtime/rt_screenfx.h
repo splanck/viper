@@ -8,10 +8,22 @@
 /// @file rt_screenfx.h
 /// @brief Screen effects manager for camera shake, color flash, and fades.
 ///
-/// Provides common screen-wide visual effects used in games:
-/// - Camera shake with configurable intensity and decay
-/// - Color flash effects (damage flash, pickup flash, etc.)
-/// - Screen fades (fade in, fade out, crossfade)
+/// @details Provides common screen-wide visual effects used in games,
+/// including camera shake with configurable intensity and decay, color flash
+/// effects (damage flash, pickup flash, etc.), and screen fades (fade-in
+/// from color, fade-out to color). Multiple effects can run concurrently up
+/// to RT_SCREENFX_MAX_EFFECTS (8). The manager outputs shake offsets and
+/// overlay color/alpha values that the renderer should apply each frame.
+///
+/// Key invariants: Time values use fixed-point milliseconds. Color values
+///   are packed as 0xRRGGBBAA. Shake intensity and offsets use fixed-point
+///   where 1000 = 1 pixel. The maximum number of concurrent effects is
+///   RT_SCREENFX_MAX_EFFECTS (8). rt_screenfx_update() must be called once
+///   per frame with the elapsed delta time.
+/// Ownership/Lifetime: The caller owns the rt_screenfx handle and must free
+///   it with rt_screenfx_destroy().
+/// Links: rt_screenfx.c (implementation), rt_camera.h (applies shake
+///   offsets), rt_particle.h (complementary visual effects)
 ///
 //===----------------------------------------------------------------------===//
 
@@ -41,82 +53,123 @@ extern "C"
     /// Opaque handle to a ScreenFX manager.
     typedef struct rt_screenfx_impl *rt_screenfx;
 
-    /// Creates a new ScreenFX manager.
-    /// @return A new ScreenFX instance.
+    /// @brief Allocates and initializes a new ScreenFX effects manager.
+    /// @return A new ScreenFX handle with no active effects. The caller must
+    ///   free it with rt_screenfx_destroy().
     rt_screenfx rt_screenfx_new(void);
 
-    /// Destroys a ScreenFX manager.
-    /// @param fx The manager to destroy.
+    /// @brief Destroys a ScreenFX manager and releases its memory.
+    /// @param fx The effects manager to destroy. Passing NULL is a no-op.
     void rt_screenfx_destroy(rt_screenfx fx);
 
-    /// Updates all active effects.
-    /// @param fx The manager.
-    /// @param dt Delta time in seconds (fixed-point: 1000 = 1 second).
+    /// @brief Advances all active screen effects by the given time delta.
+    ///
+    /// Decays shake intensity, advances flash/fade timers, and removes expired
+    /// effects. Must be called once per frame.
+    /// @param fx The effects manager to update.
+    /// @param dt Elapsed time since the last update, in fixed-point seconds
+    ///   (1000 = 1 second).
     void rt_screenfx_update(rt_screenfx fx, int64_t dt);
 
-    /// Starts a camera shake effect.
-    /// @param fx The manager.
-    /// @param intensity Shake intensity (pixels, fixed-point: 1000 = 1 pixel).
-    /// @param duration Duration in milliseconds.
-    /// @param decay Decay rate (0-1000, where 1000 = instant decay).
+    /// @brief Starts a camera shake effect with configurable intensity and
+    ///   decay.
+    ///
+    /// Produces random per-frame offsets that the renderer should add to the
+    /// camera position. The offsets decay over the duration.
+    /// @param fx The effects manager.
+    /// @param intensity Maximum shake displacement in fixed-point pixels
+    ///   (1000 = 1 pixel).
+    /// @param duration Duration of the shake in milliseconds.
+    /// @param decay Decay rate controlling how quickly intensity falls off,
+    ///   in the range [0, 1000] where 0 = no decay (constant intensity) and
+    ///   1000 = instant decay.
     void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int64_t decay);
 
-    /// Starts a color flash effect.
-    /// @param fx The manager.
-    /// @param color Flash color (RGBA as 0xRRGGBBAA).
-    /// @param duration Duration in milliseconds.
+    /// @brief Starts a full-screen color flash effect.
+    ///
+    /// The overlay appears instantly at the given color and fades out over the
+    /// duration. Useful for damage indicators, pickups, or impact feedback.
+    /// @param fx The effects manager.
+    /// @param color Flash color in packed 0xRRGGBBAA format.
+    /// @param duration Duration of the flash in milliseconds.
     void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration);
 
-    /// Starts a fade-in effect (from color to clear).
-    /// @param fx The manager.
-    /// @param color Fade color (RGBA as 0xRRGGBBAA).
-    /// @param duration Duration in milliseconds.
+    /// @brief Starts a fade-in effect (from an opaque color overlay to fully
+    ///   transparent).
+    ///
+    /// Commonly used for scene transitions where the screen starts covered
+    /// and gradually reveals the scene.
+    /// @param fx The effects manager.
+    /// @param color Starting overlay color in packed 0xRRGGBBAA format.
+    /// @param duration Duration of the fade in milliseconds.
     void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration);
 
-    /// Starts a fade-out effect (from clear to color).
-    /// @param fx The manager.
-    /// @param color Fade color (RGBA as 0xRRGGBBAA).
-    /// @param duration Duration in milliseconds.
+    /// @brief Starts a fade-out effect (from fully transparent to an opaque
+    ///   color overlay).
+    ///
+    /// Commonly used for scene transitions where the screen gradually becomes
+    /// covered before switching scenes.
+    /// @param fx The effects manager.
+    /// @param color Target overlay color in packed 0xRRGGBBAA format.
+    /// @param duration Duration of the fade in milliseconds.
     void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration);
 
-    /// Cancels all active effects.
-    /// @param fx The manager.
+    /// @brief Immediately cancels all active effects.
+    ///
+    /// Resets shake offsets to zero and overlay alpha to transparent.
+    /// @param fx The effects manager.
     void rt_screenfx_cancel_all(rt_screenfx fx);
 
-    /// Cancels effects of a specific type.
-    /// @param fx The manager.
-    /// @param type Effect type to cancel.
+    /// @brief Cancels all active effects of a specific type.
+    /// @param fx The effects manager.
+    /// @param type The effect type to cancel, as an rt_screenfx_type value
+    ///   (e.g., RT_SCREENFX_SHAKE, RT_SCREENFX_FLASH).
     void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type);
 
-    /// Checks if any effect is active.
-    /// @param fx The manager.
-    /// @return 1 if any effect is active, 0 otherwise.
+    /// @brief Queries whether any screen effect is currently running.
+    /// @param fx The effects manager to query.
+    /// @return 1 if at least one effect is active, 0 if all effects have
+    ///   expired or been cancelled.
     int8_t rt_screenfx_is_active(rt_screenfx fx);
 
-    /// Checks if a specific effect type is active.
-    /// @param fx The manager.
-    /// @param type Effect type to check.
-    /// @return 1 if effect is active, 0 otherwise.
+    /// @brief Queries whether a specific effect type is currently running.
+    /// @param fx The effects manager to query.
+    /// @param type The effect type to check, as an rt_screenfx_type value.
+    /// @return 1 if at least one effect of this type is active, 0 otherwise.
     int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type);
 
-    /// Gets the current camera shake offset X.
-    /// @param fx The manager.
-    /// @return X offset (fixed-point: 1000 = 1 pixel).
+    /// @brief Retrieves the current horizontal camera shake offset.
+    ///
+    /// The renderer should add this offset to the camera X position each frame
+    /// to produce the shake effect.
+    /// @param fx The effects manager to query.
+    /// @return X displacement in fixed-point pixels (1000 = 1 pixel). Zero
+    ///   when no shake is active.
     int64_t rt_screenfx_get_shake_x(rt_screenfx fx);
 
-    /// Gets the current camera shake offset Y.
-    /// @param fx The manager.
-    /// @return Y offset (fixed-point: 1000 = 1 pixel).
+    /// @brief Retrieves the current vertical camera shake offset.
+    ///
+    /// The renderer should add this offset to the camera Y position each frame
+    /// to produce the shake effect.
+    /// @param fx The effects manager to query.
+    /// @return Y displacement in fixed-point pixels (1000 = 1 pixel). Zero
+    ///   when no shake is active.
     int64_t rt_screenfx_get_shake_y(rt_screenfx fx);
 
-    /// Gets the current overlay color (for flash/fade effects).
-    /// @param fx The manager.
-    /// @return RGBA color (0xRRGGBBAA).
+    /// @brief Retrieves the current overlay color for flash and fade effects.
+    ///
+    /// The renderer should draw a filled rectangle with this color over the
+    /// entire screen at the alpha returned by rt_screenfx_get_overlay_alpha().
+    /// @param fx The effects manager to query.
+    /// @return The overlay color in packed 0xRRGGBBAA format. Returns 0 when
+    ///   no flash or fade effect is active.
     int64_t rt_screenfx_get_overlay_color(rt_screenfx fx);
 
-    /// Gets the current overlay alpha (0-255).
-    /// @param fx The manager.
-    /// @return Alpha value 0-255.
+    /// @brief Retrieves the current overlay alpha intensity for flash and fade
+    ///   effects.
+    /// @param fx The effects manager to query.
+    /// @return Alpha value in [0, 255], where 0 is fully transparent and 255
+    ///   is fully opaque. Returns 0 when no flash or fade effect is active.
     int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx);
 
 #ifdef __cplusplus

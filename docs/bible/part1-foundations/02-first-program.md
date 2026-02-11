@@ -477,10 +477,7 @@ Pascal (created in 1970) sits between BASIC's simplicity and Zia's modern style:
 
 Pascal was designed for teaching programming and emphasizes clarity. The word `begin` is clearer than `{` for newcomers, though `{` becomes natural with practice.
 
-To run this, save it as `hello.pas` and run:
-```bash
-vpascal hello.pas
-```
+To run this, save it as `hello.pas` and run it with `viper run hello.pas` (once Pascal support is available).
 
 ### What's the Same?
 
@@ -779,7 +776,7 @@ Here are the key concepts from this chapter:
 
 **Exercise 2.3**: Using `Print` and `Say`, make a program that outputs this on a single line: `Hello, my name is [your name].`
 
-**Exercise 2.4**: Write the "Hello, World!" program in BASIC. Save it as `hello.bas` and run it with `vbasic hello.bas`. Then write it in Pascal, save it as `hello.pas`, and run it with `vpascal hello.pas`.
+**Exercise 2.4**: Write the "Hello, World!" program in BASIC. Save it as `hello.bas` and run it with `vbasic hello.bas`.
 
 **Exercise 2.5**: Make each of these errors deliberately, then read and understand the error message:
 - Missing closing quote

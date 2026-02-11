@@ -156,9 +156,9 @@ rewrite:
             auto joInstr = MInstr::make(
                 MOpcode::JCC,
                 std::vector<Operand>{makeImmOperand(kCondOverflow), makeLabelOperand(trapLabel)});
-            block.instructions.insert(
-                block.instructions.begin() + static_cast<std::ptrdiff_t>(i + 1U),
-                std::move(joInstr));
+            block.instructions.insert(block.instructions.begin() +
+                                          static_cast<std::ptrdiff_t>(i + 1U),
+                                      std::move(joInstr));
 
             // Skip past the JO we just inserted
             ++i;

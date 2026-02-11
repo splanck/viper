@@ -5,33 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Function struct, which represents an IL function
-// definition along with its parameters and basic blocks. Functions are the
-// primary unit of code organization in Viper IL, containing executable
-// instructions organized into a control flow graph.
-//
-// Each Function consists of:
-// - A unique name within its containing Module
-// - A return type and ordered parameter list
-// - A sequence of BasicBlocks forming the function body
-// - Optional metadata for diagnostics (SSA value names)
-// - Semantic attributes (nothrow, readonly, pure) for optimization
-//
-// Functions use Static Single Assignment (SSA) form for values. Each instruction
-// that produces a value is assigned a unique SSA ID within its function scope.
-// The valueNames vector provides optional debug information mapping SSA IDs
-// to source-level variable names.
-//
-// Key Invariants:
-// - Functions must contain at least one basic block
-// - Block labels must be unique within the function
-// - Parameter types and count must match the function signature
-// - All control flow paths must terminate with proper terminators
-//
-// Ownership Model:
-// - Module owns Functions by value in a std::vector
-// - Function owns all BasicBlocks, Params, and metadata
-// - Functions can be moved but are expensive to copy (deep copy of all blocks)
+// File: il/core/Function.hpp
+// Purpose: Declares the Function struct -- an IL function definition with
+//          parameters, basic blocks, SSA value names, and semantic attributes.
+//          Functions are the primary unit of code organisation in Viper IL.
+// Key invariants:
+//   - Functions must contain at least one basic block.
+//   - Block labels must be unique within the function.
+//   - Parameter types and count must match the function signature.
+//   - All control flow paths must terminate with proper terminators.
+// Ownership/Lifetime: Module owns Functions by value in a std::vector.
+//          Function owns all BasicBlocks, Params, and metadata. Functions can
+//          be moved efficiently but are expensive to copy (deep copy of all
+//          blocks).
+// Links: docs/il-guide.md#reference, il/core/BasicBlock.hpp,
+//        il/core/Param.hpp, il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
 

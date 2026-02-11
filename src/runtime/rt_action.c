@@ -28,14 +28,14 @@
 typedef enum
 {
     BIND_NONE = 0,
-    BIND_KEY,            // Keyboard key
-    BIND_MOUSE_BUTTON,   // Mouse button
-    BIND_MOUSE_X,        // Mouse X delta
-    BIND_MOUSE_Y,        // Mouse Y delta
-    BIND_SCROLL_X,       // Mouse scroll X
-    BIND_SCROLL_Y,       // Mouse scroll Y
-    BIND_PAD_BUTTON,     // Gamepad button
-    BIND_PAD_AXIS,       // Gamepad axis
+    BIND_KEY,             // Keyboard key
+    BIND_MOUSE_BUTTON,    // Mouse button
+    BIND_MOUSE_X,         // Mouse X delta
+    BIND_MOUSE_Y,         // Mouse Y delta
+    BIND_SCROLL_X,        // Mouse scroll X
+    BIND_SCROLL_Y,        // Mouse scroll Y
+    BIND_PAD_BUTTON,      // Gamepad button
+    BIND_PAD_AXIS,        // Gamepad axis
     BIND_PAD_BUTTON_AXIS, // Gamepad button as axis
     BIND_CHORD            // Multi-key chord (e.g., Ctrl+Shift+S)
 } BindingType;
@@ -1486,7 +1486,8 @@ int8_t rt_action_load(rt_string json)
                             tok = rt_json_stream_next(parser);
                             while (tok == RT_JSON_TOK_NUMBER && chord_len < MAX_CHORD_KEYS)
                             {
-                                chord_keys[chord_len++] = (int64_t)rt_json_stream_number_value(parser);
+                                chord_keys[chord_len++] =
+                                    (int64_t)rt_json_stream_number_value(parser);
                                 tok = rt_json_stream_next(parser);
                             }
                             /* tok should be ARRAY_END */

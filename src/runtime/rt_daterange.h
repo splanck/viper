@@ -5,10 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_daterange.h
+// File: src/runtime/rt_daterange.h
 // Purpose: Date interval type representing a range between two timestamps.
 // Key invariants: Start <= End; timestamps are Unix timestamps in seconds.
 // Ownership/Lifetime: Range objects are GC-managed.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -3,8 +3,8 @@
 This document provides comprehensive documentation for all Viper runtime namespaces. It supplements the main runtime reference in `bible/appendices/d-runtime-reference.md`.
 
 **Auto-generated from:** `src/il/runtime/runtime.def`
-**Total Functions:** 2,493
-**Total Classes:** 186
+**Total Functions:** 2,655
+**Total Classes:** 194
 
 > **Note:** This document covers a subset of the runtime API. Many newer namespaces and functions
 > are not yet documented here. See `src/il/runtime/runtime.def` for the complete list.

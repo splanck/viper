@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The BASIC frontend in `/Users/stephen/git/viper/src/frontends/basic/` is a substantial compiler front-end with **~44,260
+The BASIC frontend in `src/frontends/basic/` is a substantial compiler front-end with **~44,260
 lines of code** across **151 files** organized into 9 logical subsystems. The codebase follows a clean pipeline
 architecture: **Lexing → Parsing → Semantic Analysis → Lowering → IL Emission**.
 

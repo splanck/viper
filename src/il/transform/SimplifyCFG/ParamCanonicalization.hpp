@@ -5,13 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief Declares parameter and branch-argument canonicalisation helpers.
-/// @details The entry point rewrites block parameter lists to remove unused
-///          entries and parameters that are identical across all predecessors,
-///          then realigns branch argument lists so CFG edges remain arity
-///          compatible. The routine mutates the function in place and relies on
-///          the pass context to avoid EH-sensitive regions.
+// File: il/transform/SimplifyCFG/ParamCanonicalization.hpp
+// Purpose: Parameter and branch-argument canonicalisation for SimplifyCFG.
+//          Removes unused block parameters and parameters identical across all
+//          predecessors, then realigns branch argument lists for CFG edge arity
+//          compatibility. Avoids EH-sensitive regions.
+// Key invariants:
+//   - After canonicalisation, block parameter count matches all incoming edge
+//     argument counts.
+//   - EH-sensitive blocks are skipped.
+// Ownership/Lifetime: Stateless free function operating on caller-owned IR
+//          via the SimplifyCFGPassContext reference.
+// Links: il/transform/SimplifyCFG.hpp
 //
 //===----------------------------------------------------------------------===//
 

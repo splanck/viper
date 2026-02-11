@@ -6,7 +6,7 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 34 (.hpp/.cpp)
+- **Total source files**: 46 (.hpp/.cpp)
 
 ## User-Facing Tools
 
@@ -67,6 +67,8 @@ Last updated: 2026-01-15
 | `cmd_codegen_x64.hpp`    | x86-64 codegen subcommand           |
 | `cmd_codegen_arm64.cpp`  | ARM64 codegen implementation        |
 | `cmd_codegen_arm64.hpp`  | ARM64 codegen subcommand            |
+| `cmd_run.cpp`            | Run subcommand implementation       |
+| `cmd_init.cpp`           | Init subcommand implementation      |
 
 ### rtgen (`rtgen/`)
 
@@ -92,11 +94,21 @@ Last updated: 2026-01-15
 
 ### common (`common/`)
 
-| File                 | Purpose                                   |
-|----------------------|-------------------------------------------|
-| `frontend_tool.hpp`  | Shared frontend tool utilities            |
-| `module_loader.cpp`  | Shared IL module loading implementation   |
-| `module_loader.hpp`  | Shared IL module loading with diagnostics |
+| File                   | Purpose                                         |
+|------------------------|-------------------------------------------------|
+| `frontend_tool.hpp`    | Shared frontend tool utilities                  |
+| `module_loader.cpp`    | Shared IL module loading implementation         |
+| `module_loader.hpp`    | Shared IL module loading with diagnostics       |
+| `source_loader.cpp`    | Source file loading implementation              |
+| `source_loader.hpp`    | Source file loading utilities                   |
+| `native_compiler.cpp`  | Native compilation driver implementation        |
+| `native_compiler.hpp`  | Native compilation driver                       |
+| `project_loader.cpp`   | Multi-file project loading implementation       |
+| `project_loader.hpp`   | Multi-file project loading utilities            |
+| `vm_executor.cpp`      | VM execution wrapper implementation             |
+| `vm_executor.hpp`      | VM execution wrapper utilities                  |
+| `CommonUsage.hpp`      | Shared usage/help text utilities                |
+| `ArgvView.hpp`         | Argument vector view utility                    |
 
 ### basic (`basic/`)
 

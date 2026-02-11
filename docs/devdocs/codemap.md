@@ -48,6 +48,6 @@ Source code organization for the Viper compiler toolchain.
 
 ## Additional
 
-- Public headers: `include/viper/{il,vm,runtime,parse,pass}`
-- Tests: `src/tests/{unit,golden,e2e,smoke,perf,...}`
+- Public headers: `include/viper/{il,vm,runtime,parse,pass,diag}`
+- Tests: `src/tests/{unit,golden,e2e,smoke,perf,analysis,integration,...}`
 - Build metadata: `src/buildmeta/{IL_VERSION,VERSION}`

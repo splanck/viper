@@ -5,31 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the diagnostic infrastructure for the IL verifier, providing
-// interfaces for reporting and collecting verification errors and warnings. The
-// DiagSink abstraction decouples verification logic from diagnostic storage and
-// output strategies.
-//
-// The IL verifier must report both hard errors (verification failures) and
-// warnings (suspicious patterns that don't violate the spec). Rather than coupling
-// verification code to specific output mechanisms, this file defines a sink
-// interface that verification passes can report to. Different sink implementations
-// can collect diagnostics for batch processing, forward them immediately to stderr,
-// or integrate with IDE error reporting systems.
-//
-// Key Responsibilities:
-// - Define structured diagnostic codes for verifier-specific errors
-// - Provide DiagSink interface for decoupled diagnostic reporting
-// - Implement CollectingDiagSink for in-memory diagnostic accumulation
-// - Offer factory functions for constructing verifier diagnostics
-//
-// Design Rationale:
-// The DiagSink pattern follows the observer pattern, allowing verification passes
-// to remain agnostic about diagnostic consumption. The VerifyDiagCode enum provides
-// structured error identification enabling programmatic diagnostic filtering and
-// tooling integration. The distinction between errors (verification failures) and
-// warnings (potential issues) supports both strict validation and best-practice
-// linting workflows.
+// File: il/verify/DiagSink.hpp
+// Purpose: Diagnostic infrastructure for the IL verifier -- defines the
+//          DiagSink interface for decoupled error/warning reporting,
+//          VerifyDiagCode enum for structured diagnostic codes,
+//          CollectingDiagSink for in-memory accumulation, and factory
+//          functions for constructing verifier diagnostics.
+// Key invariants:
+//   - DiagSink is a pure interface (virtual report()); implementations own
+//     their storage strategy.
+//   - CollectingDiagSink appends diagnostics; order is preserved.
+// Ownership/Lifetime: DiagSink is a polymorphic base; callers own sinks.
+//          CollectingDiagSink owns its diagnostic vector.
+// Links: support/diag_expected.hpp
 //
 //===----------------------------------------------------------------------===//
 

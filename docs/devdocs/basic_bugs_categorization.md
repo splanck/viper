@@ -1,5 +1,8 @@
 # VIPER BASIC Bug Categorization
 
+> **Note:** This file was originally created 2025-11-12. Many bugs listed below have since been resolved in later
+> sessions. See `bugs/basic_resolved.md` for the authoritative list of resolved bugs with details.
+
 ## RESOLVED (Already Fixed)
 
 - BUG-001: String concatenation $ suffix ✅
@@ -10,11 +13,13 @@
 - BUG-008: REDIM PRESERVE ✅
 - BUG-009: CONST keyword ✅
 - BUG-011: SWAP statement ✅
+- BUG-021: SELECT CASE negative literals ✅ (Fixed 2025-11-12)
+- BUG-022: Float literal type inference ✅ (Fixed 2025-11-12)
+- BUG-023: DIM with initializer ✅ (Fixed 2025-11-12)
+- BUG-024: CONST with type suffix assertion ✅ (Fixed 2025-11-12)
 
 ## BUG FIXES (Straightforward fixes)
 
-- **BUG-021**: SELECT CASE negative literals - Parser fix to accept unary minus
-- **BUG-024**: CONST with type suffix assertion - Storage allocation fix
 - **BUG-025**: EXP overflow trap - Better error handling (graceful NaN/Inf)
 
 ## REQUIRES SIGNIFICANT PLANNING (Architecture changes)
@@ -32,11 +37,7 @@
 - **BUG-018**: FUNCTION methods in classes - Label generation for class methods
 - **BUG-019**: Float CONST truncation - Type inference from initializer
 - **BUG-020**: String constants runtime error - String lifecycle for CONST
-- **BUG-022**: Float literal type inference - Default type system policy
-- **BUG-023**: DIM with initializer - Parser extension, combined statement
 
-## PRIORITY ORDER FOR BUG FIXES
+## PRIORITY ORDER FOR REMAINING BUG FIXES
 
-1. BUG-021 (SELECT CASE negative literals) - Parser fix
-2. BUG-024 (CONST type suffix) - Storage allocation fix
-3. BUG-025 (EXP overflow) - Error handling improvement
+1. BUG-025 (EXP overflow) - Error handling improvement

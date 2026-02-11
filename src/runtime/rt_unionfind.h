@@ -5,10 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_unionfind.h
+// File: src/runtime/rt_unionfind.h
 // Purpose: Disjoint set / Union-Find data structure.
 // Key invariants: Uses path compression and union by rank.
 // Ownership/Lifetime: UnionFind objects are GC-managed.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

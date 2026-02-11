@@ -158,6 +158,12 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 |----------------------|------------------------------------------------|
 | `AsmEmitter.hpp/cpp` | x86-64 assembly emission with encoding table   |
 
+### Overflow Lowering
+
+| File             | Purpose                                            |
+|------------------|----------------------------------------------------|
+| `LowerOvf.cpp`   | Overflow-checked operation lowering                |
+
 ### Miscellaneous
 
 | File             | Purpose                                            |

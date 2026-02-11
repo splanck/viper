@@ -5,29 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares dynamic string array operations for the BASIC runtime,
-// providing specialized array implementations for string-typed collections.
-// String arrays have unique ownership semantics where both the array container
-// and individual string elements are independently reference-counted.
-//
-// BASIC's string arrays (DIM names$(100)) store references to string objects,
-// not the strings themselves. Each array element is a pointer to a reference-counted
-// string. The array itself is also reference-counted, enabling arrays to be
-// passed by reference without copying. This creates a two-level reference counting
-// scheme: the array container and the element strings.
-//
-// Memory Management Model:
-// - Array allocation: Creates a new array container with specified capacity,
-//   all slots initialized to NULL
-// - Element assignment: rt_arr_str_put releases the old element (if any),
-//   retains the new element, and stores the new reference
-// - Element access: rt_arr_str_get returns a retained reference that caller
-//   must release when done
-// - Array destruction: rt_arr_str_release releases all non-null elements
-//   before freeing the array container
-//
-// This design ensures proper cleanup of string resources while supporting
-// efficient sharing and assignment patterns common in BASIC programs.
+// File: src/runtime/rt_array_str.h
+// Purpose: Dynamic string array API providing allocation, element access, and
+//          release for BASIC DIM'd string collections with two-level reference
+//          counting (array container and individual string elements).
+// Key invariants: Slots are initialized to NULL on allocation; rt_arr_str_put
+//                 retains the new value and releases the old; rt_arr_str_get
+//                 returns a retained reference; rt_arr_str_release frees all
+//                 non-null elements before freeing the container.
+// Ownership/Lifetime: Array container is refcounted via the heap header; each
+//                     element is independently refcounted; callers must release
+//                     references obtained from rt_arr_str_get.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

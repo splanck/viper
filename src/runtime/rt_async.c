@@ -215,8 +215,7 @@ void *rt_async_any(void *futures)
     {
         promise = rt_promise_new();
         future = rt_promise_get_future(promise);
-        rt_promise_set_error(promise,
-                             rt_string_from_bytes("Async.Any: empty futures", 24));
+        rt_promise_set_error(promise, rt_string_from_bytes("Async.Any: empty futures", 24));
         return future;
     }
 
@@ -377,8 +376,7 @@ static void async_cancel_entry(void *ctx_ptr)
 
     if (token && rt_cancellation_is_cancelled(token))
     {
-        rt_promise_set_error(promise,
-                             rt_string_from_bytes("cancelled", 9));
+        rt_promise_set_error(promise, rt_string_from_bytes("cancelled", 9));
     }
     else
     {

@@ -81,7 +81,6 @@ typedef struct rt_map_impl
     size_t count;           ///< Number of key-value pairs currently in the Map.
 } rt_map_impl;
 
-
 /// @brief Extracts C string data and length from a Viper string.
 ///
 /// Helper function to safely get the underlying character data from a

@@ -6,7 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_option.h
-// Purpose: Option type - represents Some(value) or None.
+// Purpose: Option type representing Some(value) or None with typed
+//   extraction, transformation, and conversion to Result.
+// Key invariants: An Option is either Some (holding a value) or None.
+//   Unwrap traps on None. Typed accessors must match the stored variant.
+// Ownership/Lifetime: Option objects are GC-managed. Values are retained.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

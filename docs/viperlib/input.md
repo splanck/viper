@@ -339,23 +339,34 @@ configurable timing windows.
 **Type:** Instance class
 **Constructor:** `Viper.Input.KeyChord.New()`
 
+### Properties
+
+| Property | Type    | Access | Description                             |
+|----------|---------|--------|-----------------------------------------|
+| `Count`  | Integer | Read   | Number of registered chords and combos  |
+
 ### Methods
 
 | Method                             | Signature                          | Description                                           |
 |------------------------------------|------------------------------------|-------------------------------------------------------|
-| `AddChord(name, keys, count)`       | `Void(String, Seq, Integer)`       | Register a named chord (simultaneous key combination) |
-| `AddCombo(name, keys, count, ms)`   | `Void(String, Seq, Integer, Integer)` | Register a named combo (sequential, with timeout)  |
+| `Define(name, keys)`                | `Void(String, Seq)`                | Register a named chord (simultaneous key combination) |
+| `DefineCombo(name, keys, frames)`   | `Void(String, Seq, Integer)`       | Register a named combo (sequential, with frame window)|
 | `Update()`                          | `Void()`                           | Update detection state (call once per frame)          |
-| `IsTriggered(name)`                 | `Boolean(String)`                  | Check if a named chord/combo was triggered this frame |
+| `Active(name)`                      | `Boolean(String)`                  | Check if a chord is currently active (all keys held)  |
+| `Triggered(name)`                   | `Boolean(String)`                  | Check if a chord/combo was triggered this frame       |
+| `Progress(name)`                    | `Integer(String)`                  | Get combo progress (number of keys matched so far)    |
+| `Remove(name)`                      | `Boolean(String)`                  | Remove a named chord or combo; returns true if found  |
 | `Clear()`                           | `Void()`                           | Remove all registered chords and combos               |
 
 ### Notes
 
 - **Chords** detect simultaneous key presses (e.g., Ctrl+Shift+S). All keys must be held down at the same time.
-- **Combos** detect sequential key presses within a timing window (e.g., ↑↑↓↓). Keys must be pressed in order within
-  the timeout.
+- **Combos** detect sequential key presses within a timing window (e.g., up-up-down-down). Keys must be pressed in
+  order within the frame window.
 - Call `Update()` once per frame after `Canvas.Poll()` to refresh detection state.
-- `IsTriggered` returns true only on the frame when the chord/combo is detected.
+- `Triggered` returns true only on the frame when the chord/combo is detected.
+- `Active` returns true as long as all chord keys remain held (not just on the trigger frame).
+- `Progress` is useful for showing combo progress to the player (e.g., a progress bar).
 
 ### BASIC Example
 
@@ -366,27 +377,33 @@ DIM detector AS OBJECT = Viper.Input.KeyChord.New()
 DIM saveKeys AS OBJECT = NEW Viper.Collections.Seq()
 saveKeys.Push(341)
 saveKeys.Push(83)
-detector.AddChord("save", saveKeys, 2)
+detector.Define("save", saveKeys)
 
-' Register Konami code combo (timing window: 1000ms)
+' Register Konami code combo (timing window: 30 frames)
 DIM konamiKeys AS OBJECT = NEW Viper.Collections.Seq()
-' ↑↑↓↓ (265, 265, 264, 264)
+' Up, Up, Down, Down (265, 265, 264, 264)
 konamiKeys.Push(265)
 konamiKeys.Push(265)
 konamiKeys.Push(264)
 konamiKeys.Push(264)
-detector.AddCombo("konami", konamiKeys, 4, 1000)
+detector.DefineCombo("konami", konamiKeys, 30)
 
 ' In game loop
 DO WHILE canvas.ShouldClose = 0
     canvas.Poll()
     detector.Update()
 
-    IF detector.IsTriggered("save") THEN
+    IF detector.Triggered("save") THEN
         SaveGame()
     END IF
-    IF detector.IsTriggered("konami") THEN
+    IF detector.Triggered("konami") THEN
         PRINT "Cheat activated!"
+    END IF
+
+    ' Show combo progress
+    DIM prog AS INTEGER = detector.Progress("konami")
+    IF prog > 0 THEN
+        PRINT "Konami progress: "; prog; " / 4"
     END IF
 
     canvas.Flip()
@@ -1053,6 +1070,14 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 | `BindKeyAxis(action, key, value)` | `Boolean(String, Integer, Double)` | Bind a key to an axis action with value     |
 | `UnbindKey(action, key)`        | `Boolean(String, Integer)`     | Remove a key binding from an action              |
 
+### Key Chord Binding Methods
+
+| Method                          | Signature                      | Description                                      |
+|---------------------------------|--------------------------------|--------------------------------------------------|
+| `BindChord(action, keys)`       | `Boolean(String, Seq)`         | Bind a key chord (multi-key combo) to a button action |
+| `UnbindChord(action, keys)`     | `Boolean(String, Seq)`         | Remove a key chord binding from an action        |
+| `ChordCount(action)`            | `Integer(String)`              | Get the number of chord bindings for an action   |
+
 ### Mouse Binding Methods
 
 | Method                             | Signature                      | Description                                      |
@@ -1107,6 +1132,13 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 | `KeyBoundTo(key)`                   | `String(Integer)`              | Returns action name if key is bound, else ""   |
 | `MouseBoundTo(button)`              | `String(Integer)`              | Returns action name if button is bound, else ""|
 | `PadButtonBoundTo(pad, button)`     | `String(Integer, Integer)`     | Returns action name if bound, else ""          |
+
+### Persistence Methods
+
+| Method        | Signature          | Description                                                |
+|---------------|--------------------|------------------------------------------------------------|
+| `Save()`      | `String()`         | Serialize all actions and bindings to a JSON string        |
+| `Load(json)`  | `Boolean(String)`  | Load actions and bindings from a JSON string; returns true on success |
 
 ### Axis Constants
 
@@ -1343,20 +1375,20 @@ unified "direction" input that automatically combines keyboard arrows, WASD, D-p
 |------------|-----------|------------------------------------------------------------------|
 | `Update()` | `Void()`  | Update input state; call once per frame after `Canvas.Poll()`    |
 
-### Unified Direction Methods
+### Unified Direction Properties
 
-These methods check ALL input sources (keyboard, D-pad, analog sticks) and return true if ANY is active:
+These properties check ALL input sources (keyboard, D-pad, analog sticks) and return true if ANY is active:
 
-| Method      | Signature   | Description                                              |
-|-------------|-------------|----------------------------------------------------------|
-| `Up()`      | `Boolean()` | Arrow Up, W, D-pad Up, or left stick up                  |
-| `Down()`    | `Boolean()` | Arrow Down, S, D-pad Down, or left stick down            |
-| `Left()`    | `Boolean()` | Arrow Left, A, D-pad Left, or left stick left            |
-| `Right()`   | `Boolean()` | Arrow Right, D, D-pad Right, or left stick right         |
-| `Confirm()` | `Boolean()` | Enter, Space, or gamepad A button                        |
-| `Cancel()`  | `Boolean()` | Escape or gamepad B button                               |
-| `AxisX()`   | `Double()`  | Combined horizontal axis (-1.0 to 1.0)                   |
-| `AxisY()`   | `Double()`  | Combined vertical axis (-1.0 to 1.0)                     |
+| Property  | Type    | Access | Description                                              |
+|-----------|---------|--------|----------------------------------------------------------|
+| `Up`      | Boolean | Read   | Arrow Up, W, D-pad Up, or left stick up                  |
+| `Down`    | Boolean | Read   | Arrow Down, S, D-pad Down, or left stick down            |
+| `Left`    | Boolean | Read   | Arrow Left, A, D-pad Left, or left stick left            |
+| `Right`   | Boolean | Read   | Arrow Right, D, D-pad Right, or left stick right         |
+| `Confirm` | Boolean | Read   | Enter, Space, or gamepad A button                        |
+| `Cancel`  | Boolean | Read   | Escape or gamepad B button                               |
+| `AxisX`   | Double  | Read   | Combined horizontal axis (-1.0 to 1.0)                   |
+| `AxisY`   | Double  | Read   | Combined vertical axis (-1.0 to 1.0)                     |
 
 ### Keyboard Methods
 
@@ -1374,12 +1406,17 @@ These methods check ALL input sources (keyboard, D-pad, analog sticks) and retur
 | `MousePressed(button)` | `Boolean(Integer)`  | True if button was pressed this frame           |
 | `MouseReleased(button)`| `Boolean(Integer)`  | True if button was released this frame          |
 | `MouseHeld(button)`    | `Boolean(Integer)`  | True if button is currently held                |
-| `MouseX()`             | `Integer()`         | Current mouse X position                        |
-| `MouseY()`             | `Integer()`         | Current mouse Y position                        |
-| `MouseDeltaX()`        | `Integer()`         | Mouse X movement since last frame               |
-| `MouseDeltaY()`        | `Integer()`         | Mouse Y movement since last frame               |
-| `ScrollX()`            | `Integer()`         | Horizontal scroll delta                         |
-| `ScrollY()`            | `Integer()`         | Vertical scroll delta                           |
+
+### Mouse Properties
+
+| Property     | Type    | Access | Description                              |
+|--------------|---------|--------|------------------------------------------|
+| `MouseX`     | Integer | Read   | Current mouse X position                 |
+| `MouseY`     | Integer | Read   | Current mouse Y position                 |
+| `MouseDeltaX`| Integer | Read   | Mouse X movement since last frame        |
+| `MouseDeltaY`| Integer | Read   | Mouse Y movement since last frame        |
+| `ScrollX`    | Integer | Read   | Horizontal scroll delta                  |
+| `ScrollY`    | Integer | Read   | Vertical scroll delta                    |
 
 ### Gamepad Methods
 

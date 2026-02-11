@@ -5,27 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares liveness analysis infrastructure for IL functions, computing
-// live-in and live-out sets for SSA temporaries at each basic block. Liveness
-// information is essential for register allocation, dead code elimination, and
-// understanding variable lifetimes.
-//
-// Liveness analysis determines which SSA temporaries hold values that may be
-// used along some path from a given program point. The analysis computes live-in
-// sets (temporaries that must be available at block entry) and live-out sets
-// (temporaries that must be preserved at block exit). These sets enable optimizations
-// to identify unused values and guide resource allocation.
-//
-// Algorithm:
-// - CFG construction: Build successor and predecessor relationships for all blocks
-// - Use-def analysis: Identify which temporaries each instruction uses and defines
-// - Backward dataflow: Propagate liveness information backward through the CFG
-//   using iterative fixpoint computation
-// - Bitset representation: Use dense bitsets indexed by SSA temporary IDs for
-//   efficient set operations during fixpoint iteration
-//
-// The analysis uses block pointers for adjacency information but stores liveness
-// as temporary ID bitsets, enabling efficient queries and compact representation.
+// File: il/transform/analysis/Liveness.hpp
+// Purpose: Liveness analysis for IL functions -- computes live-in and live-out
+//          sets for SSA temporaries at each basic block using backward dataflow
+//          fixpoint iteration over dense bitsets indexed by temporary ID.
+// Key invariants:
+//   - Liveness sets are conservative: a live temporary is guaranteed to be
+//     used along some path from the program point.
+//   - Bitset size equals the total number of SSA value IDs in the function.
+// Ownership/Lifetime: LivenessInfo owns its bitset storage by value. CFGInfo
+//          owns its adjacency maps. Both are returned as self-contained values
+//          from their respective compute functions.
+// Links: il/core/fwd.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once

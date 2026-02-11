@@ -76,12 +76,12 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
 
 - Catalog → Signatures → C:
 
-    - Runtime class catalog (C++): `src/il/runtime/generated/RuntimeClasses.inc` is
+    - Runtime class catalog (C++): `src/il/runtime/classes/RuntimeClasses.hpp` is
       the single source of truth for built‑in classes and their members
       (properties + methods). Frontends seed their type/property/method registries
       from this catalog.
 
-    - Runtime signatures (C++): `src/il/runtime/generated/RuntimeSignatures.inc` maps the
+    - Runtime signatures (C++): `src/il/runtime/RuntimeSignatures.hpp` maps the
       canonical names (e.g., `Viper.Text.StringBuilder.Append`, `Viper.IO.File.ReadAllText`) to concrete
       C functions and IL signature strings.
 

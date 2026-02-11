@@ -371,8 +371,8 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     int64_t h = rt_pixels_height(frame);
 
     // If no transform at all, use simple blit
-    if (sprite->scale_x == 100 && sprite->scale_y == 100 &&
-        sprite->rotation == 0 && !sprite->flip_x && !sprite->flip_y)
+    if (sprite->scale_x == 100 && sprite->scale_y == 100 && sprite->rotation == 0 &&
+        !sprite->flip_x && !sprite->flip_y)
     {
         rt_canvas_blit_alpha(canvas_ptr, sprite->x, sprite->y, frame);
         return;

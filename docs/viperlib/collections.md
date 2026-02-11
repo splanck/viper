@@ -10,7 +10,7 @@
 - [Viper.Collections.Bytes](#vipercollectionsbytes)
 - [Viper.Collections.Deque](#vipercollectionsdeque)
 - [Viper.Collections.Heap](#vipercollectionsheap)
-- [Viper.Collections.LazySeq](#vipercollectionslazyseq)
+- [Viper.LazySeq](#viperlazyseq)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
 - [Viper.Collections.Queue](#vipercollectionsqueue)
@@ -271,10 +271,7 @@ A double-ended queue (deque) that supports efficient insertion and removal at bo
 stacks and queues while also supporting indexed access.
 
 **Type:** Instance (obj)
-**Constructors:**
-
-- `NEW Viper.Collections.Deque()` - Create with default capacity
-- `Viper.Collections.Deque.WithCapacity(cap)` - Create with specified initial capacity
+**Constructor:** `NEW Viper.Collections.Deque()`
 
 ### Properties
 
@@ -413,14 +410,14 @@ func start() {
     var heap = new Heap();
 
     // Add tasks with priorities (lower = more urgent)
-    heap.Push(3, Viper.Box.Str("Low priority"));
-    heap.Push(1, Viper.Box.Str("Urgent"));
-    heap.Push(2, Viper.Box.Str("Medium"));
+    heap.Push(3, Viper.Core.Box.Str("Low priority"));
+    heap.Push(1, Viper.Core.Box.Str("Urgent"));
+    heap.Push(2, Viper.Core.Box.Str("Medium"));
 
     // Pop returns in priority order (min-heap)
-    Say(Viper.Box.ToStr(heap.Pop()));   // Urgent
-    Say(Viper.Box.ToStr(heap.Pop()));   // Medium
-    Say(Viper.Box.ToStr(heap.Pop()));   // Low priority
+    Say(Viper.Core.Box.ToStr(heap.Pop()));   // Urgent
+    Say(Viper.Core.Box.ToStr(heap.Pop()));   // Medium
+    Say(Viper.Core.Box.ToStr(heap.Pop()));   // Low priority
 }
 ```
 
@@ -469,18 +466,19 @@ PRINT maxHeap.Pop()  ' Output: "High" (priority 5 - highest)
 
 ---
 
-## Viper.Collections.LazySeq
+## Viper.LazySeq
 
 A lazy sequence that generates elements on demand rather than storing them all in memory. Useful for infinite sequences,
 computed sequences, and memory-efficient processing of large datasets. Supports functional-style transformations and
 collectors.
 
+> **Note:** The canonical namespace is `Viper.LazySeq`, not `Viper.Collections.LazySeq`.
+
 **Type:** Instance (obj)
 **Constructors:**
 
-- `Viper.Collections.LazySeq.Range(start, end, step)` - Generate integer range
-- `Viper.Collections.LazySeq.Repeat(value, count)` - Repeat value count times (-1 for infinite)
-- `Viper.Collections.LazySeq.Iterate(seed, fn)` - Generate by repeatedly applying function
+- `Viper.LazySeq.Range(start, end, step)` - Generate integer range
+- `Viper.LazySeq.Repeat(value, count)` - Repeat value count times (-1 for infinite)
 
 ### Properties
 
@@ -510,7 +508,6 @@ collectors.
 | `TakeWhile(pred)`  | `LazySeq(Function)`          | Take elements while predicate is true            |
 | `DropWhile(pred)`  | `LazySeq(Function)`          | Skip elements while predicate is true            |
 | `Concat(other)`    | `LazySeq(LazySeq)`           | Concatenate with another lazy sequence           |
-| `Zip(other, fn)`   | `LazySeq(LazySeq, Function)` | Zip with another sequence using combiner         |
 
 #### Collectors (consume sequence)
 
@@ -518,9 +515,7 @@ collectors.
 |----------------|------------------------------|--------------------------------------------------------|
 | `ToSeq()`      | `Seq()`                      | Collect all elements into a Seq (may not terminate!)   |
 | `ToSeqN(n)`    | `Seq(Integer)`               | Collect at most n elements into a Seq                  |
-| `Fold(init,fn)`| `Object(Object, Function)`   | Reduce to single value (may not terminate!)            |
 | `Count()`      | `Integer()`                  | Count all elements (may not terminate!)                |
-| `ForEach(fn)`  | `Void(Function)`             | Execute function for each element                      |
 | `Find(pred)`   | `Object(Function)`           | Find first matching element; null if not found         |
 | `Any(pred)`    | `Boolean(Function)`          | True if any element matches                            |
 | `All(pred)`    | `Boolean(Function)`          | True if all elements match (may not terminate!)        |
@@ -533,7 +528,7 @@ collectors.
 
 ```basic
 ' Create a range (like Python's range)
-DIM nums AS OBJECT = Viper.Collections.LazySeq.Range(1, 11, 1)
+DIM nums AS OBJECT = Viper.LazySeq.Range(1, 11, 1)
 ' Generates: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 ' Manual iteration
@@ -543,7 +538,7 @@ WHILE NOT nums.IsExhausted
 WEND
 
 ' Create and transform lazily
-DIM evens AS OBJECT = Viper.Collections.LazySeq.Range(1, 100, 1) _
+DIM evens AS OBJECT = Viper.LazySeq.Range(1, 100, 1) _
     .Filter(FUNCTION(n) RETURN n MOD 2 = 0) _
     .Take(5)
 ' Generates: 2, 4, 6, 8, 10 (only computes what's needed)
@@ -553,33 +548,22 @@ DIM evenSeq AS OBJECT = evens.ToSeq()
 PRINT evenSeq.Len    ' Output: 5
 
 ' Infinite sequence with Take
-DIM ones AS OBJECT = Viper.Collections.LazySeq.Repeat(1, -1)  ' Infinite 1s
+DIM ones AS OBJECT = Viper.LazySeq.Repeat(1, -1)  ' Infinite 1s
 DIM firstTen AS OBJECT = ones.Take(10).ToSeq()
 PRINT firstTen.Len   ' Output: 10
 
-' Fibonacci using Iterate
-DIM fib AS OBJECT = Viper.Collections.LazySeq.Iterate( _
-    NEW Pair(0, 1), _
-    FUNCTION(p) RETURN NEW Pair(p.Second, p.First + p.Second) _
-).Map(FUNCTION(p) RETURN p.First).Take(10)
-
 ' Find first element matching condition
-DIM firstBig AS OBJECT = Viper.Collections.LazySeq.Range(1, 1000000, 1) _
+DIM firstBig AS OBJECT = Viper.LazySeq.Range(1, 1000000, 1) _
     .Find(FUNCTION(n) RETURN n > 500)
 PRINT firstBig       ' Output: 501 (stops immediately, doesn't check all million)
 
-' Fold/reduce
-DIM sum AS INTEGER = Viper.Collections.LazySeq.Range(1, 11, 1) _
-    .Fold(0, FUNCTION(acc, n) RETURN acc + n)
-PRINT sum            ' Output: 55
-
 ' Check predicates
-DIM allPositive AS INTEGER = Viper.Collections.LazySeq.Range(1, 100, 1) _
+DIM allPositive AS INTEGER = Viper.LazySeq.Range(1, 100, 1) _
     .All(FUNCTION(n) RETURN n > 0)
 PRINT allPositive    ' Output: 1 (true)
 
 ' Peek without consuming
-DIM seq AS OBJECT = Viper.Collections.LazySeq.Range(1, 5, 1)
+DIM seq AS OBJECT = Viper.LazySeq.Range(1, 5, 1)
 PRINT seq.Peek()     ' Output: 1
 PRINT seq.Peek()     ' Output: 1 (still 1)
 PRINT seq.Next()     ' Output: 1 (now consumed)
@@ -589,11 +573,6 @@ PRINT seq.Peek()     ' Output: 2
 seq.Reset()
 PRINT seq.Next()     ' Output: 1 (back to start)
 
-' Zip two sequences
-DIM letters AS OBJECT = Viper.Collections.LazySeq.Repeat("a", 3)
-DIM numbers AS OBJECT = Viper.Collections.LazySeq.Range(1, 4, 1)
-DIM pairs AS OBJECT = letters.Zip(numbers, FUNCTION(a, b) RETURN a + STR(b))
-' Generates: "a1", "a2", "a3"
 ```
 
 ### LazySeq vs Seq
@@ -609,7 +588,7 @@ DIM pairs AS OBJECT = letters.Zip(numbers, FUNCTION(a, b) RETURN a + STR(b))
 
 ### Important Notes
 
-- **Infinite sequences:** Methods like `ToSeq()`, `Count()`, `Fold()`, and `All()` may never
+- **Infinite sequences:** Methods like `ToSeq()`, `Count()`, and `All()` may never
   terminate on infinite sequences. Always use `Take(n)` to bound infinite sequences before
   collecting.
 - **Single-pass:** LazySeq is consumed as you iterate. Use `Reset()` to iterate again, or
@@ -638,21 +617,27 @@ Dynamic array that grows automatically. Stores object references.
 
 | Property | Type    | Description                 |
 |----------|---------|-----------------------------|
-| `Count`  | Integer | Number of items in the list |
+| `Len`    | Integer | Number of items in the list |
+
+> **Note:** `Count` is available as an alias for `Len` for backward compatibility.
 
 ### Methods
 
-| Method                   | Signature               | Description                                                                             |
-|--------------------------|-------------------------|-----------------------------------------------------------------------------------------|
-| `Add(item)`              | `Void(Object)`          | Appends an item to the end of the list                                                  |
-| `Clear()`                | `Void()`                | Removes all items from the list                                                         |
-| `Has(item)`              | `Boolean(Object)`       | Returns true if the list contains the object (reference equality)                       |
-| `Find(item)`             | `Integer(Object)`       | Returns index of the first matching object, or `-1` if not found                        |
-| `Insert(index, item)`    | `Void(Integer, Object)` | Inserts the item at `index` (0..Count); `index == Count` appends; traps if out of range |
-| `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object (reference equality); returns true if removed         |
-| `RemoveAt(index)`        | `Void(Integer)`         | Removes the item at the specified index                                                 |
-| `get_Item(index)`        | `Object(Integer)`       | Gets the item at the specified index                                                    |
-| `set_Item(index, value)` | `Void(Integer, Object)` | Sets the item at the specified index                                                    |
+| Method                   | Signature               | Description                                                                           |
+|--------------------------|-------------------------|---------------------------------------------------------------------------------------|
+| `Push(item)`             | `Void(Object)`          | Appends an item to the end of the list                                                |
+| `Get(index)`             | `Object(Integer)`       | Gets the item at the specified index                                                  |
+| `Set(index, value)`      | `Void(Integer, Object)` | Sets the item at the specified index                                                  |
+| `Clear()`                | `Void()`                | Removes all items from the list                                                       |
+| `Has(item)`              | `Boolean(Object)`       | Returns true if the list contains the object (reference equality)                     |
+| `Find(item)`             | `Integer(Object)`       | Returns index of the first matching object, or `-1` if not found                      |
+| `Insert(index, item)`    | `Void(Integer, Object)` | Inserts the item at `index` (0..Len); `index == Len` appends; traps if out of range   |
+| `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object (reference equality); returns true if removed       |
+| `RemoveAt(index)`        | `Void(Integer)`         | Removes the item at the specified index                                               |
+| `Slice(start, end)`      | `List(Integer, Integer)`| Returns a new list with elements from start (inclusive) to end (exclusive)            |
+| `Flip()`                 | `Void()`                | Reverses the elements of the list in place                                            |
+| `First()`                | `Object()`              | Returns the first element in the list                                                 |
+| `Last()`                 | `Object()`              | Returns the last element in the list                                                  |
 
 ### Zia Example
 
@@ -667,14 +652,14 @@ func start() {
     var list = new List[String]();
 
     // Add items
-    list.add("apple");
-    list.add("banana");
-    list.add("cherry");
-    Say("Count: " + Fmt.Int(list.count));       // 3
+    list.Push("apple");
+    list.Push("banana");
+    list.Push("cherry");
+    Say("Len: " + Fmt.Int(list.Len));            // 3
 
     // Access by index
-    Say("First: " + list.get(0));                // apple
-    Say("Last: " + list.get(list.count - 1));    // cherry
+    Say("First: " + list.Get(0));                // apple
+    Say("Last: " + list.Get(list.Len - 1));      // cherry
 
     // Iterate with for-in
     for item in list {
@@ -683,12 +668,12 @@ func start() {
     Say("");                                     // apple banana cherry
 
     // Modify
-    list.set(1, "blueberry");
-    Say("Updated: " + list.get(1));              // blueberry
+    list.Set(1, "blueberry");
+    Say("Updated: " + list.Get(1));              // blueberry
 
     // Insert at position
-    list.insert(0, "avocado");
-    Say("First: " + list.get(0));                // avocado
+    list.Insert(0, "avocado");
+    Say("First: " + list.Get(0));                // avocado
 }
 ```
 
@@ -703,8 +688,8 @@ DIM a AS Object = NEW Viper.Collections.List()
 DIM b AS Object = NEW Viper.Collections.List()
 DIM c AS Object = NEW Viper.Collections.List()
 
-list.Add(a)
-list.Add(c)
+list.Push(a)
+list.Push(c)
 list.Insert(1, b)          ' [a, b, c]
 
 PRINT list.Find(b)         ' Output: 1
@@ -714,9 +699,19 @@ IF list.Has(a) THEN
 END IF
 
 IF list.Remove(a) THEN
-  PRINT list.Count         ' Output: 2
+  PRINT list.Len           ' Output: 2
 END IF
 PRINT list.Find(a)         ' Output: -1
+
+' Access by index
+PRINT list.Get(0)          ' First element
+list.Set(0, b)             ' Replace first element
+
+' Slice, Flip, First, Last
+DIM sub AS OBJECT = list.Slice(0, 1)
+list.Flip()                ' Reverse in place
+PRINT list.First()         ' First element
+PRINT list.Last()          ' Last element
 
 ' Clear all
 list.Clear()
@@ -858,12 +853,12 @@ circular buffer for O(1) add and take operations.
 
 ### Methods
 
-| Method       | Signature      | Description                                            |
-|--------------|----------------|--------------------------------------------------------|
-| `Add(value)` | `Void(Object)` | Add element to back of queue                           |
-| `Take()`     | `Object()`     | Remove and return front element (traps if empty)       |
-| `Peek()`     | `Object()`     | Return front element without removing (traps if empty) |
-| `Clear()`    | `Void()`       | Remove all elements                                    |
+| Method        | Signature      | Description                                            |
+|---------------|----------------|--------------------------------------------------------|
+| `Push(value)` | `Void(Object)` | Add element to back of queue                           |
+| `Pop()`       | `Object()`     | Remove and return front element (traps if empty)       |
+| `Peek()`      | `Object()`     | Return front element without removing (traps if empty) |
+| `Clear()`     | `Void()`       | Remove all elements                                    |
 
 ### Zia Example
 
@@ -876,15 +871,15 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     var queue = new Queue();
-    queue.Add("first");
-    queue.Add("second");
-    queue.Add("third");
+    queue.Push("first");
+    queue.Push("second");
+    queue.Push("third");
     Say("Length: " + Fmt.Int(queue.Len));                 // 3
 
     // FIFO order
-    Say("Take: " + Viper.Box.ToStr(queue.Take()));        // first
-    Say("Peek: " + Viper.Box.ToStr(queue.Peek()));        // second
-    Say("After take: " + Fmt.Int(queue.Len));              // 2
+    Say("Pop: " + Viper.Core.Box.ToStr(queue.Pop()));          // first
+    Say("Peek: " + Viper.Core.Box.ToStr(queue.Peek()));        // second
+    Say("After pop: " + Fmt.Int(queue.Len));               // 2
 
     queue.Clear();
     Say("Empty: " + Fmt.Bool(queue.IsEmpty));              // true
@@ -898,15 +893,15 @@ DIM queue AS Viper.Collections.Queue
 queue = NEW Viper.Collections.Queue()
 
 ' Add elements to the queue
-queue.Add("first")
-queue.Add("second")
-queue.Add("third")
+queue.Push("first")
+queue.Push("second")
+queue.Push("third")
 
 PRINT queue.Len      ' Output: 3
 PRINT queue.IsEmpty  ' Output: False
 
-' Take returns elements in FIFO order
-PRINT queue.Take()   ' Output: "first"
+' Pop returns elements in FIFO order
+PRINT queue.Pop()    ' Output: "first"
 PRINT queue.Peek()   ' Output: "second" (still in queue)
 PRINT queue.Len      ' Output: 2
 
@@ -964,18 +959,18 @@ bind Viper.Fmt as Fmt;
 func start() {
     var ring = new Ring(3);
 
-    ring.Push(Viper.Box.Str("first"));
-    ring.Push(Viper.Box.Str("second"));
-    ring.Push(Viper.Box.Str("third"));
+    ring.Push(Viper.Core.Box.Str("first"));
+    ring.Push(Viper.Core.Box.Str("second"));
+    ring.Push(Viper.Core.Box.Str("third"));
     Say("Length: " + Fmt.Int(ring.Len));         // 3
     Say("Full: " + Fmt.Bool(ring.IsFull));       // true
 
     // Overflow overwrites oldest
-    ring.Push(Viper.Box.Str("fourth"));
-    Say("Oldest: " + Viper.Box.ToStr(ring.Peek()));  // second
+    ring.Push(Viper.Core.Box.Str("fourth"));
+    Say("Oldest: " + Viper.Core.Box.ToStr(ring.Peek()));  // second
 
     // Pop removes oldest (FIFO)
-    Say("Pop: " + Viper.Box.ToStr(ring.Pop()));       // second
+    Say("Pop: " + Viper.Core.Box.ToStr(ring.Pop()));       // second
     Say("After pop: " + Fmt.Int(ring.Len));            // 2
 }
 ```
@@ -1098,13 +1093,13 @@ func start() {
     Say("Length: " + Fmt.Int(seq.Len));                     // 3
 
     // Peek and Pop (LIFO)
-    Say("Peek: " + Viper.Box.ToStr(seq.Peek()));            // third
-    Say("Pop: " + Viper.Box.ToStr(seq.Pop()));              // third
+    Say("Peek: " + Viper.Core.Box.ToStr(seq.Peek()));            // third
+    Say("Pop: " + Viper.Core.Box.ToStr(seq.Pop()));              // third
     Say("After pop: " + Fmt.Int(seq.Len));                   // 2
 
     // Reverse in place
     seq.Reverse();
-    Say("Reversed first: " + Viper.Box.ToStr(seq.Get(0)));  // second
+    Say("Reversed first: " + Viper.Core.Box.ToStr(seq.Get(0)));  // second
 }
 ```
 
@@ -1286,8 +1281,8 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 
 | Method              | Signature         | Description                                                    |
 |---------------------|-------------------|----------------------------------------------------------------|
-| `Put(obj)`          | `Boolean(Object)` | Add an object; returns true if new, false if already present   |
-| `Drop(obj)`         | `Boolean(Object)` | Remove an object; returns true if removed, false if not found  |
+| `Add(obj)`          | `Boolean(Object)` | Add an object; returns true if new, false if already present   |
+| `Remove(obj)`       | `Boolean(Object)` | Remove an object; returns true if removed, false if not found  |
 | `Has(obj)`          | `Boolean(Object)` | Check if object is in the set                                  |
 | `Clear()`           | `Void()`          | Remove all objects from the set                                |
 | `Items()`           | `Seq()`           | Get all objects as a Seq (order undefined)                     |
@@ -1315,43 +1310,43 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 ```basic
 ' Create and populate a set
 DIM items AS OBJECT = Viper.Collections.Set.New()
-DIM a AS OBJECT = Viper.Box.I64(1)
-DIM b AS OBJECT = Viper.Box.I64(2)
-DIM c AS OBJECT = Viper.Box.I64(3)
+DIM a AS OBJECT = Viper.Core.Box.I64(1)
+DIM b AS OBJECT = Viper.Core.Box.I64(2)
+DIM c AS OBJECT = Viper.Core.Box.I64(3)
 
-items.Put(a)
-items.Put(b)
-items.Put(c)
+items.Add(a)
+items.Add(b)
+items.Add(c)
 PRINT items.Len           ' Output: 3
 
 ' Duplicate add returns false
-DIM wasNew AS INTEGER = items.Put(a)
+DIM wasNew AS INTEGER = items.Add(a)
 PRINT wasNew              ' Output: 0 (already present)
 
 ' Membership testing
 PRINT items.Has(b)        ' Output: 1 (true)
-DIM d AS OBJECT = Viper.Box.I64(4)
+DIM d AS OBJECT = Viper.Core.Box.I64(4)
 PRINT items.Has(d)        ' Output: 0 (false)
 
 ' Remove an element
-DIM removed AS INTEGER = items.Drop(b)
+DIM removed AS INTEGER = items.Remove(b)
 PRINT removed             ' Output: 1 (was removed)
 PRINT items.Has(b)        ' Output: 0 (no longer present)
 
 ' Set operations
 DIM setA AS OBJECT = Viper.Collections.Set.New()
-DIM x AS OBJECT = Viper.Box.Str("x")
-DIM y AS OBJECT = Viper.Box.Str("y")
-DIM z AS OBJECT = Viper.Box.Str("z")
-DIM w AS OBJECT = Viper.Box.Str("w")
-setA.Put(x)
-setA.Put(y)
-setA.Put(z)
+DIM x AS OBJECT = Viper.Core.Box.Str("x")
+DIM y AS OBJECT = Viper.Core.Box.Str("y")
+DIM z AS OBJECT = Viper.Core.Box.Str("z")
+DIM w AS OBJECT = Viper.Core.Box.Str("w")
+setA.Add(x)
+setA.Add(y)
+setA.Add(z)
 
 DIM setB AS OBJECT = Viper.Collections.Set.New()
-setB.Put(y)
-setB.Put(z)
-setB.Put(w)
+setB.Add(y)
+setB.Add(z)
+setB.Add(w)
 
 ' Union: elements in either set
 DIM merged AS OBJECT = setA.Merge(setB)
@@ -1367,14 +1362,14 @@ PRINT diff.Len            ' Output: 1 (x only)
 
 ' Subset/superset checks
 DIM subset AS OBJECT = Viper.Collections.Set.New()
-subset.Put(y)
-subset.Put(z)
+subset.Add(y)
+subset.Add(z)
 PRINT subset.IsSubset(setA)     ' Output: 1 (true)
 PRINT setA.IsSuperset(subset)   ' Output: 1 (true)
 
 ' Disjoint check
 DIM disjoint AS OBJECT = Viper.Collections.Set.New()
-disjoint.Put(w)
+disjoint.Add(w)
 PRINT setA.IsDisjoint(disjoint) ' Output: 1 (true - no common elements)
 ```
 
@@ -1574,8 +1569,8 @@ func start() {
     Say("Length: " + Fmt.Int(stack.Len));                  // 3
 
     // LIFO order
-    Say("Pop: " + Viper.Box.ToStr(stack.Pop()));           // third
-    Say("Peek: " + Viper.Box.ToStr(stack.Peek()));         // second
+    Say("Pop: " + Viper.Core.Box.ToStr(stack.Pop()));           // third
+    Say("Peek: " + Viper.Core.Box.ToStr(stack.Peek()));         // second
     Say("After pop: " + Fmt.Int(stack.Len));               // 2
 
     stack.Clear();
@@ -1660,9 +1655,9 @@ func start() {
     var tm = new TreeMap();
 
     // Insert in any order — stored sorted
-    tm.Set("cherry", Viper.Box.Str("red"));
-    tm.Set("apple", Viper.Box.Str("green"));
-    tm.Set("banana", Viper.Box.Str("yellow"));
+    tm.Set("cherry", Viper.Core.Box.Str("red"));
+    tm.Set("apple", Viper.Core.Box.Str("green"));
+    tm.Set("banana", Viper.Core.Box.Str("yellow"));
 
     Say("Length: " + Fmt.Int(tm.Len));           // 3
     Say("First: " + tm.First());                  // apple

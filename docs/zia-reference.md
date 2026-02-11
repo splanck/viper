@@ -963,8 +963,9 @@ From highest to lowest:
 | 10 | `&&` | Left |
 | 11 | `||` | Left |
 | 12 | `??` | Left |
-| 13 | `? :` | Right |
-| 14 | `=` | Right |
+| 13 | `..` `..=` | Left |
+| 14 | `? :` | Right |
+| 15 | `=` | Right |
 
 ---
 
@@ -1029,7 +1030,11 @@ whileStmt   ::= "while" expr block
 forStmt     ::= "for" "(" [varStmt | exprStmt] expr ";" expr ")" block
 forInStmt   ::= "for" IDENT "in" expr block
 returnStmt  ::= "return" [expr] ";"
+breakStmt   ::= "break" ";"
+continueStmt ::= "continue" ";"
 guardStmt   ::= "guard" expr "else" block
+matchStmt   ::= "match" expr "{" matchArm* "}"
+matchArm    ::= pattern ["if" expr] "=>" (block | expr ";")
 exprStmt    ::= expr ";"
 ```
 

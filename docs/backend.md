@@ -56,7 +56,7 @@ Source → Frontend → IL → Backend → Assembly → Executable
 | **Output**        | AT&T syntax assembly (GAS-compatible)                    |
 | **Strategy**      | SSA-based with linear scan register allocation           |
 | **Pipeline**      | Multi-pass: Lowering → Selection → Allocation → Emission |
-| **Current Phase** | Phase A (bring-up, educational focus)                    |
+| **Current Phase** | Phase A (bring-up); x86_64 validated on Windows, AArch64 validated on Apple Silicon |
 
 ### Phase A Goals
 
@@ -994,6 +994,7 @@ src/codegen/
     ├── ISel.hpp/cpp               # Instruction selection
     ├── Peephole.hpp/cpp           # Peephole optimization
     ├── LowerDiv.cpp               # Division/modulo lowering
+    ├── LowerOvf.cpp               # Overflow-checked arithmetic lowering
     ├── Unsupported.hpp            # Unsupported opcode tracking
     ├── CallLowering.hpp/cpp       # Calling convention
     ├── FrameLowering.hpp/cpp      # Stack frame layout
@@ -1035,6 +1036,7 @@ src/codegen/
 - `ISel.hpp` — Instruction selection and legalization
 - `Peephole.hpp` — Simple peephole optimizations
 - `LowerDiv.cpp` — Division/remainder lowering
+- `LowerOvf.cpp` — Overflow-checked arithmetic lowering
 
 **Register Allocation:**
 

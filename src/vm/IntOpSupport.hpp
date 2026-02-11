@@ -8,7 +8,7 @@
 // File: vm/IntOpSupport.hpp
 // Purpose: Shared helpers for integer opcode handlers, covering trap dispatch and
 // Key invariants: Helpers operate on canonicalised Slot values and honour IL trap
-// Ownership/Lifetime: To be documented.
+// Ownership/Lifetime: Stateless inline helpers; no heap allocation or ownership transfer.
 // Links: docs/il-guide.md#reference §Integer Arithmetic, §Bitwise and Shifts,
 //
 //===----------------------------------------------------------------------===//
@@ -52,6 +52,17 @@ inline void emitTrap(TrapKind kind,
     RuntimeBridge::trap(kind, message, in.loc, fr.func->name, bb ? bb->label : "");
 }
 
+/// @brief Apply an overflow-checking binary operation for a specific integer type.
+/// @tparam T Signed integer type (e.g., int16_t, int32_t, int64_t).
+/// @tparam OverflowOp Callable with signature <tt>bool(T, T, T*)</tt> returning true on overflow.
+/// @param in Instruction being executed.
+/// @param fr Active frame containing function metadata.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot that receives the result on success.
+/// @param lhsVal Left operand slot.
+/// @param rhsVal Right operand slot.
+/// @param trapMessage Human-readable message emitted when overflow is detected.
+/// @param op Overflow-checking operation invoked with the decoded operands.
 template <typename T, typename OverflowOp>
 void applyOverflowingBinary(const il::core::Instr &in,
                             Frame &fr,
@@ -73,6 +84,16 @@ void applyOverflowingBinary(const il::core::Instr &in,
     out.i64 = static_cast<int64_t>(result);
 }
 
+/// @brief Dispatch an overflow-checking binary operation based on the instruction's type kind.
+/// @tparam OverflowOp Callable with signature <tt>bool(T, T, T*)</tt> returning true on overflow.
+/// @param in Instruction whose type kind selects the integer width.
+/// @param fr Active frame.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot that receives the result on success.
+/// @param lhsVal Left operand slot.
+/// @param rhsVal Right operand slot.
+/// @param trapMessage Human-readable message emitted when overflow is detected.
+/// @param overflowOp Overflow-checking operation forwarded to applyOverflowingBinary.
 template <typename OverflowOp>
 void dispatchOverflowingBinary(const il::core::Instr &in,
                                Frame &fr,
@@ -101,6 +122,14 @@ void dispatchOverflowingBinary(const il::core::Instr &in,
     }
 }
 
+/// @brief Perform signed integer division with zero-divisor and MIN/-1 overflow checks.
+/// @tparam T Signed integer type determining the arithmetic width.
+/// @param in Instruction being executed.
+/// @param fr Active frame.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot receiving the quotient on success.
+/// @param lhsVal Left operand (dividend) slot.
+/// @param rhsVal Right operand (divisor) slot.
 template <typename T>
 void applySignedDiv(const il::core::Instr &in,
                     Frame &fr,
@@ -124,6 +153,16 @@ void applySignedDiv(const il::core::Instr &in,
     out.i64 = static_cast<int64_t>(static_cast<T>(lhs / rhs));
 }
 
+/// @brief Perform signed integer remainder with zero-divisor and MIN/-1 checks.
+/// @details When the dividend is the type minimum and the divisor is -1, the
+///          remainder is defined as zero (no trap).
+/// @tparam T Signed integer type determining the arithmetic width.
+/// @param in Instruction being executed.
+/// @param fr Active frame.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot receiving the remainder on success.
+/// @param lhsVal Left operand (dividend) slot.
+/// @param rhsVal Right operand (divisor) slot.
 template <typename T>
 void applySignedRem(const il::core::Instr &in,
                     Frame &fr,
@@ -152,6 +191,14 @@ void applySignedRem(const il::core::Instr &in,
     out.i64 = static_cast<int64_t>(static_cast<T>(remainder));
 }
 
+/// @brief Perform checked signed division (sdiv.chk0) with zero-divisor and overflow traps.
+/// @tparam T Signed integer type determining the arithmetic width.
+/// @param in Instruction being executed.
+/// @param fr Active frame.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot receiving the quotient on success.
+/// @param lhsVal Left operand (dividend) slot.
+/// @param rhsVal Right operand (divisor) slot.
 template <typename T>
 void applyCheckedDiv(const il::core::Instr &in,
                      Frame &fr,
@@ -175,6 +222,16 @@ void applyCheckedDiv(const il::core::Instr &in,
     out.i64 = static_cast<int64_t>(static_cast<T>(lhs / rhs));
 }
 
+/// @brief Perform checked signed remainder (srem.chk0) with zero-divisor trap.
+/// @details When the dividend is the type minimum and the divisor is -1, the
+///          remainder is defined as zero (no trap).
+/// @tparam T Signed integer type determining the arithmetic width.
+/// @param in Instruction being executed.
+/// @param fr Active frame.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot receiving the remainder on success.
+/// @param lhsVal Left operand (dividend) slot.
+/// @param rhsVal Right operand (divisor) slot.
 template <typename T>
 void applyCheckedRem(const il::core::Instr &in,
                      Frame &fr,
@@ -202,6 +259,7 @@ void applyCheckedRem(const il::core::Instr &in,
     out.i64 = static_cast<int64_t>(static_cast<T>(remainder));
 }
 
+/// @brief Function pointer type for checked signed binary operations.
 using CheckedSignedBinaryFn = void (*)(const il::core::Instr &,
                                        Frame &,
                                        const il::core::BasicBlock *,
@@ -209,6 +267,16 @@ using CheckedSignedBinaryFn = void (*)(const il::core::Instr &,
                                        const Slot &,
                                        const Slot &);
 
+/// @brief Dispatch a checked signed binary operation by type kind using function pointer templates.
+/// @tparam ApplyI16 Handler for 16-bit signed integers.
+/// @tparam ApplyI32 Handler for 32-bit signed integers.
+/// @tparam ApplyI64 Handler for 64-bit signed integers.
+/// @param in Instruction whose type kind selects the integer width.
+/// @param fr Active frame.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot that receives the result on success.
+/// @param lhsVal Left operand slot.
+/// @param rhsVal Right operand slot.
 template <CheckedSignedBinaryFn ApplyI16,
           CheckedSignedBinaryFn ApplyI32,
           CheckedSignedBinaryFn ApplyI64>
@@ -234,6 +302,12 @@ void dispatchCheckedSignedBinary(const il::core::Instr &in,
     }
 }
 
+/// @brief Check whether an index falls within a half-open [lo, hi) range.
+/// @tparam T Integer type used for comparison (determines sign semantics).
+/// @param idxSlot Slot containing the index value to check.
+/// @param loSlot Slot containing the inclusive lower bound.
+/// @param hiSlot Slot containing the exclusive upper bound.
+/// @return A pair: (true, normalized-offset) on success, or (false, raw-index) on failure.
 template <typename T>
 [[nodiscard]] std::pair<bool, int64_t> performBoundsCheck(const Slot &idxSlot,
                                                           const Slot &loSlot,
@@ -259,6 +333,16 @@ template <typename NarrowT> [[nodiscard]] constexpr bool fitsSignedRange(int64_t
            value <= static_cast<int64_t>(std::numeric_limits<NarrowT>::max());
 }
 
+/// @brief Apply unsigned division or remainder with a zero-divisor trap.
+/// @tparam ComputeOp Callable with signature <tt>uint64_t(uint64_t, uint64_t)</tt>.
+/// @param in Instruction being executed.
+/// @param fr Active frame.
+/// @param bb Current basic block pointer, may be null.
+/// @param out Output slot receiving the result on success.
+/// @param lhsVal Left operand (dividend) slot.
+/// @param rhsVal Right operand (divisor) slot.
+/// @param trapMessage Human-readable message emitted on divide-by-zero.
+/// @param compute Functor computing the unsigned result from dividend and divisor.
 template <typename ComputeOp>
 void applyUnsignedDivOrRem(const il::core::Instr &in,
                            Frame &fr,
@@ -390,11 +474,15 @@ inline void dispatchOverflowingBinaryDirect(const il::core::Instr &in,
 /// @details Stateless functor that can be passed without creating a closure.
 struct OverflowAddOp
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
-    const char *trapMessage;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
+    const char *trapMessage;        ///< Trap message on overflow.
 
+    /// @brief Dispatch overflow-checking addition across integer widths.
+    /// @param out Output slot receiving the result.
+    /// @param lhsVal Left operand slot.
+    /// @param rhsVal Right operand slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         dispatchOverflowingBinaryDirect<&overflowAdd<int16_t>,
@@ -407,11 +495,15 @@ struct OverflowAddOp
 /// @brief Compute functor for overflow-checking subtraction (CRITICAL-4 optimization).
 struct OverflowSubOp
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
-    const char *trapMessage;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
+    const char *trapMessage;        ///< Trap message on overflow.
 
+    /// @brief Dispatch overflow-checking subtraction across integer widths.
+    /// @param out Output slot receiving the result.
+    /// @param lhsVal Left operand slot.
+    /// @param rhsVal Right operand slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         dispatchOverflowingBinaryDirect<&overflowSub<int16_t>,
@@ -424,11 +516,15 @@ struct OverflowSubOp
 /// @brief Compute functor for overflow-checking multiplication (CRITICAL-4 optimization).
 struct OverflowMulOp
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
-    const char *trapMessage;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
+    const char *trapMessage;        ///< Trap message on overflow.
 
+    /// @brief Dispatch overflow-checking multiplication across integer widths.
+    /// @param out Output slot receiving the result.
+    /// @param lhsVal Left operand slot.
+    /// @param rhsVal Right operand slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         dispatchOverflowingBinaryDirect<&overflowMul<int16_t>,
@@ -441,6 +537,10 @@ struct OverflowMulOp
 /// @brief Stateless bitwise AND functor for use with applyBinary.
 struct BitwiseAndOp
 {
+    /// @brief Compute bitwise AND of two slots.
+    /// @param out Output slot receiving the result.
+    /// @param lhs Left operand slot.
+    /// @param rhs Right operand slot.
     void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
     {
         out.i64 = lhs.i64 & rhs.i64;
@@ -450,6 +550,10 @@ struct BitwiseAndOp
 /// @brief Stateless bitwise OR functor for use with applyBinary.
 struct BitwiseOrOp
 {
+    /// @brief Compute bitwise OR of two slots.
+    /// @param out Output slot receiving the result.
+    /// @param lhs Left operand slot.
+    /// @param rhs Right operand slot.
     void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
     {
         out.i64 = lhs.i64 | rhs.i64;
@@ -459,6 +563,10 @@ struct BitwiseOrOp
 /// @brief Stateless bitwise XOR functor for use with applyBinary.
 struct BitwiseXorOp
 {
+    /// @brief Compute bitwise XOR of two slots.
+    /// @param out Output slot receiving the result.
+    /// @param lhs Left operand slot.
+    /// @param rhs Right operand slot.
     void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
     {
         out.i64 = lhs.i64 ^ rhs.i64;
@@ -468,6 +576,10 @@ struct BitwiseXorOp
 /// @brief Stateless left-shift functor for use with applyBinary.
 struct ShiftLeftOp
 {
+    /// @brief Compute left shift, masking the shift amount to [0, 63].
+    /// @param out Output slot receiving the result.
+    /// @param lhs Left operand slot (value to shift).
+    /// @param rhs Right operand slot (shift amount).
     void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
     {
         const uint64_t shift = static_cast<uint64_t>(rhs.i64) & 63U;
@@ -479,6 +591,10 @@ struct ShiftLeftOp
 /// @brief Stateless logical right-shift functor for use with applyBinary.
 struct LogicalShiftRightOp
 {
+    /// @brief Compute logical (unsigned) right shift, masking the shift amount to [0, 63].
+    /// @param out Output slot receiving the result.
+    /// @param lhs Left operand slot (value to shift).
+    /// @param rhs Right operand slot (shift amount).
     void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
     {
         const uint64_t shift = static_cast<uint64_t>(rhs.i64) & 63U;
@@ -490,6 +606,11 @@ struct LogicalShiftRightOp
 /// @brief Stateless arithmetic right-shift functor for use with applyBinary.
 struct ArithmeticShiftRightOp
 {
+    /// @brief Compute arithmetic (sign-preserving) right shift, masking the shift amount to [0,
+    /// 63].
+    /// @param out Output slot receiving the result.
+    /// @param lhs Left operand slot (value to shift).
+    /// @param rhs Right operand slot (shift amount).
     void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
     {
         const uint64_t shift = static_cast<uint64_t>(rhs.i64) & 63U;
@@ -513,6 +634,10 @@ struct ArithmeticShiftRightOp
 /// @brief Stateless unsigned division compute functor.
 struct UnsignedDivOp
 {
+    /// @brief Compute unsigned quotient.
+    /// @param dividend Dividend value.
+    /// @param divisor Divisor value (must be non-zero).
+    /// @param result Receives the quotient.
     void operator()(uint64_t dividend, uint64_t divisor, uint64_t &result) const
     {
         result = dividend / divisor;
@@ -522,6 +647,10 @@ struct UnsignedDivOp
 /// @brief Stateless unsigned remainder compute functor.
 struct UnsignedRemOp
 {
+    /// @brief Compute unsigned remainder.
+    /// @param dividend Dividend value.
+    /// @param divisor Divisor value (must be non-zero).
+    /// @param result Receives the remainder.
     void operator()(uint64_t dividend, uint64_t divisor, uint64_t &result) const
     {
         result = dividend % divisor;
@@ -561,11 +690,15 @@ inline void applyUnsignedDivOrRemDirect(const il::core::Instr &in,
 /// @brief Compute functor for unsigned division with zero-check (CRITICAL-4 optimization).
 struct UnsignedDivWithCheck
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
-    const char *trapMessage;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
+    const char *trapMessage;        ///< Trap message on divide-by-zero.
 
+    /// @brief Perform unsigned division with a zero-divisor trap.
+    /// @param out Output slot receiving the quotient.
+    /// @param lhsVal Left operand (dividend) slot.
+    /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         applyUnsignedDivOrRemDirect<UnsignedDivOp>(in, fr, bb, out, lhsVal, rhsVal, trapMessage);
@@ -575,11 +708,15 @@ struct UnsignedDivWithCheck
 /// @brief Compute functor for unsigned remainder with zero-check (CRITICAL-4 optimization).
 struct UnsignedRemWithCheck
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
-    const char *trapMessage;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
+    const char *trapMessage;        ///< Trap message on divide-by-zero.
 
+    /// @brief Perform unsigned remainder with a zero-divisor trap.
+    /// @param out Output slot receiving the remainder.
+    /// @param lhsVal Left operand (dividend) slot.
+    /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         applyUnsignedDivOrRemDirect<UnsignedRemOp>(in, fr, bb, out, lhsVal, rhsVal, trapMessage);
@@ -589,10 +726,14 @@ struct UnsignedRemWithCheck
 /// @brief Compute functor for signed division with type dispatch (CRITICAL-4 optimization).
 struct SignedDivWithDispatch
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
 
+    /// @brief Dispatch signed division across integer widths with trap checks.
+    /// @param out Output slot receiving the quotient.
+    /// @param lhsVal Left operand (dividend) slot.
+    /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         dispatchCheckedSignedBinary<&applySignedDiv<int16_t>,
@@ -604,10 +745,14 @@ struct SignedDivWithDispatch
 /// @brief Compute functor for signed remainder with type dispatch (CRITICAL-4 optimization).
 struct SignedRemWithDispatch
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
 
+    /// @brief Dispatch signed remainder across integer widths with trap checks.
+    /// @param out Output slot receiving the remainder.
+    /// @param lhsVal Left operand (dividend) slot.
+    /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         dispatchCheckedSignedBinary<&applySignedRem<int16_t>,
@@ -619,10 +764,14 @@ struct SignedRemWithDispatch
 /// @brief Compute functor for checked signed division (CRITICAL-4 optimization).
 struct CheckedSignedDivWithDispatch
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
 
+    /// @brief Dispatch checked signed division (sdiv.chk0) across integer widths.
+    /// @param out Output slot receiving the quotient.
+    /// @param lhsVal Left operand (dividend) slot.
+    /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         dispatchCheckedSignedBinary<&applyCheckedDiv<int16_t>,
@@ -634,10 +783,14 @@ struct CheckedSignedDivWithDispatch
 /// @brief Compute functor for checked signed remainder (CRITICAL-4 optimization).
 struct CheckedSignedRemWithDispatch
 {
-    const il::core::Instr &in;
-    Frame &fr;
-    const il::core::BasicBlock *bb;
+    const il::core::Instr &in;      ///< Instruction being executed.
+    Frame &fr;                      ///< Active frame.
+    const il::core::BasicBlock *bb; ///< Current basic block.
 
+    /// @brief Dispatch checked signed remainder (srem.chk0) across integer widths.
+    /// @param out Output slot receiving the remainder.
+    /// @param lhsVal Left operand (dividend) slot.
+    /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
     {
         dispatchCheckedSignedBinary<&applyCheckedRem<int16_t>,

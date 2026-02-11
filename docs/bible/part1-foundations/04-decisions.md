@@ -1112,7 +1112,7 @@ func start() {
     }
 
     // Check email contains @
-    if Viper.String.Contains(email, "@") && Viper.String.Contains(email, ".") {
+    if Viper.String.Has(email, "@") && Viper.String.Has(email, ".") {
         Say("[ OK ] Email format appears valid");
     } else {
         Say("[FAIL] Email must contain @ and .");

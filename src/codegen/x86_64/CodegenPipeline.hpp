@@ -51,9 +51,16 @@ class CodegenPipeline
     };
 
     /// \brief Construct a pipeline configured with @p opts.
+    /// @param opts User-supplied configuration controlling input/output paths,
+    ///             optimisation level, and execution behaviour.
     explicit CodegenPipeline(Options opts);
 
     /// \brief Execute the end-to-end code-generation workflow.
+    ///
+    /// @details Loads the IL module, runs the lowering and register-allocation
+    ///          passes, emits assembly or object code, optionally links and
+    ///          executes the resulting binary, then collects process output.
+    ///
     /// @return Aggregated result including exit code and captured output streams.
     PipelineResult run();
 

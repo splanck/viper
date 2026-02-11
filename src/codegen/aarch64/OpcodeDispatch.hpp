@@ -7,6 +7,13 @@
 //
 // File: codegen/aarch64/OpcodeDispatch.hpp
 // Purpose: Instruction lowering dispatch for IL->MIR conversion.
+// Key invariants: Returns true when the opcode is handled, false otherwise;
+//                 unhandled opcodes must be processed by the caller;
+//                 block indices are used instead of references to survive
+//                 emplace_back invalidation.
+// Ownership/Lifetime: Stateless free function; mutable state is accessed
+//                     through the LoweringContext reference.
+// Links: codegen/aarch64/InstrLowering.hpp, codegen/aarch64/LoweringContext.hpp
 //
 //===----------------------------------------------------------------------===//
 

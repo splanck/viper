@@ -4,6 +4,12 @@
 
 <div align="center">
 
+**Status: SUPERSEDED — See [Zia_v0.1_Quick_Reference.md](Zia_v0.1_Quick_Reference.md) for the final quick reference**
+
+> **Warning:** This RC1 document is outdated. Key differences from the final v0.1 spec include:
+> `Text` renamed to `String`, `Void` renamed to `Unit`, `import` changed to `bind`,
+> `where` guards changed to `if`, async/await deferred to v0.2, and cycle detection removed.
+
 **Everything you need in 10 minutes**
 
 *Copy types. Pattern matching. No exceptions. One way to do things.*

@@ -5,25 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares portable, locale-independent integer formatting utilities
-// for the Viper runtime. These functions convert 64-bit integers to decimal string
-// representation with consistent output across all platforms and locales.
-//
-// The standard C library's sprintf and snprintf functions have locale-dependent
-// formatting behavior and varying buffer safety guarantees across implementations.
-// Viper requires deterministic, reproducible output for test validation and
-// cross-platform compatibility. These helpers provide explicit buffer management
-// with guaranteed null termination and no locale dependencies.
-//
-// Key Design Features:
-// - Locale independence: Always uses C locale decimal formatting (no thousands separators)
-// - Explicit buffer management: Callers provide pre-allocated buffers with size
-// - Safe termination: Always null-terminates output or returns zero on buffer overflow
-// - Return value clarity: Returns character count excluding null terminator, not buffer position
-//
-// These formatters are used by PRINT statement lowering for integer output and
-// by runtime diagnostic messages. They provide a stable foundation for text
-// conversion without dependencies on platform-specific printf implementations.
+// File: src/runtime/rt_int_format.h
+// Purpose: Portable, locale-independent 64-bit integer to decimal string formatting.
+// Key invariants: Always null-terminates; returns 0 on buffer overflow; no locale deps.
+// Ownership/Lifetime: Callers provide and own the destination buffer.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

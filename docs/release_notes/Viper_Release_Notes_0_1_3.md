@@ -61,7 +61,7 @@ New language with C-style syntax:
 
 - Entity types (reference semantics) and value types (copy semantics)
 - Generic collections: `List[T]`, `Map[K,V]`
-- Module system with `import`
+- Module system with `bind` (originally named `import` in early v0.1.3 builds)
 - String interpolation with `${...}`
 - Type inference
 

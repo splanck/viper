@@ -28,16 +28,27 @@ struct VMAccess
 {
     using ExecState = VM::ExecState;
 
+    /// @brief Retrieve the currently active execution state from the VM stack.
+    /// @param vm Virtual machine instance.
+    /// @return Pointer to the top execution state, or nullptr if the stack is empty.
     static inline ExecState *currentExecState(VM &vm)
     {
         return vm.execStack.empty() ? nullptr : vm.execStack.back();
     }
 
+    /// @brief Evaluate an IL value within a frame using the VM's evaluation logic.
+    /// @param vm Virtual machine instance.
+    /// @param fr Active frame containing register state.
+    /// @param value IL value to evaluate.
+    /// @return Slot containing the evaluated result.
     static inline Slot eval(VM &vm, Frame &fr, const il::core::Value &value)
     {
         return vm.eval(fr, value);
     }
 
+    /// @brief Access the VM's debug controller for breakpoint and watch management.
+    /// @param vm Virtual machine instance.
+    /// @return Reference to the debug controller owned by the VM.
     static inline DebugCtrl &debug(VM &vm)
     {
         return vm.debug;
@@ -57,16 +68,27 @@ struct VMAccess
         return vm.varWatchActive_;
     }
 
+    /// @brief Access the VM's function name lookup table.
+    /// @param vm Virtual machine instance.
+    /// @return Const reference to the map from function names to Function pointers.
     static inline const VM::FnMap &functionMap(const VM &vm)
     {
         return vm.fnMap;
     }
 
+    /// @brief Access the VM's runtime call context used for trap metadata.
+    /// @param vm Virtual machine instance.
+    /// @return Reference to the runtime call context owned by the VM.
     static inline RuntimeCallContext &runtimeContext(VM &vm)
     {
         return vm.runtimeContext;
     }
 
+    /// @brief Execute a function within the VM and return its result.
+    /// @param vm Virtual machine instance.
+    /// @param fn Function to call.
+    /// @param args Argument slots passed to the function's entry block.
+    /// @return Slot containing the function's return value.
     static inline Slot callFunction(VM &vm,
                                     const il::core::Function &fn,
                                     std::span<const Slot> args)
@@ -75,6 +97,12 @@ struct VMAccess
     }
 
     // Stepping helpers for components that need controlled access -------------
+
+    /// @brief Prepare an execution state for stepping through a function.
+    /// @param vm Virtual machine instance.
+    /// @param fn Function to prepare for execution.
+    /// @param args Argument slots for the function's entry block.
+    /// @return Fully initialized execution state ready for stepOnce().
     static inline ExecState prepare(VM &vm,
                                     const il::core::Function &fn,
                                     std::span<const Slot> args)
@@ -82,16 +110,27 @@ struct VMAccess
         return vm.prepareExecution(fn, args);
     }
 
+    /// @brief Execute a single interpreter step within the given execution state.
+    /// @param vm Virtual machine instance.
+    /// @param st Execution state to advance by one instruction.
+    /// @return The function's return value when execution completes, or nullopt to continue.
     static inline std::optional<Slot> stepOnce(VM &vm, ExecState &st)
     {
         return vm.stepOnce(st);
     }
 
+    /// @brief Set the maximum instruction count before forced termination.
+    /// @param vm Virtual machine instance.
+    /// @param max Step limit; 0 disables the limit.
     static inline void setMaxSteps(VM &vm, uint64_t max)
     {
         vm.maxSteps = max;
     }
 
+    /// @brief Configure periodic host polling for cooperative multitasking.
+    /// @param vm Virtual machine instance.
+    /// @param everyN Invoke the callback every N instructions; 0 disables polling.
+    /// @param cb Callback returning false to request a VM pause.
     static inline void setPollConfig(VM &vm, uint32_t everyN, std::function<bool(VM &)> cb)
     {
         vm.pollEveryN_ = everyN;

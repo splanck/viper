@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_json_stream.h"
 #include "rt_internal.h"
+#include "rt_json_stream.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -223,7 +223,8 @@ static void test_array_of_objects()
 
 static void test_escape_sequences()
 {
-    void *p = rt_json_stream_new(make_str("[\"line1\\nline2\", \"tab\\there\", \"quote\\\"inside\"]"));
+    void *p =
+        rt_json_stream_new(make_str("[\"line1\\nline2\", \"tab\\there\", \"quote\\\"inside\"]"));
 
     rt_json_stream_next(p); /* [ */
 
@@ -378,15 +379,14 @@ static void test_null_parser()
 
 static void test_complex_json()
 {
-    const char *json =
-        "{"
-        "  \"users\": ["
-        "    {\"name\": \"Alice\", \"age\": 30, \"active\": true},"
-        "    {\"name\": \"Bob\", \"age\": 25, \"active\": false}"
-        "  ],"
-        "  \"count\": 2,"
-        "  \"meta\": null"
-        "}";
+    const char *json = "{"
+                       "  \"users\": ["
+                       "    {\"name\": \"Alice\", \"age\": 30, \"active\": true},"
+                       "    {\"name\": \"Bob\", \"age\": 25, \"active\": false}"
+                       "  ],"
+                       "  \"count\": 2,"
+                       "  \"meta\": null"
+                       "}";
 
     void *p = rt_json_stream_new(make_str(json));
 

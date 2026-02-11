@@ -5,20 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief Forward declarations for core IL types.
-/// @details This header reduces compile-time dependencies by exposing only
-///          incomplete type declarations for the IL core structures. Consumers
-///          that need pointers or references can include this file instead of
-///          the full definitions, which helps break cycles and reduces rebuild
-///          fan-out when the core headers change.
-///
-/// Usage guidelines:
-/// - Include this header when you only need pointers/references to IL types.
-/// - Include the full headers (Module.hpp, Function.hpp, etc.) when you need to:
-///   - access members or methods,
-///   - construct or copy objects, or
-///   - place the type in containers that require a complete definition.
+// File: il/core/fwd.hpp
+// Purpose: Forward declarations for core IL types (Module, Function,
+//          BasicBlock, Instr, Value). Reduces compile-time dependencies by
+//          exposing only incomplete type declarations.
+// Key invariants: None -- declarations only; no definitions or storage.
+// Ownership/Lifetime: N/A -- no objects are created by this header.
+// Links: il/core/Module.hpp, il/core/Function.hpp, il/core/BasicBlock.hpp,
+//        il/core/Instr.hpp, il/core/Value.hpp
 //
 //===----------------------------------------------------------------------===//
 

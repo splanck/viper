@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_frozenset.h
+// File: src/runtime/rt_frozenset.h
 // Purpose: Runtime functions for immutable string set.
 // Key invariants: Once created, cannot be modified. O(1) average lookup.
 // Ownership/Lifetime: Retains strings. Created from Seq or Bag.

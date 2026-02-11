@@ -5,38 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Value struct, which represents operands and constants
-// in IL instructions. Values are tagged unions that can hold temporaries, literal
-// constants, global addresses, or null pointers.
-//
-// The Value type is central to IL's SSA representation. Instructions produce
-// values (stored in temporaries) and consume values (from operands). The tagged
-// union design allows a single Value type to represent all possible operand
-// forms without polymorphism or heap allocation.
-//
-// Supported Value Kinds:
-// - Temp: SSA temporary reference (%0, %1, etc.)
-// - ConstInt: Integer literal (i16, i32, i64)
-// - ConstFloat: Floating-point literal (f64)
-// - ConstStr: String literal ("hello")
-// - GlobalAddr: Address of global symbol (@varName)
-// - NullPtr: Null pointer constant
-//
-// The Value struct uses a discriminated union pattern with a Kind enum field
-// that determines which payload field is active. Factory methods (temp, constInt,
-// etc.) construct Values with the appropriate kind and payload, ensuring type
-// safety at the API level.
-//
-// Special Handling for Booleans:
-// Integer constants can represent both numeric integers and i1 boolean values.
-// The isBool flag distinguishes between these interpretations, affecting
-// serialization and type checking.
-//
-// Design Rationale:
-// - Value semantics: Values are lightweight POD structs suitable for copying
-// - No polymorphism: Avoids virtual dispatch and heap allocation overhead
-// - Factory methods: Prevent construction of invalid discriminant/payload pairs
-// - String storage: Used for both string constants and global symbol names
+// File: il/core/Value.hpp
+// Purpose: Declares the Value struct -- a tagged union representing operands
+//          and constants in IL instructions (Temp, ConstInt, ConstFloat,
+//          ConstStr, GlobalAddr, NullPtr). Includes factory methods, semantic
+//          equality, and hashing utilities for use in unordered containers.
+// Key invariants:
+//   - Only one payload member is active at a time per the Kind discriminant.
+//   - Factory methods enforce valid discriminant/payload combinations.
+//   - isBool is meaningful only when kind == Kind::ConstInt.
+// Ownership/Lifetime: Value type with lightweight value semantics; no heap
+//          allocation beyond std::string for string/global payloads.
+// Links: docs/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

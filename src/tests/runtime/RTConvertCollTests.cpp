@@ -288,8 +288,7 @@ static void test_null_handling()
     printf("Testing NULL handling:\n");
 
     void *list = rt_seq_to_list(NULL);
-    test_result("NULL seq to list returns empty list",
-                list != NULL && rt_list_len(list) == 0);
+    test_result("NULL seq to list returns empty list", list != NULL && rt_list_len(list) == 0);
 
     void *seq = rt_list_to_seq(NULL);
     test_result("NULL list to seq returns empty seq", seq != NULL && rt_seq_len(seq) == 0);

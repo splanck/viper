@@ -12,15 +12,18 @@
 - [Viper.Threads.Gate](#viperthreadsgate)
 - [Viper.Threads.Barrier](#viperthreadsbarrier)
 - [Viper.Threads.RwLock](#viperthreadsrwlock)
+- [Viper.Threads.Pool](#viperthreadspool)
 - [Viper.Threads.Promise](#viperthreadspromise)
 - [Viper.Threads.Future](#viperthreadsfuture)
-- [Viper.Threads.Async](#viperthreadsasync)
-- [Viper.Threads.ConcurrentMap](#viperthreadsconcurrentmap)
 - [Viper.Threads.Parallel](#viperthreadsparallel)
 - [Viper.Threads.CancelToken](#viperthreadscanceltoken)
 - [Viper.Threads.Debouncer](#viperthreadsdebouncer)
 - [Viper.Threads.Throttler](#viperthreadsthrottler)
 - [Viper.Threads.Scheduler](#viperthreadsscheduler)
+- [Viper.Threads.Async](#viperthreadsasync)
+- [Viper.Threads.ConcurrentMap](#viperthreadsconcurrentmap)
+- [Viper.Threads.ConcurrentQueue](#viperthreadsconcurrentqueue)
+- [Viper.Threads.Channel](#viperthreadschannel)
 
 ---
 
@@ -403,6 +406,45 @@ func start() {
 
 ---
 
+## Viper.Threads.Pool
+
+Thread pool for submitting tasks to a fixed set of worker threads.
+
+**Type:** Instance class (requires `New(size)`)
+
+### Constructor
+
+| Method       | Signature       | Description                                  |
+|-------------|------------------|----------------------------------------------|
+| `New(size)` | `Pool(Integer)`  | Create a pool with `size` worker threads (clamped to 1..1024) |
+
+### Methods
+
+| Method           | Signature             | Description                                                     |
+|------------------|-----------------------|-----------------------------------------------------------------|
+| `Submit(cb, arg)`| `Boolean(Object, Object)` | Submit a task for async execution; returns false if shut down  |
+| `Wait()`         | `Void()`              | Block until all pending tasks complete                          |
+| `WaitFor(ms)`    | `Boolean(Integer)`    | Wait with timeout; returns true if all tasks completed          |
+| `Shutdown()`     | `Void()`              | Graceful shutdown: finish pending tasks, then stop workers      |
+| `ShutdownNow()`  | `Void()`              | Immediate shutdown: discard queued tasks, stop workers          |
+
+### Properties
+
+| Property     | Type                   | Description                         |
+|--------------|------------------------|-------------------------------------|
+| `Size`       | `Integer` (read-only)  | Number of worker threads            |
+| `Pending`    | `Integer` (read-only)  | Number of queued (not yet running) tasks |
+| `Active`     | `Integer` (read-only)  | Number of tasks currently executing |
+| `IsShutdown` | `Boolean` (read-only)  | True if the pool has been shut down |
+
+### Notes
+
+- Tasks are executed in FIFO order.
+- `Submit` returns false after `Shutdown` or `ShutdownNow` has been called.
+- `ShutdownNow` discards queued tasks; `Shutdown` allows them to finish.
+
+---
+
 ## Viper.Threads.Promise
 
 Producer side of a Future/Promise pair for asynchronous result passing between threads.
@@ -423,7 +465,7 @@ value (or error), and the Future is used by the consumer thread to retrieve the 
 | Method           | Signature           | Description                                      |
 |------------------|---------------------|--------------------------------------------------|
 | `GetFuture()`    | `Future()`          | Get the linked Future (always returns same one)  |
-| `Set(value)`     | `Void(Ptr)`         | Complete with a value (can only call once)       |
+| `Set(value)`     | `Void(Object)`      | Complete with a value (can only call once)       |
 | `SetError(msg)`  | `Void(String)`      | Complete with an error (can only call once)      |
 
 ### Properties
@@ -471,9 +513,7 @@ Promise which is used to set the value.
 
 | Method          | Signature           | Description                                          |
 |-----------------|---------------------|------------------------------------------------------|
-| `Get()`         | `Ptr()`             | Block until resolved, return value (traps on error)  |
-| `GetFor(ms)`    | `Boolean(Integer)`  | Wait with timeout, returns false on timeout/error    |
-| `TryGet(out)`   | `Boolean(Ptr)`      | Non-blocking get, returns false if not resolved      |
+| `Get()`         | `Object()`          | Block until resolved, return value (traps on error)  |
 | `Wait()`        | `Void()`            | Block until resolved (value or error)                |
 | `WaitFor(ms)`   | `Boolean(Integer)`  | Wait with timeout, returns true if resolved          |
 
@@ -545,7 +585,7 @@ ELSE
 END IF
 ```
 
-### Try-Get Pattern
+### Polling Pattern
 
 ```basic
 DIM future AS OBJECT = GetFutureFromSomewhere()
@@ -592,7 +632,7 @@ END IF
 
 - A Promise can only be completed once (either `Set` or `SetError`)
 - Calling `Get()` on an error-resolved Future will trap
-- `GetFor()` and `TryGet()` return false instead of trapping on error
+- `WaitFor()` returns false on timeout without trapping
 - Multiple threads can wait on the same Future
 
 ---
@@ -607,18 +647,20 @@ Provides common parallel patterns like ForEach, Map, and Invoke using a shared t
 
 ### Methods
 
-| Method                      | Signature                            | Description                                           |
-|-----------------------------|--------------------------------------|-------------------------------------------------------|
-| `ForEach(seq, func)`        | `Void(Seq, Ptr)`                     | Execute func for each item in parallel                |
-| `ForEachPool(seq,func,pool)`| `Void(Seq, Ptr, Pool)`               | ForEach with custom thread pool                       |
-| `Map(seq, func)`            | `Seq(Seq, Ptr)`                      | Transform items in parallel, preserve order           |
-| `MapPool(seq, func, pool)`  | `Seq(Seq, Ptr, Pool)`                | Map with custom thread pool                           |
-| `Invoke(funcs)`             | `Void(Seq)`                          | Execute multiple functions in parallel                |
-| `InvokePool(funcs, pool)`   | `Void(Seq, Pool)`                    | Invoke with custom thread pool                        |
-| `For(start, end, func)`     | `Void(Integer, Integer, Ptr)`        | Parallel for loop over range [start, end)             |
-| `ForPool(start,end,func,p)` | `Void(Integer, Integer, Ptr, Pool)`  | Parallel for with custom pool                         |
-| `DefaultWorkers()`          | `Integer()`                          | Get number of CPU cores                               |
-| `DefaultPool()`             | `Pool()`                             | Get or create the shared default thread pool          |
+| Method                            | Signature                                 | Description                                           |
+|-----------------------------------|-------------------------------------------|-------------------------------------------------------|
+| `ForEach(seq, func)`              | `Void(Seq, Ptr)`                          | Execute func for each item in parallel                |
+| `ForEachPool(seq, func, pool)`    | `Void(Seq, Ptr, Pool)`                    | ForEach with custom thread pool                       |
+| `Map(seq, func)`                  | `Seq(Seq, Ptr)`                           | Transform items in parallel, preserve order           |
+| `MapPool(seq, func, pool)`        | `Seq(Seq, Ptr, Pool)`                     | Map with custom thread pool                           |
+| `Invoke(funcs)`                   | `Void(Seq)`                               | Execute multiple functions in parallel                |
+| `InvokePool(funcs, pool)`         | `Void(Seq, Pool)`                         | Invoke with custom thread pool                        |
+| `For(start, end, func)`           | `Void(Integer, Integer, Ptr)`             | Parallel for loop over range [start, end)             |
+| `ForPool(start, end, func, pool)` | `Void(Integer, Integer, Ptr, Pool)`       | Parallel for with custom pool                         |
+| `Reduce(seq, func, identity)`     | `Object(Seq, Ptr, Object)`               | Reduce items in parallel using a binary combine function |
+| `ReducePool(seq, func, id, pool)` | `Object(Seq, Ptr, Object, Pool)`          | Reduce with custom thread pool                        |
+| `DefaultWorkers()`                | `Integer()`                               | Get number of CPU cores                               |
+| `DefaultPool()`                   | `Pool()`                                  | Get or create the shared default thread pool          |
 
 ### Zia Example
 
@@ -805,24 +847,24 @@ Time-based debouncer that delays execution until a quiet period has elapsed. Use
 
 ### Properties
 
-| Property      | Type    | Description                                      |
-|---------------|---------|--------------------------------------------------|
-| `Delay`       | Integer | Configured delay in milliseconds                 |
-| `SignalCount` | Integer | Number of signals since last ready state         |
+| Property      | Type                   | Description                                      |
+|---------------|------------------------|--------------------------------------------------|
+| `Delay`       | `Integer` (read-only)  | Configured delay in milliseconds                 |
+| `IsReady`     | `Boolean` (read-only)  | True if delay has elapsed since last signal      |
+| `SignalCount` | `Integer` (read-only)  | Number of signals since last ready state         |
 
 ### Methods
 
 | Method       | Signature       | Description                                              |
 |--------------|-----------------|----------------------------------------------------------|
 | `Signal()`   | `Void()`        | Signal the debouncer (resets the timer)                  |
-| `IsReady()`  | `Boolean()`     | Check if delay has elapsed since last signal             |
 | `Reset()`    | `Void()`        | Reset debouncer to initial state                         |
 
 ### How It Works
 
 1. Call `Signal()` each time an event occurs
 2. The timer resets on each signal
-3. `IsReady()` returns true only after the full delay has elapsed with no new signals
+3. `IsReady` returns true only after the full delay has elapsed with no new signals
 4. This ensures the action fires only after events stop arriving
 
 ### Zia Example
@@ -842,7 +884,7 @@ SUB OnKeystroke(key AS STRING)
 END SUB
 
 ' In the main loop
-IF debounce.IsReady() AND debounce.SignalCount > 0 THEN
+IF debounce.get_IsReady() AND debounce.get_SignalCount() > 0 THEN
     ' User stopped typing for 300ms - perform search
     PerformSearch()
     debounce.Reset()
@@ -867,18 +909,18 @@ Time-based throttler that limits operations to at most once per interval. Unlike
 
 ### Properties
 
-| Property       | Type    | Description                                         |
-|----------------|---------|-----------------------------------------------------|
-| `Interval`     | Integer | Configured interval in milliseconds                 |
-| `Count`        | Integer | Number of operations allowed so far                 |
-| `RemainingMs`  | Integer | Milliseconds until next operation is allowed (0 if ready) |
+| Property       | Type                   | Description                                                |
+|----------------|------------------------|------------------------------------------------------------|
+| `CanProceed`   | `Boolean` (read-only)  | True if an operation would be allowed (without marking)    |
+| `Count`        | `Integer` (read-only)  | Number of operations allowed so far                        |
+| `Interval`     | `Integer` (read-only)  | Configured interval in milliseconds                        |
+| `RemainingMs`  | `Integer` (read-only)  | Milliseconds until next operation is allowed (0 if ready)  |
 
 ### Methods
 
 | Method         | Signature    | Description                                              |
 |----------------|--------------|----------------------------------------------------------|
 | `Try()`        | `Boolean()`  | Try to execute (returns true if allowed, marks as used)  |
-| `CanProceed()` | `Boolean()`  | Check if an operation would be allowed (without marking) |
 | `Reset()`      | `Void()`     | Reset throttler to allow immediate operation             |
 
 ### How It Works
@@ -907,12 +949,12 @@ SUB OnMouseMove(x AS INTEGER, y AS INTEGER)
 END SUB
 
 ' Check without consuming
-IF throttle.CanProceed() THEN
+IF throttle.get_CanProceed() THEN
     PRINT "Ready for next operation"
 END IF
 
-PRINT "Operations performed: "; throttle.Count
-PRINT "Time until next allowed: "; throttle.RemainingMs; "ms"
+PRINT "Operations performed: "; throttle.get_Count()
+PRINT "Time until next allowed: "; throttle.get_RemainingMs(); "ms"
 ```
 
 ### Debouncer vs Throttler
@@ -1015,8 +1057,7 @@ LOOP WHILE sched.Pending > 0
 
 ## Viper.Threads.Async
 
-Async task combinators for running operations on background threads and composing their results. Built on
-Future/Promise and the thread pool.
+Async task combinators for composing asynchronous results. Built on Future/Promise.
 
 **Type:** Static utility class
 
@@ -1024,17 +1065,16 @@ Future/Promise and the thread pool.
 
 | Method                     | Signature                          | Description                                         |
 |----------------------------|------------------------------------|-----------------------------------------------------|
-| `Run(callback, arg)`       | `Future(Ptr, Ptr)`                 | Run a callback on a background thread               |
-| `WaitAll(futures)`         | `Void(Seq)`                        | Block until all futures in the Seq complete          |
-| `WaitAny(futures)`         | `Integer(Seq)`                     | Block until any future completes; returns its index  |
-| `Map(future, fn, arg)`     | `Future(Future, Ptr, Ptr)`         | Apply a transformation when a future completes       |
+| `Delay(ms)`                | `Future(Integer)`                  | Return a Future that resolves after `ms` milliseconds with NULL |
+| `All(futures)`             | `Future(Seq)`                      | Return a Future that resolves when all input futures resolve (with a Seq of results) |
+| `Any(futures)`             | `Future(Seq)`                      | Return a Future that resolves with the value of whichever input future completes first |
 
 ### Notes
 
 - All methods are thread-safe.
-- `Run` spawns work on a background thread and returns immediately with a Future.
-- `WaitAll` blocks the calling thread until every future in the Seq has resolved.
-- `Map` chains a transformation: when the input future resolves, `fn` is called with the result.
+- `Delay` returns a Future that resolves with NULL after the specified delay.
+- `All` returns a Future resolving to a Seq of results. If any input future has an error, the combined Future resolves with an error.
+- `Any` returns a Future resolving with the value of the first completed input future.
 
 ---
 
@@ -1054,14 +1094,17 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 
 ### Methods
 
-| Method            | Signature              | Description                                                |
-|-------------------|------------------------|------------------------------------------------------------|
-| `Set(key, value)` | `Void(String, Object)` | Thread-safe insert or update                               |
-| `Get(key)`        | `Object(String)`       | Thread-safe lookup; returns NULL if not found               |
-| `Has(key)`        | `Boolean(String)`      | Thread-safe existence check                                |
-| `Remove(key)`     | `Boolean(String)`      | Thread-safe removal; returns true if found                  |
-| `Clear()`         | `Void()`               | Thread-safe removal of all entries                          |
-| `Keys()`          | `Seq()`                | Get snapshot of all keys (may not reflect concurrent writes)|
+| Method                       | Signature                     | Description                                                |
+|------------------------------|-------------------------------|------------------------------------------------------------|
+| `Set(key, value)`            | `Void(String, Object)`        | Thread-safe insert or update                               |
+| `Get(key)`                   | `Object(String)`              | Thread-safe lookup; returns NULL if not found               |
+| `GetOr(key, default)`        | `Object(String, Object)`      | Thread-safe lookup; returns `default` if not found          |
+| `Has(key)`                   | `Boolean(String)`             | Thread-safe existence check                                |
+| `SetIfMissing(key, value)`   | `Boolean(String, Object)`     | Insert only if key absent; returns true if inserted         |
+| `Remove(key)`                | `Boolean(String)`             | Thread-safe removal; returns true if found                  |
+| `Clear()`                    | `Void()`                      | Thread-safe removal of all entries                          |
+| `Keys()`                     | `Seq()`                       | Get snapshot of all keys (may not reflect concurrent writes)|
+| `Values()`                   | `Seq()`                       | Get snapshot of all values (may not reflect concurrent writes)|
 
 ### Notes
 
@@ -1070,6 +1113,82 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 - Values are retained (reference count incremented) while in the map.
 - Uses FNV-1a hash with separate chaining for collision resolution.
 - For single-threaded use, prefer `Viper.Collections.Map` which has no locking overhead.
+
+---
+
+## Viper.Threads.ConcurrentQueue
+
+Thread-safe FIFO queue for concurrent access from multiple threads.
+
+**Type:** Instance class
+**Constructor:** `Viper.Threads.ConcurrentQueue.New()`
+
+### Properties
+
+| Property  | Type                   | Description                              |
+|-----------|------------------------|------------------------------------------|
+| `Len`     | `Integer` (read-only)  | Approximate number of elements           |
+| `IsEmpty` | `Boolean` (read-only)  | True if the queue is approximately empty |
+
+### Methods
+
+| Method               | Signature             | Description                                                      |
+|----------------------|-----------------------|------------------------------------------------------------------|
+| `Enqueue(item)`      | `Void(Object)`        | Add item to back of queue (thread-safe)                          |
+| `Dequeue()`          | `Object()`            | Remove item from front (blocks until available)                  |
+| `TryDequeue()`       | `Object()`            | Remove item from front (non-blocking); returns NULL if empty     |
+| `DequeueTimeout(ms)` | `Object(Integer)`     | Remove item with timeout; returns NULL if timeout expires        |
+| `Peek()`             | `Object()`            | Peek at front item without removing; returns NULL if empty       |
+| `Clear()`            | `Void()`              | Remove all items (thread-safe)                                   |
+
+### Notes
+
+- FIFO order is guaranteed.
+- `Dequeue` blocks until an item is available.
+- `TryDequeue` and `Peek` return NULL immediately if the queue is empty.
+- Values are retained (reference count incremented) while in the queue.
+
+---
+
+## Viper.Threads.Channel
+
+Thread-safe bounded channel for inter-thread communication. Supports blocking, non-blocking, and timeout-based send/receive operations.
+
+**Type:** Instance class (requires `New(capacity)`)
+
+### Constructor
+
+| Method           | Signature          | Description                                         |
+|------------------|--------------------|-----------------------------------------------------|
+| `New(capacity)`  | `Channel(Integer)` | Create a bounded channel (0 for synchronous channel)|
+
+### Methods
+
+| Method                  | Signature                    | Description                                                  |
+|-------------------------|------------------------------|--------------------------------------------------------------|
+| `Send(item)`            | `Void(Object)`               | Send item, blocking if full (traps if closed)                |
+| `TrySend(item)`         | `Boolean(Object)`            | Try to send without blocking; returns false if full or closed|
+| `SendFor(item, ms)`     | `Boolean(Object, Integer)`   | Send with timeout; returns false if timed out or closed      |
+| `Recv()`                | `Object()`                   | Receive item, blocking if empty; returns NULL if closed and empty |
+| `TryRecv(out)`          | `Boolean(Object)`            | Try to receive without blocking; returns false if empty      |
+| `RecvFor(out, ms)`      | `Boolean(Object, Integer)`   | Receive with timeout; returns false if timed out or closed   |
+| `Close()`               | `Void()`                     | Close the channel; wakes all blocked senders/receivers       |
+
+### Properties
+
+| Property   | Type                   | Description                           |
+|------------|------------------------|---------------------------------------|
+| `Len`      | `Integer` (read-only)  | Number of items currently in channel  |
+| `Cap`      | `Integer` (read-only)  | Channel capacity (0 for synchronous)  |
+| `IsClosed` | `Boolean` (read-only)  | True if the channel has been closed   |
+| `IsEmpty`  | `Boolean` (read-only)  | True if the channel contains no items |
+| `IsFull`   | `Boolean` (read-only)  | True if the channel is at capacity    |
+
+### Notes
+
+- Closing a channel prevents further sends but receivers can still drain remaining items.
+- A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
+- `Send` traps if the channel is closed.
 
 ---
 

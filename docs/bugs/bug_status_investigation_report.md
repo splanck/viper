@@ -1,5 +1,8 @@
 # VIPER BASIC Bug Status Investigation Report
 
+> **Historical snapshot (2025-11-14).** Bug statuses below reflect the state at the time of investigation.
+> Many have since been resolved. See `bugs/basic_resolved.md` for current status.
+
 **Date**: 2025-11-14
 **Investigator**: Automated Testing
 **Source**: basic_bugs.md audit

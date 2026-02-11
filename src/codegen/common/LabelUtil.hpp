@@ -7,6 +7,10 @@
 //
 // File: codegen/common/LabelUtil.hpp
 // Purpose: Small helpers for generating assembler-safe labels.
+// Key invariants: Output labels are always non-empty and valid for GAS/NASM;
+//                 no digit-leading labels are emitted.
+// Ownership/Lifetime: Header-only stateless utilities with no global state.
+// Links: codegen/x86_64/EmitAsm.cpp, codegen/aarch64/EmitAsm.cpp
 //
 //===----------------------------------------------------------------------===//
 

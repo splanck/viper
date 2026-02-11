@@ -9,9 +9,10 @@
 // Purpose: Prototypes for runtime namespace bridging helpers.
 // Key invariants: Constructors return heap-managed, refcounted object pointers
 //                 with vptr at offset 0.
-// Ownership/Lifetime: Objects returned are managed by the runtime object heap
-//                     and must be released according to refcounting rules.
-// Links: docs/oop.md
+// Ownership: Objects returned are managed by the runtime object heap
+//            and must be released according to refcounting rules.
+// Lifetime: Returned objects live until their reference count reaches zero.
+// Links: docs/oop.md, rt_heap.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,9 +23,11 @@ extern "C"
 {
 #endif
 
-    /// What: Allocate an opaque object instance for Viper.Text.StringBuilder.
-    /// Why:  Bridge OOP allocation to the C runtime for use by the VM.
-    /// How:  Creates a heap-managed object with appropriate vtable and state.
+    /// @brief Allocate an opaque object instance for Viper.Text.StringBuilder.
+    /// @details Bridges OOP allocation to the C runtime for use by the VM.
+    ///          Creates a heap-managed object with the appropriate vtable and
+    ///          internal state (an embedded rt_string_builder).
+    /// @return Opaque pointer to the new StringBuilder object; NULL on failure.
     void *rt_ns_stringbuilder_new(void);
 
 #ifdef __cplusplus

@@ -24,8 +24,14 @@ namespace viper::codegen::x64::passes
 class EmitPass final : public Pass
 {
   public:
+    /// @brief Construct the emission pass with the given codegen configuration.
+    /// @param options Backend options controlling output format, debug info, etc.
     explicit EmitPass(CodegenOptions options) noexcept;
 
+    /// @brief Run the emission pass: generate x86-64 assembly text from MIR.
+    /// @param module The codegen module containing lowered and register-allocated MIR.
+    /// @param diags Diagnostic sink for reporting emission errors.
+    /// @return True if emission succeeded, false on error.
     bool run(Module &module, Diagnostics &diags) override;
 
   private:

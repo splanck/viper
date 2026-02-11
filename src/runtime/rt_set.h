@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_set.h
+// File: src/runtime/rt_set.h
 // Purpose: Runtime functions for generic hash set using identity hashing.
 // Key invariants: Stores unique objects by reference equality. O(1) average.
 // Ownership/Lifetime: Set retains elements. Caller manages element creation.

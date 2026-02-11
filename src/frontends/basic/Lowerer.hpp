@@ -5,68 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Lowerer class, which transforms validated BASIC AST
-// nodes into Viper Intermediate Language (IL) instructions.
-//
-// The lowerer is the final stage of the BASIC frontend compilation pipeline:
-//   Lexer → Parser → AST → Semantic → Lowerer → IL
-//
-// Key Responsibilities:
-// - AST-to-IL translation: Converts high-level BASIC constructs into IL
-//   instructions that can be executed by the Viper VM or compiled to native code
-// - Expression lowering: Transforms BASIC expressions (arithmetic, logical,
-//   string operations) into IL register operations and value computations
-// - Statement lowering: Converts BASIC statements (assignments, control flow,
-//   I/O) into IL basic blocks with appropriate control flow edges
-// - Runtime integration: Emits calls to the Viper runtime library for:
-//   * String operations (concatenation, comparison, substring)
-//   * I/O operations (PRINT, INPUT)
-//   * Array operations (dynamic allocation, bounds checking)
-//   * Built-in functions (mathematical, string manipulation, type conversion)
-// - Memory management: Generates IL for variable allocation, array storage,
-//   and string lifetime management
-// - Control flow: Constructs IL basic blocks for:
-//   * Conditional branches (IF/THEN/ELSE)
-//   * Loops (FOR/NEXT, DO/LOOP, WHILE/WEND)
-//   * Select statements (SELECT CASE)
-//   * Procedure calls and returns
-//
-// IL Generation Strategy:
-// - Procedures: Each BASIC SUB/FUNCTION becomes an IL function with proper
-//   parameter passing and return value handling
-// - Variables: BASIC variables map to IL locals (stack allocation) or globals
-// - Arrays: Multi-dimensional arrays are lowered to runtime library calls
-//   for allocation and element access with bounds checking
-// - Labels and GOTO: BASIC labels become IL basic block labels with
-//   appropriate branch instructions
-// - Type system: BASIC type suffixes map to IL primitive types (i32, i64,
-//   f32, f64, string)
-//
-// Runtime Library Integration:
-// The lowerer generates calls to runtime functions for operations not directly
-// expressible in IL:
-// - String operations: viper_string_concat, viper_string_compare, etc.
-// - I/O: viper_print, viper_input, viper_read, etc.
-// - Arrays: viper_array_alloc, viper_array_get, viper_array_set
-// - Built-ins: viper_math_sin, viper_string_left, etc.
-//
-// Design Notes:
-// - The lowerer does not own the AST or IL module; it receives them as
-//   parameters and populates the module with IL functions
-// - Uses IRBuilder for efficient IL instruction emission
-// - Maintains deterministic block label generation for reproducible output
-// - Coordinates with NameMangler for consistent symbol naming across
-//   compilation units
-// - Supports optional bounds checking for array operations (debug mode)
-//
-// Lowering Pipeline Components:
-// - LowerExprNumeric: Arithmetic and numeric operations
-// - LowerExprLogical: Boolean and comparison operations
-// - LowerExprBuiltin: Built-in function calls
-// - LowerStmt_Core: Assignment and basic statements
-// - LowerStmt_Control: Control flow (IF, FOR, WHILE, SELECT)
-// - LowerStmt_IO: I/O operations (PRINT, INPUT)
-// - LowerRuntime: Runtime library function declarations
+// File: frontends/basic/Lowerer.hpp
+// Purpose: Transforms validated BASIC AST nodes into Viper IL instructions.
+//          Final stage of the pipeline: Lexer -> Parser -> AST -> Semantic -> Lowerer -> IL.
+// Key invariants: Generates deterministic block names per procedure using BlockNamer.
+//                 Procedures are lowered before a synthetic @main encompassing
+//                 top-level statements. Runtime helpers are declared lazily.
+// Ownership/Lifetime: Owns the produced Module via lowerProgram(). Uses IRBuilder
+//                     for structure emission. Does not own AST nodes.
+// Links: docs/architecture.md, docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -267,211 +214,316 @@ class Lowerer
     // =========================================================================
     // Exposes a narrow, explicit surface for modular lowering helpers without
     // granting them direct friendship to the full Lowerer class.
+
+    /// @brief Narrow public facade providing controlled access to Lowerer internals.
+    /// @details Modular lowering helpers receive a DetailAccess handle instead of
+    ///          friendship to the entire Lowerer class. This limits the surface area
+    ///          exposed to helper modules while still allowing them to delegate back
+    ///          to core lowering routines.
     class DetailAccess
     {
       public:
+        /// @brief Construct a detail-access handle bound to the given Lowerer.
+        /// @param lowerer The owning Lowerer instance to delegate through.
         explicit DetailAccess(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {}
 
+        /// @brief Retrieve the underlying Lowerer reference.
+        /// @return The Lowerer instance backing this handle.
         [[nodiscard]] Lowerer &lowerer() const noexcept
         {
             return *lowerer_;
         }
 
+        /// @brief Lower a variable reference expression.
+        /// @param expr Variable expression AST node.
+        /// @return Loaded value and its type.
         [[nodiscard]] RVal lowerVarExpr(const VarExpr &expr)
         {
             return lowerer_->lowerVarExpr(expr);
         }
 
+        /// @brief Lower a unary expression (e.g. NOT, negation).
+        /// @param expr Unary expression AST node.
+        /// @return Resulting value and type.
         [[nodiscard]] RVal lowerUnaryExpr(const UnaryExpr &expr)
         {
             return lowerer_->lowerUnaryExpr(expr);
         }
 
+        /// @brief Lower a binary expression (arithmetic, comparison, etc.).
+        /// @param expr Binary expression AST node.
+        /// @return Resulting value and type.
         [[nodiscard]] RVal lowerBinaryExpr(const BinaryExpr &expr)
         {
             return lowerer_->lowerBinaryExpr(expr);
         }
 
+        /// @brief Lower a UBOUND query expression.
+        /// @param expr UBOUND expression AST node naming the array.
+        /// @return Resulting value and type.
         [[nodiscard]] RVal lowerUBoundExpr(const UBoundExpr &expr)
         {
             return lowerer_->lowerUBoundExpr(expr);
         }
 
+        /// @brief Lower an IF/ELSEIF/ELSE statement.
+        /// @param stmt IF statement AST node.
         void lowerIf(const IfStmt &stmt)
         {
             lowerer_->lowerIf(stmt);
         }
 
+        /// @brief Lower a WHILE/WEND loop statement.
+        /// @param stmt WHILE statement AST node.
         void lowerWhile(const WhileStmt &stmt)
         {
             lowerer_->lowerWhile(stmt);
         }
 
+        /// @brief Lower a DO/LOOP statement.
+        /// @param stmt DO statement AST node.
         void lowerDo(const DoStmt &stmt)
         {
             lowerer_->lowerDo(stmt);
         }
 
+        /// @brief Lower a FOR/NEXT loop statement.
+        /// @param stmt FOR statement AST node.
         void lowerFor(const ForStmt &stmt)
         {
             lowerer_->lowerFor(stmt);
         }
 
+        /// @brief Lower a FOR EACH iteration statement.
+        /// @param stmt FOR EACH statement AST node.
         void lowerForEach(const ForEachStmt &stmt)
         {
             lowerer_->lowerForEach(stmt);
         }
 
+        /// @brief Lower a SELECT CASE statement.
+        /// @param stmt SELECT CASE statement AST node.
         void lowerSelectCase(const SelectCaseStmt &stmt)
         {
             lowerer_->lowerSelectCase(stmt);
         }
 
+        /// @brief Lower a NEXT statement (FOR loop increment/termination).
+        /// @param stmt NEXT statement AST node.
         void lowerNext(const NextStmt &stmt)
         {
             lowerer_->lowerNext(stmt);
         }
 
+        /// @brief Lower an EXIT statement (loop early termination).
+        /// @param stmt EXIT statement AST node.
         void lowerExit(const ExitStmt &stmt)
         {
             lowerer_->lowerExit(stmt);
         }
 
+        /// @brief Lower a GOTO statement (unconditional branch).
+        /// @param stmt GOTO statement AST node.
         void lowerGoto(const GotoStmt &stmt)
         {
             lowerer_->lowerGoto(stmt);
         }
 
+        /// @brief Lower a GOSUB statement (subroutine call with return address).
+        /// @param stmt GOSUB statement AST node.
         void lowerGosub(const GosubStmt &stmt)
         {
             lowerer_->lowerGosub(stmt);
         }
 
+        /// @brief Lower a GOSUB RETURN statement.
+        /// @param stmt RETURN statement AST node.
         void lowerGosubReturn(const ReturnStmt &stmt)
         {
             lowerer_->lowerGosubReturn(stmt);
         }
 
+        /// @brief Lower an ON ERROR GOTO statement (error handler registration).
+        /// @param stmt ON ERROR GOTO statement AST node.
         void lowerOnErrorGoto(const OnErrorGoto &stmt)
         {
             lowerer_->lowerOnErrorGoto(stmt);
         }
 
+        /// @brief Lower a RESUME statement (error handler continuation).
+        /// @param stmt RESUME statement AST node.
         void lowerResume(const Resume &stmt)
         {
             lowerer_->lowerResume(stmt);
         }
 
+        /// @brief Lower an END statement (program termination).
+        /// @param stmt END statement AST node.
         void lowerEnd(const EndStmt &stmt)
         {
             lowerer_->lowerEnd(stmt);
         }
 
+        /// @brief Lower a TRY/CATCH statement.
+        /// @param stmt TRY/CATCH statement AST node.
         void lowerTryCatch(const TryCatchStmt &stmt)
         {
             lowerer_->lowerTryCatch(stmt);
         }
 
+        /// @brief Lower a NEW expression allocating a BASIC object instance.
+        /// @param expr NEW expression AST node.
+        /// @return Resulting object pointer value and type.
         [[nodiscard]] RVal lowerNewExpr(const NewExpr &expr)
         {
             return lowerer_->lowerNewExpr(expr);
         }
 
+        /// @brief Lower a NEW expression with an explicit OOP context.
+        /// @param expr NEW expression AST node.
+        /// @param ctx OOP lowering context providing cached metadata.
+        /// @return Resulting object pointer value and type.
         [[nodiscard]] RVal lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx)
         {
             return lowerer_->lowerNewExpr(expr, ctx);
         }
 
+        /// @brief Lower a ME expression referencing the implicit instance slot.
+        /// @param expr ME expression AST node.
+        /// @return Resulting self-pointer value and type.
         [[nodiscard]] RVal lowerMeExpr(const MeExpr &expr)
         {
             return lowerer_->lowerMeExpr(expr);
         }
 
+        /// @brief Lower a ME expression with an explicit OOP context.
+        /// @param expr ME expression AST node.
+        /// @param ctx OOP lowering context providing cached metadata.
+        /// @return Resulting self-pointer value and type.
         [[nodiscard]] RVal lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx)
         {
             return lowerer_->lowerMeExpr(expr, ctx);
         }
 
+        /// @brief Lower a member access expression (field read).
+        /// @param expr Member access expression AST node.
+        /// @return Loaded field value and its type.
         [[nodiscard]] RVal lowerMemberAccessExpr(const MemberAccessExpr &expr)
         {
             return lowerer_->lowerMemberAccessExpr(expr);
         }
 
+        /// @brief Lower a member access expression with an explicit OOP context.
+        /// @param expr Member access expression AST node.
+        /// @param ctx OOP lowering context providing cached metadata.
+        /// @return Loaded field value and its type.
         [[nodiscard]] RVal lowerMemberAccessExpr(const MemberAccessExpr &expr,
                                                  OopLoweringContext &ctx)
         {
             return lowerer_->lowerMemberAccessExpr(expr, ctx);
         }
 
+        /// @brief Lower a method call expression.
+        /// @param expr Method call expression AST node.
+        /// @return Resulting return value and its type.
         [[nodiscard]] RVal lowerMethodCallExpr(const MethodCallExpr &expr)
         {
             return lowerer_->lowerMethodCallExpr(expr);
         }
 
+        /// @brief Lower a method call expression with an explicit OOP context.
+        /// @param expr Method call expression AST node.
+        /// @param ctx OOP lowering context providing cached metadata.
+        /// @return Resulting return value and its type.
         [[nodiscard]] RVal lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx)
         {
             return lowerer_->lowerMethodCallExpr(expr, ctx);
         }
 
+        /// @brief Lower a DELETE statement releasing an object reference.
+        /// @param stmt DELETE statement AST node.
         void lowerDelete(const DeleteStmt &stmt)
         {
             lowerer_->lowerDelete(stmt);
         }
 
+        /// @brief Lower a DELETE statement with an explicit OOP context.
+        /// @param stmt DELETE statement AST node.
+        /// @param ctx OOP lowering context providing cached metadata.
         void lowerDelete(const DeleteStmt &stmt, OopLoweringContext &ctx)
         {
             lowerer_->lowerDelete(stmt, ctx);
         }
 
+        /// @brief Scan program OOP constructs to populate class layouts.
+        /// @param prog Program AST root node.
         void scanOOP(const Program &prog)
         {
             lowerer_->scanOOP(prog);
         }
 
+        /// @brief Emit constructor, destructor, and method bodies for CLASS declarations.
+        /// @param prog Program AST root node.
         void emitOopDeclsAndBodies(const Program &prog)
         {
             lowerer_->emitOopDeclsAndBodies(prog);
         }
 
+        /// @brief Lower a LET assignment statement.
+        /// @param stmt LET statement AST node.
         void lowerLet(const LetStmt &stmt)
         {
             lowerer_->lowerLet(stmt);
         }
 
+        /// @brief Lower a CONST declaration statement.
+        /// @param stmt CONST statement AST node.
         void lowerConst(const ConstStmt &stmt)
         {
             lowerer_->lowerConst(stmt);
         }
 
+        /// @brief Lower a STATIC variable declaration statement.
+        /// @param stmt STATIC statement AST node.
         void lowerStatic(const StaticStmt &stmt)
         {
             lowerer_->lowerStatic(stmt);
         }
 
+        /// @brief Lower a DIM array/variable declaration statement.
+        /// @param stmt DIM statement AST node.
         void lowerDim(const DimStmt &stmt)
         {
             lowerer_->lowerDim(stmt);
         }
 
+        /// @brief Lower a REDIM array resizing statement.
+        /// @param stmt REDIM statement AST node.
         void lowerReDim(const ReDimStmt &stmt)
         {
             lowerer_->lowerReDim(stmt);
         }
 
+        /// @brief Lower a RANDOMIZE statement (seed random number generator).
+        /// @param stmt RANDOMIZE statement AST node.
         void lowerRandomize(const RandomizeStmt &stmt)
         {
             lowerer_->lowerRandomize(stmt);
         }
 
+        /// @brief Lower a SWAP statement (exchange two variables).
+        /// @param stmt SWAP statement AST node.
         void lowerSwap(const SwapStmt &stmt)
         {
             lowerer_->lowerSwap(stmt);
         }
 
       private:
-        Lowerer *lowerer_;
+        Lowerer *lowerer_; ///< Non-owning pointer to the backing Lowerer.
     };
 
+    /// @brief Create a detail-access handle for modular lowering helpers.
+    /// @return A lightweight facade exposing a controlled subset of Lowerer internals.
     [[nodiscard]] DetailAccess detailAccess() noexcept
     {
         return DetailAccess(*this);
@@ -493,9 +545,9 @@ class Lowerer
     /// @brief Aggregates state shared across helper stages of program lowering.
     struct ProgramEmitContext
     {
-        std::vector<const Stmt *> mainStmts;
-        Function *function{nullptr};
-        BasicBlock *entry{nullptr};
+        std::vector<const Stmt *> mainStmts; ///< Flattened top-level statements for @main.
+        Function *function{nullptr};          ///< The synthetic @main IL function.
+        BasicBlock *entry{nullptr};           ///< Entry basic block of @main.
     };
 
     // Re-export private types from LowererTypes.hpp
@@ -991,11 +1043,18 @@ class Lowerer
     std::unordered_set<std::string> crossProcGlobals_;
 
   public:
+    /// @brief Mark a module-level variable as accessed from within a procedure.
+    /// @details Variables marked cross-proc are routed through runtime-backed
+    ///          storage so that main and procedure scopes share the same value.
+    /// @param name BASIC symbol name to mark.
     void markCrossProcGlobal(const std::string &name)
     {
         crossProcGlobals_.insert(name);
     }
 
+    /// @brief Check whether a variable has been marked as cross-procedure global.
+    /// @param name BASIC symbol name to query.
+    /// @return True when the symbol was previously marked via markCrossProcGlobal.
     bool isCrossProcGlobal(const std::string &name) const
     {
         return crossProcGlobals_.find(name) != crossProcGlobals_.end();
@@ -1008,8 +1067,12 @@ class Lowerer
 
     // Re-export ManualRuntimeHelper from LowererRuntimeHelpers.hpp
     using ManualRuntimeHelper = ::il::frontends::basic::ManualRuntimeHelper;
+    /// @brief Total number of manual runtime helpers tracked by the lowerer.
     static constexpr std::size_t manualRuntimeHelperCount = kManualRuntimeHelperCount;
 
+    /// @brief Map a ManualRuntimeHelper enum to its array index.
+    /// @param helper The manual runtime helper to index.
+    /// @return Zero-based index suitable for array subscript.
     static constexpr std::size_t manualRuntimeHelperIndex(ManualRuntimeHelper helper) noexcept
     {
         return ::il::frontends::basic::manualRuntimeHelperIndex(helper);
@@ -1017,8 +1080,16 @@ class Lowerer
 
     ManualHelperRequirements manualHelperRequirements_{};
 
+    /// @brief Flag a manual runtime helper as required for the current compilation.
+    /// @param helper The manual runtime helper to require.
     void setManualHelperRequired(ManualRuntimeHelper helper);
+
+    /// @brief Check whether a manual runtime helper has been flagged as required.
+    /// @param helper The manual runtime helper to query.
+    /// @return True when the helper was previously required.
     [[nodiscard]] bool isManualHelperRequired(ManualRuntimeHelper helper) const;
+
+    /// @brief Reset all manual helper requirement flags.
     void resetManualHelpers();
 
     void requireTrap();
@@ -1080,12 +1151,21 @@ class Lowerer
     void requireStrReleaseMaybe();
     void requireSleepMs();
     void requireTimerMs();
+    /// @brief Request that a runtime feature be declared and linked.
+    /// @param feature Runtime feature to make available in the emitted module.
     void requestHelper(RuntimeFeature feature);
 
+    /// @brief Check whether a runtime feature has been requested.
+    /// @param feature Runtime feature to query.
+    /// @return True when the feature was previously requested.
     bool isHelperNeeded(RuntimeFeature feature) const;
 
+    /// @brief Record that a runtime feature is used without immediately declaring it.
+    /// @param feature Runtime feature to track for later declaration.
     void trackRuntime(RuntimeFeature feature);
 
+    /// @brief Emit IL declarations for all runtime helpers that have been requested.
+    /// @param b IRBuilder used to emit function declarations into the module.
     void declareRequiredRuntime(build::IRBuilder &b);
 #include "frontends/basic/LowerScan.hpp"
   public:
@@ -1178,23 +1258,48 @@ class Lowerer
     [[nodiscard]] std::string canonicalLayoutKey(std::string_view className) const;
 
   public:
+    /// @brief Ensure a symbol entry exists, creating one with defaults if absent.
+    /// @param name BASIC symbol name (case-insensitive lookup).
+    /// @return Mutable reference to the existing or newly-created SymbolInfo.
     SymbolInfo &ensureSymbol(std::string_view name);
 
+    /// @brief Find a symbol by name.
+    /// @param name BASIC symbol name (case-insensitive lookup).
+    /// @return Pointer to the SymbolInfo, or nullptr when not found.
     SymbolInfo *findSymbol(std::string_view name);
 
+    /// @brief Find a symbol by name (const overload).
+    /// @param name BASIC symbol name (case-insensitive lookup).
+    /// @return Pointer to the SymbolInfo, or nullptr when not found.
     const SymbolInfo *findSymbol(std::string_view name) const;
 
+    /// @brief Check whether a name corresponds to a field in the active class scope.
+    /// @param name Identifier to check against the current field scope.
+    /// @return True when the name matches a field in the active class layout.
     [[nodiscard]] bool isFieldInScope(std::string_view name) const;
 
+    /// @brief Push a new field scope for the given class during method lowering.
+    /// @param className Fully-qualified class name whose fields become visible.
     void pushFieldScope(const std::string &className);
+
+    /// @brief Pop the current field scope after completing class method lowering.
     void popFieldScope();
 
+    /// @brief Mark a symbol as referenced during lowering.
+    /// @param name BASIC symbol name to mark.
     void markSymbolReferenced(std::string_view name);
 
+    /// @brief Mark a symbol as an array variable.
+    /// @param name BASIC symbol name to mark.
     void markArray(std::string_view name);
 
+    /// @brief Mark a symbol as a STATIC procedure-local variable.
+    /// @param name BASIC symbol name to mark.
     void markStatic(std::string_view name);
 
+    /// @brief Set the explicit BASIC type for a symbol.
+    /// @param name BASIC symbol name to update.
+    /// @param type BASIC type to assign.
     void setSymbolType(std::string_view name, AstType type);
 
   private:
@@ -1293,8 +1398,12 @@ class Lowerer
     /// @brief Check if a class field is an array.
     [[nodiscard]] bool isFieldArray(std::string_view className, std::string_view fieldName) const;
 
+    /// @brief Access the mutable procedure-level lowering context.
+    /// @return Reference to the active ProcedureContext.
     [[nodiscard]] ProcedureContext &context() noexcept;
 
+    /// @brief Access the immutable procedure-level lowering context.
+    /// @return Const reference to the active ProcedureContext.
     [[nodiscard]] const ProcedureContext &context() const noexcept;
 
     // Class access control context -----------------------------------------------------

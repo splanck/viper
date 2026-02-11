@@ -6,17 +6,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/common/ScopeTracker.hpp
-// Purpose: Lexical scope tracking and symbol resolution for language frontends.
-//
-// This class provides a stack-based scope tracking mechanism that maps source
-// identifiers to unique mangled names. It supports:
-// - Scope management: Push/pop scopes for blocks, procedures, etc.
-// - Symbol registration: Bind names in the current scope
-// - Name resolution: Look up names from innermost to outermost scope
-// - RAII scope guards: Automatic scope management via ScopedScope
-//
-// The ScopeTracker is generic and can be used by any language frontend that
-// needs lexical scoping with name mangling.
+// Purpose: Stack-based lexical scope tracker mapping source identifiers to
+//          unique mangled IL names. Supports push/pop, RAII guards, and
+//          innermost-to-outermost name resolution.
+// Key invariants: Resolution searches from innermost to outermost scope.
+//                 ScopedScope RAII guard ensures balanced push/pop.
+// Ownership/Lifetime: Owns the scope stack; bindings store string copies.
+// Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

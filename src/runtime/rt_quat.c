@@ -289,8 +289,8 @@ void *rt_quat_slerp(void *a, void *b, double t)
         s1 = sin(t * theta) / sin_theta;
     }
 
-    return quat_alloc(s0 * qa->x + s1 * bx, s0 * qa->y + s1 * by, s0 * qa->z + s1 * bz,
-                       s0 * qa->w + s1 * bw);
+    return quat_alloc(
+        s0 * qa->x + s1 * bx, s0 * qa->y + s1 * by, s0 * qa->z + s1 * bz, s0 * qa->w + s1 * bw);
 }
 
 void *rt_quat_lerp(void *a, void *b, double t)
@@ -369,8 +369,21 @@ void *rt_quat_to_mat4(void *q)
     double wz = w * z2;
 
     /* Row-major 4x4 rotation matrix. */
-    return rt_mat4_new(1.0 - (yy + zz), xy - wz, xz + wy, 0.0, xy + wz, 1.0 - (xx + zz),
-                       yz - wx, 0.0, xz - wy, yz + wx, 1.0 - (xx + yy), 0.0, 0.0, 0.0, 0.0,
+    return rt_mat4_new(1.0 - (yy + zz),
+                       xy - wz,
+                       xz + wy,
+                       0.0,
+                       xy + wz,
+                       1.0 - (xx + zz),
+                       yz - wx,
+                       0.0,
+                       xz - wy,
+                       yz + wx,
+                       1.0 - (xx + yy),
+                       0.0,
+                       0.0,
+                       0.0,
+                       0.0,
                        1.0);
 }
 

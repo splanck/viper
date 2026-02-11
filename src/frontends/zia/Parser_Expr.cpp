@@ -55,7 +55,8 @@ namespace il::frontends::zia
 // Expression Parsing
 //===----------------------------------------------------------------------===//
 
-/// @brief Parse a match pattern, using speculation to distinguish structured patterns from expressions.
+/// @brief Parse a match pattern, using speculation to distinguish structured patterns from
+/// expressions.
 /// @details Tries structured patterns (wildcard, constructor, binding) first; falls back to
 ///          expression pattern if not followed by a guard or fat arrow.
 /// @return The parsed match arm pattern.
@@ -84,7 +85,8 @@ MatchArm::Pattern Parser::parseMatchPattern()
     return pattern;
 }
 
-/// @brief Parse a core (non-expression) match pattern: wildcard, constructor, binding, literal, or tuple.
+/// @brief Parse a core (non-expression) match pattern: wildcard, constructor, binding, literal, or
+/// tuple.
 /// @param[out] out The parsed pattern result.
 /// @return True if a valid non-expression pattern was parsed, false otherwise.
 bool Parser::parsePatternCore(MatchArm::Pattern &out)

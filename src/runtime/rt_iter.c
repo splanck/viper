@@ -43,10 +43,10 @@ typedef enum
 typedef struct
 {
     void *vptr;
-    void *source;  ///< Retained reference to the original collection or snapshot Seq
+    void *source; ///< Retained reference to the original collection or snapshot Seq
     iter_kind kind;
-    int64_t pos;   ///< Current position (next element to return)
-    int64_t len;   ///< Cached length at creation time
+    int64_t pos; ///< Current position (next element to return)
+    int64_t len; ///< Cached length at creation time
 } rt_iter_impl;
 
 static void iter_finalizer(void *obj)
@@ -113,13 +113,15 @@ static rt_iter_impl *make_iter_snapshot(void *snapshot, int64_t len)
 
 void *rt_iter_from_seq(void *seq)
 {
-    if (!seq) return NULL;
+    if (!seq)
+        return NULL;
     return make_iter(seq, ITER_SEQ, rt_seq_len(seq));
 }
 
 void *rt_iter_from_list(void *list)
 {
-    if (!list) return NULL;
+    if (!list)
+        return NULL;
     return make_iter(list, ITER_LIST, rt_list_len(list));
 }
 
@@ -127,12 +129,14 @@ void *rt_iter_from_deque(void *deque)
 {
     void *snapshot;
     int64_t len, i;
-    if (!deque) return NULL;
+    if (!deque)
+        return NULL;
     /* Deque uses plain malloc, not rt_obj_new_i64, so we cannot retain it.
        Snapshot all elements into a heap-managed Seq instead. */
     len = rt_deque_len(deque);
     snapshot = rt_seq_new();
-    if (!snapshot) return NULL;
+    if (!snapshot)
+        return NULL;
     for (i = 0; i < len; i++)
         rt_seq_push(snapshot, rt_deque_get(deque, i));
     return make_iter_snapshot(snapshot, len);
@@ -140,45 +144,54 @@ void *rt_iter_from_deque(void *deque)
 
 void *rt_iter_from_ring(void *ring)
 {
-    if (!ring) return NULL;
+    if (!ring)
+        return NULL;
     return make_iter(ring, ITER_RING, rt_ring_len(ring));
 }
 
 void *rt_iter_from_map_keys(void *map)
 {
     void *keys;
-    if (!map) return NULL;
+    if (!map)
+        return NULL;
     keys = rt_map_keys(map);
-    if (!keys) return NULL;
+    if (!keys)
+        return NULL;
     return make_iter_snapshot(keys, rt_seq_len(keys));
 }
 
 void *rt_iter_from_map_values(void *map)
 {
     void *values;
-    if (!map) return NULL;
+    if (!map)
+        return NULL;
     values = rt_map_values(map);
-    if (!values) return NULL;
+    if (!values)
+        return NULL;
     return make_iter_snapshot(values, rt_seq_len(values));
 }
 
 void *rt_iter_from_set(void *set)
 {
     void *items;
-    if (!set) return NULL;
+    if (!set)
+        return NULL;
     items = rt_set_items(set);
-    if (!items) return NULL;
+    if (!items)
+        return NULL;
     return make_iter_snapshot(items, rt_seq_len(items));
 }
 
 void *rt_iter_from_stack(void *stack)
 {
     void *snapshot;
-    if (!stack) return NULL;
+    if (!stack)
+        return NULL;
     /* Stack has no indexed access, so we produce an empty snapshot.
        Users should convert stack to seq first for full iteration. */
     snapshot = rt_seq_new();
-    if (!snapshot) return NULL;
+    if (!snapshot)
+        return NULL;
     return make_iter_snapshot(snapshot, 0);
 }
 
@@ -190,13 +203,13 @@ static void *get_element(rt_iter_impl *it, int64_t idx)
 {
     switch (it->kind)
     {
-    case ITER_SEQ:
-    case ITER_SNAPSHOT:
-        return rt_seq_get(it->source, idx);
-    case ITER_LIST:
-        return rt_list_get(it->source, idx);
-    case ITER_RING:
-        return rt_ring_get(it->source, idx);
+        case ITER_SEQ:
+        case ITER_SNAPSHOT:
+            return rt_seq_get(it->source, idx);
+        case ITER_LIST:
+            return rt_list_get(it->source, idx);
+        case ITER_RING:
+            return rt_ring_get(it->source, idx);
     }
     return NULL;
 }
@@ -204,7 +217,8 @@ static void *get_element(rt_iter_impl *it, int64_t idx)
 int8_t rt_iter_has_next(void *iter)
 {
     rt_iter_impl *it;
-    if (!iter) return 0;
+    if (!iter)
+        return 0;
     it = (rt_iter_impl *)iter;
     return (it->pos < it->len) ? 1 : 0;
 }
@@ -213,9 +227,11 @@ void *rt_iter_next(void *iter)
 {
     rt_iter_impl *it;
     void *elem;
-    if (!iter) return NULL;
+    if (!iter)
+        return NULL;
     it = (rt_iter_impl *)iter;
-    if (it->pos >= it->len) return NULL;
+    if (it->pos >= it->len)
+        return NULL;
     elem = get_element(it, it->pos);
     it->pos++;
     return elem;
@@ -224,27 +240,32 @@ void *rt_iter_next(void *iter)
 void *rt_iter_peek(void *iter)
 {
     rt_iter_impl *it;
-    if (!iter) return NULL;
+    if (!iter)
+        return NULL;
     it = (rt_iter_impl *)iter;
-    if (it->pos >= it->len) return NULL;
+    if (it->pos >= it->len)
+        return NULL;
     return get_element(it, it->pos);
 }
 
 void rt_iter_reset(void *iter)
 {
-    if (!iter) return;
+    if (!iter)
+        return;
     ((rt_iter_impl *)iter)->pos = 0;
 }
 
 int64_t rt_iter_index(void *iter)
 {
-    if (!iter) return 0;
+    if (!iter)
+        return 0;
     return ((rt_iter_impl *)iter)->pos;
 }
 
 int64_t rt_iter_count(void *iter)
 {
-    if (!iter) return 0;
+    if (!iter)
+        return 0;
     return ((rt_iter_impl *)iter)->len;
 }
 
@@ -252,7 +273,8 @@ void *rt_iter_to_seq(void *iter)
 {
     rt_iter_impl *it;
     void *seq;
-    if (!iter) return rt_seq_new();
+    if (!iter)
+        return rt_seq_new();
     it = (rt_iter_impl *)iter;
     seq = rt_seq_new();
     while (it->pos < it->len)
@@ -268,7 +290,8 @@ int64_t rt_iter_skip(void *iter, int64_t n)
 {
     rt_iter_impl *it;
     int64_t remaining, skipped;
-    if (!iter || n <= 0) return 0;
+    if (!iter || n <= 0)
+        return 0;
     it = (rt_iter_impl *)iter;
     remaining = it->len - it->pos;
     skipped = (n < remaining) ? n : remaining;

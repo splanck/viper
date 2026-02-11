@@ -132,49 +132,94 @@ int32_t rt_lof_ch_i32(int32_t channel);
 int32_t rt_loc_ch_i32(int32_t channel);
 
 // --- Integer (i32) array helpers ---
+// These adapters marshal VM void** arrays for 32-bit integer array operations.
+
+/// @brief Allocate a new i32 array with the specified capacity.
 void invokeRtArrI32New(void **args, void *result);
+/// @brief Return the length of an i32 array.
 void invokeRtArrI32Len(void **args, void *result);
+/// @brief Read an element from an i32 array by index.
 void invokeRtArrI32Get(void **args, void *result);
+/// @brief Write an element into an i32 array at the given index.
 void invokeRtArrI32Set(void **args, void *result);
+/// @brief Resize an i32 array to a new capacity.
 void invokeRtArrI32Resize(void **args, void *result);
 
 // --- LONG (i64) array helpers ---
+// These adapters marshal VM void** arrays for 64-bit integer array operations.
+
+/// @brief Allocate a new i64 array with the specified capacity.
 void invokeRtArrI64New(void **args, void *result);
+/// @brief Return the length of an i64 array.
 void invokeRtArrI64Len(void **args, void *result);
+/// @brief Read an element from an i64 array by index.
 void invokeRtArrI64Get(void **args, void *result);
+/// @brief Write an element into an i64 array at the given index.
 void invokeRtArrI64Set(void **args, void *result);
+/// @brief Resize an i64 array to a new capacity.
 void invokeRtArrI64Resize(void **args, void *result);
 
 // --- SINGLE/DOUBLE (f64) array helpers ---
+// These adapters marshal VM void** arrays for 64-bit floating-point array operations.
+
+/// @brief Allocate a new f64 array with the specified capacity.
 void invokeRtArrF64New(void **args, void *result);
+/// @brief Return the length of an f64 array.
 void invokeRtArrF64Len(void **args, void *result);
+/// @brief Read an element from an f64 array by index.
 void invokeRtArrF64Get(void **args, void *result);
+/// @brief Write an element into an f64 array at the given index.
 void invokeRtArrF64Set(void **args, void *result);
+/// @brief Resize an f64 array to a new capacity.
 void invokeRtArrF64Resize(void **args, void *result);
 
 // --- Object array helpers ---
+// These adapters marshal VM void** arrays for object pointer array operations.
+
+/// @brief Allocate a new object array with the specified capacity.
 void invokeRtArrObjNew(void **args, void *result);
+/// @brief Return the length of an object array.
 void invokeRtArrObjLen(void **args, void *result);
+/// @brief Read an element from an object array by index.
 void invokeRtArrObjGet(void **args, void *result);
+/// @brief Write an element into an object array at the given index.
 void invokeRtArrObjPut(void **args, void *result);
+/// @brief Resize an object array to a new capacity.
 void invokeRtArrObjResize(void **args, void *result);
 
 // --- String array helpers ---
+// These adapters marshal VM void** arrays for reference-counted string array operations.
+
+/// @brief Allocate a new string array with the specified capacity.
 void invokeRtArrStrAlloc(void **args, void *result);
+/// @brief Release a string array and decrement element reference counts.
 void invokeRtArrStrRelease(void **args, void *result);
+/// @brief Read a string element from the array, retaining the reference.
 void invokeRtArrStrGet(void **args, void *result);
+/// @brief Write a string element into the array at the given index.
 void invokeRtArrStrPut(void **args, void *result);
+/// @brief Return the length of a string array.
 void invokeRtArrStrLen(void **args, void *result);
 
 // --- Bounds checking ---
+
+/// @brief Trigger a bounds-check panic when an array index is out of range.
 void invokeRtArrOobPanic(void **args, void *result);
 
 // --- Conversion helpers ---
+// These adapters handle numeric conversion with appropriate range checking.
+
+/// @brief Convert a double-precision float to a 16-bit integer (CINT).
 void invokeRtCintFromDouble(void **args, void *result);
+/// @brief Convert a double-precision float to a 64-bit integer (CLNG).
 void invokeRtClngFromDouble(void **args, void *result);
+/// @brief Convert a double-precision float to a 32-bit float (CSNG).
 void invokeRtCsngFromDouble(void **args, void *result);
+/// @brief Allocate a formatted string from a double-precision float.
 void invokeRtStrFAlloc(void **args, void *result);
+/// @brief Round a double-precision float to the nearest even integer.
 void invokeRtRoundEven(void **args, void *result);
+/// @brief Compute power with domain/overflow checking (f64 ^ f64).
 void invokeRtPowF64Chkdom(void **args, void *result);
 
 /// @brief VM adapter for Pow that manages the hidden bool* parameter internally.

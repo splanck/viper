@@ -131,7 +131,8 @@ bool hasBasicTopLevelCode(const std::string &path)
 
     // Simple heuristic: look for lines that aren't blank, comments,
     // SUB/FUNCTION/END SUB/END FUNCTION definitions, or AddFile/Dim
-    static const std::regex subFuncPattern(R"(^\s*(Sub|Function|End Sub|End Function)\b)", std::regex::icase);
+    static const std::regex subFuncPattern(R"(^\s*(Sub|Function|End Sub|End Function)\b)",
+                                           std::regex::icase);
     static const std::regex execPattern(
         R"(^\s*(Print|Input|If|For|While|Do|Call|Let|Dim|Goto|GoSub|Return|AddFile)\b)",
         std::regex::icase);

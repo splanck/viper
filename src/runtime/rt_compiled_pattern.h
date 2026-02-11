@@ -4,14 +4,19 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_compiled_pattern.h
-/// @brief Pre-compiled regular expression pattern for efficient repeated use.
-///
-/// CompiledPattern allows compiling a regex pattern once and reusing it
-/// multiple times, avoiding recompilation overhead. Use this when the same
-/// pattern is applied to multiple strings.
-///
+//
+// File: src/runtime/rt_compiled_pattern.h
+// Purpose: Pre-compiled regular expression pattern for efficient repeated
+//          matching, providing find, capture, replace, and split operations
+//          without per-call recompilation overhead.
+// Key invariants: Pattern compilation traps on invalid syntax; opaque object
+//                 pointers are non-null after creation; match results use
+//                 Seq containers for multi-value returns.
+// Ownership/Lifetime: Opaque CompiledPattern objects are managed by the
+//                     runtime object system; returned strings and Seqs are
+//                     newly allocated and owned by the caller.
+// Links: docs/viperlib.md
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef VIPER_RT_COMPILED_PATTERN_H

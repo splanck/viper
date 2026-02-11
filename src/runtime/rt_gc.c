@@ -38,34 +38,38 @@ extern void rt_trap(const char *msg);
 //=============================================================================
 
 /// Entry in the tracked-object table.
-typedef struct gc_entry {
+typedef struct gc_entry
+{
     void *obj;
     rt_gc_traverse_fn traverse;
-    int64_t trial_rc;   ///< Temporary refcount for cycle detection.
-    int8_t  color;       ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
+    int64_t trial_rc; ///< Temporary refcount for cycle detection.
+    int8_t color;     ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
 } gc_entry;
 
 /// Weak reference record.
-struct rt_weakref {
+struct rt_weakref
+{
     void *target;
-    struct rt_weakref *next_for_target;  ///< Chain of weak refs to same target.
+    struct rt_weakref *next_for_target; ///< Chain of weak refs to same target.
 };
 
 /// Weak ref registry entry (per-target chain).
-typedef struct weak_chain {
+typedef struct weak_chain
+{
     void *target;
     rt_weakref *head;
     struct weak_chain *next;
 } weak_chain;
 
 /// Global GC state.
-static struct {
+static struct
+{
     gc_entry *entries;
-    int64_t   count;
-    int64_t   capacity;
+    int64_t count;
+    int64_t capacity;
 
     weak_chain *weak_buckets;
-    int64_t     weak_bucket_count;
+    int64_t weak_bucket_count;
 
     int64_t total_collected;
     int64_t pass_count;
@@ -148,8 +152,8 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse)
     if (g_gc.count >= g_gc.capacity)
     {
         int64_t new_cap = g_gc.capacity == 0 ? 64 : g_gc.capacity * 2;
-        gc_entry *new_entries = (gc_entry *)realloc(
-            g_gc.entries, (size_t)new_cap * sizeof(gc_entry));
+        gc_entry *new_entries =
+            (gc_entry *)realloc(g_gc.entries, (size_t)new_cap * sizeof(gc_entry));
         if (!new_entries)
         {
             gc_unlock();
@@ -218,8 +222,7 @@ static void ensure_weak_buckets(void)
     if (g_gc.weak_buckets)
         return;
     g_gc.weak_bucket_count = WEAK_BUCKET_COUNT;
-    g_gc.weak_buckets = (weak_chain *)calloc(
-        (size_t)g_gc.weak_bucket_count, sizeof(weak_chain));
+    g_gc.weak_buckets = (weak_chain *)calloc((size_t)g_gc.weak_bucket_count, sizeof(weak_chain));
 }
 
 static uint64_t ptr_hash(void *p)
@@ -402,7 +405,8 @@ static size_t get_refcount(void *obj)
     uint8_t *raw = (uint8_t *)obj;
     /* rt_heap_hdr_t is at (raw - sizeof(rt_heap_hdr_t)).
        We read the refcnt field.  The layout matches rt_heap.h. */
-    size_t *rc_ptr = (size_t *)(raw - sizeof(size_t) * 4 - sizeof(uint32_t) * 2 - sizeof(uint16_t) * 2);
+    size_t *rc_ptr =
+        (size_t *)(raw - sizeof(size_t) * 4 - sizeof(uint32_t) * 2 - sizeof(uint16_t) * 2);
     /* This is fragile — use the public API instead. */
     (void)rc_ptr;
 

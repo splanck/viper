@@ -4,10 +4,38 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
+///
 /// @file AST_Types.hpp
-/// @brief Type annotation nodes for Zia AST.
-//
+/// @brief Type annotation nodes for the Zia AST.
+///
+/// @details Defines AST nodes representing type annotations as written in
+/// source code (e.g., `i64`, `str`, `List<i64>`, `fn(i64) -> str`). These
+/// are purely syntactic representations — the semantic analyzer resolves them
+/// to ViperType instances (see Types.hpp) during type checking.
+///
+/// Type annotation nodes appear in variable declarations (`var x: i64`),
+/// function signatures (`func foo(a: str) -> i64`), type casts, and
+/// generic type arguments. The parser creates TypeNode trees that mirror
+/// the syntactic structure; Sema then walks these trees to produce
+/// resolved semantic types.
+///
+/// Supported type forms:
+///   - Named types: `i64`, `str`, `bool`, `f64`, user-defined entity names
+///   - Generic types: `List<i64>`, `Map<str, i64>`
+///   - Function types: `fn(i64, str) -> bool`
+///   - Optional types: `i64?`
+///   - Array types: `[i64]`
+///
+/// @invariant Every TypeNode has a valid `kind` field matching its concrete type.
+/// @invariant Source locations are non-null for all user-written type annotations.
+///
+/// Ownership/Lifetime: Owned by the declaration or expression that contains
+/// them, via TypePtr (std::unique_ptr<TypeNode>).
+///
+/// @see Types.hpp — semantic type system (resolved ViperType instances).
+/// @see Sema.hpp — resolves syntactic type nodes to semantic types.
+/// @see Parser.hpp — creates type annotation nodes during parsing.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once

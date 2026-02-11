@@ -8,8 +8,22 @@
 /// @file rt_statemachine.h
 /// @brief State machine for game and application state management.
 ///
-/// Provides a simple state machine abstraction for managing game states
-/// (menu, gameplay, pause, etc.) with enter/exit callbacks and transitions.
+/// @details Provides a simple finite state machine abstraction for managing
+/// game states (menu, gameplay, pause, etc.) with transition tracking and
+/// frame counting. States are identified by integer IDs and must be
+/// registered before use. The machine tracks enter/exit edge flags that are
+/// valid for one frame after a transition, enabling game logic to run
+/// initialization or cleanup code exactly once per state change.
+///
+/// Key invariants: State IDs must be in the range [0, RT_STATE_MAX-1] (max
+///   32 states). Each state ID may be registered at most once. Transition
+///   flags (just_entered/just_exited) are set on transition and must be
+///   cleared with rt_statemachine_clear_flags() or they persist.
+///   rt_statemachine_update() must be called once per frame to advance the
+///   frame counter.
+/// Ownership/Lifetime: The caller owns the rt_statemachine handle and must
+///   free it with rt_statemachine_destroy().
+/// Links: rt_statemachine.c (implementation)
 ///
 //===----------------------------------------------------------------------===//
 
@@ -29,82 +43,111 @@ extern "C"
     /// Opaque handle to a StateMachine instance.
     typedef struct rt_statemachine_impl *rt_statemachine;
 
-    /// Creates a new StateMachine.
-    /// @return A new StateMachine instance.
+    /// @brief Allocates and initializes a new StateMachine with no registered
+    ///   states.
+    /// @return A new StateMachine handle. The caller must free it with
+    ///   rt_statemachine_destroy().
     rt_statemachine rt_statemachine_new(void);
 
-    /// Destroys a StateMachine and frees its memory.
-    /// @param sm The state machine to destroy.
+    /// @brief Destroys a StateMachine and releases its memory.
+    /// @param sm The state machine to destroy. Passing NULL is a no-op.
     void rt_statemachine_destroy(rt_statemachine sm);
 
-    /// Adds a state to the state machine.
-    /// @param sm The state machine.
-    /// @param state_id Unique identifier for the state (0 to RT_STATE_MAX-1).
-    /// @return 1 on success, 0 if state_id already exists or out of range.
+    /// @brief Registers a new state in the state machine.
+    ///
+    /// A state must be added before it can be used as a transition target or
+    /// set as the initial state.
+    /// @param sm The state machine to modify.
+    /// @param state_id Unique integer identifier for the state, in the range
+    ///   [0, RT_STATE_MAX - 1].
+    /// @return 1 if the state was added successfully, 0 if the state_id is out
+    ///   of range or already registered.
     int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id);
 
-    /// Sets the initial state (call before first update).
-    /// @param sm The state machine.
-    /// @param state_id The state to start in.
-    /// @return 1 on success, 0 if state doesn't exist.
+    /// @brief Designates which state the machine starts in.
+    ///
+    /// Must be called before the first update or transition. The state must
+    /// have been previously registered with rt_statemachine_add_state().
+    /// @param sm The state machine to configure.
+    /// @param state_id The ID of the initial state.
+    /// @return 1 on success, 0 if the state has not been registered.
     int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id);
 
-    /// Gets the current state.
-    /// @param sm The state machine.
-    /// @return Current state ID, or -1 if no state is set.
+    /// @brief Retrieves the ID of the currently active state.
+    /// @param sm The state machine to query.
+    /// @return The current state ID, or -1 if no state has been set yet.
     int64_t rt_statemachine_current(rt_statemachine sm);
 
-    /// Gets the previous state.
-    /// @param sm The state machine.
-    /// @return Previous state ID, or -1 if no previous state.
+    /// @brief Retrieves the ID of the state that was active before the most
+    ///   recent transition.
+    /// @param sm The state machine to query.
+    /// @return The previous state ID, or -1 if no transition has occurred.
     int64_t rt_statemachine_previous(rt_statemachine sm);
 
-    /// Checks if the machine is in a specific state.
-    /// @param sm The state machine.
-    /// @param state_id The state to check.
-    /// @return 1 if in that state, 0 otherwise.
+    /// @brief Tests whether the machine is currently in a specific state.
+    /// @param sm The state machine to query.
+    /// @param state_id The state ID to compare against.
+    /// @return 1 if the current state matches @p state_id, 0 otherwise.
     int8_t rt_statemachine_is_state(rt_statemachine sm, int64_t state_id);
 
-    /// Transitions to a new state.
-    /// @param sm The state machine.
-    /// @param state_id The state to transition to.
-    /// @return 1 on success, 0 if state doesn't exist.
+    /// @brief Transitions the machine to a new state.
+    ///
+    /// Sets the just_entered and just_exited flags, updates the previous-state
+    /// record, and resets the frames-in-state counter to zero. The target state
+    /// must have been registered with rt_statemachine_add_state().
+    /// @param sm The state machine to modify.
+    /// @param state_id The ID of the state to transition into.
+    /// @return 1 on success, 0 if the target state has not been registered.
     int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id);
 
-    /// Checks if a transition just occurred this frame.
-    /// Call after transition(), returns true once then resets.
-    /// @param sm The state machine.
-    /// @return 1 if a transition just occurred, 0 otherwise.
+    /// @brief Queries whether a transition into the current state just occurred.
+    ///
+    /// Returns 1 on the frame a transition was made, and continues to return 1
+    /// until rt_statemachine_clear_flags() is called.
+    /// @param sm The state machine to query.
+    /// @return 1 if the machine just entered the current state, 0 otherwise.
     int8_t rt_statemachine_just_entered(rt_statemachine sm);
 
-    /// Checks if we just exited the previous state.
-    /// Call after transition(), returns true once then resets.
-    /// @param sm The state machine.
-    /// @return 1 if we just exited the previous state, 0 otherwise.
+    /// @brief Queries whether the machine just exited its previous state.
+    ///
+    /// Returns 1 on the frame a transition was made, and continues to return 1
+    /// until rt_statemachine_clear_flags() is called.
+    /// @param sm The state machine to query.
+    /// @return 1 if the machine just left its previous state, 0 otherwise.
     int8_t rt_statemachine_just_exited(rt_statemachine sm);
 
-    /// Clears the transition flags (call at end of frame).
-    /// @param sm The state machine.
+    /// @brief Resets the just_entered and just_exited transition flags.
+    ///
+    /// Should be called at the end of each frame to ensure edge flags are only
+    /// active for one frame cycle.
+    /// @param sm The state machine to modify.
     void rt_statemachine_clear_flags(rt_statemachine sm);
 
-    /// Gets the number of frames spent in the current state.
-    /// @param sm The state machine.
-    /// @return Number of frames since entering current state.
+    /// @brief Retrieves the number of frames spent in the current state.
+    ///
+    /// Incremented by rt_statemachine_update() each frame. Reset to zero on
+    /// every transition.
+    /// @param sm The state machine to query.
+    /// @return Number of frames since the last transition (or initial state
+    ///   set).
     int64_t rt_statemachine_frames_in_state(rt_statemachine sm);
 
-    /// Increments the frame counter (call once per frame).
-    /// @param sm The state machine.
+    /// @brief Advances the state machine by one frame, incrementing the
+    ///   frames-in-state counter.
+    ///
+    /// Must be called exactly once per game frame.
+    /// @param sm The state machine to update.
     void rt_statemachine_update(rt_statemachine sm);
 
-    /// Checks if a state exists.
-    /// @param sm The state machine.
-    /// @param state_id The state to check.
-    /// @return 1 if state exists, 0 otherwise.
+    /// @brief Tests whether a state with the given ID has been registered.
+    /// @param sm The state machine to query.
+    /// @param state_id The state ID to look up.
+    /// @return 1 if a state with this ID exists, 0 otherwise.
     int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id);
 
-    /// Gets the number of states registered.
-    /// @param sm The state machine.
-    /// @return Number of registered states.
+    /// @brief Retrieves the total number of states registered in the machine.
+    /// @param sm The state machine to query.
+    /// @return The count of registered states, in [0, RT_STATE_MAX].
     int64_t rt_statemachine_state_count(rt_statemachine sm);
 
 #ifdef __cplusplus

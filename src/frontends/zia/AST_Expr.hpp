@@ -4,10 +4,37 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
+///
 /// @file AST_Expr.hpp
-/// @brief Expression nodes for Zia AST.
-//
+/// @brief Expression nodes for the Zia AST.
+///
+/// @details Defines all expression AST nodes produced by the Zia parser.
+/// Expressions are the core of computation — they evaluate to values and can
+/// be nested arbitrarily deep. This includes literals (integer, float, string,
+/// bool), binary and unary operators, function calls, method calls, field
+/// access, array/map indexing, object construction (`new`), lambda expressions,
+/// string interpolation, range expressions, and control-flow expressions
+/// (if-else expressions, match expressions, block expressions).
+///
+/// The parser uses precedence climbing to handle operator precedence and
+/// associativity. Each expression node stores its source location for error
+/// reporting and a resolved type slot that the semantic analyzer fills in.
+///
+/// During lowering, each expression kind maps to IL instructions: literals
+/// become constants, operators become arithmetic/comparison ops, calls become
+/// IL call instructions with argument marshalling, and field access becomes
+/// pointer arithmetic with load instructions.
+///
+/// @invariant Every Expr has a valid `kind` field matching its concrete type.
+/// @invariant Source locations are non-null for all user-written expressions.
+///
+/// Ownership/Lifetime: Owned by their parent expression or statement via
+/// ExprPtr (std::unique_ptr<Expr>). Forms a tree, not a DAG.
+///
+/// @see AST_Types.hpp — type annotation nodes used in casts and generics.
+/// @see Sema.hpp — performs type checking and fills in resolved types.
+/// @see Lowerer.hpp — translates expression nodes into IL instructions.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once

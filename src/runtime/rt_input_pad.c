@@ -876,8 +876,8 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 #elif defined(_M_ARM64) && !defined(_ARM64_)
 #define _ARM64_
 #endif
-#include <windows.h>
 #include <Xinput.h>
+#include <windows.h>
 
 static void platform_pad_poll(void)
 {

@@ -1471,6 +1471,7 @@ Configurable retry policy with backoff strategies for handling transient failure
 | Property        | Type    | Description                                  |
 |-----------------|---------|----------------------------------------------|
 | `Attempt`       | Integer | Current attempt number (0-based)             |
+| `CanRetry`      | Boolean | True if another retry is allowed (read-only) |
 | `MaxRetries`    | Integer | Maximum number of retries configured         |
 | `TotalAttempts` | Integer | Total number of attempts made                |
 | `IsExhausted`   | Boolean | True if all retries have been used           |
@@ -1479,7 +1480,6 @@ Configurable retry policy with backoff strategies for handling transient failure
 
 | Method          | Signature       | Description                                              |
 |-----------------|-----------------|----------------------------------------------------------|
-| `CanRetry()`    | `Boolean()`     | Check if another retry is allowed                        |
 | `NextDelay()`   | `Integer()`     | Record attempt and get delay before next retry (-1 if exhausted) |
 | `Reset()`       | `Void()`        | Reset the policy for reuse                               |
 
@@ -1500,7 +1500,7 @@ Configurable retry policy with backoff strategies for handling transient failure
 ' Fixed delay retry (3 retries, 1 second between each)
 DIM policy AS OBJECT = Viper.Network.RetryPolicy.New(3, 1000)
 
-DO WHILE policy.CanRetry()
+DO WHILE policy.CanRetry
     DIM result AS OBJECT = TryApiCall()
     IF result IS NOT NULL THEN
         PRINT "Success on attempt "; policy.Attempt
@@ -1526,7 +1526,7 @@ END IF
 DIM policy AS OBJECT = Viper.Network.RetryPolicy.Exponential(5, 100, 5000)
 
 ' Delays will be: 100, 200, 400, 800, 1600 (capped at 5000)
-DO WHILE policy.CanRetry()
+DO WHILE policy.CanRetry
     IF TryConnect() THEN EXIT DO
 
     DIM delay AS INTEGER = policy.NextDelay()

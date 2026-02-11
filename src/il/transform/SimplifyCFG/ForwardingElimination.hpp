@@ -5,13 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief Declares empty forwarding-block elimination for SimplifyCFG.
-/// @details The entry point identifies blocks that only forward control and
-///          arguments to a single successor, rewrites predecessor terminators to
-///          target the successor directly, and removes the redundant blocks
-///          once all edges are retargeted. The transformation preserves
-///          exception-handling constraints and control-flow semantics.
+// File: il/transform/SimplifyCFG/ForwardingElimination.hpp
+// Purpose: Empty forwarding-block elimination for SimplifyCFG. Identifies
+//          blocks that only forward control and arguments to a single
+//          successor, rewrites predecessor terminators to target the successor
+//          directly, and removes the redundant blocks. Preserves EH semantics.
+// Key invariants:
+//   - Only blocks with a single unconditional branch and no side effects are
+//     candidates for removal.
+//   - EH-sensitive blocks are never eliminated.
+// Ownership/Lifetime: Stateless free function operating on caller-owned IR
+//          via the SimplifyCFGPassContext reference.
+// Links: il/transform/SimplifyCFG.hpp
 //
 //===----------------------------------------------------------------------===//
 

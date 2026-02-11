@@ -4,13 +4,19 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_convert_coll.h
-/// @brief Collection conversion utilities.
-///
-/// Provides functions to convert between different collection types:
-/// Seq, List, Set, Map, Stack, Queue, Deque, Bag.
-///
+//
+// File: src/runtime/rt_convert_coll.h
+// Purpose: Collection conversion utilities for transforming between Seq, List,
+//          Set, Map, Stack, Queue, Deque, Bag, and Ring container types, plus
+//          variadic constructors for Seq, List, and Set.
+// Key invariants: Conversions produce new independent collections; element
+//                 ordering follows each source type's iteration order; Set
+//                 conversions deduplicate by pointer equality.
+// Ownership/Lifetime: All returned collections are newly allocated and owned
+//                     by the caller; source collections are not modified;
+//                     elements are retained in the destination.
+// Links: docs/viperlib.md
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef VIPER_RT_CONVERT_COLL_H

@@ -5,28 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares deterministic formatting utilities for runtime values,
-// particularly focused on numeric-to-string conversion with reproducible output.
-// The BASIC language requires specific formatting behavior for PRINT statements
-// and file I/O that differs from standard C library functions.
-//
-// Standard library formatting functions like printf and sprintf are locale-dependent
-// and have platform-specific behavior for special floating-point values (NaN, infinity).
-// Viper programs compiled from BASIC source must produce identical output regardless
-// of the system locale or platform conventions. This file provides locale-independent
-// formatters with well-defined handling of edge cases.
-//
-// Key Responsibilities:
-// - Floating-point formatting: rt_format_f64 converts doubles to strings with
-//   consistent precision, special value handling, and no locale dependencies
-// - CSV escaping: rt_csv_quote_alloc handles WRITE # statement string escaping,
-//   implementing BASIC's CSV format with doubled quotes and proper delimiters
-// - Caller-managed buffers: Functions accept pre-allocated buffers, avoiding
-//   hidden allocation and supporting stack-based usage in performance-critical paths
-//
-// These formatters are used by the PRINT and WRITE # statement lowering in the
-// BASIC frontend, ensuring deterministic output for golden test validation and
-// cross-platform compatibility.
+// File: src/runtime/rt_format.h
+// Purpose: Deterministic, locale-independent formatting utilities for runtime
+//          values, providing f64-to-string conversion and CSV quoting for
+//          BASIC PRINT and WRITE# statement output.
+// Key invariants: rt_format_f64 output is identical across platforms and
+//                 locales; the caller supplies the buffer and capacity;
+//                 rt_csv_quote_alloc returns a newly allocated string with
+//                 surrounding quotes and doubled internal quotes.
+// Ownership/Lifetime: rt_format_f64 writes into a caller-managed buffer with
+//                     no allocation; rt_csv_quote_alloc returns a new rt_string
+//                     owned by the caller.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

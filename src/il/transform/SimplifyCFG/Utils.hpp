@@ -6,10 +6,15 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/SimplifyCFG/Utils.hpp
-// Purpose: Shared helpers for SimplifyCFG transformations.
+// Purpose: Shared helpers for SimplifyCFG transformations -- terminator lookup,
+//          value comparison, value substitution, block-index lookup,
+//          reachability worklist helpers, side-effect classification, and
+//          EH-sensitive block identification.
 // Key invariants: Operates on IL CFG structures without mutating ownership.
-// Ownership/Lifetime: Functions inspect/mutate caller-owned IR structures.
-// Links: docs/codemap.md
+// Ownership/Lifetime: Stateless free functions that inspect/mutate
+//          caller-owned IR structures.
+// Links: docs/codemap.md, il/core/BasicBlock.hpp, il/core/Function.hpp,
+//        il/core/Instr.hpp, il/core/OpcodeInfo.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -87,7 +92,14 @@ namespace il::transform::simplify_cfg
 
 using BitVector = llvm_like::BitVector;
 
+/// @brief Locate the terminator instruction in a mutable basic block.
+/// @param block Block whose last instruction is inspected.
+/// @return Pointer to the terminator, or nullptr if the block is empty.
 il::core::Instr *findTerminator(il::core::BasicBlock &block);
+
+/// @brief Locate the terminator instruction in a const basic block.
+/// @param block Block whose last instruction is inspected.
+/// @return Pointer to the terminator, or nullptr if the block is empty.
 const il::core::Instr *findTerminator(const il::core::BasicBlock &block);
 
 /// \brief Compare IL values structurally (ignoring SSA id differences where safe).

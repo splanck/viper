@@ -42,6 +42,11 @@ namespace ops
 // MSVC doesn't have __builtin_*_overflow, so we implement our own
 
 /// @brief Perform checked signed addition with overflow detection for MSVC.
+/// @tparam T Signed integer type.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed sum.
+/// @return True when the addition overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_add_impl(
     T lhs, T rhs, T *result)
@@ -56,6 +61,11 @@ template <typename T>
 }
 
 /// @brief Perform checked unsigned addition with overflow detection for MSVC.
+/// @tparam T Unsigned integer type.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed sum.
+/// @return True when the addition wrapped around.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
 checked_add_impl(T lhs, T rhs, T *result)
@@ -65,6 +75,11 @@ checked_add_impl(T lhs, T rhs, T *result)
 }
 
 /// @brief Perform checked signed subtraction with overflow detection for MSVC.
+/// @tparam T Signed integer type.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed difference.
+/// @return True when the subtraction overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_sub_impl(
     T lhs, T rhs, T *result)
@@ -78,6 +93,11 @@ template <typename T>
 }
 
 /// @brief Perform checked unsigned subtraction with overflow detection for MSVC.
+/// @tparam T Unsigned integer type.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed difference.
+/// @return True when the subtraction underflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
 checked_sub_impl(T lhs, T rhs, T *result)
@@ -87,6 +107,11 @@ checked_sub_impl(T lhs, T rhs, T *result)
 }
 
 /// @brief Perform checked signed multiplication with overflow detection for MSVC.
+/// @tparam T Signed integer type.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed product.
+/// @return True when the multiplication overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_mul_impl(
     T lhs, T rhs, T *result)
@@ -131,6 +156,11 @@ template <typename T>
 }
 
 /// @brief Perform checked unsigned multiplication with overflow detection for MSVC.
+/// @tparam T Unsigned integer type.
+/// @param lhs Left operand.
+/// @param rhs Right operand.
+/// @param result Pointer receiving the computed product.
+/// @return True when the multiplication overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
 checked_mul_impl(T lhs, T rhs, T *result)
@@ -350,13 +380,26 @@ VM::ExecResult applyCompare(VM &vm, Frame &fr, const il::core::Instr &in, Compar
 
 namespace control
 {
+/// @brief Extract a valid resume token from a slot, or return nullptr if invalid.
+/// @param fr Active frame holding the resume state metadata.
+/// @param slot Slot expected to contain a resume token pointer.
+/// @return Pointer to the frame's resume state if valid, or nullptr.
 Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot);
 
+/// @brief Emit a trap indicating that a resume instruction received an invalid token.
+/// @param fr Active frame.
+/// @param in Instruction that attempted the resume.
+/// @param bb Current basic block pointer, may be null.
+/// @param detail Human-readable diagnostic describing the failure.
 void trapInvalidResume(Frame &fr,
                        const il::core::Instr &in,
                        const il::core::BasicBlock *bb,
                        std::string detail);
 
+/// @brief Resolve an error token slot to the corresponding VmError payload.
+/// @param fr Active frame holding error state.
+/// @param slot Slot expected to contain an error token.
+/// @return Pointer to the VmError if the token is valid, or nullptr.
 const VmError *resolveErrorToken(Frame &fr, const Slot &slot);
 } // namespace control
 } // namespace il::vm::detail

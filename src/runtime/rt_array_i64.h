@@ -5,9 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the runtime library's dynamic array API for 64-bit integer
-// arrays (LONG in BASIC). These functions mirror the rt_arr_i32_* API but use
-// int64_t elements to support the full LONG range without overflow.
+// File: src/runtime/rt_array_i64.h
+// Purpose: Dynamic array API for 64-bit integers (int64_t), mirroring the i32
+//          array interface to support BASIC LONG typed collections with
+//          allocation, refcounting, bounds-checked access, and resize.
+// Key invariants: Payload pointers are preceded by an rt_heap_hdr_t header;
+//                 length <= capacity; indexed access traps on out-of-bounds;
+//                 new arrays start with refcount 1.
+// Ownership/Lifetime: Reference-counted via rt_arr_i64_retain/release; the
+//                     caller owns the initial reference from rt_arr_i64_new;
+//                     resize may reallocate and rebind the payload pointer.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

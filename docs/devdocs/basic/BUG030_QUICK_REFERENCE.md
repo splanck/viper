@@ -1,5 +1,8 @@
 # BUG-030: Quick Reference Guide
 
+> **Historical.** This bug has been FIXED. Module-level variables are now accessible from SUB/FUNCTION
+> via `rt_modvar_addr_*` runtime helpers.
+
 ## The Problem in One Sentence
 
 **Global variables are completely isolated from SUB/FUNCTION procedures - each procedure sees a separate

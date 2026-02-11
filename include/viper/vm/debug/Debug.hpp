@@ -8,11 +8,12 @@
 // File: include/viper/vm/debug/Debug.hpp
 // Purpose: Expose lightweight debugger and tracing configuration types for the
 //          IL virtual machine without requiring full VM internals.
-// Invariants: Public types remain header-only data containers and helpers so
-//             tools can configure debugging without pulling interpreter
-//             implementation details.
-// Ownership: Debug controller owns its internal caches by value; trace sinks do
-//            not own frame memory and operate on caller-managed VM state.
+// Key invariants: Public types remain header-only data containers and helpers so
+//                 tools can configure debugging without pulling interpreter
+//                 implementation details.
+// Ownership/Lifetime: Debug controller owns its internal caches by value; trace
+//                     sinks do not own frame memory and operate on caller-managed
+//                     VM state.
 // Links: docs/codemap/vm-runtime.md
 //
 //===----------------------------------------------------------------------===//
@@ -317,29 +318,25 @@ struct DebugAction
 class DebugScript
 {
   public:
-    /// What: Construct an empty debug script.
-    /// Why:  Allow hosts to build scripts programmatically.
-    /// How:  Starts with no pending actions.
+    /// @brief Construct an empty debug script with no pending actions.
     DebugScript() = default;
 
-    /// What: Load a debug script from @p path.
-    /// Why:  Automate stepping and continue sequences from a file.
-    /// How:  Parses simple directives into an action queue.
+    /// @brief Load a debug script from the file at @p path.
+    /// @details Parses simple directives (step, continue) into an action queue
+    ///          for automated debugging sessions.
+    /// @param path File system path to the debug script.
     explicit DebugScript(const std::string &path);
 
-    /// What: Query whether the script has any actions.
-    /// Why:  Determine whether automation remains pending.
-    /// How:  Checks for emptiness of the internal action queue.
+    /// @brief Query whether the script has any pending actions.
+    /// @return True when no actions remain.
     bool empty() const;
 
-    /// What: Append a step action with @p count instructions.
-    /// Why:  Build scripts procedurally or during REPL sessions.
-    /// How:  Enqueues a DebugAction{Step, count}.
+    /// @brief Append a step action that advances @p count instructions.
+    /// @param count Number of instructions to step.
     void addStep(uint64_t count);
 
-    /// What: Pop and return the next script action (or Continue if empty).
-    /// Why:  Drive the debugger loop with pending automation.
-    /// How:  Dequeues from the action queue; defaults to Continue when empty.
+    /// @brief Pop and return the next script action.
+    /// @return The next action, or a Continue action when the queue is empty.
     DebugAction nextAction();
 
   private:

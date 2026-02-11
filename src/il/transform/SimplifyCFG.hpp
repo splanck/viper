@@ -5,32 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Control Flow Graph Simplification (SimplifyCFG) pass.
-// SimplifyCFG canonicalizes and simplifies control flow patterns, removing
-// redundant blocks, folding trivial branches, and cleaning up CFG structure
-// to improve code quality and enable downstream optimizations.
-//
-// The SimplifyCFG pass applies a suite of local CFG transformations: folding
-// conditional branches with constant conditions, removing empty forwarding blocks,
-// merging blocks with single predecessors, eliminating unreachable code, and
-// canonicalizing block parameters. These transformations reduce code size, simplify
-// the CFG structure, and create optimization opportunities for other passes.
-//
-// Key Responsibilities:
-// - Fold conditional branches/switches with constant conditions to unconditional
-// - Remove empty blocks that only forward to successors
-// - Merge blocks when predecessor has single successor and vice versa
-// - Eliminate unreachable basic blocks using reachability analysis
-// - Canonicalize block parameters by removing unused parameters
-// - Simplify parameter passing when all arguments are identical
-//
-// Design Notes:
-// The pass uses a fixed-point iteration strategy, applying transformations until
-// no more changes occur. Each transformation is implemented in a separate module
-// under SimplifyCFG/ subdirectory. The pass tracks statistics about performed
-// transformations and supports debug logging. An aggressive mode enables more
-// speculative optimizations. The pass is EH-aware and preserves exception handling
-// semantics by avoiding transformations on handler blocks.
+// File: il/transform/SimplifyCFG.hpp
+// Purpose: Control Flow Graph Simplification pass -- canonicalises and
+//          simplifies CFG patterns via fixed-point iteration: constant-branch
+//          folding, forwarding-block removal, single-predecessor merging,
+//          unreachable-block elimination, and block parameter canonicalisation.
+//          EH-aware; preserves exception handling semantics.
+// Key invariants:
+//   - Fixed-point iteration stops when no further changes occur.
+//   - EH-sensitive blocks (handlers, cleanup) are never simplified.
+//   - Sub-transformations are in SimplifyCFG/ subdirectory modules.
+// Ownership/Lifetime: SimplifyCFG is a value type holding an aggressive flag
+//          and optional borrowed pointers to Module/AnalysisManager.
+// Links: il/core/Function.hpp, il/core/BasicBlock.hpp,
+//        il/transform/SimplifyCFG/BlockMerging.hpp,
+//        il/transform/SimplifyCFG/ForwardingElimination.hpp,
+//        il/transform/SimplifyCFG/ReachabilityCleanup.hpp,
+//        il/transform/SimplifyCFG/ParamCanonicalization.hpp
 //
 //===----------------------------------------------------------------------===//
 

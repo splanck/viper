@@ -65,15 +65,23 @@ struct CopyTask
 class Coalescer
 {
   public:
+    /// @brief Construct a coalescer using the given allocator and spiller.
+    /// @param allocator The linear scan allocator providing register assignment state.
+    /// @param spiller The spiller providing stack slot allocation for spilled values.
     Coalescer(LinearScanAllocator &allocator, Spiller &spiller);
 
     /// @brief Lower a PX_COPY bundle into concrete move instructions.
+    /// @param instr The PX_COPY pseudo-instruction containing parallel copy operands.
+    /// @param out Output vector to append the generated concrete move instructions to.
     void lower(const MInstr &instr, std::vector<MInstr> &out);
 
   private:
     LinearScanAllocator &allocator_;
     Spiller &spiller_;
 
+    /// @brief Emit a single copy task as one or more concrete machine instructions.
+    /// @param task The copy task describing source and destination (reg or mem).
+    /// @param generated Output vector to append the generated instructions to.
     void emitCopyTask(const CopyTask &task, std::vector<MInstr> &generated);
 };
 

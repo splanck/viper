@@ -40,8 +40,8 @@ extern "C"
     /// @param y Top edge of region.
     /// @param w Width of region.
     /// @param h Height of region.
-    void rt_spritesheet_set_region(void *sheet, rt_string name,
-                                    int64_t x, int64_t y, int64_t w, int64_t h);
+    void rt_spritesheet_set_region(
+        void *sheet, rt_string name, int64_t x, int64_t y, int64_t w, int64_t h);
 
     /// @brief Extract a named region as a new Pixels buffer.
     /// @param sheet Sprite sheet handle.

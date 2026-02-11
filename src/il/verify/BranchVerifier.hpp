@@ -5,17 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief Declares verification helpers for branch and return terminators.
-/// @details These helpers enforce IL control-flow invariants for terminator
-///          instructions (`br`, `cbr`, `switch.i32`, and `ret`). They verify that
-///          branch labels resolve to valid blocks, that branch argument counts
-///          and types align with the target block's parameter signature, and
-///          that return instructions match the enclosing function's declared
-///          return type. The helpers are stateless and use Expected-based
-///          diagnostics together with @ref TypeInference to resolve operand
-///          types. They operate only on caller-owned IL structures and do not
-///          maintain internal caches.
+// File: il/verify/BranchVerifier.hpp
+// Purpose: Verification helpers for branch and return terminators (br, cbr,
+//          switch.i32, ret). Enforces that branch labels resolve to valid
+//          blocks, argument counts/types match target signatures, and return
+//          types match the enclosing function's declared return type.
+// Key invariants:
+//   - Helpers are stateless; Expected-based diagnostics only.
+//   - Missing labels are silently skipped (reported by other components).
+// Ownership/Lifetime: Stateless free functions operating on caller-owned IL
+//          structures. No internal caches.
+// Links: il/verify/BlockMap.hpp, il/verify/TypeInference.hpp
 //
 //===----------------------------------------------------------------------===//
 

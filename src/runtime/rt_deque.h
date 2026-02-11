@@ -6,7 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_deque.h
-// Purpose: Double-ended queue (deque) for efficient operations at both ends.
+// Purpose: Double-ended queue (deque) for efficient push/pop at both ends
+//   with random access by index.
+// Key invariants: Indices are 0-based (front=0). Pop/peek on empty deque
+//   traps. Capacity >= 1. Elements compared by pointer equality in has().
+// Ownership/Lifetime: Deque objects are GC-managed. Elements are retained.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -6,8 +6,8 @@ Last updated: 2026-01-15
 
 ## Overview
 
-- **Total source files**: 21 (.hpp/.cpp)
-- **Subdirectories**: classes/, generated/, signatures/
+- **Total source files**: 19 (.hpp/.cpp)
+- **Subdirectories**: classes/, signatures/
 
 ## Signature Registry
 
@@ -41,3 +41,4 @@ Last updated: 2026-01-15
 | `signatures/Signatures_FileIO.cpp` | File I/O helper signatures                |
 | `signatures/Signatures_Math.cpp`   | Math function signatures                  |
 | `signatures/Signatures_Strings.cpp`| String operation signatures               |
+| `signatures/Signatures_OOP.cpp`    | OOP runtime helper signatures             |

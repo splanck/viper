@@ -9,14 +9,9 @@
 // Purpose: Runtime thread/monitor primitives backing Viper.Threads.
 // Key invariants: Monitor operations are re-entrant and FIFO-fair.
 // Ownership/Lifetime: Thread handles and Safe* values are runtime-managed objects.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Declarations for runtime threading primitives in Viper.Threads.
-/// @details Provides monitors, threads, atomic-like SafeI64, gates (semaphores),
-///          barriers, and reader-writer locks. Functions generally trap on NULL
-///          objects or invalid usage to keep runtime behavior predictable.
 
 #pragma once
 

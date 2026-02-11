@@ -7,6 +7,12 @@
 //
 // File: codegen/aarch64/LivenessAnalysis.hpp
 // Purpose: Cross-block liveness analysis for IL->MIR lowering.
+// Key invariants: Temps used in a different block than their definition are
+//                 marked cross-block and assigned dedicated spill slots;
+//                 alloca temps are excluded from cross-block analysis.
+// Ownership/Lifetime: Returns a value-type LivenessInfo; borrows the Function
+//                     and FrameBuilder only for the duration of the call.
+// Links: codegen/aarch64/LoweringContext.hpp, docs/architecture.md
 //
 // This header declares functions for analyzing which IL temps are used across
 // block boundaries and need spill/reload handling during lowering.

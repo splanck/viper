@@ -346,7 +346,7 @@ were identified in the ARM64 backend that prevented successful assembly on macOS
 
 ### BUG 1: Incorrect Section Directive for macOS
 
-- **Location**: `src/codegen/aarch64/cmd_codegen_arm64.cpp:136`
+- **Location**: `src/tools/viper/cmd_codegen_arm64.cpp:136`
 - **Issue**: The backend emits `.section .rodata` which is ELF/Linux syntax
 - **Error**: `error: unexpected token in '.section' directive`
 - **Root Cause**: Hardcoded Linux-style section directive without platform detection

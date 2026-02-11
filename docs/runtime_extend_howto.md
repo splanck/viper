@@ -90,7 +90,7 @@ Extend the runtime when you need to:
 | **Runtime Library** | `src/runtime/` | C implementation of runtime functions |
 | **Definition File** | `src/il/runtime/runtime.def` | Single source of truth for all runtime metadata |
 | **rtgen Tool** | `src/tools/rtgen/` | Build-time code generator |
-| **Generated Headers** | `src/il/runtime/generated/` | Auto-generated `.inc` files |
+| **Generated Headers** | `build/generated/il/runtime/` | Auto-generated `.inc` and `.hpp` files |
 | **RuntimeClasses** | `src/il/runtime/classes/` | C++ wrappers for OOP integration |
 
 ### Naming Conventions
@@ -301,13 +301,14 @@ RT_METHOD("name", "signature", target_id)
 
 ### What rtgen Does
 
-The `rtgen` tool reads `runtime.def` and generates four `.inc` files:
+The `rtgen` tool reads `runtime.def` and generates five output files:
 
 | File | Purpose |
 |------|---------|
 | `RuntimeNameMap.inc` | Maps canonical names to C symbols for native codegen |
 | `RuntimeClasses.inc` | Class/method/property catalog for OOP dispatch |
 | `RuntimeSignatures.inc` | Function signatures for type checking |
+| `RuntimeNames.hpp` | Runtime name constants |
 | `ZiaRuntimeExterns.inc` | Extern declarations for the Zia frontend |
 
 ### Generated Output Example
@@ -327,20 +328,24 @@ RUNTIME_NAME_ALIAS("Viper.Utils.Counter.New", "rt_counter_new")
 The build system detects changes to `runtime.def` and reruns rtgen automatically:
 
 ```cmake
-# In CMakeLists.txt
+# In src/CMakeLists.txt
+set(RTGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/il/runtime")
+
 add_custom_command(
-    OUTPUT ${RUNTIME_GENERATED_DIR}/RuntimeNameMap.inc
-           ${RUNTIME_GENERATED_DIR}/RuntimeClasses.inc
-           ${RUNTIME_GENERATED_DIR}/RuntimeSignatures.inc
-    COMMAND rtgen ${RUNTIME_DEF_FILE} ${RUNTIME_GENERATED_DIR}
-    DEPENDS rtgen ${RUNTIME_DEF_FILE}
+    OUTPUT ${RTGEN_OUTPUT_DIR}/RuntimeNameMap.inc
+           ${RTGEN_OUTPUT_DIR}/RuntimeClasses.inc
+           ${RTGEN_OUTPUT_DIR}/RuntimeSignatures.inc
+           ${RTGEN_OUTPUT_DIR}/RuntimeNames.hpp
+           ${RTGEN_OUTPUT_DIR}/ZiaRuntimeExterns.inc
+    COMMAND rtgen ${RTGEN_INPUT} ${RTGEN_OUTPUT_DIR}
+    DEPENDS rtgen ${RTGEN_INPUT}
 )
 ```
 
 ### Manual Regeneration
 
 ```bash
-./build/src/tools/rtgen/rtgen src/il/runtime/runtime.def src/il/runtime/generated/
+./build/src/tools/rtgen/rtgen src/il/runtime/runtime.def build/generated/il/runtime/
 ```
 
 ---
@@ -716,7 +721,7 @@ set(RT_PUBLIC_HEADERS
 cmake --build build -j
 
 # Verify the function is registered
-grep -r "Counter" build/src/il/runtime/generated/
+grep -r "Counter" build/generated/il/runtime/
 
 # Run tests
 ctest --test-dir build --output-on-failure
@@ -870,7 +875,7 @@ void *rt_list_get(void *obj, int64_t index)
 **Solution:**
 ```bash
 # Force regeneration
-rm -rf build/src/il/runtime/generated/
+rm -rf build/generated/il/runtime/
 cmake --build build -j
 ```
 

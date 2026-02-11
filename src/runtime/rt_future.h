@@ -4,17 +4,19 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_future.h
-/// @brief Future/Promise for async result handling (Viper.Threads.Future/Promise).
-///
-/// Provides a mechanism for passing results between threads asynchronously:
-/// - Promise: Producer side, used to set the result value
-/// - Future: Consumer side, used to get the result value
-///
-/// A Promise and its associated Future are linked. When the Promise is
-/// completed (or failed), the Future becomes resolved.
-///
+//
+// File: src/runtime/rt_future.h
+// Purpose: Future/Promise primitives for asynchronous result passing between
+//          threads, with blocking and timed get, error propagation, and
+//          non-blocking try-get and wait operations.
+// Key invariants: A Promise can be completed exactly once (value or error);
+//                 each Promise has exactly one associated Future; Future.get
+//                 blocks until resolved; traps on get after error completion.
+// Ownership/Lifetime: Opaque Promise and Future objects are managed by the
+//                     runtime object system; the Future is obtained from its
+//                     Promise and shares its lifetime.
+// Links: docs/viperlib.md
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef VIPER_RT_FUTURE_H

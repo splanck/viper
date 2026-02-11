@@ -2,42 +2,52 @@
 // RTSpriteSheetTests.cpp - Tests for rt_spritesheet (sprite atlas)
 //===----------------------------------------------------------------------===//
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cmath>
 
-extern "C" {
-#include "rt_spritesheet.h"
+extern "C"
+{
+#include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_seq.h"
-#include "rt_object.h"
+#include "rt_spritesheet.h"
 #include "rt_string.h"
 
-void vm_trap(const char *msg) {
-    fprintf(stderr, "TRAP: %s\n", msg);
-}
+    void vm_trap(const char *msg)
+    {
+        fprintf(stderr, "TRAP: %s\n", msg);
+    }
 }
 
 static int tests_run = 0;
 static int tests_passed = 0;
 
-#define ASSERT(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { \
-        fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg); \
-    } else { \
-        tests_passed++; \
-    } \
-} while(0)
+#define ASSERT(cond, msg)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 // Helper: create a test atlas with known pixel values
-static void *make_test_atlas(int64_t w, int64_t h) {
+static void *make_test_atlas(int64_t w, int64_t h)
+{
     void *px = rt_pixels_new(w, h);
     int64_t x, y;
-    for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
+    for (y = 0; y < h; y++)
+    {
+        for (x = 0; x < w; x++)
+        {
             // Encode position into color: ARGB with R=x, G=y
             int64_t color = (int64_t)0xFF000000 | ((x & 0xFF) << 16) | ((y & 0xFF) << 8);
             rt_pixels_set(px, x, y, color);
@@ -46,7 +56,8 @@ static void *make_test_atlas(int64_t w, int64_t h) {
     return px;
 }
 
-static void test_new_basic() {
+static void test_new_basic()
+{
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
     ASSERT(sheet != NULL, "spritesheet_new should return non-null");
@@ -57,12 +68,14 @@ static void test_new_basic() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_new_null_atlas() {
+static void test_new_null_atlas()
+{
     void *sheet = rt_spritesheet_new(NULL);
     ASSERT(sheet == NULL, "null atlas returns null sheet");
 }
 
-static void test_set_and_get_region() {
+static void test_set_and_get_region()
+{
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -84,7 +97,8 @@ static void test_set_and_get_region() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_region_offset() {
+static void test_region_offset()
+{
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -104,7 +118,8 @@ static void test_region_offset() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_has_region_false() {
+static void test_has_region_false()
+{
     void *atlas = make_test_atlas(32, 32);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -116,7 +131,8 @@ static void test_has_region_false() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_update_existing_region() {
+static void test_update_existing_region()
+{
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -141,7 +157,8 @@ static void test_update_existing_region() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_remove_region() {
+static void test_remove_region()
+{
     void *atlas = make_test_atlas(32, 32);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -162,7 +179,8 @@ static void test_remove_region() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_multiple_regions() {
+static void test_multiple_regions()
+{
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -183,7 +201,8 @@ static void test_multiple_regions() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_from_grid() {
+static void test_from_grid()
+{
     void *atlas = make_test_atlas(64, 32);
     void *sheet = rt_spritesheet_from_grid(atlas, 32, 32);
     ASSERT(sheet != NULL, "from_grid returns non-null");
@@ -208,7 +227,8 @@ static void test_from_grid() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_from_grid_invalid() {
+static void test_from_grid_invalid()
+{
     void *atlas = make_test_atlas(32, 32);
     ASSERT(rt_spritesheet_from_grid(NULL, 16, 16) == NULL, "null atlas returns null");
     ASSERT(rt_spritesheet_from_grid(atlas, 0, 16) == NULL, "zero frame_w returns null");
@@ -216,7 +236,8 @@ static void test_from_grid_invalid() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_region_names() {
+static void test_region_names()
+{
     void *atlas = make_test_atlas(32, 32);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -234,7 +255,8 @@ static void test_region_names() {
     rt_obj_release_check0(atlas);
 }
 
-static void test_null_safety() {
+static void test_null_safety()
+{
     rt_string name = rt_const_cstr("test");
     // All functions should handle NULL gracefully
     ASSERT(rt_spritesheet_region_count(NULL) == 0, "null count = 0");
@@ -245,7 +267,8 @@ static void test_null_safety() {
     ASSERT(rt_spritesheet_remove_region(NULL, name) == 0, "null remove = 0");
 }
 
-int main() {
+int main()
+{
     test_new_basic();
     test_new_null_atlas();
     test_set_and_get_region();

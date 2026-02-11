@@ -5,26 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares internal runtime structures and utilities shared across
-// multiple runtime implementation files. These definitions provide the
-// scaffolding for memory management, input buffering, and allocation hooks
-// used by the higher-level runtime APIs exposed to IL programs.
-//
-// The runtime system must coordinate memory allocation across different
-// subsystems (strings, arrays, file buffers). This file centralizes internal
-// helpers that manage buffer growth, allocation hooks for testing, and shared
-// data structures that don't belong in the public runtime interface.
-//
-// Key Components:
-// - Input buffer management: rt_input_try_grow handles dynamic buffer expansion
-//   for file I/O operations, detecting allocation failures and overflow conditions
-// - Allocation hooks: rt_set_alloc_hook provides test infrastructure for
-//   simulating allocation failures and tracking memory usage patterns
-// - Internal type definitions: Structures used by implementation files but
-//   not exposed to IL programs or external C code
-//
-// This file is part of the runtime's implementation layer and should only be
-// included by runtime .c/.cpp files, never by IL-generated code or user programs.
+// File: src/runtime/rt_internal.h
+// Purpose: Internal runtime helpers: buffer growth, alloc hooks, hex utils, array macros.
+// Key invariants: Implementation-only header; never included by IL-generated or user code.
+// Ownership/Lifetime: Callers own buffers passed to rt_input_try_grow; alloc hooks are global.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

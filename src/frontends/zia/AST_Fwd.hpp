@@ -4,10 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
+///
 /// @file AST_Fwd.hpp
 /// @brief Forward declarations and shared aliases for Zia AST nodes.
-//
+///
+/// @details This header provides forward declarations for the four core AST
+/// node types (Expr, Stmt, TypeNode, Decl) and their corresponding
+/// unique_ptr aliases (ExprPtr, StmtPtr, TypePtr, DeclPtr). These
+/// forward declarations break circular dependencies between the AST
+/// node headers — for example, an expression can contain a block
+/// statement, and a statement can contain expressions. By declaring
+/// the types here without including their full definitions, each
+/// AST_*.hpp header can reference the others through pointers without
+/// creating include cycles.
+///
+/// Also provides a SourceLoc alias imported from the support library,
+/// used by all AST nodes for source location tracking.
+///
+/// @invariant All pointer aliases use std::unique_ptr for single-ownership
+///            semantics. AST nodes form a tree, not a graph.
+///
+/// Ownership/Lifetime: AST nodes are owned by their parent node via
+/// unique_ptr. The root ModuleDecl owns the entire tree and is itself
+/// owned by the compilation pipeline.
+///
+/// @see AST.hpp — umbrella header that includes all AST node headers.
+/// @see AST_Expr.hpp, AST_Stmt.hpp, AST_Types.hpp, AST_Decl.hpp —
+///      full definitions of the forward-declared types.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once

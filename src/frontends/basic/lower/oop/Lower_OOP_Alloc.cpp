@@ -72,15 +72,13 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
                     {
                         auto expected = (*ctorExpectedTypes)[i];
                         // String→Ptr coercion (str passed where obj expected)
-                        if (expected.kind == Type::Kind::Ptr &&
-                            v.type.kind == Type::Kind::Str)
+                        if (expected.kind == Type::Kind::Ptr && v.type.kind == Type::Kind::Str)
                         {
                             // Strings are already pointer-compatible in IL
                             v.type = Type(Type::Kind::Ptr);
                         }
                         // I64→F64 coercion
-                        else if (expected.kind == Type::Kind::F64 &&
-                                 v.type.kind == Type::Kind::I64)
+                        else if (expected.kind == Type::Kind::F64 && v.type.kind == Type::Kind::I64)
                         {
                             v = coerceToF64(std::move(v), expr.loc);
                         }

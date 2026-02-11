@@ -1,8 +1,11 @@
 # Adventure Game Stress Test - Final Report
 
+> **Historical snapshot (2025-11-15).** The regressions described here were fixed in subsequent sessions.
+> See `bugs/oop_bugs.md` and `bugs/basic_resolved.md` for current status.
+
 **Date**: 2025-11-15
 **Objective**: Build text-based adventure game to stress test VIPER BASIC OOP
-**Result**: 🚨 CRITICAL REGRESSIONS DISCOVERED
+**Result**: CRITICAL REGRESSIONS DISCOVERED (subsequently fixed)
 
 ## Executive Summary
 

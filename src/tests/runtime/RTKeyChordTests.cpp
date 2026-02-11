@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_keychord.h"
 #include "rt_input.h"
 #include "rt_internal.h"
+#include "rt_keychord.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 

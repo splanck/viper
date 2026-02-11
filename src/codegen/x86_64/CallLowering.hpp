@@ -57,6 +57,15 @@ struct CallLoweringPlan
 };
 
 /// \brief Emit Machine IR that prepares arguments and issues a call instruction.
+///
+/// Translates a high-level call description into a sequence of register moves,
+/// stack spills, and a CALL pseudo-instruction conforming to the SysV AMD64 ABI.
+///
+/// @param block     The basic block into which instructions are inserted.
+/// @param insertIdx Position within @p block at which the first instruction is placed.
+/// @param plan      Describes the callee, arguments, and return convention.
+/// @param target    ABI metadata (argument registers, callee-saved sets, etc.).
+/// @param frame     Stack frame information updated with any new spill slots.
 void lowerCall(MBasicBlock &block,
                std::size_t insertIdx,
                const CallLoweringPlan &plan,

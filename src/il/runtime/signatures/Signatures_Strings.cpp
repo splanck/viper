@@ -54,7 +54,8 @@ using Kind = SigParam::Kind;
 void register_string_signatures()
 {
     register_signature(make_signature("rt_str_len", {Kind::Ptr}, {Kind::I64}, true, true));
-    register_signature(make_signature("rt_str_substr", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
+    register_signature(
+        make_signature("rt_str_substr", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_trap", {Kind::Ptr}));
     register_signature(make_signature("rt_str_concat", {Kind::Ptr, Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_csv_quote_alloc", {Kind::Ptr}, {Kind::Ptr}));
@@ -76,7 +77,8 @@ void register_string_signatures()
     register_signature(make_signature("rt_str_left", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_str_right", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_str_mid", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_str_mid_len", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
+    register_signature(
+        make_signature("rt_str_mid_len", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(
         make_signature("rt_str_index_of", {Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
     register_signature(

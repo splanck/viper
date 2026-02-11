@@ -22,10 +22,16 @@
 namespace il::runtime
 {
 
+/// @brief Maps a canonical Viper.* runtime symbol to its C rt_* implementation.
+/// @details Each entry pairs a high-level Viper namespace symbol (e.g.,
+///          "Viper.String.Substring") with the corresponding low-level C
+///          runtime function name (e.g., "rt_str_substr"). The native code
+///          generator uses this mapping to resolve IL extern references to
+///          linkable C symbols.
 struct RuntimeNameAlias
 {
-    std::string_view canonical;
-    std::string_view runtime;
+    std::string_view canonical; ///< High-level Viper.* symbol name (e.g., "Viper.String.Length").
+    std::string_view runtime;   ///< Low-level C runtime symbol (e.g., "rt_str_len").
 };
 
 /// @brief Static map of Viper.* names to rt_* symbols used by native backends.

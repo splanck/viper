@@ -5,30 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares internal helpers for processing file paths and mode strings
-// in the runtime's file I/O implementation. BASIC's OPEN statement uses numeric
-// mode codes and string paths that must be validated and converted to platform
-// file API parameters.
-//
-// The runtime must bridge BASIC's file I/O model to platform file APIs (fopen on
-// POSIX, platform-specific APIs on Windows). This involves converting BASIC's
-// mode enumeration (INPUT, OUTPUT, APPEND, RANDOM, BINARY) to C file mode strings
-// or POSIX flags, extracting path strings from runtime objects, and validating
-// all parameters before invoking system calls.
-//
-// Key Responsibilities:
-// - Mode translation: rt_file_mode_string converts BASIC mode enumerations to
-//   fopen-compatible mode strings ("r", "w", "a", etc.)
-// - Flag conversion: rt_file_mode_to_flags maps mode strings to POSIX open() flags
-//   for platforms requiring lower-level file control
-// - Path extraction: rt_file_path_from_vstr extracts null-terminated UTF-8 paths
-//   from runtime string objects, validating encoding and null-termination
-// - Buffer management: Helpers provide views into string data suitable for
-//   direct system call usage without additional copying
-//
-// These internal helpers are part of the runtime implementation and not exposed
-// to IL programs. They provide a validated, platform-neutral interface that the
-// file I/O implementation builds upon.
+// File: src/runtime/rt_file_path.h
+// Purpose: Internal helpers for translating BASIC OPEN mode enumerations to
+//          fopen mode strings and POSIX flags, extracting validated UTF-8
+//          paths from runtime strings, and providing byte views for file I/O.
+// Key invariants: rt_file_mode_string returns NULL for invalid modes;
+//                 rt_file_mode_to_flags sets flags_out only on success;
+//                 path extraction validates non-null, non-empty input.
+// Ownership/Lifetime: All returned pointers are views into existing data (no
+//                     allocation); callers must not free mode strings or path
+//                     pointers; ViperString inputs are borrowed, not retained.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

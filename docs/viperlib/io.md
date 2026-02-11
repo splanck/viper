@@ -1081,7 +1081,7 @@ In-memory binary stream for reading and writing raw bytes with auto-expanding bu
 **Constructors:**
 
 - `Viper.IO.MemStream.New()` - Creates an empty stream with default capacity
-- `Viper.IO.MemStream.New(capacity)` - Creates an empty stream with specified initial capacity
+- `Viper.IO.MemStream.NewCapacity(capacity)` - Creates an empty stream with specified initial capacity
 - `Viper.IO.MemStream.FromBytes(bytes)` - Creates a stream initialized with data from a Bytes object
 
 ### Properties
@@ -1242,7 +1242,7 @@ NEXT i
 
 ```basic
 ' Preallocate buffer for known size
-DIM ms AS OBJECT = Viper.IO.MemStream.New(1024)
+DIM ms AS OBJECT = Viper.IO.MemStream.NewCapacity(1024)
 
 PRINT "Initial capacity:"; ms.Capacity  ' Output: 1024
 PRINT "Initial length:"; ms.Len         ' Output: 0

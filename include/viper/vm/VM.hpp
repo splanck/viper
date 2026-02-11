@@ -8,10 +8,11 @@
 // File: include/viper/vm/VM.hpp
 // Purpose: Declare a lightweight facade for running IL modules through the VM
 //          without exposing interpreter internals.
-// Invariants: Public API owns its backing VM implementation and forwards all
-//             operations while preserving semantics of the existing VM class.
-// Ownership: Runner manages the interpreter lifetime; callers retain ownership
-//            of modules and optional debug scripts passed in via configuration.
+// Key invariants: Public API owns its backing VM implementation and forwards all
+//                 operations while preserving semantics of the existing VM class.
+// Ownership/Lifetime: Runner manages the interpreter lifetime; callers retain
+//                     ownership of modules and optional debug scripts passed in
+//                     via configuration.
 // Links: docs/codemap/vm-runtime.md
 //
 //===----------------------------------------------------------------------===//
@@ -97,14 +98,15 @@ struct RunConfig
 class Runner
 {
   public:
-    /// What: Construct a runner over @p module with optional @p config.
-    /// Why:  Provide a simple façade to execute IL without exposing VM internals.
-    /// How:  Builds a VM instance, applies tracing/debug config, and seeds externs/args.
+    /// @brief Construct a runner over @p module with optional @p config.
+    /// @details Builds a VM instance, applies tracing/debug config, and seeds externs/args.
+    /// @param module IL module to execute. Must remain valid for the Runner's lifetime.
+    /// @param config Optional configuration controlling tracing, debugging, and step limits.
     Runner(const il::core::Module &module, RunConfig config = {});
 
-    /// What: Destroy the runner and release owned VM resources.
-    /// Why:  Ensure clean shutdown of tracing, debug, and runtime bridges.
-    /// How:  Destroys the pimpl instance which owns the underlying VM.
+    /// @brief Destroy the runner and release owned VM resources.
+    /// @details Destroys the pimpl instance which owns the underlying VM, ensuring
+    ///          clean shutdown of tracing, debug, and runtime bridges.
     ~Runner();
 
     Runner(const Runner &) = delete;
@@ -121,31 +123,29 @@ class Runner
     /// @brief Retrieve the most recent trap message emitted by the VM, if any.
     [[nodiscard]] std::optional<std::string> lastTrapMessage() const;
 
-    // Opcode counting façade
-    /// What: Read-only view of per-opcode execution counts.
-    /// Why:  Aid performance tuning and hot-spot analysis.
-    /// How:  Returns an internal map-like container owned by the runner.
+    // Opcode counting facade
+
+    /// @brief Read-only view of per-opcode execution counts.
+    /// @return Reference to the internal array of per-opcode counters.
     [[nodiscard]] const std::array<uint64_t, il::core::kNumOpcodes> &opcodeCounts() const;
 
-    /// What: Reset all opcode execution counters to zero.
-    /// Why:  Start a fresh measurement window.
-    /// How:  Clears the internal counting table.
+    /// @brief Reset all opcode execution counters to zero.
     void resetOpcodeCounts();
 
-    /// What: Return the top-N most executed opcodes and their counts.
-    /// Why:  Quickly summarise hot opcodes for profiling.
-    /// How:  Produces a vector of (opcode, count) pairs sorted by count desc.
+    /// @brief Return the top-N most executed opcodes and their counts.
+    /// @param n Number of top entries to return.
+    /// @return Vector of (opcode index, count) pairs sorted by count descending.
     [[nodiscard]] std::vector<std::pair<int, uint64_t>> topOpcodes(std::size_t n) const;
 
-    // Extern registration façade
-    /// What: Register a foreign function helper for name-based resolution.
-    /// Why:  Allow host integrations to surface functions callable from IL.
-    /// How:  Adds or replaces an entry in the VM's extern table.
+    // Extern registration facade
+
+    /// @brief Register a foreign function helper for name-based resolution.
+    /// @param ext Descriptor for the external function to register.
     void registerExtern(const ExternDesc &);
 
-    /// What: Remove a previously registered extern by @p name.
-    /// Why:  Keep the extern surface in sync with host lifecycle.
-    /// How:  Erases from the extern table; returns true if an entry was removed.
+    /// @brief Remove a previously registered extern by name.
+    /// @param name Canonical name of the extern to unregister.
+    /// @return True if an entry was removed, false if not found.
     bool unregisterExtern(std::string_view name);
 
     //===------------------------------------------------------------------===//

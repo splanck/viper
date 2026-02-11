@@ -7,10 +7,9 @@
 //
 // File: support/alignment.hpp
 // Purpose: Provides alignment utilities for memory and offset calculations.
-//
-// The alignUp function rounds a value up to the next multiple of a given
-// alignment. This is commonly needed for stack frame layout, memory allocation,
-// and data structure padding.
+// Key invariants: Alignment arguments must be powers of two.
+// Ownership/Lifetime: Pure value-level functions, no allocations or state.
+// Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

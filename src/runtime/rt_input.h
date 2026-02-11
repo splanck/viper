@@ -5,16 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Keyboard input handling for Viper.Input.Keyboard runtime class.
-//
-// Provides comprehensive keyboard support for games and interactive apps:
-// - Polling methods for current key state
-// - Event-based input (pressed/released this frame)
-// - Text input for text fields
-// - Modifier key state (Shift, Ctrl, Alt, CapsLock)
-// - GLFW-compatible key code constants
-//
-// Integrates with Canvas - keyboard state is updated by Canvas.Poll()
+// File: src/runtime/rt_input.h
+// Purpose: Keyboard, mouse, and gamepad input handling for Viper.Input.
+// Key invariants: State is frame-coherent; pressed/released lists reset each poll.
+// Ownership/Lifetime: Canvas owns the input subsystem; callbacks are non-owning.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

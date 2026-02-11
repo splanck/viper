@@ -141,10 +141,10 @@ Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 
 ---
 
-#### GetChar
+#### InKey
 
 ```rust
-func GetChar() -> string
+func InKey() -> string
 ```
 
 Reads a single character from input without waiting for Enter. Useful for immediate keyboard response.
@@ -154,7 +154,7 @@ Reads a single character from input without waiting for Enter. Useful for immedi
 **Example:**
 ```rust
 Terminal.Say("Continue? (y/n)");
-var response = Terminal.GetChar();
+var response = Terminal.InKey();
 
 if response == "y" or response == "Y" {
     Terminal.Say("Continuing...");
@@ -163,7 +163,7 @@ if response == "y" or response == "Y" {
 }
 ```
 
-**When to use:** Use `GetChar` for yes/no prompts, menu selections, or any time you want instant response to a single keystroke.
+**When to use:** Use `InKey` for yes/no prompts, menu selections, or any time you want instant response to a single keystroke.
 
 **Edge case:** Returns immediately without displaying the typed character. You may want to echo it back if the user should see what they typed.
 
@@ -172,12 +172,12 @@ if response == "y" or response == "Y" {
 #### GetKey
 
 ```rust
-func GetKey() -> Key
+func GetKey() -> string
 ```
 
-Reads a single keypress, including special keys like arrows, function keys, and modifier combinations that `GetChar` cannot detect.
+Reads a single keypress and returns it as a string. Can detect special keys like arrows and function keys, which are returned as named strings (e.g., `"UP"`, `"DOWN"`, `"LEFT"`, `"RIGHT"`).
 
-**Returns:** A `Key` object with properties for the key pressed
+**Returns:** A string representing the key pressed
 
 **Example:**
 ```rust
@@ -186,20 +186,25 @@ Terminal.Say("Use arrow keys to move, Q to quit");
 loop {
     var key = Terminal.GetKey();
 
-    match key.code {
-        Key.UP -> Terminal.Say("Moving up"),
-        Key.DOWN -> Terminal.Say("Moving down"),
-        Key.LEFT -> Terminal.Say("Moving left"),
-        Key.RIGHT -> Terminal.Say("Moving right"),
-        Key.Q -> break,
-        _ -> Terminal.Say("Unknown key")
+    if key == "UP" {
+        Terminal.Say("Moving up");
+    } else if key == "DOWN" {
+        Terminal.Say("Moving down");
+    } else if key == "LEFT" {
+        Terminal.Say("Moving left");
+    } else if key == "RIGHT" {
+        Terminal.Say("Moving right");
+    } else if key == "q" or key == "Q" {
+        break;
+    } else {
+        Terminal.Say("Unknown key");
     }
 }
 ```
 
 **When to use:** Use `GetKey` for games, TUI applications, or any program that needs to respond to arrow keys, function keys, or key combinations.
 
-**Key codes:** `Key.UP`, `Key.DOWN`, `Key.LEFT`, `Key.RIGHT`, `Key.ENTER`, `Key.ESCAPE`, `Key.BACKSPACE`, `Key.TAB`, `Key.F1` through `Key.F12`, plus letter and number keys.
+**Related:** `GetKeyTimeout(ms: i64) -> string` — Same as `GetKey` but returns an empty string if no key is pressed within the specified timeout in milliseconds.
 
 ---
 
@@ -228,48 +233,41 @@ func displayMenu() {
 
 ---
 
-#### SetColor / ResetColor
+#### SetColor
 
 ```rust
-func SetColor(color: Color) -> void
-func ResetColor() -> void
+func SetColor(foreground: i64, background: i64) -> void
 ```
 
-Sets the text color for subsequent output. `ResetColor` returns to the terminal's default colors.
+Sets the foreground and background text color for subsequent output using integer color codes.
 
 **Parameters:**
-- `color` - A predefined color constant or custom `Color(r, g, b)`
-
-**Available colors:** `Color.RED`, `Color.GREEN`, `Color.BLUE`, `Color.YELLOW`, `Color.CYAN`, `Color.MAGENTA`, `Color.WHITE`, `Color.BLACK`
+- `foreground` - Foreground color code (integer)
+- `background` - Background color code (integer)
 
 **Example:**
 ```rust
-Terminal.SetColor(Color.RED);
-Terminal.Say("ERROR: Something went wrong!");
-Terminal.ResetColor();
-
-Terminal.SetColor(Color.GREEN);
-Terminal.Say("SUCCESS: Operation completed.");
-Terminal.ResetColor();
+Terminal.SetColor(1, 0);   // Set foreground color 1, background color 0
+Terminal.Say("Colored text");
 ```
 
-**When to use:** Use colors sparingly to highlight important information like errors (red), warnings (yellow), or success messages (green).
+**When to use:** Use colors sparingly to highlight important information like errors, warnings, or success messages.
 
-**Edge case:** Not all terminals support colors. On unsupported terminals, these functions have no effect.
+**Edge case:** Not all terminals support colors. On unsupported terminals, this function may have no effect.
 
 ---
 
-#### MoveCursor
+#### SetPosition
 
 ```rust
-func MoveCursor(x: i64, y: i64) -> void
+func SetPosition(x: i64, y: i64) -> void
 ```
 
-Positions the cursor at the specified column and row. Coordinates are 1-based (top-left is 1,1).
+Positions the cursor at the specified column and row.
 
 **Parameters:**
-- `x` - Column number (1 = leftmost)
-- `y` - Row number (1 = topmost)
+- `x` - Column number
+- `y` - Row number
 
 **Example:**
 ```rust
@@ -277,19 +275,19 @@ Positions the cursor at the specified column and row. Coordinates are 1-based (t
 Terminal.Clear();
 
 // Top border
-Terminal.MoveCursor(1, 1);
+Terminal.SetPosition(1, 1);
 Terminal.Write("+------------------------+");
 
 // Side borders
 for row in 2..10 {
-    Terminal.MoveCursor(1, row);
+    Terminal.SetPosition(1, row);
     Terminal.Write("|");
-    Terminal.MoveCursor(26, row);
+    Terminal.SetPosition(26, row);
     Terminal.Write("|");
 }
 
 // Bottom border
-Terminal.MoveCursor(1, 10);
+Terminal.SetPosition(1, 10);
 Terminal.Write("+------------------------+");
 ```
 
@@ -297,18 +295,20 @@ Terminal.Write("+------------------------+");
 
 ---
 
-#### HideCursor / ShowCursor
+#### SetCursorVisible
 
 ```rust
-func HideCursor() -> void
-func ShowCursor() -> void
+func SetCursorVisible(visible: i64) -> void
 ```
 
-Controls cursor visibility. Hiding the cursor creates a cleaner appearance for animations and games.
+Controls cursor visibility. Hiding the cursor (passing 0) creates a cleaner appearance for animations and games. Pass 1 to show the cursor again.
+
+**Parameters:**
+- `visible` - 0 to hide the cursor, 1 to show it
 
 **Example:**
 ```rust
-Terminal.HideCursor();
+Terminal.SetCursorVisible(0);  // Hide cursor
 
 // Animate a spinner
 var frames = ["|", "/", "-", "\\"];
@@ -317,11 +317,11 @@ for i in 0..20 {
     Time.sleep(100);
 }
 
-Terminal.ShowCursor();
+Terminal.SetCursorVisible(1);  // Show cursor again
 Terminal.Say("\rDone!          ");
 ```
 
-**When to use:** Hide the cursor during animations or full-screen displays. Always remember to show it again before the program exits.
+**When to use:** Hide the cursor during animations or full-screen displays. Always remember to show it again (pass 1) before the program exits.
 
 ---
 
@@ -375,7 +375,7 @@ func showMenu(options: [String]) -> Integer {
         }
 
         Terminal.Say("Invalid choice. Press any key...");
-        Terminal.GetChar();
+        Terminal.InKey();
     }
 }
 ```

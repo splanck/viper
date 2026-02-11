@@ -1,7 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// BytecodeModule.hpp - Bytecode module and function data structures
+//===----------------------------------------------------------------------===//
+//
+// File: src/bytecode/BytecodeModule.hpp
+// Purpose: Data structures for compiled bytecode modules and functions.
+// Key invariants: Constant pool entries are deduplicated (same value -> same index).
+//                 Function indices are stable after insertion.
+//                 Module magic and version are set at construction time.
+// Ownership: BytecodeModule owns all contained functions, pools, and metadata.
+// Lifetime: Created by BytecodeCompiler; consumed by BytecodeVM. The module
+//           must outlive any VM executing it.
+// Links: Bytecode.hpp, BytecodeCompiler.hpp, BytecodeVM.hpp
+//
+//===----------------------------------------------------------------------===//
 //
 // This file defines the data structures that represent a compiled bytecode
 // module ready for execution by the bytecode VM. BytecodeModule contains
@@ -25,12 +39,15 @@ namespace bytecode
 namespace detail
 {
 /// @brief Find or add a value to a pool with deduplication.
-/// @tparam T Element type.
-/// @tparam Eq Equality predicate.
-/// @param pool The pool to search and potentially append to.
+/// @details Performs a linear scan for an existing match. If found, returns
+///          its index; otherwise appends the value and returns the new index.
+///          This ensures the same constant value always maps to the same pool index.
+/// @tparam T Element type stored in the pool.
+/// @tparam Eq Equality predicate type for comparing elements.
+/// @param pool  The pool vector to search and potentially append to.
 /// @param value The value to find or add.
-/// @param eq Equality comparison function.
-/// @return Index of the value in the pool.
+/// @param eq    Equality comparison function.
+/// @return Index of the value in the pool (existing or newly appended).
 template <typename T, typename Eq>
 inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq)
 {
@@ -47,117 +64,143 @@ inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq)
 }
 } // namespace detail
 
-/// Information about a local variable for debugging
+/// @brief Debug information about a local variable within a bytecode function.
+/// @details Maps a source-level variable name to its runtime local slot and
+///          the PC range during which it is live (for debugger display).
 struct LocalVarInfo
 {
-    std::string name;  // Original variable name
-    uint32_t localIdx; // Index in locals array
-    uint32_t startPc;  // First PC where variable is live
-    uint32_t endPc;    // Last PC where variable is live (exclusive)
+    std::string name;  ///< Original source-level variable name.
+    uint32_t localIdx; ///< Index in the function's locals array.
+    uint32_t startPc;  ///< First PC where the variable is live (inclusive).
+    uint32_t endPc;    ///< Last PC where the variable is live (exclusive).
 };
 
-/// Exception handler range within a function
+/// @brief An exception handler range within a bytecode function.
+/// @details Defines a protected PC region and the handler entry point to
+///          jump to when a trap occurs within that region.
 struct ExceptionRange
 {
-    uint32_t startPc;   // Range start (inclusive)
-    uint32_t endPc;     // Range end (exclusive)
-    uint32_t handlerPc; // Handler entry point
+    uint32_t startPc;   ///< Range start PC (inclusive).
+    uint32_t endPc;     ///< Range end PC (exclusive).
+    uint32_t handlerPc; ///< Handler entry point PC.
 };
 
-/// Switch table entry
+/// @brief A single case entry in a switch table.
 struct SwitchEntry
 {
-    int64_t value;     // Case value
-    uint32_t targetPc; // Target PC for this case
+    int64_t value;     ///< The case value to match against.
+    uint32_t targetPc; ///< Target PC when this case matches.
 };
 
-/// Switch table for SWITCH opcode
+/// @brief Switch table for the SWITCH opcode.
+/// @details Contains a default target and a list of case entries. The VM
+///          performs a linear scan or binary search over entries to find
+///          a matching case value.
 struct SwitchTable
 {
-    uint32_t defaultPc;               // Default target PC
-    std::vector<SwitchEntry> entries; // Case entries
+    uint32_t defaultPc;               ///< Default target PC when no case matches.
+    std::vector<SwitchEntry> entries; ///< Ordered list of case entries.
 };
 
-/// A compiled bytecode function
+/// @brief A compiled bytecode function ready for execution.
+/// @details Contains the bytecode instruction stream, local/stack sizing info,
+///          exception handler ranges, switch tables, and optional debug metadata.
 struct BytecodeFunction
 {
-    std::string name;    // Function name
-    uint32_t numParams;  // Number of parameters
-    uint32_t numLocals;  // Total locals (params + temps)
-    uint32_t maxStack;   // Maximum operand stack depth
-    uint32_t allocaSize; // Maximum alloca bytes needed
-    bool hasReturn;      // True if function returns a value
+    std::string name;    ///< Fully qualified function name.
+    uint32_t numParams;  ///< Number of parameters (mapped to first N locals).
+    uint32_t numLocals;  ///< Total local slots (parameters + temporaries).
+    uint32_t maxStack;   ///< Maximum operand stack depth required during execution.
+    uint32_t allocaSize; ///< Maximum alloca bytes needed by the function.
+    bool hasReturn;      ///< True if the function returns a value; false for void.
 
-    std::vector<uint32_t> code; // Bytecode instructions
+    std::vector<uint32_t> code; ///< Bytecode instruction stream (32-bit words).
 
-    // Exception handling
+    /// @brief Exception handler ranges active in this function.
     std::vector<ExceptionRange> exceptionRanges;
 
-    // Switch tables (referenced by SWITCH instructions)
+    /// @brief Switch tables referenced by SWITCH instructions in this function.
     std::vector<SwitchTable> switchTables;
 
     // Debug info (optional)
-    std::vector<LocalVarInfo> localVars;
-    uint32_t sourceFileIdx;          // Index into module's source file list
-    std::vector<uint32_t> lineTable; // PC -> source line mapping
+    std::vector<LocalVarInfo> localVars; ///< Local variable debug information.
+    uint32_t sourceFileIdx;              ///< Index into the module's source file list.
+    std::vector<uint32_t> lineTable;     ///< PC-to-source-line mapping (indexed by PC).
 };
 
-/// Reference to a native/runtime function
+/// @brief Reference to a native/runtime function callable from bytecode.
+/// @details Stores the name and signature information needed to locate and
+///          invoke a native function through the RuntimeBridge or registered handlers.
 struct NativeFuncRef
 {
-    std::string name;    // Function name (e.g., "Viper.Terminal.Say")
-    uint32_t paramCount; // Number of parameters
-    bool hasReturn;      // True if function returns a value
+    std::string name;    ///< Function name (e.g., "Viper.Terminal.Say").
+    uint32_t paramCount; ///< Number of parameters the function expects.
+    bool hasReturn;      ///< True if the function returns a value.
 };
 
-/// Global variable information
+/// @brief Information about a global variable in the bytecode module.
+/// @details Globals are laid out as contiguous BCSlot entries. Each GlobalInfo
+///          describes the name, size, alignment, and optional initial data.
 struct GlobalInfo
 {
-    std::string name;              // Global name
-    uint32_t size;                 // Size in bytes
-    uint32_t align;                // Alignment requirement
-    std::vector<uint8_t> initData; // Initial data (empty = zero-initialized)
+    std::string name;              ///< Fully qualified global variable name.
+    uint32_t size;                 ///< Size of the global in bytes.
+    uint32_t align;                ///< Alignment requirement in bytes.
+    std::vector<uint8_t> initData; ///< Initial data bytes (empty means zero-initialized).
 };
 
-/// Source file reference for debug info
+/// @brief Source file reference for debug information.
 struct SourceFileInfo
 {
-    std::string path;  // File path
-    uint32_t checksum; // Optional checksum for validation
+    std::string path;  ///< File path of the source file.
+    uint32_t checksum; ///< Optional checksum for validation (0 if unused).
 };
 
-/// A compiled bytecode module
+/// @brief A compiled bytecode module containing all data needed for execution.
+/// @details The BytecodeModule is the top-level container produced by
+///          BytecodeCompiler and consumed by BytecodeVM. It holds the constant
+///          pools (i64, f64, string), compiled functions, native function
+///          references, global variable descriptors, and optional debug info.
+///
+///          Constant pool entries are deduplicated: adding the same value twice
+///          returns the same pool index. Function and native function references
+///          are indexed by name for O(1) lookup.
 struct BytecodeModule
 {
     // Header
-    uint32_t magic;   // kBytecodeModuleMagic
-    uint32_t version; // kBytecodeVersion
-    uint32_t flags;   // Feature flags
+    uint32_t magic;   ///< Module magic number (must equal kBytecodeModuleMagic).
+    uint32_t version; ///< Bytecode format version (must equal kBytecodeVersion).
+    uint32_t flags;   ///< Feature flags (reserved for future use).
 
     // Constant pools
-    std::vector<int64_t> i64Pool;
-    std::vector<double> f64Pool;
-    std::vector<std::string> stringPool;
+    std::vector<int64_t> i64Pool;        ///< Deduplicated pool of 64-bit integer constants.
+    std::vector<double> f64Pool;         ///< Deduplicated pool of 64-bit floating-point constants.
+    std::vector<std::string> stringPool; ///< Deduplicated pool of string constants.
 
     // Functions
-    std::vector<BytecodeFunction> functions;
-    std::unordered_map<std::string, uint32_t> functionIndex;
+    std::vector<BytecodeFunction> functions;                 ///< All compiled bytecode functions.
+    std::unordered_map<std::string, uint32_t> functionIndex; ///< Function name to index mapping.
 
     // Native function references
-    std::vector<NativeFuncRef> nativeFuncs;
-    std::unordered_map<std::string, uint32_t> nativeFuncIndex;
+    std::vector<NativeFuncRef> nativeFuncs; ///< Native function descriptors.
+    std::unordered_map<std::string, uint32_t>
+        nativeFuncIndex; ///< Native function name to index mapping.
 
     // Globals
-    std::vector<GlobalInfo> globals;
-    std::unordered_map<std::string, uint32_t> globalIndex;
+    std::vector<GlobalInfo> globals;                       ///< Global variable descriptors.
+    std::unordered_map<std::string, uint32_t> globalIndex; ///< Global name to index mapping.
 
     // Debug info (optional)
-    std::vector<SourceFileInfo> sourceFiles;
+    std::vector<SourceFileInfo> sourceFiles; ///< Source file references for debug info.
 
-    // Module initialization
+    /// @brief Construct a new BytecodeModule with default header values.
+    /// @details Initializes magic to kBytecodeModuleMagic, version to
+    ///          kBytecodeVersion, and flags to 0.
     BytecodeModule() : magic(kBytecodeModuleMagic), version(kBytecodeVersion), flags(0) {}
 
-    // Find a function by name
+    /// @brief Find a compiled function by its fully qualified name.
+    /// @param name The function name to search for.
+    /// @return Pointer to the BytecodeFunction if found; nullptr otherwise.
     const BytecodeFunction *findFunction(const std::string &name) const
     {
         auto it = functionIndex.find(name);
@@ -168,7 +211,9 @@ struct BytecodeModule
         return nullptr;
     }
 
-    // Add a function and update index
+    /// @brief Add a compiled function to the module and update the name index.
+    /// @param fn The BytecodeFunction to add (moved into the module).
+    /// @return The index of the newly added function in the functions vector.
     uint32_t addFunction(BytecodeFunction fn)
     {
         uint32_t idx = static_cast<uint32_t>(functions.size());
@@ -177,13 +222,20 @@ struct BytecodeModule
         return idx;
     }
 
-    // Add an i64 constant to pool, returning index (deduplicates)
+    /// @brief Add a 64-bit integer constant to the pool, deduplicating by value.
+    /// @param value The integer constant to add.
+    /// @return The pool index of the (possibly pre-existing) constant.
     uint32_t addI64(int64_t value)
     {
         return detail::findOrAddToPool(i64Pool, value, std::equal_to<int64_t>{});
     }
 
-    // Add an f64 constant to pool, returning index (bitwise comparison for NaN)
+    /// @brief Add a 64-bit floating-point constant to the pool, deduplicating by bitwise
+    /// comparison.
+    /// @details Uses bitwise comparison (not IEEE equality) so that distinct NaN
+    ///          representations are stored separately while +0.0 and -0.0 remain distinct.
+    /// @param value The double constant to add.
+    /// @return The pool index of the (possibly pre-existing) constant.
     uint32_t addF64(double value)
     {
         auto bitwiseEq = [](double a, double b)
@@ -195,13 +247,21 @@ struct BytecodeModule
         return detail::findOrAddToPool(f64Pool, value, bitwiseEq);
     }
 
-    // Add a string constant to pool, returning index (deduplicates)
+    /// @brief Add a string constant to the pool, deduplicating by value.
+    /// @param value The string constant to add.
+    /// @return The pool index of the (possibly pre-existing) string.
     uint32_t addString(const std::string &value)
     {
         return detail::findOrAddToPool(stringPool, value, std::equal_to<std::string>{});
     }
 
-    // Add a native function reference, returning index
+    /// @brief Add a native function reference, deduplicating by name.
+    /// @details If a native function with the same name is already registered,
+    ///          returns the existing index without creating a duplicate.
+    /// @param name       The fully qualified native function name.
+    /// @param paramCount Number of parameters the function expects.
+    /// @param hasReturn  True if the function returns a value.
+    /// @return The index of the native function reference.
     uint32_t addNativeFunc(const std::string &name, uint32_t paramCount, bool hasReturn)
     {
         auto it = nativeFuncIndex.find(name);

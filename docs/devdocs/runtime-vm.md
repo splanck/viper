@@ -15,7 +15,7 @@ For the authoritative error-handling model (trap kinds, handler ABI, and BASIC l
 ## Runtime symbol naming
 
 - Canonical runtime entry points are the dotted `Viper.*` names emitted by frontends and catalogued in
-  `src/il/runtime/generated/RuntimeSignatures.inc`.
+  `src/il/runtime/RuntimeSignatures.hpp`.
 - Native backends must rewrite these to the C symbols exported by the runtime library via
   `il::runtime::mapCanonicalRuntimeName` and the alias table in `src/il/runtime/RuntimeNameMap.hpp`.
 - The alias map is the single source of truth for native symbol names; avoid ad-hoc string comparisons in emitters.
@@ -219,7 +219,7 @@ The determinism guarantees in this section are covered by
 ### Recursion
 
 The interpreter allocates a fresh frame for each call. Recursive functions thus
-nest frames naturally; see `tests/il/e2e/rec_fact.il` for an end-to-end factorial
+nest frames naturally; see `src/tests/il/e2e/rec_fact.il` for an end-to-end factorial
 example.
 
 <a id="vm-externs"></a>

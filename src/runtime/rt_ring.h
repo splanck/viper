@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_ring.h
+// File: src/runtime/rt_ring.h
 // Purpose: Runtime functions for fixed-size circular buffer (Ring).
 // Key invariants: Fixed capacity, FIFO order, overwrites oldest when full.
 // Ownership/Lifetime: Ring manages its own memory. Elements are retained.

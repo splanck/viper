@@ -307,9 +307,17 @@ class AsmEmitter
     void emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
 
     /// @brief Emit variable logical right shift: `lsrv dst, lhs, rhs`.
+    /// @param os Output stream to write assembly text.
+    /// @param dst Destination GPR.
+    /// @param lhs Value to shift.
+    /// @param rhs Shift amount register.
     void emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
 
     /// @brief Emit variable arithmetic right shift: `asrv dst, lhs, rhs`.
+    /// @param os Output stream to write assembly text.
+    /// @param dst Destination GPR.
+    /// @param lhs Value to shift.
+    /// @param rhs Shift amount register.
     void emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
 
     //=========================================================================
@@ -504,12 +512,13 @@ class AsmEmitter
     mutable const FramePlan *currentPlan_{nullptr};
     mutable bool currentPlanValid_{false};
 
+    /// @brief Return the canonical assembly name for a physical register.
     [[nodiscard]] static const char *rn(PhysReg r) noexcept
     {
         return regName(r);
     }
 
-    // Print FPR as dN (64-bit scalar view)
+    /// @brief Print a floating-point register using the dN (64-bit scalar) notation.
     static void printD(std::ostream &os, PhysReg r)
     {
         // Map Vn -> dn

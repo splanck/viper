@@ -59,9 +59,26 @@ class StringInterner
     /// @return View of the interned string.
     std::string_view lookup(Symbol sym) const;
 
+    /// @brief Copy constructor.
+    /// @details Deep-copies all interned strings and rebuilds the internal map
+    ///          so that string_view keys point into the new storage.
+    /// @param other Interner to copy from.
     StringInterner(const StringInterner &other);
+
+    /// @brief Copy assignment operator.
+    /// @details Replaces the current contents with a deep copy of @p other
+    ///          and rebuilds the internal map.
+    /// @param other Interner to copy from.
+    /// @return Reference to this interner.
     StringInterner &operator=(const StringInterner &other);
+
+    /// @brief Move constructor (defaulted).
+    /// @param other Interner to move from; left in a valid but unspecified state.
     StringInterner(StringInterner &&) noexcept = default;
+
+    /// @brief Move assignment operator (defaulted).
+    /// @param other Interner to move from; left in a valid but unspecified state.
+    /// @return Reference to this interner.
     StringInterner &operator=(StringInterner &&) noexcept = default;
 
   private:

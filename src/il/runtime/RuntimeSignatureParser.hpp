@@ -37,12 +37,32 @@ namespace il::runtime
 {
 
 /// @brief Trim ASCII whitespace from both ends of the provided view.
+/// @details Strips leading and trailing spaces, tabs, and newlines from the
+///          input string view. The returned view shares storage with @p text
+///          and is valid as long as the underlying buffer is alive.
+/// @param text Input string view to trim.
+/// @return Sub-view of @p text with leading and trailing whitespace removed.
 std::string_view trim(std::string_view text);
 
 /// @brief Split a delimited type list into individual type tokens.
+/// @details Splits a comma-separated parameter list from a signature
+///          specification into individual type token strings. Each returned
+///          token is trimmed of surrounding whitespace. For example,
+///          splitting `"i64, f64, ptr"` yields `{"i64", "f64", "ptr"}`.
+/// @param text Comma-separated parameter list (typically the contents
+///             inside the parentheses of a signature specification).
+/// @return Vector of trimmed individual type token views.
 std::vector<std::string_view> splitTypeList(std::string_view text);
 
-/// @brief Parse a runtime signature specification string.
+/// @brief Parse a runtime signature specification string into structured form.
+/// @details Interprets a compact specification string such as `"f64(i64,ptr)"`
+///          and constructs a RuntimeSignature with the parsed return type,
+///          parameter type list, and any side-effect annotations. The format
+///          is `ReturnType(Param1, Param2, ...)` where type names correspond to
+///          IL core types (i32, i64, f64, ptr, str, i1, void). Invalid or
+///          unrecognized specifications produce a default-constructed signature.
+/// @param spec Signature specification string from the runtime data tables.
+/// @return Fully populated RuntimeSignature with parsed type information.
 RuntimeSignature parseSignatureSpec(std::string_view spec);
 
 } // namespace il::runtime

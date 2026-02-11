@@ -54,14 +54,15 @@ using Error = Diag;
 // Token types for function body parsing
 // ============================================================================
 
+/// @brief Classifies lines encountered while parsing an IL function body.
 enum class TokenKind
 {
-    Skip,
-    CloseBrace,
-    BlockLabel,
-    LocDirective,
-    Instruction,
-    End,
+    Skip,         ///< Line was blank or a comment; should be skipped.
+    CloseBrace,   ///< Closing brace '}' marking the end of the function body.
+    BlockLabel,   ///< A basic block label line (ending with ':').
+    LocDirective, ///< A `.loc` source location directive.
+    Instruction,  ///< An IL instruction line to parse.
+    End,          ///< End of input reached before a closing brace.
 };
 
 // ============================================================================
@@ -183,52 +184,68 @@ struct ParserState
 // Data structures for prototype parsing
 // ============================================================================
 
+/// @brief Parsed function prototype: return type and parameter list.
 struct Prototype
 {
-    Type retType;
-    std::vector<Param> params;
+    Type retType;              ///< Declared return type of the function.
+    std::vector<Param> params; ///< Ordered parameter list with types and names.
 };
 
+/// @brief Result of parsing a function prototype header line.
+/// @details Contains the parsed prototype and any trailing calling convention
+///          segment that follows the parameter list.
 struct PrototypeParseResult
 {
-    Prototype proto;
-    std::string_view callingConvSegment;
+    Prototype proto;                    ///< Parsed return type and parameters.
+    std::string_view callingConvSegment; ///< Trailing text after the parameter list.
 };
 
+/// @brief Calling convention annotation parsed from function headers.
+/// @details Currently only the default calling convention is supported.
+///          Future extensions may add fastcall, stdcall, etc.
 enum class CallingConv
 {
-    Default,
+    Default, ///< Standard platform calling convention.
 };
 
+/// @brief Parsed function attributes (currently empty).
+/// @details Placeholder for future attribute parsing (nothrow, readonly, etc.).
 struct Attrs
 {
 };
 
+/// @brief Complete parsed function header including name, prototype, and metadata.
 struct FunctionHeader
 {
-    std::string name;
-    Prototype proto;
-    CallingConv cc;
-    Attrs attrs;
-    il::support::SourceLoc loc;
+    std::string name;          ///< Function identifier.
+    Prototype proto;           ///< Return type and parameter list.
+    CallingConv cc;            ///< Calling convention annotation.
+    Attrs attrs;               ///< Parsed function attributes.
+    il::support::SourceLoc loc; ///< Source location of the function declaration.
 };
 
 // ============================================================================
 // Snapshot for parser state rollback on error
 // ============================================================================
 
+/// @brief Captures parser state for transactional rollback on parse failure.
+/// @details On construction, saves all mutable parser state (function context,
+///          SSA mappings, pending branches, function count). If the parse
+///          succeeds, the caller calls discard() to commit. On destruction
+///          without discard(), the snapshot restores the saved state and removes
+///          any functions that were added during the failed parse.
 struct ParserSnapshot
 {
-    LegacyParserState &state;
-    il::core::Function *curFn;
-    il::core::BasicBlock *curBB;
-    il::support::SourceLoc curLoc;
-    std::unordered_map<std::string, unsigned> tempIds;
-    unsigned nextTemp;
-    std::unordered_map<std::string, size_t> blockParamCount;
-    std::vector<LegacyParserState::PendingBr> pendingBrs;
-    size_t functionCount;
-    bool active = true;
+    LegacyParserState &state;      ///< Reference to the parser state being snapshotted.
+    il::core::Function *curFn;     ///< Saved current function pointer.
+    il::core::BasicBlock *curBB;   ///< Saved current basic block pointer.
+    il::support::SourceLoc curLoc; ///< Saved source location.
+    std::unordered_map<std::string, unsigned> tempIds; ///< Saved SSA name-to-id mappings.
+    unsigned nextTemp;             ///< Saved next temporary ID counter.
+    std::unordered_map<std::string, size_t> blockParamCount; ///< Saved block parameter counts.
+    std::vector<LegacyParserState::PendingBr> pendingBrs;    ///< Saved pending branch targets.
+    size_t functionCount;          ///< Number of functions at snapshot time.
+    bool active = true;            ///< True if rollback should occur on destruction.
 
     explicit ParserSnapshot(LegacyParserState &st)
         : state(st), curFn(st.curFn), curBB(st.curBB), curLoc(st.curLoc), tempIds(st.tempIds),

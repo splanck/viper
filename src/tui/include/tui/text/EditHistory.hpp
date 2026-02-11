@@ -64,7 +64,8 @@ class EditHistory
         std::string text{};
     };
 
-    /// @brief A transaction is a group of related edit operations that are undone/redone atomically.
+    /// @brief A transaction is a group of related edit operations that are undone/redone
+    /// atomically.
     using Txn = std::vector<Op>;
 
     /// @brief Callback signature invoked for each operation during undo/redo replay.

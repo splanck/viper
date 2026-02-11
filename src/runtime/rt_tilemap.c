@@ -22,9 +22,9 @@
 #include <string.h>
 
 /// Collision type constants
-#define TILE_COLLISION_NONE     0
-#define TILE_COLLISION_SOLID    1
-#define TILE_COLLISION_ONE_WAY  2
+#define TILE_COLLISION_NONE 0
+#define TILE_COLLISION_SOLID 1
+#define TILE_COLLISION_ONE_WAY 2
 
 /// Maximum distinct tile IDs that can have collision types set
 #define MAX_TILE_COLLISION_IDS 4096
@@ -32,15 +32,15 @@
 /// @brief Tilemap implementation structure.
 typedef struct rt_tilemap_impl
 {
-    int64_t width;        ///< Width in tiles
-    int64_t height;       ///< Height in tiles
-    int64_t tile_width;   ///< Tile width in pixels
-    int64_t tile_height;  ///< Tile height in pixels
-    int64_t tileset_cols; ///< Number of columns in tileset
-    int64_t tileset_rows; ///< Number of rows in tileset
-    int64_t tile_count;   ///< Total tiles in tileset
-    void *tileset;        ///< Tileset pixels
-    int64_t *tiles;       ///< Tile indices (row-major)
+    int64_t width;                            ///< Width in tiles
+    int64_t height;                           ///< Height in tiles
+    int64_t tile_width;                       ///< Tile width in pixels
+    int64_t tile_height;                      ///< Tile height in pixels
+    int64_t tileset_cols;                     ///< Number of columns in tileset
+    int64_t tileset_rows;                     ///< Number of rows in tileset
+    int64_t tile_count;                       ///< Total tiles in tileset
+    void *tileset;                            ///< Tileset pixels
+    int64_t *tiles;                           ///< Tile indices (row-major)
     int8_t collision[MAX_TILE_COLLISION_IDS]; ///< Collision type per tile ID
 } rt_tilemap_impl;
 
@@ -456,6 +456,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
         void *vptr;
         double x, y, w, h, vx, vy;
     } body_header;
+
     body_header *body = (body_header *)body_ptr;
 
     int64_t tw = tilemap->tile_width;
@@ -463,16 +464,20 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
     int8_t collided = 0;
 
     // Determine the range of tiles the body overlaps
-    int64_t left   = (int64_t)body->x / tw;
-    int64_t right  = (int64_t)(body->x + body->w - 1) / tw;
-    int64_t top    = (int64_t)body->y / th;
+    int64_t left = (int64_t)body->x / tw;
+    int64_t right = (int64_t)(body->x + body->w - 1) / tw;
+    int64_t top = (int64_t)body->y / th;
     int64_t bottom = (int64_t)(body->y + body->h - 1) / th;
 
     // Clamp to tilemap bounds
-    if (left < 0) left = 0;
-    if (top < 0) top = 0;
-    if (right >= tilemap->width) right = tilemap->width - 1;
-    if (bottom >= tilemap->height) bottom = tilemap->height - 1;
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
+    if (right >= tilemap->width)
+        right = tilemap->width - 1;
+    if (bottom >= tilemap->height)
+        bottom = tilemap->height - 1;
 
     // Resolve collisions against each overlapping solid tile
     for (int64_t ty = top; ty <= bottom; ty++)

@@ -33,19 +33,22 @@
 
 namespace il::vm::generated
 {
+/// @brief Compile-time metadata for a single IL opcode used by VM dispatch and introspection.
 struct OpSchemaEntry
 {
-    const char *mnemonic;
-    il::core::ResultArity resultArity;
-    il::core::TypeCategory resultType;
-    uint8_t operandMin;
-    uint8_t operandMax;
-    std::array<il::core::TypeCategory, 3> operandTypes;
-    bool hasSideEffects;
-    uint8_t successors;
-    bool terminator;
-    il::core::VMDispatch dispatch;
-    bool hasHandler;
+    const char *mnemonic; ///< @brief Human-readable opcode name (e.g., "add", "br").
+    il::core::ResultArity
+        resultArity; ///< @brief Number of result values produced (None, One, Optional).
+    il::core::TypeCategory resultType; ///< @brief Type category of the result value.
+    uint8_t operandMin;                ///< @brief Minimum number of operands required.
+    uint8_t operandMax; ///< @brief Maximum number of operands accepted (variadic if high).
+    std::array<il::core::TypeCategory, 3>
+        operandTypes;    ///< @brief Type categories for the first three operands.
+    bool hasSideEffects; ///< @brief True when the opcode may produce observable side effects.
+    uint8_t successors;  ///< @brief Number of successor basic blocks (0 for non-terminators).
+    bool terminator;     ///< @brief True when the opcode terminates its basic block.
+    il::core::VMDispatch dispatch; ///< @brief Dispatch tag mapping to the handler implementation.
+    bool hasHandler; ///< @brief True when a VM handler is implemented for this opcode.
 };
 
 inline constexpr std::array<OpSchemaEntry, il::core::kNumOpcodes> kOpSchema = {
@@ -1279,6 +1282,9 @@ inline constexpr std::array<OpSchemaEntry, il::core::kNumOpcodes> kOpSchema = {
     },
 };
 
+/// @brief Look up the compile-time schema entry for a given opcode.
+/// @param op Opcode whose metadata is requested.
+/// @return Reference to the corresponding OpSchemaEntry in the static table.
 inline constexpr const OpSchemaEntry &schema(il::core::Opcode op)
 {
     return kOpSchema[static_cast<size_t>(op)];

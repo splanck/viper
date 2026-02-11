@@ -73,7 +73,7 @@ bind Viper.Terminal;
 Say("Hello!");              // Print with newline
 Print("No newline here");   // Print without newline
 var input = ReadLine();     // Read a line of text
-var char = ReadKey();       // Read a single keypress
+var char = GetKey();        // Read a single keypress
 ```
 
 ### When to Use Each
@@ -81,7 +81,7 @@ var char = ReadKey();       // Read a single keypress
 - **`Say()`**: Most output. Each message on its own line.
 - **`Print()`**: When you want to build up a line piece by piece, or when prompting for input on the same line.
 - **`ReadLine()`**: Getting text input from users.
-- **`ReadKey()`**: Games, menus, or "press any key" prompts.
+- **`GetKey()`**: Games, menus, or "press any key" prompts.
 
 ### Terminal Control
 
@@ -91,11 +91,10 @@ For interactive applications, you can control the cursor and colors:
 bind Viper.Terminal;
 
 Clear();                    // Clear the screen
-SetCursor(10, 5);           // Move cursor to column 10, row 5
-SetColor("red", "black");   // Red text on black background
-ResetColor();               // Back to defaults
-HideCursor();               // Hide the blinking cursor
-ShowCursor();               // Show it again
+SetPosition(10, 5);         // Move cursor to column 10, row 5
+SetColor(1, 0);             // Set foreground/background color codes
+SetCursorVisible(0);        // Hide the blinking cursor
+SetCursorVisible(1);        // Show it again
 ```
 
 These are essential for building text-based games, progress bars, or any program where you want precise control over what the user sees.

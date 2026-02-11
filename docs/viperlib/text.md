@@ -19,7 +19,7 @@
 - [Viper.Text.Toml](#vipertexttoml)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
 - [Viper.Text.JsonStream](#vipertextjsonstream)
-- [Viper.Text.Serialize](#vipertextserialize)
+- [Viper.Data.Serialize](#viperdataserialize)
 
 ---
 
@@ -1116,11 +1116,12 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 | `IsValid(text)`       | `Boolean(String)`      | Check if text is valid TOML                    |
 | `Format(map)`         | `String(Map)`          | Format a Map as TOML text                      |
 | `Get(root, keyPath)`  | `Object(Map, String)`  | Get value using dotted key path                |
+| `GetStr(root, keyPath)` | `String(Map, String)` | Get string value using dotted key path, or empty string |
 
 ### Notes
 
 - **Parse output:** Returns a Map where keys are strings and values are strings, Maps (for sections), or Seqs (for arrays).
-- **Dotted paths:** `Get()` supports dotted key paths like `"server.host"` to navigate into nested sections.
+- **Dotted paths:** `Get()` and `GetStr()` support dotted key paths like `"server.host"` to navigate into nested sections.
 - **Format:** Converts a Map back to TOML text format.
 - Invalid TOML returns NULL from `Parse()` rather than trapping.
 
@@ -1155,6 +1156,10 @@ DIM data AS OBJECT = Viper.Text.Toml.Parse(config)
 ' Access nested values using dotted path
 DIM host AS OBJECT = Viper.Text.Toml.Get(data, "server.host")
 PRINT Viper.Unbox.Str(host)  ' Output: "localhost"
+
+' Or use GetStr for convenience (returns string directly)
+DIM port AS STRING = Viper.Text.Toml.GetStr(data, "server.port")
+PRINT port  ' Output: "8080"
 
 ' Validate before parsing
 IF Viper.Text.Toml.IsValid(userInput) THEN
@@ -1273,17 +1278,17 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 
 ### Properties
 
-| Property  | Type                  | Description                              |
-|-----------|-----------------------|------------------------------------------|
-| `Depth`   | `Integer` (read-only) | Current nesting depth (0 = top level)    |
-| `HasNext` | `Boolean` (read-only) | True if more tokens remain               |
+| Property    | Type                  | Description                              |
+|-------------|-----------------------|------------------------------------------|
+| `Depth`     | `Integer` (read-only) | Current nesting depth (0 = top level)    |
+| `TokenType` | `Integer` (read-only) | Current token type                       |
 
 ### Methods
 
 | Method          | Signature        | Description                                      |
 |-----------------|------------------|--------------------------------------------------|
 | `Next()`        | `Integer()`      | Advance to next token; returns token type         |
-| `TokenType()`   | `Integer()`      | Get current token type                            |
+| `HasNext()`     | `Boolean()`      | Check if more tokens remain                       |
 | `StringValue()` | `String()`       | Get string value of current token (key/string)    |
 | `NumberValue()` | `Double()`       | Get numeric value of current token                |
 | `BoolValue()`   | `Boolean()`      | Get boolean value of current token                |
@@ -1322,7 +1327,7 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 DIM json AS STRING = "{""name"": ""Alice"", ""scores"": [95, 87, 92]}"
 DIM stream AS OBJECT = NEW Viper.Text.JsonStream(json)
 
-DO WHILE stream.HasNext
+DO WHILE stream.HasNext()
     DIM tok AS INTEGER = stream.Next()
 
     SELECT CASE tok
@@ -1351,7 +1356,7 @@ LOOP
 
 ---
 
-## Viper.Text.Serialize
+## Viper.Data.Serialize
 
 Unified serialization interface for converting data between JSON, XML, YAML, TOML, and CSV formats. Provides format-agnostic parsing, formatting, validation, and round-trip conversion with auto-detection.
 
@@ -1396,26 +1401,26 @@ Unified serialization interface for converting data between JSON, XML, YAML, TOM
 ```basic
 ' Parse JSON data
 DIM json AS STRING = "{""name"": ""Alice"", ""age"": 30}"
-DIM data AS OBJECT = Viper.Text.Serialize.Parse(json, 0)  ' FORMAT_JSON
+DIM data AS OBJECT = Viper.Data.Serialize.Parse(json, 0)  ' FORMAT_JSON
 
 ' Convert JSON to TOML
-DIM toml AS STRING = Viper.Text.Serialize.Convert(json, 0, 3)  ' JSON → TOML
+DIM toml AS STRING = Viper.Data.Serialize.Convert(json, 0, 3)  ' JSON → TOML
 PRINT toml
 
 ' Auto-detect and parse
 DIM unknown AS STRING = "{""key"": ""value""}"
-DIM detected AS INTEGER = Viper.Text.Serialize.Detect(unknown)
-PRINT Viper.Text.Serialize.FormatName(detected)  ' Output: "json"
+DIM detected AS INTEGER = Viper.Data.Serialize.Detect(unknown)
+PRINT Viper.Data.Serialize.FormatName(detected)  ' Output: "json"
 
-DIM parsed AS OBJECT = Viper.Text.Serialize.AutoParse(unknown)
+DIM parsed AS OBJECT = Viper.Data.Serialize.AutoParse(unknown)
 
 ' Pretty-print as JSON
-DIM pretty AS STRING = Viper.Text.Serialize.FormatPretty(data, 0, 2)
+DIM pretty AS STRING = Viper.Data.Serialize.FormatPretty(data, 0, 2)
 PRINT pretty
 
 ' Validate before parsing
-IF Viper.Text.Serialize.IsValid(userInput, 0) THEN
-    DIM safe AS OBJECT = Viper.Text.Serialize.Parse(userInput, 0)
+IF Viper.Data.Serialize.IsValid(userInput, 0) THEN
+    DIM safe AS OBJECT = Viper.Data.Serialize.Parse(userInput, 0)
 END IF
 ```
 

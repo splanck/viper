@@ -2,18 +2,20 @@
 // RTPhysics2DTests.cpp - Tests for rt_physics2d (2D physics engine)
 //===----------------------------------------------------------------------===//
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cmath>
 
-extern "C" {
-#include "rt_physics2d.h"
+extern "C"
+{
 #include "rt_object.h"
+#include "rt_physics2d.h"
 
-void vm_trap(const char *msg) {
-    fprintf(stderr, "TRAP: %s\n", msg);
-}
+    void vm_trap(const char *msg)
+    {
+        fprintf(stderr, "TRAP: %s\n", msg);
+    }
 }
 
 static int tests_run = 0;
@@ -21,14 +23,19 @@ static int tests_passed = 0;
 
 static const double EPSILON = 1e-6;
 
-#define ASSERT(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { \
-        fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg); \
-    } else { \
-        tests_passed++; \
-    } \
-} while(0)
+#define ASSERT(cond, msg)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 #define ASSERT_NEAR(a, b, msg) ASSERT(fabs((a) - (b)) < EPSILON, msg)
 
@@ -36,14 +43,16 @@ static const double EPSILON = 1e-6;
 // World tests
 //=============================================================================
 
-static void test_world_new() {
+static void test_world_new()
+{
     void *world = rt_physics2d_world_new(0.0, 9.8);
     ASSERT(world != NULL, "world_new returns non-null");
     ASSERT(rt_physics2d_world_body_count(world) == 0, "new world has 0 bodies");
     rt_obj_release_check0(world);
 }
 
-static void test_world_add_remove() {
+static void test_world_add_remove()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
 
@@ -57,7 +66,8 @@ static void test_world_add_remove() {
     rt_obj_release_check0(world);
 }
 
-static void test_world_add_multiple() {
+static void test_world_add_multiple()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *b1 = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b2 = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
@@ -78,7 +88,8 @@ static void test_world_add_multiple() {
 // Body tests
 //=============================================================================
 
-static void test_body_new() {
+static void test_body_new()
+{
     void *body = rt_physics2d_body_new(10.0, 20.0, 30.0, 40.0, 5.0);
     ASSERT(body != NULL, "body_new returns non-null");
     ASSERT_NEAR(rt_physics2d_body_x(body), 10.0, "x = 10");
@@ -92,14 +103,16 @@ static void test_body_new() {
     rt_obj_release_check0(body);
 }
 
-static void test_body_static() {
+static void test_body_static()
+{
     void *body = rt_physics2d_body_new(0, 0, 100, 10, 0.0);
     ASSERT(rt_physics2d_body_is_static(body) == 1, "mass=0 is static");
     ASSERT_NEAR(rt_physics2d_body_mass(body), 0.0, "mass = 0");
     rt_obj_release_check0(body);
 }
 
-static void test_body_set_pos() {
+static void test_body_set_pos()
+{
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     rt_physics2d_body_set_pos(body, 42.0, 99.0);
     ASSERT_NEAR(rt_physics2d_body_x(body), 42.0, "x after set_pos");
@@ -107,7 +120,8 @@ static void test_body_set_pos() {
     rt_obj_release_check0(body);
 }
 
-static void test_body_set_vel() {
+static void test_body_set_vel()
+{
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     rt_physics2d_body_set_vel(body, 5.0, -3.0);
     ASSERT_NEAR(rt_physics2d_body_vx(body), 5.0, "vx after set_vel");
@@ -115,7 +129,8 @@ static void test_body_set_vel() {
     rt_obj_release_check0(body);
 }
 
-static void test_body_restitution_friction() {
+static void test_body_restitution_friction()
+{
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     // Defaults
     ASSERT_NEAR(rt_physics2d_body_restitution(body), 0.5, "default restitution = 0.5");
@@ -132,7 +147,8 @@ static void test_body_restitution_friction() {
 // Integration tests
 //=============================================================================
 
-static void test_gravity_integration() {
+static void test_gravity_integration()
+{
     void *world = rt_physics2d_world_new(0.0, 10.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
     rt_physics2d_world_add(world, body);
@@ -149,7 +165,8 @@ static void test_gravity_integration() {
     rt_obj_release_check0(world);
 }
 
-static void test_velocity_integration() {
+static void test_velocity_integration()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
     rt_physics2d_body_set_vel(body, 100.0, 50.0);
@@ -164,7 +181,8 @@ static void test_velocity_integration() {
     rt_obj_release_check0(world);
 }
 
-static void test_static_body_no_gravity() {
+static void test_static_body_no_gravity()
+{
     void *world = rt_physics2d_world_new(0.0, 100.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 0.0); // static
     rt_physics2d_world_add(world, body);
@@ -179,7 +197,8 @@ static void test_static_body_no_gravity() {
     rt_obj_release_check0(world);
 }
 
-static void test_force_application() {
+static void test_force_application()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 2.0);
     rt_physics2d_world_add(world, body);
@@ -199,7 +218,8 @@ static void test_force_application() {
     rt_obj_release_check0(world);
 }
 
-static void test_impulse_application() {
+static void test_impulse_application()
+{
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 2.0);
 
     // Impulse of 10 on mass-2 body => dv = impulse * inv_mass = 10 * 0.5 = 5
@@ -219,7 +239,8 @@ static void test_impulse_application() {
 // Collision tests
 //=============================================================================
 
-static void test_collision_detection() {
+static void test_collision_detection()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     // Two overlapping bodies: overlap of 5 units on x-axis
@@ -250,7 +271,8 @@ static void test_collision_detection() {
     rt_obj_release_check0(world);
 }
 
-static void test_no_collision_separated() {
+static void test_no_collision_separated()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
@@ -273,7 +295,8 @@ static void test_no_collision_separated() {
     rt_obj_release_check0(world);
 }
 
-static void test_collision_with_static() {
+static void test_collision_with_static()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     // Dynamic body overlapping static body
@@ -298,7 +321,8 @@ static void test_collision_with_static() {
     rt_obj_release_check0(world);
 }
 
-static void test_set_gravity() {
+static void test_set_gravity()
+{
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
     rt_physics2d_world_add(world, body);
@@ -320,12 +344,13 @@ static void test_set_gravity() {
 // Null safety
 //=============================================================================
 
-static void test_null_safety() {
+static void test_null_safety()
+{
     // World functions
     ASSERT(rt_physics2d_world_body_count(NULL) == 0, "null world count = 0");
-    rt_physics2d_world_step(NULL, 1.0);    // should not crash
-    rt_physics2d_world_add(NULL, NULL);     // should not crash
-    rt_physics2d_world_remove(NULL, NULL);  // should not crash
+    rt_physics2d_world_step(NULL, 1.0);         // should not crash
+    rt_physics2d_world_add(NULL, NULL);         // should not crash
+    rt_physics2d_world_remove(NULL, NULL);      // should not crash
     rt_physics2d_world_set_gravity(NULL, 0, 0); // should not crash
 
     // Body functions
@@ -334,21 +359,22 @@ static void test_null_safety() {
     ASSERT_NEAR(rt_physics2d_body_vx(NULL), 0.0, "null body vx = 0");
     ASSERT_NEAR(rt_physics2d_body_vy(NULL), 0.0, "null body vy = 0");
     ASSERT_NEAR(rt_physics2d_body_mass(NULL), 0.0, "null body mass = 0");
-    rt_physics2d_body_set_pos(NULL, 0, 0);      // should not crash
+    rt_physics2d_body_set_pos(NULL, 0, 0);       // should not crash
     rt_physics2d_body_set_vel(NULL, 0, 0);       // should not crash
     rt_physics2d_body_apply_force(NULL, 0, 0);   // should not crash
     rt_physics2d_body_apply_impulse(NULL, 0, 0); // should not crash
 
     tests_run++;
-    tests_passed++;  // If we get here, null safety passed
+    tests_passed++; // If we get here, null safety passed
 }
 
-static void test_zero_dt() {
+static void test_zero_dt()
+{
     void *world = rt_physics2d_world_new(0.0, 10.0);
     void *body = rt_physics2d_body_new(5.0, 5.0, 10.0, 10.0, 1.0);
     rt_physics2d_world_add(world, body);
 
-    rt_physics2d_world_step(world, 0.0);  // zero dt should be no-op
+    rt_physics2d_world_step(world, 0.0); // zero dt should be no-op
     ASSERT_NEAR(rt_physics2d_body_x(body), 5.0, "x unchanged with dt=0");
     ASSERT_NEAR(rt_physics2d_body_y(body), 5.0, "y unchanged with dt=0");
 
@@ -359,7 +385,8 @@ static void test_zero_dt() {
     rt_obj_release_check0(world);
 }
 
-int main() {
+int main()
+{
     // World tests
     test_world_new();
     test_world_add_remove();

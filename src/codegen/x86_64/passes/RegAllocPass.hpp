@@ -24,6 +24,10 @@ namespace viper::codegen::x64::passes
 class RegAllocPass final : public Pass
 {
   public:
+    /// @brief Run the register allocation pass: assign physical registers to virtual registers.
+    /// @param module The codegen module containing MIR functions with virtual registers.
+    /// @param diags Diagnostic sink for reporting allocation errors (e.g., spill failures).
+    /// @return True if register allocation succeeded, false on error.
     bool run(Module &module, Diagnostics &diags) override;
 };
 

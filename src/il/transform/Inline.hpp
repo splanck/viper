@@ -5,24 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// A lightweight direct-call inliner with an enhanced cost model that considers
-// both the cost and benefit of inlining decisions.
-//
-// The pass targets small callees (instruction budget + block budget), avoids
-// recursion, and skips exception-handling sensitive callees. Supported control
-// flow: direct calls without EH, `br`/`cbr`/`switch`/`ret`, and block params.
-//
-// Cost Model Features:
-// - Base instruction/block budgets (configurable thresholds)
-// - Call frequency analysis (inline hot callees more aggressively)
-// - Constant argument bonus (enables more optimization after inlining)
-// - Single-use function bonus (can be deleted after inlining)
-// - Code growth tracking (limits total expansion)
-// - Inline depth limiting (prevents excessive nesting)
-//
-// Inlining clones the callee CFG into the caller, remaps callee params to call
-// operands (including block parameters), rewires returns to a continuation
-// block, and assigns fresh SSA temporaries for all cloned results.
+// File: il/transform/Inline.hpp
+// Purpose: Lightweight direct-call inliner module pass with a configurable
+//          cost model (instruction/block budgets, constant-argument bonus,
+//          single-use bonus, code-growth cap, inline-depth limit). Clones
+//          callee CFG into caller, remaps params, rewires returns.
+// Key invariants:
+//   - Recursive calls are never inlined.
+//   - EH-sensitive callees are skipped.
+//   - Total code growth is capped by maxCodeGrowth.
+// Ownership/Lifetime: ModulePass instantiated by the registry; configuration
+//          is held by value in InlineCostConfig.
+// Links: il/transform/PassRegistry.hpp, il/analysis/CallGraph.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -61,21 +55,41 @@ struct InlineCostConfig
     bool aggressive = false;
 };
 
+/// @brief Direct-call inliner module pass with a configurable cost model.
+/// @details Scans for direct call sites that satisfy the cost model thresholds
+///          (instruction budget, block budget, constant-argument bonuses, etc.),
+///          clones the callee's CFG into the caller, remaps parameters to
+///          arguments, and rewires return values. Recursive and EH-sensitive
+///          callees are always skipped. Total code growth across the module is
+///          capped by @ref InlineCostConfig::maxCodeGrowth.
 class Inliner : public ModulePass
 {
   public:
+    /// @brief Construct an inliner with default cost configuration.
     Inliner() = default;
 
+    /// @brief Construct an inliner with a custom cost configuration.
+    /// @param config Cost model thresholds controlling inlining decisions.
     explicit Inliner(InlineCostConfig config) : config_(config) {}
 
+    /// @brief Return the pass identifier string ("inline").
     std::string_view id() const override;
+
+    /// @brief Run the inliner over all functions in @p module.
+    /// @param module Module containing functions to consider for inlining.
+    /// @param analysis Analysis manager providing call graph and dominators.
+    /// @return PreservedAnalyses indicating which analyses remain valid.
     PreservedAnalyses run(core::Module &module, AnalysisManager &analysis) override;
 
+    /// @brief Override the instruction count threshold for inlining decisions.
+    /// @param n New threshold (callee instructions must not exceed this).
     void setInstructionThreshold(unsigned n)
     {
         config_.instrThreshold = n;
     }
 
+    /// @brief Replace the entire cost configuration.
+    /// @param config New cost model configuration to use.
     void setConfig(InlineCostConfig config)
     {
         config_ = config;
@@ -85,6 +99,8 @@ class Inliner : public ModulePass
     InlineCostConfig config_;
 };
 
+/// @brief Register the inliner pass with the provided registry.
+/// @param registry PassRegistry to register the pass into.
 void registerInlinePass(PassRegistry &registry);
 
 } // namespace il::transform

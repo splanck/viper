@@ -5,47 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Param struct, which represents parameters for both
-// functions and basic blocks in Viper IL. Parameters provide the mechanism for
-// passing values into callable entities and serve as the IL's equivalent of
-// phi nodes in traditional SSA form.
-//
-// Parameters appear in two contexts:
-// 1. Function parameters: Arguments passed at call sites (e.g., function foo(i64, str))
-// 2. Block parameters: Values passed via branch arguments (SSA phi-node replacement)
-//
-// The Param struct stores metadata for each parameter including its name (for
-// diagnostics), type, unique ID within the parent scope, and optional semantic
-// attributes that inform optimization passes about aliasing and lifetime properties.
-//
-// Semantic Attributes:
-// - noalias: Parameter cannot alias other pointer arguments
-// - nocapture: Parameter value is not captured beyond the callee
-// - nonnull: Parameter is guaranteed never to be null
-//
-// These attributes are hints for optimization passes. They do not affect IL
-// semantics directly but enable transformations like load elimination, call
-// devirtualization, and escape analysis.
-//
-// Block Parameters and SSA Form:
-// Traditional SSA uses phi instructions at the start of join blocks to merge
-// values from different predecessors. Viper IL uses an alternative approach:
-// blocks declare parameters, and branch instructions provide corresponding
-// arguments. This eliminates explicit phi instructions while maintaining SSA
-// invariants.
-//
-// Example:
-//   block merge(i64 %result):  // Block parameter
-//     ret %result
-//   block then:
-//     br label merge(42)        // Branch argument
-//   block else:
-//     br label merge(0)         // Branch argument
-//
-// Ownership Model:
-// - Functions and BasicBlocks own Param structs by value in std::vector
-// - Each Param owns its name string and type
-// - Parameter lifetime matches the containing function or block
+// File: il/core/Param.hpp
+// Purpose: Declares the Param struct -- parameters for both functions and
+//          basic blocks in Viper IL. Serves as the IL's equivalent of phi
+//          nodes in traditional SSA form, with optional semantic attributes
+//          (noalias, nocapture, nonnull) for optimisation hints.
+// Key invariants:
+//   - Param id is unique within its parent function or block.
+//   - Param type must match the containing function or block signature.
+//   - Attributes are hints only; they do not alter IL operational semantics.
+// Ownership/Lifetime: Functions and BasicBlocks own Param structs by value
+//          in std::vector. Each Param owns its name string and type. Parameter
+//          lifetime matches the containing function or block.
+// Links: docs/il-guide.md#reference, il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -4,12 +4,15 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// File: src/frontends/basic/OopLoweringContext.hpp
-// Purpose: Context object for OOP lowering pipeline.
+//
+// File: frontends/basic/OopLoweringContext.hpp
+// Purpose: Context object for OOP lowering pipeline providing cached metadata
+//          lookups and name-mangling helpers.
 // Key invariants: Provides consistent access to OOP metadata and lowering state.
+//                 Context must not outlive the Lowerer or OopIndex it borrows.
 // Ownership/Lifetime: Non-owning references to Lowerer and OopIndex; short-lived.
-//                     The context does not outlive the lowering operation that created it.
 // Links: docs/codemap.md
+//
 //===----------------------------------------------------------------------===//
 
 #pragma once

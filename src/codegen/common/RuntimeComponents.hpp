@@ -9,6 +9,7 @@
 // Purpose: Common runtime component classification for native code linking.
 // Key invariants: Symbol prefix mappings must be kept in sync with runtime
 //                 library organization in src/runtime/CMakeLists.txt.
+// Ownership/Lifetime: Header-only stateless utilities with no global state.
 // Links: src/tools/viper/cmd_codegen_arm64.cpp
 //        src/codegen/x86_64/CodegenPipeline.cpp
 //
@@ -185,6 +186,8 @@ inline std::string_view archiveNameForComponent(RtComponent comp)
 }
 
 /// @brief Resolve the full set of required runtime components from referenced symbols.
+/// @tparam SymbolRange A range type whose elements are convertible to std::string_view
+///                     (e.g., std::unordered_set<std::string>, std::vector<std::string>).
 /// @param symbols The runtime symbols referenced by generated code.
 /// @return Ordered list of required components (with dependencies resolved).
 ///         Base is always included first.

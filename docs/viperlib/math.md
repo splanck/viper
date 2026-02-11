@@ -6,16 +6,18 @@
 
 ## Contents
 
-- [Viper.Bits](#viperbits)
+- [Viper.Math.Bits](#vipermathbits)
 - [Viper.Math](#vipermath)
-- [Viper.Quaternion](#viperquaternion)
-- [Viper.Random](#viperrandom)
-- [Viper.Vec2](#vipervec2)
-- [Viper.Vec3](#vipervec3)
+- [Viper.Math.Easing](#vipermatheasing)
+- [Viper.Math.Quaternion](#vipermathquaternion)
+- [Viper.Math.Random](#vipermathrandom)
+- [Viper.Math.Spline](#vipermathspline)
+- [Viper.Math.Vec2](#vipermathvec2)
+- [Viper.Math.Vec3](#vipermathvec3)
 
 ---
 
-## Viper.Bits
+## Viper.Math.Bits
 
 Bit manipulation utilities for working with 64-bit integers at the bit level.
 
@@ -79,7 +81,7 @@ Set/Clear/Toggle) or false (for Get).
 module BitsDemo;
 
 bind Viper.Terminal;
-bind Viper.Bits as Bits;
+bind Viper.Math.Bits as Bits;
 bind Viper.Fmt as Fmt;
 
 func start() {
@@ -98,31 +100,31 @@ func start() {
 ' Basic bitwise operations
 DIM a AS INTEGER = &HFF
 DIM b AS INTEGER = &H0F
-PRINT Viper.Bits.And(a, b)  ' 15 (&H0F)
-PRINT Viper.Bits.Or(a, b)   ' 255 (&HFF)
-PRINT Viper.Bits.Xor(a, b)  ' 240 (&HF0)
+PRINT Viper.Math.Bits.And(a, b)  ' 15 (&H0F)
+PRINT Viper.Math.Bits.Or(a, b)   ' 255 (&HFF)
+PRINT Viper.Math.Bits.Xor(a, b)  ' 240 (&HF0)
 
 ' Shift operations
 DIM val AS INTEGER = 1
-PRINT Viper.Bits.Shl(val, 4)   ' 16
-PRINT Viper.Bits.Shr(16, 2)    ' 4
+PRINT Viper.Math.Bits.Shl(val, 4)   ' 16
+PRINT Viper.Math.Bits.Shr(16, 2)    ' 4
 
 ' Count set bits
 DIM mask AS INTEGER = &HFF
-PRINT Viper.Bits.Count(mask)   ' 8
+PRINT Viper.Math.Bits.Count(mask)   ' 8
 
 ' Work with individual bits
 DIM flags AS INTEGER = 0
-flags = Viper.Bits.Set(flags, 0)    ' Set bit 0
-flags = Viper.Bits.Set(flags, 3)    ' Set bit 3
-PRINT Viper.Bits.Get(flags, 0)      ' True
-PRINT Viper.Bits.Get(flags, 1)      ' False
-flags = Viper.Bits.Toggle(flags, 3) ' Toggle bit 3 off
+flags = Viper.Math.Bits.Set(flags, 0)    ' Set bit 0
+flags = Viper.Math.Bits.Set(flags, 3)    ' Set bit 3
+PRINT Viper.Math.Bits.Get(flags, 0)      ' True
+PRINT Viper.Math.Bits.Get(flags, 1)      ' False
+flags = Viper.Math.Bits.Toggle(flags, 3) ' Toggle bit 3 off
 PRINT flags                          ' 1
 
 ' Endian conversion
 DIM big AS INTEGER = &H0102030405060708
-DIM little AS INTEGER = Viper.Bits.Swap(big)
+DIM little AS INTEGER = Viper.Math.Bits.Swap(big)
 ' little = &H0807060504030201
 ```
 
@@ -280,11 +282,13 @@ PRINT Viper.Math.Hypot(3, 4)             ' Output: 5.0
 
 ---
 
-## Viper.Random
+## Viper.Math.Random
 
 Random number generation with uniform and distribution-based functions.
 
 **Type:** Static utility class
+
+**Constructor:** `Viper.Math.Random.New(seed)` - Create a seeded random generator instance
 
 ### Core Methods
 
@@ -311,7 +315,7 @@ Random number generation with uniform and distribution-based functions.
 module RandomDemo;
 
 bind Viper.Terminal;
-bind Viper.Random as Random;
+bind Viper.Math.Random as Random;
 bind Viper.Fmt as Fmt;
 
 func start() {
@@ -325,40 +329,40 @@ func start() {
 
 ```basic
 ' Seed for reproducible sequences
-Viper.Random.Seed(12345)
+Viper.Math.Random.Seed(12345)
 
 ' Random float between 0 and 1
 DIM r AS DOUBLE
-r = Viper.Random.Next()
+r = Viper.Math.Random.Next()
 PRINT r  ' Output: 0.123... (varies)
 
 ' Random integer 0-99
 DIM n AS INTEGER
-n = Viper.Random.NextInt(100)
+n = Viper.Math.Random.NextInt(100)
 PRINT n  ' Output: 0-99 (varies)
 
 ' Random integer in range [1, 10] inclusive
 DIM x AS INTEGER
-x = Viper.Random.Range(1, 10)
+x = Viper.Math.Random.Range(1, 10)
 PRINT x  ' Output: 1-10 (varies)
 
 ' Simulate dice roll (1-6)
 DIM die AS INTEGER
-die = Viper.Random.Dice(6)
+die = Viper.Math.Random.Dice(6)
 PRINT "You rolled: "; die
 
 ' Gaussian distribution (bell curve) with mean=100, stddev=15
 DIM iq AS DOUBLE
-iq = Viper.Random.Gaussian(100.0, 15.0)
+iq = Viper.Math.Random.Gaussian(100.0, 15.0)
 PRINT "IQ Score: "; INT(iq)
 
 ' Exponential distribution (for waiting times, etc.)
 DIM waitTime AS DOUBLE
-waitTime = Viper.Random.Exponential(0.5)  ' mean = 2.0
+waitTime = Viper.Math.Random.Exponential(0.5)  ' mean = 2.0
 PRINT "Wait: "; waitTime
 
 ' 70% chance of success
-IF Viper.Random.Chance(0.7) = 1 THEN
+IF Viper.Math.Random.Chance(0.7) = 1 THEN
     PRINT "Success!"
 ELSE
     PRINT "Failed."
@@ -368,9 +372,9 @@ END IF
 DIM seq AS Viper.Collections.Seq
 seq = Viper.Collections.Seq.New()
 FOR i = 1 TO 5
-    seq.Push(Viper.Box.I64(i))
+    seq.Push(Viper.Core.Box.I64(i))
 NEXT i
-Viper.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
+Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 ```
 
 ### Notes
@@ -384,12 +388,12 @@ Viper.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 
 ---
 
-## Viper.Vec2
+## Viper.Math.Vec2
 
 2D vector math for positions, directions, velocities, and physics calculations.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Vec2.New(x, y)` or `Viper.Vec2.Zero()` or `Viper.Vec2.One()`
+**Constructor:** `Viper.Math.Vec2.New(x, y)` or `Viper.Math.Vec2.Zero()` or `Viper.Math.Vec2.One()`
 
 ### Static Constructors
 
@@ -439,7 +443,7 @@ Viper.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 module Vec2Demo;
 
 bind Viper.Terminal;
-bind Viper.Vec2 as V2;
+bind Viper.Math.Vec2 as V2;
 bind Viper.Fmt as Fmt;
 
 func start() {
@@ -459,15 +463,15 @@ func start() {
 
 ```basic
 ' Create vectors
-DIM pos AS OBJECT = Viper.Vec2.New(100.0, 200.0)
-DIM vel AS OBJECT = Viper.Vec2.New(5.0, -3.0)
+DIM pos AS OBJECT = Viper.Math.Vec2.New(100.0, 200.0)
+DIM vel AS OBJECT = Viper.Math.Vec2.New(5.0, -3.0)
 
 ' Move position by velocity
 pos = pos.Add(vel)
 PRINT "Position: ("; pos.X; ", "; pos.Y; ")"
 
 ' Calculate distance
-DIM target AS OBJECT = Viper.Vec2.New(150.0, 180.0)
+DIM target AS OBJECT = Viper.Math.Vec2.New(150.0, 180.0)
 DIM dist AS DOUBLE = pos.Dist(target)
 PRINT "Distance to target: "; dist
 
@@ -477,19 +481,19 @@ PRINT "Direction: ("; dir.X; ", "; dir.Y; ")"
 PRINT "Direction length: "; dir.Len()  ' Should be 1.0
 
 ' Rotate a vector 90 degrees
-DIM right AS OBJECT = Viper.Vec2.New(1.0, 0.0)
+DIM right AS OBJECT = Viper.Math.Vec2.New(1.0, 0.0)
 DIM up AS OBJECT = right.Rotate(3.14159265 / 2.0)
 PRINT "Rotated: ("; up.X; ", "; up.Y; ")"  ' (0, 1)
 
 ' Linear interpolation for smooth movement
-DIM start AS OBJECT = Viper.Vec2.Zero()
-DIM endpoint AS OBJECT = Viper.Vec2.New(100.0, 100.0)
+DIM start AS OBJECT = Viper.Math.Vec2.Zero()
+DIM endpoint AS OBJECT = Viper.Math.Vec2.New(100.0, 100.0)
 DIM midpoint AS OBJECT = start.Lerp(endpoint, 0.5)
 PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ")"  ' (50, 50)
 
 ' Dot product to check perpendicularity
-DIM a AS OBJECT = Viper.Vec2.New(1.0, 0.0)
-DIM b AS OBJECT = Viper.Vec2.New(0.0, 1.0)
+DIM a AS OBJECT = Viper.Math.Vec2.New(1.0, 0.0)
+DIM b AS OBJECT = Viper.Math.Vec2.New(0.0, 1.0)
 IF a.Dot(b) = 0.0 THEN
     PRINT "Vectors are perpendicular"
 END IF
@@ -497,12 +501,12 @@ END IF
 
 ---
 
-## Viper.Vec3
+## Viper.Math.Vec3
 
 3D vector math for positions, directions, velocities, and physics calculations in 3D space.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Vec3.New(x, y, z)` or `Viper.Vec3.Zero()` or `Viper.Vec3.One()`
+**Constructor:** `Viper.Math.Vec3.New(x, y, z)` or `Viper.Math.Vec3.Zero()` or `Viper.Math.Vec3.One()`
 
 ### Static Constructors
 
@@ -551,7 +555,7 @@ END IF
 module Vec3Demo;
 
 bind Viper.Terminal;
-bind Viper.Vec3 as V3;
+bind Viper.Math.Vec3 as V3;
 bind Viper.Fmt as Fmt;
 
 func start() {
@@ -572,15 +576,15 @@ func start() {
 
 ```basic
 ' Create 3D vectors
-DIM pos AS OBJECT = Viper.Vec3.New(100.0, 200.0, 50.0)
-DIM vel AS OBJECT = Viper.Vec3.New(5.0, -3.0, 2.0)
+DIM pos AS OBJECT = Viper.Math.Vec3.New(100.0, 200.0, 50.0)
+DIM vel AS OBJECT = Viper.Math.Vec3.New(5.0, -3.0, 2.0)
 
 ' Move position by velocity
 pos = pos.Add(vel)
 PRINT "Position: ("; pos.X; ", "; pos.Y; ", "; pos.Z; ")"
 
 ' Calculate distance in 3D
-DIM target AS OBJECT = Viper.Vec3.New(150.0, 180.0, 60.0)
+DIM target AS OBJECT = Viper.Math.Vec3.New(150.0, 180.0, 60.0)
 DIM dist AS DOUBLE = pos.Dist(target)
 PRINT "Distance to target: "; dist
 
@@ -589,8 +593,8 @@ DIM dir AS OBJECT = vel.Norm()
 PRINT "Direction length: "; dir.Len()  ' Should be 1.0
 
 ' Cross product for surface normals
-DIM edge1 AS OBJECT = Viper.Vec3.New(1.0, 0.0, 0.0)
-DIM edge2 AS OBJECT = Viper.Vec3.New(0.0, 1.0, 0.0)
+DIM edge1 AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
+DIM edge2 AS OBJECT = Viper.Math.Vec3.New(0.0, 1.0, 0.0)
 DIM normal AS OBJECT = edge1.Cross(edge2)
 PRINT "Normal: ("; normal.X; ", "; normal.Y; ", "; normal.Z; ")"  ' (0, 0, 1)
 
@@ -599,21 +603,23 @@ PRINT "Dot with edge1: "; normal.Dot(edge1)  ' 0
 PRINT "Dot with edge2: "; normal.Dot(edge2)  ' 0
 
 ' Linear interpolation for smooth 3D movement
-DIM start AS OBJECT = Viper.Vec3.Zero()
-DIM endpoint AS OBJECT = Viper.Vec3.New(100.0, 100.0, 100.0)
+DIM start AS OBJECT = Viper.Math.Vec3.Zero()
+DIM endpoint AS OBJECT = Viper.Math.Vec3.New(100.0, 100.0, 100.0)
 DIM midpoint AS OBJECT = start.Lerp(endpoint, 0.5)
 PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50, 50, 50)
 ```
 
 ---
 
-## Viper.Quaternion
+## Viper.Math.Quaternion
+
+> **Note:** Quaternion is not yet registered in `runtime.def`. The API below is planned but may not yet be available.
 
 Quaternion math for 3D rotations, avoiding gimbal lock. Quaternions represent orientations in 3D space and support
 smooth interpolation via SLERP.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Quaternion.New(w, x, y, z)` or `Viper.Quaternion.Identity()`
+**Constructor:** `Viper.Math.Quaternion.New(w, x, y, z)` or `Viper.Math.Quaternion.Identity()`
 
 ### Static Constructors
 
@@ -660,20 +666,136 @@ smooth interpolation via SLERP.
 
 ```basic
 ' Create quaternion from axis-angle (90 degrees around Y axis)
-DIM q AS OBJECT = Viper.Quaternion.FromAxisAngle(0.0, 1.0, 0.0, Viper.Math.Rad(90.0))
+DIM q AS OBJECT = Viper.Math.Quaternion.FromAxisAngle(0.0, 1.0, 0.0, Viper.Math.Rad(90.0))
 
 ' Rotate a vector
-DIM v AS OBJECT = Viper.Vec3.New(1.0, 0.0, 0.0)
+DIM v AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
 DIM rotated AS OBJECT = q.RotateVec3(v)
 PRINT "Rotated: ("; rotated.X; ", "; rotated.Y; ", "; rotated.Z; ")"
 ' Approximately (0, 0, -1) for 90-degree Y rotation
 
 ' Compose rotations
-DIM q2 AS OBJECT = Viper.Quaternion.FromAxisAngle(1.0, 0.0, 0.0, Viper.Math.Rad(45.0))
+DIM q2 AS OBJECT = Viper.Math.Quaternion.FromAxisAngle(1.0, 0.0, 0.0, Viper.Math.Rad(45.0))
 DIM combined AS OBJECT = q.Mul(q2)
 
 ' Smooth interpolation between orientations
-DIM halfway AS OBJECT = Viper.Quaternion.Identity().Slerp(q, 0.5)
+DIM halfway AS OBJECT = Viper.Math.Quaternion.Identity().Slerp(q, 0.5)
+```
+
+---
+
+## Viper.Math.Easing
+
+Standard easing functions for smooth animation and interpolation. Each function takes a normalized time value `t` in
+[0.0, 1.0] and returns a transformed value.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method           | Signature    | Description                                  |
+|------------------|-------------|----------------------------------------------|
+| `Linear(t)`      | `Double(Double)` | Linear (no easing)                       |
+| `InQuad(t)`      | `Double(Double)` | Quadratic ease in (accelerate)           |
+| `OutQuad(t)`     | `Double(Double)` | Quadratic ease out (decelerate)          |
+| `InOutQuad(t)`   | `Double(Double)` | Quadratic ease in-out                    |
+| `InCubic(t)`     | `Double(Double)` | Cubic ease in                            |
+| `OutCubic(t)`    | `Double(Double)` | Cubic ease out                           |
+| `InOutCubic(t)`  | `Double(Double)` | Cubic ease in-out                        |
+| `InQuart(t)`     | `Double(Double)` | Quartic ease in                          |
+| `OutQuart(t)`    | `Double(Double)` | Quartic ease out                         |
+| `InOutQuart(t)`  | `Double(Double)` | Quartic ease in-out                      |
+| `InSine(t)`      | `Double(Double)` | Sinusoidal ease in                       |
+| `OutSine(t)`     | `Double(Double)` | Sinusoidal ease out                      |
+| `InOutSine(t)`   | `Double(Double)` | Sinusoidal ease in-out                   |
+| `InExpo(t)`      | `Double(Double)` | Exponential ease in                      |
+| `OutExpo(t)`     | `Double(Double)` | Exponential ease out                     |
+| `InOutExpo(t)`   | `Double(Double)` | Exponential ease in-out                  |
+| `InCirc(t)`      | `Double(Double)` | Circular ease in                         |
+| `OutCirc(t)`     | `Double(Double)` | Circular ease out                        |
+| `InOutCirc(t)`   | `Double(Double)` | Circular ease in-out                     |
+| `InBack(t)`      | `Double(Double)` | Back ease in (overshoots start)          |
+| `OutBack(t)`     | `Double(Double)` | Back ease out (overshoots end)           |
+| `InOutBack(t)`   | `Double(Double)` | Back ease in-out                         |
+| `InElastic(t)`   | `Double(Double)` | Elastic ease in (spring-like)            |
+| `OutElastic(t)`  | `Double(Double)` | Elastic ease out                         |
+| `InOutElastic(t)`| `Double(Double)` | Elastic ease in-out                      |
+| `InBounce(t)`    | `Double(Double)` | Bounce ease in                           |
+| `OutBounce(t)`   | `Double(Double)` | Bounce ease out                          |
+| `InOutBounce(t)` | `Double(Double)` | Bounce ease in-out                       |
+
+### BASIC Example
+
+```basic
+' Smooth animation using easing functions
+DIM t AS DOUBLE
+FOR i = 0 TO 10
+    t = i / 10.0
+    DIM eased AS DOUBLE = Viper.Math.Easing.OutCubic(t)
+    PRINT "t="; t; " eased="; eased
+NEXT
+
+' Use with Lerp for smooth movement
+DIM startX AS DOUBLE = 0.0
+DIM endX AS DOUBLE = 100.0
+DIM progress AS DOUBLE = 0.5
+DIM smoothX AS DOUBLE = Viper.Math.Lerp(startX, endX, Viper.Math.Easing.InOutQuad(progress))
+```
+
+---
+
+## Viper.Math.Spline
+
+Curve interpolation for smooth paths. Supports Catmull-Rom, Bezier, and linear splines.
+
+**Type:** Instance (obj)
+
+### Static Constructors
+
+| Method                              | Signature                              | Description                                         |
+|-------------------------------------|----------------------------------------|-----------------------------------------------------|
+| `CatmullRom(points)`               | `Spline(Seq)`                          | Create Catmull-Rom spline from a sequence of Vec2   |
+| `Bezier(p0, p1, p2, p3)`           | `Spline(Vec2, Vec2, Vec2, Vec2)`       | Create cubic Bezier curve from 4 control points     |
+| `Linear(points)`                    | `Spline(Seq)`                          | Create linear interpolation between points          |
+
+### Properties
+
+| Property     | Type    | Description                     |
+|--------------|---------|---------------------------------|
+| `PointCount` | Integer | Number of control points        |
+
+### Methods
+
+| Method                           | Signature                        | Description                                              |
+|----------------------------------|----------------------------------|----------------------------------------------------------|
+| `Eval(t)`                        | `Vec2(Double)`                   | Evaluate position at parameter t (0.0 to 1.0)           |
+| `Tangent(t)`                     | `Vec2(Double)`                   | Evaluate tangent vector at parameter t                   |
+| `PointAt(index)`                 | `Vec2(Integer)`                  | Get control point at index                               |
+| `ArcLength(t0, t1, segments)`    | `Double(Double, Double, Integer)`| Approximate arc length between t0 and t1                 |
+| `Sample(count)`                  | `Seq(Integer)`                   | Sample count evenly-spaced points along the spline       |
+
+### BASIC Example
+
+```basic
+' Create a Catmull-Rom spline
+DIM points AS OBJECT = NEW Viper.Collections.Seq()
+points.Push(Viper.Math.Vec2.New(0.0, 0.0))
+points.Push(Viper.Math.Vec2.New(50.0, 100.0))
+points.Push(Viper.Math.Vec2.New(100.0, 50.0))
+points.Push(Viper.Math.Vec2.New(150.0, 100.0))
+
+DIM spline AS OBJECT = Viper.Math.Spline.CatmullRom(points)
+
+' Sample points along the spline
+DIM samples AS OBJECT = spline.Sample(20)
+FOR i = 0 TO samples.Len - 1
+    DIM p AS OBJECT = samples.Get(i)
+    PRINT "x="; p.X; " y="; p.Y
+NEXT
+
+' Evaluate at specific parameter
+DIM midpoint AS OBJECT = spline.Eval(0.5)
+PRINT "Mid: ("; midpoint.X; ", "; midpoint.Y; ")"
 ```
 
 ---

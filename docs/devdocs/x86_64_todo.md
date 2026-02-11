@@ -159,10 +159,10 @@ constexpr PhysReg kWin64CalleeSaved[] = {RBX, RBP, RDI, RSI, R12, R13, R14, R15}
 
 | File | Changes Required |
 |------|-----------------|
-| `src/codegen/x86_64/TargetInfo.hpp` | Add platform detection, ABI enum |
+| `src/codegen/x86_64/TargetX64.hpp` | Add platform detection, ABI enum |
 | `src/codegen/x86_64/CallLowering.cpp` | Dual ABI register sequences |
-| `src/codegen/x86_64/FrameBuilder.cpp` | Shadow space, no red zone on Windows |
-| `src/codegen/x86_64/RegAlloc.cpp` | Platform-specific callee-saved sets |
+| `src/codegen/x86_64/FrameLowering.cpp` | Shadow space, no red zone on Windows |
+| `src/codegen/x86_64/RegAllocLinear.cpp` | Platform-specific callee-saved sets |
 | `src/codegen/x86_64/AsmEmitter.cpp` | ABI-aware prologue/epilogue |
 
 ---
@@ -266,7 +266,7 @@ The backend currently invokes `cc` which doesn't exist on Windows:
 
 ### 5.3 Build System Integration
 
-Modify toolchain invocation in `cmd_codegen_x86_64.cpp`:
+Modify toolchain invocation in `cmd_codegen_x64.cpp`:
 ```cpp
 std::string getSystemCompiler() {
 #ifdef _WIN32
@@ -370,7 +370,7 @@ Final validation - compile and run each demo:
 
 ## References
 
-- ARM64 backend (reference implementation): `src/codegen/arm64/`
+- ARM64 backend (reference implementation): `src/codegen/aarch64/`
 - IL specification: `docs/il-guide.md`
 - Windows x64 ABI: Microsoft docs
 - SysV AMD64 ABI: System V Application Binary Interface

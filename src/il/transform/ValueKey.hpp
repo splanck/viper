@@ -5,10 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Internal helpers for computing expression identity keys used by EarlyCSE and
-// GVN.  The helpers normalise commutative operands, provide stable hashing for
-// Value operands, and gate which opcodes are considered safe for CSE (pure,
-// non-trapping, no memory effects).
+// File: il/transform/ValueKey.hpp
+// Purpose: Internal helpers for computing expression identity keys used by
+//          EarlyCSE and GVN. Normalises commutative operands, provides stable
+//          hashing for Value operands, and gates which opcodes are safe for
+//          CSE (pure, non-trapping, no memory effects).
+// Key invariants:
+//   - Commutative operands are sorted to produce canonical keys.
+//   - Only pure, non-trapping, non-memory opcodes pass isSafeCSEOpcode().
+// Ownership/Lifetime: ValueKey is a value type owning a vector of operands.
+//          Hash and equality functors are stateless.
+// Links: il/core/Instr.hpp, il/core/OpcodeInfo.hpp, il/core/Value.hpp
 //
 //===----------------------------------------------------------------------===//
 

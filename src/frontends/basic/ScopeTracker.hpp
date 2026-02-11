@@ -5,12 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief BASIC-frontend alias for the shared scope tracker.
-/// @details This header preserves a legacy include path by re-exporting the
-///          common `ScopeTracker` used across frontends. New code should include
-///          `frontends/common/ScopeTracker.hpp` directly to make dependencies
-///          explicit and reduce alias indirection.
+// File: frontends/basic/ScopeTracker.hpp
+// Purpose: Backward-compatible alias re-exporting the shared ScopeTracker.
+//          New code should include frontends/common/ScopeTracker.hpp directly.
+// Key invariants: Delegates entirely to common::ScopeTracker; adds no new state.
+// Ownership/Lifetime: Header-only alias; no owned resources.
+// Links: frontends/common/ScopeTracker.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once

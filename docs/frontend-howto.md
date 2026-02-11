@@ -54,7 +54,7 @@ Viper is a compiler infrastructure with multiple components:
 | **VM**       | Bytecode interpreter for rapid development and testing     |
 | **Runtime**  | C-based runtime library (strings, arrays, I/O, GC)         |
 | **Verifier** | Static analysis and type checking for IL                   |
-| **Codegen**  | Native code generation (x86-64, future)                    |
+| **Codegen**  | Native code generation (x86-64 and AArch64)                |
 
 **Compilation flow:**
 
@@ -505,7 +505,7 @@ This IL can be:
 
 - **Verified**: `il-verify output.il` checks for structural correctness
 - **Executed**: `viper -run output.il` runs it in the VM
-- **Compiled**: (future) x86-64 codegen
+- **Compiled**: `viper codegen x64 -S output.il` compiles to native x86-64
 
 ### Key Takeaways
 

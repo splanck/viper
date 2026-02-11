@@ -135,7 +135,7 @@ Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/zia/frogger/` (16 modul
 |----------|--------|-------|
 | A. Zia Reference | `/docs/zia-reference.md` | Reformatted |
 | B. BASIC Reference | `/docs/basic-reference.md` | Reformatted |
-| C. Pascal Reference | `/docs/pascal-reference.md` | Reformatted |
+| C. Pascal Reference | `/docs/pascal-reference.md` | Planned (not yet written) |
 | D. Runtime Library | `/docs/viperlib/*.md` | Consolidated |
 | E. Error Messages | `/docs/devdocs/specs/errors.md` | Expanded with solutions |
 | F. Glossary | New | Terms from all chapters |

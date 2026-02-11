@@ -7,10 +7,13 @@
 //
 // File: codegen/aarch64/LoweringContext.hpp
 // Purpose: Shared state and helpers for IL->MIR lowering on AArch64.
-//
-// This header defines the LoweringContext struct which encapsulates all the
-// mutable state needed during instruction lowering, avoiding long parameter
-// lists and enabling cleaner extraction of opcode handlers.
+// Key invariants: Context references are valid for the duration of a single
+//                 function lowering invocation; maps are populated
+//                 incrementally as instructions are lowered; cross-block temps
+//                 are spilled to frame slots before successor blocks.
+// Ownership/Lifetime: LoweringContext holds references to externally-owned
+//                     state; it does not manage lifetimes of maps or builders.
+// Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,46 +38,48 @@ namespace viper::codegen::aarch64
 /// maps tracking temp-to-vreg mappings, phi spill slots, and cross-block temps.
 struct LoweringContext
 {
-    // Target information
+    /// @brief ABI and register information for the AArch64 target.
     const TargetInfo &ti;
 
-    // Frame builder for stack allocation
+    /// @brief Frame builder for stack slot allocation and layout.
     FrameBuilder &fb;
 
-    // Output MIR function
+    /// @brief Output MIR function being constructed during lowering.
     MFunction &mf;
 
-    // Current vreg ID counter
+    /// @brief Monotonically increasing counter for minting virtual register IDs.
     uint16_t &nextVRegId;
 
-    // Temp ID -> vreg ID mapping (function-wide)
+    /// @brief Maps IL temp IDs to allocated virtual register IDs (function-wide).
     std::unordered_map<unsigned, uint16_t> &tempVReg;
 
-    // Temp ID -> register class (GPR or FPR)
+    /// @brief Maps IL temp IDs to their register class (GPR or FPR).
     std::unordered_map<unsigned, RegClass> &tempRegClass;
 
-    // Block label -> vreg IDs for phi parameters
+    /// @brief Maps block labels to the vreg IDs assigned to their phi parameters.
     std::unordered_map<std::string, std::vector<uint16_t>> &phiVregId;
 
-    // Block label -> register classes for phi parameters
+    /// @brief Maps block labels to the register classes of their phi parameters.
     std::unordered_map<std::string, std::vector<RegClass>> &phiRegClass;
 
-    // Block label -> spill offsets for phi parameters
+    /// @brief Maps block labels to spill slot offsets for their phi parameters.
     std::unordered_map<std::string, std::vector<int>> &phiSpillOffset;
 
-    // Cross-block temps: temp ID -> spill offset
+    /// @brief Maps cross-block temp IDs to their allocated spill slot offsets.
     std::unordered_map<unsigned, int> &crossBlockSpillOffset;
 
-    // Temp ID -> defining block index
+    /// @brief Maps temp IDs to the index of the basic block that defines them.
     std::unordered_map<unsigned, std::size_t> &tempDefBlock;
 
-    // Set of temps that are used across block boundaries
+    /// @brief Set of temp IDs whose values are live across block boundaries.
     std::unordered_set<unsigned> &crossBlockTemps;
 
-    // Trap label counter for unique labels
+    /// @brief Counter used to generate unique trap label names.
     unsigned &trapLabelCounter;
 
-    /// @brief Get MIR block by index
+    /// @brief Retrieve the MIR basic block at the given index.
+    /// @param idx Zero-based index into the function's block list.
+    /// @return Reference to the corresponding MBasicBlock.
     MBasicBlock &bbOut(std::size_t idx)
     {
         return mf.blocks[idx];
@@ -82,7 +87,9 @@ struct LoweringContext
 };
 
 /// @brief Find the index of a parameter in a basic block by temp ID.
-/// @returns Parameter index (0-based) or -1 if not found.
+/// @param bb     The basic block whose parameter list is searched.
+/// @param tempId The IL temp ID to locate.
+/// @return Parameter index (0-based) or -1 if not found.
 inline int indexOfParam(const il::core::BasicBlock &bb, unsigned tempId)
 {
     for (size_t i = 0; i < bb.params.size(); ++i)
@@ -92,7 +99,9 @@ inline int indexOfParam(const il::core::BasicBlock &bb, unsigned tempId)
 }
 
 /// @brief Find the producing instruction for a temp ID in a function.
-/// @returns Pointer to the instruction, or nullptr if not found.
+/// @param fn     The IL function to search across all basic blocks.
+/// @param tempId The IL temp ID whose defining instruction is sought.
+/// @return Pointer to the instruction, or nullptr if not found.
 inline const il::core::Instr *findProducerInFunction(const il::core::Function &fn, unsigned tempId)
 {
     for (const auto &bb : fn.blocks)
@@ -107,6 +116,8 @@ inline const il::core::Instr *findProducerInFunction(const il::core::Function &f
 }
 
 /// @brief Check if a basic block contains side-effecting instructions.
+/// @param bb The basic block to inspect for stores, calls, or traps.
+/// @return True if any instruction in the block has observable side effects.
 inline bool hasSideEffects(const il::core::BasicBlock &bb)
 {
     for (const auto &ins : bb.instructions)
@@ -126,11 +137,15 @@ inline bool hasSideEffects(const il::core::BasicBlock &bb)
 }
 
 /// @brief Helper describing a lowered call sequence.
+/// @details Splits the MIR for a call into three phases: prefix instructions
+///          that materialise and marshal arguments into ABI registers/stack
+///          slots, the actual BL instruction, and postfix instructions that
+///          perform any required clean-up (e.g. restoring the stack pointer).
 struct LoweredCall
 {
-    std::vector<MInstr> prefix;  // arg materialization and marshalling
-    MInstr call;                 // Bl callee
-    std::vector<MInstr> postfix; // any clean-up (e.g., stack restore)
+    std::vector<MInstr> prefix;  ///< Argument materialisation and marshalling instructions.
+    MInstr call;                 ///< The BL (branch-with-link) callee instruction.
+    std::vector<MInstr> postfix; ///< Post-call clean-up (e.g. stack restore).
 };
 
 } // namespace viper::codegen::aarch64

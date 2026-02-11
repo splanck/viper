@@ -5,13 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief Declares the block-merging entry point used by SimplifyCFG.
-/// @details Provides the public helper that merges blocks with a single
-///          predecessor into that predecessor after substituting branch
-///          arguments for block parameters. The transformation reduces block
-///          count while preserving terminator semantics, parameter alignment,
-///          and EH-sensitive constraints enforced by the pass context.
+// File: il/transform/SimplifyCFG/BlockMerging.hpp
+// Purpose: Block-merging sub-transformation for SimplifyCFG. Merges blocks
+//          with a single predecessor into that predecessor after substituting
+//          branch arguments for block parameters. Reduces block count while
+//          preserving terminator semantics, parameter alignment, and
+//          EH-sensitive constraints.
+// Key invariants:
+//   - Merge only occurs when the predecessor branches unconditionally.
+//   - EH-sensitive blocks are never merged.
+// Ownership/Lifetime: Stateless free function operating on caller-owned IR
+//          via the SimplifyCFGPassContext reference.
+// Links: il/transform/SimplifyCFG.hpp
 //
 //===----------------------------------------------------------------------===//
 

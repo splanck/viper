@@ -243,8 +243,8 @@ function, block, and source location information.
 
 `src/codegen/` contains native backends for x86-64 and ARM64:
 
-- **x86-64** (`src/codegen/x86_64/`) — Implemented Phase A backend targeting System V AMD64 ABI (linear-scan). Not yet
-  validated on actual x86 hardware; experimental.
+- **x86-64** (`src/codegen/x86_64/`) — Implemented backend targeting System V AMD64 and Windows x64 ABIs (linear-scan).
+  Validated on Windows with full codegen test suite passing.
 - **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Validated
   end‑to‑end on Apple Silicon by running a full Frogger demo.
 
@@ -406,8 +406,8 @@ The runtime provides a comprehensive C ABI with the following components:
 **Core modules:**
 
 - **I/O**: `rt_io.c` - console printing and line input
-- **Strings**: `rt_string.h`, `rt_string.c`, `rt_string_builder.c`, `rt_string_encode.c`, `rt_string_format.c`,
-  `rt_string_ops.c` - string operations, conversion, formatting
+- **Strings**: `rt_string.h`, `rt_string_ops.c`, `rt_string_builder.c`, `rt_string_encode.c`, `rt_string_format.c` -
+  string operations, conversion, formatting
 - **Memory**: `rt_memory.c`, `rt_heap.h`, `rt_heap.c` - allocation, reference counting, heap management
 - **Arrays**: `rt_array.h`, `rt_array.c` - dynamic arrays with copy-on-resize semantics
 - **Math**: `rt_math.c`, `rt_fp.c` - mathematical functions, floating-point utilities
@@ -415,7 +415,7 @@ The runtime provides a comprehensive C ABI with the following components:
 - **Terminal**: `rt_term.c` - ANSI terminal control (CLS, COLOR, LOCATE, cursor visibility)
 - **Time/Random**: `rt_time.c`, `rt_random.h`, `rt_random.c` - TIMER, RNG with seeding
 - **Errors**: `rt_trap.h`, `rt_trap.c`, `rt_error.h`, `rt_error.c` - trap and error handling
-- **OOP**: `rt_oop.h`, `rt_oop.c`, `rt_oop_vtable.c` - object system (vtables, method dispatch)
+- **OOP**: `rt_oop.h`, `rt_oop_dispatch.c`, `rt_type_registry.c` - object system (vtables, method dispatch)
 - **Numerics**: `rt_numeric.c`, `rt_int_format.c`, `rt_format.c` - deterministic numeric conversions
 
 **Headers**: `rt.hpp` (VM bridge) and individual `.h` files declare the C ABI.
@@ -441,7 +441,7 @@ The runtime provides a comprehensive C ABI with the following components:
 
 #### x86-64 (`viper::codegen::x64`)
 
-Implemented Phase A pipeline (experimental/unvalidated on real x86):
+Implemented pipeline (validated on Windows with full test suite passing):
 
 1. Lower IL to MIR (Machine IR with virtual registers).
 2. Instruction selection and legalization.

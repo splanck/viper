@@ -73,8 +73,9 @@ Viper builds and runs on:
 
 - **macOS** (Apple Silicon and Intel)
 - **Linux** (x86-64)
+- **Windows** (x86-64)
 
-Native code generation targets x86-64 (SysV ABI) and AArch64.
+Native code generation targets x86-64 (System V and Windows x64 ABIs) and AArch64.
 
 ---
 

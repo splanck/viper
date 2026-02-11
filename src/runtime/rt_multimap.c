@@ -44,7 +44,6 @@ typedef struct rt_multimap_impl
     size_t total_count;
 } rt_multimap_impl;
 
-
 static const char *get_key_data(rt_string key, size_t *out_len)
 {
     const char *cstr = rt_string_cstr(key);

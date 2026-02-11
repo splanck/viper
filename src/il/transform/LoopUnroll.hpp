@@ -5,32 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Loop Unrolling optimization pass for IL functions.
-// Loop unrolling reduces loop overhead by replicating the loop body multiple
-// times, decreasing the number of branch instructions and enabling additional
-// optimization opportunities through increased instruction-level parallelism.
-//
-// Unrolling is particularly effective for small loops with known trip counts,
-// where the overhead of iteration (increment, comparison, branch) is significant
-// relative to the loop body work. The pass supports two modes:
-// - Full unrolling: Completely eliminates the loop when trip count is small
-// - Partial unrolling: Replicates the body a fixed number of times, keeping
-//   the loop structure but with fewer iterations
-//
-// Key Responsibilities:
-// - Identify loops suitable for unrolling (simple structure, known trip count)
-// - Determine optimal unroll factor based on loop size and trip count
-// - Replicate loop body with proper SSA value renaming
-// - Update loop-carried values (block parameters) across unrolled iterations
-// - Maintain program semantics through correct control flow updates
-//
-// Design Notes:
-// The pass operates conservatively, only unrolling loops that meet strict
-// criteria: single latch, single exit, no nested loops, and either a known
-// constant trip count or simple induction variable pattern. Full unrolling
-// is limited to small trip counts (configurable threshold) to prevent code
-// size explosion. The implementation properly handles block parameters (SSA
-// phi equivalents) by threading values through unrolled iterations.
+// File: il/transform/LoopUnroll.hpp
+// Purpose: Loop Unrolling function pass -- replicates loop bodies to reduce
+//          iteration overhead. Supports full unrolling (small constant trip
+//          count) and optional partial unrolling. Configurable via
+//          LoopUnrollConfig thresholds.
+// Key invariants:
+//   - Only unrolls single-latch, single-exit loops without nesting.
+//   - Full unrolling limited by fullUnrollThreshold to prevent code bloat.
+//   - Block parameters (SSA phi equivalents) are threaded correctly across
+//     unrolled iterations.
+// Ownership/Lifetime: FunctionPass holding a LoopUnrollConfig by value;
+//          instantiated by the registry.
+// Links: il/transform/PassRegistry.hpp, il/transform/analysis/LoopInfo.hpp
 //
 //===----------------------------------------------------------------------===//
 

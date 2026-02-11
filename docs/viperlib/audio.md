@@ -10,6 +10,7 @@
 - [Viper.Sound.Music](#vipersoundmusic)
 - [Viper.Sound.Voice](#vipersoundvoice)
 - [Viper.Sound.Audio (Static)](#vipersoundaudio-static)
+- [Viper.Sound.Playlist](#vipersoundplaylist)
 
 ---
 
@@ -130,7 +131,6 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 | Property   | Type    | Access | Description                        |
 |------------|---------|--------|------------------------------------|
 | `Volume`   | Integer | R/W    | Playback volume (0-100)            |
-| `Playing`  | Integer | Read   | 1 if currently playing, 0 if not   |
 | `Position` | Integer | Read   | Current position in milliseconds   |
 | `Duration` | Integer | Read   | Total duration in milliseconds     |
 
@@ -142,6 +142,7 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 | `Stop()`       | `Void()`            | Stop playback                            |
 | `Pause()`      | `Void()`            | Pause playback                           |
 | `Resume()`     | `Void()`            | Resume paused playback                   |
+| `IsPlaying()`  | `Integer()`         | Returns 1 if currently playing, 0 if not |
 | `Seek(ms)`     | `Void(Integer)`     | Seek to position in milliseconds         |
 
 ### Zia Example
@@ -204,8 +205,8 @@ IF bgMusic <> NULL THEN
         PRINT "Position: "; bgMusic.Position; " / "; bgMusic.Duration
 
         ' Pause/resume with space bar
-        IF Viper.Input.Keyboard.Pressed(32) THEN
-            IF bgMusic.Playing = 1 THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_SPACE) THEN
+            IF bgMusic.IsPlaying() = 1 THEN
                 bgMusic.Pause()
             ELSE
                 bgMusic.Resume()
@@ -308,6 +309,128 @@ END SUB
 
 ' Cleanup before exit
 Viper.Sound.Audio.Shutdown()
+```
+
+---
+
+## Viper.Sound.Playlist
+
+Music playlist with queue management for sequential track playback.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Sound.Playlist.New()`
+
+### Track Management Methods
+
+| Method              | Signature              | Description                                       |
+|---------------------|------------------------|---------------------------------------------------|
+| `Add(path)`         | `Void(String)`         | Add a music file to the end of the playlist       |
+| `Insert(index, path)` | `Void(Integer, String)` | Insert a music file at a specific position      |
+| `Remove(index)`     | `Void(Integer)`        | Remove a track by index                           |
+| `Clear()`           | `Void()`               | Remove all tracks from the playlist               |
+| `Get(index)`        | `String(Integer)`      | Get the file path of a track at the given index   |
+
+### Playback Control Methods
+
+| Method       | Signature       | Description                                        |
+|--------------|-----------------|----------------------------------------------------|
+| `Play()`     | `Void()`        | Start playing from the beginning or resume         |
+| `Pause()`    | `Void()`        | Pause playback                                     |
+| `Stop()`     | `Void()`        | Stop playback and reset to beginning               |
+| `Next()`     | `Void()`        | Skip to the next track                             |
+| `Prev()`     | `Void()`        | Go back to the previous track                      |
+| `Jump(index)`| `Void(Integer)` | Jump to a specific track by index                  |
+| `Update()`   | `Void()`        | Update playlist state (call each frame for auto-advance) |
+
+### Properties
+
+| Property    | Type    | Access | Description                                         |
+|-------------|---------|--------|-----------------------------------------------------|
+| `Len`       | Integer | Read   | Number of tracks in the playlist                    |
+| `Current`   | Integer | Read   | Current track index (-1 if empty)                   |
+| `IsPlaying` | Boolean | Read   | True if the playlist is currently playing           |
+| `IsPaused`  | Boolean | Read   | True if the playlist is paused                      |
+| `Volume`    | Integer | R/W    | Playback volume (0-100)                             |
+| `Shuffle`   | Boolean | R/W    | Enable/disable shuffle mode                         |
+| `Repeat`    | Integer | R/W    | Repeat mode: 0 = none, 1 = repeat all, 2 = repeat one |
+
+### Zia Example
+
+```zia
+module PlaylistDemo;
+
+bind Viper.Terminal;
+bind Viper.Sound.Audio as Audio;
+bind Viper.Sound.Playlist as Playlist;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Audio.Init();
+    var c = Canvas.New("Playlist", 400, 200);
+
+    var pl = Playlist.New();
+    pl.Add("track1.wav");
+    pl.Add("track2.wav");
+    pl.Add("track3.wav");
+    pl.set_Volume(80);
+    pl.set_Shuffle(0);
+    pl.set_Repeat(1);  // Repeat all
+    pl.Play();
+
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+        pl.Update();
+
+        Say("Track " + Fmt.Int(pl.get_Current()) + " of " + Fmt.Int(pl.get_Len()));
+
+        c.Flip();
+    }
+
+    pl.Stop();
+    Audio.Shutdown();
+}
+```
+
+### Example
+
+```basic
+' Create and populate a playlist
+DIM pl AS OBJECT = Viper.Sound.Playlist.New()
+
+pl.Add("track1.wav")
+pl.Add("track2.wav")
+pl.Add("track3.wav")
+
+' Configure playback
+pl.Volume = 80
+pl.Shuffle = 0
+pl.Repeat = 1  ' Repeat all
+
+' Start playing
+pl.Play()
+
+' In game loop
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    pl.Update()  ' Required for auto-advance
+
+    PRINT "Track "; pl.Current; " of "; pl.Len
+
+    ' Skip to next track
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_RIGHT) THEN
+        pl.Next()
+    END IF
+
+    ' Previous track
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_LEFT) THEN
+        pl.Prev()
+    END IF
+
+    canvas.Flip()
+LOOP
+
+pl.Stop()
 ```
 
 ---

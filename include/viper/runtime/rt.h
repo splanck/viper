@@ -10,6 +10,8 @@
 // Key invariants: Aggregates only public rt_*.h headers in a deterministic order.
 // Ownership/Lifetime: Header-only aggregator; does not own resources.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 
@@ -40,82 +42,73 @@ extern "C"
 {
 #endif
 
-    /// What: Sleep for approximately @p ms milliseconds.
-    /// Why:  Provide a simple timing primitive for BASIC and runtime consumers.
-    /// How:  Uses a monotonic/steady clock where available; clamps negatives to 0.
-    ///
+    /// @brief Sleep for approximately @p ms milliseconds.
+    /// @details Provides a simple timing primitive for BASIC and runtime consumers.
+    ///          Uses a monotonic/steady clock where available; clamps negatives to 0.
     /// @param ms Milliseconds to sleep; negative values are treated as 0.
-    /// @thread-safety Thread-safe; blocks the calling thread only.
+    /// @note Thread-safe; blocks the calling thread only.
     void rt_sleep_ms(int32_t ms);
 
-    /// What: Return monotonic time in milliseconds since an unspecified epoch.
-    /// Why:  Measure elapsed durations without wall-clock adjustments.
-    /// How:  Reads a steady clock; values are non-decreasing.
-    ///
-    /// @return Milliseconds from a monotonic source (non-decreasing). Suitable for diffs.
+    /// @brief Return monotonic time in milliseconds since an unspecified epoch.
+    /// @details Reads a steady clock whose values are non-decreasing, suitable
+    ///          for measuring elapsed durations without wall-clock adjustments.
+    /// @return Milliseconds from a monotonic source (non-decreasing).
     int64_t rt_timer_ms(void);
 
     //=============================================================================
     // Viper.Time.Clock functions
     //=============================================================================
 
-    /// What: Sleep for approximately @p ms milliseconds (i64 interface).
-    /// Why:  Viper.Time.Clock.Sleep entry point.
-    /// How:  Delegates to rt_sleep_ms after clamping to int32 range.
-    ///
+    /// @brief Sleep for approximately @p ms milliseconds (i64 interface).
+    /// @details Viper.Time.Clock.Sleep entry point. Delegates to rt_sleep_ms
+    ///          after clamping to the int32 range.
     /// @param ms Milliseconds to sleep; negative values are treated as 0.
     void rt_clock_sleep(int64_t ms);
 
-    /// What: Return monotonic time in milliseconds since an unspecified epoch.
-    /// Why:  Viper.Time.Clock.Ticks entry point.
-    /// How:  Delegates to rt_timer_ms.
-    ///
+    /// @brief Return monotonic time in milliseconds since an unspecified epoch.
+    /// @details Viper.Time.Clock.Ticks entry point. Delegates to rt_timer_ms.
     /// @return Milliseconds from a monotonic source (non-decreasing).
     int64_t rt_clock_ticks(void);
 
-    /// What: Return monotonic time in microseconds since an unspecified epoch.
-    /// Why:  Viper.Time.Clock.TicksUs entry point for high-precision timing.
-    /// How:  Reads a steady clock at microsecond resolution.
-    ///
+    /// @brief Return monotonic time in microseconds since an unspecified epoch.
+    /// @details Viper.Time.Clock.TicksUs entry point for high-precision timing.
+    ///          Reads a steady clock at microsecond resolution.
     /// @return Microseconds from a monotonic source (non-decreasing).
     int64_t rt_clock_ticks_us(void);
 
     // --- High-level file helpers for Viper.IO.File ---
-    /// What: Return 1 if the file at @p path exists, 0 otherwise.
-    /// Why:  BASIC IO helpers need a fast existence check.
-    /// How:  Converts to host path and calls stat/access.
-    ///
+
+    /// @brief Return 1 if the file at @p path exists, 0 otherwise.
+    /// @details Converts to host path and calls stat/access. Provides a fast
+    ///          existence check for BASIC IO helpers.
     /// @param path Runtime string containing a path (platform encoding).
     /// @return 1 when the file exists; 0 otherwise.
-    /// @errors Silently returns 0 on invalid paths or conversion failures.
+    /// @note Silently returns 0 on invalid paths or conversion failures.
     int64_t rt_io_file_exists(rt_string path);
 
-    /// What: Read entire file contents into a runtime string (empty on error).
-    /// Why:  Convenience for simple file-based programs and tests.
-    /// How:  Opens in binary mode, reads all bytes, and constructs an rt_string.
-    ///
+    /// @brief Read entire file contents into a runtime string (empty on error).
+    /// @details Opens in binary mode, reads all bytes, and constructs an rt_string.
+    ///          Convenience for simple file-based programs and tests.
     /// @param path Runtime string containing a path (platform encoding).
     /// @return New runtime string with file contents; empty string on errors.
-    /// @remarks Intended for text; binary data is preserved but may include NULs.
+    /// @note Intended for text; binary data is preserved but may include NULs.
     rt_string rt_io_file_read_all_text(rt_string path);
 
-    /// What: Write entire @p contents to @p path, truncating or creating the file.
-    /// Why:  Provide a simple, atomic-ish save operation.
-    /// How:  Opens with O_TRUNC|O_CREAT in binary mode, writes fully, retrying on EINTR.
-    ///
+    /// @brief Write entire @p contents to @p path, truncating or creating the file.
+    /// @details Opens with O_TRUNC|O_CREAT in binary mode, writes fully, retrying
+    ///          on EINTR. Provides a simple save operation.
     /// @param path     Target path as a runtime string.
     /// @param contents Text to write verbatim (bytes copied as-is).
-    /// @errors Silently ignores failures; verify via subsequent existence/read.
-    /// @remarks Operation is not atomic across crashes; callers can write to a temp file and
-    /// rename.
+    /// @note Silently ignores failures; verify via subsequent existence/read.
+    ///       Operation is not atomic across crashes; callers can write to a temp
+    ///       file and rename for safety.
     void rt_io_file_write_all_text(rt_string path, rt_string contents);
 
-    /// What: Delete the file at @p path; ignore errors.
-    /// Why:  Allow BASIC programs to clean up temporary files.
-    /// How:  Converts to host path and calls unlink.
-    ///
+    /// @brief Delete the file at @p path; errors are silently ignored.
+    /// @details Converts to host path and calls unlink. Allows BASIC programs
+    ///          to clean up temporary files.
     /// @param path Runtime string path.
-    /// @remarks No error is reported for non-existent paths or permission issues.
+    /// @note No error is reported for non-existent paths or permission issues.
     void rt_io_file_delete(rt_string path);
 
 #ifdef __cplusplus

@@ -1,5 +1,9 @@
 # Dungeon Quest Test - Comprehensive VIPER BASIC Testing
 
+> **Historical snapshot (2025-11-12).** The critical bugs described here (BUG-027/028/029/030) have all been fixed
+> in subsequent sessions. The "modularity crisis" has been resolved -- SUB/FUNCTION can now access module-level
+> variables via `rt_modvar_addr_*`. See `bugs/basic_resolved.md` for current status.
+
 **Date**: 2025-11-12
 **Goal**: Create a 500-800 line text adventure game to comprehensively test VIPER BASIC
 **Result**: Successfully created working 447-line game, discovered 5 new bugs + 1 IL bug

@@ -1,4 +1,57 @@
-// vg_widgets.h - Core widget library
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+///
+/// @file vg_widgets.h
+/// @brief Core widget library -- concrete implementations of standard UI controls.
+///
+/// @details This header declares all of the standard (non-IDE-specific) widget
+///          types provided by the Viper GUI toolkit. Each widget is represented
+///          as a C struct whose first member is a vg_widget_t base, enabling
+///          safe up-casts for generic tree operations.
+///
+///          Widgets included in this file:
+///          - **Label**        -- static or dynamic text display.
+///          - **Button**       -- clickable push button with multiple styles.
+///          - **TextInput**    -- single-line / multi-line text entry.
+///          - **Checkbox**     -- two/tri-state checkbox with label.
+///          - **ScrollView**   -- scrollable viewport with optional scrollbars.
+///          - **ListBox**      -- selectable item list with virtual scrolling.
+///          - **Dropdown**     -- combo-box / drop-down selector.
+///          - **Slider**       -- horizontal / vertical value slider.
+///          - **ProgressBar**  -- determinate / indeterminate progress indicator.
+///          - **RadioButton**  -- mutually exclusive radio buttons in groups.
+///          - **Image**        -- raster image display with scaling modes.
+///          - **Spinner**      -- numeric up/down input with step and range.
+///          - **ColorSwatch**  -- single-color preview square.
+///          - **ColorPalette** -- grid of colour swatches for quick selection.
+///          - **ColorPicker**  -- full RGB(A) picker with sliders and palette.
+///
+///          Every widget follows a common lifecycle pattern: create, configure
+///          via setters, add to a parent, and eventually destroy.
+///
+/// Key invariants:
+///   - Widget create functions return NULL on allocation failure.
+///   - String parameters (text, placeholder) are copied internally.
+///   - Callback user_data pointers are stored but never dereferenced by the
+///     widget; the application owns the pointed-to data.
+///
+/// Ownership/Lifetime:
+///   - Created widgets are owned by their parent once added; destroying the
+///     parent destroys all children.
+///   - Strings passed to setters are copied; the caller may free the original.
+///
+/// Links:
+///   - vg_widget.h      -- base widget structure and tree operations
+///   - vg_layout.h      -- layout containers (VBox, HBox, etc.)
+///   - vg_theme.h       -- theming for consistent appearance
+///   - vg_font.h        -- font handles referenced by widgets
+///   - vg_ide_widgets.h -- IDE-specific widgets (CodeEditor, TreeView, etc.)
+///
+//===----------------------------------------------------------------------===//
 #ifndef VG_WIDGETS_H
 #define VG_WIDGETS_H
 

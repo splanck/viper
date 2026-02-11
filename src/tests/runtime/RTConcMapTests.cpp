@@ -17,8 +17,8 @@
 #include "rt_string.h"
 
 #include <cassert>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <thread>
 #include <vector>
@@ -219,7 +219,8 @@ static void test_concurrent_writes()
     const int N = 100;
     const int T = 4;
 
-    auto worker = [&](int thread_id) {
+    auto worker = [&](int thread_id)
+    {
         char buf[64];
         for (int i = 0; i < N; i++)
         {
@@ -256,7 +257,8 @@ static void test_concurrent_read_write()
     }
 
     /* Readers and writers running concurrently */
-    auto writer = [&]() {
+    auto writer = [&]()
+    {
         for (int i = 50; i < 100; i++)
         {
             char buf[32];
@@ -265,7 +267,8 @@ static void test_concurrent_read_write()
         }
     };
 
-    auto reader = [&]() {
+    auto reader = [&]()
+    {
         for (int i = 0; i < 50; i++)
         {
             char buf[32];
@@ -293,7 +296,8 @@ static void test_concurrent_set_if_missing()
     const int T = 4;
 
     /* All threads try to set the same key — only one should succeed */
-    auto worker = [&](int thread_id) {
+    auto worker = [&](int thread_id)
+    {
         void *val = rt_obj_new_i64(0, 8);
         rt_concmap_set_if_missing(m, rt_const_cstr("shared_key"), val);
     };

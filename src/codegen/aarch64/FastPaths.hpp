@@ -7,6 +7,11 @@
 //
 // File: codegen/aarch64/FastPaths.hpp
 // Purpose: Fast-path pattern matching for common IL patterns.
+// Key invariants: Each fast-path returns a fully-lowered MFunction or nullopt;
+//                 fast-path output must be semantically identical to generic lowering.
+// Ownership/Lifetime: Stateless free function; borrows references for the
+//                     duration of the call and does not retain them.
+// Links: codegen/aarch64/fastpaths/FastPathsInternal.hpp, docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

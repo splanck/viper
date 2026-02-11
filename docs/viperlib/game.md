@@ -21,7 +21,7 @@
 - [Viper.Game.PathFollower](#vipergamepathfollower)
 - [Viper.Game.Quadtree](#vipergamequadtree)
 - [Viper.Game.Physics2D](#vipergamephysics2d)
-- [Viper.Game.SpriteSheet](#vipergamespritesheet)
+- [Viper.Graphics.SpriteSheet](#vipergraphicsspritesheet)
 
 ---
 
@@ -863,9 +863,9 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 | `Rate`       | `Double` (read/write)  | Particles emitted per frame              |
 | `IsEmitting` | `Boolean` (read-only)  | True if currently emitting               |
 | `Count`      | `Integer` (read-only)  | Number of active particles               |
-| `Color`      | `Integer` (write-only) | Particle color (0xAARRGGBB)              |
-| `FadeOut`    | `Boolean` (write-only) | Enable alpha fade over lifetime          |
-| `Shrink`     | `Boolean` (write-only) | Enable size reduction over lifetime      |
+| `Color`      | `Integer` (read/write) | Particle color (0xAARRGGBB)              |
+| `FadeOut`    | `Boolean` (read/write) | Enable alpha fade over lifetime          |
+| `Shrink`     | `Boolean` (read/write) | Enable size reduction over lifetime      |
 
 ### Methods
 
@@ -881,6 +881,7 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 | `Burst(count)`                       | `Void(Integer)`            | Emit burst of particles instantly    |
 | `Update()`                           | `Void()`                   | Update all particles (call per frame)|
 | `Clear()`                            | `Void()`                   | Remove all particles                 |
+| `Get(index, xPtr, yPtr, sizePtr, alphaPtr)` | `Boolean(Int,Ptr,Ptr,Ptr,Ptr)` | Get particle data by index    |
 
 ### Zia Example
 
@@ -965,8 +966,8 @@ Frame-based sprite animation controller for animated characters, effects, and UI
 | `IsFinished`    | `Boolean` (read-only)  | True if one-shot animation completed     |
 | `Progress`      | `Integer` (read-only)  | Completion percentage (0-100)            |
 | `Speed`         | `Double` (read/write)  | Playback speed multiplier (1.0 = normal) |
-| `Loop`          | `Boolean` (write-only) | Enable looping                           |
-| `PingPong`      | `Boolean` (write-only) | Enable ping-pong (forward/backward)      |
+| `Loop`          | `Boolean` (read/write) | Enable looping                           |
+| `PingPong`      | `Boolean` (read/write) | Enable ping-pong (forward/backward)      |
 | `FrameChanged`  | `Boolean` (read-only)  | True if frame changed this update        |
 
 ### Methods
@@ -1652,7 +1653,7 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 
 | Method              | Signature                  | Description                                    |
 |---------------------|----------------------------|------------------------------------------------|
-| `NewWorld(gx, gy)`  | `World(Double, Double)`    | Create world with gravity vector               |
+| `World.New(gx, gy)` | `World(Double, Double)`    | Create world with gravity vector               |
 
 ### World Properties
 
@@ -1673,7 +1674,7 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 
 | Method                        | Signature                          | Description                              |
 |-------------------------------|------------------------------------|------------------------------------------|
-| `NewBody(x, y, w, h, mass)`  | `Body(Dbl,Dbl,Dbl,Dbl,Dbl)`       | Create body at position with size/mass   |
+| `Body.New(x, y, w, h, mass)` | `Body(Dbl,Dbl,Dbl,Dbl,Dbl)`       | Create body at position with size/mass   |
 
 ### Body Properties
 
@@ -1687,8 +1688,10 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 | `VY`          | `Double` (read-only)   | Y velocity                               |
 | `Mass`        | `Double` (read-only)   | Body mass (0 = static)                   |
 | `IsStatic`    | `Boolean` (read-only)  | True if mass is 0 (immovable)            |
-| `Restitution` | `Double` (read/write)  | Bounciness (0-1)                         |
-| `Friction`    | `Double` (read/write)  | Surface friction (0-1)                   |
+| `Restitution`    | `Double` (read/write)  | Bounciness (0-1)                         |
+| `Friction`       | `Double` (read/write)  | Surface friction (0-1)                   |
+| `CollisionLayer` | `Integer` (read/write) | Collision layer bitmask                  |
+| `CollisionMask`  | `Integer` (read/write) | Collision mask bitmask                   |
 
 ### Body Methods
 
@@ -1711,14 +1714,14 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 
 ```basic
 ' Create a physics world with downward gravity
-DIM world AS OBJECT = Viper.Game.Physics2D.NewWorld(0.0, 9.8)
+DIM world AS OBJECT = Viper.Game.Physics2D.World.New(0.0, 9.8)
 
 ' Create a static floor
-DIM floor AS OBJECT = Viper.Game.Physics2D.NewBody(0.0, 500.0, 800.0, 50.0, 0.0)
+DIM floor AS OBJECT = Viper.Game.Physics2D.Body.New(0.0, 500.0, 800.0, 50.0, 0.0)
 world.Add(floor)
 
 ' Create a dynamic ball
-DIM ball AS OBJECT = Viper.Game.Physics2D.NewBody(400.0, 50.0, 20.0, 20.0, 1.0)
+DIM ball AS OBJECT = Viper.Game.Physics2D.Body.New(400.0, 50.0, 20.0, 20.0, 1.0)
 ball.Restitution = 0.8  ' Bouncy
 world.Add(ball)
 
@@ -1739,7 +1742,9 @@ LOOP
 
 ---
 
-## Viper.Game.SpriteSheet
+## Viper.Graphics.SpriteSheet
+
+> **Note:** SpriteSheet is in the `Viper.Graphics` namespace, not `Viper.Game`.
 
 Sprite sheet/atlas for named region extraction from a single texture. Defines named rectangular regions within an atlas image and extracts them as individual `Pixels` buffers.
 
@@ -1784,7 +1789,7 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 DIM atlas AS OBJECT = Viper.Graphics.Pixels.Load("sprites.png")
 
 ' Method 1: Manual region definition
-DIM sheet AS OBJECT = Viper.Game.SpriteSheet.New(atlas)
+DIM sheet AS OBJECT = Viper.Graphics.SpriteSheet.New(atlas)
 sheet.SetRegion("player_idle", 0, 0, 32, 48)
 sheet.SetRegion("player_walk1", 32, 0, 32, 48)
 sheet.SetRegion("player_walk2", 64, 0, 32, 48)
@@ -1800,7 +1805,7 @@ IF sheet.HasRegion("enemy") THEN
 END IF
 
 ' Method 2: Uniform grid layout
-DIM gridSheet AS OBJECT = Viper.Game.SpriteSheet.FromGrid(atlas, 32, 32)
+DIM gridSheet AS OBJECT = Viper.Graphics.SpriteSheet.FromGrid(atlas, 32, 32)
 ' Regions auto-named "0", "1", "2", ... (left-to-right, top-to-bottom)
 DIM frame0 AS OBJECT = gridSheet.GetRegion("0")
 DIM frame1 AS OBJECT = gridSheet.GetRegion("1")

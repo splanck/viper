@@ -71,6 +71,7 @@
 #include "rt_collision.h"
 #include "rt_compiled_pattern.h"
 #include "rt_compress.h"
+#include "rt_concmap.h"
 #include "rt_concqueue.h"
 #include "rt_context.h"
 #include "rt_countdown.h"
@@ -109,11 +110,11 @@
 #include "rt_heap.h"
 #include "rt_html.h"
 #include "rt_ini.h"
-#include "rt_iter.h"
 #include "rt_input.h"
 #include "rt_inputmgr.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_iter.h"
 #include "rt_json.h"
 #include "rt_json_stream.h"
 #include "rt_jsonpath.h"
@@ -136,9 +137,7 @@
 #include "rt_modvar.h"
 #include "rt_msgbus.h"
 #include "rt_multimap.h"
-#include "rt_concmap.h"
 #include "rt_network.h"
-#include "rt_quat.h"
 #include "rt_ns_bridge.h"
 #include "rt_numeric.h"
 #include "rt_numfmt.h"
@@ -162,6 +161,7 @@
 #include "rt_pqueue.h"
 #include "rt_printf_compat.h"
 #include "rt_quadtree.h"
+#include "rt_quat.h"
 #include "rt_queue.h"
 #include "rt_rand.h"
 #include "rt_random.h"
@@ -183,6 +183,7 @@
 #include "rt_smoothvalue.h"
 #include "rt_sortedset.h"
 #include "rt_sparsearray.h"
+#include "rt_spline.h"
 #include "rt_sprite.h"
 #include "rt_spriteanim.h"
 #include "rt_spritebatch.h"
@@ -202,7 +203,6 @@
 #include "rt_timer.h"
 #include "rt_tls.h"
 #include "rt_toml.h"
-#include "rt_spline.h"
 #include "rt_trap.h"
 #include "rt_treemap.h"
 #include "rt_trie.h"
@@ -506,14 +506,15 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   RuntimeTrapClass::None},
 #endif
     // C-symbol rows for functions in runtime.def that lack manual entries.
-    DescriptorRow{"rt_str_split_fields",
-                  RtSig::SplitFields,
-                  data::kRtSigSpecs[static_cast<std::size_t>(RtSig::SplitFields)],
-                  &DirectHandler<&rt_str_split_fields, int64_t, rt_string, rt_string *, int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
+    DescriptorRow{
+        "rt_str_split_fields",
+        RtSig::SplitFields,
+        data::kRtSigSpecs[static_cast<std::size_t>(RtSig::SplitFields)],
+        &DirectHandler<&rt_str_split_fields, int64_t, rt_string, rt_string *, int64_t>::invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
     DescriptorRow{"rt_str_eq",
                   std::nullopt,
                   "bool(string, string)",

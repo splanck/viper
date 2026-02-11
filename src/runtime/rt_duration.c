@@ -289,7 +289,8 @@ rt_string rt_duration_to_iso(int64_t duration)
         {
             if (millis > 0)
             {
-                p += snprintf(p, (size_t)(end - p), "%lld.%03lldS", (long long)seconds, (long long)millis);
+                p += snprintf(
+                    p, (size_t)(end - p), "%lld.%03lldS", (long long)seconds, (long long)millis);
             }
             else
             {

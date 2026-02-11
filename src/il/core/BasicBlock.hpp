@@ -5,32 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the BasicBlock struct, which represents a maximal sequence
-// of IL instructions with a single entry point and a single exit terminator.
-// Basic blocks are the fundamental units of control flow in Viper IL functions.
-//
-// A BasicBlock consists of:
-// - A unique label identifying the block within its function
-// - Optional parameters (phi-node equivalents) for incoming SSA values
-// - A sequence of instructions with the last being a terminator
-// - A terminated flag indicating whether the block is properly closed
-//
-// Basic blocks follow standard compiler control flow graph (CFG) semantics:
-// execution enters at the top, proceeds sequentially through instructions,
-// and exits via a terminator (ret, br, cbr, or switch). Blocks with parameters
-// receive values from predecessor blocks via branch arguments, implementing
-// SSA phi-node semantics without explicit phi instructions.
-//
-// Key Invariants:
-// - Labels must be non-empty and unique within the parent function
-// - Parameter count and types must match incoming branch arguments
-// - If terminated is true, the last instruction must be a terminator opcode
-// - All instructions except the last must be non-terminator opcodes
-//
-// Ownership Model:
-// - Function owns BasicBlocks by value in a std::vector
-// - BasicBlock owns all Instructions and Params by value
-// - Labels are stored as std::string values owned by the block
+// File: il/core/BasicBlock.hpp
+// Purpose: Declares the BasicBlock struct -- a maximal sequence of IL
+//          instructions with a single entry point, optional block parameters
+//          (phi-node equivalents), and a single exit terminator. Basic blocks
+//          are the fundamental units of control flow in Viper IL functions.
+// Key invariants:
+//   - Labels must be non-empty and unique within the parent function.
+//   - Parameter count and types must match incoming branch arguments.
+//   - If terminated is true, the last instruction must be a terminator opcode.
+//   - All instructions except the last must be non-terminator opcodes.
+// Ownership/Lifetime: Function owns BasicBlocks by value in a std::vector.
+//          BasicBlock owns all Instructions and Params by value. Labels are
+//          stored as std::string values owned by the block.
+// Links: docs/il-guide.md#reference, il/core/Instr.hpp, il/core/Param.hpp
 //
 //===----------------------------------------------------------------------===//
 

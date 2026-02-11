@@ -5,31 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Opcode enumeration, which defines all instruction
-// operation codes supported by Viper IL. The opcode determines the semantics
-// of each instruction and drives instruction selection, verification, and
-// execution in the VM and native backends.
-//
-// Opcodes are generated from a canonical definition file (Opcode.def) using
-// X-macro techniques. This ensures that opcode metadata (names, categories,
-// operand counts) remains synchronized across the parser, verifier, serializer,
-// and execution engines.
-//
-// The IL supports opcodes for:
-// - Arithmetic: add, sub, mul, div variants with overflow/trap semantics
-// - Comparisons: integer and floating-point relational operators
-// - Memory: alloca, load, store, gep for stack/heap access
-// - Control flow: br, cbr, ret, switch for CFG construction
-// - Calls: call and call.indirect for function invocation
-// - Type conversions: casts between integer, float, and pointer types
-// - Exception handling: eh.push, eh.pop, trap family for error propagation
-// - Bitwise: and, or, xor, shifts for integer manipulation
-//
-// Design Rationale:
-// - Enumeration-based: Simple switch-based dispatch without virtual calls
-// - X-macro generation: Single source of truth for opcode definitions
-// - Count sentinel: Opcode::Count enables compile-time table sizing
-// - String conversion: toString() provides spec-compliant mnemonics
+// File: il/core/Opcode.hpp
+// Purpose: Declares the Opcode enum class -- all instruction operation codes
+//          supported by Viper IL. Generated from Opcode.def via X-macros,
+//          covering arithmetic, comparisons, memory, control flow, calls,
+//          casts, exception handling, and bitwise operations.
+// Key invariants:
+//   - Opcode::Count is a sentinel past the last valid enumerator.
+//   - toString() returns a spec-compliant lowercase mnemonic for every opcode.
+//   - Opcode values are contiguous starting from 0.
+// Ownership/Lifetime: Enum is a value type with no dynamic resources.
+// Links: docs/il-guide.md#reference, il/core/Opcode.def
 //
 //===----------------------------------------------------------------------===//
 

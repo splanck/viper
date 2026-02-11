@@ -392,7 +392,7 @@ Right now, Viper is built, but your terminal doesn't know where to find it. We n
 
 While still in the viper directory, run:
 ```bash
-export PATH="$PATH:$(pwd)/build/src/tools/zia:$(pwd)/build/src/tools/vbasic:$(pwd)/build/src/tools/vpascal:$(pwd)/build/src/tools/viper"
+export PATH="$PATH:$(pwd)/build/src/tools/zia:$(pwd)/build/src/tools/vbasic:$(pwd)/build/src/tools/viper"
 ```
 
 This adds Viper to your PATH for the current terminal session. If you close the terminal and open a new one, you'll need to run this command again.
@@ -403,12 +403,12 @@ To make this permanent, you need to add the export command to your shell's confi
 
 **On macOS (using zsh, the default on newer Macs):**
 ```bash
-echo 'export PATH="$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/vpascal:$HOME/dev/viper/build/src/tools/viper"' >> ~/.zshrc
+echo 'export PATH="$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/viper"' >> ~/.zshrc
 ```
 
 **On macOS (using bash, on older Macs) or Linux:**
 ```bash
-echo 'export PATH="$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/vpascal:$HOME/dev/viper/build/src/tools/viper"' >> ~/.bashrc
+echo 'export PATH="$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/viper"' >> ~/.bashrc
 ```
 
 Then reload your configuration:

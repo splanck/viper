@@ -26,7 +26,8 @@ int main()
     using namespace il::core;
     Module m;
     il::build::IRBuilder b(m);
-    b.addExtern("rt_str_concat", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+    b.addExtern(
+        "rt_str_concat", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::Str)});
     auto &fn = b.startFunction("main", Type(Type::Kind::Void), {});
     auto &bb = b.addBlock(fn, "entry");
     b.setInsertPoint(bb);

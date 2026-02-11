@@ -43,7 +43,6 @@ typedef struct rt_countmap_impl
     int64_t total; // sum of all counts
 } rt_countmap_impl;
 
-
 static const char *get_str_data(rt_string s, size_t *out_len)
 {
     const char *cstr = rt_string_cstr(s);

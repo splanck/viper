@@ -132,7 +132,9 @@ bool iequals(std::string_view a, std::string_view b)
 {
     if (a.size() != b.size())
         return false;
-    return std::equal(a.begin(), a.end(), b.begin(),
+    return std::equal(a.begin(),
+                      a.end(),
+                      b.begin(),
                       [](char ca, char cb) { return std::tolower(ca) == std::tolower(cb); });
 }
 

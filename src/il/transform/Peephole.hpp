@@ -5,32 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the peephole optimization pass for IL modules. Peephole
-// optimization applies local pattern-based simplifications that replace instruction
-// sequences with more efficient equivalent forms.
-//
-// Peephole optimization identifies small, localized patterns (instructions with
-// specific constant operands or reflexive operands) and replaces them with
-// simpler forms. For example, adding zero to a value can be replaced with the
-// value itself, multiplying by one is an identity operation, and xor-ing a
-// value with itself yields zero. This file defines a table-driven peephole
-// framework with rules matching opcode + operand-pattern pairs.
-//
-// Key Responsibilities:
-// - Match instructions against registered peephole patterns
-// - Verify pattern preconditions (opcode, operand relationship, constant value)
-// - Replace matched instructions with simpler equivalents (operand forwarding
-//   or literal synthesis)
-// - Support algebraic simplifications (identity, annihilation, commutativity)
-// - Maintain SSA form and correct value uses
-//
-// Design Notes:
-// The peephole system is table-driven using a compile-time rule registry (kRules).
-// Each rule specifies a Match pattern (opcode, operand position or equivalence)
-// and a Replace action (forward an operand or synthesize a literal). The pass
-// scans instructions linearly, applies matching rules, and updates uses. This
-// design makes it easy to add new peephole rules without modifying the core pass
-// logic.
+// File: il/transform/Peephole.hpp
+// Purpose: Table-driven peephole optimisation pass -- matches instruction
+//          patterns (constant operand, same-operands) and replaces them with
+//          simpler equivalents (operand forwarding or literal synthesis).
+//          Covers integer/float arithmetic identities, bitwise identities,
+//          reflexive comparisons, and division/remainder simplifications.
+// Key invariants:
+//   - kRules is a compile-time constexpr array; adding rules does not require
+//     modifying the pass engine.
+//   - SSA form and value uses are maintained after replacement.
+// Ownership/Lifetime: Free function operating on a caller-owned Module.
+//          Rule table is static constexpr.
+// Links: il/core/Opcode.hpp, il/core/fwd.hpp
 //
 //===----------------------------------------------------------------------===//
 

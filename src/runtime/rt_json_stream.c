@@ -225,7 +225,8 @@ static int parse_string_content(rt_json_stream_impl *s)
                     /* Handle surrogate pairs */
                     if (cp >= 0xD800 && cp <= 0xDBFF)
                     {
-                        if (s->pos + 1 < s->len && s->input[s->pos] == '\\' && s->input[s->pos + 1] == 'u')
+                        if (s->pos + 1 < s->len && s->input[s->pos] == '\\' &&
+                            s->input[s->pos + 1] == 'u')
                         {
                             s->pos += 2;
                             uint32_t lo = 0;
@@ -308,7 +309,8 @@ static int match_literal(rt_json_stream_impl *s, const char *lit, size_t len)
 
 void *rt_json_stream_new(rt_string json)
 {
-    rt_json_stream_impl *s = (rt_json_stream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_json_stream_impl));
+    rt_json_stream_impl *s =
+        (rt_json_stream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_json_stream_impl));
     if (!s)
     {
         rt_trap("JsonStream: memory allocation failed");
@@ -532,7 +534,8 @@ void rt_json_stream_skip(void *parser)
         while (s->current_type != RT_JSON_TOK_END && s->current_type != RT_JSON_TOK_ERROR)
         {
             rt_json_stream_next(parser);
-            if ((s->current_type == RT_JSON_TOK_OBJECT_END || s->current_type == RT_JSON_TOK_ARRAY_END) &&
+            if ((s->current_type == RT_JSON_TOK_OBJECT_END ||
+                 s->current_type == RT_JSON_TOK_ARRAY_END) &&
                 s->depth == target_depth)
                 return;
         }

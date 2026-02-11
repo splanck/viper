@@ -32,7 +32,6 @@
 | `Width`       | Integer | Canvas width in pixels                             |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
-| `IsFullscreen`| Integer | Non-zero if canvas is in fullscreen mode (read-only) |
 
 ### Methods
 
@@ -50,6 +49,8 @@
 | `KeyHeld(keycode)`                    | `Integer(Integer)`                    | Returns non-zero if the specified key is held down         |
 | `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
 | `TextBg(x, y, text, fg, bg)`          | `Void(Integer, Integer, String, Integer, Integer)` | Draws text with foreground and background colors |
+| `TextWidth(text)`                     | `Integer(String)`                     | Returns the width of rendered text in pixels (8 per char)  |
+| `TextHeight()`                        | `Integer()`                           | Returns the height of rendered text in pixels (always 8)   |
 | `Blit(x, y, pixels)`                  | `Void(Integer, Integer, Pixels)`      | Blits a Pixels buffer to the canvas at (x, y)              |
 | `BlitRegion(dx, dy, pixels, sx, sy, w, h)` | `Void(Integer...)`               | Blits a region of a Pixels buffer to the canvas            |
 | `BlitAlpha(x, y, pixels)`             | `Void(Integer, Integer, Pixels)`      | Blits with alpha blending (respects alpha channel)         |
@@ -69,11 +70,15 @@
 | `PolygonFrame(points, count, color)`  | `Void(Pointer, Integer, Integer)`     | Draws a polygon outline                                    |
 | `GetPixel(x, y)`                      | `Integer(Integer, Integer)`           | Gets pixel color at (x, y)                                 |
 | `CopyRect(x, y, w, h)`                | `Pixels(Integer...)`                  | Copies canvas region to a Pixels buffer                    |
+| `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
 | `SaveBmp(path)`                       | `Integer(String)`                     | Saves canvas to BMP file (returns 1 on success)            |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
 | `ClearClipRect()`                     | `Void()`                              | Clears clipping rectangle; restores full canvas drawing    |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
-| `SetFullscreen(enable)`               | `Void(Integer)`                       | Toggles fullscreen mode (1 = fullscreen, 0 = windowed)     |
+| `Fullscreen()`                        | `Void()`                              | Enters fullscreen mode                                     |
+| `Windowed()`                          | `Void()`                              | Exits fullscreen mode (returns to windowed)                |
+| `GradientH(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a horizontal gradient (left c1 to right c2)          |
+| `GradientV(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a vertical gradient (top c1 to bottom c2)            |
 
 ### Color Format
 
@@ -166,6 +171,10 @@ The canvas includes a built-in 8x8 pixel bitmap font for rendering text:
 - Characters are drawn pixel-by-pixel to the canvas
 - Use `Text` for text with a transparent background
 - Use `TextBg` for text with a solid background (useful for HUDs/overlays)
+- Use `TextWidth(text)` to measure text width in pixels (8 per character)
+- Use `TextHeight()` to get font height in pixels (always 8)
+
+**Note:** `TextWidth` and `TextHeight` are static methods -- they do not require a canvas instance.
 
 ### Blitting Pixels Buffers
 
@@ -235,7 +244,7 @@ canvas.PolygonFrame(points, 3, &H0000FFFF) ' Polygon outline
 
 ### Canvas Utilities
 
-Read pixels, copy regions, and save screenshots:
+Read pixels, copy regions, take screenshots, and draw gradients:
 
 ```basic
 ' Get a pixel color from the canvas
@@ -243,8 +252,12 @@ DIM color AS INTEGER
 color = canvas.GetPixel(100, 100)
 
 ' Copy a rectangular region from canvas to a Pixels buffer
+DIM region AS Viper.Graphics.Pixels
+region = canvas.CopyRect(0, 0, 200, 200)
+
+' Capture the entire canvas to a Pixels buffer
 DIM screenshot AS Viper.Graphics.Pixels
-screenshot = canvas.CopyRect(0, 0, 800, 600)
+screenshot = canvas.Screenshot()
 
 ' Save the entire canvas to a BMP file
 DIM success AS INTEGER
@@ -252,6 +265,10 @@ success = canvas.SaveBmp("screenshot.bmp")
 IF success = 1 THEN
     PRINT "Screenshot saved!"
 END IF
+
+' Draw gradient backgrounds
+canvas.GradientH(0, 0, 800, 600, &H00FF0000, &H000000FF)  ' Red to blue (horizontal)
+canvas.GradientV(0, 0, 800, 600, &H00000000, &H00FFFFFF)  ' Black to white (vertical)
 ```
 
 ### Canvas Clipping
@@ -296,15 +313,18 @@ canvas.SetTitle("My Game - Level 1")
 canvas.SetTitle("My Game - Score: 1000")
 
 ' Toggle fullscreen with F11 key
+DIM isFullscreen AS INTEGER = 0
 DO WHILE canvas.ShouldClose = 0
     canvas.Poll()
 
     ' Toggle fullscreen on F11 press
     IF Viper.Input.Keyboard.Pressed(300) THEN  ' 300 = F11
-        IF canvas.IsFullscreen THEN
-            canvas.SetFullscreen(0)  ' Exit fullscreen
+        IF isFullscreen = 1 THEN
+            canvas.Windowed()      ' Exit fullscreen
+            isFullscreen = 0
         ELSE
-            canvas.SetFullscreen(1)  ' Enter fullscreen
+            canvas.Fullscreen()    ' Enter fullscreen
+            isFullscreen = 1
         END IF
     END IF
 
@@ -322,8 +342,7 @@ LOOP
 **Notes:**
 - Fullscreen mode uses the display's native resolution
 - Window size (Width/Height) remains unchanged; content is scaled
-- `IsFullscreen` property reflects current state (read-only)
-- Calling `SetFullscreen` with current state has no effect
+- Use `Fullscreen()` to enter and `Windowed()` to exit fullscreen mode
 
 ---
 
@@ -335,10 +354,28 @@ Color utility functions for graphics operations.
 
 ### Methods
 
-| Method             | Signature                                     | Description                                                                     |
-|--------------------|-----------------------------------------------|---------------------------------------------------------------------------------|
-| `RGB(r, g, b)`     | `Integer(Integer, Integer, Integer)`          | Creates a color value from red, green, blue components (0-255 each)             |
-| `RGBA(r, g, b, a)` | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
+| Method                   | Signature                                     | Description                                                                     |
+|--------------------------|-----------------------------------------------|---------------------------------------------------------------------------------|
+| `RGB(r, g, b)`           | `Integer(Integer, Integer, Integer)`          | Creates a color value from red, green, blue components (0-255 each)             |
+| `RGBA(r, g, b, a)`       | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
+| `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue (0-360), saturation (0-100), lightness (0-100)         |
+| `FromHex(hex)`           | `Integer(String)`                             | Parses a hex color string (e.g., "#FF0000" or "#FF000080")                      |
+| `ToHex(color)`           | `String(Integer)`                             | Converts a color to hex string (e.g., "#RRGGBB" or "#RRGGBBAA")                |
+| `GetR(color)`            | `Integer(Integer)`                            | Extracts red component (0-255) from a packed color                              |
+| `GetG(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |
+| `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
+| `GetA(color)`            | `Integer(Integer)`                            | Extracts alpha component (0-255) from a packed color                            |
+| `GetH(color)`            | `Integer(Integer)`                            | Extracts hue (0-360) from a packed color                                        |
+| `GetS(color)`            | `Integer(Integer)`                            | Extracts saturation (0-100) from a packed color                                 |
+| `GetL(color)`            | `Integer(Integer)`                            | Extracts lightness (0-100) from a packed color                                  |
+| `Lerp(c1, c2, t)`        | `Integer(Integer, Integer, Integer)`          | Linearly interpolates between two colors (t: 0-100, where 0=c1, 100=c2)        |
+| `Brighten(color, amount)` | `Integer(Integer, Integer)`                  | Brightens a color by the given amount (0-100)                                   |
+| `Darken(color, amount)`  | `Integer(Integer, Integer)`                   | Darkens a color by the given amount (0-100)                                     |
+| `Saturate(color, amount)` | `Integer(Integer, Integer)`                  | Increases saturation of a color (0-100)                                         |
+| `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
+| `Complement(color)`      | `Integer(Integer)`                            | Returns the complementary color (opposite on color wheel)                       |
+| `Grayscale(color)`       | `Integer(Integer)`                            | Converts a color to grayscale                                                   |
+| `Invert(color)`          | `Integer(Integer)`                            | Inverts a color (255 minus each channel)                                        |
 
 ### Zia Example
 
@@ -359,6 +396,21 @@ func start() {
     Say("Green: " + Fmt.Int(green));
     Say("Blue: " + Fmt.Int(blue));
     Say("Semi-transparent: " + Fmt.Int(semi));
+
+    // Extract components
+    Say("R: " + Fmt.Int(Color.GetR(red)));
+    Say("H: " + Fmt.Int(Color.GetH(red)));
+
+    // Color manipulation
+    var bright = Color.Brighten(blue, 50);
+    var lerped = Color.Lerp(red, blue, 50);
+    var gray = Color.Grayscale(green);
+    Say("Bright blue: " + Fmt.Int(bright));
+
+    // HSL and hex
+    var hsl = Color.FromHSL(120, 100, 50);
+    var hex = Color.ToHex(red);
+    Say("Hex: " + hex);
 }
 ```
 
@@ -379,6 +431,26 @@ purple = Viper.Graphics.Color.RGB(128, 0, 128)
 
 DIM semiTransparent AS INTEGER
 semiTransparent = Viper.Graphics.Color.RGBA(255, 0, 0, 128)  ' 50% transparent red
+
+' Extract individual components
+DIM r AS INTEGER = Viper.Graphics.Color.GetR(purple)   ' 128
+DIM g AS INTEGER = Viper.Graphics.Color.GetG(purple)   ' 0
+
+' Create from HSL
+DIM orange AS INTEGER
+orange = Viper.Graphics.Color.FromHSL(30, 100, 50)
+
+' Parse hex strings
+DIM fromHex AS INTEGER
+fromHex = Viper.Graphics.Color.FromHex("#FF8000")
+
+' Color manipulation
+DIM bright AS INTEGER = Viper.Graphics.Color.Brighten(blue, 30)
+DIM dark AS INTEGER = Viper.Graphics.Color.Darken(red, 20)
+DIM mixed AS INTEGER = Viper.Graphics.Color.Lerp(red, blue, 50)  ' 50% blend
+DIM gray AS INTEGER = Viper.Graphics.Color.Grayscale(green)
+DIM inv AS INTEGER = Viper.Graphics.Color.Invert(red)
+DIM comp AS INTEGER = Viper.Graphics.Color.Complement(red)
 
 ' Use with graphics canvas
 canvas.Box(10, 10, 100, 100, red)
@@ -417,13 +489,18 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `ToBytes()`                       | `Bytes()`                                                            | Convert to raw bytes (RGBA, row-major)                                            |
 | `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
+| `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
 | `FlipH()`                         | `Pixels()`                                                           | Return a horizontally flipped copy (mirror left-right)                            |
 | `FlipV()`                         | `Pixels()`                                                           | Return a vertically flipped copy (mirror top-bottom)                              |
 | `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
 | `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
 | `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
-| `Rotate(angle)`                   | `Pixels(Float)`                                                      | Return a rotated copy at arbitrary angle (bilinear interpolation)                 |
 | `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return a scaled copy using nearest-neighbor interpolation                         |
+| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return a scaled copy using bilinear interpolation (smoother than Scale)           |
+| `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
+| `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
+| `Tint(color)`                     | `Pixels(Integer)`                                                    | Return a copy with a color tint applied (0x00RRGGBB)                              |
+| `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return a box-blurred copy (radius 1-10)                                           |
 
 ### Static Methods
 
@@ -431,6 +508,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 |-----------------------------------|-----------------------------------|-------------------------------------------------------|
 | `FromBytes(width, height, bytes)` | `Pixels(Integer, Integer, Bytes)` | Create from raw bytes (RGBA, row-major)               |
 | `LoadBmp(path)`                   | `Pixels(String)`                  | Load from a 24-bit BMP file. Returns null on failure  |
+| `LoadPng(path)`                   | `Pixels(String)`                  | Load from a PNG file. Returns null on failure          |
 
 ### Color Format
 
@@ -530,15 +608,29 @@ rotated = pixels.RotateCW()  ' Rotate 90 degrees clockwise
 rotated = pixels.RotateCCW() ' Rotate 90 degrees counter-clockwise
 rotated = pixels.Rotate180() ' Rotate 180 degrees
 
-' Arbitrary angle rotation (uses bilinear interpolation for smooth results)
-rotated = pixels.Rotate(45.0)   ' Rotate 45 degrees clockwise
-rotated = pixels.Rotate(-30.0)  ' Rotate 30 degrees counter-clockwise
-' Note: Output dimensions expand to fit the rotated image without clipping
-
 ' Scale to new dimensions (nearest-neighbor interpolation)
 DIM scaled AS Viper.Graphics.Pixels
 scaled = pixels.Scale(128, 128)  ' Scale to 128x128
 scaled = pixels.Scale(pixels.Width * 2, pixels.Height * 2)  ' Double size
+
+' Resize with bilinear interpolation (smoother)
+DIM resized AS Viper.Graphics.Pixels
+resized = pixels.Resize(128, 128)
+
+' Image processing (all return new Pixels objects)
+DIM inverted AS Viper.Graphics.Pixels
+inverted = pixels.Invert()      ' Invert all colors
+DIM gray AS Viper.Graphics.Pixels
+gray = pixels.Grayscale()       ' Convert to grayscale
+DIM tinted AS Viper.Graphics.Pixels
+tinted = pixels.Tint(&H00FF0000) ' Apply red tint
+DIM blurred AS Viper.Graphics.Pixels
+blurred = pixels.Blur(3)        ' Box blur with radius 3
+
+' PNG support
+DIM pngImg AS Viper.Graphics.Pixels
+pngImg = Viper.Graphics.Pixels.LoadPng("image.png")
+pixels.SavePng("output.png")
 ```
 
 ### Notes
@@ -552,9 +644,10 @@ scaled = pixels.Scale(pixels.Width * 2, pixels.Height * 2)  ' Double size
 - When loading BMP files, alpha is set to 255 (opaque) for all pixels
 - All transform operations (flip, rotate, scale) return new Pixels objects
 - RotateCW and RotateCCW swap width and height dimensions
-- Rotate(angle) uses bilinear interpolation for smooth results at any angle
-- Rotate(angle) expands output dimensions to fit rotated image without clipping
 - Scale uses nearest-neighbor interpolation (fast, no blending)
+- Resize uses bilinear interpolation (smoother, better for non-integer scale factors)
+- Image processing methods (Invert, Grayscale, Tint, Blur) return new Pixels objects
+- PNG support handles 8-bit RGB and RGBA files
 
 ---
 
@@ -585,6 +678,8 @@ scaled = pixels.Scale(pixels.Width * 2, pixels.Height * 2)  ' Double size
 | `Visible`    | Integer | R/W    | Visibility (1 = visible, 0 = hidden)         |
 | `Frame`      | Integer | R/W    | Current animation frame index                |
 | `FrameCount` | Integer | Read   | Total number of animation frames             |
+| `FlipX`      | Integer | R/W    | Horizontal flip (1 = flipped, 0 = normal)    |
+| `FlipY`      | Integer | R/W    | Vertical flip (1 = flipped, 0 = normal)      |
 
 ### Methods
 
@@ -737,6 +832,10 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 | `ToPixelX(tileX)`                              | `Integer(Integer)`                           | Convert tile X to pixel X                             |
 | `ToPixelY(tileY)`                              | `Integer(Integer)`                           | Convert tile Y to pixel Y                             |
+| `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up) |
+| `GetCollision(tileId)`                         | `Integer(Integer)`                           | Get collision type for a tile ID                      |
+| `IsSolidAt(pixelX, pixelY)`                    | `Integer(Integer, Integer)`                  | Check if a pixel position is on a solid tile          |
+| `CollideBody(body)`                            | `Integer(Object)`                            | Resolve a Physics2D.Body against solid/one-way tiles (returns 1 on collision) |
 
 ### Zia Example
 
@@ -990,42 +1089,52 @@ END SUB
 Hierarchical scene node for building scene graphs with transform inheritance.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.SceneNode(sprite)`
+**Constructor:** `NEW Viper.Graphics.SceneNode()` (empty node) or `Viper.Graphics.SceneNode.FromSprite(sprite)` (with sprite)
 
-Creates a scene node wrapping a sprite. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
+Creates a scene node. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
+
+### Static Methods
+
+| Method               | Signature         | Description                                          |
+|----------------------|-------------------|------------------------------------------------------|
+| `FromSprite(sprite)` | `SceneNode(Sprite)` | Create a scene node with a sprite attached         |
 
 ### Properties
 
-| Property   | Type    | Access | Description                                    |
-|------------|---------|--------|------------------------------------------------|
-| `X`        | Double  | R/W    | Local X position (relative to parent)          |
-| `Y`        | Double  | R/W    | Local Y position (relative to parent)          |
-| `ScaleX`   | Double  | R/W    | Local X scale (1.0 = 100%)                     |
-| `ScaleY`   | Double  | R/W    | Local Y scale (1.0 = 100%)                     |
-| `Rotation` | Double  | R/W    | Local rotation in degrees                      |
-| `Visible`  | Integer | R/W    | Visibility (1=visible, 0=hidden)               |
-| `Depth`    | Double  | R/W    | Z-order for depth sorting (higher = on top)    |
-| `Parent`   | Object  | Read   | Parent scene node (NULL if root)               |
+| Property        | Type    | Access | Description                                    |
+|-----------------|---------|--------|------------------------------------------------|
+| `X`             | Integer | R/W    | Local X position (relative to parent)          |
+| `Y`             | Integer | R/W    | Local Y position (relative to parent)          |
+| `ScaleX`        | Integer | R/W    | Local X scale (100 = 100%)                     |
+| `ScaleY`        | Integer | R/W    | Local Y scale (100 = 100%)                     |
+| `Rotation`      | Integer | R/W    | Local rotation in degrees                      |
+| `Visible`       | Integer | R/W    | Visibility (1=visible, 0=hidden)               |
+| `Depth`         | Integer | R/W    | Z-order for depth sorting (higher = on top)    |
+| `Name`          | String  | R/W    | Name/tag for identification and search         |
+| `Sprite`        | Object  | R/W    | Sprite attached to this node                   |
+| `Parent`        | Object  | Read   | Parent scene node (NULL if root)               |
+| `ChildCount`    | Integer | Read   | Number of direct children                      |
+| `WorldX`        | Integer | Read   | Computed world X position                      |
+| `WorldY`        | Integer | Read   | Computed world Y position                      |
+| `WorldScaleX`   | Integer | Read   | Computed world X scale                         |
+| `WorldScaleY`   | Integer | Read   | Computed world Y scale                         |
+| `WorldRotation` | Integer | Read   | Computed world rotation                        |
 
 ### Methods
 
-| Method                     | Signature                      | Description                                    |
-|----------------------------|--------------------------------|------------------------------------------------|
-| `AddChild(child)`          | `Void(SceneNode)`              | Add a child node                               |
-| `RemoveChild(child)`       | `Void(SceneNode)`              | Remove a child node                            |
-| `GetChildCount()`          | `Integer()`                    | Get number of direct children                  |
-| `GetChild(index)`          | `SceneNode(Integer)`           | Get child by index                             |
-| `WorldX()`                 | `Double()`                     | Get computed world X position                  |
-| `WorldY()`                 | `Double()`                     | Get computed world Y position                  |
-| `WorldScaleX()`            | `Double()`                     | Get computed world X scale                     |
-| `WorldScaleY()`            | `Double()`                     | Get computed world Y scale                     |
-| `WorldRotation()`          | `Double()`                     | Get computed world rotation                    |
-| `SetSprite(sprite)`        | `Void(Sprite)`                 | Set the sprite for this node                   |
-| `GetSprite()`              | `Sprite()`                     | Get the sprite                                 |
-
-### Zia Example
-
-> **Note:** SceneNode is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug.
+| Method                            | Signature                      | Description                                    |
+|-----------------------------------|--------------------------------|------------------------------------------------|
+| `AddChild(child)`                 | `Void(SceneNode)`              | Add a child node                               |
+| `RemoveChild(child)`              | `Void(SceneNode)`              | Remove a child node                            |
+| `GetChild(index)`                 | `SceneNode(Integer)`           | Get child by index                             |
+| `Find(name)`                      | `SceneNode(String)`            | Find a descendant node by name                 |
+| `Detach()`                        | `Void()`                       | Remove this node from its parent               |
+| `Draw(canvas)`                    | `Void(Canvas)`                 | Draw this node and all children to a canvas    |
+| `DrawWithCamera(canvas, camera)`  | `Void(Canvas, Camera)`         | Draw with camera transform applied             |
+| `Update()`                        | `Void()`                       | Update node and all children (for animations)  |
+| `Move(dx, dy)`                    | `Void(Integer, Integer)`       | Move the node by delta amounts                 |
+| `SetPosition(x, y)`              | `Void(Integer, Integer)`       | Set both X and Y position at once              |
+| `SetScale(scale)`                 | `Void(Integer)`                | Set both ScaleX and ScaleY to the same value   |
 
 ### Example
 
@@ -1039,11 +1148,15 @@ armSprite = Viper.Graphics.Sprite.FromFile("arm.bmp")
 ' Create scene nodes
 DIM body AS Viper.Graphics.SceneNode
 DIM arm AS Viper.Graphics.SceneNode
-body = NEW Viper.Graphics.SceneNode(bodySprite)
-arm = NEW Viper.Graphics.SceneNode(armSprite)
+body = Viper.Graphics.SceneNode.FromSprite(bodySprite)
+arm = Viper.Graphics.SceneNode.FromSprite(armSprite)
 
 ' Build hierarchy - arm is child of body
 body.AddChild(arm)
+
+' Name nodes for later lookup
+body.Name = "body"
+arm.Name = "arm"
 
 ' Position arm relative to body
 arm.X = 20  ' 20 pixels right of body origin
@@ -1055,7 +1168,17 @@ body.Y = 200
 body.Rotation = 45  ' Arm rotates with body
 
 ' Arm inherits transforms - its world position is computed automatically
-PRINT "Arm world position: "; arm.WorldX(); ", "; arm.WorldY()
+PRINT "Arm world position: "; arm.WorldX; ", "; arm.WorldY
+
+' Find a descendant by name
+DIM found AS Viper.Graphics.SceneNode
+found = body.Find("arm")
+
+' Draw entire hierarchy to canvas
+body.Draw(canvas)
+
+' Detach arm from body
+arm.Detach()
 ```
 
 ---
@@ -1069,24 +1192,22 @@ Root container for a scene graph. Manages rendering order and provides scene-lev
 
 ### Properties
 
-| Property       | Type    | Access | Description                                |
-|----------------|---------|--------|--------------------------------------------|
-| `DepthSort`    | Integer | R/W    | Enable depth sorting (1=enabled, 0=disabled) |
+| Property    | Type    | Access | Description                                |
+|-------------|---------|--------|--------------------------------------------|
+| `Root`      | Object  | Read   | The root SceneNode of the scene            |
+| `NodeCount` | Integer | Read   | Number of root-level nodes                 |
 
 ### Methods
 
-| Method                     | Signature                      | Description                                    |
-|----------------------------|--------------------------------|------------------------------------------------|
-| `AddNode(node)`            | `Void(SceneNode)`              | Add a root-level node to the scene             |
-| `RemoveNode(node)`         | `Void(SceneNode)`              | Remove a node from the scene                   |
-| `Clear()`                  | `Void()`                       | Remove all nodes                               |
-| `GetNodeCount()`           | `Integer()`                    | Get number of root nodes                       |
-| `Draw(canvas)`             | `Void(Canvas)`                 | Render all visible nodes to canvas             |
-| `FindNode(name)`           | `SceneNode(String)`            | Find a node by name (if named)                 |
-
-### Zia Example
-
-> **Note:** Scene is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug.
+| Method                           | Signature                      | Description                                    |
+|----------------------------------|--------------------------------|------------------------------------------------|
+| `Add(node)`                      | `Void(SceneNode)`              | Add a root-level node to the scene             |
+| `Remove(node)`                   | `Void(SceneNode)`              | Remove a node from the scene                   |
+| `Clear()`                        | `Void()`                       | Remove all nodes                               |
+| `Find(name)`                     | `SceneNode(String)`            | Find a node by name                            |
+| `Draw(canvas)`                   | `Void(Canvas)`                 | Render all visible nodes to canvas             |
+| `DrawWithCamera(canvas, camera)` | `Void(Canvas, Camera)`         | Render all visible nodes with camera transform |
+| `Update()`                       | `Void()`                       | Update all nodes (advances animations)         |
 
 ### Example
 
@@ -1094,16 +1215,15 @@ Root container for a scene graph. Manages rendering order and provides scene-lev
 ' Create a scene
 DIM scene AS Viper.Graphics.Scene
 scene = NEW Viper.Graphics.Scene()
-scene.DepthSort = 1  ' Enable depth sorting
 
 ' Create game objects as scene nodes
 DIM background AS Viper.Graphics.SceneNode
 DIM player AS Viper.Graphics.SceneNode
 DIM foreground AS Viper.Graphics.SceneNode
 
-background = NEW Viper.Graphics.SceneNode(bgSprite)
-player = NEW Viper.Graphics.SceneNode(playerSprite)
-foreground = NEW Viper.Graphics.SceneNode(fgSprite)
+background = Viper.Graphics.SceneNode.FromSprite(bgSprite)
+player = Viper.Graphics.SceneNode.FromSprite(playerSprite)
+foreground = Viper.Graphics.SceneNode.FromSprite(fgSprite)
 
 ' Set depth (lower = rendered first/behind)
 background.Depth = 0
@@ -1111,9 +1231,9 @@ player.Depth = 50
 foreground.Depth = 100
 
 ' Add to scene
-scene.AddNode(background)
-scene.AddNode(player)
-scene.AddNode(foreground)
+scene.Add(background)
+scene.Add(player)
+scene.Add(foreground)
 
 ' Game loop
 DO WHILE canvas.ShouldClose = 0
@@ -1124,7 +1244,10 @@ DO WHILE canvas.ShouldClose = 0
     player.X = playerX
     player.Y = playerY
 
-    ' Render entire scene (depth-sorted)
+    ' Update animations
+    scene.Update()
+
+    ' Render entire scene
     scene.Draw(canvas)
 
     canvas.Flip()
@@ -1142,11 +1265,11 @@ DIM leftArm AS Viper.Graphics.SceneNode
 DIM rightArm AS Viper.Graphics.SceneNode
 
 ' Create nodes
-character = NEW Viper.Graphics.SceneNode(NULL)  ' Empty parent node
-body = NEW Viper.Graphics.SceneNode(bodySprite)
-head = NEW Viper.Graphics.SceneNode(headSprite)
-leftArm = NEW Viper.Graphics.SceneNode(armSprite)
-rightArm = NEW Viper.Graphics.SceneNode(armSprite)
+character = NEW Viper.Graphics.SceneNode()  ' Empty parent node
+body = Viper.Graphics.SceneNode.FromSprite(bodySprite)
+head = Viper.Graphics.SceneNode.FromSprite(headSprite)
+leftArm = Viper.Graphics.SceneNode.FromSprite(armSprite)
+rightArm = Viper.Graphics.SceneNode.FromSprite(armSprite)
 
 ' Build hierarchy
 character.AddChild(body)
@@ -1162,7 +1285,7 @@ rightArm.X = 25
 rightArm.Y = -10
 
 ' Add character to scene
-scene.AddNode(character)
+scene.Add(character)
 
 ' Moving/rotating the character moves all parts
 character.X = 400
@@ -1177,51 +1300,48 @@ character.Rotation = 15  ' Entire character tilts
 Batched sprite rendering for improved performance when drawing many sprites.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.SpriteBatch(canvas)`
+**Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
-SpriteBatch collects draw calls and renders them efficiently in a single batch. Use this when drawing many sprites (particles, bullets, tiles) for better performance.
+Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch collects draw calls and renders them efficiently in a single batch. Use this when drawing many sprites (particles, bullets, tiles) for better performance.
 
 ### Properties
 
-| Property   | Type    | Access | Description                                |
-|------------|---------|--------|--------------------------------------------|
-| `DepthSort`| Integer | R/W    | Enable depth sorting (1=enabled, 0=disabled) |
-| `Tint`     | Integer | R/W    | Tint color applied to all sprites (ARGB)   |
-| `Alpha`    | Double  | R/W    | Global alpha multiplier (0.0-1.0)          |
+| Property    | Type    | Access | Description                                      |
+|-------------|---------|--------|--------------------------------------------------|
+| `Count`     | Integer | Read   | Number of sprites currently in the batch         |
+| `Capacity`  | Integer | Read   | Current capacity of the batch                    |
+| `IsActive`  | Integer | Read   | Non-zero if the batch is currently recording     |
 
 ### Methods
 
-| Method                                          | Signature                                    | Description                                    |
-|-------------------------------------------------|----------------------------------------------|------------------------------------------------|
-| `Begin()`                                       | `Void()`                                     | Begin batch - call before drawing              |
-| `End()`                                         | `Void()`                                     | End batch and flush all draws to canvas        |
-| `Draw(sprite, x, y)`                            | `Void(Sprite, Double, Double)`               | Draw sprite at position                        |
-| `DrawEx(sprite, x, y, scaleX, scaleY, rotation)`| `Void(Sprite, Double, Double, Double, Double, Double)` | Draw with transform             |
-| `DrawPixels(pixels, x, y)`                      | `Void(Pixels, Double, Double)`               | Draw pixels buffer at position                 |
-| `DrawPixelsEx(pixels, x, y, scaleX, scaleY, rotation)` | `Void(Pixels, Double...)`             | Draw pixels with transform                     |
-| `DrawDepth(sprite, x, y, depth)`                | `Void(Sprite, Double, Double, Double)`       | Draw with explicit depth value                 |
-| `SetTint(color)`                                | `Void(Integer)`                              | Set tint color (ARGB)                          |
-| `SetAlpha(alpha)`                               | `Void(Double)`                               | Set global alpha (0.0-1.0)                     |
-| `Clear()`                                       | `Void()`                                     | Clear batch without rendering                  |
-| `GetCount()`                                    | `Integer()`                                  | Get number of pending draws                    |
-
-### Zia Example
-
-> **Note:** SpriteBatch is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug.
+| Method                                          | Signature                                              | Description                                    |
+|-------------------------------------------------|--------------------------------------------------------|------------------------------------------------|
+| `Begin()`                                       | `Void()`                                               | Begin batch - call before drawing              |
+| `End(canvas)`                                   | `Void(Canvas)`                                         | End batch and flush all draws to the canvas    |
+| `Draw(sprite, x, y)`                            | `Void(Sprite, Integer, Integer)`                       | Draw sprite at position                        |
+| `DrawScaled(sprite, x, y, scale)`               | `Void(Sprite, Integer, Integer, Integer)`              | Draw sprite with uniform scale (100 = 100%)    |
+| `DrawEx(sprite, x, y, scaleX, scaleY, rotation)`| `Void(Sprite, Integer, Integer, Integer, Integer, Integer)` | Draw with full transform              |
+| `DrawPixels(pixels, x, y)`                      | `Void(Pixels, Integer, Integer)`                       | Draw pixels buffer at position                 |
+| `DrawRegion(pixels, dx, dy, sx, sy, sw, sh)`    | `Void(Pixels, Integer...)`                             | Draw a sub-region of a Pixels buffer           |
+| `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off)     |
+| `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB) for all sprites          |
+| `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
+| `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
 
 ### Example
 
 ```basic
-' Create sprite batch for the canvas
+' Create sprite batch with default capacity
 DIM batch AS Viper.Graphics.SpriteBatch
-batch = NEW Viper.Graphics.SpriteBatch(canvas)
+batch = NEW Viper.Graphics.SpriteBatch(0)
 
 ' Load sprites
 DIM bulletSprite AS Viper.Graphics.Sprite
 bulletSprite = Viper.Graphics.Sprite.FromFile("bullet.bmp")
 
 ' Array of bullet positions
-DIM bullets(100) AS DOUBLE  ' x, y pairs
+DIM bulletsX(50) AS INTEGER
+DIM bulletsY(50) AS INTEGER
 
 ' Game loop
 DO WHILE canvas.ShouldClose = 0
@@ -1233,11 +1353,11 @@ DO WHILE canvas.ShouldClose = 0
 
     ' Draw all bullets efficiently
     FOR i = 0 TO 49
-        batch.Draw(bulletSprite, bullets(i * 2), bullets(i * 2 + 1))
+        batch.Draw(bulletSprite, bulletsX(i), bulletsY(i))
     NEXT i
 
-    ' End batch - all sprites rendered in one go
-    batch.End()
+    ' End batch - all sprites rendered to canvas in one go
+    batch.End(canvas)
 
     canvas.Flip()
 LOOP
@@ -1248,17 +1368,16 @@ LOOP
 ```basic
 ' Create a simple particle system using SpriteBatch
 DIM batch AS Viper.Graphics.SpriteBatch
-batch = NEW Viper.Graphics.SpriteBatch(canvas)
-batch.DepthSort = 1  ' Sort particles by depth
+batch = NEW Viper.Graphics.SpriteBatch(512)  ' Pre-allocate for 512 sprites
+batch.SetSortByDepth(1)  ' Sort particles by depth
 
 DIM particleSprite AS Viper.Graphics.Sprite
 particleSprite = Viper.Graphics.Sprite.FromFile("particle.bmp")
 
 ' Particle data arrays
-DIM px(500) AS DOUBLE   ' X positions
-DIM py(500) AS DOUBLE   ' Y positions
-DIM pz(500) AS DOUBLE   ' Depth
-DIM pa(500) AS DOUBLE   ' Alpha
+DIM px(500) AS INTEGER   ' X positions
+DIM py(500) AS INTEGER   ' Y positions
+DIM pa(500) AS INTEGER   ' Alpha (0-255)
 
 ' Render particles
 SUB RenderParticles()
@@ -1268,11 +1387,11 @@ SUB RenderParticles()
         IF pa(i) > 0 THEN
             ' Set alpha for this particle
             batch.SetAlpha(pa(i))
-            batch.DrawDepth(particleSprite, px(i), py(i), pz(i))
+            batch.Draw(particleSprite, px(i), py(i))
         END IF
     NEXT i
 
-    batch.End()
+    batch.End(canvas)
 END SUB
 ```
 
@@ -1281,7 +1400,7 @@ END SUB
 ```basic
 ' Create batch
 DIM batch AS Viper.Graphics.SpriteBatch
-batch = NEW Viper.Graphics.SpriteBatch(canvas)
+batch = NEW Viper.Graphics.SpriteBatch(0)
 
 DIM sprite AS Viper.Graphics.Sprite
 sprite = Viper.Graphics.Sprite.FromFile("enemy.bmp")
@@ -1299,19 +1418,19 @@ batch.Draw(sprite, 200, 100)
 batch.SetTint(&HFF0000FF)
 batch.Draw(sprite, 300, 100)
 
-' Reset to no tint
-batch.SetTint(&HFFFFFFFF)
+' Reset all settings to defaults
+batch.ResetSettings()
 batch.Draw(sprite, 400, 100)
 
-batch.End()
+batch.End(canvas)
 ```
 
 ### Performance Tips
 
 - **Batch similar sprites:** Draw sprites that share the same texture together
 - **Minimize Begin/End calls:** Each Begin/End pair flushes the batch
-- **Use depth sorting wisely:** Disable when not needed for faster rendering
-- **Pre-allocate batches:** Create SpriteBatch once, reuse each frame
+- **Use depth sorting wisely:** Disable `SetSortByDepth` when not needed for faster rendering
+- **Pre-allocate batches:** Create SpriteBatch once with sufficient capacity, reuse each frame
 
 ---
 

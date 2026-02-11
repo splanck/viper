@@ -5,12 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file
-/// @brief Declares reachability-based cleanup for SimplifyCFG.
-/// @details The entry point computes reachability from the function entry block
-///          and removes blocks that are not visited, while preserving
-///          exception-handling structure. It also updates branch terminators to
-///          drop labels and argument bundles that referred to removed blocks.
+// File: il/transform/SimplifyCFG/ReachabilityCleanup.hpp
+// Purpose: Reachability-based cleanup for SimplifyCFG. Computes reachability
+//          from the function entry block and removes unreachable blocks,
+//          preserving EH structure. Updates branch terminators to drop labels
+//          and argument bundles targeting removed blocks.
+// Key invariants:
+//   - EH-sensitive blocks are never removed even if unreachable.
+//   - After cleanup, all remaining blocks are reachable from entry.
+// Ownership/Lifetime: Stateless free function operating on caller-owned IR
+//          via the SimplifyCFGPassContext reference.
+// Links: il/transform/SimplifyCFG.hpp
 //
 //===----------------------------------------------------------------------===//
 

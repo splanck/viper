@@ -72,9 +72,10 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert)
     const auto &cat = il::runtime::runtimeClassCatalog();
 
     // Find Viper.Convert in the catalog
-    auto it = std::find_if(cat.begin(),
-                           cat.end(),
-                           [](const auto &c) { return std::string(c.qname) == "Viper.Core.Convert"; });
+    auto it =
+        std::find_if(cat.begin(),
+                     cat.end(),
+                     [](const auto &c) { return std::string(c.qname) == "Viper.Core.Convert"; });
     ASSERT_NE(it, cat.end());
 
     // Verify expected conversion methods are present

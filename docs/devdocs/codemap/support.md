@@ -57,6 +57,7 @@ Last updated: 2026-01-15
 | `options.hpp`     | Global compile-time options and toggles |
 | `result.hpp`      | Minimal Result<T> helper                |
 | `small_vector.hpp`| Small-buffer-optimized vector type      |
+| `alignment.hpp`   | Alignment utilities                     |
 
 ## Common Utilities (`src/common/`)
 

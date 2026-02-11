@@ -1,5 +1,8 @@
 # BasicDB Development Summary
 
+> **Historical snapshot (2024-11-23).** The OOP bugs described here have largely been fixed in subsequent sessions
+> (November-December 2025). See `bugs/oop_bugs.md` and `bugs/basic_resolved.md` for current OOP status.
+
 ## Project Goal
 
 Create a comprehensive BASIC database management system to test OOP capabilities and discover bugs in VIPER BASIC.

@@ -1,5 +1,8 @@
 # Viper BASIC Stress Testing
 
+> **Historical (2025-11-15).** The critical bugs described here (BUG-047, BUG-048, BUG-045, BUG-046) have all been
+> fixed in subsequent sessions. See `bugs/oop_bugs.md` and `bugs/basic_resolved.md` for current status.
+
 This directory contains comprehensive stress tests for Viper BASIC's OOP implementation, created on 2025-11-15.
 
 ## Quick Links

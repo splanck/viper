@@ -7,6 +7,9 @@
 //
 // File: src/runtime/rt_result.h
 // Purpose: Result type for error handling - represents Ok(value) or Err(error).
+// Key invariants: A Result is always exactly one of Ok or Err; unwrap traps on wrong variant.
+// Ownership/Lifetime: Result objects are runtime-managed; values inside follow normal refcounting.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

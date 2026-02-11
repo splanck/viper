@@ -5,10 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// EarlyCSE (GVN-lite) — function-level pass
-// Performs simple within-block common subexpression elimination for pure,
-// side-effect-free instructions. Commutes operands for a small set of
-// commutative ops to improve matching. Skips memory ops for now.
+// File: il/transform/EarlyCSE.hpp
+// Purpose: EarlyCSE (GVN-lite) -- simple within-block common subexpression
+//          elimination for pure, side-effect-free instructions. Commutes
+//          operands for commutative ops to improve matching. Skips memory ops.
+// Key invariants:
+//   - Only eliminates instructions that are pure and non-trapping.
+//   - Operates block-locally; no cross-block analysis.
+// Ownership/Lifetime: Free function operating on a caller-owned Function.
+// Links: il/core/Function.hpp, il/transform/ValueKey.hpp
 //
 //===----------------------------------------------------------------------===//
 

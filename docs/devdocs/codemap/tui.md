@@ -42,6 +42,8 @@ Last updated: 2026-01-15
 |------------------------------------|------------------------------|
 | `include/tui/render/renderer.hpp`  | Rendering interface          |
 | `include/tui/render/screen.hpp`    | Screen buffer                |
+| `include/tui/render/box.hpp`       | Box drawing utilities        |
+| `include/tui/render/text.hpp`      | Text rendering utilities     |
 
 ### Text Handling (`include/tui/text/`)
 
@@ -111,6 +113,9 @@ Last updated: 2026-01-15
 | File                                    | Purpose                    |
 |-----------------------------------------|----------------------------|
 | `include/tui/util/unicode.hpp`          | Unicode helpers            |
+| `include/tui/util/color.hpp`            | Color manipulation         |
+| `include/tui/util/numeric.hpp`          | Numeric helpers            |
+| `include/tui/util/string.hpp`           | String helpers             |
 | `include/tui/support/function_ref.hpp`  | Function reference utility |
 
 ## Source Implementation (`src/`)
@@ -139,6 +144,7 @@ Last updated: 2026-01-15
 |--------------------------|--------------------------------|
 | `src/render/renderer.cpp`| Renderer implementation        |
 | `src/render/screen.cpp`  | Screen buffer implementation   |
+| `src/render/box.cpp`     | Box drawing implementation     |
 
 ### Text (`src/text/`)
 
@@ -209,6 +215,7 @@ Last updated: 2026-01-15
 | File                   | Purpose                        |
 |------------------------|--------------------------------|
 | `src/util/unicode.cpp` | Unicode helpers implementation |
+| `src/util/color.cpp`   | Color manipulation impl        |
 
 ## Tests (`tests/`)
 

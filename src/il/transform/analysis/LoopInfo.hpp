@@ -5,26 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares data structures and analysis routines for discovering and
-// representing natural loops within IL functions. Loop information is fundamental
-// to loop optimizations like LICM, loop unrolling, and induction variable analysis.
-//
-// Natural loop detection relies on the control flow graph and dominator tree.
-// A natural loop is defined by a back edge (B → H where H dominates B): the loop
-// consists of H (the header) and all blocks that can reach B without going through H.
-// This file provides algorithms to identify such loops, compute loop membership,
-// detect nesting relationships, and extract structural properties.
-//
-// Key Components:
-// - Loop structure: Each Loop object represents a single natural loop, storing
-//   the header block label, member block labels, latch blocks, and exit edges
-// - Loop hierarchy: Nested loops form a tree structure where inner loops are
-//   children of their immediately enclosing loop
-// - Loop queries: Functions to test block membership, find loop preheaders,
-//   identify exits, and compute loop depth
-//
-// The analysis stores loop information using block labels rather than pointers,
-// maintaining stability across IL transformations that may reallocate blocks.
+// File: il/transform/analysis/LoopInfo.hpp
+// Purpose: Natural loop discovery and representation for IL functions. Each
+//          Loop stores header label, member block labels, latch labels, exit
+//          edges, and nesting relationships. LoopInfo collects all loops for
+//          a function, supporting membership queries and parent lookups.
+// Key invariants:
+//   - Loop membership uses block labels (not pointers) for stability across
+//     IR transformations that may reallocate blocks.
+//   - A natural loop is defined by a back edge (B -> H where H dominates B).
+// Ownership/Lifetime: LoopInfo and its Loop entries own their label strings
+//          by value. Computed from Module + Function; result is self-contained.
+// Links: il/core/fwd.hpp, il/analysis/Dominators.hpp, il/analysis/CFG.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -40,10 +32,14 @@
 namespace il::transform
 {
 
+/// @brief Describes an edge leaving a natural loop body.
+/// @details An exit edge connects a block inside the loop (@c from) to a block
+///          outside the loop (@c to). Exit edges are identified during loop
+///          discovery by checking whether successor blocks belong to the loop body.
 struct LoopExit
 {
-    std::string from;
-    std::string to;
+    std::string from; ///< Block label inside the loop that branches out.
+    std::string to;   ///< Block label outside the loop that receives control.
 };
 
 /// @brief Hash functor for heterogeneous string lookup (C++20).

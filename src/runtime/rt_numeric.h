@@ -5,29 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares numeric type conversion and formatting helpers that implement
-// BASIC's type coercion semantics. BASIC has explicit type conversion functions
-// (CINT, CLNG, CSNG, CDBL) with specific rounding rules and overflow behavior
-// that differ from C's implicit conversions.
-//
-// BASIC Type Conversion Rules:
-// - Rounding: Uses round-to-nearest-even (banker's rounding) for float-to-integer,
-//   not C's truncation. This ensures symmetric rounding and reduces bias in
-//   accumulated calculations.
-// - Overflow detection: Conversions that exceed target type range set error flags
-//   instead of wrapping or producing undefined behavior
-// - Non-finite handling: NaN and infinity inputs are rejected with error flags,
-//   maintaining BASIC's finite-only numeric model
-//
-// The helpers provide out-parameters for error signaling, enabling the IL lowering
-// to generate efficient code that checks for errors and branches to trap handlers.
-// This avoids exception overhead while maintaining BASIC's error semantics.
-//
-// Key Functions:
-// - rt_cint_from_double: Converts to 16-bit INTEGER with overflow checking
-// - rt_clng_from_double: Converts to 32-bit LONG with overflow checking
-// - rt_csng_from_double: Converts to SINGLE precision with range validation
-// - rt_cdbl_from_any: Promotes to DOUBLE (always succeeds for finite inputs)
+// File: src/runtime/rt_numeric.h
+// Purpose: Numeric type conversions, formatting, and parsing with BASIC semantics.
+// Key invariants: Float-to-int uses banker's rounding; overflow/NaN set error flags, never UB.
+// Ownership/Lifetime: Callers own output buffers for formatting functions.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

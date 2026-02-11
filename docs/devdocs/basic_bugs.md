@@ -1,11 +1,15 @@
 # VIPER BASIC - Bug Tracking Database
 
-**Last Updated:** 2024-11-23  
-**Maintainer:** Development Team  
+> **Historical snapshot (2024-11-23).** Many bugs listed here as CONFIRMED have since been fixed in later sessions
+> (November-December 2025). In particular, BUG-040/041 (NEW operator / constructors), BUG-042 (string comparison),
+> and most OOP bugs have been resolved. See `bugs/basic_resolved.md` and `bugs/oop_bugs.md` for current status.
+
+**Last Updated:** 2024-11-23
+**Maintainer:** Development Team
 **Format:** Markdown bug database with cross-references
 
-This file tracks bugs discovered during comprehensive BASIC program development.  
-For categorized overview, see: [basic_bugs_categorization.md](basic_bugs_categorization.md)  
+This file tracks bugs discovered during comprehensive BASIC program development.
+For categorized overview, see: [basic_bugs_categorization.md](basic_bugs_categorization.md)
 For specific detailed reports, see: `basic/BUG0XX_*.md` files
 
 ---

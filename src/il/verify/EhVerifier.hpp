@@ -5,31 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the EhVerifier class, which validates exception handling
-// stack balance in IL functions. The IL exception handling model uses explicit
-// stack operations (eh.push/eh.pop) to manage handler registration, requiring
-// careful verification to ensure correct nesting and balance.
-//
-// The IL specification requires that exception handlers are registered and
-// unregistered in a balanced stack discipline. Each eh.push instruction must
-// have a corresponding eh.pop on all control flow paths. The EhVerifier performs
-// control-flow analysis to ensure that handler stacks remain balanced throughout
-// function execution, with no underflows (pop without matching push) or leaks
-// (handlers active at function exit).
-//
-// Key Responsibilities:
-// - Verify eh.push/eh.pop instructions maintain stack balance on all paths
-// - Detect stack underflows (pop without active handler)
-// - Detect stack leaks (handlers still active at function return)
-// - Validate resume.* instructions occur within active exception handlers
-// - Ensure handler blocks are reachable and properly structured
-//
-// Design Notes:
-// The EhVerifier operates function-by-function, constructing an EhModel for each
-// function to analyze its exception handling structure. It delegates to specialized
-// checks (checkEhStackBalance, checkResumeEdges) that work on the canonical model.
-// The verifier reports errors through the diagnostic sink or Expected return values,
-// maintaining separation from the underlying analysis algorithms.
+// File: il/verify/EhVerifier.hpp
+// Purpose: Validates exception handling stack balance in IL functions.
+//          Ensures eh.push/eh.pop instructions maintain balanced stack
+//          discipline on all control-flow paths, detects underflows and leaks,
+//          and verifies resume.* instructions occur within active handlers.
+// Key invariants:
+//   - Every eh.push must have a corresponding eh.pop on all paths.
+//   - No handler stack leaks at function exit.
+//   - resume.* requires an active resume token.
+// Ownership/Lifetime: EhVerifier is a stateless class; run() borrows the
+//          module and diagnostic sink for the duration of the call.
+// Links: il/verify/DiagSink.hpp, support/diag_expected.hpp
 //
 //===----------------------------------------------------------------------===//
 

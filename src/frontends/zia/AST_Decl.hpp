@@ -4,10 +4,39 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
+///
 /// @file AST_Decl.hpp
-/// @brief Declaration nodes for Zia AST.
-//
+/// @brief Declaration nodes for the Zia AST.
+///
+/// @details Defines all declaration AST nodes produced by the Zia parser.
+/// Declarations introduce named entities that can be referenced from other
+/// parts of the code. This includes:
+///
+///   - ModuleDecl: The top-level container holding all declarations in a file.
+///   - FuncDecl: Function definitions with name, parameters, return type, body.
+///   - EntityDecl: User-defined types (structs/classes) with fields and methods.
+///   - FieldDecl: Fields within an entity declaration.
+///   - ImportDecl: Import (`bind`) statements referencing other modules.
+///   - ExternDecl: External function declarations (FFI).
+///
+/// The parser creates declaration nodes by recognizing top-level keywords
+/// (`func`, `entity`, `bind`, `extern`). The semantic analyzer registers
+/// declarations in the symbol table and checks for conflicts, completeness,
+/// and type correctness. The lowerer translates each declaration into the
+/// corresponding IL construct (il::Function, il::ExternFunction, etc.).
+///
+/// @invariant Every Decl has a valid `kind` field matching its concrete type.
+/// @invariant ModuleDecl is always the root; it cannot be nested.
+/// @invariant Function and entity names are non-empty after successful parsing.
+///
+/// Ownership/Lifetime: Declarations are owned by their containing ModuleDecl
+/// via DeclPtr (std::unique_ptr<Decl>). The ModuleDecl itself is owned by
+/// the compilation pipeline.
+///
+/// @see AST_Stmt.hpp — statement nodes that appear in function bodies.
+/// @see Sema.hpp — registers declarations in the symbol table and type-checks.
+/// @see Lowerer.hpp — translates declarations into IL functions and types.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once

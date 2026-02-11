@@ -24,6 +24,11 @@ namespace viper::codegen::x64
 {
 
 /// \brief Run conservative Machine IR peepholes for Phase A bring-up.
+/// \details Applies pattern-based local rewrites to the Machine IR, including
+///          redundant move elimination, strength reduction (e.g., multiply-by-power-of-2
+///          to shift), and dead instruction removal. Iterates until a fixed point
+///          is reached.
+/// \param fn The MIR function to optimize in-place.
 /// \return Total number of transformations applied across all passes.
 std::size_t runPeepholes(MFunction &fn);
 

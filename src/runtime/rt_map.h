@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_map.h
+// File: src/runtime/rt_map.h
 // Purpose: Runtime functions for string-keyed map (hash map).
 // Key invariants: Keys are copied (map owns copies). Values are retained.
 // Ownership/Lifetime: Map manages its own memory. Caller manages values.

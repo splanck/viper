@@ -793,7 +793,7 @@ Using runtime procedures:
 
 ```basic
 USING Viper.Terminal
-USING Viper.Strings
+USING Viper.String
 
 PrintStr("Length: ")
 PrintI64(Len("hello"))
@@ -880,6 +880,10 @@ For complete namespace documentation, see [Namespace Reference](devdocs/namespac
 ### A
 
 - `ABS`
+- `ABSTRACT`
+- `ADDFILE`
+- `ADDRESSOF`
+- `ALTSCREEN`
 - `AND`
 - `ANDALSO`
 - `APPEND`
@@ -887,18 +891,25 @@ For complete namespace documentation, see [Namespace Reference](devdocs/namespac
 
 ### B
 
+- `BASE`
+- `BEEP`
 - `BINARY`
 - `BOOLEAN`
+- `BYREF`
+- `BYVAL`
 
 ### C
 
 - `CASE`
+- `CATCH`
 - `CEIL`
 - `CLASS`
 - `CLOSE`
 - `CLS`
 - `COLOR`
+- `CONST`
 - `COS`
+- `CURSOR`
 
 ### D
 
@@ -909,6 +920,7 @@ For complete namespace documentation, see [Namespace Reference](devdocs/namespac
 
 ### E
 
+- `EACH`
 - `ELSE`
 - `ELSEIF`
 - `END`
@@ -919,19 +931,26 @@ For complete namespace documentation, see [Namespace Reference](devdocs/namespac
 ### F
 
 - `FALSE`
+- `FINAL`
+- `FINALLY`
 - `FLOOR`
 - `FOR`
 - `FUNCTION`
 
 ### G
 
+- `GET`
 - `GOSUB`
 - `GOTO`
 
 ### I
 
 - `IF`
+- `IMPLEMENTS`
+- `IN`
 - `INPUT`
+- `INTERFACE`
+- `IS`
 
 ### L
 
@@ -950,22 +969,30 @@ For complete namespace documentation, see [Namespace Reference](devdocs/namespac
 
 ### N
 
+- `NAMESPACE`
 - `NEW`
 - `NEXT`
 - `NOT`
+- `NOTHING`
 
 ### O
 
+- `OFF`
 - `ON`
 - `OPEN`
 - `OR`
 - `ORELSE`
 - `OUTPUT`
+- `OVERRIDE`
 
 ### P
 
 - `POW`
+- `PRESERVE`
 - `PRINT`
+- `PRIVATE`
+- `PROPERTY`
+- `PUBLIC`
 
 ### R
 
@@ -980,22 +1007,33 @@ For complete namespace documentation, see [Namespace Reference](devdocs/namespac
 
 - `SEEK`
 - `SELECT`
+- `SET`
+- `SHARED`
 - `SIN`
+- `SLEEP`
 - `SQR`
+- `STATIC`
 - `STEP`
 - `SUB`
+- `SWAP`
 
 ### T
 
 - `THEN`
 - `TO`
 - `TRUE`
+- `TRY`
 - `TYPE`
 
 ### U
 
 - `UBOUND`
 - `UNTIL`
+- `USING`
+
+### V
+
+- `VIRTUAL`
 
 ### W
 

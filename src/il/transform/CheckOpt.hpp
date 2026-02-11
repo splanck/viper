@@ -5,34 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the CheckOpt pass for optimizing check opcodes such as
-// IdxChk, SDivChk0, UDivChk0, SRemChk0, URemChk0, and cast checks.
-//
-// CheckOpt performs two primary optimizations:
-//
-// 1. Dominance-based Redundancy Elimination:
-//    When a check instruction with identical opcode and operands has already
-//    executed along all paths to the current check (i.e., the prior check
-//    dominates the current one), the current check is redundant and can be
-//    removed. Uses of the current check's result are redirected to the
-//    dominating check's result.
-//
-// 2. Loop-Invariant Check Hoisting:
-//    When a check instruction's operands are all defined outside a loop (or
-//    are themselves loop-invariant), the check can be hoisted to the loop
-//    preheader. This ensures the check executes once before the loop rather
-//    than on every iteration, reducing overhead while preserving semantics.
-//
-// The pass operates conservatively: checks are only removed when provably
-// redundant, and hoisting only occurs when the check would execute on every
-// loop entry regardless of control flow within the loop.
-//
-// Design Notes:
-// - Uses dominator tree for redundancy detection via preorder traversal
-// - Uses LoopInfo to identify loops and determine operand invariance
-// - Tracks check conditions via a lightweight key combining opcode and operands
-// - Preserves CFG structure and dominance relationships when only removing
-//   instructions; invalidates analyses when moving instructions
+// File: il/transform/CheckOpt.hpp
+// Purpose: Declares the CheckOpt function pass -- optimises check opcodes
+//          (IdxChk, SDivChk0, UDivChk0, etc.) via dominance-based redundancy
+//          elimination and loop-invariant check hoisting to preheaders.
+// Key invariants:
+//   - Checks are removed only when provably dominated by an identical check.
+//   - Hoisting occurs only when operands are loop-invariant and the check
+//     would execute on every loop entry.
+//   - CFG structure is preserved when only removing instructions.
+// Ownership/Lifetime: Stateless FunctionPass; instantiated by the registry.
+// Links: il/transform/PassRegistry.hpp, il/analysis/Dominators.hpp,
+//        il/transform/analysis/LoopInfo.hpp
 //
 //===----------------------------------------------------------------------===//
 

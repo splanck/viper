@@ -57,8 +57,7 @@ typedef struct
 // Collision detection & resolution
 //=============================================================================
 
-static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b,
-                            double *nx, double *ny, double *pen)
+static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen)
 {
     double ax1 = a->x, ay1 = a->y;
     double ax2 = a->x + a->w, ay2 = a->y + a->h;
@@ -89,8 +88,7 @@ static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b,
     return 1;
 }
 
-static void resolve_collision(rt_body_impl *a, rt_body_impl *b,
-                               double nx, double ny, double pen)
+static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen)
 {
     double rvx, rvy, vel_along_n, e, j, total_inv, correction;
 
@@ -323,8 +321,8 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->inv_mass = (mass > 0.0) ? (1.0 / mass) : 0.0;
     b->restitution = 0.5;
     b->friction = 0.3;
-    b->collision_layer = 1;          // Default: layer 1
-    b->collision_mask = 0x7FFFFFFF;  // Default: collide with all layers (bits 0-30)
+    b->collision_layer = 1;         // Default: layer 1
+    b->collision_mask = 0x7FFFFFFF; // Default: collide with all layers (bits 0-30)
     return b;
 }
 
@@ -332,22 +330,27 @@ double rt_physics2d_body_x(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->x : 0.0;
 }
+
 double rt_physics2d_body_y(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->y : 0.0;
 }
+
 double rt_physics2d_body_w(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->w : 0.0;
 }
+
 double rt_physics2d_body_h(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->h : 0.0;
 }
+
 double rt_physics2d_body_vx(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->vx : 0.0;
 }
+
 double rt_physics2d_body_vy(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->vy : 0.0;
@@ -393,24 +396,29 @@ double rt_physics2d_body_restitution(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->restitution : 0.0;
 }
+
 void rt_physics2d_body_set_restitution(void *obj, double r)
 {
     if (obj)
         ((rt_body_impl *)obj)->restitution = r;
 }
+
 double rt_physics2d_body_friction(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->friction : 0.0;
 }
+
 void rt_physics2d_body_set_friction(void *obj, double f)
 {
     if (obj)
         ((rt_body_impl *)obj)->friction = f;
 }
+
 int8_t rt_physics2d_body_is_static(void *obj)
 {
     return (obj && ((rt_body_impl *)obj)->inv_mass == 0.0) ? 1 : 0;
 }
+
 double rt_physics2d_body_mass(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->mass : 0.0;

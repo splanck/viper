@@ -1,5 +1,9 @@
 # VIPER Project Metrics Report
 
+> **Historical snapshot (2025-11-12).** These numbers are severely outdated. As of 2025-12-22, the project has grown
+> to approximately 407,672 SLOC across 3,200 files with 900+ tests. See `docs/devdocs/LOC_REPORT.md` for current
+> figures.
+
 *Generated: 2025-11-12*
 
 ## Executive Summary

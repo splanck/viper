@@ -5,48 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the BuiltinRegistry, a central registry of BASIC built-in
-// functions that maps function names to their semantic and lowering hooks.
-//
-// BASIC Built-in Functions:
-// BASIC provides a rich set of built-in functions for common operations:
-// - Mathematical: SIN, COS, TAN, ATN, EXP, LOG, SQR, ABS, SGN, INT
-// - String: LEFT$, RIGHT$, MID$, LEN, CHR$, ASC, STR$, VAL
-// - Type conversion: CINT, CLNG, CSNG, CDBL
-// - I/O: EOF, LOF, INPUT$
-//
-// Registry Structure:
-// The registry maintains a table of BuiltinInfo entries, each containing:
-// - Function name (e.g., "SIN", "LEFT$")
-// - Semantic checker: Validates arguments during semantic analysis
-// - Lowering hook: Generates IL code during lowering
-// - Builtin enum value: Unique identifier for the function
-//
-// Key Responsibilities:
-// - Name lookup: Maps BASIC function names to builtin identifiers
-// - Semantic validation: Provides type-checking hooks for each builtin
-// - IL generation: Connects each builtin to its lowering implementation
-// - Extensibility: Enables addition of new built-ins without modifying
-//   core parser or semantic analyzer logic
-//
-// Two-Stage Processing:
-// 1. Semantic Analysis: The registry's semantic hooks validate argument counts
-//    and types, reporting errors for invalid calls
-// 2. Lowering: The registry's lowering hooks generate appropriate IL:
-//    - Runtime calls for complex operations (string manipulation)
-//    - Inline IL for simple operations (ABS, SGN)
-//    - Math library calls for transcendental functions (SIN, COS)
-//
-// Integration:
-// - Used by: Parser to recognize built-in function calls
-// - Used by: SemanticAnalyzer to validate builtin arguments
-// - Used by: Lowerer to generate IL for builtin invocations
-//
-// Design Notes:
-// - Static compile-time data only; no dynamic allocation
-// - Table order must match BuiltinCallExpr::Builtin enum for O(1) lookup
-// - Each builtin has independent semantic and lowering implementations
-// - Registry is immutable after initialization
+// File: frontends/basic/BuiltinRegistry.hpp
+// Purpose: Central registry mapping BASIC built-in function names to their
+//          semantic-analysis and IL-lowering hooks (SIN, LEFT$, CINT, etc.).
+// Key invariants: Table order matches BuiltinCallExpr::Builtin enum for O(1)
+//                 lookup. Registry is immutable after static initialization.
+// Ownership/Lifetime: Static compile-time data; no dynamic allocation.
+// Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -264,14 +229,15 @@ void register_builtin(std::string_view name, BuiltinHandler fn);
 /// @brief Locate the lowering handler associated with @p name.
 BuiltinHandler find_builtin(std::string_view name);
 
-// Lightweight result kind derived from builtin descriptor metadata. Only returns
-// a concrete kind for builtins with fixed result categories; otherwise Unknown.
+/// @brief Lightweight result kind derived from builtin descriptor metadata.
+/// @details Only returns a concrete kind for builtins with fixed result
+///          categories; builtins whose result depends on arguments yield Unknown.
 enum class BuiltinResultKind : std::uint8_t
 {
-    Unknown = 0,
-    Int,
-    Float,
-    String,
+    Unknown = 0, ///< Result type depends on arguments or is not determinable.
+    Int,         ///< Always produces an integer result.
+    Float,       ///< Always produces a floating-point result.
+    String,      ///< Always produces a string result.
 };
 
 /// \brief Fetch a fixed result kind for @p b when available.
@@ -280,30 +246,38 @@ enum class BuiltinResultKind : std::uint8_t
 BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b);
 
 // Semantic signature view (registry-driven) ----------------------------------
+
+/// @brief Bitmask describing which BASIC type categories are accepted for an argument.
 enum class BuiltinArgTypeMask : std::uint8_t
 {
-    None = 0,
-    Int = 1U << 0U,
-    Float = 1U << 1U,
-    String = 1U << 2U,
-    Bool = 1U << 3U,
-    Number = Int | Float,
-    Any = Int | Float | String | Bool,
+    None = 0,              ///< No type accepted (sentinel).
+    Int = 1U << 0U,        ///< Integer types (INTEGER, LONG).
+    Float = 1U << 1U,      ///< Floating-point types (SINGLE, DOUBLE).
+    String = 1U << 2U,     ///< String type.
+    Bool = 1U << 3U,       ///< Boolean type.
+    Number = Int | Float,  ///< Any numeric type.
+    Any = Int | Float | String | Bool, ///< Any type.
 };
 
+/// @brief Per-argument specification in a semantic signature view.
+/// @details Describes whether an argument is optional and which type categories
+///          are accepted by the builtin for that argument position.
 struct SemanticArgSpecView
 {
-    bool optional{false};
-    BuiltinArgTypeMask allowed{BuiltinArgTypeMask::Any};
+    bool optional{false};                            ///< True when the argument may be omitted.
+    BuiltinArgTypeMask allowed{BuiltinArgTypeMask::Any}; ///< Accepted type categories.
 };
 
+/// @brief Registry-backed semantic signature describing arity and argument types.
+/// @details Provides a lightweight view over the builtin's argument constraints
+///          for use during semantic analysis. The args pointer references static data.
 struct SemanticSignatureView
 {
-    std::size_t minArgs{0};
-    std::size_t maxArgs{0};
-    const SemanticArgSpecView *args{nullptr};
-    std::size_t argCount{0};
-    BuiltinResultKind result{BuiltinResultKind::Unknown};
+    std::size_t minArgs{0};                          ///< Minimum required argument count.
+    std::size_t maxArgs{0};                          ///< Maximum allowed argument count.
+    const SemanticArgSpecView *args{nullptr};         ///< Per-argument specifications (static storage).
+    std::size_t argCount{0};                         ///< Number of entries in the args array.
+    BuiltinResultKind result{BuiltinResultKind::Unknown}; ///< Fixed result kind, if determinable.
 };
 
 /// \brief Return a registry-backed semantic signature when available.

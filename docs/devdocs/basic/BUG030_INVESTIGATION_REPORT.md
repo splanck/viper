@@ -1,8 +1,11 @@
 # BUG-030: Global Variable Isolation - Detailed Investigation Report
 
+> **Historical (2025-11-14).** This bug has been FIXED. Module-level variables are now accessible from SUB/FUNCTION
+> via `rt_modvar_addr_*` runtime helpers. See `bugs/basic_resolved.md` for resolution details.
+
 **Date**: 2025-11-14
-**Severity**: 🔴 CRITICAL
-**Status**: CONFIRMED - Blocks all non-trivial program development
+**Severity**: CRITICAL (when reported)
+**Status**: RESOLVED
 **Original Discovery**: 2025-11-12 (dungeon_quest_v4.bas)
 
 ---

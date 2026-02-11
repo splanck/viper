@@ -7,7 +7,11 @@
 //
 // File: codegen/common/PassManager.hpp
 // Purpose: Target-independent pass manager templated on backend Module type.
-// Key invariants: Passes run sequentially, short-circuiting on failure.
+// Key invariants: Passes run sequentially, short-circuiting on failure;
+//                 diagnostics are checked after every pass to catch silent errors.
+// Ownership/Lifetime: PassManager takes unique_ptr ownership of all registered
+//                     passes; destruction order follows insertion order.
+// Links: docs/architecture.md, codegen/common/Diagnostics.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,6 +32,9 @@ template <typename ModuleT> class Pass
   public:
     virtual ~Pass() = default;
     /// @brief Execute the pass over @p module, emitting diagnostics to @p diags.
+    /// @param module The backend-specific module state to transform.
+    /// @param diags  Diagnostic sink for warnings and errors encountered during the pass.
+    /// @return True if the pass completed successfully, false on failure.
     virtual bool run(ModuleT &module, Diagnostics &diags) = 0;
 };
 
@@ -37,12 +44,15 @@ template <typename ModuleT> class PassManager
 {
   public:
     /// @brief Add a pass to the manager; ownership is transferred.
+    /// @param pass The pass to register; the manager takes unique ownership.
     void addPass(std::unique_ptr<Pass<ModuleT>> pass)
     {
         passes_.push_back(std::move(pass));
     }
 
     /// @brief Execute all registered passes in order.
+    /// @param module The backend-specific module state to transform.
+    /// @param diags  Diagnostic sink checked after each pass for errors.
     /// @return False when a pass signals failure or diagnostics contain errors.
     bool run(ModuleT &module, Diagnostics &diags) const
     {

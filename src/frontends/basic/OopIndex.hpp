@@ -56,19 +56,21 @@ struct InterfaceInfo
 };
 
 /// @brief Captures the signature of a CLASS method.
+/// @details Stores parameter types, return type, and access control for a method.
+///          The implicit instance receiver is not included in paramTypes.
 struct MethodSig
 {
-    /// Ordered parameter types, excluding the implicit instance parameter.
+    /// @brief Ordered parameter types, excluding the implicit instance parameter.
     std::vector<Type> paramTypes;
 
-    /// Optional return type for methods producing a value.
+    /// @brief Optional return type for methods producing a value.
     std::optional<Type> returnType;
 
-    /// Qualified class name when method returns an object.
-    /// Empty string indicates primitive or void return type. (BUG-099)
+    /// @brief Qualified class name when method returns an object.
+    /// @details Empty string indicates primitive or void return type. (BUG-099)
     std::string returnClassName;
 
-    /// Access specifier for the method (default Public).
+    /// @brief Access specifier for the method (default Public).
     Access access{Access::Public};
 };
 
@@ -120,32 +122,37 @@ struct ClassInfo
         bool isGetter = false;           ///< True for getter; false for setter when accessor.
     };
 
-    /// Declared methods indexed by name (heterogeneous lookup enabled).
+    /// @brief Declared methods indexed by name (heterogeneous lookup enabled).
     std::unordered_map<std::string, MethodInfo, OopStringHash, std::equal_to<>> methods;
 
-    /// Ordered virtual method names by slot for deterministic ABI layout.
+    /// @brief Ordered virtual method names by slot for deterministic ABI layout.
     std::vector<std::string> vtable;
 
-    /// Method declaration source locations (for diagnostics).
+    /// @brief Method declaration source locations (for diagnostics).
     std::unordered_map<std::string, il::support::SourceLoc, OopStringHash, std::equal_to<>>
         methodLocs;
 
-    /// Interfaces implemented by this class (by stable ID).
+    /// @brief Interfaces implemented by this class (by stable ID).
     std::vector<int> implementedInterfaces;
 
-    /// Mapping from interface id to concrete method mappings (slot -> method name).
+    /// @brief Mapping from interface ID to concrete method mappings (slot index to method name).
     std::unordered_map<int, std::vector<std::string>> ifaceSlotImpl;
 
-    /// Raw implements list captured during parsing (dotted names, unresolved).
+    /// @brief Raw IMPLEMENTS list captured during parsing (dotted names, unresolved).
     std::vector<std::string> rawImplements;
 };
 
 /// @brief Container mapping class names to extracted metadata.
+/// @details Stores one ClassInfo entry per declared CLASS and one InterfaceInfo
+///          entry per declared INTERFACE. Populated during the OOP scanning phase
+///          and consulted throughout lowering for layout, vtable, and method resolution.
 class OopIndex
 {
   public:
+    /// @brief Map from class name to its metadata.
     using ClassTable = std::unordered_map<std::string, ClassInfo>;
-    using IfaceTable = std::unordered_map<std::string, InterfaceInfo>; // key: qualified name
+    /// @brief Map from qualified interface name to its metadata.
+    using IfaceTable = std::unordered_map<std::string, InterfaceInfo>;
 
     /// @brief Access the mutable class table.
     [[nodiscard]] ClassTable &classes() noexcept
@@ -168,9 +175,13 @@ class OopIndex
     }
 
     /// @brief Find a class by name.
+    /// @param name Qualified or unqualified class name to search for.
+    /// @return Pointer to the ClassInfo, or nullptr when not found.
     [[nodiscard]] ClassInfo *findClass(const std::string &name);
 
     /// @brief Find a class by name (const overload).
+    /// @param name Qualified or unqualified class name to search for.
+    /// @return Pointer to the ClassInfo, or nullptr when not found.
     [[nodiscard]] const ClassInfo *findClass(const std::string &name) const;
 
     // =========================================================================
@@ -215,12 +226,15 @@ class OopIndex
         return interfacesByQname_;
     }
 
+    /// @brief Access the immutable interface table by qualified name.
+    /// @return Const reference to the interface table.
     [[nodiscard]] const IfaceTable &interfacesByQname() const noexcept
     {
         return interfacesByQname_;
     }
 
     /// @brief Allocate the next stable interface ID.
+    /// @return A unique, monotonically increasing interface identifier.
     int allocateInterfaceId() noexcept
     {
         return nextInterfaceId_++;

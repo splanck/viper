@@ -103,8 +103,8 @@ static void ensure_capacity(rt_keychord_impl *kc)
     kc->capacity = new_cap;
 }
 
-static void add_entry(rt_keychord_impl *kc, const char *name, kc_type type,
-                       void *keys, int64_t window_frames)
+static void add_entry(
+    rt_keychord_impl *kc, const char *name, kc_type type, void *keys, int64_t window_frames)
 {
     int64_t key_count = rt_seq_len(keys);
     if (key_count <= 0 || key_count > KC_MAX_KEYS)
@@ -243,8 +243,7 @@ void rt_keychord_update(void *obj)
         else /* KC_TYPE_COMBO */
         {
             /* Check for timeout */
-            if (e->combo_index > 0 &&
-                (kc->frame_counter - e->last_match_frame) > e->window_frames)
+            if (e->combo_index > 0 && (kc->frame_counter - e->last_match_frame) > e->window_frames)
             {
                 e->combo_index = 0;
             }

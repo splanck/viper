@@ -5,65 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the runtime library's file I/O API, providing the
-// implementation for BASIC's OPEN, CLOSE, INPUT, PRINT #, and file-related
-// statements. The file API wraps POSIX file descriptors with BASIC-specific
-// semantics and integrates with the runtime's error handling system.
-//
-// BASIC File I/O Model:
-// BASIC programs access files through numbered file handles assigned by
-// OPEN statements. The runtime maps these logical file numbers to OS-level
-// file descriptors and manages the file handle lifecycle (open, read, write,
-// close, seeking).
-//
-// File Handle Structure (RtFile):
-// The RtFile struct is a lightweight handle wrapping a POSIX file descriptor.
-// A negative fd value (-1) indicates the handle is closed or uninitialized.
-// Handles are stack-allocated by callers and initialized through rt_file_init.
-//
-// File Operations Supported:
-// - Opening: rt_file_open with mode strings ("r", "w", "a", "r+", "w+", "a+")
-// - Reading: rt_file_read_byte, rt_file_read_line, rt_file_read_all
-// - Writing: rt_file_write_bytes, rt_file_write_str, rt_file_print
-// - Positioning: rt_file_seek, rt_file_tell (for random access files)
-// - Closing: rt_file_close (releases OS resources)
-// - Queries: rt_file_is_open, rt_file_eof
-//
-// BASIC Mode Mapping:
-// BASIC's OPEN statement supports multiple access modes:
-// - INPUT mode → "r" (read-only, must exist)
-// - OUTPUT mode → "w" (write-only, truncate or create)
-// - APPEND mode → "a" (write-only, append to end)
-// - BINARY mode → random access with seeking
-//
-// The basic_mode parameter in rt_file_open maps these BASIC modes to
-// appropriate POSIX open flags and buffering strategies.
-//
-// Error Handling Integration:
-// All file operations use the RtError system for failure reporting. Common
-// errors include:
-// - Err_FileNotFound: File doesn't exist when opening for read
-// - Err_IOError: Permission denied, disk full, device error
-// - Err_EOF: Read attempted at end of file
-//
-// These errors map to BASIC ERR codes, enabling ON ERROR GOTO handlers
-// to catch and handle file I/O failures.
-//
-// Platform Abstraction:
-// The API abstracts platform differences (Unix vs Windows file APIs) through
-// conditional compilation. On Unix, it uses POSIX file descriptors. On Windows,
-// it uses file handles with appropriate Win32 API calls. This ensures consistent
-// behavior across platforms while using native APIs efficiently.
-//
-// Buffering Strategy:
-// File I/O uses line buffering for text files and unbuffered access for binary
-// files. This matches BASIC's expectation that PRINT # outputs appear immediately
-// while maintaining performance for text processing.
-//
-// Resource Management:
-// Files are NOT automatically closed. BASIC programs must explicitly CLOSE
-// files or close them at program termination. The runtime tracks open files
-// and ensures cleanup on normal and abnormal termination.
+// File: src/runtime/rt_file.h
+// Purpose: File I/O API wrapping POSIX file descriptors with BASIC OPEN/CLOSE/
+//          INPUT/PRINT# semantics, channel-based access, and RtError
+//          integration for read, write, seek, and EOF operations.
+// Key invariants: RtFile.fd == -1 means closed/uninitialized; channel numbers
+//                 map to at most one open file; all operations report errors
+//                 via RtError out-parameters; files are NOT auto-closed.
+// Ownership/Lifetime: RtFile handles are stack-allocated by callers and
+//                     initialized via rt_file_init; OS resources are released
+//                     by rt_file_close; channel-based API manages its own
+//                     internal file table.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -11,6 +11,7 @@
 //                 cycles are broken using a temporary spill via movVRegToTemp;
 //                 output preserves the semantics of the parallel assignment.
 // Ownership/Lifetime: Header-only utility with no global state.
+// Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -32,18 +33,38 @@ template <typename RegClassT> struct CopyPair
 };
 
 /// @brief Interface for emitting resolved copy instructions.
+/// @details Backends implement this interface to translate abstract register
+///          moves into concrete MIR instructions. The resolver calls these
+///          methods in the order that preserves the parallel-copy semantics.
 /// @tparam RegClassT The backend-specific register class enum type.
 template <typename RegClassT> struct CopyEmitter
 {
+    /// @brief Emit a register-to-register move.
+    /// @param cls Register class for both source and destination.
+    /// @param src Source virtual register number.
+    /// @param dst Destination virtual register number.
     virtual void movVRegToVReg(RegClassT cls, std::uint16_t src, std::uint16_t dst) = 0;
+
+    /// @brief Spill a virtual register to the cycle-breaking temporary.
+    /// @param cls Register class of the source register.
+    /// @param src Virtual register number to save.
     virtual void movVRegToTemp(RegClassT cls, std::uint16_t src) = 0;
+
+    /// @brief Restore the cycle-breaking temporary into a virtual register.
+    /// @param cls Register class of the destination register.
+    /// @param dst Virtual register number to restore into.
     virtual void movTempToVReg(RegClassT cls, std::uint16_t dst) = 0;
+
     virtual ~CopyEmitter() = default;
 };
 
 namespace detail
 {
 
+/// @brief Find the largest virtual register number across all copy pairs.
+/// @tparam RegClassT The backend-specific register class enum type.
+/// @param pairs The vector of copy pairs to scan.
+/// @return The maximum srcV or dstV value found, or 0 if @p pairs is empty.
 template <typename RegClassT>
 inline std::uint32_t findMaxVirtualRegister(const std::vector<CopyPair<RegClassT>> &pairs)
 {
@@ -64,6 +85,13 @@ inline std::uint32_t findMaxVirtualRegister(const std::vector<CopyPair<RegClassT
     return maxValue;
 }
 
+/// @brief Resolve parallel copies for a single register class.
+/// @details Performs a two-phase resolution: (1) topological sort to emit
+///          acyclic copies in dependency order, and (2) cycle breaking using
+///          a temporary spill/reload sequence for any remaining cyclic copies.
+/// @tparam RegClassT The backend-specific register class enum type.
+/// @param pairs   Copy pairs all belonging to the same register class.
+/// @param emitter Backend-specific emitter receiving the resolved move sequence.
 template <typename RegClassT>
 inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
                                CopyEmitter<RegClassT> &emitter)
@@ -195,7 +223,15 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
 } // namespace detail
 
 /// @brief Materialises a sequence of moves from parallel copy assignments.
+///
+/// @details Partitions the copy pairs by register class and delegates each
+///          partition to detail::resolveClassCopies, which handles topological
+///          ordering and cycle breaking. The emitter receives callbacks in an
+///          order that correctly implements the parallel assignment semantics.
+///
 /// @tparam RegClassT The backend-specific register class enum type.
+/// @param pairs The full set of parallel copy pairs (may span multiple classes).
+/// @param E     Backend-specific emitter receiving the resolved move sequence.
 template <typename RegClassT>
 inline void resolveParallelCopies(std::vector<CopyPair<RegClassT>> pairs, CopyEmitter<RegClassT> &E)
 {

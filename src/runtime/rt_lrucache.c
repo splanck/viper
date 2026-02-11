@@ -55,7 +55,6 @@ typedef struct rt_lrucache_impl
     rt_lru_node *tail;     ///< Least recently used node (doubly-linked list tail).
 } rt_lrucache_impl;
 
-
 static const char *get_key_data(rt_string key, size_t *out_len)
 {
     const char *cstr = rt_string_cstr(key);

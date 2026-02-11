@@ -5,10 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Runtime support for command-line arguments and environment queries. The
-// helpers provide a simple process-wide argument store with clear/push
-// semantics, query functions to retrieve argument metadata, and utilities to
-// inspect or modify process environment variables.
+// File: src/runtime/rt_args.h
+// Purpose: Process-wide command-line argument store and environment variable
+//          access, providing push/query semantics for arguments and get/set/
+//          has helpers for environment variables.
+// Key invariants: Argument indices are zero-based and contiguous; environment
+//                 variable names must be non-empty; rt_args_get traps on
+//                 out-of-range indices.
+// Ownership/Lifetime: Pushed strings are retained by the store; rt_args_get
+//                     returns a retained reference the caller must release;
+//                     rt_args_clear releases all stored references.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,26 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the IL type representation system used throughout the
-// Viper compiler infrastructure. The Type struct provides a lightweight,
-// value-based wrapper around an enumerated type kind that represents the
-// primitive types supported by Viper IL.
-//
-// Viper IL supports 10 primitive types: void, i1, i16, i32, i64, f64, ptr,
-// str, error, and resumetok. Each type is represented by a Type::Kind enum
-// discriminator. Types are designed to be copied by value with minimal
-// overhead, making them suitable for frequent use during IR construction,
-// analysis, and transformation passes.
-//
-// Key Design Decisions:
-// - Value semantics: Types are lightweight POD structs suitable for copying
-// - No parametric types: Pointer and string types are opaque (no element types)
-// - Enumerated kinds: Simple discriminated union without additional payload
-// - String conversion: Every type can be serialized to its IL spec mnemonic
-//
-// The type system is intentionally minimal to keep the IL layer simple and
-// focused. Higher-level type systems in frontend languages are mapped to
-// these primitives during lowering.
+// File: il/core/Type.hpp
+// Purpose: Declares the Type struct -- a lightweight value-based wrapper
+//          around a Type::Kind enum representing the 10 primitive types in
+//          Viper IL (void, i1, i16, i32, i64, f64, ptr, str, error,
+//          resumetok). Provides string conversion to spec mnemonics.
+// Key invariants:
+//   - Type is a POD-like struct with value semantics; safe to copy freely.
+//   - No parametric types: pointer and string types are opaque.
+//   - toString()/kindToString() always return valid spec mnemonic strings.
+// Ownership/Lifetime: Value type with no dynamic resources.
+// Links: docs/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

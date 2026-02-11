@@ -12,32 +12,40 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" {
-#include "rt_internal.h"
+extern "C"
+{
 #include "rt_audio.h"
-#include "rt_playlist.h"
+#include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_playlist.h"
 #include "rt_string.h"
 
-void vm_trap(const char *msg) {
-    fprintf(stderr, "TRAP: %s\n", msg);
-    rt_abort(msg);
-}
+    void vm_trap(const char *msg)
+    {
+        fprintf(stderr, "TRAP: %s\n", msg);
+        rt_abort(msg);
+    }
 }
 
 static int tests_run = 0;
 static int tests_passed = 0;
 
-#define ASSERT(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { \
-        fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg); \
-    } else { \
-        tests_passed++; \
-    } \
-} while(0)
+#define ASSERT(cond, msg)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
-static rt_string make_str(const char *s) {
+static rt_string make_str(const char *s)
+{
     return rt_string_from_bytes(s, strlen(s));
 }
 
@@ -45,13 +53,15 @@ static rt_string make_str(const char *s) {
 // Audio system tests (headless-safe)
 //=============================================================================
 
-static void test_audio_init() {
+static void test_audio_init()
+{
     // Init may succeed or fail depending on hardware — both are valid
     int64_t result = rt_audio_init();
     ASSERT(result == 0 || result == 1, "audio init returns 0 or 1");
 }
 
-static void test_audio_volume() {
+static void test_audio_volume()
+{
     // Volume functions are no-ops without hardware but shouldn't crash
     rt_audio_set_master_volume(75);
     int64_t vol = rt_audio_get_master_volume();
@@ -59,7 +69,8 @@ static void test_audio_volume() {
     ASSERT(vol >= 0 && vol <= 100, "master volume in valid range");
 }
 
-static void test_audio_pause_resume() {
+static void test_audio_pause_resume()
+{
     // These are safe no-ops without hardware
     rt_audio_pause_all();
     rt_audio_resume_all();
@@ -67,7 +78,8 @@ static void test_audio_pause_resume() {
     ASSERT(1, "pause/resume/stop don't crash");
 }
 
-static void test_sound_null_safety() {
+static void test_sound_null_safety()
+{
     // NULL sound handle operations
     rt_sound_free(NULL);
     int64_t voice = rt_sound_play(NULL);
@@ -80,7 +92,8 @@ static void test_sound_null_safety() {
     ASSERT(voice3 == -1, "play_loop null sound returns -1");
 }
 
-static void test_voice_null_safety() {
+static void test_voice_null_safety()
+{
     // Voice operations on invalid IDs
     rt_voice_stop(0);
     rt_voice_stop(999999);
@@ -90,7 +103,8 @@ static void test_voice_null_safety() {
     ASSERT(rt_voice_is_playing(999999) == 0, "invalid voice not playing");
 }
 
-static void test_music_null_safety() {
+static void test_music_null_safety()
+{
     rt_music_free(NULL);
     rt_music_play(NULL, 0);
     rt_music_stop(NULL);
@@ -109,7 +123,8 @@ static void test_music_null_safety() {
 // Playlist management tests (pure data structure, no audio needed)
 //=============================================================================
 
-static void test_playlist_new() {
+static void test_playlist_new()
+{
     void *pl = rt_playlist_new();
     ASSERT(pl != NULL, "playlist created");
     ASSERT(rt_playlist_len(pl) == 0, "new playlist is empty");
@@ -118,7 +133,8 @@ static void test_playlist_new() {
     ASSERT(rt_playlist_is_paused(pl) == 0, "not paused");
 }
 
-static void test_playlist_add_remove() {
+static void test_playlist_add_remove()
+{
     void *pl = rt_playlist_new();
     rt_string track1 = make_str("track1.wav");
     rt_string track2 = make_str("track2.wav");
@@ -133,12 +149,14 @@ static void test_playlist_add_remove() {
 
     // Verify track at index
     rt_string got = rt_playlist_get(pl, 0);
-    if (got) {
+    if (got)
+    {
         ASSERT(strcmp(rt_string_cstr(got), "track1.wav") == 0, "track 0 = track1.wav");
     }
 
     got = rt_playlist_get(pl, 2);
-    if (got) {
+    if (got)
+    {
         ASSERT(strcmp(rt_string_cstr(got), "track3.wav") == 0, "track 2 = track3.wav");
     }
 
@@ -147,12 +165,15 @@ static void test_playlist_add_remove() {
     ASSERT(rt_playlist_len(pl) == 2, "removed 1 track");
 
     got = rt_playlist_get(pl, 1);
-    if (got) {
-        ASSERT(strcmp(rt_string_cstr(got), "track3.wav") == 0, "after remove: track 1 = track3.wav");
+    if (got)
+    {
+        ASSERT(strcmp(rt_string_cstr(got), "track3.wav") == 0,
+               "after remove: track 1 = track3.wav");
     }
 }
 
-static void test_playlist_insert() {
+static void test_playlist_insert()
+{
     void *pl = rt_playlist_new();
     rt_string a = make_str("a.wav");
     rt_string b = make_str("b.wav");
@@ -167,12 +188,14 @@ static void test_playlist_insert() {
     ASSERT(rt_playlist_len(pl) == 3, "3 tracks after insert");
 
     rt_string got = rt_playlist_get(pl, 1);
-    if (got) {
+    if (got)
+    {
         ASSERT(strcmp(rt_string_cstr(got), "b.wav") == 0, "inserted at position 1");
     }
 }
 
-static void test_playlist_clear() {
+static void test_playlist_clear()
+{
     void *pl = rt_playlist_new();
     rt_playlist_add(pl, make_str("x.wav"));
     rt_playlist_add(pl, make_str("y.wav"));
@@ -183,7 +206,8 @@ static void test_playlist_clear() {
     ASSERT(rt_playlist_get_current(pl) == -1, "no current after clear");
 }
 
-static void test_playlist_volume() {
+static void test_playlist_volume()
+{
     void *pl = rt_playlist_new();
 
     rt_playlist_set_volume(pl, 80);
@@ -196,7 +220,8 @@ static void test_playlist_volume() {
     ASSERT(rt_playlist_get_volume(pl) == 100, "volume = 100");
 }
 
-static void test_playlist_shuffle_repeat() {
+static void test_playlist_shuffle_repeat()
+{
     void *pl = rt_playlist_new();
 
     // Shuffle
@@ -216,7 +241,8 @@ static void test_playlist_shuffle_repeat() {
     ASSERT(rt_playlist_get_repeat(pl) == 0, "no repeat");
 }
 
-static void test_playlist_navigation() {
+static void test_playlist_navigation()
+{
     void *pl = rt_playlist_new();
     rt_playlist_add(pl, make_str("one.wav"));
     rt_playlist_add(pl, make_str("two.wav"));
@@ -239,7 +265,8 @@ static void test_playlist_navigation() {
     ASSERT(rt_playlist_get_current(pl) == 0, "jumped to track 0");
 }
 
-static void test_playlist_update_no_crash() {
+static void test_playlist_update_no_crash()
+{
     void *pl = rt_playlist_new();
     rt_playlist_add(pl, make_str("song.wav"));
 
@@ -249,7 +276,8 @@ static void test_playlist_update_no_crash() {
     ASSERT(1, "playlist update doesn't crash");
 }
 
-static void test_playlist_null_safety() {
+static void test_playlist_null_safety()
+{
     // All operations on NULL should be safe
     rt_playlist_add(NULL, make_str("x.wav"));
     rt_playlist_insert(NULL, 0, make_str("x.wav"));
@@ -280,7 +308,8 @@ static void test_playlist_null_safety() {
     ASSERT(1, "all null operations safe");
 }
 
-static void test_playlist_bounds() {
+static void test_playlist_bounds()
+{
     void *pl = rt_playlist_new();
     rt_playlist_add(pl, make_str("a.wav"));
 
@@ -297,7 +326,8 @@ static void test_playlist_bounds() {
     ASSERT(1, "out-of-bounds operations safe");
 }
 
-int main() {
+int main()
+{
     // Audio system (headless-safe)
     test_audio_init();
     test_audio_volume();

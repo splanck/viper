@@ -5,30 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the core control-flow verification infrastructure for the
-// IL verifier. It provides the fundamental building blocks for validating basic
-// block structure, terminator placement, and control flow graph integrity within
-// IL functions.
-//
-// The IL specification requires that every basic block ends with exactly one
-// terminator instruction and that control flow transfers respect basic block
-// parameter signatures. This file provides the iteration and dispatch framework
-// that orchestrates verification of these invariants across all instructions
-// within a function.
-//
-// Key Responsibilities:
-// - Validate basic block parameter declarations and populate type environment
-// - Check that terminators appear only at block ends (no dead code after)
-// - Dispatch instruction verification to appropriate strategy handlers
-// - Verify branch/conditional branch/return terminator semantics
-// - Ensure control flow graph is well-formed with valid successor edges
-//
-// Design Rationale:
-// The verification architecture separates control-flow checks from opcode-specific
-// validation. This file focuses on structural properties (block parameters,
-// terminator placement, successor validity) while delegating instruction semantics
-// to specialized strategies. The VerifyInstrFn callback pattern enables flexible
-// composition of verification passes.
+// File: il/verify/ControlFlowChecker.hpp
+// Purpose: Core control-flow verification infrastructure -- validates basic
+//          block structure, terminator placement, and CFG integrity. Provides
+//          the iteration and dispatch framework (VerifyInstrFn callback) that
+//          orchestrates per-instruction verification within a function.
+// Key invariants:
+//   - Every basic block must end with exactly one terminator.
+//   - Control-flow transfers must respect block parameter signatures.
+//   - Structural checks are separate from opcode-specific semantic validation.
+// Ownership/Lifetime: Stateless free functions operating on caller-owned IL
+//          structures and a caller-provided ostream for diagnostics.
+// Links: il/verify/BlockMap.hpp, il/verify/TypeInference.hpp,
+//        il/core/Opcode.hpp
 //
 //===----------------------------------------------------------------------===//
 

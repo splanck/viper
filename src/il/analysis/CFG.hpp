@@ -5,54 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares control flow graph (CFG) analysis utilities for IL functions.
-// These functions compute successor/predecessor relationships, traversal orders,
-// and structural properties needed by optimization passes, verification, and
-// code generation.
-//
-// The CFG represents the control flow structure of a function as a directed graph
-// where:
-// - Nodes are basic blocks
-// - Edges represent possible control flow transfers (branches, calls, returns)
-// - Entry block is the first block in the function
-// - Exit is any block ending with a return instruction
-//
-// Key Abstractions:
-//
-// CFGContext: Caching layer that precomputes and stores CFG metadata to avoid
-// redundant traversals. Constructed once per function, stores label→block maps,
-// successor/predecessor lists, and block→function relationships. Must be rebuilt
-// if the CFG structure changes.
-//
-// Successor Queries: Extract outgoing edges from a block by examining its
-// terminator instruction (br, cbr, switch, ret). Cached in CFGContext for
-// repeated queries.
-//
-// Predecessor Queries: Inverse of successors - which blocks can reach this block.
-// Computed by inverting the successor relation. Cached in CFGContext.
-//
-// Traversal Orders:
-// - Post-order: DFS traversal where blocks appear after their descendants
-// - Reverse post-order (RPO): Reverse of post-order (entry block first)
-// - Topological order: Only defined for acyclic graphs (DAGs)
-//
-// Use Cases:
-// - Dominator analysis: Requires RPO traversal
-// - Data flow analysis: Uses predecessor/successor relationships
-// - Loop detection: Checks for back edges in post-order
-// - Code generation: Topological order for straight-line scheduling
-// - Verification: Ensures all blocks are reachable from entry
-//
-// Design Decisions:
-// - Eager caching: CFGContext precomputes all relationships on construction
-// - Immutable queries: All functions take const references (read-only)
-// - Function-scoped: CFG utilities operate on individual functions, not modules
-// - Light-weight: No heavy graph data structures, just vectors and maps
-//
-// Performance Characteristics:
-// - CFGContext construction: O(B + E) where B = blocks, E = edges
-// - Successor query: O(1) with caching, O(k) without (k = successor count)
-// - Traversal orders: O(B + E) with caching
+// File: il/analysis/CFG.hpp
+// Purpose: Control flow graph analysis utilities for IL functions -- successor/
+//          predecessor queries, DFS post-order, reverse post-order, topological
+//          order, and acyclicity testing. Provides the CFGContext caching layer
+//          that precomputes and stores CFG metadata for efficient reuse.
+// Key invariants:
+//   - CFGContext must be rebuilt if the module's function/block layout changes.
+//   - All query functions take const references and are read-only.
+//   - Traversal orders assume entry block is the first block in the function.
+// Ownership/Lifetime: CFGContext owns its internal maps and caches. Created
+//          per-module; callers must ensure the referenced module outlives the
+//          context. Query functions borrow state from the context.
+// Links: il/analysis/Dominators.hpp, il/core/Function.hpp,
+//        il/core/BasicBlock.hpp
 //
 //===----------------------------------------------------------------------===//
 

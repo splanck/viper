@@ -149,16 +149,16 @@ void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t fram
         {
             char name_buf[32];
             snprintf(name_buf, sizeof(name_buf), "%d", (int)idx);
-            rt_spritesheet_set_region(sheet, rt_const_cstr(name_buf),
-                                      ix * frame_w, iy * frame_h, frame_w, frame_h);
+            rt_spritesheet_set_region(
+                sheet, rt_const_cstr(name_buf), ix * frame_w, iy * frame_h, frame_w, frame_h);
             idx++;
         }
     }
     return sheet;
 }
 
-void rt_spritesheet_set_region(void *obj, rt_string name,
-                                int64_t x, int64_t y, int64_t w, int64_t h)
+void rt_spritesheet_set_region(
+    void *obj, rt_string name, int64_t x, int64_t y, int64_t w, int64_t h)
 {
     rt_spritesheet_impl *ss;
     const char *cstr;

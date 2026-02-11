@@ -43,9 +43,22 @@ struct LoweringRule
 };
 
 /// \brief Retrieve the global registry of lowering rules.
+///
+/// @details The registry is lazily initialised on the first call and remains
+///          immutable for the lifetime of the process. Rules are stored in
+///          registration order, which determines match priority.
+///
+/// @return Const reference to the process-wide vector of lowering rules.
 [[nodiscard]] const std::vector<LoweringRule> &viper_get_lowering_rules();
 
 /// \brief Select the first rule whose match predicate accepts the instruction.
+///
+/// @details Iterates the rule registry in registration order, invoking each
+///          rule's match predicate until one returns true. Returns nullptr
+///          when no rule matches.
+///
+/// @param instr The IL instruction to match against registered rules.
+/// @return Pointer to the first matching LoweringRule, or nullptr if none match.
 [[nodiscard]] const LoweringRule *viper_select_rule(const IL::Instr &instr);
 
 } // namespace viper::codegen::x64

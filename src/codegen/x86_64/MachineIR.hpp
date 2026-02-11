@@ -147,12 +147,20 @@ struct MInstr
     std::vector<Operand> operands{}; ///< Operands in emission order.
 
     /// \brief Create an instruction with the given operands.
+    /// @param opc The machine opcode for the instruction.
+    /// @param ops Operands in emission order, moved into the instruction.
+    /// @return A fully constructed MInstr instance.
     [[nodiscard]] static MInstr make(MOpcode opc, std::vector<Operand> ops);
 
     /// \brief Create an instruction from an initializer list of operands.
+    /// @param opc The machine opcode for the instruction.
+    /// @param ops Brace-enclosed operands in emission order (defaults to empty).
+    /// @return A fully constructed MInstr instance.
     [[nodiscard]] static MInstr make(MOpcode opc, std::initializer_list<Operand> ops = {});
 
     /// \brief Append an operand and return a reference to enable chaining.
+    /// @param op The operand to append to the operand list.
+    /// @return Reference to this instruction for fluent-style chaining.
     MInstr &addOperand(Operand op);
 };
 
@@ -163,6 +171,8 @@ struct MBasicBlock
     std::vector<MInstr> instructions{}; ///< Ordered list of instructions.
 
     /// \brief Append an instruction to the block and return a reference to it.
+    /// @param instr The instruction to move-append to the block.
+    /// @return Reference to the newly appended instruction.
     MInstr &append(MInstr instr);
 };
 
@@ -181,9 +191,13 @@ struct MFunction
     std::size_t localLabelCounter{0};  ///< Counter used to mint unique local labels.
 
     /// \brief Add a new basic block and return a reference to it.
+    /// @param block The basic block to move-append to the function body.
+    /// @return Reference to the newly appended basic block.
     MBasicBlock &addBlock(MBasicBlock block);
 
     /// \brief Generate a function-local unique label using the provided prefix.
+    /// @param prefix Short descriptive prefix for the label (e.g. "if_true").
+    /// @return A label string guaranteed unique within this MFunction.
     [[nodiscard]] std::string makeLocalLabel(std::string_view prefix);
 };
 
@@ -192,30 +206,56 @@ struct MFunction
 // -----------------------------------------------------------------------------
 
 /// \brief Construct an OpReg representing a virtual register.
+/// @param cls  Register class constraining the allocation.
+/// @param id   Virtual register identifier (unique per function).
+/// @return An OpReg with isPhys == false.
 [[nodiscard]] OpReg makeVReg(RegClass cls, uint16_t id) noexcept;
 
 /// \brief Construct an OpReg representing a physical register.
+/// @param cls  Register class of the physical register.
+/// @param phys PhysReg enum value cast to uint16_t.
+/// @return An OpReg with isPhys == true.
 [[nodiscard]] OpReg makePhysReg(RegClass cls, uint16_t phys) noexcept;
 
 /// \brief Wrap a virtual register operand into the variant container.
+/// @param cls Register class constraining the allocation.
+/// @param id  Virtual register identifier.
+/// @return An Operand holding an OpReg with isPhys == false.
 [[nodiscard]] Operand makeVRegOperand(RegClass cls, uint16_t id);
 
 /// \brief Wrap a physical register operand into the variant container.
+/// @param cls  Register class of the physical register.
+/// @param phys PhysReg enum value cast to uint16_t.
+/// @return An Operand holding an OpReg with isPhys == true.
 [[nodiscard]] Operand makePhysRegOperand(RegClass cls, uint16_t phys);
 
 /// \brief Construct an immediate operand.
+/// @param value The 64-bit signed immediate value.
+/// @return An Operand holding an OpImm.
 [[nodiscard]] Operand makeImmOperand(int64_t value);
 
 /// \brief Construct a memory operand from base register and displacement.
+/// @param base Base register supplying the address.
+/// @param disp Signed byte displacement from the base.
+/// @return An Operand holding an OpMem without an index register.
 [[nodiscard]] Operand makeMemOperand(OpReg base, int32_t disp);
 
-/// Construct a scaled-index memory operand.
+/// \brief Construct a scaled-index memory operand.
+/// @param base  Base register supplying the address.
+/// @param index Index register multiplied by @p scale.
+/// @param scale Scale factor applied to the index (1, 2, 4, or 8).
+/// @param disp  Signed byte displacement from base + index*scale.
+/// @return An Operand holding an OpMem with hasIndex == true.
 [[nodiscard]] Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp);
 
 /// \brief Construct a label operand with the provided symbol name.
+/// @param name The symbolic name of the label.
+/// @return An Operand holding an OpLabel.
 [[nodiscard]] Operand makeLabelOperand(std::string name);
 
 /// \brief Construct a RIP-relative label operand with the provided symbol name.
+/// @param name The symbolic name referenced relative to RIP.
+/// @return An Operand holding an OpRipLabel.
 [[nodiscard]] Operand makeRipLabelOperand(std::string name);
 
 // -----------------------------------------------------------------------------
@@ -223,30 +263,48 @@ struct MFunction
 // -----------------------------------------------------------------------------
 
 /// \brief Render a register operand to string form.
+/// @param op The register operand to format.
+/// @return Human-readable string such as "%vreg3" or "%rax".
 [[nodiscard]] std::string toString(const OpReg &op);
 
 /// \brief Render an immediate operand to string form.
+/// @param op The immediate operand to format.
+/// @return Human-readable string such as "$42".
 [[nodiscard]] std::string toString(const OpImm &op);
 
 /// \brief Render a memory operand to string form.
+/// @param op The memory operand to format.
+/// @return Human-readable string such as "8(%rbp)" or "(%rdi,%rsi,4)".
 [[nodiscard]] std::string toString(const OpMem &op);
 
 /// \brief Render a label operand to string form.
+/// @param op The label operand to format.
+/// @return The symbol name string.
 [[nodiscard]] std::string toString(const OpLabel &op);
 
 /// \brief Render a RIP-relative label operand to string form.
+/// @param op The RIP-relative label operand to format.
+/// @return Human-readable string such as "name(%rip)".
 [[nodiscard]] std::string toString(const OpRipLabel &op);
 
 /// \brief Render any operand to string form.
+/// @param operand The variant operand to format.
+/// @return Human-readable representation dispatched by operand kind.
 [[nodiscard]] std::string toString(const Operand &operand);
 
 /// \brief Render an instruction to string form (opcode + operands).
+/// @param instr The machine instruction to format.
+/// @return Multi-part string showing opcode and all operands.
 [[nodiscard]] std::string toString(const MInstr &instr);
 
 /// \brief Render a basic block to string form.
+/// @param block The basic block to format (label + all instructions).
+/// @return Multi-line string representation.
 [[nodiscard]] std::string toString(const MBasicBlock &block);
 
 /// \brief Render a function to string form.
+/// @param func The machine function to format (name + all blocks).
+/// @return Multi-line string representation.
 [[nodiscard]] std::string toString(const MFunction &func);
 
 } // namespace viper::codegen::x64

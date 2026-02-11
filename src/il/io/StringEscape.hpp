@@ -5,43 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares utility functions for encoding and decoding C-style escape
-// sequences in string literals. These functions enable the parser and serializer
-// to handle special characters (newlines, tabs, quotes, etc.) in IL string constants
-// while maintaining ASCII-safe textual representations.
-//
-// String escaping is essential for IL text format because:
-// - String literals may contain control characters that aren't printable
-// - Quotes and backslashes need escaping to avoid syntax ambiguity
-// - Non-ASCII bytes must be represented in a portable, inspectable way
-// - Round-trip invariant: parse(serialize(str)) == str for all strings
-//
-// Supported Escape Sequences:
-// - Standard escapes: \n (newline), \t (tab), \r (carriage return), \0 (null)
-// - Character escapes: \\ (backslash), \" (double quote)
-// - Hex escapes: \xNN for arbitrary bytes (e.g., \x1B for ESC)
-//
-// Encoding Strategy:
-// The encoder converts control characters (0x00-0x1F, 0x7F) and special characters
-// (backslash, quotes) into escape sequences. Printable ASCII and UTF-8 continuation
-// bytes pass through unchanged, making the output human-readable when possible
-// while ensuring it's always ASCII-safe.
-//
-// Decoding Strategy:
-// The decoder recognizes standard escape sequences and hex escapes, validating
-// that hex digits are well-formed. Unknown escape sequences are rejected with
-// descriptive error messages.
-//
-// Design Decisions:
-// - Stateless functions: No persistent state between encode/decode calls
-// - UTF-8 aware: Preserves multi-byte UTF-8 sequences without escaping
-// - Error reporting: Decode returns bool + optional error message string
-// - Inline encoding: Defined in header for optimization (small hot function)
-//
-// Usage in IL Pipeline:
-// - Parser: Calls decodeEscapedString on string literals from IL text
-// - Serializer: Calls encodeEscapedString when writing string constants
-// - Golden tests: Ensures canonical string representation for diffing
+// File: il/io/StringEscape.hpp
+// Purpose: Encoding and decoding of C-style escape sequences in IL string
+//          literals (\n, \t, \r, \0, \\, \", \xNN). Used by the parser and
+//          serializer to maintain ASCII-safe, round-trippable string constants.
+// Key invariants:
+//   - Round-trip: decode(encode(s)) == s for all valid UTF-8 strings.
+//   - Encoder is stateless and preserves printable ASCII / multi-byte UTF-8.
+//   - Decoder rejects malformed hex escapes with a descriptive error message.
+// Ownership/Lifetime: Stateless free functions; no persistent state between
+//          encode/decode calls.
+// Links: il/io/Parser.hpp, il/io/Serializer.hpp
 //
 //===----------------------------------------------------------------------===//
 

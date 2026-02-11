@@ -26,12 +26,15 @@
 namespace il::frontends::basic::sem
 {
 
+/// @brief Result of overload resolution for a method call on a user-defined class.
+/// @details Contains the owning class, selected method, and name information
+///          needed by the lowerer to emit the correct call instruction.
 struct ResolvedMethod
 {
-    const ClassInfo *owner{nullptr};
-    const ClassInfo::MethodInfo *method{nullptr};
-    std::string qualifiedClass; // declared casing
-    std::string methodName;     // selected method name
+    const ClassInfo *owner{nullptr};                 ///< Class that declares the selected method.
+    const ClassInfo::MethodInfo *method{nullptr};    ///< Selected method overload metadata.
+    std::string qualifiedClass;                      ///< Qualified class name in declared casing.
+    std::string methodName;                          ///< Selected method name after resolution.
 };
 
 /// @brief Resolve an overloaded method on a class by name and argument types.

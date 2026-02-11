@@ -9,18 +9,21 @@
 #include <thread>
 #include <vector>
 
-extern "C" {
-#include "rt_internal.h"
+extern "C"
+{
 #include "rt_channel.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 
-void vm_trap(const char *msg) {
-    fprintf(stderr, "TRAP: %s\n", msg);
-    rt_abort(msg);
-}
+    void vm_trap(const char *msg)
+    {
+        fprintf(stderr, "TRAP: %s\n", msg);
+        rt_abort(msg);
+    }
 }
 
-static void *make_obj() {
+static void *make_obj()
+{
     return rt_obj_new_i64(0, 8);
 }
 
@@ -28,7 +31,8 @@ static void *make_obj() {
 // Creation and properties
 //=============================================================================
 
-static void test_new_buffered() {
+static void test_new_buffered()
+{
     void *ch = rt_channel_new(10);
     assert(ch != NULL);
     assert(rt_channel_get_cap(ch) == 10);
@@ -39,7 +43,8 @@ static void test_new_buffered() {
     rt_channel_close(ch);
 }
 
-static void test_new_synchronous() {
+static void test_new_synchronous()
+{
     void *ch = rt_channel_new(0);
     assert(ch != NULL);
     assert(rt_channel_get_cap(ch) == 0);
@@ -50,7 +55,8 @@ static void test_new_synchronous() {
     rt_channel_close(ch);
 }
 
-static void test_new_negative_capacity() {
+static void test_new_negative_capacity()
+{
     void *ch = rt_channel_new(-5);
     assert(ch != NULL);
     assert(rt_channel_get_cap(ch) == 0); // Clamped to 0
@@ -61,7 +67,8 @@ static void test_new_negative_capacity() {
 // Buffered send/recv (single-threaded via try_ variants)
 //=============================================================================
 
-static void test_try_send_recv() {
+static void test_try_send_recv()
+{
     void *ch = rt_channel_new(5);
     void *a = make_obj();
     void *b = make_obj();
@@ -88,7 +95,8 @@ static void test_try_send_recv() {
     rt_channel_close(ch);
 }
 
-static void test_try_recv_empty() {
+static void test_try_recv_empty()
+{
     void *ch = rt_channel_new(5);
     void *out = NULL;
     assert(rt_channel_try_recv(ch, &out) == 0);
@@ -96,7 +104,8 @@ static void test_try_recv_empty() {
     rt_channel_close(ch);
 }
 
-static void test_try_send_full() {
+static void test_try_send_full()
+{
     void *ch = rt_channel_new(2);
     void *a = make_obj();
     void *b = make_obj();
@@ -110,16 +119,19 @@ static void test_try_send_full() {
     rt_channel_close(ch);
 }
 
-static void test_fifo_order() {
+static void test_fifo_order()
+{
     void *ch = rt_channel_new(10);
     void *items[5];
     int i;
-    for (i = 0; i < 5; i++) {
+    for (i = 0; i < 5; i++)
+    {
         items[i] = make_obj();
         rt_channel_try_send(ch, items[i]);
     }
 
-    for (i = 0; i < 5; i++) {
+    for (i = 0; i < 5; i++)
+    {
         void *out = NULL;
         assert(rt_channel_try_recv(ch, &out) == 1);
         assert(out == items[i]);
@@ -131,7 +143,8 @@ static void test_fifo_order() {
 // Close semantics
 //=============================================================================
 
-static void test_close_prevents_send() {
+static void test_close_prevents_send()
+{
     void *ch = rt_channel_new(5);
     rt_channel_close(ch);
 
@@ -139,7 +152,8 @@ static void test_close_prevents_send() {
     assert(rt_channel_try_send(ch, make_obj()) == 0);
 }
 
-static void test_close_allows_drain() {
+static void test_close_allows_drain()
+{
     void *ch = rt_channel_new(5);
     void *a = make_obj();
     rt_channel_try_send(ch, a);
@@ -154,7 +168,8 @@ static void test_close_allows_drain() {
     assert(rt_channel_try_recv(ch, &out) == 0);
 }
 
-static void test_double_close() {
+static void test_double_close()
+{
     void *ch = rt_channel_new(5);
     rt_channel_close(ch);
     rt_channel_close(ch); // Should not crash
@@ -165,7 +180,8 @@ static void test_double_close() {
 // Timed operations
 //=============================================================================
 
-static void test_recv_for_timeout() {
+static void test_recv_for_timeout()
+{
     void *ch = rt_channel_new(5);
     void *out = NULL;
     // Should timeout quickly on empty channel
@@ -174,7 +190,8 @@ static void test_recv_for_timeout() {
     rt_channel_close(ch);
 }
 
-static void test_recv_for_immediate() {
+static void test_recv_for_immediate()
+{
     void *ch = rt_channel_new(5);
     void *a = make_obj();
     rt_channel_try_send(ch, a);
@@ -185,7 +202,8 @@ static void test_recv_for_immediate() {
     rt_channel_close(ch);
 }
 
-static void test_send_for_timeout() {
+static void test_send_for_timeout()
+{
     void *ch = rt_channel_new(1);
     void *a = make_obj();
     void *b = make_obj();
@@ -195,7 +213,8 @@ static void test_send_for_timeout() {
     rt_channel_close(ch);
 }
 
-static void test_send_for_zero_ms() {
+static void test_send_for_zero_ms()
+{
     void *ch = rt_channel_new(1);
     void *a = make_obj();
 
@@ -209,7 +228,8 @@ static void test_send_for_zero_ms() {
 // Null safety
 //=============================================================================
 
-static void test_null_safety() {
+static void test_null_safety()
+{
     assert(rt_channel_get_len(NULL) == 0);
     assert(rt_channel_get_cap(NULL) == 0);
     assert(rt_channel_get_is_closed(NULL) == 1);
@@ -229,7 +249,8 @@ static void test_null_safety() {
 // Multi-threaded tests
 //=============================================================================
 
-static void test_producer_consumer() {
+static void test_producer_consumer()
+{
     void *ch = rt_channel_new(10);
     const int N = 50;
     void *items[50];
@@ -238,14 +259,17 @@ static void test_producer_consumer() {
         items[i] = make_obj();
 
     // Producer thread
-    std::thread producer([ch, &items, N]() {
-        for (int j = 0; j < N; j++)
-            rt_channel_send(ch, items[j]);
-    });
+    std::thread producer(
+        [ch, &items, N]()
+        {
+            for (int j = 0; j < N; j++)
+                rt_channel_send(ch, items[j]);
+        });
 
     // Consumer on main thread
     std::vector<void *> received;
-    for (i = 0; i < N; i++) {
+    for (i = 0; i < N; i++)
+    {
         void *out = NULL;
         int8_t ok = rt_channel_recv_for(ch, &out, 5000);
         assert(ok == 1);
@@ -261,13 +285,16 @@ static void test_producer_consumer() {
     rt_channel_close(ch);
 }
 
-static void test_close_wakes_receiver() {
+static void test_close_wakes_receiver()
+{
     void *ch = rt_channel_new(5);
 
-    std::thread closer([ch]() {
-        rt_thread_sleep(50);
-        rt_channel_close(ch);
-    });
+    std::thread closer(
+        [ch]()
+        {
+            rt_thread_sleep(50);
+            rt_channel_close(ch);
+        });
 
     // Blocking recv should return NULL when channel is closed
     void *result = rt_channel_recv(ch);
@@ -276,16 +303,15 @@ static void test_close_wakes_receiver() {
     closer.join();
 }
 
-static void test_synchronous_channel() {
+static void test_synchronous_channel()
+{
     void *ch = rt_channel_new(0); // Synchronous
     void *item = make_obj();
 
     // Need sender and receiver on separate threads for synchronous channel
     void *received = NULL;
 
-    std::thread receiver([ch, &received]() {
-        received = rt_channel_recv(ch);
-    });
+    std::thread receiver([ch, &received]() { received = rt_channel_recv(ch); });
 
     // Give receiver time to start waiting
     rt_thread_sleep(20);
@@ -296,7 +322,8 @@ static void test_synchronous_channel() {
     rt_channel_close(ch);
 }
 
-int main() {
+int main()
+{
     test_new_buffered();
     test_new_synchronous();
     test_new_negative_capacity();

@@ -5,37 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Extern struct, which represents external function
-// declarations in IL modules. Externs provide the interface between IL code
-// and the runtime library or host environment by declaring foreign functions
-// that are defined outside the current module.
-//
-// External function declarations are required for:
-// - Runtime library calls (string operations, math functions, I/O)
-// - Host environment integration (platform APIs, system calls)
-// - Inter-module references (functions defined in other compilation units)
-//
-// Each Extern specifies a function signature consisting of a name, return type,
-// and parameter type list. The IL verifier ensures that all calls to external
-// functions match the declared signature. At link time or runtime, these names
-// are resolved to actual implementations in the runtime library or host binary.
-//
-// Key Responsibilities:
-// - Signature declaration: Specifies name, return type, and parameter types
-// - Type checking: Enables verifier to check call sites for type correctness
-// - Symbol resolution: Provides the name used for linking or runtime lookup
-// - ABI compatibility: Documents the calling convention expected by the callee
-//
-// Common External Functions:
-// - String operations: rt_str_concat, rt_str_len, rt_str_eq
-// - Math functions: rt_pow_f64_chkdom, rt_sqrt_chk_f64, rt_abs_i64_chk
-// - I/O operations: rt_print_str, rt_print_i64, rt_input_str
-// - Memory management: rt_array_alloc, rt_string_from_bytes
-//
-// Ownership Model:
-// - Module owns Extern structs by value in a std::vector
-// - Each Extern owns its name string and parameter type vector
-// - External declarations persist for the module's lifetime
+// File: il/core/Extern.hpp
+// Purpose: Declares the Extern struct -- external function declarations in IL
+//          modules. Provides the interface between IL code and the runtime
+//          library or host environment by declaring foreign function signatures
+//          (name, return type, parameter types) for type-checked call sites.
+// Key invariants:
+//   - Extern names must be unique among externs in a module and non-empty.
+//   - Arity and types must match the target function's actual signature.
+// Ownership/Lifetime: Module owns Extern structs by value in a std::vector.
+//          Each Extern owns its name string and parameter type vector.
+//          External declarations persist for the module's lifetime.
+// Links: docs/il-guide.md#reference, il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
 

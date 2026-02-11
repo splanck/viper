@@ -1,4 +1,66 @@
-// vg_ide_widgets.h - IDE-specific widget library
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+///
+/// @file vg_ide_widgets.h
+/// @brief IDE-specific widget library -- high-level controls for building
+///        integrated development environments.
+///
+/// @details This header declares the advanced, IDE-oriented widgets that are
+///          built on top of the core widget library (vg_widgets.h). These
+///          controls provide the building blocks for a full IDE experience:
+///
+///          - **StatusBar**       -- multi-zone status display at the bottom.
+///          - **Toolbar**         -- icon/button toolbar with toggle, dropdown,
+///                                  and custom-widget items.
+///          - **Dialog**          -- modal/modeless dialog windows with
+///                                  configurable buttons and icons.
+///          - **FileDialog**      -- full-featured file open/save/folder picker
+///                                  with filters, bookmarks, and virtual mode.
+///          - **ContextMenu**     -- right-click popup menu with submenus.
+///          - **FindReplaceBar**  -- search & replace bar for code editors.
+///          - **TreeView**        -- hierarchical tree with expand/collapse,
+///                                  drag-and-drop, lazy loading, and icons.
+///          - **TabBar**          -- closable, reorderable tab strip.
+///          - **SplitPane**       -- resizable two-pane splitter.
+///          - **MenuBar**         -- application menu bar with keyboard
+///                                  accelerators and submenus.
+///          - **CodeEditor**      -- syntax-highlighted source code editor with
+///                                  selection, undo/redo, and line numbers.
+///          - **Tooltip**         -- hover tooltips with timing control.
+///          - **CommandPalette**  -- VS-Code-style fuzzy command search dialog.
+///          - **OutputPane**      -- terminal-like ANSI-aware output area.
+///          - **Breadcrumb**      -- navigation breadcrumb bar with dropdowns.
+///          - **Minimap**         -- miniature overview of a code editor.
+///          - **Notification**    -- toast notification manager with types and
+///                                  actions.
+///
+///          Like core widgets, each IDE widget embeds a vg_widget_t (or
+///          vg_dialog_t) as its first member for safe casting.
+///
+/// Key invariants:
+///   - All create functions return NULL on allocation failure.
+///   - String parameters are copied internally unless documented otherwise.
+///   - Callbacks receive a user_data pointer that the widget never dereferences.
+///
+/// Ownership/Lifetime:
+///   - Widgets are owned by their parent in the widget tree; destroying the
+///     parent recursively destroys children.
+///   - Some widgets (Dialog, ContextMenu, CommandPalette) may be created
+///     without a parent and must be explicitly destroyed.
+///
+/// Links:
+///   - vg_widget.h  -- base widget structure
+///   - vg_widgets.h -- core widgets (Slider, Label, etc.) used as building blocks
+///   - vg_layout.h  -- layout containers
+///   - vg_font.h    -- font handles
+///   - vg_event.h   -- event types and key codes
+///   - vg_theme.h   -- theming system
+///
+//===----------------------------------------------------------------------===//
 #ifndef VG_IDE_WIDGETS_H
 #define VG_IDE_WIDGETS_H
 

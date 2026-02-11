@@ -37,31 +37,44 @@ namespace viper::tools
 /// @brief Configuration parsed from frontend tool command-line arguments.
 struct FrontendToolConfig
 {
+    /// @brief Path to the source file to compile.
     std::string sourcePath;
+
+    /// @brief Path for the output file (IL or native binary).
     std::string outputPath;
+
+    /// @brief Whether to emit IL text instead of running the program.
     bool emitIl = false;
+
+    /// @brief Whether to run the compiled program immediately.
     bool run = false;
+
+    /// @brief Additional flags forwarded to the underlying ilc frontend.
     std::vector<std::string> forwardedArgs;
+
+    /// @brief Arguments passed to the program at runtime (after "--" separator).
     std::vector<std::string> programArgs;
+
+    /// @brief Optional architecture override for native code generation.
     std::optional<TargetArch> archOverride;
 };
 
 /// @brief Callbacks for language-specific behavior in frontend tools.
 struct FrontendToolCallbacks
 {
-    /// File extension for this language (e.g., ".bas", ".pas")
+    /// @brief File extension for this language (e.g., ".bas", ".pas").
     std::string_view fileExtension;
 
-    /// Language name for error messages (e.g., "BASIC", "Pascal")
+    /// @brief Language name for error messages (e.g., "BASIC", "Pascal").
     std::string_view languageName;
 
-    /// Print usage/help information
+    /// @brief Callback to print usage/help information for the tool.
     std::function<void()> printUsage;
 
-    /// Print version information
+    /// @brief Callback to print version information for the tool.
     std::function<void()> printVersion;
 
-    /// The ilc frontend command to invoke
+    /// @brief The ilc frontend command to invoke for compilation.
     std::function<int(int, char **)> frontendCommand;
 };
 

@@ -7,6 +7,12 @@
 //
 // File: codegen/aarch64/TerminatorLowering.hpp
 // Purpose: Terminator instruction lowering for IL->MIR conversion.
+// Key invariants: Must be called AFTER all non-terminator instructions are
+//                 lowered so that branch targets and phi mappings are resolved;
+//                 phi parameter spills are emitted into predecessor blocks.
+// Ownership/Lifetime: Stateless free function; borrows all maps and builders
+//                     for the duration of the call.
+// Links: codegen/aarch64/LoweringContext.hpp, docs/architecture.md
 //
 // This header declares functions for lowering control-flow terminators
 // (br, cbr, trap, switch) after all other instructions have been lowered.

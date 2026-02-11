@@ -52,8 +52,7 @@ int cmdInit(int argc, char **argv)
             lang = argv[++i];
             if (lang != "zia" && lang != "basic")
             {
-                std::cerr << "error: --lang must be 'zia' or 'basic', got '"
-                          << lang << "'\n";
+                std::cerr << "error: --lang must be 'zia' or 'basic', got '" << lang << "'\n";
                 return 1;
             }
         }
@@ -80,8 +79,7 @@ int cmdInit(int argc, char **argv)
     }
 
     // Validate project name doesn't contain path separators.
-    if (projectName.find('/') != std::string::npos ||
-        projectName.find('\\') != std::string::npos)
+    if (projectName.find('/') != std::string::npos || projectName.find('\\') != std::string::npos)
     {
         std::cerr << "error: project name must not contain path separators\n";
         return 1;
@@ -91,8 +89,7 @@ int cmdInit(int argc, char **argv)
 
     if (fs::exists(projectDir))
     {
-        std::cerr << "error: directory '" << projectName
-                  << "' already exists\n";
+        std::cerr << "error: directory '" << projectName << "' already exists\n";
         return 1;
     }
 
@@ -100,18 +97,15 @@ int cmdInit(int argc, char **argv)
     std::error_code ec;
     if (!fs::create_directory(projectDir, ec) || ec)
     {
-        std::cerr << "error: could not create directory '" << projectName
-                  << "': " << ec.message() << "\n";
+        std::cerr << "error: could not create directory '" << projectName << "': " << ec.message()
+                  << "\n";
         return 1;
     }
 
     // Generate viper.project manifest.
     std::string entryFile = (lang == "basic") ? "main.bas" : "main.zia";
-    std::string manifest =
-        "project " + projectName + "\n" +
-        "version 0.1.0\n" +
-        "lang " + lang + "\n" +
-        "entry " + entryFile + "\n";
+    std::string manifest = "project " + projectName + "\n" + "version 0.1.0\n" + "lang " + lang +
+                           "\n" + "entry " + entryFile + "\n";
 
     if (!writeFile(projectDir / "viper.project", manifest))
     {
@@ -122,14 +116,15 @@ int cmdInit(int argc, char **argv)
     std::string source;
     if (lang == "zia")
     {
-        source =
-            "module main;\n"
-            "\n"
-            "bind Viper.Terminal;\n"
-            "\n"
-            "func start() {\n"
-            "    Say(\"Hello from " + projectName + "!\");\n"
-            "}\n";
+        source = "module main;\n"
+                 "\n"
+                 "bind Viper.Terminal;\n"
+                 "\n"
+                 "func start() {\n"
+                 "    Say(\"Hello from " +
+                 projectName +
+                 "!\");\n"
+                 "}\n";
     }
     else
     {

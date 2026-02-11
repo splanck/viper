@@ -5,17 +5,20 @@
 //
 // File: codegen/aarch64/fastpaths/FastPathsInternal.hpp
 // Purpose: Internal shared declarations for fast-path pattern matching.
+// Key invariants: Fast paths match simple, common IL patterns for optimized
+//                 lowering; each fast-path returns the lowered MFunction if
+//                 matched, nullopt otherwise; output must be semantically
+//                 identical to generic lowering; parameter registers are
+//                 accessed via ABI-defined argument order.
+// Ownership/Lifetime: FastPathContext borrows references to externally-owned
+//                     state for the duration of a single fast-path attempt;
+//                     it does not retain or manage any lifetimes.
+// Links: codegen/aarch64/FastPaths.hpp, codegen/aarch64/LoweringContext.hpp,
+//        docs/architecture.md
 //
-// Summary:
-//   This header contains shared helper functions, constants, and types used
-//   across the fast-path translation units. It is NOT part of the public API
-//   and should only be included by FastPaths_*.cpp files.
-//
-// Fast-path invariants:
-//   - Fast paths match simple, common IL patterns for optimized lowering
-//   - Each fast-path returns the lowered MFunction if matched, nullopt otherwise
-//   - Fast paths must produce correct code identical to generic lowering
-//   - Parameter registers are accessed via ABI-defined argument order
+// This header contains shared helper functions, constants, and types used
+// across the fast-path translation units. It is NOT part of the public API
+// and should only be included by FastPaths_*.cpp files.
 //
 //===----------------------------------------------------------------------===//
 
@@ -63,6 +66,11 @@ struct FastPathContext
     MFunction &mf;
     const std::array<PhysReg, kMaxGPRArgs> &argOrder;
 
+    /// @brief Construct a fast-path context from the function being lowered.
+    /// @param fn The IL function to lower.
+    /// @param ti ABI and register information for the AArch64 target.
+    /// @param fb Frame builder for stack slot allocation.
+    /// @param mf Output MIR function being constructed.
     FastPathContext(const il::core::Function &fn,
                     const TargetInfo &ti,
                     FrameBuilder &fb,
@@ -78,6 +86,9 @@ struct FastPathContext
     }
 
     /// @brief Get the register holding a value if it's a parameter.
+    /// @param bb The basic block whose parameter list is checked.
+    /// @param val The IL value to look up.
+    /// @return The physical register if @p val is a parameter within GPR arg limits, nullopt otherwise.
     [[nodiscard]] std::optional<PhysReg> getValueReg(const il::core::BasicBlock &bb,
                                                      const il::core::Value &val) const
     {

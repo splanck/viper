@@ -5,29 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares BasicAA, a fundamental alias analysis pass that provides
-// conservative memory disambiguation for IL optimizations. Alias analysis determines
-// whether two memory references may point to the same location, enabling optimizations
-// like load/store elimination, code motion, and memory optimization.
-//
-// BasicAA implements alias analysis using SSA-based reasoning about allocas,
-// function parameters, and pointer arithmetic. The analysis tracks allocation
-// sites (alloca instructions, parameters marked noalias) and uses flow-insensitive
-// reasoning to determine when two references definitely alias, definitely don't alias,
-// or may alias.
-//
-// Analysis Capabilities:
-// - Alloca-based reasoning: Stack allocations from distinct alloca instructions
-//   are known to not alias each other
-// - Parameter annotations: Function parameters marked with noalias attribute are
-//   treated as distinct from other allocations
-// - Call side effects: Determines which memory locations a call instruction may
-//   read or modify (ModRef analysis) using function attributes and runtime metadata
-// - Conservative defaults: When precise analysis is unavailable, assumes may-alias
-//
-// The analysis integrates with the runtime signature system to obtain side effect
-// information for runtime library calls, enabling optimization of code calling
-// intrinsics and helper functions.
+// File: il/analysis/BasicAA.hpp
+// Purpose: Lightweight alias analysis for IL functions. Provides conservative
+//          memory disambiguation (NoAlias/MayAlias/MustAlias) using SSA-based
+//          reasoning about allocas, noalias parameters, global addresses, and
+//          GEP offsets. Also classifies call-site ModRef behaviour via function
+//          attributes and the runtime signature registry.
+// Key invariants:
+//   - Unknown base kinds conservatively return MayAlias.
+//   - Distinct allocas never alias each other.
+//   - noalias parameters never alias other pointers.
+//   - ModRef queries only apply to Opcode::Call instructions.
+// Ownership/Lifetime: BasicAA is constructed per-function, collecting alloca
+//          and parameter info from the function body. Holds const pointers to
+//          the function and optional module; both must outlive the analysis.
+// Links: il/core/Function.hpp, il/core/Instr.hpp, il/core/Module.hpp,
+//        il/runtime/signatures/Registry.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once

@@ -4,10 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
+///
 /// @file AST_Stmt.hpp
-/// @brief Statement nodes for Zia AST.
-//
+/// @brief Statement nodes for the Zia AST.
+///
+/// @details Defines all statement AST nodes produced by the Zia parser.
+/// Statements perform actions but do not produce values (unlike expressions).
+/// They include control flow (if/else, while, for, match), variable
+/// declarations (var/let), jumps (return, break, continue), blocks,
+/// assignments, and expression statements. Each statement node carries a
+/// source location for error reporting and a StmtKind tag for downcasting.
+///
+/// Statement nodes are created by the Parser and consumed by the Sema
+/// (semantic analyzer) for type checking, then by the Lowerer for IL
+/// generation. The Lowerer translates each statement kind into the
+/// corresponding IL instructions (branches, stores, calls, etc.).
+///
+/// @invariant Every Stmt has a valid `kind` field matching its concrete type.
+/// @invariant Source locations are non-null for all user-written statements.
+///
+/// Ownership/Lifetime: Owned by their parent node (block, function body,
+/// or module) via StmtPtr (std::unique_ptr<Stmt>).
+///
+/// @see AST_Expr.hpp — expression nodes that statements may contain.
+/// @see Parser.hpp — creates statement nodes during parsing.
+/// @see Lowerer.hpp — translates statement nodes into IL instructions.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once

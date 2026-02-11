@@ -248,7 +248,7 @@ viper il-opt program.il --pipeline O2 -o program.o2.il
 viper il-opt program.il --passes "simplify-cfg,mem2reg,sccp,dce" -o out.il
 ```
 
-Available passes: `simplifycfg`, `liveness`, `licm`, `sccp`
+Available passes: `simplifycfg`, `mem2reg`, `sccp`, `licm`, `dce`, `dse`, `earlycse`, `gvn`, `peephole`, `inline`, `loop-simplify`, `loop-unroll`
 
 ---
 

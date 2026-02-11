@@ -7,9 +7,13 @@
 //
 // File: codegen/aarch64/InstrLowering.hpp
 // Purpose: Opcode-specific lowering handlers for IL->MIR conversion.
-//
-// This header declares functions that lower individual IL opcodes to MIR.
-// Each handler is responsible for a specific opcode or group of related opcodes.
+// Key invariants: Each handler returns true on success and false on
+//                 unrecoverable error; all emitted MIR is appended to the
+//                 output block in program order; virtual register IDs are
+//                 allocated monotonically via LoweringContext::nextVRegId.
+// Ownership/Lifetime: Handlers are stateless free functions; mutable state
+//                     is accessed solely through the LoweringContext reference.
+// Links: docs/architecture.md, codegen/aarch64/LoweringContext.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -49,7 +53,14 @@ bool materializeValueToVReg(const il::core::Value &v,
                             uint16_t &outVReg,
                             RegClass &outCls);
 
-// Wrapper that uses LoweringContext
+/// @brief Convenience wrapper that materialises an IL value using a LoweringContext.
+/// @param v       The IL value to materialise.
+/// @param bb      The current IL basic block (for parameter lookups).
+/// @param ctx     Lowering context providing target info, frame builder, and maps.
+/// @param out     The output MIR basic block receiving materialisation instructions.
+/// @param outVReg [out] The vreg ID assigned to the materialised value.
+/// @param outCls  [out] The register class of the assigned vreg.
+/// @return True if materialisation succeeded, false otherwise.
 inline bool materializeValueToVReg(const il::core::Value &v,
                                    const il::core::BasicBlock &bb,
                                    LoweringContext &ctx,
@@ -100,24 +111,44 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
 
 /// @brief Lower signed remainder with divide-by-zero check (srem.chk0).
 /// @details Generates: cbz rhs, trap; sdiv tmp, lhs, rhs; msub dst, tmp, rhs, lhs
+/// @param ins The IL srem.chk0 instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerSRemChk0(const il::core::Instr &ins,
                    const il::core::BasicBlock &bb,
                    LoweringContext &ctx,
                    MBasicBlock &out);
 
 /// @brief Lower signed division with divide-by-zero check (sdiv.chk0).
+/// @param ins The IL sdiv.chk0 instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerSDivChk0(const il::core::Instr &ins,
                    const il::core::BasicBlock &bb,
                    LoweringContext &ctx,
                    MBasicBlock &out);
 
 /// @brief Lower unsigned division with divide-by-zero check (udiv.chk0).
+/// @param ins The IL udiv.chk0 instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerUDivChk0(const il::core::Instr &ins,
                    const il::core::BasicBlock &bb,
                    LoweringContext &ctx,
                    MBasicBlock &out);
 
 /// @brief Lower unsigned remainder with divide-by-zero check (urem.chk0).
+/// @param ins The IL urem.chk0 instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerURemChk0(const il::core::Instr &ins,
                    const il::core::BasicBlock &bb,
                    LoweringContext &ctx,
@@ -125,6 +156,11 @@ bool lowerURemChk0(const il::core::Instr &ins,
 
 /// @brief Lower index bounds check (idx.chk).
 /// @details Generates: cmp idx, lo; b.lt trap; cmp idx, hi; b.ge trap; mov dst, idx
+/// @param ins The IL idx.chk instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerIdxChk(const il::core::Instr &ins,
                  const il::core::BasicBlock &bb,
                  LoweringContext &ctx,
@@ -132,6 +168,11 @@ bool lowerIdxChk(const il::core::Instr &ins,
 
 /// @brief Lower signed remainder (srem) without zero-check.
 /// @details Generates: sdiv tmp, lhs, rhs; msub dst, tmp, rhs, lhs
+/// @param ins The IL srem instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerSRem(const il::core::Instr &ins,
                const il::core::BasicBlock &bb,
                LoweringContext &ctx,
@@ -139,6 +180,11 @@ bool lowerSRem(const il::core::Instr &ins,
 
 /// @brief Lower unsigned remainder (urem) without zero-check.
 /// @details Generates: udiv tmp, lhs, rhs; msub dst, tmp, rhs, lhs
+/// @param ins The IL urem instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerURem(const il::core::Instr &ins,
                const il::core::BasicBlock &bb,
                LoweringContext &ctx,
@@ -149,24 +195,44 @@ bool lowerURem(const il::core::Instr &ins,
 //===----------------------------------------------------------------------===//
 
 /// @brief Lower zext1/trunc1 (boolean extension/truncation).
+/// @param ins The IL zext1 or trunc1 instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerZext1Trunc1(const il::core::Instr &ins,
                       const il::core::BasicBlock &bb,
                       LoweringContext &ctx,
                       MBasicBlock &out);
 
 /// @brief Lower cast.si_narrow.chk / cast.ui_narrow.chk.
+/// @param ins The IL narrowing cast instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerNarrowingCast(const il::core::Instr &ins,
                         const il::core::BasicBlock &bb,
                         LoweringContext &ctx,
                         MBasicBlock &out);
 
 /// @brief Lower sitofp (signed int to float).
+/// @param ins The IL sitofp instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerSitofp(const il::core::Instr &ins,
                  const il::core::BasicBlock &bb,
                  LoweringContext &ctx,
                  MBasicBlock &out);
 
 /// @brief Lower fptosi (float to signed int).
+/// @param ins The IL fptosi instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerFptosi(const il::core::Instr &ins,
                  const il::core::BasicBlock &bb,
                  LoweringContext &ctx,
@@ -177,12 +243,22 @@ bool lowerFptosi(const il::core::Instr &ins,
 //===----------------------------------------------------------------------===//
 
 /// @brief Lower FP arithmetic (fadd, fsub, fmul, fdiv).
+/// @param ins The IL floating-point arithmetic instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerFpArithmetic(const il::core::Instr &ins,
                        const il::core::BasicBlock &bb,
                        LoweringContext &ctx,
                        MBasicBlock &out);
 
 /// @brief Lower FP comparisons (fcmp.eq, fcmp.ne, etc.).
+/// @param ins The IL floating-point comparison instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
 bool lowerFpCompare(const il::core::Instr &ins,
                     const il::core::BasicBlock &bb,
                     LoweringContext &ctx,

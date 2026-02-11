@@ -5,12 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Dead Store Elimination (DSE) — function-level pass
-// Removes stores that are provably overwritten before being read, using:
-// 1. Intra-block DSE: Backward scan within each basic block
-// 2. Cross-block DSE: Forward dataflow to find stores dead on all paths
-//
-// Aliasing queries rely on BasicAA when available.
+// File: il/transform/DSE.hpp
+// Purpose: Dead Store Elimination -- function-level pass that removes stores
+//          provably overwritten before being read. Intra-block DSE uses a
+//          backward scan; cross-block DSE uses forward dataflow on
+//          non-escaping allocas. Aliasing queries rely on BasicAA.
+// Key invariants:
+//   - Only removes stores that are provably dead (overwritten on all paths).
+//   - Calls conservatively clobber memory per BasicAA ModRef classification.
+// Ownership/Lifetime: Free functions operating on caller-owned Function and
+//          AnalysisManager references.
+// Links: il/core/Function.hpp, il/transform/AnalysisManager.hpp,
+//        il/analysis/BasicAA.hpp
 //
 //===----------------------------------------------------------------------===//
 

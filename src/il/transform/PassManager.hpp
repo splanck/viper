@@ -5,29 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the IL pass manager, which orchestrates optimization and
-// analysis pipelines for IL modules. The pass manager maintains pass registries,
-// schedules pass execution, manages analysis caching, and provides debugging
-// infrastructure for pipeline development.
-//
-// Viper's pass manager implements a classic pipeline architecture where each
-// pass transforms or analyzes the IL module in sequence. The manager handles
-// pass instantiation, analysis invalidation, verification between passes, and
-// diagnostic output. This design separates pipeline orchestration from individual
-// pass implementations, enabling modular optimization development.
-//
-// Key Responsibilities:
-// - Pipeline construction: Builds pass sequences from registered pass factories
-// - Execution orchestration: Runs passes in order, passing modules and analysis results
-// - Analysis management: Caches analysis results and invalidates them based on
-//   preservation metadata from transformations
-// - Verification: Optionally runs IL verifier between passes to detect corruption
-// - Debugging: Supports dumping IL between passes and printing pass execution traces
-//
-// Integration with Compiler:
-// The pass manager is invoked by the compiler driver after IL generation and
-// before codegen. Frontends produce unoptimized IL, the pass manager applies
-// optimizations, and backends consume the optimized IL for machine code generation.
+// File: il/transform/PassManager.hpp
+// Purpose: IL pass manager -- orchestrates optimisation and analysis pipelines
+//          for IL modules. Maintains pass/analysis registries, schedules pass
+//          execution, manages analysis caching/invalidation, and provides
+//          instrumentation hooks (verification, IR printing, statistics).
+// Key invariants:
+//   - Passes execute in pipeline order; analysis caches are invalidated per
+//     PreservedAnalyses metadata.
+//   - Verification between passes is optional and controlled by the caller.
+// Ownership/Lifetime: PassManager owns its registries, pipeline map, and
+//          instrumentation flags. The caller owns the Module passed to run().
+// Links: il/transform/PassRegistry.hpp, il/transform/AnalysisManager.hpp,
+//        il/transform/PipelineExecutor.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once

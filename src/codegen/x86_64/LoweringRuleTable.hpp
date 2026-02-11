@@ -98,12 +98,18 @@ void emitSub(const ILInstr &instr, MIRBuilder &builder);
 void emitMul(const ILInstr &instr, MIRBuilder &builder);
 
 /// @brief Emits overflow-checked integer addition pseudo-op.
+/// @param instr The IL iadd.ovf instruction with two integer operands.
+/// @param builder The MIR builder to append instructions to.
 void emitAddOvf(const ILInstr &instr, MIRBuilder &builder);
 
 /// @brief Emits overflow-checked integer subtraction pseudo-op.
+/// @param instr The IL isub.ovf instruction with two integer operands.
+/// @param builder The MIR builder to append instructions to.
 void emitSubOvf(const ILInstr &instr, MIRBuilder &builder);
 
 /// @brief Emits overflow-checked integer multiplication pseudo-op.
+/// @param instr The IL imul.ovf instruction with two integer operands.
+/// @param builder The MIR builder to append instructions to.
 void emitMulOvf(const ILInstr &instr, MIRBuilder &builder);
 
 /// @brief Emits x86-64 MIR for IL `fdiv` instruction (floating-point division).

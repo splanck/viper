@@ -4,15 +4,13 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_parallel.h
-/// @brief Parallel execution utilities (Viper.Threads.Parallel).
-///
-/// Provides high-level parallel execution patterns:
-/// - ForEach: Execute a function for each item in a sequence
-/// - Map: Transform a sequence in parallel
-/// - Invoke: Execute multiple tasks in parallel
-///
+//
+// File: src/runtime/rt_parallel.h
+// Purpose: High-level parallel execution patterns (ForEach, Map, Invoke, Reduce).
+// Key invariants: Output order matches input order; NULL pool falls back to default.
+// Ownership/Lifetime: Returned sequences are caller-owned; thread pools are shared.
+// Links: docs/viperlib.md
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef VIPER_RT_PARALLEL_H

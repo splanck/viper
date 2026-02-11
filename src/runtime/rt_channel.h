@@ -9,6 +9,7 @@
 // Purpose: Thread-safe channel for inter-thread communication (Viper.Threads.Channel).
 // Key invariants: FIFO, bounded/unbounded, blocks when full/empty.
 // Ownership/Lifetime: Channel objects are runtime-managed and ref-counted.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

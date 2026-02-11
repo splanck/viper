@@ -4,14 +4,13 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_lazyseq.h
-/// @brief Lazy sequence type for on-demand element generation.
-///
-/// Provides a lazy sequence that generates elements on demand rather than
-/// storing them all in memory. Useful for infinite sequences, computed
-/// sequences, and memory-efficient processing of large datasets.
-///
+//
+// File: src/runtime/rt_lazyseq.h
+// Purpose: Lazy sequence type for on-demand element generation and transformation.
+// Key invariants: Sequences are single-pass unless reset; collectors may not terminate on infinite sequences.
+// Ownership/Lifetime: Caller owns the handle; destroy with rt_lazyseq_destroy().
+// Links: docs/viperlib.md
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef VIPER_RT_LAZYSEQ_H

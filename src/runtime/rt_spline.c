@@ -189,16 +189,24 @@ static void eval_bezier(ViperSpline *s, double t, double *ox, double *oy)
     *oy = a * s->ys[0] + b * s->ys[1] + c * s->ys[2] + d * s->ys[3];
 }
 
-static void catmull_rom_segment(double p0x, double p0y, double p1x, double p1y, double p2x,
-                                 double p2y, double p3x, double p3y, double t, double *ox,
-                                 double *oy)
+static void catmull_rom_segment(double p0x,
+                                double p0y,
+                                double p1x,
+                                double p1y,
+                                double p2x,
+                                double p2y,
+                                double p3x,
+                                double p3y,
+                                double t,
+                                double *ox,
+                                double *oy)
 {
     double t2 = t * t;
     double t3 = t2 * t;
     *ox = 0.5 * ((2.0 * p1x) + (-p0x + p2x) * t + (2.0 * p0x - 5.0 * p1x + 4.0 * p2x - p3x) * t2 +
-                  (-p0x + 3.0 * p1x - 3.0 * p2x + p3x) * t3);
+                 (-p0x + 3.0 * p1x - 3.0 * p2x + p3x) * t3);
     *oy = 0.5 * ((2.0 * p1y) + (-p0y + p2y) * t + (2.0 * p0y - 5.0 * p1y + 4.0 * p2y - p3y) * t2 +
-                  (-p0y + 3.0 * p1y - 3.0 * p2y + p3y) * t3);
+                 (-p0y + 3.0 * p1y - 3.0 * p2y + p3y) * t3);
 }
 
 static void eval_catmull_rom(ViperSpline *s, double t, double *ox, double *oy)
@@ -233,8 +241,17 @@ static void eval_catmull_rom(ViperSpline *s, double t, double *ox, double *oy)
     int64_t i2 = i + 1;
     int64_t i3 = i + 2 < n ? i + 2 : n - 1;
 
-    catmull_rom_segment(s->xs[i0], s->ys[i0], s->xs[i1], s->ys[i1], s->xs[i2], s->ys[i2],
-                         s->xs[i3], s->ys[i3], f, ox, oy);
+    catmull_rom_segment(s->xs[i0],
+                        s->ys[i0],
+                        s->xs[i1],
+                        s->ys[i1],
+                        s->xs[i2],
+                        s->ys[i2],
+                        s->xs[i3],
+                        s->ys[i3],
+                        f,
+                        ox,
+                        oy);
 }
 
 //=============================================================================

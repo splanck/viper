@@ -9,6 +9,9 @@
 // Purpose: Target-independent base for ABI target information structs.
 // Key invariants: Common fields shared by all backend TargetInfo types; each
 //                 backend extends this with target-specific extras.
+// Ownership/Lifetime: Value type; each backend owns its own TargetInfo instance
+//                     which is typically constructed once at pipeline startup.
+// Links: codegen/x86_64/TargetInfo.hpp, codegen/aarch64/TargetInfo.hpp
 //
 //===----------------------------------------------------------------------===//
 

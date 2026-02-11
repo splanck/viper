@@ -5,6 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// File: codegen/aarch64/FrameBuilder.hpp
+//
 // This file declares the FrameBuilder class, which centralizes AArch64
 // stack frame layout construction for the Viper codegen backend. FrameBuilder
 // manages the allocation of local variable slots, register spill slots, and

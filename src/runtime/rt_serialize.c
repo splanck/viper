@@ -59,35 +59,35 @@ void *rt_serialize_parse(rt_string text, int64_t format)
 
     switch ((rt_format_t)format)
     {
-    case RT_FORMAT_JSON:
-        return rt_json_parse(text);
+        case RT_FORMAT_JSON:
+            return rt_json_parse(text);
 
-    case RT_FORMAT_XML:
-    {
-        void *result = rt_xml_parse(text);
-        if (!result)
+        case RT_FORMAT_XML:
         {
-            rt_string err = rt_xml_error();
-            if (err && rt_str_len(err) > 0)
-                g_last_error = err;
-            else
-                set_error("XML parse error");
+            void *result = rt_xml_parse(text);
+            if (!result)
+            {
+                rt_string err = rt_xml_error();
+                if (err && rt_str_len(err) > 0)
+                    g_last_error = err;
+                else
+                    set_error("XML parse error");
+            }
+            return result;
         }
-        return result;
-    }
 
-    case RT_FORMAT_YAML:
-        return rt_yaml_parse(text);
+        case RT_FORMAT_YAML:
+            return rt_yaml_parse(text);
 
-    case RT_FORMAT_TOML:
-        return rt_toml_parse(text);
+        case RT_FORMAT_TOML:
+            return rt_toml_parse(text);
 
-    case RT_FORMAT_CSV:
-        return rt_csv_parse(text);
+        case RT_FORMAT_CSV:
+            return rt_csv_parse(text);
 
-    default:
-        set_error("parse: unknown format");
-        return NULL;
+        default:
+            set_error("parse: unknown format");
+            return NULL;
     }
 }
 
@@ -101,24 +101,24 @@ rt_string rt_serialize_format(void *obj, int64_t format)
 
     switch ((rt_format_t)format)
     {
-    case RT_FORMAT_JSON:
-        return rt_json_format(obj);
+        case RT_FORMAT_JSON:
+            return rt_json_format(obj);
 
-    case RT_FORMAT_XML:
-        return rt_xml_format(obj);
+        case RT_FORMAT_XML:
+            return rt_xml_format(obj);
 
-    case RT_FORMAT_YAML:
-        return rt_yaml_format(obj);
+        case RT_FORMAT_YAML:
+            return rt_yaml_format(obj);
 
-    case RT_FORMAT_TOML:
-        return rt_toml_format(obj);
+        case RT_FORMAT_TOML:
+            return rt_toml_format(obj);
 
-    case RT_FORMAT_CSV:
-        return rt_csv_format(obj);
+        case RT_FORMAT_CSV:
+            return rt_csv_format(obj);
 
-    default:
-        set_error("format: unknown format");
-        return rt_string_from_bytes("", 0);
+        default:
+            set_error("format: unknown format");
+            return rt_string_from_bytes("", 0);
     }
 }
 
@@ -131,24 +131,24 @@ rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent)
 
     switch ((rt_format_t)format)
     {
-    case RT_FORMAT_JSON:
-        return rt_json_format_pretty(obj, indent);
+        case RT_FORMAT_JSON:
+            return rt_json_format_pretty(obj, indent);
 
-    case RT_FORMAT_XML:
-        return rt_xml_format_pretty(obj, indent);
+        case RT_FORMAT_XML:
+            return rt_xml_format_pretty(obj, indent);
 
-    case RT_FORMAT_YAML:
-        return rt_yaml_format_indent(obj, indent);
+        case RT_FORMAT_YAML:
+            return rt_yaml_format_indent(obj, indent);
 
-    case RT_FORMAT_TOML:
-        return rt_toml_format(obj); /* TOML has no indent option */
+        case RT_FORMAT_TOML:
+            return rt_toml_format(obj); /* TOML has no indent option */
 
-    case RT_FORMAT_CSV:
-        return rt_csv_format(obj); /* CSV has no indent option */
+        case RT_FORMAT_CSV:
+            return rt_csv_format(obj); /* CSV has no indent option */
 
-    default:
-        set_error("format_pretty: unknown format");
-        return rt_string_from_bytes("", 0);
+        default:
+            set_error("format_pretty: unknown format");
+            return rt_string_from_bytes("", 0);
     }
 }
 
@@ -163,24 +163,24 @@ int8_t rt_serialize_is_valid(rt_string text, int64_t format)
 
     switch ((rt_format_t)format)
     {
-    case RT_FORMAT_JSON:
-        return rt_json_is_valid(text);
+        case RT_FORMAT_JSON:
+            return rt_json_is_valid(text);
 
-    case RT_FORMAT_XML:
-        return rt_xml_is_valid(text);
+        case RT_FORMAT_XML:
+            return rt_xml_is_valid(text);
 
-    case RT_FORMAT_YAML:
-        return rt_yaml_is_valid(text);
+        case RT_FORMAT_YAML:
+            return rt_yaml_is_valid(text);
 
-    case RT_FORMAT_TOML:
-        return rt_toml_is_valid(text);
+        case RT_FORMAT_TOML:
+            return rt_toml_is_valid(text);
 
-    case RT_FORMAT_CSV:
-        /* CSV is always parseable (any text is valid CSV) */
-        return 1;
+        case RT_FORMAT_CSV:
+            /* CSV is always parseable (any text is valid CSV) */
+            return 1;
 
-    default:
-        return 0;
+        default:
+            return 0;
     }
 }
 
@@ -302,12 +302,18 @@ rt_string rt_serialize_format_name(int64_t format)
 {
     switch ((rt_format_t)format)
     {
-    case RT_FORMAT_JSON: return rt_string_from_bytes("json", 4);
-    case RT_FORMAT_XML:  return rt_string_from_bytes("xml", 3);
-    case RT_FORMAT_YAML: return rt_string_from_bytes("yaml", 4);
-    case RT_FORMAT_TOML: return rt_string_from_bytes("toml", 4);
-    case RT_FORMAT_CSV:  return rt_string_from_bytes("csv", 3);
-    default:             return rt_string_from_bytes("unknown", 7);
+        case RT_FORMAT_JSON:
+            return rt_string_from_bytes("json", 4);
+        case RT_FORMAT_XML:
+            return rt_string_from_bytes("xml", 3);
+        case RT_FORMAT_YAML:
+            return rt_string_from_bytes("yaml", 4);
+        case RT_FORMAT_TOML:
+            return rt_string_from_bytes("toml", 4);
+        case RT_FORMAT_CSV:
+            return rt_string_from_bytes("csv", 3);
+        default:
+            return rt_string_from_bytes("unknown", 7);
     }
 }
 
@@ -315,12 +321,18 @@ rt_string rt_serialize_mime_type(int64_t format)
 {
     switch ((rt_format_t)format)
     {
-    case RT_FORMAT_JSON: return rt_string_from_bytes("application/json", 16);
-    case RT_FORMAT_XML:  return rt_string_from_bytes("application/xml", 15);
-    case RT_FORMAT_YAML: return rt_string_from_bytes("application/yaml", 16);
-    case RT_FORMAT_TOML: return rt_string_from_bytes("application/toml", 16);
-    case RT_FORMAT_CSV:  return rt_string_from_bytes("text/csv", 8);
-    default:             return rt_string_from_bytes("application/octet-stream", 24);
+        case RT_FORMAT_JSON:
+            return rt_string_from_bytes("application/json", 16);
+        case RT_FORMAT_XML:
+            return rt_string_from_bytes("application/xml", 15);
+        case RT_FORMAT_YAML:
+            return rt_string_from_bytes("application/yaml", 16);
+        case RT_FORMAT_TOML:
+            return rt_string_from_bytes("application/toml", 16);
+        case RT_FORMAT_CSV:
+            return rt_string_from_bytes("text/csv", 8);
+        default:
+            return rt_string_from_bytes("application/octet-stream", 24);
     }
 }
 
@@ -335,12 +347,18 @@ int64_t rt_serialize_format_from_name(rt_string name)
         return -1;
 
     /* Case-insensitive comparison */
-    if (strcasecmp(s, "json") == 0) return RT_FORMAT_JSON;
-    if (strcasecmp(s, "xml") == 0)  return RT_FORMAT_XML;
-    if (strcasecmp(s, "yaml") == 0) return RT_FORMAT_YAML;
-    if (strcasecmp(s, "yml") == 0)  return RT_FORMAT_YAML;
-    if (strcasecmp(s, "toml") == 0) return RT_FORMAT_TOML;
-    if (strcasecmp(s, "csv") == 0)  return RT_FORMAT_CSV;
+    if (strcasecmp(s, "json") == 0)
+        return RT_FORMAT_JSON;
+    if (strcasecmp(s, "xml") == 0)
+        return RT_FORMAT_XML;
+    if (strcasecmp(s, "yaml") == 0)
+        return RT_FORMAT_YAML;
+    if (strcasecmp(s, "yml") == 0)
+        return RT_FORMAT_YAML;
+    if (strcasecmp(s, "toml") == 0)
+        return RT_FORMAT_TOML;
+    if (strcasecmp(s, "csv") == 0)
+        return RT_FORMAT_CSV;
 
     return -1;
 }

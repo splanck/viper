@@ -5,17 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Induction Variable Simplification + Loop Strength Reduction — Function Pass
-//
-// This pass normalizes simple counted loops and performs basic strength
-// reduction for linear expressions of an induction variable. It prefers
-// canonical forms like `i < bound` with positive steps, and rewrites repeated
-// computations `base + i * stride` into incremental updates of a
-// loop-carried temporary by hoisting the initial value into the preheader and
-// passing the value via block parameters.
-//
-// The implementation is deliberately conservative and targets single-latch,
-// well-structured loops discovered by LoopInfo.
+// File: il/transform/IndVarSimplify.hpp
+// Purpose: Induction Variable Simplification + Loop Strength Reduction --
+//          function pass that normalises simple counted loops to canonical
+//          form (i < bound, positive step) and rewrites linear expressions
+//          of induction variables into incremental loop-carried updates.
+// Key invariants:
+//   - Targets only single-latch, well-structured loops from LoopInfo.
+//   - Hoisted initial values are placed in the loop preheader.
+// Ownership/Lifetime: Stateless FunctionPass; instantiated by the registry.
+// Links: il/transform/PassRegistry.hpp, il/transform/analysis/LoopInfo.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,14 +25,26 @@
 namespace il::transform
 {
 
+/// @brief Induction variable simplification and loop strength reduction pass.
+/// @details Normalises counted loops to canonical form (i < bound, positive step)
+///          and rewrites linear expressions of induction variables into incremental
+///          loop-carried updates, reducing computation within loop bodies.
 class IndVarSimplify : public FunctionPass
 {
   public:
+    /// @brief Return the pass identifier string ("indvars").
+    /// @return A string view identifying this pass in the registry.
     std::string_view id() const override;
+
+    /// @brief Run induction variable simplification on a single function.
+    /// @param function The function containing loops to simplify.
+    /// @param analysis The analysis manager providing loop info and dominators.
+    /// @return A PreservedAnalyses set indicating which analyses remain valid.
     PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override;
 };
 
-/// Register the IndVarSimplify function pass under identifier "indvars".
+/// @brief Register the IndVarSimplify pass with the registry under identifier "indvars".
+/// @param registry The pass registry to register with.
 void registerIndVarSimplifyPass(PassRegistry &registry);
 
 } // namespace il::transform

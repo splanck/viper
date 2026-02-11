@@ -6,7 +6,7 @@ This document tracks known bugs in the Viper BASIC frontend (parser, lowerer, ty
 
 ## BUG-BASIC-001: Array dimensions must be literal numbers
 
-**Status**: OPEN
+**Status**: RESOLVED (class field array dimensions now use `parseExpression()` -- see BUG-056 fix in Parser_Stmt_OOP.cpp)
 **Severity**: Medium (workaround available)
 **Component**: Parser
 

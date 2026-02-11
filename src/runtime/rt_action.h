@@ -5,29 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Action Mapping System for Viper Input
-//
-// Provides a high-level abstraction over raw input devices. Instead of
-// checking individual keys or buttons, games define named actions and bind
-// them to multiple input sources. This enables:
-//
-// - Input remapping without code changes
-// - Multi-device support (keyboard + gamepad) with a single query
-// - Axis actions for analog input (movement, camera)
-// - Consistent pressed/released/held state tracking
-//
-// Usage:
-//   1. Define actions: rt_action_define("jump")
-//   2. Add bindings: rt_action_bind_key("jump", VIPER_KEY_SPACE)
-//                    rt_action_bind_pad_button("jump", 0, VIPER_PAD_A)
-//   3. Query state: rt_action_pressed("jump") / rt_action_held("jump")
-//
-// For axes:
-//   1. Define: rt_action_define_axis("move_x")
-//   2. Bind analog: rt_action_bind_pad_axis("move_x", 0, VIPER_AXIS_LEFT_X)
-//   3. Bind keys: rt_action_bind_key_axis("move_x", VIPER_KEY_LEFT, -1.0)
-//                 rt_action_bind_key_axis("move_x", VIPER_KEY_RIGHT, 1.0)
-//   4. Query: rt_action_axis("move_x") -> -1.0 to 1.0
+// File: src/runtime/rt_action.h
+// Purpose: Action mapping system that abstracts raw input devices into named
+//          actions with keyboard, mouse, and gamepad bindings for both button
+//          and axis input types.
+// Key invariants: Action names are unique; button actions and axis actions are
+//                 disjoint sets; axis values are clamped to -1.0..1.0; all
+//                 state queries reflect the current frame after rt_action_update.
+// Ownership/Lifetime: The action system is globally initialized/shutdown with
+//                     rt_action_init/rt_action_shutdown; action names are
+//                     rt_string values following runtime refcount rules.
+// Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 

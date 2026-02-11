@@ -5,50 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Parser class, which reads IL source text and constructs
-// Module objects. The parser implements the complete IL grammar defined in
-// docs/il-guide.md, enabling IL files to be read from disk, transmitted between
-// tools, and inspected during debugging.
-//
-// The Parser is the inverse of the Serializer: where Serializer converts Module
-// → text, Parser converts text → Module. Together they enable round-trip testing,
-// textual IL file formats, and human inspection of IL code.
-//
-// Key Responsibilities:
-// - Lexical analysis: Tokenize IL text into keywords, identifiers, literals
-// - Syntax parsing: Build Module structure from token stream
-// - Type resolution: Parse type specifiers (i64, f64, str, etc.)
-// - Value parsing: Constants, temporaries, globals, null pointers
-// - Instruction parsing: Opcodes with type-specific operand layouts
-// - Error reporting: Precise line/column locations with diagnostic messages
-//
-// Parser Architecture:
-// The parser uses a hand-written recursive descent strategy with dedicated
-// sub-parsers for modules, functions, instructions, and operands. This modular
-// design keeps parsing logic maintainable and enables precise error recovery.
-//
-// Internal components (in il/internal/io/):
-// - ParserState: Lexer state, token buffer, error accumulation
-// - ModuleParser: Top-level module structure (version, target, externs, globals)
-// - FunctionParser: Function signatures and basic block structure
-// - InstrParser: Instruction opcodes and operand parsing
-// - OperandParser: Value parsing (temporaries, constants, addresses)
-// - TypeParser: IL type parsing
-//
-// Error Handling:
-// Parse errors are reported via the Expected<T> type. On failure, the parser
-// returns diagnostic information including file location, error message, and
-// context. The parser attempts to continue after errors to report multiple
-// issues in a single pass (best-effort recovery).
-//
-// Usage Example:
-//   std::ifstream file("program.il");
-//   Module m;
-//   auto result = Parser::parse(file, m);
-//   if (!result) {
-//     std::cerr << "Parse error: " << result.error() << "\n";
-//     return 1;
-//   }
+// File: il/io/Parser.hpp
+// Purpose: Declares the Parser class -- reads IL source text and constructs
+//          Module objects using hand-written recursive descent. Implements the
+//          complete IL grammar (version, target, externs, globals, functions,
+//          instructions, operands). Inverse of Serializer.
+// Key invariants:
+//   - parse() is stateless; safe to call from multiple threads.
+//   - On success, the output module conforms to the IL spec.
+//   - On failure, returns diagnostic with precise line/column location.
+// Ownership/Lifetime: Parser is a stateless facade with a static parse()
+//          method. The caller owns the istream and the output Module.
+// Links: docs/il-guide.md, il/io/Serializer.hpp,
+//        il/internal/io/ParserState.hpp
 //
 //===----------------------------------------------------------------------===//
 

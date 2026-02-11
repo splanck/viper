@@ -85,8 +85,18 @@ struct PowTrapOutcome
     std::string message;
 };
 
+/// @brief Convert a host string view into a runtime string handle.
+/// @param text Source string view to convert.
+/// @param assumeNullTerminated Hint indicating whether @p text is null-terminated,
+///        allowing the implementation to skip a copy when possible.
+/// @return Runtime string handle wrapping the converted text.
 ViperString toViperString(StringRef text,
                           AssumeNullTerminated assumeNullTerminated = AssumeNullTerminated::No);
+
+/// @brief Extract a host string view from a runtime string handle.
+/// @param str Runtime string handle to read from.
+/// @return String view referencing the handle's character data. The view does
+///         not extend the lifetime of the underlying buffer.
 StringRef fromViperString(const ViperString &str);
 
 //===----------------------------------------------------------------------===//
@@ -147,8 +157,22 @@ int64_t toI64(const il::core::Value &value);
 ///       marshalling constant operands to runtime helpers.
 double toF64(const il::core::Value &value);
 
+/// @brief Obtain a typed pointer into a slot suitable for passing as a runtime argument.
+/// @param slot Slot containing the value to marshal.
+/// @param kind Type kind determining which union member to address.
+/// @return Pointer to the appropriate union member within @p slot.
 void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind);
+
+/// @brief Obtain a pointer to the appropriate result buffer for a given type kind.
+/// @param kind Type kind of the expected return value.
+/// @param buffers Result buffer aggregate that owns the storage.
+/// @return Pointer to the buffer member matching @p kind.
 void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers);
+
+/// @brief Write a result buffer value back into a slot based on type kind.
+/// @param slot Destination slot receiving the unmarshalled value.
+/// @param kind Type kind selecting which buffer member to read.
+/// @param buffers Result buffers populated by a prior runtime call.
 void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &buffers);
 
 //===----------------------------------------------------------------------===//
@@ -222,10 +246,26 @@ std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
                                      std::span<Slot> args,
                                      PowStatus &powStatus);
 
+/// @brief Inspect a completed power-function call and determine whether a trap occurred.
+/// @details After a runtime call to a power function, this examines the status
+///          flag written by the callee to decide whether the operation succeeded,
+///          produced an overflow, or violated a domain constraint.
+/// @param desc Runtime descriptor of the called function.
+/// @param powStatus Status tracker populated during argument marshalling.
+/// @param args Original argument slots (used for diagnostic context).
+/// @param buffers Result buffers written by the runtime call.
+/// @return Outcome indicating whether a trap was triggered and its kind/message.
 PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
                                const PowStatus &powStatus,
                                std::span<const Slot> args,
                                const ResultBuffers &buffers);
+
+/// @brief Construct a return-value slot from result buffers using the call's signature.
+/// @details Reads the appropriate result buffer member based on the signature's
+///          return type and packages it into a Slot for the caller.
+/// @param signature Runtime signature describing the return type.
+/// @param buffers Result buffers populated by the runtime call.
+/// @return Slot containing the return value.
 Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const ResultBuffers &buffers);
 
 //===----------------------------------------------------------------------===//

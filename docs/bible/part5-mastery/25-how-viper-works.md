@@ -513,7 +513,7 @@ Notice how the IL makes the control flow explicit. There's no "magic"—every br
 ### Viewing Your Program's IL
 
 ```bash
-zia --dump-il myprogram.zia
+zia --emit-il myprogram.zia
 ```
 
 This is incredibly useful for:
@@ -954,7 +954,7 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 
 2. **Check the IL** if behavior seems impossible
    ```bash
-   zia --dump-il myprogram.zia
+   zia --emit-il myprogram.zia
    ```
    Sometimes the IL reveals that your code doesn't do what you think.
 
@@ -1060,9 +1060,10 @@ This interoperability is automatic—no special configuration needed.
 
 Modern VMs are highly optimized. For most programs—especially those that do I/O, process data, or interact with users—VM overhead is negligible. The bottleneck is usually I/O or algorithms, not interpretation.
 
-For truly performance-critical code, use native compilation:
+For truly performance-critical code, you can use native compilation via the IL toolchain:
 ```bash
-zia --compile-native myprogram.zia
+zia myprogram.zia --emit-il -o myprogram.il
+viper codegen arm64 myprogram.il -o myprogram
 ```
 
 ### "Garbage Collection Causes Pauses"

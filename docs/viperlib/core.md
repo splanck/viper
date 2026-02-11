@@ -7,7 +7,7 @@
 ## Contents
 
 - [Viper.Object](#viperobject)
-- [Viper.Box](#viperbox)
+- [Viper.Core.Box](#vipercorebox)
 - [Viper.String](#viperstring)
 
 ---
@@ -58,7 +58,7 @@ END IF
 
 ---
 
-## Viper.Box
+## Viper.Core.Box
 
 Boxing helpers for storing primitive values in generic collections. Boxed values are heap objects with type tags.
 
@@ -66,20 +66,21 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 
 ### Methods
 
-| Method           | Signature           | Description                                        |
-|------------------|---------------------|----------------------------------------------------|
-| `I64(value)`     | `Object(Integer)`   | Box an integer                                     |
-| `F64(value)`     | `Object(Double)`    | Box a double                                       |
-| `I1(value)`      | `Object(Boolean)`   | Box a boolean                                      |
-| `Str(value)`     | `Object(String)`    | Box a string                                       |
-| `ToI64(box)`     | `Integer(Object)`   | Unbox integer (traps on wrong type)                |
-| `ToF64(box)`     | `Double(Object)`    | Unbox double (traps on wrong type)                 |
-| `ToI1(box)`      | `Boolean(Object)`   | Unbox boolean (traps on wrong type)                |
-| `ToStr(box)`     | `String(Object)`    | Unbox string (traps on wrong type)                 |
-| `Type(box)`      | `Integer(Object)`   | Return type tag (0=i64, 1=f64, 2=i1, 3=str)         |
-| `EqI64(box,val)` | `Boolean(Object,Integer)` | Compare boxed value to integer                 |
-| `EqF64(box,val)` | `Boolean(Object,Double)`  | Compare boxed value to double                  |
-| `EqStr(box,val)` | `Boolean(Object,String)`  | Compare boxed value to string                  |
+| Method              | Signature                 | Description                                            |
+|---------------------|---------------------------|--------------------------------------------------------|
+| `I64(value)`        | `Object(Integer)`         | Box an integer                                         |
+| `F64(value)`        | `Object(Double)`          | Box a double                                           |
+| `I1(value)`         | `Object(Boolean)`         | Box a boolean                                          |
+| `Str(value)`        | `Object(String)`          | Box a string                                           |
+| `ToI64(box)`        | `Integer(Object)`         | Unbox integer (traps on wrong type)                    |
+| `ToF64(box)`        | `Double(Object)`          | Unbox double (traps on wrong type)                     |
+| `ToI1(box)`         | `Boolean(Object)`         | Unbox boolean (traps on wrong type)                    |
+| `ToStr(box)`        | `String(Object)`          | Unbox string (traps on wrong type)                     |
+| `Type(box)`         | `Integer(Object)`         | Return type tag (0=i64, 1=f64, 2=i1, 3=str)           |
+| `EqI64(box,val)`    | `Boolean(Object,Integer)` | Compare boxed value to integer                         |
+| `EqF64(box,val)`    | `Boolean(Object,Double)`  | Compare boxed value to double                          |
+| `EqStr(box,val)`    | `Boolean(Object,String)`  | Compare boxed value to string                          |
+| `ValueType(tag)`    | `Object(Integer)`         | Return a boxed type descriptor for the given type tag  |
 
 ### Notes
 
@@ -96,17 +97,17 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     // Box an integer (type tag 0)
-    var boxed = Viper.Box.I64(42);
-    Say("Type: " + Fmt.Int(Viper.Box.Type(boxed)));   // 0
-    Say("Value: " + Fmt.Int(Viper.Box.ToI64(boxed)));  // 42
+    var boxed = Viper.Core.Box.I64(42);
+    Say("Type: " + Fmt.Int(Viper.Core.Box.Type(boxed)));   // 0
+    Say("Value: " + Fmt.Int(Viper.Core.Box.ToI64(boxed)));  // 42
 
     // Box a string (type tag 3)
-    var sbox = Viper.Box.Str("hello");
-    Say("String: " + Viper.Box.ToStr(sbox));           // hello
+    var sbox = Viper.Core.Box.Str("hello");
+    Say("String: " + Viper.Core.Box.ToStr(sbox));           // hello
 
     // Box a float (type tag 1)
-    var fbox = Viper.Box.F64(3.14);
-    Say("Float type: " + Fmt.Int(Viper.Box.Type(fbox)));  // 1
+    var fbox = Viper.Core.Box.F64(3.14);
+    Say("Float type: " + Fmt.Int(Viper.Core.Box.Type(fbox)));  // 1
 }
 ```
 
@@ -114,11 +115,11 @@ func start() {
 
 ```basic
 DIM boxed AS OBJECT
-boxed = Viper.Box.I64(42)
+boxed = Viper.Core.Box.I64(42)
 
-PRINT Viper.Box.Type(boxed)         ' Output: 0
-PRINT Viper.Box.ToI64(boxed)        ' Output: 42
-PRINT Viper.Box.EqI64(boxed, 42)    ' Output: true
+PRINT Viper.Core.Box.Type(boxed)         ' Output: 0
+PRINT Viper.Core.Box.ToI64(boxed)        ' Output: 42
+PRINT Viper.Core.Box.EqI64(boxed, 42)    ' Output: true
 ```
 
 ---
@@ -177,6 +178,37 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `Repeat(count)`                | `String(Integer)`         | Repeats the string count times                                  |
 | `Flip()`                       | `String()`                | Reverses the string (byte-level, ASCII-safe)                    |
 | `Split(delimiter)`             | `Seq(String)`             | Splits string by delimiter into a Seq of strings                |
+
+**Case Conversion:**
+
+| Method              | Signature    | Description                                                    |
+|---------------------|-------------|----------------------------------------------------------------|
+| `Capitalize()`      | `String()`  | Capitalize first character, lowercase the rest                 |
+| `Title()`           | `String()`  | Capitalize the first character of each word                    |
+| `CamelCase()`       | `String()`  | Convert to camelCase                                           |
+| `PascalCase()`      | `String()`  | Convert to PascalCase                                          |
+| `SnakeCase()`       | `String()`  | Convert to snake_case                                          |
+| `KebabCase()`       | `String()`  | Convert to kebab-case                                          |
+| `ScreamingSnake()`  | `String()`  | Convert to SCREAMING_SNAKE_CASE                                |
+
+**Additional Search:**
+
+| Method                | Signature          | Description                                               |
+|-----------------------|--------------------|-----------------------------------------------------------|
+| `LastIndexOf(search)` | `Integer(String)`  | Returns the last position of `search`, or -1 if not found |
+| `RemovePrefix(prefix)`| `String(String)`   | Removes prefix if present, otherwise returns original     |
+| `RemoveSuffix(suffix)`| `String(String)`   | Removes suffix if present, otherwise returns original     |
+| `TrimChar(chars)`     | `String(String)`   | Removes specified characters from both ends               |
+| `Slug()`              | `String()`         | Convert to URL-friendly slug form                         |
+
+**String Distance:**
+
+| Method                | Signature          | Description                                              |
+|-----------------------|--------------------|----------------------------------------------------------|
+| `Levenshtein(other)`  | `Integer(String)`  | Compute Levenshtein edit distance between two strings    |
+| `Jaro(other)`         | `Double(String)`   | Compute Jaro similarity score (0.0 to 1.0)              |
+| `JaroWinkler(other)`  | `Double(String)`   | Compute Jaro-Winkler similarity score (0.0 to 1.0)     |
+| `Hamming(other)`      | `Integer(String)`  | Compute Hamming distance (strings must be equal length)  |
 
 **Comparison:**
 

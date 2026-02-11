@@ -5,9 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// A tiny direct-call graph helper for simple inlining heuristics. This is not a
-// full-blown analysis; it scans the module and counts direct call sites per
-// callee name, and can optionally record caller→callee edges.
+// File: il/analysis/CallGraph.hpp
+// Purpose: Lightweight direct call graph utilities for inlining heuristics.
+//          Scans the module, counts direct call sites per callee name, and
+//          optionally records caller-to-callee edges by name.
+// Key invariants:
+//   - Only direct calls with explicit callee names are tracked.
+//   - Indirect calls are ignored by design.
+// Ownership/Lifetime: CallGraph is a value type owning its maps. The
+//          buildCallGraph function takes a module reference and returns a
+//          self-contained CallGraph.
+// Links: il/core/fwd.hpp, il/transform/Inline.hpp
 //
 //===----------------------------------------------------------------------===//
 

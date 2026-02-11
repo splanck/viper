@@ -82,7 +82,7 @@ up any new opportunities introduced by SSA promotion.
 
 ## Differential Testing
 
-- `tests/unit/test_il_opt_equivalence.cpp` randomly builds small IL modules (ints/floats with `br`, `cbr`, `switch.i32`)
+- `src/tests/unit/test_il_opt_equivalence.cpp` randomly builds small IL modules (ints/floats with `br`, `cbr`, `switch.i32`)
   using `IRBuilder`. The generator constrains constants to avoid UB (no unchecked divides; `idx.chk` uses in-range
   operands).
 - Each generated module is verified, cloned, and executed on the VM before and after `O0`, `O1`, and `O2` pipelines via
@@ -169,7 +169,7 @@ Threads jumps through blocks with predictable branch conditions:
   invariant, preserving trap behaviour.
 - Safety rules: a check is eliminated only if the dominating check block dominates the use-site block; hoisting is
   restricted to loop headers with canonical preheaders. EH-sensitive opcodes (resume/eh push/pop) keep loops ineligible.
-- Tests: `tests/unit/il/transform/checkopt_redundancy.cpp` covers nested-loop redundancies, non-dominating siblings (no
+- Tests: `src/tests/unit/il/transform/checkopt_redundancy.cpp` covers nested-loop redundancies, non-dominating siblings (no
   elimination), and trap-preservation cases.
 
 ## ValueKey (CSE/GVN Support)
@@ -207,7 +207,7 @@ Loop detection and nesting analysis:
 ## Optimization Review Test Coverage
 
 Regression tests covering fixes from the comprehensive IL optimization review
-(`tests/unit/il/transform/test_opt_review_*.cpp`):
+(`src/tests/unit/il/transform/test_opt_review_*.cpp`):
 
 | Test File | Tests | Coverage |
 |-----------|-------|---------|

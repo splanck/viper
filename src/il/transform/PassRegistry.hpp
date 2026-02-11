@@ -5,30 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the pass registration infrastructure and preservation
-// tracking mechanisms for the IL transformation pipeline. The pass registry
-// maintains factories for creating pass instances and tracks which analyses
-// remain valid after each transformation.
-//
-// Viper's optimization pipeline follows the LLVM pass manager design: passes
-// are registered with unique identifiers, pipelines specify pass sequences,
-// and preservation metadata enables intelligent caching of analysis results.
-// The registry provides the foundation for extensible, modular optimization
-// infrastructure.
-//
-// Key Components:
-// - PreservedAnalyses: Communicates which analysis results remain valid after
-//   a pass executes, enabling the pass manager to avoid redundant recomputation
-// - PassRegistry: Maps pass names to factory functions, supporting dynamic
-//   pipeline construction from textual pass specifications
-// - Pass identity: Each pass has a unique identifier used for registration,
-//   preservation queries, and diagnostic output
-//
-// Preservation Model:
-// Passes return PreservedAnalyses objects indicating which analyses are still
-// valid. The pass manager uses this information to invalidate cached results
-// only when necessary. Passes can preserve all analyses, no analyses, or
-// specific named analyses based on their transformation behavior.
+// File: il/transform/PassRegistry.hpp
+// Purpose: Pass registration infrastructure and preservation tracking for
+//          the IL transformation pipeline. Declares PreservedAnalyses (tracks
+//          which analyses remain valid after a pass), ModulePass/FunctionPass
+//          base classes, and PassRegistry (maps pass names to factories).
+// Key invariants:
+//   - Pass identifiers must be unique within the registry.
+//   - PreservedAnalyses tracks module and function analyses independently.
+//   - Factory functions transfer ownership of pass objects to the caller.
+// Ownership/Lifetime: PassRegistry owns its factory map. PreservedAnalyses is
+//          a lightweight value type. ModulePass/FunctionPass are polymorphic
+//          bases owned via unique_ptr by the pipeline executor.
+// Links: il/core/fwd.hpp, il/transform/AnalysisManager.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once

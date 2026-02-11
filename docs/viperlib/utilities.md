@@ -96,6 +96,10 @@ String formatting utilities for converting values to formatted strings.
 | `HexPad(value, width)`      | `String(Integer, Integer)`         | Format as hex with zero-padding          |
 | `Bin(value)`                | `String(Integer)`                  | Format as binary                         |
 | `Oct(value)`                | `String(Integer)`                  | Format as octal                          |
+| `IntGrouped(value, sep)`    | `String(Integer, String)`          | Format integer with thousands separator  |
+| `Currency(value, dec, sym)` | `String(Double, Integer, String)`  | Format as currency with decimals and symbol |
+| `ToWords(value)`            | `String(Integer)`                  | Convert integer to English words         |
+| `Ordinal(value)`            | `String(Integer)`                  | Convert integer to ordinal (1st, 2nd, 3rd...) |
 
 ### Zia Example
 

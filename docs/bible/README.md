@@ -83,7 +83,7 @@ The Viper Bible is organized as a journey, not a dictionary. Each chapter builds
 |----------|----------|
 | [A. Zia Reference](appendices/a-zia-reference.md) | Complete syntax and semantics |
 | [B. BASIC Reference](appendices/b-basic-reference.md) | Complete syntax and semantics |
-| [C. Pascal Reference](appendices/c-pascal-reference.md) | Complete syntax and semantics |
+| C. Pascal Reference | Complete syntax and semantics (planned) |
 | [D. Runtime Library](appendices/d-runtime-reference.md) | All built-in functions and types |
 | [E. Error Messages](appendices/e-error-messages.md) | What they mean and how to fix them |
 | [F. Glossary](appendices/f-glossary.md) | Programming terms explained |
