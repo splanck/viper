@@ -166,6 +166,21 @@ long long rt_rand_chance(double probability)
     return rt_rnd() < probability ? 1 : 0;
 }
 
+/// @brief Create a Random object (seeds the global RNG and returns a wrapper).
+/// @details Seeds the global RNG with the given seed and returns a GC-managed
+///          object. This enables `NEW Viper.Math.Random(seed)` in frontends.
+///          The Random class uses global state, so this is equivalent to calling
+///          Random.Seed(seed) and returning a handle.
+void *rt_random_new(long long seed)
+{
+    // Seed the global RNG
+    rt_randomize_i64(seed);
+
+    // Return a minimal GC-managed object as the Random instance handle
+    void *obj = rt_obj_new_i64(0, (int64_t)sizeof(void *));
+    return obj;
+}
+
 /// @brief Shuffle elements in a Seq randomly (Fisher-Yates algorithm).
 /// @details Uses the current RNG state for deterministic shuffling.
 void rt_rand_shuffle(void *seq)

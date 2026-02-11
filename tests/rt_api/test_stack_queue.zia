@@ -1,0 +1,58 @@
+module TestStackQueue;
+bind Viper.Terminal;
+
+func start() {
+    var st = new Viper.Collections.Stack();
+    SayBool(st.IsEmpty);
+    st.Push("a");
+    st.Push("b");
+    st.Push("c");
+    SayInt(st.Len);
+    Say(st.Peek());
+    Say(st.Pop());
+    Say(st.Pop());
+    SayInt(st.Len);
+    st.Clear();
+    SayBool(st.IsEmpty);
+
+    var q = new Viper.Collections.Queue();
+    SayBool(q.IsEmpty);
+    q.Push("x");
+    q.Push("y");
+    q.Push("z");
+    SayInt(q.Len);
+    Say(q.Peek());
+    Say(q.Pop());
+    Say(q.Pop());
+    SayInt(q.Len);
+    q.Clear();
+    SayBool(q.IsEmpty);
+
+    var r = new Viper.Collections.Ring();
+    SayBool(r.IsEmpty);
+    r.Push("1");
+    r.Push("2");
+    r.Push("3");
+    SayInt(r.Len);
+    Say(r.Peek());
+    Say(r.Pop());
+    SayInt(r.Len);
+    Say(r.Get(0));
+    r.Clear();
+    SayBool(r.IsEmpty);
+
+    var h = new Viper.Collections.Heap();
+    SayBool(h.IsEmpty);
+    h.Push(3, "three");
+    h.Push(1, "one");
+    h.Push(2, "two");
+    SayInt(h.Len);
+    Say(h.Peek());
+    Say(h.Pop());
+    Say(h.Pop());
+    SayInt(h.Len);
+    h.Clear();
+    SayBool(h.IsEmpty);
+
+    Say("done");
+}

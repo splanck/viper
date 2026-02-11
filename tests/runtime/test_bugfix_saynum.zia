@@ -1,0 +1,13 @@
+// BUG-013 regression: SayNum should accept i64 with implicit coercion to f64
+module TestBugfixSayNum;
+
+bind Viper.Terminal;
+
+func start() {
+    // SayNum expects f64, but passing an integer literal should
+    // implicitly coerce via sitofp
+    SayNum(42);
+    SayNum(0);
+    SayNum(-1);
+    Say("RESULT: ok");
+}

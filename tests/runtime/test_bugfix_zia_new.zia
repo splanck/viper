@@ -1,0 +1,30 @@
+// BUG-012 regression test: Zia `new` should work for runtime classes
+// Tests that construction succeeds for classes that were previously broken
+// due to mapILToken issues (BUG-009/010) and missing constructors (BUG-011).
+module TestBugfixZiaNew;
+
+bind Viper.Terminal;
+
+func start() {
+    // Collections — verify `new` succeeds (no crash)
+    var list = new Viper.Collections.List();
+    var map = new Viper.Collections.Map();
+    var seq = new Viper.Collections.Seq();
+
+    // StringBuilder (uses SBNew)
+    var sb = new Viper.Text.StringBuilder();
+
+    // Random (BUG-011 fix — previously had no constructor)
+    var rng = new Viper.Math.Random(99);
+
+    // PerlinNoise (has PerlinNew constructor)
+    var noise = new Viper.Math.PerlinNoise(42);
+
+    // UnionFind (constructor takes capacity)
+    var uf = new Viper.Collections.UnionFind(10);
+
+    // BitSet (constructor takes size)
+    var bs = new Viper.Collections.BitSet(64);
+
+    Say("RESULT: ok");
+}

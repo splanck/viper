@@ -1,0 +1,65 @@
+module TestTreemapTrie;
+bind Viper.Terminal;
+
+func start() {
+    var tm = new Viper.Collections.TreeMap();
+    SayBool(tm.IsEmpty);
+    tm.Set("banana", "yellow");
+    tm.Set("apple", "red");
+    tm.Set("cherry", "dark");
+    SayInt(tm.Len);
+    Say(tm.Get("apple"));
+    SayBool(tm.Has("banana"));
+    Say(tm.First());
+    Say(tm.Last());
+    Say(tm.Floor("blueberry"));
+    Say(tm.Ceil("blueberry"));
+    tm.Drop("apple");
+    SayInt(tm.Len);
+    SayInt(tm.Keys().Len);
+
+    var tr = new Viper.Collections.Trie();
+    SayBool(tr.IsEmpty);
+    tr.Put("hello", "1");
+    tr.Put("help", "2");
+    tr.Put("world", "3");
+    SayInt(tr.Len);
+    Say(tr.Get("hello"));
+    SayBool(tr.Has("help"));
+    SayBool(tr.HasPrefix("hel"));
+    SayBool(tr.HasPrefix("xyz"));
+    Say(tr.LongestPrefix("helping"));
+    SayInt(tr.WithPrefix("hel").Len);
+    tr.Remove("help");
+    SayInt(tr.Len);
+
+    var ss = new Viper.Collections.SortedSet();
+    SayBool(ss.IsEmpty);
+    ss.Put("cherry");
+    ss.Put("apple");
+    ss.Put("banana");
+    SayInt(ss.Len);
+    Say(ss.First());
+    Say(ss.Last());
+    SayBool(ss.Has("apple"));
+    Say(ss.At(1));
+    SayInt(ss.IndexOf("banana"));
+    Say(ss.Floor("blueberry"));
+    Say(ss.Ceil("blueberry"));
+    ss.Drop("apple");
+    SayInt(ss.Len);
+
+    var bm = new Viper.Collections.BiMap();
+    SayBool(bm.IsEmpty);
+    bm.Put("one", "1");
+    bm.Put("two", "2");
+    SayInt(bm.Len);
+    Say(bm.GetByKey("one"));
+    Say(bm.GetByValue("2"));
+    SayBool(bm.HasKey("one"));
+    SayBool(bm.HasValue("2"));
+    bm.RemoveByKey("one");
+    SayInt(bm.Len);
+
+    Say("done");
+}

@@ -1,0 +1,38 @@
+module TestColor;
+bind Viper.Graphics.Color;
+bind Viper.Terminal;
+
+func start() {
+    var c = RGB(255, 128, 0);
+    SayInt(GetR(c));
+    SayInt(GetG(c));
+    SayInt(GetB(c));
+    SayInt(GetA(c));
+    Say(ToHex(c));
+
+    var c2 = FromHex("#ff8000");
+    SayInt(GetR(c2));
+
+    var c3 = RGBA(100, 200, 50, 128);
+    SayInt(GetA(c3));
+
+    var c4 = Grayscale(c);
+    SayInt(GetR(c4));
+
+    var c5 = Invert(RGB(0, 0, 0));
+    SayInt(GetR(c5));
+
+    var c6 = Complement(c);
+    SayInt(GetR(c6));
+
+    var c7 = Lerp(RGB(0,0,0), RGB(255,255,255), 50);
+    SayInt(GetR(c7));
+
+    var c8 = Brighten(c, 50);
+    SayInt(GetR(c8));
+
+    var c9 = Darken(c, 50);
+    SayInt(GetR(c9));
+
+    Say("done");
+}

@@ -533,6 +533,14 @@ set(ZIA_RUNTIME_TESTS
         test_bugfix_text
         test_bugfix_crypto
         test_bugfix_string
+        test_bugfix_boolyn
+        test_bugfix_html
+        test_bugfix_bool_returns
+        test_bugfix_game_heap
+        test_bugfix_ring
+        test_bugfix_saynum
+        test_bugfix_random_new
+        test_bugfix_zia_new
 )
 
 foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)

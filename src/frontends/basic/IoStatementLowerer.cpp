@@ -216,6 +216,17 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                     updateColumn(widthEstimate);
                     break;
                 }
+                // BUG-001 fix: Handle Ptr/object types by converting to string first
+                if (value.type.kind == IlType::Kind::Ptr)
+                {
+                    Value strVal = lowerer_.emitCallRet(
+                        IlType(IlType::Kind::Str), kCoreObjectToString, {value.value});
+                    lowerer_.emitCall(kTerminalPrintStr, {strVal});
+                    lowerer_.requireStrReleaseMaybe();
+                    lowerer_.emitCall("rt_str_release_maybe", {strVal});
+                    updateColumn(widthEstimate);
+                    break;
+                }
                 // Booleans are handled by lowerScalarExpr which calls coerceToI64,
                 // converting to BASIC logical -1/0 (True=-1, False=0).
                 value = lowerer_.lowerScalarExpr(std::move(value), stmt.loc);

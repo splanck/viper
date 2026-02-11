@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_statemachine.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +25,7 @@ struct rt_statemachine_impl
 
 rt_statemachine rt_statemachine_new(void)
 {
-    rt_statemachine sm = malloc(sizeof(struct rt_statemachine_impl));
+    rt_statemachine sm = rt_obj_new_i64(0, sizeof(struct rt_statemachine_impl));
     if (!sm)
         return NULL;
 
@@ -41,10 +42,8 @@ rt_statemachine rt_statemachine_new(void)
 
 void rt_statemachine_destroy(rt_statemachine sm)
 {
-    if (sm)
-    {
-        free(sm);
-    }
+    // Object is GC-managed via rt_obj_new_i64; no manual free needed.
+    (void)sm;
 }
 
 int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id)

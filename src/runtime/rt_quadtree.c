@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_quadtree.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -384,9 +385,16 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
     }
 }
 
+static void quadtree_finalizer(void *obj)
+{
+    struct rt_quadtree_impl *tree = (struct rt_quadtree_impl *)obj;
+    destroy_node(tree->root);
+    tree->root = NULL;
+}
+
 rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
 {
-    struct rt_quadtree_impl *tree = malloc(sizeof(struct rt_quadtree_impl));
+    struct rt_quadtree_impl *tree = rt_obj_new_i64(0, sizeof(struct rt_quadtree_impl));
     if (!tree)
         return NULL;
 
@@ -395,20 +403,17 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
     tree->root = create_node(x, y, width, height, 0);
     if (!tree->root)
     {
-        free(tree);
         return NULL;
     }
 
+    rt_obj_set_finalizer(tree, quadtree_finalizer);
     return tree;
 }
 
 void rt_quadtree_destroy(rt_quadtree tree)
 {
-    if (!tree)
-        return;
-
-    destroy_node(tree->root);
-    free(tree);
+    // Object is GC-managed; finalizer frees internal nodes.
+    (void)tree;
 }
 
 void rt_quadtree_clear(rt_quadtree tree)

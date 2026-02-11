@@ -1,0 +1,103 @@
+// test_game_logic.zia — Grid2D, StateMachine, ButtonGroup, ObjectPool, Quadtree
+module TestGameLogic;
+
+bind Viper.Terminal;
+
+func start() {
+    // --- Grid2D ---
+    var g = new Viper.Game.Grid2D(10, 10, 0);
+    SayInt(g.Width);
+    SayInt(g.Height);
+    SayInt(g.Size);
+    g.Set(3, 4, 42);
+    SayInt(g.Get(3, 4));
+    SayInt(g.Get(0, 0));
+    SayBool(g.InBounds(5, 5));
+    SayBool(g.InBounds(10, 10));
+    g.Fill(7);
+    SayInt(g.Get(0, 0));
+    SayInt(g.Count(7));
+    g.Replace(7, 9);
+    SayInt(g.Get(0, 0));
+    g.Clear();
+    SayInt(g.Get(0, 0));
+
+    // --- StateMachine ---
+    var sm = new Viper.Game.StateMachine();
+    sm.AddState(0);
+    sm.AddState(1);
+    sm.AddState(2);
+    sm.SetInitial(0);
+    SayInt(sm.Current);
+    SayInt(sm.StateCount);
+    SayBool(sm.HasState(1));
+    SayBool(sm.HasState(9));
+    sm.Transition(1);
+    SayInt(sm.Current);
+    SayInt(sm.Previous);
+    SayBool(sm.JustEntered);
+
+    // --- ButtonGroup ---
+    var bg = new Viper.Game.ButtonGroup();
+    bg.Add(10);
+    bg.Add(20);
+    bg.Add(30);
+    SayInt(bg.Count);
+    SayBool(bg.Has(10));
+    SayBool(bg.Has(99));
+    bg.Select(20);
+    SayInt(bg.Selected);
+    SayBool(bg.HasSelection);
+    SayBool(bg.IsSelected(20));
+    SayBool(bg.IsSelected(10));
+    bg.SelectNext();
+    SayInt(bg.Selected);
+    bg.SelectPrev();
+    SayInt(bg.Selected);
+    bg.ClearSelection();
+    SayBool(bg.HasSelection);
+
+    // --- ObjectPool ---
+    var op = new Viper.Game.ObjectPool(100);
+    SayInt(op.Capacity);
+    SayInt(op.ActiveCount);
+    SayInt(op.FreeCount);
+    SayBool(op.IsEmpty);
+
+    var id1 = op.Acquire();
+    SayInt(id1);
+    SayInt(op.ActiveCount);
+    SayBool(op.IsActive(id1));
+
+    var id2 = op.Acquire();
+    SayInt(id2);
+
+    op.SetData(id1, 999);
+    SayInt(op.GetData(id1));
+
+    op.Release(id1);
+    SayInt(op.ActiveCount);
+    op.Clear();
+    SayInt(op.ActiveCount);
+
+    // --- Quadtree ---
+    var qt = new Viper.Game.Quadtree(0, 0, 1000, 1000);
+    SayInt(qt.ItemCount);
+
+    qt.Insert(1, 100, 100, 20, 20);
+    qt.Insert(2, 200, 200, 20, 20);
+    qt.Insert(3, 500, 500, 20, 20);
+    SayInt(qt.ItemCount);
+
+    var qr = qt.QueryRect(0, 0, 300, 300);
+    SayInt(qr);
+    SayInt(qt.ResultCount);
+
+    qt.Remove(2);
+    SayInt(qt.ItemCount);
+
+    qt.Clear();
+    SayInt(qt.ItemCount);
+
+    Say("done");
+}

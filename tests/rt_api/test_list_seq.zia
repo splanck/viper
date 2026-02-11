@@ -1,0 +1,57 @@
+module TestListSeq;
+bind Viper.Terminal;
+
+func start() {
+    var l = new Viper.Collections.List();
+    l.Push("a");
+    l.Push("b");
+    l.Push("c");
+    SayInt(l.Len);
+    Say(l.Get(0));
+    Say(l.Get(2));
+    Say(l.First());
+    Say(l.Last());
+    SayInt(l.Find("b"));
+    SayBool(l.Has("b"));
+    l.Set(1, "B");
+    Say(l.Get(1));
+    l.Insert(0, "z");
+    Say(l.Get(0));
+    SayInt(l.Len);
+    l.RemoveAt(0);
+    SayInt(l.Len);
+    l.Remove("a");
+    SayInt(l.Len);
+    l.Flip();
+    Say(l.Get(0));
+
+    var s = new Viper.Collections.Seq();
+    s.Push("x");
+    s.Push("y");
+    s.Push("z");
+    SayInt(s.Len);
+    Say(s.Get(0));
+    Say(s.First());
+    Say(s.Last());
+    Say(s.Peek());
+    SayInt(s.Find("y"));
+    SayBool(s.Has("y"));
+    s.Reverse();
+    Say(s.Get(0));
+    var s2 = s.Clone();
+    SayInt(s2.Len);
+    var s3 = s.Slice(0, 2);
+    SayInt(s3.Len);
+    var s4 = s.Take(2);
+    SayInt(s4.Len);
+    var s5 = s.Drop(1);
+    SayInt(s5.Len);
+    s.Sort();
+    Say(s.Get(0));
+    s.SortDesc();
+    Say(s.Get(0));
+    s.Clear();
+    SayInt(s.Len);
+    SayBool(s.IsEmpty);
+    Say("done");
+}

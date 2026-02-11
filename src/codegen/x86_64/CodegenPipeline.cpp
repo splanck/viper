@@ -267,6 +267,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     // Try multiple paths for runtime libraries: Release, Debug, and direct path
     // MSVC multi-config builds put outputs in Release/ or Debug/ subdirectories
+    bool foundDebugRtLib = false; // BUG-018: track whether libs are Debug-built
     auto findRuntimeArchive =
         [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
     {
@@ -279,7 +280,10 @@ int invokeLinker(const std::filesystem::path &asmPath,
                 return releasePath;
             const std::filesystem::path debugPath = buildDir / "src/runtime/Debug" / libFile;
             if (fileExists(debugPath))
+            {
+                foundDebugRtLib = true;
                 return debugPath;
+            }
             const std::filesystem::path directPath = buildDir / "src/runtime" / libFile;
             if (fileExists(directPath))
                 return directPath;
@@ -295,6 +299,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     // Link all runtime libraries that exist (simpler than symbol detection)
     const std::vector<std::string_view> rtLibs = {"viper_rt_graphics",
+                                                  "viper_rt_network",
                                                   "viper_rt_exec",
                                                   "viper_rt_io_fs",
                                                   "viper_rt_text",
@@ -340,9 +345,19 @@ int invokeLinker(const std::filesystem::path &asmPath,
     }
 
     // Add Windows CRT and system libraries
-    cmd.push_back("-lmsvcrt");
-    cmd.push_back("-lucrt");
-    cmd.push_back("-lvcruntime");
+    // BUG-018: Match CRT variant (Debug vs Release) to how runtime libs were built
+    if (foundDebugRtLib)
+    {
+        cmd.push_back("-lmsvcrtd");
+        cmd.push_back("-lucrtd");
+        cmd.push_back("-lvcruntimed");
+    }
+    else
+    {
+        cmd.push_back("-lmsvcrt");
+        cmd.push_back("-lucrt");
+        cmd.push_back("-lvcruntime");
+    }
 
     // Add Windows system libraries needed for graphics and input
     cmd.push_back("-lgdi32");

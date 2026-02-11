@@ -1171,6 +1171,66 @@ function(viper_add_basic_integration_tests)
     # BUG-058: String array fields persist values —
     # Test intentionally not registered until bug is fixed to keep CI green.
 
+    # BUG-019 regression: i1 boolean returns in native codegen
+    viper_add_ctest(basic_regress_bug019_bool_native
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug019_bool_native.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug019_bool_native.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # BUG-016 regression: BASIC lexer "" escaped quotes
+    viper_add_ctest(basic_regress_bug016_escaped_quotes
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug016_escaped_quotes.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug016_escaped_quotes.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # BUG-003 regression: NOT operator always returns BOOLEAN
+    viper_add_ctest(basic_regress_bug003_not_bool
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug003_not_bool.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug003_not_bool.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # BUG-017 regression: SafeI64 works on Windows
+    viper_add_ctest(basic_regress_bug017_safe_i64
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug017_safe_i64.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug017_safe_i64.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    viper_add_ctest(basic_regress_bug001_print_ptr
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug001_print_ptr.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug001_print_ptr.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    viper_add_ctest(basic_regress_bug023_str_obj_coerce
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug023_str_obj_coerce.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug023_str_obj_coerce.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    viper_add_ctest(basic_regress_bug011_random_new
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug011_random_new.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug011_random_new.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    viper_add_ctest(basic_regress_bug005_str_convert
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug005_str_convert.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/src/tests/basic/regress_bug005_str_convert.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
     viper_add_ctest(basic_regress_fileio_write_ok
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}

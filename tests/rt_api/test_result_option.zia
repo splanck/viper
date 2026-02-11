@@ -1,0 +1,12 @@
+// test_result_option.zia — Result, Option functional types
+// NOTE: Result and Option are not available in Zia (BUG-010)
+// Viper.Result.OkStr, OkI64, ErrStr — Undefined identifier
+// Viper.Option.SomeStr, SomeI64, None — Undefined identifier
+module TestResultOption;
+
+bind Viper.Terminal;
+
+func start() {
+    Say("skipped: Result/Option not available in Zia (BUG-010)");
+    Say("done");
+}

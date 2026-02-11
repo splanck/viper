@@ -1,0 +1,84 @@
+// test_threads.zia — ConcurrentQueue, ConcurrentMap, SafeI64, Gate, Barrier, RwLock, CancelToken, Debouncer, Throttler, Scheduler
+module TestThreads;
+
+bind Viper.Terminal;
+
+func start() {
+    var cq = new Viper.Threads.ConcurrentQueue();
+    SayBool(cq.IsEmpty);
+    cq.Enqueue("a");
+    cq.Enqueue("b");
+    cq.Enqueue("c");
+    SayInt(cq.Len);
+    cq.Dequeue();
+    SayInt(cq.Len);
+    cq.Clear();
+    SayBool(cq.IsEmpty);
+
+    var cm = new Viper.Threads.ConcurrentMap();
+    SayBool(cm.IsEmpty);
+    cm.Set("x", "1");
+    cm.Set("y", "2");
+    SayInt(cm.Len);
+    SayBool(cm.Has("x"));
+    SayBool(cm.Has("z"));
+    cm.Remove("x");
+    SayInt(cm.Len);
+    cm.Clear();
+    SayBool(cm.IsEmpty);
+
+    // NOTE: SafeI64 fails with "unsupported on this platform" (BUG-017)
+    // var si = new Viper.Threads.SafeI64(0);
+
+    var g = new Viper.Threads.Gate(3);
+    SayInt(g.Permits);
+    SayBool(g.TryEnter());
+    SayInt(g.Permits);
+    g.Leave();
+    SayInt(g.Permits);
+
+    var b = new Viper.Threads.Barrier(2);
+    SayInt(b.Parties);
+    SayInt(b.Waiting);
+
+    var rw = new Viper.Threads.RwLock();
+    SayInt(rw.Readers);
+    SayBool(rw.IsWriteLocked);
+    SayBool(rw.TryReadEnter());
+    SayInt(rw.Readers);
+    rw.ReadExit();
+    SayInt(rw.Readers);
+    SayBool(rw.TryWriteEnter());
+    rw.WriteExit();
+
+    var ct = new Viper.Threads.CancelToken();
+    SayBool(ct.IsCancelled);
+    ct.Cancel();
+    SayBool(ct.IsCancelled);
+    ct.Reset();
+    SayBool(ct.IsCancelled);
+
+    var db = new Viper.Threads.Debouncer(100);
+    SayInt(db.Delay);
+    SayBool(db.IsReady);
+    SayInt(db.SignalCount);
+    db.Signal();
+    SayInt(db.SignalCount);
+
+    var th = new Viper.Threads.Throttler(100);
+    SayInt(th.Interval);
+    SayInt(th.Count);
+    SayBool(th.Try());
+    SayInt(th.Count);
+
+    var sched = new Viper.Threads.Scheduler();
+    SayInt(sched.Pending);
+    sched.Schedule("task1", 1000);
+    SayInt(sched.Pending);
+    sched.Cancel("task1");
+    SayInt(sched.Pending);
+    sched.Clear();
+    SayInt(sched.Pending);
+
+    Say("done");
+}

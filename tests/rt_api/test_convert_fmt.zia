@@ -1,0 +1,32 @@
+module TestConvertFmt;
+bind Viper.Core.Convert;
+bind Viper.Fmt;
+bind Viper.Terminal;
+
+func start() {
+    SayInt(ToInt64("42"));
+    SayInt(ToInt64("-7"));
+    SayNum(ToDouble("3.14"));
+    Say(ToString_Int(99));
+    Say(ToString_Double(1.5));
+    Say(Int(42));
+    Say(Hex(255));
+    Say(HexPad(15, 4));
+    Say(Bin(5));
+    Say(Oct(8));
+    Say(Bool(true));
+    Say(Bool(false));
+    Say(BoolYN(true));
+    Say(BoolYN(false));
+    Say(IntRadix(10, 2));
+    Say(IntPad(7, 3, "0"));
+    Say(NumFixed(3.14159, 2));
+    Say(Ordinal(1));
+    Say(Ordinal(2));
+    Say(Ordinal(3));
+    Say(Ordinal(4));
+    Say(IntGrouped(1000000, ","));
+    Say(ToWords(1));
+    Say(Currency(9.99, 2, "$"));
+    Say("done");
+}

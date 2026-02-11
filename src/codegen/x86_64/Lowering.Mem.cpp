@@ -114,6 +114,14 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
                 RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
             builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
         }
+        else if (instr.resultKind == ILValue::Kind::I1)
+        {
+            // Boolean return in RAX — zero-extend from low byte to clear garbage upper bits
+            const Operand retReg = makePhysRegOperand(
+                RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
+            builder.append(
+                MInstr::make(MOpcode::MOVZXrr32, std::vector<Operand>{resultOp, retReg}));
+        }
         else
         {
             // Integer/pointer return in RAX

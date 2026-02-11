@@ -103,6 +103,11 @@ extern "C"
     ///          Deterministic when the RNG is seeded.
     void rt_rand_shuffle(void *seq);
 
+    /// @brief Create a Random object (seeds the global RNG and returns a wrapper).
+    /// @param seed Seed value for the RNG.
+    /// @return A GC-managed wrapper object.
+    void *rt_random_new(long long seed);
+
 #ifdef __cplusplus
 }
 #endif

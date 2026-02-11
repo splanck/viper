@@ -1,0 +1,20 @@
+module TestEnvMachine;
+bind Viper.Environment;
+bind Viper.Machine;
+bind Viper.Terminal;
+
+func start() {
+    Say(Platform());
+    Say(PlatformVersion());
+    Say(UserName());
+    Say(HomeDir());
+    SayInt(Viper.Environment.CpuCount());
+    SayInt(Viper.Machine.CpuCount());
+    SayInt(PageSize());
+    Say(Arch());
+    Say(OsName());
+    Say(Endian());
+    SayInt(PointerSize());
+    Say(Cwd());
+    Say("done");
+}

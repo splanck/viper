@@ -55,11 +55,36 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
         {
             if (c->ctor && std::string(c->ctor).size())
             {
+                // BUG-023 fix: Look up ctor signature for argument type coercion
+                const auto *ctorDesc = il::runtime::findRuntimeDescriptor(c->ctor);
+                const std::vector<il::core::Type> *ctorExpectedTypes = nullptr;
+                if (ctorDesc)
+                    ctorExpectedTypes = &ctorDesc->signature.paramTypes;
+
                 std::vector<Value> args;
                 args.reserve(expr.args.size());
-                for (const auto &a : expr.args)
+                for (size_t i = 0; i < expr.args.size(); ++i)
                 {
+                    const auto &a = expr.args[i];
                     RVal v = a ? lowerExpr(*a) : RVal{Value::constInt(0), Type(Type::Kind::I64)};
+                    // Coerce argument type if needed
+                    if (ctorExpectedTypes && i < ctorExpectedTypes->size())
+                    {
+                        auto expected = (*ctorExpectedTypes)[i];
+                        // String→Ptr coercion (str passed where obj expected)
+                        if (expected.kind == Type::Kind::Ptr &&
+                            v.type.kind == Type::Kind::Str)
+                        {
+                            // Strings are already pointer-compatible in IL
+                            v.type = Type(Type::Kind::Ptr);
+                        }
+                        // I64→F64 coercion
+                        else if (expected.kind == Type::Kind::F64 &&
+                                 v.type.kind == Type::Kind::I64)
+                        {
+                            v = coerceToF64(std::move(v), expr.loc);
+                        }
+                    }
                     args.push_back(v.value);
                 }
                 // Heuristic return type: strings return Str; others Ptr

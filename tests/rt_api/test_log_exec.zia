@@ -1,0 +1,36 @@
+// test_log_exec.zia — Log, Exec, NumberFormat
+module TestLogExec;
+
+bind Viper.Terminal;
+bind Viper.Log;
+bind Viper.Exec;
+bind Viper.Text.NumberFormat;
+
+func start() {
+    SayInt(Viper.Log.DEBUG);
+    SayInt(Viper.Log.INFO);
+    SayInt(Viper.Log.WARN);
+    SayInt(Viper.Log.ERROR);
+    SayInt(Viper.Log.OFF);
+    SayInt(Viper.Log.Level);
+    SayBool(Viper.Log.Enabled(Viper.Log.DEBUG));
+    Viper.Log.Info("test info message");
+    Viper.Log.Warn("test warn message");
+    Viper.Log.Error("test error message");
+
+    Say(ShellCapture("echo hello"));
+
+    Say(Bytes(1048576));
+    Say(Ordinal(1));
+    Say(Ordinal(2));
+    Say(Ordinal(3));
+    Say(Ordinal(11));
+    Say(Pad(42, 5));
+    Say(Percent(0.756));
+    Say(Thousands(1234567, ","));
+    Say(ToWords(42));
+    Say(Decimals(3.14159, 2));
+    Say(Currency(1234.56, "$"));
+
+    Say("done");
+}

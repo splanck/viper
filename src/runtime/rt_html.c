@@ -592,6 +592,10 @@ rt_string rt_html_strip_tags(rt_string str)
         else if (*p == '>')
         {
             in_tag = 0;
+            // Insert space separator between stripped tags so block elements
+            // don't merge their text content (e.g., "<p>a</p><p>b</p>" → "a b")
+            if (pos > 0 && out[pos - 1] != ' ')
+                out[pos++] = ' ';
         }
         else if (!in_tag)
         {
@@ -599,6 +603,9 @@ rt_string rt_html_strip_tags(rt_string str)
         }
         p++;
     }
+    // Trim trailing whitespace added by tag-boundary spacing
+    while (pos > 0 && out[pos - 1] == ' ')
+        pos--;
     out[pos] = '\0';
 
     rt_string result = rt_string_from_bytes(out, pos);

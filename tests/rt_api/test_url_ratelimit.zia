@@ -1,0 +1,53 @@
+// test_url_ratelimit.zia — Network.Url, Network.RateLimiter
+module TestUrlRateLimit;
+
+bind Viper.Terminal;
+
+func start() {
+    // --- Url: parse ---
+    var u = Viper.Network.Url.Parse("https://user:pass@example.com:8080/path/to?key=val&a=b#frag");
+    Say(u.Scheme);
+    Say(u.Host);
+    SayInt(u.Port);
+    Say(u.Path);
+    Say(u.Query);
+    Say(u.Fragment);
+    Say(u.User);
+    Say(u.Pass);
+    Say(u.Authority);
+    Say(u.HostPort);
+    Say(u.Full);
+
+    // --- Url: query params ---
+    SayBool(u.HasQueryParam("key"));
+    Say(u.GetQueryParam("key"));
+    SayBool(u.HasQueryParam("miss"));
+
+    // --- Url: static methods ---
+    Say(Viper.Network.Url.Encode("hello world&foo=bar"));
+    Say(Viper.Network.Url.Decode("hello%20world%26foo%3Dbar"));
+    SayBool(Viper.Network.Url.IsValid("https://example.com"));
+    SayBool(Viper.Network.Url.IsValid("not a url"));
+
+    // --- Url: simple parse ---
+    var u2 = Viper.Network.Url.Parse("http://localhost/api/v1");
+    Say(u2.Scheme);
+    Say(u2.Host);
+    Say(u2.Path);
+
+    // --- RateLimiter ---
+    var rl = new Viper.Network.RateLimiter(5, 10.0);
+    SayInt(rl.Available);
+    SayInt(rl.Max);
+    SayBool(rl.TryAcquire());
+    SayInt(rl.Available);
+    SayBool(rl.TryAcquire());
+    SayBool(rl.TryAcquire());
+    SayBool(rl.TryAcquire());
+    SayBool(rl.TryAcquire());
+    SayBool(rl.TryAcquire());
+    rl.Reset();
+    SayInt(rl.Available);
+
+    Say("done");
+}

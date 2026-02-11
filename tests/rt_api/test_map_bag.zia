@@ -1,0 +1,71 @@
+module TestMapBag;
+bind Viper.Terminal;
+
+func start() {
+    var m = new Viper.Collections.Map();
+    SayBool(m.IsEmpty);
+    m.Set("a", "1");
+    m.Set("b", "2");
+    m.Set("c", "3");
+    SayInt(m.Len);
+    Say(m.Get("b"));
+    SayBool(m.Has("a"));
+    SayBool(m.Has("z"));
+    Say(m.GetOr("z", "default"));
+    m.SetIfMissing("a", "99");
+    Say(m.Get("a"));
+    m.Remove("b");
+    SayInt(m.Len);
+    SayInt(m.Keys().Len);
+    SayInt(m.Values().Len);
+    m.Clear();
+    SayBool(m.IsEmpty);
+
+    var b = new Viper.Collections.Bag();
+    SayBool(b.IsEmpty);
+    b.Put("x");
+    b.Put("y");
+    b.Put("z");
+    b.Put("x");
+    SayInt(b.Len);
+    SayBool(b.Has("x"));
+    SayBool(b.Has("w"));
+    b.Drop("x");
+    SayInt(b.Len);
+    SayInt(b.Items().Len);
+    b.Clear();
+    SayBool(b.IsEmpty);
+
+    var cm = new Viper.Collections.CountMap();
+    cm.Inc("a");
+    cm.Inc("a");
+    cm.Inc("b");
+    cm.IncBy("c", 5);
+    SayInt(cm.Get("a"));
+    SayInt(cm.Get("c"));
+    SayInt(cm.Total);
+    SayInt(cm.Len);
+    cm.Dec("a");
+    SayInt(cm.Get("a"));
+    cm.Set("d", 10);
+    SayInt(cm.Get("d"));
+    SayBool(cm.Has("d"));
+    cm.Remove("d");
+    SayBool(cm.Has("d"));
+    SayInt(cm.Keys().Len);
+
+    var om = new Viper.Collections.OrderedMap();
+    om.Set("first", "1");
+    om.Set("second", "2");
+    om.Set("third", "3");
+    SayInt(om.Len);
+    Say(om.Get("second"));
+    Say(om.KeyAt(0));
+    SayBool(om.Has("first"));
+    om.Remove("second");
+    SayInt(om.Len);
+    SayInt(om.Keys().Len);
+    SayInt(om.Values().Len);
+
+    Say("done");
+}

@@ -1,0 +1,25 @@
+module TestBits;
+bind Viper.Math.Bits;
+bind Viper.Terminal;
+
+func start() {
+    SayInt(And(12, 10));
+    SayInt(Or(12, 10));
+    SayInt(Xor(12, 10));
+    SayInt(Not(0));
+    SayInt(Shl(1, 4));
+    SayInt(Shr(16, 2));
+    SayInt(Ushr(16, 2));
+    SayInt(Rotl(1, 3));
+    SayInt(Rotr(8, 3));
+    SayInt(Set(0, 3));
+    SayInt(Clear(15, 2));
+    SayInt(Toggle(10, 1));
+    SayBool(Get(10, 1));
+    SayInt(Flip(255));
+    SayInt(Count(255));
+    SayInt(LeadZ(1));
+    SayInt(TrailZ(8));
+    SayInt(Swap(1));
+    Say("done");
+}

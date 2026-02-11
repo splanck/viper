@@ -1,0 +1,43 @@
+// test_ini_template.zia — Text.Ini, Text.Template
+module TestIniTemplate;
+
+bind Viper.Terminal;
+
+func start() {
+    // --- Ini: Parse and query ---
+    var ini_text = "[server]\nhost=localhost\nport=8080\n[db]\nname=mydb";
+
+    var ini = Viper.Text.Ini.Parse(ini_text);
+    SayBool(Viper.Text.Ini.HasSection(ini, "server"));
+    SayBool(Viper.Text.Ini.HasSection(ini, "missing"));
+    Say(Viper.Text.Ini.Get(ini, "server", "host"));
+    Say(Viper.Text.Ini.Get(ini, "server", "port"));
+    Say(Viper.Text.Ini.Get(ini, "db", "name"));
+
+    // --- Ini: Set and Format ---
+    Viper.Text.Ini.Set(ini, "server", "debug", "true");
+    Say(Viper.Text.Ini.Get(ini, "server", "debug"));
+
+    var formatted = Viper.Text.Ini.Format(ini);
+    SayBool(formatted.Length > 0);
+
+    // --- Ini: Remove ---
+    Viper.Text.Ini.Remove(ini, "server", "debug");
+
+    // --- Template: Render ---
+    var tmap = new Viper.Collections.Map();
+    tmap.Set("name", "World");
+    tmap.Set("lang", "Zia");
+
+    Say(Viper.Text.Template.Render("Hello {{name}}, welcome to {{lang}}!", tmap));
+
+    // --- Template: Has ---
+    SayBool(Viper.Text.Template.Has("Hello {{name}}!", "name"));
+    SayBool(Viper.Text.Template.Has("Hello {{name}}!", "missing"));
+
+    // --- Template: Escape ---
+    var escaped = Viper.Text.Template.Escape("use {{braces}}");
+    SayBool(escaped.Length > 0);
+
+    Say("done");
+}

@@ -1,0 +1,14 @@
+// test_math_extra.zia — Quat, Scanner, CompiledPattern
+// NOTE: Quat cannot use 'new' in Zia (BUG-012)
+// NOTE: Scanner, CompiledPattern not available via bind (BUG-010)
+module TestMathExtra;
+
+bind Viper.Terminal;
+
+func start() {
+    // Quat - can't use 'new' (BUG-012), try static methods
+    // Scanner - not available (BUG-010)
+    // CompiledPattern - not available (BUG-010)
+    Say("all skipped due to BUG-010/BUG-012");
+    Say("done");
+}

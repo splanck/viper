@@ -1,0 +1,65 @@
+// test_memstream.zia — IO.MemStream, IO.BinFile, IO.LineReader, IO.LineWriter, IO.Compress
+module TestMemStream;
+
+bind Viper.Terminal;
+
+func start() {
+    // --- MemStream: integer read/write ---
+    var ms = new Viper.IO.MemStream();
+    SayInt(ms.Pos);
+    SayInt(ms.Len);
+
+    ms.WriteI8(42);
+    ms.WriteI16(1000);
+    ms.WriteI32(100000);
+    ms.WriteI64(9999999999);
+    SayInt(ms.Len);
+
+    ms.Seek(0);
+    SayInt(ms.ReadI8());
+    SayInt(ms.ReadI16());
+    SayInt(ms.ReadI32());
+    SayInt(ms.ReadI64());
+
+    // --- MemStream: string read/write ---
+    ms.Clear();
+    ms.WriteStr("hello world");
+    SayInt(ms.Len);
+    ms.Seek(0);
+    Say(ms.ReadStr(11));
+
+    // --- MemStream: unsigned types ---
+    ms.Clear();
+    ms.WriteU8(200);
+    ms.WriteU16(60000);
+    ms.WriteU32(3000000000);
+    ms.Seek(0);
+    SayInt(ms.ReadU8());
+    SayInt(ms.ReadU16());
+    SayInt(ms.ReadU32());
+
+    // --- MemStream: capacity and skip ---
+    SayInt(ms.Capacity);
+    ms.Clear();
+    ms.WriteI8(1);
+    ms.WriteI8(2);
+    ms.WriteI8(3);
+    ms.Seek(0);
+    ms.Skip(1);
+    SayInt(ms.Pos);
+
+    // NOTE: LineWriter, LineReader, BinFile cannot use 'new' in Zia (BUG-012)
+    Say("LineWriter/LineReader/BinFile: skipped (BUG-012)");
+
+    // --- Compress ---
+    var compressed = Viper.IO.Compress.DeflateStr("hello world hello world hello world");
+    Say("compressed ok");
+    var decompressed = Viper.IO.Compress.InflateStr(compressed);
+    Say(decompressed);
+
+    var gzipped = Viper.IO.Compress.GzipStr("test data for gzip");
+    var gunzipped = Viper.IO.Compress.GunzipStr(gzipped);
+    Say(gunzipped);
+
+    Say("done");
+}

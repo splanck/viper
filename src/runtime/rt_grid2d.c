@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_grid2d.h"
+#include "rt_object.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +22,13 @@ struct rt_grid2d_impl
     int64_t height;
     int64_t *data; // Row-major storage: data[y * width + x]
 };
+
+static void grid2d_finalizer(void *obj)
+{
+    struct rt_grid2d_impl *grid = (struct rt_grid2d_impl *)obj;
+    free(grid->data);
+    grid->data = NULL;
+}
 
 rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
 {
@@ -37,7 +45,7 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
 
     int64_t size = width * height;
 
-    struct rt_grid2d_impl *grid = malloc(sizeof(struct rt_grid2d_impl));
+    struct rt_grid2d_impl *grid = rt_obj_new_i64(0, sizeof(struct rt_grid2d_impl));
     if (!grid)
     {
         return NULL;
@@ -46,7 +54,6 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
     grid->data = malloc((size_t)size * sizeof(int64_t));
     if (!grid->data)
     {
-        free(grid);
         return NULL;
     }
 
@@ -59,15 +66,14 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
         grid->data[i] = default_value;
     }
 
+    rt_obj_set_finalizer(grid, grid2d_finalizer);
     return grid;
 }
 
 void rt_grid2d_destroy(rt_grid2d grid)
 {
-    if (!grid)
-        return;
-    free(grid->data);
-    free(grid);
+    // Object is GC-managed; finalizer frees internal data.
+    (void)grid;
 }
 
 int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y)

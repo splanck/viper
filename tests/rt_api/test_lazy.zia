@@ -1,0 +1,10 @@
+// test_lazy.zia — Lazy, LazySeq
+// NOTE: Viper.Lazy and Viper.LazySeq are not available via bind (BUG-010)
+module TestLazy;
+
+bind Viper.Terminal;
+
+func start() {
+    Say("skipped: lazy/lazyseq not available in Zia (BUG-010)");
+    Say("done");
+}

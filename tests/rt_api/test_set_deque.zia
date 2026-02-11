@@ -1,0 +1,57 @@
+// test_set_deque.zia — Set, Deque, DefaultMap, SparseArray, WeakMap
+module TestSetDeque;
+
+bind Viper.Terminal;
+
+func start() {
+    var s = new Viper.Collections.Set();
+    SayBool(s.IsEmpty);
+    s.Add("apple");
+    s.Add("banana");
+    s.Add("cherry");
+    SayInt(s.Len);
+    SayBool(s.Has("apple"));
+    SayBool(s.Has("mango"));
+    s.Remove("banana");
+    SayInt(s.Len);
+
+    var dq = new Viper.Collections.Deque();
+    SayBool(dq.IsEmpty);
+    dq.PushBack("a");
+    dq.PushBack("b");
+    dq.PushFront("z");
+    SayInt(dq.Len);
+    dq.PopFront();
+    SayInt(dq.Len);
+    dq.PopBack();
+    SayInt(dq.Len);
+    dq.PushBack("x");
+    dq.PushBack("y");
+    dq.Reverse();
+    SayInt(dq.Len);
+    dq.Clear();
+    SayBool(dq.IsEmpty);
+
+    var sa = new Viper.Collections.SparseArray();
+    sa.Set(0, "zero");
+    sa.Set(100, "hundred");
+    sa.Set(999, "big");
+    SayInt(sa.Len);
+    SayBool(sa.Has(100));
+    SayBool(sa.Has(50));
+    sa.Remove(100);
+    SayInt(sa.Len);
+
+    var wm = new Viper.Collections.WeakMap();
+    SayBool(wm.IsEmpty);
+    wm.Set("key1", "val1");
+    wm.Set("key2", "val2");
+    SayInt(wm.Len);
+    SayBool(wm.Has("key1"));
+    wm.Remove("key1");
+    SayInt(wm.Len);
+    wm.Clear();
+    SayBool(wm.IsEmpty);
+
+    Say("done");
+}

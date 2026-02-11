@@ -1,0 +1,18 @@
+// BUG-022 regression: Html.ToText should insert separators between block elements
+module TestBugfixHtml;
+
+bind Viper.Terminal;
+
+func start() {
+    var text = Viper.Text.Html.ToText("<p>hello</p><p>world</p>");
+    // After fix, should have space between "hello" and "world"
+    SayBool(Viper.String.Has(text, "hello"));
+    SayBool(Viper.String.Has(text, "world"));
+    // Must NOT be "helloworld" (merged without separator)
+    var merged = (text == "helloworld");
+    if (merged) {
+        Say("FAIL: block elements merged without separator");
+    } else {
+        Say("RESULT: ok");
+    }
+}

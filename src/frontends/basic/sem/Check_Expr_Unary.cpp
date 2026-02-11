@@ -96,8 +96,8 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
                                  3,
                                  oss.str());
             }
-            // NOT returns BOOLEAN when applied to BOOLEAN, INT otherwise
-            return (operandType == Type::Bool) ? Type::Bool : Type::Int;
+            // NOT always returns BOOLEAN
+            return Type::Bool;
 
         case UnaryExpr::Op::Plus:
         case UnaryExpr::Op::Negate:

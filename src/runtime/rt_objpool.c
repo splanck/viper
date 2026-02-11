@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_objpool.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,13 @@ struct rt_objpool_impl
     int64_t free_head;       ///< Head of free list.
 };
 
+static void objpool_finalizer(void *obj)
+{
+    struct rt_objpool_impl *pool = (struct rt_objpool_impl *)obj;
+    free(pool->slots);
+    pool->slots = NULL;
+}
+
 rt_objpool rt_objpool_new(int64_t capacity)
 {
     if (capacity < 1)
@@ -39,14 +47,13 @@ rt_objpool rt_objpool_new(int64_t capacity)
     if (capacity > RT_OBJPOOL_MAX)
         capacity = RT_OBJPOOL_MAX;
 
-    struct rt_objpool_impl *pool = malloc(sizeof(struct rt_objpool_impl));
+    struct rt_objpool_impl *pool = rt_obj_new_i64(0, sizeof(struct rt_objpool_impl));
     if (!pool)
         return NULL;
 
     pool->slots = calloc((size_t)capacity, sizeof(struct pool_slot));
     if (!pool->slots)
     {
-        free(pool);
         return NULL;
     }
 
@@ -62,16 +69,14 @@ rt_objpool rt_objpool_new(int64_t capacity)
         pool->slots[i].next_free = (i + 1 < capacity) ? i + 1 : -1;
     }
 
+    rt_obj_set_finalizer(pool, objpool_finalizer);
     return pool;
 }
 
 void rt_objpool_destroy(rt_objpool pool)
 {
-    if (!pool)
-        return;
-    if (pool->slots)
-        free(pool->slots);
-    free(pool);
+    // Object is GC-managed; finalizer frees internal data.
+    (void)pool;
 }
 
 int64_t rt_objpool_acquire(rt_objpool pool)

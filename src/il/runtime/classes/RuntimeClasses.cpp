@@ -279,8 +279,10 @@ ILScalarType mapILToken(std::string_view tok)
         return ILScalarType::I64;
     if (tok == "f64")
         return ILScalarType::F64;
-    if (tok == "i1")
+    if (tok == "i1" || tok == "bool")
         return ILScalarType::Bool;
+    if (tok == "i32" || tok == "i16" || tok == "i8")
+        return ILScalarType::I64; // Widen sub-64 integers to i64
     if (tok == "str")
         return ILScalarType::String;
     if (tok == "void")

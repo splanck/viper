@@ -161,6 +161,10 @@ void lowerCall(MBasicBlock &block,
     };
 
     // Pre-scan to determine total bytes of stack-based arguments for this call.
+    // Win64 uses unified positional argument passing: the Nth argument always
+    // occupies slot N regardless of type (GPR or XMM). Keep both counters in
+    // sync on Win64 so that positions are consumed uniformly.
+    const bool isWin64 = target.shadowSpace != 0;
     std::size_t preGprUsed = 0;
     std::size_t preXmmUsed = 0;
     std::size_t preStackBytes = target.shadowSpace; // Windows requires 32-byte shadow space
@@ -171,6 +175,8 @@ void lowerCall(MBasicBlock &block,
             if (preGprUsed < target.maxGPRArgs)
             {
                 ++preGprUsed;
+                if (isWin64)
+                    ++preXmmUsed;
             }
             else
             {
@@ -182,6 +188,8 @@ void lowerCall(MBasicBlock &block,
             if (preXmmUsed < target.maxFPArgs)
             {
                 ++preXmmUsed;
+                if (isWin64)
+                    ++preGprUsed;
             }
             else
             {
@@ -222,6 +230,8 @@ void lowerCall(MBasicBlock &block,
             if (gprUsed < target.maxGPRArgs)
             {
                 const PhysReg destReg = target.intArgOrder[gprUsed++];
+                if (isWin64)
+                    xmmUsed++; // Win64: consume unified position slot
                 if (!arg.isImm)
                 {
                     const Operand src = makeVRegOperand(RegClass::GPR, arg.vreg);
@@ -267,6 +277,8 @@ void lowerCall(MBasicBlock &block,
             if (xmmUsed < target.maxFPArgs)
             {
                 const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
+                if (isWin64)
+                    gprUsed++; // Win64: consume unified position slot
                 if (!arg.isImm)
                 {
                     insertInstr(MInstr::make(MOpcode::MOVSDrr,
@@ -302,6 +314,8 @@ void lowerCall(MBasicBlock &block,
             if (gprUsed < target.maxGPRArgs)
             {
                 const PhysReg destReg = target.intArgOrder[gprUsed++];
+                if (isWin64)
+                    xmmUsed++; // Win64: consume unified position slot
                 if (arg.isImm)
                 {
                     insertInstr(MInstr::make(
@@ -327,6 +341,8 @@ void lowerCall(MBasicBlock &block,
             if (xmmUsed < target.maxFPArgs)
             {
                 const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
+                if (isWin64)
+                    gprUsed++; // Win64: consume unified position slot
                 if (arg.isImm)
                 {
                     const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);

@@ -1,0 +1,16 @@
+// BUG-015 regression: Viper.Fmt.BoolYN should return lowercase "yes"/"no"
+module TestBugfixBoolYN;
+
+bind Viper.Terminal;
+
+func start() {
+    var yes = Viper.Fmt.BoolYN(true);
+    var no = Viper.Fmt.BoolYN(false);
+    if (yes == "yes" && no == "no") {
+        Say("RESULT: ok");
+    } else {
+        Say("FAIL: expected yes/no, got:");
+        Say(yes);
+        Say(no);
+    }
+}

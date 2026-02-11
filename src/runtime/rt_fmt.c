@@ -295,7 +295,7 @@ extern "C"
     /// @return Newly allocated runtime string with "Yes" or "No".
     rt_string rt_fmt_bool_yn(bool value)
     {
-        return value ? rt_string_from_bytes("Yes", 3) : rt_string_from_bytes("No", 2);
+        return value ? rt_string_from_bytes("yes", 3) : rt_string_from_bytes("no", 2);
     }
 
     /// @brief Format a byte count into a human-readable size string.

@@ -63,21 +63,21 @@ int64_t rt_daterange_end(void *range)
 // Containment / overlap
 // ---------------------------------------------------------------------------
 
-int64_t rt_daterange_contains(void *range, int64_t timestamp)
+bool rt_daterange_contains(void *range, int64_t timestamp)
 {
     if (!range)
-        return 0;
+        return false;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
-    return (timestamp >= r->start && timestamp <= r->end) ? 1 : 0;
+    return (timestamp >= r->start && timestamp <= r->end);
 }
 
-int64_t rt_daterange_overlaps(void *range, void *other)
+bool rt_daterange_overlaps(void *range, void *other)
 {
     if (!range || !other)
-        return 0;
+        return false;
     rt_daterange_impl *a = (rt_daterange_impl *)range;
     rt_daterange_impl *b = (rt_daterange_impl *)other;
-    return (a->start <= b->end && b->start <= a->end) ? 1 : 0;
+    return (a->start <= b->end && b->start <= a->end);
 }
 
 // ---------------------------------------------------------------------------

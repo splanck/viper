@@ -174,8 +174,8 @@ static void test_fmt_bool()
 
 static void test_fmt_bool_yn()
 {
-    assert(str_eq(rt_fmt_bool_yn(true), "Yes"));
-    assert(str_eq(rt_fmt_bool_yn(false), "No"));
+    assert(str_eq(rt_fmt_bool_yn(true), "yes"));
+    assert(str_eq(rt_fmt_bool_yn(false), "no"));
 
     printf("test_fmt_bool_yn: PASSED\n");
 }

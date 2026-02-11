@@ -445,16 +445,16 @@ void rt_sprite_update(void *sprite_ptr)
     }
 }
 
-int64_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
+bool rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
 {
     if (!sprite_ptr || !other_ptr)
-        return 0;
+        return false;
 
     rt_sprite_impl *s1 = (rt_sprite_impl *)sprite_ptr;
     rt_sprite_impl *s2 = (rt_sprite_impl *)other_ptr;
 
     if (!s1->visible || !s2->visible)
-        return 0;
+        return false;
 
     // Get bounding boxes
     int64_t w1 = rt_sprite_get_width(sprite_ptr) * s1->scale_x / 100;
@@ -468,24 +468,24 @@ int64_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
     int64_t y2 = s2->y - s2->origin_y;
 
     // AABB collision test
-    return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2) ? 1 : 0;
+    return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
 }
 
-int64_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py)
+bool rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py)
 {
     if (!sprite_ptr)
-        return 0;
+        return false;
 
     rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
     if (!sprite->visible)
-        return 0;
+        return false;
 
     int64_t w = rt_sprite_get_width(sprite_ptr) * sprite->scale_x / 100;
     int64_t h = rt_sprite_get_height(sprite_ptr) * sprite->scale_y / 100;
     int64_t x = sprite->x - sprite->origin_x;
     int64_t y = sprite->y - sprite->origin_y;
 
-    return (px >= x && px < x + w && py >= y && py < y + h) ? 1 : 0;
+    return (px >= x && px < x + w && py >= y && py < y + h);
 }
 
 void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy)

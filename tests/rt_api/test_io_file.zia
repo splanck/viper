@@ -1,0 +1,73 @@
+// test_io_file.zia — IO.File, IO.TempFile, IO.Dir, IO.Glob
+// Tests actual file operations
+module TestIoFile;
+
+bind Viper.Terminal;
+
+func start() {
+    // --- TempFile ---
+    var tmpdir = Viper.IO.TempFile.Dir();
+    Say(tmpdir);
+
+    var tmppath = Viper.IO.TempFile.Path();
+    Say(tmppath);
+
+    var tmppfx = Viper.IO.TempFile.PathWithPrefix("vtest");
+    Say(tmppfx);
+
+    var tmpext = Viper.IO.TempFile.PathWithExt("vtest", ".txt");
+    Say(tmpext);
+
+    // --- File: write, read, exists, size ---
+    var testfile = Viper.IO.TempFile.PathWithExt("vtest_io", ".txt");
+    Viper.IO.File.WriteAllText(testfile, "hello world");
+    SayBool(Viper.IO.File.Exists(testfile));
+    SayInt(Viper.IO.File.Size(testfile));
+    Say(Viper.IO.File.ReadAllText(testfile));
+
+    // --- File: append ---
+    Viper.IO.File.Append(testfile, " appended");
+    Say(Viper.IO.File.ReadAllText(testfile));
+
+    // --- File: copy ---
+    var copyfile = Viper.IO.TempFile.PathWithExt("vtest_copy", ".txt");
+    Viper.IO.File.Copy(testfile, copyfile);
+    SayBool(Viper.IO.File.Exists(copyfile));
+
+    // --- File: move ---
+    var movefile = Viper.IO.TempFile.PathWithExt("vtest_moved", ".txt");
+    Viper.IO.File.Move(copyfile, movefile);
+    SayBool(Viper.IO.File.Exists(movefile));
+
+    // --- File: delete ---
+    Viper.IO.File.Delete(movefile);
+    SayBool(Viper.IO.File.Exists(movefile));
+
+    // --- File: touch ---
+    var touchfile = Viper.IO.TempFile.PathWithExt("vtest_touch", ".txt");
+    Viper.IO.File.Touch(touchfile);
+    SayBool(Viper.IO.File.Exists(touchfile));
+    Viper.IO.File.Delete(touchfile);
+
+    // --- File: modified ---
+    SayInt(Viper.IO.File.Modified(testfile));
+
+    // --- Dir ---
+    var testdir = Viper.IO.TempFile.PathWithPrefix("vtest_dir");
+    Viper.IO.Dir.Make(testdir);
+    SayBool(Viper.IO.Dir.Exists(testdir));
+    Viper.IO.Dir.Remove(testdir);
+    SayBool(Viper.IO.Dir.Exists(testdir));
+
+    // --- Dir: current ---
+    Say(Viper.IO.Dir.Current());
+
+    // --- Glob ---
+    SayBool(Viper.IO.Glob.Match("*.txt", "hello.txt"));
+    SayBool(Viper.IO.Glob.Match("*.bas", "hello.txt"));
+
+    // --- Cleanup ---
+    Viper.IO.File.Delete(testfile);
+
+    Say("done");
+}

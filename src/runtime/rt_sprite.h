@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -120,15 +121,15 @@ extern "C"
     /// @brief Check if this sprite overlaps another sprite.
     /// @param sprite Sprite object.
     /// @param other Other sprite to check.
-    /// @return 1 if overlapping, 0 otherwise.
-    int64_t rt_sprite_overlaps(void *sprite, void *other);
+    /// @return true if overlapping, false otherwise.
+    bool rt_sprite_overlaps(void *sprite, void *other);
 
     /// @brief Check if a point is inside the sprite's bounding box.
     /// @param sprite Sprite object.
     /// @param x Point X coordinate.
     /// @param y Point Y coordinate.
-    /// @return 1 if point is inside, 0 otherwise.
-    int64_t rt_sprite_contains(void *sprite, int64_t x, int64_t y);
+    /// @return true if point is inside, false otherwise.
+    bool rt_sprite_contains(void *sprite, int64_t x, int64_t y);
 
     /// @brief Move sprite by delta amounts.
     /// @param sprite Sprite object.

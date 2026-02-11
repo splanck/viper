@@ -1,0 +1,76 @@
+// test_special_collections.zia — BitSet, BloomFilter, UnionFind, Bytes, LruCache, MultiMap
+module TestSpecialCollections;
+
+bind Viper.Terminal;
+
+func start() {
+    var bs = new Viper.Collections.BitSet(64);
+    SayBool(bs.IsEmpty);
+    SayInt(bs.Len);
+    bs.Set(3);
+    bs.Set(7);
+    bs.Set(15);
+    SayInt(bs.Count);
+    SayBool(bs.Get(3));
+    SayBool(bs.Get(4));
+    bs.Toggle(3);
+    SayBool(bs.Get(3));
+    bs.Clear(7);
+    SayInt(bs.Count);
+    Say(bs.ToString());
+    bs.ClearAll();
+    SayInt(bs.Count);
+
+    var bf = new Viper.Collections.BloomFilter(1000, 0.01);
+    bf.Add("hello");
+    bf.Add("world");
+    SayInt(bf.Count);
+    SayBool(bf.MightContain("hello"));
+    SayBool(bf.MightContain("xyz"));
+
+    var uf = new Viper.Collections.UnionFind(10);
+    SayInt(uf.Count);
+    uf.Union(1, 2);
+    uf.Union(3, 4);
+    uf.Union(2, 3);
+    SayInt(uf.Connected(1, 4));
+    SayInt(uf.Connected(1, 5));
+    SayInt(uf.SetSize(1));
+
+    var by = new Viper.Collections.Bytes(8);
+    SayInt(by.Len);
+    by.Set(0, 65);
+    by.Set(1, 66);
+    SayInt(by.Get(0));
+    SayInt(by.Get(1));
+    by.Fill(0);
+    SayInt(by.Get(0));
+    Say(by.ToHex());
+
+    var lru = new Viper.Collections.LruCache(3);
+    SayBool(lru.IsEmpty);
+    SayInt(lru.Cap);
+    lru.Put("a", "1");
+    lru.Put("b", "2");
+    lru.Put("c", "3");
+    SayInt(lru.Len);
+    SayBool(lru.Has("a"));
+    lru.Put("d", "4");
+    SayInt(lru.Len);
+    lru.Remove("d");
+    SayInt(lru.Len);
+
+    var mm = new Viper.Collections.MultiMap();
+    SayBool(mm.IsEmpty);
+    mm.Put("color", "red");
+    mm.Put("color", "blue");
+    mm.Put("size", "large");
+    SayInt(mm.Len);
+    SayInt(mm.KeyCount);
+    SayInt(mm.CountFor("color"));
+    SayBool(mm.Has("color"));
+    mm.RemoveAll("color");
+    SayInt(mm.Len);
+
+    Say("done");
+}

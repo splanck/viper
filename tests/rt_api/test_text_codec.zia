@@ -1,0 +1,36 @@
+// test_text_codec.zia — Codec, Pattern, StringBuilder
+// NOTE: TextWrapper, Pluralize, Diff not available via bind (BUG-010)
+module TestTextCodec;
+
+bind Viper.Terminal;
+bind Viper.Text.Codec;
+bind Viper.Text.Pattern;
+
+func start() {
+    Say(Base64Enc("hello world"));
+    Say(Base64Dec("aGVsbG8gd29ybGQ="));
+    Say(HexEnc("AB"));
+    Say(HexDec("4142"));
+    Say(UrlEncode("hello world&foo=bar"));
+    Say(UrlDecode("hello%20world%26foo%3Dbar"));
+
+    SayBool(IsMatch("[0-9]+", "abc123def"));
+    Say(Find("[0-9]+", "abc123def"));
+    SayInt(FindPos("[0-9]+", "abc123def"));
+    Say(Replace("[0-9]+", "abc123def456", "NUM"));
+    Say(ReplaceFirst("[0-9]+", "abc123def456", "NUM"));
+    Say(Escape("a.b+c"));
+
+    var sb = new Viper.Text.StringBuilder();
+    sb.Append("hello");
+    sb.Append(" ");
+    sb.Append("world");
+    Say(sb.ToString());
+    SayInt(sb.Length);
+    sb.AppendLine("!");
+    Say(sb.ToString());
+    sb.Clear();
+    SayInt(sb.Length);
+
+    Say("done");
+}

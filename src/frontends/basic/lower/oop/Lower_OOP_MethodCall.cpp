@@ -180,6 +180,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                                        : emitCallRet(retTy, info->target, args);
                     if (retTy.kind == Type::Kind::Str)
                         deferReleaseStr(result);
+                    else if (retTy.kind == Type::Kind::Ptr)
+                        deferReleaseObj(result);
                     return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
                 }
             }
@@ -269,6 +271,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                                : emitCallRet(retTy, info->target, args);
             if (retTy.kind == Type::Kind::Str)
                 deferReleaseStr(result);
+            else if (retTy.kind == Type::Kind::Ptr)
+                deferReleaseObj(result);
             return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
         }
 
@@ -308,6 +312,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                                    : emitCallRet(retTy, info->target, args);
                 if (retTy.kind == Type::Kind::Str)
                     deferReleaseStr(result);
+                else if (retTy.kind == Type::Kind::Ptr)
+                    deferReleaseObj(result);
                 return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
             }
             // As a last resort, special-case common Object methods to canonical targets

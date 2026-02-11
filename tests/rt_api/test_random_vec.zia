@@ -1,0 +1,55 @@
+module TestRandomVec;
+bind Viper.Math.Random;
+bind Viper.Math.Vec2;
+bind Viper.Math.Vec3;
+bind Viper.Math.Easing;
+bind Viper.Math.PerlinNoise;
+bind Viper.Terminal;
+
+func start() {
+    var rng = new Viper.Math.Random(42);
+    SayInt(rng.Next());
+    SayInt(rng.NextInt(1, 10));
+    SayNum(rng.NextDouble());
+
+    var rng2 = new Viper.Math.Random(42);
+    SayInt(rng2.Next());
+
+    // Vec2
+    var v = new Viper.Math.Vec2(3.0, 4.0);
+    SayNum(v.X);
+    SayNum(v.Y);
+    SayNum(v.Length());
+    SayNum(v.Dot(v));
+    var vn = v.Normalize();
+    SayNum(vn.Length());
+    var va = v.Add(new Viper.Math.Vec2(1.0, 1.0));
+    SayNum(va.X);
+    var vs = v.Scale(2.0);
+    SayNum(vs.X);
+    SayNum(Viper.Math.Vec2.Distance(new Viper.Math.Vec2(0.0,0.0), new Viper.Math.Vec2(3.0,4.0)));
+
+    // Vec3
+    var v3 = new Viper.Math.Vec3(1.0, 2.0, 3.0);
+    SayNum(v3.X);
+    SayNum(v3.Y);
+    SayNum(v3.Z);
+    SayNum(v3.Length());
+    var v3n = v3.Normalize();
+    var v3c = v3.Cross(new Viper.Math.Vec3(0.0, 0.0, 1.0));
+    SayNum(v3c.X);
+
+    // Easing
+    SayNum(Linear(0.5));
+    SayNum(EaseInQuad(0.5));
+    SayNum(EaseOutQuad(0.5));
+    SayNum(EaseInOutQuad(0.5));
+
+    // PerlinNoise
+    var pn = new Viper.Math.PerlinNoise(42);
+    var noise = pn.Noise2D(1.0, 1.0);
+    SayBool(noise > -1.0);
+    SayBool(noise < 1.0);
+
+    Say("done");
+}

@@ -134,13 +134,13 @@ int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y)
 // Queries
 // ---------------------------------------------------------------------------
 
-int64_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
+bool rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
 {
     if (!uf_ptr)
-        return 0;
+        return false;
     int64_t rx = rt_unionfind_find(uf_ptr, x);
     int64_t ry = rt_unionfind_find(uf_ptr, y);
-    return (rx >= 0 && rx == ry) ? 1 : 0;
+    return (rx >= 0 && rx == ry);
 }
 
 int64_t rt_unionfind_count(void *uf_ptr)

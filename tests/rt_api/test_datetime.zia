@@ -1,0 +1,49 @@
+module TestDateTime;
+bind Viper.Time.DateTime;
+bind Viper.Time.Duration;
+bind Viper.Terminal;
+
+func start() {
+    var t = Create(2024, 6, 15, 10, 30, 0);
+    SayInt(Year(t));
+    SayInt(Month(t));
+    SayInt(Day(t));
+    SayInt(Hour(t));
+    SayInt(Minute(t));
+    SayInt(Second(t));
+    SayInt(DayOfWeek(t));
+
+    var iso = ToISO(t);
+    SayBool(Viper.String.Has(iso, "2024"));
+
+    var t2 = AddDays(t, 10);
+    SayInt(Viper.Time.DateTime.Day(t2));
+
+    var t3 = AddSeconds(t, 3600);
+    SayInt(Viper.Time.DateTime.Hour(t3));
+
+    var now = Now();
+    SayBool(now > 0);
+
+    var ms = NowMs();
+    SayBool(ms > 0);
+
+    // Duration
+    var d = FromSeconds(90);
+    SayInt(TotalSeconds(d));
+    SayInt(TotalMillis(d));
+    SayInt(Viper.Time.Duration.Minutes(d));
+    SayInt(Viper.Time.Duration.Seconds(d));
+
+    var d2 = Viper.Time.Duration.Create(1, 2, 30, 0, 0);
+    SayInt(TotalHours(d2));
+    Say(Viper.Time.Duration.ToString(d2));
+
+    var d3 = Viper.Time.Duration.Add(d, d2);
+    SayInt(Viper.Time.Duration.TotalSeconds(d3));
+
+    var dz = Zero();
+    SayInt(Viper.Time.Duration.TotalSeconds(dz));
+
+    Say("done");
+}

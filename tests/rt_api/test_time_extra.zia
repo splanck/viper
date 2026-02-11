@@ -1,0 +1,24 @@
+// test_time_extra.zia — Stopwatch, Countdown
+// NOTE: Clock, DateOnly, RelativeTime not available via bind (BUG-010)
+module TestTimeExtra;
+
+bind Viper.Terminal;
+
+func start() {
+    var sw = new Viper.Time.Stopwatch();
+    SayBool(sw.IsRunning);
+    sw.Start();
+    SayBool(sw.IsRunning);
+    sw.Stop();
+    SayBool(sw.IsRunning);
+    SayInt(sw.ElapsedMs);
+    sw.Reset();
+    SayInt(sw.ElapsedMs);
+
+    var cd = new Viper.Time.Countdown(5000);
+    SayInt(cd.Interval);
+    SayBool(cd.Expired);
+    SayBool(cd.IsRunning);
+
+    Say("done");
+}

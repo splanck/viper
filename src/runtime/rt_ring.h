@@ -27,6 +27,10 @@ extern "C"
     /// @return Pointer to ring object.
     void *rt_ring_new(int64_t capacity);
 
+    /// @brief Create a new ring buffer with default capacity (16).
+    /// @return Pointer to ring object.
+    void *rt_ring_new_default(void);
+
     /// @brief Get number of elements in ring.
     /// @param obj Ring pointer.
     /// @return Element count.

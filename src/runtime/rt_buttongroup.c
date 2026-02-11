@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_buttongroup.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 
@@ -25,7 +26,7 @@ struct rt_buttongroup_impl
 
 rt_buttongroup rt_buttongroup_new(void)
 {
-    struct rt_buttongroup_impl *group = malloc(sizeof(struct rt_buttongroup_impl));
+    struct rt_buttongroup_impl *group = rt_obj_new_i64(0, sizeof(struct rt_buttongroup_impl));
     if (!group)
         return NULL;
 
@@ -38,8 +39,8 @@ rt_buttongroup rt_buttongroup_new(void)
 
 void rt_buttongroup_destroy(rt_buttongroup group)
 {
-    if (group)
-        free(group);
+    // Object is GC-managed via rt_obj_new_i64; no manual free needed.
+    (void)group;
 }
 
 /// Find the index of a button in the group.

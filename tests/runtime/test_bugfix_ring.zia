@@ -1,0 +1,23 @@
+// BUG-007 regression: Ring constructor should work with explicit capacity
+module TestBugfixRing;
+
+bind Viper.Terminal;
+
+func start() {
+    var passed = true;
+
+    // Test Ring with explicit capacity
+    var ring = new Viper.Collections.Ring(16);
+    if (ring.Cap != 16) {
+        Say("FAIL: Ring(16).Cap should be 16");
+        passed = false;
+    }
+    if (!ring.IsEmpty) {
+        Say("FAIL: new Ring should be empty");
+        passed = false;
+    }
+
+    if (passed) {
+        Say("RESULT: ok");
+    }
+}

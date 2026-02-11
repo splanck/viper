@@ -389,6 +389,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // BUG-008 fix: Auto-box primitive if expected type is Ptr
+            // BUG-013 fix: Implicit i64→f64 coercion when expected type is F64
             if (expectedParamTypes && (paramOffset + i) < expectedParamTypes->size())
             {
                 Type expectedType = (*expectedParamTypes)[paramOffset + i];
@@ -397,6 +398,19 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     // Primitive passed where object expected - auto-box
                     argValue = emitBox(argValue, result.type);
+                }
+                else if (expectedType.kind == Type::Kind::F64 &&
+                         result.type.kind == Type::Kind::I64)
+                {
+                    // Integer passed where f64 expected - emit sitofp
+                    unsigned convId = nextTempId();
+                    il::core::Instr convInstr;
+                    convInstr.result = convId;
+                    convInstr.op = Opcode::Sitofp;
+                    convInstr.type = Type(Type::Kind::F64);
+                    convInstr.operands = {argValue};
+                    blockMgr_.currentBlock()->instructions.push_back(convInstr);
+                    argValue = Value::temp(convId);
                 }
             }
 

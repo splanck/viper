@@ -93,42 +93,69 @@
 
 #if defined(_WIN32)
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+typedef struct RtSafeI64Win
+{
+    volatile LONG64 value;
+} RtSafeI64Win;
+
+static RtSafeI64Win *require_safe_win(void *obj, const char *what)
+{
+    if (!obj)
+    {
+        rt_trap(what ? what : "SafeI64: null object");
+        return NULL;
+    }
+    return (RtSafeI64Win *)obj;
+}
+
 void *rt_safe_i64_new(int64_t initial)
 {
-    (void)initial;
-    rt_trap("Viper.Threads.SafeI64: unsupported on this platform");
-    return NULL;
+    RtSafeI64Win *cell =
+        (RtSafeI64Win *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtSafeI64Win));
+    if (!cell)
+        rt_trap("SafeI64.New: alloc failed");
+    if (!cell)
+        return NULL;
+    cell->value = (LONG64)initial;
+    return cell;
 }
 
 int64_t rt_safe_i64_get(void *obj)
 {
-    (void)obj;
-    rt_trap("Viper.Threads.SafeI64: unsupported on this platform");
-    return 0;
+    RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Get: null object");
+    if (!cell)
+        return 0;
+    // Acquire read via InterlockedCompareExchange64 (returns current value)
+    return (int64_t)InterlockedCompareExchange64(&cell->value, 0, 0);
 }
 
 void rt_safe_i64_set(void *obj, int64_t value)
 {
-    (void)obj;
-    (void)value;
-    rt_trap("Viper.Threads.SafeI64: unsupported on this platform");
+    RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Set: null object");
+    if (!cell)
+        return;
+    InterlockedExchange64(&cell->value, (LONG64)value);
 }
 
 int64_t rt_safe_i64_add(void *obj, int64_t delta)
 {
-    (void)obj;
-    (void)delta;
-    rt_trap("Viper.Threads.SafeI64: unsupported on this platform");
-    return 0;
+    RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Add: null object");
+    if (!cell)
+        return 0;
+    // InterlockedExchangeAdd64 returns the OLD value; we want the NEW value
+    return (int64_t)InterlockedExchangeAdd64(&cell->value, (LONG64)delta) + delta;
 }
 
 int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired)
 {
-    (void)obj;
-    (void)expected;
-    (void)desired;
-    rt_trap("Viper.Threads.SafeI64: unsupported on this platform");
-    return 0;
+    RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.CompareExchange: null object");
+    if (!cell)
+        return 0;
+    // Returns the old value (whether exchange happened or not)
+    return (int64_t)InterlockedCompareExchange64(&cell->value, (LONG64)desired, (LONG64)expected);
 }
 
 #else

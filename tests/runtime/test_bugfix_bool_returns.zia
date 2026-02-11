@@ -1,0 +1,55 @@
+// BUG-021 regression: Boolean methods should return i1, not i64
+// Tests: UnionFind.Connected, DateRange.Contains, DateRange.Overlaps
+module TestBugfixBoolReturns;
+
+bind Viper.Terminal;
+
+func start() {
+    var passed = true;
+
+    // Test UnionFind.Connected returns proper bool
+    var uf = new Viper.Collections.UnionFind(5);
+    uf.Union(0, 1);
+    uf.Union(1, 2);
+    var c1 = uf.Connected(0, 2);  // should be true
+    var c2 = uf.Connected(0, 3);  // should be false
+    if (!c1) {
+        Say("FAIL: UnionFind.Connected(0,2) should be true");
+        passed = false;
+    }
+    if (c2) {
+        Say("FAIL: UnionFind.Connected(0,3) should be false");
+        passed = false;
+    }
+
+    // Test DateRange.Contains returns proper bool
+    var dr = new Viper.Time.DateRange(1000, 2000);
+    var contains1 = dr.Contains(1500);  // should be true
+    var contains2 = dr.Contains(3000);  // should be false
+    if (!contains1) {
+        Say("FAIL: DateRange.Contains(1500) should be true");
+        passed = false;
+    }
+    if (contains2) {
+        Say("FAIL: DateRange.Contains(3000) should be false");
+        passed = false;
+    }
+
+    // Test DateRange.Overlaps returns proper bool
+    var dr2 = new Viper.Time.DateRange(1500, 2500);
+    var dr3 = new Viper.Time.DateRange(3000, 4000);
+    var overlaps1 = dr.Overlaps(dr2);  // should be true (1000-2000 vs 1500-2500)
+    var overlaps2 = dr.Overlaps(dr3);  // should be false (1000-2000 vs 3000-4000)
+    if (!overlaps1) {
+        Say("FAIL: DateRange.Overlaps(dr2) should be true");
+        passed = false;
+    }
+    if (overlaps2) {
+        Say("FAIL: DateRange.Overlaps(dr3) should be false");
+        passed = false;
+    }
+
+    if (passed) {
+        Say("RESULT: ok");
+    }
+}

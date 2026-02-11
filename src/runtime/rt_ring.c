@@ -133,6 +133,12 @@ void *rt_ring_new(int64_t capacity)
     return ring;
 }
 
+/// @brief Creates a new Ring with default capacity (16).
+void *rt_ring_new_default(void)
+{
+    return rt_ring_new(16);
+}
+
 /// @brief Returns the current number of elements stored in the Ring.
 ///
 /// This function returns how many elements are currently in the Ring, which is

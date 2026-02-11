@@ -1,0 +1,52 @@
+// BUG-011 regression test: Viper.Math.Random should be constructible via `new`
+// The constructor seeds the global RNG and returns a wrapper object.
+module TestBugfixRandomNew;
+
+bind Viper.Terminal;
+
+func start() {
+    var passed = true;
+
+    // Test: NEW should work for Random with a seed argument
+    var rng = new Viper.Math.Random(42);
+
+    // After seeding with 42, the RNG should produce deterministic values
+    var val1 = Viper.Math.Random.NextInt(100);
+    var val2 = Viper.Math.Random.NextInt(100);
+
+    // Values should be in range [0, 100)
+    if (val1 < 0) {
+        Say("FAIL: val1 < 0");
+        passed = false;
+    }
+    if (val1 >= 100) {
+        Say("FAIL: val1 >= 100");
+        passed = false;
+    }
+    if (val2 < 0) {
+        Say("FAIL: val2 < 0");
+        passed = false;
+    }
+    if (val2 >= 100) {
+        Say("FAIL: val2 >= 100");
+        passed = false;
+    }
+
+    // Re-seed with same value — should produce same sequence
+    var rng2 = new Viper.Math.Random(42);
+    var val1b = Viper.Math.Random.NextInt(100);
+    var val2b = Viper.Math.Random.NextInt(100);
+
+    if (val1 != val1b) {
+        Say("FAIL: determinism broken (val1)");
+        passed = false;
+    }
+    if (val2 != val2b) {
+        Say("FAIL: determinism broken (val2)");
+        passed = false;
+    }
+
+    if (passed) {
+        Say("RESULT: ok");
+    }
+}

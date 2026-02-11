@@ -428,16 +428,28 @@ Token Lexer::lexString()
     std::string s;
     /// @brief Retrieves  value.
     get(); // consume opening quote
-    while (!eof() && peek() != '"')
+    while (!eof())
     {
-        char c = get();
-        // In BASIC, backslash has no special meaning - it's just a regular character.
-        // Use CHR$(34) for embedded quotes, or "" (double quote) convention.
-        s.push_back(c);
+        if (peek() == '"')
+        {
+            get(); // consume the quote
+            // Check for "" (double-quote escape convention in BASIC)
+            if (peek() == '"')
+            {
+                s.push_back('"');
+                get(); // consume the second quote
+            }
+            else
+            {
+                break; // closing quote
+            }
+        }
+        else
+        {
+            // In BASIC, backslash has no special meaning - it's just a regular character.
+            s.push_back(get());
+        }
     }
-    if (peek() == '"')
-        /// @brief Retrieves  value.
-        get();
     return {TokenKind::String, s, loc};
 }
 

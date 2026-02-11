@@ -1,0 +1,31 @@
+// test_text_formats.zia — Csv, Ini, Toml, Markdown, Html, Template
+module TestTextFormats;
+
+bind Viper.Terminal;
+bind Viper.Text.Csv;
+bind Viper.Text.Html;
+bind Viper.Text.Markdown;
+bind Viper.Text.Toml;
+
+func start() {
+    var s = new Viper.Collections.Seq();
+    s.Push("name");
+    s.Push("age");
+    s.Push("city");
+    Say(FormatLine(s));
+
+    var parsed = ParseLine("alice,30,nyc");
+    Say("csv parseline done");
+
+    Say(Escape("<b>hello</b>"));
+    Say(Unescape("&lt;b&gt;hello&lt;/b&gt;"));
+    Say(StripTags("<p>hello <b>world</b></p>"));
+    Say(ToText("<p>hello</p><p>world</p>"));
+
+    Say(Viper.Text.Markdown.ToText("# Hello\n\nWorld"));
+    Say(Viper.Text.Markdown.ToHtml("**bold**"));
+
+    SayBool(Viper.Text.Toml.IsValid("[section]\nkey = \"value\""));
+
+    Say("done");
+}

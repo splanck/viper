@@ -1,0 +1,41 @@
+module TestString;
+bind Viper.String;
+bind Viper.Terminal;
+
+func start() {
+    Say(ToUpper("hello"));
+    Say(ToLower("HELLO"));
+    Say(Trim("  hi  "));
+    Say(TrimStart("  hi  "));
+    Say(TrimEnd("  hi  "));
+    Say(Left("abcde", 3));
+    Say(Right("abcde", 3));
+    Say(Mid("abcde", 2));
+    Say(MidLen("abcde", 2, 2));
+    Say(Substring("abcde", 1, 3));
+    Say(Concat("ab", "cd"));
+    SayInt(IndexOf("abcde", "cd"));
+    SayInt(IndexOf("abcde", "zz"));
+    SayInt(IndexOfFrom("abcabc", 4, "bc"));
+    SayBool(Has("hello", "ell"));
+    SayBool(Has("hello", "xyz"));
+    SayBool(StartsWith("hello", "hel"));
+    SayBool(EndsWith("hello", "llo"));
+    SayInt(Count("aabaa", "a"));
+    Say(Replace("a-b-c", "-", "+"));
+    Say(PadLeft("7", 3, "0"));
+    Say(PadRight("7", 3, "."));
+    Say(Repeat("ab", 3));
+    Say(Flip("abc"));
+    SayInt(Cmp("abc", "abc"));
+    SayInt(CmpNoCase("ABC", "abc"));
+    SayInt(Asc("A"));
+    Say(Chr(66));
+    Say(CamelCase("hello_world"));
+    Say(KebabCase("helloWorld"));
+    Say(PascalCase("hello_world"));
+    Say(SnakeCase("helloWorld"));
+    Say(ScreamingSnake("helloWorld"));
+    Say(FromStr("test"));
+    Say("done");
+}
