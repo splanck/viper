@@ -1,0 +1,29 @@
+// Test: Parallel API — DefaultWorkers, DefaultPool
+module TestParallelApi;
+
+bind Viper.Terminal;
+
+func start() {
+    // DefaultWorkers should return at least 1
+    var workers = Viper.Threads.Parallel.DefaultWorkers();
+    if (workers < 1) {
+        Say("FAIL: DefaultWorkers should be >= 1");
+        return;
+    }
+
+    // DefaultPool should return non-null
+    var pool = Viper.Threads.Parallel.DefaultPool();
+    if (pool == 0) {
+        Say("FAIL: DefaultPool should return non-null");
+        return;
+    }
+
+    // Verify the pool has the expected number of workers
+    var poolSize = Viper.Threads.Pool.get_Size(pool);
+    if (poolSize < 1) {
+        Say("FAIL: pool size should be >= 1");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

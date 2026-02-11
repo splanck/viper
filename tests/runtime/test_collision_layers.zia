@@ -1,0 +1,67 @@
+// Test: Physics2D collision layers and masks
+module TestCollisionLayers;
+
+bind Viper.Terminal;
+
+func start() {
+    // Create two bodies
+    var bodyA = Viper.Game.Physics2D.Body.New(50.0, 0.0, 20.0, 20.0, 1.0);
+    var bodyB = Viper.Game.Physics2D.Body.New(50.0, 25.0, 20.0, 20.0, 0.0);
+
+    // Verify defaults: layer=1, mask=all
+    var layerA = Viper.Game.Physics2D.Body.get_CollisionLayer(bodyA);
+    var maskA = Viper.Game.Physics2D.Body.get_CollisionMask(bodyA);
+    if (layerA != 1) {
+        Say("FAIL: default layer should be 1");
+        return;
+    }
+    if (maskA == 0) {
+        Say("FAIL: default mask should not be 0");
+        return;
+    }
+
+    // Set collision layers
+    Viper.Game.Physics2D.Body.set_CollisionLayer(bodyA, 2);
+    Viper.Game.Physics2D.Body.set_CollisionMask(bodyA, 4);
+
+    // Verify getter returns the new value
+    var newLayer = Viper.Game.Physics2D.Body.get_CollisionLayer(bodyA);
+    var newMask = Viper.Game.Physics2D.Body.get_CollisionMask(bodyA);
+    if (newLayer != 2) {
+        Say("FAIL: layer should be 2 after set");
+        return;
+    }
+    if (newMask != 4) {
+        Say("FAIL: mask should be 4 after set");
+        return;
+    }
+
+    // Test that incompatible layers don't collide:
+    // Create world with gravity
+    var world = Viper.Game.Physics2D.World.New(0.0, 100.0);
+
+    // Body C falls, body D is a static platform
+    var bodyC = Viper.Game.Physics2D.Body.New(10.0, 0.0, 10.0, 10.0, 1.0);
+    var bodyD = Viper.Game.Physics2D.Body.New(10.0, 15.0, 10.0, 10.0, 0.0);
+
+    // Put them on incompatible layers
+    Viper.Game.Physics2D.Body.set_CollisionLayer(bodyC, 1);
+    Viper.Game.Physics2D.Body.set_CollisionMask(bodyC, 1);   // Only collides with layer 0
+    Viper.Game.Physics2D.Body.set_CollisionLayer(bodyD, 2);   // On layer 1
+    Viper.Game.Physics2D.Body.set_CollisionMask(bodyD, 2);
+
+    Viper.Game.Physics2D.World.Add(world, bodyC);
+    Viper.Game.Physics2D.World.Add(world, bodyD);
+
+    // Step: bodyC should fall past bodyD
+    Viper.Game.Physics2D.World.Step(world, 0.1);
+    Viper.Game.Physics2D.World.Step(world, 0.1);
+
+    var yC = Viper.Game.Physics2D.Body.get_Y(bodyC);
+    if (yC < 0.5) {
+        Say("FAIL: bodyC should have fallen past bodyD");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

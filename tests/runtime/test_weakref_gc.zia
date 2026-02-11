@@ -1,0 +1,92 @@
+// Test: WeakMap and GC cycle collection
+module TestWeakRefGc;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: GC stats ===
+    var passes = Viper.Memory.GC.PassCount();
+    if (passes < 0) { Say("FAIL: PassCount should be >= 0"); return; }
+
+    var tracked = Viper.Memory.GC.TrackedCount();
+    if (tracked < 0) { Say("FAIL: TrackedCount should be >= 0"); return; }
+
+    var totalCollected = Viper.Memory.GC.TotalCollected();
+    if (totalCollected < 0) { Say("FAIL: TotalCollected should be >= 0"); return; }
+
+    // === Test 2: GC collect ===
+    var freed = Viper.Memory.GC.Collect();
+    if (freed < 0) { Say("FAIL: Collect should return >= 0"); return; }
+
+    // PassCount should increment
+    var passes2 = Viper.Memory.GC.PassCount();
+    if (passes2 < passes + 1) { Say("FAIL: PassCount should increment after Collect"); return; }
+
+    // === Test 3: WeakMap creation ===
+    var wmap = Viper.Collections.WeakMap.New();
+    if (wmap == 0) { Say("FAIL: WeakMap.New should return non-null"); return; }
+
+    var isEmpty = Viper.Collections.WeakMap.get_IsEmpty(wmap);
+    if (isEmpty != 1) { Say("FAIL: new WeakMap should be empty"); return; }
+
+    // === Test 4: Set and Get ===
+    var val = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(val, 99);
+    Viper.Collections.WeakMap.Set(wmap, "test_key", val);
+
+    var wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    if (wmLen != 1) { Say("FAIL: WeakMap Len should be 1"); return; }
+
+    var has = Viper.Collections.WeakMap.Has(wmap, "test_key");
+    if (has != 1) { Say("FAIL: WeakMap should have test_key"); return; }
+
+    var hasNot = Viper.Collections.WeakMap.Has(wmap, "no_key");
+    if (hasNot != 0) { Say("FAIL: WeakMap should not have no_key"); return; }
+
+    var gotVal = Viper.Collections.WeakMap.Get(wmap, "test_key");
+    if (gotVal == 0) { Say("FAIL: WeakMap.Get should return value"); return; }
+
+    // === Test 5: WeakMap keys ===
+    var keys = Viper.Collections.WeakMap.Keys(wmap);
+    var kLen = Viper.Collections.Seq.get_Len(keys);
+    if (kLen != 1) { Say("FAIL: WeakMap Keys should have 1 entry"); return; }
+
+    // === Test 6: Multiple entries ===
+    Viper.Collections.WeakMap.Set(wmap, "key2", Viper.Collections.Seq.New());
+    Viper.Collections.WeakMap.Set(wmap, "key3", Viper.Collections.Seq.New());
+    wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    if (wmLen != 3) { Say("FAIL: WeakMap Len should be 3"); return; }
+
+    // === Test 7: Remove ===
+    var removed = Viper.Collections.WeakMap.Remove(wmap, "test_key");
+    if (removed != 1) { Say("FAIL: WeakMap Remove should return 1"); return; }
+
+    wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    if (wmLen != 2) { Say("FAIL: WeakMap Len should be 2 after remove"); return; }
+
+    // Remove non-existent
+    var removedNone = Viper.Collections.WeakMap.Remove(wmap, "nonexistent");
+    if (removedNone != 0) { Say("FAIL: Remove nonexistent should return 0"); return; }
+
+    // === Test 8: Compact ===
+    var compacted = Viper.Collections.WeakMap.Compact(wmap);
+    if (compacted < 0) { Say("FAIL: Compact should return >= 0"); return; }
+
+    // === Test 9: Clear ===
+    Viper.Collections.WeakMap.Clear(wmap);
+    wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    if (wmLen != 0) { Say("FAIL: WeakMap should be empty after Clear"); return; }
+
+    isEmpty = Viper.Collections.WeakMap.get_IsEmpty(wmap);
+    if (isEmpty != 1) { Say("FAIL: WeakMap should be empty after Clear"); return; }
+
+    // === Test 10: GC after creating objects ===
+    // Create some objects and collect
+    var freed2 = Viper.Memory.GC.Collect();
+    if (freed2 < 0) { Say("FAIL: second Collect should return >= 0"); return; }
+
+    var passes3 = Viper.Memory.GC.PassCount();
+    if (passes3 < passes2 + 1) { Say("FAIL: PassCount should increment again"); return; }
+
+    Say("RESULT: ok");
+}

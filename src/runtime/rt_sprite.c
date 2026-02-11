@@ -39,6 +39,8 @@ typedef struct rt_sprite_impl
     int64_t frame_count;             ///< Number of frames
     int64_t frame_delay_ms;          ///< Delay between frames
     int64_t last_frame_time;         ///< Last frame update time
+    int64_t flip_x;                  ///< Horizontal flip flag
+    int64_t flip_y;                  ///< Vertical flip flag
     void *frames[MAX_SPRITE_FRAMES]; ///< Frame pixel buffers
 } rt_sprite_impl;
 
@@ -64,6 +66,8 @@ static rt_sprite_impl *sprite_alloc(void)
     sprite->frame_count = 0;
     sprite->frame_delay_ms = 100;
     sprite->last_frame_time = 0;
+    sprite->flip_x = 0;
+    sprite->flip_y = 0;
 
     for (int i = 0; i < MAX_SPRITE_FRAMES; i++)
         sprite->frames[i] = NULL;
@@ -301,6 +305,46 @@ int64_t rt_sprite_get_frame_count(void *sprite_ptr)
     return ((rt_sprite_impl *)sprite_ptr)->frame_count;
 }
 
+int64_t rt_sprite_get_flip_x(void *sprite_ptr)
+{
+    if (!sprite_ptr)
+    {
+        rt_trap("Sprite.FlipX: null sprite");
+        return 0;
+    }
+    return ((rt_sprite_impl *)sprite_ptr)->flip_x;
+}
+
+void rt_sprite_set_flip_x(void *sprite_ptr, int64_t flip)
+{
+    if (!sprite_ptr)
+    {
+        rt_trap("Sprite.FlipX: null sprite");
+        return;
+    }
+    ((rt_sprite_impl *)sprite_ptr)->flip_x = flip ? 1 : 0;
+}
+
+int64_t rt_sprite_get_flip_y(void *sprite_ptr)
+{
+    if (!sprite_ptr)
+    {
+        rt_trap("Sprite.FlipY: null sprite");
+        return 0;
+    }
+    return ((rt_sprite_impl *)sprite_ptr)->flip_y;
+}
+
+void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip)
+{
+    if (!sprite_ptr)
+    {
+        rt_trap("Sprite.FlipY: null sprite");
+        return;
+    }
+    ((rt_sprite_impl *)sprite_ptr)->flip_y = flip ? 1 : 0;
+}
+
 //=============================================================================
 // Sprite Methods
 //=============================================================================
@@ -326,15 +370,30 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     int64_t w = rt_pixels_width(frame);
     int64_t h = rt_pixels_height(frame);
 
-    // If no scaling or rotation, use simple blit
-    if (sprite->scale_x == 100 && sprite->scale_y == 100 && sprite->rotation == 0)
+    // If no transform at all, use simple blit
+    if (sprite->scale_x == 100 && sprite->scale_y == 100 &&
+        sprite->rotation == 0 && !sprite->flip_x && !sprite->flip_y)
     {
         rt_canvas_blit_alpha(canvas_ptr, sprite->x, sprite->y, frame);
         return;
     }
 
-    // Scale the frame if needed
+    // Apply flips, scale, and rotation
     void *transformed = frame;
+
+    // Flip first (before scale/rotation)
+    if (sprite->flip_x)
+    {
+        void *flipped = rt_pixels_flip_h(transformed);
+        if (flipped)
+            transformed = flipped;
+    }
+    if (sprite->flip_y)
+    {
+        void *flipped = rt_pixels_flip_v(transformed);
+        if (flipped)
+            transformed = flipped;
+    }
 
     if (sprite->scale_x != 100 || sprite->scale_y != 100)
     {

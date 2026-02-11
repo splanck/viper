@@ -1,0 +1,51 @@
+// Test: Sprite FlipX/FlipY properties
+module TestSpriteFlip;
+
+bind Viper.Terminal;
+
+func start() {
+    // Create a small pixel buffer
+    var px = new Viper.Graphics.Pixels(4, 4);
+
+    // Create sprite from pixels
+    var sprite = new Viper.Graphics.Sprite(px);
+
+    // Default: no flip
+    var fx = Viper.Graphics.Sprite.get_FlipX(sprite);
+    var fy = Viper.Graphics.Sprite.get_FlipY(sprite);
+
+    if (fx != 0) {
+        Say("FAIL: FlipX default should be 0");
+        return;
+    }
+    if (fy != 0) {
+        Say("FAIL: FlipY default should be 0");
+        return;
+    }
+
+    // Set FlipX
+    Viper.Graphics.Sprite.set_FlipX(sprite, 1);
+    fx = Viper.Graphics.Sprite.get_FlipX(sprite);
+    if (fx != 1) {
+        Say("FAIL: FlipX should be 1 after set");
+        return;
+    }
+
+    // Set FlipY
+    Viper.Graphics.Sprite.set_FlipY(sprite, 1);
+    fy = Viper.Graphics.Sprite.get_FlipY(sprite);
+    if (fy != 1) {
+        Say("FAIL: FlipY should be 1 after set");
+        return;
+    }
+
+    // Unset FlipX
+    Viper.Graphics.Sprite.set_FlipX(sprite, 0);
+    fx = Viper.Graphics.Sprite.get_FlipX(sprite);
+    if (fx != 0) {
+        Say("FAIL: FlipX should be 0 after unset");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

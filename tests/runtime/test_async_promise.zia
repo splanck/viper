@@ -1,0 +1,96 @@
+// Test: Async Promise/Future pattern
+module TestAsyncPromise;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: Promise creation ===
+    var promise = Viper.Threads.Promise.New();
+    if (promise == 0) { Say("FAIL: Promise.New should return non-null"); return; }
+
+    // === Test 2: IsDone before set ===
+    var done = Viper.Threads.Promise.get_IsDone(promise);
+    if (done != 0) { Say("FAIL: Promise should not be done before Set"); return; }
+
+    // === Test 3: GetFuture ===
+    var future = Viper.Threads.Promise.GetFuture(promise);
+    if (future == 0) { Say("FAIL: GetFuture should return non-null"); return; }
+
+    // === Test 4: Future IsDone before resolve ===
+    var fDone = Viper.Threads.Future.get_IsDone(future);
+    if (fDone != 0) { Say("FAIL: Future should not be done before resolve"); return; }
+
+    // === Test 5: Future IsError before resolve ===
+    var fErr = Viper.Threads.Future.get_IsError(future);
+    if (fErr != 0) { Say("FAIL: Future should not be error before resolve"); return; }
+
+    // === Test 6: Set value on promise ===
+    var value = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(value, 42);
+    Viper.Threads.Promise.Set(promise, value);
+
+    // === Test 7: IsDone after set ===
+    done = Viper.Threads.Promise.get_IsDone(promise);
+    if (done != 1) { Say("FAIL: Promise should be done after Set"); return; }
+
+    // === Test 8: Future IsDone after resolve ===
+    fDone = Viper.Threads.Future.get_IsDone(future);
+    if (fDone != 1) { Say("FAIL: Future should be done after resolve"); return; }
+
+    // === Test 9: Future.Get retrieves value ===
+    var got = Viper.Threads.Future.Get(future);
+    if (got == 0) { Say("FAIL: Future.Get should return value"); return; }
+
+    // Verify it's the same Seq
+    var gLen = Viper.Collections.Seq.get_Len(got);
+    if (gLen != 1) { Say("FAIL: retrieved Seq should have 1 element"); return; }
+
+    // === Test 10: Future.Wait (should return immediately since done) ===
+    Viper.Threads.Future.Wait(future);
+
+    // === Test 11: Future.WaitFor (should return true immediately) ===
+    var waitOk = Viper.Threads.Future.WaitFor(future, 1000);
+    if (waitOk != 1) { Say("FAIL: WaitFor should return 1 for completed future"); return; }
+
+    // === Test 12: Error promise ===
+    var errPromise = Viper.Threads.Promise.New();
+    var errFuture = Viper.Threads.Promise.GetFuture(errPromise);
+    Viper.Threads.Promise.SetError(errPromise, "test error");
+
+    var isErr = Viper.Threads.Future.get_IsError(errFuture);
+    if (isErr != 1) { Say("FAIL: error future should have IsError=1"); return; }
+
+    var errMsg = Viper.Threads.Future.get_Error(errFuture);
+    if (Viper.String.get_Length(errMsg) < 1) { Say("FAIL: error message should be non-empty"); return; }
+
+    // === Test 13: Async.Delay ===
+    var delayed = Viper.Threads.Async.Delay(1);
+    if (delayed == 0) { Say("FAIL: Async.Delay should return a Future"); return; }
+
+    // Wait for the delay
+    Viper.Threads.Future.Wait(delayed);
+    var dDone = Viper.Threads.Future.get_IsDone(delayed);
+    if (dDone != 1) { Say("FAIL: delayed future should be done after Wait"); return; }
+
+    // === Test 14: Async.All with pre-resolved futures ===
+    var p1 = Viper.Threads.Promise.New();
+    var f1 = Viper.Threads.Promise.GetFuture(p1);
+    Viper.Threads.Promise.Set(p1, Viper.Collections.Seq.New());
+
+    var p2 = Viper.Threads.Promise.New();
+    var f2 = Viper.Threads.Promise.GetFuture(p2);
+    Viper.Threads.Promise.Set(p2, Viper.Collections.Seq.New());
+
+    var futures = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(futures, f1);
+    Viper.Collections.Seq.Push(futures, f2);
+
+    var allFuture = Viper.Threads.Async.All(futures);
+    if (allFuture == 0) { Say("FAIL: Async.All should return a Future"); return; }
+
+    Viper.Threads.Future.Wait(allFuture);
+    var allDone = Viper.Threads.Future.get_IsDone(allFuture);
+    if (allDone != 1) { Say("FAIL: All future should be done"); return; }
+
+    Say("RESULT: ok");
+}

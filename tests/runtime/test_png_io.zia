@@ -1,0 +1,62 @@
+// Test: PNG load and save round-trip
+module TestPngIO;
+
+bind Viper.Terminal;
+
+func start() {
+    // Create a 4x4 pixel buffer with known colors
+    var px = Viper.Graphics.Pixels.New(4, 4);
+    // Set some pixels: RGBA format 0xRRGGBBAA
+    Viper.Graphics.Pixels.Set(px, 0, 0, 0xFF0000FF);  // Red
+    Viper.Graphics.Pixels.Set(px, 1, 0, 0x00FF00FF);  // Green
+    Viper.Graphics.Pixels.Set(px, 2, 0, 0x0000FFFF);  // Blue
+    Viper.Graphics.Pixels.Set(px, 3, 0, 0xFFFFFFFF);  // White
+    Viper.Graphics.Pixels.Set(px, 0, 1, 0x000000FF);  // Black
+    Viper.Graphics.Pixels.Set(px, 1, 1, 0x808080FF);  // Gray
+
+    // Save as PNG
+    var ok = Viper.Graphics.Pixels.SavePng(px, "test_round_trip.png");
+    if (ok != 1) {
+        Say("FAIL: SavePng failed");
+        return;
+    }
+
+    // Load back
+    var loaded = Viper.Graphics.Pixels.LoadPng("test_round_trip.png");
+    if (loaded == 0) {
+        Say("FAIL: LoadPng returned null");
+        return;
+    }
+
+    // Verify dimensions
+    var w = Viper.Graphics.Pixels.get_Width(loaded);
+    var h = Viper.Graphics.Pixels.get_Height(loaded);
+    if (w != 4) {
+        Say("FAIL: width mismatch");
+        return;
+    }
+    if (h != 4) {
+        Say("FAIL: height mismatch");
+        return;
+    }
+
+    // Verify pixels
+    var p00 = Viper.Graphics.Pixels.Get(loaded, 0, 0);
+    var p10 = Viper.Graphics.Pixels.Get(loaded, 1, 0);
+    var p20 = Viper.Graphics.Pixels.Get(loaded, 2, 0);
+
+    if (p00 != 0xFF0000FF) {
+        Say("FAIL: pixel (0,0) mismatch");
+        return;
+    }
+    if (p10 != 0x00FF00FF) {
+        Say("FAIL: pixel (1,0) mismatch");
+        return;
+    }
+    if (p20 != 0x0000FFFF) {
+        Say("FAIL: pixel (2,0) mismatch");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

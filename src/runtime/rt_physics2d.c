@@ -40,6 +40,8 @@ typedef struct
     double inv_mass;
     double restitution;
     double friction;
+    int64_t collision_layer; ///< Bitmask identifying which layer(s) this body belongs to
+    int64_t collision_mask;  ///< Bitmask identifying which layers this body collides with
 } rt_body_impl;
 
 typedef struct
@@ -233,11 +235,17 @@ void rt_physics2d_world_step(void *obj, double dt)
         for (j = i + 1; j < w->body_count; j++)
         {
             double nx, ny, pen;
-            if (!w->bodies[i] || !w->bodies[j])
+            rt_body_impl *bi = w->bodies[i];
+            rt_body_impl *bj = w->bodies[j];
+            if (!bi || !bj)
                 continue;
-            if (aabb_overlap(w->bodies[i], w->bodies[j], &nx, &ny, &pen))
+            /* Check collision layer/mask compatibility */
+            if (!((bi->collision_layer & bj->collision_mask) &&
+                  (bj->collision_layer & bi->collision_mask)))
+                continue;
+            if (aabb_overlap(bi, bj, &nx, &ny, &pen))
             {
-                resolve_collision(w->bodies[i], w->bodies[j], nx, ny, pen);
+                resolve_collision(bi, bj, nx, ny, pen);
             }
         }
     }
@@ -315,6 +323,8 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->inv_mass = (mass > 0.0) ? (1.0 / mass) : 0.0;
     b->restitution = 0.5;
     b->friction = 0.3;
+    b->collision_layer = 1;          // Default: layer 1
+    b->collision_mask = 0x7FFFFFFF;  // Default: collide with all layers (bits 0-30)
     return b;
 }
 
@@ -404,4 +414,26 @@ int8_t rt_physics2d_body_is_static(void *obj)
 double rt_physics2d_body_mass(void *obj)
 {
     return obj ? ((rt_body_impl *)obj)->mass : 0.0;
+}
+
+int64_t rt_physics2d_body_collision_layer(void *obj)
+{
+    return obj ? ((rt_body_impl *)obj)->collision_layer : 0;
+}
+
+void rt_physics2d_body_set_collision_layer(void *obj, int64_t layer)
+{
+    if (obj)
+        ((rt_body_impl *)obj)->collision_layer = layer;
+}
+
+int64_t rt_physics2d_body_collision_mask(void *obj)
+{
+    return obj ? ((rt_body_impl *)obj)->collision_mask : 0;
+}
+
+void rt_physics2d_body_set_collision_mask(void *obj, int64_t mask)
+{
+    if (obj)
+        ((rt_body_impl *)obj)->collision_mask = mask;
 }

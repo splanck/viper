@@ -1,0 +1,73 @@
+// Test: Tilemap tile-based collision
+module TestTilemapCollision;
+
+bind Viper.Terminal;
+
+func start() {
+    // Create a 10x10 tilemap with 16x16 tiles
+    var tm = Viper.Graphics.Tilemap.New(10, 10, 16, 16);
+
+    // Set a floor row at y=9 with tile ID 1
+    var x = 0;
+    while (x < 10) {
+        Viper.Graphics.Tilemap.SetTile(tm, x, 9, 1);
+        x = x + 1;
+    }
+
+    // Mark tile ID 1 as solid
+    Viper.Graphics.Tilemap.SetCollision(tm, 1, 1);
+
+    // Verify collision type was set
+    var ctype = Viper.Graphics.Tilemap.GetCollision(tm, 1);
+    if (ctype != 1) {
+        Say("FAIL: collision type should be 1 (solid)");
+        return;
+    }
+
+    // Verify tile 0 is still non-solid
+    var ctype0 = Viper.Graphics.Tilemap.GetCollision(tm, 0);
+    if (ctype0 != 0) {
+        Say("FAIL: tile 0 should be non-solid");
+        return;
+    }
+
+    // Test IsSolidAt: pixel position in floor row (y=9*16=144)
+    var solid = Viper.Graphics.Tilemap.IsSolidAt(tm, 32, 144);
+    if (solid != 1) {
+        Say("FAIL: floor should be solid at (32, 144)");
+        return;
+    }
+
+    // Test IsSolidAt: above floor (y=128 = row 8, empty)
+    var notSolid = Viper.Graphics.Tilemap.IsSolidAt(tm, 32, 128);
+    if (notSolid != 0) {
+        Say("FAIL: air above floor should not be solid");
+        return;
+    }
+
+    // Test CollideBody: create a body overlapping the floor
+    var body = Viper.Game.Physics2D.Body.New(32.0, 130.0, 16.0, 16.0, 1.0);
+    // Body at y=130 with height 16 -> bottom at y=146, overlaps floor at y=144
+    var hit = Viper.Graphics.Tilemap.CollideBody(tm, body);
+    if (hit != 1) {
+        Say("FAIL: body should collide with floor");
+        return;
+    }
+
+    // After collision, body should be pushed up so bottom is at floor top (y=144-16=128)
+    var bodyY = Viper.Game.Physics2D.Body.get_Y(body);
+    if (bodyY > 129.0) {
+        Say("FAIL: body should be pushed up above floor");
+        return;
+    }
+
+    // Test no collision when body is fully above floor
+    var body2 = Viper.Game.Physics2D.Body.New(32.0, 100.0, 16.0, 16.0, 1.0);
+    var hit2 = Viper.Graphics.Tilemap.CollideBody(tm, body2);
+    if (hit2 != 0) {
+        Say("FAIL: body above floor should not collide");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

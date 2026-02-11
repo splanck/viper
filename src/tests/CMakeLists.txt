@@ -541,6 +541,26 @@ set(ZIA_RUNTIME_TESTS
         test_bugfix_saynum
         test_bugfix_random_new
         test_bugfix_zia_new
+        test_sprite_flip
+        test_png_io
+        test_collision_layers
+        test_tilemap_collision
+        test_iterator
+        test_audio_api
+        test_network_api
+        test_threading_api
+        test_concmap
+        test_spritesheet
+        test_physics2d_full
+        test_json_stream
+        test_action_api
+        test_parallel_api
+        test_chord_api
+        test_quaternion
+        test_spline
+        test_serialize_unified
+        test_weakref_gc
+        test_async_promise
 )
 
 foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)

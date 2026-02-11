@@ -114,6 +114,18 @@ extern "C"
     /// @brief Get body mass.
     double rt_physics2d_body_mass(void *body);
 
+    /// @brief Get collision layer bitmask.
+    int64_t rt_physics2d_body_collision_layer(void *body);
+
+    /// @brief Set collision layer bitmask.
+    void rt_physics2d_body_set_collision_layer(void *body, int64_t layer);
+
+    /// @brief Get collision mask bitmask.
+    int64_t rt_physics2d_body_collision_mask(void *body);
+
+    /// @brief Set collision mask bitmask.
+    void rt_physics2d_body_set_collision_mask(void *body, int64_t mask);
+
 #ifdef __cplusplus
 }
 #endif

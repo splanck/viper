@@ -2,7 +2,7 @@
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-02-09
+> **Last updated:** 2026-02-10
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -14,21 +14,21 @@ implemented in C and exposed through the IL runtime system.
 | Module                          | Description                                                               |
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
-| [Audio](audio.md)               | `Sound`, `Music` — audio playback for games and applications              |
-| [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap` |
+| [Audio](audio.md)               | `Sound`, `Music`, `Voice`, `Audio` — audio playback for games and applications |
+| [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `WeakMap` |
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
-| [Game Utilities](game.md)       | `Grid2D`, `Timer`, `StateMachine`, `Tween`, `ObjectPool`, `Quadtree` — game development abstractions |
-| [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
+| [Game Utilities](game.md)       | `Grid2D`, `Timer`, `StateMachine`, `Tween`, `ObjectPool`, `Quadtree`, `Physics2D`, `SpriteSheet`, `ParticleEmitter`, `SpriteAnimation`, `CollisionRect`, `Collision`, `ButtonGroup`, `SmoothValue`, `ScreenFX`, `PathFollower` |
+| [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`, `SceneNode`, `Scene`, `SpriteBatch` |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
-| [Input](input.md)               | `Keyboard`, `KeyChord`, `Mouse`, `Pad`, `Manager` — input for games and interactive apps |
+| [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
 | [Mathematics](math.md)          | `Bits`, `Math`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3`          |
-| [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
+| [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `Csv`, `Uuid`, `Json`, `JsonStream`, `Pattern`, `Serialize`, `StringBuilder`, `Template` |
-| [Threads](threads.md)           | `Async`, `Barrier`, `ConcurrentMap`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Thread` |
+| [Text Processing](text.md)      | `Codec`, `Csv`, `Html`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `Pattern`, `Serialize`, `StringBuilder`, `Template`, `Toml`, `Uuid` |
+| [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `ConcurrentMap`, `Debouncer`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `Future`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`                                                   |
 
@@ -56,6 +56,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Vec2`](math.md#vipervec2)                 | Instance | 2D vector math                                |
 | [`Vec3`](math.md#vipervec3)                 | Instance | 3D vector math                                |
 | [`Quaternion`](math.md#viperquaternion)     | Instance | Quaternion math for 3D rotations              |
+| [`Spline`](math.md#viperspline)            | Instance | Catmull-Rom spline interpolation              |
 
 ### Viper.Collections
 
@@ -75,6 +76,7 @@ implemented in C and exposed through the IL runtime system.
 | [`SortedSet`](collections.md#vipercollectionssortedset) | Instance | Sorted string set with range ops |
 | [`Stack`](collections.md#vipercollectionsstack)     | Instance | LIFO collection                     |
 | [`TreeMap`](collections.md#vipercollectionstreemap) | Instance | Sorted key-value map                |
+| [`WeakMap`](collections.md#vipercollectionsweakmap) | Instance | Weak-reference key-value map        |
 
 ### Viper.Crypto
 
@@ -96,42 +98,45 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                                     | Type     | Description                             |
 |-----------------------------------------------------------|----------|-----------------------------------------|
-| [`ButtonGroup`](game.md#vipergamebuttongroup)             | Instance | Mutually exclusive button selection     |
-| [`Collision`](game.md#vipergamecollision)                 | Static   | Static collision detection helpers      |
-| [`CollisionRect`](game.md#vipergamecollisionrect)         | Instance | AABB collision detection                |
-| [`Grid2D`](game.md#vipergamegrid2d)                       | Instance | 2D array for tile maps and grids        |
-| [`ObjectPool`](game.md#vipergameobjectpool)               | Instance | Efficient object slot reuse             |
-| [`ParticleEmitter`](game.md#vipergameparticleemitter)     | Instance | Particle effects system                 |
-| [`PathFollower`](game.md#vipergamepathfollower)           | Instance | Path following along waypoints          |
-| [`Quadtree`](game.md#vipergamequadtree)                   | Instance | Spatial partitioning for collision      |
-| [`ScreenFX`](game.md#vipergamescreenfx)                   | Instance | Screen effects (shake, flash, fade)     |
-| [`SmoothValue`](game.md#vipergamesmoothvalue)             | Instance | Smooth value interpolation              |
-| [`Physics2D`](game.md#vipergamephysics2d)                 | Instance | 2D rigid body physics engine            |
-| [`SpriteAnimation`](game.md#vipergamespriteanimation)     | Instance | Frame-based sprite animation controller |
-| [`SpriteSheet`](game.md#vipergamespritesheet)             | Instance | Sprite sheet with frame extraction      |
-| [`StateMachine`](game.md#vipergamestatemachine)           | Instance | Finite state machine for game states    |
-| [`Timer`](game.md#vipergametimer)                         | Instance | Frame-based game timers                 |
-| [`Tween`](game.md#vipergametween)                         | Instance | Animation tweening with easing          |
+| [`ButtonGroup`](game.md#vipergamebuttongroup)             | Instance | Mutually exclusive button selection      |
+| [`Collision`](game.md#vipergamecollision)                 | Static   | Static collision detection helpers       |
+| [`CollisionRect`](game.md#vipergamecollisionrect)         | Instance | AABB collision detection                 |
+| [`Grid2D`](game.md#vipergamegrid2d)                       | Instance | 2D array for tile maps and grids         |
+| [`ObjectPool`](game.md#vipergameobjectpool)               | Instance | Efficient object slot reuse              |
+| [`ParticleEmitter`](game.md#vipergameparticleemitter)     | Instance | Particle effects system                  |
+| [`PathFollower`](game.md#vipergamepathfollower)           | Instance | Path following along waypoints           |
+| [`Physics2D`](game.md#vipergamephysics2d)                 | Compound | 2D rigid body physics (World + Body)     |
+| [`Quadtree`](game.md#vipergamequadtree)                   | Instance | Spatial partitioning for collision       |
+| [`ScreenFX`](game.md#vipergamescreenfx)                   | Instance | Screen effects (shake, flash, fade)      |
+| [`SmoothValue`](game.md#vipergamesmoothvalue)             | Instance | Smooth value interpolation               |
+| [`SpriteAnimation`](game.md#vipergamespriteanimation)     | Instance | Frame-based sprite animation controller  |
+| [`SpriteSheet`](game.md#vipergamespritesheet)             | Instance | Sprite sheet/atlas with region extraction|
+| [`StateMachine`](game.md#vipergamestatemachine)           | Instance | Finite state machine for game states     |
+| [`Timer`](game.md#vipergametimer)                         | Instance | Frame-based game timers                  |
+| [`Tween`](game.md#vipergametween)                         | Instance | Animation tweening with 19 easing curves |
 
 ### Viper.Sound
 
 | Class                                         | Type     | Description                      |
 |-----------------------------------------------|----------|----------------------------------|
-| [`Sound`](audio.md#vipersoundsound)           | Instance | Sound effects for short clips    |
-| [`Music`](audio.md#vipersoundmusic)           | Instance | Streaming music playback         |
-| [`Voice`](audio.md#vipersoundvoice)           | Static   | Voice control for playing sounds |
-| [`Audio`](audio.md#vipersoundaudio-static)    | Static   | Global audio control             |
+| [`Audio`](audio.md#vipersoundaudio)            | Static   | Global audio control             |
+| [`Music`](audio.md#vipersoundmusic)            | Instance | Streaming music playback         |
+| [`Sound`](audio.md#vipersoundsound)            | Instance | Sound effects for short clips    |
+| [`Voice`](audio.md#vipersoundvoice)            | Static   | Voice control for playing sounds |
 
 ### Viper.Graphics
 
 | Class                                         | Type     | Description                      |
 |-----------------------------------------------|----------|----------------------------------|
-| [`Canvas`](graphics.md#vipergraphicscanvas)   | Instance | 2D graphics canvas               |
-| [`Color`](graphics.md#vipergraphicscolor)     | Static   | Color creation                   |
-| [`Pixels`](graphics.md#vipergraphicspixels)   | Instance | Software image buffer            |
-| [`Sprite`](graphics.md#vipergraphicssprite)   | Instance | 2D sprite with animation         |
-| [`Tilemap`](graphics.md#vipergraphicstilemap) | Instance | Tile-based game maps             |
-| [`Camera`](graphics.md#vipergraphicscamera)   | Instance | 2D camera for scrolling/zoom     |
+| [`Camera`](graphics.md#vipergraphicscamera)         | Instance | 2D camera for scrolling/zoom     |
+| [`Canvas`](graphics.md#vipergraphicscanvas)         | Instance | 2D graphics canvas               |
+| [`Color`](graphics.md#vipergraphicscolor)           | Static   | Color creation                   |
+| [`Pixels`](graphics.md#vipergraphicspixels)         | Instance | Software image buffer            |
+| [`Scene`](graphics.md#vipergraphicsscene)           | Instance | Scene graph container            |
+| [`SceneNode`](graphics.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
+| [`Sprite`](graphics.md#vipergraphicssprite)         | Instance | 2D sprite with flip/animation    |
+| [`SpriteBatch`](graphics.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
+| [`Tilemap`](graphics.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
 
 ### Viper.GUI
 
@@ -189,6 +194,9 @@ implemented in C and exposed through the IL runtime system.
 | [`Http`](network.md#vipernetworkhttp)             | Static   | Simple HTTP helpers                   |
 | [`HttpReq`](network.md#vipernetworkhttpreq)       | Instance | HTTP request builder                  |
 | [`HttpRes`](network.md#vipernetworkhttpres)       | Instance | HTTP response wrapper                 |
+| [`RateLimiter`](network.md#vipernetworkratelimiter)| Instance | Token bucket rate limiting           |
+| [`RestClient`](network.md#vipernetworkrestclient) | Instance | REST API client with base URL         |
+| [`RetryPolicy`](network.md#vipernetworkretrypolicy)| Instance | Retry with backoff for HTTP requests |
 | [`Tcp`](network.md#vipernetworktcp)               | Instance | TCP client connection                 |
 | [`TcpServer`](network.md#vipernetworktcpserver)   | Instance | TCP server (listener)                 |
 | [`Udp`](network.md#vipernetworkudp)               | Instance | UDP datagram socket                   |
@@ -199,27 +207,40 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                             | Type     | Description                |
 |---------------------------------------------------|----------|----------------------------|
-| [`Codec`](text.md#vipertextcodec)                 | Static   | Base64, Hex, URL encoding  |
-| [`Csv`](text.md#vipertextcsv)                     | Static   | CSV parsing and formatting |
-| [`Guid`](text.md#vipertextguid)                   | Static   | UUID v4 generation         |
-| [`Json`](text.md#vipertextjson)                   | Static   | JSON parsing and formatting|
-| [`Pattern`](text.md#vipertextpattern)             | Static   | Regex pattern matching     |
-| [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder     |
-| [`Template`](text.md#vipertexttemplate)           | Static   | Template rendering         |
+| [`Codec`](text.md#vipertextcodec)                 | Static   | Base64, Hex, URL encoding       |
+| [`Csv`](text.md#vipertextcsv)                     | Static   | CSV parsing and formatting      |
+| [`Html`](text.md#vipertexthtml)                   | Static   | HTML stripping and entity decode|
+| [`Json`](text.md#vipertextjson)                   | Static   | JSON parsing and formatting     |
+| [`JsonPath`](text.md#vipertextjsonpath)           | Static   | JSONPath query evaluation       |
+| [`JsonStream`](text.md#vipertextjsonstream)       | Instance | Streaming JSON reader/writer    |
+| [`Markdown`](text.md#vipertextmarkdown)           | Static   | Markdown to HTML/text conversion|
+| [`Pattern`](text.md#vipertextpattern)             | Static   | Regex pattern matching          |
+| [`Serialize`](text.md#vipertextserialize)         | Static   | Unified multi-format serializer |
+| [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder          |
+| [`Template`](text.md#vipertexttemplate)           | Static   | Template rendering              |
+| [`Toml`](text.md#vipertexttoml)                   | Static   | TOML parsing and formatting     |
+| [`Uuid`](text.md#vipertextuuid)                   | Static   | UUID v4 generation              |
 
 ### Viper.Threads
 
 | Class                                         | Type     | Description                                  |
 |-----------------------------------------------|----------|----------------------------------------------|
-| [`Barrier`](threads.md#viperthreadsbarrier)   | Instance | Synchronization barrier for N participants   |
-| [`Gate`](threads.md#viperthreadsgate)         | Instance | Counting gate/semaphore                      |
-| [`Monitor`](threads.md#viperthreadsmonitor)   | Static   | FIFO-fair, re-entrant object monitor         |
-| [`RwLock`](threads.md#viperthreadsrwlock)     | Instance | Reader-writer lock                           |
-| [`SafeI64`](threads.md#viperthreadssafei64)   | Instance | FIFO-serialized safe integer cell            |
-| [`Thread`](threads.md#viperthreadsthread)     | Instance | OS thread handle + join/sleep/yield helpers  |
-| [`Async`](threads.md#viperthreadsasync)       | Static   | Async task combinators (run, wait-all, map)  |
-| [`ConcurrentMap`](threads.md#viperthreadsconcurrentmap) | Instance | Thread-safe string-keyed hash map  |
-| [`Pool`](threads.md#viperthreadspool)         | Instance | Thread pool for parallel task execution      |
+| [`Async`](threads.md#viperthreadsasync)                   | Static   | Async task combinators (Delay, All, Any)      |
+| [`Barrier`](threads.md#viperthreadsbarrier)               | Instance | Synchronization barrier for N participants    |
+| [`CancelToken`](threads.md#viperthreadscanceltoken)       | Instance | Cooperative cancellation token                |
+| [`ConcurrentMap`](threads.md#viperthreadsconcurrentmap)   | Instance | Thread-safe string-keyed hash map             |
+| [`Debouncer`](threads.md#viperthreadsdebouncer)           | Instance | Debounce rapid calls to single execution      |
+| [`Future`](threads.md#viperthreadsfuture)                 | Instance | Read-only handle for async result             |
+| [`Gate`](threads.md#viperthreadsgate)                     | Instance | Counting gate/semaphore                       |
+| [`Monitor`](threads.md#viperthreadsmonitor)               | Static   | FIFO-fair, re-entrant object monitor          |
+| [`Parallel`](threads.md#viperthreadsparallel)             | Static   | Parallel For/ForEach/Map/Reduce               |
+| [`Pool`](threads.md#viperthreadspool)                     | Instance | Thread pool for parallel task execution       |
+| [`Promise`](threads.md#viperthreadspromise)               | Instance | Write-once async value producer               |
+| [`RwLock`](threads.md#viperthreadsrwlock)                 | Instance | Reader-writer lock                            |
+| [`SafeI64`](threads.md#viperthreadssafei64)               | Instance | Lock-free atomic integer cell                 |
+| [`Scheduler`](threads.md#viperthreadsscheduler)           | Instance | Delayed and periodic task scheduling          |
+| [`Thread`](threads.md#viperthreadsthread)                 | Instance | OS thread handle + join/sleep/yield helpers   |
+| [`Throttler`](threads.md#viperthreadsthrottler)           | Instance | Rate-limit calls to at most once per interval |
 
 ### Viper.Time
 
@@ -259,6 +280,7 @@ implemented in C and exposed through the IL runtime system.
 | Sorted unique strings       | `SortedSet` | Sorted order, range queries, floor/ceil     |
 | Unique objects              | `Set`       | Object set with set operations              |
 | Unique strings              | `Bag`       | String set operations (union, etc.)         |
+| Weak references             | `WeakMap`   | GC-friendly caching, avoids memory leaks    |
 
 ---
 

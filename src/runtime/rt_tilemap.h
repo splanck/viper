@@ -159,6 +159,28 @@ extern "C"
     /// @brief Get pixel Y from tile Y.
     int64_t rt_tilemap_to_pixel_y(void *tilemap, int64_t tile_y);
 
+    //=========================================================================
+    // Tile Collision
+    //=========================================================================
+
+    /// @brief Set collision type for a tile ID.
+    /// @param tilemap Tilemap object.
+    /// @param tile_id Tile index (0-4095).
+    /// @param coll_type 0=none, 1=solid, 2=one_way_up.
+    void rt_tilemap_set_collision(void *tilemap, int64_t tile_id, int64_t coll_type);
+
+    /// @brief Get collision type for a tile ID.
+    int64_t rt_tilemap_get_collision(void *tilemap, int64_t tile_id);
+
+    /// @brief Check if a pixel position is on a solid tile.
+    int8_t rt_tilemap_is_solid_at(void *tilemap, int64_t pixel_x, int64_t pixel_y);
+
+    /// @brief Resolve a Physics2D.Body against solid/one-way tiles.
+    /// @param tilemap Tilemap object.
+    /// @param body Physics2D.Body object.
+    /// @return 1 if any collision occurred, 0 otherwise.
+    int8_t rt_tilemap_collide_body(void *tilemap, void *body);
+
 #ifdef __cplusplus
 }
 #endif

@@ -96,6 +96,22 @@ extern "C"
     int64_t rt_pixels_save_bmp(void *pixels, void *path);
 
     //=========================================================================
+    // PNG Image I/O
+    //=========================================================================
+
+    /// @brief Load a PNG image from file.
+    /// @param path File path (runtime string).
+    /// @return New Pixels object, or NULL on failure.
+    /// @note Supports 8-bit RGB and RGBA PNG files.
+    void *rt_pixels_load_png(void *path);
+
+    /// @brief Save a Pixels buffer to a PNG file.
+    /// @param pixels Pixels object to save.
+    /// @param path File path (runtime string).
+    /// @return 1 on success, 0 on failure.
+    int64_t rt_pixels_save_png(void *pixels, void *path);
+
+    //=========================================================================
     // Image Transforms
     //=========================================================================
 

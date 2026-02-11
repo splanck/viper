@@ -21,6 +21,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// Collision type constants
+#define TILE_COLLISION_NONE     0
+#define TILE_COLLISION_SOLID    1
+#define TILE_COLLISION_ONE_WAY  2
+
+/// Maximum distinct tile IDs that can have collision types set
+#define MAX_TILE_COLLISION_IDS 4096
+
 /// @brief Tilemap implementation structure.
 typedef struct rt_tilemap_impl
 {
@@ -33,6 +41,7 @@ typedef struct rt_tilemap_impl
     int64_t tile_count;   ///< Total tiles in tileset
     void *tileset;        ///< Tileset pixels
     int64_t *tiles;       ///< Tile indices (row-major)
+    int8_t collision[MAX_TILE_COLLISION_IDS]; ///< Collision type per tile ID
 } rt_tilemap_impl;
 
 //=============================================================================
@@ -78,6 +87,9 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
 
     // Initialize all tiles to 0 (empty)
     memset(tilemap->tiles, 0, tiles_size);
+
+    // Initialize collision array to NONE
+    memset(tilemap->collision, TILE_COLLISION_NONE, sizeof(tilemap->collision));
 
     return tilemap;
 }
@@ -382,4 +394,147 @@ int64_t rt_tilemap_to_pixel_y(void *tilemap_ptr, int64_t tile_y)
     if (!tilemap_ptr)
         return 0;
     return tile_y * ((rt_tilemap_impl *)tilemap_ptr)->tile_height;
+}
+
+//=============================================================================
+// Tile Collision
+//=============================================================================
+
+void rt_tilemap_set_collision(void *tilemap_ptr, int64_t tile_id, int64_t coll_type)
+{
+    if (!tilemap_ptr)
+    {
+        rt_trap("Tilemap.SetCollision: null tilemap");
+        return;
+    }
+    if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
+        return;
+    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
+    tilemap->collision[tile_id] = (int8_t)coll_type;
+}
+
+int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id)
+{
+    if (!tilemap_ptr)
+    {
+        rt_trap("Tilemap.GetCollision: null tilemap");
+        return 0;
+    }
+    if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
+        return 0;
+    return ((rt_tilemap_impl *)tilemap_ptr)->collision[tile_id];
+}
+
+int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y)
+{
+    if (!tilemap_ptr)
+        return 0;
+    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
+    int64_t tx = pixel_x / tilemap->tile_width;
+    int64_t ty = pixel_y / tilemap->tile_height;
+    if (tx < 0 || tx >= tilemap->width || ty < 0 || ty >= tilemap->height)
+        return 0;
+    int64_t tile_id = tilemap->tiles[ty * tilemap->width + tx];
+    if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
+        return 0;
+    return tilemap->collision[tile_id] == TILE_COLLISION_SOLID ? 1 : 0;
+}
+
+/// @brief Resolve an AABB against solid tiles. Returns 1 if any collision occurred.
+/// Updates the position (out_x, out_y) and velocity (out_vx, out_vy) in-place.
+int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
+{
+    if (!tilemap_ptr || !body_ptr)
+        return 0;
+
+    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
+
+    // Access body fields directly via the physics2d body struct layout.
+    // The body struct starts with vptr, then x, y, w, h, vx, vy.
+    typedef struct
+    {
+        void *vptr;
+        double x, y, w, h, vx, vy;
+    } body_header;
+    body_header *body = (body_header *)body_ptr;
+
+    int64_t tw = tilemap->tile_width;
+    int64_t th = tilemap->tile_height;
+    int8_t collided = 0;
+
+    // Determine the range of tiles the body overlaps
+    int64_t left   = (int64_t)body->x / tw;
+    int64_t right  = (int64_t)(body->x + body->w - 1) / tw;
+    int64_t top    = (int64_t)body->y / th;
+    int64_t bottom = (int64_t)(body->y + body->h - 1) / th;
+
+    // Clamp to tilemap bounds
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right >= tilemap->width) right = tilemap->width - 1;
+    if (bottom >= tilemap->height) bottom = tilemap->height - 1;
+
+    // Resolve collisions against each overlapping solid tile
+    for (int64_t ty = top; ty <= bottom; ty++)
+    {
+        for (int64_t tx = left; tx <= right; tx++)
+        {
+            int64_t tile_id = tilemap->tiles[ty * tilemap->width + tx];
+            if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
+                continue;
+            int8_t ctype = tilemap->collision[tile_id];
+            if (ctype == TILE_COLLISION_NONE)
+                continue;
+
+            // Tile AABB in pixels
+            double tile_x1 = (double)(tx * tw);
+            double tile_y1 = (double)(ty * th);
+            double tile_x2 = tile_x1 + (double)tw;
+            double tile_y2 = tile_y1 + (double)th;
+
+            // Body AABB
+            double bx1 = body->x, by1 = body->y;
+            double bx2 = body->x + body->w, by2 = body->y + body->h;
+
+            // Check overlap
+            if (bx2 <= tile_x1 || bx1 >= tile_x2 || by2 <= tile_y1 || by1 >= tile_y2)
+                continue;
+
+            // One-way platform: only collide if body is above tile and moving down
+            if (ctype == TILE_COLLISION_ONE_WAY)
+            {
+                // Only collide if body bottom was above tile top last frame
+                // Approximate: body velocity is downward and body center is above tile top
+                if (body->vy <= 0.0 || (by2 - body->vy * 0.017) > tile_y1 + 2.0)
+                    continue;
+            }
+
+            // Calculate overlap on each axis
+            double ox = (bx2 < tile_x2) ? (bx2 - tile_x1) : (tile_x2 - bx1);
+            double oy = (by2 < tile_y2) ? (by2 - tile_y1) : (tile_y2 - by1);
+
+            // Resolve along minimum overlap axis
+            if (ox < oy)
+            {
+                // Horizontal resolution
+                if (bx1 + body->w * 0.5 < tile_x1 + (double)tw * 0.5)
+                    body->x = tile_x1 - body->w; // Push left
+                else
+                    body->x = tile_x2; // Push right
+                body->vx = 0.0;
+            }
+            else
+            {
+                // Vertical resolution
+                if (by1 + body->h * 0.5 < tile_y1 + (double)th * 0.5)
+                    body->y = tile_y1 - body->h; // Push up (landing)
+                else
+                    body->y = tile_y2; // Push down (hit ceiling)
+                body->vy = 0.0;
+            }
+            collided = 1;
+        }
+    }
+
+    return collided;
 }

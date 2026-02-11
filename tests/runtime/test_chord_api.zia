@@ -1,0 +1,159 @@
+// Test: Key chord/combo detection in action system
+module TestChordApi;
+
+bind Viper.Terminal;
+
+func start() {
+    Viper.Input.Action.Clear();
+
+    // === Test 1: Define action and bind a chord ===
+    var ok = Viper.Input.Action.Define("save");
+    if (ok != 1) {
+        Say("FAIL: Define save should succeed");
+        return;
+    }
+
+    // Create a chord: Ctrl(341) + S(83)
+    var chord = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(chord, 341);  // Left Ctrl
+    Viper.Collections.Seq.Push(chord, 83);   // S key
+
+    var bindOk = Viper.Input.Action.BindChord("save", chord);
+    if (bindOk != 1) {
+        Say("FAIL: BindChord should succeed");
+        return;
+    }
+
+    // === Test 2: ChordCount ===
+    var cc = Viper.Input.Action.ChordCount("save");
+    if (cc != 1) {
+        Say("FAIL: ChordCount should be 1");
+        return;
+    }
+
+    // === Test 3: BindingCount includes chords ===
+    var bc = Viper.Input.Action.BindingCount("save");
+    if (bc != 1) {
+        Say("FAIL: BindingCount should be 1");
+        return;
+    }
+
+    // === Test 4: Bind a second chord (Ctrl+Shift+S) ===
+    var chord2 = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(chord2, 341);  // Left Ctrl
+    Viper.Collections.Seq.Push(chord2, 340);  // Left Shift
+    Viper.Collections.Seq.Push(chord2, 83);   // S key
+
+    bindOk = Viper.Input.Action.BindChord("save", chord2);
+    if (bindOk != 1) {
+        Say("FAIL: BindChord second chord should succeed");
+        return;
+    }
+
+    cc = Viper.Input.Action.ChordCount("save");
+    if (cc != 2) {
+        Say("FAIL: ChordCount should be 2");
+        return;
+    }
+
+    bc = Viper.Input.Action.BindingCount("save");
+    if (bc != 2) {
+        Say("FAIL: BindingCount should be 2 after two chords");
+        return;
+    }
+
+    // === Test 5: BindChord rejects axis actions ===
+    Viper.Input.Action.DefineAxis("move_x");
+    var chord3 = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(chord3, 65);
+    Viper.Collections.Seq.Push(chord3, 68);
+    var axisBind = Viper.Input.Action.BindChord("move_x", chord3);
+    if (axisBind != 0) {
+        Say("FAIL: BindChord should reject axis actions");
+        return;
+    }
+
+    // === Test 6: BindChord rejects single-key chord ===
+    var chord4 = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(chord4, 65);
+    var singleBind = Viper.Input.Action.BindChord("save", chord4);
+    if (singleBind != 0) {
+        Say("FAIL: BindChord should reject single-key chord");
+        return;
+    }
+
+    // === Test 7: UnbindChord ===
+    var unbound = Viper.Input.Action.UnbindChord("save", chord);
+    if (unbound != 1) {
+        Say("FAIL: UnbindChord should succeed");
+        return;
+    }
+
+    cc = Viper.Input.Action.ChordCount("save");
+    if (cc != 1) {
+        Say("FAIL: ChordCount should be 1 after unbind");
+        return;
+    }
+
+    // === Test 8: UnbindChord non-existent returns 0 ===
+    var unbound2 = Viper.Input.Action.UnbindChord("save", chord);
+    if (unbound2 != 0) {
+        Say("FAIL: UnbindChord non-existent should return 0");
+        return;
+    }
+
+    // === Test 9: Save/Load round-trip preserves chords ===
+    var saved = Viper.Input.Action.Save();
+
+    Viper.Input.Action.Clear();
+    var afterClear = Viper.Input.Action.Exists("save");
+    if (afterClear != 0) {
+        Say("FAIL: save should not exist after clear");
+        return;
+    }
+
+    var loadOk = Viper.Input.Action.Load(saved);
+    if (loadOk != 1) {
+        Say("FAIL: Load should succeed");
+        return;
+    }
+
+    var restored = Viper.Input.Action.Exists("save");
+    if (restored != 1) {
+        Say("FAIL: save should exist after Load");
+        return;
+    }
+
+    var restoredCC = Viper.Input.Action.ChordCount("save");
+    if (restoredCC != 1) {
+        Say("FAIL: ChordCount should be 1 after Load");
+        return;
+    }
+
+    // === Test 10: Mix chord and key bindings ===
+    Viper.Input.Action.Clear();
+    Viper.Input.Action.Define("action");
+    Viper.Input.Action.BindKey("action", 32);  // Space
+
+    var mixChord = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(mixChord, 341);
+    Viper.Collections.Seq.Push(mixChord, 32);
+    Viper.Input.Action.BindChord("action", mixChord);
+
+    bc = Viper.Input.Action.BindingCount("action");
+    if (bc != 2) {
+        Say("FAIL: should have 2 bindings (1 key + 1 chord)");
+        return;
+    }
+
+    cc = Viper.Input.Action.ChordCount("action");
+    if (cc != 1) {
+        Say("FAIL: should have 1 chord binding");
+        return;
+    }
+
+    // Cleanup
+    Viper.Input.Action.Clear();
+
+    Say("RESULT: ok");
+}

@@ -1,0 +1,168 @@
+// Test: Iterator protocol over Seq, List, Map, Set
+module TestIterator;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: Iterator over Seq ===
+    var seq = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(seq, 10);
+    Viper.Collections.Seq.Push(seq, 20);
+    Viper.Collections.Seq.Push(seq, 30);
+
+    var it = Viper.Collections.Iterator.FromSeq(seq);
+
+    // Count should be 3
+    var cnt = Viper.Collections.Iterator.get_Count(it);
+    if (cnt != 3) {
+        Say("FAIL: Seq iterator count should be 3");
+        return;
+    }
+
+    // Index starts at 0
+    var idx = Viper.Collections.Iterator.get_Index(it);
+    if (idx != 0) {
+        Say("FAIL: Seq iterator index should start at 0");
+        return;
+    }
+
+    // HasNext should be true
+    var hn = Viper.Collections.Iterator.HasNext(it);
+    if (hn != 1) {
+        Say("FAIL: Seq iterator HasNext should be 1");
+        return;
+    }
+
+    // Next should return something (not null) and advance index
+    Viper.Collections.Iterator.Next(it);
+    idx = Viper.Collections.Iterator.get_Index(it);
+    if (idx != 1) {
+        Say("FAIL: index should be 1 after first Next");
+        return;
+    }
+
+    // Peek should not advance
+    Viper.Collections.Iterator.Peek(it);
+    idx = Viper.Collections.Iterator.get_Index(it);
+    if (idx != 1) {
+        Say("FAIL: index should still be 1 after Peek");
+        return;
+    }
+
+    // Next again
+    Viper.Collections.Iterator.Next(it);
+    idx = Viper.Collections.Iterator.get_Index(it);
+    if (idx != 2) {
+        Say("FAIL: index should be 2 after second Next");
+        return;
+    }
+
+    // Skip 1 — should skip the 3rd element
+    var skipped = Viper.Collections.Iterator.Skip(it, 1);
+    if (skipped != 1) {
+        Say("FAIL: Skip should return 1");
+        return;
+    }
+
+    // HasNext should now be false (all 3 consumed)
+    var hn2 = Viper.Collections.Iterator.HasNext(it);
+    if (hn2 != 0) {
+        Say("FAIL: Seq iterator HasNext should be 0 after exhaustion");
+        return;
+    }
+
+    // Reset and iterate to Seq
+    Viper.Collections.Iterator.Reset(it);
+    idx = Viper.Collections.Iterator.get_Index(it);
+    if (idx != 0) {
+        Say("FAIL: index should be 0 after Reset");
+        return;
+    }
+
+    var collected = Viper.Collections.Iterator.ToSeq(it);
+    var clen = Viper.Collections.Seq.get_Len(collected);
+    if (clen != 3) {
+        Say("FAIL: ToSeq should produce 3 elements");
+        return;
+    }
+
+    // === Test 2: Iterator over List ===
+    var list = Viper.Collections.List.New();
+    Viper.Collections.List.Push(list, 100);
+    Viper.Collections.List.Push(list, 200);
+
+    var lit = Viper.Collections.Iterator.FromList(list);
+    var lcnt = Viper.Collections.Iterator.get_Count(lit);
+    if (lcnt != 2) {
+        Say("FAIL: List iterator count should be 2");
+        return;
+    }
+
+    Viper.Collections.Iterator.Next(lit);
+    Viper.Collections.Iterator.Next(lit);
+    var lhn = Viper.Collections.Iterator.HasNext(lit);
+    if (lhn != 0) {
+        Say("FAIL: List iterator should be exhausted");
+        return;
+    }
+
+    // === Test 3: Iterator over Map keys ===
+    var map = Viper.Collections.Map.New();
+    Viper.Collections.Map.Set(map, "alpha", 1);
+    Viper.Collections.Map.Set(map, "beta", 2);
+
+    var mit = Viper.Collections.Iterator.FromMapKeys(map);
+    var mcount = Viper.Collections.Iterator.get_Count(mit);
+    if (mcount != 2) {
+        Say("FAIL: Map key iterator count should be 2");
+        return;
+    }
+    // Iterate both keys without crash
+    Viper.Collections.Iterator.Next(mit);
+    Viper.Collections.Iterator.Next(mit);
+
+    // === Test 4: Iterator over Map values ===
+    var vit = Viper.Collections.Iterator.FromMapValues(map);
+    var vcount = Viper.Collections.Iterator.get_Count(vit);
+    if (vcount != 2) {
+        Say("FAIL: Map value iterator count should be 2");
+        return;
+    }
+
+    // === Test 5: Iterator over Set ===
+    var set = Viper.Collections.Set.New();
+    Viper.Collections.Set.Add(set, 42);
+    Viper.Collections.Set.Add(set, 99);
+
+    var sit = Viper.Collections.Iterator.FromSet(set);
+    var scount = Viper.Collections.Iterator.get_Count(sit);
+    if (scount != 2) {
+        Say("FAIL: Set iterator count should be 2");
+        return;
+    }
+
+    // === Test 6: Iterator over Ring ===
+    var ring = Viper.Collections.Ring.New(8);
+    Viper.Collections.Ring.Push(ring, 1);
+    Viper.Collections.Ring.Push(ring, 2);
+    Viper.Collections.Ring.Push(ring, 3);
+
+    var rit = Viper.Collections.Iterator.FromRing(ring);
+    var rcount = Viper.Collections.Iterator.get_Count(rit);
+    if (rcount != 3) {
+        Say("FAIL: Ring iterator count should be 3");
+        return;
+    }
+
+    // Iterate all 3
+    Viper.Collections.Iterator.Next(rit);
+    Viper.Collections.Iterator.Next(rit);
+    Viper.Collections.Iterator.Next(rit);
+    var rhn = Viper.Collections.Iterator.HasNext(rit);
+    if (rhn != 0) {
+        Say("FAIL: Ring iterator should be exhausted");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

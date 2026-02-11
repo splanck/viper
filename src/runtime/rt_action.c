@@ -36,8 +36,12 @@ typedef enum
     BIND_SCROLL_Y,       // Mouse scroll Y
     BIND_PAD_BUTTON,     // Gamepad button
     BIND_PAD_AXIS,       // Gamepad axis
-    BIND_PAD_BUTTON_AXIS // Gamepad button as axis
+    BIND_PAD_BUTTON_AXIS, // Gamepad button as axis
+    BIND_CHORD            // Multi-key chord (e.g., Ctrl+Shift+S)
 } BindingType;
+
+// Maximum number of keys in a chord
+#define MAX_CHORD_KEYS 8
 
 // A single input binding
 typedef struct Binding
@@ -46,6 +50,9 @@ typedef struct Binding
     int64_t code;      // Key/button/axis code
     int64_t pad_index; // Controller index (-1 for any)
     double value;      // Axis value for key/button bindings, scale for analog
+    // Chord data (only used when type == BIND_CHORD)
+    int64_t chord_keys[MAX_CHORD_KEYS];
+    int32_t chord_len; // Number of keys in the chord
     struct Binding *next;
 } Binding;
 
@@ -431,6 +438,34 @@ void rt_action_update(void)
                     }
                     break;
 
+                case BIND_CHORD:
+                    if (!a->is_axis && b->chord_len > 0)
+                    {
+                        // All chord keys must be held
+                        int8_t all_held = 1;
+                        int8_t any_pressed = 0;
+                        int32_t i;
+                        for (i = 0; i < b->chord_len; i++)
+                        {
+                            if (!key_held(b->chord_keys[i]))
+                            {
+                                all_held = 0;
+                                break;
+                            }
+                            if (key_pressed(b->chord_keys[i]))
+                                any_pressed = 1;
+                        }
+                        if (all_held)
+                        {
+                            a->held = 1;
+                            // Chord is "pressed" when all keys held and at least one
+                            // was newly pressed this frame
+                            if (any_pressed)
+                                a->pressed = 1;
+                        }
+                    }
+                    break;
+
                 default:
                     break;
             }
@@ -590,6 +625,93 @@ int8_t rt_action_unbind_key(rt_string action, int64_t key)
     if (!a)
         return 0;
     return remove_binding(a, BIND_KEY, key, 0);
+}
+
+//=========================================================================
+// Key Chord/Combo Bindings
+//=========================================================================
+
+int8_t rt_action_bind_chord(rt_string action, void *keys)
+{
+    int64_t len, i;
+    Binding *b;
+    Action *a = find_action_str(action);
+    if (!a || a->is_axis)
+        return 0;
+    if (!keys)
+        return 0;
+
+    len = rt_seq_len(keys);
+    if (len < 2 || len > MAX_CHORD_KEYS)
+        return 0;
+
+    b = create_binding(BIND_CHORD, 0, 0, 1.0);
+    if (!b)
+        return 0;
+
+    b->chord_len = (int32_t)len;
+    for (i = 0; i < len; i++)
+        b->chord_keys[i] = (int64_t)rt_seq_get(keys, i);
+
+    add_binding(a, b);
+    return 1;
+}
+
+int8_t rt_action_unbind_chord(rt_string action, void *keys)
+{
+    int64_t len, i;
+    Binding **pp;
+    Action *a = find_action_str(action);
+    if (!a || !keys)
+        return 0;
+
+    len = rt_seq_len(keys);
+    if (len < 2 || len > MAX_CHORD_KEYS)
+        return 0;
+
+    pp = &a->bindings;
+    while (*pp)
+    {
+        Binding *b = *pp;
+        if (b->type == BIND_CHORD && b->chord_len == (int32_t)len)
+        {
+            int8_t match = 1;
+            for (i = 0; i < len; i++)
+            {
+                if (b->chord_keys[i] != (int64_t)rt_seq_get(keys, i))
+                {
+                    match = 0;
+                    break;
+                }
+            }
+            if (match)
+            {
+                *pp = b->next;
+                free(b);
+                return 1;
+            }
+        }
+        pp = &b->next;
+    }
+    return 0;
+}
+
+int64_t rt_action_chord_count(rt_string action)
+{
+    int64_t count = 0;
+    Binding *b;
+    Action *a = find_action_str(action);
+    if (!a)
+        return 0;
+
+    b = a->bindings;
+    while (b)
+    {
+        if (b->type == BIND_CHORD)
+            count++;
+        b = b->next;
+    }
+    return count;
 }
 
 //=========================================================================
@@ -927,6 +1049,28 @@ rt_string rt_action_bindings_str(rt_string action)
                         break;
                 }
                 break;
+            case BIND_CHORD:
+            {
+                // Build "Key1+Key2+Key3" style description
+                int ci;
+                int tpos = 0;
+                temp[0] = '\0';
+                for (ci = 0; ci < b->chord_len && tpos < 58; ci++)
+                {
+                    if (ci > 0 && tpos < 57)
+                        temp[tpos++] = '+';
+                    rt_string kn = rt_keyboard_key_name(b->chord_keys[ci]);
+                    int64_t kl = rt_str_len(kn);
+                    if (kl > 0 && tpos + kl < 60)
+                    {
+                        memcpy(temp + tpos, kn->data, (size_t)kl);
+                        tpos += (int)kl;
+                    }
+                }
+                temp[tpos] = '\0';
+                desc = temp;
+                break;
+            }
             default:
                 desc = "Unknown";
                 break;
@@ -1078,6 +1222,8 @@ static const char *binding_type_name(BindingType type)
             return "pad_axis";
         case BIND_PAD_BUTTON_AXIS:
             return "pad_button_axis";
+        case BIND_CHORD:
+            return "chord";
         default:
             return "unknown";
     }
@@ -1103,6 +1249,8 @@ static BindingType binding_type_from_name(const char *name)
         return BIND_PAD_AXIS;
     if (strcmp(name, "pad_button_axis") == 0)
         return BIND_PAD_BUTTON_AXIS;
+    if (strcmp(name, "chord") == 0)
+        return BIND_CHORD;
     return BIND_NONE;
 }
 
@@ -1178,6 +1326,18 @@ rt_string rt_action_save(void)
                     rt_sb_append_int(&sb, b->pad_index);
                     rt_sb_append_cstr(&sb, ",\"value\":");
                     rt_sb_append_double(&sb, b->value);
+                    if (b->type == BIND_CHORD && b->chord_len > 0)
+                    {
+                        int32_t ci;
+                        rt_sb_append_cstr(&sb, ",\"keys\":[");
+                        for (ci = 0; ci < b->chord_len; ci++)
+                        {
+                            if (ci > 0)
+                                rt_sb_append_cstr(&sb, ",");
+                            rt_sb_append_int(&sb, b->chord_keys[ci]);
+                        }
+                        rt_sb_append_cstr(&sb, "]");
+                    }
                     rt_sb_append_cstr(&sb, "}");
                     b = b->next;
                 }
@@ -1291,6 +1451,8 @@ int8_t rt_action_load(rt_string json)
                     int64_t code = 0;
                     int64_t pad = 0;
                     double value = 0.0;
+                    int64_t chord_keys[MAX_CHORD_KEYS];
+                    int32_t chord_len = 0;
 
                     /* Parse binding fields */
                     tok = rt_json_stream_next(parser);
@@ -1317,6 +1479,18 @@ int8_t rt_action_load(rt_string json)
                         {
                             value = rt_json_stream_number_value(parser);
                         }
+                        else if (strcmp(bkey_cstr, "keys") == 0 && tok == RT_JSON_TOK_ARRAY_START)
+                        {
+                            /* Parse chord keys array */
+                            chord_len = 0;
+                            tok = rt_json_stream_next(parser);
+                            while (tok == RT_JSON_TOK_NUMBER && chord_len < MAX_CHORD_KEYS)
+                            {
+                                chord_keys[chord_len++] = (int64_t)rt_json_stream_number_value(parser);
+                                tok = rt_json_stream_next(parser);
+                            }
+                            /* tok should be ARRAY_END */
+                        }
                         tok = rt_json_stream_next(parser);
                     }
                     /* tok should be OBJECT_END for the binding */
@@ -1329,7 +1503,16 @@ int8_t rt_action_load(rt_string json)
                         {
                             Binding *b = create_binding(btype, code, pad, value);
                             if (b)
+                            {
+                                if (btype == BIND_CHORD)
+                                {
+                                    int32_t ci;
+                                    b->chord_len = chord_len;
+                                    for (ci = 0; ci < chord_len; ci++)
+                                        b->chord_keys[ci] = chord_keys[ci];
+                                }
                                 add_binding(a, b);
+                            }
                         }
                     }
 

@@ -1,0 +1,128 @@
+// Test: Streaming JSON parser (SAX-style)
+module TestJsonStream;
+
+bind Viper.Terminal;
+
+func start() {
+    // Parse a simple JSON object
+    var json = "{\"name\":\"Alice\",\"age\":30,\"active\":true,\"scores\":[1,2,3]}";
+    var parser = Viper.Text.JsonStream.New(json);
+
+    // Token type constants:
+    // OBJECT_START=1, OBJECT_END=2, ARRAY_START=3, ARRAY_END=4
+    // KEY=5, STRING=6, NUMBER=7, BOOL=8, NULL=9, ERROR=10, END=11
+
+    // First token: object start
+    var tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 1) {
+        Say("FAIL: first token should be OBJECT_START (1)");
+        return;
+    }
+
+    // Depth should be 1 inside object
+    var depth = Viper.Text.JsonStream.Depth(parser);
+    if (depth != 1) {
+        Say("FAIL: depth should be 1 inside object");
+        return;
+    }
+
+    // Next: key "name"
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 5) {
+        Say("FAIL: second token should be KEY (5)");
+        return;
+    }
+    var keyStr = Viper.Text.JsonStream.StringValue(parser);
+
+    // Next: string "Alice"
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 6) {
+        Say("FAIL: third token should be STRING (6)");
+        return;
+    }
+
+    // Next: key "age"
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 5) {
+        Say("FAIL: fourth token should be KEY (5)");
+        return;
+    }
+
+    // Next: number 30
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 7) {
+        Say("FAIL: fifth token should be NUMBER (7)");
+        return;
+    }
+
+    // Next: key "active"
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 5) {
+        Say("FAIL: sixth token should be KEY (5)");
+        return;
+    }
+
+    // Next: bool true
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 8) {
+        Say("FAIL: seventh token should be BOOL (8)");
+        return;
+    }
+    var bval = Viper.Text.JsonStream.BoolValue(parser);
+    if (bval != 1) {
+        Say("FAIL: BoolValue should be 1 (true)");
+        return;
+    }
+
+    // Next: key "scores"
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 5) {
+        Say("FAIL: token should be KEY (5) for scores");
+        return;
+    }
+
+    // Next: array start
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 3) {
+        Say("FAIL: token should be ARRAY_START (3)");
+        return;
+    }
+
+    // Depth should be 2 inside nested array
+    depth = Viper.Text.JsonStream.Depth(parser);
+    if (depth != 2) {
+        Say("FAIL: depth should be 2 inside array");
+        return;
+    }
+
+    // Skip the array contents
+    Viper.Text.JsonStream.Skip(parser);
+
+    // After skip, we should be past the array
+    // Next token should be OBJECT_END
+    tok = Viper.Text.JsonStream.Next(parser);
+    if (tok != 2) {
+        Say("FAIL: after skipping array, next should be OBJECT_END (2)");
+        return;
+    }
+
+    // HasNext should be false (or END token)
+    var hn = Viper.Text.JsonStream.HasNext(parser);
+    if (hn != 0) {
+        Say("FAIL: no more tokens after object end");
+        return;
+    }
+
+    // === Test 2: Parse with null ===
+    var json2 = "{\"val\":null}";
+    var p2 = Viper.Text.JsonStream.New(json2);
+    Viper.Text.JsonStream.Next(p2);  // {
+    Viper.Text.JsonStream.Next(p2);  // key "val"
+    tok = Viper.Text.JsonStream.Next(p2);  // null
+    if (tok != 9) {
+        Say("FAIL: null token should be 9");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

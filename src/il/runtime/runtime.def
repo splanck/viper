@@ -286,6 +286,15 @@ RT_FUNC(WeakMapClear,   rt_weakmap_clear,   "Viper.Collections.WeakMap.Clear",  
 RT_FUNC(WeakMapCompact, rt_weakmap_compact, "Viper.Collections.WeakMap.Compact",    "i64(obj)")
 
 //=============================================================================
+// MEMORY - GC Cycle Collection
+//=============================================================================
+
+RT_FUNC(GcCollect,      rt_gc_collect,      "Viper.Memory.GC.Collect",        "i64()")
+RT_FUNC(GcTrackedCount, rt_gc_tracked_count,"Viper.Memory.GC.TrackedCount",   "i64()")
+RT_FUNC(GcTotalCollected, rt_gc_total_collected, "Viper.Memory.GC.TotalCollected", "i64()")
+RT_FUNC(GcPassCount,    rt_gc_pass_count,   "Viper.Memory.GC.PassCount",      "i64()")
+
+//=============================================================================
 // COLLECTIONS - SET (Generic)
 //=============================================================================
 
@@ -966,6 +975,8 @@ RT_FUNC(PixelsGrayscale, rt_pixels_grayscale,  "Viper.Graphics.Pixels.Grayscale"
 RT_FUNC(PixelsTint,      rt_pixels_tint,       "Viper.Graphics.Pixels.Tint",      "obj(obj,i64)")
 RT_FUNC(PixelsBlur,      rt_pixels_blur,       "Viper.Graphics.Pixels.Blur",      "obj(obj,i64)")
 RT_FUNC(PixelsResize,    rt_pixels_resize,     "Viper.Graphics.Pixels.Resize",    "obj(obj,i64,i64)")
+RT_FUNC(PixelsLoadPng,   rt_pixels_load_png,   "Viper.Graphics.Pixels.LoadPng",   "obj(str)")
+RT_FUNC(PixelsSavePng,   rt_pixels_save_png,   "Viper.Graphics.Pixels.SavePng",   "i64(obj,str)")
 
 //=============================================================================
 // GRAPHICS - SPRITESHEET
@@ -1013,6 +1024,10 @@ RT_FUNC(SpriteUpdate,       rt_sprite_update,        "Viper.Graphics.Sprite.Upda
 RT_FUNC(SpriteOverlaps,     rt_sprite_overlaps,      "Viper.Graphics.Sprite.Overlaps",     "i1(obj,obj)")
 RT_FUNC(SpriteContains,     rt_sprite_contains,      "Viper.Graphics.Sprite.Contains",     "i1(obj,i64,i64)")
 RT_FUNC(SpriteMove,         rt_sprite_move,          "Viper.Graphics.Sprite.Move",         "void(obj,i64,i64)")
+RT_FUNC(SpriteGetFlipX,     rt_sprite_get_flip_x,    "Viper.Graphics.Sprite.get_FlipX",    "i1(obj)")
+RT_FUNC(SpriteSetFlipX,     rt_sprite_set_flip_x,    "Viper.Graphics.Sprite.set_FlipX",    "void(obj,i64)")
+RT_FUNC(SpriteGetFlipY,     rt_sprite_get_flip_y,    "Viper.Graphics.Sprite.get_FlipY",    "i1(obj)")
+RT_FUNC(SpriteSetFlipY,     rt_sprite_set_flip_y,    "Viper.Graphics.Sprite.set_FlipY",    "void(obj,i64)")
 
 //=============================================================================
 // GRAPHICS - TILEMAP
@@ -1036,6 +1051,10 @@ RT_FUNC(TilemapToTileX,      rt_tilemap_to_tile_x,     "Viper.Graphics.Tilemap.T
 RT_FUNC(TilemapToTileY,      rt_tilemap_to_tile_y,     "Viper.Graphics.Tilemap.ToTileY",      "i64(obj,i64)")
 RT_FUNC(TilemapToPixelX,     rt_tilemap_to_pixel_x,    "Viper.Graphics.Tilemap.ToPixelX",     "i64(obj,i64)")
 RT_FUNC(TilemapToPixelY,     rt_tilemap_to_pixel_y,    "Viper.Graphics.Tilemap.ToPixelY",     "i64(obj,i64)")
+RT_FUNC(TilemapSetCollision, rt_tilemap_set_collision,  "Viper.Graphics.Tilemap.SetCollision", "void(obj,i64,i64)")
+RT_FUNC(TilemapGetCollision, rt_tilemap_get_collision,  "Viper.Graphics.Tilemap.GetCollision", "i64(obj,i64)")
+RT_FUNC(TilemapIsSolidAt,   rt_tilemap_is_solid_at,    "Viper.Graphics.Tilemap.IsSolidAt",    "i1(obj,i64,i64)")
+RT_FUNC(TilemapCollideBody,  rt_tilemap_collide_body,   "Viper.Graphics.Tilemap.CollideBody",  "i1(obj,obj)")
 
 //=============================================================================
 // GRAPHICS - CAMERA
@@ -2409,6 +2428,23 @@ RT_FUNC(TomlGet,            rt_toml_get,              "Viper.Text.Toml.Get",    
 RT_FUNC(TomlGetStr,         rt_toml_get_str,          "Viper.Text.Toml.GetStr",         "str(obj,str)")
 
 //=============================================================================
+// DATA - UNIFIED SERIALIZATION
+//=============================================================================
+
+// Format constants: JSON=0, XML=1, YAML=2, TOML=3, CSV=4
+RT_FUNC(SerializeParse,        rt_serialize_parse,           "Viper.Data.Serialize.Parse",        "obj(str,i64)")
+RT_FUNC(SerializeFormat,       rt_serialize_format,          "Viper.Data.Serialize.Format",       "str(obj,i64)")
+RT_FUNC(SerializeFormatPretty, rt_serialize_format_pretty,   "Viper.Data.Serialize.FormatPretty", "str(obj,i64,i64)")
+RT_FUNC(SerializeIsValid,      rt_serialize_is_valid,        "Viper.Data.Serialize.IsValid",      "i1(str,i64)")
+RT_FUNC(SerializeDetect,       rt_serialize_detect,          "Viper.Data.Serialize.Detect",       "i64(str)")
+RT_FUNC(SerializeAutoParse,    rt_serialize_auto_parse,      "Viper.Data.Serialize.AutoParse",    "obj(str)")
+RT_FUNC(SerializeConvert,      rt_serialize_convert,         "Viper.Data.Serialize.Convert",      "str(str,i64,i64)")
+RT_FUNC(SerializeFormatName,   rt_serialize_format_name,     "Viper.Data.Serialize.FormatName",   "str(i64)")
+RT_FUNC(SerializeMimeType,     rt_serialize_mime_type,       "Viper.Data.Serialize.MimeType",     "str(i64)")
+RT_FUNC(SerializeFormatFromName, rt_serialize_format_from_name, "Viper.Data.Serialize.FormatFromName", "i64(str)")
+RT_FUNC(SerializeError,        rt_serialize_error,           "Viper.Data.Serialize.Error",        "str()")
+
+//=============================================================================
 // TEXT - MARKDOWN
 //=============================================================================
 
@@ -2613,6 +2649,8 @@ RT_FUNC(PoolShutdownNow,   rt_threadpool_shutdown_now,   "Viper.Threads.Pool.Shu
 RT_FUNC(PoolGetSize,       rt_threadpool_get_size,       "Viper.Threads.Pool.get_Size",       "i64(obj)")
 RT_FUNC(PoolGetPending,    rt_threadpool_get_pending,    "Viper.Threads.Pool.get_Pending",    "i64(obj)")
 RT_FUNC(PoolGetActive,     rt_threadpool_get_active,     "Viper.Threads.Pool.get_Active",     "i64(obj)")
+RT_FUNC(ParallelDefaultWorkers, rt_parallel_default_workers, "Viper.Threads.Parallel.DefaultWorkers", "i64()")
+RT_FUNC(ParallelDefaultPool,    rt_parallel_default_pool,    "Viper.Threads.Parallel.DefaultPool",    "obj()")
 RT_FUNC(PoolGetIsShutdown, rt_threadpool_get_is_shutdown,"Viper.Threads.Pool.get_IsShutdown", "i1(obj)")
 
 //=============================================================================
@@ -3044,6 +3082,9 @@ RT_FUNC(ActionRemove, rt_action_remove, "Viper.Input.Action.Remove", "i1(str)")
 RT_FUNC(ActionBindKey, rt_action_bind_key, "Viper.Input.Action.BindKey", "i1(str,i64)")
 RT_FUNC(ActionBindKeyAxis, rt_action_bind_key_axis, "Viper.Input.Action.BindKeyAxis", "i1(str,i64,f64)")
 RT_FUNC(ActionUnbindKey, rt_action_unbind_key, "Viper.Input.Action.UnbindKey", "i1(str,i64)")
+RT_FUNC(ActionBindChord, rt_action_bind_chord, "Viper.Input.Action.BindChord", "i1(str,obj)")
+RT_FUNC(ActionUnbindChord, rt_action_unbind_chord, "Viper.Input.Action.UnbindChord", "i1(str,obj)")
+RT_FUNC(ActionChordCount, rt_action_chord_count, "Viper.Input.Action.ChordCount", "i64(str)")
 RT_FUNC(ActionBindMouse, rt_action_bind_mouse, "Viper.Input.Action.BindMouse", "i1(str,i64)")
 RT_FUNC(ActionUnbindMouse, rt_action_unbind_mouse, "Viper.Input.Action.UnbindMouse", "i1(str,i64)")
 RT_FUNC(ActionBindMouseX, rt_action_bind_mouse_x, "Viper.Input.Action.BindMouseX", "i1(str,f64)")
@@ -3326,6 +3367,10 @@ RT_FUNC(Physics2DBodyFriction,       rt_physics2d_body_friction,       "Viper.Ga
 RT_FUNC(Physics2DBodySetFriction,    rt_physics2d_body_set_friction,   "Viper.Game.Physics2D.Body.set_Friction",   "void(obj,f64)")
 RT_FUNC(Physics2DBodyIsStatic,       rt_physics2d_body_is_static,      "Viper.Game.Physics2D.Body.get_IsStatic",   "i1(obj)")
 RT_FUNC(Physics2DBodyMass,           rt_physics2d_body_mass,           "Viper.Game.Physics2D.Body.get_Mass",       "f64(obj)")
+RT_FUNC(Physics2DBodyCollisionLayer, rt_physics2d_body_collision_layer,"Viper.Game.Physics2D.Body.get_CollisionLayer","i64(obj)")
+RT_FUNC(Physics2DBodySetCollisionLayer,rt_physics2d_body_set_collision_layer,"Viper.Game.Physics2D.Body.set_CollisionLayer","void(obj,i64)")
+RT_FUNC(Physics2DBodyCollisionMask,  rt_physics2d_body_collision_mask, "Viper.Game.Physics2D.Body.get_CollisionMask","i64(obj)")
+RT_FUNC(Physics2DBodySetCollisionMask,rt_physics2d_body_set_collision_mask,"Viper.Game.Physics2D.Body.set_CollisionMask","void(obj,i64)")
 
 //=============================================================================
 // Phase 4: Game Development Abstractions - Object Management & Spatial
@@ -4402,6 +4447,7 @@ RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_METHOD("Clone", "obj()", PixelsClone)
     RT_METHOD("ToBytes", "obj()", PixelsToBytes)
     RT_METHOD("SaveBmp", "i64(str)", PixelsSaveBmp)
+    RT_METHOD("SavePng", "i64(str)", PixelsSavePng)
     RT_METHOD("FlipH", "obj()", PixelsFlipH)
     RT_METHOD("FlipV", "obj()", PixelsFlipV)
     RT_METHOD("RotateCW", "obj()", PixelsRotateCW)
@@ -4427,6 +4473,8 @@ RT_CLASS_BEGIN("Viper.Graphics.Sprite", Sprite, "obj", SpriteNew)
     RT_PROP("Visible", "i1", SpriteGetVisible, SpriteSetVisible)
     RT_PROP("Frame", "i64", SpriteGetFrame, SpriteSetFrame)
     RT_PROP("FrameCount", "i64", SpriteGetFrameCount, none)
+    RT_PROP("FlipX", "i1", SpriteGetFlipX, SpriteSetFlipX)
+    RT_PROP("FlipY", "i1", SpriteGetFlipY, SpriteSetFlipY)
     RT_METHOD("Draw", "void(obj)", SpriteDraw)
     RT_METHOD("SetOrigin", "void(i64,i64)", SpriteSetOrigin)
     RT_METHOD("AddFrame", "void(obj)", SpriteAddFrame)
@@ -4456,6 +4504,10 @@ RT_CLASS_BEGIN("Viper.Graphics.Tilemap", Tilemap, "obj", TilemapNew)
     RT_METHOD("ToTileY", "i64(i64)", TilemapToTileY)
     RT_METHOD("ToPixelX", "i64(i64)", TilemapToPixelX)
     RT_METHOD("ToPixelY", "i64(i64)", TilemapToPixelY)
+    RT_METHOD("SetCollision", "void(i64,i64)", TilemapSetCollision)
+    RT_METHOD("GetCollision", "i64(i64)", TilemapGetCollision)
+    RT_METHOD("IsSolidAt", "i1(i64,i64)", TilemapIsSolidAt)
+    RT_METHOD("CollideBody", "i1(obj)", TilemapCollideBody)
 RT_CLASS_END()
 
 // Viper.Graphics.Camera - 2D camera view
@@ -5222,6 +5274,11 @@ RT_CLASS_BEGIN("Viper.Input.Action", Action, "none", none)
     RT_METHOD("BindKeyAxis", "i1(str,i64,f64)", ActionBindKeyAxis)
     RT_METHOD("UnbindKey", "i1(str,i64)", ActionUnbindKey)
 
+    // Key chord/combo bindings
+    RT_METHOD("BindChord", "i1(str,obj)", ActionBindChord)
+    RT_METHOD("UnbindChord", "i1(str,obj)", ActionUnbindChord)
+    RT_METHOD("ChordCount", "i64(str)", ActionChordCount)
+
     // Mouse bindings
     RT_METHOD("BindMouse", "i1(str,i64)", ActionBindMouse)
     RT_METHOD("UnbindMouse", "i1(str,i64)", ActionUnbindMouse)
@@ -5480,6 +5537,8 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.Body", Physics2DBody, "obj", Physics2DBodyN
     RT_PROP("Friction", "f64", Physics2DBodyFriction, Physics2DBodySetFriction)
     RT_PROP("IsStatic", "i1", Physics2DBodyIsStatic, none)
     RT_PROP("Mass", "f64", Physics2DBodyMass, none)
+    RT_PROP("CollisionLayer", "i64", Physics2DBodyCollisionLayer, Physics2DBodySetCollisionLayer)
+    RT_PROP("CollisionMask", "i64", Physics2DBodyCollisionMask, Physics2DBodySetCollisionMask)
     RT_METHOD("SetPos", "void(f64,f64)", Physics2DBodySetPos)
     RT_METHOD("SetVel", "void(f64,f64)", Physics2DBodySetVel)
     RT_METHOD("ApplyForce", "void(f64,f64)", Physics2DBodyApplyForce)
@@ -6217,18 +6276,30 @@ RT_CLASS_BEGIN("Viper.Threads.Thread", ThreadsThread, "obj", none)
 RT_CLASS_END()
 
 // Viper.Threads.Promise - async result producer
+RT_FUNC(PromiseNew,        rt_promise_new,        "Viper.Threads.Promise.New",        "obj()")
+RT_FUNC(PromiseGetFuture,  rt_promise_get_future,  "Viper.Threads.Promise.GetFuture", "obj(obj)")
+RT_FUNC(PromiseSet,        rt_promise_set,          "Viper.Threads.Promise.Set",       "void(obj,obj)")
+RT_FUNC(PromiseSetError,   rt_promise_set_error,    "Viper.Threads.Promise.SetError",  "void(obj,str)")
+RT_FUNC(PromiseIsDone,     rt_promise_is_done,      "Viper.Threads.Promise.get_IsDone","i1(obj)")
 RT_CLASS_BEGIN("Viper.Threads.Promise", ThreadsPromise, "obj", PromiseNew)
     RT_METHOD("GetFuture", "obj()", PromiseGetFuture)
-    RT_METHOD("Set", "void(ptr)", PromiseSet)
+    RT_METHOD("Set", "void(obj)", PromiseSet)
     RT_METHOD("SetError", "void(str)", PromiseSetError)
     RT_PROP("IsDone", "i1", PromiseIsDone, none)
 RT_CLASS_END()
 
 // Viper.Threads.Future - async result consumer
+RT_FUNC(FutureGet,         rt_future_get,           "Viper.Threads.Future.Get",         "obj(obj)")
+RT_FUNC(FutureWait,        rt_future_wait,           "Viper.Threads.Future.Wait",       "void(obj)")
+RT_FUNC(FutureWaitFor,     rt_future_wait_for,       "Viper.Threads.Future.WaitFor",    "i1(obj,i64)")
+RT_FUNC(FutureIsDone,      rt_future_is_done,        "Viper.Threads.Future.get_IsDone", "i1(obj)")
+RT_FUNC(FutureIsError,     rt_future_is_error,       "Viper.Threads.Future.get_IsError","i1(obj)")
+RT_FUNC(FutureGetError,    rt_future_get_error,      "Viper.Threads.Future.get_Error",  "str(obj)")
+RT_FUNC(AsyncDelay,        rt_async_delay,           "Viper.Threads.Async.Delay",       "obj(i64)")
+RT_FUNC(AsyncAll,          rt_async_all,             "Viper.Threads.Async.All",         "obj(obj)")
+RT_FUNC(AsyncAny,          rt_async_any,             "Viper.Threads.Async.Any",         "obj(obj)")
 RT_CLASS_BEGIN("Viper.Threads.Future", ThreadsFuture, "obj", none)
-    RT_METHOD("Get", "ptr()", FutureGet)
-    RT_METHOD("GetFor", "i1(i64,ptr)", FutureGetFor)
-    RT_METHOD("TryGet", "i1(ptr)", FutureTryGet)
+    RT_METHOD("Get", "obj()", FutureGet)
     RT_METHOD("Wait", "void()", FutureWait)
     RT_METHOD("WaitFor", "i1(i64)", FutureWaitFor)
     RT_PROP("IsDone", "i1", FutureIsDone, none)

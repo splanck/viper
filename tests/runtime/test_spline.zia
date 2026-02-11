@@ -1,0 +1,119 @@
+// Test: Spline interpolation (Catmull-Rom, Bezier, Linear)
+module TestSpline;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: Linear spline from points ===
+    var points = Viper.Collections.Seq.New();
+    var p0 = Viper.Math.Vec2.New(0.0, 0.0);
+    var p1 = Viper.Math.Vec2.New(10.0, 10.0);
+    var p2 = Viper.Math.Vec2.New(20.0, 0.0);
+    Viper.Collections.Seq.Push(points, p0);
+    Viper.Collections.Seq.Push(points, p1);
+    Viper.Collections.Seq.Push(points, p2);
+
+    var linear = Viper.Math.Spline.Linear(points);
+    if (linear == 0) { Say("FAIL: Linear should return non-null"); return; }
+
+    // PointCount
+    var pc = Viper.Math.Spline.get_PointCount(linear);
+    if (pc != 3) { Say("FAIL: Linear PointCount should be 3"); return; }
+
+    // PointAt
+    var pt0 = Viper.Math.Spline.PointAt(linear, 0);
+    if (pt0 == 0) { Say("FAIL: PointAt(0) should be non-null"); return; }
+    var pt0x = Viper.Math.Vec2.get_X(pt0);
+    if (pt0x != 0.0) { Say("FAIL: PointAt(0) X should be 0"); return; }
+
+    // Eval at t=0 → first point
+    var ev0 = Viper.Math.Spline.Eval(linear, 0.0);
+    var ev0x = Viper.Math.Vec2.get_X(ev0);
+    var ev0y = Viper.Math.Vec2.get_Y(ev0);
+    if (ev0x != 0.0) { Say("FAIL: Linear Eval(0) X should be 0"); return; }
+    if (ev0y != 0.0) { Say("FAIL: Linear Eval(0) Y should be 0"); return; }
+
+    // Eval at t=0.5 → midpoint = (10,10) for linear with 3 pts
+    var evMid = Viper.Math.Spline.Eval(linear, 0.5);
+    var emx = Viper.Math.Vec2.get_X(evMid);
+    var emy = Viper.Math.Vec2.get_Y(evMid);
+    if (emx < 9.99) { Say("FAIL: Linear Eval(0.5) X should be ~10"); return; }
+    if (emx > 10.01) { Say("FAIL: Linear Eval(0.5) X should be ~10"); return; }
+    if (emy < 9.99) { Say("FAIL: Linear Eval(0.5) Y should be ~10"); return; }
+
+    // Eval at t=1 → last point
+    var ev1 = Viper.Math.Spline.Eval(linear, 1.0);
+    var ev1x = Viper.Math.Vec2.get_X(ev1);
+    if (ev1x < 19.99) { Say("FAIL: Linear Eval(1) X should be ~20"); return; }
+
+    // === Test 2: Bezier cubic from 4 control points ===
+    var c0 = Viper.Math.Vec2.New(0.0, 0.0);
+    var c1 = Viper.Math.Vec2.New(5.0, 20.0);
+    var c2 = Viper.Math.Vec2.New(15.0, 20.0);
+    var c3 = Viper.Math.Vec2.New(20.0, 0.0);
+    var bezier = Viper.Math.Spline.Bezier(c0, c1, c2, c3);
+    if (bezier == 0) { Say("FAIL: Bezier should return non-null"); return; }
+
+    // Bezier has 4 control points
+    var bpc = Viper.Math.Spline.get_PointCount(bezier);
+    if (bpc != 4) { Say("FAIL: Bezier PointCount should be 4"); return; }
+
+    // Eval at t=0 → c0
+    var bev0 = Viper.Math.Spline.Eval(bezier, 0.0);
+    var bev0x = Viper.Math.Vec2.get_X(bev0);
+    if (bev0x != 0.0) { Say("FAIL: Bezier Eval(0) X should be 0"); return; }
+
+    // Eval at t=1 → c3
+    var bev1 = Viper.Math.Spline.Eval(bezier, 1.0);
+    var bev1x = Viper.Math.Vec2.get_X(bev1);
+    if (bev1x < 19.99) { Say("FAIL: Bezier Eval(1) X should be ~20"); return; }
+
+    // Eval at t=0.5 → symmetric, should be midpoint X=10 and Y > 0
+    var bevH = Viper.Math.Spline.Eval(bezier, 0.5);
+    var bevHx = Viper.Math.Vec2.get_X(bevH);
+    var bevHy = Viper.Math.Vec2.get_Y(bevH);
+    if (bevHx < 9.9) { Say("FAIL: Bezier Eval(0.5) X should be ~10"); return; }
+    if (bevHx > 10.1) { Say("FAIL: Bezier Eval(0.5) X should be ~10"); return; }
+    if (bevHy < 1.0) { Say("FAIL: Bezier Eval(0.5) Y should be > 0"); return; }
+
+    // === Test 3: Tangent ===
+    var tang = Viper.Math.Spline.Tangent(bezier, 0.5);
+    if (tang == 0) { Say("FAIL: Tangent should return non-null"); return; }
+    // At midpoint of symmetric bezier, tangent Y should be ~0 (peak)
+    var tanX = Viper.Math.Vec2.get_X(tang);
+    // X component should be positive (moving right)
+    if (tanX < 0.0) { Say("FAIL: Tangent X at midpoint should be > 0"); return; }
+
+    // === Test 4: ArcLength ===
+    var arcLen = Viper.Math.Spline.ArcLength(linear, 0.0, 1.0, 100);
+    // Linear path: (0,0)→(10,10)→(20,0), two segments each √200 ≈ 14.14, total ≈ 28.28
+    if (arcLen < 28.0) { Say("FAIL: Linear arc length should be ~28.28"); return; }
+    if (arcLen > 29.0) { Say("FAIL: Linear arc length should be ~28.28"); return; }
+
+    // === Test 5: Sample ===
+    var samples = Viper.Math.Spline.Sample(linear, 5);
+    var sLen = Viper.Collections.Seq.get_Len(samples);
+    if (sLen != 5) { Say("FAIL: Sample(5) should return 5 points"); return; }
+
+    // === Test 6: Catmull-Rom ===
+    var crPoints = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(crPoints, Viper.Math.Vec2.New(0.0, 0.0));
+    Viper.Collections.Seq.Push(crPoints, Viper.Math.Vec2.New(5.0, 10.0));
+    Viper.Collections.Seq.Push(crPoints, Viper.Math.Vec2.New(10.0, 10.0));
+    Viper.Collections.Seq.Push(crPoints, Viper.Math.Vec2.New(15.0, 0.0));
+
+    var cr = Viper.Math.Spline.CatmullRom(crPoints);
+    if (cr == 0) { Say("FAIL: CatmullRom should return non-null"); return; }
+
+    var crpc = Viper.Math.Spline.get_PointCount(cr);
+    if (crpc != 4) { Say("FAIL: CatmullRom PointCount should be 4"); return; }
+
+    // Eval at endpoints
+    var crEv0 = Viper.Math.Spline.Eval(cr, 0.0);
+    if (crEv0 == 0) { Say("FAIL: CatmullRom Eval(0) should be non-null"); return; }
+
+    var crEv1 = Viper.Math.Spline.Eval(cr, 1.0);
+    if (crEv1 == 0) { Say("FAIL: CatmullRom Eval(1) should be non-null"); return; }
+
+    Say("RESULT: ok");
+}

@@ -1,0 +1,108 @@
+// Test: SpriteSheet/atlas with named regions
+module TestSpriteSheet;
+
+bind Viper.Terminal;
+
+func start() {
+    // Create a 32x32 pixel atlas
+    var px = Viper.Graphics.Pixels.New(32, 32);
+
+    // Create sprite sheet from atlas
+    var sheet = Viper.Graphics.SpriteSheet.New(px);
+
+    // Verify dimensions
+    var w = Viper.Graphics.SpriteSheet.get_Width(sheet);
+    var h = Viper.Graphics.SpriteSheet.get_Height(sheet);
+    if (w != 32) {
+        Say("FAIL: width should be 32");
+        return;
+    }
+    if (h != 32) {
+        Say("FAIL: height should be 32");
+        return;
+    }
+
+    // No regions initially
+    var rc = Viper.Graphics.SpriteSheet.get_RegionCount(sheet);
+    if (rc != 0) {
+        Say("FAIL: initial region count should be 0");
+        return;
+    }
+
+    // Define regions
+    Viper.Graphics.SpriteSheet.SetRegion(sheet, "top_left", 0, 0, 16, 16);
+    Viper.Graphics.SpriteSheet.SetRegion(sheet, "top_right", 16, 0, 16, 16);
+    Viper.Graphics.SpriteSheet.SetRegion(sheet, "bottom_left", 0, 16, 16, 16);
+    Viper.Graphics.SpriteSheet.SetRegion(sheet, "bottom_right", 16, 16, 16, 16);
+
+    rc = Viper.Graphics.SpriteSheet.get_RegionCount(sheet);
+    if (rc != 4) {
+        Say("FAIL: region count should be 4");
+        return;
+    }
+
+    // HasRegion
+    var has = Viper.Graphics.SpriteSheet.HasRegion(sheet, "top_left");
+    if (has != 1) {
+        Say("FAIL: should have top_left");
+        return;
+    }
+
+    var hasNot = Viper.Graphics.SpriteSheet.HasRegion(sheet, "center");
+    if (hasNot != 0) {
+        Say("FAIL: should not have center");
+        return;
+    }
+
+    // GetRegion — returns a Pixels buffer
+    var region = Viper.Graphics.SpriteSheet.GetRegion(sheet, "top_left");
+    if (region == 0) {
+        Say("FAIL: GetRegion should return non-null");
+        return;
+    }
+
+    // RegionNames
+    var names = Viper.Graphics.SpriteSheet.RegionNames(sheet);
+    var nlen = Viper.Collections.Seq.get_Len(names);
+    if (nlen != 4) {
+        Say("FAIL: RegionNames should have 4 entries");
+        return;
+    }
+
+    // RemoveRegion
+    var removed = Viper.Graphics.SpriteSheet.RemoveRegion(sheet, "bottom_right");
+    if (removed != 1) {
+        Say("FAIL: RemoveRegion should return 1");
+        return;
+    }
+
+    rc = Viper.Graphics.SpriteSheet.get_RegionCount(sheet);
+    if (rc != 3) {
+        Say("FAIL: region count should be 3 after remove");
+        return;
+    }
+
+    // === Test FromGrid ===
+    var gridSheet = Viper.Graphics.SpriteSheet.FromGrid(px, 8, 8);
+    // 32x32 / 8x8 = 4x4 = 16 regions
+    var gridCount = Viper.Graphics.SpriteSheet.get_RegionCount(gridSheet);
+    if (gridCount != 16) {
+        Say("FAIL: grid 32x32 / 8x8 should produce 16 regions");
+        return;
+    }
+
+    // Grid regions are named "0", "1", etc.
+    var hasFirst = Viper.Graphics.SpriteSheet.HasRegion(gridSheet, "0");
+    if (hasFirst != 1) {
+        Say("FAIL: grid should have region '0'");
+        return;
+    }
+
+    var hasLast = Viper.Graphics.SpriteSheet.HasRegion(gridSheet, "15");
+    if (hasLast != 1) {
+        Say("FAIL: grid should have region '15'");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

@@ -1,0 +1,233 @@
+// Test: Threading API - SafeI64, Channel, Gate, CancelToken, RwLock, Barrier
+module TestThreadingApi;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: SafeI64 ===
+    var si = Viper.Threads.SafeI64.New(42);
+    var val = Viper.Threads.SafeI64.Get(si);
+    if (val != 42) {
+        Say("FAIL: SafeI64 initial value should be 42");
+        return;
+    }
+
+    Viper.Threads.SafeI64.Set(si, 100);
+    val = Viper.Threads.SafeI64.Get(si);
+    if (val != 100) {
+        Say("FAIL: SafeI64 value should be 100 after Set");
+        return;
+    }
+
+    var added = Viper.Threads.SafeI64.Add(si, 5);
+    if (added != 105) {
+        Say("FAIL: SafeI64.Add(5) should return 105");
+        return;
+    }
+
+    val = Viper.Threads.SafeI64.Get(si);
+    if (val != 105) {
+        Say("FAIL: SafeI64 value should be 105 after Add");
+        return;
+    }
+
+    // CompareExchange: expect 105, set 200
+    var prev = Viper.Threads.SafeI64.CompareExchange(si, 105, 200);
+    if (prev != 105) {
+        Say("FAIL: CAS should return old value 105");
+        return;
+    }
+    val = Viper.Threads.SafeI64.Get(si);
+    if (val != 200) {
+        Say("FAIL: value should be 200 after CAS");
+        return;
+    }
+
+    // CAS with wrong expected: should not change
+    prev = Viper.Threads.SafeI64.CompareExchange(si, 999, 300);
+    if (prev != 200) {
+        Say("FAIL: CAS with wrong expected should return current value 200");
+        return;
+    }
+    val = Viper.Threads.SafeI64.Get(si);
+    if (val != 200) {
+        Say("FAIL: value should still be 200 after failed CAS");
+        return;
+    }
+
+    // === Test 2: Channel ===
+    var ch = Viper.Threads.Channel.New(5);
+    var cap = Viper.Threads.Channel.get_Cap(ch);
+    if (cap != 5) {
+        Say("FAIL: channel capacity should be 5");
+        return;
+    }
+
+    var empty = Viper.Threads.Channel.get_IsEmpty(ch);
+    if (empty != 1) {
+        Say("FAIL: channel should be empty initially");
+        return;
+    }
+
+    // Send actual heap objects (Seq instances) through the channel
+    var msg1 = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(msg1, 10);
+    var msg2 = Viper.Collections.Seq.New();
+    Viper.Collections.Seq.Push(msg2, 20);
+    Viper.Collections.Seq.Push(msg2, 30);
+
+    Viper.Threads.Channel.Send(ch, msg1);
+    Viper.Threads.Channel.Send(ch, msg2);
+
+    var chlen = Viper.Threads.Channel.get_Len(ch);
+    if (chlen != 2) {
+        Say("FAIL: channel len should be 2");
+        return;
+    }
+
+    var full = Viper.Threads.Channel.get_IsFull(ch);
+    if (full != 0) {
+        Say("FAIL: channel should not be full (2/5)");
+        return;
+    }
+
+    // Receive and verify by checking Seq length
+    var r1 = Viper.Threads.Channel.Recv(ch);
+    var r1len = Viper.Collections.Seq.get_Len(r1);
+    if (r1len != 1) {
+        Say("FAIL: first recv Seq should have len 1");
+        return;
+    }
+
+    var r2 = Viper.Threads.Channel.Recv(ch);
+    var r2len = Viper.Collections.Seq.get_Len(r2);
+    if (r2len != 2) {
+        Say("FAIL: second recv Seq should have len 2");
+        return;
+    }
+
+    // Close
+    Viper.Threads.Channel.Close(ch);
+    var closed = Viper.Threads.Channel.get_IsClosed(ch);
+    if (closed != 1) {
+        Say("FAIL: channel should be closed");
+        return;
+    }
+
+    // === Test 3: Gate (counting semaphore) ===
+    var gate = Viper.Threads.Gate.New(3);
+    var permits = Viper.Threads.Gate.get_Permits(gate);
+    if (permits != 3) {
+        Say("FAIL: gate should have 3 permits");
+        return;
+    }
+
+    // TryEnter should succeed 3 times
+    var g1 = Viper.Threads.Gate.TryEnter(gate);
+    var g2 = Viper.Threads.Gate.TryEnter(gate);
+    var g3 = Viper.Threads.Gate.TryEnter(gate);
+    if (g1 != 1) {
+        Say("FAIL: first gate enter should succeed");
+        return;
+    }
+    if (g3 != 1) {
+        Say("FAIL: third gate enter should succeed");
+        return;
+    }
+
+    // Fourth should fail
+    var g4 = Viper.Threads.Gate.TryEnter(gate);
+    if (g4 != 0) {
+        Say("FAIL: fourth gate enter should fail");
+        return;
+    }
+
+    // Leave 2 permits
+    Viper.Threads.Gate.LeaveMany(gate, 2);
+    permits = Viper.Threads.Gate.get_Permits(gate);
+    if (permits != 2) {
+        Say("FAIL: gate should have 2 permits after LeaveMany");
+        return;
+    }
+
+    // Leave remaining 1
+    Viper.Threads.Gate.Leave(gate);
+    permits = Viper.Threads.Gate.get_Permits(gate);
+    if (permits != 3) {
+        Say("FAIL: gate should be back to 3 permits");
+        return;
+    }
+
+    // === Test 4: CancelToken ===
+    var token = Viper.Threads.CancelToken.New();
+    var isCancelled = Viper.Threads.CancelToken.get_IsCancelled(token);
+    if (isCancelled != 0) {
+        Say("FAIL: token should not be cancelled initially");
+        return;
+    }
+
+    Viper.Threads.CancelToken.Cancel(token);
+    isCancelled = Viper.Threads.CancelToken.get_IsCancelled(token);
+    if (isCancelled != 1) {
+        Say("FAIL: token should be cancelled after Cancel");
+        return;
+    }
+
+    Viper.Threads.CancelToken.Reset(token);
+    isCancelled = Viper.Threads.CancelToken.get_IsCancelled(token);
+    if (isCancelled != 0) {
+        Say("FAIL: token should not be cancelled after Reset");
+        return;
+    }
+
+    // === Test 5: RwLock ===
+    var lock = Viper.Threads.RwLock.New();
+    var readers = Viper.Threads.RwLock.get_Readers(lock);
+    if (readers != 0) {
+        Say("FAIL: no readers initially");
+        return;
+    }
+
+    // Acquire read lock
+    Viper.Threads.RwLock.ReadEnter(lock);
+    readers = Viper.Threads.RwLock.get_Readers(lock);
+    if (readers != 1) {
+        Say("FAIL: should have 1 reader");
+        return;
+    }
+
+    Viper.Threads.RwLock.ReadExit(lock);
+    readers = Viper.Threads.RwLock.get_Readers(lock);
+    if (readers != 0) {
+        Say("FAIL: should have 0 readers after exit");
+        return;
+    }
+
+    // Write lock
+    Viper.Threads.RwLock.WriteEnter(lock);
+    var isWriteLocked = Viper.Threads.RwLock.get_IsWriteLocked(lock);
+    if (isWriteLocked != 1) {
+        Say("FAIL: should be write locked");
+        return;
+    }
+    Viper.Threads.RwLock.WriteExit(lock);
+
+    // === Test 6: Barrier ===
+    var barrier = Viper.Threads.Barrier.New(1);
+    var parties = Viper.Threads.Barrier.get_Parties(barrier);
+    if (parties != 1) {
+        Say("FAIL: barrier should have 1 party");
+        return;
+    }
+
+    var waiting = Viper.Threads.Barrier.get_Waiting(barrier);
+    if (waiting != 0) {
+        Say("FAIL: no one waiting initially");
+        return;
+    }
+
+    // Single-party barrier: arrive immediately releases
+    Viper.Threads.Barrier.Arrive(barrier);
+
+    Say("RESULT: ok");
+}

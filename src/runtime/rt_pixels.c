@@ -14,6 +14,7 @@
 #include "rt_pixels.h"
 
 #include "rt_bytes.h"
+#include "rt_compress.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -570,6 +571,457 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path)
     free(row_buf);
     fflush(f);
     fclose(f);
+    return 1;
+}
+
+//=============================================================================
+// PNG Image I/O
+//=============================================================================
+
+// PNG uses big-endian integers
+static uint32_t png_read_u32(const uint8_t *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+// Paeth predictor as defined by the PNG spec
+static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c)
+{
+    int p = (int)a + (int)b - (int)c;
+    int pa = p > (int)a ? p - (int)a : (int)a - p;
+    int pb = p > (int)b ? p - (int)b : (int)b - p;
+    int pc = p > (int)c ? p - (int)c : (int)c - p;
+    if (pa <= pb && pa <= pc)
+        return a;
+    if (pb <= pc)
+        return b;
+    return c;
+}
+
+void *rt_pixels_load_png(void *path)
+{
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    // Read entire file into memory
+    fseek(f, 0, SEEK_END);
+    long file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (file_len < 8)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
+    if (!file_data)
+    {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len)
+    {
+        free(file_data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+
+    // Verify PNG signature
+    static const uint8_t png_sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (memcmp(file_data, png_sig, 8) != 0)
+    {
+        free(file_data);
+        return NULL;
+    }
+
+    // Parse IHDR and collect IDAT chunks
+    uint32_t width = 0, height = 0;
+    uint8_t bit_depth = 0, color_type = 0;
+    uint8_t *idat_buf = NULL;
+    size_t idat_len = 0;
+    size_t idat_cap = 0;
+    size_t pos = 8;
+
+    while (pos + 12 <= (size_t)file_len)
+    {
+        uint32_t chunk_len = png_read_u32(file_data + pos);
+        const uint8_t *chunk_type = file_data + pos + 4;
+        const uint8_t *chunk_data = file_data + pos + 8;
+
+        if (pos + 12 + chunk_len > (size_t)file_len)
+            break;
+
+        if (memcmp(chunk_type, "IHDR", 4) == 0 && chunk_len >= 13)
+        {
+            width = png_read_u32(chunk_data);
+            height = png_read_u32(chunk_data + 4);
+            bit_depth = chunk_data[8];
+            color_type = chunk_data[9];
+            // Only support 8-bit RGB (2) and RGBA (6)
+            if (bit_depth != 8 || (color_type != 2 && color_type != 6))
+            {
+                free(file_data);
+                if (idat_buf)
+                    free(idat_buf);
+                return NULL;
+            }
+        }
+        else if (memcmp(chunk_type, "IDAT", 4) == 0)
+        {
+            // Accumulate IDAT data
+            if (idat_len + chunk_len > idat_cap)
+            {
+                idat_cap = (idat_len + chunk_len) * 2;
+                uint8_t *new_buf = (uint8_t *)realloc(idat_buf, idat_cap);
+                if (!new_buf)
+                {
+                    free(file_data);
+                    if (idat_buf)
+                        free(idat_buf);
+                    return NULL;
+                }
+                idat_buf = new_buf;
+            }
+            memcpy(idat_buf + idat_len, chunk_data, chunk_len);
+            idat_len += chunk_len;
+        }
+        else if (memcmp(chunk_type, "IEND", 4) == 0)
+        {
+            break;
+        }
+
+        pos += 12 + chunk_len; // length + type + data + crc
+    }
+
+    free(file_data);
+
+    if (width == 0 || height == 0 || !idat_buf || idat_len < 2)
+    {
+        if (idat_buf)
+            free(idat_buf);
+        return NULL;
+    }
+
+    // IDAT data is a zlib stream: 2-byte header + DEFLATE data + 4-byte Adler32
+    // Skip the 2-byte zlib header and use our DEFLATE decompressor
+    size_t deflate_len = idat_len - 2; // skip zlib header, ignore trailing adler32
+    if (deflate_len <= 4)
+    {
+        free(idat_buf);
+        return NULL;
+    }
+    deflate_len -= 4; // strip adler32 checksum
+
+    // Create a Bytes object with the raw DEFLATE data for rt_compress_inflate
+    void *comp_bytes = rt_bytes_new((int64_t)deflate_len);
+    if (!comp_bytes)
+    {
+        free(idat_buf);
+        return NULL;
+    }
+    // Copy deflate data (skip 2-byte zlib header)
+    {
+        // Access internal bytes data
+        typedef struct
+        {
+            int64_t len;
+            uint8_t *data;
+        } bytes_t;
+        bytes_t *b = (bytes_t *)comp_bytes;
+        memcpy(b->data, idat_buf + 2, deflate_len);
+    }
+    free(idat_buf);
+
+    // Decompress
+    void *raw_bytes = rt_compress_inflate(comp_bytes);
+    if (!raw_bytes)
+        return NULL;
+
+    // Access decompressed data
+    typedef struct
+    {
+        int64_t len;
+        uint8_t *data;
+    } bytes_t;
+    bytes_t *raw = (bytes_t *)raw_bytes;
+
+    int channels = (color_type == 6) ? 4 : 3; // RGBA vs RGB
+    size_t stride = (size_t)width * (size_t)channels;
+    size_t expected = (stride + 1) * (size_t)height; // +1 for filter byte per row
+
+    if ((size_t)raw->len < expected)
+        return NULL;
+
+    // Reconstruct filtered scanlines
+    uint8_t *scanlines = raw->data;
+    // Allocate temp buffer for reconstructed image data
+    uint8_t *img = (uint8_t *)malloc(stride * height);
+    if (!img)
+        return NULL;
+
+    for (uint32_t y = 0; y < height; y++)
+    {
+        uint8_t filter = scanlines[y * (stride + 1)];
+        const uint8_t *src = scanlines + y * (stride + 1) + 1;
+        uint8_t *dst = img + y * stride;
+        const uint8_t *prev = (y > 0) ? img + (y - 1) * stride : NULL;
+
+        for (size_t i = 0; i < stride; i++)
+        {
+            uint8_t raw_byte = src[i];
+            uint8_t a = (i >= (size_t)channels) ? dst[i - channels] : 0;
+            uint8_t b_val = prev ? prev[i] : 0;
+            uint8_t c = (prev && i >= (size_t)channels) ? prev[i - channels] : 0;
+
+            switch (filter)
+            {
+                case 0: // None
+                    dst[i] = raw_byte;
+                    break;
+                case 1: // Sub
+                    dst[i] = raw_byte + a;
+                    break;
+                case 2: // Up
+                    dst[i] = raw_byte + b_val;
+                    break;
+                case 3: // Average
+                    dst[i] = raw_byte + (uint8_t)(((int)a + (int)b_val) / 2);
+                    break;
+                case 4: // Paeth
+                    dst[i] = raw_byte + paeth_predict(a, b_val, c);
+                    break;
+                default: // Unknown filter
+                    free(img);
+                    return NULL;
+            }
+        }
+    }
+
+    // Create Pixels object and convert to our RGBA format (0xRRGGBBAA)
+    rt_pixels_impl *pixels = pixels_alloc((int64_t)width, (int64_t)height);
+    if (!pixels)
+    {
+        free(img);
+        return NULL;
+    }
+
+    for (uint32_t y = 0; y < height; y++)
+    {
+        for (uint32_t x = 0; x < width; x++)
+        {
+            const uint8_t *px = img + (y * stride) + x * channels;
+            uint8_t r = px[0];
+            uint8_t g = px[1];
+            uint8_t b_ch = px[2];
+            uint8_t alpha = (channels == 4) ? px[3] : 0xFF;
+            pixels->data[y * width + x] =
+                ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b_ch << 8) | alpha;
+        }
+    }
+
+    free(img);
+    return pixels;
+}
+
+int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
+{
+    if (!pixels_ptr || !path)
+        return 0;
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels_ptr;
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath || p->width <= 0 || p->height <= 0)
+        return 0;
+
+    uint32_t w = (uint32_t)p->width;
+    uint32_t h = (uint32_t)p->height;
+    size_t stride = (size_t)w * 4; // RGBA
+
+    // Build raw PNG scanline data with filter byte (filter=0 = None)
+    size_t raw_len = (stride + 1) * h;
+    uint8_t *raw = (uint8_t *)malloc(raw_len);
+    if (!raw)
+        return 0;
+
+    for (uint32_t y = 0; y < h; y++)
+    {
+        raw[y * (stride + 1)] = 0; // Filter: None
+        uint8_t *dst = raw + y * (stride + 1) + 1;
+        for (uint32_t x = 0; x < w; x++)
+        {
+            uint32_t pixel = p->data[y * w + x];
+            dst[x * 4 + 0] = (uint8_t)((pixel >> 24) & 0xFF); // R
+            dst[x * 4 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
+            dst[x * 4 + 2] = (uint8_t)((pixel >> 8) & 0xFF);  // B
+            dst[x * 4 + 3] = (uint8_t)(pixel & 0xFF);          // A
+        }
+    }
+
+    // Compress the raw data using DEFLATE
+    void *raw_bytes = rt_bytes_new((int64_t)raw_len);
+    if (!raw_bytes)
+    {
+        free(raw);
+        return 0;
+    }
+    {
+        typedef struct
+        {
+            int64_t len;
+            uint8_t *data;
+        } bytes_t;
+        bytes_t *b = (bytes_t *)raw_bytes;
+        memcpy(b->data, raw, raw_len);
+    }
+    free(raw);
+
+    void *comp_bytes = rt_compress_deflate(raw_bytes);
+    if (!comp_bytes)
+        return 0;
+
+    typedef struct
+    {
+        int64_t len;
+        uint8_t *data;
+    } bytes_t;
+    bytes_t *comp = (bytes_t *)comp_bytes;
+
+    // Build zlib stream: 2-byte header + deflate data + 4-byte adler32
+    // Zlib header: CMF=0x78 (deflate, window=32K), FLG=0x01 (no dict, check=1)
+    size_t zlib_len = 2 + (size_t)comp->len + 4;
+    uint8_t *zlib_data = (uint8_t *)malloc(zlib_len);
+    if (!zlib_data)
+        return 0;
+
+    zlib_data[0] = 0x78; // CMF
+    zlib_data[1] = 0x01; // FLG
+    memcpy(zlib_data + 2, comp->data, (size_t)comp->len);
+
+    // Compute Adler-32 of the raw (uncompressed) data
+    {
+        bytes_t *raw_b = (bytes_t *)raw_bytes;
+        uint32_t a = 1, b_v = 0;
+        for (int64_t i = 0; i < raw_b->len; i++)
+        {
+            a = (a + raw_b->data[i]) % 65521;
+            b_v = (b_v + a) % 65521;
+        }
+        uint32_t adler = (b_v << 16) | a;
+        zlib_data[2 + comp->len + 0] = (uint8_t)((adler >> 24) & 0xFF);
+        zlib_data[2 + comp->len + 1] = (uint8_t)((adler >> 16) & 0xFF);
+        zlib_data[2 + comp->len + 2] = (uint8_t)((adler >> 8) & 0xFF);
+        zlib_data[2 + comp->len + 3] = (uint8_t)(adler & 0xFF);
+    }
+
+    // CRC-32 table
+    static uint32_t crc_table[256];
+    static int crc_table_init = 0;
+    if (!crc_table_init)
+    {
+        for (uint32_t n = 0; n < 256; n++)
+        {
+            uint32_t c = n;
+            for (int k = 0; k < 8; k++)
+                c = (c & 1) ? (0xEDB88320 ^ (c >> 1)) : (c >> 1);
+            crc_table[n] = c;
+        }
+        crc_table_init = 1;
+    }
+
+    // Helper: compute CRC over type + data
+    #define PNG_CRC(type_data, len) do { \
+        uint32_t crc = 0xFFFFFFFF; \
+        for (size_t _i = 0; _i < (size_t)(len); _i++) \
+            crc = crc_table[(crc ^ (type_data)[_i]) & 0xFF] ^ (crc >> 8); \
+        chunk_crc = crc ^ 0xFFFFFFFF; \
+    } while(0)
+
+    FILE *out = fopen(filepath, "wb");
+    if (!out)
+    {
+        free(zlib_data);
+        return 0;
+    }
+
+    // Write PNG signature
+    static const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    fwrite(sig, 1, 8, out);
+
+    // Write IHDR chunk
+    {
+        uint8_t ihdr[13];
+        ihdr[0] = (uint8_t)(w >> 24); ihdr[1] = (uint8_t)(w >> 16);
+        ihdr[2] = (uint8_t)(w >> 8);  ihdr[3] = (uint8_t)w;
+        ihdr[4] = (uint8_t)(h >> 24); ihdr[5] = (uint8_t)(h >> 16);
+        ihdr[6] = (uint8_t)(h >> 8);  ihdr[7] = (uint8_t)h;
+        ihdr[8] = 8;  // bit depth
+        ihdr[9] = 6;  // color type = RGBA
+        ihdr[10] = 0; // compression
+        ihdr[11] = 0; // filter
+        ihdr[12] = 0; // interlace
+
+        uint8_t len_buf[4] = {0, 0, 0, 13};
+        fwrite(len_buf, 1, 4, out);
+
+        uint8_t type_data[4 + 13];
+        memcpy(type_data, "IHDR", 4);
+        memcpy(type_data + 4, ihdr, 13);
+        fwrite(type_data, 1, 17, out);
+
+        uint32_t chunk_crc;
+        PNG_CRC(type_data, 17);
+        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24), (uint8_t)(chunk_crc >> 16),
+                              (uint8_t)(chunk_crc >> 8), (uint8_t)chunk_crc};
+        fwrite(crc_buf, 1, 4, out);
+    }
+
+    // Write IDAT chunk
+    {
+        uint8_t len_buf[4] = {(uint8_t)(zlib_len >> 24), (uint8_t)(zlib_len >> 16),
+                              (uint8_t)(zlib_len >> 8), (uint8_t)zlib_len};
+        fwrite(len_buf, 1, 4, out);
+
+        size_t td_len = 4 + zlib_len;
+        uint8_t *type_data = (uint8_t *)malloc(td_len);
+        if (!type_data)
+        {
+            free(zlib_data);
+            fclose(out);
+            return 0;
+        }
+        memcpy(type_data, "IDAT", 4);
+        memcpy(type_data + 4, zlib_data, zlib_len);
+        fwrite(type_data, 1, td_len, out);
+
+        uint32_t chunk_crc;
+        PNG_CRC(type_data, td_len);
+        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24), (uint8_t)(chunk_crc >> 16),
+                              (uint8_t)(chunk_crc >> 8), (uint8_t)chunk_crc};
+        fwrite(crc_buf, 1, 4, out);
+        free(type_data);
+    }
+
+    free(zlib_data);
+
+    // Write IEND chunk
+    {
+        uint8_t iend[12] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82};
+        fwrite(iend, 1, 12, out);
+    }
+
+    #undef PNG_CRC
+
+    fflush(out);
+    fclose(out);
     return 1;
 }
 

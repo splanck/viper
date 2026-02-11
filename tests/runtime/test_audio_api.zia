@@ -1,0 +1,36 @@
+// Test: Audio API callable without crash
+module TestAudioApi;
+
+bind Viper.Terminal;
+
+func start() {
+    // Init may return 0 (no audio device in CI) or 1 (audio available)
+    var ok = Viper.Sound.Audio.Init();
+
+    if (ok == 1) {
+        // Audio system available - test volume control
+        Viper.Sound.Audio.SetMasterVolume(75);
+        var vol = Viper.Sound.Audio.GetMasterVolume();
+        if (vol != 75) {
+            Say("FAIL: master volume should be 75");
+            return;
+        }
+
+        Viper.Sound.Audio.SetMasterVolume(50);
+        var vol2 = Viper.Sound.Audio.GetMasterVolume();
+        if (vol2 != 50) {
+            Say("FAIL: master volume should be 50");
+            return;
+        }
+
+        // Test pause/resume (no-op when nothing is playing)
+        Viper.Sound.Audio.PauseAll();
+        Viper.Sound.Audio.ResumeAll();
+        Viper.Sound.Audio.StopAllSounds();
+
+        Viper.Sound.Audio.Shutdown();
+    }
+    // If Init returns 0, audio not available - that's OK for CI
+
+    Say("RESULT: ok");
+}

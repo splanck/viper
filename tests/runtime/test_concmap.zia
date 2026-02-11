@@ -1,0 +1,104 @@
+// Test: ConcurrentMap thread-safe hash map
+module TestConcMap;
+
+bind Viper.Terminal;
+
+func start() {
+    var cm = Viper.Threads.ConcurrentMap.New();
+
+    // Empty initially
+    var len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    if (len != 0) {
+        Say("FAIL: initial len should be 0");
+        return;
+    }
+
+    var empty = Viper.Threads.ConcurrentMap.get_IsEmpty(cm);
+    if (empty != 1) {
+        Say("FAIL: should be empty initially");
+        return;
+    }
+
+    // Set some values
+    Viper.Threads.ConcurrentMap.Set(cm, "alpha", 1);
+    Viper.Threads.ConcurrentMap.Set(cm, "beta", 2);
+    Viper.Threads.ConcurrentMap.Set(cm, "gamma", 3);
+
+    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    if (len != 3) {
+        Say("FAIL: len should be 3");
+        return;
+    }
+
+    // Has
+    var hasAlpha = Viper.Threads.ConcurrentMap.Has(cm, "alpha");
+    if (hasAlpha != 1) {
+        Say("FAIL: should have alpha");
+        return;
+    }
+
+    var hasDelta = Viper.Threads.ConcurrentMap.Has(cm, "delta");
+    if (hasDelta != 0) {
+        Say("FAIL: should not have delta");
+        return;
+    }
+
+    // SetIfMissing — alpha exists, so should fail
+    var inserted = Viper.Threads.ConcurrentMap.SetIfMissing(cm, "alpha", 99);
+    if (inserted != 0) {
+        Say("FAIL: SetIfMissing should return 0 for existing key");
+        return;
+    }
+
+    // SetIfMissing — delta doesn't exist, should succeed
+    var inserted2 = Viper.Threads.ConcurrentMap.SetIfMissing(cm, "delta", 4);
+    if (inserted2 != 1) {
+        Say("FAIL: SetIfMissing should return 1 for new key");
+        return;
+    }
+
+    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    if (len != 4) {
+        Say("FAIL: len should be 4 after SetIfMissing");
+        return;
+    }
+
+    // Remove
+    var removed = Viper.Threads.ConcurrentMap.Remove(cm, "beta");
+    if (removed != 1) {
+        Say("FAIL: Remove should return 1");
+        return;
+    }
+
+    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    if (len != 3) {
+        Say("FAIL: len should be 3 after Remove");
+        return;
+    }
+
+    // Keys snapshot
+    var keys = Viper.Threads.ConcurrentMap.Keys(cm);
+    var klen = Viper.Collections.Seq.get_Len(keys);
+    if (klen != 3) {
+        Say("FAIL: Keys seq should have 3 items");
+        return;
+    }
+
+    // Values snapshot
+    var vals = Viper.Threads.ConcurrentMap.Values(cm);
+    var vlen = Viper.Collections.Seq.get_Len(vals);
+    if (vlen != 3) {
+        Say("FAIL: Values seq should have 3 items");
+        return;
+    }
+
+    // Clear
+    Viper.Threads.ConcurrentMap.Clear(cm);
+    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    if (len != 0) {
+        Say("FAIL: len should be 0 after Clear");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

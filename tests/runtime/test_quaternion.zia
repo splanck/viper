@@ -1,0 +1,116 @@
+// Test: Quaternion math operations
+module TestQuaternion;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: Identity quaternion ===
+    var id = Viper.Math.Quat.Identity();
+    var ix = Viper.Math.Quat.get_X(id);
+    var iy = Viper.Math.Quat.get_Y(id);
+    var iz = Viper.Math.Quat.get_Z(id);
+    var iw = Viper.Math.Quat.get_W(id);
+    if (ix != 0.0) { Say("FAIL: identity X should be 0"); return; }
+    if (iy != 0.0) { Say("FAIL: identity Y should be 0"); return; }
+    if (iz != 0.0) { Say("FAIL: identity Z should be 0"); return; }
+    if (iw != 1.0) { Say("FAIL: identity W should be 1"); return; }
+
+    // === Test 2: New ===
+    var q = Viper.Math.Quat.New(1.0, 2.0, 3.0, 4.0);
+    var qx = Viper.Math.Quat.get_X(q);
+    var qy = Viper.Math.Quat.get_Y(q);
+    if (qx != 1.0) { Say("FAIL: New X should be 1"); return; }
+    if (qy != 2.0) { Say("FAIL: New Y should be 2"); return; }
+
+    // === Test 3: Length ===
+    // |q| = sqrt(1+4+9+16) = sqrt(30)
+    var len = Viper.Math.Quat.Len(q);
+    if (len < 5.47) { Say("FAIL: Len should be ~5.477"); return; }
+    if (len > 5.48) { Say("FAIL: Len should be ~5.477"); return; }
+
+    var lenSq = Viper.Math.Quat.LenSq(q);
+    if (lenSq != 30.0) { Say("FAIL: LenSq should be 30"); return; }
+
+    // === Test 4: Normalize ===
+    var normed = Viper.Math.Quat.Norm(q);
+    var nLen = Viper.Math.Quat.Len(normed);
+    if (nLen < 0.999) { Say("FAIL: normalized len should be ~1"); return; }
+    if (nLen > 1.001) { Say("FAIL: normalized len should be ~1"); return; }
+
+    // === Test 5: Conjugate ===
+    var conj = Viper.Math.Quat.Conjugate(q);
+    var cx = Viper.Math.Quat.get_X(conj);
+    var cy = Viper.Math.Quat.get_Y(conj);
+    var cw = Viper.Math.Quat.get_W(conj);
+    if (cx != -1.0) { Say("FAIL: conjugate X should be -1"); return; }
+    if (cy != -2.0) { Say("FAIL: conjugate Y should be -2"); return; }
+    if (cw != 4.0) { Say("FAIL: conjugate W should stay 4"); return; }
+
+    // === Test 6: Inverse of identity is identity ===
+    var invId = Viper.Math.Quat.Inverse(id);
+    var invW = Viper.Math.Quat.get_W(invId);
+    if (invW != 1.0) { Say("FAIL: inverse of identity W should be 1"); return; }
+
+    // === Test 7: Multiply identity * q = q ===
+    var mulResult = Viper.Math.Quat.Mul(id, q);
+    var mrx = Viper.Math.Quat.get_X(mulResult);
+    var mry = Viper.Math.Quat.get_Y(mulResult);
+    if (mrx != 1.0) { Say("FAIL: id*q X should be 1"); return; }
+    if (mry != 2.0) { Say("FAIL: id*q Y should be 2"); return; }
+
+    // === Test 8: Dot product ===
+    var dot = Viper.Math.Quat.Dot(q, q);
+    if (dot != 30.0) { Say("FAIL: q dot q should be 30"); return; }
+
+    // === Test 9: FromAxisAngle ===
+    // 90 degrees around Z axis
+    var zAxis = Viper.Math.Vec3.New(0.0, 0.0, 1.0);
+    var rot90 = Viper.Math.Quat.FromAxisAngle(zAxis, 1.5707963);
+    var rotLen = Viper.Math.Quat.Len(rot90);
+    if (rotLen < 0.999) { Say("FAIL: FromAxisAngle should be unit length"); return; }
+    if (rotLen > 1.001) { Say("FAIL: FromAxisAngle should be unit length"); return; }
+
+    // Axis should be Z
+    var axis = Viper.Math.Quat.Axis(rot90);
+    var az = Viper.Math.Vec3.get_Z(axis);
+    if (az < 0.99) { Say("FAIL: axis Z should be ~1"); return; }
+
+    // Angle should be ~pi/2
+    var angle = Viper.Math.Quat.Angle(rot90);
+    if (angle < 1.57) { Say("FAIL: angle should be ~pi/2"); return; }
+    if (angle > 1.58) { Say("FAIL: angle should be ~pi/2"); return; }
+
+    // === Test 10: FromEuler ===
+    var euler = Viper.Math.Quat.FromEuler(0.0, 0.0, 1.5707963);
+    var eulerLen = Viper.Math.Quat.Len(euler);
+    if (eulerLen < 0.999) { Say("FAIL: FromEuler should be unit length"); return; }
+    if (eulerLen > 1.001) { Say("FAIL: FromEuler should be unit length"); return; }
+
+    // === Test 11: RotateVec3 — rotate (1,0,0) 90deg around Z → (0,1,0) ===
+    var vec = Viper.Math.Vec3.New(1.0, 0.0, 0.0);
+    var rotated = Viper.Math.Quat.RotateVec3(rot90, vec);
+    var rvx = Viper.Math.Vec3.get_X(rotated);
+    var rvy = Viper.Math.Vec3.get_Y(rotated);
+    // After 90° around Z: x→0, y→1 (approx)
+    if (rvx > 0.01) { Say("FAIL: rotated X should be ~0"); return; }
+    if (rvx < -0.01) { Say("FAIL: rotated X should be ~0"); return; }
+    if (rvy < 0.99) { Say("FAIL: rotated Y should be ~1"); return; }
+
+    // === Test 12: Slerp ===
+    var slerp = Viper.Math.Quat.Slerp(id, rot90, 0.0);
+    var slerpW = Viper.Math.Quat.get_W(slerp);
+    var idW2 = Viper.Math.Quat.get_W(id);
+    // Slerp(id, q, 0) should ≈ id
+    if (slerpW < 0.99) { Say("FAIL: slerp t=0 should be ~identity"); return; }
+
+    // === Test 13: Lerp ===
+    var lerp = Viper.Math.Quat.Lerp(id, rot90, 0.0);
+    var lerpW = Viper.Math.Quat.get_W(lerp);
+    if (lerpW < 0.99) { Say("FAIL: lerp t=0 should be ~identity"); return; }
+
+    // === Test 14: ToMat4 returns non-null ===
+    var mat = Viper.Math.Quat.ToMat4(id);
+    if (mat == 0) { Say("FAIL: ToMat4 should return non-null"); return; }
+
+    Say("RESULT: ok");
+}

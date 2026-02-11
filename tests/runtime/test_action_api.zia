@@ -1,0 +1,164 @@
+// Test: Action mapping system — define, bind, save, load
+module TestActionApi;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: Define actions ===
+    Viper.Input.Action.Clear();
+
+    var ok = Viper.Input.Action.Define("jump");
+    if (ok != 1) {
+        Say("FAIL: Define jump should succeed");
+        return;
+    }
+
+    // Duplicate should fail
+    var dup = Viper.Input.Action.Define("jump");
+    if (dup != 0) {
+        Say("FAIL: duplicate Define should fail");
+        return;
+    }
+
+    // Define axis
+    var ok2 = Viper.Input.Action.DefineAxis("move_x");
+    if (ok2 != 1) {
+        Say("FAIL: DefineAxis move_x should succeed");
+        return;
+    }
+
+    // === Test 2: Exists and IsAxis ===
+    var exists = Viper.Input.Action.Exists("jump");
+    if (exists != 1) {
+        Say("FAIL: jump should exist");
+        return;
+    }
+
+    var notExists = Viper.Input.Action.Exists("nonexistent");
+    if (notExists != 0) {
+        Say("FAIL: nonexistent should not exist");
+        return;
+    }
+
+    var isAxis = Viper.Input.Action.IsAxis("move_x");
+    if (isAxis != 1) {
+        Say("FAIL: move_x should be axis");
+        return;
+    }
+
+    var notAxis = Viper.Input.Action.IsAxis("jump");
+    if (notAxis != 0) {
+        Say("FAIL: jump should not be axis");
+        return;
+    }
+
+    // === Test 3: Key bindings ===
+    // Bind Space (key code 32) to jump
+    var bindOk = Viper.Input.Action.BindKey("jump", 32);
+    if (bindOk != 1) {
+        Say("FAIL: BindKey should succeed");
+        return;
+    }
+
+    var count = Viper.Input.Action.BindingCount("jump");
+    if (count != 1) {
+        Say("FAIL: binding count should be 1");
+        return;
+    }
+
+    // Bind another key (Enter = 13)
+    Viper.Input.Action.BindKey("jump", 13);
+    count = Viper.Input.Action.BindingCount("jump");
+    if (count != 2) {
+        Say("FAIL: binding count should be 2");
+        return;
+    }
+
+    // BindingsStr should return non-empty
+    var desc = Viper.Input.Action.BindingsStr("jump");
+
+    // === Test 4: Axis key bindings ===
+    Viper.Input.Action.BindKeyAxis("move_x", 263, -1.0);  // Left arrow
+    Viper.Input.Action.BindKeyAxis("move_x", 262, 1.0);   // Right arrow
+    count = Viper.Input.Action.BindingCount("move_x");
+    if (count != 2) {
+        Say("FAIL: move_x should have 2 bindings");
+        return;
+    }
+
+    // === Test 5: Action list ===
+    var actions = Viper.Input.Action.List();
+    var alen = Viper.Collections.Seq.get_Len(actions);
+    if (alen != 2) {
+        Say("FAIL: should have 2 actions");
+        return;
+    }
+
+    // === Test 6: Save and Load ===
+    var saved = Viper.Input.Action.Save();
+
+    // Clear and verify empty
+    Viper.Input.Action.Clear();
+    var afterClear = Viper.Input.Action.Exists("jump");
+    if (afterClear != 0) {
+        Say("FAIL: jump should not exist after clear");
+        return;
+    }
+
+    // Load from saved JSON
+    var loadOk = Viper.Input.Action.Load(saved);
+    if (loadOk != 1) {
+        Say("FAIL: Load should succeed");
+        return;
+    }
+
+    // Verify restored
+    var restored = Viper.Input.Action.Exists("jump");
+    if (restored != 1) {
+        Say("FAIL: jump should exist after Load");
+        return;
+    }
+
+    var restoredAxis = Viper.Input.Action.Exists("move_x");
+    if (restoredAxis != 1) {
+        Say("FAIL: move_x should exist after Load");
+        return;
+    }
+
+    var restoredCount = Viper.Input.Action.BindingCount("jump");
+    if (restoredCount != 2) {
+        Say("FAIL: jump should have 2 bindings after Load");
+        return;
+    }
+
+    // === Test 7: Remove action ===
+    var removed = Viper.Input.Action.Remove("jump");
+    if (removed != 1) {
+        Say("FAIL: Remove should succeed");
+        return;
+    }
+
+    exists = Viper.Input.Action.Exists("jump");
+    if (exists != 0) {
+        Say("FAIL: jump should not exist after Remove");
+        return;
+    }
+
+    // === Test 8: Unbind key ===
+    var unbound = Viper.Input.Action.UnbindKey("move_x", 263);
+    if (unbound != 1) {
+        Say("FAIL: UnbindKey should succeed");
+        return;
+    }
+
+    count = Viper.Input.Action.BindingCount("move_x");
+    if (count != 1) {
+        Say("FAIL: move_x should have 1 binding after unbind");
+        return;
+    }
+
+    // Cleanup
+    Viper.Input.Action.Clear();
+
+    Say("RESULT: ok");
+}

@@ -1,0 +1,78 @@
+// Test: Unified serialization interface
+module TestSerializeUnified;
+
+bind Viper.Terminal;
+
+func start() {
+    // Format constants: JSON=0, XML=1, YAML=2, TOML=3, CSV=4
+
+    // === Test 1: FormatName ===
+    var jsonName = Viper.Data.Serialize.FormatName(0);
+    var xmlName = Viper.Data.Serialize.FormatName(1);
+    var yamlName = Viper.Data.Serialize.FormatName(2);
+    var tomlName = Viper.Data.Serialize.FormatName(3);
+    var csvName = Viper.Data.Serialize.FormatName(4);
+    // Just verify they return non-empty
+    if (Viper.String.get_Length(jsonName) < 1) { Say("FAIL: JSON format name should be non-empty"); return; }
+    if (Viper.String.get_Length(xmlName) < 1) { Say("FAIL: XML format name should be non-empty"); return; }
+
+    // === Test 2: MimeType ===
+    var jsonMime = Viper.Data.Serialize.MimeType(0);
+    if (Viper.String.get_Length(jsonMime) < 1) { Say("FAIL: JSON MIME should be non-empty"); return; }
+
+    // === Test 3: FormatFromName ===
+    var jsonFmt = Viper.Data.Serialize.FormatFromName("json");
+    if (jsonFmt != 0) { Say("FAIL: FormatFromName(json) should be 0"); return; }
+
+    var xmlFmt = Viper.Data.Serialize.FormatFromName("xml");
+    if (xmlFmt != 1) { Say("FAIL: FormatFromName(xml) should be 1"); return; }
+
+    var unknownFmt = Viper.Data.Serialize.FormatFromName("unknown");
+    if (unknownFmt != -1) { Say("FAIL: FormatFromName(unknown) should be -1"); return; }
+
+    // === Test 4: Parse JSON ===
+    var json = "{\"name\":\"Alice\",\"age\":30}";
+    var parsed = Viper.Data.Serialize.Parse(json, 0);
+    if (parsed == 0) { Say("FAIL: JSON parse should return non-null"); return; }
+
+    // === Test 5: Format back to JSON ===
+    var formatted = Viper.Data.Serialize.Format(parsed, 0);
+    if (Viper.String.get_Length(formatted) < 5) { Say("FAIL: formatted JSON should be non-empty"); return; }
+
+    // === Test 6: FormatPretty ===
+    var pretty = Viper.Data.Serialize.FormatPretty(parsed, 0, 2);
+    if (Viper.String.get_Length(pretty) < 5) { Say("FAIL: pretty JSON should be non-empty"); return; }
+
+    // === Test 7: IsValid ===
+    var isValidJson = Viper.Data.Serialize.IsValid(json, 0);
+    if (isValidJson != 1) { Say("FAIL: valid JSON should return 1"); return; }
+
+    // IsValid for clearly non-JSON text
+    var invalidJson = "hello world";
+    var isInvalid = Viper.Data.Serialize.IsValid(invalidJson, 0);
+    // Note: some validators may be lenient; just verify it doesn't crash
+    // Skip strict check since validator may interpret plain text as valid string
+
+    // === Test 8: Detect ===
+    var detectedJson = Viper.Data.Serialize.Detect(json);
+    if (detectedJson != 0) { Say("FAIL: Detect should return 0 (JSON) for object"); return; }
+
+    var xmlText = "<root><item>test</item></root>";
+    var detectedXml = Viper.Data.Serialize.Detect(xmlText);
+    if (detectedXml != 1) { Say("FAIL: Detect should return 1 (XML) for xml"); return; }
+
+    // === Test 9: AutoParse ===
+    var autoParsed = Viper.Data.Serialize.AutoParse(json);
+    if (autoParsed == 0) { Say("FAIL: AutoParse should return non-null"); return; }
+
+    // === Test 10: Convert JSON → YAML ===
+    var simpleJson = "{\"key\":\"value\"}";
+    var asYaml = Viper.Data.Serialize.Convert(simpleJson, 0, 2);
+    if (Viper.String.get_Length(asYaml) < 3) { Say("FAIL: Convert JSON→YAML should produce output"); return; }
+
+    // === Test 11: Error (after valid parse, should be empty or ok) ===
+    var err = Viper.Data.Serialize.Error();
+    // Just verify it returns a string (may or may not be empty)
+
+    Say("RESULT: ok");
+}

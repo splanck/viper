@@ -1,0 +1,167 @@
+// Test: Physics2D full feature test — gravity, velocity, forces, properties
+module TestPhysics2DFull;
+
+bind Viper.Terminal;
+
+func start() {
+    // === Test 1: World creation with gravity ===
+    var world = Viper.Game.Physics2D.World.New(0.0, 100.0);
+    var bodyCount = Viper.Game.Physics2D.World.get_BodyCount(world);
+    if (bodyCount != 0) {
+        Say("FAIL: world should start empty");
+        return;
+    }
+
+    // === Test 2: Body creation and properties ===
+    // Body: x=10, y=0, w=20, h=20, mass=1.0 (dynamic)
+    var body = Viper.Game.Physics2D.Body.New(10.0, 0.0, 20.0, 20.0, 1.0);
+
+    var bx = Viper.Game.Physics2D.Body.get_X(body);
+    var by = Viper.Game.Physics2D.Body.get_Y(body);
+    var bw = Viper.Game.Physics2D.Body.get_Width(body);
+    var bh = Viper.Game.Physics2D.Body.get_Height(body);
+    var bm = Viper.Game.Physics2D.Body.get_Mass(body);
+
+    if (bw != 20.0) {
+        Say("FAIL: body width should be 20");
+        return;
+    }
+    if (bh != 20.0) {
+        Say("FAIL: body height should be 20");
+        return;
+    }
+    if (bm != 1.0) {
+        Say("FAIL: body mass should be 1.0");
+        return;
+    }
+
+    // === Test 3: Static body detection ===
+    var staticBody = Viper.Game.Physics2D.Body.New(0.0, 100.0, 200.0, 10.0, 0.0);
+    var isStatic = Viper.Game.Physics2D.Body.get_IsStatic(staticBody);
+    if (isStatic != 1) {
+        Say("FAIL: body with mass=0 should be static");
+        return;
+    }
+
+    var isDynamic = Viper.Game.Physics2D.Body.get_IsStatic(body);
+    if (isDynamic != 0) {
+        Say("FAIL: body with mass=1 should not be static");
+        return;
+    }
+
+    // === Test 4: Velocity set/get ===
+    Viper.Game.Physics2D.Body.SetVel(body, 50.0, 0.0);
+    var vx = Viper.Game.Physics2D.Body.get_VX(body);
+    if (vx != 50.0) {
+        Say("FAIL: VX should be 50.0");
+        return;
+    }
+
+    // === Test 5: Restitution and Friction ===
+    Viper.Game.Physics2D.Body.set_Restitution(body, 0.8);
+    var rest = Viper.Game.Physics2D.Body.get_Restitution(body);
+    if (rest != 0.8) {
+        Say("FAIL: restitution should be 0.8");
+        return;
+    }
+
+    Viper.Game.Physics2D.Body.set_Friction(body, 0.3);
+    var fric = Viper.Game.Physics2D.Body.get_Friction(body);
+    if (fric != 0.3) {
+        Say("FAIL: friction should be 0.3");
+        return;
+    }
+
+    // === Test 6: SetPos ===
+    Viper.Game.Physics2D.Body.SetPos(body, 100.0, 50.0);
+    bx = Viper.Game.Physics2D.Body.get_X(body);
+    by = Viper.Game.Physics2D.Body.get_Y(body);
+    if (bx != 100.0) {
+        Say("FAIL: X should be 100.0 after SetPos");
+        return;
+    }
+    if (by != 50.0) {
+        Say("FAIL: Y should be 50.0 after SetPos");
+        return;
+    }
+
+    // === Test 7: Gravity simulation ===
+    // Reset body position and velocity
+    Viper.Game.Physics2D.Body.SetPos(body, 10.0, 0.0);
+    Viper.Game.Physics2D.Body.SetVel(body, 0.0, 0.0);
+
+    Viper.Game.Physics2D.World.Add(world, body);
+    Viper.Game.Physics2D.World.Add(world, staticBody);
+
+    bodyCount = Viper.Game.Physics2D.World.get_BodyCount(world);
+    if (bodyCount != 2) {
+        Say("FAIL: world should have 2 bodies");
+        return;
+    }
+
+    // Step the world — gravity should pull body down
+    Viper.Game.Physics2D.World.Step(world, 0.1);
+    var newY = Viper.Game.Physics2D.Body.get_Y(body);
+    if (newY < 0.1) {
+        Say("FAIL: body should have moved down due to gravity");
+        return;
+    }
+
+    // Multiple steps
+    Viper.Game.Physics2D.World.Step(world, 0.1);
+    Viper.Game.Physics2D.World.Step(world, 0.1);
+    var laterY = Viper.Game.Physics2D.Body.get_Y(body);
+    if (laterY < newY) {
+        Say("FAIL: body should continue falling");
+        return;
+    }
+
+    // === Test 8: ApplyForce ===
+    // Force accumulates and converts to velocity on World.Step
+    var pushBody = Viper.Game.Physics2D.Body.New(0.0, 0.0, 10.0, 10.0, 1.0);
+    Viper.Game.Physics2D.Body.ApplyForce(pushBody, 100.0, 0.0);
+    var forceWorld = Viper.Game.Physics2D.World.New(0.0, 0.0);
+    Viper.Game.Physics2D.World.Add(forceWorld, pushBody);
+    Viper.Game.Physics2D.World.Step(forceWorld, 0.1);
+    var pvx = Viper.Game.Physics2D.Body.get_VX(pushBody);
+    if (pvx == 0.0) {
+        Say("FAIL: VX should be nonzero after ApplyForce + Step");
+        return;
+    }
+
+    // === Test 9: ApplyImpulse ===
+    var impBody = Viper.Game.Physics2D.Body.New(0.0, 0.0, 10.0, 10.0, 2.0);
+    Viper.Game.Physics2D.Body.ApplyImpulse(impBody, 0.0, -50.0);
+    var ivy = Viper.Game.Physics2D.Body.get_VY(impBody);
+    // Impulse = change in momentum, velocity change = impulse/mass = -50/2 = -25
+    if (ivy > -1.0) {
+        Say("FAIL: VY should be negative after upward impulse");
+        return;
+    }
+
+    // === Test 10: SetGravity ===
+    Viper.Game.Physics2D.World.SetGravity(world, 0.0, 0.0);
+    // After setting gravity to 0, stepping should not add velocity
+    var testBody = Viper.Game.Physics2D.Body.New(50.0, 50.0, 10.0, 10.0, 1.0);
+    Viper.Game.Physics2D.Body.SetVel(testBody, 0.0, 0.0);
+    var world2 = Viper.Game.Physics2D.World.New(0.0, 0.0);
+    Viper.Game.Physics2D.World.Add(world2, testBody);
+    Viper.Game.Physics2D.World.Step(world2, 0.1);
+
+    var vy2 = Viper.Game.Physics2D.Body.get_VY(testBody);
+    var y2 = Viper.Game.Physics2D.Body.get_Y(testBody);
+    if (y2 != 50.0) {
+        Say("FAIL: body should not move with zero gravity and zero velocity");
+        return;
+    }
+
+    // === Test 11: Remove body from world ===
+    Viper.Game.Physics2D.World.Remove(world, body);
+    bodyCount = Viper.Game.Physics2D.World.get_BodyCount(world);
+    if (bodyCount != 1) {
+        Say("FAIL: world should have 1 body after Remove");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

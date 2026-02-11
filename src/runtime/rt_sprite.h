@@ -89,6 +89,18 @@ extern "C"
     /// @brief Get total number of frames.
     int64_t rt_sprite_get_frame_count(void *sprite);
 
+    /// @brief Get sprite horizontal flip.
+    int64_t rt_sprite_get_flip_x(void *sprite);
+
+    /// @brief Set sprite horizontal flip.
+    void rt_sprite_set_flip_x(void *sprite, int64_t flip);
+
+    /// @brief Get sprite vertical flip.
+    int64_t rt_sprite_get_flip_y(void *sprite);
+
+    /// @brief Set sprite vertical flip.
+    void rt_sprite_set_flip_y(void *sprite, int64_t flip);
+
     //=========================================================================
     // Sprite Methods
     //=========================================================================

@@ -297,6 +297,31 @@ extern "C"
     int8_t rt_action_load(rt_string json);
 
     //=========================================================================
+    // Key Chord/Combo Bindings
+    //=========================================================================
+
+    /// @brief Bind a key chord (multi-key combo) to a button action.
+    /// @details A chord triggers when ALL specified keys are held simultaneously.
+    ///          The last key in the chord must be newly pressed this frame for
+    ///          the action to register as "pressed". Example: Ctrl+Shift+S.
+    /// @param action Action name.
+    /// @param keys Seq of key codes (i64 values).
+    /// @return 1 on success, 0 if action not found, is axis, or keys invalid.
+    int8_t rt_action_bind_chord(rt_string action, void *keys);
+
+    /// @brief Unbind a key chord from an action.
+    /// @details Removes the chord that exactly matches the given key set.
+    /// @param action Action name.
+    /// @param keys Seq of key codes to match.
+    /// @return 1 if unbound, 0 if not found.
+    int8_t rt_action_unbind_chord(rt_string action, void *keys);
+
+    /// @brief Get the number of chord bindings for an action.
+    /// @param action Action name.
+    /// @return Number of chord bindings.
+    int64_t rt_action_chord_count(rt_string action);
+
+    //=========================================================================
     // Axis Constant Getters (for runtime.def)
     //=========================================================================
 
