@@ -360,6 +360,23 @@ namespace
     return pr >= PhysReg::X0 && pr <= PhysReg::X7;
 }
 
+/// @brief Check if a register is an ABI register (GPR x0-x7 or FPR v0-v7).
+///
+/// Moves to ABI registers are conservatively treated as having side effects
+/// by DCE, so copy propagation through them creates dead code that cannot
+/// be eliminated.
+[[nodiscard]] bool isABIReg(const MOperand &reg) noexcept
+{
+    if (!isPhysReg(reg))
+        return false;
+    const auto pr = static_cast<PhysReg>(reg.reg.idOrPhys);
+    if (reg.reg.cls == RegClass::GPR)
+        return pr >= PhysReg::X0 && pr <= PhysReg::X7;
+    if (reg.reg.cls == RegClass::FPR)
+        return pr >= PhysReg::V0 && pr <= PhysReg::V7;
+    return false;
+}
+
 /// @brief Check if an operand is an immediate with a given value.
 [[nodiscard]] bool isImmValue(const MOperand &op, long long value) noexcept
 {
@@ -931,12 +948,17 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             invalidateDependents(dstKey);
             copyOrigin.erase(dstKey);
 
-            // Find the origin of the source (follow the copy chain)
+            // Find the origin of the source (follow the copy chain).
+            // Don't follow through ABI registers (x0-x7) — moves to ABI regs
+            // can't be DCE'd, so propagating through them creates dead code.
             uint32_t srcKey = regKey(src);
             MOperand origin = src;
-            auto it = copyOrigin.find(srcKey);
-            if (it != copyOrigin.end())
-                origin = it->second;
+            if (!isABIReg(src))
+            {
+                auto it = copyOrigin.find(srcKey);
+                if (it != copyOrigin.end())
+                    origin = it->second;
+            }
 
             // If dst != origin, record the copy relationship
             if (!samePhysReg(dst, origin))
@@ -953,9 +975,12 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             continue;
         }
 
-        // For FMovRR (FP register move), same logic
+        // For FMovRR (FP register move), same logic — but only for same-class
+        // copies (FPR→FPR). Cross-class transfers (GPR→FPR bit-cast via fmov)
+        // must not be propagated, as substituting a GPR into an FPR instruction
+        // produces invalid assembly.
         if (instr.opc == MOpcode::FMovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
-            isPhysReg(instr.ops[1]))
+            isPhysReg(instr.ops[1]) && instr.ops[0].reg.cls == instr.ops[1].reg.cls)
         {
             const MOperand &dst = instr.ops[0];
             const MOperand &src = instr.ops[1];
@@ -964,11 +989,15 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             invalidateDependents(dstKey);
             copyOrigin.erase(dstKey);
 
+            // Don't follow through ABI registers (v0-v7).
             uint32_t srcKey = regKey(src);
             MOperand origin = src;
-            auto it = copyOrigin.find(srcKey);
-            if (it != copyOrigin.end())
-                origin = it->second;
+            if (!isABIReg(src))
+            {
+                auto it = copyOrigin.find(srcKey);
+                if (it != copyOrigin.end())
+                    origin = it->second;
+            }
 
             if (!samePhysReg(dst, origin))
             {
@@ -997,9 +1026,11 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
                 continue;
 
             auto [isUse, isDef] = classifyOperand(instr, i);
-            if (isUse && !isDef)
+            if (isUse && !isDef && !isABIReg(op))
             {
-                // Try to replace with origin
+                // Try to replace with origin.
+                // Skip ABI registers (x0-x7, v0-v7): moves to ABI regs
+                // can't be DCE'd, so propagating creates unreachable dead code.
                 uint32_t key = regKey(op);
                 auto it = copyOrigin.find(key);
                 if (it != copyOrigin.end() && !samePhysReg(op, it->second))

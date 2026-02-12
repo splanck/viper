@@ -67,14 +67,19 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                 {
                     const PhysReg src0 = ctx.argOrder[static_cast<size_t>(idx0)];
                     const PhysReg src1 = ctx.argOrder[static_cast<size_t>(idx1)];
-                    // Normalize to x0,x1 using scratch register
-                    bbMir.instrs.push_back(MInstr{
-                        MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src1)}});
-                    bbMir.instrs.push_back(MInstr{
-                        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
-                    bbMir.instrs.push_back(
-                        MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
+                    // Normalize to x0,x1 — skip if already in place
+                    if (src0 != PhysReg::X0 || src1 != PhysReg::X1)
+                    {
+                        bbMir.instrs.push_back(MInstr{
+                            MOpcode::MovRR,
+                            {MOperand::regOp(kScratchGPR), MOperand::regOp(src1)}});
+                        bbMir.instrs.push_back(MInstr{
+                            MOpcode::MovRR,
+                            {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
+                        bbMir.instrs.push_back(MInstr{
+                            MOpcode::MovRR,
+                            {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
+                    }
                     switch (opI.op)
                     {
                         case Opcode::Add:
