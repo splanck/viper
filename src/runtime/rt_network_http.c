@@ -28,6 +28,7 @@
 #include <string.h>
 
 #ifdef _WIN32
+#include <winsock2.h>
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
 #else
