@@ -1,9 +1,0 @@
-module PromiseDemo;
-bind Viper.Terminal;
-func start() {
-    Say("=== Viper.Threads.Promise Demo ===");
-    var p = new Viper.Threads.Promise();
-    var f = p.GetFuture();
-    p.Set("hello");
-    Say("done");
-}

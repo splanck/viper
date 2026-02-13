@@ -501,7 +501,7 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
         {Variant{
             .condition = Condition::Always,
             .kind = VariantKind::CallRuntime,
-            .runtime = "rt_pow_f64_chkdom",
+            .runtime = "rt_pow_f64",
             .arguments = {Argument{.index = 0,
                                    .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}},
                           Argument{.index = 1,

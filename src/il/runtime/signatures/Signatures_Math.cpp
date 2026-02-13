@@ -77,6 +77,8 @@ void register_math_signatures()
     register_signature(make_signature("rt_sgn_i64", {Kind::I64}, {Kind::I64}, true, false, true));
     register_signature(make_signature("rt_sgn_f64", {Kind::F64}, {Kind::F64}, true, false, true));
     register_signature(make_signature("rt_pow_f64_chkdom", {Kind::F64, Kind::F64}, {Kind::F64}));
+    register_signature(make_signature("rt_pow_f64", {Kind::F64, Kind::F64}, {Kind::F64}));
+    register_signature(make_signature("rt_math_pow", {Kind::F64, Kind::F64}, {Kind::F64}));
     register_signature(make_signature("rt_randomize_i64", {Kind::I64}));
     register_signature(make_signature("rt_rnd", {}, {Kind::F64}));
 }

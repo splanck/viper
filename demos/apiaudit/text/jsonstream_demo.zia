@@ -1,8 +1,0 @@
-module JsonStreamDemo;
-bind Viper.Terminal;
-func start() {
-    Say("=== Viper.Text.JsonStream Demo ===");
-    var js = new Viper.Text.JsonStream("{\"a\":1,\"b\":true}");
-    SayInt(js.Depth);
-    Say("done");
-}

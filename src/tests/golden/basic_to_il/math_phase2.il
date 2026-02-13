@@ -35,6 +35,7 @@ extern @rt_str_empty() -> str
 extern @rt_sin(f64) -> f64
 extern @rt_cos(f64) -> f64
 extern @rt_pow_f64_chkdom(f64, f64) -> f64
+extern @rt_pow_f64(f64, f64) -> f64
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
 entry:
@@ -68,7 +69,7 @@ L20:
   br L30
 L30:
   .loc 1 3 10
-  %t4 = call @rt_pow_f64_chkdom(2.0, 10.0)
+  %t4 = call @rt_pow_f64(2.0, 10.0)
   .loc 1 3 10
   call @Viper.Terminal.PrintF64(%t4)
   .loc 1 3 10

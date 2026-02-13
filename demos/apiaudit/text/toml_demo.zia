@@ -1,8 +1,0 @@
-module TomlDemo;
-bind Viper.Terminal;
-func start() {
-    Say("=== Viper.Text.Toml Demo ===");
-    SayBool(Viper.Text.Toml.IsValid("[section]\nkey = \"value\""));
-    SayBool(Viper.Text.Toml.IsValid("not valid toml [[["));
-    Say("done");
-}

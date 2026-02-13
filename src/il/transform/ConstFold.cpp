@@ -263,7 +263,8 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
-    if (c == "rt_pow_f64_chkdom" && in.operands.size() == 2)
+    if ((c == "rt_pow_f64_chkdom" || c == "rt_pow_f64" || c == "rt_math_pow") &&
+        in.operands.size() == 2)
     {
         double base = 0.0;
         double expd = 0.0;

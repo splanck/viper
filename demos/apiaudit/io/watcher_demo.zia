@@ -1,9 +1,0 @@
-module WatcherDemo;
-bind Viper.Terminal;
-func start() {
-    Say("=== Viper.IO.Watcher Demo ===");
-    var w = new Viper.IO.Watcher("/tmp");
-    Say(w.Path);
-    SayBool(w.IsWatching);
-    Say("done");
-}

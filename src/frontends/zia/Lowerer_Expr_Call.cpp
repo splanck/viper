@@ -261,7 +261,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 // (e.g., "ResultOk" for Viper.Result.Ok)
                 std::string funcName = sema_.runtimeCallee(expr);
                 if (funcName.empty())
-                    funcName = baseType->name + "." + fieldExpr->field;
+                {
+                    // Try qualified name for runtime functions (e.g., Viper.Result.Ok)
+                    std::string qualName = baseType->name + "." + fieldExpr->field;
+                    if (il::runtime::findRuntimeDescriptor(qualName))
+                        funcName = qualName;
+                    else
+                        funcName = fieldExpr->field; // user-defined module function
+                }
 
                 std::vector<Value> args;
 

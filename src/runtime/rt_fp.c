@@ -67,6 +67,31 @@ extern "C"
         return result;
     }
 
+    /// @brief Simple 2-arg pow wrapper for IL calling convention.
+    /// @details Calls the standard C pow() directly without domain checks.
+    ///          Used by Viper.Math.Pow which has signature f64(f64,f64).
+    double rt_math_pow(double base, double exponent)
+    {
+        return pow(base, exponent);
+    }
+
+    /// @brief 2-arg pow with BASIC domain checking for native codegen.
+    /// @details Wraps rt_pow_f64_chkdom, providing the ok pointer internally
+    ///          and trapping on domain/overflow errors. Used by BASIC ^ operator.
+    double rt_pow_f64(double base, double exponent)
+    {
+        bool ok;
+        double result = rt_pow_f64_chkdom(base, exponent, &ok);
+        if (!ok)
+        {
+            if (base < 0.0)
+                rt_trap("DomainError: negative base with fractional exponent");
+            else
+                rt_trap("DomainError: overflow in exponentiation");
+        }
+        return result;
+    }
+
 #ifdef __cplusplus
 }
 #endif

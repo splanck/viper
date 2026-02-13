@@ -33,6 +33,12 @@ extern "C"
     /// @return Power result when @p ok is true; unspecified when false.
     double rt_pow_f64_chkdom(double base, double exp, bool *ok);
 
+    /// @brief Simple 2-arg pow for IL calling convention (no domain checks).
+    double rt_math_pow(double base, double exponent);
+
+    /// @brief 2-arg pow with BASIC domain checking for native codegen.
+    double rt_pow_f64(double base, double exponent);
+
 #ifdef __cplusplus
 }
 #endif

@@ -3,7 +3,7 @@
 ## Executive Summary
 
 **61 bugs found** across 195 runtime classes. 128 classes tested with 246 demo programs (123 Zia + 123 BASIC).
-**54 FIXED, 6 NOT BUGS, 1 remaining** (A-010 ARM64 codegen crash — deferred, not a runtime API bug).
+**55 FIXED, 6 NOT BUGS, 0 remaining.** All bugs resolved.
 **Full test suite: 1149 tests pass, 0 failures** (including 3 previously-broken golden/e2e tests fixed during this audit).
 
 ### Bug Distribution by Severity
@@ -42,7 +42,7 @@
 | A-007 | BASIC frontend | ~~Low~~ **FIXED** | Fmt.Bool/BoolYN — i1 parameter rejects integer literal; fixed via Int/Float→Bool coercion rule in SemanticAnalyzer_Procs.cpp | BASIC | — | fmt_demo.bas |
 | A-008 | BASIC frontend | ~~Low~~ **FIXED** | Parse.BoolOr — i1 parameter rejects integer literal; same coercion fix | BASIC | — | convert_demo.bas |
 | A-009 | Both frontends | ~~High~~ **FIXED** | Vec2.X/Y — BASIC type tracking fixed: findMethodReturnClassName now checks runtime class catalog; resolveObjectClass handles factory methods (Zero/One) | Both | — | vec2_demo |
-| A-010 | ARM64 codegen | Critical | Native build of math_demo.zia crashes after Pow (exit 1) | — | Native | math_demo.zia |
+| A-010 | ARM64 codegen | ~~Critical~~ **FIXED** | Native crash: rt_pow_f64_chkdom takes 3 args (base, exp, *ok) but codegen passes 2. Fixed by creating 2-arg wrappers: rt_math_pow (no domain check) for Viper.Math.Pow, rt_pow_f64 (domain check) for BASIC ^ operator | Both | Native | math_demo.zia |
 | A-011 | Zia frontend | ~~High~~ **FIXED** | Vec2/Vec3 — fixed via rtgen type inference: obj-returning methods on known classes now return runtimeClass type | Zia | — | vec2_demo.zia |
 | A-012 | BASIC VM | ~~Critical~~ **FIXED** | Vec2 class methods — BASIC type tracking fixed: method return values now propagate class type; Zero/One added as RT_METHODs | BASIC | — | vec2_demo.bas |
 | A-013 | BASIC VM | ~~Critical~~ **FIXED** | Vec3 class methods — same BASIC type tracking fix as A-012; method return values now preserve class type | BASIC | — | vec3_demo.bas |
@@ -157,11 +157,12 @@
 **Root cause:** Vec2 is class-based — must use `new Viper.Math.Vec2(x,y)` then `v.X` property access. In BASIC, type tracking lost the class info for method return values.
 **Fix:** Extended `findMethodReturnClassName()` in Lowerer.cpp to check runtime class catalog (not just OopIndex). Extended `resolveObjectClass()` in Lower_OOP_Helpers.cpp to handle static factory methods. Added Zero/One as RT_METHODs to Vec2 RT_CLASS. Fixed `lowerLet` in RuntimeStatementLowerer.cpp to resolve class from expression when ctor lookup fails.
 
-### A-010: Native ARM64 — math_demo.zia crashes
+### A-010: Native ARM64 — math_demo.zia crashes ✅ FIXED
 
 **Repro:** `viper build math_demo.zia -o math_native --arch arm64 && ./math_native`
 **Output:** Prints through "Powers/Roots/Logs" section, then `rt_pow_f64_chkdom: null ok` and exit code 1.
-**Note:** Possible codegen issue with `Pow` or subsequent function calls.
+**Root cause:** `rt_pow_f64_chkdom(base, exp, bool *ok)` takes 3 args but IL declares it as 2-arg `f64(f64,f64)`. The VM handles this via special marshaling in Marshal.cpp, but native codegen calls the C function directly with only 2 args, leaving the 3rd arg (`ok` pointer) as null/garbage.
+**Fix:** Created two 2-arg wrappers in `rt_fp.c`: `rt_math_pow(base, exp)` — simple `pow()` wrapper for `Viper.Math.Pow` (no domain checks needed since Zia doesn't trap); `rt_pow_f64(base, exp)` — domain-checking wrapper for BASIC `^` operator that internally calls `rt_pow_f64_chkdom` with a stack-local `ok` variable. Updated `runtime.def`, `LowerExprNumeric.cpp`, `MathBuiltins.cpp`, `Signatures_Math.cpp`, `RuntimeSignatures.cpp`, and `ConstFold.cpp`.
 
 ### A-011: Zia — Vec2/Vec3 property getters return i64 instead of f64
 
@@ -969,7 +970,7 @@ Collection `Get` methods return `obj` type (boxed values). The boxing/unboxing m
 | A-006 | API naming: runtime.def has TrimStart/TrimEnd/Substring/get_Length, not TrimLeft/TrimRight/Slice/Len |
 | A-007 | BASIC i1 type: Fmt.Bool expects i1 but BASIC passes integer (-1/0) |
 | A-008 | BASIC i1 type: Parse.BoolOr second param expects i1 but BASIC passes integer |
-| A-010 | ARM64 codegen: Native crash after Pow — likely codegen issue in AArch64 backend for math intrinsics |
+| A-010 | ~~ARM64 codegen: Native crash after Pow~~ **FIXED**: Created 2-arg pow wrappers (rt_math_pow, rt_pow_f64) |
 | A-017 | BASIC i1 type: Diagnostics.Assert expects i1 but BASIC passes integer |
 | A-018 | Newer functions (TypeName/TypeId/IsNull) not in catalog — A-019 pattern in Zia, Cluster 5 in BASIC |
 | A-020 | Random.Next C function `rt_rnd()` takes 0 args (global state); instance method dispatch passes receiver causing arity mismatch |

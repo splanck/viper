@@ -1,8 +1,0 @@
-module CipherDemo;
-bind Viper.Terminal;
-func start() {
-    Say("=== Viper.Crypto.Cipher Demo ===");
-    var key = Viper.Crypto.Cipher.GenerateKey();
-    SayBool(key != null);
-    Say("done");
-}
