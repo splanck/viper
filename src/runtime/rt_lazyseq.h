@@ -7,9 +7,9 @@
 //
 // File: src/runtime/rt_lazyseq.h
 // Purpose: Lazy sequence type for on-demand element generation and transformation.
-// Key invariants: Sequences are single-pass unless reset; collectors may not terminate on infinite sequences.
-// Ownership/Lifetime: Caller owns the handle; destroy with rt_lazyseq_destroy().
-// Links: docs/viperlib.md
+// Key invariants: Sequences are single-pass unless reset; collectors may not terminate on infinite
+// sequences. Ownership/Lifetime: Caller owns the handle; destroy with rt_lazyseq_destroy(). Links:
+// docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -204,6 +204,24 @@ extern "C"
     /// @return 1 if all match, 0 otherwise.
     /// @warning May not terminate for infinite sequences!
     int8_t rt_lazyseq_all(rt_lazyseq seq, int8_t (*pred)(void *));
+
+    //=============================================================================
+    // IL ABI wrappers (void* interface for runtime signature handlers)
+    //=============================================================================
+
+    void *rt_lazyseq_w_range(int64_t start, int64_t end, int64_t step);
+    void *rt_lazyseq_w_repeat(void *value, int64_t count);
+    void *rt_lazyseq_w_next(void *seq);
+    void *rt_lazyseq_w_peek(void *seq);
+    void  rt_lazyseq_w_reset(void *seq);
+    int64_t rt_lazyseq_w_index(void *seq);
+    int8_t  rt_lazyseq_w_is_exhausted(void *seq);
+    void *rt_lazyseq_w_take(void *seq, int64_t n);
+    void *rt_lazyseq_w_drop(void *seq, int64_t n);
+    void *rt_lazyseq_w_concat(void *first, void *second);
+    void *rt_lazyseq_w_to_seq(void *seq);
+    void *rt_lazyseq_w_to_seq_n(void *seq, int64_t n);
+    int64_t rt_lazyseq_w_count(void *seq);
 
 #ifdef __cplusplus
 }

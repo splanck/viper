@@ -1,0 +1,11 @@
+module JsonPathDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.JsonPath Demo ===");
+    var doc = Viper.Text.Json.Parse("{\"name\":\"viper\",\"ver\":1}");
+    SayBool(Viper.Text.JsonPath.Has(doc, "$.name"));
+    SayBool(Viper.Text.JsonPath.Has(doc, "$.missing"));
+    Say(Viper.Text.JsonPath.GetStr(doc, "$.name"));
+    SayInt(Viper.Text.JsonPath.GetInt(doc, "$.ver"));
+    Say("done");
+}

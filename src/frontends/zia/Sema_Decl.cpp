@@ -306,10 +306,12 @@ void Sema::importNamespaceSymbols(const std::string &ns)
         }
     }
 
-    // Discover sub-namespace prefixes from standalone runtime functions
-    // (registered via runtime.def, not in the RuntimeClasses catalog).
-    // For example, Viper.GUI.Shortcuts.Register → register "Shortcuts"
-    // as a module-like symbol mapping to "Viper.GUI.Shortcuts".
+    // Import standalone runtime functions and discover sub-namespace prefixes
+    // from runtime.def entries not in the RuntimeClasses catalog.
+    // Direct children (e.g., Viper.String.Capitalize for bind Viper.String)
+    // are imported as short name → qualified name mappings.
+    // Sub-namespace prefixes (e.g., Viper.GUI.Shortcuts.Register → "Shortcuts")
+    // are imported as module-like symbols.
     for (const auto &alias : il::runtime::kRuntimeNameAliases)
     {
         std::string canonical(alias.canonical);
@@ -318,10 +320,19 @@ void Sema::importNamespaceSymbols(const std::string &ns)
         std::string shortName = canonical.substr(prefix.size());
         auto dotPos = shortName.find('.');
         if (dotPos == std::string::npos)
-            continue; // Direct child, already handled above
-        std::string subNs = shortName.substr(0, dotPos);
-        if (importedSymbols_.find(subNs) == importedSymbols_.end())
-            importedSymbols_[subNs] = ns + "." + subNs;
+        {
+            // Direct child — standalone function (e.g., "Capitalize" from bind Viper.String)
+            auto existingIt = importedSymbols_.find(shortName);
+            if (existingIt == importedSymbols_.end())
+                importedSymbols_[shortName] = canonical;
+        }
+        else
+        {
+            // Sub-namespace prefix
+            std::string subNs = shortName.substr(0, dotPos);
+            if (importedSymbols_.find(subNs) == importedSymbols_.end())
+                importedSymbols_[subNs] = ns + "." + subNs;
+        }
     }
 }
 

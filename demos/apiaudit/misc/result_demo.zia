@@ -1,0 +1,16 @@
+module ResultDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Result Demo ===");
+    var ok = Viper.Result.OkStr("hello");
+    SayBool(ok.IsOk);
+    SayBool(ok.IsErr);
+    Say(ok.UnwrapStr());
+    Say(ok.ToString());
+    var err = Viper.Result.ErrStr("oops");
+    SayBool(err.IsOk);
+    SayBool(err.IsErr);
+    Say(err.UnwrapErrStr());
+    Say(err.ToString());
+    Say("done");
+}

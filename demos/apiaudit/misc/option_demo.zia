@@ -1,0 +1,16 @@
+module OptionDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Option Demo ===");
+    var some = Viper.Option.SomeStr("hi");
+    SayBool(some.IsSome);
+    SayBool(some.IsNone);
+    Say(some.UnwrapStr());
+    Say(some.ToString());
+    var none = Viper.Option.None();
+    SayBool(none.IsSome);
+    SayBool(none.IsNone);
+    Say(none.UnwrapOrStr("default"));
+    Say(none.ToString());
+    Say("done");
+}

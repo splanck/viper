@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_smoothvalue.h"
+#include "rt_object.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -29,7 +30,8 @@ struct rt_smoothvalue_impl
 
 rt_smoothvalue rt_smoothvalue_new(double initial, double smoothing)
 {
-    struct rt_smoothvalue_impl *sv = malloc(sizeof(struct rt_smoothvalue_impl));
+    struct rt_smoothvalue_impl *sv = (struct rt_smoothvalue_impl *)rt_obj_new_i64(
+        0, (int64_t)sizeof(struct rt_smoothvalue_impl));
     if (!sv)
         return NULL;
 
@@ -50,7 +52,7 @@ rt_smoothvalue rt_smoothvalue_new(double initial, double smoothing)
 void rt_smoothvalue_destroy(rt_smoothvalue sv)
 {
     if (sv)
-        free(sv);
+        rt_obj_free(sv);
 }
 
 double rt_smoothvalue_get(rt_smoothvalue sv)

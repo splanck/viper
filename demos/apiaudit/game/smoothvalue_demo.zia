@@ -1,0 +1,14 @@
+module SmoothValueDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Game.SmoothValue Demo ===");
+    var sv = new Viper.Game.SmoothValue(0.0, 0.5);
+    SayNum(sv.Value);
+    SayNum(sv.Smoothing);
+    SayBool(sv.AtTarget);
+    sv.SetImmediate(100.0);
+    SayNum(sv.Value);
+    sv.Impulse(10.0);
+    SayNum(sv.Velocity);
+    Say("done");
+}

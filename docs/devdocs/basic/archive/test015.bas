@@ -1,6 +1,0 @@
-10 PRINT "Before GOSUB"
-20 GOSUB 50
-30 PRINT "After GOSUB"
-40 END
-50 PRINT "In subroutine"
-60 RETURN

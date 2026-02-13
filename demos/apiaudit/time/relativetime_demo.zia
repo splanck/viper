@@ -1,0 +1,11 @@
+module RelativeTimeDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Time.RelativeTime Demo ===");
+    var now = Viper.Time.DateTime.Now();
+    var past = Viper.Time.DateTime.AddSeconds(now, -3600);
+    Say(Viper.Time.RelativeTime.Format(past));
+    var dur = Viper.Time.Duration.FromMinutes(45);
+    Say(Viper.Time.RelativeTime.FormatDuration(dur));
+    Say("done");
+}

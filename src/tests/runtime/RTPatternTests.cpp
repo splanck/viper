@@ -44,103 +44,103 @@ static void test_is_match()
 
     // Literal matching
     test_result("Literal match 'hello' in 'hello world'",
-                rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("hello world")));
+                rt_pattern_is_match(rt_const_cstr("hello world"), rt_const_cstr("hello")));
 
     test_result("Literal no match 'xyz' in 'hello world'",
-                !rt_pattern_is_match(rt_const_cstr("xyz"), rt_const_cstr("hello world")));
+                !rt_pattern_is_match(rt_const_cstr("hello world"), rt_const_cstr("xyz")));
 
     // Dot matches any character
     test_result("Dot 'h.llo' matches 'hello'",
-                rt_pattern_is_match(rt_const_cstr("h.llo"), rt_const_cstr("hello")));
+                rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("h.llo")));
 
     test_result("Dot 'h..lo' matches 'hello'",
-                rt_pattern_is_match(rt_const_cstr("h..lo"), rt_const_cstr("hello")));
+                rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("h..lo")));
 
     // Anchors
     test_result("Anchor ^hello matches 'hello world'",
-                rt_pattern_is_match(rt_const_cstr("^hello"), rt_const_cstr("hello world")));
+                rt_pattern_is_match(rt_const_cstr("hello world"), rt_const_cstr("^hello")));
 
     test_result("Anchor ^world does not match 'hello world'",
-                !rt_pattern_is_match(rt_const_cstr("^world"), rt_const_cstr("hello world")));
+                !rt_pattern_is_match(rt_const_cstr("hello world"), rt_const_cstr("^world")));
 
     test_result("Anchor world$ matches 'hello world'",
-                rt_pattern_is_match(rt_const_cstr("world$"), rt_const_cstr("hello world")));
+                rt_pattern_is_match(rt_const_cstr("hello world"), rt_const_cstr("world$")));
 
     test_result("Anchor hello$ does not match 'hello world'",
-                !rt_pattern_is_match(rt_const_cstr("hello$"), rt_const_cstr("hello world")));
+                !rt_pattern_is_match(rt_const_cstr("hello world"), rt_const_cstr("hello$")));
 
     test_result("Full anchor ^hello$ matches 'hello'",
-                rt_pattern_is_match(rt_const_cstr("^hello$"), rt_const_cstr("hello")));
+                rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("^hello$")));
 
     test_result("Full anchor ^hello$ does not match 'hello world'",
-                !rt_pattern_is_match(rt_const_cstr("^hello$"), rt_const_cstr("hello world")));
+                !rt_pattern_is_match(rt_const_cstr("hello world"), rt_const_cstr("^hello$")));
 
     // Character classes
     test_result("Class [aeiou] matches 'hello'",
-                rt_pattern_is_match(rt_const_cstr("[aeiou]"), rt_const_cstr("hello")));
+                rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("[aeiou]")));
 
     test_result("Class [xyz] does not match 'hello'",
-                !rt_pattern_is_match(rt_const_cstr("^[xyz]+$"), rt_const_cstr("hello")));
+                !rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("^[xyz]+$")));
 
     test_result("Range [a-z] matches 'hello'",
-                rt_pattern_is_match(rt_const_cstr("^[a-z]+$"), rt_const_cstr("hello")));
+                rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("^[a-z]+$")));
 
     test_result("Negated class [^0-9] matches 'hello'",
-                rt_pattern_is_match(rt_const_cstr("^[^0-9]+$"), rt_const_cstr("hello")));
+                rt_pattern_is_match(rt_const_cstr("hello"), rt_const_cstr("^[^0-9]+$")));
 
     // Shorthand classes
     test_result("\\d matches '123'",
-                rt_pattern_is_match(rt_const_cstr("^\\d+$"), rt_const_cstr("123")));
+                rt_pattern_is_match(rt_const_cstr("123"), rt_const_cstr("^\\d+$")));
 
     test_result("\\d does not match 'abc'",
-                !rt_pattern_is_match(rt_const_cstr("^\\d+$"), rt_const_cstr("abc")));
+                !rt_pattern_is_match(rt_const_cstr("abc"), rt_const_cstr("^\\d+$")));
 
     test_result("\\w matches 'hello_123'",
-                rt_pattern_is_match(rt_const_cstr("^\\w+$"), rt_const_cstr("hello_123")));
+                rt_pattern_is_match(rt_const_cstr("hello_123"), rt_const_cstr("^\\w+$")));
 
     test_result("\\s matches ' \\t\\n'",
-                rt_pattern_is_match(rt_const_cstr("^\\s+$"), rt_const_cstr(" \t\n")));
+                rt_pattern_is_match(rt_const_cstr(" \t\n"), rt_const_cstr("^\\s+$")));
 
     // Quantifiers
     test_result("Star a* matches 'aaa'",
-                rt_pattern_is_match(rt_const_cstr("^a*$"), rt_const_cstr("aaa")));
+                rt_pattern_is_match(rt_const_cstr("aaa"), rt_const_cstr("^a*$")));
 
     test_result("Star a* matches empty string",
-                rt_pattern_is_match(rt_const_cstr("^a*$"), rt_const_cstr("")));
+                rt_pattern_is_match(rt_const_cstr(""), rt_const_cstr("^a*$")));
 
     test_result("Plus a+ matches 'aaa'",
-                rt_pattern_is_match(rt_const_cstr("^a+$"), rt_const_cstr("aaa")));
+                rt_pattern_is_match(rt_const_cstr("aaa"), rt_const_cstr("^a+$")));
 
     test_result("Plus a+ does not match empty string",
-                !rt_pattern_is_match(rt_const_cstr("^a+$"), rt_const_cstr("")));
+                !rt_pattern_is_match(rt_const_cstr(""), rt_const_cstr("^a+$")));
 
     test_result("Optional a? matches 'a'",
-                rt_pattern_is_match(rt_const_cstr("^a?$"), rt_const_cstr("a")));
+                rt_pattern_is_match(rt_const_cstr("a"), rt_const_cstr("^a?$")));
 
     test_result("Optional a? matches empty",
-                rt_pattern_is_match(rt_const_cstr("^a?$"), rt_const_cstr("")));
+                rt_pattern_is_match(rt_const_cstr(""), rt_const_cstr("^a?$")));
 
     // Groups and alternation
     test_result("Group (abc) matches 'abc'",
-                rt_pattern_is_match(rt_const_cstr("^(abc)$"), rt_const_cstr("abc")));
+                rt_pattern_is_match(rt_const_cstr("abc"), rt_const_cstr("^(abc)$")));
 
     test_result("Alternation cat|dog matches 'cat'",
-                rt_pattern_is_match(rt_const_cstr("^(cat|dog)$"), rt_const_cstr("cat")));
+                rt_pattern_is_match(rt_const_cstr("cat"), rt_const_cstr("^(cat|dog)$")));
 
     test_result("Alternation cat|dog matches 'dog'",
-                rt_pattern_is_match(rt_const_cstr("^(cat|dog)$"), rt_const_cstr("dog")));
+                rt_pattern_is_match(rt_const_cstr("dog"), rt_const_cstr("^(cat|dog)$")));
 
     test_result("Alternation cat|dog does not match 'bird'",
-                !rt_pattern_is_match(rt_const_cstr("^(cat|dog)$"), rt_const_cstr("bird")));
+                !rt_pattern_is_match(rt_const_cstr("bird"), rt_const_cstr("^(cat|dog)$")));
 
     // Complex patterns
     test_result("Email-like pattern",
-                rt_pattern_is_match(rt_const_cstr("^\\w+@\\w+\\.\\w+$"),
-                                    rt_const_cstr("user@example.com")));
+                rt_pattern_is_match(rt_const_cstr("user@example.com"),
+                                    rt_const_cstr("^\\w+@\\w+\\.\\w+$")));
 
     test_result("Phone-like pattern",
-                rt_pattern_is_match(rt_const_cstr("^\\d\\d\\d-\\d\\d\\d-\\d\\d\\d\\d$"),
-                                    rt_const_cstr("555-123-4567")));
+                rt_pattern_is_match(rt_const_cstr("555-123-4567"),
+                                    rt_const_cstr("^\\d\\d\\d-\\d\\d\\d-\\d\\d\\d\\d$")));
 
     printf("\n");
 }
@@ -154,19 +154,19 @@ static void test_find()
     printf("Testing Pattern.Find:\n");
 
     // Basic find
-    rt_string result = rt_pattern_find(rt_const_cstr("\\d+"), rt_const_cstr("abc123def456"));
+    rt_string result = rt_pattern_find(rt_const_cstr("abc123def456"), rt_const_cstr("\\d+"));
     test_result("Find \\d+ in 'abc123def456' = '123'", strcmp(rt_string_cstr(result), "123") == 0);
 
     // Find word
-    result = rt_pattern_find(rt_const_cstr("[a-z]+"), rt_const_cstr("123abc456"));
+    result = rt_pattern_find(rt_const_cstr("123abc456"), rt_const_cstr("[a-z]+"));
     test_result("Find [a-z]+ in '123abc456' = 'abc'", strcmp(rt_string_cstr(result), "abc") == 0);
 
     // No match returns empty
-    result = rt_pattern_find(rt_const_cstr("xyz"), rt_const_cstr("hello world"));
+    result = rt_pattern_find(rt_const_cstr("hello world"), rt_const_cstr("xyz"));
     test_result("Find 'xyz' in 'hello world' = ''", strcmp(rt_string_cstr(result), "") == 0);
 
     // Find at start
-    result = rt_pattern_find(rt_const_cstr("^\\w+"), rt_const_cstr("hello world"));
+    result = rt_pattern_find(rt_const_cstr("hello world"), rt_const_cstr("^\\w+"));
     test_result("Find ^\\w+ in 'hello world' = 'hello'",
                 strcmp(rt_string_cstr(result), "hello") == 0);
 
@@ -184,24 +184,24 @@ static void test_find_from()
     rt_string text = rt_const_cstr("abc123def456ghi789");
 
     // Find first occurrence
-    rt_string result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 0);
+    rt_string result = rt_pattern_find_from(text, rt_const_cstr("\\d+"), 0);
     test_result("FindFrom \\d+ at 0 = '123'", strcmp(rt_string_cstr(result), "123") == 0);
 
     // Find after first occurrence
-    result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 6);
+    result = rt_pattern_find_from(text, rt_const_cstr("\\d+"), 6);
     test_result("FindFrom \\d+ at 6 = '456'", strcmp(rt_string_cstr(result), "456") == 0);
 
     // Find from position within match
-    result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 4);
+    result = rt_pattern_find_from(text, rt_const_cstr("\\d+"), 4);
     test_result("FindFrom \\d+ at 4 = '23' (partial of first)",
                 strcmp(rt_string_cstr(result), "23") == 0);
 
     // Find third occurrence
-    result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 12);
+    result = rt_pattern_find_from(text, rt_const_cstr("\\d+"), 12);
     test_result("FindFrom \\d+ at 12 = '789'", strcmp(rt_string_cstr(result), "789") == 0);
 
     // No more matches
-    result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 18);
+    result = rt_pattern_find_from(text, rt_const_cstr("\\d+"), 18);
     test_result("FindFrom \\d+ at 18 = '' (no match)", strcmp(rt_string_cstr(result), "") == 0);
 
     printf("\n");
@@ -216,19 +216,19 @@ static void test_find_pos()
     printf("Testing Pattern.FindPos:\n");
 
     // Find position of match
-    int64_t pos = rt_pattern_find_pos(rt_const_cstr("\\d+"), rt_const_cstr("abc123def"));
+    int64_t pos = rt_pattern_find_pos(rt_const_cstr("abc123def"), rt_const_cstr("\\d+"));
     test_result("FindPos \\d+ in 'abc123def' = 3", pos == 3);
 
     // Find at start
-    pos = rt_pattern_find_pos(rt_const_cstr("hello"), rt_const_cstr("hello world"));
+    pos = rt_pattern_find_pos(rt_const_cstr("hello world"), rt_const_cstr("hello"));
     test_result("FindPos 'hello' in 'hello world' = 0", pos == 0);
 
     // Find in middle
-    pos = rt_pattern_find_pos(rt_const_cstr("world"), rt_const_cstr("hello world"));
+    pos = rt_pattern_find_pos(rt_const_cstr("hello world"), rt_const_cstr("world"));
     test_result("FindPos 'world' in 'hello world' = 6", pos == 6);
 
     // No match returns -1
-    pos = rt_pattern_find_pos(rt_const_cstr("xyz"), rt_const_cstr("hello world"));
+    pos = rt_pattern_find_pos(rt_const_cstr("hello world"), rt_const_cstr("xyz"));
     test_result("FindPos 'xyz' in 'hello world' = -1", pos == -1);
 
     printf("\n");
@@ -243,21 +243,21 @@ static void test_find_all()
     printf("Testing Pattern.FindAll:\n");
 
     // Find all numbers
-    void *seq = rt_pattern_find_all(rt_const_cstr("\\d+"), rt_const_cstr("abc123def456ghi789"));
+    void *seq = rt_pattern_find_all(rt_const_cstr("abc123def456ghi789"), rt_const_cstr("\\d+"));
     test_result("FindAll \\d+ count = 3", rt_seq_len(seq) == 3);
     test_result("FindAll \\d+ [0] = '123'", strcmp(seq_get_str(seq, 0), "123") == 0);
     test_result("FindAll \\d+ [1] = '456'", strcmp(seq_get_str(seq, 1), "456") == 0);
     test_result("FindAll \\d+ [2] = '789'", strcmp(seq_get_str(seq, 2), "789") == 0);
 
     // Find all words
-    seq = rt_pattern_find_all(rt_const_cstr("[a-z]+"), rt_const_cstr("hello123world456test"));
+    seq = rt_pattern_find_all(rt_const_cstr("hello123world456test"), rt_const_cstr("[a-z]+"));
     test_result("FindAll [a-z]+ count = 3", rt_seq_len(seq) == 3);
     test_result("FindAll [a-z]+ [0] = 'hello'", strcmp(seq_get_str(seq, 0), "hello") == 0);
     test_result("FindAll [a-z]+ [1] = 'world'", strcmp(seq_get_str(seq, 1), "world") == 0);
     test_result("FindAll [a-z]+ [2] = 'test'", strcmp(seq_get_str(seq, 2), "test") == 0);
 
     // No matches returns empty seq
-    seq = rt_pattern_find_all(rt_const_cstr("xyz"), rt_const_cstr("hello world"));
+    seq = rt_pattern_find_all(rt_const_cstr("hello world"), rt_const_cstr("xyz"));
     test_result("FindAll 'xyz' count = 0", rt_seq_len(seq) == 0);
 
     printf("\n");
@@ -273,25 +273,25 @@ static void test_replace()
 
     // Replace all digits
     rt_string result = rt_pattern_replace(
-        rt_const_cstr("\\d+"), rt_const_cstr("abc123def456"), rt_const_cstr("X"));
+        rt_const_cstr("abc123def456"), rt_const_cstr("\\d+"), rt_const_cstr("X"));
     test_result("Replace \\d+ with X = 'abcXdefX'",
                 strcmp(rt_string_cstr(result), "abcXdefX") == 0);
 
     // Replace all words
     result = rt_pattern_replace(
-        rt_const_cstr("[a-z]+"), rt_const_cstr("hello123world"), rt_const_cstr("word"));
+        rt_const_cstr("hello123world"), rt_const_cstr("[a-z]+"), rt_const_cstr("word"));
     test_result("Replace [a-z]+ with 'word' = 'word123word'",
                 strcmp(rt_string_cstr(result), "word123word") == 0);
 
     // No matches = unchanged
     result = rt_pattern_replace(
-        rt_const_cstr("xyz"), rt_const_cstr("hello world"), rt_const_cstr("replacement"));
+        rt_const_cstr("hello world"), rt_const_cstr("xyz"), rt_const_cstr("replacement"));
     test_result("Replace 'xyz' (no match) = unchanged",
                 strcmp(rt_string_cstr(result), "hello world") == 0);
 
     // Replace with empty
     result = rt_pattern_replace(
-        rt_const_cstr("\\s+"), rt_const_cstr("hello world test"), rt_const_cstr(""));
+        rt_const_cstr("hello world test"), rt_const_cstr("\\s+"), rt_const_cstr(""));
     test_result("Replace \\s+ with '' = 'helloworldtest'",
                 strcmp(rt_string_cstr(result), "helloworldtest") == 0);
 
@@ -308,19 +308,19 @@ static void test_replace_first()
 
     // Replace first digit sequence only
     rt_string result = rt_pattern_replace_first(
-        rt_const_cstr("\\d+"), rt_const_cstr("abc123def456"), rt_const_cstr("X"));
+        rt_const_cstr("abc123def456"), rt_const_cstr("\\d+"), rt_const_cstr("X"));
     test_result("ReplaceFirst \\d+ with X = 'abcXdef456'",
                 strcmp(rt_string_cstr(result), "abcXdef456") == 0);
 
     // Replace first word only
     result = rt_pattern_replace_first(
-        rt_const_cstr("[a-z]+"), rt_const_cstr("hello123world"), rt_const_cstr("FIRST"));
+        rt_const_cstr("hello123world"), rt_const_cstr("[a-z]+"), rt_const_cstr("FIRST"));
     test_result("ReplaceFirst [a-z]+ with 'FIRST' = 'FIRST123world'",
                 strcmp(rt_string_cstr(result), "FIRST123world") == 0);
 
     // No matches = unchanged
     result = rt_pattern_replace_first(
-        rt_const_cstr("xyz"), rt_const_cstr("hello world"), rt_const_cstr("replacement"));
+        rt_const_cstr("hello world"), rt_const_cstr("xyz"), rt_const_cstr("replacement"));
     test_result("ReplaceFirst 'xyz' (no match) = unchanged",
                 strcmp(rt_string_cstr(result), "hello world") == 0);
 
@@ -336,7 +336,7 @@ static void test_split()
     printf("Testing Pattern.Split:\n");
 
     // Split by comma
-    void *seq = rt_pattern_split(rt_const_cstr(","), rt_const_cstr("a,b,c,d"));
+    void *seq = rt_pattern_split(rt_const_cstr("a,b,c,d"), rt_const_cstr(","));
     test_result("Split by ',' count = 4", rt_seq_len(seq) == 4);
     test_result("Split ',' [0] = 'a'", strcmp(seq_get_str(seq, 0), "a") == 0);
     test_result("Split ',' [1] = 'b'", strcmp(seq_get_str(seq, 1), "b") == 0);
@@ -344,21 +344,21 @@ static void test_split()
     test_result("Split ',' [3] = 'd'", strcmp(seq_get_str(seq, 3), "d") == 0);
 
     // Split by whitespace
-    seq = rt_pattern_split(rt_const_cstr("\\s+"), rt_const_cstr("hello   world  test"));
+    seq = rt_pattern_split(rt_const_cstr("hello   world  test"), rt_const_cstr("\\s+"));
     test_result("Split by \\s+ count = 3", rt_seq_len(seq) == 3);
     test_result("Split \\s+ [0] = 'hello'", strcmp(seq_get_str(seq, 0), "hello") == 0);
     test_result("Split \\s+ [1] = 'world'", strcmp(seq_get_str(seq, 1), "world") == 0);
     test_result("Split \\s+ [2] = 'test'", strcmp(seq_get_str(seq, 2), "test") == 0);
 
     // Split by digits
-    seq = rt_pattern_split(rt_const_cstr("\\d+"), rt_const_cstr("abc123def456ghi"));
+    seq = rt_pattern_split(rt_const_cstr("abc123def456ghi"), rt_const_cstr("\\d+"));
     test_result("Split by \\d+ count = 3", rt_seq_len(seq) == 3);
     test_result("Split \\d+ [0] = 'abc'", strcmp(seq_get_str(seq, 0), "abc") == 0);
     test_result("Split \\d+ [1] = 'def'", strcmp(seq_get_str(seq, 1), "def") == 0);
     test_result("Split \\d+ [2] = 'ghi'", strcmp(seq_get_str(seq, 2), "ghi") == 0);
 
     // No match returns original as single element
-    seq = rt_pattern_split(rt_const_cstr("xyz"), rt_const_cstr("hello world"));
+    seq = rt_pattern_split(rt_const_cstr("hello world"), rt_const_cstr("xyz"));
     test_result("Split by 'xyz' (no match) count = 1", rt_seq_len(seq) == 1);
     test_result("Split 'xyz' [0] = 'hello world'", strcmp(seq_get_str(seq, 0), "hello world") == 0);
 
@@ -414,26 +414,24 @@ static void test_non_greedy()
 {
     printf("Testing Non-Greedy Quantifiers:\n");
 
-    // Greedy quantifier behavior: matches as much as possible
-    // Note: Our simple backtracking doesn't re-evaluate across sequence boundaries,
-    // so <.*> finds <a> (first complete match) rather than the longest possible
-    rt_string result = rt_pattern_find(rt_const_cstr("<.>"), rt_const_cstr("<a><b><c>"));
+    // Greedy quantifier behavior with backtracking
+    rt_string result = rt_pattern_find(rt_const_cstr("<a><b><c>"), rt_const_cstr("<.>"));
     test_result("Pattern <.> finds '<a>'", strcmp(rt_string_cstr(result), "<a>") == 0);
 
     // Non-greedy plus: finds minimal match
-    result = rt_pattern_find(rt_const_cstr("a+?"), rt_const_cstr("aaaa"));
+    result = rt_pattern_find(rt_const_cstr("aaaa"), rt_const_cstr("a+?"));
     test_result("Non-greedy a+? finds 'a'", strcmp(rt_string_cstr(result), "a") == 0);
 
     // Greedy plus: finds maximal match
-    result = rt_pattern_find(rt_const_cstr("a+"), rt_const_cstr("aaaa"));
+    result = rt_pattern_find(rt_const_cstr("aaaa"), rt_const_cstr("a+"));
     test_result("Greedy a+ finds 'aaaa'", strcmp(rt_string_cstr(result), "aaaa") == 0);
 
     // Non-greedy optional
-    result = rt_pattern_find(rt_const_cstr("ab??"), rt_const_cstr("ab"));
+    result = rt_pattern_find(rt_const_cstr("ab"), rt_const_cstr("ab??"));
     test_result("Non-greedy ab?? finds 'a'", strcmp(rt_string_cstr(result), "a") == 0);
 
     // Greedy optional
-    result = rt_pattern_find(rt_const_cstr("ab?"), rt_const_cstr("ab"));
+    result = rt_pattern_find(rt_const_cstr("ab"), rt_const_cstr("ab?"));
     test_result("Greedy ab? finds 'ab'", strcmp(rt_string_cstr(result), "ab") == 0);
 
     printf("\n");
@@ -453,33 +451,33 @@ static void test_edge_cases()
 
     // Empty text
     test_result("'a' does not match empty text",
-                !rt_pattern_is_match(rt_const_cstr("a"), rt_const_cstr("")));
+                !rt_pattern_is_match(rt_const_cstr(""), rt_const_cstr("a")));
 
     test_result("'^$' matches empty text",
-                rt_pattern_is_match(rt_const_cstr("^$"), rt_const_cstr("")));
+                rt_pattern_is_match(rt_const_cstr(""), rt_const_cstr("^$")));
 
     // Escaped metacharacters
     test_result("Escaped dot \\. matches literal dot",
-                rt_pattern_is_match(rt_const_cstr("hello\\.world"), rt_const_cstr("hello.world")));
+                rt_pattern_is_match(rt_const_cstr("hello.world"), rt_const_cstr("hello\\.world")));
 
     test_result(
         "Escaped dot \\. does not match 'helloxworld'",
-        !rt_pattern_is_match(rt_const_cstr("^hello\\.world$"), rt_const_cstr("helloxworld")));
+        !rt_pattern_is_match(rt_const_cstr("helloxworld"), rt_const_cstr("^hello\\.world$")));
 
     // Nested groups
     test_result("Nested groups ((ab)+) matches 'abab'",
-                rt_pattern_is_match(rt_const_cstr("^((ab)+)$"), rt_const_cstr("abab")));
+                rt_pattern_is_match(rt_const_cstr("abab"), rt_const_cstr("^((ab)+)$")));
 
     // Complex alternation
     test_result("Complex alternation (a(b|c)d) matches 'abd'",
-                rt_pattern_is_match(rt_const_cstr("^a(b|c)d$"), rt_const_cstr("abd")));
+                rt_pattern_is_match(rt_const_cstr("abd"), rt_const_cstr("^a(b|c)d$")));
 
     test_result("Complex alternation (a(b|c)d) matches 'acd'",
-                rt_pattern_is_match(rt_const_cstr("^a(b|c)d$"), rt_const_cstr("acd")));
+                rt_pattern_is_match(rt_const_cstr("acd"), rt_const_cstr("^a(b|c)d$")));
 
     // Character class with hyphen at end
     test_result("Class [a-] matches 'a' or '-'",
-                rt_pattern_is_match(rt_const_cstr("^[a-]+$"), rt_const_cstr("a-a-")));
+                rt_pattern_is_match(rt_const_cstr("a-a-"), rt_const_cstr("^[a-]+$")));
 
     printf("\n");
 }

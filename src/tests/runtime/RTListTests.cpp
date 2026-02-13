@@ -224,6 +224,59 @@ static void test_list_finalizer_releases_elements()
     assert(g_finalizer_calls == 1);
 }
 
+static void test_is_empty()
+{
+    void *list = rt_ns_list_new();
+    assert(list != nullptr);
+
+    assert(rt_list_is_empty(list) == 1);
+    assert(rt_list_is_empty(nullptr) == 1);
+
+    void *a = new_obj();
+    rt_list_push(list, a);
+    assert(rt_list_is_empty(list) == 0);
+
+    cleanup_list(list);
+    rt_release_obj(a);
+}
+
+static void test_pop()
+{
+    void *list = rt_ns_list_new();
+    assert(list != nullptr);
+
+    void *a = new_obj();
+    void *b = new_obj();
+    void *c = new_obj();
+
+    rt_list_push(list, a);
+    rt_list_push(list, b);
+    rt_list_push(list, c);
+    assert(rt_list_len(list) == 3);
+
+    void *popped = rt_list_pop(list);
+    assert(popped == c);
+    assert(rt_list_len(list) == 2);
+
+    popped = rt_list_pop(list);
+    assert(popped == b);
+    assert(rt_list_len(list) == 1);
+
+    popped = rt_list_pop(list);
+    assert(popped == a);
+    assert(rt_list_len(list) == 0);
+    assert(rt_list_is_empty(list) == 1);
+
+    // Pop on empty list should trap
+    EXPECT_TRAP(rt_list_pop(list));
+    assert(g_last_trap && strstr(g_last_trap, "List.Pop") != nullptr);
+
+    cleanup_list(list);
+    rt_release_obj(a);
+    rt_release_obj(b);
+    rt_release_obj(c);
+}
+
 int main()
 {
     test_has_empty_and_nonempty();
@@ -232,5 +285,7 @@ int main()
     test_remove_returns_bool_and_removes_first_only();
     test_insert_out_of_range_traps();
     test_list_finalizer_releases_elements();
+    test_is_empty();
+    test_pop();
     return 0;
 }

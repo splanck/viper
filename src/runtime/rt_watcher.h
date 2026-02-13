@@ -72,12 +72,12 @@ extern "C"
     /// @return Event type (RT_WATCH_EVENT_*).
     int64_t rt_watcher_event_type(void *obj);
 
-    // Event type accessors for static properties
-    int64_t rt_watcher_event_none(void);
-    int64_t rt_watcher_event_created(void);
-    int64_t rt_watcher_event_modified(void);
-    int64_t rt_watcher_event_deleted(void);
-    int64_t rt_watcher_event_renamed(void);
+    // Event type accessors (accept receiver for property dispatch compatibility)
+    int64_t rt_watcher_event_none(void *self);
+    int64_t rt_watcher_event_created(void *self);
+    int64_t rt_watcher_event_modified(void *self);
+    int64_t rt_watcher_event_deleted(void *self);
+    int64_t rt_watcher_event_renamed(void *self);
 
 #ifdef __cplusplus
 }

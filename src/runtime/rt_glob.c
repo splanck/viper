@@ -107,7 +107,7 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
     return *text == '\0';
 }
 
-int8_t rt_glob_match(rt_string pattern, rt_string path)
+int8_t rt_glob_match(rt_string path, rt_string pattern)
 {
     const char *pat = rt_string_cstr(pattern);
     const char *txt = rt_string_cstr(path);

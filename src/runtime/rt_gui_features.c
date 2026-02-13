@@ -46,12 +46,7 @@ void *rt_commandpalette_new(void *parent)
         return NULL;
 
     rt_commandpalette_data_t *data =
-        (rt_commandpalette_data_t *)malloc(sizeof(rt_commandpalette_data_t));
-    if (!data)
-    {
-        vg_commandpalette_destroy(palette);
-        return NULL;
-    }
+        (rt_commandpalette_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_commandpalette_data_t));
     data->palette = palette;
     data->selected_command = NULL;
     data->was_selected = 0;
@@ -73,7 +68,6 @@ void rt_commandpalette_destroy(void *palette)
     }
     if (data->selected_command)
         free(data->selected_command);
-    free(data);
 }
 
 void rt_commandpalette_add_command(void *palette, rt_string id, rt_string label, rt_string category)
@@ -419,13 +413,8 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms)
 
     char *cmsg = rt_string_to_cstr(message);
 
-    rt_toast_data_t *data = (rt_toast_data_t *)malloc(sizeof(rt_toast_data_t));
-    if (!data)
-    {
-        if (cmsg)
-            free(cmsg);
-        return NULL;
-    }
+    rt_toast_data_t *data =
+        (rt_toast_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_toast_data_t));
 
     data->id =
         vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, (uint32_t)duration_ms);
@@ -552,13 +541,8 @@ void *rt_breadcrumb_new(void *parent)
     if (!bc)
         return NULL;
 
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)malloc(sizeof(rt_breadcrumb_data_t));
-    if (!data)
-    {
-        vg_breadcrumb_destroy(bc);
-        return NULL;
-    }
-
+    rt_breadcrumb_data_t *data =
+        (rt_breadcrumb_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_breadcrumb_data_t));
     data->breadcrumb = bc;
     data->clicked_index = -1;
     data->clicked_data = NULL;
@@ -581,7 +565,6 @@ void rt_breadcrumb_destroy(void *crumb)
     }
     if (data->clicked_data)
         free(data->clicked_data);
-    free(data);
 }
 
 void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator)
@@ -740,13 +723,8 @@ void *rt_minimap_new(void *parent)
     if (!minimap)
         return NULL;
 
-    rt_minimap_data_t *data = (rt_minimap_data_t *)malloc(sizeof(rt_minimap_data_t));
-    if (!data)
-    {
-        vg_minimap_destroy(minimap);
-        return NULL;
-    }
-
+    rt_minimap_data_t *data =
+        (rt_minimap_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_minimap_data_t));
     data->minimap = minimap;
     data->width = 80; // Default width
 
@@ -763,7 +741,6 @@ void rt_minimap_destroy(void *minimap)
     {
         vg_minimap_destroy(data->minimap);
     }
-    free(data);
 }
 
 void rt_minimap_bind_editor(void *minimap, void *editor)

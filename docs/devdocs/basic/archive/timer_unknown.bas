@@ -1,2 +1,0 @@
-DIM t AS LONG
-t = TIMERFOO()

@@ -88,7 +88,8 @@ struct FastPathContext
     /// @brief Get the register holding a value if it's a parameter.
     /// @param bb The basic block whose parameter list is checked.
     /// @param val The IL value to look up.
-    /// @return The physical register if @p val is a parameter within GPR arg limits, nullopt otherwise.
+    /// @return The physical register if @p val is a parameter within GPR arg limits, nullopt
+    /// otherwise.
     [[nodiscard]] std::optional<PhysReg> getValueReg(const il::core::BasicBlock &bb,
                                                      const il::core::Value &val) const
     {

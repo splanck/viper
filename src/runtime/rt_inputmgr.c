@@ -12,6 +12,7 @@
 
 #include "rt_inputmgr.h"
 #include "rt_input.h"
+#include "rt_object.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -29,11 +30,8 @@ struct rt_inputmgr_impl
 
 rt_inputmgr rt_inputmgr_new(void)
 {
-    struct rt_inputmgr_impl *mgr = malloc(sizeof(struct rt_inputmgr_impl));
-    if (!mgr)
-    {
-        return NULL;
-    }
+    struct rt_inputmgr_impl *mgr =
+        (struct rt_inputmgr_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_inputmgr_impl));
 
     mgr->debounce_delay = 12; // Default: 12 frames (~200ms at 60fps)
     mgr->debounce_count = 0;
@@ -45,10 +43,7 @@ rt_inputmgr rt_inputmgr_new(void)
 
 void rt_inputmgr_destroy(rt_inputmgr mgr)
 {
-    if (mgr)
-    {
-        free(mgr);
-    }
+    (void)mgr;
 }
 
 void rt_inputmgr_update(rt_inputmgr mgr)

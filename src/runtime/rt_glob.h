@@ -29,10 +29,10 @@ extern "C"
     ///          - * matches any sequence of characters except /
     ///          - ** matches any sequence including /
     ///          - ? matches any single character except /
-    /// @param pattern The glob pattern (e.g., "*.txt", "src/*.c").
     /// @param path The path to test.
+    /// @param pattern The glob pattern (e.g., "*.txt", "src/*.c").
     /// @return 1 if path matches pattern, 0 otherwise.
-    int8_t rt_glob_match(rt_string pattern, rt_string path);
+    int8_t rt_glob_match(rt_string path, rt_string pattern);
 
     /// @brief Find all files matching a glob pattern in a directory.
     /// @details Searches in the specified directory (non-recursive).

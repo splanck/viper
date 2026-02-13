@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_sortedset.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include <stdlib.h>
 #include <string.h>
@@ -110,7 +111,7 @@ static void ensure_capacity(rt_sortedset set, int64_t needed)
 
 void *rt_sortedset_new(void)
 {
-    rt_sortedset set = calloc(1, sizeof(struct rt_sortedset_impl));
+    rt_sortedset set = (rt_sortedset)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_sortedset_impl));
     return set;
 }
 

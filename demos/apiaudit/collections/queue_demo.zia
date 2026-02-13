@@ -1,0 +1,12 @@
+module QueueDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.Queue Demo ===");
+    var q = new Viper.Collections.Queue();
+    q.Push("a"); q.Push("b"); q.Push("c");
+    SayInt(q.Len);
+    SayBool(q.IsEmpty);
+    q.Clear();
+    SayBool(q.IsEmpty);
+    Say("done");
+}

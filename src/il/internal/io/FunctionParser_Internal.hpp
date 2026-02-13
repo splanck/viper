@@ -196,7 +196,7 @@ struct Prototype
 ///          segment that follows the parameter list.
 struct PrototypeParseResult
 {
-    Prototype proto;                    ///< Parsed return type and parameters.
+    Prototype proto;                     ///< Parsed return type and parameters.
     std::string_view callingConvSegment; ///< Trailing text after the parameter list.
 };
 
@@ -217,10 +217,10 @@ struct Attrs
 /// @brief Complete parsed function header including name, prototype, and metadata.
 struct FunctionHeader
 {
-    std::string name;          ///< Function identifier.
-    Prototype proto;           ///< Return type and parameter list.
-    CallingConv cc;            ///< Calling convention annotation.
-    Attrs attrs;               ///< Parsed function attributes.
+    std::string name;           ///< Function identifier.
+    Prototype proto;            ///< Return type and parameter list.
+    CallingConv cc;             ///< Calling convention annotation.
+    Attrs attrs;                ///< Parsed function attributes.
     il::support::SourceLoc loc; ///< Source location of the function declaration.
 };
 
@@ -240,12 +240,12 @@ struct ParserSnapshot
     il::core::Function *curFn;     ///< Saved current function pointer.
     il::core::BasicBlock *curBB;   ///< Saved current basic block pointer.
     il::support::SourceLoc curLoc; ///< Saved source location.
-    std::unordered_map<std::string, unsigned> tempIds; ///< Saved SSA name-to-id mappings.
-    unsigned nextTemp;             ///< Saved next temporary ID counter.
+    std::unordered_map<std::string, unsigned> tempIds;       ///< Saved SSA name-to-id mappings.
+    unsigned nextTemp;                                       ///< Saved next temporary ID counter.
     std::unordered_map<std::string, size_t> blockParamCount; ///< Saved block parameter counts.
     std::vector<LegacyParserState::PendingBr> pendingBrs;    ///< Saved pending branch targets.
-    size_t functionCount;          ///< Number of functions at snapshot time.
-    bool active = true;            ///< True if rollback should occur on destruction.
+    size_t functionCount; ///< Number of functions at snapshot time.
+    bool active = true;   ///< True if rollback should occur on destruction.
 
     explicit ParserSnapshot(LegacyParserState &st)
         : state(st), curFn(st.curFn), curBB(st.curBB), curLoc(st.curLoc), tempIds(st.tempIds),

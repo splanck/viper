@@ -1,0 +1,19 @@
+module RandomDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Viper.Math.Random Demo ===");
+    var rng = new Viper.Math.Random(42);
+    SayNum(rng.Next());
+    SayInt(rng.NextInt(100));
+
+    Viper.Math.Random.Seed(42);
+    SayNum(Viper.Math.Random.Next());
+    SayInt(Viper.Math.Random.NextInt(100));
+    SayInt(Viper.Math.Random.Range(10, 20));
+    SayInt(Viper.Math.Random.Dice(6));
+    SayNum(Viper.Math.Random.Gaussian(0.0, 1.0));
+    SayNum(Viper.Math.Random.Exponential(1.0));
+    SayInt(Viper.Math.Random.Chance(0.5));
+    Say("done");
+}

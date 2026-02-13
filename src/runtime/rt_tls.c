@@ -14,6 +14,7 @@
 
 #include "rt_tls.h"
 #include "rt_crypto.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -674,9 +675,8 @@ void rt_tls_config_init(rt_tls_config_t *config)
 
 rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config)
 {
-    rt_tls_session_t *session = (rt_tls_session_t *)calloc(1, sizeof(rt_tls_session_t));
-    if (!session)
-        return NULL;
+    rt_tls_session_t *session = (rt_tls_session_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tls_session_t));
+    memset(session, 0, sizeof(rt_tls_session_t));
 
     session->socket_fd = socket_fd;
     session->state = TLS_STATE_INITIAL;
@@ -882,7 +882,6 @@ void rt_tls_close(rt_tls_session_t *session)
     }
 
     session->state = TLS_STATE_CLOSED;
-    free(session);
 }
 
 const char *rt_tls_get_error(rt_tls_session_t *session)

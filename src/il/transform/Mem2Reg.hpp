@@ -33,9 +33,9 @@ namespace viper::passes
 ///          the number of load/store instructions eliminated as a result.
 struct Mem2RegStats
 {
-    unsigned promotedVars{0};    ///< Number of allocas promoted to SSA form.
-    unsigned removedLoads{0};    ///< Number of load instructions eliminated.
-    unsigned removedStores{0};   ///< Number of store instructions eliminated.
+    unsigned promotedVars{0};  ///< Number of allocas promoted to SSA form.
+    unsigned removedLoads{0};  ///< Number of load instructions eliminated.
+    unsigned removedStores{0}; ///< Number of store instructions eliminated.
 };
 
 /// \brief Promote simple allocas to SSA form.

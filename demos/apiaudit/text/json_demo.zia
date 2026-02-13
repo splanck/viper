@@ -1,0 +1,8 @@
+module JsonDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.Json Demo ===");
+    SayBool(Viper.Text.Json.IsValid("{\"a\":1}"));
+    SayBool(Viper.Text.Json.IsValid("not json"));
+    Say("done");
+}

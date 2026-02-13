@@ -1,0 +1,15 @@
+module TreeMapDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.TreeMap Demo ===");
+    var t = new Viper.Collections.TreeMap();
+    t.Set("c", "gamma"); t.Set("a", "alpha"); t.Set("b", "beta");
+    SayInt(t.Len);
+    SayBool(t.Has("a"));
+    SayBool(t.Has("z"));
+    t.Drop("b");
+    SayInt(t.Len);
+    t.Clear();
+    SayBool(t.IsEmpty);
+    Say("done");
+}

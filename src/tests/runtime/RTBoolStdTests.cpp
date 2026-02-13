@@ -125,10 +125,10 @@ static void test_parse_is_num_returns()
 
 static void test_regex_is_match_returns()
 {
-    int8_t r = rt_pattern_is_match(make_str("^hello"), make_str("hello world"));
+    int8_t r = rt_pattern_is_match(make_str("hello world"), make_str("^hello"));
     assert(r == 1);
 
-    r = rt_pattern_is_match(make_str("^goodbye"), make_str("hello world"));
+    r = rt_pattern_is_match(make_str("hello world"), make_str("^goodbye"));
     assert(r == 0);
 
     printf("test_regex_is_match_returns: PASSED\n");

@@ -1,0 +1,11 @@
+module HashDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Crypto.Hash Demo ===");
+    Say(Viper.Crypto.Hash.MD5("hello"));
+    Say(Viper.Crypto.Hash.SHA1("hello"));
+    Say(Viper.Crypto.Hash.SHA256("hello"));
+    SayInt(Viper.Crypto.Hash.CRC32("hello"));
+    Say(Viper.Crypto.Hash.HmacSHA256("hello", "secret"));
+    Say("done");
+}

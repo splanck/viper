@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_tween.h"
+#include "rt_object.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -59,7 +60,8 @@ static double ease_in_out_bounce(double t);
 
 rt_tween rt_tween_new(void)
 {
-    struct rt_tween_impl *tween = malloc(sizeof(struct rt_tween_impl));
+    struct rt_tween_impl *tween =
+        (struct rt_tween_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_tween_impl));
     if (!tween)
         return NULL;
 
@@ -79,7 +81,7 @@ rt_tween rt_tween_new(void)
 void rt_tween_destroy(rt_tween tween)
 {
     if (tween)
-        free(tween);
+        rt_obj_free(tween);
 }
 
 void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, int64_t ease_type)

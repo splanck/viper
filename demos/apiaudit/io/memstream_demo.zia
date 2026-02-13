@@ -1,0 +1,19 @@
+module MemStreamDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.IO.MemStream Demo ===");
+    var ms = new Viper.IO.MemStream();
+    SayInt(ms.Pos);
+    SayInt(ms.Len);
+    ms.WriteI8(42);
+    ms.WriteI16(1000);
+    ms.WriteStr("hello");
+    SayInt(ms.Len);
+    ms.Seek(0);
+    SayInt(ms.ReadI8());
+    SayInt(ms.ReadI16());
+    Say(ms.ReadStr(5));
+    ms.Clear();
+    SayInt(ms.Len);
+    Say("done");
+}

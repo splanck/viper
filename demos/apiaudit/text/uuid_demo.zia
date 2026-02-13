@@ -1,0 +1,11 @@
+module UuidDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.Uuid Demo ===");
+    var u = Viper.Text.Uuid.New();
+    SayInt(Viper.String.Len(u));
+    SayBool(Viper.Text.Uuid.IsValid(u));
+    SayBool(Viper.Text.Uuid.IsValid("not-a-uuid"));
+    Say(Viper.Text.Uuid.Empty);
+    Say("done");
+}

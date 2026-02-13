@@ -1,0 +1,7 @@
+module CsvDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.Csv Demo ===");
+    Say(Viper.Text.Csv.FormatLine(Viper.Text.Csv.ParseLine("a,b,c")));
+    Say("done");
+}

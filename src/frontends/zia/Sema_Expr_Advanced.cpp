@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia
 {
@@ -120,6 +121,25 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
                 }
                 return funcType;
             }
+
+            // Try direct function lookup (e.g., Viper.Result.Ok, Viper.Text.Uuid.New)
+            std::string funcName = dottedBase + "." + expr->field;
+            sym = lookupSymbol(funcName);
+            if (sym && sym->kind == Symbol::Kind::Function)
+            {
+                return sym->type;
+            }
+
+            // Return a module type so downstream code can resolve further
+            return types::module(dottedBase);
+        }
+
+        // Check if the dotted base + field together form a known type
+        std::string fullDotted = dottedBase + "." + expr->field;
+        typeIt = typeRegistry_.find(fullDotted);
+        if (typeIt != typeRegistry_.end())
+        {
+            return types::module(fullDotted);
         }
     }
 
@@ -697,14 +717,32 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
                    type->kind == TypeKindSem::List || type->kind == TypeKindSem::Set ||
                    type->kind == TypeKindSem::Map;
 
-    // Also allow new for runtime classes that have a .New constructor
-    if (!allowed && type->kind == TypeKindSem::Ptr && !type->name.empty())
+    // Also allow new for runtime classes that have a constructor
+    if (!allowed && type && !type->name.empty())
     {
+        // First try the conventional .New suffix
         std::string ctorName = type->name + ".New";
         Symbol *sym = lookupSymbol(ctorName);
         if (sym && sym->kind == Symbol::Kind::Function)
         {
             allowed = true;
+        }
+        else
+        {
+            // Fall back to looking up the actual ctor from RuntimeRegistry catalog.
+            // The ctor field is already a fully-qualified extern target, e.g.,
+            // "Viper.Collections.FrozenSet.FromSeq"
+            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name))
+            {
+                if (rtClass->ctor)
+                {
+                    sym = lookupSymbol(rtClass->ctor);
+                    if (sym && sym->kind == Symbol::Kind::Function)
+                    {
+                        allowed = true;
+                    }
+                }
+            }
         }
     }
 

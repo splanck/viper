@@ -12,6 +12,7 @@
 
 #include "rt_future.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -54,7 +55,7 @@ typedef struct
 
 void *rt_promise_new(void)
 {
-    promise_impl *p = (promise_impl *)calloc(1, sizeof(promise_impl));
+    promise_impl *p = (promise_impl *)rt_obj_new_i64(0, (int64_t)sizeof(promise_impl));
     if (!p)
         rt_trap("Promise: memory allocation failed");
 
@@ -90,7 +91,7 @@ void *rt_promise_get_future(void *obj)
 
     if (!p->future)
     {
-        future_impl *f = (future_impl *)calloc(1, sizeof(future_impl));
+        future_impl *f = (future_impl *)rt_obj_new_i64(0, (int64_t)sizeof(future_impl));
         if (!f)
         {
 #ifdef _WIN32

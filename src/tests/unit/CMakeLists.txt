@@ -1260,4 +1260,12 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_audio_integration ${VIPER_TESTS_DIR}/runtime/RTAudioIntegrationTests.cpp)
     target_link_libraries(test_rt_audio_integration PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_audio_integration test_rt_audio_integration)
+
+    viper_add_test(test_rt_heap_alloc ${VIPER_TESTS_DIR}/runtime/RTHeapAllocTests.cpp)
+    target_link_libraries(test_rt_heap_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_heap_alloc test_rt_heap_alloc)
+
+    viper_add_test(test_rt_object_introspect ${VIPER_TESTS_DIR}/runtime/RTObjectIntrospectTests.cpp)
+    target_link_libraries(test_rt_object_introspect PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_object_introspect test_rt_object_introspect)
 endfunction()

@@ -1,0 +1,70 @@
+module MathDemo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Viper.Math Demo ===");
+
+    Say("--- Constants ---");
+    SayNum(Pi);
+    SayNum(E);
+    SayNum(Tau);
+
+    Say("--- Abs/Sign ---");
+    SayNum(Abs(-5.0));
+    SayInt(AbsInt(-42));
+    SayNum(Sgn(-3.0));
+    SayNum(Sgn(0.0));
+    SayNum(Sgn(7.0));
+    SayInt(SgnInt(-3));
+    SayInt(SgnInt(0));
+    SayInt(SgnInt(3));
+
+    Say("--- Rounding ---");
+    SayNum(Floor(3.7));
+    SayNum(Ceil(3.2));
+    SayNum(Round(3.5));
+    SayNum(Trunc(3.9));
+
+    Say("--- Min/Max/Clamp ---");
+    SayNum(Min(3.0, 7.0));
+    SayNum(Max(3.0, 7.0));
+    SayInt(MinInt(3, 7));
+    SayInt(MaxInt(3, 7));
+    SayNum(Clamp(10.0, 0.0, 5.0));
+    SayNum(Clamp(-1.0, 0.0, 5.0));
+    SayInt(ClampInt(10, 0, 5));
+
+    Say("--- Powers/Roots/Logs ---");
+    SayNum(Sqrt(16.0));
+    SayNum(Pow(2.0, 10.0));
+    SayNum(Exp(1.0));
+    SayNum(Log(1.0));
+    SayNum(Log10(100.0));
+    SayNum(Log2(8.0));
+
+    Say("--- Trig ---");
+    SayNum(Sin(0.0));
+    SayNum(Cos(0.0));
+    SayNum(Tan(0.0));
+    SayNum(Asin(0.0));
+    SayNum(Acos(1.0));
+    SayNum(Atan(0.0));
+    SayNum(Atan2(1.0, 1.0));
+
+    Say("--- Hyperbolic ---");
+    SayNum(Sinh(0.0));
+    SayNum(Cosh(0.0));
+    SayNum(Tanh(0.0));
+
+    Say("--- Misc ---");
+    SayNum(Hypot(3.0, 4.0));
+    SayNum(FMod(7.0, 3.0));
+    SayNum(Lerp(0.0, 10.0, 0.5));
+    SayNum(Deg(3.14159265358979));
+    SayNum(Rad(180.0));
+    SayNum(Wrap(5.0, 0.0, 3.0));
+    SayInt(WrapInt(5, 0, 3));
+
+    Say("done");
+}

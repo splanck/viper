@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_timer.h"
+#include "rt_object.h"
 #include <stdlib.h>
 
 /// Internal structure for Timer.
@@ -24,7 +25,8 @@ struct rt_timer_impl
 
 rt_timer rt_timer_new(void)
 {
-    struct rt_timer_impl *timer = malloc(sizeof(struct rt_timer_impl));
+    struct rt_timer_impl *timer =
+        (struct rt_timer_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_timer_impl));
     if (!timer)
     {
         return NULL;
@@ -42,7 +44,7 @@ void rt_timer_destroy(rt_timer timer)
 {
     if (timer)
     {
-        free(timer);
+        rt_obj_free(timer);
     }
 }
 

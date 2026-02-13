@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_pathfollow.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -98,15 +99,24 @@ static void recalculate_lengths(rt_pathfollow path)
     }
 }
 
+static void pathfollow_finalize(void *obj)
+{
+    struct rt_pathfollow_impl *path = (struct rt_pathfollow_impl *)obj;
+    if (path && path->segment_lengths)
+        free(path->segment_lengths);
+}
+
 rt_pathfollow rt_pathfollow_new(void)
 {
-    struct rt_pathfollow_impl *path = malloc(sizeof(struct rt_pathfollow_impl));
+    struct rt_pathfollow_impl *path =
+        (struct rt_pathfollow_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_pathfollow_impl));
     if (!path)
         return NULL;
 
     memset(path, 0, sizeof(struct rt_pathfollow_impl));
     path->speed = 100000; // Default: 100 units/sec
     path->mode = RT_PATHFOLLOW_ONCE;
+    rt_obj_set_finalizer(path, pathfollow_finalize);
     return path;
 }
 
@@ -115,9 +125,7 @@ void rt_pathfollow_destroy(rt_pathfollow path)
     if (!path)
         return;
 
-    if (path->segment_lengths)
-        free(path->segment_lengths);
-    free(path);
+    rt_obj_free(path);
 }
 
 void rt_pathfollow_clear(rt_pathfollow path)

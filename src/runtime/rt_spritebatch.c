@@ -12,6 +12,7 @@
 
 #include "rt_spritebatch.h"
 #include "rt_graphics.h"
+#include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_sprite.h"
 
@@ -109,9 +110,8 @@ static void add_item(spritebatch_impl *batch, batch_item *item)
 
 void *rt_spritebatch_new(int64_t capacity)
 {
-    spritebatch_impl *batch = (spritebatch_impl *)calloc(1, sizeof(spritebatch_impl));
-    if (!batch)
-        rt_trap("SpriteBatch: memory allocation failed");
+    spritebatch_impl *batch = (spritebatch_impl *)rt_obj_new_i64(0, (int64_t)sizeof(spritebatch_impl));
+    memset(batch, 0, sizeof(spritebatch_impl));
 
     if (capacity <= 0)
         capacity = DEFAULT_CAPACITY;
@@ -119,7 +119,6 @@ void *rt_spritebatch_new(int64_t capacity)
     batch->items = (batch_item *)malloc((size_t)capacity * sizeof(batch_item));
     if (!batch->items)
     {
-        free(batch);
         rt_trap("SpriteBatch: memory allocation failed");
     }
 

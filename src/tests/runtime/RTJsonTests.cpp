@@ -95,8 +95,13 @@ static void test_is_valid_basic()
     assert(rt_json_is_valid(make_str("abc")) == 0);      // random word
     assert(rt_json_is_valid(make_str("@invalid")) == 0); // special char
 
-    // Note: rt_json_is_valid does basic first-character check only.
-    // Full validation happens during parsing.
+    // A-035: Invalid JSON that looks like keywords but isn't
+    assert(rt_json_is_valid(make_str("not json")) == 0);
+    assert(rt_json_is_valid(make_str("truefalse")) == 0); // trailing garbage
+    assert(rt_json_is_valid(make_str("nullnull")) == 0);
+    assert(rt_json_is_valid(make_str("{incomplete")) == 0);
+    assert(rt_json_is_valid(make_str("[1, 2,]")) == 0);   // trailing comma
+    assert(rt_json_is_valid(make_str("{\"key\"}")) == 0); // missing value
 
     printf("test_is_valid_basic: PASSED\n");
 }

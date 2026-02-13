@@ -1,0 +1,12 @@
+module HeapDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.Heap Demo ===");
+    var h = new Viper.Collections.Heap();
+    h.Push(30, "low"); h.Push(10, "high"); h.Push(20, "med");
+    SayInt(h.Len);
+    SayBool(h.IsEmpty);
+    h.Clear();
+    SayBool(h.IsEmpty);
+    Say("done");
+}

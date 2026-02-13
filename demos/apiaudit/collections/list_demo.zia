@@ -1,0 +1,22 @@
+module ListDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Viper.Collections.List Demo ===");
+    var l = new Viper.Collections.List();
+    l.Push("alpha");
+    l.Push("beta");
+    l.Push("gamma");
+    SayInt(l.Len);
+    SayInt(l.Find("gamma"));
+    SayBool(l.Has("alpha"));
+    SayBool(l.Has("xyz"));
+    l.Insert(0, "first");
+    SayInt(l.Len);
+    l.RemoveAt(0);
+    SayInt(l.Len);
+    l.Flip();
+    l.Clear();
+    SayInt(l.Len);
+    Say("done");
+}

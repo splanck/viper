@@ -1,0 +1,8 @@
+module KeyDeriveDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Crypto.KeyDerive Demo ===");
+    var result = Viper.Crypto.KeyDerive.Pbkdf2SHA256Str("password", "salt", 1000, 32);
+    SayInt(result.Len);
+    Say("done");
+}

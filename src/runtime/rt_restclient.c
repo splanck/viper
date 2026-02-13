@@ -16,6 +16,7 @@
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_network.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -120,9 +121,8 @@ static void *execute_request(rest_client *client, void *req)
 
 void *rt_restclient_new(rt_string base_url)
 {
-    rest_client *client = (rest_client *)calloc(1, sizeof(rest_client));
-    if (!client)
-        rt_trap("RestClient: memory allocation failed");
+    rest_client *client = (rest_client *)rt_obj_new_i64(0, (int64_t)sizeof(rest_client));
+    memset(client, 0, sizeof(rest_client));
 
     const char *url_str = rt_string_cstr(base_url);
     client->base_url = url_str ? rt_string_from_bytes(url_str, strlen(url_str)) : rt_const_cstr("");

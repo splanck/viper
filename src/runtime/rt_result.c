@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_result.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <stdio.h>
@@ -55,9 +56,7 @@ typedef struct
 
 void *rt_result_ok(void *value)
 {
-    Result *r = (Result *)malloc(sizeof(Result));
-    if (!r)
-        return NULL;
+    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_PTR;
     r->value.ptr = value;
@@ -66,9 +65,7 @@ void *rt_result_ok(void *value)
 
 void *rt_result_ok_str(rt_string value)
 {
-    Result *r = (Result *)malloc(sizeof(Result));
-    if (!r)
-        return NULL;
+    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_STR;
     r->value.str = value;
@@ -77,9 +74,7 @@ void *rt_result_ok_str(rt_string value)
 
 void *rt_result_ok_i64(int64_t value)
 {
-    Result *r = (Result *)malloc(sizeof(Result));
-    if (!r)
-        return NULL;
+    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_I64;
     r->value.i64 = value;
@@ -88,9 +83,7 @@ void *rt_result_ok_i64(int64_t value)
 
 void *rt_result_ok_f64(double value)
 {
-    Result *r = (Result *)malloc(sizeof(Result));
-    if (!r)
-        return NULL;
+    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_F64;
     r->value.f64 = value;
@@ -99,9 +92,7 @@ void *rt_result_ok_f64(double value)
 
 void *rt_result_err(void *error)
 {
-    Result *r = (Result *)malloc(sizeof(Result));
-    if (!r)
-        return NULL;
+    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_ERR;
     r->value_type = VALUE_PTR;
     r->value.ptr = error;
@@ -110,9 +101,7 @@ void *rt_result_err(void *error)
 
 void *rt_result_err_str(rt_string message)
 {
-    Result *r = (Result *)malloc(sizeof(Result));
-    if (!r)
-        return NULL;
+    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_ERR;
     r->value_type = VALUE_STR;
     r->value.str = message;

@@ -714,3 +714,26 @@ void *rt_list_last(void *list)
 
     return rt_arr_obj_get(L->arr, len - 1);
 }
+
+int8_t rt_list_is_empty(void *list)
+{
+    if (!list)
+        return 1;
+    return rt_list_len(list) == 0 ? 1 : 0;
+}
+
+void *rt_list_pop(void *list)
+{
+    if (!list)
+        rt_trap("List.Pop: null list");
+
+    rt_list_impl *L = as_list(list);
+    size_t len = rt_arr_obj_len(L->arr);
+    if (len == 0)
+        rt_trap("List.Pop: list is empty");
+
+    void *elem = rt_arr_obj_get(L->arr, len - 1);
+    rt_arr_obj_put(L->arr, len - 1, NULL);
+    L->arr = rt_arr_obj_resize(L->arr, len - 1);
+    return elem;
+}

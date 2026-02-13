@@ -1,0 +1,16 @@
+module OrderedMapDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.OrderedMap Demo ===");
+    var m = new Viper.Collections.OrderedMap();
+    m.Set("c", "gamma"); m.Set("a", "alpha"); m.Set("b", "beta");
+    SayInt(m.Len);
+    SayBool(m.Has("a"));
+    Say(m.KeyAt(0));
+    Say(m.KeyAt(1));
+    m.Remove("a");
+    SayInt(m.Len);
+    m.Clear();
+    SayBool(m.IsEmpty);
+    Say("done");
+}

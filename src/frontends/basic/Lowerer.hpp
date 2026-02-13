@@ -546,8 +546,8 @@ class Lowerer
     struct ProgramEmitContext
     {
         std::vector<const Stmt *> mainStmts; ///< Flattened top-level statements for @main.
-        Function *function{nullptr};          ///< The synthetic @main IL function.
-        BasicBlock *entry{nullptr};           ///< Entry basic block of @main.
+        Function *function{nullptr};         ///< The synthetic @main IL function.
+        BasicBlock *entry{nullptr};          ///< Entry basic block of @main.
     };
 
     // Re-export private types from LowererTypes.hpp

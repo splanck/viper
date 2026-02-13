@@ -346,6 +346,13 @@ class Sema
         return it != runtimeCallees_.end() ? it->second : "";
     }
 
+    /// @brief Get the auto-eval getter name for an identifier expression.
+    std::string autoEvalGetter(const Expr *expr) const
+    {
+        auto it = autoEvalGetters_.find(expr);
+        return it != autoEvalGetters_.end() ? it->second : "";
+    }
+
     /// @brief Get the mangled function name for a generic function call.
     /// @param expr The call expression to look up.
     /// @return The mangled name (e.g., "identity$Integer") or empty string.
@@ -1117,6 +1124,11 @@ class Sema
     /// @details Populated for calls to extern functions (runtime library).
     /// Used during lowering to emit extern calls instead of direct calls.
     std::unordered_map<const CallExpr *, std::string> runtimeCallees_;
+
+    /// @brief Map from identifier expressions to zero-arg getter function names.
+    /// @details Populated for property-like identifiers imported via bind
+    /// (e.g., Pi → Viper.Math.get_Pi). Lowerer emits a call instead of a load.
+    std::unordered_map<const Expr *, std::string> autoEvalGetters_;
 
     /// @brief Resolved generic function call mangled names.
     /// @details Key: CallExpr pointer, Value: Mangled function name (e.g., "identity$Integer").

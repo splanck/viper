@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_spriteanim.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 
@@ -37,9 +38,8 @@ struct rt_spriteanim_impl
 
 rt_spriteanim rt_spriteanim_new(void)
 {
-    struct rt_spriteanim_impl *anim = malloc(sizeof(struct rt_spriteanim_impl));
-    if (!anim)
-        return NULL;
+    struct rt_spriteanim_impl *anim =
+        (struct rt_spriteanim_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_spriteanim_impl));
 
     anim->start_frame = 0;
     anim->end_frame = 0;
@@ -63,8 +63,7 @@ rt_spriteanim rt_spriteanim_new(void)
 
 void rt_spriteanim_destroy(rt_spriteanim anim)
 {
-    if (anim)
-        free(anim);
+    (void)anim;
 }
 
 void rt_spriteanim_setup(rt_spriteanim anim,

@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_compiled_pattern.h"
+#include "rt_object.h"
 #include "rt_regex_internal.h"
 
 #include "rt_internal.h"
@@ -41,9 +42,8 @@ void *rt_compiled_pattern_new(rt_string pattern)
     if (!pat_str)
         rt_trap("CompiledPattern: null pattern");
 
-    compiled_pattern_obj *obj = (compiled_pattern_obj *)malloc(sizeof(compiled_pattern_obj));
-    if (!obj)
-        rt_trap("CompiledPattern: memory allocation failed");
+    compiled_pattern_obj *obj =
+        (compiled_pattern_obj *)rt_obj_new_i64(0, (int64_t)sizeof(compiled_pattern_obj));
 
     obj->pattern = re_compile(pat_str);
     return obj;

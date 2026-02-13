@@ -1215,39 +1215,171 @@ rt_string rt_json_format_pretty(void *obj, int64_t indent)
 /// @note Does not allocate memory (validation only).
 ///
 /// @see rt_json_parse For parsing with full result
+/// Non-trapping JSON validator — returns 1 if the cursor was advanced past
+/// a valid JSON value, 0 on any syntax error.
+static int validate_value(json_parser *p)
+{
+    parser_skip_whitespace(p);
+    if (parser_eof(p))
+        return 0;
+
+    char c = parser_peek(p);
+
+    if (c == '"')
+    {
+        // String: consume opening quote, scan to closing quote handling escapes
+        parser_consume(p);
+        while (!parser_eof(p))
+        {
+            char ch = parser_consume(p);
+            if (ch == '"')
+                return 1;
+            if (ch == '\\')
+            {
+                if (parser_eof(p))
+                    return 0;
+                parser_consume(p); // skip escaped char
+            }
+        }
+        return 0; // unterminated string
+    }
+
+    if (c == '-' || (c >= '0' && c <= '9'))
+    {
+        // Number
+        if (c == '-')
+            parser_consume(p);
+        if (parser_eof(p))
+            return 0;
+        c = parser_peek(p);
+        if (!(c >= '0' && c <= '9'))
+            return 0;
+        while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
+            parser_consume(p);
+        if (!parser_eof(p) && parser_peek(p) == '.')
+        {
+            parser_consume(p);
+            if (parser_eof(p) || !(parser_peek(p) >= '0' && parser_peek(p) <= '9'))
+                return 0;
+            while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
+                parser_consume(p);
+        }
+        if (!parser_eof(p) && (parser_peek(p) == 'e' || parser_peek(p) == 'E'))
+        {
+            parser_consume(p);
+            if (!parser_eof(p) && (parser_peek(p) == '+' || parser_peek(p) == '-'))
+                parser_consume(p);
+            if (parser_eof(p) || !(parser_peek(p) >= '0' && parser_peek(p) <= '9'))
+                return 0;
+            while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
+                parser_consume(p);
+        }
+        return 1;
+    }
+
+    if (c == '{')
+    {
+        parser_consume(p);
+        parser_skip_whitespace(p);
+        if (!parser_eof(p) && parser_peek(p) == '}')
+        {
+            parser_consume(p);
+            return 1;
+        }
+        for (;;)
+        {
+            parser_skip_whitespace(p);
+            if (parser_eof(p) || parser_peek(p) != '"')
+                return 0;
+            if (!validate_value(p))
+                return 0; // key
+            parser_skip_whitespace(p);
+            if (parser_eof(p) || parser_consume(p) != ':')
+                return 0;
+            if (!validate_value(p))
+                return 0; // value
+            parser_skip_whitespace(p);
+            if (parser_eof(p))
+                return 0;
+            c = parser_consume(p);
+            if (c == '}')
+                return 1;
+            if (c != ',')
+                return 0;
+        }
+    }
+
+    if (c == '[')
+    {
+        parser_consume(p);
+        parser_skip_whitespace(p);
+        if (!parser_eof(p) && parser_peek(p) == ']')
+        {
+            parser_consume(p);
+            return 1;
+        }
+        for (;;)
+        {
+            if (!validate_value(p))
+                return 0;
+            parser_skip_whitespace(p);
+            if (parser_eof(p))
+                return 0;
+            c = parser_consume(p);
+            if (c == ']')
+                return 1;
+            if (c != ',')
+                return 0;
+        }
+    }
+
+    // Keywords: true, false, null
+    if (c == 't')
+    {
+        if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "true", 4) == 0)
+        {
+            p->pos += 4;
+            return 1;
+        }
+        return 0;
+    }
+    if (c == 'f')
+    {
+        if (p->pos + 5 <= p->len && strncmp(p->input + p->pos, "false", 5) == 0)
+        {
+            p->pos += 5;
+            return 1;
+        }
+        return 0;
+    }
+    if (c == 'n')
+    {
+        if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "null", 4) == 0)
+        {
+            p->pos += 4;
+            return 1;
+        }
+        return 0;
+    }
+
+    return 0;
+}
+
 int8_t rt_json_is_valid(rt_string text)
 {
     const char *input = rt_string_cstr(text);
     if (!input || strlen(input) == 0)
         return 0;
 
-    // Simple validation: try to parse and catch errors
-    // This is a simplified approach - a full implementation would
-    // have a separate validation pass that doesn't allocate
-
-    // For now, we use a basic syntax check
     json_parser p;
     parser_init(&p, input, strlen(input));
 
-    // Use setjmp/longjmp-style error handling would be ideal,
-    // but for simplicity, we just check basic structure
+    if (!validate_value(&p))
+        return 0;
 
+    // Ensure no trailing content after the JSON value
     parser_skip_whitespace(&p);
-    if (parser_eof(&p))
-        return 0;
-
-    char c = parser_peek(&p);
-
-    // Valid JSON must start with one of: { [ " digit - true false null
-    if (c != '{' && c != '[' && c != '"' && c != 't' && c != 'f' && c != 'n' && c != '-' &&
-        !(c >= '0' && c <= '9'))
-    {
-        return 0;
-    }
-
-    // For a proper implementation, we'd fully parse here
-    // For now, return 1 for plausible starts
-    return 1;
+    return parser_eof(&p) ? 1 : 0;
 }
 
 /// @brief Gets the JSON type of a parsed value.

@@ -1,0 +1,12 @@
+module ConcQueueDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Threads.ConcurrentQueue Demo ===");
+    var q = new Viper.Threads.ConcurrentQueue();
+    q.Enqueue("a"); q.Enqueue("b");
+    SayInt(q.Len);
+    SayBool(q.IsEmpty);
+    q.Clear();
+    SayBool(q.IsEmpty);
+    Say("done");
+}

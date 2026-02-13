@@ -1,0 +1,9 @@
+module CryptoRandDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Crypto.Rand Demo ===");
+    var n = Viper.Crypto.Rand.Int(1, 100);
+    SayBool(n >= 1);
+    SayBool(n <= 100);
+    Say("done");
+}

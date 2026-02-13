@@ -45,9 +45,9 @@ using Value = il::core::Value;
 ///          reproducible IL output regardless of compilation order.
 struct BlockNamer
 {
-    std::string proc;                                          ///< Procedure name suffix.
-    unsigned ifCounter{0};                                     ///< Sequential IF identifiers.
-    unsigned loopCounter{0};                                   ///< WHILE/FOR/DO/call_cont identifiers.
+    std::string proc;        ///< Procedure name suffix.
+    unsigned ifCounter{0};   ///< Sequential IF identifiers.
+    unsigned loopCounter{0}; ///< WHILE/FOR/DO/call_cont identifiers.
     std::unordered_map<std::string, unsigned> genericCounters; ///< Counters for other label shapes.
 
     /// @brief Construct a block namer for the given procedure.

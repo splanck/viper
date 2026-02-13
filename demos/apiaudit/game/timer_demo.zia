@@ -1,0 +1,16 @@
+module TimerDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Game.Timer Demo ===");
+    var t = new Viper.Game.Timer();
+    SayBool(t.IsRunning);
+    SayBool(t.IsExpired);
+    t.Start(100);
+    SayBool(t.IsRunning);
+    SayInt(t.Duration);
+    SayInt(t.Elapsed);
+    t.Stop();
+    SayBool(t.IsRunning);
+    t.Reset();
+    Say("done");
+}

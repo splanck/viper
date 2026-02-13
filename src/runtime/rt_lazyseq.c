@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_lazyseq.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include <stdlib.h>
 #include <string.h>
@@ -128,9 +129,9 @@ struct rt_lazyseq_impl
 
 static rt_lazyseq alloc_lazyseq(lazyseq_type type)
 {
-    struct rt_lazyseq_impl *seq = calloc(1, sizeof(struct rt_lazyseq_impl));
-    if (!seq)
-        return NULL;
+    struct rt_lazyseq_impl *seq =
+        (struct rt_lazyseq_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_lazyseq_impl));
+    memset(seq, 0, sizeof(struct rt_lazyseq_impl));
     seq->type = type;
     return seq;
 }
@@ -234,8 +235,6 @@ void rt_lazyseq_destroy(rt_lazyseq seq)
         default:
             break;
     }
-
-    free(seq);
 }
 
 //=============================================================================
@@ -881,4 +880,75 @@ int8_t rt_lazyseq_all(rt_lazyseq seq, int8_t (*pred)(void *))
     }
 
     return 1;
+}
+
+//=============================================================================
+// IL ABI wrappers (void* interface for runtime signature handlers)
+//=============================================================================
+
+void *rt_lazyseq_w_range(int64_t start, int64_t end, int64_t step)
+{
+    return (void *)rt_lazyseq_range(start, end, step);
+}
+
+void *rt_lazyseq_w_repeat(void *value, int64_t count)
+{
+    return (void *)rt_lazyseq_repeat(value, count);
+}
+
+void *rt_lazyseq_w_next(void *seq)
+{
+    int8_t has_more;
+    return rt_lazyseq_next((rt_lazyseq)seq, &has_more);
+}
+
+void *rt_lazyseq_w_peek(void *seq)
+{
+    int8_t has_more;
+    return rt_lazyseq_peek((rt_lazyseq)seq, &has_more);
+}
+
+void rt_lazyseq_w_reset(void *seq)
+{
+    rt_lazyseq_reset((rt_lazyseq)seq);
+}
+
+int64_t rt_lazyseq_w_index(void *seq)
+{
+    return rt_lazyseq_index((rt_lazyseq)seq);
+}
+
+int8_t rt_lazyseq_w_is_exhausted(void *seq)
+{
+    return rt_lazyseq_is_exhausted((rt_lazyseq)seq);
+}
+
+void *rt_lazyseq_w_take(void *seq, int64_t n)
+{
+    return (void *)rt_lazyseq_take((rt_lazyseq)seq, n);
+}
+
+void *rt_lazyseq_w_drop(void *seq, int64_t n)
+{
+    return (void *)rt_lazyseq_drop((rt_lazyseq)seq, n);
+}
+
+void *rt_lazyseq_w_concat(void *first, void *second)
+{
+    return (void *)rt_lazyseq_concat((rt_lazyseq)first, (rt_lazyseq)second);
+}
+
+void *rt_lazyseq_w_to_seq(void *seq)
+{
+    return rt_lazyseq_to_seq((rt_lazyseq)seq);
+}
+
+void *rt_lazyseq_w_to_seq_n(void *seq, int64_t n)
+{
+    return rt_lazyseq_to_seq_n((rt_lazyseq)seq, n);
+}
+
+int64_t rt_lazyseq_w_count(void *seq)
+{
+    return rt_lazyseq_count((rt_lazyseq)seq);
 }

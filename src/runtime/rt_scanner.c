@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_scanner.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -34,9 +35,7 @@ typedef struct
 
 void *rt_scanner_new(rt_string source)
 {
-    Scanner *s = (Scanner *)malloc(sizeof(Scanner));
-    if (!s)
-        return NULL;
+    Scanner *s = (Scanner *)rt_obj_new_i64(0, (int64_t)sizeof(Scanner));
 
     s->source = source;
     s->data = rt_string_cstr(source);

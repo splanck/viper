@@ -1,0 +1,14 @@
+module TextWrapperDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.TextWrapper Demo ===");
+    Say(Viper.Text.TextWrapper.Wrap("Hello World this is a long line of text", 20));
+    Say(Viper.Text.TextWrapper.Truncate("Hello World", 8));
+    Say(Viper.Text.TextWrapper.Center("hi", 10));
+    Say(Viper.Text.TextWrapper.Left("hi", 10));
+    Say(Viper.Text.TextWrapper.Right("hi", 10));
+    SayInt(Viper.Text.TextWrapper.LineCount("a\nb\nc"));
+    Say(Viper.Text.TextWrapper.Indent("hello\nworld", "  "));
+    Say(Viper.Text.TextWrapper.Dedent("  hello\n  world"));
+    Say("done");
+}

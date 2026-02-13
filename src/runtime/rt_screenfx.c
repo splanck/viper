@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_screenfx.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +48,8 @@ struct rt_screenfx_impl
 
 rt_screenfx rt_screenfx_new(void)
 {
-    struct rt_screenfx_impl *fx = malloc(sizeof(struct rt_screenfx_impl));
+    struct rt_screenfx_impl *fx =
+        (struct rt_screenfx_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_screenfx_impl));
     if (!fx)
         return NULL;
 
@@ -58,7 +60,7 @@ rt_screenfx rt_screenfx_new(void)
 void rt_screenfx_destroy(rt_screenfx fx)
 {
     if (fx)
-        free(fx);
+        rt_obj_free(fx);
 }
 
 /// Finds a free effect slot.

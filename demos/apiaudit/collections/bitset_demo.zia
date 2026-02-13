@@ -1,0 +1,19 @@
+module BitSetDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.BitSet Demo ===");
+    var bs = new Viper.Collections.BitSet(64);
+    bs.Set(0); bs.Set(5); bs.Set(63);
+    SayInt(bs.Count);
+    SayBool(bs.Get(5));
+    SayBool(bs.Get(10));
+    bs.Clear(5);
+    SayInt(bs.Count);
+    bs.Toggle(10);
+    SayBool(bs.Get(10));
+    SayInt(bs.Len);
+    SayBool(bs.IsEmpty);
+    bs.ClearAll();
+    SayBool(bs.IsEmpty);
+    Say("done");
+}

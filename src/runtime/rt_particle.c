@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_particle.h"
+#include "rt_object.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -90,14 +91,12 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
     if (max_particles > RT_PARTICLE_MAX)
         max_particles = RT_PARTICLE_MAX;
 
-    struct rt_particle_emitter_impl *e = malloc(sizeof(struct rt_particle_emitter_impl));
-    if (!e)
-        return NULL;
+    struct rt_particle_emitter_impl *e =
+        (struct rt_particle_emitter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_particle_emitter_impl));
 
     e->particles = calloc((size_t)max_particles, sizeof(struct particle));
     if (!e->particles)
     {
-        free(e);
         return NULL;
     }
 
@@ -136,7 +135,6 @@ void rt_particle_emitter_destroy(rt_particle_emitter emitter)
         return;
     if (emitter->particles)
         free(emitter->particles);
-    free(emitter);
 }
 
 void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, double y)

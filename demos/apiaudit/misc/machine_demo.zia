@@ -1,0 +1,10 @@
+module MachineDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Machine Demo ===");
+    SayInt(Viper.Machine.Cores);
+    Say(Viper.Machine.OS);
+    Say(Viper.Machine.Endian);
+    SayBool(Viper.Machine.MemTotal > 0);
+    Say("done");
+}

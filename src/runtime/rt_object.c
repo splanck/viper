@@ -93,6 +93,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_object.h"
+#include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_oop.h"
 #include "rt_platform.h"
@@ -346,6 +347,39 @@ rt_string rt_obj_to_string(void *self)
 {
     if (!self)
         return rt_string_from_bytes("<null>", 6);
+
+    // Check if the pointer is a string handle (rt_string passed as obj).
+    if (rt_string_is_handle(self))
+        return (rt_string)self;
+
+    // Check if the object is a boxed value and auto-unbox for display.
+    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)self - sizeof(rt_heap_hdr_t));
+    if (hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX)
+    {
+        int64_t tag = rt_box_type(self);
+        if (tag == RT_BOX_STR)
+        {
+            return rt_unbox_str(self);
+        }
+        if (tag == RT_BOX_I64)
+        {
+            char buf[32];
+            int n = snprintf(buf, sizeof(buf), "%lld", (long long)rt_unbox_i64(self));
+            return rt_string_from_bytes(buf, (size_t)n);
+        }
+        if (tag == RT_BOX_F64)
+        {
+            char buf[32];
+            int n = snprintf(buf, sizeof(buf), "%.15g", rt_unbox_f64(self));
+            return rt_string_from_bytes(buf, (size_t)n);
+        }
+        if (tag == RT_BOX_I1)
+        {
+            int64_t v = rt_unbox_i1(self);
+            return v ? rt_string_from_bytes("True", 4) : rt_string_from_bytes("False", 5);
+        }
+    }
+
     rt_object *obj = (rt_object *)self;
     const rt_class_info *ci = rt_get_class_info_from_vptr(obj->vptr);
     if (!ci || !ci->qname)
@@ -355,6 +389,46 @@ rt_string rt_obj_to_string(void *self)
     while (name[len] != '\0')
         ++len;
     return rt_string_from_bytes(name, len);
+}
+
+// ============================================================================
+// Object Introspection
+// ============================================================================
+
+/// @brief Get the qualified type name of an object.
+/// @param self Object to query (may be NULL).
+/// @return A string containing the class qualified name, or "<null>".
+rt_string rt_obj_type_name(void *self)
+{
+    if (!self)
+        return rt_string_from_bytes("<null>", 6);
+    rt_object *obj = (rt_object *)self;
+    const rt_class_info *ci = rt_get_class_info_from_vptr(obj->vptr);
+    if (!ci || !ci->qname)
+        return rt_string_from_bytes("Object", 6);
+    const char *name = ci->qname;
+    size_t len = 0;
+    while (name[len] != '\0')
+        ++len;
+    return rt_string_from_bytes(name, len);
+}
+
+/// @brief Get the numeric type ID of an object.
+/// @param self Object to query (may be NULL).
+/// @return The type ID, or 0 if self is NULL.
+int64_t rt_obj_type_id(void *self)
+{
+    if (!self)
+        return 0;
+    return rt_obj_class_id(self);
+}
+
+/// @brief Check if an object reference is null.
+/// @param self Object to test.
+/// @return 1 if self is NULL, 0 otherwise.
+int64_t rt_obj_is_null(void *self)
+{
+    return self == NULL ? 1 : 0;
 }
 
 // ============================================================================

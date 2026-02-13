@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_option.h"
+#include "rt_object.h"
 #include "rt_result.h"
 #include "rt_string.h"
 
@@ -56,9 +57,8 @@ typedef struct
 
 void *rt_option_some(void *value)
 {
-    Option *o = (Option *)malloc(sizeof(Option));
-    if (!o)
-        return NULL;
+    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+
     o->variant = OPTION_SOME;
     o->value_type = VALUE_PTR;
     o->value.ptr = value;
@@ -67,9 +67,8 @@ void *rt_option_some(void *value)
 
 void *rt_option_some_str(rt_string value)
 {
-    Option *o = (Option *)malloc(sizeof(Option));
-    if (!o)
-        return NULL;
+    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+
     o->variant = OPTION_SOME;
     o->value_type = VALUE_STR;
     o->value.str = value;
@@ -78,9 +77,8 @@ void *rt_option_some_str(rt_string value)
 
 void *rt_option_some_i64(int64_t value)
 {
-    Option *o = (Option *)malloc(sizeof(Option));
-    if (!o)
-        return NULL;
+    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+
     o->variant = OPTION_SOME;
     o->value_type = VALUE_I64;
     o->value.i64 = value;
@@ -89,9 +87,8 @@ void *rt_option_some_i64(int64_t value)
 
 void *rt_option_some_f64(double value)
 {
-    Option *o = (Option *)malloc(sizeof(Option));
-    if (!o)
-        return NULL;
+    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+
     o->variant = OPTION_SOME;
     o->value_type = VALUE_F64;
     o->value.f64 = value;
@@ -100,9 +97,8 @@ void *rt_option_some_f64(double value)
 
 void *rt_option_none(void)
 {
-    Option *o = (Option *)malloc(sizeof(Option));
-    if (!o)
-        return NULL;
+    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+
     o->variant = OPTION_NONE;
     o->value_type = VALUE_PTR;
     o->value.ptr = NULL;

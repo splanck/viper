@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_lazy.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -46,9 +47,7 @@ typedef struct
 
 void *rt_lazy_new(void *(*supplier)(void))
 {
-    Lazy *l = (Lazy *)malloc(sizeof(Lazy));
-    if (!l)
-        return NULL;
+    Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 0;
     l->value_type = VALUE_PTR;
@@ -59,9 +58,7 @@ void *rt_lazy_new(void *(*supplier)(void))
 
 void *rt_lazy_of(void *value)
 {
-    Lazy *l = (Lazy *)malloc(sizeof(Lazy));
-    if (!l)
-        return NULL;
+    Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 1;
     l->value_type = VALUE_PTR;
@@ -72,9 +69,7 @@ void *rt_lazy_of(void *value)
 
 void *rt_lazy_of_str(rt_string value)
 {
-    Lazy *l = (Lazy *)malloc(sizeof(Lazy));
-    if (!l)
-        return NULL;
+    Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 1;
     l->value_type = VALUE_STR;
@@ -85,9 +80,7 @@ void *rt_lazy_of_str(rt_string value)
 
 void *rt_lazy_of_i64(int64_t value)
 {
-    Lazy *l = (Lazy *)malloc(sizeof(Lazy));
-    if (!l)
-        return NULL;
+    Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 1;
     l->value_type = VALUE_I64;

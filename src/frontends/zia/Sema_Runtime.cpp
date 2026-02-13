@@ -164,6 +164,10 @@ void Sema::initRuntimeFunctions()
 
             // Convert IL types to Zia types
             TypeRef returnType = toZiaType(sig.returnType);
+            // When a class method returns 'obj', infer the class type for
+            // constructor/factory methods so callers get proper type tracking.
+            if (sig.returnType == il::runtime::ILScalarType::Object && cls.qname)
+                returnType = types::runtimeClass(cls.qname);
             if (sig.isOptionalReturn)
                 returnType = types::optional(returnType);
             std::vector<TypeRef> paramTypes = toZiaParamTypes(sig);

@@ -17,9 +17,8 @@ rt_gui_app_t *s_current_app = NULL;
 
 void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 {
-    rt_gui_app_t *app = calloc(1, sizeof(rt_gui_app_t));
-    if (!app)
-        return NULL;
+    rt_gui_app_t *app = (rt_gui_app_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_app_t));
+    memset(app, 0, sizeof(rt_gui_app_t));
 
     // Create window
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -37,7 +36,6 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 
     if (!app->window)
     {
-        free(app);
         return NULL;
     }
 
@@ -98,7 +96,6 @@ void rt_gui_app_destroy(void *app_ptr)
     {
         vgfx_destroy_window(app->window);
     }
-    free(app);
 }
 
 int64_t rt_gui_app_should_close(void *app_ptr)

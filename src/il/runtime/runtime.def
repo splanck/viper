@@ -332,6 +332,8 @@ RT_FUNC(ListSlice,    rt_list_slice,     "Viper.Collections.List.Slice",      "o
 RT_FUNC(ListFlip,     rt_list_flip,      "Viper.Collections.List.Flip",       "void(obj)")
 RT_FUNC(ListFirst,    rt_list_first,     "Viper.Collections.List.First",      "obj(obj)")
 RT_FUNC(ListLast,     rt_list_last,      "Viper.Collections.List.Last",       "obj(obj)")
+RT_FUNC(ListIsEmpty,  rt_list_is_empty,  "Viper.Collections.List.get_IsEmpty","i1(obj)")
+RT_FUNC(ListPop,      rt_list_pop,       "Viper.Collections.List.Pop",        "obj(obj)")
 
 // List aliases (backward compatibility)
 RT_ALIAS("Viper.Collections.List.get_Count", ListGetLen)
@@ -720,6 +722,12 @@ RT_FUNC(DurationGetHours,   rt_duration_get_hours,   "Viper.Time.Duration.get_Ho
 RT_FUNC(DurationGetMinutes, rt_duration_get_minutes, "Viper.Time.Duration.get_Minutes", "i64(i64)")
 RT_FUNC(DurationGetSeconds, rt_duration_get_seconds, "Viper.Time.Duration.get_Seconds", "i64(i64)")
 RT_FUNC(DurationGetMillis,  rt_duration_get_millis,  "Viper.Time.Duration.get_Millis",  "i64(i64)")
+// Aliases without get_ prefix for standalone calls
+RT_FUNC(DurationDays,       rt_duration_get_days,    "Viper.Time.Duration.Days",        "i64(i64)")
+RT_FUNC(DurationHours,      rt_duration_get_hours,   "Viper.Time.Duration.Hours",       "i64(i64)")
+RT_FUNC(DurationMinutes,    rt_duration_get_minutes, "Viper.Time.Duration.Minutes",     "i64(i64)")
+RT_FUNC(DurationSeconds,    rt_duration_get_seconds, "Viper.Time.Duration.Seconds",     "i64(i64)")
+RT_FUNC(DurationMillis,     rt_duration_get_millis,  "Viper.Time.Duration.Millis",      "i64(i64)")
 
 // Operations
 RT_FUNC(DurationAdd, rt_duration_add, "Viper.Time.Duration.Add", "i64(i64,i64)")
@@ -758,6 +766,8 @@ RT_FUNC(DateRangeDays,         rt_daterange_days,         "Viper.Time.DateRange.
 RT_FUNC(DateRangeHours,        rt_daterange_hours,        "Viper.Time.DateRange.Hours",        "i64(obj)")
 RT_FUNC(DateRangeDuration,     rt_daterange_duration,     "Viper.Time.DateRange.Duration",     "i64(obj)")
 RT_FUNC(DateRangeToString,     rt_daterange_to_string,    "Viper.Time.DateRange.ToString",     "str(obj)")
+
+RT_FUNC(DateOnlyToday,         rt_dateonly_today,         "Viper.Time.DateOnly.Today",         "obj()")
 
 //=============================================================================
 // NUMBER FORMAT
@@ -1938,11 +1948,11 @@ RT_FUNC(WatcherPoll,       rt_watcher_poll,          "Viper.IO.Watcher.Poll",   
 RT_FUNC(WatcherPollFor,    rt_watcher_poll_for,      "Viper.IO.Watcher.PollFor",        "i64(obj,i64)")
 RT_FUNC(WatcherEventPath,  rt_watcher_event_path,    "Viper.IO.Watcher.EventPath",      "str(obj)")
 RT_FUNC(WatcherEventType,  rt_watcher_event_type,    "Viper.IO.Watcher.EventType",      "i64(obj)")
-RT_FUNC(WatcherEventNone,     rt_watcher_event_none,     "Viper.IO.Watcher.get_EVENT_NONE",     "i64()")
-RT_FUNC(WatcherEventCreated,  rt_watcher_event_created,  "Viper.IO.Watcher.get_EVENT_CREATED",  "i64()")
-RT_FUNC(WatcherEventModified, rt_watcher_event_modified, "Viper.IO.Watcher.get_EVENT_MODIFIED", "i64()")
-RT_FUNC(WatcherEventDeleted,  rt_watcher_event_deleted,  "Viper.IO.Watcher.get_EVENT_DELETED",  "i64()")
-RT_FUNC(WatcherEventRenamed,  rt_watcher_event_renamed,  "Viper.IO.Watcher.get_EVENT_RENAMED",  "i64()")
+RT_FUNC(WatcherEventNone,     rt_watcher_event_none,     "Viper.IO.Watcher.get_EVENT_NONE",     "i64(obj)")
+RT_FUNC(WatcherEventCreated,  rt_watcher_event_created,  "Viper.IO.Watcher.get_EVENT_CREATED",  "i64(obj)")
+RT_FUNC(WatcherEventModified, rt_watcher_event_modified, "Viper.IO.Watcher.get_EVENT_MODIFIED", "i64(obj)")
+RT_FUNC(WatcherEventDeleted,  rt_watcher_event_deleted,  "Viper.IO.Watcher.get_EVENT_DELETED",  "i64(obj)")
+RT_FUNC(WatcherEventRenamed,  rt_watcher_event_renamed,  "Viper.IO.Watcher.get_EVENT_RENAMED",  "i64(obj)")
 
 //=============================================================================
 // IO - COMPRESS
@@ -2078,6 +2088,10 @@ RT_FUNC(MathTau,      rt_math_tau,       "Viper.Math.get_Tau",  "f64()")
 RT_FUNC(MathTrunc,    rt_trunc,          "Viper.Math.Trunc",    "f64(f64)")
 RT_FUNC(MathWrap,     rt_wrap_f64,       "Viper.Math.Wrap",     "f64(f64,f64,f64)")
 RT_FUNC(MathWrapInt,  rt_wrap_i64,       "Viper.Math.WrapInt",  "i64(i64,i64,i64)")
+// Aliases without get_ prefix for standalone calls
+RT_FUNC(MathEAlias,  rt_math_e,         "Viper.Math.E",        "f64()")
+RT_FUNC(MathPiAlias, rt_math_pi,        "Viper.Math.Pi",       "f64()")
+RT_FUNC(MathTauAlias,rt_math_tau,       "Viper.Math.Tau",      "f64()")
 
 //=============================================================================
 // OBJECT (BASE CLASS)
@@ -2087,15 +2101,22 @@ RT_FUNC(ObjEquals,          rt_obj_equals,           "Viper.Core.Object.Equals",
 RT_FUNC(ObjHashCode,        rt_obj_get_hash_code,    "Viper.Core.Object.HashCode",        "i64(obj)")
 RT_FUNC(ObjRefEquals,       rt_obj_reference_equals, "Viper.Core.Object.RefEquals",       "i1(obj,obj)")
 RT_FUNC(ObjToString,        rt_obj_to_string,        "Viper.Core.Object.ToString",        "str(obj)")
+RT_FUNC(ObjTypeName,        rt_obj_type_name,        "Viper.Core.Object.TypeName",        "str(obj)")
+RT_FUNC(ObjTypeId,          rt_obj_type_id,          "Viper.Core.Object.TypeId",          "i64(obj)")
+RT_FUNC(ObjIsNull,          rt_obj_is_null,          "Viper.Core.Object.IsNull",          "i1(obj)")
 
 //=============================================================================
 // RANDOM
 //=============================================================================
 
-RT_FUNC(RandomNew,     rt_random_new,    "Viper.Math.Random.New",     "obj(i64)")
-RT_FUNC(RandomNext,    rt_rnd,           "Viper.Math.Random.Next",    "f64()")
-RT_FUNC(RandomNextInt, rt_rand_int,      "Viper.Math.Random.NextInt", "i64(i64)")
-RT_FUNC(RandomSeed,    rt_randomize_i64, "Viper.Math.Random.Seed",    "void(i64)")
+RT_FUNC(RandomNew,           rt_random_new,             "Viper.Math.Random.New",       "obj(i64)")
+RT_FUNC(RandomNext,          rt_rnd,                    "Viper.Math.Random.Next",      "f64()")
+RT_FUNC(RandomNextInt,       rt_rand_int,               "Viper.Math.Random.NextInt",   "i64(i64)")
+RT_FUNC(RandomSeed,          rt_randomize_i64,          "Viper.Math.Random.Seed",      "void(i64)")
+// Instance method versions (accept and ignore receiver)
+RT_FUNC(RandomNextMethod,    rt_rnd_method,             "Viper.Math.Random.inst_Next",    "f64(obj)")
+RT_FUNC(RandomNextIntMethod, rt_rand_int_method,        "Viper.Math.Random.inst_NextInt", "i64(obj,i64)")
+RT_FUNC(RandomSeedMethod,    rt_randomize_i64_method,   "Viper.Math.Random.inst_Seed",    "void(obj,i64)")
 // Note: Viper.Math.Randomize is already defined in RuntimeSignatures.cpp
 
 // Random distributions
@@ -2511,6 +2532,29 @@ RT_FUNC(PatternReplace,      rt_pattern_replace,        "Viper.Text.Pattern.Repl
 RT_FUNC(PatternReplaceFirst, rt_pattern_replace_first,  "Viper.Text.Pattern.ReplaceFirst", "str(str,str,str)")
 RT_FUNC(PatternSplit,        rt_pattern_split,          "Viper.Text.Pattern.Split",        "obj(str,str)")
 RT_FUNC(PatternEscape,       rt_pattern_escape,         "Viper.Text.Pattern.Escape",       "str(str)")
+
+RT_FUNC(CompiledPatternNew,  rt_compiled_pattern_new,   "Viper.Text.CompiledPattern.New",  "obj(str)")
+
+RT_FUNC(ScannerNew,          rt_scanner_new,            "Viper.Text.Scanner.New",          "obj(str)")
+
+//=============================================================================
+// TEXT - TEXTWRAPPER
+//=============================================================================
+
+RT_FUNC(TextWrapWrap,        rt_textwrap_wrap,          "Viper.Text.TextWrapper.Wrap",         "str(str,i64)")
+RT_FUNC(TextWrapWrapLines,   rt_textwrap_wrap_lines,    "Viper.Text.TextWrapper.WrapLines",    "obj(str,i64)")
+RT_FUNC(TextWrapFill,        rt_textwrap_fill,          "Viper.Text.TextWrapper.Fill",         "str(str,i64)")
+RT_FUNC(TextWrapIndent,      rt_textwrap_indent,        "Viper.Text.TextWrapper.Indent",       "str(str,str)")
+RT_FUNC(TextWrapDedent,      rt_textwrap_dedent,        "Viper.Text.TextWrapper.Dedent",       "str(str)")
+RT_FUNC(TextWrapHang,        rt_textwrap_hang,          "Viper.Text.TextWrapper.Hang",         "str(str,str)")
+RT_FUNC(TextWrapTruncate,    rt_textwrap_truncate,      "Viper.Text.TextWrapper.Truncate",     "str(str,i64)")
+RT_FUNC(TextWrapTruncateWith,rt_textwrap_truncate_with, "Viper.Text.TextWrapper.TruncateWith", "str(str,i64,str)")
+RT_FUNC(TextWrapShorten,     rt_textwrap_shorten,       "Viper.Text.TextWrapper.Shorten",      "str(str,i64)")
+RT_FUNC(TextWrapLeft,        rt_textwrap_left,          "Viper.Text.TextWrapper.Left",         "str(str,i64)")
+RT_FUNC(TextWrapRight,       rt_textwrap_right,         "Viper.Text.TextWrapper.Right",        "str(str,i64)")
+RT_FUNC(TextWrapCenter,      rt_textwrap_center,        "Viper.Text.TextWrapper.Center",       "str(str,i64)")
+RT_FUNC(TextWrapLineCount,   rt_textwrap_line_count,    "Viper.Text.TextWrapper.LineCount",    "i64(str)")
+RT_FUNC(TextWrapMaxLineLen,  rt_textwrap_max_line_len,  "Viper.Text.TextWrapper.MaxLineLen",   "i64(str)")
 
 RT_FUNC(TemplateRender,      rt_template_render,        "Viper.Text.Template.Render",      "str(str,obj)")
 RT_FUNC(TemplateRenderSeq,   rt_template_render_seq,    "Viper.Text.Template.RenderSeq",   "str(str,obj)")
@@ -3946,7 +3990,9 @@ RT_CLASS_END()
 // Viper.Collections.List
 RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
     RT_PROP("Len", "i64", ListGetLen, none)
+    RT_PROP("IsEmpty", "i1", ListIsEmpty, none)
     RT_METHOD("Push", "void(obj)", ListPush)
+    RT_METHOD("Pop", "obj()", ListPop)
     RT_METHOD("Clear", "void()", ListClear)
     RT_METHOD("Find", "i64(obj)", ListFind)
     RT_METHOD("Has", "i1(obj)", ListHas)
@@ -5942,13 +5988,16 @@ RT_CLASS_BEGIN("Viper.Core.Object", Object, "obj", none)
     RT_METHOD("Equals", "i1(obj)", ObjEquals)
     RT_METHOD("HashCode", "i64()", ObjHashCode)
     RT_METHOD("ToString", "str()", ObjToString)
+    RT_METHOD("TypeName", "str()", ObjTypeName)
+    RT_METHOD("TypeId", "i64()", ObjTypeId)
+    RT_METHOD("IsNull", "i1()", ObjIsNull)
 RT_CLASS_END()
 
 // Viper.Random - RNG class (global state, constructor seeds the RNG)
 RT_CLASS_BEGIN("Viper.Math.Random", Random, "obj", RandomNew)
-    RT_METHOD("Next", "f64()", RandomNext)
-    RT_METHOD("NextInt", "i64(i64)", RandomNextInt)
-    RT_METHOD("Seed", "void(i64)", RandomSeed)
+    RT_METHOD("Next", "f64()", RandomNextMethod)
+    RT_METHOD("NextInt", "i64(i64)", RandomNextIntMethod)
+    RT_METHOD("Seed", "void(i64)", RandomSeedMethod)
 RT_CLASS_END()
 
 // Viper.String - built-in string type
@@ -6376,6 +6425,8 @@ RT_CLASS_END()
 RT_CLASS_BEGIN("Viper.Math.Vec2", Vec2, "obj", Vec2New)
     RT_PROP("X", "f64", Vec2X, none)
     RT_PROP("Y", "f64", Vec2Y, none)
+    RT_METHOD("Zero", "obj()", Vec2Zero)
+    RT_METHOD("One", "obj()", Vec2One)
     RT_METHOD("Add", "obj(obj)", Vec2Add)
     RT_METHOD("Sub", "obj(obj)", Vec2Sub)
     RT_METHOD("Mul", "obj(f64)", Vec2Mul)
@@ -6752,6 +6803,29 @@ RT_CLASS_END()
 // ============================================================================
 
 // Viper.Result - Represents either success (Ok) or failure (Err)
+RT_FUNC(ResultOk,           rt_result_ok,              "Viper.Result.Ok",           "obj(obj)")
+RT_FUNC(ResultOkStr,        rt_result_ok_str,          "Viper.Result.OkStr",        "obj(str)")
+RT_FUNC(ResultOkI64,        rt_result_ok_i64,          "Viper.Result.OkI64",        "obj(i64)")
+RT_FUNC(ResultOkF64,        rt_result_ok_f64,          "Viper.Result.OkF64",        "obj(f64)")
+RT_FUNC(ResultErr,          rt_result_err,             "Viper.Result.Err",          "obj(obj)")
+RT_FUNC(ResultErrStr,       rt_result_err_str,         "Viper.Result.ErrStr",       "obj(str)")
+RT_FUNC(ResultIsOk,         rt_result_is_ok,           "Viper.Result.get_IsOk",     "i1(obj)")
+RT_FUNC(ResultIsErr,        rt_result_is_err,          "Viper.Result.get_IsErr",    "i1(obj)")
+RT_FUNC(ResultUnwrap,       rt_result_unwrap,          "Viper.Result.Unwrap",       "obj(obj)")
+RT_FUNC(ResultUnwrapStr,    rt_result_unwrap_str,      "Viper.Result.UnwrapStr",    "str(obj)")
+RT_FUNC(ResultUnwrapI64,    rt_result_unwrap_i64,      "Viper.Result.UnwrapI64",    "i64(obj)")
+RT_FUNC(ResultUnwrapF64,    rt_result_unwrap_f64,      "Viper.Result.UnwrapF64",    "f64(obj)")
+RT_FUNC(ResultUnwrapOr,     rt_result_unwrap_or,       "Viper.Result.UnwrapOr",     "obj(obj,obj)")
+RT_FUNC(ResultUnwrapOrStr,  rt_result_unwrap_or_str,   "Viper.Result.UnwrapOrStr",  "str(obj,str)")
+RT_FUNC(ResultUnwrapOrI64,  rt_result_unwrap_or_i64,   "Viper.Result.UnwrapOrI64",  "i64(obj,i64)")
+RT_FUNC(ResultUnwrapOrF64,  rt_result_unwrap_or_f64,   "Viper.Result.UnwrapOrF64",  "f64(obj,f64)")
+RT_FUNC(ResultUnwrapErr,    rt_result_unwrap_err,      "Viper.Result.UnwrapErr",    "obj(obj)")
+RT_FUNC(ResultUnwrapErrStr, rt_result_unwrap_err_str,  "Viper.Result.UnwrapErrStr", "str(obj)")
+RT_FUNC(ResultOkValue,      rt_result_ok_value,        "Viper.Result.OkValue",      "obj(obj)")
+RT_FUNC(ResultErrValue,     rt_result_err_value,       "Viper.Result.ErrValue",     "obj(obj)")
+RT_FUNC(ResultExpect,       rt_result_expect,          "Viper.Result.Expect",       "obj(obj,str)")
+RT_FUNC(ResultExpectErr,    rt_result_expect_err,      "Viper.Result.ExpectErr",    "obj(obj,str)")
+RT_FUNC(ResultToString,     rt_result_to_string,       "Viper.Result.ToString",     "str(obj)")
 RT_CLASS_BEGIN("Viper.Result", Result, "obj", ResultOk)
     RT_METHOD("Ok", "obj(obj)", ResultOk)
     RT_METHOD("OkStr", "obj(str)", ResultOkStr)
@@ -6779,6 +6853,26 @@ RT_CLASS_BEGIN("Viper.Result", Result, "obj", ResultOk)
 RT_CLASS_END()
 
 // Viper.Option - Represents Some(value) or None
+RT_FUNC(OptionSome,        rt_option_some,           "Viper.Option.Some",         "obj(obj)")
+RT_FUNC(OptionSomeStr,     rt_option_some_str,       "Viper.Option.SomeStr",      "obj(str)")
+RT_FUNC(OptionSomeI64,     rt_option_some_i64,       "Viper.Option.SomeI64",      "obj(i64)")
+RT_FUNC(OptionSomeF64,     rt_option_some_f64,       "Viper.Option.SomeF64",      "obj(f64)")
+RT_FUNC(OptionNone,        rt_option_none,           "Viper.Option.None",         "obj()")
+RT_FUNC(OptionIsSome,      rt_option_is_some,        "Viper.Option.get_IsSome",   "i1(obj)")
+RT_FUNC(OptionIsNone,      rt_option_is_none,        "Viper.Option.get_IsNone",   "i1(obj)")
+RT_FUNC(OptionUnwrap,      rt_option_unwrap,         "Viper.Option.Unwrap",       "obj(obj)")
+RT_FUNC(OptionUnwrapStr,   rt_option_unwrap_str,     "Viper.Option.UnwrapStr",    "str(obj)")
+RT_FUNC(OptionUnwrapI64,   rt_option_unwrap_i64,     "Viper.Option.UnwrapI64",    "i64(obj)")
+RT_FUNC(OptionUnwrapF64,   rt_option_unwrap_f64,     "Viper.Option.UnwrapF64",    "f64(obj)")
+RT_FUNC(OptionUnwrapOr,    rt_option_unwrap_or,      "Viper.Option.UnwrapOr",     "obj(obj,obj)")
+RT_FUNC(OptionUnwrapOrStr, rt_option_unwrap_or_str,  "Viper.Option.UnwrapOrStr",  "str(obj,str)")
+RT_FUNC(OptionUnwrapOrI64, rt_option_unwrap_or_i64,  "Viper.Option.UnwrapOrI64",  "i64(obj,i64)")
+RT_FUNC(OptionUnwrapOrF64, rt_option_unwrap_or_f64,  "Viper.Option.UnwrapOrF64",  "f64(obj,f64)")
+RT_FUNC(OptionValue,       rt_option_value,          "Viper.Option.Value",        "obj(obj)")
+RT_FUNC(OptionExpect,      rt_option_expect,         "Viper.Option.Expect",       "obj(obj,str)")
+RT_FUNC(OptionOkOr,        rt_option_ok_or,          "Viper.Option.OkOr",         "obj(obj,obj)")
+RT_FUNC(OptionOkOrStr,     rt_option_ok_or_str,      "Viper.Option.OkOrStr",      "obj(obj,str)")
+RT_FUNC(OptionToString,    rt_option_to_string,      "Viper.Option.ToString",     "str(obj)")
 RT_CLASS_BEGIN("Viper.Option", Option, "obj", OptionSome)
     RT_METHOD("Some", "obj(obj)", OptionSome)
     RT_METHOD("SomeStr", "obj(str)", OptionSomeStr)
@@ -6913,6 +7007,14 @@ RT_CLASS_BEGIN("Viper.Text.TextWrapper", TextWrapper, "obj", none)
 RT_CLASS_END()
 
 // Viper.Lazy - Deferred computation until first access
+RT_FUNC(LazyOf,            rt_lazy_of,            "Viper.Lazy.Of",             "obj(obj)")
+RT_FUNC(LazyOfStr,         rt_lazy_of_str,        "Viper.Lazy.OfStr",          "obj(str)")
+RT_FUNC(LazyOfI64,         rt_lazy_of_i64,        "Viper.Lazy.OfI64",          "obj(i64)")
+RT_FUNC(LazyGet,           rt_lazy_get,           "Viper.Lazy.Get",            "obj(obj)")
+RT_FUNC(LazyGetStr,        rt_lazy_get_str,       "Viper.Lazy.GetStr",         "str(obj)")
+RT_FUNC(LazyGetI64,        rt_lazy_get_i64,       "Viper.Lazy.GetI64",         "i64(obj)")
+RT_FUNC(LazyIsEvaluated,   rt_lazy_is_evaluated,  "Viper.Lazy.get_IsEvaluated","i1(obj)")
+RT_FUNC(LazyForce,         rt_lazy_force,         "Viper.Lazy.Force",          "void(obj)")
 RT_CLASS_BEGIN("Viper.Lazy", Lazy, "obj", LazyOf)
     RT_METHOD("Of", "obj(obj)", LazyOf)
     RT_METHOD("OfStr", "obj(str)", LazyOfStr)
@@ -6927,6 +7029,22 @@ RT_CLASS_END()
 //=============================================================================
 // Viper.LazySeq - Lazy sequence with on-demand element generation
 //=============================================================================
+
+// Factory methods (no receiver) — use void* wrappers for IL ABI
+RT_FUNC(LazySeqRange,          rt_lazyseq_w_range,        "Viper.LazySeq.Range",           "obj(i64,i64,i64)")
+RT_FUNC(LazySeqRepeat,         rt_lazyseq_w_repeat,       "Viper.LazySeq.Repeat",          "obj(obj,i64)")
+// Instance methods (receiver as first obj param) — use void* wrappers for IL ABI
+RT_FUNC(LazySeqNext,           rt_lazyseq_w_next,         "Viper.LazySeq.Next",            "obj(obj)")
+RT_FUNC(LazySeqPeek,           rt_lazyseq_w_peek,         "Viper.LazySeq.Peek",            "obj(obj)")
+RT_FUNC(LazySeqReset,          rt_lazyseq_w_reset,        "Viper.LazySeq.Reset",           "void(obj)")
+RT_FUNC(LazySeqIndex,          rt_lazyseq_w_index,        "Viper.LazySeq.get_Index",       "i64(obj)")
+RT_FUNC(LazySeqIsExhausted,    rt_lazyseq_w_is_exhausted, "Viper.LazySeq.get_IsExhausted", "i1(obj)")
+RT_FUNC(LazySeqTake,           rt_lazyseq_w_take,         "Viper.LazySeq.Take",            "obj(obj,i64)")
+RT_FUNC(LazySeqDrop,           rt_lazyseq_w_drop,         "Viper.LazySeq.Drop",            "obj(obj,i64)")
+RT_FUNC(LazySeqConcat,         rt_lazyseq_w_concat,       "Viper.LazySeq.Concat",          "obj(obj,obj)")
+RT_FUNC(LazySeqToSeq,          rt_lazyseq_w_to_seq,       "Viper.LazySeq.ToSeq",           "obj(obj)")
+RT_FUNC(LazySeqToSeqN,         rt_lazyseq_w_to_seq_n,     "Viper.LazySeq.ToSeqN",          "obj(obj,i64)")
+RT_FUNC(LazySeqCount,          rt_lazyseq_w_count,        "Viper.LazySeq.Count",           "i64(obj)")
 
 RT_CLASS_BEGIN("Viper.LazySeq", LazySeq, "obj", LazySeqRange)
     RT_METHOD("Range", "obj(i64,i64,i64)", LazySeqRange)

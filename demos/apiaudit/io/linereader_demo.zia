@@ -1,0 +1,15 @@
+module LineReaderDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.IO.LineReader Demo ===");
+    var lw = new Viper.IO.LineWriter("/tmp/viper_lr_test.txt");
+    lw.WriteLn("hello");
+    lw.WriteLn("world");
+    lw.Close();
+    var lr = new Viper.IO.LineReader("/tmp/viper_lr_test.txt");
+    SayBool(lr.Eof);
+    Say(lr.Read());
+    Say(lr.Read());
+    lr.Close();
+    Say("done");
+}

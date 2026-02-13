@@ -159,6 +159,42 @@ static void test_null_safety()
     assert(rt_jsonpath_get_int(NULL, NULL) == 0);
 }
 
+static void test_get_int_from_parsed_json()
+{
+    // JSON numbers are boxed f64 after parsing — previously crashed
+    rt_string json = make_str("{\"ver\":42}");
+    void *doc = rt_json_parse(json);
+    assert(doc != NULL);
+
+    rt_string path = make_str("ver");
+    int64_t val = rt_jsonpath_get_int(doc, path);
+    assert(val == 42);
+    rt_string_unref(path);
+    rt_string_unref(json);
+}
+
+static void test_get_str_from_parsed_json()
+{
+    // Get string value from parsed JSON
+    rt_string json = make_str("{\"name\":\"viper\",\"ver\":1}");
+    void *doc = rt_json_parse(json);
+    assert(doc != NULL);
+
+    rt_string p1 = make_str("name");
+    rt_string s1 = rt_jsonpath_get_str(doc, p1);
+    assert(strcmp(rt_string_cstr(s1), "viper") == 0);
+
+    // Get numeric value as string
+    rt_string p2 = make_str("ver");
+    rt_string s2 = rt_jsonpath_get_str(doc, p2);
+    // Should be "1" (converted from boxed f64)
+    assert(strlen(rt_string_cstr(s2)) > 0);
+
+    rt_string_unref(p1);
+    rt_string_unref(p2);
+    rt_string_unref(json);
+}
+
 int main()
 {
     test_simple_key();
@@ -170,5 +206,7 @@ int main()
     test_get_int();
     test_wildcard_query();
     test_null_safety();
+    test_get_int_from_parsed_json();
+    test_get_str_from_parsed_json();
     return 0;
 }

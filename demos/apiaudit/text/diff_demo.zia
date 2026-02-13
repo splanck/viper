@@ -1,0 +1,8 @@
+module DiffDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.Diff Demo ===");
+    SayInt(Viper.Text.Diff.CountChanges("hello", "hallo"));
+    Say(Viper.Text.Diff.Unified("hello\nworld", "hello\nearth", 1));
+    Say("done");
+}

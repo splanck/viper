@@ -1,0 +1,8 @@
+module MarkdownDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.Markdown Demo ===");
+    Say(Viper.Text.Markdown.ToHtml("# Hello\n**bold**"));
+    Say(Viper.Text.Markdown.ToText("# Hello\n**bold** text"));
+    Say("done");
+}

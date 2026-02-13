@@ -133,14 +133,21 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
         if (stmt.expr && !storage->isField)
         {
             std::string className;
+            bool authoritative = false; // NEW / ctor: always override
             if (const auto *alloc = as<const NewExpr>(*stmt.expr))
             {
                 className = alloc->className;
+                authoritative = true;
             }
             else if (const auto *call = as<const CallExpr>(*stmt.expr))
             {
                 if (auto qname = runtimeCtorClassQNameFrom(*call))
+                {
                     className = *qname;
+                    authoritative = true;
+                }
+                else
+                    className = lowerer_.resolveObjectClass(*stmt.expr);
             }
             else
             {
@@ -151,12 +158,25 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 if (const auto *mcall = as<const MethodCallExpr>(*stmt.expr))
                 {
                     if (auto qname = runtimeCtorClassQNameFrom(*mcall))
+                    {
                         className = *qname;
+                        authoritative = true;
+                    }
                 }
             }
             if (!className.empty())
             {
-                lowerer_.setSymbolObjectType(var->name, className);
+                // Don't override a DIM-declared class type with an inferred one.
+                // Only authoritative sources (NEW, constructors) may override.
+                // DIM AS OBJECT is generic — always allow refinement.
+                Lowerer::SlotType existing = lowerer_.getSlotType(var->name);
+                bool isGenericObj = existing.isObject &&
+                                    string_utils::iequals(existing.objectClass, "object");
+                if (authoritative || !existing.isObject || existing.objectClass.empty() ||
+                    isGenericObj)
+                {
+                    lowerer_.setSymbolObjectType(var->name, className);
+                }
             }
         }
         // Invariant: Slot typing must be refreshed from symbols/sema on each use

@@ -250,12 +250,12 @@ BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b);
 /// @brief Bitmask describing which BASIC type categories are accepted for an argument.
 enum class BuiltinArgTypeMask : std::uint8_t
 {
-    None = 0,              ///< No type accepted (sentinel).
-    Int = 1U << 0U,        ///< Integer types (INTEGER, LONG).
-    Float = 1U << 1U,      ///< Floating-point types (SINGLE, DOUBLE).
-    String = 1U << 2U,     ///< String type.
-    Bool = 1U << 3U,       ///< Boolean type.
-    Number = Int | Float,  ///< Any numeric type.
+    None = 0,                          ///< No type accepted (sentinel).
+    Int = 1U << 0U,                    ///< Integer types (INTEGER, LONG).
+    Float = 1U << 1U,                  ///< Floating-point types (SINGLE, DOUBLE).
+    String = 1U << 2U,                 ///< String type.
+    Bool = 1U << 3U,                   ///< Boolean type.
+    Number = Int | Float,              ///< Any numeric type.
     Any = Int | Float | String | Bool, ///< Any type.
 };
 
@@ -264,7 +264,7 @@ enum class BuiltinArgTypeMask : std::uint8_t
 ///          are accepted by the builtin for that argument position.
 struct SemanticArgSpecView
 {
-    bool optional{false};                            ///< True when the argument may be omitted.
+    bool optional{false};                                ///< True when the argument may be omitted.
     BuiltinArgTypeMask allowed{BuiltinArgTypeMask::Any}; ///< Accepted type categories.
 };
 
@@ -273,10 +273,10 @@ struct SemanticArgSpecView
 ///          for use during semantic analysis. The args pointer references static data.
 struct SemanticSignatureView
 {
-    std::size_t minArgs{0};                          ///< Minimum required argument count.
-    std::size_t maxArgs{0};                          ///< Maximum allowed argument count.
-    const SemanticArgSpecView *args{nullptr};         ///< Per-argument specifications (static storage).
-    std::size_t argCount{0};                         ///< Number of entries in the args array.
+    std::size_t minArgs{0};                   ///< Minimum required argument count.
+    std::size_t maxArgs{0};                   ///< Maximum allowed argument count.
+    const SemanticArgSpecView *args{nullptr}; ///< Per-argument specifications (static storage).
+    std::size_t argCount{0};                  ///< Number of entries in the args array.
     BuiltinResultKind result{BuiltinResultKind::Unknown}; ///< Fixed result kind, if determinable.
 };
 

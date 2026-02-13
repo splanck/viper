@@ -38,6 +38,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -1204,6 +1205,9 @@ static void generateSignatures(const ParseState &state,
     std::cout << "  Generated " << outPath << "\n";
 }
 
+// Set of known runtime class qnames, populated before ZiaExterns generation.
+static std::unordered_set<std::string> knownClassNames;
+
 /// @brief Map IL return type to Zia types:: expression.
 static std::string ilTypeToZiaType(const std::string &ilType, const std::string &canonical)
 {
@@ -1270,19 +1274,28 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
         {
             std::string method = canonical.substr(lastDot + 1);
             // Check for factory method patterns (exact matches or prefixes)
-            bool isFactory = (method == "New" || method == "Create" || method == "Clone" ||
-                              method == "Copy" || method == "Open");
-            // Also check for prefix patterns like Load*, From*, etc.
+            bool isFactory = (method == "New" || method == "Clone" || method == "Copy" ||
+                              method == "Zero" || method == "Range");
+            // Also check for prefix patterns like Open*, Load*, From*, etc.
             if (!isFactory)
             {
-                isFactory = (method.rfind("Load", 0) == 0 || method.rfind("From", 0) == 0 ||
-                             method.rfind("Parse", 0) == 0 || method.rfind("Read", 0) == 0 ||
-                             method.rfind("Decode", 0) == 0 || method.rfind("Create", 0) == 0);
+                isFactory = (method.rfind("Open", 0) == 0 || method.rfind("Load", 0) == 0 ||
+                             method.rfind("From", 0) == 0 || method.rfind("Parse", 0) == 0 ||
+                             method.rfind("Read", 0) == 0 || method.rfind("Decode", 0) == 0 ||
+                             method.rfind("Create", 0) == 0);
             }
             if (isFactory)
             {
                 std::string className = canonical.substr(0, lastDot);
                 return "types::runtimeClass(\"" + className + "\")";
+            }
+            // For any method on a known runtime class that returns obj,
+            // infer the class type (e.g., Vec2.Add returns Vec2).
+            if (!knownClassNames.empty())
+            {
+                std::string className = canonical.substr(0, lastDot);
+                if (knownClassNames.count(className))
+                    return "types::runtimeClass(\"" + className + "\")";
             }
         }
         return "types::ptr()";
@@ -1293,6 +1306,11 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
 
 static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
 {
+    // Populate known class names for type inference
+    knownClassNames.clear();
+    for (const auto &cls : state.classes)
+        knownClassNames.insert(cls.name);
+
     fs::path outPath = outDir / "ZiaRuntimeExterns.inc";
     std::ofstream out(outPath);
     if (!out)

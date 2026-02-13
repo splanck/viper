@@ -1,0 +1,14 @@
+module CompiledPatternDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.CompiledPattern Demo ===");
+    var p = new Viper.Text.CompiledPattern("[0-9]+");
+    Say(p.Pattern);
+    SayBool(p.IsMatch("abc123"));
+    SayBool(p.IsMatch("abcdef"));
+    Say(p.Find("abc123def"));
+    SayInt(p.FindPos("abc123def"));
+    Say(p.Replace("a1b2c3", "X"));
+    Say(p.ReplaceFirst("a1b2c3", "X"));
+    Say("done");
+}

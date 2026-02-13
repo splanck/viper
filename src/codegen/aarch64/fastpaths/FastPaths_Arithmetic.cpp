@@ -71,14 +71,12 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                     if (src0 != PhysReg::X0 || src1 != PhysReg::X1)
                     {
                         bbMir.instrs.push_back(MInstr{
-                            MOpcode::MovRR,
-                            {MOperand::regOp(kScratchGPR), MOperand::regOp(src1)}});
+                            MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src1)}});
                         bbMir.instrs.push_back(MInstr{
-                            MOpcode::MovRR,
-                            {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
-                        bbMir.instrs.push_back(MInstr{
-                            MOpcode::MovRR,
-                            {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
+                            MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
+                        bbMir.instrs.push_back(
+                            MInstr{MOpcode::MovRR,
+                                   {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
                     }
                     switch (opI.op)
                     {

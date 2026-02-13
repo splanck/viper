@@ -58,11 +58,11 @@ class SelectCaseLowering
     /// @brief Block indices produced by prepareBlocks for SELECT CASE lowering.
     struct Blocks
     {
-        size_t currentIdx{};              ///< Index of the block active at SELECT entry.
-        std::vector<size_t> armIdx;       ///< Indices of per-arm body blocks.
-        std::optional<size_t> elseIdx;    ///< Index of the CASE ELSE block, if present.
-        size_t switchIdx{};               ///< Index of the dispatch/switch block.
-        size_t endIdx{};                  ///< Index of the common exit block.
+        size_t currentIdx{};           ///< Index of the block active at SELECT entry.
+        std::vector<size_t> armIdx;    ///< Indices of per-arm body blocks.
+        std::optional<size_t> elseIdx; ///< Index of the CASE ELSE block, if present.
+        size_t switchIdx{};            ///< Index of the dispatch/switch block.
+        size_t endIdx{};               ///< Index of the common exit block.
     };
 
     /// @brief Describes a single comparison entry in the case dispatch plan.
@@ -81,12 +81,13 @@ class SelectCaseLowering
             Default,     ///< CASE ELSE (unconditional fallback).
         };
 
-        Kind kind{Kind::Default};                          ///< Comparison classification.
-        std::pair<int32_t, int32_t> valueRange{0, 0};     ///< Integer bounds for Range/relational entries.
-        size_t armIndex{};                                 ///< Index into the arm body block vector.
-        size_t targetIdx{SIZE_MAX};                        ///< Block index of the branch target.
-        il::support::SourceLoc loc{};                      ///< Source location for diagnostics.
-        std::string_view strLiteral{};                     ///< String literal for StringLabel entries.
+        Kind kind{Kind::Default}; ///< Comparison classification.
+        std::pair<int32_t, int32_t> valueRange{0,
+                                               0}; ///< Integer bounds for Range/relational entries.
+        size_t armIndex{};                         ///< Index into the arm body block vector.
+        size_t targetIdx{SIZE_MAX};                ///< Block index of the branch target.
+        il::support::SourceLoc loc{};              ///< Source location for diagnostics.
+        std::string_view strLiteral{};             ///< String literal for StringLabel entries.
     };
 
     /// @brief Callback type that emits a comparison for a single case plan entry.

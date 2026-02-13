@@ -257,12 +257,51 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             // Handle module-qualified function calls
             if (baseType->kind == TypeKindSem::Module)
             {
-                std::string funcName = fieldExpr->field;
+                // Check if sema resolved a runtime callee name for this call
+                // (e.g., "ResultOk" for Viper.Result.Ok)
+                std::string funcName = sema_.runtimeCallee(expr);
+                if (funcName.empty())
+                    funcName = baseType->name + "." + fieldExpr->field;
+
                 std::vector<Value> args;
-                for (auto &arg : expr->args)
+
+                // Look up runtime signature for auto-boxing/coercion
+                const auto *rtDesc = il::runtime::findRuntimeDescriptor(funcName);
+                const std::vector<il::core::Type> *expectedParamTypes = nullptr;
+                if (rtDesc)
+                    expectedParamTypes = &rtDesc->signature.paramTypes;
+
+                for (size_t i = 0; i < expr->args.size(); ++i)
                 {
-                    auto result = lowerExpr(arg.value.get());
-                    args.push_back(result.value);
+                    auto result = lowerExpr(expr->args[i].value.get());
+                    Value argValue = result.value;
+                    if (result.type.kind == Type::Kind::I32)
+                        argValue = widenByteToInteger(argValue);
+
+                    // Auto-box primitives or coerce i64→f64 when expected by runtime
+                    if (expectedParamTypes && i < expectedParamTypes->size())
+                    {
+                        Type expectedType = (*expectedParamTypes)[i];
+                        if (expectedType.kind == Type::Kind::Ptr &&
+                            result.type.kind != Type::Kind::Ptr &&
+                            result.type.kind != Type::Kind::Void)
+                        {
+                            argValue = emitBox(argValue, result.type);
+                        }
+                        else if (expectedType.kind == Type::Kind::F64 &&
+                                 result.type.kind == Type::Kind::I64)
+                        {
+                            unsigned convId = nextTempId();
+                            il::core::Instr convInstr;
+                            convInstr.result = convId;
+                            convInstr.op = Opcode::Sitofp;
+                            convInstr.type = Type(Type::Kind::F64);
+                            convInstr.operands = {argValue};
+                            blockMgr_.currentBlock()->instructions.push_back(convInstr);
+                            argValue = Value::temp(convId);
+                        }
+                    }
+                    args.push_back(argValue);
                 }
 
                 TypeRef exprType = sema_.typeOf(expr);

@@ -21,6 +21,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/lower/oop/Lower_OOP_Internal.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <functional>
@@ -100,6 +101,37 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                     continue;
                 if (string_utils::iequals(calleeName, klass.ctor))
                     return std::string(klass.qname);
+            }
+
+            // Check if callee is a static factory method on a runtime class
+            // (e.g., Viper.Math.Vec2.Zero → returns Vec2)
+            auto lastDot = calleeName.rfind('.');
+            if (lastDot != std::string::npos)
+            {
+                std::string prefix = calleeName.substr(0, lastDot);
+                std::string method = calleeName.substr(lastDot + 1);
+                if (const auto *rtClass = il::runtime::findRuntimeClassByQName(prefix))
+                {
+                    // Check class methods for obj return type
+                    for (const auto &m : rtClass->methods)
+                    {
+                        if (m.name && string_utils::iequals(m.name, method) && m.signature)
+                        {
+                            auto sig = il::runtime::parseRuntimeSignature(m.signature);
+                            if (sig.returnType == il::runtime::ILScalarType::Object)
+                                return std::string(rtClass->qname);
+                            break;
+                        }
+                    }
+                    // Also check standalone RT_FUNCs with this prefix that return obj.
+                    // Try various arities to find the method in RuntimeMethodIndex.
+                    for (std::size_t ar = 0; ar <= 4; ++ar)
+                    {
+                        auto entry = runtimeMethodIndex().find(prefix, method, ar);
+                        if (entry && entry->ret == BasicType::Object)
+                            return prefix;
+                    }
+                }
             }
         }
 

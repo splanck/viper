@@ -44,6 +44,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 namespace il::frontends::basic
 {
@@ -153,8 +154,17 @@ std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(std::string_view class
     // Convert the ParsedMethod to RuntimeMethodInfo
     RuntimeMethodInfo info;
 
-    // Copy the extern target name
+    // Use the catalog target, resolving to a qualified descriptor name if needed.
+    // Many catalog targets are already qualified (e.g., "Viper.Core.Convert.ToInt").
+    // Others are raw tags (e.g., "ResultOk") that don't match any descriptor.
+    // For raw tags, construct the qualified name as classQName.methodName.
     info.target = parsed->target ? parsed->target : "";
+    if (!info.target.empty() && !il::runtime::findRuntimeDescriptor(info.target))
+    {
+        std::string qualifiedTarget = std::string(classQName) + "." + std::string(method);
+        if (il::runtime::findRuntimeDescriptor(qualifiedTarget))
+            info.target = qualifiedTarget;
+    }
 
     // Convert return type from IL to BASIC
     info.ret = toBasicType(parsed->signature.returnType);

@@ -217,6 +217,16 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         return {loaded, ilType};
     }
 
+    // Check for auto-evaluated property getters (e.g., Pi → call Viper.Math.get_Pi())
+    std::string autoGetter = sema_.autoEvalGetter(expr);
+    if (!autoGetter.empty())
+    {
+        TypeRef type = sema_.typeOf(expr);
+        Type ilType = mapType(type);
+        Value result = emitCallRet(ilType, autoGetter, {});
+        return {result, ilType};
+    }
+
     // Check if identifier refers to a function - return its address for function pointers
     // This enables passing functions to Thread.Start, callbacks, etc.
     std::string mangledName = mangleFunctionName(expr->name);

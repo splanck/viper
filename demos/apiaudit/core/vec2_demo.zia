@@ -1,0 +1,59 @@
+module Vec2Demo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Viper.Math.Vec2 Demo ===");
+    var a = new Viper.Math.Vec2(3.0, 4.0);
+    var b = new Viper.Math.Vec2(1.0, 2.0);
+    var z = Viper.Math.Vec2.Zero();
+    var o = Viper.Math.Vec2.One();
+
+    SayNum(a.X);
+    SayNum(a.Y);
+    SayNum(a.Len());
+    SayNum(a.LenSq());
+
+    var c = a.Add(b);
+    SayNum(c.X);
+    SayNum(c.Y);
+
+    var d = a.Sub(b);
+    SayNum(d.X);
+    SayNum(d.Y);
+
+    var e = a.Mul(2.0);
+    SayNum(e.X);
+    SayNum(e.Y);
+
+    var f = a.Div(2.0);
+    SayNum(f.X);
+    SayNum(f.Y);
+
+    SayNum(a.Dot(b));
+    SayNum(a.Cross(b));
+    SayNum(a.Dist(b));
+    SayNum(a.Angle());
+
+    var n = a.Norm();
+    SayNum(n.Len());
+
+    var r = new Viper.Math.Vec2(1.0, 0.0);
+    var rotated = r.Rotate(1.5707963267949);
+    SayNum(rotated.X);
+    SayNum(rotated.Y);
+
+    var l = a.Lerp(b, 0.5);
+    SayNum(l.X);
+    SayNum(l.Y);
+
+    var neg = a.Neg();
+    SayNum(neg.X);
+    SayNum(neg.Y);
+
+    SayNum(z.X);
+    SayNum(z.Y);
+    SayNum(o.X);
+    SayNum(o.Y);
+
+    Say("done");
+}

@@ -1,0 +1,9 @@
+module ExecDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Exec Demo ===");
+    Say(Viper.Exec.Capture("echo hello"));
+    SayInt(Viper.Exec.Run("true"));
+    SayInt(Viper.Exec.Run("false"));
+    Say("done");
+}

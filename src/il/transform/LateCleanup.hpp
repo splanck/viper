@@ -36,12 +36,12 @@ namespace il::transform
 ///          fixpoint and to produce diagnostics or pass-pipeline statistics.
 struct LateCleanupStats
 {
-    unsigned iterations = 0;               ///< Number of SimplifyCFG+DCE iterations that executed.
-    std::size_t instrBefore = 0;           ///< Total instruction count before the first iteration.
-    std::size_t blocksBefore = 0;          ///< Total basic-block count before the first iteration.
-    std::size_t instrAfter = 0;            ///< Total instruction count after the final iteration.
-    std::size_t blocksAfter = 0;           ///< Total basic-block count after the final iteration.
-    std::vector<std::size_t> instrPerIter; ///< Instruction count snapshot after each iteration.
+    unsigned iterations = 0;                ///< Number of SimplifyCFG+DCE iterations that executed.
+    std::size_t instrBefore = 0;            ///< Total instruction count before the first iteration.
+    std::size_t blocksBefore = 0;           ///< Total basic-block count before the first iteration.
+    std::size_t instrAfter = 0;             ///< Total instruction count after the final iteration.
+    std::size_t blocksAfter = 0;            ///< Total basic-block count after the final iteration.
+    std::vector<std::size_t> instrPerIter;  ///< Instruction count snapshot after each iteration.
     std::vector<std::size_t> blocksPerIter; ///< Basic-block count snapshot after each iteration.
 };
 

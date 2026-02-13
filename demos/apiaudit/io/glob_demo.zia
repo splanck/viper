@@ -1,0 +1,8 @@
+module GlobDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.IO.Glob Demo ===");
+    SayBool(Viper.IO.Glob.Match("hello.txt", "*.txt"));
+    SayBool(Viper.IO.Glob.Match("hello.md", "*.txt"));
+    Say("done");
+}

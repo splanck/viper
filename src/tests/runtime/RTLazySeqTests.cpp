@@ -362,6 +362,57 @@ static void test_lazyseq_null_handling()
 }
 
 //=============================================================================
+// IL Wrapper Tests
+//=============================================================================
+
+static void test_lazyseq_il_wrappers()
+{
+    printf("Testing LazySeq IL wrappers:\n");
+
+    // Test: Range wrapper returns valid sequence
+    {
+        void *seq = rt_lazyseq_w_range(1, 10, 1);
+        test_result("w_range: non-null", seq != NULL);
+
+        // Test w_index
+        int64_t idx = rt_lazyseq_w_index(seq);
+        test_result("w_index: starts at 0", idx == 0);
+
+        // Test w_is_exhausted
+        int8_t exh = rt_lazyseq_w_is_exhausted(seq);
+        test_result("w_is_exhausted: false at start", exh == 0);
+
+        // Test w_count
+        int64_t count = rt_lazyseq_w_count(seq);
+        test_result("w_count: 9 elements in range(1,10,1)", count == 9);
+
+        // Test w_reset
+        rt_lazyseq_w_reset(seq);
+        idx = rt_lazyseq_w_index(seq);
+        test_result("w_reset: index back to 0", idx == 0);
+
+        rt_lazyseq_destroy((rt_lazyseq)seq);
+    }
+
+    // Test: Next/Peek wrappers
+    {
+        void *seq = rt_lazyseq_w_range(10, 13, 1);
+        void *peeked = rt_lazyseq_w_peek(seq);
+        test_result("w_peek: first is 10", *(int64_t *)peeked == 10);
+
+        void *next = rt_lazyseq_w_next(seq);
+        test_result("w_next: returns 10", *(int64_t *)next == 10);
+
+        next = rt_lazyseq_w_next(seq);
+        test_result("w_next: returns 11", *(int64_t *)next == 11);
+
+        rt_lazyseq_destroy((rt_lazyseq)seq);
+    }
+
+    printf("\n");
+}
+
+//=============================================================================
 // Entry Point
 //=============================================================================
 
@@ -377,6 +428,7 @@ int main()
     test_lazyseq_peek();
     test_lazyseq_concat();
     test_lazyseq_null_handling();
+    test_lazyseq_il_wrappers();
 
     printf("All LazySeq tests passed!\n");
     return 0;

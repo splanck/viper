@@ -1,0 +1,13 @@
+module FileDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.IO.File Demo ===");
+    var tmp = Viper.IO.TempFile.Path();
+    Viper.IO.File.WriteAllText(tmp, "hello world");
+    SayBool(Viper.IO.File.Exists(tmp));
+    Say(Viper.IO.File.ReadAllText(tmp));
+    SayInt(Viper.IO.File.Size(tmp));
+    Viper.IO.File.Delete(tmp);
+    SayBool(Viper.IO.File.Exists(tmp));
+    Say("done");
+}

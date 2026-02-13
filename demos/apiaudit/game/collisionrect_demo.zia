@@ -1,0 +1,15 @@
+module CollisionRectDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Game.CollisionRect Demo ===");
+    var r = new Viper.Game.CollisionRect(10.0, 20.0, 50.0, 30.0);
+    SayNum(r.X);
+    SayNum(r.Y);
+    SayNum(r.Width);
+    SayNum(r.Height);
+    SayNum(r.Right);
+    SayNum(r.Bottom);
+    SayBool(r.ContainsPoint(25.0, 30.0));
+    SayBool(r.ContainsPoint(0.0, 0.0));
+    Say("done");
+}

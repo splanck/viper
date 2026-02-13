@@ -915,6 +915,10 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
         // Float arguments can be implicitly converted to integer parameters (truncation)
         if (expectTy == ::il::frontends::basic::Type::I64 && argTy == Type::Float)
             continue;
+        // Integer/float arguments can be truncated to boolean parameters
+        if (expectTy == ::il::frontends::basic::Type::Bool &&
+            (argTy == Type::Int || argTy == Type::Float))
+            continue;
         Type want = Type::Int;
         if (expectTy == ::il::frontends::basic::Type::F64)
             want = Type::Float;

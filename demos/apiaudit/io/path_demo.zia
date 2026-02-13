@@ -1,0 +1,15 @@
+module PathDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.IO.Path Demo ===");
+    Say(Viper.IO.Path.Dir("/foo/bar/baz.txt"));
+    Say(Viper.IO.Path.Name("/foo/bar/baz.txt"));
+    Say(Viper.IO.Path.Ext("/foo/bar/baz.txt"));
+    Say(Viper.IO.Path.Stem("/foo/bar/baz.txt"));
+    SayBool(Viper.IO.Path.IsAbs("/foo/bar"));
+    SayBool(Viper.IO.Path.IsAbs("foo/bar"));
+    Say(Viper.IO.Path.Join("/foo", "bar"));
+    Say(Viper.IO.Path.WithExt("/foo/bar.txt", ".md"));
+    Say(Viper.IO.Path.Sep());
+    Say("done");
+}

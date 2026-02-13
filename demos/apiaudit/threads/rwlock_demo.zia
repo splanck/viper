@@ -1,0 +1,15 @@
+module RwLockDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Threads.RwLock Demo ===");
+    var lk = new Viper.Threads.RwLock();
+    SayInt(lk.Readers);
+    SayBool(lk.IsWriteLocked);
+    SayBool(lk.TryReadEnter());
+    SayInt(lk.Readers);
+    lk.ReadExit();
+    SayBool(lk.TryWriteEnter());
+    SayBool(lk.IsWriteLocked);
+    lk.WriteExit();
+    Say("done");
+}

@@ -1,0 +1,13 @@
+module DateOnlyDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Time.DateOnly Demo ===");
+    var d = new Viper.Time.DateOnly();
+    SayInt(d.Year);
+    SayInt(d.Month);
+    SayInt(d.Day);
+    Say(d.ToString());
+    SayInt(d.DayOfWeek);
+    SayInt(d.DayOfYear);
+    Say("done");
+}

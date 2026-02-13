@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_deque.h"
+#include "rt_object.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,25 +76,35 @@ void *rt_deque_new(void)
     return rt_deque_with_capacity(DEFAULT_CAPACITY);
 }
 
+static void deque_finalize(void *obj)
+{
+    Deque *d = (Deque *)obj;
+    if (d && d->data)
+        free(d->data);
+}
+
 void *rt_deque_with_capacity(int64_t cap)
 {
     if (cap < 1)
         cap = 1;
 
-    Deque *d = (Deque *)malloc(sizeof(Deque));
+    Deque *d = (Deque *)rt_obj_new_i64(0, (int64_t)sizeof(Deque));
     if (!d)
         return NULL;
 
     d->data = (void **)malloc((size_t)cap * sizeof(void *));
     if (!d->data)
     {
-        free(d);
-        return NULL;
+        d->cap = 0;
+        d->len = 0;
+        d->front = 0;
+        return d;
     }
 
     d->cap = cap;
     d->len = 0;
     d->front = 0;
+    rt_obj_set_finalizer(d, deque_finalize);
     return d;
 }
 

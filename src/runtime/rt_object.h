@@ -82,6 +82,16 @@ extern "C"
     /// How:  Returns 1 when pointers are identical, 0 otherwise.
     int64_t rt_obj_reference_equals(void *a, void *b);
 
+    // --- Object Introspection ---
+    /// What: Get the qualified type name of an object.
+    struct rt_string_impl *rt_obj_type_name(void *self);
+
+    /// What: Get the numeric type ID of an object.
+    int64_t rt_obj_type_id(void *self);
+
+    /// What: Check if an object reference is null.
+    int64_t rt_obj_is_null(void *self);
+
     // --- Weak Reference Support ---
     /// @brief Store a weak reference without incrementing reference count.
     /// @param addr Address of the field to store to.

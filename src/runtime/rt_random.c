@@ -181,6 +181,25 @@ void *rt_random_new(long long seed)
     return obj;
 }
 
+// Instance method wrappers that accept and ignore receiver
+double rt_rnd_method(void *self)
+{
+    (void)self;
+    return rt_rnd();
+}
+
+long long rt_rand_int_method(void *self, long long max)
+{
+    (void)self;
+    return rt_rand_int(max);
+}
+
+void rt_randomize_i64_method(void *self, long long seed)
+{
+    (void)self;
+    rt_randomize_i64(seed);
+}
+
 /// @brief Shuffle elements in a Seq randomly (Fisher-Yates algorithm).
 /// @details Uses the current RNG state for deterministic shuffling.
 void rt_rand_shuffle(void *seq)

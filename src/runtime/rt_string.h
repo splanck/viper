@@ -7,8 +7,8 @@
 //
 // File: src/runtime/rt_string.h
 // Purpose: Reference-counted UTF-8 string API for creation, manipulation, and comparison.
-// Key invariants: Strings are null-terminated UTF-8; atomic refcount; immortal literals never freed.
-// Ownership/Lifetime: New strings start at refcount 1; callers must balance retain/release.
+// Key invariants: Strings are null-terminated UTF-8; atomic refcount; immortal literals never
+// freed. Ownership/Lifetime: New strings start at refcount 1; callers must balance retain/release.
 // Links: docs/viperlib.md
 //
 //===----------------------------------------------------------------------===//

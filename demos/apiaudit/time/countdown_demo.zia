@@ -1,0 +1,10 @@
+module CountdownDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Time.Countdown Demo ===");
+    var cd = new Viper.Time.Countdown(1000);
+    SayInt(cd.Interval);
+    SayBool(cd.IsRunning);
+    SayBool(cd.Expired);
+    Say("done");
+}

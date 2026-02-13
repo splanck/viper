@@ -1,0 +1,17 @@
+module ObjectPoolDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Game.ObjectPool Demo ===");
+    var pool = new Viper.Game.ObjectPool(10);
+    SayInt(pool.Capacity);
+    SayInt(pool.ActiveCount);
+    SayInt(pool.FreeCount);
+    var id = pool.Acquire();
+    SayInt(id);
+    SayInt(pool.ActiveCount);
+    SayBool(pool.IsActive(id));
+    SayBool(pool.Release(id));
+    SayInt(pool.ActiveCount);
+    pool.Clear();
+    Say("done");
+}

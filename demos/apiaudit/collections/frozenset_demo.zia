@@ -1,0 +1,13 @@
+module FrozenSetDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.FrozenSet Demo ===");
+    var s = new Viper.Collections.Seq();
+    s.Push("apple"); s.Push("banana"); s.Push("cherry");
+    var fs = new Viper.Collections.FrozenSet(s);
+    SayInt(fs.Len);
+    SayBool(fs.Has("apple"));
+    SayBool(fs.Has("grape"));
+    SayBool(fs.IsEmpty);
+    Say("done");
+}

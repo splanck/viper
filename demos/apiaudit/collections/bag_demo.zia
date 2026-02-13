@@ -1,0 +1,14 @@
+module BagDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.Bag Demo ===");
+    var b = new Viper.Collections.Bag();
+    b.Put("apple"); b.Put("apple"); b.Put("banana");
+    SayInt(b.Len);
+    SayBool(b.Has("banana"));
+    b.Drop("apple");
+    SayInt(b.Len);
+    b.Clear();
+    SayBool(b.IsEmpty);
+    Say("done");
+}

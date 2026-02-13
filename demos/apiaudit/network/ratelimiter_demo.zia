@@ -1,0 +1,13 @@
+module RateLimiterDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Network.RateLimiter Demo ===");
+    var rl = new Viper.Network.RateLimiter(10, 1.0);
+    SayInt(rl.Max);
+    SayInt(rl.Available);
+    SayBool(rl.TryAcquire());
+    SayInt(rl.Available);
+    rl.Reset();
+    SayInt(rl.Available);
+    Say("done");
+}

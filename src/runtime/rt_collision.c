@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_collision.h"
+#include "rt_object.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -26,7 +27,8 @@ struct rt_collision_rect_impl
 
 rt_collision_rect rt_collision_rect_new(double x, double y, double width, double height)
 {
-    struct rt_collision_rect_impl *rect = malloc(sizeof(struct rt_collision_rect_impl));
+    struct rt_collision_rect_impl *rect = (struct rt_collision_rect_impl *)rt_obj_new_i64(
+        0, (int64_t)sizeof(struct rt_collision_rect_impl));
     if (!rect)
         return NULL;
 
@@ -41,7 +43,7 @@ rt_collision_rect rt_collision_rect_new(double x, double y, double width, double
 void rt_collision_rect_destroy(rt_collision_rect rect)
 {
     if (rect)
-        free(rect);
+        rt_obj_free(rect);
 }
 
 double rt_collision_rect_x(rt_collision_rect rect)

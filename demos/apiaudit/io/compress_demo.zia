@@ -1,0 +1,10 @@
+module CompressDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.IO.Compress Demo ===");
+    var compressed = Viper.IO.Compress.DeflateStr("hello world");
+    Say(Viper.IO.Compress.InflateStr(compressed));
+    var gzipped = Viper.IO.Compress.GzipStr("test data");
+    Say(Viper.IO.Compress.GunzipStr(gzipped));
+    Say("done");
+}

@@ -1,0 +1,15 @@
+module ConcMapDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Threads.ConcurrentMap Demo ===");
+    var m = new Viper.Threads.ConcurrentMap();
+    m.Set("a", "alpha"); m.Set("b", "beta");
+    SayInt(m.Len);
+    SayBool(m.Has("a"));
+    SayBool(m.Has("z"));
+    m.Remove("a");
+    SayInt(m.Len);
+    m.Clear();
+    SayBool(m.IsEmpty);
+    Say("done");
+}

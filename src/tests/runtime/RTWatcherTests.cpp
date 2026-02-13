@@ -183,11 +183,11 @@ static void test_event_constants()
 {
     printf("Testing event constants...\n");
 
-    assert(rt_watcher_event_none() == 0);
-    assert(rt_watcher_event_created() == 1);
-    assert(rt_watcher_event_modified() == 2);
-    assert(rt_watcher_event_deleted() == 3);
-    assert(rt_watcher_event_renamed() == 4);
+    assert(rt_watcher_event_none(NULL) == 0);
+    assert(rt_watcher_event_created(NULL) == 1);
+    assert(rt_watcher_event_modified(NULL) == 2);
+    assert(rt_watcher_event_deleted(NULL) == 3);
+    assert(rt_watcher_event_renamed(NULL) == 4);
 
     test_result("Event constants", true);
 }

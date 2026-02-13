@@ -1,0 +1,10 @@
+module HtmlDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Text.Html Demo ===");
+    Say(Viper.Text.Html.Escape("<b>Hello</b>"));
+    Say(Viper.Text.Html.Unescape("&lt;b&gt;Hello&lt;/b&gt;"));
+    Say(Viper.Text.Html.StripTags("<p>Hello <b>World</b></p>"));
+    Say(Viper.Text.Html.ToText("<p>Hello</p><p>World</p>"));
+    Say("done");
+}

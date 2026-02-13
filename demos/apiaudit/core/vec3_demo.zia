@@ -1,0 +1,32 @@
+module Vec3Demo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Viper.Math.Vec3 Demo ===");
+    var a = new Viper.Math.Vec3(1.0, 2.0, 3.0);
+    var b = new Viper.Math.Vec3(4.0, 5.0, 6.0);
+    SayNum(a.X);
+    SayNum(a.Y);
+    SayNum(a.Z);
+    SayNum(a.Len());
+    SayNum(a.LenSq());
+    var c = a.Add(b);
+    SayNum(c.X);
+    var d = a.Sub(b);
+    SayNum(d.X);
+    var e = a.Mul(2.0);
+    SayNum(e.X);
+    var f = a.Div(2.0);
+    SayNum(f.X);
+    SayNum(a.Dot(b));
+    var cr = a.Cross(b);
+    SayNum(cr.X);
+    SayNum(a.Dist(b));
+    var n = a.Norm();
+    SayNum(n.Len());
+    var l = a.Lerp(b, 0.5);
+    SayNum(l.X);
+    var neg = a.Neg();
+    SayNum(neg.X);
+    Say("done");
+}

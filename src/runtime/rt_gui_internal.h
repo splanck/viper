@@ -19,6 +19,7 @@
 #define RT_GUI_INTERNAL_H
 
 #include "rt_gui.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include "../lib/graphics/include/vgfx.h"

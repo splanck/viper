@@ -150,6 +150,16 @@ extern "C"
     /// @return The last element, or NULL if the list is empty.
     void *rt_list_last(void *list);
 
+    /// @brief Check whether the list is empty.
+    /// @param list Opaque List object pointer.
+    /// @return 1 if empty (or NULL), 0 otherwise.
+    int8_t rt_list_is_empty(void *list);
+
+    /// @brief Remove and return the last element from the list.
+    /// @param list Opaque List object pointer. Must not be NULL.
+    /// @return The removed element, or traps if the list is empty.
+    void *rt_list_pop(void *list);
+
 #ifdef __cplusplus
 }
 #endif

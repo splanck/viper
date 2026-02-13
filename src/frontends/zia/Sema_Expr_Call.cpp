@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>
 #include <string_view>
@@ -633,8 +634,29 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             // Construct full method name: ClassName.MethodName
             std::string fullMethodName = baseType->name + "." + fieldExpr->field;
 
-            // Check if it's a known function (runtime method)
-            Symbol *sym = lookupSymbol(fullMethodName);
+            Symbol *sym = nullptr;
+
+            // First, try the RuntimeClasses catalog for instance method dispatch.
+            // This finds method targets that accept the implicit receiver arg.
+            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(baseType->name))
+            {
+                for (const auto &m : rtClass->methods)
+                {
+                    if (m.name && std::string_view(m.name) == fieldExpr->field && m.target)
+                    {
+                        sym = lookupSymbol(m.target);
+                        if (sym && sym->kind == Symbol::Kind::Function)
+                        {
+                            fullMethodName = m.target;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Fall back to direct qualified name lookup
+            if (!sym)
+                sym = lookupSymbol(fullMethodName);
 
             // If not found and this is a GUI widget class, try falling back to Widget base class
             // This handles inherited methods like SetSize, AddChild, SetVisible, etc.

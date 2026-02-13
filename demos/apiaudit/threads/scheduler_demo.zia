@@ -1,0 +1,14 @@
+module SchedulerDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Threads.Scheduler Demo ===");
+    var s = new Viper.Threads.Scheduler();
+    SayInt(s.Pending);
+    s.Schedule("task1", 0);
+    SayInt(s.Pending);
+    SayBool(s.IsDue("task1"));
+    SayBool(s.Cancel("task1"));
+    SayInt(s.Pending);
+    s.Clear();
+    Say("done");
+}

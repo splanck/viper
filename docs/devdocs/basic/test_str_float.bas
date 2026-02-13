@@ -1,9 +1,0 @@
-DIM x AS SINGLE
-x = 3.14159
-PRINT "x = "; x
-PRINT "STR$(x) = "; STR$(x)
-
-CONST PI = 3.14159
-PRINT "PI = "; PI
-PRINT "STR$(PI) = "; STR$(PI)
-END

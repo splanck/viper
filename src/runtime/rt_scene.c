@@ -12,6 +12,7 @@
 
 #include "rt_scene.h"
 #include "rt_camera.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_sprite.h"
 
@@ -70,9 +71,8 @@ static int compare_depth(const void *a, const void *b);
 
 void *rt_scene_node_new(void)
 {
-    scene_node_impl *node = (scene_node_impl *)calloc(1, sizeof(scene_node_impl));
-    if (!node)
-        rt_trap("SceneNode: memory allocation failed");
+    scene_node_impl *node = (scene_node_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_node_impl));
+    memset(node, 0, sizeof(scene_node_impl));
 
     node->x = 0;
     node->y = 0;
@@ -665,9 +665,8 @@ void rt_scene_node_set_scale(void *node_ptr, int64_t scale)
 
 void *rt_scene_new(void)
 {
-    scene_impl *scene = (scene_impl *)calloc(1, sizeof(scene_impl));
-    if (!scene)
-        rt_trap("Scene: memory allocation failed");
+    scene_impl *scene = (scene_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_impl));
+    memset(scene, 0, sizeof(scene_impl));
 
     scene->root = (scene_node_impl *)rt_scene_node_new();
     scene->root->name = rt_const_cstr("root");

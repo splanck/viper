@@ -1,0 +1,13 @@
+module ScreenFXDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Game.ScreenFX Demo ===");
+    var fx = new Viper.Game.ScreenFX();
+    SayBool(fx.IsActive);
+    SayInt(fx.ShakeX);
+    SayInt(fx.ShakeY);
+    SayInt(fx.OverlayColor);
+    SayInt(fx.OverlayAlpha);
+    fx.CancelAll();
+    Say("done");
+}

@@ -1,0 +1,18 @@
+module MapDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Viper.Collections.Map Demo ===");
+    var m = new Viper.Collections.Map();
+    m.Set("name", "viper");
+    m.Set("version", "1.0");
+    m.Set("lang", "zia");
+    SayInt(m.Len);
+    SayBool(m.Has("name"));
+    SayBool(m.Has("missing"));
+    SayBool(m.Remove("lang"));
+    SayInt(m.Len);
+    m.Clear();
+    SayBool(m.IsEmpty);
+    Say("done");
+}

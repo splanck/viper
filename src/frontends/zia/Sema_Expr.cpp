@@ -188,11 +188,19 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
         auto importIt = importedSymbols_.find(expr->name);
         if (importIt != importedSymbols_.end())
         {
-            // For imported runtime classes, return a module-like type so that
-            // field access (e.g., Canvas.New) can be resolved
             const std::string &fullName = importIt->second;
             if (fullName.rfind("Viper.", 0) == 0)
             {
+                // Check if it's a zero-arg getter function (e.g., Viper.Math.get_Pi)
+                // If so, treat it as an auto-evaluated property
+                Symbol *fnSym = lookupSymbol(fullName);
+                if (fnSym && fnSym->kind == Symbol::Kind::Function && fnSym->isExtern)
+                {
+                    autoEvalGetters_[expr] = fullName;
+                    return fnSym->type;
+                }
+                // For imported runtime classes, return a module-like type so that
+                // field access (e.g., Canvas.New) can be resolved
                 return types::module(fullName);
             }
         }

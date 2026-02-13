@@ -308,9 +308,8 @@ static void unregister_weak_ref(void *target, rt_weakref *ref)
 
 rt_weakref *rt_weakref_new(void *target)
 {
-    rt_weakref *ref = (rt_weakref *)calloc(1, sizeof(rt_weakref));
-    if (!ref)
-        return NULL;
+    rt_weakref *ref = (rt_weakref *)rt_obj_new_i64(0, (int64_t)sizeof(rt_weakref));
+    memset(ref, 0, sizeof(rt_weakref));
 
     gc_lock();
     ref->target = target;
@@ -353,8 +352,6 @@ void rt_weakref_free(rt_weakref *ref)
     if (ref->target)
         unregister_weak_ref(ref->target, ref);
     gc_unlock();
-
-    free(ref);
 }
 
 void rt_gc_clear_weak_refs(void *target)

@@ -1,0 +1,30 @@
+module FmtDemo;
+bind Viper.Fmt;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Viper.Fmt Demo ===");
+    Say(Int(42));
+    Say(IntRadix(255, 16));
+    Say(IntPad(7, 4, "0"));
+    Say(Num(3.14159));
+    Say(NumFixed(3.14159, 2));
+    Say(NumSci(12345.6789, 3));
+    Say(NumPct(0.856, 1));
+    Say(Bool(true));
+    Say(Bool(false));
+    Say(BoolYN(true));
+    Say(BoolYN(false));
+    Say(Size(1048576));
+    Say(Hex(255));
+    Say(HexPad(255, 4));
+    Say(Bin(42));
+    Say(Oct(42));
+    Say(IntGrouped(1234567, ","));
+    Say(Currency(1234.5, 2, "$"));
+    Say(ToWords(42));
+    Say(Ordinal(3));
+    Say(Ordinal(21));
+    Say(Ordinal(12));
+    Say("done");
+}

@@ -1,0 +1,9 @@
+module DirDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.IO.Dir Demo ===");
+    Say(Viper.IO.Dir.Current());
+    SayBool(Viper.IO.Dir.Exists("/tmp"));
+    SayBool(Viper.IO.Dir.Exists("/nonexistent_xyz"));
+    Say("done");
+}

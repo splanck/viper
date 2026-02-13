@@ -13,6 +13,7 @@
 #include "rt_playlist.h"
 #include "rt_audio.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 
 #include <stdlib.h>
@@ -127,9 +128,8 @@ static void load_current(playlist_impl *pl)
 
 void *rt_playlist_new(void)
 {
-    playlist_impl *pl = (playlist_impl *)calloc(1, sizeof(playlist_impl));
-    if (!pl)
-        rt_trap("Playlist: memory allocation failed");
+    playlist_impl *pl = (playlist_impl *)rt_obj_new_i64(0, (int64_t)sizeof(playlist_impl));
+    memset(pl, 0, sizeof(playlist_impl));
 
     pl->tracks = rt_seq_new();
     pl->current = -1;

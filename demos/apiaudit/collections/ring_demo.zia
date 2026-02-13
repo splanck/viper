@@ -1,0 +1,13 @@
+module RingDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.Ring Demo ===");
+    var r = new Viper.Collections.Ring(10);
+    r.Push("a"); r.Push("b"); r.Push("c");
+    SayInt(r.Len);
+    SayInt(r.Cap);
+    SayBool(r.IsEmpty);
+    r.Clear();
+    SayBool(r.IsEmpty);
+    Say("done");
+}

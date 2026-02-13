@@ -608,27 +608,32 @@ int64_t rt_watcher_event_type(void *obj)
     return w->has_last_event ? w->last_event_type : RT_WATCH_EVENT_NONE;
 }
 
-int64_t rt_watcher_event_none(void)
+int64_t rt_watcher_event_none(void *self)
 {
+    (void)self;
     return RT_WATCH_EVENT_NONE;
 }
 
-int64_t rt_watcher_event_created(void)
+int64_t rt_watcher_event_created(void *self)
 {
+    (void)self;
     return RT_WATCH_EVENT_CREATED;
 }
 
-int64_t rt_watcher_event_modified(void)
+int64_t rt_watcher_event_modified(void *self)
 {
+    (void)self;
     return RT_WATCH_EVENT_MODIFIED;
 }
 
-int64_t rt_watcher_event_deleted(void)
+int64_t rt_watcher_event_deleted(void *self)
 {
+    (void)self;
     return RT_WATCH_EVENT_DELETED;
 }
 
-int64_t rt_watcher_event_renamed(void)
+int64_t rt_watcher_event_renamed(void *self)
 {
+    (void)self;
     return RT_WATCH_EVENT_RENAMED;
 }

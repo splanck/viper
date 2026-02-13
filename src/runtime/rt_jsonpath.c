@@ -15,6 +15,7 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -274,8 +275,34 @@ void *rt_jsonpath_query(void *root, rt_string path)
 rt_string rt_jsonpath_get_str(void *root, rt_string path)
 {
     void *val = rt_jsonpath_get(root, path);
-    if (val)
+    if (!val)
+        return rt_string_from_bytes("", 0);
+    // If it's already a string, return it directly
+    if (rt_string_is_handle(val))
         return (rt_string)val;
+    // If it's a boxed value, try to extract string or convert
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_STR)
+        return rt_unbox_str(val);
+    if (tag == RT_BOX_I64)
+    {
+        int64_t n = rt_unbox_i64(val);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%lld", (long long)n);
+        return rt_string_from_bytes(buf, strlen(buf));
+    }
+    if (tag == RT_BOX_F64)
+    {
+        double d = rt_unbox_f64(val);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.17g", d);
+        return rt_string_from_bytes(buf, strlen(buf));
+    }
+    if (tag == RT_BOX_I1)
+    {
+        int64_t b = rt_unbox_i1(val);
+        return b ? rt_string_from_bytes("true", 4) : rt_string_from_bytes("false", 5);
+    }
     return rt_string_from_bytes("", 0);
 }
 
@@ -284,6 +311,25 @@ int64_t rt_jsonpath_get_int(void *root, rt_string path)
     void *val = rt_jsonpath_get(root, path);
     if (!val)
         return 0;
-    const char *s = rt_string_cstr((rt_string)val);
-    return strtoll(s, NULL, 10);
+    // If it's a boxed number, unbox it
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_I64)
+        return rt_unbox_i64(val);
+    if (tag == RT_BOX_F64)
+        return (int64_t)rt_unbox_f64(val);
+    if (tag == RT_BOX_I1)
+        return rt_unbox_i1(val);
+    if (tag == RT_BOX_STR)
+    {
+        rt_string s = rt_unbox_str(val);
+        const char *cs = rt_string_cstr(s);
+        return strtoll(cs, NULL, 10);
+    }
+    // If it's a raw string, parse it
+    if (rt_string_is_handle(val))
+    {
+        const char *s = rt_string_cstr((rt_string)val);
+        return strtoll(s, NULL, 10);
+    }
+    return 0;
 }

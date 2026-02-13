@@ -16,6 +16,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia
 {
@@ -278,10 +279,22 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
         return {map, Type(Type::Kind::Ptr)};
     }
 
-    // Handle runtime class types (Ptr types with names like "Viper.Graphics.Canvas")
-    if (type->kind == TypeKindSem::Ptr && !type->name.empty())
+    // Handle runtime class types (Ptr) — look up ctor from RuntimeRegistry catalog.
+    // The ctor field is already a fully-qualified extern target, e.g.,
+    // "Viper.Collections.FrozenSet.FromSeq"
+    // Skip Entity and Value types — they have their own lowering below.
+    if (type && !type->name.empty() && type->kind != TypeKindSem::Entity &&
+        type->kind != TypeKindSem::Value)
     {
-        std::string ctorName = type->name + ".New";
+        std::string ctorName;
+        if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name))
+        {
+            if (rtClass->ctor)
+                ctorName = rtClass->ctor;
+        }
+        // Fall back to conventional .New suffix
+        if (ctorName.empty())
+            ctorName = type->name + ".New";
 
         // Lower arguments
         std::vector<Value> argValues;

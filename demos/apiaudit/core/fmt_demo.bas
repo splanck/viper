@@ -1,0 +1,22 @@
+' fmt_demo.bas — Viper.Fmt (fixed: use TRUE/FALSE for bool params)
+PRINT "=== Viper.Fmt Demo ==="
+PRINT Viper.Fmt.Int(42)
+PRINT Viper.Fmt.IntRadix(255, 16)
+PRINT Viper.Fmt.IntPad(7, 4, "0")
+PRINT Viper.Fmt.Num(3.14159)
+PRINT Viper.Fmt.NumFixed(3.14159, 2)
+PRINT Viper.Fmt.NumSci(12345.6789, 3)
+PRINT Viper.Fmt.NumPct(0.856, 1)
+PRINT Viper.Fmt.Size(1048576)
+PRINT Viper.Fmt.Hex(255)
+PRINT Viper.Fmt.HexPad(255, 4)
+PRINT Viper.Fmt.Bin(42)
+PRINT Viper.Fmt.Oct(42)
+PRINT Viper.Fmt.IntGrouped(1234567, ",")
+PRINT Viper.Fmt.Currency(1234.5, 2, "$")
+PRINT Viper.Fmt.ToWords(42)
+PRINT Viper.Fmt.Ordinal(3)
+PRINT Viper.Fmt.Ordinal(21)
+PRINT Viper.Fmt.Ordinal(12)
+PRINT "done"
+END

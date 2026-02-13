@@ -1,0 +1,13 @@
+module ThrottlerDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Threads.Throttler Demo ===");
+    var t = new Viper.Threads.Throttler(100);
+    SayInt(t.Interval);
+    SayBool(t.CanProceed);
+    SayBool(t.Try());
+    SayInt(t.Count);
+    t.Reset();
+    SayInt(t.Count);
+    Say("done");
+}

@@ -687,44 +687,43 @@ typedef struct
     int start_pos; // Start position for this match attempt
 } match_context;
 
-// Forward declaration
+// Forward declarations
 static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos);
+static bool match_concat_from(match_context *ctx, re_node **children, int count,
+                              int index, int pos, int *end_pos);
 
-/// Match a quantified node
-static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos)
+/// Collect all possible end positions for a quantified node.
+/// Returns the number of positions stored in `positions`.
+/// Positions are ordered from fewest to most repetitions.
+static int collect_quant_positions(match_context *ctx, re_node *n, int pos,
+                                   int *positions, int max_positions)
 {
     re_node *child = n->data.quant.child;
     re_quant_type qtype = n->data.quant.qtype;
-    bool greedy = n->data.quant.greedy;
 
     int min_count = (qtype == QUANT_PLUS) ? 1 : 0;
     int max_count = (qtype == QUANT_QUEST) ? 1 : INT32_MAX;
 
-    // Collect all possible match counts
-    int *match_ends = (int *)malloc(sizeof(int) * (ctx->text_len - pos + 2));
-    if (!match_ends)
-        rt_trap("Pattern: memory allocation failed");
-
-    int num_matches = 0;
+    int num = 0;
     int cur_pos = pos;
 
-    // First, collect positions for 0 matches
-    match_ends[num_matches++] = pos;
+    // Position for 0 matches (if allowed)
+    if (min_count == 0 && num < max_positions)
+        positions[num++] = pos;
 
-    // Then collect all possible match extensions
-    while (num_matches - 1 < max_count)
+    // Greedily collect match positions
+    int count = 0;
+    while (count < max_count && num < max_positions)
     {
         int child_end;
         if (match_node(ctx, child, cur_pos, &child_end))
         {
-            // Avoid infinite loop on zero-width matches
             if (child_end == cur_pos)
-            {
-                // Zero-width match; only count once
-                break;
-            }
+                break; // Zero-width match; only count once
             cur_pos = child_end;
-            match_ends[num_matches++] = cur_pos;
+            count++;
+            if (count >= min_count)
+                positions[num++] = cur_pos;
         }
         else
         {
@@ -732,36 +731,43 @@ static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos)
         }
     }
 
-    // Now try matches in order based on greediness
+    return num;
+}
+
+/// Match a quantified node (standalone, no continuation awareness).
+/// Used when the quantifier is NOT inside a concat (e.g., at pattern root).
+static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos)
+{
+    bool greedy = n->data.quant.greedy;
+
+    int *positions = (int *)malloc(sizeof(int) * (ctx->text_len - pos + 2));
+    if (!positions)
+        rt_trap("Pattern: memory allocation failed");
+
+    int num = collect_quant_positions(ctx, n, pos, positions, ctx->text_len - pos + 2);
+
     bool found = false;
     if (greedy)
     {
-        // Try longest match first
-        for (int i = num_matches - 1; i >= 0; i--)
+        // Try longest first
+        for (int i = num - 1; i >= 0; i--)
         {
-            if (i >= min_count)
-            {
-                *end_pos = match_ends[i];
-                found = true;
-                break;
-            }
+            *end_pos = positions[i];
+            found = true;
+            break;
         }
     }
     else
     {
-        // Try shortest match first
-        for (int i = 0; i < num_matches; i++)
+        // Try shortest first
+        if (num > 0)
         {
-            if (i >= min_count)
-            {
-                *end_pos = match_ends[i];
-                found = true;
-                break;
-            }
+            *end_pos = positions[0];
+            found = true;
         }
     }
 
-    free(match_ends);
+    free(positions);
     return found;
 }
 
@@ -818,20 +824,8 @@ static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos)
             return false;
 
         case RE_CONCAT:
-        {
-            int cur_pos = pos;
-            for (int i = 0; i < n->data.children.count; i++)
-            {
-                int child_end;
-                if (!match_node(ctx, n->data.children.children[i], cur_pos, &child_end))
-                {
-                    return false;
-                }
-                cur_pos = child_end;
-            }
-            *end_pos = cur_pos;
-            return true;
-        }
+            return match_concat_from(ctx, n->data.children.children,
+                                     n->data.children.count, 0, pos, end_pos);
 
         case RE_ALT:
             for (int i = 0; i < n->data.children.count; i++)
@@ -858,6 +852,74 @@ static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos)
     }
 
     return false;
+}
+
+/// Match a concat sequence from `index` onward, with backtracking through
+/// quantifier children. When a quantifier child is encountered, all possible
+/// match lengths are tried (greedy = longest first) and the function recurses
+/// to verify the remaining children can also match.
+static bool match_concat_from(match_context *ctx, re_node **children, int count,
+                              int index, int pos, int *end_pos)
+{
+    if (index >= count)
+    {
+        *end_pos = pos;
+        return true;
+    }
+
+    re_node *child = children[index];
+
+    if (child->type == RE_QUANT)
+    {
+        bool greedy = child->data.quant.greedy;
+
+        int *positions = (int *)malloc(sizeof(int) * (ctx->text_len - pos + 2));
+        if (!positions)
+            rt_trap("Pattern: memory allocation failed");
+
+        int num = collect_quant_positions(ctx, child, pos, positions,
+                                          ctx->text_len - pos + 2);
+
+        bool found = false;
+        if (greedy)
+        {
+            // Try longest match first, backtrack to shorter
+            for (int i = num - 1; i >= 0; i--)
+            {
+                if (match_concat_from(ctx, children, count, index + 1,
+                                      positions[i], end_pos))
+                {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // Try shortest match first
+            for (int i = 0; i < num; i++)
+            {
+                if (match_concat_from(ctx, children, count, index + 1,
+                                      positions[i], end_pos))
+                {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        free(positions);
+        return found;
+    }
+    else
+    {
+        // Non-quantifier child: single match attempt
+        int child_end;
+        if (match_node(ctx, child, pos, &child_end))
+            return match_concat_from(ctx, children, count, index + 1,
+                                     child_end, end_pos);
+        return false;
+    }
 }
 
 /// Find a match anywhere in text, returning start and end positions
@@ -1213,7 +1275,7 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str)
 // Public API
 //=============================================================================
 
-int8_t rt_pattern_is_match(rt_string pattern, rt_string text)
+int8_t rt_pattern_is_match(rt_string text, rt_string pattern)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1228,7 +1290,7 @@ int8_t rt_pattern_is_match(rt_string pattern, rt_string text)
     return find_match(cp, txt_str, (int)strlen(txt_str), 0, &match_start, &match_end);
 }
 
-rt_string rt_pattern_find(rt_string pattern, rt_string text)
+rt_string rt_pattern_find(rt_string text, rt_string pattern)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1249,7 +1311,7 @@ rt_string rt_pattern_find(rt_string pattern, rt_string text)
     return rt_const_cstr("");
 }
 
-rt_string rt_pattern_find_from(rt_string pattern, rt_string text, int64_t start)
+rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1275,7 +1337,7 @@ rt_string rt_pattern_find_from(rt_string pattern, rt_string text, int64_t start)
     return rt_const_cstr("");
 }
 
-int64_t rt_pattern_find_pos(rt_string pattern, rt_string text)
+int64_t rt_pattern_find_pos(rt_string text, rt_string pattern)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1295,7 +1357,7 @@ int64_t rt_pattern_find_pos(rt_string pattern, rt_string text)
     return -1;
 }
 
-void *rt_pattern_find_all(rt_string pattern, rt_string text)
+void *rt_pattern_find_all(rt_string text, rt_string pattern)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1326,7 +1388,7 @@ void *rt_pattern_find_all(rt_string pattern, rt_string text)
     return seq;
 }
 
-rt_string rt_pattern_replace(rt_string pattern, rt_string text, rt_string replacement)
+rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replacement)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1395,7 +1457,7 @@ rt_string rt_pattern_replace(rt_string pattern, rt_string text, rt_string replac
     return out;
 }
 
-rt_string rt_pattern_replace_first(rt_string pattern, rt_string text, rt_string replacement)
+rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string replacement)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1434,7 +1496,7 @@ rt_string rt_pattern_replace_first(rt_string pattern, rt_string text, rt_string 
     return out;
 }
 
-void *rt_pattern_split(rt_string pattern, rt_string text)
+void *rt_pattern_split(rt_string text, rt_string pattern)
 {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);

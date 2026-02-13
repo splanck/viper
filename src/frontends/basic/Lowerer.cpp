@@ -24,8 +24,10 @@
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/OopLoweringContext.hpp"
 #include "frontends/basic/RuntimeStatementLowerer.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -141,16 +143,70 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
     if (className.empty())
         return {};
 
+    // Check user-defined classes first
     const ClassInfo *info = oopIndex_.findClass(std::string(className));
-    if (!info)
-        return {};
+    if (info)
+    {
+        auto it = info->methods.find(std::string(methodName));
+        if (it != info->methods.end() && !it->second.sig.returnClassName.empty())
+            return it->second.sig.returnClassName;
+    }
 
-    auto it = info->methods.find(std::string(methodName));
-    if (it == info->methods.end())
-        return {};
-
-    if (!it->second.sig.returnClassName.empty())
-        return it->second.sig.returnClassName;
+    // Check runtime classes: if a method returns 'obj' and belongs to a known
+    // runtime class, infer the class name from the method's target function.
+    if (const auto *rtClass = il::runtime::findRuntimeClassByQName(std::string(className)))
+    {
+        for (const auto &m : rtClass->methods)
+        {
+            if (m.name && string_utils::iequals(m.name, methodName) && m.signature)
+            {
+                auto sig = il::runtime::parseRuntimeSignature(m.signature);
+                if (sig.returnType == il::runtime::ILScalarType::Object)
+                {
+                    // Method returns obj — check if target function belongs to
+                    // a DIFFERENT runtime class (cross-class factory method).
+                    if (m.target)
+                    {
+                        std::string_view target(m.target);
+                        auto lastDot = target.rfind('.');
+                        if (lastDot != std::string_view::npos)
+                        {
+                            std::string prefix(target.substr(0, lastDot));
+                            if (!string_utils::iequals(prefix, className))
+                            {
+                                if (il::runtime::findRuntimeClassByQName(prefix))
+                                    return prefix;
+                            }
+                        }
+                    }
+                    // Target belongs to the same class. Distinguish between:
+                    // - Value/math types (Vec2/Vec3/Quat) where obj-returning
+                    //   methods return the same type
+                    // - Collection types (List/Seq/Map/Queue/Stack/etc.) where
+                    //   getters return generic stored elements
+                    // Collections have a "Get" or "Push" method — check for this.
+                    {
+                        bool isCollection = false;
+                        for (const auto &cm : rtClass->methods)
+                        {
+                            if (cm.name &&
+                                (std::string_view(cm.name) == "Push" ||
+                                 std::string_view(cm.name) == "Set" ||
+                                 std::string_view(cm.name) == "Enqueue"))
+                            {
+                                isCollection = true;
+                                break;
+                            }
+                        }
+                        if (!isCollection)
+                            return std::string(className);
+                    }
+                    return {};
+                }
+                break;
+            }
+        }
+    }
 
     return {};
 }

@@ -31,10 +31,10 @@ namespace il::frontends::basic::sem
 ///          needed by the lowerer to emit the correct call instruction.
 struct ResolvedMethod
 {
-    const ClassInfo *owner{nullptr};                 ///< Class that declares the selected method.
-    const ClassInfo::MethodInfo *method{nullptr};    ///< Selected method overload metadata.
-    std::string qualifiedClass;                      ///< Qualified class name in declared casing.
-    std::string methodName;                          ///< Selected method name after resolution.
+    const ClassInfo *owner{nullptr};              ///< Class that declares the selected method.
+    const ClassInfo::MethodInfo *method{nullptr}; ///< Selected method overload metadata.
+    std::string qualifiedClass;                   ///< Qualified class name in declared casing.
+    std::string methodName;                       ///< Selected method name after resolution.
 };
 
 /// @brief Resolve an overloaded method on a class by name and argument types.

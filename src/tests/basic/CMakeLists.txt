@@ -348,6 +348,10 @@ function(viper_add_basic_main_tests)
     viper_add_test(test_basic_ast_select_case ${_VIPER_BASIC_UNIT_DIR}/test_basic_ast_select_case.cpp)
     target_link_libraries(test_basic_ast_select_case PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_ast_select_case test_basic_ast_select_case)
+
+    viper_add_test(test_basic_runtime_calls ${VIPER_TESTS_DIR}/basic/test_basic_runtime_calls.cpp)
+    target_link_libraries(test_basic_runtime_calls PRIVATE ${VIPER_BASIC_LIBS} viper_test_common)
+    viper_add_ctest(test_basic_runtime_calls test_basic_runtime_calls)
 endfunction()
 
 function(viper_add_basic_ast_golden_tests)

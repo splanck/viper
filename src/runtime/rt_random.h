@@ -108,6 +108,11 @@ extern "C"
     /// @return A GC-managed wrapper object.
     void *rt_random_new(long long seed);
 
+    // Instance method wrappers (accept and ignore receiver)
+    double rt_rnd_method(void *self);
+    long long rt_rand_int_method(void *self, long long max);
+    void rt_randomize_i64_method(void *self, long long seed);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,0 +1,10 @@
+module UrlDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Network.Url Demo ===");
+    SayBool(Viper.Network.Url.IsValid("https://example.com/path?q=1"));
+    SayBool(Viper.Network.Url.IsValid("not a url"));
+    Say(Viper.Network.Url.Encode("hello world"));
+    Say(Viper.Network.Url.Decode("hello%20world"));
+    Say("done");
+}

@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_dateonly.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <stdio.h>
@@ -95,9 +96,7 @@ void *rt_dateonly_create(int64_t year, int64_t month, int64_t day)
     if (day < 1 || day > max_day)
         return NULL;
 
-    DateOnly *d = (DateOnly *)malloc(sizeof(DateOnly));
-    if (!d)
-        return NULL;
+    DateOnly *d = (DateOnly *)rt_obj_new_i64(0, (int64_t)sizeof(DateOnly));
 
     d->year = year;
     d->month = month;

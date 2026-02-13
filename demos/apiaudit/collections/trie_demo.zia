@@ -1,0 +1,16 @@
+module TrieDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== Viper.Collections.Trie Demo ===");
+    var t = new Viper.Collections.Trie();
+    t.Put("hello", "world"); t.Put("help", "me"); t.Put("world", "earth");
+    SayInt(t.Len);
+    SayBool(t.Has("hello"));
+    SayBool(t.Has("hel"));
+    SayBool(t.HasPrefix("hel"));
+    t.Remove("help");
+    SayInt(t.Len);
+    t.Clear();
+    SayBool(t.IsEmpty);
+    Say("done");
+}

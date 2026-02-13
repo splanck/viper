@@ -44,8 +44,9 @@ using RVal = ::il::frontends::common::ExprResult;
 ///          must be declared when the string was produced via a runtime conversion.
 struct PrintChArgString
 {
-    il::core::Value text;                                ///< IL value holding the string result.
-    std::optional<il::runtime::RuntimeFeature> feature;  ///< Runtime feature needed for the conversion, if any.
+    il::core::Value text; ///< IL value holding the string result.
+    std::optional<il::runtime::RuntimeFeature>
+        feature; ///< Runtime feature needed for the conversion, if any.
 };
 
 /// @brief Result of lowering an array access expression.
@@ -84,9 +85,9 @@ struct SymbolInfo
 struct SlotType
 {
     il::core::Type type{il::core::Type(il::core::Type::Kind::I64)}; ///< IL type of the slot.
-    bool isArray{false};    ///< True when the slot holds an array handle.
-    bool isBoolean{false};  ///< True when the slot holds a boolean scalar.
-    bool isObject{false};   ///< True when the slot holds an object reference.
+    bool isArray{false};     ///< True when the slot holds an array handle.
+    bool isBoolean{false};   ///< True when the slot holds a boolean scalar.
+    bool isObject{false};    ///< True when the slot holds an object reference.
     std::string objectClass; ///< Qualified class name for object slots; empty otherwise.
 };
 
@@ -95,9 +96,9 @@ struct SlotType
 ///          produced by alloca or field offset computation.
 struct VariableStorage
 {
-    SlotType slotInfo;         ///< Type and semantic flags for the storage.
-    il::core::Value pointer;   ///< IL value pointing to the storage location.
-    bool isField{false};       ///< True when the storage refers to a class field.
+    SlotType slotInfo;       ///< Type and semantic flags for the storage.
+    il::core::Value pointer; ///< IL value pointing to the storage location.
+    bool isField{false};     ///< True when the storage refers to a class field.
 };
 
 /// @brief Cached signature for a user-defined procedure.
@@ -189,7 +190,8 @@ struct MemberFieldAccess
 struct FieldScope
 {
     const ClassLayout *layout{nullptr}; ///< Layout of the class whose fields are in scope.
-    std::unordered_map<std::string, SymbolInfo, StringHash, std::equal_to<>> symbols; ///< Field symbols indexed by name.
+    std::unordered_map<std::string, SymbolInfo, StringHash, std::equal_to<>>
+        symbols; ///< Field symbols indexed by name.
 };
 
 /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
