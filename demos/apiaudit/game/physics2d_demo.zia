@@ -1,0 +1,66 @@
+// API Audit: Viper.Game.Physics2D (Zia)
+module Physics2DDemo;
+bind Viper.Terminal;
+bind World = Viper.Game.Physics2D.World;
+bind Body = Viper.Game.Physics2D.Body;
+
+func start() {
+    Say("=== API Audit: Viper.Game.Physics2D ===");
+
+    // --- World.New ---
+    Say("--- World ---");
+    var world = World.New(0.0, 980.0);
+    SayInt(world.get_BodyCount());
+
+    // --- Body.New (x, y, w, h, mass) ---
+    Say("--- Body ---");
+    var body = Body.New(100.0, 0.0, 32.0, 32.0, 1.0);
+    world.Add(body);
+    SayInt(world.get_BodyCount());
+    SayNum(body.get_X());
+    SayNum(body.get_Y());
+    SayNum(body.get_Width());
+    SayNum(body.get_Height());
+
+    // --- SetVel / ApplyForce ---
+    Say("--- Velocity ---");
+    body.SetVel(10.0, 0.0);
+    SayNum(body.get_VX());
+    SayNum(body.get_VY());
+    body.ApplyForce(0.0, 100.0);
+    body.ApplyImpulse(5.0, 0.0);
+
+    // --- Step ---
+    Say("--- Step ---");
+    world.Step(0.016);
+
+    // --- Properties ---
+    Say("--- Properties ---");
+    SayBool(body.get_IsStatic());
+    SayNum(body.get_Mass());
+    SayNum(body.get_Restitution());
+    SayNum(body.get_Friction());
+    SayInt(body.get_CollisionLayer());
+    SayInt(body.get_CollisionMask());
+
+    // --- SetPos ---
+    Say("--- SetPos ---");
+    body.SetPos(50.0, 50.0);
+    SayNum(body.get_X());
+    SayNum(body.get_Y());
+
+    // --- Restitution / Friction setters ---
+    Say("--- Setters ---");
+    body.set_Restitution(0.8);
+    SayNum(body.get_Restitution());
+    body.set_Friction(0.5);
+    SayNum(body.get_Friction());
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    world.Remove(body);
+    SayInt(world.get_BodyCount());
+    world.SetGravity(0.0, 0.0);
+
+    Say("=== Physics2D Audit Complete ===");
+}

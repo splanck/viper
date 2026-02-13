@@ -1136,6 +1136,53 @@ Creates a scene node. Scene nodes support parent-child hierarchies where child t
 | `SetPosition(x, y)`              | `Void(Integer, Integer)`       | Set both X and Y position at once              |
 | `SetScale(scale)`                 | `Void(Integer)`                | Set both ScaleX and ScaleY to the same value   |
 
+### Zia Example
+
+```zia
+module SceneNodeDemo;
+
+bind Viper.Graphics;
+bind Viper.Terminal;
+
+func start() {
+    var root = SceneNode.New();
+    SceneNode.set_Name(root, "root");
+    SceneNode.set_X(root, 100);
+    SceneNode.set_Y(root, 200);
+
+    // Add children
+    var child1 = SceneNode.New();
+    SceneNode.set_Name(child1, "child1");
+    SceneNode.set_X(child1, 10);
+    SceneNode.set_Y(child1, 20);
+    root.AddChild(child1);
+
+    var child2 = SceneNode.New();
+    SceneNode.set_Name(child2, "child2");
+    SceneNode.set_X(child2, 50);
+    SceneNode.set_Y(child2, 60);
+    root.AddChild(child2);
+
+    // World coordinates (parent + child)
+    SayInt(child1.WorldX);  // 110
+    SayInt(child1.WorldY);  // 220
+
+    // Find by name
+    var found = root.Find("child2");
+    Say(SceneNode.get_Name(found));  // child2
+
+    // Transform inheritance
+    root.SetScale(200);
+    SayInt(child1.WorldScaleX);  // 200
+
+    // Hierarchy management
+    root.RemoveChild(child2);
+    SayInt(root.ChildCount);  // 1
+    child1.Detach();
+    SayInt(root.ChildCount);  // 0
+}
+```
+
 ### Example
 
 ```basic
@@ -1208,6 +1255,45 @@ Root container for a scene graph. Manages rendering order and provides scene-lev
 | `Draw(canvas)`                   | `Void(Canvas)`                 | Render all visible nodes to canvas             |
 | `DrawWithCamera(canvas, camera)` | `Void(Canvas, Camera)`         | Render all visible nodes with camera transform |
 | `Update()`                       | `Void()`                       | Update all nodes (advances animations)         |
+
+### Zia Example
+
+```zia
+module SceneDemo;
+
+bind Viper.Graphics;
+bind Viper.Terminal;
+
+func start() {
+    var scene = Scene.New();
+
+    // Add nodes
+    var player = SceneNode.New();
+    SceneNode.set_Name(player, "player");
+    SceneNode.set_X(player, 100);
+    SceneNode.set_Depth(player, 50);
+
+    var bg = SceneNode.New();
+    SceneNode.set_Name(bg, "background");
+    SceneNode.set_Depth(bg, 0);
+
+    scene.Add(player);
+    scene.Add(bg);
+
+    // Access root
+    var root = scene.Root;
+    SayInt(SceneNode.get_ChildCount(root));  // 2
+
+    // Find by name
+    var found = scene.Find("player");
+    SayInt(SceneNode.get_X(found));  // 100
+
+    // Update and manage
+    scene.Update();
+    scene.Remove(bg);
+    scene.Clear();
+}
+```
 
 ### Example
 
@@ -1327,6 +1413,40 @@ Creates a sprite batch with the given initial capacity (use 0 for default). Spri
 | `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB) for all sprites          |
 | `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
 | `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
+
+### Zia Example
+
+```zia
+module SpriteBatchDemo;
+
+bind Viper.Graphics;
+bind Viper.Terminal;
+
+func start() {
+    var batch = SpriteBatch.New(64);
+    SayInt(batch.Count);       // 0
+    SayInt(batch.Capacity);    // 64
+    SayBool(batch.IsActive);   // false
+
+    // Begin a batch
+    batch.Begin();
+    SayBool(batch.IsActive);  // true
+
+    // Draw sprites
+    var px = Pixels.New(16, 16);
+    px.Fill(Color.RGB(255, 0, 0));
+    batch.DrawPixels(px, 10, 20);
+    batch.DrawPixels(px, 30, 40);
+    batch.DrawPixels(px, 50, 60);
+    SayInt(batch.Count);  // 3
+
+    // Rendering settings
+    batch.SetSortByDepth(true);
+    batch.SetTint(Color.RGBA(255, 0, 0, 128));
+    batch.SetAlpha(200);
+    batch.ResetSettings();
+}
+```
 
 ### Example
 

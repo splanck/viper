@@ -9,6 +9,7 @@
 - [Viper.Math.Bits](#vipermathbits)
 - [Viper.Math](#vipermath)
 - [Viper.Math.Easing](#vipermatheasing)
+- [Viper.Math.PerlinNoise](#vipermathperlinnoise)
 - [Viper.Math.Quaternion](#vipermathquaternion)
 - [Viper.Math.Random](#vipermathrandom)
 - [Viper.Math.Spline](#vipermathspline)
@@ -613,13 +614,13 @@ PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50,
 
 ## Viper.Math.Quaternion
 
-> **Note:** Quaternion is not yet registered in `runtime.def`. The API below is planned but may not yet be available.
+> **Note:** Quaternion is registered as `Quat` in the runtime. Use `Quat.Identity()`, `Quat.FromAxisAngle()`, etc.
 
 Quaternion math for 3D rotations, avoiding gimbal lock. Quaternions represent orientations in 3D space and support
 smooth interpolation via SLERP.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Math.Quaternion.New(w, x, y, z)` or `Viper.Math.Quaternion.Identity()`
+**Constructor:** `Quat.New(w, x, y, z)` or `Quat.Identity()`
 
 ### Static Constructors
 
@@ -661,6 +662,46 @@ smooth interpolation via SLERP.
 - `Slerp` performs smooth interpolation along the shortest arc on the unit sphere.
 - `Norm()` returns identity for zero-length quaternions.
 - Use `FromAxisAngle` for intuitive rotation specification.
+
+### Zia Example
+
+```zia
+module QuaternionDemo;
+
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    // Identity quaternion
+    var id = Quat.Identity();
+    SayNum(id.W);  // 1.0
+
+    // From axis-angle (90° around Y)
+    var yAxis = Vec3.New(0.0, 1.0, 0.0);
+    var q90 = Quat.FromAxisAngle(yAxis, 1.5707963);
+
+    // Rotate a vector
+    var v = Vec3.New(1.0, 0.0, 0.0);
+    var rotated = q90.RotateVec3(v);
+    SayNum(rotated.Z);  // ~-1.0
+
+    // Compose rotations (90° + 90° = 180°)
+    var combined = q90.Mul(q90);
+
+    // Interpolate (slerp)
+    var halfway = id.Slerp(q90, 0.5);
+    SayNum(halfway.Len());  // 1.0
+
+    // Inverse (q * q^-1 = identity)
+    var inv = q90.Inverse();
+    var check = q90.Mul(inv);
+    SayNum(check.W);  // ~1.0
+
+    // Euler angles
+    var qe = Quat.FromEuler(0.0, 1.5707963, 0.0);
+    SayNum(qe.Angle());  // ~1.5707963
+}
+```
 
 ### BASIC Example
 
@@ -724,6 +765,47 @@ Standard easing functions for smooth animation and interpolation. Each function 
 | `OutBounce(t)`   | `Double(Double)` | Bounce ease out                          |
 | `InOutBounce(t)` | `Double(Double)` | Bounce ease in-out                       |
 
+### Zia Example
+
+```zia
+module EasingDemo;
+
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    // Linear
+    SayNum(Easing.Linear(0.0));   // 0.0
+    SayNum(Easing.Linear(0.5));   // 0.5
+    SayNum(Easing.Linear(1.0));   // 1.0
+
+    // Quadratic
+    SayNum(Easing.InQuad(0.5));      // 0.25
+    SayNum(Easing.OutQuad(0.5));     // 0.75
+    SayNum(Easing.InOutQuad(0.5));   // 0.5
+
+    // Cubic
+    SayNum(Easing.InCubic(0.5));     // 0.125
+    SayNum(Easing.OutCubic(0.5));    // 0.875
+
+    // Sine
+    SayNum(Easing.InSine(0.0));      // 0.0
+    SayNum(Easing.OutSine(1.0));     // 1.0
+
+    // Elastic and Bounce
+    SayNum(Easing.InElastic(0.0));   // 0.0
+    SayNum(Easing.OutBounce(1.0));   // 1.0
+
+    // Back (overshoots slightly)
+    SayNum(Easing.InBack(0.0));      // 0.0
+    SayNum(Easing.OutBack(1.0));     // 1.0
+
+    // Quart
+    SayNum(Easing.InQuart(0.5));     // 0.0625
+    SayNum(Easing.OutQuart(0.5));    // 0.9375
+}
+```
+
 ### BASIC Example
 
 ```basic
@@ -774,6 +856,60 @@ Curve interpolation for smooth paths. Supports Catmull-Rom, Bezier, and linear s
 | `ArcLength(t0, t1, segments)`    | `Double(Double, Double, Integer)`| Approximate arc length between t0 and t1                 |
 | `Sample(count)`                  | `Seq(Integer)`                   | Sample count evenly-spaced points along the spline       |
 
+### Zia Example
+
+```zia
+module SplineDemo;
+
+bind Viper.Math;
+bind Viper.Terminal;
+bind Viper.Collections;
+
+func start() {
+    // Linear spline from points
+    var pts = Seq.New();
+    pts.Push(Vec2.New(0.0, 0.0));
+    pts.Push(Vec2.New(100.0, 0.0));
+    pts.Push(Vec2.New(100.0, 100.0));
+
+    var lin = Spline.Linear(pts);
+    SayInt(Spline.get_PointCount(lin));  // 3
+
+    // Evaluate at t=0, 0.5, 1.0
+    var p0 = Spline.Eval(lin, 0.0);
+    SayNum(Vec2.get_X(p0));  // 0.0
+
+    var pm = Spline.Eval(lin, 0.5);
+    SayNum(Vec2.get_X(pm));  // 100.0
+
+    // Arc length and sampling
+    var len = Spline.ArcLength(lin, 0.0, 1.0, 100);
+    SayNum(len);  // 200.0
+
+    var samples = Spline.Sample(lin, 5);
+    SayInt(Seq.get_Len(samples));  // 5
+
+    // Bezier curve
+    var bez = Spline.Bezier(
+        Vec2.New(0.0, 0.0),
+        Vec2.New(33.0, 100.0),
+        Vec2.New(66.0, 100.0),
+        Vec2.New(100.0, 0.0)
+    );
+    var bm = Spline.Eval(bez, 0.5);
+    SayNum(Vec2.get_Y(bm));  // 75.0
+
+    // Catmull-Rom
+    var cpts = Seq.New();
+    cpts.Push(Vec2.New(0.0, 0.0));
+    cpts.Push(Vec2.New(50.0, 100.0));
+    cpts.Push(Vec2.New(100.0, 50.0));
+    cpts.Push(Vec2.New(150.0, 100.0));
+    var cr = Spline.CatmullRom(cpts);
+    SayInt(Spline.get_PointCount(cr));  // 4
+}
+```
+
 ### BASIC Example
 
 ```basic
@@ -797,6 +933,107 @@ NEXT
 DIM midpoint AS OBJECT = spline.Eval(0.5)
 PRINT "Mid: ("; midpoint.X; ", "; midpoint.Y; ")"
 ```
+
+---
+
+## Viper.Math.PerlinNoise
+
+Perlin noise generator for procedural content generation. Produces smooth, continuous pseudo-random values suitable for terrain generation, texture synthesis, and organic-looking randomness.
+
+**Type:** Instance class (requires `New(seed)`)
+
+### Constructor
+
+| Method       | Signature            | Description                                        |
+|--------------|----------------------|----------------------------------------------------|
+| `New(seed)`  | `PerlinNoise(Integer)` | Create a new Perlin noise generator with a seed  |
+
+### Methods
+
+| Method                               | Signature                               | Description                                                  |
+|--------------------------------------|-----------------------------------------|--------------------------------------------------------------|
+| `Noise2D(noise, x, y)`              | `Double(Object, Double, Double)`        | Sample 2D Perlin noise at coordinates (x, y)                |
+| `Noise3D(noise, x, y, z)`           | `Double(Object, Double, Double, Double)` | Sample 3D Perlin noise at coordinates (x, y, z)            |
+| `Octave2D(noise, x, y, oct, pers)`  | `Double(Object, Double, Double, Integer, Double)` | Sample 2D fractal noise with octaves and persistence |
+| `Octave3D(noise, x, y, z, oct, pers)` | `Double(Object, Double, Double, Double, Integer, Double)` | Sample 3D fractal noise with octaves and persistence |
+
+### Parameters
+
+| Parameter     | Type    | Description                                                |
+|---------------|---------|------------------------------------------------------------|
+| `noise`       | Object  | The PerlinNoise instance (passed explicitly)               |
+| `x`, `y`, `z` | Double  | Sampling coordinates                                       |
+| `oct`         | Integer | Number of octaves (layers of detail)                       |
+| `pers`        | Double  | Persistence (amplitude reduction per octave, typically 0.5)|
+
+### Notes
+
+- All methods are called in a static style, passing the noise object as the first parameter
+- Output values are in the range [-1.0, 1.0] for single-octave noise
+- The same seed always produces the same noise field (deterministic)
+- `Octave2D`/`Octave3D` layer multiple frequencies for more natural-looking noise (fractal Brownian motion)
+- Higher octave counts add finer detail but increase computation cost
+- Persistence controls how much each octave contributes; lower values produce smoother output
+
+### Zia Example
+
+```zia
+module PerlinDemo;
+
+bind Viper.Terminal;
+bind Viper.Math.PerlinNoise as PerlinNoise;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var p = PerlinNoise.New(42);
+
+    var n2d = PerlinNoise.Noise2D(p, 0.5, 0.5);
+    Say("Noise2D(0.5, 0.5): " + Fmt.NumFixed(n2d, 4));   // -0.5000
+
+    var n3d = PerlinNoise.Noise3D(p, 1.0, 2.0, 3.0);
+    Say("Noise3D(1.0, 2.0, 3.0): " + Fmt.NumFixed(n3d, 4)); // 0.0000
+
+    // Fractal noise with 4 octaves
+    var oct = PerlinNoise.Octave2D(p, 0.5, 0.5, 4, 0.5);
+    Say("Octave2D: " + Fmt.NumFixed(oct, 4));
+}
+```
+
+### BASIC Example
+
+```basic
+' Create a Perlin noise generator with seed 42
+DIM p AS OBJECT = Viper.Math.PerlinNoise.New(42)
+
+' Sample 2D noise
+DIM n2d AS DOUBLE = Viper.Math.PerlinNoise.Noise2D(p, 0.5, 0.5)
+PRINT "Noise2D(0.5, 0.5): "; n2d   ' Output: -0.5
+
+' Sample 3D noise
+DIM n3d AS DOUBLE = Viper.Math.PerlinNoise.Noise3D(p, 1.0, 2.0, 3.0)
+PRINT "Noise3D(1.0, 2.0, 3.0): "; n3d   ' Output: 0
+
+' Fractal noise with octaves for terrain-like output
+DIM oct AS DOUBLE = Viper.Math.PerlinNoise.Octave2D(p, 0.5, 0.5, 4, 0.5)
+PRINT "Octave2D: "; oct
+
+' Generate a simple height map
+FOR y = 0 TO 9
+    FOR x = 0 TO 9
+        DIM h AS DOUBLE = Viper.Math.PerlinNoise.Noise2D(p, x * 0.1, y * 0.1)
+        ' Map noise from [-1,1] to [0,255]
+        DIM height AS INTEGER = INT((h + 1.0) * 127.5)
+    NEXT x
+NEXT y
+```
+
+### Use Cases
+
+- **Terrain generation:** Generate height maps for landscapes
+- **Texture synthesis:** Create natural-looking procedural textures (clouds, marble, wood)
+- **Animation:** Add organic movement to objects
+- **Game worlds:** Procedurally generate caves, forests, and biomes
+- **Particle effects:** Add natural variation to particle systems
 
 ---
 

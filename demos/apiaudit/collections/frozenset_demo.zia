@@ -1,0 +1,92 @@
+// frozenset_demo.zia - Comprehensive API audit for Viper.Collections.FrozenSet
+// Tests: Empty, FromSeq, Len, IsEmpty, Has, Items, Union, Intersect,
+//        Diff, IsSubset, Equals
+
+module FrozenSetDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== FrozenSet API Audit ===");
+
+    // --- Empty ---
+    Say("--- Empty ---");
+    var empty = FrozenSet.Empty();
+    SayInt(empty.Len);       // 0
+    SayBool(empty.IsEmpty);  // 1
+
+    // --- FromSeq ---
+    Say("--- FromSeq ---");
+    var items = Seq.New();
+    items.Push(Box.Str("apple"));
+    items.Push(Box.Str("banana"));
+    items.Push(Box.Str("cherry"));
+    items.Push(Box.Str("apple"));  // duplicate
+    var fs = FrozenSet.FromSeq(items);
+    SayInt(fs.Len);          // 3 (duplicates removed)
+    SayBool(fs.IsEmpty);     // 0
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(fs.Has("apple"));   // 1
+    SayBool(fs.Has("banana"));  // 1
+    SayBool(fs.Has("grape"));   // 0
+
+    // --- Items ---
+    Say("--- Items ---");
+    var all = fs.Items();
+    SayInt(all.Len);            // 3
+
+    // --- Union ---
+    Say("--- Union ---");
+    var items2 = Seq.New();
+    items2.Push(Box.Str("cherry"));
+    items2.Push(Box.Str("date"));
+    items2.Push(Box.Str("elderberry"));
+    var fs2 = FrozenSet.FromSeq(items2);
+    var united = fs.Union(fs2);
+    SayInt(united.Len);         // 5 (apple, banana, cherry, date, elderberry)
+
+    // --- Intersect ---
+    Say("--- Intersect ---");
+    var inter = fs.Intersect(fs2);
+    SayInt(inter.Len);          // 1 (cherry)
+    SayBool(inter.Has("cherry")); // 1
+
+    // --- Diff ---
+    Say("--- Diff ---");
+    var diff = fs.Diff(fs2);
+    SayInt(diff.Len);           // 2 (apple, banana)
+    SayBool(diff.Has("apple"));  // 1
+    SayBool(diff.Has("cherry")); // 0
+
+    // --- IsSubset ---
+    Say("--- IsSubset ---");
+    var subItems = Seq.New();
+    subItems.Push(Box.Str("apple"));
+    subItems.Push(Box.Str("banana"));
+    var sub = FrozenSet.FromSeq(subItems);
+    SayBool(sub.IsSubset(fs));  // 1
+    SayBool(fs.IsSubset(sub));  // 0
+
+    // --- Equals ---
+    Say("--- Equals ---");
+    var items3 = Seq.New();
+    items3.Push(Box.Str("banana"));
+    items3.Push(Box.Str("cherry"));
+    items3.Push(Box.Str("apple"));
+    var fs3 = FrozenSet.FromSeq(items3);
+    SayBool(fs.Equals(fs3));    // 1 (same elements, different order)
+    SayBool(fs.Equals(fs2));    // 0
+
+    // --- Empty equals empty ---
+    Say("--- Empty equals empty ---");
+    var e1 = FrozenSet.Empty();
+    var e2 = FrozenSet.Empty();
+    SayBool(e1.Equals(e2));     // 1
+
+    Say("=== FrozenSet audit complete ===");
+}

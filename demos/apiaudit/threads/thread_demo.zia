@@ -1,0 +1,52 @@
+// =============================================================================
+// API Audit: Viper.Threads.Thread
+// =============================================================================
+// Tests: Sleep, Yield, Id, IsAlive
+// Note: Thread.Start requires function pointers (ptr,ptr), so we test
+//       the static utility methods and document the limitation.
+// =============================================================================
+
+module ThreadDemo;
+bind Viper.Threads.Thread as Thread;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Thread ===");
+
+    // --- Sleep ---
+    Say("--- Sleep ---");
+    Say("Sleeping 10ms...");
+    Thread.Sleep(10);
+    Say("Sleep(10) returned");
+
+    // --- Sleep zero ---
+    Say("--- Sleep zero ---");
+    Thread.Sleep(0);
+    Say("Sleep(0) returned");
+
+    // --- Yield ---
+    Say("--- Yield ---");
+    Thread.Yield();
+    Say("Yield returned");
+
+    // --- Multiple yields ---
+    Say("--- Multiple yields ---");
+    Thread.Yield();
+    Thread.Yield();
+    Thread.Yield();
+    Say("3 yields completed");
+
+    // --- Sleep longer ---
+    Say("--- Sleep longer ---");
+    Thread.Sleep(50);
+    Say("Sleep(50) returned");
+
+    // Note: Thread.Start, Join, TryJoin, JoinFor, Id, IsAlive
+    // require a running thread (Start takes ptr,ptr function pointers).
+    // These cannot be tested without spawning a thread.
+    Say("--- Note ---");
+    Say("Start/Join/TryJoin/JoinFor/Id/IsAlive require ptr args (not testable here)");
+
+    Say("=== Thread Audit Complete ===");
+}

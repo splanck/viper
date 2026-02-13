@@ -1,0 +1,106 @@
+// =============================================================================
+// API Audit: Viper.Threads.ConcurrentMap
+// =============================================================================
+// Tests: New, Set, Get, GetOr, Has, SetIfMissing, Remove, Clear, Keys, Values,
+//        Len, IsEmpty
+// =============================================================================
+
+module ConcMapDemo;
+bind Viper.Threads.ConcurrentMap as CM;
+bind Viper.Core.Box as Box;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.ConcurrentMap ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var m = CM.New();
+    Say("Created map");
+
+    // --- IsEmpty (initial) ---
+    Say("--- IsEmpty (initial) ---");
+    Say("IsEmpty: " + Fmt.Bool(m.get_IsEmpty()));
+
+    // --- Len (initial) ---
+    Say("--- Len (initial) ---");
+    Say("Len: " + Fmt.Int(m.get_Len()));
+
+    // --- Set ---
+    Say("--- Set ---");
+    m.Set("name", Box.Str("Alice"));
+    m.Set("age", Box.I64(30));
+    m.Set("city", Box.Str("Paris"));
+    Say("Set 3 entries");
+
+    // --- Len (after set) ---
+    Say("--- Len (after set) ---");
+    Say("Len: " + Fmt.Int(m.get_Len()));
+
+    // --- IsEmpty (after set) ---
+    Say("--- IsEmpty (after set) ---");
+    Say("IsEmpty: " + Fmt.Bool(m.get_IsEmpty()));
+
+    // --- Get ---
+    Say("--- Get ---");
+    var name = m.Get("name");
+    Say("Get(name): " + Box.ToStr(name));
+    var age = m.Get("age");
+    Say("Get(age): " + Fmt.Int(Box.ToI64(age)));
+
+    // --- Get (missing key) ---
+    Say("--- Get (missing key) ---");
+    var missing = m.Get("phone");
+    Say("Get(phone) is null: " + Fmt.Bool(missing == 0));
+
+    // --- GetOr ---
+    Say("--- GetOr ---");
+    var city = m.GetOr("city", Box.Str("Unknown"));
+    Say("GetOr(city, Unknown): " + Box.ToStr(city));
+    var phone = m.GetOr("phone", Box.Str("N/A"));
+    Say("GetOr(phone, N/A): " + Box.ToStr(phone));
+
+    // --- Has ---
+    Say("--- Has ---");
+    Say("Has(name): " + Fmt.Bool(m.Has("name")));
+    Say("Has(phone): " + Fmt.Bool(m.Has("phone")));
+
+    // --- SetIfMissing ---
+    Say("--- SetIfMissing ---");
+    var inserted1 = m.SetIfMissing("name", Box.Str("Bob"));
+    Say("SetIfMissing(name, Bob): " + Fmt.Bool(inserted1));
+    Say("Get(name) still: " + Box.ToStr(m.Get("name")));
+
+    var inserted2 = m.SetIfMissing("email", Box.Str("alice@test.com"));
+    Say("SetIfMissing(email, ...): " + Fmt.Bool(inserted2));
+    Say("Get(email): " + Box.ToStr(m.Get("email")));
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = m.Keys();
+    Say("Keys count: " + Fmt.Int(Seq.get_Len(keys)));
+
+    // --- Values ---
+    Say("--- Values ---");
+    var vals = m.Values();
+    Say("Values count: " + Fmt.Int(Seq.get_Len(vals)));
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    var removed = m.Remove("email");
+    Say("Remove(email): " + Fmt.Bool(removed));
+    Say("Has(email) after remove: " + Fmt.Bool(m.Has("email")));
+    var removeMissing = m.Remove("nonexistent");
+    Say("Remove(nonexistent): " + Fmt.Bool(removeMissing));
+    Say("Len after remove: " + Fmt.Int(m.get_Len()));
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    m.Clear();
+    Say("Len after Clear: " + Fmt.Int(m.get_Len()));
+    Say("IsEmpty after Clear: " + Fmt.Bool(m.get_IsEmpty()));
+
+    Say("=== ConcurrentMap Audit Complete ===");
+}

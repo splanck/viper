@@ -1,0 +1,48 @@
+module DiffDemo;
+bind Viper.Terminal;
+bind Diff = Viper.Text.Diff;
+bind Json = Viper.Text.Json;
+
+func start() {
+    Say("=== Viper.Text.Diff API Audit ===");
+
+    var text1 = "line1\nline2\nline3\nline4";
+    var text2 = "line1\nmodified\nline3\nline5";
+
+    // --- Lines ---
+    Say("--- Lines ---");
+    var changes = Diff.Lines(text1, text2);
+    Say(Json.Format(changes));
+
+    // --- Unified ---
+    Say("--- Unified ---");
+    var unified = Diff.Unified(text1, text2, 3);
+    Say(unified);
+
+    // --- CountChanges ---
+    Say("--- CountChanges ---");
+    SayInt(Diff.CountChanges(text1, text2));
+
+    // Identical texts
+    SayInt(Diff.CountChanges("same", "same"));
+
+    // Completely different
+    SayInt(Diff.CountChanges("aaa", "bbb"));
+
+    // --- Patch ---
+    Say("--- Patch ---");
+    var changes2 = Diff.Lines(text1, text2);
+    var patched = Diff.Patch(text1, changes2);
+    Say(patched);
+
+    // Edge cases
+    Say("--- Edge Cases ---");
+    // Empty to something
+    SayInt(Diff.CountChanges("", "hello"));
+    // Something to empty
+    SayInt(Diff.CountChanges("hello", ""));
+    // Both empty
+    SayInt(Diff.CountChanges("", ""));
+
+    Say("=== Diff Demo Complete ===");
+}

@@ -172,6 +172,18 @@ DO WHILE app.ShouldClose = 0
 LOOP
 ```
 
+```zia
+// Zia
+var app = App.New("Calculator", 300, 400);
+var root = app.get_Root();
+
+while app.get_ShouldClose() == 0 {
+    app.Poll();
+    // ... handle widget events ...
+    app.Render();
+}
+```
+
 ---
 
 ## Viper.GUI.Font
@@ -196,6 +208,12 @@ font = Viper.GUI.Font.Load("fonts/roboto.ttf")
 IF font <> NULL THEN
     app.SetFont(font, 14)
 END IF
+```
+
+```zia
+// Zia
+var font = Font.Load("fonts/roboto.ttf");
+app.SetFont(font, 14);
 ```
 
 ---
@@ -249,6 +267,16 @@ IF button.WasClicked = 1 THEN
 END IF
 ```
 
+```zia
+// Zia
+var btn = Button.New(root, "Submit");
+btn.SetSize(120, 32);
+btn.SetPosition(50, 100);
+
+if btn.IsHovered() == 1 { /* hover effect */ }
+if btn.WasClicked() == 1 { /* handle click */ }
+```
+
 ---
 
 ## Layout Widgets
@@ -295,6 +323,18 @@ DIM label3 AS Viper.GUI.Label
 label3 = NEW Viper.GUI.Label(vbox, "Third")
 ```
 
+```zia
+// Zia
+var vbox = VBox.New();
+vbox.SetSpacing(10.0);
+vbox.SetPadding(20.0);
+root.AddChild(vbox);
+
+var l1 = Label.New(vbox, "First");
+var l2 = Label.New(vbox, "Second");
+var l3 = Label.New(vbox, "Third");
+```
+
 ---
 
 ## Basic Widgets
@@ -315,6 +355,12 @@ Text display widget.
 DIM label AS Viper.GUI.Label
 label = NEW Viper.GUI.Label(root, "Hello!")
 label.SetColor(&HFFFF0000)  ' Red text
+```
+
+```zia
+// Zia
+var label = Label.New(root, "Hello!");
+label.SetColor(0xFFFF0000);  // Red text
 ```
 
 ---
@@ -340,6 +386,15 @@ saveBtn.SetSize(100, 32)
 IF saveBtn.WasClicked = 1 THEN
     SaveDocument()
 END IF
+```
+
+```zia
+// Zia
+var saveBtn = Button.New(root, "Save");
+saveBtn.SetStyle(1);  // Primary style
+saveBtn.SetSize(100, 32);
+
+if saveBtn.WasClicked() == 1 { SaveDocument(); }
 ```
 
 ---
@@ -371,6 +426,15 @@ DIM name AS STRING
 name = nameInput.GetText()
 ```
 
+```zia
+// Zia
+var nameInput = TextInput.New(root);
+nameInput.SetPlaceholder("Enter your name...");
+nameInput.SetSize(200, 28);
+
+var name = nameInput.get_Text();
+```
+
 ---
 
 ### Checkbox
@@ -392,6 +456,13 @@ rememberMe = NEW Viper.GUI.Checkbox(root, "Remember me")
 IF rememberMe.IsChecked() = 1 THEN
     SaveCredentials()
 END IF
+```
+
+```zia
+// Zia
+var rememberMe = Checkbox.New(root, "Remember me");
+
+if rememberMe.IsChecked() == 1 { SaveCredentials(); }
 ```
 
 ---
@@ -425,6 +496,15 @@ optC = NEW Viper.GUI.RadioButton(root, "Option C", group)
 optA.SetSelected(1)
 ```
 
+```zia
+// Zia
+var group = RadioGroup.New();
+var optA = RadioButton.New(root, "Option A", group);
+var optB = RadioButton.New(root, "Option B", group);
+var optC = RadioButton.New(root, "Option C", group);
+optA.SetSelected(1);
+```
+
 ---
 
 ### Slider
@@ -452,6 +532,14 @@ volume.SetSize(200, 20)
 
 ' Use value
 Viper.Audio.MasterVolume = INT(volume.GetValue())
+```
+
+```zia
+// Zia
+var volume = Slider.New(root, 1);  // Horizontal
+volume.SetRange(0.0, 100.0);
+volume.SetValue(50.0);
+volume.SetSize(200, 20);
 ```
 
 ---
@@ -482,6 +570,15 @@ quantity.SetDecimals(0)
 quantity.SetValue(1)
 ```
 
+```zia
+// Zia
+var quantity = Spinner.New(root);
+quantity.SetRange(1.0, 100.0);
+quantity.SetStep(1.0);
+quantity.SetDecimals(0);
+quantity.SetValue(1.0);
+```
+
 ---
 
 ### ProgressBar
@@ -509,6 +606,13 @@ FOR i = 1 TO 100
     progress.SetValue(i / 100.0)
     app.Render()
 NEXT i
+```
+
+```zia
+// Zia
+var progress = ProgressBar.New(root);
+progress.SetSize(300, 20);
+progress.SetValue(0.75);  // 75%
 ```
 
 ---
@@ -664,6 +768,22 @@ IF fileList.WasSelectionChanged() = 1 THEN
 END IF
 ```
 
+```zia
+// Zia
+var fileList = ListBox.New(root);
+fileList.SetSize(200, 300);
+
+var item1 = fileList.AddItem("document.txt");
+var item2 = fileList.AddItem("image.png");
+fileList.ItemSetData(item1, "/home/user/doc.txt");
+fileList.SelectIndex(0);
+
+if fileList.WasSelectionChanged() == 1 {
+    var sel = fileList.get_Selected();
+    Say(fileList.ItemGetText(sel));
+}
+```
+
 ---
 
 ### Image
@@ -690,6 +810,16 @@ pixels = Viper.Graphics.Pixels.LoadBmp("photo.bmp")
 preview.SetPixels(pixels, pixels.Width, pixels.Height)
 ```
 
+```zia
+// Zia
+var preview = Image.New(root);
+preview.SetSize(200, 200);
+preview.SetScaleMode(1);  // Fit
+
+var pixels = Pixels.LoadBmp("photo.bmp");
+preview.SetPixels(pixels, pixels.get_Width(), pixels.get_Height());
+```
+
 ---
 
 ## Container Widgets
@@ -704,6 +834,16 @@ Scrollable container for content larger than the viewport.
 |--------------------------------|----------------------------|--------------------------------|
 | `SetScroll(x, y)`              | `Void(Double, Double)`     | Set scroll position            |
 | `SetContentSize(w, h)`         | `Void(Double, Double)`     | Set content size (0=auto)      |
+
+### Example
+
+```zia
+// Zia
+var scroll = ScrollView.New(root);
+scroll.SetSize(400, 300);
+scroll.SetContentSize(800.0, 600.0);
+scroll.SetScroll(0.0, 0.0);
+```
 
 ---
 
@@ -730,6 +870,15 @@ split.SetPosition(0.3)  ' 30% / 70%
 ' Add content to panes
 DIM leftPane AS Object = split.GetFirst()
 DIM rightPane AS Object = split.GetSecond()
+```
+
+```zia
+// Zia
+var split = SplitPane.New(root, 1);  // Horizontal
+split.SetPosition(0.3);  // 30% / 70%
+
+var leftPane = split.get_First();
+var rightPane = split.get_Second();
 ```
 
 ---
@@ -789,6 +938,22 @@ IF tabs.WasCloseClicked() THEN
     DIM tab AS Object = tabs.GetTabAt(idx)
     tabs.RemoveTab(tab)
 END IF
+```
+
+```zia
+// Zia
+var tabs = TabBar.New(root);
+var tab1 = tabs.AddTab("File.txt", 1);
+var tab2 = tabs.AddTab("Config.ini", 1);
+tab1.SetModified(1);  // Unsaved indicator
+
+if tabs.WasChanged() == 1 {
+    var active = tabs.GetActive();
+}
+if tabs.WasCloseClicked() == 1 {
+    var idx = tabs.GetCloseClickedIndex();
+    tabs.RemoveTab(tabs.GetTabAt(idx));
+}
 ```
 
 ---
@@ -924,6 +1089,19 @@ IF Viper.Input.Keyboard.Held(341) AND Viper.Input.Keyboard.Pressed(83) THEN
 END IF
 ```
 
+```zia
+// Zia
+var editor = CodeEditor.New(root);
+editor.SetSize(600, 400);
+editor.SetLanguage("zia");
+editor.SetShowLineNumbers(1);
+editor.SetText("func main() {\n    Say(\"hello\");\n}");
+
+if editor.IsModified() == 1 {
+    editor.ClearModified();
+}
+```
+
 ---
 
 ## Application Components
@@ -962,6 +1140,22 @@ Menu item (returned by `Menu.AddItem()`).
 | `SetShortcut(shortcut)`   | `Void(String)`     | Set keyboard shortcut display  |
 | `WasClicked()`            | `Integer()`        | 1 if item was clicked          |
 
+### Example
+
+```zia
+// Zia
+var menubar = MenuBar.New(root);
+var fileMenu = menubar.AddMenu("File");
+var newItem = fileMenu.AddItem("New");
+newItem.SetShortcut("Ctrl+N");
+var openItem = fileMenu.AddItem("Open");
+openItem.SetShortcut("Ctrl+O");
+fileMenu.AddSeparator();
+var exitItem = fileMenu.AddItem("Exit");
+
+if newItem.WasClicked() == 1 { /* new file */ }
+```
+
 ---
 
 ### Toolbar
@@ -991,6 +1185,20 @@ Toolbar button (returned by `Toolbar.AddButton()`).
 | `SetIcon(icon)`           | `Void(String)`     | Change icon                    |
 | `WasClicked()`            | `Integer()`        | 1 if button was clicked        |
 
+### Example
+
+```zia
+// Zia
+var toolbar = Toolbar.New(root);
+toolbar.SetIconSize(24);
+var newBtn = toolbar.AddButton("new", "📄");
+var saveBtn = toolbar.AddButtonWithText("save", "💾", "Save");
+toolbar.AddSeparator();
+
+newBtn.SetTooltip("New File");
+if saveBtn.WasClicked() == 1 { /* save */ }
+```
+
 ---
 
 ### StatusBar
@@ -1018,6 +1226,18 @@ Status bar item (returned by `StatusBar.AddText()`).
 | `SetVisible(visible)`     | `Void(Integer)`    | Show/hide item                 |
 | `WasClicked()`            | `Integer()`        | 1 if item was clicked          |
 
+### Example
+
+```zia
+// Zia
+var statusbar = StatusBar.New(root);
+statusbar.SetLeftText("Ready");
+statusbar.SetRightText("Ln 1, Col 1");
+
+var item = statusbar.AddText("UTF-8", 2);  // Right-aligned
+item.SetTooltip("File encoding");
+```
+
 ---
 
 ### ContextMenu
@@ -1035,6 +1255,21 @@ Right-click context menu.
 | `Hide()`                            | `Void()`                   | Hide the menu                            |
 | `IsVisible()`                       | `Integer()`                | 1 if menu is visible                     |
 | `Clear()`                           | `Void()`                   | Remove all items                         |
+
+### Example
+
+```zia
+// Zia
+var ctx = ContextMenu.New();
+var cutItem = ctx.AddItem("Cut");
+var copyItem = ctx.AddItemWithShortcut("Copy", "Ctrl+C");
+ctx.AddSeparator();
+var pasteItem = ctx.AddItem("Paste");
+
+// Show on right-click
+ctx.Show(mouseX, mouseY);
+if copyItem.WasClicked() == 1 { /* copy */ }
+```
 
 ---
 
@@ -1068,6 +1303,21 @@ Find and replace bar for text searching.
 | `GetCurrentMatch()`           | `Integer()`        | Get current match index                  |
 | `Focus()`                     | `Void()`           | Focus the find input                     |
 
+### Example
+
+```zia
+// Zia
+var findbar = FindBar.New(root);
+findbar.SetCaseSensitive(0);
+findbar.SetWholeWord(0);
+findbar.SetReplaceMode(1);
+findbar.SetFindText("search");
+findbar.SetReplaceText("replace");
+
+var count = findbar.ReplaceAll();
+SayInt(findbar.GetMatchCount());
+```
+
 ---
 
 ### CommandPalette
@@ -1089,6 +1339,22 @@ Command palette for searchable command execution.
 | `GetSelected()`                      | `String()`                   | Get selected command ID                  |
 | `WasSelected()`                      | `Integer()`                  | 1 if a command was selected              |
 
+### Example
+
+```zia
+// Zia
+var palette = CommandPalette.New(root);
+palette.SetPlaceholder("Type a command...");
+palette.AddCommand("new", "New File", "File");
+palette.AddCommandWithShortcut("save", "Save", "File", "Ctrl+S");
+palette.AddCommand("theme", "Toggle Theme", "View");
+
+if palette.WasSelected() == 1 {
+    var cmd = palette.GetSelected();
+    // Handle command by ID
+}
+```
+
 ---
 
 ### Breadcrumb
@@ -1108,6 +1374,20 @@ Breadcrumb navigation widget.
 | `GetClickedData()`           | `String()`                 | Data of clicked item                     |
 | `SetSeparator(sep)`          | `Void(String)`             | Set separator character                  |
 | `SetMaxItems(max)`           | `Void(Integer)`            | Set max visible items                    |
+
+### Example
+
+```zia
+// Zia
+var bc = Breadcrumb.New(root);
+bc.SetPath("src/gui/widgets", "/");
+bc.SetMaxItems(5);
+
+if bc.WasItemClicked() == 1 {
+    var idx = bc.GetClickedIndex();
+    var data = bc.GetClickedData();
+}
+```
 
 ---
 
@@ -1129,6 +1409,18 @@ Code minimap widget (pairs with CodeEditor).
 | `RemoveMarkers(type)`          | `Void(Integer)`        | Remove markers by type                   |
 | `ClearMarkers()`               | `Void()`               | Remove all markers                       |
 
+### Example
+
+```zia
+// Zia
+var minimap = Minimap.New(root);
+minimap.BindEditor(editor);
+minimap.SetWidth(80);
+minimap.SetScale(0.5);
+minimap.SetShowSlider(1);
+minimap.AddMarker(10, 0xFFFF0000, 1);  // Error marker
+```
+
 ---
 
 ## Dialogs
@@ -1145,6 +1437,18 @@ System message dialog boxes (static methods).
 | `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question dialog   |
 | `Viper.GUI.MessageBox.Confirm(title, text)`  | `Integer(String, String)` | Show confirmation dialog      |
 
+### Example
+
+```zia
+// Zia
+MessageBox.Info("Info", "Operation completed");
+MessageBox.Warning("Warning", "File not saved");
+MessageBox.Error("Error", "Failed to open file");
+
+var answer = MessageBox.Question("Confirm", "Delete this file?");
+if answer == 1 { /* user said yes */ }
+```
+
 ---
 
 ### FileDialog
@@ -1157,6 +1461,17 @@ Native file dialog boxes (static methods).
 | `Viper.GUI.FileDialog.OpenMultiple(title, filter, dir)` | `Object(String,String,String)` | Open multi-file dialog; returns seq |
 | `Viper.GUI.FileDialog.Save(title, filter, dir, defaultName)` | `String(Str,Str,Str,Str)` | Save file dialog; returns path     |
 | `Viper.GUI.FileDialog.SelectFolder(title, dir)` | `String(String, String)`       | Folder selection dialog                  |
+
+### Example
+
+```zia
+// Zia
+var path = FileDialog.Open("Open File", "*.txt;*.zia", "/home");
+if path != "" { /* open file at path */ }
+
+var savePath = FileDialog.Save("Save As", "*.txt", "/home", "untitled.txt");
+var folder = FileDialog.SelectFolder("Choose Folder", "/home");
+```
 
 ---
 
@@ -1186,6 +1501,23 @@ Toast handle methods:
 | `toast.WasDismissed()`     | `Integer()`        | 1 if toast was dismissed       |
 | `toast.Dismiss()`          | `Void()`           | Dismiss this toast             |
 
+### Example
+
+```zia
+// Zia
+Toast.Info("File saved successfully");
+Toast.Success("Build completed");
+Toast.Warning("Disk space low");
+Toast.Error("Connection failed");
+
+Toast.SetPosition(2);    // Bottom-right
+Toast.SetMaxVisible(3);
+
+var t = Toast.New("Custom notification", 0, 5000);
+t.SetAction("Undo");
+if t.WasActionClicked() == 1 { /* undo action */ }
+```
+
 ---
 
 ### Tooltip
@@ -1198,6 +1530,16 @@ Tooltip display system (static methods).
 | `Viper.GUI.Tooltip.ShowRich(title, body, x, y)` | `Void(Str,Str,Int,Int)` | Show rich tooltip              |
 | `Viper.GUI.Tooltip.Hide()`                 | `Void()`                     | Hide tooltip                   |
 | `Viper.GUI.Tooltip.SetDelay(ms)`           | `Void(Integer)`              | Set show delay in ms           |
+
+### Example
+
+```zia
+// Zia
+Tooltip.SetDelay(500);
+Tooltip.Show("Click to save", 100, 50);
+Tooltip.ShowRich("Save File", "Saves the current document to disk", 100, 50);
+Tooltip.Hide();
+```
 
 ---
 
@@ -1213,6 +1555,18 @@ System clipboard access (static methods).
 | `Viper.GUI.Clipboard.GetText()`     | `String()`       | Get text from clipboard        |
 | `Viper.GUI.Clipboard.HasText()`     | `Integer()`      | 1 if clipboard has text        |
 | `Viper.GUI.Clipboard.Clear()`       | `Void()`         | Clear clipboard                |
+
+### Example
+
+```zia
+// Zia
+Clipboard.SetText("Hello, World!");
+if Clipboard.HasText() == 1 {
+    var text = Clipboard.GetText();
+    Say(text);
+}
+Clipboard.Clear();
+```
 
 ---
 
@@ -1232,6 +1586,19 @@ Keyboard shortcut registration system (static methods).
 | `Viper.GUI.Shortcuts.WasTriggered(id)`           | `Integer(String)`            | 1 if shortcut was triggered this frame   |
 | `Viper.GUI.Shortcuts.GetTriggered()`             | `String()`                   | Get ID of triggered shortcut             |
 
+### Example
+
+```zia
+// Zia
+Shortcuts.Register("save", "Ctrl+S", "Save file");
+Shortcuts.Register("quit", "Ctrl+Q", "Quit application");
+
+if Shortcuts.WasTriggered("save") == 1 {
+    // Handle save
+}
+var triggered = Shortcuts.GetTriggered();
+```
+
 ---
 
 ### Cursor
@@ -1243,6 +1610,15 @@ Mouse cursor control (static methods).
 | `Viper.GUI.Cursor.Set(cursorType)`    | `Void(Integer)`  | Set cursor type                |
 | `Viper.GUI.Cursor.Reset()`            | `Void()`         | Reset to default cursor        |
 | `Viper.GUI.Cursor.SetVisible(visible)` | `Void(Integer)` | Show/hide cursor               |
+
+### Example
+
+```zia
+// Zia
+Cursor.Set(2);       // Hand cursor
+Cursor.SetVisible(1);
+Cursor.Reset();       // Default cursor
+```
 
 ---
 
@@ -1256,6 +1632,14 @@ Viper.GUI.Theme.SetDark()
 
 ' Use light theme
 Viper.GUI.Theme.SetLight()
+```
+
+```zia
+// Zia
+bind Viper.GUI.Theme as Theme;
+
+Theme.SetDark();   // Dark theme (default)
+Theme.SetLight();  // Light theme
 ```
 
 ---

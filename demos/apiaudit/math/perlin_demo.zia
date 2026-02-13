@@ -1,0 +1,72 @@
+// =============================================================================
+// API Audit: Viper.Math.PerlinNoise - Perlin Noise Generation
+// =============================================================================
+// Tests: New, Noise2D, Noise3D, Octave2D, Octave3D
+// =============================================================================
+
+module PerlinDemo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.PerlinNoise ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var p = PerlinNoise.New(42);
+    Say("PerlinNoise.New(42) created");
+
+    // --- Noise2D ---
+    Say("--- Noise2D ---");
+    Say("Noise2D(0.0, 0.0):");
+    SayNum(PerlinNoise.Noise2D(p, 0.0, 0.0));
+    Say("Noise2D(0.5, 0.5):");
+    SayNum(PerlinNoise.Noise2D(p, 0.5, 0.5));
+    Say("Noise2D(1.0, 1.0):");
+    SayNum(PerlinNoise.Noise2D(p, 1.0, 1.0));
+    Say("Noise2D(0.1, 0.2):");
+    SayNum(PerlinNoise.Noise2D(p, 0.1, 0.2));
+    Say("Noise2D(5.5, 3.7):");
+    SayNum(PerlinNoise.Noise2D(p, 5.5, 3.7));
+
+    // --- Noise3D ---
+    Say("--- Noise3D ---");
+    Say("Noise3D(0.0, 0.0, 0.0):");
+    SayNum(PerlinNoise.Noise3D(p, 0.0, 0.0, 0.0));
+    Say("Noise3D(0.5, 0.5, 0.5):");
+    SayNum(PerlinNoise.Noise3D(p, 0.5, 0.5, 0.5));
+    Say("Noise3D(1.0, 1.0, 1.0):");
+    SayNum(PerlinNoise.Noise3D(p, 1.0, 1.0, 1.0));
+    Say("Noise3D(0.1, 0.2, 0.3):");
+    SayNum(PerlinNoise.Noise3D(p, 0.1, 0.2, 0.3));
+
+    // --- Octave2D ---
+    Say("--- Octave2D ---");
+    Say("Octave2D(0.5, 0.5, 1 octave, persistence=0.5):");
+    SayNum(PerlinNoise.Octave2D(p, 0.5, 0.5, 1, 0.5));
+    Say("Octave2D(0.5, 0.5, 4 octaves, persistence=0.5):");
+    SayNum(PerlinNoise.Octave2D(p, 0.5, 0.5, 4, 0.5));
+    Say("Octave2D(0.5, 0.5, 8 octaves, persistence=0.5):");
+    SayNum(PerlinNoise.Octave2D(p, 0.5, 0.5, 8, 0.5));
+    Say("Octave2D(1.0, 2.0, 4 octaves, persistence=0.7):");
+    SayNum(PerlinNoise.Octave2D(p, 1.0, 2.0, 4, 0.7));
+
+    // --- Octave3D ---
+    Say("--- Octave3D ---");
+    Say("Octave3D(0.5, 0.5, 0.5, 1 octave, persistence=0.5):");
+    SayNum(PerlinNoise.Octave3D(p, 0.5, 0.5, 0.5, 1, 0.5));
+    Say("Octave3D(0.5, 0.5, 0.5, 4 octaves, persistence=0.5):");
+    SayNum(PerlinNoise.Octave3D(p, 0.5, 0.5, 0.5, 4, 0.5));
+    Say("Octave3D(0.5, 0.5, 0.5, 8 octaves, persistence=0.5):");
+    SayNum(PerlinNoise.Octave3D(p, 0.5, 0.5, 0.5, 8, 0.5));
+
+    // --- Different seeds produce different results ---
+    Say("--- Different Seeds ---");
+    var p2 = PerlinNoise.New(99);
+    Say("Seed 42 Noise2D(0.5, 0.5):");
+    SayNum(PerlinNoise.Noise2D(p, 0.5, 0.5));
+    Say("Seed 99 Noise2D(0.5, 0.5):");
+    SayNum(PerlinNoise.Noise2D(p2, 0.5, 0.5));
+
+    Say("=== PerlinNoise Audit Complete ===");
+}

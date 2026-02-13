@@ -1,0 +1,80 @@
+// timer_demo.zia - Comprehensive API audit for Viper.Game.Timer
+// Tests: New, Start, StartRepeating, Stop, Reset, Update,
+//        IsRunning, IsExpired, IsRepeating, Elapsed, Remaining, Progress, Duration
+
+module TimerDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Timer API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var t = Timer.New();
+    SayBool(t.IsRunning);    // 0
+    SayBool(t.IsExpired);    // 0
+    SayBool(t.IsRepeating);  // 0
+    SayInt(t.Elapsed);       // 0
+    SayInt(t.Remaining);     // 0
+    SayInt(t.Progress);      // 0
+
+    // --- Start ---
+    Say("--- Start ---");
+    t.Start(1000);
+    SayBool(t.IsRunning);    // 1
+    SayBool(t.IsExpired);    // 0
+    SayBool(t.IsRepeating);  // 0
+    SayInt(t.Duration);      // 1000
+
+    // --- Update (not yet expired) ---
+    Say("--- Update (not expired) ---");
+    var expired = t.Update();
+    SayBool(expired);        // 0 (first frame, not expired yet)
+    SayBool(t.IsRunning);    // 1
+
+    // --- Duration (set) ---
+    Say("--- Duration set ---");
+    t.Duration = 500;
+    SayInt(t.Duration);      // 500
+
+    // --- Stop ---
+    Say("--- Stop ---");
+    t.Stop();
+    SayBool(t.IsRunning);    // 0
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    t.Start(2000);
+    SayBool(t.IsRunning);    // 1
+    t.Reset();
+    SayBool(t.IsRunning);    // 0 or reset state
+    SayInt(t.Elapsed);       // 0
+
+    // --- StartRepeating ---
+    Say("--- StartRepeating ---");
+    t.StartRepeating(100);
+    SayBool(t.IsRunning);    // 1
+    SayBool(t.IsRepeating);  // 1
+    SayInt(t.Duration);      // 100
+
+    // --- Update on repeating timer ---
+    Say("--- Update repeating ---");
+    var rep = t.Update();
+    SayBool(rep);            // 0 (first frame)
+    SayBool(t.IsRunning);    // 1
+    SayBool(t.IsRepeating);  // 1
+
+    // --- Remaining / Progress ---
+    Say("--- Remaining / Progress ---");
+    SayInt(t.Remaining);     // remaining ms
+    SayInt(t.Progress);      // progress percentage
+
+    // --- Stop repeating ---
+    Say("--- Stop repeating ---");
+    t.Stop();
+    SayBool(t.IsRunning);    // 0
+
+    Say("=== Timer audit complete ===");
+}

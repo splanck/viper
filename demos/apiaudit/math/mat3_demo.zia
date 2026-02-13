@@ -1,0 +1,200 @@
+// =============================================================================
+// API Audit: Viper.Math.Mat3 - 3x3 Matrix Operations
+// =============================================================================
+// Tests: Identity, Zero, Translate, Scale, ScaleUniform, Rotate, Shear,
+//        Get, Row, Col, Add, Sub, Mul, MulScalar, TransformPoint,
+//        TransformVec, Transpose, Det, Inverse, Neg, Eq
+// =============================================================================
+
+module Mat3Demo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Mat3 ===");
+
+    // --- Identity ---
+    Say("--- Identity ---");
+    var id = Mat3.Identity();
+    Say("Identity [0,0]:");
+    SayNum(Mat3.Get(id, 0, 0));
+    Say("Identity [1,1]:");
+    SayNum(Mat3.Get(id, 1, 1));
+    Say("Identity [2,2]:");
+    SayNum(Mat3.Get(id, 2, 2));
+    Say("Identity [0,1]:");
+    SayNum(Mat3.Get(id, 0, 1));
+
+    // --- Zero ---
+    Say("--- Zero ---");
+    var zr = Mat3.Zero();
+    Say("Zero [0,0]:");
+    SayNum(Mat3.Get(zr, 0, 0));
+    Say("Zero [1,1]:");
+    SayNum(Mat3.Get(zr, 1, 1));
+    Say("Zero [2,2]:");
+    SayNum(Mat3.Get(zr, 2, 2));
+
+    // --- Translate ---
+    Say("--- Translate ---");
+    var tr = Mat3.Translate(5.0, 10.0);
+    Say("Translate(5,10) [0,2]:");
+    SayNum(Mat3.Get(tr, 0, 2));
+    Say("Translate(5,10) [1,2]:");
+    SayNum(Mat3.Get(tr, 1, 2));
+    Say("Translate(5,10) [0,0]:");
+    SayNum(Mat3.Get(tr, 0, 0));
+
+    // --- Scale ---
+    Say("--- Scale ---");
+    var sc = Mat3.Scale(2.0, 3.0);
+    Say("Scale(2,3) [0,0]:");
+    SayNum(Mat3.Get(sc, 0, 0));
+    Say("Scale(2,3) [1,1]:");
+    SayNum(Mat3.Get(sc, 1, 1));
+    Say("Scale(2,3) [2,2]:");
+    SayNum(Mat3.Get(sc, 2, 2));
+
+    // --- ScaleUniform ---
+    Say("--- ScaleUniform ---");
+    var su = Mat3.ScaleUniform(4.0);
+    Say("ScaleUniform(4) [0,0]:");
+    SayNum(Mat3.Get(su, 0, 0));
+    Say("ScaleUniform(4) [1,1]:");
+    SayNum(Mat3.Get(su, 1, 1));
+
+    // --- Rotate ---
+    Say("--- Rotate ---");
+    var rot = Mat3.Rotate(1.5707963267948966);
+    Say("Rotate(Pi/2) [0,0]:");
+    SayNum(Mat3.Get(rot, 0, 0));
+    Say("Rotate(Pi/2) [0,1]:");
+    SayNum(Mat3.Get(rot, 0, 1));
+    Say("Rotate(Pi/2) [1,0]:");
+    SayNum(Mat3.Get(rot, 1, 0));
+    Say("Rotate(Pi/2) [1,1]:");
+    SayNum(Mat3.Get(rot, 1, 1));
+
+    // --- Shear ---
+    Say("--- Shear ---");
+    var sh = Mat3.Shear(1.0, 0.5);
+    Say("Shear(1.0, 0.5) [0,1]:");
+    SayNum(Mat3.Get(sh, 0, 1));
+    Say("Shear(1.0, 0.5) [1,0]:");
+    SayNum(Mat3.Get(sh, 1, 0));
+
+    // --- Row ---
+    Say("--- Row ---");
+    var row0 = Mat3.Row(id, 0);
+    Say("Identity Row(0) X:");
+    SayNum(row0.X);
+    Say("Identity Row(0) Y:");
+    SayNum(row0.Y);
+    Say("Identity Row(0) Z:");
+    SayNum(row0.Z);
+
+    // --- Col ---
+    Say("--- Col ---");
+    var col1 = Mat3.Col(id, 1);
+    Say("Identity Col(1) X:");
+    SayNum(col1.X);
+    Say("Identity Col(1) Y:");
+    SayNum(col1.Y);
+    Say("Identity Col(1) Z:");
+    SayNum(col1.Z);
+
+    // --- Add ---
+    Say("--- Add ---");
+    var sum = Mat3.Add(id, id);
+    Say("Identity + Identity [0,0]:");
+    SayNum(Mat3.Get(sum, 0, 0));
+    Say("Identity + Identity [1,1]:");
+    SayNum(Mat3.Get(sum, 1, 1));
+
+    // --- Sub ---
+    Say("--- Sub ---");
+    var diff = Mat3.Sub(id, id);
+    Say("Identity - Identity [0,0]:");
+    SayNum(Mat3.Get(diff, 0, 0));
+    Say("Identity - Identity [1,1]:");
+    SayNum(Mat3.Get(diff, 1, 1));
+
+    // --- Mul ---
+    Say("--- Mul ---");
+    var prod = Mat3.Mul(sc, tr);
+    Say("Scale(2,3) * Translate(5,10) [0,2]:");
+    SayNum(Mat3.Get(prod, 0, 2));
+    Say("Scale(2,3) * Translate(5,10) [1,2]:");
+    SayNum(Mat3.Get(prod, 1, 2));
+    var prodId = Mat3.Mul(id, sc);
+    Say("Identity * Scale [0,0]:");
+    SayNum(Mat3.Get(prodId, 0, 0));
+
+    // --- MulScalar ---
+    Say("--- MulScalar ---");
+    var ms = Mat3.MulScalar(id, 3.0);
+    Say("Identity * 3.0 [0,0]:");
+    SayNum(Mat3.Get(ms, 0, 0));
+    Say("Identity * 3.0 [0,1]:");
+    SayNum(Mat3.Get(ms, 0, 1));
+
+    // --- TransformPoint ---
+    Say("--- TransformPoint ---");
+    var pt = Vec2.New(1.0, 0.0);
+    var tpt = Mat3.TransformPoint(tr, pt);
+    Say("Translate(5,10) * Point(1,0) X:");
+    SayNum(tpt.X);
+    Say("Translate(5,10) * Point(1,0) Y:");
+    SayNum(tpt.Y);
+
+    // --- TransformVec ---
+    Say("--- TransformVec ---");
+    var tv = Mat3.TransformVec(tr, pt);
+    Say("Translate(5,10) * Vec(1,0) X:");
+    SayNum(tv.X);
+    Say("Translate(5,10) * Vec(1,0) Y:");
+    SayNum(tv.Y);
+
+    // --- Transpose ---
+    Say("--- Transpose ---");
+    var tt = Mat3.Transpose(sh);
+    Say("Transpose(Shear) [0,1]:");
+    SayNum(Mat3.Get(tt, 0, 1));
+    Say("Transpose(Shear) [1,0]:");
+    SayNum(Mat3.Get(tt, 1, 0));
+
+    // --- Det ---
+    Say("--- Det ---");
+    Say("Det(Identity):");
+    SayNum(Mat3.Det(id));
+    Say("Det(Scale(2,3)):");
+    SayNum(Mat3.Det(sc));
+
+    // --- Inverse ---
+    Say("--- Inverse ---");
+    var inv = Mat3.Inverse(sc);
+    Say("Inverse(Scale(2,3)) [0,0]:");
+    SayNum(Mat3.Get(inv, 0, 0));
+    Say("Inverse(Scale(2,3)) [1,1]:");
+    SayNum(Mat3.Get(inv, 1, 1));
+    var invId = Mat3.Inverse(id);
+    Say("Inverse(Identity) [0,0]:");
+    SayNum(Mat3.Get(invId, 0, 0));
+
+    // --- Neg ---
+    Say("--- Neg ---");
+    var ng = Mat3.Neg(id);
+    Say("Neg(Identity) [0,0]:");
+    SayNum(Mat3.Get(ng, 0, 0));
+    Say("Neg(Identity) [1,1]:");
+    SayNum(Mat3.Get(ng, 1, 1));
+
+    // --- Eq ---
+    Say("--- Eq ---");
+    Say("Eq(Identity, Identity, 0.001):");
+    SayBool(Mat3.Eq(id, id, 0.001));
+    Say("Eq(Identity, Zero, 0.001):");
+    SayBool(Mat3.Eq(id, zr, 0.001));
+
+    Say("=== Mat3 Audit Complete ===");
+}

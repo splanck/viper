@@ -1,0 +1,81 @@
+module StreamDemo;
+bind Viper.Terminal;
+bind Stream = Viper.IO.Stream;
+bind File = Viper.IO.File;
+bind Bytes = Viper.Collections.Bytes;
+bind TempFile = Viper.IO.TempFile;
+
+func start() {
+    Say("=== API Audit: Viper.IO.Stream ===");
+
+    // --- OpenMemory ---
+    Say("--- OpenMemory ---");
+    var s1 = Stream.OpenMemory();
+    SayInt(s1.get_Type());
+    SayInt(s1.get_Pos());
+    SayInt(s1.get_Len());
+
+    // --- WriteByte / ReadByte ---
+    Say("--- WriteByte / ReadByte ---");
+    s1.WriteByte(65);
+    s1.WriteByte(66);
+    s1.WriteByte(67);
+    SayInt(s1.get_Len());
+    s1.set_Pos(0);
+    SayInt(s1.ReadByte());
+    SayInt(s1.ReadByte());
+    SayInt(s1.ReadByte());
+
+    // --- Write / Read ---
+    Say("--- Write / Read ---");
+    var s2 = Stream.OpenMemory();
+    var data = Bytes.New(4);
+    data.Set(0, 72);
+    data.Set(1, 73);
+    data.Set(2, 33);
+    data.Set(3, 10);
+    s2.Write(data);
+    SayInt(s2.get_Len());
+    s2.set_Pos(0);
+    var rd = s2.Read(4);
+    SayInt(rd.get_Len());
+
+    // --- Eof ---
+    Say("--- Eof ---");
+    SayBool(s2.get_Eof());
+    s2.set_Pos(0);
+    SayBool(s2.get_Eof());
+
+    // --- ReadAll ---
+    Say("--- ReadAll ---");
+    s2.set_Pos(0);
+    var all = s2.ReadAll();
+    SayInt(all.get_Len());
+
+    // --- ToBytes ---
+    Say("--- ToBytes ---");
+    var b = s1.ToBytes();
+    SayInt(b.get_Len());
+
+    // --- OpenFile ---
+    Say("--- OpenFile ---");
+    var tmpPath = TempFile.Path();
+    File.WriteAllText(tmpPath, "stream test data");
+    var sf = Stream.OpenFile(tmpPath, "r");
+    SayInt(sf.get_Type());
+    var content = sf.ReadAll();
+    SayInt(content.get_Len());
+    sf.Close();
+
+    // --- Flush and Close ---
+    Say("--- Flush / Close ---");
+    s1.Flush();
+    s1.Close();
+    s2.Close();
+    Say("Closed all streams");
+
+    // cleanup
+    File.Delete(tmpPath);
+
+    Say("=== Stream Audit Complete ===");
+}

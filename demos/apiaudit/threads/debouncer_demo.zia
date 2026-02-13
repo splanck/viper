@@ -1,0 +1,62 @@
+// =============================================================================
+// API Audit: Viper.Threads.Debouncer
+// =============================================================================
+// Tests: New, Signal, IsReady, Reset, Delay, SignalCount
+// =============================================================================
+
+module DebouncerDemo;
+bind Viper.Threads.Debouncer as Debouncer;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Debouncer ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var d = Debouncer.New(100);
+    Say("Created debouncer with 100ms delay");
+
+    // --- Delay ---
+    Say("--- Delay ---");
+    Say("Delay: " + Fmt.Int(d.get_Delay()));
+
+    // --- IsReady (initial, no signals yet) ---
+    Say("--- IsReady (initial) ---");
+    Say("IsReady: " + Fmt.Bool(d.get_IsReady()));
+
+    // --- SignalCount (initial) ---
+    Say("--- SignalCount (initial) ---");
+    Say("SignalCount: " + Fmt.Int(d.get_SignalCount()));
+
+    // --- Signal ---
+    Say("--- Signal ---");
+    d.Signal();
+    Say("Signal sent");
+    Say("SignalCount after Signal: " + Fmt.Int(d.get_SignalCount()));
+
+    // --- IsReady (just signaled, should not be ready) ---
+    Say("--- IsReady (just signaled) ---");
+    Say("IsReady: " + Fmt.Bool(d.get_IsReady()));
+
+    // --- Multiple signals ---
+    Say("--- Multiple signals ---");
+    d.Signal();
+    d.Signal();
+    Say("SignalCount after 3 total: " + Fmt.Int(d.get_SignalCount()));
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    d.Reset();
+    Say("SignalCount after Reset: " + Fmt.Int(d.get_SignalCount()));
+    Say("IsReady after Reset: " + Fmt.Bool(d.get_IsReady()));
+
+    // --- New with 0 delay (immediate) ---
+    Say("--- New with 0 delay ---");
+    var d2 = Debouncer.New(0);
+    Say("Delay: " + Fmt.Int(d2.get_Delay()));
+    d2.Signal();
+    Say("SignalCount: " + Fmt.Int(d2.get_SignalCount()));
+
+    Say("=== Debouncer Audit Complete ===");
+}

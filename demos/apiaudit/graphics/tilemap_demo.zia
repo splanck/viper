@@ -1,0 +1,12 @@
+module TilemapDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.Tilemap ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New(width, height, tileW, tileH)");
+    Say("Properties: get_Width, get_Height, get_TileWidth, get_TileHeight");
+    Say("Methods: SetTile(x, y, tileId), GetTile(x, y)");
+    Say("Methods: SetLayer(layerIdx), GetLayer()");
+    Say("Methods: Clear()");
+    Say("=== Tilemap Audit Complete (API surface only) ===");
+}

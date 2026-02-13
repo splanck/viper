@@ -1,0 +1,66 @@
+// =============================================================================
+// API Audit: Viper.Data.Yaml - YAML Processing
+// =============================================================================
+// Tests: Parse, IsValid, Format, FormatIndent, TypeOf
+// =============================================================================
+
+module YamlDemo;
+bind Viper.Terminal;
+bind Yaml = Viper.Data.Yaml;
+
+func start() {
+    Say("=== API Audit: Viper.Data.Yaml ===");
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    Say("IsValid('name: test'):");
+    SayBool(Yaml.IsValid("name: test\nage: 30\n"));
+    Say("IsValid('key: value'):");
+    SayBool(Yaml.IsValid("key: value"));
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var yamlStr = "name: Alice\nage: 30\nactive: true\ntags:\n  - viper\n  - lang\n";
+    var doc = Yaml.Parse(yamlStr);
+    Say("Parse done");
+
+    // --- TypeOf ---
+    Say("--- TypeOf ---");
+    Say("TypeOf(doc):");
+    Say(Yaml.TypeOf(doc));
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say("Format:");
+    Say(Yaml.Format(doc));
+
+    // --- FormatIndent ---
+    Say("--- FormatIndent ---");
+    Say("FormatIndent(4):");
+    Say(Yaml.FormatIndent(doc, 4));
+
+    // Parse a simple scalar
+    Say("--- Scalar ---");
+    var scalar = Yaml.Parse("42");
+    Say("TypeOf(scalar):");
+    Say(Yaml.TypeOf(scalar));
+    Say("Format(scalar):");
+    Say(Yaml.Format(scalar));
+
+    // Parse a list
+    Say("--- List ---");
+    var list = Yaml.Parse("- one\n- two\n- three\n");
+    Say("TypeOf(list):");
+    Say(Yaml.TypeOf(list));
+    Say("Format(list):");
+    Say(Yaml.Format(list));
+
+    // Roundtrip: format then re-parse
+    Say("--- Roundtrip ---");
+    var formatted = Yaml.Format(doc);
+    var reparsed = Yaml.Parse(formatted);
+    Say("Re-format after roundtrip:");
+    Say(Yaml.Format(reparsed));
+
+    Say("=== Yaml Demo Complete ===");
+}

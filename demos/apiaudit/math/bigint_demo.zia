@@ -1,0 +1,286 @@
+// =============================================================================
+// API Audit: Viper.Math.BigInt - Arbitrary Precision Integers
+// =============================================================================
+// Tests: FromInt, FromStr, Zero, One, Add, Sub, Mul, Div, Mod, Neg, Abs,
+//        Cmp, Eq, IsZero, IsNegative, Sign, And, Or, Xor, Not, Shl, Shr,
+//        Pow, Gcd, Lcm, BitLength, TestBit, SetBit, ClearBit, Sqrt,
+//        ToInt, ToString, ToStrBase, FitsInt
+// =============================================================================
+
+module BigIntDemo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.BigInt ===");
+
+    // --- Factory: FromInt ---
+    Say("--- FromInt ---");
+    var a = BigInt.FromInt(42);
+    Say("BigInt.FromInt(42) ToString:");
+    Say(BigInt.ToString(a));
+    var b = BigInt.FromInt(-100);
+    Say("BigInt.FromInt(-100) ToString:");
+    Say(BigInt.ToString(b));
+    var c = BigInt.FromInt(0);
+    Say("BigInt.FromInt(0) ToString:");
+    Say(BigInt.ToString(c));
+
+    // --- Factory: FromStr ---
+    Say("--- FromStr ---");
+    var d = BigInt.FromStr("123456789012345678901234567890");
+    Say("BigInt.FromStr(large) ToString:");
+    Say(BigInt.ToString(d));
+    var e = BigInt.FromStr("-999");
+    Say("BigInt.FromStr(-999) ToString:");
+    Say(BigInt.ToString(e));
+
+    // --- Factory: Zero / One ---
+    Say("--- Zero / One ---");
+    var z = BigInt.FromInt(0);
+    Say("BigInt.Zero ToString:");
+    Say(BigInt.ToString(z));
+    var one = BigInt.FromInt(1);
+    Say("BigInt.One ToString:");
+    Say(BigInt.ToString(one));
+
+    // --- Add ---
+    Say("--- Add ---");
+    var sum1 = BigInt.Add(a, b);
+    Say("Add(42, -100) ToString:");
+    Say(BigInt.ToString(sum1));
+    var sum2 = BigInt.Add(a, one);
+    Say("Add(42, 1) ToString:");
+    Say(BigInt.ToString(sum2));
+
+    // --- Sub ---
+    Say("--- Sub ---");
+    var diff = BigInt.Sub(a, b);
+    Say("Sub(42, -100) ToString:");
+    Say(BigInt.ToString(diff));
+    var diff2 = BigInt.Sub(a, a);
+    Say("Sub(42, 42) ToString:");
+    Say(BigInt.ToString(diff2));
+
+    // --- Mul ---
+    Say("--- Mul ---");
+    var prod = BigInt.Mul(a, b);
+    Say("Mul(42, -100) ToString:");
+    Say(BigInt.ToString(prod));
+    var prod2 = BigInt.Mul(a, z);
+    Say("Mul(42, 0) ToString:");
+    Say(BigInt.ToString(prod2));
+
+    // --- Div ---
+    Say("--- Div ---");
+    var ten = BigInt.FromInt(10);
+    var quot = BigInt.Div(a, ten);
+    Say("Div(42, 10) ToString:");
+    Say(BigInt.ToString(quot));
+    var quot2 = BigInt.Div(b, ten);
+    Say("Div(-100, 10) ToString:");
+    Say(BigInt.ToString(quot2));
+
+    // --- Mod ---
+    Say("--- Mod ---");
+    var rem1 = BigInt.Mod(a, ten);
+    Say("Mod(42, 10) ToString:");
+    Say(BigInt.ToString(rem1));
+    var seven = BigInt.FromInt(7);
+    var rem2 = BigInt.Mod(a, seven);
+    Say("Mod(42, 7) ToString:");
+    Say(BigInt.ToString(rem2));
+
+    // --- Neg ---
+    Say("--- Neg ---");
+    var neg1 = BigInt.Neg(a);
+    Say("Neg(42) ToString:");
+    Say(BigInt.ToString(neg1));
+    var neg2 = BigInt.Neg(b);
+    Say("Neg(-100) ToString:");
+    Say(BigInt.ToString(neg2));
+
+    // --- Abs ---
+    Say("--- Abs ---");
+    var abs1 = BigInt.Abs(b);
+    Say("Abs(-100) ToString:");
+    Say(BigInt.ToString(abs1));
+    var abs2 = BigInt.Abs(a);
+    Say("Abs(42) ToString:");
+    Say(BigInt.ToString(abs2));
+
+    // --- Cmp ---
+    Say("--- Cmp ---");
+    Say("Cmp(42, -100):");
+    SayInt(BigInt.Cmp(a, b));
+    Say("Cmp(-100, 42):");
+    SayInt(BigInt.Cmp(b, a));
+    Say("Cmp(42, 42):");
+    SayInt(BigInt.Cmp(a, a));
+
+    // --- Eq ---
+    Say("--- Eq ---");
+    Say("Eq(42, 42):");
+    SayBool(BigInt.Eq(a, a));
+    Say("Eq(42, -100):");
+    SayBool(BigInt.Eq(a, b));
+
+    // --- IsZero ---
+    Say("--- IsZero ---");
+    Say("IsZero(0):");
+    SayBool(BigInt.IsZero(z));
+    Say("IsZero(42):");
+    SayBool(BigInt.IsZero(a));
+
+    // --- IsNegative ---
+    Say("--- IsNegative ---");
+    Say("IsNegative(-100):");
+    SayBool(BigInt.IsNegative(b));
+    Say("IsNegative(42):");
+    SayBool(BigInt.IsNegative(a));
+    Say("IsNegative(0):");
+    SayBool(BigInt.IsNegative(z));
+
+    // --- Sign ---
+    Say("--- Sign ---");
+    Say("Sign(42):");
+    SayInt(BigInt.Sign(a));
+    Say("Sign(-100):");
+    SayInt(BigInt.Sign(b));
+    Say("Sign(0):");
+    SayInt(BigInt.Sign(z));
+
+    // --- And ---
+    Say("--- And ---");
+    var x12 = BigInt.FromInt(12);
+    var x10 = BigInt.FromInt(10);
+    var band = BigInt.And(x12, x10);
+    Say("And(12, 10) ToString:");
+    Say(BigInt.ToString(band));
+
+    // --- Or ---
+    Say("--- Or ---");
+    var bor = BigInt.Or(x12, x10);
+    Say("Or(12, 10) ToString:");
+    Say(BigInt.ToString(bor));
+
+    // --- Xor ---
+    Say("--- Xor ---");
+    var bxor = BigInt.Xor(x12, x10);
+    Say("Xor(12, 10) ToString:");
+    Say(BigInt.ToString(bxor));
+
+    // --- Not ---
+    Say("--- Not ---");
+    var bnot = BigInt.Not(z);
+    Say("Not(0) ToString:");
+    Say(BigInt.ToString(bnot));
+
+    // --- Shl ---
+    Say("--- Shl ---");
+    var shl1 = BigInt.Shl(one, 10);
+    Say("Shl(1, 10) ToString:");
+    Say(BigInt.ToString(shl1));
+
+    // --- Shr ---
+    Say("--- Shr ---");
+    var big1024 = BigInt.FromInt(1024);
+    var shr1 = BigInt.Shr(big1024, 5);
+    Say("Shr(1024, 5) ToString:");
+    Say(BigInt.ToString(shr1));
+
+    // --- Pow ---
+    Say("--- Pow ---");
+    var two = BigInt.FromInt(2);
+    var pow1 = BigInt.Pow(two, 10);
+    Say("Pow(2, 10) ToString:");
+    Say(BigInt.ToString(pow1));
+    var pow2 = BigInt.Pow(ten, 5);
+    Say("Pow(10, 5) ToString:");
+    Say(BigInt.ToString(pow2));
+
+    // --- Gcd ---
+    Say("--- Gcd ---");
+    var x48 = BigInt.FromInt(48);
+    var x18 = BigInt.FromInt(18);
+    var gcd1 = BigInt.Gcd(x48, x18);
+    Say("Gcd(48, 18) ToString:");
+    Say(BigInt.ToString(gcd1));
+
+    // --- Lcm ---
+    Say("--- Lcm ---");
+    var x4 = BigInt.FromInt(4);
+    var x6 = BigInt.FromInt(6);
+    var lcm1 = BigInt.Lcm(x4, x6);
+    Say("Lcm(4, 6) ToString:");
+    Say(BigInt.ToString(lcm1));
+
+    // --- BitLength ---
+    Say("--- BitLength ---");
+    Say("BitLength(1):");
+    SayInt(BigInt.BitLength(one));
+    Say("BitLength(255):");
+    var x255 = BigInt.FromInt(255);
+    SayInt(BigInt.BitLength(x255));
+    Say("BitLength(256):");
+    var x256 = BigInt.FromInt(256);
+    SayInt(BigInt.BitLength(x256));
+
+    // --- TestBit ---
+    Say("--- TestBit ---");
+    var x5 = BigInt.FromInt(5);
+    Say("TestBit(5, 0):");
+    SayBool(BigInt.TestBit(x5, 0));
+    Say("TestBit(5, 1):");
+    SayBool(BigInt.TestBit(x5, 1));
+    Say("TestBit(5, 2):");
+    SayBool(BigInt.TestBit(x5, 2));
+
+    // --- SetBit ---
+    Say("--- SetBit ---");
+    var sb = BigInt.SetBit(z, 3);
+    Say("SetBit(0, 3) ToString:");
+    Say(BigInt.ToString(sb));
+
+    // --- ClearBit ---
+    Say("--- ClearBit ---");
+    var cb = BigInt.ClearBit(x5, 2);
+    Say("ClearBit(5, 2) ToString:");
+    Say(BigInt.ToString(cb));
+
+    // --- Sqrt ---
+    Say("--- Sqrt ---");
+    var x144 = BigInt.FromInt(144);
+    var sq = BigInt.Sqrt(x144);
+    Say("Sqrt(144) ToString:");
+    Say(BigInt.ToString(sq));
+    var x100 = BigInt.FromInt(100);
+    var sq2 = BigInt.Sqrt(x100);
+    Say("Sqrt(100) ToString:");
+    Say(BigInt.ToString(sq2));
+
+    // --- ToInt ---
+    Say("--- ToInt ---");
+    Say("ToInt(42):");
+    SayInt(BigInt.ToInt(a));
+    Say("ToInt(-100):");
+    SayInt(BigInt.ToInt(b));
+
+    // --- ToStrBase ---
+    Say("--- ToStrBase ---");
+    Say("ToStrBase(255, 16):");
+    Say(BigInt.ToStrBase(x255, 16));
+    Say("ToStrBase(255, 2):");
+    Say(BigInt.ToStrBase(x255, 2));
+    Say("ToStrBase(42, 8):");
+    Say(BigInt.ToStrBase(a, 8));
+
+    // --- FitsInt ---
+    Say("--- FitsInt ---");
+    Say("FitsInt(42):");
+    SayBool(BigInt.FitsInt(a));
+    Say("FitsInt(large):");
+    SayBool(BigInt.FitsInt(d));
+
+    Say("=== BigInt Audit Complete ===");
+}

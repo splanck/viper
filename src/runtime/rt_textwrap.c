@@ -111,9 +111,8 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width)
     {
         if (i == len || src[i] == '\n')
         {
-            rt_string *line = (rt_string *)malloc(sizeof(rt_string));
-            *line = rt_string_from_bytes(src + start, i - start);
-            rt_seq_push(lines, line);
+            rt_string line = rt_string_from_bytes(src + start, i - start);
+            rt_seq_push(lines, (void *)line);
             start = i + 1;
         }
     }

@@ -1,0 +1,92 @@
+// tween_demo.zia - Comprehensive API audit for Viper.Game.Tween
+// Tests: New, Start, StartI64, Update, Stop, Reset, Pause, Resume,
+//        Value, ValueI64, IsRunning, IsComplete, IsPaused,
+//        Progress, Elapsed, Duration, LerpI64, Ease
+
+module TweenDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Tween API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var tw = Tween.New();
+    SayBool(tw.IsRunning);    // 0
+    SayBool(tw.IsComplete);   // 0
+    SayBool(tw.IsPaused);     // 0
+
+    // --- Start (f64: from=0.0, to=100.0, duration=10 frames, ease=0/linear) ---
+    Say("--- Start ---");
+    tw.Start(0.0, 100.0, 10, 0);
+    SayBool(tw.IsRunning);    // 1
+    SayBool(tw.IsComplete);   // 0
+    SayInt(tw.Duration);      // 10
+    SayNum(tw.Value);         // 0.0 (start value)
+
+    // --- Update ---
+    Say("--- Update ---");
+    var done = tw.Update();
+    SayBool(done);            // 0 (not complete after 1 frame)
+    SayBool(tw.IsRunning);    // 1
+    SayInt(tw.Elapsed);       // 1
+    SayInt(tw.Progress);      // 10 (10%)
+
+    // --- Pause ---
+    Say("--- Pause ---");
+    tw.Pause();
+    SayBool(tw.IsPaused);     // 1
+    SayBool(tw.IsRunning);    // 1 (still running, just paused)
+
+    // --- Resume ---
+    Say("--- Resume ---");
+    tw.Resume();
+    SayBool(tw.IsPaused);     // 0
+    SayBool(tw.IsRunning);    // 1
+
+    // --- Stop ---
+    Say("--- Stop ---");
+    tw.Stop();
+    SayBool(tw.IsRunning);    // 0
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    tw.Start(0.0, 50.0, 5, 0);
+    tw.Update();
+    tw.Reset();
+    SayInt(tw.Elapsed);       // 0
+    SayBool(tw.IsComplete);   // 0
+
+    // --- StartI64 (integer tween: from=0, to=200, duration=8, ease=0/linear) ---
+    Say("--- StartI64 ---");
+    var tw2 = Tween.New();
+    tw2.StartI64(0, 200, 8, 0);
+    SayBool(tw2.IsRunning);   // 1
+    SayInt(tw2.ValueI64);     // 0
+    tw2.Update();
+    SayInt(tw2.ValueI64);     // ~25 (200/8)
+
+    // --- Start with easing (ease=1 = InQuad) ---
+    Say("--- Start with easing ---");
+    var tw3 = Tween.New();
+    tw3.Start(0.0, 100.0, 10, 1);
+    SayBool(tw3.IsRunning);   // 1
+    tw3.Update();
+    SayBool(tw3.IsRunning);   // 1
+
+    // --- LerpI64 (static) ---
+    Say("--- LerpI64 ---");
+    SayInt(Tween.LerpI64(0, 100, 0.0));   // 0
+    SayInt(Tween.LerpI64(0, 100, 0.5));   // 50
+    SayInt(Tween.LerpI64(0, 100, 1.0));   // 100
+
+    // --- Ease (static: t, ease_type) ---
+    Say("--- Ease ---");
+    SayNum(Tween.Ease(0.0, 0));   // 0.0 (linear at 0)
+    SayNum(Tween.Ease(0.5, 0));   // 0.5 (linear at 0.5)
+    SayNum(Tween.Ease(1.0, 0));   // 1.0 (linear at 1)
+
+    Say("=== Tween audit complete ===");
+}

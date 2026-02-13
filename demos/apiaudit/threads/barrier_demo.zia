@@ -1,0 +1,63 @@
+// =============================================================================
+// API Audit: Viper.Threads.Barrier
+// =============================================================================
+// Tests: New, Arrive, Reset, Parties, Waiting
+// =============================================================================
+
+module BarrierDemo;
+bind Viper.Threads.Barrier as Barrier;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Barrier ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var b = Barrier.New(1);
+    Say("Created barrier with 1 party");
+
+    // --- Parties ---
+    Say("--- Parties ---");
+    Say("Parties: " + Fmt.Int(b.get_Parties()));
+
+    // --- Waiting (initial) ---
+    Say("--- Waiting (initial) ---");
+    Say("Waiting: " + Fmt.Int(b.get_Waiting()));
+
+    // --- Arrive (single party, immediately releases) ---
+    Say("--- Arrive ---");
+    var idx = b.Arrive();
+    Say("Arrive returned index: " + Fmt.Int(idx));
+
+    // --- Waiting (after arrive, barrier reset) ---
+    Say("--- Waiting (after arrive) ---");
+    Say("Waiting: " + Fmt.Int(b.get_Waiting()));
+
+    // --- Arrive again (second generation) ---
+    Say("--- Arrive (second generation) ---");
+    var idx2 = b.Arrive();
+    Say("Arrive returned index: " + Fmt.Int(idx2));
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    b.Reset();
+    Say("Waiting after Reset: " + Fmt.Int(b.get_Waiting()));
+    Say("Parties after Reset: " + Fmt.Int(b.get_Parties()));
+
+    // --- New with larger party count ---
+    Say("--- New with 3 parties ---");
+    var b2 = Barrier.New(3);
+    Say("Parties: " + Fmt.Int(b2.get_Parties()));
+    Say("Waiting: " + Fmt.Int(b2.get_Waiting()));
+
+    // --- Arrive on single-party barrier multiple times ---
+    Say("--- Multiple single-party cycles ---");
+    var b3 = Barrier.New(1);
+    b3.Arrive();
+    b3.Arrive();
+    b3.Arrive();
+    Say("3 cycles completed on single-party barrier");
+
+    Say("=== Barrier Audit Complete ===");
+}

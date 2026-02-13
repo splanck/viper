@@ -1,0 +1,64 @@
+// =============================================================================
+// API Audit: Viper.Threads.Pool
+// =============================================================================
+// Tests: New, Size, Pending, Active, IsShutdown, Shutdown
+// Note: Pool.Submit requires function pointers, so we only test properties
+//       and lifecycle management here.
+// =============================================================================
+
+module PoolDemo;
+bind Viper.Threads.Pool as Pool;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Pool ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var p = Pool.New(2);
+    Say("Created pool with 2 workers");
+
+    // --- Size ---
+    Say("--- Size ---");
+    Say("Size: " + Fmt.Int(p.get_Size()));
+
+    // --- Pending (initial, no tasks) ---
+    Say("--- Pending (initial) ---");
+    Say("Pending: " + Fmt.Int(p.get_Pending()));
+
+    // --- Active (initial, no tasks) ---
+    Say("--- Active (initial) ---");
+    Say("Active: " + Fmt.Int(p.get_Active()));
+
+    // --- IsShutdown (initial) ---
+    Say("--- IsShutdown (initial) ---");
+    Say("IsShutdown: " + Fmt.Bool(p.get_IsShutdown()));
+
+    // --- Shutdown ---
+    Say("--- Shutdown ---");
+    p.Shutdown();
+    Say("IsShutdown after Shutdown: " + Fmt.Bool(p.get_IsShutdown()));
+
+    // --- New pool with 1 worker ---
+    Say("--- New with 1 worker ---");
+    var p2 = Pool.New(1);
+    Say("Size: " + Fmt.Int(p2.get_Size()));
+    Say("Pending: " + Fmt.Int(p2.get_Pending()));
+    Say("Active: " + Fmt.Int(p2.get_Active()));
+    Say("IsShutdown: " + Fmt.Bool(p2.get_IsShutdown()));
+
+    // --- ShutdownNow ---
+    Say("--- ShutdownNow ---");
+    p2.ShutdownNow();
+    Say("IsShutdown after ShutdownNow: " + Fmt.Bool(p2.get_IsShutdown()));
+
+    // --- New pool with 4 workers ---
+    Say("--- New with 4 workers ---");
+    var p3 = Pool.New(4);
+    Say("Size: " + Fmt.Int(p3.get_Size()));
+    p3.Shutdown();
+    Say("Shutdown complete");
+
+    Say("=== Pool Audit Complete ===");
+}

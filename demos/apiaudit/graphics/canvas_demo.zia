@@ -1,0 +1,14 @@
+module CanvasDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.Canvas ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New(width, height)");
+    Say("Properties: get_Width, get_Height");
+    Say("Methods: Clear(color), SetColor(r, g, b, a)");
+    Say("Drawing: DrawRect(x, y, w, h), FillRect(x, y, w, h)");
+    Say("Drawing: DrawLine(x1, y1, x2, y2), DrawCircle(cx, cy, r), FillCircle(cx, cy, r)");
+    Say("Drawing: DrawText(text, x, y)");
+    Say("Methods: Flush()");
+    Say("=== Canvas Audit Complete (API surface only) ===");
+}

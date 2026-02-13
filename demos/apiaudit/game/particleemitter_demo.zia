@@ -1,0 +1,46 @@
+// API Audit: Viper.Game.ParticleEmitter (Zia)
+module ParticleEmitterDemo;
+bind Viper.Terminal;
+bind PE = Viper.Game.ParticleEmitter;
+
+func start() {
+    Say("=== API Audit: Viper.Game.ParticleEmitter ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var pe = PE.New(100);
+    SayInt(pe.get_Count());
+    SayBool(pe.get_IsEmitting());
+
+    // --- SetPosition ---
+    Say("--- SetPosition ---");
+    pe.SetPosition(100.0, 200.0);
+    SayNum(pe.get_X());
+    SayNum(pe.get_Y());
+
+    // --- Configuration ---
+    Say("--- Configuration ---");
+    pe.SetVelocity(-10.0, 10.0, -50.0, -10.0);
+    pe.SetLifetime(500, 2000);
+    pe.SetGravity(0.0, 98.0);
+    pe.SetSize(4.0, 1.0);
+    SayNum(pe.get_Rate());
+
+    // --- Start / Stop ---
+    Say("--- Start / Stop ---");
+    pe.Start();
+    SayBool(pe.get_IsEmitting());
+    pe.Stop();
+    SayBool(pe.get_IsEmitting());
+
+    // --- FadeOut / Shrink / Color ---
+    Say("--- FadeOut / Shrink / Color ---");
+    pe.set_FadeOut(true);
+    SayBool(pe.get_FadeOut());
+    pe.set_Shrink(true);
+    SayBool(pe.get_Shrink());
+    pe.set_Color(16711680);
+    SayInt(pe.get_Color());
+
+    Say("=== ParticleEmitter Audit Complete ===");
+}

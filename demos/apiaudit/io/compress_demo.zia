@@ -1,0 +1,52 @@
+// =============================================================================
+// API Audit: Viper.IO.Compress - Compression
+// =============================================================================
+// Tests: DeflateStr, InflateStr, GzipStr, GunzipStr (roundtrip)
+// =============================================================================
+
+module CompressDemo;
+bind Viper.Terminal;
+bind Compress = Viper.IO.Compress;
+
+func start() {
+    Say("=== API Audit: Viper.IO.Compress ===");
+
+    var testStr = "Hello, Viper compression! This is a test string for deflate and gzip.";
+
+    // --- DeflateStr / InflateStr ---
+    Say("--- DeflateStr / InflateStr ---");
+    Say("Original:");
+    Say(testStr);
+    var deflated = Compress.DeflateStr(testStr);
+    Say("DeflateStr done (returns bytes object)");
+    var inflated = Compress.InflateStr(deflated);
+    Say("InflateStr result:");
+    Say(inflated);
+
+    // --- GzipStr / GunzipStr ---
+    Say("--- GzipStr / GunzipStr ---");
+    Say("Original:");
+    Say(testStr);
+    var gzipped = Compress.GzipStr(testStr);
+    Say("GzipStr done (returns bytes object)");
+    var gunzipped = Compress.GunzipStr(gzipped);
+    Say("GunzipStr result:");
+    Say(gunzipped);
+
+    // Roundtrip with empty string
+    Say("--- Empty string roundtrip ---");
+    var emptyDeflated = Compress.DeflateStr("");
+    var emptyInflated = Compress.InflateStr(emptyDeflated);
+    Say("Deflate/Inflate empty string:");
+    Say(emptyInflated);
+
+    // Roundtrip with longer text
+    Say("--- Longer text roundtrip ---");
+    var longStr = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    var longDeflated = Compress.DeflateStr(longStr);
+    var longInflated = Compress.InflateStr(longDeflated);
+    Say("Deflate/Inflate repeated chars:");
+    Say(longInflated);
+
+    Say("=== Compress Demo Complete ===");
+}

@@ -1,0 +1,82 @@
+// =============================================================================
+// API Audit: Viper.Threads.Monitor
+// =============================================================================
+// Tests: Enter, TryEnter, Exit (basic single-thread usage)
+// Note: Monitor operates on any object. Multi-thread Wait/Pause/PauseAll
+//       require actual threading and are not testable in single-thread context.
+// =============================================================================
+
+module MonitorDemo;
+bind Viper.Threads.Monitor as Monitor;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Monitor ===");
+
+    // Create a simple object to use as monitor target
+    var obj = Seq.New();
+    Say("Created object for monitor");
+
+    // --- Enter ---
+    Say("--- Enter ---");
+    Monitor.Enter(obj);
+    Say("Monitor acquired via Enter");
+
+    // --- TryEnter (re-entrant, same thread) ---
+    Say("--- TryEnter (re-entrant) ---");
+    var ok = Monitor.TryEnter(obj);
+    Say("TryEnter (re-entrant): " + Fmt.Bool(ok));
+
+    // --- Exit (balance re-entrant enter) ---
+    Say("--- Exit (balance re-entrant) ---");
+    Monitor.Exit(obj);
+    Say("First Exit done");
+
+    // --- Exit (balance original enter) ---
+    Say("--- Exit (original) ---");
+    Monitor.Exit(obj);
+    Say("Second Exit done");
+
+    // --- TryEnter on free monitor ---
+    Say("--- TryEnter (free) ---");
+    var ok2 = Monitor.TryEnter(obj);
+    Say("TryEnter (free): " + Fmt.Bool(ok2));
+    Monitor.Exit(obj);
+
+    // --- Enter/Exit cycle ---
+    Say("--- Enter/Exit cycle ---");
+    Monitor.Enter(obj);
+    Monitor.Exit(obj);
+    Say("Enter/Exit cycle complete");
+
+    // --- Multiple Enter (deep re-entrancy) ---
+    Say("--- Deep re-entrancy ---");
+    Monitor.Enter(obj);
+    Monitor.Enter(obj);
+    Monitor.Enter(obj);
+    Say("3 levels deep");
+    Monitor.Exit(obj);
+    Monitor.Exit(obj);
+    Monitor.Exit(obj);
+    Say("All 3 exits done");
+
+    // --- TryEnterFor (with timeout, re-entrant) ---
+    Say("--- TryEnterFor ---");
+    Monitor.Enter(obj);
+    var ok3 = Monitor.TryEnterFor(obj, 10);
+    Say("TryEnterFor(10ms, re-entrant): " + Fmt.Bool(ok3));
+    Monitor.Exit(obj);
+    Monitor.Exit(obj);
+
+    // --- Use different object ---
+    Say("--- Different object ---");
+    var obj2 = Seq.New();
+    Monitor.Enter(obj2);
+    Say("Monitor on second object acquired");
+    Monitor.Exit(obj2);
+    Say("Monitor on second object released");
+
+    Say("=== Monitor Audit Complete ===");
+}

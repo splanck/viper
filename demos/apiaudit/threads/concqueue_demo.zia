@@ -1,0 +1,82 @@
+// =============================================================================
+// API Audit: Viper.Threads.ConcurrentQueue
+// =============================================================================
+// Tests: New, Enqueue, TryDequeue, Dequeue, Peek, Len, IsEmpty, Clear
+// =============================================================================
+
+module ConcQueueDemo;
+bind Viper.Threads.ConcurrentQueue as CQ;
+bind Viper.Core.Box as Box;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.ConcurrentQueue ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var q = CQ.New();
+    Say("Created queue");
+
+    // --- IsEmpty (initial) ---
+    Say("--- IsEmpty (initial) ---");
+    Say("IsEmpty: " + Fmt.Bool(q.get_IsEmpty()));
+
+    // --- Len (initial) ---
+    Say("--- Len (initial) ---");
+    Say("Len: " + Fmt.Int(q.get_Len()));
+
+    // --- Enqueue ---
+    Say("--- Enqueue ---");
+    q.Enqueue(Box.Str("alpha"));
+    q.Enqueue(Box.Str("beta"));
+    q.Enqueue(Box.Str("gamma"));
+    Say("Enqueued 3 items");
+
+    // --- Len (after enqueue) ---
+    Say("--- Len (after enqueue) ---");
+    Say("Len: " + Fmt.Int(q.get_Len()));
+
+    // --- IsEmpty (after enqueue) ---
+    Say("--- IsEmpty (after enqueue) ---");
+    Say("IsEmpty: " + Fmt.Bool(q.get_IsEmpty()));
+
+    // --- Peek ---
+    Say("--- Peek ---");
+    var front = q.Peek();
+    Say("Peek: " + Box.ToStr(front));
+
+    // --- TryDequeue ---
+    Say("--- TryDequeue ---");
+    var item1 = q.TryDequeue();
+    Say("TryDequeue: " + Box.ToStr(item1));
+    Say("Len after TryDequeue: " + Fmt.Int(q.get_Len()));
+
+    // --- Dequeue (blocking, but queue has items) ---
+    Say("--- Dequeue ---");
+    var item2 = q.Dequeue();
+    Say("Dequeue: " + Box.ToStr(item2));
+    Say("Len after Dequeue: " + Fmt.Int(q.get_Len()));
+
+    // --- TryDequeue remaining ---
+    Say("--- TryDequeue remaining ---");
+    var item3 = q.TryDequeue();
+    Say("TryDequeue: " + Box.ToStr(item3));
+
+    // --- TryDequeue on empty ---
+    Say("--- TryDequeue on empty ---");
+    var item4 = q.TryDequeue();
+    Say("TryDequeue (empty): " + Fmt.Bool(item4 == 0));
+
+    // --- Enqueue more and Clear ---
+    Say("--- Clear ---");
+    q.Enqueue(Box.I64(10));
+    q.Enqueue(Box.I64(20));
+    q.Enqueue(Box.I64(30));
+    Say("Len before Clear: " + Fmt.Int(q.get_Len()));
+    q.Clear();
+    Say("Len after Clear: " + Fmt.Int(q.get_Len()));
+    Say("IsEmpty after Clear: " + Fmt.Bool(q.get_IsEmpty()));
+
+    Say("=== ConcurrentQueue Audit Complete ===");
+}

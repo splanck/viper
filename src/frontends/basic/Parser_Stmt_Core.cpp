@@ -119,8 +119,8 @@ bool Parser::isImplicitAssignmentStart() const
         {
             ++offset;
             const Token &member = peek(offset);
-            // BUG-CARDS-004 fix: Accept soft keywords (color, floor, etc.) as field names
-            if (!isSoftIdentToken(member.kind))
+            // BUG-CARDS-004 + A-071 fix: Accept all keywords as member names after dot
+            if (!isMemberIdentToken(member.kind))
                 return false;
             ++offset;
             continue;

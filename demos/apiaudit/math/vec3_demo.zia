@@ -1,0 +1,185 @@
+// =============================================================================
+// API Audit: Viper.Math.Vec3 - 3D Vector Operations
+// =============================================================================
+// Tests: New, Zero, One, X, Y, Z, Add, Sub, Mul, Div, Neg, Dot, Cross,
+//        Len, LenSq, Dist, Norm, Lerp
+// =============================================================================
+
+module Vec3Demo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Vec3 ===");
+
+    // --- Factory: New ---
+    Say("--- New ---");
+    var v1 = Vec3.New(1.0, 2.0, 3.0);
+    Say("Vec3.New(1.0, 2.0, 3.0) X:");
+    SayNum(v1.X);
+    Say("Vec3.New(1.0, 2.0, 3.0) Y:");
+    SayNum(v1.Y);
+    Say("Vec3.New(1.0, 2.0, 3.0) Z:");
+    SayNum(v1.Z);
+
+    // --- Factory: Zero ---
+    Say("--- Zero ---");
+    var vz = Vec3.Zero();
+    Say("Vec3.Zero() X:");
+    SayNum(vz.X);
+    Say("Vec3.Zero() Y:");
+    SayNum(vz.Y);
+    Say("Vec3.Zero() Z:");
+    SayNum(vz.Z);
+
+    // --- Factory: One ---
+    Say("--- One ---");
+    var vo = Vec3.One();
+    Say("Vec3.One() X:");
+    SayNum(vo.X);
+    Say("Vec3.One() Y:");
+    SayNum(vo.Y);
+    Say("Vec3.One() Z:");
+    SayNum(vo.Z);
+
+    // --- Add ---
+    Say("--- Add ---");
+    var v2 = Vec3.New(2.0, 0.0, 1.0);
+    var vadd = Vec3.Add(v1, v2);
+    Say("Add((1,2,3) + (2,0,1)) X:");
+    SayNum(vadd.X);
+    Say("Add((1,2,3) + (2,0,1)) Y:");
+    SayNum(vadd.Y);
+    Say("Add((1,2,3) + (2,0,1)) Z:");
+    SayNum(vadd.Z);
+
+    // --- Sub ---
+    Say("--- Sub ---");
+    var vsub = Vec3.Sub(v1, v2);
+    Say("Sub((1,2,3) - (2,0,1)) X:");
+    SayNum(vsub.X);
+    Say("Sub((1,2,3) - (2,0,1)) Y:");
+    SayNum(vsub.Y);
+    Say("Sub((1,2,3) - (2,0,1)) Z:");
+    SayNum(vsub.Z);
+
+    // --- Mul ---
+    Say("--- Mul ---");
+    var vmul = Vec3.Mul(v1, 3.0);
+    Say("Mul((1,2,3) * 3.0) X:");
+    SayNum(vmul.X);
+    Say("Mul((1,2,3) * 3.0) Y:");
+    SayNum(vmul.Y);
+    Say("Mul((1,2,3) * 3.0) Z:");
+    SayNum(vmul.Z);
+
+    // --- Div ---
+    Say("--- Div ---");
+    var vdiv = Vec3.Div(v1, 2.0);
+    Say("Div((1,2,3) / 2.0) X:");
+    SayNum(vdiv.X);
+    Say("Div((1,2,3) / 2.0) Y:");
+    SayNum(vdiv.Y);
+    Say("Div((1,2,3) / 2.0) Z:");
+    SayNum(vdiv.Z);
+
+    // --- Neg ---
+    Say("--- Neg ---");
+    var vneg = Vec3.Neg(v1);
+    Say("Neg(1,2,3) X:");
+    SayNum(vneg.X);
+    Say("Neg(1,2,3) Y:");
+    SayNum(vneg.Y);
+    Say("Neg(1,2,3) Z:");
+    SayNum(vneg.Z);
+
+    // --- Dot ---
+    Say("--- Dot ---");
+    Say("Dot((1,2,3), (2,0,1)):");
+    SayNum(Vec3.Dot(v1, v2));
+    var vxu = Vec3.New(1.0, 0.0, 0.0);
+    var vyu = Vec3.New(0.0, 1.0, 0.0);
+    Say("Dot((1,0,0), (0,1,0)):");
+    SayNum(Vec3.Dot(vxu, vyu));
+
+    // --- Cross ---
+    Say("--- Cross ---");
+    var vc = Vec3.Cross(v1, v2);
+    Say("Cross((1,2,3), (2,0,1)) X:");
+    SayNum(vc.X);
+    Say("Cross((1,2,3), (2,0,1)) Y:");
+    SayNum(vc.Y);
+    Say("Cross((1,2,3), (2,0,1)) Z:");
+    SayNum(vc.Z);
+    var vcxy = Vec3.Cross(vxu, vyu);
+    Say("Cross((1,0,0), (0,1,0)) X:");
+    SayNum(vcxy.X);
+    Say("Cross((1,0,0), (0,1,0)) Y:");
+    SayNum(vcxy.Y);
+    Say("Cross((1,0,0), (0,1,0)) Z:");
+    SayNum(vcxy.Z);
+
+    // --- Len ---
+    Say("--- Len ---");
+    Say("Len(1,2,3):");
+    SayNum(Vec3.Len(v1));
+    Say("Len(0,0,0):");
+    SayNum(Vec3.Len(vz));
+    Say("Len(3,4,0):");
+    var v34 = Vec3.New(3.0, 4.0, 0.0);
+    SayNum(Vec3.Len(v34));
+
+    // --- LenSq ---
+    Say("--- LenSq ---");
+    Say("LenSq(1,2,3):");
+    SayNum(Vec3.LenSq(v1));
+    Say("LenSq(3,4,0):");
+    SayNum(Vec3.LenSq(v34));
+
+    // --- Dist ---
+    Say("--- Dist ---");
+    Say("Dist((1,2,3), (0,0,0)):");
+    SayNum(Vec3.Dist(v1, vz));
+    Say("Dist((1,2,3), (1,2,3)):");
+    SayNum(Vec3.Dist(v1, v1));
+
+    // --- Norm ---
+    Say("--- Norm ---");
+    var vnorm = Vec3.Norm(v1);
+    Say("Norm(1,2,3) X:");
+    SayNum(vnorm.X);
+    Say("Norm(1,2,3) Y:");
+    SayNum(vnorm.Y);
+    Say("Norm(1,2,3) Z:");
+    SayNum(vnorm.Z);
+    Say("Norm(1,2,3) Len:");
+    SayNum(Vec3.Len(vnorm));
+
+    // --- Lerp ---
+    Say("--- Lerp ---");
+    var va = Vec3.New(0.0, 0.0, 0.0);
+    var vb = Vec3.New(10.0, 20.0, 30.0);
+    var vl0 = Vec3.Lerp(va, vb, 0.0);
+    Say("Lerp(origin -> (10,20,30) t=0.0) X:");
+    SayNum(vl0.X);
+    Say("Lerp(origin -> (10,20,30) t=0.0) Y:");
+    SayNum(vl0.Y);
+    Say("Lerp(origin -> (10,20,30) t=0.0) Z:");
+    SayNum(vl0.Z);
+    var vl5 = Vec3.Lerp(va, vb, 0.5);
+    Say("Lerp(origin -> (10,20,30) t=0.5) X:");
+    SayNum(vl5.X);
+    Say("Lerp(origin -> (10,20,30) t=0.5) Y:");
+    SayNum(vl5.Y);
+    Say("Lerp(origin -> (10,20,30) t=0.5) Z:");
+    SayNum(vl5.Z);
+    var vl1 = Vec3.Lerp(va, vb, 1.0);
+    Say("Lerp(origin -> (10,20,30) t=1.0) X:");
+    SayNum(vl1.X);
+    Say("Lerp(origin -> (10,20,30) t=1.0) Y:");
+    SayNum(vl1.Y);
+    Say("Lerp(origin -> (10,20,30) t=1.0) Z:");
+    SayNum(vl1.Z);
+
+    Say("=== Vec3 Audit Complete ===");
+}

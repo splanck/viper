@@ -1,0 +1,226 @@
+// =============================================================================
+// API Audit: Viper.Math.Mat4 - 4x4 Matrix Operations
+// =============================================================================
+// Tests: Identity, Zero, Translate, Scale, RotateX, RotateY, RotateZ, Get,
+//        Add, Sub, Mul, MulScalar, TransformPoint, TransformVec, Transpose,
+//        Det, Inverse, Perspective, Ortho, LookAt
+// =============================================================================
+
+module Mat4Demo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Mat4 ===");
+
+    // --- Identity ---
+    Say("--- Identity ---");
+    var id = Mat4.Identity();
+    Say("Identity [0,0]:");
+    SayNum(Mat4.Get(id, 0, 0));
+    Say("Identity [1,1]:");
+    SayNum(Mat4.Get(id, 1, 1));
+    Say("Identity [2,2]:");
+    SayNum(Mat4.Get(id, 2, 2));
+    Say("Identity [3,3]:");
+    SayNum(Mat4.Get(id, 3, 3));
+    Say("Identity [0,1]:");
+    SayNum(Mat4.Get(id, 0, 1));
+
+    // --- Zero ---
+    Say("--- Zero ---");
+    var zr = Mat4.Zero();
+    Say("Zero [0,0]:");
+    SayNum(Mat4.Get(zr, 0, 0));
+    Say("Zero [1,1]:");
+    SayNum(Mat4.Get(zr, 1, 1));
+    Say("Zero [3,3]:");
+    SayNum(Mat4.Get(zr, 3, 3));
+
+    // --- Translate ---
+    Say("--- Translate ---");
+    var tr = Mat4.Translate(1.0, 2.0, 3.0);
+    Say("Translate(1,2,3) [0,3]:");
+    SayNum(Mat4.Get(tr, 0, 3));
+    Say("Translate(1,2,3) [1,3]:");
+    SayNum(Mat4.Get(tr, 1, 3));
+    Say("Translate(1,2,3) [2,3]:");
+    SayNum(Mat4.Get(tr, 2, 3));
+    Say("Translate(1,2,3) [0,0]:");
+    SayNum(Mat4.Get(tr, 0, 0));
+
+    // --- Scale ---
+    Say("--- Scale ---");
+    var sc = Mat4.Scale(2.0, 3.0, 4.0);
+    Say("Scale(2,3,4) [0,0]:");
+    SayNum(Mat4.Get(sc, 0, 0));
+    Say("Scale(2,3,4) [1,1]:");
+    SayNum(Mat4.Get(sc, 1, 1));
+    Say("Scale(2,3,4) [2,2]:");
+    SayNum(Mat4.Get(sc, 2, 2));
+    Say("Scale(2,3,4) [3,3]:");
+    SayNum(Mat4.Get(sc, 3, 3));
+
+    // --- RotateX ---
+    Say("--- RotateX ---");
+    var rx = Mat4.RotateX(1.5707963267948966);
+    Say("RotateX(Pi/2) [1,1]:");
+    SayNum(Mat4.Get(rx, 1, 1));
+    Say("RotateX(Pi/2) [1,2]:");
+    SayNum(Mat4.Get(rx, 1, 2));
+    Say("RotateX(Pi/2) [2,1]:");
+    SayNum(Mat4.Get(rx, 2, 1));
+    Say("RotateX(Pi/2) [2,2]:");
+    SayNum(Mat4.Get(rx, 2, 2));
+
+    // --- RotateY ---
+    Say("--- RotateY ---");
+    var ry = Mat4.RotateY(1.5707963267948966);
+    Say("RotateY(Pi/2) [0,0]:");
+    SayNum(Mat4.Get(ry, 0, 0));
+    Say("RotateY(Pi/2) [0,2]:");
+    SayNum(Mat4.Get(ry, 0, 2));
+    Say("RotateY(Pi/2) [2,0]:");
+    SayNum(Mat4.Get(ry, 2, 0));
+    Say("RotateY(Pi/2) [2,2]:");
+    SayNum(Mat4.Get(ry, 2, 2));
+
+    // --- RotateZ ---
+    Say("--- RotateZ ---");
+    var rz = Mat4.RotateZ(1.5707963267948966);
+    Say("RotateZ(Pi/2) [0,0]:");
+    SayNum(Mat4.Get(rz, 0, 0));
+    Say("RotateZ(Pi/2) [0,1]:");
+    SayNum(Mat4.Get(rz, 0, 1));
+    Say("RotateZ(Pi/2) [1,0]:");
+    SayNum(Mat4.Get(rz, 1, 0));
+    Say("RotateZ(Pi/2) [1,1]:");
+    SayNum(Mat4.Get(rz, 1, 1));
+
+    // --- Add ---
+    Say("--- Add ---");
+    var sum = Mat4.Add(id, id);
+    Say("Identity + Identity [0,0]:");
+    SayNum(Mat4.Get(sum, 0, 0));
+    Say("Identity + Identity [1,1]:");
+    SayNum(Mat4.Get(sum, 1, 1));
+    Say("Identity + Identity [0,1]:");
+    SayNum(Mat4.Get(sum, 0, 1));
+
+    // --- Sub ---
+    Say("--- Sub ---");
+    var diff = Mat4.Sub(id, id);
+    Say("Identity - Identity [0,0]:");
+    SayNum(Mat4.Get(diff, 0, 0));
+    Say("Identity - Identity [1,1]:");
+    SayNum(Mat4.Get(diff, 1, 1));
+
+    // --- Mul ---
+    Say("--- Mul ---");
+    var prod = Mat4.Mul(sc, tr);
+    Say("Scale * Translate [0,3]:");
+    SayNum(Mat4.Get(prod, 0, 3));
+    Say("Scale * Translate [1,3]:");
+    SayNum(Mat4.Get(prod, 1, 3));
+    Say("Scale * Translate [2,3]:");
+    SayNum(Mat4.Get(prod, 2, 3));
+    var prodId = Mat4.Mul(id, sc);
+    Say("Identity * Scale [0,0]:");
+    SayNum(Mat4.Get(prodId, 0, 0));
+
+    // --- MulScalar ---
+    Say("--- MulScalar ---");
+    var ms = Mat4.MulScalar(id, 5.0);
+    Say("Identity * 5.0 [0,0]:");
+    SayNum(Mat4.Get(ms, 0, 0));
+    Say("Identity * 5.0 [0,1]:");
+    SayNum(Mat4.Get(ms, 0, 1));
+
+    // --- TransformPoint ---
+    Say("--- TransformPoint ---");
+    var pt = Vec3.New(1.0, 0.0, 0.0);
+    var tpt = Mat4.TransformPoint(tr, pt);
+    Say("Translate(1,2,3) * Point(1,0,0) X:");
+    SayNum(tpt.X);
+    Say("Translate(1,2,3) * Point(1,0,0) Y:");
+    SayNum(tpt.Y);
+    Say("Translate(1,2,3) * Point(1,0,0) Z:");
+    SayNum(tpt.Z);
+
+    // --- TransformVec ---
+    Say("--- TransformVec ---");
+    var tv = Mat4.TransformVec(tr, pt);
+    Say("Translate(1,2,3) * Vec(1,0,0) X:");
+    SayNum(tv.X);
+    Say("Translate(1,2,3) * Vec(1,0,0) Y:");
+    SayNum(tv.Y);
+    Say("Translate(1,2,3) * Vec(1,0,0) Z:");
+    SayNum(tv.Z);
+
+    // --- Transpose ---
+    Say("--- Transpose ---");
+    var tt = Mat4.Transpose(tr);
+    Say("Transpose(Translate) [3,0]:");
+    SayNum(Mat4.Get(tt, 3, 0));
+    Say("Transpose(Translate) [3,1]:");
+    SayNum(Mat4.Get(tt, 3, 1));
+    Say("Transpose(Translate) [3,2]:");
+    SayNum(Mat4.Get(tt, 3, 2));
+
+    // --- Det ---
+    Say("--- Det ---");
+    Say("Det(Identity):");
+    SayNum(Mat4.Det(id));
+    Say("Det(Scale(2,3,4)):");
+    SayNum(Mat4.Det(sc));
+
+    // --- Inverse ---
+    Say("--- Inverse ---");
+    var inv = Mat4.Inverse(sc);
+    Say("Inverse(Scale(2,3,4)) [0,0]:");
+    SayNum(Mat4.Get(inv, 0, 0));
+    Say("Inverse(Scale(2,3,4)) [1,1]:");
+    SayNum(Mat4.Get(inv, 1, 1));
+    Say("Inverse(Scale(2,3,4)) [2,2]:");
+    SayNum(Mat4.Get(inv, 2, 2));
+    var invId = Mat4.Inverse(id);
+    Say("Inverse(Identity) [0,0]:");
+    SayNum(Mat4.Get(invId, 0, 0));
+
+    // --- Perspective ---
+    Say("--- Perspective ---");
+    var persp = Mat4.Perspective(1.0471975511965976, 1.7777777777777777, 0.1, 100.0);
+    Say("Perspective(60deg, 16:9, 0.1, 100) [0,0]:");
+    SayNum(Mat4.Get(persp, 0, 0));
+    Say("Perspective [1,1]:");
+    SayNum(Mat4.Get(persp, 1, 1));
+    Say("Perspective [2,2]:");
+    SayNum(Mat4.Get(persp, 2, 2));
+    Say("Perspective [3,2]:");
+    SayNum(Mat4.Get(persp, 3, 2));
+
+    // --- Ortho ---
+    Say("--- Ortho ---");
+    var ortho = Mat4.Ortho(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
+    Say("Ortho(-1,1,-1,1,0.1,100) [0,0]:");
+    SayNum(Mat4.Get(ortho, 0, 0));
+    Say("Ortho [1,1]:");
+    SayNum(Mat4.Get(ortho, 1, 1));
+    Say("Ortho [2,2]:");
+    SayNum(Mat4.Get(ortho, 2, 2));
+
+    // --- LookAt ---
+    Say("--- LookAt ---");
+    var eye = Vec3.New(0.0, 0.0, 5.0);
+    var center = Vec3.New(0.0, 0.0, 0.0);
+    var up = Vec3.New(0.0, 1.0, 0.0);
+    var la = Mat4.LookAt(eye, center, up);
+    Say("LookAt(eye=(0,0,5), center=origin, up=(0,1,0)) [0,0]:");
+    SayNum(Mat4.Get(la, 0, 0));
+    Say("LookAt [1,1]:");
+    SayNum(Mat4.Get(la, 1, 1));
+    Say("LookAt [2,3]:");
+    SayNum(Mat4.Get(la, 2, 3));
+
+    Say("=== Mat4 Audit Complete ===");
+}

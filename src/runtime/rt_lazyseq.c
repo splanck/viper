@@ -60,6 +60,7 @@ struct rt_lazyseq_impl
             int64_t current;
             int64_t end;
             int64_t step;
+            int64_t value_storage; // per-seq storage for returned value
         } range;
 
         // Repeat
@@ -136,14 +137,6 @@ static rt_lazyseq alloc_lazyseq(lazyseq_type type)
     return seq;
 }
 
-// Static storage for range values (thread-local would be better)
-static int64_t range_value_storage;
-
-static void *range_value_ptr(int64_t val)
-{
-    range_value_storage = val;
-    return &range_value_storage;
-}
 
 //=============================================================================
 // Creation
@@ -283,7 +276,8 @@ void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more)
             }
             else
             {
-                result = range_value_ptr(cur);
+                seq->data.range.value_storage = cur;
+                result = &seq->data.range.value_storage;
                 seq->data.range.current = cur + step;
             }
             break;

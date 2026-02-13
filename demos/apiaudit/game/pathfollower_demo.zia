@@ -1,0 +1,107 @@
+// pathfollower_demo.zia - Comprehensive API audit for Viper.Game.PathFollower
+// Tests: New, AddPoint, PointCount, Mode, Speed, Start, Pause, Stop,
+//        IsActive, IsFinished, Update, X, Y, Progress, Segment, Angle, Clear
+
+module PathFollowerDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== PathFollower API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var pf = PathFollower.New();
+    SayInt(pf.PointCount);       // 0
+    SayBool(pf.IsActive);        // 0
+    SayBool(pf.IsFinished);      // 0
+
+    // --- AddPoint ---
+    Say("--- AddPoint ---");
+    var a1 = pf.AddPoint(0, 0);
+    SayBool(a1);                 // 1
+    var a2 = pf.AddPoint(100, 0);
+    SayBool(a2);                 // 1
+    var a3 = pf.AddPoint(100, 100);
+    SayBool(a3);                 // 1
+    var a4 = pf.AddPoint(0, 100);
+    SayBool(a4);                 // 1
+    SayInt(pf.PointCount);       // 4
+
+    // --- Speed (set/get) ---
+    Say("--- Speed ---");
+    pf.Speed = 10;
+    SayInt(pf.Speed);            // 10
+
+    // --- Mode (set/get) ---
+    Say("--- Mode ---");
+    pf.Mode = 0;
+    SayInt(pf.Mode);             // 0
+
+    // --- Start ---
+    Say("--- Start ---");
+    pf.Start();
+    SayBool(pf.IsActive);        // 1
+    SayBool(pf.IsFinished);      // 0
+    SayInt(pf.X);                // 0 (starting point)
+    SayInt(pf.Y);                // 0
+
+    // --- Update (deltaMs) ---
+    Say("--- Update ---");
+    pf.Update(16);
+    SayBool(pf.IsActive);        // 1
+    SayInt(pf.Segment);          // current segment index
+    SayInt(pf.Progress);         // progress along path
+
+    // --- Multiple updates ---
+    Say("--- Multiple updates ---");
+    pf.Update(16);
+    pf.Update(16);
+    pf.Update(16);
+    // X/Y should be moving along the path
+    SayInt(pf.X);
+    SayInt(pf.Y);
+
+    // --- Angle ---
+    Say("--- Angle ---");
+    SayInt(pf.Angle);            // angle of current segment
+
+    // --- Pause ---
+    Say("--- Pause ---");
+    pf.Pause();
+    SayBool(pf.IsActive);        // 0 (paused)
+    var xBefore = pf.X;
+    pf.Update(100);
+    SayInt(pf.X);                // same as before (paused)
+
+    // --- Start again (resume) ---
+    Say("--- Resume ---");
+    pf.Start();
+    SayBool(pf.IsActive);        // 1
+
+    // --- Progress (set/get) ---
+    Say("--- Progress ---");
+    pf.Progress = 0;
+    SayInt(pf.Progress);         // 0 (reset to start)
+    SayInt(pf.X);                // back to start X
+    SayInt(pf.Y);                // back to start Y
+
+    // --- Stop ---
+    Say("--- Stop ---");
+    pf.Stop();
+    SayBool(pf.IsActive);        // 0
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    pf.Clear();
+    SayInt(pf.PointCount);       // 0
+
+    // --- Add points after clear ---
+    Say("--- Add after clear ---");
+    pf.AddPoint(0, 0);
+    pf.AddPoint(50, 50);
+    SayInt(pf.PointCount);       // 2
+
+    Say("=== PathFollower audit complete ===");
+}

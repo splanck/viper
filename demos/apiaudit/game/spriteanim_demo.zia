@@ -1,0 +1,49 @@
+// API Audit: Viper.Game.SpriteAnimation (Zia)
+module SpriteAnimDemo;
+bind Viper.Terminal;
+bind SA = Viper.Game.SpriteAnimation;
+
+func start() {
+    Say("=== API Audit: Viper.Game.SpriteAnimation ===");
+
+    // --- New (takes 0 args), Setup ---
+    Say("--- New / Setup ---");
+    var sa = SA.New();
+    sa.Setup(0, 3, 100);
+    SayInt(sa.get_FrameCount());
+    SayInt(sa.get_Frame());
+    SayInt(sa.get_FrameDuration());
+
+    // --- Play ---
+    Say("--- Play ---");
+    sa.Play();
+    SayBool(sa.get_IsPlaying());
+    SayBool(sa.get_IsPaused());
+
+    // --- Pause / Resume ---
+    Say("--- Pause / Resume ---");
+    sa.Pause();
+    SayBool(sa.get_IsPaused());
+    sa.Resume();
+    SayBool(sa.get_IsPlaying());
+
+    // --- Stop ---
+    Say("--- Stop ---");
+    sa.Stop();
+    SayBool(sa.get_IsFinished());
+    SayInt(sa.get_Progress());
+
+    // --- Speed ---
+    Say("--- Speed ---");
+    sa.set_Speed(2.0);
+    SayNum(sa.get_Speed());
+
+    // --- Loop / PingPong ---
+    Say("--- Loop / PingPong ---");
+    sa.set_Loop(true);
+    SayBool(sa.get_Loop());
+    sa.set_PingPong(true);
+    SayBool(sa.get_PingPong());
+
+    Say("=== SpriteAnimation Audit Complete ===");
+}

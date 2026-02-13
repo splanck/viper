@@ -1,0 +1,66 @@
+// =============================================================================
+// API Audit: Viper.IO.LineReader - Line-by-Line File Reading
+// =============================================================================
+// Tests: Open, Read, ReadAll, Eof, Close
+// =============================================================================
+
+module LineReaderDemo;
+bind Viper.Terminal;
+bind LR = Viper.IO.LineReader;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+
+func start() {
+    Say("=== API Audit: Viper.IO.LineReader ===");
+
+    // Create a temp file with multiple lines
+    var tmpDir = TempFile.Dir();
+    var testPath = Path.Join(tmpDir, "viper_linereader_audit.txt");
+    File.WriteAllText(testPath, "Line one\nLine two\nLine three\n");
+    Say("Created test file with 3 lines");
+
+    // --- Open ---
+    Say("--- Open ---");
+    var reader = LR.Open(testPath);
+    Say("Open done");
+
+    // --- Eof (not at end yet) ---
+    Say("--- Eof (initial) ---");
+    Say("Eof:");
+    SayBool(LR.get_Eof(reader));
+
+    // --- Read ---
+    Say("--- Read ---");
+    Say("Read line 1:");
+    Say(LR.Read(reader));
+    Say("Read line 2:");
+    Say(LR.Read(reader));
+    Say("Read line 3:");
+    Say(LR.Read(reader));
+
+    // --- Eof (at end) ---
+    Say("--- Eof (at end) ---");
+    Say("Eof:");
+    SayBool(LR.get_Eof(reader));
+
+    // --- Close ---
+    Say("--- Close ---");
+    LR.Close(reader);
+    Say("Close done");
+
+    // --- ReadAll ---
+    Say("--- ReadAll ---");
+    var reader2 = LR.Open(testPath);
+    var all = LR.ReadAll(reader2);
+    Say("ReadAll:");
+    Say(all);
+    LR.Close(reader2);
+    Say("ReadAll close done");
+
+    // Cleanup
+    File.Delete(testPath);
+    Say("Cleanup done");
+
+    Say("=== LineReader Demo Complete ===");
+}

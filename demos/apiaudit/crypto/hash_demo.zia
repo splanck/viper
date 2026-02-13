@@ -1,0 +1,36 @@
+// =============================================================================
+// API Audit: Viper.Crypto.Hash - Cryptographic Hash Functions
+// =============================================================================
+// Tests: CRC32, MD5, SHA1, SHA256, HmacMD5, HmacSHA1, HmacSHA256
+// =============================================================================
+
+module HashDemo;
+bind Viper.Crypto;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Crypto.Hash ===");
+
+    Say("CRC32 of 'hello':");
+    SayInt(Hash.CRC32("hello"));
+
+    Say("MD5 of 'hello':");
+    Say(Hash.MD5("hello"));
+
+    Say("SHA1 of 'hello':");
+    Say(Hash.SHA1("hello"));
+
+    Say("SHA256 of 'hello':");
+    Say(Hash.SHA256("hello"));
+
+    Say("HmacMD5('hello','key'):");
+    Say(Hash.HmacMD5("hello", "key"));
+
+    Say("HmacSHA1('hello','key'):");
+    Say(Hash.HmacSHA1("hello", "key"));
+
+    Say("HmacSHA256('hello','key'):");
+    Say(Hash.HmacSHA256("hello", "key"));
+
+    Say("=== Hash Demo Complete ===");
+}

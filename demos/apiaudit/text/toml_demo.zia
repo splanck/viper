@@ -1,0 +1,68 @@
+// =============================================================================
+// API Audit: Viper.Text.Toml - TOML Processing
+// =============================================================================
+// Tests: Parse, IsValid, Format, Get, GetStr
+// =============================================================================
+
+module TomlDemo;
+bind Viper.Terminal;
+bind Toml = Viper.Text.Toml;
+
+func start() {
+    Say("=== API Audit: Viper.Text.Toml ===");
+
+    var tomlStr = "[package]\nname = \"viper\"\nversion = \"1.0.0\"\n\n[settings]\ndebug = true\nport = 8080\n";
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    Say("IsValid(valid toml):");
+    SayBool(Toml.IsValid(tomlStr));
+    Say("IsValid('not toml {{{}'):");
+    SayBool(Toml.IsValid("not toml {{{"));
+    Say("IsValid('key = \"value\"'):");
+    SayBool(Toml.IsValid("key = \"value\""));
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var doc = Toml.Parse(tomlStr);
+    Say("Parse done");
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say("Format:");
+    Say(Toml.Format(doc));
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say("Get('package.name'):");
+    var nameObj = Toml.Get(doc, "package.name");
+    Say("Get returned (object)");
+
+    // --- GetStr ---
+    Say("--- GetStr ---");
+    Say("GetStr('package.name'):");
+    Say(Toml.GetStr(doc, "package.name"));
+    Say("GetStr('package.version'):");
+    Say(Toml.GetStr(doc, "package.version"));
+    Say("GetStr('settings.port'):");
+    Say(Toml.GetStr(doc, "settings.port"));
+    Say("GetStr('settings.debug'):");
+    Say(Toml.GetStr(doc, "settings.debug"));
+
+    // Test with simple TOML
+    Say("--- Simple TOML ---");
+    var simple = Toml.Parse("title = \"Hello\"\ncount = 42\n");
+    Say("GetStr('title'):");
+    Say(Toml.GetStr(simple, "title"));
+    Say("GetStr('count'):");
+    Say(Toml.GetStr(simple, "count"));
+
+    // Roundtrip
+    Say("--- Roundtrip ---");
+    var formatted = Toml.Format(doc);
+    var reparsed = Toml.Parse(formatted);
+    Say("GetStr after roundtrip('package.name'):");
+    Say(Toml.GetStr(reparsed, "package.name"));
+
+    Say("=== Toml Demo Complete ===");
+}

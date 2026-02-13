@@ -1,0 +1,49 @@
+module CodecDemo;
+bind Viper.Terminal;
+bind Codec = Viper.Text.Codec;
+
+func start() {
+    Say("=== Viper.Text.Codec API Audit ===");
+
+    // --- Base64Enc / Base64Dec ---
+    Say("--- Base64 ---");
+    var b64 = Codec.Base64Enc("Hello, World!");
+    Say(b64);
+    Say(Codec.Base64Dec(b64));
+
+    var b64_2 = Codec.Base64Enc("Viper Language");
+    Say(b64_2);
+    Say(Codec.Base64Dec(b64_2));
+
+    // Empty string
+    var b64_empty = Codec.Base64Enc("");
+    Say(b64_empty);
+    Say(Codec.Base64Dec(b64_empty));
+
+    // --- HexEnc / HexDec ---
+    Say("--- Hex ---");
+    var hex = Codec.HexEnc("Hi!");
+    Say(hex);
+    Say(Codec.HexDec(hex));
+
+    var hex2 = Codec.HexEnc("ABC");
+    Say(hex2);
+    Say(Codec.HexDec(hex2));
+
+    // --- UrlEncode / UrlDecode ---
+    Say("--- URL Encoding ---");
+    var url = Codec.UrlEncode("hello world&foo=bar");
+    Say(url);
+    Say(Codec.UrlDecode(url));
+
+    var url2 = Codec.UrlEncode("https://example.com/path?q=test value");
+    Say(url2);
+    Say(Codec.UrlDecode(url2));
+
+    // Special characters
+    var url3 = Codec.UrlEncode("a+b=c&d=e f");
+    Say(url3);
+    Say(Codec.UrlDecode(url3));
+
+    Say("=== Codec Demo Complete ===");
+}

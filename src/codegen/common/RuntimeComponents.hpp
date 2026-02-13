@@ -133,7 +133,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     // Network component
     if (starts("rt_network_") || starts("rt_restclient_") || starts("rt_retry_") ||
         starts("rt_ratelimit_") || starts("rt_websocket_") || starts("rt_crypto_") ||
-        starts("rt_tls_") || starts("rt_http_") || starts("rt_tcp_") || starts("rt_udp_"))
+        starts("rt_tls_") || starts("rt_http_") || starts("rt_tcp_") || starts("rt_udp_") ||
+        starts("rt_dns_") || starts("rt_url_"))
         return RtComponent::Network;
 
     // Base component (time, math, formatting, etc.)

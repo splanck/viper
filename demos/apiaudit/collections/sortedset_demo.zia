@@ -1,0 +1,135 @@
+// sortedset_demo.zia - Comprehensive API audit for Viper.Collections.SortedSet
+// Tests: New, Put, Drop, Has, First, Last, Floor, Ceil, Lower, Higher,
+//        At, IndexOf, Items, Range, Take, Skip, Merge, Common, Diff,
+//        IsSubset, Len, IsEmpty, Clear
+
+module SortedSetDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== SortedSet API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var ss = SortedSet.New();
+    SayInt(ss.Len);       // 0
+    SayBool(ss.IsEmpty);  // 1
+
+    // --- Put ---
+    Say("--- Put ---");
+    SayBool(ss.Put("cherry"));   // 1 (new)
+    SayBool(ss.Put("apple"));    // 1 (new)
+    SayBool(ss.Put("banana"));   // 1 (new)
+    SayBool(ss.Put("date"));     // 1 (new)
+    SayBool(ss.Put("elderberry")); // 1 (new)
+    SayBool(ss.Put("apple"));    // 0 (duplicate)
+    SayInt(ss.Len);              // 5
+    SayBool(ss.IsEmpty);         // 0
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(ss.Has("apple"));    // 1
+    SayBool(ss.Has("banana"));   // 1
+    SayBool(ss.Has("fig"));      // 0
+
+    // --- First / Last (sorted order) ---
+    Say("--- First / Last ---");
+    Say(ss.First());   // apple (lexicographic first)
+    Say(ss.Last());    // elderberry (lexicographic last)
+
+    // --- At (index access, sorted) ---
+    Say("--- At ---");
+    Say(ss.At(0));  // apple
+    Say(ss.At(1));  // banana
+    Say(ss.At(2));  // cherry
+    Say(ss.At(3));  // date
+    Say(ss.At(4));  // elderberry
+
+    // --- IndexOf ---
+    Say("--- IndexOf ---");
+    SayInt(ss.IndexOf("apple"));     // 0
+    SayInt(ss.IndexOf("cherry"));    // 2
+    SayInt(ss.IndexOf("elderberry")); // 4
+
+    // --- Floor (greatest element <= key) ---
+    Say("--- Floor ---");
+    Say(ss.Floor("cherry"));  // cherry
+    Say(ss.Floor("c"));       // banana (greatest <= "c")
+
+    // --- Ceil (smallest element >= key) ---
+    Say("--- Ceil ---");
+    Say(ss.Ceil("cherry"));   // cherry
+    Say(ss.Ceil("c"));        // cherry (smallest >= "c")
+
+    // --- Lower (greatest element < key) ---
+    Say("--- Lower ---");
+    Say(ss.Lower("cherry"));  // banana
+
+    // --- Higher (smallest element > key) ---
+    Say("--- Higher ---");
+    Say(ss.Higher("cherry")); // date
+
+    // --- Items ---
+    Say("--- Items ---");
+    var items = ss.Items();
+    SayInt(items.Len);  // 5
+
+    // --- Range ---
+    Say("--- Range ---");
+    var ranged = ss.Range("banana", "date");
+    SayInt(ranged.Len);  // 3 (banana, cherry, date)
+
+    // --- Take ---
+    Say("--- Take ---");
+    var taken = ss.Take(3);
+    SayInt(taken.Len);  // 3
+
+    // --- Skip ---
+    Say("--- Skip ---");
+    var skipped = ss.Skip(2);
+    SayInt(skipped.Len);  // 3
+
+    // --- Drop ---
+    Say("--- Drop ---");
+    SayBool(ss.Drop("banana"));  // 1 (removed)
+    SayBool(ss.Has("banana"));   // 0
+    SayInt(ss.Len);              // 4
+    SayBool(ss.Drop("banana"));  // 0 (already removed)
+
+    // --- Merge ---
+    Say("--- Merge ---");
+    var ss2 = SortedSet.New();
+    ss2.Put("apple");
+    ss2.Put("fig");
+    ss2.Put("grape");
+    var merged = ss.Merge(ss2);
+    SayInt(merged.Len);  // 6 (apple, cherry, date, elderberry, fig, grape)
+
+    // --- Common (intersection) ---
+    Say("--- Common ---");
+    var common = ss.Common(ss2);
+    SayInt(common.Len);  // 1 (apple)
+
+    // --- Diff ---
+    Say("--- Diff ---");
+    var diff = ss.Diff(ss2);
+    SayInt(diff.Len);  // 3 (cherry, date, elderberry)
+
+    // --- IsSubset ---
+    Say("--- IsSubset ---");
+    var sub = SortedSet.New();
+    sub.Put("apple");
+    sub.Put("cherry");
+    SayBool(sub.IsSubset(ss));  // 1
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    ss.Clear();
+    SayInt(ss.Len);       // 0
+    SayBool(ss.IsEmpty);  // 1
+
+    Say("=== SortedSet audit complete ===");
+}

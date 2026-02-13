@@ -1,0 +1,237 @@
+// =============================================================================
+// API Audit: Viper.Math - Core Math Functions
+// =============================================================================
+// Tests: Pi, E, Tau, Abs, AbsInt, Sgn, SgnInt, Floor, Ceil, Round, Trunc,
+//        Min, Max, MinInt, MaxInt, Clamp, ClampInt, Sqrt, Pow, Exp, Log,
+//        Log10, Log2, Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh,
+//        Tanh, Hypot, FMod, Lerp, Deg, Rad, Wrap, WrapInt
+// =============================================================================
+
+module MathFunctionsDemo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math Functions ===");
+
+    // --- Constants ---
+    Say("--- Constants ---");
+    Say("Pi:");
+    SayNum(Pi);
+    Say("E:");
+    SayNum(E);
+    Say("Tau:");
+    SayNum(Tau);
+
+    // --- Abs / Sign ---
+    Say("--- Abs / Sign ---");
+    Say("Abs(-5.0):");
+    SayNum(Abs(-5.0));
+    Say("Abs(0.0):");
+    SayNum(Abs(0.0));
+    Say("Abs(3.14):");
+    SayNum(Abs(3.14));
+    Say("AbsInt(-42):");
+    SayInt(AbsInt(-42));
+    Say("AbsInt(0):");
+    SayInt(AbsInt(0));
+    Say("AbsInt(7):");
+    SayInt(AbsInt(7));
+    Say("Sgn(-3.0):");
+    SayNum(Sgn(-3.0));
+    Say("Sgn(0.0):");
+    SayNum(Sgn(0.0));
+    Say("Sgn(7.0):");
+    SayNum(Sgn(7.0));
+    Say("SgnInt(-100):");
+    SayInt(SgnInt(-100));
+    Say("SgnInt(0):");
+    SayInt(SgnInt(0));
+    Say("SgnInt(42):");
+    SayInt(SgnInt(42));
+
+    // --- Rounding ---
+    Say("--- Rounding ---");
+    Say("Floor(3.7):");
+    SayNum(Floor(3.7));
+    Say("Floor(-3.7):");
+    SayNum(Floor(-3.7));
+    Say("Floor(4.0):");
+    SayNum(Floor(4.0));
+    Say("Ceil(3.2):");
+    SayNum(Ceil(3.2));
+    Say("Ceil(-3.2):");
+    SayNum(Ceil(-3.2));
+    Say("Ceil(4.0):");
+    SayNum(Ceil(4.0));
+    Say("Round(3.5):");
+    SayNum(Round(3.5));
+    Say("Round(3.4):");
+    SayNum(Round(3.4));
+    Say("Round(-2.5):");
+    SayNum(Round(-2.5));
+    Say("Trunc(3.9):");
+    SayNum(Trunc(3.9));
+    Say("Trunc(-3.9):");
+    SayNum(Trunc(-3.9));
+    Say("Trunc(4.0):");
+    SayNum(Trunc(4.0));
+
+    // --- Min / Max ---
+    Say("--- Min / Max ---");
+    Say("Min(3.0, 7.0):");
+    SayNum(Min(3.0, 7.0));
+    Say("Min(-1.0, -5.0):");
+    SayNum(Min(-1.0, -5.0));
+    Say("Min(0.0, 0.0):");
+    SayNum(Min(0.0, 0.0));
+    Say("Max(3.0, 7.0):");
+    SayNum(Max(3.0, 7.0));
+    Say("Max(-1.0, -5.0):");
+    SayNum(Max(-1.0, -5.0));
+    Say("Max(0.0, 0.0):");
+    SayNum(Max(0.0, 0.0));
+    Say("MinInt(3, 7):");
+    SayInt(MinInt(3, 7));
+    Say("MinInt(-10, 5):");
+    SayInt(MinInt(-10, 5));
+    Say("MaxInt(3, 7):");
+    SayInt(MaxInt(3, 7));
+    Say("MaxInt(-10, 5):");
+    SayInt(MaxInt(-10, 5));
+
+    // --- Clamp ---
+    Say("--- Clamp ---");
+    Say("Clamp(10.0, 0.0, 5.0):");
+    SayNum(Clamp(10.0, 0.0, 5.0));
+    Say("Clamp(-1.0, 0.0, 5.0):");
+    SayNum(Clamp(-1.0, 0.0, 5.0));
+    Say("Clamp(3.0, 0.0, 5.0):");
+    SayNum(Clamp(3.0, 0.0, 5.0));
+    Say("ClampInt(10, 0, 5):");
+    SayInt(ClampInt(10, 0, 5));
+    Say("ClampInt(-3, 0, 5):");
+    SayInt(ClampInt(-3, 0, 5));
+    Say("ClampInt(3, 0, 5):");
+    SayInt(ClampInt(3, 0, 5));
+
+    // --- Powers / Roots / Logs ---
+    Say("--- Powers / Roots / Logs ---");
+    Say("Sqrt(16.0):");
+    SayNum(Sqrt(16.0));
+    Say("Sqrt(2.0):");
+    SayNum(Sqrt(2.0));
+    Say("Sqrt(0.0):");
+    SayNum(Sqrt(0.0));
+    Say("Pow(2.0, 10.0):");
+    SayNum(Pow(2.0, 10.0));
+    Say("Pow(3.0, 3.0):");
+    SayNum(Pow(3.0, 3.0));
+    Say("Pow(10.0, 0.0):");
+    SayNum(Pow(10.0, 0.0));
+    Say("Exp(0.0):");
+    SayNum(Exp(0.0));
+    Say("Exp(1.0):");
+    SayNum(Exp(1.0));
+    Say("Log(1.0):");
+    SayNum(Log(1.0));
+    Say("Log(E):");
+    SayNum(Log(E));
+    Say("Log10(100.0):");
+    SayNum(Log10(100.0));
+    Say("Log10(1000.0):");
+    SayNum(Log10(1000.0));
+    Say("Log2(8.0):");
+    SayNum(Log2(8.0));
+    Say("Log2(1.0):");
+    SayNum(Log2(1.0));
+
+    // --- Trigonometry ---
+    Say("--- Trigonometry ---");
+    Say("Sin(0.0):");
+    SayNum(Sin(0.0));
+    Say("Sin(Pi / 2.0):");
+    SayNum(Sin(Pi / 2.0));
+    Say("Cos(0.0):");
+    SayNum(Cos(0.0));
+    Say("Cos(Pi):");
+    SayNum(Cos(Pi));
+    Say("Tan(0.0):");
+    SayNum(Tan(0.0));
+    Say("Tan(Pi / 4.0):");
+    SayNum(Tan(Pi / 4.0));
+    Say("Asin(0.0):");
+    SayNum(Asin(0.0));
+    Say("Asin(1.0):");
+    SayNum(Asin(1.0));
+    Say("Acos(1.0):");
+    SayNum(Acos(1.0));
+    Say("Acos(0.0):");
+    SayNum(Acos(0.0));
+    Say("Atan(0.0):");
+    SayNum(Atan(0.0));
+    Say("Atan(1.0):");
+    SayNum(Atan(1.0));
+    Say("Atan2(1.0, 1.0):");
+    SayNum(Atan2(1.0, 1.0));
+    Say("Atan2(0.0, 1.0):");
+    SayNum(Atan2(0.0, 1.0));
+    Say("Atan2(1.0, 0.0):");
+    SayNum(Atan2(1.0, 0.0));
+
+    // --- Hyperbolic ---
+    Say("--- Hyperbolic ---");
+    Say("Sinh(0.0):");
+    SayNum(Sinh(0.0));
+    Say("Sinh(1.0):");
+    SayNum(Sinh(1.0));
+    Say("Cosh(0.0):");
+    SayNum(Cosh(0.0));
+    Say("Cosh(1.0):");
+    SayNum(Cosh(1.0));
+    Say("Tanh(0.0):");
+    SayNum(Tanh(0.0));
+    Say("Tanh(1.0):");
+    SayNum(Tanh(1.0));
+
+    // --- Misc ---
+    Say("--- Misc ---");
+    Say("Hypot(3.0, 4.0):");
+    SayNum(Hypot(3.0, 4.0));
+    Say("Hypot(5.0, 12.0):");
+    SayNum(Hypot(5.0, 12.0));
+    Say("FMod(7.0, 3.0):");
+    SayNum(FMod(7.0, 3.0));
+    Say("FMod(10.5, 3.0):");
+    SayNum(FMod(10.5, 3.0));
+    Say("Lerp(0.0, 10.0, 0.0):");
+    SayNum(Lerp(0.0, 10.0, 0.0));
+    Say("Lerp(0.0, 10.0, 0.5):");
+    SayNum(Lerp(0.0, 10.0, 0.5));
+    Say("Lerp(0.0, 10.0, 1.0):");
+    SayNum(Lerp(0.0, 10.0, 1.0));
+    Say("Deg(3.14159265358979):");
+    SayNum(Deg(3.14159265358979));
+    Say("Deg(0.0):");
+    SayNum(Deg(0.0));
+    Say("Rad(180.0):");
+    SayNum(Rad(180.0));
+    Say("Rad(90.0):");
+    SayNum(Rad(90.0));
+    Say("Rad(0.0):");
+    SayNum(Rad(0.0));
+    Say("Wrap(5.0, 0.0, 3.0):");
+    SayNum(Wrap(5.0, 0.0, 3.0));
+    Say("Wrap(-1.0, 0.0, 3.0):");
+    SayNum(Wrap(-1.0, 0.0, 3.0));
+    Say("Wrap(2.0, 0.0, 3.0):");
+    SayNum(Wrap(2.0, 0.0, 3.0));
+    Say("WrapInt(5, 0, 3):");
+    SayInt(WrapInt(5, 0, 3));
+    Say("WrapInt(-1, 0, 3):");
+    SayInt(WrapInt(-1, 0, 3));
+    Say("WrapInt(2, 0, 3):");
+    SayInt(WrapInt(2, 0, 3));
+
+    Say("=== Math Functions Audit Complete ===");
+}

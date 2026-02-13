@@ -1,0 +1,62 @@
+// queue_demo.zia - Comprehensive API audit for Viper.Collections.Queue
+// Tests: New, Push, Pop, Peek, Len, IsEmpty, Clear
+
+module QueueDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Queue API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var q = Queue.New();
+    SayInt(q.Len);       // 0
+    SayBool(q.IsEmpty);  // 1
+
+    // --- Push / Len ---
+    Say("--- Push / Len ---");
+    q.Push(Box.Str("first"));
+    q.Push(Box.Str("second"));
+    q.Push(Box.Str("third"));
+    SayInt(q.Len);       // 3
+    SayBool(q.IsEmpty);  // 0
+
+    // --- Peek (FIFO - returns front) ---
+    Say("--- Peek ---");
+    Say(Box.ToStr(q.Peek()));   // first
+
+    // --- Pop (FIFO order) ---
+    Say("--- Pop ---");
+    Say(Box.ToStr(q.Pop()));    // first
+    SayInt(q.Len);              // 2
+    Say(Box.ToStr(q.Pop()));    // second
+    SayInt(q.Len);              // 1
+    Say(Box.ToStr(q.Peek()));   // third
+
+    // --- Push more and verify FIFO ---
+    Say("--- Push more ---");
+    q.Push(Box.I64(42));
+    q.Push(Box.I64(99));
+    SayInt(q.Len);              // 3
+    Say(Box.ToStr(q.Pop()));    // third
+    SayInt(Box.ToI64(q.Pop())); // 42
+    SayInt(Box.ToI64(q.Pop())); // 99
+    SayInt(q.Len);              // 0
+    SayBool(q.IsEmpty);         // 1
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    q.Push(Box.Str("a"));
+    q.Push(Box.Str("b"));
+    q.Push(Box.Str("c"));
+    SayInt(q.Len);              // 3
+    q.Clear();
+    SayInt(q.Len);              // 0
+    SayBool(q.IsEmpty);         // 1
+
+    Say("=== Queue audit complete ===");
+}

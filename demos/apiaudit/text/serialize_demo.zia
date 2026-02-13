@@ -1,0 +1,93 @@
+// =============================================================================
+// API Audit: Viper.Data.Serialize - Multi-Format Serialization
+// =============================================================================
+// Tests: Parse, Format, FormatPretty, IsValid, Detect, AutoParse, Convert,
+//        FormatName, MimeType, FormatFromName
+// =============================================================================
+
+module SerializeDemo;
+bind Viper.Terminal;
+bind Ser = Viper.Data.Serialize;
+
+func start() {
+    Say("=== API Audit: Viper.Data.Serialize ===");
+
+    // Format constants: 0=JSON, 1=YAML, 2=TOML, 3=XML
+
+    // --- FormatName ---
+    Say("--- FormatName ---");
+    Say("FormatName(0) JSON:");
+    Say(Ser.FormatName(0));
+    Say("FormatName(1) YAML:");
+    Say(Ser.FormatName(1));
+    Say("FormatName(2) TOML:");
+    Say(Ser.FormatName(2));
+    Say("FormatName(3) XML:");
+    Say(Ser.FormatName(3));
+
+    // --- MimeType ---
+    Say("--- MimeType ---");
+    Say("MimeType(0) JSON:");
+    Say(Ser.MimeType(0));
+    Say("MimeType(1) YAML:");
+    Say(Ser.MimeType(1));
+    Say("MimeType(2) TOML:");
+    Say(Ser.MimeType(2));
+    Say("MimeType(3) XML:");
+    Say(Ser.MimeType(3));
+
+    // --- FormatFromName ---
+    Say("--- FormatFromName ---");
+    Say("FormatFromName('json'):");
+    SayInt(Ser.FormatFromName("json"));
+    Say("FormatFromName('yaml'):");
+    SayInt(Ser.FormatFromName("yaml"));
+    Say("FormatFromName('toml'):");
+    SayInt(Ser.FormatFromName("toml"));
+    Say("FormatFromName('xml'):");
+    SayInt(Ser.FormatFromName("xml"));
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    var jsonStr = "{\"name\":\"Alice\",\"age\":30}";
+    Say("IsValid(JSON, 0):");
+    SayBool(Ser.IsValid(jsonStr, 0));
+    Say("IsValid('not json', 0):");
+    SayBool(Ser.IsValid("not json {{", 0));
+
+    // --- Detect ---
+    Say("--- Detect ---");
+    Say("Detect(JSON string):");
+    SayInt(Ser.Detect(jsonStr));
+    Say("Detect(YAML string):");
+    SayInt(Ser.Detect("name: Alice\nage: 30\n"));
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var doc = Ser.Parse(jsonStr, 0);
+    Say("Parse(JSON) done");
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say("Format(doc, 0) as JSON:");
+    Say(Ser.Format(doc, 0));
+
+    // --- FormatPretty ---
+    Say("--- FormatPretty ---");
+    Say("FormatPretty(doc, 0, 2):");
+    Say(Ser.FormatPretty(doc, 0, 2));
+
+    // --- AutoParse ---
+    Say("--- AutoParse ---");
+    var auto = Ser.AutoParse(jsonStr);
+    Say("AutoParse done");
+    Say("Format auto-parsed:");
+    Say(Ser.Format(auto, 0));
+
+    // --- Convert ---
+    Say("--- Convert ---");
+    Say("Convert JSON to YAML:");
+    Say(Ser.Convert(jsonStr, 0, 1));
+
+    Say("=== Serialize Demo Complete ===");
+}

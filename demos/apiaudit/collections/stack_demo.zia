@@ -1,0 +1,62 @@
+// stack_demo.zia - Comprehensive API audit for Viper.Collections.Stack
+// Tests: New, Push, Pop, Peek, Len, IsEmpty, Clear
+
+module StackDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Stack API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var stk = Stack.New();
+    SayInt(stk.Len);       // 0
+    SayBool(stk.IsEmpty);  // 1
+
+    // --- Push / Len ---
+    Say("--- Push / Len ---");
+    stk.Push(Box.Str("first"));
+    stk.Push(Box.Str("second"));
+    stk.Push(Box.Str("third"));
+    SayInt(stk.Len);       // 3
+    SayBool(stk.IsEmpty);  // 0
+
+    // --- Peek (LIFO - returns top) ---
+    Say("--- Peek ---");
+    Say(Box.ToStr(stk.Peek()));   // third
+
+    // --- Pop (LIFO order) ---
+    Say("--- Pop ---");
+    Say(Box.ToStr(stk.Pop()));    // third
+    SayInt(stk.Len);              // 2
+    Say(Box.ToStr(stk.Pop()));    // second
+    SayInt(stk.Len);              // 1
+    Say(Box.ToStr(stk.Peek()));   // first
+
+    // --- Push more and verify ---
+    Say("--- Push more ---");
+    stk.Push(Box.I64(42));
+    stk.Push(Box.I64(99));
+    SayInt(stk.Len);              // 3
+    SayInt(Box.ToI64(stk.Pop())); // 99
+    SayInt(Box.ToI64(stk.Pop())); // 42
+    Say(Box.ToStr(stk.Pop()));    // first
+    SayInt(stk.Len);              // 0
+    SayBool(stk.IsEmpty);         // 1
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    stk.Push(Box.Str("a"));
+    stk.Push(Box.Str("b"));
+    stk.Push(Box.Str("c"));
+    SayInt(stk.Len);              // 3
+    stk.Clear();
+    SayInt(stk.Len);              // 0
+    SayBool(stk.IsEmpty);         // 1
+
+    Say("=== Stack audit complete ===");
+}

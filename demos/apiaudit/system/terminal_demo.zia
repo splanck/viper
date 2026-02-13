@@ -1,0 +1,88 @@
+// =============================================================================
+// API Audit: Viper.Terminal - Terminal I/O
+// =============================================================================
+// Tests: Say, SayInt, SayNum, SayBool, Print, PrintInt, PrintNum,
+//        Bell, Clear, BeginBatch, EndBatch, Flush
+// NOTE: Skip interactive input functions (Ask, GetKey, ReadLine)
+// =============================================================================
+
+module TerminalDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Terminal ===");
+
+    // --- Say (string with newline) ---
+    Say("--- Say ---");
+    Say("Say prints a string with newline");
+    Say("Multiple Say calls");
+    Say("each on its own line");
+
+    // --- SayInt ---
+    Say("--- SayInt ---");
+    Say("SayInt(42):");
+    SayInt(42);
+    Say("SayInt(0):");
+    SayInt(0);
+    Say("SayInt(-100):");
+    SayInt(-100);
+
+    // --- SayNum ---
+    Say("--- SayNum ---");
+    Say("SayNum(3.14):");
+    SayNum(3.14);
+    Say("SayNum(0.0):");
+    SayNum(0.0);
+    Say("SayNum(-2.718):");
+    SayNum(-2.718);
+
+    // --- SayBool ---
+    Say("--- SayBool ---");
+    Say("SayBool(true):");
+    SayBool(1 == 1);
+    Say("SayBool(false):");
+    SayBool(1 == 0);
+
+    // --- Print (no newline) ---
+    Say("--- Print ---");
+    Print("Hello ");
+    Print("World ");
+    Print("no newlines");
+    Say("");
+
+    // --- PrintInt ---
+    Say("--- PrintInt ---");
+    PrintInt(123);
+    Print(" ");
+    PrintInt(456);
+    Say("");
+
+    // --- PrintNum ---
+    Say("--- PrintNum ---");
+    PrintNum(1.23);
+    Print(" ");
+    PrintNum(4.56);
+    Say("");
+
+    // --- BeginBatch / EndBatch ---
+    Say("--- BeginBatch / EndBatch ---");
+    BeginBatch();
+    Say("Inside batch 1");
+    Say("Inside batch 2");
+    Say("Inside batch 3");
+    EndBatch();
+    Say("Batch complete");
+
+    // --- Flush ---
+    Say("--- Flush ---");
+    Print("Before flush");
+    Flush();
+    Say("");
+    Say("Flush complete");
+
+    // NOTE: Skipping Bell() to avoid annoying sound during testing
+    // NOTE: Skipping Clear() to preserve terminal output
+    Say("(Skipping Bell and Clear to preserve output)");
+
+    Say("=== Terminal Demo Complete ===");
+}

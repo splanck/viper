@@ -1,0 +1,81 @@
+// =============================================================================
+// API Audit: Viper.IO.TempFile - Temporary File/Directory Creation
+// =============================================================================
+// Tests: Dir, Path, PathWithPrefix, PathWithExt, Create, CreateWithPrefix,
+//        CreateDir, CreateDirWithPrefix
+// =============================================================================
+
+module TempFileDemo;
+bind Viper.Terminal;
+bind TF = Viper.IO.TempFile;
+bind File = Viper.IO.File;
+bind Dir = Viper.IO.Dir;
+
+func start() {
+    Say("=== API Audit: Viper.IO.TempFile ===");
+
+    // --- Dir ---
+    Say("--- Dir ---");
+    Say("Dir:");
+    Say(TF.Dir());
+
+    // --- Path ---
+    Say("--- Path ---");
+    var p = TF.Path();
+    Say("Path:");
+    Say(p);
+
+    // --- PathWithPrefix ---
+    Say("--- PathWithPrefix ---");
+    var pp = TF.PathWithPrefix("viper_audit_");
+    Say("PathWithPrefix('viper_audit_'):");
+    Say(pp);
+
+    // --- PathWithExt ---
+    Say("--- PathWithExt ---");
+    var pe = TF.PathWithExt("viper_audit_", ".txt");
+    Say("PathWithExt('viper_audit_', '.txt'):");
+    Say(pe);
+
+    // --- Create ---
+    Say("--- Create ---");
+    var created = TF.Create();
+    Say("Create():");
+    Say(created);
+    Say("File exists:");
+    SayBool(File.Exists(created));
+    File.Delete(created);
+    Say("Cleaned up");
+
+    // --- CreateWithPrefix ---
+    Say("--- CreateWithPrefix ---");
+    var cwp = TF.CreateWithPrefix("viper_audit_");
+    Say("CreateWithPrefix('viper_audit_'):");
+    Say(cwp);
+    Say("File exists:");
+    SayBool(File.Exists(cwp));
+    File.Delete(cwp);
+    Say("Cleaned up");
+
+    // --- CreateDir ---
+    Say("--- CreateDir ---");
+    var cd = TF.CreateDir();
+    Say("CreateDir():");
+    Say(cd);
+    Say("Dir exists:");
+    SayBool(Dir.Exists(cd));
+    Dir.Remove(cd);
+    Say("Cleaned up");
+
+    // --- CreateDirWithPrefix ---
+    Say("--- CreateDirWithPrefix ---");
+    var cdp = TF.CreateDirWithPrefix("viper_audit_");
+    Say("CreateDirWithPrefix('viper_audit_'):");
+    Say(cdp);
+    Say("Dir exists:");
+    SayBool(Dir.Exists(cdp));
+    Dir.Remove(cdp);
+    Say("Cleaned up");
+
+    Say("=== TempFile Demo Complete ===");
+}

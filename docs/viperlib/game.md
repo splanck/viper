@@ -1710,6 +1710,53 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 - Collision response uses impulse-based resolution with restitution and friction
 - Fixed timestep recommended (e.g., `Step(1.0 / 60.0)` for 60 FPS)
 
+### Zia Example
+
+```zia
+module Physics2DDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    // Create world with gravity
+    var world = Physics2D.World.New(0.0, 9.8);
+
+    // Static floor (mass=0)
+    var floor = Physics2D.Body.New(0.0, 500.0, 800.0, 50.0, 0.0);
+    SayBool(floor.IsStatic);  // true
+
+    // Dynamic ball (mass=1)
+    var ball = Physics2D.Body.New(400.0, 50.0, 20.0, 20.0, 1.0);
+    Physics2D.Body.set_Restitution(ball, 0.8);
+    Physics2D.Body.set_Friction(ball, 0.3);
+
+    // Add to world
+    world.Add(floor);
+    world.Add(ball);
+    SayInt(world.BodyCount);  // 2
+
+    // Apply impulse and simulate
+    ball.ApplyImpulse(10.0, 0.0);
+    var i = 0;
+    while i < 10 {
+        world.Step(0.016);
+        i = i + 1;
+    }
+
+    // Direct position/velocity control
+    ball.SetPos(100.0, 100.0);
+    ball.SetVel(0.0, 0.0);
+
+    // Change gravity
+    world.SetGravity(0.0, 0.0);
+
+    // Remove body
+    world.Remove(ball);
+    SayInt(world.BodyCount);  // 1
+}
+```
+
 ### BASIC Example
 
 ```basic
@@ -1781,6 +1828,50 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 - `GetRegion()` returns a new Pixels object each call — cache results for repeated use
 - Region coordinates are in pixels, relative to the atlas top-left corner
 - Backed by a single atlas Pixels object — regions share the source data
+
+### Zia Example
+
+```zia
+module SpriteSheetDemo;
+
+bind Viper.Graphics;
+bind Viper.Terminal;
+bind Viper.Collections;
+
+func start() {
+    var atlas = Pixels.New(128, 128);
+    atlas.Fill(Color.RGB(255, 0, 0));
+
+    var sheet = SpriteSheet.New(atlas);
+    Say("Regions: " + Fmt.Int(sheet.RegionCount));  // 0
+
+    // Define named regions
+    sheet.SetRegion("idle", 0, 0, 32, 32);
+    sheet.SetRegion("walk1", 32, 0, 32, 32);
+    sheet.SetRegion("walk2", 64, 0, 32, 32);
+    sheet.SetRegion("jump", 96, 0, 32, 32);
+
+    // Query regions
+    SayBool(sheet.HasRegion("idle"));     // true
+    SayBool(sheet.HasRegion("attack"));   // false
+
+    // Get region as Pixels
+    var region = sheet.GetRegion("idle");
+    SayInt(Pixels.get_Width(region));   // 32
+
+    // Region names list
+    var names = sheet.RegionNames();
+    SayInt(Seq.get_Len(names));  // 4
+
+    // Remove a region
+    sheet.RemoveRegion("jump");
+    SayInt(sheet.RegionCount);  // 3
+
+    // Auto-slice from grid
+    var gridSheet = SpriteSheet.FromGrid(atlas, 32, 32);
+    SayInt(gridSheet.RegionCount);  // 16
+}
+```
 
 ### BASIC Example
 

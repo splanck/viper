@@ -1,0 +1,90 @@
+// grid2d_demo.zia - Comprehensive API audit for Viper.Game.Grid2D
+// Tests: New, Set, Get, Width, Height, Size, InBounds, Fill, Clear,
+//        CopyFrom, Count, Replace
+
+module Grid2DDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Grid2D API Audit ===");
+
+    // --- New (width, height, defaultValue) ---
+    Say("--- New ---");
+    var g = Grid2D.New(4, 3, 0);
+    SayInt(g.Width);      // 4
+    SayInt(g.Height);     // 3
+    SayInt(g.Size);       // 12 (4 * 3)
+
+    // --- Set / Get ---
+    Say("--- Set / Get ---");
+    g.Set(0, 0, 42);
+    SayInt(g.Get(0, 0));  // 42
+    g.Set(3, 2, 99);
+    SayInt(g.Get(3, 2));  // 99
+    SayInt(g.Get(1, 1));  // 0 (default value)
+
+    // --- InBounds ---
+    Say("--- InBounds ---");
+    SayBool(g.InBounds(0, 0));    // 1 (top-left corner)
+    SayBool(g.InBounds(3, 2));    // 1 (bottom-right corner)
+    SayBool(g.InBounds(4, 0));    // 0 (out of bounds x)
+    SayBool(g.InBounds(0, 3));    // 0 (out of bounds y)
+    SayBool(g.InBounds(-1, 0));   // 0 (negative)
+
+    // --- Fill ---
+    Say("--- Fill ---");
+    g.Fill(7);
+    SayInt(g.Get(0, 0));  // 7
+    SayInt(g.Get(1, 1));  // 7
+    SayInt(g.Get(3, 2));  // 7
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    g.Clear();
+    SayInt(g.Get(0, 0));  // 0
+    SayInt(g.Get(1, 1));  // 0
+    SayInt(g.Get(3, 2));  // 0
+
+    // --- Count ---
+    Say("--- Count ---");
+    g.Set(0, 0, 5);
+    g.Set(1, 0, 5);
+    g.Set(2, 1, 5);
+    SayInt(g.Count(5));   // 3 (three cells with value 5)
+    SayInt(g.Count(0));   // 9 (remaining cells are 0)
+    SayInt(g.Count(99));  // 0 (no cells with value 99)
+
+    // --- Replace ---
+    Say("--- Replace ---");
+    var replaced = g.Replace(5, 10);
+    SayInt(replaced);         // 3 (replaced 3 cells)
+    SayInt(g.Get(0, 0));      // 10
+    SayInt(g.Get(1, 0));      // 10
+    SayInt(g.Get(2, 1));      // 10
+    SayInt(g.Count(5));       // 0 (no more 5s)
+    SayInt(g.Count(10));      // 3
+
+    // --- CopyFrom ---
+    Say("--- CopyFrom ---");
+    var g2 = Grid2D.New(4, 3, 0);
+    g2.Fill(55);
+    var ok = g.CopyFrom(g2);
+    SayBool(ok);              // 1 (same dimensions, copy succeeded)
+    SayInt(g.Get(0, 0));      // 55
+    SayInt(g.Get(3, 2));      // 55
+
+    // --- CopyFrom mismatched size ---
+    Say("--- CopyFrom mismatch ---");
+    var g3 = Grid2D.New(2, 2, 0);
+    var bad = g.CopyFrom(g3);
+    SayBool(bad);             // 0 (different dimensions)
+
+    // --- Width / Height after operations ---
+    Say("--- Width / Height ---");
+    SayInt(g.Width);      // 4
+    SayInt(g.Height);     // 3
+
+    Say("=== Grid2D audit complete ===");
+}

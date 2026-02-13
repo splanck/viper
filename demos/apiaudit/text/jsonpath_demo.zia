@@ -1,0 +1,47 @@
+module JsonPathDemo;
+bind Viper.Terminal;
+bind Json = Viper.Text.Json;
+bind JP = Viper.Text.JsonPath;
+bind Seq = Viper.Collections.Seq;
+
+func start() {
+    Say("=== Viper.Text.JsonPath API Audit ===");
+
+    var json = "{\"store\":{\"book\":[{\"title\":\"Moby Dick\",\"price\":10},{\"title\":\"1984\",\"price\":8}],\"name\":\"Books R Us\"}}";
+    var doc = Json.Parse(json);
+
+    // --- Get ---
+    Say("--- Get ---");
+    var result = JP.Get(doc, "$.store.name");
+    Say(Json.Format(result));
+
+    // --- GetStr ---
+    Say("--- GetStr ---");
+    Say(JP.GetStr(doc, "$.store.name"));
+
+    // --- GetInt ---
+    Say("--- GetInt ---");
+    SayInt(JP.GetInt(doc, "$.store.book[0].price"));
+    SayInt(JP.GetInt(doc, "$.store.book[1].price"));
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(JP.Has(doc, "$.store.name"));
+    SayBool(JP.Has(doc, "$.store.address"));
+    SayBool(JP.Has(doc, "$.store.book[0].title"));
+
+    // --- GetOr ---
+    Say("--- GetOr ---");
+    var fallback = Json.Parse("\"default\"");
+    var found = JP.GetOr(doc, "$.store.name", fallback);
+    Say(Json.Format(found));
+    var missing = JP.GetOr(doc, "$.store.address", fallback);
+    Say(Json.Format(missing));
+
+    // --- Query ---
+    Say("--- Query ---");
+    var titles = JP.Query(doc, "$.store.book[*].title");
+    Say(Json.Format(titles));
+
+    Say("=== JsonPath Demo Complete ===");
+}

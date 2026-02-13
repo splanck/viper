@@ -1,0 +1,96 @@
+// objectpool_demo.zia - Comprehensive API audit for Viper.Game.ObjectPool
+// Tests: New, Acquire, Release, IsActive, ActiveCount, FreeCount, Capacity,
+//        IsFull, IsEmpty, Clear, FirstActive, NextActive, SetData, GetData
+
+module ObjectPoolDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== ObjectPool API Audit ===");
+
+    // --- New (capacity) ---
+    Say("--- New ---");
+    var pool = ObjectPool.New(4);
+    SayInt(pool.Capacity);       // 4
+    SayInt(pool.ActiveCount);    // 0
+    SayInt(pool.FreeCount);      // 4
+    SayBool(pool.IsEmpty);       // 1
+    SayBool(pool.IsFull);        // 0
+
+    // --- Acquire ---
+    Say("--- Acquire ---");
+    var id1 = pool.Acquire();
+    SayInt(pool.ActiveCount);    // 1
+    SayInt(pool.FreeCount);      // 3
+    SayBool(pool.IsEmpty);       // 0
+    SayBool(pool.IsFull);        // 0
+
+    var id2 = pool.Acquire();
+    SayInt(pool.ActiveCount);    // 2
+
+    var id3 = pool.Acquire();
+    var id4 = pool.Acquire();
+    SayInt(pool.ActiveCount);    // 4
+    SayInt(pool.FreeCount);      // 0
+    SayBool(pool.IsFull);        // 1
+
+    // --- IsActive ---
+    Say("--- IsActive ---");
+    SayBool(pool.IsActive(id1));   // 1
+    SayBool(pool.IsActive(id2));   // 1
+
+    // --- Release ---
+    Say("--- Release ---");
+    var released = pool.Release(id2);
+    SayBool(released);             // 1 (success)
+    SayBool(pool.IsActive(id2));   // 0 (no longer active)
+    SayInt(pool.ActiveCount);      // 3
+    SayInt(pool.FreeCount);        // 1
+    SayBool(pool.IsFull);          // 0
+
+    // --- Release already-released (should fail) ---
+    Say("--- Release invalid ---");
+    var bad = pool.Release(id2);
+    SayBool(bad);                  // 0 (already released)
+
+    // --- SetData / GetData ---
+    Say("--- SetData / GetData ---");
+    var setOk = pool.SetData(id1, 100);
+    SayBool(setOk);                // 1
+    SayInt(pool.GetData(id1));     // 100
+
+    pool.SetData(id3, 300);
+    SayInt(pool.GetData(id3));     // 300
+
+    // --- FirstActive / NextActive ---
+    Say("--- FirstActive / NextActive ---");
+    var first = pool.FirstActive();
+    SayBool(pool.IsActive(first));     // 1
+
+    var next = pool.NextActive(first);
+    // next should be another active id or sentinel
+
+    // --- Re-acquire into released slot ---
+    Say("--- Re-acquire ---");
+    var id5 = pool.Acquire();
+    SayInt(pool.ActiveCount);      // 4
+    SayBool(pool.IsActive(id5));   // 1
+    SayBool(pool.IsFull);          // 1
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    pool.Clear();
+    SayInt(pool.ActiveCount);      // 0
+    SayInt(pool.FreeCount);        // 4
+    SayBool(pool.IsEmpty);         // 1
+    SayBool(pool.IsFull);          // 0
+
+    // --- IsActive after clear ---
+    Say("--- IsActive after clear ---");
+    SayBool(pool.IsActive(id1));   // 0
+    SayBool(pool.IsActive(id3));   // 0
+
+    Say("=== ObjectPool audit complete ===");
+}

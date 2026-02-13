@@ -1,0 +1,105 @@
+// statemachine_demo.zia - Comprehensive API audit for Viper.Game.StateMachine
+// Tests: New, AddState, SetInitial, Current, Previous, IsState, Transition,
+//        JustEntered, JustExited, ClearFlags, FramesInState, Update,
+//        HasState, StateCount
+
+module StateMachineDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== StateMachine API Audit ===");
+
+    // State IDs as constants
+    // 0 = Idle, 1 = Walking, 2 = Running, 3 = Jumping
+
+    // --- New ---
+    Say("--- New ---");
+    var sm = StateMachine.New();
+    SayInt(sm.StateCount);      // 0
+
+    // --- AddState ---
+    Say("--- AddState ---");
+    var a1 = sm.AddState(0);
+    SayBool(a1);                // 1
+    var a2 = sm.AddState(1);
+    SayBool(a2);                // 1
+    var a3 = sm.AddState(2);
+    SayBool(a3);                // 1
+    var a4 = sm.AddState(3);
+    SayBool(a4);                // 1
+    SayInt(sm.StateCount);      // 4
+
+    // --- HasState ---
+    Say("--- HasState ---");
+    SayBool(sm.HasState(0));    // 1
+    SayBool(sm.HasState(1));    // 1
+    SayBool(sm.HasState(99));   // 0 (not added)
+
+    // --- SetInitial ---
+    Say("--- SetInitial ---");
+    var init = sm.SetInitial(0);
+    SayBool(init);              // 1
+    SayInt(sm.Current);         // 0 (Idle)
+
+    // --- IsState ---
+    Say("--- IsState ---");
+    SayBool(sm.IsState(0));     // 1 (current is Idle)
+    SayBool(sm.IsState(1));     // 0 (not Walking)
+
+    // --- JustEntered / JustExited (after SetInitial) ---
+    Say("--- JustEntered / JustExited ---");
+    SayBool(sm.JustEntered);    // 1 (just set initial)
+    SayBool(sm.JustExited);     // 0 (no exit yet)
+
+    // --- ClearFlags ---
+    Say("--- ClearFlags ---");
+    sm.ClearFlags();
+    SayBool(sm.JustEntered);    // 0
+    SayBool(sm.JustExited);     // 0
+
+    // --- Transition ---
+    Say("--- Transition ---");
+    var t1 = sm.Transition(1);
+    SayBool(t1);                // 1 (transitioned to Walking)
+    SayInt(sm.Current);         // 1 (Walking)
+    SayInt(sm.Previous);        // 0 (was Idle)
+    SayBool(sm.JustEntered);    // 1
+    SayBool(sm.JustExited);     // 1
+
+    // --- Transition to same state (no-op) ---
+    Say("--- Transition same ---");
+    sm.ClearFlags();
+    var t2 = sm.Transition(1);
+    SayBool(t2);                // 0 (already in this state)
+    SayInt(sm.Current);         // 1 (still Walking)
+
+    // --- Transition to invalid state ---
+    Say("--- Transition invalid ---");
+    var t3 = sm.Transition(99);
+    SayBool(t3);                // 0 (state 99 not added)
+    SayInt(sm.Current);         // 1 (still Walking)
+
+    // --- Update / FramesInState ---
+    Say("--- Update / FramesInState ---");
+    sm.ClearFlags();
+    sm.Update();
+    sm.Update();
+    sm.Update();
+    SayInt(sm.FramesInState);   // 3 (updated 3 times)
+
+    // --- Transition resets frames ---
+    Say("--- Transition resets frames ---");
+    sm.Transition(2);
+    SayInt(sm.Current);         // 2 (Running)
+    SayInt(sm.FramesInState);   // 0 (just transitioned)
+
+    // --- AddState duplicate ---
+    Say("--- AddState duplicate ---");
+    var dup = sm.AddState(0);
+    SayBool(dup);               // 0 (already exists)
+    SayInt(sm.StateCount);      // 4
+
+    Say("=== StateMachine audit complete ===");
+}

@@ -1,0 +1,42 @@
+module PluralizeDemo;
+bind Viper.Terminal;
+bind PL = Viper.Text.Pluralize;
+
+func start() {
+    Say("=== Viper.Text.Pluralize API Audit ===");
+
+    // --- Plural ---
+    Say("--- Plural ---");
+    Say(PL.Plural("cat"));
+    Say(PL.Plural("box"));
+    Say(PL.Plural("city"));
+    Say(PL.Plural("child"));
+    Say(PL.Plural("person"));
+    Say(PL.Plural("mouse"));
+    Say(PL.Plural("leaf"));
+    Say(PL.Plural("bus"));
+    Say(PL.Plural("fish"));
+
+    // --- Singular ---
+    Say("--- Singular ---");
+    Say(PL.Singular("cats"));
+    Say(PL.Singular("boxes"));
+    Say(PL.Singular("cities"));
+    Say(PL.Singular("children"));
+    Say(PL.Singular("people"));
+    Say(PL.Singular("mice"));
+    Say(PL.Singular("leaves"));
+    Say(PL.Singular("buses"));
+
+    // --- Count ---
+    Say("--- Count ---");
+    Say(PL.Count(0, "cat"));
+    Say(PL.Count(1, "cat"));
+    Say(PL.Count(2, "cat"));
+    Say(PL.Count(5, "box"));
+    Say(PL.Count(1, "child"));
+    Say(PL.Count(3, "child"));
+    Say(PL.Count(100, "person"));
+
+    Say("=== Pluralize Demo Complete ===");
+}

@@ -9,6 +9,7 @@
 - [Viper.Crypto.Cipher](#vipercryptocipher)
 - [Viper.Crypto.Hash](#vipercryptohash)
 - [Viper.Crypto.KeyDerive](#vipercryptokeyderive)
+- [Viper.Crypto.Password](#vipercryptopassword)
 - [Viper.Crypto.Rand](#vipercryptorand)
 - [Viper.Crypto.Tls](#vipercryptotls)
 
@@ -81,19 +82,35 @@ func start() {
 }
 ```
 
-### Password-Based Encryption BASIC Example
+### BASIC Example
 
 ```basic
-' Encrypt with a password
-DIM plaintext AS OBJECT = Viper.Collections.Bytes.FromString("Secret message")
+' Encrypt data with a password
+DIM plaintext AS Viper.Collections.Bytes
+plaintext = Viper.Collections.Bytes.FromStr("Secret message")
 DIM password AS STRING = "my-secure-password"
+DIM ciphertext AS Viper.Collections.Bytes
+ciphertext = Viper.Crypto.Cipher.Encrypt(plaintext, password)
+PRINT "Encrypted len: "; ciphertext.Len
 
-' Encrypt (automatically generates salt and nonce)
-DIM ciphertext AS OBJECT = Viper.Crypto.Cipher.Encrypt(plaintext, password)
+' Decrypt and verify round-trip
+DIM decrypted AS Viper.Collections.Bytes
+decrypted = Viper.Crypto.Cipher.Decrypt(ciphertext, password)
+PRINT "Decrypted: "; decrypted.ToStr()
 
-' Decrypt
-DIM decrypted AS OBJECT = Viper.Crypto.Cipher.Decrypt(ciphertext, password)
-PRINT decrypted.ToStr()  ' Output: Secret message
+' Generate a random encryption key
+DIM key AS Viper.Collections.Bytes
+key = Viper.Crypto.Cipher.GenerateKey()
+PRINT "Key len: "; key.Len
+
+' Key-based encrypt/decrypt
+DIM plain2 AS Viper.Collections.Bytes
+plain2 = Viper.Collections.Bytes.FromStr("Key-based test")
+DIM enc2 AS Viper.Collections.Bytes
+enc2 = Viper.Crypto.Cipher.EncryptWithKey(plain2, key)
+DIM dec2 AS Viper.Collections.Bytes
+dec2 = Viper.Crypto.Cipher.DecryptWithKey(enc2, key)
+PRINT "Key decrypt: "; dec2.ToStr()
 ```
 
 ### Key-Based Encryption Example
@@ -234,33 +251,13 @@ func start() {
 }
 ```
 
-### Hash BASIC Example
+### BASIC Example
 
 ```basic
-' Compute checksums and hashes
-DIM data AS STRING = "Hello, World!"
-
-' CRC32 checksum (returns integer)
-DIM crc AS INTEGER = Viper.Crypto.Hash.CRC32(data)
-PRINT crc  ' Output: some integer value
-
-' MD5 hash (32 hex characters)
-DIM md5 AS STRING = Viper.Crypto.Hash.MD5(data)
-PRINT md5  ' Output: "65a8e27d8879283831b664bd8b7f0ad4"
-
-' SHA1 hash (40 hex characters)
-DIM sha1 AS STRING = Viper.Crypto.Hash.SHA1(data)
-PRINT sha1  ' Output: "0a0a9f2a6772942557ab5355d76af442f8f65e01"
-
-' SHA256 hash (64 hex characters)
-DIM sha256 AS STRING = Viper.Crypto.Hash.SHA256(data)
-PRINT sha256  ' Output: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
-
-' Hash binary data using Bytes variants
-DIM bytes AS OBJECT = NEW Viper.Collections.Bytes()
-bytes.WriteString("Hello")
-DIM hash AS STRING = Viper.Crypto.Hash.SHA256Bytes(bytes)
-PRINT hash
+' Hash strings with common algorithms
+PRINT "MD5: "; Viper.Crypto.Hash.MD5("hello")
+PRINT "SHA1: "; Viper.Crypto.Hash.SHA1("hello")
+PRINT "SHA256: "; Viper.Crypto.Hash.SHA256("hello")
 ```
 
 ### HMAC Example
@@ -678,6 +675,98 @@ Use `Error()` to get descriptive error messages for debugging.
 | WebSocket over TLS          | `Viper.Network.WebSocket` (wss://) |
 | Raw TLS socket              | `Viper.Crypto.Tls` |
 | Custom TLS protocols        | `Viper.Crypto.Tls` |
+
+---
+
+## Viper.Crypto.Password
+
+High-level password hashing and verification using PBKDF2. Provides a simple API for securely storing and checking passwords without manual salt management.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                    | Signature                  | Description                                                      |
+|---------------------------|----------------------------|------------------------------------------------------------------|
+| `Hash(password)`          | `String(String)`           | Hash a password with 100,000 iterations and random salt          |
+| `HashIters(password, n)`  | `String(String, Integer)`  | Hash a password with a custom iteration count and random salt    |
+| `Verify(password, hash)`  | `Boolean(String, String)`  | Verify a password against a previously generated hash            |
+
+### Output Format
+
+`Hash` and `HashIters` return a self-describing string in the format:
+
+```
+PBKDF2$<iterations>$<base64-salt>$<base64-hash>
+```
+
+This format stores everything needed for verification: the algorithm identifier, iteration count, salt, and derived key.
+
+### Notes
+
+- Uses PBKDF2-HMAC-SHA256 as the underlying key derivation function
+- Default iteration count is 100,000 (suitable for most applications)
+- A random 16-byte salt is generated automatically for each hash
+- The salt and iteration count are embedded in the output string, so no separate storage is needed
+- `Verify` parses the stored hash string to extract parameters before re-deriving
+- Use `HashIters` to increase iterations for higher security or decrease for testing
+
+### Zia Example
+
+```zia
+module PasswordDemo;
+
+bind Viper.Terminal;
+bind Viper.Crypto.Password as Password;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Hash a password
+    var hash = Password.Hash("secret123");
+    Say("Hash: " + hash);  // PBKDF2$100000$...
+
+    // Verify correct password
+    Say("Verify correct: " + Fmt.Bool(Password.Verify("secret123", hash)));  // true
+
+    // Verify wrong password
+    Say("Verify wrong: " + Fmt.Bool(Password.Verify("wrong", hash)));        // false
+}
+```
+
+### BASIC Example
+
+```basic
+' Hash a password
+DIM hash AS STRING = Viper.Crypto.Password.Hash("secret123")
+PRINT "Hash: "; hash  ' Output: PBKDF2$100000$...
+
+' Verify correct password
+PRINT "Correct: "; Viper.Crypto.Password.Verify("secret123", hash)  ' Output: 1
+
+' Verify wrong password
+PRINT "Wrong: "; Viper.Crypto.Password.Verify("wrong", hash)        ' Output: 0
+
+' Hash with custom iteration count
+DIM strongHash AS STRING = Viper.Crypto.Password.HashIters("secret123", 200000)
+PRINT "Strong hash: "; strongHash
+PRINT "Verify: "; Viper.Crypto.Password.Verify("secret123", strongHash)  ' Output: 1
+```
+
+### Security Recommendations
+
+1. **Use default iterations for production:** 100,000 iterations provides good security for most use cases
+2. **Increase iterations over time:** As hardware gets faster, increase the iteration count
+3. **Never store plaintext:** Always store the hash string, never the original password
+4. **Timing-safe comparison:** `Verify` uses constant-time comparison to prevent timing attacks
+
+### Password vs KeyDerive
+
+| Use Case                    | Recommended                |
+|-----------------------------|----------------------------|
+| Store user passwords        | `Viper.Crypto.Password`   |
+| Derive encryption keys      | `Viper.Crypto.KeyDerive`  |
+| Simple hash-and-verify      | `Viper.Crypto.Password`   |
+| Custom salt management      | `Viper.Crypto.KeyDerive`  |
 
 ---
 

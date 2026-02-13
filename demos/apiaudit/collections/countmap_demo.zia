@@ -1,0 +1,90 @@
+// countmap_demo.zia - Comprehensive API audit for Viper.Collections.CountMap
+// Tests: New, Inc, IncBy, Dec, Get, Set, Has, Total, Keys,
+//        MostCommon, Remove, Clear, Len, IsEmpty
+
+module CountMapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== CountMap API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var cm = CountMap.New();
+    SayInt(cm.Len);       // 0
+    SayBool(cm.IsEmpty);  // 1
+
+    // --- Inc / Len ---
+    Say("--- Inc / Len ---");
+    SayInt(cm.Inc("apple"));     // 1 (first time)
+    SayInt(cm.Inc("apple"));     // 2
+    SayInt(cm.Inc("banana"));    // 1
+    SayInt(cm.Inc("cherry"));    // 1
+    SayInt(cm.Inc("cherry"));    // 2
+    SayInt(cm.Inc("cherry"));    // 3
+    SayInt(cm.Len);              // 3
+    SayBool(cm.IsEmpty);         // 0
+
+    // --- IncBy ---
+    Say("--- IncBy ---");
+    SayInt(cm.IncBy("banana", 5));  // 6 (was 1, now 6)
+
+    // --- Get ---
+    Say("--- Get ---");
+    SayInt(cm.Get("apple"));    // 2
+    SayInt(cm.Get("banana"));   // 6
+    SayInt(cm.Get("cherry"));   // 3
+    SayInt(cm.Get("grape"));    // 0 (not present)
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(cm.Has("apple"));   // 1
+    SayBool(cm.Has("grape"));   // 0
+
+    // --- Set ---
+    Say("--- Set ---");
+    cm.Set("date", 10);
+    SayInt(cm.Get("date"));     // 10
+    SayInt(cm.Len);             // 4
+
+    // --- Total ---
+    Say("--- Total ---");
+    SayInt(cm.Total);           // 2 + 6 + 3 + 10 = 21
+
+    // --- Dec ---
+    Say("--- Dec ---");
+    SayInt(cm.Dec("apple"));    // 1 (was 2, now 1)
+    SayInt(cm.Dec("apple"));    // 0 (was 1, removed)
+    SayBool(cm.Has("apple"));   // 0
+    SayInt(cm.Len);             // 3
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = cm.Keys();
+    SayInt(keys.Len);           // 3
+
+    // --- MostCommon ---
+    Say("--- MostCommon ---");
+    var top = cm.MostCommon(2);
+    SayInt(top.Len);            // 2
+    // Should be sorted by count descending: date(10), banana(6)
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(cm.Remove("date"));   // 1
+    SayBool(cm.Has("date"));      // 0
+    SayInt(cm.Len);               // 2
+    SayBool(cm.Remove("date"));   // 0
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    cm.Clear();
+    SayInt(cm.Len);               // 0
+    SayBool(cm.IsEmpty);          // 1
+
+    Say("=== CountMap audit complete ===");
+}

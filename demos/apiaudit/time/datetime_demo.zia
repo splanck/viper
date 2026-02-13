@@ -1,0 +1,98 @@
+// =============================================================================
+// API Audit: Viper.Time.DateTime - Date/Time Operations
+// =============================================================================
+// Tests: Now, NowMs, Create, Year, Month, Day, Hour, Minute, Second,
+//        DayOfWeek, AddDays, AddSeconds, Diff, Format, ToISO
+// =============================================================================
+
+module DateTimeDemo;
+bind Viper.Terminal;
+bind DT = Viper.Time.DateTime;
+
+func start() {
+    Say("=== API Audit: Viper.Time.DateTime ===");
+
+    // --- Now ---
+    Say("--- Now ---");
+    var now = DT.Now();
+    Say("Now (Unix timestamp):");
+    SayInt(now);
+
+    // --- NowMs ---
+    Say("--- NowMs ---");
+    Say("NowMs (Unix ms):");
+    SayInt(DT.NowMs());
+
+    // --- Year / Month / Day / Hour / Minute / Second ---
+    Say("--- Date components ---");
+    Say("Year:");
+    SayInt(DT.Year(now));
+    Say("Month:");
+    SayInt(DT.Month(now));
+    Say("Day:");
+    SayInt(DT.Day(now));
+    Say("Hour:");
+    SayInt(DT.Hour(now));
+    Say("Minute:");
+    SayInt(DT.Minute(now));
+    Say("Second:");
+    SayInt(DT.Second(now));
+
+    // --- DayOfWeek ---
+    Say("--- DayOfWeek ---");
+    Say("DayOfWeek (0=Sun..6=Sat):");
+    SayInt(DT.DayOfWeek(now));
+
+    // --- Create ---
+    Say("--- Create ---");
+    var ts = DT.Create(2024, 6, 15, 12, 30, 0);
+    Say("Create(2024, 6, 15, 12, 30, 0):");
+    SayInt(ts);
+    Say("Year of created:");
+    SayInt(DT.Year(ts));
+    Say("Month of created:");
+    SayInt(DT.Month(ts));
+    Say("Day of created:");
+    SayInt(DT.Day(ts));
+
+    // --- AddDays ---
+    Say("--- AddDays ---");
+    var tomorrow = DT.AddDays(ts, 1);
+    Say("AddDays(ts, 1) Day:");
+    SayInt(DT.Day(tomorrow));
+    var weekLater = DT.AddDays(ts, 7);
+    Say("AddDays(ts, 7) Day:");
+    SayInt(DT.Day(weekLater));
+
+    // --- AddSeconds ---
+    Say("--- AddSeconds ---");
+    var plusHour = DT.AddSeconds(ts, 3600);
+    Say("AddSeconds(ts, 3600) Hour:");
+    SayInt(DT.Hour(plusHour));
+
+    // --- Diff ---
+    Say("--- Diff ---");
+    Say("Diff(tomorrow, ts) seconds:");
+    SayInt(DT.Diff(tomorrow, ts));
+    Say("Diff(weekLater, ts) seconds:");
+    SayInt(DT.Diff(weekLater, ts));
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say("Format('%Y-%m-%d %H:%M:%S'):");
+    Say(DT.Format(ts, "%Y-%m-%d %H:%M:%S"));
+    Say("Format('%Y/%m/%d'):");
+    Say(DT.Format(ts, "%Y/%m/%d"));
+
+    // --- ToISO ---
+    Say("--- ToISO ---");
+    Say("ToISO:");
+    Say(DT.ToISO(ts));
+
+    // Test epoch
+    Say("--- Epoch ---");
+    Say("ToISO(0):");
+    Say(DT.ToISO(0));
+
+    Say("=== DateTime Demo Complete ===");
+}

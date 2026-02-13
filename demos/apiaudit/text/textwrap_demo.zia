@@ -1,0 +1,75 @@
+module TextWrapDemo;
+bind Viper.Terminal;
+bind TW = Viper.Text.TextWrapper;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+func start() {
+    Say("=== Viper.Text.TextWrapper API Audit ===");
+
+    var longText = "The quick brown fox jumps over the lazy dog. This is a longer sentence that should be wrapped at the specified width.";
+
+    // --- Wrap ---
+    Say("--- Wrap ---");
+    Say(TW.Wrap(longText, 40));
+
+    // --- WrapLines ---
+    Say("--- WrapLines ---");
+    var lines = TW.WrapLines(longText, 40);
+    SayInt(Seq.get_Len(lines));
+    Say(Obj.ToString(Seq.Get(lines, 0)));
+    Say(Obj.ToString(Seq.Get(lines, 1)));
+
+    // --- Fill ---
+    Say("--- Fill ---");
+    Say(TW.Fill(longText, 40));
+
+    // --- Indent ---
+    Say("--- Indent ---");
+    var text = "line1\nline2\nline3";
+    Say(TW.Indent(text, "  "));
+    Say(TW.Indent(text, ">>> "));
+
+    // --- Dedent ---
+    Say("--- Dedent ---");
+    var indented = "    line1\n    line2\n    line3";
+    Say(TW.Dedent(indented));
+
+    // --- Hang ---
+    Say("--- Hang ---");
+    var paragraph = "This is the first line of a paragraph that will have a hanging indent applied to it for demonstration.";
+    Say(TW.Hang(paragraph, "    "));
+
+    // --- Truncate ---
+    Say("--- Truncate ---");
+    Say(TW.Truncate("Hello, World! This is a long string.", 20));
+    Say(TW.Truncate("Short", 20));
+
+    // --- TruncateWith ---
+    Say("--- TruncateWith ---");
+    Say(TW.TruncateWith("Hello, World! This is a long string.", 20, " [...]"));
+    Say(TW.TruncateWith("Short", 20, " [...]"));
+
+    // --- Shorten ---
+    Say("--- Shorten ---");
+    Say(TW.Shorten("Hello, World! This is a long string.", 20));
+
+    // --- Left / Right / Center ---
+    Say("--- Left / Right / Center ---");
+    Say("[" + TW.Left("hello", 20) + "]");
+    Say("[" + TW.Right("hello", 20) + "]");
+    Say("[" + TW.Center("hello", 20) + "]");
+
+    // --- LineCount ---
+    Say("--- LineCount ---");
+    SayInt(TW.LineCount("one\ntwo\nthree"));
+    SayInt(TW.LineCount("single"));
+    SayInt(TW.LineCount(""));
+
+    // --- MaxLineLen ---
+    Say("--- MaxLineLen ---");
+    SayInt(TW.MaxLineLen("short\na much longer line\nmed"));
+    SayInt(TW.MaxLineLen("single"));
+
+    Say("=== TextWrapper Demo Complete ===");
+}

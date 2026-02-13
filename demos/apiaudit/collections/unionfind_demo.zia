@@ -1,0 +1,71 @@
+// unionfind_demo.zia - Comprehensive API audit for Viper.Collections.UnionFind
+// Tests: New, Find, Union, Connected, Count, SetSize, Reset
+
+module UnionFindDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== UnionFind API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var uf = UnionFind.New(6);
+    SayInt(uf.Count);       // 6 (each element is its own set)
+
+    // --- Find ---
+    Say("--- Find ---");
+    SayInt(uf.Find(0));     // 0 (own representative)
+    SayInt(uf.Find(3));     // 3 (own representative)
+
+    // --- Union ---
+    Say("--- Union ---");
+    SayInt(uf.Union(0, 1));  // 1 (merged)
+    SayInt(uf.Count);        // 5
+    SayInt(uf.Union(2, 3));  // 1 (merged)
+    SayInt(uf.Count);        // 4
+    SayInt(uf.Union(0, 1));  // 0 (already in same set)
+    SayInt(uf.Count);        // 4 (unchanged)
+
+    // --- Connected ---
+    Say("--- Connected ---");
+    SayBool(uf.Connected(0, 1)); // 1
+    SayBool(uf.Connected(2, 3)); // 1
+    SayBool(uf.Connected(0, 2)); // 0 (different sets)
+    SayBool(uf.Connected(4, 5)); // 0
+
+    // --- Union across groups ---
+    Say("--- Union across groups ---");
+    SayInt(uf.Union(1, 3));      // 1 (merge {0,1} and {2,3})
+    SayInt(uf.Count);            // 3
+    SayBool(uf.Connected(0, 2)); // 1 (now connected)
+    SayBool(uf.Connected(0, 3)); // 1
+
+    // --- SetSize ---
+    Say("--- SetSize ---");
+    SayInt(uf.SetSize(0));       // 4 ({0,1,2,3})
+    SayInt(uf.SetSize(4));       // 1 ({4} alone)
+    SayInt(uf.SetSize(5));       // 1 ({5} alone)
+
+    // --- Union remaining ---
+    Say("--- Union remaining ---");
+    uf.Union(4, 5);
+    SayInt(uf.Count);            // 2
+    SayInt(uf.SetSize(4));       // 2
+
+    uf.Union(0, 4);
+    SayInt(uf.Count);            // 1
+    SayInt(uf.SetSize(0));       // 6 (all connected)
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    uf.Reset();
+    SayInt(uf.Count);            // 6 (back to individual sets)
+    SayBool(uf.Connected(0, 1)); // 0
+    SayInt(uf.SetSize(0));       // 1
+
+    Say("=== UnionFind audit complete ===");
+}

@@ -16,20 +16,21 @@ implemented in C and exposed through the IL runtime system.
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Sound`, `Music`, `Voice`, `Audio` — audio playback for games and applications |
 | [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `WeakMap` |
-| [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
-| [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
+| [Core Types](core.md)           | `Object`, `Box`, `MessageBus`, `String` — foundational types               |
+| [Cryptography](crypto.md)       | `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`                  |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Game Utilities](game.md)       | `Grid2D`, `Timer`, `StateMachine`, `Tween`, `ObjectPool`, `Quadtree`, `Physics2D`, `SpriteSheet`, `ParticleEmitter`, `SpriteAnimation`, `CollisionRect`, `Collision`, `ButtonGroup`, `SmoothValue`, `ScreenFX`, `PathFollower` |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`, `SceneNode`, `Scene`, `SpriteBatch` |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
+| [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
 | [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
-| [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
-| [Mathematics](math.md)          | `Bits`, `Math`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3`          |
+| [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `TempFile`, `Watcher` |
+| [Mathematics](math.md)          | `Bits`, `Math`, `Easing`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
 | [Text Processing](text.md)      | `Codec`, `Csv`, `Html`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `Pattern`, `Serialize`, `StringBuilder`, `Template`, `Toml`, `Uuid` |
 | [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `ConcurrentMap`, `Debouncer`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `Future`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
-| [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
+| [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`                                                   |
 
 ---
@@ -44,13 +45,19 @@ implemented in C and exposed through the IL runtime system.
 | [`Box`](core.md#viperbox)                   | Static   | Boxing helpers for generic collections         |
 | [`Convert`](utilities.md#viperconvert)      | Static   | Type conversion utilities                     |
 | [`Environment`](system.md#viperenvironment) | Static   | Command-line args and environment             |
+| [`Easing`](math.md#vipermatheasing)         | Static   | Animation easing functions                    |
 | [`Exec`](system.md#viperexec)               | Static   | External command execution                    |
 | [`Fmt`](utilities.md#viperfmt)              | Static   | String formatting                             |
+| [`Lazy`](functional.md#viperlazy)           | Static   | Lazy evaluation wrapper                       |
 | [`Log`](utilities.md#viperlog)              | Static   | Logging utilities                             |
 | [`Machine`](system.md#vipermachine)         | Static   | System information queries                    |
 | [`Math`](math.md#vipermath)                 | Static   | Mathematical functions (trig, pow, abs, etc.) |
+| [`MessageBus`](core.md#vipercoremessagebus) | Instance | In-process publish/subscribe messaging        |
 | [`Object`](core.md#viperobject)             | Base     | Root type for all reference types             |
+| [`Option`](functional.md#viperoption)       | Static   | Optional value type (Some/None)               |
+| [`PerlinNoise`](math.md#vipermathperlinnoise)| Instance | Perlin noise for procedural generation       |
 | [`Random`](math.md#viperrandom)             | Static   | Random number generation                      |
+| [`Result`](functional.md#viperresult)       | Static   | Result type for error handling (Ok/Err)       |
 | [`String`](core.md#viperstring)             | Instance | Immutable string with manipulation methods    |
 | [`Terminal`](system.md#viperterminal)       | Static   | Terminal input/output                         |
 | [`Vec2`](math.md#vipervec2)                 | Instance | 2D vector math                                |
@@ -84,6 +91,7 @@ implemented in C and exposed through the IL runtime system.
 |-----------------------------------------------|----------|------------------------------------------|
 | [`Hash`](crypto.md#vipercryptohash)           | Static   | CRC32, MD5, SHA1, SHA256                 |
 | [`KeyDerive`](crypto.md#vipercryptokeyderive) | Static   | PBKDF2-SHA256 key derivation             |
+| [`Password`](crypto.md#vipercryptopassword)   | Static   | Password hashing and verification        |
 | [`Rand`](crypto.md#vipercryptorand)           | Static   | Cryptographically secure random bytes    |
 | [`Tls`](crypto.md#vipercryptotls)             | Instance | TLS 1.3 secure socket connections        |
 
@@ -180,10 +188,12 @@ implemented in C and exposed through the IL runtime system.
 | [`Compress`](io.md#viperiocompress)     | Static   | DEFLATE/GZIP compression       |
 | [`Dir`](io.md#viperiodir)               | Static   | Directory operations           |
 | [`File`](io.md#viperiofile)             | Static   | File read/write/delete         |
+| [`Glob`](io.md#viperioglob)             | Static   | File globbing and matching     |
 | [`LineReader`](io.md#viperiolinereader) | Instance | Line-by-line text reading      |
 | [`LineWriter`](io.md#viperiolinewriter) | Instance | Buffered text writing          |
 | [`MemStream`](io.md#viperiomemstream)   | Instance | In-memory binary stream        |
 | [`Path`](io.md#viperiopath)             | Static   | Path manipulation              |
+| [`TempFile`](io.md#viperiotempfile)     | Static   | Temporary file/dir creation    |
 | [`Watcher`](io.md#viperiowatcher)       | Instance | File system event monitoring   |
 
 ### Viper.Network
@@ -246,10 +256,14 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                       | Type     | Description                  |
 |---------------------------------------------|----------|------------------------------|
-| [`Clock`](time.md#vipertimeclock)           | Static   | Sleep and tick counting      |
-| [`Countdown`](time.md#vipertimecountdown)   | Instance | Millisecond-based countdown  |
-| [`DateTime`](time.md#vipertimedatetime)     | Static   | Date and time operations     |
-| [`Stopwatch`](time.md#vipertimestopwatch)   | Instance | Performance timing           |
+| [`Clock`](time.md#vipertimeclock)               | Static   | Sleep and tick counting          |
+| [`Countdown`](time.md#vipertimecountdown)       | Instance | Millisecond-based countdown      |
+| [`DateOnly`](time.md#vipertimedateonly)         | Instance | Calendar date without time       |
+| [`DateRange`](time.md#vipertimedaterange)       | Instance | Time range with start/end        |
+| [`DateTime`](time.md#vipertimedatetime)         | Static   | Date and time operations         |
+| [`Duration`](time.md#vipertimeduration)         | Static   | Time span manipulation           |
+| [`RelativeTime`](time.md#vipertimerelativetime) | Static   | Human-readable relative times    |
+| [`Stopwatch`](time.md#vipertimestopwatch)       | Instance | Performance timing               |
 
 ---
 

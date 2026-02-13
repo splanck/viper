@@ -1,0 +1,9 @@
+module HttpDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Network.Http ===");
+    Say("NOTE: HTTP requires network access. API surface test only.");
+    Say("Methods: Get(url), GetBytes(url), Post(url,body), PostBytes(url,bytes), Download(url,path), Head(url)");
+    Say("=== Http Audit Complete (API surface only) ===");
+}

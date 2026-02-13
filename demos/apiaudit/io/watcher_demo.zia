@@ -1,0 +1,95 @@
+// =============================================================================
+// API Audit: Viper.IO.Watcher
+// =============================================================================
+// Tests: New, Path, IsWatching, Start, Stop, Poll, PollFor,
+//        EventPath, EventType, EVENT_NONE, EVENT_CREATED, EVENT_MODIFIED,
+//        EVENT_DELETED, EVENT_RENAMED
+// =============================================================================
+
+module WatcherDemo;
+bind Viper.Terminal;
+bind W = Viper.IO.Watcher;
+bind TempFile = Viper.IO.TempFile;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+
+func start() {
+    Say("=== API Audit: Viper.IO.Watcher ===");
+
+    var tmpDir = TempFile.Dir();
+
+    // --- New ---
+    Say("--- New ---");
+    var w = W.New(tmpDir);
+    Say("Created watcher for temp dir");
+
+    // --- Path ---
+    Say("--- Path ---");
+    Say(w.get_Path());
+
+    // --- IsWatching (before start) ---
+    Say("--- IsWatching (before start) ---");
+    SayBool(w.get_IsWatching());
+
+    // --- Event constants ---
+    Say("--- Event constants ---");
+    Say("EVENT_NONE:");
+    SayInt(w.get_EVENT_NONE());
+    Say("EVENT_CREATED:");
+    SayInt(w.get_EVENT_CREATED());
+    Say("EVENT_MODIFIED:");
+    SayInt(w.get_EVENT_MODIFIED());
+    Say("EVENT_DELETED:");
+    SayInt(w.get_EVENT_DELETED());
+    Say("EVENT_RENAMED:");
+    SayInt(w.get_EVENT_RENAMED());
+
+    // --- Start ---
+    Say("--- Start ---");
+    w.Start();
+    Say("Watcher started");
+
+    // --- IsWatching (after start) ---
+    Say("--- IsWatching (after start) ---");
+    SayBool(w.get_IsWatching());
+
+    // --- PollFor (no events yet, short timeout) ---
+    Say("--- PollFor (no events, 10ms timeout) ---");
+    var evtCount = w.PollFor(10);
+    Say("Events:");
+    SayInt(evtCount);
+
+    // --- Create a file to trigger an event ---
+    Say("--- Trigger file creation ---");
+    var testFile = Path.Join(tmpDir, "watcher_test_file.txt");
+    File.WriteAllText(testFile, "hello watcher");
+    Say("File created");
+
+    // --- PollFor (should detect creation) ---
+    Say("--- PollFor (after file creation, 500ms) ---");
+    var evtCount2 = w.PollFor(500);
+    Say("Events:");
+    SayInt(evtCount2);
+
+    // --- EventPath ---
+    Say("--- EventPath ---");
+    Say(w.EventPath());
+
+    // --- EventType ---
+    Say("--- EventType ---");
+    SayInt(w.EventType());
+
+    // --- Stop ---
+    Say("--- Stop ---");
+    w.Stop();
+    Say("Watcher stopped");
+
+    // --- IsWatching (after stop) ---
+    Say("--- IsWatching (after stop) ---");
+    SayBool(w.get_IsWatching());
+
+    // --- Cleanup ---
+    File.Delete(testFile);
+
+    Say("=== Watcher Audit Complete ===");
+}

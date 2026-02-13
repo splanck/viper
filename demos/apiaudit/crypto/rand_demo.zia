@@ -1,0 +1,35 @@
+// =============================================================================
+// API Audit: Viper.Crypto.Rand - Cryptographically Secure Random
+// =============================================================================
+// Tests: Int, Bytes
+// =============================================================================
+
+module CryptoRandDemo;
+bind Viper.Crypto;
+bind Viper.Collections;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Crypto.Rand ===");
+
+    // --- Int ---
+    Say("--- Int ---");
+    Say("Rand.Int(1, 100):");
+    SayInt(Rand.Int(1, 100));
+    SayInt(Rand.Int(1, 100));
+    SayInt(Rand.Int(1, 100));
+
+    // --- Bytes ---
+    Say("--- Bytes ---");
+    Say("Rand.Bytes(8):");
+    var b = Rand.Bytes(8);
+    SayInt(Bytes.get_Len(b));
+    Say(Bytes.ToHex(b));
+
+    Say("Rand.Bytes(32):");
+    var b2 = Rand.Bytes(32);
+    SayInt(Bytes.get_Len(b2));
+    Say(Bytes.ToHex(b2));
+
+    Say("=== CryptoRand Demo Complete ===");
+}

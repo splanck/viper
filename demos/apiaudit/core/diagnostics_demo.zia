@@ -1,0 +1,82 @@
+// =============================================================================
+// API Audit: Viper.Core.Diagnostics - Assertions
+// =============================================================================
+// Tests: Assert(true), AssertEq, AssertNeq, AssertEqNum, AssertEqStr,
+//        AssertGt, AssertLt, AssertGte, AssertLte
+// NOTE: Do NOT test AssertFail or Assert(false) - those trap/crash!
+// =============================================================================
+
+module DiagnosticsDemo;
+bind Viper.Terminal;
+bind Diag = Viper.Core.Diagnostics;
+
+func start() {
+    Say("=== API Audit: Viper.Core.Diagnostics ===");
+
+    // --- Assert (true only) ---
+    Say("--- Assert ---");
+    Diag.Assert(1 == 1, "1 should equal 1");
+    Say("Assert(true) passed");
+    Diag.Assert(5 > 3, "5 should be greater than 3");
+    Say("Assert(5 > 3) passed");
+
+    // --- AssertEq ---
+    Say("--- AssertEq ---");
+    Diag.AssertEq(42, 42, "42 should equal 42");
+    Say("AssertEq(42, 42) passed");
+    Diag.AssertEq(0, 0, "0 should equal 0");
+    Say("AssertEq(0, 0) passed");
+    Diag.AssertEq(-1, -1, "-1 should equal -1");
+    Say("AssertEq(-1, -1) passed");
+
+    // --- AssertNeq ---
+    Say("--- AssertNeq ---");
+    Diag.AssertNeq(1, 2, "1 should not equal 2");
+    Say("AssertNeq(1, 2) passed");
+    Diag.AssertNeq(0, 1, "0 should not equal 1");
+    Say("AssertNeq(0, 1) passed");
+
+    // --- AssertEqNum ---
+    Say("--- AssertEqNum ---");
+    Diag.AssertEqNum(3.14, 3.14, "pi should equal pi");
+    Say("AssertEqNum(3.14, 3.14) passed");
+    Diag.AssertEqNum(0.0, 0.0, "0.0 should equal 0.0");
+    Say("AssertEqNum(0.0, 0.0) passed");
+
+    // --- AssertEqStr ---
+    Say("--- AssertEqStr ---");
+    Diag.AssertEqStr("hello", "hello", "hello should equal hello");
+    Say("AssertEqStr(hello, hello) passed");
+    Diag.AssertEqStr("", "", "empty should equal empty");
+    Say("AssertEqStr(empty, empty) passed");
+
+    // --- AssertGt ---
+    Say("--- AssertGt ---");
+    Diag.AssertGt(10, 5, "10 should be > 5");
+    Say("AssertGt(10, 5) passed");
+    Diag.AssertGt(1, 0, "1 should be > 0");
+    Say("AssertGt(1, 0) passed");
+
+    // --- AssertLt ---
+    Say("--- AssertLt ---");
+    Diag.AssertLt(3, 7, "3 should be < 7");
+    Say("AssertLt(3, 7) passed");
+    Diag.AssertLt(-1, 0, "-1 should be < 0");
+    Say("AssertLt(-1, 0) passed");
+
+    // --- AssertGte ---
+    Say("--- AssertGte ---");
+    Diag.AssertGte(5, 5, "5 should be >= 5");
+    Say("AssertGte(5, 5) passed");
+    Diag.AssertGte(10, 5, "10 should be >= 5");
+    Say("AssertGte(10, 5) passed");
+
+    // --- AssertLte ---
+    Say("--- AssertLte ---");
+    Diag.AssertLte(5, 5, "5 should be <= 5");
+    Say("AssertLte(5, 5) passed");
+    Diag.AssertLte(3, 10, "3 should be <= 10");
+    Say("AssertLte(3, 10) passed");
+
+    Say("=== Diagnostics Demo Complete ===");
+}

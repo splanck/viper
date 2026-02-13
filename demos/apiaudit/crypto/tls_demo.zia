@@ -1,0 +1,28 @@
+module TlsDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Crypto.Tls ===");
+    Say("NOTE: TLS requires actual network connections.");
+    Say("Testing API surface only - connect calls may fail gracefully.");
+
+    // Tls.Connect, Tls.ConnectFor - would need a live server
+    // Tls.Host, Tls.Port, Tls.IsOpen, Tls.Send, Tls.SendStr,
+    // Tls.Recv, Tls.RecvStr, Tls.Close, Tls.Error
+    // These all require a connected TLS socket.
+    // We document the API exists but skip live testing.
+
+    Say("Tls API methods:");
+    Say("  Connect(host, port) -> obj");
+    Say("  ConnectFor(host, port, timeout_ms) -> obj");
+    Say("  get_Host -> str");
+    Say("  get_Port -> i64");
+    Say("  get_IsOpen -> i1");
+    Say("  Send(bytes) -> i64");
+    Say("  SendStr(str) -> i64");
+    Say("  Recv(maxlen) -> bytes");
+    Say("  RecvStr(maxlen) -> str");
+    Say("  Close()");
+    Say("  Error() -> str");
+    Say("=== Tls Audit Complete (API surface only) ===");
+}

@@ -1,0 +1,73 @@
+// =============================================================================
+// API Audit: Viper.Time.RelativeTime - Human-Readable Time Formatting
+// =============================================================================
+// Tests: Format, FormatFrom, FormatDuration, FormatShort
+// =============================================================================
+
+module RelTimeDemo;
+bind Viper.Terminal;
+bind RT = Viper.Time.RelativeTime;
+bind DT = Viper.Time.DateTime;
+bind Dur = Viper.Time.Duration;
+
+func start() {
+    Say("=== API Audit: Viper.Time.RelativeTime ===");
+
+    var now = DT.Now();
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say("Format(now) - should be 'just now' or similar:");
+    Say(RT.Format(now));
+
+    var hourAgo = DT.AddSeconds(now, -3600);
+    Say("Format(1 hour ago):");
+    Say(RT.Format(hourAgo));
+
+    var dayAgo = DT.AddDays(now, -1);
+    Say("Format(1 day ago):");
+    Say(RT.Format(dayAgo));
+
+    var weekAgo = DT.AddDays(now, -7);
+    Say("Format(7 days ago):");
+    Say(RT.Format(weekAgo));
+
+    var monthAgo = DT.AddDays(now, -30);
+    Say("Format(30 days ago):");
+    Say(RT.Format(monthAgo));
+
+    // --- FormatFrom ---
+    Say("--- FormatFrom ---");
+    var ts1 = DT.Create(2024, 1, 1, 0, 0, 0);
+    var ts2 = DT.Create(2024, 1, 2, 0, 0, 0);
+    Say("FormatFrom(Jan 1, Jan 2) - 1 day diff:");
+    Say(RT.FormatFrom(ts1, ts2));
+
+    var ts3 = DT.Create(2024, 6, 15, 0, 0, 0);
+    Say("FormatFrom(Jan 1, Jun 15) - months diff:");
+    Say(RT.FormatFrom(ts1, ts3));
+
+    // --- FormatDuration ---
+    Say("--- FormatDuration ---");
+    Say("FormatDuration(5000ms):");
+    Say(RT.FormatDuration(Dur.FromMillis(5000)));
+    Say("FormatDuration(90s):");
+    Say(RT.FormatDuration(Dur.FromSeconds(90)));
+    Say("FormatDuration(2h):");
+    Say(RT.FormatDuration(Dur.FromHours(2)));
+    Say("FormatDuration(3d):");
+    Say(RT.FormatDuration(Dur.FromDays(3)));
+
+    // --- FormatShort ---
+    Say("--- FormatShort ---");
+    Say("FormatShort(now):");
+    Say(RT.FormatShort(now));
+    Say("FormatShort(1 hour ago):");
+    Say(RT.FormatShort(hourAgo));
+    Say("FormatShort(1 day ago):");
+    Say(RT.FormatShort(dayAgo));
+    Say("FormatShort(30 days ago):");
+    Say(RT.FormatShort(monthAgo));
+
+    Say("=== RelativeTime Demo Complete ===");
+}

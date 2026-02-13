@@ -1,0 +1,129 @@
+// =============================================================================
+// API Audit: Viper.IO.BinFile - Binary File I/O
+// =============================================================================
+// Tests: Open, Close, ReadByte, WriteByte, Read, Write, Seek, Pos, Size, Eof, Flush
+// =============================================================================
+
+module BinFileDemo;
+bind Viper.Terminal;
+bind BinFile = Viper.IO.BinFile;
+bind Path = Viper.IO.Path;
+bind File = Viper.IO.File;
+bind TempFile = Viper.IO.TempFile;
+bind Bytes = Viper.Collections.Bytes;
+
+func start() {
+    Say("=== API Audit: Viper.IO.BinFile ===");
+
+    var tmpDir = TempFile.Dir();
+    var testPath = Path.Join(tmpDir, "viper_binfile_audit.bin");
+
+    // --- Open (write mode) ---
+    Say("--- Open (write) ---");
+    var wf = BinFile.Open(testPath, "w");
+    Say("Opened for writing");
+
+    // --- WriteByte ---
+    Say("--- WriteByte ---");
+    BinFile.WriteByte(wf, 65);
+    BinFile.WriteByte(wf, 66);
+    BinFile.WriteByte(wf, 67);
+    BinFile.WriteByte(wf, 0);
+    Say("Wrote 4 bytes: 65(A) 66(B) 67(C) 0");
+
+    // --- Pos (after writing) ---
+    Say("--- Pos ---");
+    Say("Pos after write:");
+    SayInt(BinFile.get_Pos(wf));
+
+    // --- Flush ---
+    Say("--- Flush ---");
+    BinFile.Flush(wf);
+    Say("Flush done");
+
+    // --- Close ---
+    Say("--- Close ---");
+    BinFile.Close(wf);
+    Say("Close done");
+
+    // --- Open (read mode) ---
+    Say("--- Open (read) ---");
+    var rf = BinFile.Open(testPath, "r");
+    Say("Opened for reading");
+
+    // --- Size ---
+    Say("--- Size ---");
+    Say("Size:");
+    SayInt(BinFile.get_Size(rf));
+
+    // --- ReadByte ---
+    Say("--- ReadByte ---");
+    Say("ReadByte 1:");
+    SayInt(BinFile.ReadByte(rf));
+    Say("ReadByte 2:");
+    SayInt(BinFile.ReadByte(rf));
+    Say("ReadByte 3:");
+    SayInt(BinFile.ReadByte(rf));
+
+    // --- Pos ---
+    Say("--- Pos (after reads) ---");
+    Say("Pos:");
+    SayInt(BinFile.get_Pos(rf));
+
+    // --- Seek ---
+    Say("--- Seek ---");
+    BinFile.Seek(rf, 0, 0);
+    Say("Seek to 0");
+    Say("Pos after seek:");
+    SayInt(BinFile.get_Pos(rf));
+    Say("ReadByte after seek:");
+    SayInt(BinFile.ReadByte(rf));
+
+    // --- Eof ---
+    Say("--- Eof ---");
+    BinFile.Seek(rf, 0, 2);
+    Say("Eof at end:");
+    SayBool(BinFile.get_Eof(rf));
+
+    // --- Read (bulk) ---
+    Say("--- Read (bulk) ---");
+    BinFile.Seek(rf, 0, 0);
+    var buf = Bytes.New(4);
+    var bytesRead = BinFile.Read(rf, buf, 0, 4);
+    Say("Read returned:");
+    SayInt(bytesRead);
+    Say("Byte 0:");
+    SayInt(Bytes.Get(buf, 0));
+    Say("Byte 1:");
+    SayInt(Bytes.Get(buf, 1));
+
+    BinFile.Close(rf);
+    Say("Closed read file");
+
+    // --- Write (bulk) ---
+    Say("--- Write (bulk) ---");
+    var wf2 = BinFile.Open(testPath, "w");
+    var wbuf = Bytes.New(3);
+    Bytes.Set(wbuf, 0, 88);
+    Bytes.Set(wbuf, 1, 89);
+    Bytes.Set(wbuf, 2, 90);
+    BinFile.Write(wf2, wbuf, 0, 3);
+    BinFile.Close(wf2);
+    Say("Bulk write done (XYZ)");
+
+    // Verify
+    var rf2 = BinFile.Open(testPath, "r");
+    Say("Verify byte 0:");
+    SayInt(BinFile.ReadByte(rf2));
+    Say("Verify byte 1:");
+    SayInt(BinFile.ReadByte(rf2));
+    Say("Verify byte 2:");
+    SayInt(BinFile.ReadByte(rf2));
+    BinFile.Close(rf2);
+
+    // Cleanup
+    File.Delete(testPath);
+    Say("Cleanup done");
+
+    Say("=== BinFile Demo Complete ===");
+}

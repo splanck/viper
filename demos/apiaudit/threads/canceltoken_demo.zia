@@ -1,0 +1,67 @@
+// =============================================================================
+// API Audit: Viper.Threads.CancelToken
+// =============================================================================
+// Tests: New, IsCancelled, Cancel, Reset, Check, Linked
+// =============================================================================
+
+module CancelTokenDemo;
+bind Viper.Threads.CancelToken as CT;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.CancelToken ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var token = CT.New();
+    Say("Created token");
+
+    // --- IsCancelled (initial) ---
+    Say("--- IsCancelled (initial) ---");
+    Say("IsCancelled: " + Fmt.Bool(token.get_IsCancelled()));
+
+    // --- Cancel ---
+    Say("--- Cancel ---");
+    token.Cancel();
+    Say("IsCancelled after Cancel: " + Fmt.Bool(token.get_IsCancelled()));
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    token.Reset();
+    Say("IsCancelled after Reset: " + Fmt.Bool(token.get_IsCancelled()));
+
+    // --- Check (no parent, not cancelled) ---
+    Say("--- Check (not cancelled) ---");
+    Say("Check: " + Fmt.Bool(token.Check()));
+
+    // --- Cancel and Check ---
+    Say("--- Cancel and Check ---");
+    token.Cancel();
+    Say("Check after Cancel: " + Fmt.Bool(token.Check()));
+
+    // --- Reset for linked test ---
+    token.Reset();
+
+    // --- Linked ---
+    Say("--- Linked ---");
+    var child = token.Linked();
+    Say("Child IsCancelled: " + Fmt.Bool(child.get_IsCancelled()));
+    Say("Child Check: " + Fmt.Bool(child.Check()));
+
+    // --- Linked: cancel parent ---
+    Say("--- Linked: cancel parent ---");
+    token.Cancel();
+    Say("Parent IsCancelled: " + Fmt.Bool(token.get_IsCancelled()));
+    Say("Child Check (parent cancelled): " + Fmt.Bool(child.Check()));
+
+    // --- Linked: independent cancel ---
+    Say("--- Linked: independent cancel ---");
+    token.Reset();
+    var child2 = token.Linked();
+    child2.Cancel();
+    Say("Child2 IsCancelled: " + Fmt.Bool(child2.get_IsCancelled()));
+    Say("Parent IsCancelled: " + Fmt.Bool(token.get_IsCancelled()));
+
+    Say("=== CancelToken Audit Complete ===");
+}

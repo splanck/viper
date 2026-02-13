@@ -1,0 +1,70 @@
+// sparsearray_demo.zia - Comprehensive API audit for Viper.Collections.SparseArray
+// Tests: New, Set, Get, Has, Remove, Len, Indices, Values, Clear
+
+module SparseArrayDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== SparseArray API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var sa = SparseArray.New();
+    SayInt(sa.Len);       // 0
+
+    // --- Set / Len ---
+    Say("--- Set / Len ---");
+    sa.Set(0, Box.Str("zero"));
+    sa.Set(100, Box.Str("hundred"));
+    sa.Set(1000, Box.Str("thousand"));
+    sa.Set(-5, Box.Str("negative"));
+    SayInt(sa.Len);       // 4
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(sa.Get(0)));       // zero
+    Say(Box.ToStr(sa.Get(100)));     // hundred
+    Say(Box.ToStr(sa.Get(1000)));    // thousand
+    Say(Box.ToStr(sa.Get(-5)));      // negative
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(sa.Has(0));     // 1
+    SayBool(sa.Has(100));   // 1
+    SayBool(sa.Has(50));    // 0
+    SayBool(sa.Has(-5));    // 1
+
+    // --- Set (update existing) ---
+    Say("--- Set (update) ---");
+    sa.Set(100, Box.Str("HUNDRED"));
+    Say(Box.ToStr(sa.Get(100)));     // HUNDRED
+    SayInt(sa.Len);                  // 4 (no new entry)
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(sa.Remove(1000));   // 1
+    SayBool(sa.Has(1000));      // 0
+    SayInt(sa.Len);             // 3
+    SayBool(sa.Remove(1000));   // 0
+
+    // --- Indices ---
+    Say("--- Indices ---");
+    var indices = sa.Indices();
+    SayInt(indices.Len);        // 3
+
+    // --- Values ---
+    Say("--- Values ---");
+    var vals = sa.Values();
+    SayInt(vals.Len);           // 3
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    sa.Clear();
+    SayInt(sa.Len);             // 0
+
+    Say("=== SparseArray audit complete ===");
+}

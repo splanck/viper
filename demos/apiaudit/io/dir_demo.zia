@@ -1,0 +1,101 @@
+// =============================================================================
+// API Audit: Viper.IO.Dir - Directory Operations
+// =============================================================================
+// Tests: Current, Exists, Make, MakeAll, FilesSeq, DirsSeq, ListSeq, Entries,
+//        Remove, RemoveAll, SetCurrent
+// =============================================================================
+
+module DirDemo;
+bind Viper.Terminal;
+bind Dir = Viper.IO.Dir;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+
+func start() {
+    Say("=== API Audit: Viper.IO.Dir ===");
+
+    // --- Current ---
+    Say("--- Current ---");
+    var cwd = Dir.Current();
+    Say("Current:");
+    Say(cwd);
+
+    var tmpDir = TempFile.Dir();
+    var testDir = Path.Join(tmpDir, "viper_dir_audit");
+    var subDir = Path.Join(testDir, "sub1");
+    var deepDir = Path.Join(testDir, "a/b/c");
+
+    // --- Make ---
+    Say("--- Make ---");
+    Dir.Make(testDir);
+    Say("Make done");
+
+    // --- Exists ---
+    Say("--- Exists ---");
+    Say("Exists(testDir):");
+    SayBool(Dir.Exists(testDir));
+    Say("Exists('/nonexistent_dir_xyz'):");
+    SayBool(Dir.Exists("/nonexistent_dir_xyz"));
+
+    // Make subdirectory
+    Dir.Make(subDir);
+    Say("Made sub1");
+
+    // --- MakeAll ---
+    Say("--- MakeAll ---");
+    Dir.MakeAll(deepDir);
+    Say("MakeAll(a/b/c) done");
+    Say("Exists(deepDir):");
+    SayBool(Dir.Exists(deepDir));
+
+    // Create some files for listing
+    File.WriteAllText(Path.Join(testDir, "file1.txt"), "one");
+    File.WriteAllText(Path.Join(testDir, "file2.txt"), "two");
+    Say("Created test files");
+
+    // --- FilesSeq ---
+    Say("--- FilesSeq ---");
+    var files = Dir.FilesSeq(testDir);
+    Say("FilesSeq returned");
+
+    // --- DirsSeq ---
+    Say("--- DirsSeq ---");
+    var dirs = Dir.DirsSeq(testDir);
+    Say("DirsSeq returned");
+
+    // --- ListSeq ---
+    Say("--- ListSeq ---");
+    var list = Dir.ListSeq(testDir);
+    Say("ListSeq returned");
+
+    // --- Entries ---
+    Say("--- Entries ---");
+    var entries = Dir.Entries(testDir);
+    Say("Entries returned");
+
+    // --- SetCurrent ---
+    Say("--- SetCurrent ---");
+    Dir.SetCurrent(testDir);
+    Say("SetCurrent to testDir");
+    Say("Current now:");
+    Say(Dir.Current());
+    Dir.SetCurrent(cwd);
+    Say("Restored original cwd");
+
+    // --- Remove (empty dir) ---
+    Say("--- Remove ---");
+    Dir.Remove(subDir);
+    Say("Remove(sub1) done");
+    Say("sub1 exists:");
+    SayBool(Dir.Exists(subDir));
+
+    // --- RemoveAll ---
+    Say("--- RemoveAll ---");
+    Dir.RemoveAll(testDir);
+    Say("RemoveAll done");
+    Say("testDir exists:");
+    SayBool(Dir.Exists(testDir));
+
+    Say("=== Dir Demo Complete ===");
+}

@@ -1,0 +1,76 @@
+// =============================================================================
+// API Audit: Viper.Threads.Scheduler
+// =============================================================================
+// Tests: New, Schedule, Cancel, IsDue, Poll, Pending, Clear
+// =============================================================================
+
+module SchedulerDemo;
+bind Viper.Threads.Scheduler as Scheduler;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Scheduler ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var s = Scheduler.New();
+    Say("Created scheduler");
+
+    // --- Pending (initial) ---
+    Say("--- Pending (initial) ---");
+    Say("Pending: " + Fmt.Int(s.get_Pending()));
+
+    // --- Schedule ---
+    Say("--- Schedule ---");
+    s.Schedule("task_a", 0);
+    s.Schedule("task_b", 0);
+    s.Schedule("task_c", 60000);
+    Say("Scheduled 3 tasks (2 immediate, 1 delayed)");
+    Say("Pending: " + Fmt.Int(s.get_Pending()));
+
+    // --- IsDue (immediate task) ---
+    Say("--- IsDue ---");
+    Say("IsDue(task_a): " + Fmt.Bool(s.IsDue("task_a")));
+    Say("IsDue(task_c): " + Fmt.Bool(s.IsDue("task_c")));
+    Say("IsDue(nonexistent): " + Fmt.Bool(s.IsDue("nonexistent")));
+
+    // --- Cancel ---
+    Say("--- Cancel ---");
+    var cancelled = s.Cancel("task_c");
+    Say("Cancel(task_c): " + Fmt.Bool(cancelled));
+    Say("Pending after cancel: " + Fmt.Int(s.get_Pending()));
+    var cancelMissing = s.Cancel("nonexistent");
+    Say("Cancel(nonexistent): " + Fmt.Bool(cancelMissing));
+
+    // --- Poll (returns due tasks) ---
+    Say("--- Poll ---");
+    var due = s.Poll();
+    Say("Poll returned tasks: " + Fmt.Int(Seq.get_Len(due)));
+    Say("Pending after poll: " + Fmt.Int(s.get_Pending()));
+
+    // --- Schedule more and Clear ---
+    Say("--- Clear ---");
+    s.Schedule("cleanup1", 0);
+    s.Schedule("cleanup2", 0);
+    s.Schedule("cleanup3", 5000);
+    Say("Pending before Clear: " + Fmt.Int(s.get_Pending()));
+    s.Clear();
+    Say("Pending after Clear: " + Fmt.Int(s.get_Pending()));
+
+    // --- Schedule replacement (same name replaces) ---
+    Say("--- Schedule replacement ---");
+    s.Schedule("heartbeat", 1000);
+    Say("Pending: " + Fmt.Int(s.get_Pending()));
+    s.Schedule("heartbeat", 5000);
+    Say("Pending after re-schedule (same name): " + Fmt.Int(s.get_Pending()));
+
+    // --- Poll on empty ---
+    Say("--- Poll on empty ---");
+    s.Clear();
+    var emptyPoll = s.Poll();
+    Say("Poll on empty: " + Fmt.Int(Seq.get_Len(emptyPoll)));
+
+    Say("=== Scheduler Audit Complete ===");
+}

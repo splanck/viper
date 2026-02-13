@@ -1,0 +1,10 @@
+module SceneDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.Scene ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New()");
+    Say("Properties: get_Root, get_NodeCount");
+    Say("Methods: AddNode(node), RemoveNode(node), Update(dt)");
+    Say("=== Scene Audit Complete (API surface only) ===");
+}

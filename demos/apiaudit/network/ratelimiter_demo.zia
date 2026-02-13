@@ -1,0 +1,33 @@
+module RateLimiterDemo;
+bind Viper.Terminal;
+bind RateLimiter = Viper.Network.RateLimiter;
+
+func start() {
+    Say("=== API Audit: Viper.Network.RateLimiter ===");
+
+    Say("--- New ---");
+    var rl = RateLimiter.New(10, 5.0);
+
+    Say("--- Properties ---");
+    SayInt(rl.get_Available());
+    SayInt(rl.get_Max());
+    SayNum(rl.get_Rate());
+
+    Say("--- TryAcquire ---");
+    SayBool(rl.TryAcquire());
+    SayInt(rl.get_Available());
+
+    Say("--- TryAcquireN ---");
+    SayBool(rl.TryAcquireN(5));
+    SayInt(rl.get_Available());
+
+    Say("--- TryAcquireN exceed ---");
+    SayBool(rl.TryAcquireN(100));
+    SayInt(rl.get_Available());
+
+    Say("--- Reset ---");
+    rl.Reset();
+    SayInt(rl.get_Available());
+
+    Say("=== RateLimiter Audit Complete ===");
+}

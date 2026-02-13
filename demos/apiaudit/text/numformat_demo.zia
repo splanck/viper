@@ -1,0 +1,72 @@
+module NumFormatDemo;
+bind Viper.Terminal;
+bind NF = Viper.Text.NumberFormat;
+
+func start() {
+    Say("=== Viper.Text.NumberFormat API Audit ===");
+
+    // --- Decimals ---
+    Say("--- Decimals ---");
+    Say(NF.Decimals(3.14159, 2));
+    Say(NF.Decimals(3.14159, 4));
+    Say(NF.Decimals(1.0, 3));
+    Say(NF.Decimals(0.5, 1));
+
+    // --- Thousands ---
+    Say("--- Thousands ---");
+    Say(NF.Thousands(1234567, ","));
+    Say(NF.Thousands(1000, "."));
+    Say(NF.Thousands(999, ","));
+    Say(NF.Thousands(0, ","));
+
+    // --- Currency ---
+    Say("--- Currency ---");
+    Say(NF.Currency(1234.56, "$"));
+    Say(NF.Currency(99.9, "$"));
+    Say(NF.Currency(0.5, "$"));
+
+    // --- Percent ---
+    Say("--- Percent ---");
+    Say(NF.Percent(0.75));
+    Say(NF.Percent(1.0));
+    Say(NF.Percent(0.123));
+
+    // --- Ordinal ---
+    Say("--- Ordinal ---");
+    Say(NF.Ordinal(1));
+    Say(NF.Ordinal(2));
+    Say(NF.Ordinal(3));
+    Say(NF.Ordinal(4));
+    Say(NF.Ordinal(11));
+    Say(NF.Ordinal(12));
+    Say(NF.Ordinal(13));
+    Say(NF.Ordinal(21));
+    Say(NF.Ordinal(22));
+    Say(NF.Ordinal(23));
+    Say(NF.Ordinal(101));
+
+    // --- ToWords ---
+    Say("--- ToWords ---");
+    Say(NF.ToWords(0));
+    Say(NF.ToWords(1));
+    Say(NF.ToWords(42));
+    Say(NF.ToWords(100));
+    Say(NF.ToWords(1000));
+    Say(NF.ToWords(1234));
+
+    // --- Bytes ---
+    Say("--- Bytes ---");
+    Say(NF.Bytes(0));
+    Say(NF.Bytes(512));
+    Say(NF.Bytes(1024));
+    Say(NF.Bytes(1048576));
+    Say(NF.Bytes(1073741824));
+
+    // --- Pad ---
+    Say("--- Pad ---");
+    Say(NF.Pad(42, 6));
+    Say(NF.Pad(1, 4));
+    Say(NF.Pad(12345, 3));
+
+    Say("=== NumberFormat Demo Complete ===");
+}

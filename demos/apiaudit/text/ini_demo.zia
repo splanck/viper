@@ -1,0 +1,66 @@
+module IniDemo;
+bind Viper.Terminal;
+bind Ini = Viper.Text.Ini;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+func start() {
+    Say("=== Viper.Text.Ini API Audit ===");
+
+    var iniText = "[database]\nhost=localhost\nport=5432\nname=mydb\n\n[server]\nhost=0.0.0.0\nport=8080\nworkers=4";
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var cfg = Ini.Parse(iniText);
+    Say("Parsed successfully");
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Ini.Get(cfg, "database", "host"));
+    Say(Ini.Get(cfg, "database", "port"));
+    Say(Ini.Get(cfg, "database", "name"));
+    Say(Ini.Get(cfg, "server", "host"));
+    Say(Ini.Get(cfg, "server", "port"));
+    Say(Ini.Get(cfg, "server", "workers"));
+
+    // --- Set ---
+    Say("--- Set ---");
+    Ini.Set(cfg, "database", "host", "db.example.com");
+    Say(Ini.Get(cfg, "database", "host"));
+
+    // Add new key to existing section
+    Ini.Set(cfg, "database", "ssl", "true");
+    Say(Ini.Get(cfg, "database", "ssl"));
+
+    // Add new section
+    Ini.Set(cfg, "logging", "level", "info");
+    Say(Ini.Get(cfg, "logging", "level"));
+
+    // --- HasSection ---
+    Say("--- HasSection ---");
+    SayBool(Ini.HasSection(cfg, "database"));
+    SayBool(Ini.HasSection(cfg, "server"));
+    SayBool(Ini.HasSection(cfg, "logging"));
+    SayBool(Ini.HasSection(cfg, "nonexistent"));
+
+    // --- Sections ---
+    Say("--- Sections ---");
+    var sections = Ini.Sections(cfg);
+    SayInt(Seq.get_Len(sections));
+    var i = 0;
+    while i < Seq.get_Len(sections) {
+        Say(Obj.ToString(Seq.Get(sections, i)));
+        i = i + 1;
+    }
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(Ini.Remove(cfg, "database", "ssl"));
+    SayBool(Ini.Remove(cfg, "database", "nonexistent"));
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say(Ini.Format(cfg));
+
+    Say("=== Ini Demo Complete ===");
+}

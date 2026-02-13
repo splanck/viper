@@ -1,0 +1,97 @@
+// =============================================================================
+// API Audit: Viper.Time.DateRange - Date Range Operations
+// =============================================================================
+// Tests: New, Start, End, Contains, Overlaps, Intersection, Union, Days,
+//        Hours, Duration, ToString
+// =============================================================================
+
+module DateRangeDemo;
+bind Viper.Terminal;
+bind DR = Viper.Time.DateRange;
+bind DT = Viper.Time.DateTime;
+
+func start() {
+    Say("=== API Audit: Viper.Time.DateRange ===");
+
+    // Create two date ranges
+    var start1 = DT.Create(2024, 1, 1, 0, 0, 0);
+    var end1 = DT.Create(2024, 1, 31, 23, 59, 59);
+    var start2 = DT.Create(2024, 1, 15, 0, 0, 0);
+    var end2 = DT.Create(2024, 2, 15, 23, 59, 59);
+
+    // --- New ---
+    Say("--- New ---");
+    var r1 = DR.New(start1, end1);
+    Say("Range 1: Jan 1 - Jan 31, 2024");
+    var r2 = DR.New(start2, end2);
+    Say("Range 2: Jan 15 - Feb 15, 2024");
+
+    // --- Start / End ---
+    Say("--- Start / End ---");
+    Say("r1 Start (timestamp):");
+    SayInt(DR.get_Start(r1));
+    Say("r1 End (timestamp):");
+    SayInt(DR.get_End(r1));
+    Say("r1 Start ISO:");
+    Say(DT.ToISO(DR.get_Start(r1)));
+    Say("r1 End ISO:");
+    Say(DT.ToISO(DR.get_End(r1)));
+
+    // --- Contains ---
+    Say("--- Contains ---");
+    var midJan = DT.Create(2024, 1, 15, 12, 0, 0);
+    var midFeb = DT.Create(2024, 2, 15, 12, 0, 0);
+    Say("r1 Contains(Jan 15):");
+    SayBool(DR.Contains(r1, midJan));
+    Say("r1 Contains(Feb 15):");
+    SayBool(DR.Contains(r1, midFeb));
+
+    // --- Overlaps ---
+    Say("--- Overlaps ---");
+    Say("r1 Overlaps r2:");
+    SayBool(DR.Overlaps(r1, r2));
+
+    var r3 = DR.New(DT.Create(2024, 3, 1, 0, 0, 0), DT.Create(2024, 3, 31, 0, 0, 0));
+    Say("r1 Overlaps March range:");
+    SayBool(DR.Overlaps(r1, r3));
+
+    // --- Intersection ---
+    Say("--- Intersection ---");
+    var inter = DR.Intersection(r1, r2);
+    Say("Intersection(r1, r2) Start ISO:");
+    Say(DT.ToISO(DR.get_Start(inter)));
+    Say("Intersection(r1, r2) End ISO:");
+    Say(DT.ToISO(DR.get_End(inter)));
+
+    // --- Union ---
+    Say("--- Union ---");
+    var uni = DR.Union(r1, r2);
+    Say("Union(r1, r2) Start ISO:");
+    Say(DT.ToISO(DR.get_Start(uni)));
+    Say("Union(r1, r2) End ISO:");
+    Say(DT.ToISO(DR.get_End(uni)));
+
+    // --- Days ---
+    Say("--- Days ---");
+    Say("r1 Days:");
+    SayInt(DR.Days(r1));
+
+    // --- Hours ---
+    Say("--- Hours ---");
+    Say("r1 Hours:");
+    SayInt(DR.Hours(r1));
+
+    // --- Duration ---
+    Say("--- Duration ---");
+    Say("r1 Duration (ms):");
+    SayInt(DR.Duration(r1));
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    Say("r1 ToString:");
+    Say(DR.ToString(r1));
+    Say("r2 ToString:");
+    Say(DR.ToString(r2));
+
+    Say("=== DateRange Demo Complete ===");
+}

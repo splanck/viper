@@ -1,0 +1,12 @@
+module TcpServerDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Network.TcpServer ===");
+    Say("NOTE: TcpServer requires binding to ports. API surface test only.");
+    Say("Constructor: Listen(port), ListenAt(address,port)");
+    Say("Properties: Port() -> i64, Address() -> str, IsListening() -> bool");
+    Say("Methods: Accept() -> Tcp, AcceptFor(timeoutMs) -> Tcp");
+    Say("Lifecycle: Close()");
+    Say("=== TcpServer Audit Complete (API surface only) ===");
+}

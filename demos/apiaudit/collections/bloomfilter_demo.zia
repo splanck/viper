@@ -1,0 +1,67 @@
+// bloomfilter_demo.zia - Comprehensive API audit for Viper.Collections.BloomFilter
+// Tests: New, Add, MightContain, Count, Fpr, Clear, Merge
+
+module BloomFilterDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== BloomFilter API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var bf = BloomFilter.New(100, 0.01);
+    SayInt(bf.Count);       // 0
+
+    // --- Add ---
+    Say("--- Add ---");
+    bf.Add("apple");
+    bf.Add("banana");
+    bf.Add("cherry");
+    SayInt(bf.Count);       // 3
+
+    // --- MightContain ---
+    Say("--- MightContain ---");
+    SayBool(bf.MightContain("apple"));   // 1
+    SayBool(bf.MightContain("banana"));  // 1
+    SayBool(bf.MightContain("cherry")); // 1
+    // False positives are possible but unlikely with low FPR
+    // "grape" should most likely return 0
+    SayBool(bf.MightContain("grape"));  // 0 (probably)
+
+    // --- Fpr (estimated false positive rate) ---
+    Say("--- Fpr ---");
+    SayNum(bf.Fpr());       // should be very low (near 0.0)
+
+    // --- Add more items ---
+    Say("--- Add more ---");
+    bf.Add("date");
+    bf.Add("elderberry");
+    bf.Add("fig");
+    SayInt(bf.Count);       // 6
+
+    // --- Merge ---
+    Say("--- Merge ---");
+    var bf2 = BloomFilter.New(100, 0.01);
+    bf2.Add("grape");
+    bf2.Add("honeydew");
+    bf2.Add("kiwi");
+    SayInt(bf2.Count);      // 3
+
+    SayInt(bf.Merge(bf2));  // 1 (success)
+    // After merge, bf should contain items from both
+    SayBool(bf.MightContain("grape"));    // 1
+    SayBool(bf.MightContain("honeydew")); // 1
+    SayBool(bf.MightContain("kiwi"));     // 1
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    bf.Clear();
+    SayInt(bf.Count);       // 0
+    SayBool(bf.MightContain("apple"));   // 0
+
+    Say("=== BloomFilter audit complete ===");
+}

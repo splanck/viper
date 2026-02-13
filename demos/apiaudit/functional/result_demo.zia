@@ -1,0 +1,58 @@
+module ResultDemo;
+bind Viper.Terminal;
+bind Result = Viper.Result;
+
+func start() {
+    Say("=== API Audit: Viper.Result ===");
+
+    // --- OkI64 ---
+    Say("--- OkI64 ---");
+    var r1 = Result.OkI64(42);
+    SayBool(r1.IsOk);
+    SayBool(r1.IsErr);
+    SayInt(r1.UnwrapI64());
+
+    // --- OkStr ---
+    Say("--- OkStr ---");
+    var r2 = Result.OkStr("hello");
+    Say(r2.UnwrapStr());
+
+    // --- OkF64 ---
+    Say("--- OkF64 ---");
+    var r3 = Result.OkF64(3.14);
+    SayNum(r3.UnwrapF64());
+
+    // --- ErrStr ---
+    Say("--- ErrStr ---");
+    var r4 = Result.ErrStr("something failed");
+    SayBool(r4.IsOk);
+    SayBool(r4.IsErr);
+    Say(r4.UnwrapErrStr());
+
+    // --- UnwrapOrI64 ---
+    Say("--- UnwrapOrI64 ---");
+    SayInt(r1.UnwrapOrI64(0));
+    SayInt(r4.UnwrapOrI64(99));
+
+    // --- UnwrapOrStr ---
+    Say("--- UnwrapOrStr ---");
+    Say(r2.UnwrapOrStr("default"));
+    Say(r4.UnwrapOrStr("default"));
+
+    // --- UnwrapOrF64 ---
+    Say("--- UnwrapOrF64 ---");
+    SayNum(r3.UnwrapOrF64(0.0));
+    SayNum(r4.UnwrapOrF64(1.5));
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    Say(r1.ToString());
+    Say(r4.ToString());
+
+    // --- Expect ---
+    Say("--- Expect ---");
+    var r5 = Result.OkI64(10);
+    r5.Expect("should not fail");
+
+    Say("=== Result Audit Complete ===");
+}

@@ -1,0 +1,138 @@
+// =============================================================================
+// API Audit: Viper.Time.DateOnly
+// =============================================================================
+// Tests: Create, Today, Parse, FromDays, Year, Month, Day, DayOfWeek,
+//        DayOfYear, ToDays, AddDays, AddMonths, AddYears, DiffDays,
+//        IsLeapYear, DaysInMonth, StartOfMonth, EndOfMonth, StartOfYear,
+//        EndOfYear, Cmp, Equals, ToString, Format
+// =============================================================================
+
+module DateOnlyDemo;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+bind DO = Viper.Time.DateOnly;
+
+func start() {
+    Say("=== API Audit: Viper.Time.DateOnly ===");
+
+    // --- Create ---
+    Say("--- Create ---");
+    var d = DO.Create(2024, 6, 15);
+    Say("Created 2024-06-15");
+
+    // --- Year / Month / Day ---
+    Say("--- Year / Month / Day ---");
+    SayInt(d.get_Year());
+    SayInt(d.get_Month());
+    SayInt(d.get_Day());
+
+    // --- DayOfWeek ---
+    Say("--- DayOfWeek ---");
+    SayInt(d.get_DayOfWeek());
+
+    // --- DayOfYear ---
+    Say("--- DayOfYear ---");
+    SayInt(d.get_DayOfYear());
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    Say(d.ToString());
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say(d.Format("%Y/%m/%d"));
+
+    // --- ToDays ---
+    Say("--- ToDays ---");
+    var days = d.ToDays();
+    SayInt(days);
+
+    // --- FromDays (roundtrip) ---
+    Say("--- FromDays ---");
+    var d2 = DO.FromDays(days);
+    Say(d2.ToString());
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var d3 = DO.Parse("2024-01-01");
+    Say(d3.ToString());
+    SayInt(d3.get_Year());
+    SayInt(d3.get_Month());
+    SayInt(d3.get_Day());
+
+    // --- AddDays ---
+    Say("--- AddDays ---");
+    var d4 = d.AddDays(10);
+    Say(d4.ToString());
+
+    // --- AddDays (negative) ---
+    Say("--- AddDays (negative) ---");
+    var d5 = d.AddDays(-15);
+    Say(d5.ToString());
+
+    // --- AddMonths ---
+    Say("--- AddMonths ---");
+    var d6 = d.AddMonths(3);
+    Say(d6.ToString());
+
+    // --- AddYears ---
+    Say("--- AddYears ---");
+    var d7 = d.AddYears(1);
+    Say(d7.ToString());
+
+    // --- DiffDays ---
+    Say("--- DiffDays ---");
+    var jan1 = DO.Create(2024, 1, 1);
+    SayInt(d.DiffDays(jan1));
+
+    // --- IsLeapYear ---
+    Say("--- IsLeapYear ---");
+    SayBool(d.get_IsLeapYear());
+    var d2023 = DO.Create(2023, 3, 1);
+    SayBool(d2023.get_IsLeapYear());
+
+    // --- DaysInMonth ---
+    Say("--- DaysInMonth ---");
+    SayInt(d.get_DaysInMonth());
+    var feb = DO.Create(2024, 2, 1);
+    SayInt(feb.get_DaysInMonth());
+
+    // --- StartOfMonth ---
+    Say("--- StartOfMonth ---");
+    Say(d.StartOfMonth().ToString());
+
+    // --- EndOfMonth ---
+    Say("--- EndOfMonth ---");
+    Say(d.EndOfMonth().ToString());
+
+    // --- StartOfYear ---
+    Say("--- StartOfYear ---");
+    Say(d.StartOfYear().ToString());
+
+    // --- EndOfYear ---
+    Say("--- EndOfYear ---");
+    Say(d.EndOfYear().ToString());
+
+    // --- Cmp ---
+    Say("--- Cmp ---");
+    var later = DO.Create(2024, 12, 25);
+    SayInt(d.Cmp(later));
+    SayInt(later.Cmp(d));
+    SayInt(d.Cmp(d));
+
+    // --- Equals ---
+    Say("--- Equals ---");
+    var same = DO.Create(2024, 6, 15);
+    SayBool(d.Equals(same));
+    SayBool(d.Equals(later));
+
+    // --- Today ---
+    Say("--- Today ---");
+    var today = DO.Today();
+    Say("Today:");
+    Say(today.ToString());
+    Say("Year > 2020:");
+    SayBool(today.get_Year() > 2020);
+
+    Say("=== DateOnly Audit Complete ===");
+}

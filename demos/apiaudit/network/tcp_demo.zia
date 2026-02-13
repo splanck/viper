@@ -1,0 +1,14 @@
+module TcpDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Network.Tcp ===");
+    Say("NOTE: TCP requires active connections. API surface test only.");
+    Say("Constructor: Connect(host,port), ConnectFor(host,port,timeoutMs)");
+    Say("Properties: Host() -> str, Port() -> i64, LocalPort() -> i64, IsOpen() -> bool, Available() -> i64");
+    Say("Send methods: Send(bytes) -> i64, SendStr(str) -> i64, SendAll(bytes)");
+    Say("Recv methods: Recv(maxBytes) -> bytes, RecvStr(maxBytes) -> str, RecvExact(n) -> bytes, RecvLine() -> str");
+    Say("Config: SetRecvTimeout(ms), SetSendTimeout(ms)");
+    Say("Lifecycle: Close()");
+    Say("=== Tcp Audit Complete (API surface only) ===");
+}

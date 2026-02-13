@@ -1,0 +1,80 @@
+// API Audit: Viper.LazySeq (Zia)
+// NOTE: LazySeq.Range returns raw int64_t pointers, NOT boxed values (BUG A-070)
+// So we cannot use Box.ToI64 on Range elements. We test what we can.
+module LazySeqDemo;
+bind Viper.Terminal;
+bind LS = Viper.LazySeq;
+bind Box = Viper.Core.Box;
+
+func start() {
+    Say("=== API Audit: Viper.LazySeq ===");
+
+    // --- Range creation ---
+    Say("--- Range ---");
+    var s1 = LS.Range(1, 10, 1);
+    SayInt(s1.get_Index());
+    SayBool(s1.get_IsExhausted());
+
+    // --- Count (consumes sequence) ---
+    Say("--- Count ---");
+    var s4 = LS.Range(1, 5, 1);
+    SayInt(s4.Count());
+
+    // --- IsExhausted after Count ---
+    Say("--- IsExhausted after Count ---");
+    SayBool(s4.get_IsExhausted());
+
+    // --- Repeat with boxed value ---
+    Say("--- Repeat ---");
+    var box42 = Box.I64(42);
+    var rep = LS.Repeat(box42, 3);
+    SayInt(rep.Count());
+
+    // --- Next with Repeat (returns proper box) ---
+    Say("--- Next (Repeat) ---");
+    var box7 = Box.I64(7);
+    var rep2 = LS.Repeat(box7, 5);
+    var v1 = rep2.Next();
+    SayInt(Box.ToI64(v1));
+
+    // --- Peek with Repeat ---
+    Say("--- Peek (Repeat) ---");
+    var v2 = rep2.Peek();
+    SayInt(Box.ToI64(v2));
+    SayInt(rep2.get_Index());
+
+    // --- Take ---
+    Say("--- Take ---");
+    var s2 = LS.Range(1, 100, 1);
+    var taken = s2.Take(5);
+    SayInt(taken.Count());
+
+    // --- Drop ---
+    Say("--- Drop ---");
+    var s3 = LS.Range(1, 10, 1);
+    var dropped = s3.Drop(5);
+    SayInt(dropped.Count());
+
+    // --- ToSeqN ---
+    Say("--- ToSeqN ---");
+    var s5 = LS.Range(10, 20, 2);
+    var partial = s5.ToSeqN(3);
+    // ToSeqN returns a Seq - its elements are also raw pointers, so just check non-null
+    Say("ToSeqN returned obj");
+
+    // --- Concat ---
+    Say("--- Concat ---");
+    var sa = LS.Range(1, 3, 1);
+    var sb = LS.Range(10, 12, 1);
+    var sc = sa.Concat(sb);
+    SayInt(sc.Count());
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    var s6 = LS.Range(1, 3, 1);
+    SayInt(s6.Count());
+    s6.Reset();
+    SayInt(s6.get_Index());
+
+    Say("=== LazySeq Audit Complete ===");
+}

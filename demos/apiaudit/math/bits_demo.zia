@@ -1,0 +1,172 @@
+// =============================================================================
+// API Audit: Viper.Math.Bits - Bitwise Operations
+// =============================================================================
+// Tests: And, Or, Xor, Not, Shl, Shr, Ushr, Set, Clear, Get, Toggle,
+//        Flip, Count, LeadZ, TrailZ, Rotl, Rotr, Swap
+// =============================================================================
+
+module BitsDemo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Bits ===");
+
+    // --- And ---
+    Say("--- And ---");
+    Say("Bits.And(12, 10):");
+    SayInt(Bits.And(12, 10));
+    Say("Bits.And(255, 15):");
+    SayInt(Bits.And(255, 15));
+    Say("Bits.And(0, 0):");
+    SayInt(Bits.And(0, 0));
+
+    // --- Or ---
+    Say("--- Or ---");
+    Say("Bits.Or(12, 10):");
+    SayInt(Bits.Or(12, 10));
+    Say("Bits.Or(0, 0):");
+    SayInt(Bits.Or(0, 0));
+    Say("Bits.Or(240, 15):");
+    SayInt(Bits.Or(240, 15));
+
+    // --- Xor ---
+    Say("--- Xor ---");
+    Say("Bits.Xor(12, 10):");
+    SayInt(Bits.Xor(12, 10));
+    Say("Bits.Xor(255, 255):");
+    SayInt(Bits.Xor(255, 255));
+    Say("Bits.Xor(0, 0):");
+    SayInt(Bits.Xor(0, 0));
+
+    // --- Not ---
+    Say("--- Not ---");
+    Say("Bits.Not(0):");
+    SayInt(Bits.Not(0));
+    Say("Bits.Not(1):");
+    SayInt(Bits.Not(1));
+    Say("Bits.Not(255):");
+    SayInt(Bits.Not(255));
+
+    // --- Shl ---
+    Say("--- Shl ---");
+    Say("Bits.Shl(1, 0):");
+    SayInt(Bits.Shl(1, 0));
+    Say("Bits.Shl(1, 4):");
+    SayInt(Bits.Shl(1, 4));
+    Say("Bits.Shl(1, 8):");
+    SayInt(Bits.Shl(1, 8));
+    Say("Bits.Shl(3, 2):");
+    SayInt(Bits.Shl(3, 2));
+
+    // --- Shr ---
+    Say("--- Shr ---");
+    Say("Bits.Shr(16, 2):");
+    SayInt(Bits.Shr(16, 2));
+    Say("Bits.Shr(256, 4):");
+    SayInt(Bits.Shr(256, 4));
+    Say("Bits.Shr(1, 0):");
+    SayInt(Bits.Shr(1, 0));
+
+    // --- Ushr ---
+    Say("--- Ushr ---");
+    Say("Bits.Ushr(16, 2):");
+    SayInt(Bits.Ushr(16, 2));
+    Say("Bits.Ushr(-1, 60):");
+    SayInt(Bits.Ushr(-1, 60));
+
+    // --- Set ---
+    Say("--- Set ---");
+    Say("Bits.Set(0, 0):");
+    SayInt(Bits.Set(0, 0));
+    Say("Bits.Set(0, 3):");
+    SayInt(Bits.Set(0, 3));
+    Say("Bits.Set(1, 1):");
+    SayInt(Bits.Set(1, 1));
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    Say("Bits.Clear(255, 0):");
+    SayInt(Bits.Clear(255, 0));
+    Say("Bits.Clear(255, 7):");
+    SayInt(Bits.Clear(255, 7));
+    Say("Bits.Clear(8, 3):");
+    SayInt(Bits.Clear(8, 3));
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say("Bits.Get(5, 0):");
+    SayBool(Bits.Get(5, 0));
+    Say("Bits.Get(5, 1):");
+    SayBool(Bits.Get(5, 1));
+    Say("Bits.Get(5, 2):");
+    SayBool(Bits.Get(5, 2));
+
+    // --- Toggle ---
+    Say("--- Toggle ---");
+    Say("Bits.Toggle(0, 0):");
+    SayInt(Bits.Toggle(0, 0));
+    Say("Bits.Toggle(1, 0):");
+    SayInt(Bits.Toggle(1, 0));
+    Say("Bits.Toggle(5, 1):");
+    SayInt(Bits.Toggle(5, 1));
+
+    // --- Flip ---
+    Say("--- Flip ---");
+    Say("Bits.Flip(0):");
+    SayInt(Bits.Flip(0));
+    Say("Bits.Flip(1):");
+    SayInt(Bits.Flip(1));
+    Say("Bits.Flip(255):");
+    SayInt(Bits.Flip(255));
+
+    // --- Count ---
+    Say("--- Count ---");
+    Say("Bits.Count(0):");
+    SayInt(Bits.Count(0));
+    Say("Bits.Count(1):");
+    SayInt(Bits.Count(1));
+    Say("Bits.Count(7):");
+    SayInt(Bits.Count(7));
+    Say("Bits.Count(255):");
+    SayInt(Bits.Count(255));
+
+    // --- LeadZ ---
+    Say("--- LeadZ ---");
+    Say("Bits.LeadZ(1):");
+    SayInt(Bits.LeadZ(1));
+    Say("Bits.LeadZ(256):");
+    SayInt(Bits.LeadZ(256));
+
+    // --- TrailZ ---
+    Say("--- TrailZ ---");
+    Say("Bits.TrailZ(1):");
+    SayInt(Bits.TrailZ(1));
+    Say("Bits.TrailZ(8):");
+    SayInt(Bits.TrailZ(8));
+    Say("Bits.TrailZ(16):");
+    SayInt(Bits.TrailZ(16));
+
+    // --- Rotl ---
+    Say("--- Rotl ---");
+    Say("Bits.Rotl(1, 1):");
+    SayInt(Bits.Rotl(1, 1));
+    Say("Bits.Rotl(1, 4):");
+    SayInt(Bits.Rotl(1, 4));
+
+    // --- Rotr ---
+    Say("--- Rotr ---");
+    Say("Bits.Rotr(2, 1):");
+    SayInt(Bits.Rotr(2, 1));
+    Say("Bits.Rotr(16, 4):");
+    SayInt(Bits.Rotr(16, 4));
+
+    // --- Swap ---
+    Say("--- Swap ---");
+    Say("Bits.Swap(1):");
+    SayInt(Bits.Swap(1));
+    Say("Bits.Swap(256):");
+    SayInt(Bits.Swap(256));
+
+    Say("=== Bits Audit Complete ===");
+}

@@ -1,0 +1,101 @@
+// screenfx_demo.zia - Comprehensive API audit for Viper.Game.ScreenFX
+// Tests: New, Shake, Flash, FadeIn, FadeOut, Update, IsActive, IsTypeActive,
+//        ShakeX, ShakeY, OverlayColor, OverlayAlpha, CancelAll, CancelType
+// Note: ScreenFX is designed for display effects but can be tested headlessly
+//       by driving Update() and checking property values without rendering.
+
+module ScreenFXDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== ScreenFX API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var fx = ScreenFX.New();
+    SayBool(fx.IsActive);          // 0 (no effects yet)
+    SayInt(fx.ShakeX);             // 0
+    SayInt(fx.ShakeY);             // 0
+    SayInt(fx.OverlayColor);       // 0
+    SayInt(fx.OverlayAlpha);       // 0
+
+    // --- Shake (intensity, duration, decay) ---
+    Say("--- Shake ---");
+    fx.Shake(10, 500, 5);
+    SayBool(fx.IsActive);          // 1
+    SayBool(fx.IsTypeActive(0));   // 1 (type 0 = shake, assuming)
+
+    // --- Update (deltaMs) ---
+    Say("--- Update ---");
+    fx.Update(16);
+    SayBool(fx.IsActive);          // 1 (still shaking)
+    // ShakeX/ShakeY may be nonzero during shake
+    SayInt(fx.ShakeX);
+    SayInt(fx.ShakeY);
+
+    // --- CancelType ---
+    Say("--- CancelType ---");
+    fx.CancelType(0);              // cancel shake type
+    fx.Update(16);
+    SayInt(fx.ShakeX);             // 0 (shake cancelled)
+    SayInt(fx.ShakeY);             // 0
+
+    // --- Flash (color, duration) ---
+    Say("--- Flash ---");
+    fx.Flash(16777215, 300);       // white flash, 300ms
+    SayBool(fx.IsActive);          // 1
+    fx.Update(16);
+    SayInt(fx.OverlayColor);       // color value
+    SayInt(fx.OverlayAlpha);       // alpha > 0
+
+    // --- FadeIn (color, duration) ---
+    Say("--- FadeIn ---");
+    fx.CancelAll();
+    fx.FadeIn(0, 500);             // fade in from black, 500ms
+    SayBool(fx.IsActive);          // 1
+    fx.Update(100);
+    SayInt(fx.OverlayAlpha);       // decreasing alpha
+
+    // --- FadeOut (color, duration) ---
+    Say("--- FadeOut ---");
+    fx.CancelAll();
+    fx.FadeOut(0, 500);            // fade out to black, 500ms
+    SayBool(fx.IsActive);          // 1
+    fx.Update(100);
+    SayInt(fx.OverlayAlpha);       // increasing alpha
+
+    // --- CancelAll ---
+    Say("--- CancelAll ---");
+    fx.Shake(20, 1000, 10);
+    fx.Flash(255, 1000);
+    SayBool(fx.IsActive);          // 1
+    fx.CancelAll();
+    fx.Update(16);
+    SayBool(fx.IsActive);          // 0 (all cancelled)
+    SayInt(fx.ShakeX);             // 0
+    SayInt(fx.ShakeY);             // 0
+
+    // --- Multiple effects simultaneously ---
+    Say("--- Multiple effects ---");
+    fx.Shake(5, 200, 2);
+    fx.Flash(16711680, 200);       // red flash
+    SayBool(fx.IsActive);          // 1
+    fx.Update(16);
+    fx.Update(16);
+    fx.Update(16);
+
+    // --- IsTypeActive ---
+    Say("--- IsTypeActive ---");
+    fx.CancelAll();
+    SayBool(fx.IsTypeActive(0));   // 0 (no shake active)
+    fx.Shake(10, 100, 5);
+    SayBool(fx.IsTypeActive(0));   // 1
+
+    // --- Cleanup ---
+    fx.CancelAll();
+    SayBool(fx.IsActive);          // 0
+
+    Say("=== ScreenFX audit complete ===");
+}

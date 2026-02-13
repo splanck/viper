@@ -1,0 +1,88 @@
+// =============================================================================
+// API Audit: Viper.Log - Logging Utilities
+// =============================================================================
+// Tests: Debug, Info, Warn, Error, get_Level, set_Level, Enabled,
+//        get_DEBUG, get_INFO, get_WARN, get_ERROR, get_OFF
+// =============================================================================
+
+module LogDemo;
+bind Viper.Terminal;
+bind Log = Viper.Log;
+
+func start() {
+    Say("=== API Audit: Viper.Log ===");
+
+    // --- Level Constants ---
+    Say("--- Level Constants ---");
+    Say("get_DEBUG:");
+    SayInt(Log.get_DEBUG);
+    Say("get_INFO:");
+    SayInt(Log.get_INFO);
+    Say("get_WARN:");
+    SayInt(Log.get_WARN);
+    Say("get_ERROR:");
+    SayInt(Log.get_ERROR);
+    Say("get_OFF:");
+    SayInt(Log.get_OFF);
+
+    // --- get_Level (default) ---
+    Say("--- get_Level (default) ---");
+    Say("Current level:");
+    SayInt(Log.get_Level);
+
+    // --- set_Level to DEBUG ---
+    Say("--- set_Level to DEBUG ---");
+    Log.set_Level(Log.get_DEBUG);
+    Say("Level set to DEBUG");
+    Say("Current level:");
+    SayInt(Log.get_Level);
+
+    // --- Enabled ---
+    Say("--- Enabled ---");
+    Say("Enabled(DEBUG):");
+    SayBool(Log.Enabled(Log.get_DEBUG));
+    Say("Enabled(INFO):");
+    SayBool(Log.Enabled(Log.get_INFO));
+    Say("Enabled(WARN):");
+    SayBool(Log.Enabled(Log.get_WARN));
+    Say("Enabled(ERROR):");
+    SayBool(Log.Enabled(Log.get_ERROR));
+
+    // --- Debug ---
+    Say("--- Debug ---");
+    Log.Debug("This is a debug message");
+
+    // --- Info ---
+    Say("--- Info ---");
+    Log.Info("This is an info message");
+
+    // --- Warn ---
+    Say("--- Warn ---");
+    Log.Warn("This is a warning message");
+
+    // --- Error ---
+    Say("--- Error ---");
+    Log.Error("This is an error message");
+
+    // --- Change level to ERROR only ---
+    Say("--- Level = ERROR ---");
+    Log.set_Level(Log.get_ERROR);
+    Say("Level set to ERROR");
+    Say("Enabled(DEBUG):");
+    SayBool(Log.Enabled(Log.get_DEBUG));
+    Say("Enabled(INFO):");
+    SayBool(Log.Enabled(Log.get_INFO));
+    Say("Enabled(WARN):");
+    SayBool(Log.Enabled(Log.get_WARN));
+    Say("Enabled(ERROR):");
+    SayBool(Log.Enabled(Log.get_ERROR));
+
+    // --- Level = OFF ---
+    Say("--- Level = OFF ---");
+    Log.set_Level(Log.get_OFF);
+    Say("Level set to OFF");
+    Say("Enabled(ERROR):");
+    SayBool(Log.Enabled(Log.get_ERROR));
+
+    Say("=== Log Demo Complete ===");
+}

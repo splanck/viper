@@ -1,0 +1,176 @@
+// =============================================================================
+// API Audit: Viper.Fmt - Value Formatting
+// =============================================================================
+// Tests: Int, IntRadix, IntPad, Num, NumFixed, NumSci, NumPct, Bool, BoolYN,
+//        Size, Hex, HexPad, Bin, Oct, IntGrouped, Currency, ToWords, Ordinal
+// =============================================================================
+
+module FmtDemo;
+bind Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Fmt ===");
+
+    // --- Int ---
+    Say("--- Int ---");
+    Say("Int(12345):");
+    Say(Fmt.Int(12345));
+    Say("Int(0):");
+    Say(Fmt.Int(0));
+    Say("Int(-99):");
+    Say(Fmt.Int(-99));
+
+    // --- IntRadix ---
+    Say("--- IntRadix ---");
+    Say("IntRadix(255, 16):");
+    Say(Fmt.IntRadix(255, 16));
+    Say("IntRadix(10, 2):");
+    Say(Fmt.IntRadix(10, 2));
+    Say("IntRadix(8, 8):");
+    Say(Fmt.IntRadix(8, 8));
+
+    // --- IntPad ---
+    Say("--- IntPad ---");
+    Say("IntPad(42, 5, '0'):");
+    Say(Fmt.IntPad(42, 5, "0"));
+    Say("IntPad(7, 3, ' '):");
+    Say(Fmt.IntPad(7, 3, " "));
+
+    // --- Num ---
+    Say("--- Num ---");
+    Say("Num(3.14159):");
+    Say(Fmt.Num(3.14159));
+    Say("Num(0.0):");
+    Say(Fmt.Num(0.0));
+
+    // --- NumFixed ---
+    Say("--- NumFixed ---");
+    Say("NumFixed(3.14159, 2):");
+    Say(Fmt.NumFixed(3.14159, 2));
+    Say("NumFixed(3.14159, 4):");
+    Say(Fmt.NumFixed(3.14159, 4));
+    Say("NumFixed(100.0, 0):");
+    Say(Fmt.NumFixed(100.0, 0));
+
+    // --- NumSci ---
+    Say("--- NumSci ---");
+    Say("NumSci(1234.5, 2):");
+    Say(Fmt.NumSci(1234.5, 2));
+    Say("NumSci(0.001, 3):");
+    Say(Fmt.NumSci(0.001, 3));
+
+    // --- NumPct ---
+    Say("--- NumPct ---");
+    Say("NumPct(0.756, 1):");
+    Say(Fmt.NumPct(0.756, 1));
+    Say("NumPct(1.0, 0):");
+    Say(Fmt.NumPct(1.0, 0));
+    Say("NumPct(0.5, 2):");
+    Say(Fmt.NumPct(0.5, 2));
+
+    // --- Bool ---
+    Say("--- Bool ---");
+    Say("Bool(true):");
+    Say(Fmt.Bool(1 == 1));
+    Say("Bool(false):");
+    Say(Fmt.Bool(1 == 0));
+
+    // --- BoolYN ---
+    Say("--- BoolYN ---");
+    Say("BoolYN(true):");
+    Say(Fmt.BoolYN(1 == 1));
+    Say("BoolYN(false):");
+    Say(Fmt.BoolYN(1 == 0));
+
+    // --- Size ---
+    Say("--- Size ---");
+    Say("Size(500):");
+    Say(Fmt.Size(500));
+    Say("Size(1024):");
+    Say(Fmt.Size(1024));
+    Say("Size(1048576):");
+    Say(Fmt.Size(1048576));
+    Say("Size(1073741824):");
+    Say(Fmt.Size(1073741824));
+
+    // --- Hex ---
+    Say("--- Hex ---");
+    Say("Hex(255):");
+    Say(Fmt.Hex(255));
+    Say("Hex(0):");
+    Say(Fmt.Hex(0));
+    Say("Hex(4096):");
+    Say(Fmt.Hex(4096));
+
+    // --- HexPad ---
+    Say("--- HexPad ---");
+    Say("HexPad(255, 4):");
+    Say(Fmt.HexPad(255, 4));
+    Say("HexPad(15, 2):");
+    Say(Fmt.HexPad(15, 2));
+
+    // --- Bin ---
+    Say("--- Bin ---");
+    Say("Bin(10):");
+    Say(Fmt.Bin(10));
+    Say("Bin(255):");
+    Say(Fmt.Bin(255));
+    Say("Bin(0):");
+    Say(Fmt.Bin(0));
+
+    // --- Oct ---
+    Say("--- Oct ---");
+    Say("Oct(64):");
+    Say(Fmt.Oct(64));
+    Say("Oct(8):");
+    Say(Fmt.Oct(8));
+    Say("Oct(0):");
+    Say(Fmt.Oct(0));
+
+    // --- IntGrouped ---
+    Say("--- IntGrouped ---");
+    Say("IntGrouped(1234567, ','):");
+    Say(Fmt.IntGrouped(1234567, ","));
+    Say("IntGrouped(1000, '.'):");
+    Say(Fmt.IntGrouped(1000, "."));
+    Say("IntGrouped(42, ','):");
+    Say(Fmt.IntGrouped(42, ","));
+
+    // --- Currency ---
+    Say("--- Currency ---");
+    Say("Currency(1234.56, 2, '$'):");
+    Say(Fmt.Currency(1234.56, 2, "$"));
+    Say("Currency(99.9, 2, 'EUR '):");
+    Say(Fmt.Currency(99.9, 2, "EUR "));
+
+    // --- ToWords ---
+    Say("--- ToWords ---");
+    Say("ToWords(0):");
+    Say(Fmt.ToWords(0));
+    Say("ToWords(1):");
+    Say(Fmt.ToWords(1));
+    Say("ToWords(42):");
+    Say(Fmt.ToWords(42));
+    Say("ToWords(100):");
+    Say(Fmt.ToWords(100));
+    Say("ToWords(1000):");
+    Say(Fmt.ToWords(1000));
+
+    // --- Ordinal ---
+    Say("--- Ordinal ---");
+    Say("Ordinal(1):");
+    Say(Fmt.Ordinal(1));
+    Say("Ordinal(2):");
+    Say(Fmt.Ordinal(2));
+    Say("Ordinal(3):");
+    Say(Fmt.Ordinal(3));
+    Say("Ordinal(4):");
+    Say(Fmt.Ordinal(4));
+    Say("Ordinal(11):");
+    Say(Fmt.Ordinal(11));
+    Say("Ordinal(21):");
+    Say(Fmt.Ordinal(21));
+
+    Say("=== Fmt Demo Complete ===");
+}

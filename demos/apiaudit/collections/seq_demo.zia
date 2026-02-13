@@ -1,0 +1,151 @@
+// seq_demo.zia - Comprehensive API audit for Viper.Collections.Seq
+// Tests: New, WithCapacity, Push, Pop, Get, Set, Len, Cap, IsEmpty, Find, Has,
+//        Insert, Remove, Clear, Clone, First, Last, Peek, Slice, Reverse,
+//        Sort, SortDesc, Shuffle, Take, Drop, PushAll
+
+module SeqDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Seq API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var s = Seq.New();
+    SayInt(s.Len);       // 0
+    SayBool(s.IsEmpty);  // 1
+
+    // --- WithCapacity ---
+    Say("--- WithCapacity ---");
+    var sc = Seq.WithCapacity(10);
+    SayInt(sc.Len);      // 0
+    SayInt(sc.Cap);      // 10
+
+    // --- Push / Len / Cap ---
+    Say("--- Push / Len / Cap ---");
+    s.Push(Box.I64(10));
+    s.Push(Box.I64(20));
+    s.Push(Box.I64(30));
+    SayInt(s.Len);       // 3
+    SayBool(s.IsEmpty);  // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    SayInt(Box.ToI64(s.Get(0)));  // 10
+    SayInt(Box.ToI64(s.Get(1)));  // 20
+    SayInt(Box.ToI64(s.Get(2)));  // 30
+
+    // --- Set ---
+    Say("--- Set ---");
+    s.Set(1, Box.I64(25));
+    SayInt(Box.ToI64(s.Get(1)));  // 25
+
+    // --- First / Last / Peek ---
+    Say("--- First / Last / Peek ---");
+    SayInt(Box.ToI64(s.First()));  // 10
+    SayInt(Box.ToI64(s.Last()));   // 30
+    SayInt(Box.ToI64(s.Peek()));   // 30
+
+    // --- Find / Has ---
+    Say("--- Find / Has ---");
+    SayInt(s.Find(Box.I64(10)));   // 0
+    SayInt(s.Find(Box.I64(99)));   // -1
+    SayBool(s.Has(Box.I64(30)));   // 1
+    SayBool(s.Has(Box.I64(99)));   // 0
+
+    // --- Insert ---
+    Say("--- Insert ---");
+    s.Insert(1, Box.I64(15));
+    SayInt(s.Len);                  // 4
+    SayInt(Box.ToI64(s.Get(1)));    // 15
+    SayInt(Box.ToI64(s.Get(2)));    // 25
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    var removed = s.Remove(1);
+    SayInt(Box.ToI64(removed));     // 15
+    SayInt(s.Len);                  // 3
+
+    // --- Pop ---
+    Say("--- Pop ---");
+    var popped = s.Pop();
+    SayInt(Box.ToI64(popped));      // 30
+    SayInt(s.Len);                  // 2
+
+    // --- Clone ---
+    Say("--- Clone ---");
+    var c = s.Clone();
+    SayInt(c.Len);                  // 2
+    SayInt(Box.ToI64(c.Get(0)));    // 10
+    SayInt(Box.ToI64(c.Get(1)));    // 25
+
+    // --- Slice ---
+    Say("--- Slice ---");
+    s.Push(Box.I64(30));
+    s.Push(Box.I64(40));
+    var sl = s.Slice(1, 3);
+    SayInt(sl.Len);                 // 2
+    SayInt(Box.ToI64(sl.Get(0)));   // 25
+    SayInt(Box.ToI64(sl.Get(1)));   // 30
+
+    // --- Reverse ---
+    Say("--- Reverse ---");
+    s.Reverse();
+    SayInt(Box.ToI64(s.Get(0)));    // 40
+    SayInt(Box.ToI64(s.Get(3)));    // 10
+
+    // --- Sort ---
+    Say("--- Sort ---");
+    s.Sort();
+    SayInt(Box.ToI64(s.Get(0)));    // 10
+    SayInt(Box.ToI64(s.Get(3)));    // 40
+
+    // --- SortDesc ---
+    Say("--- SortDesc ---");
+    s.SortDesc();
+    SayInt(Box.ToI64(s.Get(0)));    // 40
+    SayInt(Box.ToI64(s.Get(3)));    // 10
+
+    // --- Shuffle ---
+    Say("--- Shuffle ---");
+    s.Shuffle();
+    SayInt(s.Len);                  // 4 (length preserved)
+
+    // --- Take ---
+    Say("--- Take ---");
+    s.Sort();
+    var t = s.Take(2);
+    SayInt(t.Len);                  // 2
+    SayInt(Box.ToI64(t.Get(0)));    // 10
+
+    // --- Drop ---
+    Say("--- Drop ---");
+    var d = s.Drop(2);
+    SayInt(d.Len);                  // 2
+    SayInt(Box.ToI64(d.Get(0)));    // 30
+
+    // --- PushAll ---
+    Say("--- PushAll ---");
+    var a = Seq.New();
+    a.Push(Box.I64(1));
+    a.Push(Box.I64(2));
+    var b = Seq.New();
+    b.Push(Box.I64(3));
+    b.Push(Box.I64(4));
+    a.PushAll(b);
+    SayInt(a.Len);                  // 4
+    SayInt(Box.ToI64(a.Get(2)));    // 3
+    SayInt(Box.ToI64(a.Get(3)));    // 4
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    a.Clear();
+    SayInt(a.Len);                  // 0
+    SayBool(a.IsEmpty);             // 1
+
+    Say("=== Seq audit complete ===");
+}

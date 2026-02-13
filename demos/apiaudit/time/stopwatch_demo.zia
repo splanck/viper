@@ -1,0 +1,112 @@
+// =============================================================================
+// API Audit: Viper.Time.Stopwatch - High-Precision Timing
+// =============================================================================
+// Tests: New, StartNew, Start, Stop, Reset, Restart,
+//        ElapsedMs, ElapsedUs, ElapsedNs, IsRunning
+// =============================================================================
+
+module StopwatchDemo;
+bind Viper.Terminal;
+bind SW = Viper.Time.Stopwatch;
+
+func start() {
+    Say("=== API Audit: Viper.Time.Stopwatch ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var sw = SW.New();
+    Say("Created stopwatch");
+
+    // --- IsRunning (before start) ---
+    Say("--- IsRunning (before start) ---");
+    Say("IsRunning (should be false):");
+    SayBool(SW.get_IsRunning(sw));
+
+    // --- ElapsedMs (before start) ---
+    Say("--- ElapsedMs (before start) ---");
+    Say("ElapsedMs (should be 0):");
+    SayInt(SW.get_ElapsedMs(sw));
+
+    // --- Start ---
+    Say("--- Start ---");
+    SW.Start(sw);
+    Say("Started");
+
+    // --- IsRunning (after start) ---
+    Say("--- IsRunning (after start) ---");
+    Say("IsRunning (should be true):");
+    SayBool(SW.get_IsRunning(sw));
+
+    // Do some work to burn time
+    var x = 0;
+    while (x < 100000) {
+        x = x + 1;
+    }
+
+    // --- Stop ---
+    Say("--- Stop ---");
+    SW.Stop(sw);
+    Say("Stopped");
+
+    // --- IsRunning (after stop) ---
+    Say("--- IsRunning (after stop) ---");
+    Say("IsRunning (should be false):");
+    SayBool(SW.get_IsRunning(sw));
+
+    // --- ElapsedMs ---
+    Say("--- ElapsedMs ---");
+    Say("ElapsedMs:");
+    SayInt(SW.get_ElapsedMs(sw));
+
+    // --- ElapsedUs ---
+    Say("--- ElapsedUs ---");
+    Say("ElapsedUs:");
+    SayInt(SW.get_ElapsedUs(sw));
+
+    // --- ElapsedNs ---
+    Say("--- ElapsedNs ---");
+    Say("ElapsedNs:");
+    SayInt(SW.get_ElapsedNs(sw));
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    SW.Reset(sw);
+    Say("Reset");
+    Say("ElapsedMs after reset (should be 0):");
+    SayInt(SW.get_ElapsedMs(sw));
+    Say("IsRunning after reset (should be false):");
+    SayBool(SW.get_IsRunning(sw));
+
+    // --- Restart ---
+    Say("--- Restart ---");
+    SW.Start(sw);
+    var y = 0;
+    while (y < 50000) {
+        y = y + 1;
+    }
+    SW.Restart(sw);
+    Say("Restarted (elapsed reset, still running)");
+    Say("IsRunning after restart (should be true):");
+    SayBool(SW.get_IsRunning(sw));
+    SW.Stop(sw);
+    Say("ElapsedMs after restart+stop:");
+    SayInt(SW.get_ElapsedMs(sw));
+
+    // --- StartNew ---
+    Say("--- StartNew ---");
+    var sw2 = SW.StartNew();
+    Say("StartNew: created and started");
+    Say("IsRunning (should be true):");
+    SayBool(SW.get_IsRunning(sw2));
+    var z = 0;
+    while (z < 50000) {
+        z = z + 1;
+    }
+    SW.Stop(sw2);
+    Say("ElapsedMs:");
+    SayInt(SW.get_ElapsedMs(sw2));
+    Say("ElapsedUs:");
+    SayInt(SW.get_ElapsedUs(sw2));
+
+    Say("=== Stopwatch Demo Complete ===");
+}

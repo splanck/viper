@@ -1,0 +1,88 @@
+// orderedmap_demo.zia - Comprehensive API audit for Viper.Collections.OrderedMap
+// Tests: New, Set, Get, Has, Remove, Clear, Len, IsEmpty, Keys, Values, KeyAt
+
+module OrderedMapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== OrderedMap API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var om = OrderedMap.New();
+    SayInt(om.Len);       // 0
+    SayBool(om.IsEmpty);  // 1
+
+    // --- Set / Len ---
+    Say("--- Set / Len ---");
+    om.Set("first", Box.Str("alpha"));
+    om.Set("second", Box.Str("beta"));
+    om.Set("third", Box.Str("gamma"));
+    SayInt(om.Len);       // 3
+    SayBool(om.IsEmpty);  // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(om.Get("first")));   // alpha
+    Say(Box.ToStr(om.Get("second")));  // beta
+    Say(Box.ToStr(om.Get("third")));   // gamma
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(om.Has("first"));   // 1
+    SayBool(om.Has("fourth"));  // 0
+
+    // --- Set (update existing - preserves insertion order) ---
+    Say("--- Set (update) ---");
+    om.Set("second", Box.Str("BETA"));
+    Say(Box.ToStr(om.Get("second")));  // BETA
+    SayInt(om.Len);                    // 3
+
+    // --- KeyAt (insertion order) ---
+    Say("--- KeyAt ---");
+    Say(om.KeyAt(0));   // first
+    Say(om.KeyAt(1));   // second
+    Say(om.KeyAt(2));   // third
+
+    // --- Keys (insertion order) ---
+    Say("--- Keys ---");
+    var keys = om.Keys();
+    SayInt(keys.Len);              // 3
+    Say(Box.ToStr(keys.Get(0)));   // first
+    Say(Box.ToStr(keys.Get(1)));   // second
+    Say(Box.ToStr(keys.Get(2)));   // third
+
+    // --- Values (insertion order) ---
+    Say("--- Values ---");
+    var vals = om.Values();
+    SayInt(vals.Len);              // 3
+    Say(Box.ToStr(vals.Get(0)));   // alpha
+    Say(Box.ToStr(vals.Get(1)));   // BETA
+    Say(Box.ToStr(vals.Get(2)));   // gamma
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayInt(om.Remove("second"));   // 1
+    SayBool(om.Has("second"));     // 0
+    SayInt(om.Len);                // 2
+    SayInt(om.Remove("second"));   // 0
+
+    // --- Keys after remove (insertion order maintained) ---
+    Say("--- Keys after remove ---");
+    var keys2 = om.Keys();
+    SayInt(keys2.Len);             // 2
+    Say(Box.ToStr(keys2.Get(0))); // first
+    Say(Box.ToStr(keys2.Get(1))); // third
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    om.Clear();
+    SayInt(om.Len);                // 0
+    SayBool(om.IsEmpty);           // 1
+
+    Say("=== OrderedMap audit complete ===");
+}

@@ -1,0 +1,62 @@
+// =============================================================================
+// API Audit: Viper.Time.Clock - System Clock Utilities
+// =============================================================================
+// Tests: Ticks, TicksUs, Sleep
+// =============================================================================
+
+module ClockDemo;
+bind Viper.Terminal;
+bind Clk = Viper.Time.Clock;
+
+func start() {
+    Say("=== API Audit: Viper.Time.Clock ===");
+
+    // --- Ticks ---
+    Say("--- Ticks ---");
+    var t1 = Clk.Ticks();
+    Say("Ticks (monotonic ms):");
+    SayInt(t1);
+
+    // Second call to show it advances
+    var t2 = Clk.Ticks();
+    Say("Ticks again:");
+    SayInt(t2);
+    Say("Ticks advancing (t2 >= t1):");
+    SayBool(t2 >= t1);
+
+    // --- TicksUs ---
+    Say("--- TicksUs ---");
+    var u1 = Clk.TicksUs();
+    Say("TicksUs (monotonic us):");
+    SayInt(u1);
+
+    var u2 = Clk.TicksUs();
+    Say("TicksUs again:");
+    SayInt(u2);
+    Say("TicksUs advancing (u2 >= u1):");
+    SayBool(u2 >= u1);
+
+    // --- Sleep ---
+    Say("--- Sleep ---");
+    Say("Sleeping 10ms...");
+    var before = Clk.Ticks();
+    Clk.Sleep(10);
+    var after = Clk.Ticks();
+    Say("Ticks before:");
+    SayInt(before);
+    Say("Ticks after:");
+    SayInt(after);
+    Say("Elapsed (should be >= 10):");
+    SayInt(after - before);
+
+    // --- Relationship ---
+    Say("--- Relationship ---");
+    var tickMs = Clk.Ticks();
+    var tickUs = Clk.TicksUs();
+    Say("Ticks (ms):");
+    SayInt(tickMs);
+    Say("TicksUs (us):");
+    SayInt(tickUs);
+
+    Say("=== Clock Demo Complete ===");
+}

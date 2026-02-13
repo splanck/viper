@@ -1,0 +1,99 @@
+// bytes_demo.zia - Comprehensive API audit for Viper.Collections.Bytes
+// Tests: New, Get, Set, Len, Fill, Find, Clone, Slice, Copy,
+//        ToHex, FromHex, ToBase64, FromBase64, ToStr, FromStr
+
+module BytesDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Bytes API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var b = Bytes.New(4);
+    SayInt(b.Len);           // 4
+
+    // --- Set / Get ---
+    Say("--- Set / Get ---");
+    b.Set(0, 72);   // H
+    b.Set(1, 101);  // e
+    b.Set(2, 108);  // l
+    b.Set(3, 108);  // l
+    SayInt(b.Get(0));        // 72
+    SayInt(b.Get(1));        // 101
+    SayInt(b.Get(2));        // 108
+    SayInt(b.Get(3));        // 108
+
+    // --- FromStr / ToStr ---
+    Say("--- FromStr / ToStr ---");
+    var hello = Bytes.FromStr("Hello");
+    SayInt(hello.Len);       // 5
+    Say(hello.ToStr());      // Hello
+    SayInt(hello.Get(0));    // 72 (H)
+
+    // --- ToHex ---
+    Say("--- ToHex ---");
+    Say(hello.ToHex());      // 48656c6c6f
+
+    // --- FromHex ---
+    Say("--- FromHex ---");
+    var hex = Bytes.FromHex("deadbeef");
+    SayInt(hex.Len);         // 4
+    SayInt(hex.Get(0));      // 222 (0xDE)
+    SayInt(hex.Get(3));      // 239 (0xEF)
+
+    // --- ToBase64 ---
+    Say("--- ToBase64 ---");
+    Say(hello.ToBase64());   // SGVsbG8=
+
+    // --- FromBase64 ---
+    Say("--- FromBase64 ---");
+    var decoded = Bytes.FromBase64("SGVsbG8=");
+    Say(decoded.ToStr());    // Hello
+    SayInt(decoded.Len);     // 5
+
+    // --- Fill ---
+    Say("--- Fill ---");
+    var fill = Bytes.New(4);
+    fill.Fill(255);
+    SayInt(fill.Get(0));     // 255
+    SayInt(fill.Get(3));     // 255
+    Say(fill.ToHex());       // ffffffff
+
+    // --- Find ---
+    Say("--- Find ---");
+    SayInt(hello.Find(108)); // 2 (first 'l')
+    SayInt(hello.Find(111)); // 4 ('o')
+    SayInt(hello.Find(99));  // -1 (not found)
+
+    // --- Clone ---
+    Say("--- Clone ---");
+    var clone = hello.Clone();
+    SayInt(clone.Len);       // 5
+    Say(clone.ToStr());      // Hello
+    clone.Set(0, 74);        // Change to 'J'
+    Say(clone.ToStr());      // Jello
+    Say(hello.ToStr());      // Hello (original unchanged)
+
+    // --- Slice ---
+    Say("--- Slice ---");
+    var sl = hello.Slice(1, 4);
+    SayInt(sl.Len);          // 3
+    Say(sl.ToStr());         // ell
+
+    // --- Copy ---
+    Say("--- Copy ---");
+    var dst = Bytes.New(10);
+    dst.Fill(0);
+    Bytes.Copy(dst, 2, hello, 0, 5);
+    SayInt(dst.Get(0));      // 0
+    SayInt(dst.Get(1));      // 0
+    SayInt(dst.Get(2));      // 72 (H)
+    SayInt(dst.Get(6));      // 111 (o)
+
+    Say("=== Bytes audit complete ===");
+}

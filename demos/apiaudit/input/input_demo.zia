@@ -1,0 +1,37 @@
+module InputDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Input (All Classes) ===");
+    Say("NOTE: Input classes require a window/event loop. API surface documentation only.");
+    Say("");
+    Say("--- Keyboard ---");
+    Say("IsKeyDown(key), IsKeyUp(key), WasKeyPressed(key), WasKeyReleased(key)");
+    Say("GetModifiers(), IsShiftDown(), IsCtrlDown(), IsAltDown()");
+    Say("");
+    Say("--- Mouse ---");
+    Say("get_X, get_Y, get_DeltaX, get_DeltaY");
+    Say("IsButtonDown(btn), WasButtonPressed(btn), WasButtonReleased(btn)");
+    Say("get_ScrollX, get_ScrollY, SetCursorVisible(v), SetCursorLocked(v)");
+    Say("");
+    Say("--- Pad (Gamepad) ---");
+    Say("IsConnected(idx), GetAxis(idx,axis), IsButtonDown(idx,btn)");
+    Say("WasButtonPressed(idx,btn), WasButtonReleased(idx,btn)");
+    Say("get_ConnectedCount, GetName(idx), SetDeadzone(idx,dz)");
+    Say("GetLeftStickX(idx), GetLeftStickY(idx), GetRightStickX(idx), GetRightStickY(idx)");
+    Say("GetLeftTrigger(idx), GetRightTrigger(idx)");
+    Say("");
+    Say("--- Action ---");
+    Say("New(name), BindKey(key), BindMouseButton(btn), BindPadButton(padIdx,btn), BindPadAxis(padIdx,axis,threshold)");
+    Say("IsActive(), WasActivated(), WasDeactivated(), GetValue()");
+    Say("Unbind(), SetDeadzone(dz)");
+    Say("");
+    Say("--- Manager ---");
+    Say("New(), AddAction(action), GetAction(name), RemoveAction(name), Update()");
+    Say("Clear(), get_ActionCount");
+    Say("");
+    Say("--- KeyChord ---");
+    Say("New(key1,key2), NewTriple(key1,key2,key3), IsActive(), WasActivated()");
+    Say("SetKeys(key1,key2), SetKeysTriple(key1,key2,key3)");
+    Say("");
+    Say("=== Input Audit Complete (API surface only) ===");
+}

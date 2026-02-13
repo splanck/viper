@@ -1,0 +1,21 @@
+' API Audit: Viper.Network.WebSocket (BASIC)
+' NOTE: WebSocket requires live server - API surface documentation only
+PRINT "=== API Audit: Viper.Network.WebSocket ==="
+PRINT "WebSocket API surface (requires live server):"
+PRINT "  Connect(str) -> obj"
+PRINT "  ConnectFor(str,i64) -> obj"
+PRINT "  .Url -> str"
+PRINT "  .IsOpen -> i1"
+PRINT "  .CloseCode -> i64"
+PRINT "  .CloseReason -> str"
+PRINT "  .Send(str)"
+PRINT "  .SendBytes(obj)"
+PRINT "  .Ping()"
+PRINT "  .Recv() -> str"
+PRINT "  .RecvFor(i64) -> str"
+PRINT "  .RecvBytes() -> obj"
+PRINT "  .RecvBytesFor(i64) -> obj"
+PRINT "  .Close()"
+PRINT "  .CloseWith(i64,str)"
+PRINT "=== WebSocket Audit Complete ==="
+END

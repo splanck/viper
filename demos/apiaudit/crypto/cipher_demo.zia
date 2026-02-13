@@ -1,0 +1,48 @@
+// =============================================================================
+// API Audit: Viper.Crypto.Cipher - Symmetric Encryption
+// =============================================================================
+// Tests: GenerateKey, Encrypt, Decrypt, EncryptWithKey, DecryptWithKey,
+//        DeriveKey
+// =============================================================================
+
+module CipherDemo;
+bind Viper.Crypto;
+bind Viper.Collections;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Crypto.Cipher ===");
+
+    // --- GenerateKey ---
+    Say("--- GenerateKey ---");
+    var key = Cipher.GenerateKey();
+    Say("Key generated");
+    SayInt(Bytes.get_Len(key));
+
+    // --- Encrypt / Decrypt with password ---
+    Say("--- Encrypt / Decrypt (password) ---");
+    var plain = Bytes.FromStr("secret message");
+    var enc = Cipher.Encrypt(plain, "mypassword");
+    Say("Encrypted successfully");
+    var dec = Cipher.Decrypt(enc, "mypassword");
+    Say("Decrypted:");
+    Say(Bytes.ToStr(dec));
+
+    // --- EncryptWithKey / DecryptWithKey ---
+    Say("--- EncryptWithKey / DecryptWithKey ---");
+    var plain2 = Bytes.FromStr("key-based secret");
+    var enc2 = Cipher.EncryptWithKey(plain2, key);
+    Say("Encrypted with key");
+    var dec2 = Cipher.DecryptWithKey(enc2, key);
+    Say("Decrypted with key:");
+    Say(Bytes.ToStr(dec2));
+
+    // --- DeriveKey ---
+    Say("--- DeriveKey ---");
+    var salt = Rand.Bytes(16);
+    var derived = Cipher.DeriveKey("password", salt);
+    Say("Derived key length:");
+    SayInt(Bytes.get_Len(derived));
+
+    Say("=== Cipher Demo Complete ===");
+}

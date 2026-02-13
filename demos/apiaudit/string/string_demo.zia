@@ -1,0 +1,162 @@
+module StringDemo;
+bind Viper.Terminal;
+bind Viper.String;
+bind Seq = Viper.Collections.Seq;
+
+func start() {
+    Say("=== Viper.String API Audit ===");
+
+    // --- get_Length ---
+    Say("--- get_Length ---");
+    SayInt(get_Length("hello"));
+    SayInt(get_Length(""));
+    SayInt(get_Length("Hello, World!"));
+
+    // --- get_IsEmpty ---
+    Say("--- get_IsEmpty ---");
+    SayBool(get_IsEmpty(""));
+    SayBool(get_IsEmpty("x"));
+
+    // --- Trim / TrimStart / TrimEnd ---
+    Say("--- Trim ---");
+    Say(Trim("  hello  "));
+    Say(TrimStart("  hello  "));
+    Say(TrimEnd("  hello  "));
+
+    // --- ToUpper / ToLower ---
+    Say("--- ToUpper / ToLower ---");
+    Say(ToUpper("hello world"));
+    Say(ToLower("HELLO WORLD"));
+
+    // --- Left / Right ---
+    Say("--- Left / Right ---");
+    Say(Left("Hello, World!", 5));
+    Say(Right("Hello, World!", 6));
+
+    // --- Mid / MidLen / Substring ---
+    Say("--- Mid / MidLen / Substring ---");
+    Say(Mid("Hello, World!", 8));
+    Say(MidLen("Hello, World!", 1, 5));
+    Say(Substring("Hello, World!", 7, 5));
+
+    // --- IndexOf / IndexOfFrom / LastIndexOf ---
+    Say("--- IndexOf / IndexOfFrom / LastIndexOf ---");
+    SayInt(IndexOf("hello world", "world"));
+    SayInt(IndexOf("hello world", "xyz"));
+    SayInt(IndexOfFrom("hello world hello", 6, "hello"));
+    SayInt(LastIndexOf("hello world hello", "hello"));
+
+    // --- Has / StartsWith / EndsWith ---
+    Say("--- Has / StartsWith / EndsWith ---");
+    SayBool(Has("hello world", "world"));
+    SayBool(Has("hello world", "xyz"));
+    SayBool(StartsWith("hello world", "hello"));
+    SayBool(StartsWith("hello world", "world"));
+    SayBool(EndsWith("hello world", "world"));
+    SayBool(EndsWith("hello world", "hello"));
+
+    // --- Replace ---
+    Say("--- Replace ---");
+    Say(Replace("hello world", "world", "viper"));
+    Say(Replace("aaa", "a", "bb"));
+
+    // --- Split / Join ---
+    Say("--- Split / Join ---");
+    var parts = Split("one,two,three", ",");
+    SayInt(Seq.get_Len(parts));
+    Say(Seq.Get(parts, 0));
+    Say(Seq.Get(parts, 1));
+    Say(Seq.Get(parts, 2));
+    Say(Join("-", parts));
+
+    // --- Flip ---
+    Say("--- Flip ---");
+    Say(Flip("abcde"));
+    Say(Flip("racecar"));
+
+    // --- Repeat ---
+    Say("--- Repeat ---");
+    Say(Repeat("ab", 3));
+    Say(Repeat("x", 5));
+
+    // --- PadLeft / PadRight ---
+    Say("--- PadLeft / PadRight ---");
+    Say(PadLeft("42", 6, "0"));
+    Say(PadRight("hi", 6, "."));
+
+    // --- Count ---
+    Say("--- Count ---");
+    SayInt(Count("banana", "a"));
+    SayInt(Count("banana", "na"));
+    SayInt(Count("hello", "z"));
+
+    // --- Cmp / CmpNoCase / Equals ---
+    Say("--- Cmp / CmpNoCase / Equals ---");
+    SayInt(Cmp("apple", "banana"));
+    SayInt(Cmp("banana", "apple"));
+    SayInt(Cmp("apple", "apple"));
+    SayInt(CmpNoCase("Hello", "hello"));
+    SayBool(Equals("abc", "abc"));
+    SayBool(Equals("abc", "xyz"));
+
+    // --- Asc / Chr ---
+    Say("--- Asc / Chr ---");
+    SayInt(Asc("A"));
+    SayInt(Asc("a"));
+    Say(Chr(65));
+    Say(Chr(97));
+
+    // --- Concat ---
+    Say("--- Concat ---");
+    Say(Concat("Hello, ", "World!"));
+
+    // --- Capitalize / Title ---
+    Say("--- Capitalize / Title ---");
+    Say(Capitalize("hello world"));
+    Say(Title("hello world foo"));
+
+    // --- RemovePrefix / RemoveSuffix ---
+    Say("--- RemovePrefix / RemoveSuffix ---");
+    Say(RemovePrefix("HelloWorld", "Hello"));
+    Say(RemovePrefix("HelloWorld", "Bye"));
+    Say(RemoveSuffix("HelloWorld", "World"));
+    Say(RemoveSuffix("HelloWorld", "Bye"));
+
+    // --- TrimChar ---
+    Say("--- TrimChar ---");
+    Say(TrimChar("***hello***", "*"));
+    Say(TrimChar("xxhelloxx", "x"));
+
+    // --- Slug ---
+    Say("--- Slug ---");
+    Say(Slug("Hello, World!  How Are You?"));
+    Say(Slug("  The Quick Brown Fox  "));
+
+    // --- CamelCase / PascalCase / SnakeCase / KebabCase / ScreamingSnake ---
+    Say("--- Case Conversions ---");
+    Say(CamelCase("hello world"));
+    Say(PascalCase("hello world"));
+    Say(SnakeCase("helloWorld"));
+    Say(KebabCase("helloWorld"));
+    Say(ScreamingSnake("helloWorld"));
+
+    // --- Levenshtein ---
+    Say("--- Levenshtein ---");
+    SayInt(Levenshtein("kitten", "sitting"));
+    SayInt(Levenshtein("hello", "hello"));
+    SayInt(Levenshtein("", "abc"));
+
+    // --- Jaro / JaroWinkler ---
+    Say("--- Jaro / JaroWinkler ---");
+    SayNum(Jaro("martha", "marhta"));
+    SayNum(JaroWinkler("martha", "marhta"));
+    SayNum(Jaro("hello", "hello"));
+
+    // --- Hamming ---
+    Say("--- Hamming ---");
+    SayInt(Hamming("karolin", "kathrin"));
+    SayInt(Hamming("abc", "abc"));
+    SayInt(Hamming("abc", "abcd"));
+
+    Say("=== String Demo Complete ===");
+}

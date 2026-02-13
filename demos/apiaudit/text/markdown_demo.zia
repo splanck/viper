@@ -1,0 +1,50 @@
+module MarkdownDemo;
+bind Viper.Terminal;
+bind MD = Viper.Text.Markdown;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+func start() {
+    Say("=== Viper.Text.Markdown API Audit ===");
+
+    var md = "# Hello World\n\nThis is a **bold** paragraph with a [link](https://example.com).\n\n## Section Two\n\nA list:\n- item 1\n- item 2\n- item 3\n\n### Sub Section\n\nAnother [reference](https://viper.dev) here.\n\nSome `inline code` and text.";
+
+    // --- ToHtml ---
+    Say("--- ToHtml ---");
+    Say(MD.ToHtml(md));
+
+    // --- ToText ---
+    Say("--- ToText ---");
+    Say(MD.ToText(md));
+
+    // --- ExtractLinks ---
+    Say("--- ExtractLinks ---");
+    var links = MD.ExtractLinks(md);
+    SayInt(Seq.get_Len(links));
+    var i = 0;
+    while i < Seq.get_Len(links) {
+        Say(Obj.ToString(Seq.Get(links, i)));
+        i = i + 1;
+    }
+
+    // --- ExtractHeadings ---
+    Say("--- ExtractHeadings ---");
+    var headings = MD.ExtractHeadings(md);
+    SayInt(Seq.get_Len(headings));
+    var j = 0;
+    while j < Seq.get_Len(headings) {
+        Say(Obj.ToString(Seq.Get(headings, j)));
+        j = j + 1;
+    }
+
+    // Minimal markdown
+    Say("--- Minimal ---");
+    Say(MD.ToHtml("Just **bold** text."));
+    Say(MD.ToText("Just **bold** text."));
+
+    // No links
+    var noLinks = MD.ExtractLinks("No links in this text.");
+    SayInt(Seq.get_Len(noLinks));
+
+    Say("=== Markdown Demo Complete ===");
+}

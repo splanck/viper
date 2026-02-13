@@ -1,0 +1,12 @@
+module SpriteDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.Sprite ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New(sheet, regionIdx)");
+    Say("Properties: get_X, get_Y, get_Frame, get_Width, get_Height");
+    Say("Methods: SetPosition(x, y), SetFrame(idx)");
+    Say("Methods: SetFlipX(v), SetFlipY(v)");
+    Say("Methods: Draw(canvas)");
+    Say("=== Sprite Audit Complete (API surface only) ===");
+}

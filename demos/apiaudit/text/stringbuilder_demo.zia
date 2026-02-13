@@ -1,0 +1,65 @@
+module StringBuilderDemo;
+bind Viper.Terminal;
+bind SB = Viper.Text.StringBuilder;
+
+func start() {
+    Say("=== Viper.Text.StringBuilder API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var sb = SB.New();
+
+    // --- Append ---
+    Say("--- Append ---");
+    SB.Append(sb, "Hello");
+    SB.Append(sb, " ");
+    SB.Append(sb, "World");
+    Say(SB.ToString(sb));
+
+    // --- AppendLine ---
+    Say("--- AppendLine ---");
+    SB.Clear(sb);
+    SB.Append(sb, "Line 1");
+    SB.AppendLine(sb, "");
+    SB.Append(sb, "Line 2");
+    Say(SB.ToString(sb));
+
+    // --- get_Length ---
+    Say("--- get_Length ---");
+    SB.Clear(sb);
+    SB.Append(sb, "12345");
+    SayInt(SB.get_Length(sb));
+
+    // --- get_Capacity ---
+    Say("--- get_Capacity ---");
+    SayInt(SB.get_Capacity(sb));
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    Say(SB.ToString(sb));
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    SB.Clear(sb);
+    SayInt(SB.get_Length(sb));
+    Say(SB.ToString(sb));
+
+    // Build a longer string
+    Say("--- Longer Build ---");
+    var sb2 = SB.New();
+    SB.Append(sb2, "The ");
+    SB.Append(sb2, "quick ");
+    SB.Append(sb2, "brown ");
+    SB.Append(sb2, "fox ");
+    SB.Append(sb2, "jumps.");
+    Say(SB.ToString(sb2));
+    SayInt(SB.get_Length(sb2));
+
+    // Chaining with return value
+    Say("--- Chaining ---");
+    var sb3 = SB.New();
+    SB.Append(SB.Append(SB.Append(sb3, "A"), "B"), "C");
+    Say(SB.ToString(sb3));
+
+    Say("=== StringBuilder Demo Complete ===");
+}

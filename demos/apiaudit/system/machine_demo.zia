@@ -1,0 +1,66 @@
+// =============================================================================
+// API Audit: Viper.Machine - System Information
+// =============================================================================
+// Tests: get_Cores, get_Endian, get_Home, get_Host, get_MemFree, get_MemTotal,
+//        get_OS, get_OSVer, get_Temp, get_User
+// =============================================================================
+
+module MachineDemo;
+bind Viper.Terminal;
+bind Machine = Viper.Machine;
+
+func start() {
+    Say("=== API Audit: Viper.Machine ===");
+
+    // --- get_OS ---
+    Say("--- get_OS ---");
+    Say("OS:");
+    Say(Machine.get_OS());
+
+    // --- get_OSVer ---
+    Say("--- get_OSVer ---");
+    Say("OSVer:");
+    Say(Machine.get_OSVer());
+
+    // --- get_Cores ---
+    Say("--- get_Cores ---");
+    Say("Cores:");
+    SayInt(Machine.get_Cores());
+
+    // --- get_MemTotal ---
+    Say("--- get_MemTotal ---");
+    Say("MemTotal (bytes):");
+    SayInt(Machine.get_MemTotal());
+
+    // --- get_MemFree ---
+    Say("--- get_MemFree ---");
+    Say("MemFree (bytes):");
+    SayInt(Machine.get_MemFree());
+
+    // --- get_Endian ---
+    Say("--- get_Endian ---");
+    Say("Endian:");
+    Say(Machine.get_Endian());
+
+    // --- get_Host ---
+    Say("--- get_Host ---");
+    Say("Host:");
+    Say(Machine.get_Host());
+
+    // --- get_User ---
+    Say("--- get_User ---");
+    Say("User:");
+    Say(Machine.get_User());
+
+    // --- get_Home ---
+    Say("--- get_Home ---");
+    Say("Home:");
+    Say(Machine.get_Home());
+
+    // --- get_Temp ---
+    Say("--- get_Temp ---");
+    Say("Temp:");
+    Say(Machine.get_Temp());
+
+    Say("=== Machine Demo Complete ===");
+}

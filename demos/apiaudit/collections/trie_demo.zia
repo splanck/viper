@@ -1,0 +1,94 @@
+// trie_demo.zia - Comprehensive API audit for Viper.Collections.Trie
+// Tests: New, Put, Get, Has, HasPrefix, Remove, Clear, Len, IsEmpty,
+//        Keys, LongestPrefix, WithPrefix
+
+module TrieDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Trie API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var t = Trie.New();
+    SayInt(t.Len);       // 0
+    SayBool(t.IsEmpty);  // 1
+
+    // --- Put / Len ---
+    Say("--- Put / Len ---");
+    t.Put("cat", Box.I64(1));
+    t.Put("car", Box.I64(2));
+    t.Put("card", Box.I64(3));
+    t.Put("care", Box.I64(4));
+    t.Put("dog", Box.I64(5));
+    SayInt(t.Len);       // 5
+    SayBool(t.IsEmpty);  // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    SayInt(Box.ToI64(t.Get("cat")));   // 1
+    SayInt(Box.ToI64(t.Get("car")));   // 2
+    SayInt(Box.ToI64(t.Get("card")));  // 3
+    SayInt(Box.ToI64(t.Get("care")));  // 4
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(t.Has("cat"));    // 1
+    SayBool(t.Has("ca"));     // 0 (prefix but not a key)
+    SayBool(t.Has("dogs"));   // 0
+
+    // --- HasPrefix ---
+    Say("--- HasPrefix ---");
+    SayBool(t.HasPrefix("ca"));  // 1 (cat, car, card, care exist)
+    SayBool(t.HasPrefix("car")); // 1 (car, card, care exist)
+    SayBool(t.HasPrefix("do"));  // 1 (dog exists)
+    SayBool(t.HasPrefix("x"));   // 0
+
+    // --- LongestPrefix ---
+    Say("--- LongestPrefix ---");
+    Say(t.LongestPrefix("card_game"));  // card
+    Say(t.LongestPrefix("caring"));     // care
+    Say(t.LongestPrefix("catalog"));    // cat
+    Say(t.LongestPrefix("dogs"));       // dog
+
+    // --- WithPrefix ---
+    Say("--- WithPrefix ---");
+    var carKeys = t.WithPrefix("car");
+    SayInt(carKeys.Len);                // 3 (car, card, care)
+    var caKeys = t.WithPrefix("ca");
+    SayInt(caKeys.Len);                 // 4 (cat, car, card, care)
+    var dKeys = t.WithPrefix("dog");
+    SayInt(dKeys.Len);                  // 1 (dog)
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = t.Keys();
+    SayInt(keys.Len);                   // 5
+
+    // --- Put (update existing) ---
+    Say("--- Put (update) ---");
+    t.Put("cat", Box.I64(100));
+    SayInt(Box.ToI64(t.Get("cat")));    // 100
+    SayInt(t.Len);                      // 5 (no new entry)
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(t.Remove("card"));          // 1
+    SayBool(t.Has("card"));             // 0
+    SayInt(t.Len);                      // 4
+    SayBool(t.Remove("card"));          // 0 (already removed)
+    SayBool(t.Has("car"));              // 1 (not affected)
+    SayBool(t.Has("care"));             // 1 (not affected)
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    t.Clear();
+    SayInt(t.Len);                      // 0
+    SayBool(t.IsEmpty);                 // 1
+
+    Say("=== Trie audit complete ===");
+}

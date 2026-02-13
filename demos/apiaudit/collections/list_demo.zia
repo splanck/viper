@@ -1,0 +1,105 @@
+// list_demo.zia - Comprehensive API audit for Viper.Collections.List
+// Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, Has, Insert,
+//        Remove, RemoveAt, Clear, Flip, First, Last, Slice
+
+module ListDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== List API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var list = List.New();
+    SayInt(List.get_Len(list));       // 0
+    SayBool(List.get_IsEmpty(list));   // 1
+
+    // --- Push / Len ---
+    Say("--- Push / Len ---");
+    var a = Box.Str("apple");
+    var b = Box.Str("banana");
+    var c = Box.Str("cherry");
+    list.Push(a);
+    list.Push(b);
+    list.Push(c);
+    SayInt(List.get_Len(list));       // 3
+    SayBool(List.get_IsEmpty(list));   // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(list.Get(0)));  // apple
+    Say(Box.ToStr(list.Get(1)));  // banana
+    Say(Box.ToStr(list.Get(2)));  // cherry
+
+    // --- Set ---
+    Say("--- Set ---");
+    var d = Box.Str("date");
+    list.Set(1, d);
+    Say(Box.ToStr(list.Get(1)));  // date
+
+    // --- First / Last ---
+    Say("--- First / Last ---");
+    Say(Box.ToStr(List.First(list)));  // apple
+    Say(Box.ToStr(List.Last(list)));   // cherry
+
+    // --- Find / Has ---
+    Say("--- Find / Has ---");
+    SayInt(list.Find(a));          // 0
+    SayInt(list.Find(b));          // -1 (was replaced)
+    SayBool(list.Has(a));           // true
+    SayBool(list.Has(b));           // false
+
+    // --- Insert ---
+    Say("--- Insert ---");
+    var e = Box.Str("elderberry");
+    list.Insert(1, e);
+    SayInt(List.get_Len(list));              // 4
+    Say(Box.ToStr(list.Get(1)));   // elderberry
+    Say(Box.ToStr(list.Get(2)));   // date
+
+    // --- Remove (by reference) ---
+    Say("--- Remove ---");
+    SayBool(list.Remove(e));        // true
+    SayInt(List.get_Len(list));              // 3
+    SayBool(list.Remove(e));        // false (already removed)
+
+    // --- RemoveAt ---
+    Say("--- RemoveAt ---");
+    list.RemoveAt(1);
+    SayInt(List.get_Len(list));              // 2
+    Say(Box.ToStr(list.Get(0)));   // apple
+    Say(Box.ToStr(list.Get(1)));   // cherry
+
+    // --- Slice ---
+    Say("--- Slice ---");
+    list.Push(Box.Str("fig"));
+    list.Push(Box.Str("grape"));
+    var sl = list.Slice(1, 3);
+    SayInt(List.get_Len(sl));                // 2
+    Say(Box.ToStr(sl.Get(0)));     // cherry
+    Say(Box.ToStr(sl.Get(1)));     // fig
+
+    // --- Flip ---
+    Say("--- Flip ---");
+    List.Flip(list);
+    Say(Box.ToStr(list.Get(0)));   // grape
+    Say(Box.ToStr(list.Get(3)));   // apple
+
+    // --- Pop ---
+    Say("--- Pop ---");
+    var popped = List.Pop(list);
+    Say(Box.ToStr(popped));        // apple (last after flip)
+    SayInt(List.get_Len(list));              // 3
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    List.Clear(list);
+    SayInt(List.get_Len(list));              // 0
+    SayBool(List.get_IsEmpty(list));          // 1
+
+    Say("=== List audit complete ===");
+}

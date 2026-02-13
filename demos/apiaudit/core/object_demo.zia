@@ -1,0 +1,69 @@
+// =============================================================================
+// API Audit: Viper.Core.Object - Base Object Operations
+// =============================================================================
+// Tests: Equals, HashCode, RefEquals, ToString, TypeName, TypeId, IsNull
+// =============================================================================
+
+module ObjectDemo;
+bind Viper.Terminal;
+bind Obj = Viper.Core.Object;
+bind Box = Viper.Core.Box;
+
+func start() {
+    Say("=== API Audit: Viper.Core.Object ===");
+
+    // Create test objects via boxing
+    var a = Box.I64(42);
+    var b = Box.I64(42);
+    var c = a;
+
+    // --- Equals ---
+    Say("--- Equals ---");
+    Say("Equals(a, b) - same value, diff obj:");
+    SayBool(Obj.Equals(a, b));
+    Say("Equals(a, c) - same reference:");
+    SayBool(Obj.Equals(a, c));
+
+    // --- HashCode ---
+    Say("--- HashCode ---");
+    Say("HashCode(a):");
+    SayInt(Obj.HashCode(a));
+    Say("HashCode(b):");
+    SayInt(Obj.HashCode(b));
+
+    // --- RefEquals ---
+    Say("--- RefEquals ---");
+    Say("RefEquals(a, c) - same ref:");
+    SayBool(Obj.RefEquals(a, c));
+    Say("RefEquals(a, b) - diff ref:");
+    SayBool(Obj.RefEquals(a, b));
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    var s = Box.Str("world");
+    Say("ToString on boxed string:");
+    Say(Obj.ToString(s));
+    Say("ToString on boxed int:");
+    Say(Obj.ToString(a));
+
+    // --- TypeName ---
+    Say("--- TypeName ---");
+    Say("TypeName(boxed i64):");
+    Say(Obj.TypeName(a));
+    Say("TypeName(boxed str):");
+    Say(Obj.TypeName(s));
+
+    // --- TypeId ---
+    Say("--- TypeId ---");
+    Say("TypeId(boxed i64):");
+    SayInt(Obj.TypeId(a));
+    Say("TypeId(boxed str):");
+    SayInt(Obj.TypeId(s));
+
+    // --- IsNull ---
+    Say("--- IsNull ---");
+    Say("IsNull(a) - not null:");
+    SayBool(Obj.IsNull(a));
+
+    Say("=== Object Demo Complete ===");
+}

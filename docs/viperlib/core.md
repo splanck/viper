@@ -8,6 +8,7 @@
 
 - [Viper.Object](#viperobject)
 - [Viper.Core.Box](#vipercorebox)
+- [Viper.Core.MessageBus](#vipercoremessagebus)
 - [Viper.String](#viperstring)
 
 ---
@@ -330,6 +331,77 @@ PRINT Viper.String.Join("-", parts)   ' Output: "a-b-c"
 ' Comparison
 PRINT "abc".Cmp("abd")                 ' Output: -1
 PRINT "ABC".CmpNoCase("abc")           ' Output: 0
+```
+
+---
+
+## Viper.Core.MessageBus
+
+In-process publish/subscribe message bus for decoupled communication between components. Subscribers register interest in named topics and receive published data via callbacks.
+
+**Type:** Instance class (requires `New()`)
+
+### Constructor
+
+| Method  | Signature      | Description                    |
+|---------|----------------|--------------------------------|
+| `New()` | `MessageBus()` | Create a new empty message bus |
+
+### Properties
+
+| Property             | Type                  | Description                                      |
+|----------------------|-----------------------|--------------------------------------------------|
+| `TotalSubscriptions` | `Integer` (read-only) | Total number of active subscriptions across all topics |
+
+### Methods
+
+| Method                     | Signature                     | Description                                                     |
+|----------------------------|-------------------------------|-----------------------------------------------------------------|
+| `Subscribe(topic, handler)` | `Integer(String, Object)`    | Subscribe a handler to a topic; returns subscription ID         |
+| `Unsubscribe(id)`          | `Boolean(Integer)`           | Remove a subscription by ID; returns true if found              |
+| `Publish(topic, data)`     | `Integer(String, Object)`    | Publish data to all subscribers of a topic; returns count notified |
+| `SubscriberCount(topic)`   | `Integer(String)`            | Returns the number of subscribers for a topic                   |
+| `Topics()`                 | `Seq()`                      | Returns a Seq of all topic names with active subscribers        |
+| `ClearTopic(topic)`        | `Void(String)`               | Remove all subscribers for a specific topic                     |
+| `Clear()`                  | `Void()`                     | Remove all subscriptions from all topics                        |
+
+### Notes
+
+- `Subscribe` returns a unique integer ID that can be used with `Unsubscribe`
+- `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
+- Handler functions receive the published data as their argument
+- Subscribe/Publish require function pointer callbacks, which limits direct demonstration in simple examples
+- The bus is not thread-safe; use external synchronization if accessed from multiple threads
+
+### Zia Example
+
+```zia
+module MessageBusDemo;
+
+bind Viper.Terminal;
+bind Viper.Core.MessageBus as MessageBus;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var bus = MessageBus.New();
+    Say("Total subscriptions: " + Fmt.Int(bus.get_TotalSubscriptions())); // 0
+    Say("Subscriber count for 'test': " + Fmt.Int(bus.SubscriberCount("test"))); // 0
+}
+```
+
+### BASIC Example
+
+```basic
+' Create a new message bus
+DIM bus AS OBJECT = Viper.Core.MessageBus.New()
+
+' Check initial state
+PRINT "Total subscriptions: "; bus.TotalSubscriptions  ' Output: 0
+PRINT "Subscribers for 'test': "; bus.SubscriberCount("test")  ' Output: 0
+
+' Subscribe and publish require function pointer callbacks
+' which are typically used in larger application architectures.
+' See the Threads and Game documentation for callback patterns.
 ```
 
 ---

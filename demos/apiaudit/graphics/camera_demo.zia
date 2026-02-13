@@ -1,0 +1,12 @@
+module CameraDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.Camera ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New(viewW, viewH)");
+    Say("Properties: get_X, get_Y, get_Zoom, get_Width, get_Height");
+    Say("Methods: SetPosition(x, y), SetZoom(z), SetBounds(x, y, w, h)");
+    Say("Methods: Follow(targetX, targetY, speed), Update(dt)");
+    Say("Transforms: ScreenToWorld(sx, sy), WorldToScreen(wx, wy)");
+    Say("=== Camera Audit Complete (API surface only) ===");
+}

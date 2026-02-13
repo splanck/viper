@@ -1,0 +1,53 @@
+// =============================================================================
+// API Audit: Viper.Environment - Environment Access
+// =============================================================================
+// Tests: GetArgumentCount, GetCommandLine, GetVariable, HasVariable,
+//        SetVariable, IsNative
+// NOTE: Do NOT call EndProgram!
+// =============================================================================
+
+module EnvironmentDemo;
+bind Viper.Terminal;
+bind Env = Viper.Environment;
+
+func start() {
+    Say("=== API Audit: Viper.Environment ===");
+
+    // --- GetArgumentCount ---
+    Say("--- GetArgumentCount ---");
+    Say("GetArgumentCount:");
+    SayInt(Env.GetArgumentCount());
+
+    // --- GetCommandLine ---
+    Say("--- GetCommandLine ---");
+    Say("GetCommandLine:");
+    Say(Env.GetCommandLine());
+
+    // --- GetVariable ---
+    Say("--- GetVariable ---");
+    Say("GetVariable('PATH') (first 50 chars or so):");
+    Say(Env.GetVariable("PATH"));
+
+    // --- HasVariable ---
+    Say("--- HasVariable ---");
+    Say("HasVariable('PATH'):");
+    SayBool(Env.HasVariable("PATH"));
+    Say("HasVariable('VIPER_TEST_NONEXISTENT_12345'):");
+    SayBool(Env.HasVariable("VIPER_TEST_NONEXISTENT_12345"));
+
+    // --- SetVariable ---
+    Say("--- SetVariable ---");
+    Env.SetVariable("VIPER_AUDIT_TEST", "hello_from_viper");
+    Say("SetVariable('VIPER_AUDIT_TEST', 'hello_from_viper')");
+    Say("GetVariable('VIPER_AUDIT_TEST'):");
+    Say(Env.GetVariable("VIPER_AUDIT_TEST"));
+    Say("HasVariable('VIPER_AUDIT_TEST'):");
+    SayBool(Env.HasVariable("VIPER_AUDIT_TEST"));
+
+    // --- IsNative ---
+    Say("--- IsNative ---");
+    Say("IsNative:");
+    SayBool(Env.IsNative());
+
+    Say("=== Environment Demo Complete ===");
+}

@@ -1,0 +1,42 @@
+// API Audit: Viper.Game.ButtonGroup (Zia)
+module ButtonGroupDemo;
+bind Viper.Terminal;
+bind BG = Viper.Game.ButtonGroup;
+
+func start() {
+    Say("=== API Audit: Viper.Game.ButtonGroup ===");
+
+    // --- New (takes 0 args) ---
+    Say("--- New ---");
+    var bg = BG.New();
+    bg.Add(0);
+    bg.Add(1);
+    bg.Add(2);
+    bg.Add(3);
+    bg.Add(4);
+    SayInt(bg.get_Count());
+    SayInt(bg.get_Selected());
+    SayBool(bg.get_HasSelection());
+
+    // --- Select ---
+    Say("--- Select ---");
+    bg.Select(2);
+    SayInt(bg.get_Selected());
+    SayBool(bg.IsSelected(2));
+    SayBool(bg.IsSelected(0));
+    SayBool(bg.get_SelectionChanged());
+
+    // --- ClearSelection ---
+    Say("--- ClearSelection ---");
+    bg.ClearSelection();
+    SayBool(bg.get_HasSelection());
+
+    // --- Has / Remove ---
+    Say("--- Has / Remove ---");
+    SayBool(bg.Has(3));
+    bg.Remove(4);
+    SayInt(bg.get_Count());
+    SayBool(bg.Has(4));
+
+    Say("=== ButtonGroup Audit Complete ===");
+}

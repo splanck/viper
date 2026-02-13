@@ -1,0 +1,46 @@
+// =============================================================================
+// API Audit: Viper.Exec - Process Execution
+// =============================================================================
+// Tests: Run, Capture, Shell, ShellCapture
+// NOTE: Use safe commands only
+// =============================================================================
+
+module ExecDemo;
+bind Viper.Terminal;
+bind Exec = Viper.Exec;
+
+func start() {
+    Say("=== API Audit: Viper.Exec ===");
+
+    // --- Run ---
+    Say("--- Run ---");
+    Say("Run('echo hello') exit code:");
+    var rc = Exec.Run("echo hello");
+    SayInt(rc);
+
+    // --- Capture ---
+    Say("--- Capture ---");
+    Say("Capture('echo hello'):");
+    var out = Exec.Capture("echo hello");
+    Say(out);
+
+    // --- Shell ---
+    Say("--- Shell ---");
+    Say("Shell('echo shell_test') exit code:");
+    var sc = Exec.Shell("echo shell_test");
+    SayInt(sc);
+
+    // --- ShellCapture ---
+    Say("--- ShellCapture ---");
+    Say("ShellCapture('echo captured_output'):");
+    var sout = Exec.ShellCapture("echo captured_output");
+    Say(sout);
+
+    // Test with a command that uses shell features
+    Say("--- ShellCapture with pipe ---");
+    Say("ShellCapture('echo abc | tr a-z A-Z'):");
+    var piped = Exec.ShellCapture("echo abc | tr a-z A-Z");
+    Say(piped);
+
+    Say("=== Exec Demo Complete ===");
+}

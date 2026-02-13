@@ -1,0 +1,130 @@
+// =============================================================================
+// API Audit: Viper.IO.MemStream - In-Memory Stream
+// =============================================================================
+// Tests: New, NewCapacity, WriteI8, ReadI8, WriteI32, ReadI32, WriteI64, ReadI64,
+//        WriteStr, ReadStr, WriteBytes, ReadBytes, ToBytes, Pos, Len, Capacity,
+//        Seek, Skip, Clear
+// =============================================================================
+
+module MemStreamDemo;
+bind Viper.Terminal;
+bind MS = Viper.IO.MemStream;
+bind Bytes = Viper.Collections.Bytes;
+
+func start() {
+    Say("=== API Audit: Viper.IO.MemStream ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var ms = MS.New();
+    Say("New() created");
+
+    // --- Pos / Len / Capacity (empty) ---
+    Say("--- Initial state ---");
+    Say("Pos:");
+    SayInt(MS.get_Pos(ms));
+    Say("Len:");
+    SayInt(MS.get_Len(ms));
+    Say("Capacity:");
+    SayInt(MS.get_Capacity(ms));
+
+    // --- WriteI8 / ReadI8 ---
+    Say("--- WriteI8 / ReadI8 ---");
+    MS.WriteI8(ms, 42);
+    MS.WriteI8(ms, -7);
+    Say("Wrote 2 I8 values");
+    Say("Pos after writes:");
+    SayInt(MS.get_Pos(ms));
+    MS.Seek(ms, 0);
+    Say("ReadI8:");
+    SayInt(MS.ReadI8(ms));
+    Say("ReadI8:");
+    SayInt(MS.ReadI8(ms));
+
+    // --- WriteI32 / ReadI32 ---
+    Say("--- WriteI32 / ReadI32 ---");
+    MS.Clear(ms);
+    MS.WriteI32(ms, 100000);
+    MS.WriteI32(ms, -99999);
+    Say("Wrote 2 I32 values");
+    MS.Seek(ms, 0);
+    Say("ReadI32:");
+    SayInt(MS.ReadI32(ms));
+    Say("ReadI32:");
+    SayInt(MS.ReadI32(ms));
+
+    // --- WriteI64 / ReadI64 ---
+    Say("--- WriteI64 / ReadI64 ---");
+    MS.Clear(ms);
+    MS.WriteI64(ms, 123456789012);
+    Say("Wrote I64");
+    MS.Seek(ms, 0);
+    Say("ReadI64:");
+    SayInt(MS.ReadI64(ms));
+
+    // --- WriteStr / ReadStr ---
+    Say("--- WriteStr / ReadStr ---");
+    MS.Clear(ms);
+    MS.WriteStr(ms, "Hello Viper");
+    Say("Wrote string 'Hello Viper'");
+    Say("Len after WriteStr:");
+    SayInt(MS.get_Len(ms));
+    MS.Seek(ms, 0);
+    Say("ReadStr(11):");
+    Say(MS.ReadStr(ms, 11));
+
+    // --- WriteBytes / ReadBytes ---
+    Say("--- WriteBytes / ReadBytes ---");
+    MS.Clear(ms);
+    var wb = Bytes.New(3);
+    Bytes.Set(wb, 0, 10);
+    Bytes.Set(wb, 1, 20);
+    Bytes.Set(wb, 2, 30);
+    MS.WriteBytes(ms, wb);
+    Say("Wrote 3 bytes");
+    MS.Seek(ms, 0);
+    var rb = MS.ReadBytes(ms, 3);
+    Say("ReadBytes(3) - byte 0:");
+    SayInt(Bytes.Get(rb, 0));
+    Say("byte 1:");
+    SayInt(Bytes.Get(rb, 1));
+    Say("byte 2:");
+    SayInt(Bytes.Get(rb, 2));
+
+    // --- ToBytes ---
+    Say("--- ToBytes ---");
+    var all = MS.ToBytes(ms);
+    Say("ToBytes length:");
+    SayInt(Bytes.get_Len(all));
+
+    // --- NewCapacity ---
+    Say("--- NewCapacity ---");
+    var ms2 = MS.NewCapacity(1024);
+    Say("NewCapacity(1024) created");
+    Say("Capacity:");
+    SayInt(MS.get_Capacity(ms2));
+    Say("Len:");
+    SayInt(MS.get_Len(ms2));
+
+    // --- Skip ---
+    Say("--- Skip ---");
+    MS.Clear(ms);
+    MS.WriteI8(ms, 1);
+    MS.WriteI8(ms, 2);
+    MS.WriteI8(ms, 3);
+    MS.Seek(ms, 0);
+    MS.Skip(ms, 2);
+    Say("Skip(2), then ReadI8:");
+    SayInt(MS.ReadI8(ms));
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    MS.Clear(ms);
+    Say("Clear done");
+    Say("Len after clear:");
+    SayInt(MS.get_Len(ms));
+    Say("Pos after clear:");
+    SayInt(MS.get_Pos(ms));
+
+    Say("=== MemStream Demo Complete ===");
+}

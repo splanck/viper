@@ -1,0 +1,84 @@
+// map_demo.zia - Comprehensive API audit for Viper.Collections.Map
+// Tests: New, Set, Get, GetOr, Has, Remove, Clear, Len, IsEmpty,
+//        Keys, Values, SetIfMissing
+
+module MapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Map API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var m = Map.New();
+    SayInt(m.Len);       // 0
+    SayBool(m.IsEmpty);  // 1
+
+    // --- Set / Len ---
+    Say("--- Set / Len ---");
+    m.Set("name", Box.Str("Alice"));
+    m.Set("age", Box.I64(30));
+    m.Set("city", Box.Str("Boston"));
+    SayInt(m.Len);       // 3
+    SayBool(m.IsEmpty);  // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(m.Get("name")));    // Alice
+    SayInt(Box.ToI64(m.Get("age")));  // 30
+    Say(Box.ToStr(m.Get("city")));    // Boston
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(m.Has("name"));  // 1
+    SayBool(m.Has("email")); // 0
+
+    // --- GetOr ---
+    Say("--- GetOr ---");
+    Say(Box.ToStr(m.GetOr("name", Box.Str("Unknown"))));   // Alice
+    Say(Box.ToStr(m.GetOr("email", Box.Str("N/A"))));      // N/A
+    SayBool(m.Has("email")); // 0 (GetOr does not insert)
+
+    // --- SetIfMissing ---
+    Say("--- SetIfMissing ---");
+    SayBool(m.SetIfMissing("name", Box.Str("Bob")));   // 0 (already exists)
+    Say(Box.ToStr(m.Get("name")));                      // Alice (unchanged)
+    SayBool(m.SetIfMissing("email", Box.Str("a@b.c"))); // 1 (inserted)
+    Say(Box.ToStr(m.Get("email")));                     // a@b.c
+    SayInt(m.Len);                                      // 4
+
+    // --- Set (update existing) ---
+    Say("--- Set (update) ---");
+    m.Set("age", Box.I64(31));
+    SayInt(Box.ToI64(m.Get("age")));  // 31
+    SayInt(m.Len);                    // 4 (no new entry)
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(m.Remove("city"));   // 1
+    SayBool(m.Has("city"));      // 0
+    SayInt(m.Len);               // 3
+    SayBool(m.Remove("city"));   // 0 (already gone)
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = m.Keys();
+    SayInt(keys.Len);            // 3
+
+    // --- Values ---
+    Say("--- Values ---");
+    var vals = m.Values();
+    SayInt(vals.Len);            // 3
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    m.Clear();
+    SayInt(m.Len);               // 0
+    SayBool(m.IsEmpty);          // 1
+
+    Say("=== Map audit complete ===");
+}

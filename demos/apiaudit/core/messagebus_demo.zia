@@ -1,0 +1,48 @@
+// =============================================================================
+// API Audit: Viper.Core.MessageBus - Pub/Sub Message Bus
+// =============================================================================
+// Tests: New, SubscriberCount, TotalSubscriptions, Topics, ClearTopic, Clear
+// NOTE: Subscribe needs a callback object - testing creation and query APIs
+// =============================================================================
+
+module MessageBusDemo;
+bind Viper.Terminal;
+bind MsgBus = Viper.Core.MessageBus;
+
+func start() {
+    Say("=== API Audit: Viper.Core.MessageBus ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var bus = MsgBus.New();
+    Say("MessageBus.New() created");
+
+    // --- TotalSubscriptions (empty) ---
+    Say("--- TotalSubscriptions (empty) ---");
+    Say("TotalSubscriptions:");
+    SayInt(MsgBus.get_TotalSubscriptions(bus));
+
+    // --- SubscriberCount (no topic) ---
+    Say("--- SubscriberCount ---");
+    Say("SubscriberCount('test-topic'):");
+    SayInt(MsgBus.SubscriberCount(bus, "test-topic"));
+
+    // --- Topics (empty) ---
+    Say("--- Topics ---");
+    var topics = MsgBus.Topics(bus);
+    Say("Topics() returned (empty bus)");
+
+    // --- ClearTopic ---
+    Say("--- ClearTopic ---");
+    MsgBus.ClearTopic(bus, "nonexistent-topic");
+    Say("ClearTopic('nonexistent-topic') - no crash");
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    MsgBus.Clear(bus);
+    Say("Clear() - no crash");
+    Say("TotalSubscriptions after Clear:");
+    SayInt(MsgBus.get_TotalSubscriptions(bus));
+
+    Say("=== MessageBus Demo Complete ===");
+}

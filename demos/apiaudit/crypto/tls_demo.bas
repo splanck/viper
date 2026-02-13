@@ -1,0 +1,18 @@
+' API Audit: Viper.Crypto.Tls (BASIC)
+PRINT "=== API Audit: Viper.Crypto.Tls ==="
+PRINT "NOTE: TLS requires actual network connections."
+PRINT "Testing API surface only - connect calls may fail gracefully."
+PRINT "Tls API methods:"
+PRINT "  Connect(host, port) -> obj"
+PRINT "  ConnectFor(host, port, timeout_ms) -> obj"
+PRINT "  get_Host -> str"
+PRINT "  get_Port -> i64"
+PRINT "  get_IsOpen -> i1"
+PRINT "  Send(bytes) -> i64"
+PRINT "  SendStr(str) -> i64"
+PRINT "  Recv(maxlen) -> bytes"
+PRINT "  RecvStr(maxlen) -> str"
+PRINT "  Close()"
+PRINT "  Error() -> str"
+PRINT "=== Tls Audit Complete (API surface only) ==="
+END

@@ -1,0 +1,93 @@
+// =============================================================================
+// API Audit: Viper.Threads.Promise / Viper.Threads.Future
+// =============================================================================
+// Tests: Promise.New, Promise.Set, Promise.SetError, Promise.GetFuture,
+//        Promise.IsDone, Future.Get, Future.Wait, Future.WaitFor,
+//        Future.IsDone, Future.IsError, Future.Error
+// =============================================================================
+
+module PromiseDemo;
+bind Viper.Threads.Promise as Promise;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+bind Box = Viper.Core.Box;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Promise / Future ===");
+
+    // --- Promise.New ---
+    Say("--- Promise.New ---");
+    var p = Promise.New();
+    Say("Created promise");
+
+    // --- Promise.IsDone (before set) ---
+    Say("--- IsDone (before set) ---");
+    SayBool(p.get_IsDone());
+
+    // --- Promise.GetFuture ---
+    Say("--- GetFuture ---");
+    var f = p.GetFuture();
+    Say("Got future from promise");
+
+    // --- Future.IsDone (before set) ---
+    Say("--- Future.IsDone (before set) ---");
+    SayBool(f.get_IsDone());
+
+    // --- Future.IsError (before set) ---
+    Say("--- Future.IsError (before set) ---");
+    SayBool(f.get_IsError());
+
+    // --- Promise.Set ---
+    Say("--- Promise.Set ---");
+    var boxed = Box.I64(42);
+    p.Set(boxed);
+    Say("Set promise with boxed 42");
+
+    // --- Promise.IsDone (after set) ---
+    Say("--- IsDone (after set) ---");
+    SayBool(p.get_IsDone());
+
+    // --- Future.IsDone (after set) ---
+    Say("--- Future.IsDone (after set) ---");
+    SayBool(f.get_IsDone());
+
+    // --- Future.IsError (after set, no error) ---
+    Say("--- Future.IsError (after set) ---");
+    SayBool(f.get_IsError());
+
+    // --- Future.Get ---
+    Say("--- Future.Get ---");
+    var result = f.Get();
+    Say("Future.Get returned:");
+    SayInt(Box.ToI64(result));
+
+    // --- Future.Wait (already done) ---
+    Say("--- Future.Wait ---");
+    f.Wait();
+    Say("Wait returned (already done)");
+
+    // --- Future.WaitFor (already done) ---
+    Say("--- Future.WaitFor ---");
+    SayBool(f.WaitFor(1000));
+
+    // --- Promise with error ---
+    Say("--- Promise with error ---");
+    var p2 = Promise.New();
+    var f2 = p2.GetFuture();
+    p2.SetError("something went wrong");
+    Say("Set error on promise");
+
+    // --- Future.IsDone (error promise) ---
+    Say("--- Future.IsDone (error) ---");
+    SayBool(f2.get_IsDone());
+
+    // --- Future.IsError (error promise) ---
+    Say("--- Future.IsError (error) ---");
+    SayBool(f2.get_IsError());
+
+    // --- Future.Error ---
+    Say("--- Future.Error ---");
+    Say(f2.get_Error());
+
+    Say("=== Promise / Future Audit Complete ===");
+}

@@ -1,0 +1,56 @@
+module OptionDemo;
+bind Viper.Terminal;
+bind Option = Viper.Option;
+
+func start() {
+    Say("=== API Audit: Viper.Option ===");
+
+    // --- SomeI64 ---
+    Say("--- SomeI64 ---");
+    var o1 = Option.SomeI64(42);
+    SayBool(o1.IsSome);
+    SayBool(o1.IsNone);
+    SayInt(o1.UnwrapI64());
+
+    // --- SomeStr ---
+    Say("--- SomeStr ---");
+    var o2 = Option.SomeStr("hello");
+    Say(o2.UnwrapStr());
+
+    // --- SomeF64 ---
+    Say("--- SomeF64 ---");
+    var o3 = Option.SomeF64(2.71);
+    SayNum(o3.UnwrapF64());
+
+    // --- None ---
+    Say("--- None ---");
+    var o4 = Option.None();
+    SayBool(o4.IsSome);
+    SayBool(o4.IsNone);
+
+    // --- UnwrapOrI64 ---
+    Say("--- UnwrapOrI64 ---");
+    SayInt(o1.UnwrapOrI64(0));
+    SayInt(o4.UnwrapOrI64(99));
+
+    // --- UnwrapOrStr ---
+    Say("--- UnwrapOrStr ---");
+    Say(o2.UnwrapOrStr("default"));
+    Say(o4.UnwrapOrStr("default"));
+
+    // --- UnwrapOrF64 ---
+    Say("--- UnwrapOrF64 ---");
+    SayNum(o3.UnwrapOrF64(0.0));
+    SayNum(o4.UnwrapOrF64(1.5));
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    Say(o1.ToString());
+    Say(o4.ToString());
+
+    // --- Expect ---
+    Say("--- Expect ---");
+    o1.Expect("should not fail");
+
+    Say("=== Option Audit Complete ===");
+}

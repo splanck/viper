@@ -1,0 +1,158 @@
+// =============================================================================
+// API Audit: Viper.Math.Spline - Curve Interpolation
+// =============================================================================
+// Tests: CatmullRom, Bezier, Linear, Eval, Tangent, PointCount, PointAt,
+//        ArcLength, Sample
+// =============================================================================
+
+module SplineDemo;
+bind Viper.Math;
+bind Viper.Collections;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Spline ===");
+
+    // Build control points for CatmullRom and Linear splines
+    var points = Seq.New();
+    var p0 = Vec2.New(0.0, 0.0);
+    var p1 = Vec2.New(1.0, 2.0);
+    var p2 = Vec2.New(3.0, 3.0);
+    var p3 = Vec2.New(5.0, 1.0);
+    var p4 = Vec2.New(7.0, 4.0);
+    Seq.Push(points, p0);
+    Seq.Push(points, p1);
+    Seq.Push(points, p2);
+    Seq.Push(points, p3);
+    Seq.Push(points, p4);
+
+    // --- CatmullRom ---
+    Say("--- CatmullRom ---");
+    var cr = Spline.CatmullRom(points);
+    Say("CatmullRom created");
+
+    // --- Eval ---
+    Say("--- Eval (CatmullRom) ---");
+    var ev0 = Spline.Eval(cr, 0.0);
+    Say("Eval(0.0) X:");
+    SayNum(ev0.X);
+    Say("Eval(0.0) Y:");
+    SayNum(ev0.Y);
+    var ev5 = Spline.Eval(cr, 0.5);
+    Say("Eval(0.5) X:");
+    SayNum(ev5.X);
+    Say("Eval(0.5) Y:");
+    SayNum(ev5.Y);
+    var ev1 = Spline.Eval(cr, 1.0);
+    Say("Eval(1.0) X:");
+    SayNum(ev1.X);
+    Say("Eval(1.0) Y:");
+    SayNum(ev1.Y);
+
+    // --- Tangent ---
+    Say("--- Tangent (CatmullRom) ---");
+    var t0 = Spline.Tangent(cr, 0.0);
+    Say("Tangent(0.0) X:");
+    SayNum(t0.X);
+    Say("Tangent(0.0) Y:");
+    SayNum(t0.Y);
+    var t5 = Spline.Tangent(cr, 0.5);
+    Say("Tangent(0.5) X:");
+    SayNum(t5.X);
+    Say("Tangent(0.5) Y:");
+    SayNum(t5.Y);
+    var t1 = Spline.Tangent(cr, 1.0);
+    Say("Tangent(1.0) X:");
+    SayNum(t1.X);
+    Say("Tangent(1.0) Y:");
+    SayNum(t1.Y);
+
+    // --- PointCount ---
+    Say("--- PointCount ---");
+    Say("PointCount(CatmullRom):");
+    SayInt(cr.PointCount);
+
+    // --- PointAt ---
+    Say("--- PointAt ---");
+    var pa0 = Spline.PointAt(cr, 0);
+    Say("PointAt(0) X:");
+    SayNum(pa0.X);
+    Say("PointAt(0) Y:");
+    SayNum(pa0.Y);
+    var pa2 = Spline.PointAt(cr, 2);
+    Say("PointAt(2) X:");
+    SayNum(pa2.X);
+    Say("PointAt(2) Y:");
+    SayNum(pa2.Y);
+
+    // --- ArcLength ---
+    Say("--- ArcLength ---");
+    Say("ArcLength(0.0, 1.0, 100):");
+    SayNum(Spline.ArcLength(cr, 0.0, 1.0, 100));
+    Say("ArcLength(0.0, 0.5, 50):");
+    SayNum(Spline.ArcLength(cr, 0.0, 0.5, 50));
+
+    // --- Sample ---
+    Say("--- Sample ---");
+    var samples = Spline.Sample(cr, 5);
+    Say("Sample(5) returned a Seq");
+
+    // --- Linear ---
+    Say("--- Linear ---");
+    var lin = Spline.Linear(points);
+    Say("Linear created");
+    var le0 = Spline.Eval(lin, 0.0);
+    Say("Linear Eval(0.0) X:");
+    SayNum(le0.X);
+    Say("Linear Eval(0.0) Y:");
+    SayNum(le0.Y);
+    var le5 = Spline.Eval(lin, 0.5);
+    Say("Linear Eval(0.5) X:");
+    SayNum(le5.X);
+    Say("Linear Eval(0.5) Y:");
+    SayNum(le5.Y);
+    var le1 = Spline.Eval(lin, 1.0);
+    Say("Linear Eval(1.0) X:");
+    SayNum(le1.X);
+    Say("Linear Eval(1.0) Y:");
+    SayNum(le1.Y);
+
+    // --- Bezier ---
+    Say("--- Bezier ---");
+    var bp0 = Vec2.New(0.0, 0.0);
+    var bp1 = Vec2.New(0.5, 1.0);
+    var bp2 = Vec2.New(1.5, 1.0);
+    var bp3 = Vec2.New(2.0, 0.0);
+    var bez = Spline.Bezier(bp0, bp1, bp2, bp3);
+    Say("Bezier created");
+    var be0 = Spline.Eval(bez, 0.0);
+    Say("Bezier Eval(0.0) X:");
+    SayNum(be0.X);
+    Say("Bezier Eval(0.0) Y:");
+    SayNum(be0.Y);
+    var be5 = Spline.Eval(bez, 0.5);
+    Say("Bezier Eval(0.5) X:");
+    SayNum(be5.X);
+    Say("Bezier Eval(0.5) Y:");
+    SayNum(be5.Y);
+    var be1 = Spline.Eval(bez, 1.0);
+    Say("Bezier Eval(1.0) X:");
+    SayNum(be1.X);
+    Say("Bezier Eval(1.0) Y:");
+    SayNum(be1.Y);
+
+    // Bezier tangent
+    Say("--- Bezier Tangent ---");
+    var bt5 = Spline.Tangent(bez, 0.5);
+    Say("Bezier Tangent(0.5) X:");
+    SayNum(bt5.X);
+    Say("Bezier Tangent(0.5) Y:");
+    SayNum(bt5.Y);
+
+    // Bezier arc length
+    Say("--- Bezier ArcLength ---");
+    Say("Bezier ArcLength(0.0, 1.0, 100):");
+    SayNum(Spline.ArcLength(bez, 0.0, 1.0, 100));
+
+    Say("=== Spline Audit Complete ===");
+}

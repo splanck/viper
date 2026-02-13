@@ -1,0 +1,79 @@
+// =============================================================================
+// API Audit: Viper.Core.Box - Value Boxing/Unboxing
+// =============================================================================
+// Tests: I64, F64, I1, Str, ToI64, ToF64, ToI1, ToStr, Type, EqI64, EqF64,
+//        EqStr, ValueType
+// =============================================================================
+
+module BoxDemo;
+bind Viper.Terminal;
+bind Box = Viper.Core.Box;
+
+func start() {
+    Say("=== API Audit: Viper.Core.Box ===");
+
+    // --- Box I64 ---
+    Say("--- Box I64 ---");
+    var bi = Box.I64(42);
+    Say("Box.I64(42) created");
+    Say("ToI64:");
+    SayInt(Box.ToI64(bi));
+    Say("Type (expect 0 for i64):");
+    SayInt(Box.Type(bi));
+    Say("EqI64(42):");
+    SayBool(Box.EqI64(bi, 42));
+    Say("EqI64(99):");
+    SayBool(Box.EqI64(bi, 99));
+
+    // --- Box F64 ---
+    Say("--- Box F64 ---");
+    var bf = Box.F64(3.14);
+    Say("Box.F64(3.14) created");
+    Say("ToF64:");
+    SayNum(Box.ToF64(bf));
+    Say("Type (expect 1 for f64):");
+    SayInt(Box.Type(bf));
+    Say("EqF64(3.14):");
+    SayBool(Box.EqF64(bf, 3.14));
+    Say("EqF64(2.71):");
+    SayBool(Box.EqF64(bf, 2.71));
+
+    // --- Box I1 (Boolean) ---
+    Say("--- Box I1 ---");
+    var bb = Box.I1(1);
+    Say("Box.I1(1) created");
+    Say("ToI1:");
+    SayInt(Box.ToI1(bb));
+    Say("Type (expect 2 for i1):");
+    SayInt(Box.Type(bb));
+
+    var bb0 = Box.I1(0);
+    Say("Box.I1(0) ToI1:");
+    SayInt(Box.ToI1(bb0));
+
+    // --- Box Str ---
+    Say("--- Box Str ---");
+    var bs = Box.Str("hello");
+    Say("Box.Str(hello) created");
+    Say("ToStr:");
+    Say(Box.ToStr(bs));
+    Say("Type (expect 3 for str):");
+    SayInt(Box.Type(bs));
+    Say("EqStr(hello):");
+    SayBool(Box.EqStr(bs, "hello"));
+    Say("EqStr(world):");
+    SayBool(Box.EqStr(bs, "world"));
+
+    // --- ValueType ---
+    Say("--- ValueType ---");
+    var vt0 = Box.ValueType(0);
+    Say("ValueType(0) - i64 type obj created");
+    var vt1 = Box.ValueType(1);
+    Say("ValueType(1) - f64 type obj created");
+    var vt2 = Box.ValueType(2);
+    Say("ValueType(2) - i1 type obj created");
+    var vt3 = Box.ValueType(3);
+    Say("ValueType(3) - str type obj created");
+
+    Say("=== Box Demo Complete ===");
+}

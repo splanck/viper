@@ -1,0 +1,37 @@
+module SoundDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Sound (All Classes) ===");
+    Say("NOTE: Sound classes require audio hardware. API surface documentation only.");
+    Say("");
+    Say("--- Audio ---");
+    Say("Init(), Shutdown(), SetMasterVolume(v), get_MasterVolume");
+    Say("SetListenerPosition(x,y), Pause(), Resume(), get_IsPaused");
+    Say("");
+    Say("--- Sound ---");
+    Say("Load(path), Destroy(), Play(), PlayLooped(loops)");
+    Say("Stop(), Pause(), Resume(), get_IsPlaying, get_IsPaused");
+    Say("SetVolume(v), get_Volume, SetPan(p), get_Pan");
+    Say("SetPitch(p), get_Pitch, SetPosition(x,y)");
+    Say("");
+    Say("--- Voice ---");
+    Say("Play(sound), PlayLooped(sound,loops), Stop(), Pause(), Resume()");
+    Say("get_IsPlaying, get_IsPaused, SetVolume(v), get_Volume");
+    Say("SetPan(p), get_Pan, SetPitch(p), get_Pitch");
+    Say("SetPosition(x,y), SetLooping(v)");
+    Say("");
+    Say("--- Music ---");
+    Say("Load(path), Destroy(), Play(), PlayLooped()");
+    Say("Stop(), Pause(), Resume(), get_IsPlaying, get_IsPaused");
+    Say("SetVolume(v), get_Volume, FadeIn(ms), FadeOut(ms)");
+    Say("get_Duration, get_Position, Seek(ms)");
+    Say("");
+    Say("--- Playlist ---");
+    Say("New(), Destroy(), Add(music), Remove(idx), Clear()");
+    Say("Play(), Stop(), Pause(), Resume(), Next(), Previous()");
+    Say("get_IsPlaying, get_IsPaused, get_CurrentIndex, get_Count");
+    Say("SetShuffle(v), get_Shuffle, SetLoop(v), get_Loop");
+    Say("SetVolume(v), get_Volume");
+    Say("");
+    Say("=== Sound Audit Complete (API surface only) ===");
+}

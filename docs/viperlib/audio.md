@@ -238,6 +238,38 @@ Static class for controlling individual playing voices (sound instances).
 | `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Set pan for a voice (-100 to 100)              |
 | `IsPlaying(id)`            | `Integer(Integer)`             | Check if voice is playing (returns 1 or 0)     |
 
+### Zia Example
+
+```zia
+module VoiceDemo;
+
+bind Viper.Terminal;
+bind Viper.Sound;
+
+func start() {
+    // Initialize audio system
+    Audio.Init();
+
+    // Voice control (safe with invalid IDs)
+    SayInt(Voice.IsPlaying(0));  // 0
+    Voice.Stop(0);               // safe no-op
+    Voice.SetVolume(0, 50);      // safe no-op
+    Voice.SetPan(0, -50);        // safe no-op
+
+    // Master volume
+    Audio.SetMasterVolume(80);
+    SayInt(Audio.GetMasterVolume());  // 80
+
+    // Global controls
+    Audio.PauseAll();
+    Audio.ResumeAll();
+    Audio.StopAllSounds();
+
+    // Cleanup
+    Audio.Shutdown();
+}
+```
+
 ---
 
 ## Viper.Sound.Audio (Static)

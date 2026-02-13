@@ -1,0 +1,32 @@
+module RestClientDemo;
+bind Viper.Terminal;
+bind RestClient = Viper.Network.RestClient;
+
+func start() {
+    Say("=== API Audit: Viper.Network.RestClient ===");
+
+    Say("--- New ---");
+    var rc = RestClient.New("https://api.example.com");
+    Say(rc.get_BaseUrl());
+
+    Say("--- SetHeader ---");
+    rc.SetHeader("Content-Type", "application/json");
+
+    Say("--- SetAuthBearer ---");
+    rc.SetAuthBearer("test-token-123");
+
+    Say("--- ClearAuth ---");
+    rc.ClearAuth();
+
+    Say("--- SetTimeout ---");
+    rc.SetTimeout(5000);
+
+    Say("NOTE: HTTP methods (Get, Post, Put, etc.) require live server.");
+    Say("Full method list: Get(path), Post(path,body), Put(path,body), Patch(path,body), Delete(path), Head(path)");
+    Say("JSON methods: GetJson(path), PostJson(path,obj), PutJson(path,obj), PatchJson(path,obj), DeleteJson(path)");
+    Say("Response props: LastStatus(), LastResponse(), LastOk()");
+    Say("Auth methods: SetAuthBearer(token), SetAuthBasic(user,pass), ClearAuth()");
+    Say("Config: BaseUrl prop, SetHeader(k,v), DelHeader(k), SetTimeout(ms)");
+
+    Say("=== RestClient Audit Complete ===");
+}

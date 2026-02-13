@@ -1,0 +1,106 @@
+// set_demo.zia - Comprehensive API audit for Viper.Collections.Set
+// Tests: New, Add, Has, Remove, Len, IsEmpty, Items, Clear,
+//        Common, Diff, Merge, IsSubset, IsSuperset, IsDisjoint
+
+module SetDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Set API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var s = Set.New();
+    SayInt(s.Len);       // 0
+    SayBool(s.IsEmpty);  // 1
+
+    // --- Add ---
+    Say("--- Add ---");
+    var a = Box.I64(10);
+    var b = Box.I64(20);
+    var c = Box.I64(30);
+    SayBool(s.Add(a));   // 1 (new)
+    SayBool(s.Add(b));   // 1 (new)
+    SayBool(s.Add(c));   // 1 (new)
+    SayBool(s.Add(a));   // 0 (duplicate)
+    SayInt(s.Len);       // 3
+    SayBool(s.IsEmpty);  // 0
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(s.Has(a));   // 1
+    SayBool(s.Has(b));   // 1
+    var d = Box.I64(40);
+    SayBool(s.Has(d));   // 0
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(s.Remove(b)); // 1
+    SayBool(s.Has(b));    // 0
+    SayInt(s.Len);        // 2
+    SayBool(s.Remove(b)); // 0 (already removed)
+
+    // --- Items ---
+    Say("--- Items ---");
+    var items = s.Items();
+    SayInt(items.Len);    // 2
+
+    // --- Merge (union) ---
+    Say("--- Merge ---");
+    var s1 = Set.New();
+    var x = Box.Str("x");
+    var y = Box.Str("y");
+    var z = Box.Str("z");
+    s1.Add(x);
+    s1.Add(y);
+    s1.Add(z);
+
+    var s2 = Set.New();
+    var w = Box.Str("w");
+    s2.Add(y);
+    s2.Add(z);
+    s2.Add(w);
+
+    var merged = s1.Merge(s2);
+    SayInt(merged.Len);   // 4 (x, y, z, w)
+
+    // --- Common (intersection) ---
+    Say("--- Common ---");
+    var common = s1.Common(s2);
+    SayInt(common.Len);   // 2 (y, z)
+
+    // --- Diff ---
+    Say("--- Diff ---");
+    var diff = s1.Diff(s2);
+    SayInt(diff.Len);     // 1 (x)
+
+    // --- IsSubset ---
+    Say("--- IsSubset ---");
+    var sub = Set.New();
+    sub.Add(y);
+    sub.Add(z);
+    SayBool(sub.IsSubset(s1));   // 1
+
+    // --- IsSuperset ---
+    Say("--- IsSuperset ---");
+    SayBool(s1.IsSuperset(sub)); // 1
+
+    // --- IsDisjoint ---
+    Say("--- IsDisjoint ---");
+    var disj = Set.New();
+    disj.Add(w);
+    SayBool(s1.IsDisjoint(disj)); // 1 (no common elements)
+    SayBool(s1.IsDisjoint(s2));  // 0 (share y, z)
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    s1.Clear();
+    SayInt(s1.Len);       // 0
+    SayBool(s1.IsEmpty);  // 1
+
+    Say("=== Set audit complete ===");
+}

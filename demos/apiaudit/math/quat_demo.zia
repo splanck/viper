@@ -1,0 +1,204 @@
+// =============================================================================
+// API Audit: Viper.Math.Quat - Quaternion Operations
+// =============================================================================
+// Tests: New, Identity, FromAxisAngle, FromEuler, X, Y, Z, W, Mul,
+//        Conjugate, Inverse, Norm, Len, LenSq, Dot, Slerp, Lerp,
+//        RotateVec3, ToMat4, Axis, Angle
+// =============================================================================
+
+module QuatDemo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Quat ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var q1 = Quat.New(0.0, 0.0, 0.0, 1.0);
+    Say("Quat.New(0,0,0,1) X:");
+    SayNum(q1.X);
+    Say("Quat.New(0,0,0,1) Y:");
+    SayNum(q1.Y);
+    Say("Quat.New(0,0,0,1) Z:");
+    SayNum(q1.Z);
+    Say("Quat.New(0,0,0,1) W:");
+    SayNum(q1.W);
+
+    // --- Identity ---
+    Say("--- Identity ---");
+    var qi = Quat.Identity();
+    Say("Identity X:");
+    SayNum(qi.X);
+    Say("Identity Y:");
+    SayNum(qi.Y);
+    Say("Identity Z:");
+    SayNum(qi.Z);
+    Say("Identity W:");
+    SayNum(qi.W);
+
+    // --- FromAxisAngle ---
+    Say("--- FromAxisAngle ---");
+    var axis = Vec3.New(0.0, 1.0, 0.0);
+    var qa = Quat.FromAxisAngle(axis, 1.5707963267948966);
+    Say("FromAxisAngle(Y, Pi/2) X:");
+    SayNum(qa.X);
+    Say("FromAxisAngle(Y, Pi/2) Y:");
+    SayNum(qa.Y);
+    Say("FromAxisAngle(Y, Pi/2) Z:");
+    SayNum(qa.Z);
+    Say("FromAxisAngle(Y, Pi/2) W:");
+    SayNum(qa.W);
+
+    // --- FromEuler ---
+    Say("--- FromEuler ---");
+    var qe = Quat.FromEuler(0.0, 1.5707963267948966, 0.0);
+    Say("FromEuler(0, Pi/2, 0) X:");
+    SayNum(qe.X);
+    Say("FromEuler(0, Pi/2, 0) Y:");
+    SayNum(qe.Y);
+    Say("FromEuler(0, Pi/2, 0) Z:");
+    SayNum(qe.Z);
+    Say("FromEuler(0, Pi/2, 0) W:");
+    SayNum(qe.W);
+    var qe2 = Quat.FromEuler(0.0, 0.0, 0.0);
+    Say("FromEuler(0,0,0) W:");
+    SayNum(qe2.W);
+
+    // --- Mul ---
+    Say("--- Mul ---");
+    var qm = Quat.Mul(qa, qi);
+    Say("Mul(rotY, identity) X:");
+    SayNum(qm.X);
+    Say("Mul(rotY, identity) Y:");
+    SayNum(qm.Y);
+    Say("Mul(rotY, identity) Z:");
+    SayNum(qm.Z);
+    Say("Mul(rotY, identity) W:");
+    SayNum(qm.W);
+
+    // --- Conjugate ---
+    Say("--- Conjugate ---");
+    var qc = Quat.Conjugate(qa);
+    Say("Conjugate(rotY) X:");
+    SayNum(qc.X);
+    Say("Conjugate(rotY) Y:");
+    SayNum(qc.Y);
+    Say("Conjugate(rotY) Z:");
+    SayNum(qc.Z);
+    Say("Conjugate(rotY) W:");
+    SayNum(qc.W);
+
+    // --- Inverse ---
+    Say("--- Inverse ---");
+    var qinv = Quat.Inverse(qa);
+    Say("Inverse(rotY) X:");
+    SayNum(qinv.X);
+    Say("Inverse(rotY) Y:");
+    SayNum(qinv.Y);
+    Say("Inverse(rotY) Z:");
+    SayNum(qinv.Z);
+    Say("Inverse(rotY) W:");
+    SayNum(qinv.W);
+
+    // --- Norm ---
+    Say("--- Norm ---");
+    var q2 = Quat.New(1.0, 2.0, 3.0, 4.0);
+    var qn = Quat.Norm(q2);
+    Say("Norm(1,2,3,4) Len:");
+    SayNum(Quat.Len(qn));
+
+    // --- Len ---
+    Say("--- Len ---");
+    Say("Len(identity):");
+    SayNum(Quat.Len(qi));
+    Say("Len(rotY):");
+    SayNum(Quat.Len(qa));
+    Say("Len(1,2,3,4):");
+    SayNum(Quat.Len(q2));
+
+    // --- LenSq ---
+    Say("--- LenSq ---");
+    Say("LenSq(identity):");
+    SayNum(Quat.LenSq(qi));
+    Say("LenSq(1,2,3,4):");
+    SayNum(Quat.LenSq(q2));
+
+    // --- Dot ---
+    Say("--- Dot ---");
+    Say("Dot(identity, identity):");
+    SayNum(Quat.Dot(qi, qi));
+    Say("Dot(rotY, identity):");
+    SayNum(Quat.Dot(qa, qi));
+
+    // --- Slerp ---
+    Say("--- Slerp ---");
+    var qs0 = Quat.Slerp(qi, qa, 0.0);
+    Say("Slerp(identity, rotY, 0.0) W:");
+    SayNum(qs0.W);
+    var qs5 = Quat.Slerp(qi, qa, 0.5);
+    Say("Slerp(identity, rotY, 0.5) W:");
+    SayNum(qs5.W);
+    var qs1 = Quat.Slerp(qi, qa, 1.0);
+    Say("Slerp(identity, rotY, 1.0) W:");
+    SayNum(qs1.W);
+    Say("Slerp(identity, rotY, 1.0) Y:");
+    SayNum(qs1.Y);
+
+    // --- Lerp ---
+    Say("--- Lerp ---");
+    var ql0 = Quat.Lerp(qi, qa, 0.0);
+    Say("Lerp(identity, rotY, 0.0) W:");
+    SayNum(ql0.W);
+    var ql5 = Quat.Lerp(qi, qa, 0.5);
+    Say("Lerp(identity, rotY, 0.5) W:");
+    SayNum(ql5.W);
+    var ql1 = Quat.Lerp(qi, qa, 1.0);
+    Say("Lerp(identity, rotY, 1.0) W:");
+    SayNum(ql1.W);
+
+    // --- RotateVec3 ---
+    Say("--- RotateVec3 ---");
+    var vx = Vec3.New(1.0, 0.0, 0.0);
+    var rv = Quat.RotateVec3(qa, vx);
+    Say("RotateVec3(rotY90, (1,0,0)) X:");
+    SayNum(rv.X);
+    Say("RotateVec3(rotY90, (1,0,0)) Y:");
+    SayNum(rv.Y);
+    Say("RotateVec3(rotY90, (1,0,0)) Z:");
+    SayNum(rv.Z);
+    var rv2 = Quat.RotateVec3(qi, vx);
+    Say("RotateVec3(identity, (1,0,0)) X:");
+    SayNum(rv2.X);
+
+    // --- ToMat4 ---
+    Say("--- ToMat4 ---");
+    var m = Quat.ToMat4(qi);
+    Say("ToMat4(identity) [0,0]:");
+    SayNum(Mat4.Get(m, 0, 0));
+    Say("ToMat4(identity) [1,1]:");
+    SayNum(Mat4.Get(m, 1, 1));
+    Say("ToMat4(identity) [2,2]:");
+    SayNum(Mat4.Get(m, 2, 2));
+    Say("ToMat4(identity) [3,3]:");
+    SayNum(Mat4.Get(m, 3, 3));
+
+    // --- Axis ---
+    Say("--- Axis ---");
+    var ax = Quat.Axis(qa);
+    Say("Axis(rotY) X:");
+    SayNum(ax.X);
+    Say("Axis(rotY) Y:");
+    SayNum(ax.Y);
+    Say("Axis(rotY) Z:");
+    SayNum(ax.Z);
+
+    // --- Angle ---
+    Say("--- Angle ---");
+    Say("Angle(rotY):");
+    SayNum(Quat.Angle(qa));
+    Say("Angle(identity):");
+    SayNum(Quat.Angle(qi));
+
+    Say("=== Quat Audit Complete ===");
+}

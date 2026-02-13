@@ -1,0 +1,96 @@
+// deque_demo.zia - Comprehensive API audit for Viper.Collections.Deque
+// Tests: New, PushFront, PushBack, PopFront, PopBack, PeekFront, PeekBack,
+//        Get, Set, Len, Cap, IsEmpty, Clear, Has, Reverse, Clone
+
+module DequeDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Deque API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var dq = Deque.New();
+    SayInt(dq.Len);       // 0
+    SayBool(dq.IsEmpty);  // 1
+
+    // --- PushBack / Len ---
+    Say("--- PushBack / Len ---");
+    dq.PushBack(Box.Str("a"));
+    dq.PushBack(Box.Str("b"));
+    dq.PushBack(Box.Str("c"));
+    SayInt(dq.Len);       // 3
+    SayBool(dq.IsEmpty);  // 0
+
+    // --- PushFront ---
+    Say("--- PushFront ---");
+    dq.PushFront(Box.Str("z"));
+    SayInt(dq.Len);       // 4
+    // Order: z, a, b, c
+
+    // --- PeekFront / PeekBack ---
+    Say("--- PeekFront / PeekBack ---");
+    Say(Box.ToStr(dq.PeekFront()));  // z
+    Say(Box.ToStr(dq.PeekBack()));   // c
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(dq.Get(0)));  // z
+    Say(Box.ToStr(dq.Get(1)));  // a
+    Say(Box.ToStr(dq.Get(2)));  // b
+    Say(Box.ToStr(dq.Get(3)));  // c
+
+    // --- Set ---
+    Say("--- Set ---");
+    dq.Set(1, Box.Str("A"));
+    Say(Box.ToStr(dq.Get(1)));  // A
+
+    // --- PopFront ---
+    Say("--- PopFront ---");
+    Say(Box.ToStr(dq.PopFront()));  // z
+    SayInt(dq.Len);                 // 3
+    Say(Box.ToStr(dq.PeekFront())); // A
+
+    // --- PopBack ---
+    Say("--- PopBack ---");
+    Say(Box.ToStr(dq.PopBack()));   // c
+    SayInt(dq.Len);                 // 2
+    Say(Box.ToStr(dq.PeekBack()));  // b
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(dq.Has(Box.Str("A")));  // 1
+    SayBool(dq.Has(Box.Str("z")));  // 0 (was popped)
+
+    // --- Cap ---
+    Say("--- Cap ---");
+    SayInt(dq.Cap);  // capacity (>= Len)
+
+    // --- Reverse ---
+    Say("--- Reverse ---");
+    dq.PushBack(Box.Str("x"));
+    dq.PushBack(Box.Str("y"));
+    // Order: A, b, x, y
+    dq.Reverse();
+    Say(Box.ToStr(dq.PeekFront()));  // y
+    Say(Box.ToStr(dq.PeekBack()));   // A
+
+    // --- Clone ---
+    Say("--- Clone ---");
+    var dq2 = dq.Clone();
+    SayInt(dq2.Len);                  // same as dq
+    Say(Box.ToStr(dq2.PeekFront())); // y
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    dq.Clear();
+    SayInt(dq.Len);       // 0
+    SayBool(dq.IsEmpty);  // 1
+    // Clone should be unaffected
+    SayInt(dq2.Len);      // still 4
+
+    Say("=== Deque audit complete ===");
+}

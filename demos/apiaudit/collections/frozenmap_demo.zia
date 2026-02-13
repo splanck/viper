@@ -1,0 +1,102 @@
+// frozenmap_demo.zia - Comprehensive API audit for Viper.Collections.FrozenMap
+// Tests: Empty, FromSeqs, Len, IsEmpty, Get, Has, Keys, Values,
+//        GetOr, Merge, Equals
+
+module FrozenMapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== FrozenMap API Audit ===");
+
+    // --- Empty ---
+    Say("--- Empty ---");
+    var empty = FrozenMap.Empty();
+    SayInt(empty.Len);       // 0
+    SayBool(empty.IsEmpty);  // 1
+
+    // --- FromSeqs ---
+    Say("--- FromSeqs ---");
+    var keys = Seq.New();
+    keys.Push(Box.Str("name"));
+    keys.Push(Box.Str("age"));
+    keys.Push(Box.Str("city"));
+
+    var vals = Seq.New();
+    vals.Push(Box.Str("Alice"));
+    vals.Push(Box.I64(30));
+    vals.Push(Box.Str("Boston"));
+
+    var fm = FrozenMap.FromSeqs(keys, vals);
+    SayInt(fm.Len);          // 3
+    SayBool(fm.IsEmpty);     // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(fm.Get("name")));   // Alice
+    Say(Box.ToStr(fm.Get("city")));   // Boston
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(fm.Has("name"));   // 1
+    SayBool(fm.Has("email"));  // 0
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var fmKeys = fm.Keys();
+    SayInt(fmKeys.Len);       // 3
+
+    // --- Values ---
+    Say("--- Values ---");
+    var fmVals = fm.Values();
+    SayInt(fmVals.Len);       // 3
+
+    // --- GetOr ---
+    Say("--- GetOr ---");
+    Say(Box.ToStr(fm.GetOr("name", Box.Str("Unknown"))));   // Alice
+    Say(Box.ToStr(fm.GetOr("email", Box.Str("N/A"))));      // N/A
+
+    // --- Merge ---
+    Say("--- Merge ---");
+    var keys2 = Seq.New();
+    keys2.Push(Box.Str("city"));
+    keys2.Push(Box.Str("email"));
+
+    var vals2 = Seq.New();
+    vals2.Push(Box.Str("NYC"));         // overwrites Boston
+    vals2.Push(Box.Str("a@b.com"));
+
+    var fm2 = FrozenMap.FromSeqs(keys2, vals2);
+    var merged = fm.Merge(fm2);
+    SayInt(merged.Len);                           // 4
+    Say(Box.ToStr(merged.Get("city")));           // NYC (fm2 wins)
+    Say(Box.ToStr(merged.Get("email")));          // a@b.com
+    Say(Box.ToStr(merged.Get("name")));           // Alice (from fm)
+
+    // --- Equals ---
+    Say("--- Equals ---");
+    var keys3 = Seq.New();
+    keys3.Push(Box.Str("age"));
+    keys3.Push(Box.Str("name"));
+    keys3.Push(Box.Str("city"));
+
+    var vals3 = Seq.New();
+    vals3.Push(Box.I64(30));
+    vals3.Push(Box.Str("Alice"));
+    vals3.Push(Box.Str("Boston"));
+
+    var fm3 = FrozenMap.FromSeqs(keys3, vals3);
+    SayBool(fm.Equals(fm3));   // 1 (same key-value pairs)
+    SayBool(fm.Equals(fm2));   // 0
+
+    // --- Empty equals empty ---
+    Say("--- Empty equals empty ---");
+    var e1 = FrozenMap.Empty();
+    var e2 = FrozenMap.Empty();
+    SayBool(e1.Equals(e2));    // 1
+
+    Say("=== FrozenMap audit complete ===");
+}

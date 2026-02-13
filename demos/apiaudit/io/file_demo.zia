@@ -1,0 +1,102 @@
+// =============================================================================
+// API Audit: Viper.IO.File - File Operations
+// =============================================================================
+// Tests: Exists, WriteAllText, ReadAllText, AppendLine, ReadAllLines, Size,
+//        Delete, Copy, Move, Touch, Modified
+// =============================================================================
+
+module FileDemo;
+bind Viper.Terminal;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+
+func start() {
+    Say("=== API Audit: Viper.IO.File ===");
+
+    var tmpDir = TempFile.Dir();
+    var testFile = Path.Join(tmpDir, "viper_file_audit.txt");
+    var copyFile = Path.Join(tmpDir, "viper_file_audit_copy.txt");
+    var moveFile = Path.Join(tmpDir, "viper_file_audit_moved.txt");
+
+    // --- WriteAllText ---
+    Say("--- WriteAllText ---");
+    File.WriteAllText(testFile, "Hello from Viper!");
+    Say("WriteAllText done");
+
+    // --- Exists ---
+    Say("--- Exists ---");
+    Say("Exists(testFile):");
+    SayBool(File.Exists(testFile));
+    Say("Exists('/nonexistent_file_xyz'):");
+    SayBool(File.Exists("/nonexistent_file_xyz"));
+
+    // --- ReadAllText ---
+    Say("--- ReadAllText ---");
+    Say("ReadAllText:");
+    Say(File.ReadAllText(testFile));
+
+    // --- Size ---
+    Say("--- Size ---");
+    Say("Size:");
+    SayInt(File.Size(testFile));
+
+    // --- AppendLine ---
+    Say("--- AppendLine ---");
+    File.AppendLine(testFile, "Line 2");
+    File.AppendLine(testFile, "Line 3");
+    Say("AppendLine done (2 lines added)");
+    Say("ReadAllText after append:");
+    Say(File.ReadAllText(testFile));
+
+    // --- ReadAllLines ---
+    Say("--- ReadAllLines ---");
+    var lines = File.ReadAllLines(testFile);
+    Say("ReadAllLines returned (object)");
+
+    // --- Modified ---
+    Say("--- Modified ---");
+    Say("Modified (timestamp):");
+    SayInt(File.Modified(testFile));
+
+    // --- Copy ---
+    Say("--- Copy ---");
+    File.Copy(testFile, copyFile);
+    Say("Copy done");
+    Say("Copy exists:");
+    SayBool(File.Exists(copyFile));
+    Say("Copy content:");
+    Say(File.ReadAllText(copyFile));
+
+    // --- Move ---
+    Say("--- Move ---");
+    File.Move(copyFile, moveFile);
+    Say("Move done");
+    Say("Original exists:");
+    SayBool(File.Exists(copyFile));
+    Say("Moved exists:");
+    SayBool(File.Exists(moveFile));
+
+    // --- Touch ---
+    Say("--- Touch ---");
+    var touchFile = Path.Join(tmpDir, "viper_touch_audit.txt");
+    File.Touch(touchFile);
+    Say("Touch done");
+    Say("Touched file exists:");
+    SayBool(File.Exists(touchFile));
+
+    // --- Delete ---
+    Say("--- Delete ---");
+    File.Delete(testFile);
+    File.Delete(moveFile);
+    File.Delete(touchFile);
+    Say("Delete done");
+    Say("testFile exists after delete:");
+    SayBool(File.Exists(testFile));
+    Say("moveFile exists after delete:");
+    SayBool(File.Exists(moveFile));
+    Say("touchFile exists after delete:");
+    SayBool(File.Exists(touchFile));
+
+    Say("=== File Demo Complete ===");
+}

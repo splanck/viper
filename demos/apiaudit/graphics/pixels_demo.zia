@@ -1,0 +1,186 @@
+// =============================================================================
+// API Audit: Viper.Graphics.Pixels (headless operations)
+// =============================================================================
+// Tests: New, Get, Set, Width, Height, Fill, Clone, Clear, FlipH, FlipV,
+//        RotateCW, RotateCCW, Rotate180, Scale, Invert, Grayscale, Tint,
+//        Blur, Resize, ToBytes, FromBytes
+// =============================================================================
+
+module PixelsDemo;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics.Color as Color;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Graphics.Pixels ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var p = Pixels.New(32, 16);
+    Say("Created Pixels 32x16");
+
+    // --- Width ---
+    Say("--- Width ---");
+    Say("Width: " + Fmt.Int(p.get_Width()));
+
+    // --- Height ---
+    Say("--- Height ---");
+    Say("Height: " + Fmt.Int(p.get_Height()));
+
+    // --- Get (initial, should be 0/transparent) ---
+    Say("--- Get (initial) ---");
+    var initColor = p.Get(0, 0);
+    Say("Get(0,0): " + Fmt.Int(initColor));
+
+    // --- Set ---
+    Say("--- Set ---");
+    var red = Color.RGB(255, 0, 0);
+    p.Set(0, 0, red);
+    Say("Set(0, 0, red)");
+    var readBack = p.Get(0, 0);
+    Say("Get(0,0) after Set: " + Fmt.Int(readBack));
+
+    // --- Set multiple pixels ---
+    Say("--- Set multiple ---");
+    var green = Color.RGB(0, 255, 0);
+    var blue = Color.RGB(0, 0, 255);
+    p.Set(1, 0, green);
+    p.Set(2, 0, blue);
+    Say("Get(1,0): " + Fmt.Int(p.Get(1, 0)));
+    Say("Get(2,0): " + Fmt.Int(p.Get(2, 0)));
+
+    // --- Get out of bounds ---
+    Say("--- Get (out of bounds) ---");
+    var oob = p.Get(100, 100);
+    Say("Get(100,100): " + Fmt.Int(oob));
+
+    // --- Fill ---
+    Say("--- Fill ---");
+    var yellow = Color.RGB(255, 255, 0);
+    p.Fill(yellow);
+    Say("Filled with yellow");
+    Say("Get(0,0) after Fill: " + Fmt.Int(p.Get(0, 0)));
+    Say("Get(15,7) after Fill: " + Fmt.Int(p.Get(15, 7)));
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    p.Clear();
+    Say("Get(0,0) after Clear: " + Fmt.Int(p.Get(0, 0)));
+
+    // --- Clone ---
+    Say("--- Clone ---");
+    p.Set(5, 5, red);
+    var c = p.Clone();
+    Say("Clone Width: " + Fmt.Int(c.get_Width()));
+    Say("Clone Height: " + Fmt.Int(c.get_Height()));
+    Say("Clone Get(5,5): " + Fmt.Int(c.Get(5, 5)));
+    Say("Clone Get(0,0): " + Fmt.Int(c.Get(0, 0)));
+
+    // --- FlipH ---
+    Say("--- FlipH ---");
+    var src = Pixels.New(4, 2);
+    src.Set(0, 0, red);
+    src.Set(3, 0, blue);
+    var fh = src.FlipH();
+    Say("FlipH Width: " + Fmt.Int(fh.get_Width()));
+    Say("FlipH(0,0): " + Fmt.Int(fh.Get(0, 0)));
+    Say("FlipH(3,0): " + Fmt.Int(fh.Get(3, 0)));
+
+    // --- FlipV ---
+    Say("--- FlipV ---");
+    var src2 = Pixels.New(2, 4);
+    src2.Set(0, 0, red);
+    src2.Set(0, 3, green);
+    var fv = src2.FlipV();
+    Say("FlipV Height: " + Fmt.Int(fv.get_Height()));
+    Say("FlipV(0,0): " + Fmt.Int(fv.Get(0, 0)));
+    Say("FlipV(0,3): " + Fmt.Int(fv.Get(0, 3)));
+
+    // --- RotateCW ---
+    Say("--- RotateCW ---");
+    var sq = Pixels.New(4, 2);
+    sq.Set(0, 0, red);
+    var cw = sq.RotateCW();
+    Say("RotateCW Width: " + Fmt.Int(cw.get_Width()));
+    Say("RotateCW Height: " + Fmt.Int(cw.get_Height()));
+
+    // --- RotateCCW ---
+    Say("--- RotateCCW ---");
+    var ccw = sq.RotateCCW();
+    Say("RotateCCW Width: " + Fmt.Int(ccw.get_Width()));
+    Say("RotateCCW Height: " + Fmt.Int(ccw.get_Height()));
+
+    // --- Rotate180 ---
+    Say("--- Rotate180 ---");
+    var r180 = sq.Rotate180();
+    Say("Rotate180 Width: " + Fmt.Int(r180.get_Width()));
+    Say("Rotate180 Height: " + Fmt.Int(r180.get_Height()));
+
+    // --- Scale ---
+    Say("--- Scale ---");
+    var small = Pixels.New(8, 8);
+    small.Fill(red);
+    var scaled = small.Scale(16, 16);
+    Say("Scale(16,16) Width: " + Fmt.Int(scaled.get_Width()));
+    Say("Scale(16,16) Height: " + Fmt.Int(scaled.get_Height()));
+    Say("Scale pixel(0,0): " + Fmt.Int(scaled.Get(0, 0)));
+
+    // --- Resize (bilinear) ---
+    Say("--- Resize ---");
+    var resized = small.Resize(4, 4);
+    Say("Resize(4,4) Width: " + Fmt.Int(resized.get_Width()));
+    Say("Resize(4,4) Height: " + Fmt.Int(resized.get_Height()));
+
+    // --- Invert ---
+    Say("--- Invert ---");
+    var redImg = Pixels.New(2, 2);
+    redImg.Fill(red);
+    var inverted = redImg.Invert();
+    Say("Invert Width: " + Fmt.Int(inverted.get_Width()));
+    var invPixel = inverted.Get(0, 0);
+    Say("Inverted pixel(0,0): " + Fmt.Int(invPixel));
+
+    // --- Grayscale ---
+    Say("--- Grayscale ---");
+    var colorImg = Pixels.New(2, 2);
+    colorImg.Fill(red);
+    var gray = colorImg.Grayscale();
+    Say("Grayscale Width: " + Fmt.Int(gray.get_Width()));
+    var grayPixel = gray.Get(0, 0);
+    Say("Grayscale pixel(0,0): " + Fmt.Int(grayPixel));
+
+    // --- Tint ---
+    Say("--- Tint ---");
+    var whiteImg = Pixels.New(2, 2);
+    whiteImg.Fill(Color.RGB(255, 255, 255));
+    var tinted = whiteImg.Tint(Color.RGB(255, 0, 0));
+    Say("Tint Width: " + Fmt.Int(tinted.get_Width()));
+    var tintPixel = tinted.Get(0, 0);
+    Say("Tinted pixel(0,0): " + Fmt.Int(tintPixel));
+
+    // --- Blur ---
+    Say("--- Blur ---");
+    var blurSrc = Pixels.New(8, 8);
+    blurSrc.Fill(Color.RGB(128, 128, 128));
+    blurSrc.Set(4, 4, Color.RGB(255, 255, 255));
+    var blurred = blurSrc.Blur(1);
+    Say("Blur Width: " + Fmt.Int(blurred.get_Width()));
+    Say("Blur Height: " + Fmt.Int(blurred.get_Height()));
+
+    // --- ToBytes ---
+    Say("--- ToBytes ---");
+    var tiny = Pixels.New(2, 2);
+    tiny.Fill(Color.RGB(255, 0, 0));
+    var bytes = tiny.ToBytes();
+    Say("ToBytes returned object: " + Fmt.Bool(bytes != 0));
+
+    // --- FromBytes ---
+    Say("--- FromBytes ---");
+    var restored = Pixels.FromBytes(2, 2, bytes);
+    Say("FromBytes Width: " + Fmt.Int(restored.get_Width()));
+    Say("FromBytes Height: " + Fmt.Int(restored.get_Height()));
+    Say("FromBytes pixel(0,0): " + Fmt.Int(restored.Get(0, 0)));
+
+    Say("=== Pixels Audit Complete ===");
+}

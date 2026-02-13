@@ -1,0 +1,163 @@
+// =============================================================================
+// API Audit: Viper.Time.Duration - Duration Handling
+// =============================================================================
+// Tests: FromMillis, FromSeconds, FromMinutes, FromHours, FromDays, Create, Zero,
+//        TotalMillis, TotalSeconds, TotalMinutes, TotalHours, TotalDays,
+//        TotalSecondsF, Days, Hours, Minutes, Seconds, Millis,
+//        Add, Sub, Mul, Div, Abs, Neg, Cmp, ToString, ToISO
+// =============================================================================
+
+module DurationDemo;
+bind Viper.Terminal;
+bind Dur = Viper.Time.Duration;
+
+func start() {
+    Say("=== API Audit: Viper.Time.Duration ===");
+
+    // --- FromMillis ---
+    Say("--- FromMillis ---");
+    var ms = Dur.FromMillis(5000);
+    Say("FromMillis(5000):");
+    SayInt(ms);
+
+    // --- FromSeconds ---
+    Say("--- FromSeconds ---");
+    var sec = Dur.FromSeconds(90);
+    Say("FromSeconds(90):");
+    SayInt(sec);
+
+    // --- FromMinutes ---
+    Say("--- FromMinutes ---");
+    var min = Dur.FromMinutes(5);
+    Say("FromMinutes(5):");
+    SayInt(min);
+
+    // --- FromHours ---
+    Say("--- FromHours ---");
+    var hr = Dur.FromHours(2);
+    Say("FromHours(2):");
+    SayInt(hr);
+
+    // --- FromDays ---
+    Say("--- FromDays ---");
+    var day = Dur.FromDays(1);
+    Say("FromDays(1):");
+    SayInt(day);
+
+    // --- Create ---
+    Say("--- Create ---");
+    var complex = Dur.Create(1, 2, 30, 15, 500);
+    Say("Create(1d, 2h, 30m, 15s, 500ms):");
+    SayInt(complex);
+
+    // --- Zero ---
+    Say("--- Zero ---");
+    var z = Dur.Zero();
+    Say("Zero:");
+    SayInt(z);
+
+    // --- TotalMillis ---
+    Say("--- TotalMillis ---");
+    Say("TotalMillis(FromSeconds(90)):");
+    SayInt(Dur.TotalMillis(sec));
+
+    // --- TotalSeconds ---
+    Say("--- TotalSeconds ---");
+    Say("TotalSeconds(FromMinutes(5)):");
+    SayInt(Dur.TotalSeconds(min));
+
+    // --- TotalMinutes ---
+    Say("--- TotalMinutes ---");
+    Say("TotalMinutes(FromHours(2)):");
+    SayInt(Dur.TotalMinutes(hr));
+
+    // --- TotalHours ---
+    Say("--- TotalHours ---");
+    Say("TotalHours(FromDays(1)):");
+    SayInt(Dur.TotalHours(day));
+
+    // --- TotalDays ---
+    Say("--- TotalDays ---");
+    Say("TotalDays(FromDays(1)):");
+    SayInt(Dur.TotalDays(day));
+
+    // --- TotalSecondsF ---
+    Say("--- TotalSecondsF ---");
+    Say("TotalSecondsF(FromMillis(5500)):");
+    SayNum(Dur.TotalSecondsF(Dur.FromMillis(5500)));
+
+    // --- Component getters (Days, Hours, Minutes, Seconds, Millis) ---
+    Say("--- Component getters ---");
+    Say("Using Create(1, 2, 30, 15, 500):");
+    Say("Days:");
+    SayInt(Dur.Days(complex));
+    Say("Hours:");
+    SayInt(Dur.Hours(complex));
+    Say("Minutes:");
+    SayInt(Dur.Minutes(complex));
+    Say("Seconds:");
+    SayInt(Dur.Seconds(complex));
+    Say("Millis:");
+    SayInt(Dur.Millis(complex));
+
+    // --- Add ---
+    Say("--- Add ---");
+    var sum = Dur.Add(sec, min);
+    Say("Add(90s, 5m) TotalSeconds:");
+    SayInt(Dur.TotalSeconds(sum));
+
+    // --- Sub ---
+    Say("--- Sub ---");
+    var diff = Dur.Sub(min, sec);
+    Say("Sub(5m, 90s) TotalSeconds:");
+    SayInt(Dur.TotalSeconds(diff));
+
+    // --- Mul ---
+    Say("--- Mul ---");
+    var doubled = Dur.Mul(sec, 2);
+    Say("Mul(90s, 2) TotalSeconds:");
+    SayInt(Dur.TotalSeconds(doubled));
+
+    // --- Div ---
+    Say("--- Div ---");
+    var halved = Dur.Div(sec, 2);
+    Say("Div(90s, 2) TotalSeconds:");
+    SayInt(Dur.TotalSeconds(halved));
+
+    // --- Abs ---
+    Say("--- Abs ---");
+    var neg = Dur.Neg(sec);
+    var absVal = Dur.Abs(neg);
+    Say("Abs(Neg(90s)) TotalSeconds:");
+    SayInt(Dur.TotalSeconds(absVal));
+
+    // --- Neg ---
+    Say("--- Neg ---");
+    Say("Neg(90s) TotalMillis:");
+    SayInt(Dur.TotalMillis(neg));
+
+    // --- Cmp ---
+    Say("--- Cmp ---");
+    Say("Cmp(90s, 5m):");
+    SayInt(Dur.Cmp(sec, min));
+    Say("Cmp(5m, 90s):");
+    SayInt(Dur.Cmp(min, sec));
+    Say("Cmp(90s, 90s):");
+    SayInt(Dur.Cmp(sec, sec));
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    Say("ToString(Create(1,2,30,15,500)):");
+    Say(Dur.ToString(complex));
+    Say("ToString(FromSeconds(90)):");
+    Say(Dur.ToString(sec));
+
+    // --- ToISO ---
+    Say("--- ToISO ---");
+    Say("ToISO(Create(1,2,30,15,500)):");
+    Say(Dur.ToISO(complex));
+    Say("ToISO(FromSeconds(90)):");
+    Say(Dur.ToISO(sec));
+
+    Say("=== Duration Demo Complete ===");
+}

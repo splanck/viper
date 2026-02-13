@@ -1,0 +1,94 @@
+// lrucache_demo.zia - Comprehensive API audit for Viper.Collections.LruCache
+// Tests: New, Put, Get, Peek, Has, Remove, RemoveOldest, Keys, Values,
+//        Len, Cap, IsEmpty, Clear
+
+module LruCacheDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== LruCache API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var cache = LruCache.New(3);
+    SayInt(cache.Len);       // 0
+    SayInt(cache.Cap);       // 3
+    SayBool(cache.IsEmpty);  // 1
+
+    // --- Put / Len ---
+    Say("--- Put / Len ---");
+    cache.Put("a", Box.Str("alpha"));
+    cache.Put("b", Box.Str("beta"));
+    cache.Put("c", Box.Str("gamma"));
+    SayInt(cache.Len);       // 3
+    SayBool(cache.IsEmpty);  // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(cache.Get("a")));   // alpha
+    Say(Box.ToStr(cache.Get("b")));   // beta
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(cache.Has("a"));  // 1
+    SayBool(cache.Has("x"));  // 0
+
+    // --- Peek (does not promote) ---
+    Say("--- Peek ---");
+    Say(Box.ToStr(cache.Peek("c")));  // gamma
+
+    // --- Put (eviction: LRU is evicted when at capacity) ---
+    Say("--- Put (eviction) ---");
+    // Access order: a was accessed by Get, b was accessed by Get, c by Peek
+    // But Peek does not promote, so c may be LRU if access didn't change order.
+    // After Get("a") and Get("b"), "a" and "b" are most recent.
+    // c was only accessed by Peek (no promotion).
+    cache.Put("d", Box.Str("delta"));
+    SayInt(cache.Len);               // 3 (still at capacity)
+    SayBool(cache.Has("c"));         // 0 (c was LRU, evicted)
+    SayBool(cache.Has("d"));         // 1
+    Say(Box.ToStr(cache.Get("d")));  // delta
+
+    // --- Put (update existing) ---
+    Say("--- Put (update) ---");
+    cache.Put("a", Box.Str("ALPHA"));
+    Say(Box.ToStr(cache.Get("a")));  // ALPHA
+    SayInt(cache.Len);               // 3 (no new entry)
+
+    // --- Keys (MRU to LRU order) ---
+    Say("--- Keys ---");
+    var keys = cache.Keys();
+    SayInt(keys.Len);   // 3
+
+    // --- Values (MRU to LRU order) ---
+    Say("--- Values ---");
+    var vals = cache.Values();
+    SayInt(vals.Len);   // 3
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(cache.Remove("b"));   // 1
+    SayBool(cache.Has("b"));      // 0
+    SayInt(cache.Len);            // 2
+    SayBool(cache.Remove("b"));   // 0
+
+    // --- RemoveOldest ---
+    Say("--- RemoveOldest ---");
+    cache.Put("e", Box.Str("epsilon"));
+    SayInt(cache.Len);                // 3
+    SayBool(cache.RemoveOldest());    // 1
+    SayInt(cache.Len);                // 2
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    cache.Clear();
+    SayInt(cache.Len);                // 0
+    SayBool(cache.IsEmpty);           // 1
+    SayInt(cache.Cap);                // 3
+
+    Say("=== LruCache audit complete ===");
+}

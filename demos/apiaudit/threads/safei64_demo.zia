@@ -1,0 +1,87 @@
+// =============================================================================
+// API Audit: Viper.Threads.SafeI64
+// =============================================================================
+// Tests: New, Get, Set, Add, CompareExchange
+// =============================================================================
+
+module SafeI64Demo;
+bind Viper.Threads.SafeI64 as SafeI64;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.SafeI64 ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var cell = SafeI64.New(0);
+    Say("Created SafeI64 with initial value 0");
+
+    // --- Get (initial) ---
+    Say("--- Get (initial) ---");
+    Say("Get: " + Fmt.Int(cell.Get()));
+
+    // --- Set ---
+    Say("--- Set ---");
+    cell.Set(42);
+    Say("Get after Set(42): " + Fmt.Int(cell.Get()));
+
+    // --- Set negative ---
+    Say("--- Set negative ---");
+    cell.Set(-100);
+    Say("Get after Set(-100): " + Fmt.Int(cell.Get()));
+
+    // --- Set large ---
+    Say("--- Set large ---");
+    cell.Set(1000000);
+    Say("Get after Set(1000000): " + Fmt.Int(cell.Get()));
+
+    // --- Add (positive) ---
+    Say("--- Add (positive) ---");
+    var result1 = cell.Add(500);
+    Say("Add(500) returned: " + Fmt.Int(result1));
+    Say("Get after Add: " + Fmt.Int(cell.Get()));
+
+    // --- Add (negative) ---
+    Say("--- Add (negative) ---");
+    var result2 = cell.Add(-200);
+    Say("Add(-200) returned: " + Fmt.Int(result2));
+    Say("Get after Add: " + Fmt.Int(cell.Get()));
+
+    // --- Add zero ---
+    Say("--- Add zero ---");
+    var result3 = cell.Add(0);
+    Say("Add(0) returned: " + Fmt.Int(result3));
+
+    // --- CompareExchange (match) ---
+    Say("--- CompareExchange (match) ---");
+    cell.Set(50);
+    var old1 = cell.CompareExchange(50, 100);
+    Say("CAS(50, 100) old: " + Fmt.Int(old1));
+    Say("Get after CAS: " + Fmt.Int(cell.Get()));
+
+    // --- CompareExchange (no match) ---
+    Say("--- CompareExchange (no match) ---");
+    var old2 = cell.CompareExchange(999, 200);
+    Say("CAS(999, 200) old: " + Fmt.Int(old2));
+    Say("Get after failed CAS: " + Fmt.Int(cell.Get()));
+
+    // --- CompareExchange with zero ---
+    Say("--- CompareExchange with zero ---");
+    cell.Set(0);
+    var old3 = cell.CompareExchange(0, 77);
+    Say("CAS(0, 77) old: " + Fmt.Int(old3));
+    Say("Get after CAS: " + Fmt.Int(cell.Get()));
+
+    // --- New with initial value ---
+    Say("--- New with initial value ---");
+    var cell2 = SafeI64.New(999);
+    Say("New(999) Get: " + Fmt.Int(cell2.Get()));
+
+    // --- New with negative initial ---
+    Say("--- New with negative initial ---");
+    var cell3 = SafeI64.New(-42);
+    Say("New(-42) Get: " + Fmt.Int(cell3.Get()));
+
+    Say("=== SafeI64 Audit Complete ===");
+}

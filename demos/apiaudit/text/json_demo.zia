@@ -1,0 +1,50 @@
+module JsonDemo;
+bind Viper.Terminal;
+bind Json = Viper.Text.Json;
+
+func start() {
+    Say("=== Viper.Text.Json API Audit ===");
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    SayBool(Json.IsValid("{\"name\":\"Alice\",\"age\":30}"));
+    SayBool(Json.IsValid("[1,2,3]"));
+    SayBool(Json.IsValid("not json"));
+    SayBool(Json.IsValid(""));
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var obj = Json.Parse("{\"name\":\"Alice\",\"age\":30}");
+    Say(Json.TypeOf(obj));
+
+    // --- ParseObject ---
+    Say("--- ParseObject ---");
+    var obj2 = Json.ParseObject("{\"x\":1,\"y\":2}");
+    Say(Json.TypeOf(obj2));
+
+    // --- ParseArray ---
+    Say("--- ParseArray ---");
+    var arr = Json.ParseArray("[1,2,3,4,5]");
+    Say(Json.TypeOf(arr));
+
+    // --- Format ---
+    Say("--- Format ---");
+    var data = Json.Parse("{\"name\":\"Bob\",\"active\":true}");
+    Say(Json.Format(data));
+
+    // --- FormatPretty ---
+    Say("--- FormatPretty ---");
+    var data2 = Json.Parse("{\"name\":\"Carol\",\"scores\":[90,85,92]}");
+    Say(Json.FormatPretty(data2, 2));
+
+    // --- TypeOf ---
+    Say("--- TypeOf ---");
+    Say(Json.TypeOf(Json.Parse("\"hello\"")));
+    Say(Json.TypeOf(Json.Parse("42")));
+    Say(Json.TypeOf(Json.Parse("true")));
+    Say(Json.TypeOf(Json.Parse("null")));
+    Say(Json.TypeOf(Json.Parse("[1,2]")));
+    Say(Json.TypeOf(Json.Parse("{\"a\":1}")));
+
+    Say("=== Json Demo Complete ===");
+}

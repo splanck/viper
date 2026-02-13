@@ -1,0 +1,84 @@
+module JsonStreamDemo;
+bind Viper.Terminal;
+bind JS = Viper.Text.JsonStream;
+
+func start() {
+    Say("=== Viper.Text.JsonStream API Audit ===");
+
+    // --- New ---
+    Say("--- New / Next / TokenType ---");
+    var stream = JS.New("{\"name\":\"Alice\",\"age\":30,\"active\":true}");
+
+    // Walk through tokens
+    var i = 0;
+    while i < 20 {
+        var hasMore = JS.HasNext(stream);
+        if hasMore == false {
+            i = 100;
+        } else {
+            JS.Next(stream);
+            var tt = JS.TokenType(stream);
+            SayInt(tt);
+            i = i + 1;
+        }
+    }
+
+    // --- StringValue ---
+    Say("--- StringValue ---");
+    var s2 = JS.New("{\"greeting\":\"hello\"}");
+    JS.Next(s2);
+    JS.Next(s2);
+    Say(JS.StringValue(s2));
+    JS.Next(s2);
+    Say(JS.StringValue(s2));
+
+    // --- NumberValue ---
+    Say("--- NumberValue ---");
+    var s3 = JS.New("{\"value\":42.5}");
+    JS.Next(s3);
+    JS.Next(s3);
+    JS.Next(s3);
+    SayNum(JS.NumberValue(s3));
+
+    // --- BoolValue ---
+    Say("--- BoolValue ---");
+    var s4 = JS.New("{\"flag\":true}");
+    JS.Next(s4);
+    JS.Next(s4);
+    JS.Next(s4);
+    SayBool(JS.BoolValue(s4));
+
+    // --- Depth ---
+    Say("--- Depth ---");
+    var s5 = JS.New("{\"nested\":{\"deep\":1}}");
+    JS.Next(s5);
+    SayInt(JS.Depth(s5));
+    JS.Next(s5);
+    JS.Next(s5);
+    SayInt(JS.Depth(s5));
+
+    // --- Skip ---
+    Say("--- Skip ---");
+    var s6 = JS.New("{\"skip\":[1,2,3],\"keep\":\"yes\"}");
+    JS.Next(s6);
+    JS.Next(s6);
+    JS.Skip(s6);
+    JS.Next(s6);
+    Say(JS.StringValue(s6));
+    JS.Next(s6);
+    Say(JS.StringValue(s6));
+
+    // --- HasNext ---
+    Say("--- HasNext ---");
+    var s7 = JS.New("42");
+    SayBool(JS.HasNext(s7));
+    JS.Next(s7);
+    SayBool(JS.HasNext(s7));
+
+    // --- Error ---
+    Say("--- Error ---");
+    var s8 = JS.New("{\"valid\":1}");
+    Say(JS.Error(s8));
+
+    Say("=== JsonStream Demo Complete ===");
+}

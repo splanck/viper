@@ -1,0 +1,38 @@
+module RetryPolicyDemo;
+bind Viper.Terminal;
+bind RetryPolicy = Viper.Network.RetryPolicy;
+
+func start() {
+    Say("=== API Audit: Viper.Network.RetryPolicy ===");
+
+    Say("--- Exponential ---");
+    var rp = RetryPolicy.Exponential(3, 100, 5000);
+
+    Say("--- Properties ---");
+    SayInt(rp.get_MaxRetries());
+    SayInt(rp.get_Attempt());
+    SayBool(rp.get_CanRetry());
+    SayBool(rp.get_IsExhausted());
+
+    Say("--- NextDelay ---");
+    SayInt(rp.NextDelay());
+    SayInt(rp.get_Attempt());
+    SayInt(rp.NextDelay());
+    SayInt(rp.get_Attempt());
+    SayInt(rp.NextDelay());
+    SayInt(rp.get_Attempt());
+
+    Say("--- Exhausted ---");
+    SayBool(rp.get_CanRetry());
+    SayBool(rp.get_IsExhausted());
+
+    Say("--- TotalAttempts ---");
+    SayInt(rp.get_TotalAttempts());
+
+    Say("--- Reset ---");
+    rp.Reset();
+    SayInt(rp.get_Attempt());
+    SayBool(rp.get_CanRetry());
+
+    Say("=== RetryPolicy Audit Complete ===");
+}

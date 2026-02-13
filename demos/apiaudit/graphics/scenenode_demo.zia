@@ -1,0 +1,12 @@
+module SceneNodeDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.SceneNode ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New(name)");
+    Say("Properties: get_X, get_Y, get_Visible, get_Tag");
+    Say("Methods: AddChild(node), RemoveChild(node)");
+    Say("Methods: SetPosition(x, y), SetScale(sx, sy), SetRotation(angle)");
+    Say("Methods: SetVisible(v), SetTag(tag)");
+    Say("=== SceneNode Audit Complete (API surface only) ===");
+}

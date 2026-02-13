@@ -1,0 +1,91 @@
+// treemap_demo.zia - Comprehensive API audit for Viper.Collections.TreeMap
+// Tests: New, Set, Get, Has, Drop, Clear, Len, IsEmpty,
+//        Keys, Values, First, Last, Floor, Ceil
+
+module TreeMapDemo;
+
+bind Viper.Collections;
+bind Seq = Viper.Collections.Seq;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== TreeMap API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var tm = TreeMap.New();
+    SayInt(tm.Len);       // 0
+    SayBool(tm.IsEmpty);  // 1
+
+    // --- Set / Len ---
+    Say("--- Set / Len ---");
+    tm.Set("cherry", Box.Str("red"));
+    tm.Set("apple", Box.Str("green"));
+    tm.Set("banana", Box.Str("yellow"));
+    tm.Set("date", Box.Str("brown"));
+    SayInt(tm.Len);       // 4
+    SayBool(tm.IsEmpty);  // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(tm.Get("apple")));   // green
+    Say(Box.ToStr(tm.Get("cherry")));  // red
+    Say(Box.ToStr(tm.Get("banana"))); // yellow
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(tm.Has("apple"));  // 1
+    SayBool(tm.Has("fig"));    // 0
+
+    // --- Set (update existing) ---
+    Say("--- Set (update) ---");
+    tm.Set("apple", Box.Str("red"));
+    Say(Box.ToStr(tm.Get("apple")));   // red
+    SayInt(tm.Len);                    // 4 (no new entry)
+
+    // --- First / Last ---
+    Say("--- First / Last ---");
+    Say(tm.First());   // apple
+    Say(tm.Last());    // date
+
+    // --- Floor / Ceil ---
+    Say("--- Floor / Ceil ---");
+    Say(tm.Floor("cat"));         // banana (largest <= "cat")
+    Say(tm.Ceil("cat"));          // cherry (smallest >= "cat")
+    Say(tm.Floor("apple"));       // apple (exact match)
+    Say(tm.Ceil("date"));         // date (exact match)
+    Say(tm.Floor("aaa"));         // empty (nothing <= "aaa")
+
+    // --- Keys (sorted order) ---
+    Say("--- Keys ---");
+    var keys = tm.Keys();
+    SayInt(Seq.get_Len(keys));              // 4
+    Say(Box.ToStr(Seq.Get(keys, 0)));   // apple
+    Say(Box.ToStr(Seq.Get(keys, 1)));   // banana
+    Say(Box.ToStr(Seq.Get(keys, 2)));   // cherry
+    Say(Box.ToStr(Seq.Get(keys, 3)));   // date
+
+    // --- Values (key-sorted order) ---
+    Say("--- Values ---");
+    var vals = tm.Values();
+    SayInt(Seq.get_Len(vals));              // 4
+    Say(Box.ToStr(Seq.Get(vals, 0)));   // red (apple's value)
+    Say(Box.ToStr(Seq.Get(vals, 1)));   // yellow (banana's value)
+
+    // --- Drop ---
+    Say("--- Drop ---");
+    SayBool(tm.Drop("banana"));    // 1
+    SayBool(tm.Has("banana"));     // 0
+    SayInt(tm.Len);                // 3
+    SayBool(tm.Drop("banana"));    // 0 (already removed)
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    tm.Clear();
+    SayInt(tm.Len);                // 0
+    SayBool(tm.IsEmpty);           // 1
+
+    Say("=== TreeMap audit complete ===");
+}

@@ -1,0 +1,114 @@
+// =============================================================================
+// API Audit: Viper.Threads.Channel
+// =============================================================================
+// Tests: New, Send, TrySend, Recv, TryRecv, Close, Len, Cap, IsClosed,
+//        IsEmpty, IsFull
+// =============================================================================
+
+module ChannelDemo;
+bind Viper.Threads.Channel as Channel;
+bind Viper.Core.Box as Box;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Channel ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var ch = Channel.New(3);
+    Say("Created channel with capacity 3");
+
+    // --- Cap ---
+    Say("--- Cap ---");
+    Say("Cap: " + Fmt.Int(ch.get_Cap()));
+
+    // --- Len (initial) ---
+    Say("--- Len (initial) ---");
+    Say("Len: " + Fmt.Int(ch.get_Len()));
+
+    // --- IsEmpty (initial) ---
+    Say("--- IsEmpty (initial) ---");
+    Say("IsEmpty: " + Fmt.Bool(ch.get_IsEmpty()));
+
+    // --- IsFull (initial) ---
+    Say("--- IsFull (initial) ---");
+    Say("IsFull: " + Fmt.Bool(ch.get_IsFull()));
+
+    // --- IsClosed (initial) ---
+    Say("--- IsClosed (initial) ---");
+    Say("IsClosed: " + Fmt.Bool(ch.get_IsClosed()));
+
+    // --- Send ---
+    Say("--- Send ---");
+    ch.Send(Box.Str("hello"));
+    Say("Len after Send: " + Fmt.Int(ch.get_Len()));
+
+    // --- TrySend ---
+    Say("--- TrySend ---");
+    var ok1 = ch.TrySend(Box.Str("world"));
+    Say("TrySend: " + Fmt.Bool(ok1));
+    Say("Len after TrySend: " + Fmt.Int(ch.get_Len()));
+
+    // --- Fill channel ---
+    Say("--- Fill channel ---");
+    ch.Send(Box.Str("third"));
+    Say("Len: " + Fmt.Int(ch.get_Len()));
+    Say("IsFull: " + Fmt.Bool(ch.get_IsFull()));
+
+    // --- TrySend on full ---
+    Say("--- TrySend (full) ---");
+    var ok2 = ch.TrySend(Box.Str("overflow"));
+    Say("TrySend (full): " + Fmt.Bool(ok2));
+
+    // --- IsEmpty (not empty) ---
+    Say("--- IsEmpty (not empty) ---");
+    Say("IsEmpty: " + Fmt.Bool(ch.get_IsEmpty()));
+
+    // --- Recv ---
+    Say("--- Recv ---");
+    var item1 = ch.Recv();
+    Say("Recv: " + Box.ToStr(item1));
+    Say("Len after Recv: " + Fmt.Int(ch.get_Len()));
+
+    // --- TryRecv ---
+    Say("--- TryRecv ---");
+    var item2 = ch.Recv();
+    Say("Recv: " + Box.ToStr(item2));
+
+    // --- Drain remaining ---
+    Say("--- Drain remaining ---");
+    var item3 = ch.Recv();
+    Say("Recv: " + Box.ToStr(item3));
+    Say("Len: " + Fmt.Int(ch.get_Len()));
+    Say("IsEmpty: " + Fmt.Bool(ch.get_IsEmpty()));
+
+    // --- Close ---
+    Say("--- Close ---");
+    ch.Close();
+    Say("IsClosed: " + Fmt.Bool(ch.get_IsClosed()));
+
+    // --- TrySend on closed ---
+    Say("--- TrySend (closed) ---");
+    var ok3 = ch.TrySend(Box.Str("after close"));
+    Say("TrySend (closed): " + Fmt.Bool(ok3));
+
+    // --- New channel for TryRecv test ---
+    Say("--- TryRecv test ---");
+    var ch2 = Channel.New(5);
+    ch2.Send(Box.I64(42));
+    var recv1 = ch2.Recv();
+    Say("Recv I64: " + Fmt.Int(Box.ToI64(recv1)));
+
+    // --- Channel with capacity 1 ---
+    Say("--- Channel capacity 1 ---");
+    var ch3 = Channel.New(1);
+    Say("Cap: " + Fmt.Int(ch3.get_Cap()));
+    ch3.Send(Box.Str("single"));
+    Say("IsFull: " + Fmt.Bool(ch3.get_IsFull()));
+    var s = ch3.Recv();
+    Say("Recv: " + Box.ToStr(s));
+    Say("IsEmpty: " + Fmt.Bool(ch3.get_IsEmpty()));
+
+    Say("=== Channel Audit Complete ===");
+}

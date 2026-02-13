@@ -1,0 +1,97 @@
+// =============================================================================
+// API Audit: Viper.Threads.RwLock
+// =============================================================================
+// Tests: New, ReadEnter, ReadExit, WriteEnter, WriteExit, TryReadEnter,
+//        TryWriteEnter, Readers, IsWriteLocked
+// =============================================================================
+
+module RwLockDemo;
+bind Viper.Threads.RwLock as RwLock;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.RwLock ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var lock = RwLock.New();
+    Say("Created RwLock");
+
+    // --- Readers (initial) ---
+    Say("--- Readers (initial) ---");
+    Say("Readers: " + Fmt.Int(lock.get_Readers()));
+
+    // --- IsWriteLocked (initial) ---
+    Say("--- IsWriteLocked (initial) ---");
+    Say("IsWriteLocked: " + Fmt.Bool(lock.get_IsWriteLocked()));
+
+    // --- ReadEnter / ReadExit ---
+    Say("--- ReadEnter ---");
+    lock.ReadEnter();
+    Say("Readers after ReadEnter: " + Fmt.Int(lock.get_Readers()));
+    Say("IsWriteLocked: " + Fmt.Bool(lock.get_IsWriteLocked()));
+
+    Say("--- ReadExit ---");
+    lock.ReadExit();
+    Say("Readers after ReadExit: " + Fmt.Int(lock.get_Readers()));
+
+    // --- WriteEnter / WriteExit ---
+    Say("--- WriteEnter ---");
+    lock.WriteEnter();
+    Say("IsWriteLocked after WriteEnter: " + Fmt.Bool(lock.get_IsWriteLocked()));
+    Say("Readers: " + Fmt.Int(lock.get_Readers()));
+
+    Say("--- WriteExit ---");
+    lock.WriteExit();
+    Say("IsWriteLocked after WriteExit: " + Fmt.Bool(lock.get_IsWriteLocked()));
+
+    // --- TryReadEnter ---
+    Say("--- TryReadEnter ---");
+    var ok1 = lock.TryReadEnter();
+    Say("TryReadEnter: " + Fmt.Bool(ok1));
+    Say("Readers: " + Fmt.Int(lock.get_Readers()));
+    lock.ReadExit();
+
+    // --- TryWriteEnter ---
+    Say("--- TryWriteEnter ---");
+    var ok2 = lock.TryWriteEnter();
+    Say("TryWriteEnter: " + Fmt.Bool(ok2));
+    Say("IsWriteLocked: " + Fmt.Bool(lock.get_IsWriteLocked()));
+    lock.WriteExit();
+
+    // --- Multiple readers ---
+    Say("--- Multiple readers ---");
+    lock.ReadEnter();
+    lock.ReadEnter();
+    Say("Readers (2 entered): " + Fmt.Int(lock.get_Readers()));
+    lock.ReadExit();
+    Say("Readers (1 exited): " + Fmt.Int(lock.get_Readers()));
+    lock.ReadExit();
+    Say("Readers (all exited): " + Fmt.Int(lock.get_Readers()));
+
+    // --- TryWriteEnter while read-locked ---
+    Say("--- TryWriteEnter while read-locked ---");
+    lock.ReadEnter();
+    var ok3 = lock.TryWriteEnter();
+    Say("TryWriteEnter (read held): " + Fmt.Bool(ok3));
+    lock.ReadExit();
+
+    // --- TryReadEnter while write-locked ---
+    Say("--- TryReadEnter while write-locked ---");
+    lock.WriteEnter();
+    var ok4 = lock.TryReadEnter();
+    Say("TryReadEnter (write held): " + Fmt.Bool(ok4));
+    lock.WriteExit();
+
+    // --- Re-entrant write lock ---
+    Say("--- Re-entrant write lock ---");
+    lock.WriteEnter();
+    var ok5 = lock.TryWriteEnter();
+    Say("TryWriteEnter (re-entrant): " + Fmt.Bool(ok5));
+    lock.WriteExit();
+    lock.WriteExit();
+    Say("IsWriteLocked after double exit: " + Fmt.Bool(lock.get_IsWriteLocked()));
+
+    Say("=== RwLock Audit Complete ===");
+}

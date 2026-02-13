@@ -1,0 +1,100 @@
+// =============================================================================
+// API Audit: Viper.IO.Archive
+// =============================================================================
+// Tests: Create, Open, Path, Count, Names, Has, AddStr, ReadStr,
+//        AddFile, Extract, ExtractAll, Info, Finish, IsZip
+// =============================================================================
+
+module ArchiveDemo;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+bind Archive = Viper.IO.Archive;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+bind Seq = Viper.Collections.Seq;
+bind Box = Viper.Core.Box;
+
+func start() {
+    Say("=== API Audit: Viper.IO.Archive ===");
+
+    var tmpDir = TempFile.Dir();
+    var zipPath = Path.Join(tmpDir, "viper_archive_audit.zip");
+    var extractDir = Path.Join(tmpDir, "viper_archive_extract");
+
+    // --- Create ---
+    Say("--- Create ---");
+    var arc = Archive.Create(zipPath);
+    Say("Created archive");
+
+    // --- Path ---
+    Say("--- Path ---");
+    Say(arc.get_Path());
+
+    // --- AddStr ---
+    Say("--- AddStr ---");
+    arc.AddStr("hello.txt", "Hello from Viper!");
+    arc.AddStr("data/info.txt", "Some nested data");
+    arc.AddStr("numbers.txt", "1 2 3 4 5");
+    Say("Added 3 entries with AddStr");
+
+    // --- Finish ---
+    Say("--- Finish ---");
+    arc.Finish();
+    Say("Archive finished/closed");
+
+    // --- IsZip ---
+    Say("--- IsZip ---");
+    SayBool(Archive.IsZip(zipPath));
+    SayBool(Archive.IsZip("/nonexistent_file.zip"));
+
+    // --- Open ---
+    Say("--- Open ---");
+    var arc2 = Archive.Open(zipPath);
+    Say("Opened archive");
+
+    // --- Count ---
+    Say("--- Count ---");
+    SayInt(arc2.get_Count());
+
+    // --- Names ---
+    Say("--- Names ---");
+    var names = arc2.get_Names();
+    SayInt(Seq.get_Len(names));
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(arc2.Has("hello.txt"));
+    SayBool(arc2.Has("data/info.txt"));
+    SayBool(arc2.Has("nonexistent.txt"));
+
+    // --- ReadStr ---
+    Say("--- ReadStr ---");
+    Say(arc2.ReadStr("hello.txt"));
+    Say(arc2.ReadStr("data/info.txt"));
+    Say(arc2.ReadStr("numbers.txt"));
+
+    // --- Info ---
+    Say("--- Info ---");
+    var info = arc2.Info("hello.txt");
+    Say("Info returned (object)");
+
+    // --- ExtractAll ---
+    Say("--- ExtractAll ---");
+    arc2.ExtractAll(extractDir);
+    Say("ExtractAll done");
+
+    // --- Verify extracted files ---
+    Say("--- Verify extracted ---");
+    var extractedFile = Path.Join(extractDir, "hello.txt");
+    SayBool(File.Exists(extractedFile));
+    Say(File.ReadAllText(extractedFile));
+
+    // --- Cleanup ---
+    File.Delete(zipPath);
+    File.Delete(Path.Join(extractDir, "hello.txt"));
+    File.Delete(Path.Join(extractDir, "data/info.txt"));
+    File.Delete(Path.Join(extractDir, "numbers.txt"));
+
+    Say("=== Archive Audit Complete ===");
+}

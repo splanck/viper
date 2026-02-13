@@ -10,9 +10,26 @@
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_box.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+
+// --- Helper: extract string from seq element (may be boxed) ---
+
+static rt_string fm_extract_str(void *elem)
+{
+    if (!elem)
+        return NULL;
+    // Check if the element is a raw rt_string by inspecting the magic field.
+    // rt_string_impl starts with magic = RT_STRING_MAGIC; boxed values do not.
+    rt_string s = (rt_string)elem;
+    if (s->magic == RT_STRING_MAGIC)
+        return s;
+    // Not a raw string -- assume boxed value and unbox.
+    return rt_unbox_str(elem);
+}
 
 // --- Hash table entry (open addressing) ---
 
@@ -155,7 +172,7 @@ void *rt_frozenmap_from_seqs(void *keys, void *values)
 
     for (int64_t i = 0; i < n; i++)
     {
-        rt_string k = (rt_string)rt_seq_get(keys, i);
+        rt_string k = fm_extract_str(rt_seq_get(keys, i));
         void *v = rt_seq_get(values, i);
         if (k)
             fm_insert(fm, k, v);

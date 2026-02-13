@@ -1,0 +1,91 @@
+// =============================================================================
+// API Audit: Viper.IO.LineWriter - Line-by-Line File Writing
+// =============================================================================
+// Tests: Open, Append, Write, WriteLn, WriteChar, NewLine, SetNewLine,
+//        Flush, Close
+// =============================================================================
+
+module LineWriterDemo;
+bind Viper.Terminal;
+bind LW = Viper.IO.LineWriter;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+
+func start() {
+    Say("=== API Audit: Viper.IO.LineWriter ===");
+
+    var tmpDir = TempFile.Dir();
+    var testPath = Path.Join(tmpDir, "viper_linewriter_audit.txt");
+
+    // --- Open ---
+    Say("--- Open ---");
+    var writer = LW.Open(testPath);
+    Say("Open done");
+
+    // --- Write ---
+    Say("--- Write ---");
+    LW.Write(writer, "Hello ");
+    Say("Write('Hello ') done");
+
+    // --- WriteLn ---
+    Say("--- WriteLn ---");
+    LW.WriteLn(writer, "World");
+    Say("WriteLn('World') done");
+
+    // --- WriteChar ---
+    Say("--- WriteChar ---");
+    LW.WriteChar(writer, 65);
+    LW.WriteChar(writer, 66);
+    LW.WriteChar(writer, 67);
+    Say("WriteChar(A, B, C) done");
+
+    // --- get_NewLine ---
+    Say("--- get_NewLine ---");
+    Say("NewLine (default):");
+    Say(LW.get_NewLine(writer));
+
+    // --- set_NewLine ---
+    Say("--- set_NewLine ---");
+    LW.set_NewLine(writer, "\r\n");
+    Say("set_NewLine to CRLF");
+    Say("NewLine now:");
+    Say(LW.get_NewLine(writer));
+    LW.set_NewLine(writer, "\n");
+    Say("Restored to LF");
+
+    // --- WriteLn after more content ---
+    LW.WriteLn(writer, "");
+    LW.WriteLn(writer, "Final line");
+    Say("More lines written");
+
+    // --- Flush ---
+    Say("--- Flush ---");
+    LW.Flush(writer);
+    Say("Flush done");
+
+    // --- Close ---
+    Say("--- Close ---");
+    LW.Close(writer);
+    Say("Close done");
+
+    // Verify content
+    Say("--- Verify ---");
+    Say("File content:");
+    Say(File.ReadAllText(testPath));
+
+    // --- Append ---
+    Say("--- Append ---");
+    var appWriter = LW.Append(testPath);
+    LW.WriteLn(appWriter, "Appended line");
+    LW.Close(appWriter);
+    Say("Append done");
+    Say("Content after append:");
+    Say(File.ReadAllText(testPath));
+
+    // Cleanup
+    File.Delete(testPath);
+    Say("Cleanup done");
+
+    Say("=== LineWriter Demo Complete ===");
+}

@@ -1,0 +1,129 @@
+// =============================================================================
+// API Audit: Viper.Core.Convert + Viper.Core.Parse
+// =============================================================================
+// Tests Convert: ToDouble, ToInt, ToInt64, ToString_Int, ToString_Double, NumToInt
+// Tests Parse: IntOr, NumOr, BoolOr, IsInt, IsNum, IntRadix
+// =============================================================================
+
+module ConvertDemo;
+bind Viper.Terminal;
+bind Conv = Viper.Core.Convert;
+bind Parse = Viper.Core.Parse;
+
+func start() {
+    Say("=== API Audit: Viper.Core.Convert + Parse ===");
+
+    // --- Convert.ToDouble ---
+    Say("--- Convert.ToDouble ---");
+    Say("ToDouble('3.14'):");
+    SayNum(Conv.ToDouble("3.14"));
+    Say("ToDouble('0.0'):");
+    SayNum(Conv.ToDouble("0.0"));
+    Say("ToDouble('-2.5'):");
+    SayNum(Conv.ToDouble("-2.5"));
+
+    // --- Convert.ToInt ---
+    Say("--- Convert.ToInt ---");
+    Say("ToInt('42'):");
+    SayInt(Conv.ToInt("42"));
+    Say("ToInt('0'):");
+    SayInt(Conv.ToInt("0"));
+    Say("ToInt('-100'):");
+    SayInt(Conv.ToInt("-100"));
+
+    // --- Convert.ToInt64 ---
+    Say("--- Convert.ToInt64 ---");
+    Say("ToInt64('1000000'):");
+    SayInt(Conv.ToInt64("1000000"));
+    Say("ToInt64('-999'):");
+    SayInt(Conv.ToInt64("-999"));
+
+    // --- Convert.ToString_Int ---
+    Say("--- Convert.ToString_Int ---");
+    Say("ToString_Int(42):");
+    Say(Conv.ToString_Int(42));
+    Say("ToString_Int(0):");
+    Say(Conv.ToString_Int(0));
+    Say("ToString_Int(-7):");
+    Say(Conv.ToString_Int(-7));
+
+    // --- Convert.ToString_Double ---
+    Say("--- Convert.ToString_Double ---");
+    Say("ToString_Double(3.14):");
+    Say(Conv.ToString_Double(3.14));
+    Say("ToString_Double(0.0):");
+    Say(Conv.ToString_Double(0.0));
+    Say("ToString_Double(-1.5):");
+    Say(Conv.ToString_Double(-1.5));
+
+    // --- Convert.NumToInt ---
+    Say("--- Convert.NumToInt ---");
+    Say("NumToInt(3.9):");
+    SayInt(Conv.NumToInt(3.9));
+    Say("NumToInt(-2.7):");
+    SayInt(Conv.NumToInt(-2.7));
+    Say("NumToInt(0.0):");
+    SayInt(Conv.NumToInt(0.0));
+
+    // =========================================
+    // Viper.Core.Parse
+    // =========================================
+
+    // --- Parse.IntOr ---
+    Say("--- Parse.IntOr ---");
+    Say("IntOr('123', -1):");
+    SayInt(Parse.IntOr("123", -1));
+    Say("IntOr('abc', -1):");
+    SayInt(Parse.IntOr("abc", -1));
+    Say("IntOr('', 0):");
+    SayInt(Parse.IntOr("", 0));
+
+    // --- Parse.NumOr ---
+    Say("--- Parse.NumOr ---");
+    Say("NumOr('3.14', 0.0):");
+    SayNum(Parse.NumOr("3.14", 0.0));
+    Say("NumOr('xyz', 99.9):");
+    SayNum(Parse.NumOr("xyz", 99.9));
+
+    // --- Parse.BoolOr ---
+    Say("--- Parse.BoolOr ---");
+    Say("BoolOr('true', false):");
+    SayBool(Parse.BoolOr("true", false));
+    Say("BoolOr('false', true):");
+    SayBool(Parse.BoolOr("false", true));
+    Say("BoolOr('nope', false):");
+    SayBool(Parse.BoolOr("nope", false));
+
+    // --- Parse.IsInt ---
+    Say("--- Parse.IsInt ---");
+    Say("IsInt('42'):");
+    SayBool(Parse.IsInt("42"));
+    Say("IsInt('hello'):");
+    SayBool(Parse.IsInt("hello"));
+    Say("IsInt('-7'):");
+    SayBool(Parse.IsInt("-7"));
+    Say("IsInt(''):");
+    SayBool(Parse.IsInt(""));
+
+    // --- Parse.IsNum ---
+    Say("--- Parse.IsNum ---");
+    Say("IsNum('3.14'):");
+    SayBool(Parse.IsNum("3.14"));
+    Say("IsNum('42'):");
+    SayBool(Parse.IsNum("42"));
+    Say("IsNum('abc'):");
+    SayBool(Parse.IsNum("abc"));
+
+    // --- Parse.IntRadix ---
+    Say("--- Parse.IntRadix ---");
+    Say("IntRadix('FF', 16, 0):");
+    SayInt(Parse.IntRadix("FF", 16, 0));
+    Say("IntRadix('1010', 2, 0):");
+    SayInt(Parse.IntRadix("1010", 2, 0));
+    Say("IntRadix('77', 8, 0):");
+    SayInt(Parse.IntRadix("77", 8, 0));
+    Say("IntRadix('ZZZ', 16, -1):");
+    SayInt(Parse.IntRadix("ZZZ", 16, -1));
+
+    Say("=== Convert + Parse Demo Complete ===");
+}

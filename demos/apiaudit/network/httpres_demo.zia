@@ -1,0 +1,9 @@
+module HttpResDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Network.HttpRes ===");
+    Say("NOTE: HttpRes is returned from HttpReq.Send or Http.Get. API surface test only.");
+    Say("Methods: Status() -> i64, StatusText() -> str, Headers() -> str, Body() -> bytes, BodyStr() -> str, Header(key) -> str, IsOk() -> bool");
+    Say("=== HttpRes Audit Complete (API surface only) ===");
+}

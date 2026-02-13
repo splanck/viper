@@ -368,6 +368,48 @@ configurable timing windows.
 - `Active` returns true as long as all chord keys remain held (not just on the trigger frame).
 - `Progress` is useful for showing combo progress to the player (e.g., a progress bar).
 
+### Zia Example
+
+```zia
+module KeyChordDemo;
+
+bind Viper.Input;
+bind Viper.Terminal;
+bind Viper.Collections;
+
+func start() {
+    var kc = KeyChord.New();
+
+    // Define a chord (Ctrl+S)
+    var saveKeys = Seq.New();
+    saveKeys.Push(341);  // Left Ctrl
+    saveKeys.Push(83);   // S
+    kc.Define("save", saveKeys);
+
+    // Define a combo (sequential keys with frame window)
+    var konamiKeys = Seq.New();
+    konamiKeys.Push(265);  // Up
+    konamiKeys.Push(265);  // Up
+    konamiKeys.Push(264);  // Down
+    konamiKeys.Push(264);  // Down
+    kc.DefineCombo("konami", konamiKeys, 60);
+
+    SayInt(kc.Count);  // 2
+
+    // Check state (no keys pressed headlessly)
+    kc.Update();
+    SayBool(kc.Active("save"));      // false
+    SayBool(kc.Triggered("save"));   // false
+    SayInt(kc.Progress("konami"));   // 0
+
+    // Manage chords
+    kc.Remove("save");
+    SayInt(kc.Count);  // 1
+    kc.Clear();
+    SayInt(kc.Count);  // 0
+}
+```
+
 ### BASIC Example
 
 ```basic

@@ -1,0 +1,86 @@
+// bag_demo.zia - Comprehensive API audit for Viper.Collections.Bag
+// Tests: New, Put, Has, Drop, Len, IsEmpty, Items, Clear, Common, Diff, Merge
+
+module BagDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Bag API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var bag = Bag.New();
+    SayInt(bag.Len);       // 0
+    SayBool(bag.IsEmpty);  // 1
+
+    // --- Put / Len ---
+    Say("--- Put / Len ---");
+    SayBool(bag.Put("apple"));   // 1 (new)
+    SayBool(bag.Put("banana"));  // 1 (new)
+    SayBool(bag.Put("cherry")); // 1 (new)
+    SayBool(bag.Put("apple"));  // 0 (duplicate)
+    SayInt(bag.Len);             // 3
+    SayBool(bag.IsEmpty);        // 0
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(bag.Has("apple"));   // 1
+    SayBool(bag.Has("banana"));  // 1
+    SayBool(bag.Has("grape"));   // 0
+
+    // --- Drop ---
+    Say("--- Drop ---");
+    SayBool(bag.Drop("banana")); // 1
+    SayBool(bag.Has("banana"));  // 0
+    SayInt(bag.Len);             // 2
+    SayBool(bag.Drop("banana")); // 0 (already removed)
+
+    // --- Items ---
+    Say("--- Items ---");
+    var items = bag.Items();
+    SayInt(items.Len);           // 2
+
+    // --- Merge (union) ---
+    Say("--- Merge ---");
+    var b1 = Bag.New();
+    b1.Put("a");
+    b1.Put("b");
+    b1.Put("c");
+
+    var b2 = Bag.New();
+    b2.Put("b");
+    b2.Put("c");
+    b2.Put("d");
+
+    var merged = b1.Merge(b2);
+    SayInt(merged.Len);          // 4 (a, b, c, d)
+    SayBool(merged.Has("a"));    // 1
+    SayBool(merged.Has("d"));    // 1
+
+    // --- Common (intersection) ---
+    Say("--- Common ---");
+    var common = b1.Common(b2);
+    SayInt(common.Len);          // 2 (b, c)
+    SayBool(common.Has("b"));    // 1
+    SayBool(common.Has("c"));    // 1
+    SayBool(common.Has("a"));    // 0
+
+    // --- Diff ---
+    Say("--- Diff ---");
+    var diff = b1.Diff(b2);
+    SayInt(diff.Len);            // 1 (a)
+    SayBool(diff.Has("a"));      // 1
+    SayBool(diff.Has("b"));      // 0
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    b1.Clear();
+    SayInt(b1.Len);              // 0
+    SayBool(b1.IsEmpty);         // 1
+
+    Say("=== Bag audit complete ===");
+}

@@ -11,11 +11,13 @@
 - [Viper.IO.Compress](#viperiocompress)
 - [Viper.IO.Dir](#viperiodir)
 - [Viper.IO.File](#viperiofile)
+- [Viper.IO.Glob](#viperioglob)
 - [Viper.IO.LineReader](#viperiolinereader)
 - [Viper.IO.LineWriter](#viperiolinewriter)
 - [Viper.IO.MemStream](#viperiomemstream)
 - [Viper.IO.Path](#viperiopath)
 - [Viper.IO.Stream](#viperiostream)
+- [Viper.IO.TempFile](#viperiotempfile)
 - [Viper.IO.Watcher](#viperiowatcher)
 
 ---
@@ -1698,6 +1700,170 @@ Use BinFile/MemStream directly when:
 - You know the specific backing type
 - You need type-specific features
 - Maximum performance is critical
+
+---
+
+## Viper.IO.Glob
+
+File globbing utilities for matching file paths against wildcard patterns and finding files by pattern.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                        | Signature                  | Description                                                     |
+|-------------------------------|----------------------------|-----------------------------------------------------------------|
+| `Match(path, pattern)`        | `Boolean(String, String)`  | Returns true if the path matches the glob pattern               |
+| `Files(dir, pattern)`         | `Seq(String, String)`      | Returns files in a directory matching the pattern               |
+| `FilesRecursive(dir, pattern)` | `Seq(String, String)`     | Returns files in a directory and subdirectories matching pattern |
+| `Entries(dir, pattern)`       | `Seq(String, String)`      | Returns all entries (files + dirs) matching the pattern          |
+
+### Pattern Syntax
+
+| Pattern | Description                        | Example                |
+|---------|------------------------------------|------------------------|
+| `*`     | Matches any sequence of characters | `*.txt` matches `a.txt` |
+| `?`     | Matches a single character         | `?.c` matches `a.c`    |
+| `[abc]` | Matches any character in brackets  | `[abc].txt`            |
+
+### Notes
+
+- **Parameter order is (path, pattern)** for `Match`, not (pattern, path)
+- `Files` returns only regular files, not directories
+- `FilesRecursive` descends into all subdirectories
+- `Entries` returns both files and directories that match the pattern
+- All listing methods return a `Seq` of full path strings
+- Patterns are matched against the filename component, not the full path (for `Files`/`Entries`)
+
+### Zia Example
+
+```zia
+module GlobDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.Glob as Glob;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("Match txt: " + Fmt.Bool(Glob.Match("hello.txt", "*.txt")));   // true
+    Say("Match c: " + Fmt.Bool(Glob.Match("hello.c", "*.txt")));       // false
+}
+```
+
+### BASIC Example
+
+```basic
+' Match file paths against patterns
+PRINT Viper.IO.Glob.Match("hello.txt", "*.txt")    ' Output: 1
+PRINT Viper.IO.Glob.Match("hello.c", "*.txt")      ' Output: 0
+PRINT Viper.IO.Glob.Match("test.bas", "*.bas")      ' Output: 1
+PRINT Viper.IO.Glob.Match("readme.md", "read*")     ' Output: 1
+
+' Find all .txt files in a directory
+DIM txtFiles AS OBJECT = Viper.IO.Glob.Files("/home/user/docs", "*.txt")
+FOR i = 0 TO txtFiles.Len - 1
+    PRINT txtFiles.Get(i)
+NEXT i
+
+' Find all .bas files recursively
+DIM basFiles AS OBJECT = Viper.IO.Glob.FilesRecursive("/home/user/projects", "*.bas")
+PRINT "Found "; basFiles.Len; " BASIC files"
+
+' Find all entries (files + dirs) matching a pattern
+DIM entries AS OBJECT = Viper.IO.Glob.Entries("/home/user", "test*")
+FOR i = 0 TO entries.Len - 1
+    PRINT entries.Get(i)
+NEXT i
+```
+
+---
+
+## Viper.IO.TempFile
+
+Temporary file and directory creation utilities. Generates unique paths in the system temporary directory with optional prefixes and extensions.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                         | Signature              | Description                                                        |
+|--------------------------------|------------------------|--------------------------------------------------------------------|
+| `Dir()`                        | `String()`             | Returns the system temporary directory path                        |
+| `Path()`                       | `String()`             | Generate a unique temporary file path (with `.tmp` extension)      |
+| `PathWithPrefix(prefix)`       | `String(String)`       | Generate a unique temporary file path with a prefix                |
+| `PathWithExt(prefix, ext)`     | `String(String, String)` | Generate a unique temporary file path with prefix and extension  |
+| `Create()`                     | `String()`             | Create an empty temporary file and return its path                 |
+| `CreateWithPrefix(prefix)`     | `String(String)`       | Create an empty temporary file with prefix and return its path     |
+| `CreateDir()`                  | `String()`             | Create a temporary directory and return its path                   |
+| `CreateDirWithPrefix(prefix)`  | `String(String)`       | Create a temporary directory with prefix and return its path       |
+
+### Notes
+
+- `Dir()` returns the platform temporary directory (e.g., `/tmp` on Unix, `%TEMP%` on Windows)
+- `Path` and `PathWithPrefix` only generate paths -- they do not create files on disk
+- `Create` and `CreateDir` actually create the file or directory on disk
+- `PathWithExt("v", ".txt")` produces a path like `/tmp/v_<unique>.txt`
+- Temporary files and directories are not automatically cleaned up; the caller is responsible for deletion
+
+### Zia Example
+
+```zia
+module TempFileDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.TempFile as TempFile;
+bind Viper.IO.File as File;
+
+func start() {
+    Say("Temp dir: " + TempFile.Dir());
+
+    // Generate a unique path (does not create the file)
+    var p = TempFile.Path();
+    Say("Temp path: " + p);
+
+    // Generate with prefix and extension
+    var p2 = TempFile.PathWithExt("viper", ".txt");
+    Say("Custom path: " + p2);
+
+    // Create an actual temp file
+    var created = TempFile.Create();
+    Say("Created: " + created);
+    File.Delete(created);
+}
+```
+
+### BASIC Example
+
+```basic
+' Get the system temp directory
+PRINT "Temp dir: "; Viper.IO.TempFile.Dir()   ' Output: /tmp (or platform equivalent)
+
+' Generate unique temp file paths (no file created)
+DIM p AS STRING = Viper.IO.TempFile.Path()
+PRINT "Path: "; p   ' Output: /tmp/<unique>.tmp
+
+DIM p2 AS STRING = Viper.IO.TempFile.PathWithPrefix("myapp")
+PRINT "Prefixed: "; p2   ' Output: /tmp/myapp_<unique>.tmp
+
+DIM p3 AS STRING = Viper.IO.TempFile.PathWithExt("v", ".txt")
+PRINT "With ext: "; p3   ' Output: /tmp/v_<unique>.txt
+
+' Create an actual temp file on disk
+DIM f AS STRING = Viper.IO.TempFile.Create()
+PRINT "Created file: "; f
+Viper.IO.File.WriteAllText(f, "temp data")
+Viper.IO.File.Delete(f)
+
+' Create a temp directory
+DIM d AS STRING = Viper.IO.TempFile.CreateDir()
+PRINT "Created dir: "; d
+Viper.IO.Dir.RemoveAll(d)
+
+' Create a temp directory with prefix
+DIM d2 AS STRING = Viper.IO.TempFile.CreateDirWithPrefix("build")
+PRINT "Build dir: "; d2
+Viper.IO.Dir.RemoveAll(d2)
+```
 
 ---
 

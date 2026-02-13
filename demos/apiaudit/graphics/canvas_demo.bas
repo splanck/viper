@@ -1,0 +1,11 @@
+PRINT "=== API Audit: Viper.Graphics.Canvas ==="
+PRINT "NOTE: Graphics classes require a canvas/window. API surface test only."
+PRINT "Constructor: New(width, height)"
+PRINT "Properties: get_Width, get_Height"
+PRINT "Methods: Clear(color), SetColor(r, g, b, a)"
+PRINT "Drawing: DrawRect(x, y, w, h), FillRect(x, y, w, h)"
+PRINT "Drawing: DrawLine(x1, y1, x2, y2), DrawCircle(cx, cy, r), FillCircle(cx, cy, r)"
+PRINT "Drawing: DrawText(text, x, y)"
+PRINT "Methods: Flush()"
+PRINT "=== Canvas Audit Complete (API surface only) ==="
+END

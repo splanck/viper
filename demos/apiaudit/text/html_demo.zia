@@ -1,0 +1,67 @@
+module HtmlDemo;
+bind Viper.Terminal;
+bind Html = Viper.Text.Html;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+func start() {
+    Say("=== Viper.Text.Html API Audit ===");
+
+    var html = "<html><body><h1>Title</h1><p>Hello <b>World</b></p><a href=\"https://example.com\">Link 1</a><a href=\"https://viper.dev\">Link 2</a></body></html>";
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var doc = Html.Parse(html);
+    Say("Parsed successfully");
+
+    // --- ToText ---
+    Say("--- ToText ---");
+    Say(Html.ToText(html));
+
+    // --- Escape ---
+    Say("--- Escape ---");
+    Say(Html.Escape("<script>alert('xss')</script>"));
+    Say(Html.Escape("Hello & goodbye"));
+    Say(Html.Escape("a < b > c"));
+    Say(Html.Escape("\"quoted\""));
+
+    // --- Unescape ---
+    Say("--- Unescape ---");
+    Say(Html.Unescape("&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;"));
+    Say(Html.Unescape("Hello &amp; goodbye"));
+    Say(Html.Unescape("a &lt; b &gt; c"));
+    Say(Html.Unescape("&quot;quoted&quot;"));
+
+    // --- StripTags ---
+    Say("--- StripTags ---");
+    Say(Html.StripTags("<p>Hello <b>World</b></p>"));
+    Say(Html.StripTags("<div class=\"test\">Content</div>"));
+    Say(Html.StripTags("No tags here"));
+
+    // --- ExtractLinks ---
+    Say("--- ExtractLinks ---");
+    var links = Html.ExtractLinks(html);
+    SayInt(Seq.get_Len(links));
+    var i = 0;
+    while i < Seq.get_Len(links) {
+        Say(Obj.ToString(Seq.Get(links, i)));
+        i = i + 1;
+    }
+
+    // --- ExtractText ---
+    Say("--- ExtractText ---");
+    var texts = Html.ExtractText(html, "p");
+    SayInt(Seq.get_Len(texts));
+    var j = 0;
+    while j < Seq.get_Len(texts) {
+        Say(Obj.ToString(Seq.Get(texts, j)));
+        j = j + 1;
+    }
+
+    // Extract h1 tags
+    var h1s = Html.ExtractText(html, "h1");
+    SayInt(Seq.get_Len(h1s));
+    Say(Obj.ToString(Seq.Get(h1s, 0)));
+
+    Say("=== Html Demo Complete ===");
+}

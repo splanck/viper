@@ -1,0 +1,93 @@
+// =============================================================================
+// API Audit: Viper.IO.Path - Path Manipulation
+// =============================================================================
+// Tests: Abs, Dir, Ext, Name, Stem, IsAbs, Join, Norm, Sep, WithExt
+// =============================================================================
+
+module PathDemo;
+bind Viper.Terminal;
+bind Path = Viper.IO.Path;
+
+func start() {
+    Say("=== API Audit: Viper.IO.Path ===");
+
+    var testPath = "/home/user/documents/file.txt";
+
+    // --- Name ---
+    Say("--- Name ---");
+    Say("Name('/home/user/documents/file.txt'):");
+    Say(Path.Name(testPath));
+    Say("Name('test.tar.gz'):");
+    Say(Path.Name("test.tar.gz"));
+
+    // --- Stem ---
+    Say("--- Stem ---");
+    Say("Stem('/home/user/documents/file.txt'):");
+    Say(Path.Stem(testPath));
+    Say("Stem('archive.tar.gz'):");
+    Say(Path.Stem("archive.tar.gz"));
+
+    // --- Dir ---
+    Say("--- Dir ---");
+    Say("Dir('/home/user/documents/file.txt'):");
+    Say(Path.Dir(testPath));
+    Say("Dir('file.txt'):");
+    Say(Path.Dir("file.txt"));
+
+    // --- Ext ---
+    Say("--- Ext ---");
+    Say("Ext('/home/user/documents/file.txt'):");
+    Say(Path.Ext(testPath));
+    Say("Ext('noext'):");
+    Say(Path.Ext("noext"));
+    Say("Ext('archive.tar.gz'):");
+    Say(Path.Ext("archive.tar.gz"));
+
+    // --- IsAbs ---
+    Say("--- IsAbs ---");
+    Say("IsAbs('/home/user'):");
+    SayBool(Path.IsAbs("/home/user"));
+    Say("IsAbs('relative/path'):");
+    SayBool(Path.IsAbs("relative/path"));
+    Say("IsAbs(''):");
+    SayBool(Path.IsAbs(""));
+
+    // --- Join ---
+    Say("--- Join ---");
+    Say("Join('/home', 'user'):");
+    Say(Path.Join("/home", "user"));
+    Say("Join('a', 'b'):");
+    Say(Path.Join("a", "b"));
+    Say("Join('/root', 'file.txt'):");
+    Say(Path.Join("/root", "file.txt"));
+
+    // --- Abs ---
+    Say("--- Abs ---");
+    Say("Abs('.'):");
+    Say(Path.Abs("."));
+    Say("Abs('test.txt'):");
+    Say(Path.Abs("test.txt"));
+
+    // --- Norm ---
+    Say("--- Norm ---");
+    Say("Norm('/home/user/../user/./docs'):");
+    Say(Path.Norm("/home/user/../user/./docs"));
+    Say("Norm('/a/b/c/../../d'):");
+    Say(Path.Norm("/a/b/c/../../d"));
+
+    // --- Sep ---
+    Say("--- Sep ---");
+    Say("Sep:");
+    Say(Path.Sep());
+
+    // --- WithExt ---
+    Say("--- WithExt ---");
+    Say("WithExt('file.txt', '.md'):");
+    Say(Path.WithExt("file.txt", ".md"));
+    Say("WithExt('archive.tar.gz', '.zip'):");
+    Say(Path.WithExt("archive.tar.gz", ".zip"));
+    Say("WithExt('noext', '.txt'):");
+    Say(Path.WithExt("noext", ".txt"));
+
+    Say("=== Path Demo Complete ===");
+}

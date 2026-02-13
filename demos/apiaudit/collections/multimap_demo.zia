@@ -1,0 +1,90 @@
+// multimap_demo.zia - Comprehensive API audit for Viper.Collections.MultiMap
+// Tests: New, Put, Get, GetFirst, Has, RemoveAll, Keys, Len, IsEmpty,
+//        KeyCount, CountFor, Clear
+
+module MultiMapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== MultiMap API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var mm = MultiMap.New();
+    SayInt(mm.Len);        // 0
+    SayBool(mm.IsEmpty);   // 1
+
+    // --- Put / Len ---
+    Say("--- Put / Len ---");
+    mm.Put("color", Box.Str("red"));
+    mm.Put("color", Box.Str("green"));
+    mm.Put("color", Box.Str("blue"));
+    mm.Put("size", Box.Str("small"));
+    mm.Put("size", Box.Str("large"));
+    SayInt(mm.Len);        // 5 (total values)
+    SayBool(mm.IsEmpty);   // 0
+
+    // --- KeyCount ---
+    Say("--- KeyCount ---");
+    SayInt(mm.KeyCount);   // 2 (color, size)
+
+    // --- CountFor ---
+    Say("--- CountFor ---");
+    SayInt(mm.CountFor("color"));  // 3
+    SayInt(mm.CountFor("size"));   // 2
+    SayInt(mm.CountFor("shape"));  // 0
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(mm.Has("color"));  // 1
+    SayBool(mm.Has("size"));   // 1
+    SayBool(mm.Has("shape"));  // 0
+
+    // --- Get (returns Seq of all values for key) ---
+    Say("--- Get ---");
+    var colors = mm.Get("color");
+    SayInt(colors.Len);                  // 3
+    Say(Box.ToStr(colors.Get(0)));       // red
+    Say(Box.ToStr(colors.Get(1)));       // green
+    Say(Box.ToStr(colors.Get(2)));       // blue
+
+    var sizes = mm.Get("size");
+    SayInt(sizes.Len);                   // 2
+    Say(Box.ToStr(sizes.Get(0)));        // small
+    Say(Box.ToStr(sizes.Get(1)));        // large
+
+    // Get for missing key returns empty Seq
+    var empty = mm.Get("shape");
+    SayInt(empty.Len);                   // 0
+
+    // --- GetFirst ---
+    Say("--- GetFirst ---");
+    Say(Box.ToStr(mm.GetFirst("color")));   // red
+    Say(Box.ToStr(mm.GetFirst("size")));    // small
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = mm.Keys();
+    SayInt(keys.Len);      // 2
+
+    // --- RemoveAll ---
+    Say("--- RemoveAll ---");
+    SayBool(mm.RemoveAll("color"));  // 1
+    SayBool(mm.Has("color"));        // 0
+    SayInt(mm.Len);                  // 2 (only size values left)
+    SayInt(mm.KeyCount);             // 1
+    SayBool(mm.RemoveAll("color"));  // 0
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    mm.Clear();
+    SayInt(mm.Len);        // 0
+    SayBool(mm.IsEmpty);   // 1
+    SayInt(mm.KeyCount);   // 0
+
+    Say("=== MultiMap audit complete ===");
+}

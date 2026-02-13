@@ -1,0 +1,89 @@
+// bimap_demo.zia - Comprehensive API audit for Viper.Collections.BiMap
+// Tests: New, Put, GetByKey, GetByValue, HasKey, HasValue,
+//        RemoveByKey, RemoveByValue, Keys, Values, Len, IsEmpty, Clear
+
+module BiMapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== BiMap API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var bm = BiMap.New();
+    SayInt(bm.Len);       // 0
+    SayBool(bm.IsEmpty);  // 1
+
+    // --- Put / Len ---
+    Say("--- Put / Len ---");
+    bm.Put("us", "dollar");
+    bm.Put("uk", "pound");
+    bm.Put("jp", "yen");
+    bm.Put("eu", "euro");
+    SayInt(bm.Len);       // 4
+    SayBool(bm.IsEmpty);  // 0
+
+    // --- GetByKey ---
+    Say("--- GetByKey ---");
+    Say(bm.GetByKey("us"));   // dollar
+    Say(bm.GetByKey("uk"));   // pound
+    Say(bm.GetByKey("jp"));   // yen
+
+    // --- GetByValue (inverse lookup) ---
+    Say("--- GetByValue ---");
+    Say(bm.GetByValue("dollar"));  // us
+    Say(bm.GetByValue("pound"));   // uk
+    Say(bm.GetByValue("yen"));     // jp
+
+    // --- HasKey / HasValue ---
+    Say("--- HasKey / HasValue ---");
+    SayBool(bm.HasKey("us"));        // 1
+    SayBool(bm.HasKey("ca"));        // 0
+    SayBool(bm.HasValue("euro"));    // 1
+    SayBool(bm.HasValue("rupee"));   // 0
+
+    // --- Put (update - overwrites old mapping) ---
+    Say("--- Put (update) ---");
+    bm.Put("us", "greenback");
+    Say(bm.GetByKey("us"));           // greenback
+    Say(bm.GetByValue("greenback")); // us
+    SayBool(bm.HasValue("dollar"));  // 0 (old value removed)
+    SayInt(bm.Len);                  // 4
+
+    // --- RemoveByKey ---
+    Say("--- RemoveByKey ---");
+    SayBool(bm.RemoveByKey("jp"));   // 1
+    SayBool(bm.HasKey("jp"));        // 0
+    SayBool(bm.HasValue("yen"));     // 0
+    SayInt(bm.Len);                  // 3
+    SayBool(bm.RemoveByKey("jp"));   // 0
+
+    // --- RemoveByValue ---
+    Say("--- RemoveByValue ---");
+    SayBool(bm.RemoveByValue("euro")); // 1
+    SayBool(bm.HasKey("eu"));          // 0
+    SayBool(bm.HasValue("euro"));      // 0
+    SayInt(bm.Len);                    // 2
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = bm.Keys();
+    SayInt(keys.Len);   // 2
+
+    // --- Values ---
+    Say("--- Values ---");
+    var vals = bm.Values();
+    SayInt(vals.Len);   // 2
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    bm.Clear();
+    SayInt(bm.Len);       // 0
+    SayBool(bm.IsEmpty);  // 1
+
+    Say("=== BiMap audit complete ===");
+}

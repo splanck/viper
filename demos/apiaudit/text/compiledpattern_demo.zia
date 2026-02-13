@@ -1,0 +1,101 @@
+// =============================================================================
+// API Audit: Viper.Text.CompiledPattern
+// =============================================================================
+// Tests: New, Pattern, IsMatch, Find, FindFrom, FindPos, FindAll,
+//        Captures, CapturesFrom, Replace, ReplaceFirst, Split, SplitN
+// =============================================================================
+
+module CompiledPatternDemo;
+bind Viper.Terminal;
+bind CP = Viper.Text.CompiledPattern;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+func start() {
+    Say("=== API Audit: Viper.Text.CompiledPattern ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var pat = CP.New("[0-9]+");
+    Say("Created CompiledPattern for '[0-9]+'");
+
+    // --- Pattern ---
+    Say("--- Pattern ---");
+    Say(pat.get_Pattern());
+
+    // --- IsMatch ---
+    Say("--- IsMatch ---");
+    SayBool(pat.IsMatch("abc123"));
+    SayBool(pat.IsMatch("hello"));
+
+    // --- Find ---
+    Say("--- Find ---");
+    Say(pat.Find("abc123def"));
+
+    // --- FindFrom ---
+    Say("--- FindFrom ---");
+    Say(pat.FindFrom("abc123def456", 6));
+
+    // --- FindPos ---
+    Say("--- FindPos ---");
+    SayInt(pat.FindPos("abc123def"));
+    SayInt(pat.FindPos("abcdef"));
+
+    // --- FindAll ---
+    Say("--- FindAll ---");
+    var matches = pat.FindAll("a1b22c333");
+    SayInt(Seq.get_Len(matches));
+    Say(Obj.ToString(Seq.Get(matches, 0)));
+    Say(Obj.ToString(Seq.Get(matches, 1)));
+    Say(Obj.ToString(Seq.Get(matches, 2)));
+
+    // --- Captures ---
+    Say("--- Captures ---");
+    var capPat = CP.New("(\\w+)@(\\w+)");
+    var caps = capPat.Captures("user@host");
+    SayInt(Seq.get_Len(caps));
+    Say(Obj.ToString(Seq.Get(caps, 0)));
+    Say(Obj.ToString(Seq.Get(caps, 1)));
+    Say(Obj.ToString(Seq.Get(caps, 2)));
+
+    // --- CapturesFrom ---
+    Say("--- CapturesFrom ---");
+    var caps2 = pat.CapturesFrom("abc123def456", 6);
+    SayInt(Seq.get_Len(caps2));
+    Say(Obj.ToString(Seq.Get(caps2, 0)));
+
+    // --- Replace ---
+    Say("--- Replace ---");
+    Say(pat.Replace("abc123def456", "NUM"));
+
+    // --- ReplaceFirst ---
+    Say("--- ReplaceFirst ---");
+    Say(pat.ReplaceFirst("abc123def456", "NUM"));
+
+    // --- Split ---
+    Say("--- Split ---");
+    var commaPat = CP.New("[,;]+");
+    var parts = commaPat.Split("one,two;;three,four");
+    SayInt(Seq.get_Len(parts));
+    Say(Obj.ToString(Seq.Get(parts, 0)));
+    Say(Obj.ToString(Seq.Get(parts, 1)));
+    Say(Obj.ToString(Seq.Get(parts, 2)));
+    Say(Obj.ToString(Seq.Get(parts, 3)));
+
+    // --- SplitN ---
+    Say("--- SplitN ---");
+    var parts2 = commaPat.SplitN("one,two;;three,four", 2);
+    SayInt(Seq.get_Len(parts2));
+    Say(Obj.ToString(Seq.Get(parts2, 0)));
+    Say(Obj.ToString(Seq.Get(parts2, 1)));
+
+    // --- Second pattern ---
+    Say("--- Second pattern ---");
+    var wordPat = CP.New("[A-Z][a-z]+");
+    Say(wordPat.get_Pattern());
+    Say(wordPat.Find("hello World foo Bar"));
+    SayBool(wordPat.IsMatch("hello"));
+    SayBool(wordPat.IsMatch("Hello"));
+
+    Say("=== CompiledPattern Audit Complete ===");
+}

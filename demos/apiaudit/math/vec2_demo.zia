@@ -1,0 +1,168 @@
+// =============================================================================
+// API Audit: Viper.Math.Vec2 - 2D Vector Operations
+// =============================================================================
+// Tests: New, Zero, One, X, Y, Add, Sub, Mul, Div, Neg, Dot, Cross,
+//        Len, LenSq, Dist, Norm, Lerp, Angle, Rotate
+// =============================================================================
+
+module Vec2Demo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Vec2 ===");
+
+    // --- Factory: New ---
+    Say("--- New ---");
+    var v1 = Vec2.New(3.0, 4.0);
+    Say("Vec2.New(3.0, 4.0) X:");
+    SayNum(v1.X);
+    Say("Vec2.New(3.0, 4.0) Y:");
+    SayNum(v1.Y);
+
+    // --- Factory: Zero ---
+    Say("--- Zero ---");
+    var vz = Vec2.Zero();
+    Say("Vec2.Zero() X:");
+    SayNum(vz.X);
+    Say("Vec2.Zero() Y:");
+    SayNum(vz.Y);
+
+    // --- Factory: One ---
+    Say("--- One ---");
+    var vo = Vec2.One();
+    Say("Vec2.One() X:");
+    SayNum(vo.X);
+    Say("Vec2.One() Y:");
+    SayNum(vo.Y);
+
+    // --- Add ---
+    Say("--- Add ---");
+    var v2 = Vec2.New(1.0, 2.0);
+    var vadd = Vec2.Add(v1, v2);
+    Say("Add(3,4 + 1,2) X:");
+    SayNum(vadd.X);
+    Say("Add(3,4 + 1,2) Y:");
+    SayNum(vadd.Y);
+
+    // --- Sub ---
+    Say("--- Sub ---");
+    var vsub = Vec2.Sub(v1, v2);
+    Say("Sub(3,4 - 1,2) X:");
+    SayNum(vsub.X);
+    Say("Sub(3,4 - 1,2) Y:");
+    SayNum(vsub.Y);
+
+    // --- Mul ---
+    Say("--- Mul ---");
+    var vmul = Vec2.Mul(v1, 2.0);
+    Say("Mul(3,4 * 2.0) X:");
+    SayNum(vmul.X);
+    Say("Mul(3,4 * 2.0) Y:");
+    SayNum(vmul.Y);
+
+    // --- Div ---
+    Say("--- Div ---");
+    var vdiv = Vec2.Div(v1, 2.0);
+    Say("Div(3,4 / 2.0) X:");
+    SayNum(vdiv.X);
+    Say("Div(3,4 / 2.0) Y:");
+    SayNum(vdiv.Y);
+
+    // --- Neg ---
+    Say("--- Neg ---");
+    var vneg = Vec2.Neg(v1);
+    Say("Neg(3,4) X:");
+    SayNum(vneg.X);
+    Say("Neg(3,4) Y:");
+    SayNum(vneg.Y);
+
+    // --- Dot ---
+    Say("--- Dot ---");
+    Say("Dot((3,4), (1,2)):");
+    SayNum(Vec2.Dot(v1, v2));
+    Say("Dot((1,0), (0,1)):");
+    var vx = Vec2.New(1.0, 0.0);
+    var vy = Vec2.New(0.0, 1.0);
+    SayNum(Vec2.Dot(vx, vy));
+
+    // --- Cross ---
+    Say("--- Cross ---");
+    Say("Cross((3,4), (1,2)):");
+    SayNum(Vec2.Cross(v1, v2));
+    Say("Cross((1,0), (0,1)):");
+    SayNum(Vec2.Cross(vx, vy));
+
+    // --- Len ---
+    Say("--- Len ---");
+    Say("Len(3,4):");
+    SayNum(Vec2.Len(v1));
+    Say("Len(0,0):");
+    SayNum(Vec2.Len(vz));
+
+    // --- LenSq ---
+    Say("--- LenSq ---");
+    Say("LenSq(3,4):");
+    SayNum(Vec2.LenSq(v1));
+
+    // --- Dist ---
+    Say("--- Dist ---");
+    Say("Dist((3,4), (0,0)):");
+    SayNum(Vec2.Dist(v1, vz));
+    Say("Dist((3,4), (3,4)):");
+    SayNum(Vec2.Dist(v1, v1));
+
+    // --- Norm ---
+    Say("--- Norm ---");
+    var vnorm = Vec2.Norm(v1);
+    Say("Norm(3,4) X:");
+    SayNum(vnorm.X);
+    Say("Norm(3,4) Y:");
+    SayNum(vnorm.Y);
+    Say("Norm(3,4) Len:");
+    SayNum(Vec2.Len(vnorm));
+
+    // --- Lerp ---
+    Say("--- Lerp ---");
+    var va = Vec2.New(0.0, 0.0);
+    var vb = Vec2.New(10.0, 20.0);
+    var vl0 = Vec2.Lerp(va, vb, 0.0);
+    Say("Lerp(0,0 -> 10,20 t=0.0) X:");
+    SayNum(vl0.X);
+    Say("Lerp(0,0 -> 10,20 t=0.0) Y:");
+    SayNum(vl0.Y);
+    var vl5 = Vec2.Lerp(va, vb, 0.5);
+    Say("Lerp(0,0 -> 10,20 t=0.5) X:");
+    SayNum(vl5.X);
+    Say("Lerp(0,0 -> 10,20 t=0.5) Y:");
+    SayNum(vl5.Y);
+    var vl1 = Vec2.Lerp(va, vb, 1.0);
+    Say("Lerp(0,0 -> 10,20 t=1.0) X:");
+    SayNum(vl1.X);
+    Say("Lerp(0,0 -> 10,20 t=1.0) Y:");
+    SayNum(vl1.Y);
+
+    // --- Angle ---
+    Say("--- Angle ---");
+    Say("Angle(1,0):");
+    SayNum(Vec2.Angle(vx));
+    Say("Angle(0,1):");
+    SayNum(Vec2.Angle(vy));
+    Say("Angle(3,4):");
+    SayNum(Vec2.Angle(v1));
+
+    // --- Rotate ---
+    Say("--- Rotate ---");
+    var vrot = Vec2.Rotate(vx, 1.5707963267948966);
+    Say("Rotate((1,0), Pi/2) X:");
+    SayNum(vrot.X);
+    Say("Rotate((1,0), Pi/2) Y:");
+    SayNum(vrot.Y);
+    var vrot2 = Vec2.Rotate(vx, 3.14159265358979);
+    Say("Rotate((1,0), Pi) X:");
+    SayNum(vrot2.X);
+    Say("Rotate((1,0), Pi) Y:");
+    SayNum(vrot2.Y);
+
+    Say("=== Vec2 Audit Complete ===");
+}

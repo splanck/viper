@@ -1,0 +1,91 @@
+// heap_demo.zia - Comprehensive API audit for Viper.Collections.Heap
+// Tests: New, NewMax, Push(priority, value), Pop, Peek, Len, IsEmpty,
+//        Clear, IsMax, TryPeek, TryPop, ToSeq
+
+module HeapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Heap API Audit ===");
+
+    // --- New (min-heap) ---
+    Say("--- New (min-heap) ---");
+    var h = Heap.New();
+    SayInt(h.Len);       // 0
+    SayBool(h.IsEmpty);  // 1
+    SayBool(h.IsMax);    // 0
+
+    // --- Push / Len ---
+    Say("--- Push / Len ---");
+    h.Push(3, Box.Str("low"));
+    h.Push(1, Box.Str("urgent"));
+    h.Push(2, Box.Str("medium"));
+    SayInt(h.Len);       // 3
+    SayBool(h.IsEmpty);  // 0
+
+    // --- Peek (min-heap: lowest priority first) ---
+    Say("--- Peek ---");
+    Say(Box.ToStr(h.Peek()));   // urgent (priority 1)
+
+    // --- Pop (min-heap order) ---
+    Say("--- Pop ---");
+    Say(Box.ToStr(h.Pop()));    // urgent (priority 1)
+    SayInt(h.Len);              // 2
+    Say(Box.ToStr(h.Pop()));    // medium (priority 2)
+    SayInt(h.Len);              // 1
+    Say(Box.ToStr(h.Pop()));    // low (priority 3)
+    SayInt(h.Len);              // 0
+    SayBool(h.IsEmpty);         // 1
+
+    // --- TryPeek / TryPop (safe on empty) ---
+    Say("--- TryPeek / TryPop ---");
+    var tp = h.TryPeek();
+    // tp should be null on empty heap
+    SayBool(h.IsEmpty);         // 1
+    var tpop = h.TryPop();
+    SayBool(h.IsEmpty);         // 1
+
+    // --- NewMax (max-heap) ---
+    Say("--- NewMax ---");
+    var mh = Heap.NewMax(true);
+    SayBool(mh.IsMax);          // 1
+    mh.Push(1, Box.Str("low"));
+    mh.Push(5, Box.Str("high"));
+    mh.Push(3, Box.Str("mid"));
+    SayInt(mh.Len);             // 3
+
+    // Max-heap: highest priority first
+    Say(Box.ToStr(mh.Pop()));   // high (priority 5)
+    Say(Box.ToStr(mh.Pop()));   // mid (priority 3)
+    Say(Box.ToStr(mh.Pop()));   // low (priority 1)
+
+    // --- ToSeq ---
+    Say("--- ToSeq ---");
+    var h2 = Heap.New();
+    h2.Push(5, Box.Str("e"));
+    h2.Push(1, Box.Str("a"));
+    h2.Push(3, Box.Str("c"));
+    h2.Push(2, Box.Str("b"));
+    h2.Push(4, Box.Str("d"));
+    var seq = h2.ToSeq();
+    SayInt(seq.Len);            // 5
+    // ToSeq returns elements in priority order
+    Say(Box.ToStr(seq.Get(0))); // a (priority 1)
+    Say(Box.ToStr(seq.Get(4))); // e (priority 5)
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    var h3 = Heap.New();
+    h3.Push(1, Box.Str("x"));
+    h3.Push(2, Box.Str("y"));
+    SayInt(h3.Len);             // 2
+    h3.Clear();
+    SayInt(h3.Len);             // 0
+    SayBool(h3.IsEmpty);        // 1
+
+    Say("=== Heap audit complete ===");
+}

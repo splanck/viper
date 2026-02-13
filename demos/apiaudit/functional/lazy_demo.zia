@@ -1,0 +1,42 @@
+// API Audit: Viper.Lazy (Zia)
+module LazyDemo;
+bind Viper.Terminal;
+bind Lazy = Viper.Lazy;
+bind Box = Viper.Core.Box;
+
+func start() {
+    Say("=== API Audit: Viper.Lazy ===");
+
+    // --- OfI64 / GetI64 ---
+    Say("--- OfI64 / GetI64 ---");
+    var l1 = Lazy.OfI64(42);
+    SayInt(l1.GetI64());
+
+    // --- IsEvaluated (before and after) ---
+    Say("--- IsEvaluated ---");
+    var l2 = Lazy.OfI64(100);
+    SayBool(l2.get_IsEvaluated());
+    var dummy = l2.GetI64();
+    SayBool(l2.get_IsEvaluated());
+
+    // --- OfStr / GetStr ---
+    Say("--- OfStr / GetStr ---");
+    var l3 = Lazy.OfStr("hello lazy");
+    Say(l3.GetStr());
+
+    // --- Force ---
+    Say("--- Force ---");
+    var l4 = Lazy.OfI64(77);
+    SayBool(l4.get_IsEvaluated());
+    l4.Force();
+    SayBool(l4.get_IsEvaluated());
+
+    // --- Of (generic, returns obj) ---
+    Say("--- Of (generic) ---");
+    var boxed = Box.I64(999);
+    var l5 = Lazy.Of(boxed);
+    var got = l5.Get();
+    SayInt(Box.ToI64(got));
+
+    Say("=== Lazy Audit Complete ===");
+}

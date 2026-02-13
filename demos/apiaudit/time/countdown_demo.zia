@@ -1,0 +1,80 @@
+// =============================================================================
+// API Audit: Viper.Time.Countdown - Countdown Timer
+// =============================================================================
+// Tests: New, Start, Stop, Reset, Elapsed, Remaining, Expired, Interval,
+//        SetInterval, IsRunning
+// =============================================================================
+
+module CountdownDemo;
+bind Viper.Terminal;
+bind CD = Viper.Time.Countdown;
+
+func start() {
+    Say("=== API Audit: Viper.Time.Countdown ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var cd = CD.New(5000);
+    Say("New(5000) - 5 second countdown created");
+
+    // --- Interval ---
+    Say("--- Interval ---");
+    Say("Interval:");
+    SayInt(CD.get_Interval(cd));
+
+    // --- IsRunning (initial) ---
+    Say("--- IsRunning (initial) ---");
+    Say("IsRunning:");
+    SayBool(CD.get_IsRunning(cd));
+
+    // --- Start ---
+    Say("--- Start ---");
+    CD.Start(cd);
+    Say("Start done");
+    Say("IsRunning:");
+    SayBool(CD.get_IsRunning(cd));
+
+    // --- Elapsed ---
+    Say("--- Elapsed ---");
+    Say("Elapsed (ms):");
+    SayInt(CD.get_Elapsed(cd));
+
+    // --- Remaining ---
+    Say("--- Remaining ---");
+    Say("Remaining (ms):");
+    SayInt(CD.get_Remaining(cd));
+
+    // --- Expired ---
+    Say("--- Expired ---");
+    Say("Expired (should be false, just started):");
+    SayBool(CD.get_Expired(cd));
+
+    // --- Stop ---
+    Say("--- Stop ---");
+    CD.Stop(cd);
+    Say("Stop done");
+    Say("IsRunning:");
+    SayBool(CD.get_IsRunning(cd));
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    CD.Reset(cd);
+    Say("Reset done");
+    Say("Elapsed after reset:");
+    SayInt(CD.get_Elapsed(cd));
+
+    // --- SetInterval ---
+    Say("--- SetInterval ---");
+    CD.set_Interval(cd, 10000);
+    Say("set_Interval(10000)");
+    Say("Interval now:");
+    SayInt(CD.get_Interval(cd));
+
+    // Reset back and verify
+    CD.set_Interval(cd, 2000);
+    Say("set_Interval(2000)");
+    Say("Remaining after interval change:");
+    SayInt(CD.get_Remaining(cd));
+
+    Say("=== Countdown Demo Complete ===");
+}

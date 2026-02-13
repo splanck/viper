@@ -1,0 +1,82 @@
+// =============================================================================
+// API Audit: Viper.Threads.Gate
+// =============================================================================
+// Tests: New, Enter, TryEnter, Leave, LeaveMany, Permits
+// =============================================================================
+
+module GateDemo;
+bind Viper.Threads.Gate as Gate;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Gate ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var g = Gate.New(3);
+    Say("Created gate with 3 permits");
+
+    // --- Permits (initial) ---
+    Say("--- Permits (initial) ---");
+    Say("Permits: " + Fmt.Int(g.get_Permits()));
+
+    // --- Enter ---
+    Say("--- Enter ---");
+    g.Enter();
+    Say("Permits after Enter: " + Fmt.Int(g.get_Permits()));
+
+    // --- TryEnter ---
+    Say("--- TryEnter ---");
+    var ok1 = g.TryEnter();
+    Say("TryEnter: " + Fmt.Bool(ok1));
+    Say("Permits after TryEnter: " + Fmt.Int(g.get_Permits()));
+
+    // --- Enter again (last permit) ---
+    Say("--- Enter (last permit) ---");
+    g.Enter();
+    Say("Permits: " + Fmt.Int(g.get_Permits()));
+
+    // --- TryEnter (no permits) ---
+    Say("--- TryEnter (no permits) ---");
+    var ok2 = g.TryEnter();
+    Say("TryEnter (no permits): " + Fmt.Bool(ok2));
+
+    // --- Leave ---
+    Say("--- Leave ---");
+    g.Leave();
+    Say("Permits after Leave: " + Fmt.Int(g.get_Permits()));
+
+    // --- LeaveMany ---
+    Say("--- LeaveMany ---");
+    g.LeaveMany(2);
+    Say("Permits after LeaveMany(2): " + Fmt.Int(g.get_Permits()));
+
+    // --- TryEnter after leave ---
+    Say("--- TryEnter after leave ---");
+    var ok3 = g.TryEnter();
+    Say("TryEnter: " + Fmt.Bool(ok3));
+    g.Leave();
+
+    // --- New with 1 permit ---
+    Say("--- New with 1 permit (mutex-like) ---");
+    var mutex = Gate.New(1);
+    Say("Permits: " + Fmt.Int(mutex.get_Permits()));
+    mutex.Enter();
+    Say("Permits after Enter: " + Fmt.Int(mutex.get_Permits()));
+    var ok4 = mutex.TryEnter();
+    Say("TryEnter (locked): " + Fmt.Bool(ok4));
+    mutex.Leave();
+    Say("Permits after Leave: " + Fmt.Int(mutex.get_Permits()));
+
+    // --- New with 0 permits ---
+    Say("--- New with 0 permits ---");
+    var empty = Gate.New(0);
+    Say("Permits: " + Fmt.Int(empty.get_Permits()));
+    var ok5 = empty.TryEnter();
+    Say("TryEnter (0 permits): " + Fmt.Bool(ok5));
+    empty.Leave();
+    Say("Permits after Leave: " + Fmt.Int(empty.get_Permits()));
+
+    Say("=== Gate Audit Complete ===");
+}

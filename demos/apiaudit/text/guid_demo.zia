@@ -1,0 +1,36 @@
+module GuidDemo;
+bind Viper.Terminal;
+bind Uuid = Viper.Text.Uuid;
+
+func start() {
+    Say("=== Viper.Text.Uuid API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var id1 = Uuid.New();
+    var id2 = Uuid.New();
+    Say(id1);
+    Say(id2);
+
+    // --- get_Empty ---
+    Say("--- get_Empty ---");
+    var empty = Uuid.get_Empty();
+    Say(empty);
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    SayBool(Uuid.IsValid(id1));
+    SayBool(Uuid.IsValid(empty));
+    SayBool(Uuid.IsValid("not-a-uuid"));
+    SayBool(Uuid.IsValid("550e8400-e29b-41d4-a716-446655440000"));
+
+    // --- ToBytes / FromBytes ---
+    Say("--- ToBytes / FromBytes ---");
+    var testId = Uuid.New();
+    Say(testId);
+    var bytes = Uuid.ToBytes(testId);
+    var restored = Uuid.FromBytes(bytes);
+    Say(restored);
+
+    Say("=== Uuid Demo Complete ===");
+}

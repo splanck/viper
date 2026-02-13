@@ -1,0 +1,12 @@
+module SpriteBatchDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.SpriteBatch ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New(canvas)");
+    Say("Properties: get_DrawCount");
+    Say("Methods: Begin(), End()");
+    Say("Methods: Draw(sheet, regionIdx, x, y)");
+    Say("Methods: Clear()");
+    Say("=== SpriteBatch Audit Complete (API surface only) ===");
+}

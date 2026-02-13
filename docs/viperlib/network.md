@@ -1005,6 +1005,27 @@ func start() {
 
 > **Note:** Url properties use the get_/set_ pattern in Zia: `u.get_Scheme()`, `u.set_Host("new.com")`, etc.
 
+### BASIC Example
+
+```basic
+' Parse a URL
+DIM u AS OBJECT = Viper.Network.Url.Parse("https://example.com:8080/path?key=value#section")
+PRINT "Scheme: "; u.Scheme
+PRINT "Host: "; u.Host
+PRINT "Port: "; u.Port
+PRINT "Path: "; u.Path
+PRINT "Query: "; u.Query
+PRINT "Fragment: "; u.Fragment
+PRINT "Full: "; u.Full
+
+' URL encoding/decoding
+PRINT "Encode: "; Viper.Network.Url.Encode("hello world!")
+PRINT "Decode: "; Viper.Network.Url.Decode("hello%20world%21")
+
+' Validation
+PRINT "IsValid: "; Viper.Network.Url.IsValid("https://example.com")
+```
+
 ### Parsing Example
 
 ```basic
@@ -1309,6 +1330,30 @@ Automatically sets `Content-Type` and `Accept` headers for JSON, parses response
 ### Zia Example
 
 > **Note:** RestClient is not yet fully usable from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug. This affects all instance classes that use `New` constructors in the Network module. See also: RetryPolicy, RateLimiter.
+
+### BASIC Example
+
+```basic
+' Create a REST client
+DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+PRINT "BaseUrl: "; api.BaseUrl
+
+' Set common headers
+api.SetHeader("User-Agent", "ViperDemo/1.0")
+
+' Set timeout
+api.SetTimeout(15000)
+
+' Set Bearer auth
+api.SetAuthBearer("test-token-123")
+
+' Clear auth
+api.ClearAuth()
+
+' Check last status (no request yet, should be 0)
+PRINT "LastStatus: "; api.LastStatus()
+PRINT "LastOk: "; api.LastOk()
+```
 
 ### Basic Example
 

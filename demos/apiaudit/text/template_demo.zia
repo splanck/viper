@@ -1,0 +1,59 @@
+module TemplateDemo;
+bind Viper.Terminal;
+bind Tpl = Viper.Text.Template;
+bind Map = Viper.Collections.Map;
+bind Seq = Viper.Collections.Seq;
+bind Box = Viper.Core.Box;
+bind Obj = Viper.Core.Object;
+
+func start() {
+    Say("=== Viper.Text.Template API Audit ===");
+
+    // --- Render ---
+    Say("--- Render ---");
+    var m = Map.New();
+    Map.Set(m, "name", Box.Str("Alice"));
+    Map.Set(m, "age", Box.Str("30"));
+    Map.Set(m, "city", Box.Str("Boston"));
+
+    var tpl = "Hello, {{name}}! You are {{age}} years old from {{city}}.";
+    Say(Tpl.Render(tpl, m));
+
+    // Template with no variables
+    var tpl2 = "No variables here.";
+    Say(Tpl.Render(tpl2, m));
+
+    // --- RenderSeq ---
+    Say("--- RenderSeq ---");
+    var items = Seq.New();
+    Seq.Push(items, Box.Str("apple"));
+    Seq.Push(items, Box.Str("banana"));
+    Seq.Push(items, Box.Str("cherry"));
+    var seqTpl = "Item 0: {{0}}, Item 1: {{1}}, Item 2: {{2}}";
+    Say(Tpl.RenderSeq(seqTpl, items));
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(Tpl.Has(tpl, "name"));
+    SayBool(Tpl.Has(tpl, "age"));
+    SayBool(Tpl.Has(tpl, "email"));
+    SayBool(Tpl.Has(tpl, "city"));
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = Tpl.Keys(tpl);
+    SayInt(Seq.get_Len(keys));
+    // Print keys (order may vary)
+    var i = 0;
+    while i < Seq.get_Len(keys) {
+        Say(Obj.ToString(Seq.Get(keys, i)));
+        i = i + 1;
+    }
+
+    // --- Escape ---
+    Say("--- Escape ---");
+    Say(Tpl.Escape("Hello {{name}}, use \\{{literal}} braces"));
+    Say(Tpl.Escape("No braces here"));
+
+    Say("=== Template Demo Complete ===");
+}

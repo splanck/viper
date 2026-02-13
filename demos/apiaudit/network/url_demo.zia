@@ -1,0 +1,149 @@
+// =============================================================================
+// API Audit: Viper.Network.Url
+// =============================================================================
+// Tests: Parse, New, Scheme, Host, Port, Path, Query, Fragment, User, Pass,
+//        Authority, HostPort, Full, SetQueryParam, GetQueryParam,
+//        HasQueryParam, DelQueryParam, Resolve, Clone, Encode, Decode,
+//        IsValid
+// =============================================================================
+
+module UrlDemo;
+bind Viper.Terminal;
+bind Url = Viper.Network.Url;
+
+func start() {
+    Say("=== API Audit: Viper.Network.Url ===");
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var u = Url.Parse("https://user:pass@example.com:8080/path/to/page?key=val&a=b#section");
+    Say("Parsed URL");
+
+    // --- Scheme ---
+    Say("--- Scheme ---");
+    Say(u.get_Scheme());
+
+    // --- Host ---
+    Say("--- Host ---");
+    Say(u.get_Host());
+
+    // --- Port ---
+    Say("--- Port ---");
+    SayInt(u.get_Port());
+
+    // --- Path ---
+    Say("--- Path ---");
+    Say(u.get_Path());
+
+    // --- Query ---
+    Say("--- Query ---");
+    Say(u.get_Query());
+
+    // --- Fragment ---
+    Say("--- Fragment ---");
+    Say(u.get_Fragment());
+
+    // --- User ---
+    Say("--- User ---");
+    Say(u.get_User());
+
+    // --- Pass ---
+    Say("--- Pass ---");
+    Say(u.get_Pass());
+
+    // --- Authority ---
+    Say("--- Authority ---");
+    Say(u.get_Authority());
+
+    // --- HostPort ---
+    Say("--- HostPort ---");
+    Say(u.get_HostPort());
+
+    // --- Full ---
+    Say("--- Full ---");
+    Say(u.get_Full());
+
+    // --- New (empty URL builder) ---
+    Say("--- New ---");
+    var u2 = Url.New();
+    u2.set_Scheme("https");
+    u2.set_Host("api.example.com");
+    u2.set_Port(443);
+    u2.set_Path("/v1/resource");
+    Say("Built URL:");
+    Say(u2.get_Full());
+
+    // --- SetQueryParam ---
+    Say("--- SetQueryParam ---");
+    u2.SetQueryParam("page", "1");
+    u2.SetQueryParam("limit", "10");
+    Say(u2.get_Full());
+
+    // --- GetQueryParam ---
+    Say("--- GetQueryParam ---");
+    Say(u2.GetQueryParam("page"));
+    Say(u2.GetQueryParam("limit"));
+
+    // --- HasQueryParam ---
+    Say("--- HasQueryParam ---");
+    SayBool(u2.HasQueryParam("page"));
+    SayBool(u2.HasQueryParam("missing"));
+
+    // --- DelQueryParam ---
+    Say("--- DelQueryParam ---");
+    u2.DelQueryParam("page");
+    SayBool(u2.HasQueryParam("page"));
+    Say(u2.get_Full());
+
+    // --- Clone ---
+    Say("--- Clone ---");
+    var u3 = u.Clone();
+    Say(u3.get_Full());
+    Say("Clone equals original Full:");
+    SayBool(u.get_Full() == u3.get_Full());
+
+    // --- Resolve ---
+    Say("--- Resolve ---");
+    var base = Url.Parse("https://example.com/a/b/c");
+    var resolved = base.Resolve("/x/y/z");
+    Say(resolved.get_Full());
+
+    // --- Encode ---
+    Say("--- Encode ---");
+    Say(Url.Encode("hello world&foo=bar"));
+
+    // --- Decode ---
+    Say("--- Decode ---");
+    Say(Url.Decode("hello%20world%26foo%3Dbar"));
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    SayBool(Url.IsValid("https://example.com"));
+    SayBool(Url.IsValid("not a url"));
+
+    // --- Setters ---
+    Say("--- Setters ---");
+    var u4 = Url.New();
+    u4.set_Scheme("ftp");
+    u4.set_Host("files.example.com");
+    u4.set_Path("/pub/data.txt");
+    u4.set_Fragment("top");
+    u4.set_User("admin");
+    u4.set_Pass("secret");
+    Say("Scheme: " + u4.get_Scheme());
+    Say("Host: " + u4.get_Host());
+    Say("Path: " + u4.get_Path());
+    Say("Fragment: " + u4.get_Fragment());
+    Say("User: " + u4.get_User());
+    Say("Pass: " + u4.get_Pass());
+    Say("Full: " + u4.get_Full());
+
+    // --- Parse simple URL ---
+    Say("--- Simple URL ---");
+    var u5 = Url.Parse("http://localhost:3000");
+    Say("Scheme: " + u5.get_Scheme());
+    Say("Host: " + u5.get_Host());
+    SayInt(u5.get_Port());
+
+    Say("=== Url Audit Complete ===");
+}

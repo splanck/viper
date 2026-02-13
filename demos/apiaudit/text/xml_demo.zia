@@ -1,0 +1,178 @@
+// =============================================================================
+// API Audit: Viper.Data.Xml - XML Processing
+// =============================================================================
+// Tests: Parse, IsValid, Element, Text, Comment, Cdata, NodeType, Tag, Content,
+//        TextContent, Attr, HasAttr, SetAttr, RemoveAttr, AttrNames, Children,
+//        ChildCount, ChildAt, Append, Remove, Find, FindAll, Format,
+//        FormatPretty, Escape, Unescape
+// =============================================================================
+
+module XmlDemo;
+bind Viper.Terminal;
+bind Xml = Viper.Data.Xml;
+
+func start() {
+    Say("=== API Audit: Viper.Data.Xml ===");
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    Say("IsValid('<root><item/></root>'):");
+    SayBool(Xml.IsValid("<root><item/></root>"));
+    Say("IsValid('not xml'):");
+    SayBool(Xml.IsValid("not xml"));
+    Say("IsValid('<broken'):");
+    SayBool(Xml.IsValid("<broken"));
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var doc = Xml.Parse("<root><item id=\"1\">Hello</item><item id=\"2\">World</item></root>");
+    Say("Parse done");
+
+    // --- NodeType ---
+    Say("--- NodeType ---");
+    Say("NodeType(root):");
+    SayInt(Xml.NodeType(doc));
+
+    // --- Tag ---
+    Say("--- Tag ---");
+    Say("Tag(root):");
+    Say(Xml.Tag(doc));
+
+    // --- TextContent ---
+    Say("--- TextContent ---");
+    Say("TextContent(root):");
+    Say(Xml.TextContent(doc));
+
+    // --- ChildCount ---
+    Say("--- ChildCount ---");
+    Say("ChildCount:");
+    SayInt(Xml.ChildCount(doc));
+
+    // --- ChildAt ---
+    Say("--- ChildAt ---");
+    var child0 = Xml.ChildAt(doc, 0);
+    Say("ChildAt(0) Tag:");
+    Say(Xml.Tag(child0));
+    Say("ChildAt(0) TextContent:");
+    Say(Xml.TextContent(child0));
+
+    var child1 = Xml.ChildAt(doc, 1);
+    Say("ChildAt(1) Tag:");
+    Say(Xml.Tag(child1));
+    Say("ChildAt(1) TextContent:");
+    Say(Xml.TextContent(child1));
+
+    // --- Children ---
+    Say("--- Children ---");
+    var kids = Xml.Children(doc);
+    Say("Children returned (Seq)");
+
+    // --- Attr ---
+    Say("--- Attr ---");
+    Say("Attr(child0, 'id'):");
+    Say(Xml.Attr(child0, "id"));
+
+    // --- HasAttr ---
+    Say("--- HasAttr ---");
+    Say("HasAttr(child0, 'id'):");
+    SayBool(Xml.HasAttr(child0, "id"));
+    Say("HasAttr(child0, 'class'):");
+    SayBool(Xml.HasAttr(child0, "class"));
+
+    // --- SetAttr ---
+    Say("--- SetAttr ---");
+    Xml.SetAttr(child0, "class", "primary");
+    Say("SetAttr(child0, 'class', 'primary')");
+    Say("HasAttr(child0, 'class'):");
+    SayBool(Xml.HasAttr(child0, "class"));
+    Say("Attr(child0, 'class'):");
+    Say(Xml.Attr(child0, "class"));
+
+    // --- RemoveAttr ---
+    Say("--- RemoveAttr ---");
+    Say("RemoveAttr(child0, 'class'):");
+    SayBool(Xml.RemoveAttr(child0, "class"));
+    Say("HasAttr after remove:");
+    SayBool(Xml.HasAttr(child0, "class"));
+
+    // --- AttrNames ---
+    Say("--- AttrNames ---");
+    var names = Xml.AttrNames(child0);
+    Say("AttrNames returned");
+
+    // --- Element ---
+    Say("--- Element ---");
+    var elem = Xml.Element("newTag");
+    Say("Element('newTag') Tag:");
+    Say(Xml.Tag(elem));
+
+    // --- Text ---
+    Say("--- Text ---");
+    var textNode = Xml.Text("some text");
+    Say("Text('some text') created");
+    Say("Content:");
+    Say(Xml.Content(textNode));
+
+    // --- Comment ---
+    Say("--- Comment ---");
+    var commentNode = Xml.Comment("a comment");
+    Say("Comment('a comment') created");
+    Say("Content:");
+    Say(Xml.Content(commentNode));
+
+    // --- Cdata ---
+    Say("--- Cdata ---");
+    var cdataNode = Xml.Cdata("raw <data>");
+    Say("Cdata created");
+    Say("Content:");
+    Say(Xml.Content(cdataNode));
+
+    // --- Append ---
+    Say("--- Append ---");
+    var newChild = Xml.Element("item");
+    Xml.SetAttr(newChild, "id", "3");
+    Xml.Append(doc, newChild);
+    Say("Append done");
+    Say("ChildCount after append:");
+    SayInt(Xml.ChildCount(doc));
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    Say("Remove(newChild):");
+    SayBool(Xml.Remove(doc, newChild));
+    Say("ChildCount after remove:");
+    SayInt(Xml.ChildCount(doc));
+
+    // --- Find ---
+    Say("--- Find ---");
+    var found = Xml.Find(doc, "item");
+    Say("Find('item') Tag:");
+    Say(Xml.Tag(found));
+
+    // --- FindAll ---
+    Say("--- FindAll ---");
+    var allItems = Xml.FindAll(doc, "item");
+    Say("FindAll('item') returned");
+
+    // --- Format ---
+    Say("--- Format ---");
+    Say("Format:");
+    Say(Xml.Format(doc));
+
+    // --- FormatPretty ---
+    Say("--- FormatPretty ---");
+    Say("FormatPretty(2):");
+    Say(Xml.FormatPretty(doc, 2));
+
+    // --- Escape ---
+    Say("--- Escape ---");
+    Say("Escape('<tag attr=\"val\">&'):");
+    Say(Xml.Escape("<tag attr=\"val\">&"));
+
+    // --- Unescape ---
+    Say("--- Unescape ---");
+    Say("Unescape('&lt;tag&gt;'):");
+    Say(Xml.Unescape("&lt;tag&gt;"));
+
+    Say("=== Xml Demo Complete ===");
+}

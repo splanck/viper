@@ -1,0 +1,55 @@
+// =============================================================================
+// API Audit: Viper.Memory.GC - Garbage Collector
+// =============================================================================
+// Tests: Collect, TrackedCount, TotalCollected, PassCount
+// =============================================================================
+
+module GCDemo;
+bind Viper.Terminal;
+bind GC = Viper.Memory.GC;
+bind Box = Viper.Core.Box;
+
+func start() {
+    Say("=== API Audit: Viper.Memory.GC ===");
+
+    // --- TrackedCount (initial) ---
+    Say("--- TrackedCount (initial) ---");
+    Say("TrackedCount:");
+    SayInt(GC.TrackedCount());
+
+    // --- PassCount (initial) ---
+    Say("--- PassCount (initial) ---");
+    Say("PassCount:");
+    SayInt(GC.PassCount());
+
+    // --- TotalCollected (initial) ---
+    Say("--- TotalCollected (initial) ---");
+    Say("TotalCollected:");
+    SayInt(GC.TotalCollected());
+
+    // Create some objects to track
+    Say("--- Creating objects ---");
+    var a = Box.I64(1);
+    var b = Box.I64(2);
+    var c = Box.Str("test");
+    Say("Created 3 boxed objects");
+    Say("TrackedCount after creation:");
+    SayInt(GC.TrackedCount());
+
+    // --- Collect ---
+    Say("--- Collect ---");
+    var collected = GC.Collect();
+    Say("Collect() returned:");
+    SayInt(collected);
+
+    // --- Post-collection stats ---
+    Say("--- Post-collection stats ---");
+    Say("TrackedCount:");
+    SayInt(GC.TrackedCount());
+    Say("TotalCollected:");
+    SayInt(GC.TotalCollected());
+    Say("PassCount:");
+    SayInt(GC.PassCount());
+
+    Say("=== GC Demo Complete ===");
+}

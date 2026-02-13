@@ -1,0 +1,10 @@
+module SpriteSheetDemo;
+bind Viper.Terminal;
+func start() {
+    Say("=== API Audit: Viper.Graphics.SpriteSheet ===");
+    Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
+    Say("Constructor: New(texWidth, texHeight)");
+    Say("Properties: get_RegionCount, get_Width, get_Height");
+    Say("Methods: AddRegion(x, y, w, h), GetRegion(idx)");
+    Say("=== SpriteSheet Audit Complete (API surface only) ===");
+}

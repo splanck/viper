@@ -1,0 +1,141 @@
+// collision_demo.zia - Comprehensive API audit for Viper.Game.CollisionRect and Collision
+// Tests CollisionRect: New, X, Y, Width, Height, Right, Bottom, CenterX, CenterY,
+//   SetPosition, SetSize, Set, SetCenter, Move, ContainsPoint, Overlaps,
+//   OverlapsRect, OverlapX, OverlapY, Expand, ContainsRect
+// Tests Collision (static): RectsOverlap, PointInRect, CirclesOverlap,
+//   PointInCircle, CircleRect, Distance, DistanceSquared
+
+module CollisionDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== CollisionRect API Audit ===");
+
+    // --- New (x, y, w, h) ---
+    Say("--- New ---");
+    var r1 = CollisionRect.New(10.0, 20.0, 100.0, 50.0);
+    SayNum(r1.X);         // 10.0
+    SayNum(r1.Y);         // 20.0
+    SayNum(r1.Width);     // 100.0
+    SayNum(r1.Height);    // 50.0
+
+    // --- Right / Bottom ---
+    Say("--- Right / Bottom ---");
+    SayNum(r1.Right);     // 110.0 (x + width)
+    SayNum(r1.Bottom);    // 70.0  (y + height)
+
+    // --- CenterX / CenterY ---
+    Say("--- CenterX / CenterY ---");
+    SayNum(r1.CenterX);  // 60.0 (x + width/2)
+    SayNum(r1.CenterY);  // 45.0 (y + height/2)
+
+    // --- SetPosition ---
+    Say("--- SetPosition ---");
+    r1.SetPosition(0.0, 0.0);
+    SayNum(r1.X);         // 0.0
+    SayNum(r1.Y);         // 0.0
+
+    // --- SetSize ---
+    Say("--- SetSize ---");
+    r1.SetSize(200.0, 100.0);
+    SayNum(r1.Width);     // 200.0
+    SayNum(r1.Height);    // 100.0
+
+    // --- Set (x, y, w, h) ---
+    Say("--- Set ---");
+    r1.Set(5.0, 10.0, 50.0, 25.0);
+    SayNum(r1.X);         // 5.0
+    SayNum(r1.Y);         // 10.0
+    SayNum(r1.Width);     // 50.0
+    SayNum(r1.Height);    // 25.0
+
+    // --- SetCenter ---
+    Say("--- SetCenter ---");
+    r1.SetCenter(100.0, 100.0);
+    SayNum(r1.CenterX);  // 100.0
+    SayNum(r1.CenterY);  // 100.0
+
+    // --- Move ---
+    Say("--- Move ---");
+    var oldX = r1.X;
+    r1.Move(10.0, -5.0);
+    // X should be oldX + 10, Y should be oldY - 5
+
+    // --- ContainsPoint ---
+    Say("--- ContainsPoint ---");
+    var r2 = CollisionRect.New(0.0, 0.0, 100.0, 100.0);
+    SayBool(r2.ContainsPoint(50.0, 50.0));   // 1 (inside)
+    SayBool(r2.ContainsPoint(150.0, 50.0));  // 0 (outside)
+    SayBool(r2.ContainsPoint(0.0, 0.0));     // 1 (corner)
+
+    // --- Overlaps ---
+    Say("--- Overlaps ---");
+    var r3 = CollisionRect.New(50.0, 50.0, 100.0, 100.0);
+    SayBool(r2.Overlaps(r3));  // 1 (overlapping)
+    var r4 = CollisionRect.New(200.0, 200.0, 10.0, 10.0);
+    SayBool(r2.Overlaps(r4));  // 0 (not overlapping)
+
+    // --- OverlapsRect ---
+    Say("--- OverlapsRect ---");
+    SayBool(r2.OverlapsRect(50.0, 50.0, 100.0, 100.0));  // 1
+    SayBool(r2.OverlapsRect(200.0, 200.0, 10.0, 10.0));   // 0
+
+    // --- OverlapX / OverlapY ---
+    Say("--- OverlapX / OverlapY ---");
+    SayNum(r2.OverlapX(r3));  // overlap amount on X
+    SayNum(r2.OverlapY(r3));  // overlap amount on Y
+
+    // --- Expand ---
+    Say("--- Expand ---");
+    var r5 = CollisionRect.New(10.0, 10.0, 20.0, 20.0);
+    r5.Expand(5.0);
+    SayNum(r5.Width);   // 30.0
+    SayNum(r5.Height);  // 30.0
+
+    // --- ContainsRect ---
+    Say("--- ContainsRect ---");
+    var outer = CollisionRect.New(0.0, 0.0, 200.0, 200.0);
+    var inner = CollisionRect.New(10.0, 10.0, 50.0, 50.0);
+    SayBool(outer.ContainsRect(inner));  // 1 (fully inside)
+    SayBool(inner.ContainsRect(outer));  // 0 (too small)
+
+    // =============================================
+    Say("=== Collision Static API Audit ===");
+
+    // --- RectsOverlap ---
+    Say("--- RectsOverlap ---");
+    SayBool(Collision.RectsOverlap(0.0, 0.0, 100.0, 100.0, 50.0, 50.0, 100.0, 100.0));  // 1
+    SayBool(Collision.RectsOverlap(0.0, 0.0, 10.0, 10.0, 200.0, 200.0, 10.0, 10.0));     // 0
+
+    // --- PointInRect ---
+    Say("--- PointInRect ---");
+    SayBool(Collision.PointInRect(50.0, 50.0, 0.0, 0.0, 100.0, 100.0));  // 1
+    SayBool(Collision.PointInRect(150.0, 50.0, 0.0, 0.0, 100.0, 100.0)); // 0
+
+    // --- CirclesOverlap ---
+    Say("--- CirclesOverlap ---");
+    SayBool(Collision.CirclesOverlap(0.0, 0.0, 50.0, 30.0, 0.0, 50.0));  // 1 (overlapping)
+    SayBool(Collision.CirclesOverlap(0.0, 0.0, 10.0, 200.0, 200.0, 10.0)); // 0
+
+    // --- PointInCircle ---
+    Say("--- PointInCircle ---");
+    SayBool(Collision.PointInCircle(5.0, 5.0, 0.0, 0.0, 50.0));   // 1
+    SayBool(Collision.PointInCircle(100.0, 100.0, 0.0, 0.0, 10.0)); // 0
+
+    // --- CircleRect ---
+    Say("--- CircleRect ---");
+    SayBool(Collision.CircleRect(50.0, 50.0, 30.0, 0.0, 0.0, 100.0, 100.0));  // 1
+    SayBool(Collision.CircleRect(200.0, 200.0, 5.0, 0.0, 0.0, 100.0, 100.0)); // 0
+
+    // --- Distance ---
+    Say("--- Distance ---");
+    SayNum(Collision.Distance(0.0, 0.0, 3.0, 4.0));  // 5.0
+
+    // --- DistanceSquared ---
+    Say("--- DistanceSquared ---");
+    SayNum(Collision.DistanceSquared(0.0, 0.0, 3.0, 4.0));  // 25.0
+
+    Say("=== Collision audit complete ===");
+}

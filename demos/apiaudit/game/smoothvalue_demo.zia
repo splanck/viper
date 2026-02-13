@@ -1,0 +1,71 @@
+// smoothvalue_demo.zia - Comprehensive API audit for Viper.Game.SmoothValue
+// Tests: New(initial,smoothing), Value, ValueI64, Target, Smoothing, AtTarget,
+//        Velocity, SetImmediate, Update, Impulse
+
+module SmoothValueDemo;
+
+bind Viper.Game;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== SmoothValue API Audit ===");
+
+    // --- New (initial=50.0, smoothing=0.1) ---
+    Say("--- New ---");
+    var sv = SmoothValue.New(50.0, 0.1);
+    SayNum(sv.Value);        // 50.0
+    SayInt(sv.ValueI64);     // 50
+    SayNum(sv.Target);       // 50.0
+    SayNum(sv.Smoothing);    // 0.1
+    SayBool(sv.AtTarget);    // 1 (value == target)
+
+    // --- Target (set) ---
+    Say("--- Target set ---");
+    sv.Target = 100.0;
+    SayNum(sv.Target);       // 100.0
+    SayBool(sv.AtTarget);    // 0 (value != target now)
+
+    // --- Update ---
+    Say("--- Update ---");
+    sv.Update();
+    SayBool(sv.AtTarget);    // 0 (still approaching)
+    // Value should have moved toward 100.0
+    SayNum(sv.Velocity);     // non-zero velocity
+
+    // --- Multiple updates to approach target ---
+    Say("--- Multiple updates ---");
+    sv.Update();
+    sv.Update();
+    sv.Update();
+    sv.Update();
+    // Value should be closer to 100.0
+
+    // --- Smoothing (set) ---
+    Say("--- Smoothing set ---");
+    sv.Smoothing = 0.5;
+    SayNum(sv.Smoothing);    // 0.5
+
+    // --- SetImmediate ---
+    Say("--- SetImmediate ---");
+    sv.SetImmediate(75.0);
+    SayNum(sv.Value);        // 75.0
+    SayNum(sv.Target);       // 75.0 (also set to same)
+    SayBool(sv.AtTarget);    // 1
+
+    // --- Impulse ---
+    Say("--- Impulse ---");
+    sv.Impulse(10.0);
+    // Value should have been nudged
+    sv.Update();
+
+    // --- New with different params ---
+    Say("--- New (zero, fast smoothing) ---");
+    var sv2 = SmoothValue.New(0.0, 0.9);
+    SayNum(sv2.Value);       // 0.0
+    SayNum(sv2.Smoothing);   // 0.9
+    sv2.Target = 10.0;
+    sv2.Update();
+    SayInt(sv2.ValueI64);    // should be close to 10
+
+    Say("=== SmoothValue audit complete ===");
+}

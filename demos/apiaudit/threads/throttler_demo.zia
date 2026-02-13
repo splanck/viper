@@ -1,0 +1,71 @@
+// =============================================================================
+// API Audit: Viper.Threads.Throttler
+// =============================================================================
+// Tests: New, Try, CanProceed, Reset, Interval, Count, RemainingMs
+// =============================================================================
+
+module ThrottlerDemo;
+bind Viper.Threads.Throttler as Throttler;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("=== API Audit: Viper.Threads.Throttler ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var t = Throttler.New(1000);
+    Say("Created throttler with 1000ms interval");
+
+    // --- Interval ---
+    Say("--- Interval ---");
+    Say("Interval: " + Fmt.Int(t.get_Interval()));
+
+    // --- Count (initial) ---
+    Say("--- Count (initial) ---");
+    Say("Count: " + Fmt.Int(t.get_Count()));
+
+    // --- CanProceed (initial, should be true) ---
+    Say("--- CanProceed (initial) ---");
+    Say("CanProceed: " + Fmt.Bool(t.get_CanProceed()));
+
+    // --- Try (first call should succeed) ---
+    Say("--- Try (first) ---");
+    var ok1 = t.Try();
+    Say("Try: " + Fmt.Bool(ok1));
+    Say("Count after first Try: " + Fmt.Int(t.get_Count()));
+
+    // --- Try (second call, within interval, should fail) ---
+    Say("--- Try (second, throttled) ---");
+    var ok2 = t.Try();
+    Say("Try: " + Fmt.Bool(ok2));
+    Say("Count after second Try: " + Fmt.Int(t.get_Count()));
+
+    // --- CanProceed (after Try, within interval) ---
+    Say("--- CanProceed (throttled) ---");
+    Say("CanProceed: " + Fmt.Bool(t.get_CanProceed()));
+
+    // --- RemainingMs ---
+    Say("--- RemainingMs ---");
+    var rem = t.get_RemainingMs();
+    Say("RemainingMs > 0: " + Fmt.Bool(rem > 0));
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    t.Reset();
+    Say("CanProceed after Reset: " + Fmt.Bool(t.get_CanProceed()));
+    var ok3 = t.Try();
+    Say("Try after Reset: " + Fmt.Bool(ok3));
+
+    // --- New with 0 interval ---
+    Say("--- New with 0 interval ---");
+    var t2 = Throttler.New(0);
+    Say("Interval: " + Fmt.Int(t2.get_Interval()));
+    var a = t2.Try();
+    var b = t2.Try();
+    var c = t2.Try();
+    Say("Three consecutive Try results: " + Fmt.Bool(a) + ", " + Fmt.Bool(b) + ", " + Fmt.Bool(c));
+    Say("Count: " + Fmt.Int(t2.get_Count()));
+
+    Say("=== Throttler Audit Complete ===");
+}

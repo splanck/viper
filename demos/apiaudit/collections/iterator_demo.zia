@@ -1,0 +1,95 @@
+// iterator_demo.zia - Comprehensive API audit for Viper.Collections.Iterator
+// Tests: FromSeq, HasNext, Next, Peek, Reset, Index, Count, ToSeq, Skip
+
+module IteratorDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== Iterator API Audit ===");
+
+    // --- FromSeq ---
+    Say("--- FromSeq ---");
+    var seq = Seq.New();
+    seq.Push(Box.Str("a"));
+    seq.Push(Box.Str("b"));
+    seq.Push(Box.Str("c"));
+    seq.Push(Box.Str("d"));
+    seq.Push(Box.Str("e"));
+
+    var it = Iterator.FromSeq(seq);
+    SayInt(it.Count);       // 5
+
+    // --- HasNext ---
+    Say("--- HasNext ---");
+    SayInt(it.HasNext);     // 1
+
+    // --- Index ---
+    Say("--- Index ---");
+    SayInt(it.Index);       // 0
+
+    // --- Peek (look without advancing) ---
+    Say("--- Peek ---");
+    Say(Box.ToStr(it.Peek()));   // a
+    Say(Box.ToStr(it.Peek()));   // a (still a, not advanced)
+    SayInt(it.Index);            // 0
+
+    // --- Next (advance) ---
+    Say("--- Next ---");
+    Say(Box.ToStr(it.Next()));   // a
+    SayInt(it.Index);            // 1
+    Say(Box.ToStr(it.Next()));   // b
+    SayInt(it.Index);            // 2
+
+    // --- Peek after Next ---
+    Say("--- Peek after Next ---");
+    Say(Box.ToStr(it.Peek()));   // c
+
+    // --- Skip ---
+    Say("--- Skip ---");
+    SayInt(it.Skip(2));          // 2 (skipped c, d)
+    SayInt(it.Index);            // 4
+    Say(Box.ToStr(it.Peek()));   // e
+
+    // --- Next to exhaustion ---
+    Say("--- Next to exhaustion ---");
+    Say(Box.ToStr(it.Next()));   // e
+    SayInt(it.HasNext);          // 0
+    SayInt(it.Index);            // 5
+
+    // --- Reset ---
+    Say("--- Reset ---");
+    it.Reset();
+    SayInt(it.Index);            // 0
+    SayInt(it.HasNext);          // 1
+    Say(Box.ToStr(it.Peek()));   // a
+
+    // --- ToSeq (collects remaining) ---
+    Say("--- ToSeq ---");
+    it.Next();  // consume a
+    it.Next();  // consume b
+    var rest = it.ToSeq();
+    SayInt(rest.Len);            // 3 (c, d, e)
+    Say(Box.ToStr(rest.Get(0))); // c
+    Say(Box.ToStr(rest.Get(1))); // d
+    Say(Box.ToStr(rest.Get(2))); // e
+
+    // --- Skip past end ---
+    Say("--- Skip past end ---");
+    var it2 = Iterator.FromSeq(seq);
+    SayInt(it2.Skip(10));        // 5 (only 5 elements to skip)
+    SayInt(it2.HasNext);         // 0
+
+    // --- Empty iterator ---
+    Say("--- Empty iterator ---");
+    var emptySeq = Seq.New();
+    var it3 = Iterator.FromSeq(emptySeq);
+    SayInt(it3.HasNext);         // 0
+    SayInt(it3.Count);           // 0
+    SayInt(it3.Index);           // 0
+
+    Say("=== Iterator audit complete ===");
+}

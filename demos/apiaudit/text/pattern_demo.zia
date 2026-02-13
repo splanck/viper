@@ -1,0 +1,66 @@
+module PatternDemo;
+bind Viper.Terminal;
+bind Pat = Viper.Text.Pattern;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+func start() {
+    Say("=== Viper.Text.Pattern API Audit ===");
+
+    // --- IsMatch ---
+    Say("--- IsMatch ---");
+    SayBool(Pat.IsMatch("abc123", "[0-9]+"));
+    SayBool(Pat.IsMatch("hello", "[0-9]+"));
+    SayBool(Pat.IsMatch("hello", "^[a-z]+$"));
+    SayBool(Pat.IsMatch("Hello", "^[a-z]+$"));
+
+    // --- Find ---
+    Say("--- Find ---");
+    Say(Pat.Find("abc123def", "[0-9]+"));
+    Say(Pat.Find("Hello World", "[A-Z][a-z]+"));
+
+    // --- FindFrom ---
+    Say("--- FindFrom ---");
+    Say(Pat.FindFrom("abc123def456", "[0-9]+", 6));
+
+    // --- FindPos ---
+    Say("--- FindPos ---");
+    SayInt(Pat.FindPos("abc123def", "[0-9]+"));
+    SayInt(Pat.FindPos("abcdef", "[0-9]+"));
+
+    // --- FindAll ---
+    Say("--- FindAll ---");
+    var matches = Pat.FindAll("a1b22c333", "[0-9]+");
+    SayInt(Seq.get_Len(matches));
+    var mi = 0;
+    while mi < Seq.get_Len(matches) {
+        Say(Obj.ToString(Seq.Get(matches, mi)));
+        mi = mi + 1;
+    }
+
+    // --- Replace ---
+    Say("--- Replace ---");
+    Say(Pat.Replace("abc123def456", "[0-9]+", "NUM"));
+    Say(Pat.Replace("hello   world   foo", "\\s+", " "));
+
+    // --- ReplaceFirst ---
+    Say("--- ReplaceFirst ---");
+    Say(Pat.ReplaceFirst("abc123def456", "[0-9]+", "NUM"));
+
+    // --- Split ---
+    Say("--- Split ---");
+    var parts = Pat.Split("one,two;;three,four", "[,;]+");
+    SayInt(Seq.get_Len(parts));
+    var pi = 0;
+    while pi < Seq.get_Len(parts) {
+        Say(Obj.ToString(Seq.Get(parts, pi)));
+        pi = pi + 1;
+    }
+
+    // --- Escape ---
+    Say("--- Escape ---");
+    Say(Pat.Escape("hello.world+foo"));
+    Say(Pat.Escape("[test](value)"));
+
+    Say("=== Pattern Demo Complete ===");
+}

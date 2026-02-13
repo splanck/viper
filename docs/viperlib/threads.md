@@ -99,6 +99,18 @@ entry:
 
 > Thread requires function pointers (`addr_of`) for entry functions, which is an advanced Zia feature. See the IL example above or use BASIC `ADDR_OF` for thread creation.
 
+### BASIC Example
+
+```basic
+' Sleep the current thread briefly
+Viper.Threads.Thread.Sleep(10)
+PRINT "Slept for 10ms"
+
+' Yield the current thread's time slice
+Viper.Threads.Thread.Yield()
+PRINT "Yielded time slice"
+```
+
 ---
 
 ## Viper.Threads.Monitor
@@ -140,6 +152,30 @@ FIFO-fair, re-entrant monitor for explicit object locking.
 ### Zia Example
 
 > Monitor is a static utility class that operates on any object. Use `bind Viper.Threads.Monitor as Monitor;` and call `Monitor.Enter(obj)` / `Monitor.Exit(obj)`. Typically used with threads for synchronization.
+
+### BASIC Example
+
+```basic
+' Create a simple object to use as monitor target
+DIM obj AS OBJECT = Viper.Collections.Seq.New()
+
+' Enter (acquire monitor)
+Viper.Threads.Monitor.Enter(obj)
+PRINT "Monitor acquired"
+
+' TryEnter (re-entrant, same thread owns it)
+DIM ok AS INTEGER = Viper.Threads.Monitor.TryEnter(obj)
+PRINT "TryEnter: "; ok
+
+' TryEnterFor (re-entrant with timeout)
+DIM ok2 AS INTEGER = Viper.Threads.Monitor.TryEnterFor(obj, 10)
+PRINT "TryEnterFor: "; ok2
+
+' Exit to balance all three enters
+Viper.Threads.Monitor.Exit(obj)
+Viper.Threads.Monitor.Exit(obj)
+Viper.Threads.Monitor.Exit(obj)
+```
 
 ---
 
@@ -200,6 +236,23 @@ func start() {
     Say("CAS old: " + Fmt.Int(old));            // 50
     Say("CAS result: " + Fmt.Int(counter.Get())); // 100
 }
+```
+
+### BASIC Example
+
+```basic
+DIM counter AS OBJECT = Viper.Threads.SafeI64.New(0)
+PRINT "Initial: "; counter.Get()
+
+counter.Set(42)
+PRINT "After Set: "; counter.Get()
+
+DIM newVal AS INTEGER = counter.Add(8)
+PRINT "After Add(8): "; newVal
+
+DIM old AS INTEGER = counter.CompareExchange(50, 100)
+PRINT "CAS old: "; old
+PRINT "CAS result: "; counter.Get()
 ```
 
 ---
@@ -272,6 +325,22 @@ func start() {
 
 > **Note:** Gate properties (`Permits`) use the get_/set_ pattern; access as `gate.get_Permits()` in Zia.
 
+### BASIC Example
+
+```basic
+DIM gate AS OBJECT = Viper.Threads.Gate.New(3)
+PRINT "Permits: "; gate.Permits
+
+gate.Enter()
+PRINT "After Enter: "; gate.Permits
+
+PRINT "TryEnter: "; gate.TryEnter()
+PRINT "Permits: "; gate.Permits
+
+gate.Leave()
+gate.Leave()
+```
+
 ---
 
 ## Viper.Threads.Barrier
@@ -326,6 +395,19 @@ func start() {
     Say("Waiting: " + Fmt.Int(b.get_Waiting()));  // 0
     // In a real program, multiple threads would call b.Arrive()
 }
+```
+
+### BASIC Example
+
+```basic
+DIM b AS OBJECT = Viper.Threads.Barrier.New(3)
+PRINT "Parties: "; b.Parties
+PRINT "Waiting: "; b.Waiting
+
+' With a single-party barrier we can demonstrate Arrive
+DIM b1 AS OBJECT = Viper.Threads.Barrier.New(1)
+DIM idx AS INTEGER = b1.Arrive()
+PRINT "Arrive index: "; idx
 ```
 
 ---
@@ -402,6 +484,28 @@ func start() {
     Say("TryWrite: " + Fmt.Bool(lock.TryWriteEnter())); // true
     lock.WriteExit();
 }
+```
+
+### BASIC Example
+
+```basic
+DIM lock AS OBJECT = Viper.Threads.RwLock.New()
+
+' Read lock (shared)
+lock.ReadEnter()
+PRINT "Readers: "; lock.Readers
+lock.ReadExit()
+
+' Write lock (exclusive)
+lock.WriteEnter()
+PRINT "IsWriteLocked: "; lock.IsWriteLocked
+lock.WriteExit()
+
+' Non-blocking try variants
+PRINT "TryRead: "; lock.TryReadEnter()
+lock.ReadExit()
+PRINT "TryWrite: "; lock.TryWriteEnter()
+lock.WriteExit()
 ```
 
 ---
@@ -1114,6 +1218,74 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 - Uses FNV-1a hash with separate chaining for collision resolution.
 - For single-threaded use, prefer `Viper.Collections.Map` which has no locking overhead.
 
+### Zia Example
+
+```zia
+module ConcMapDemo;
+
+bind Viper.Terminal;
+bind Viper.Threads.ConcurrentMap as CMap;
+bind Viper.Core.Box as Box;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var m = CMap.New();
+    Say("Empty: " + Fmt.Bool(m.get_IsEmpty()));
+
+    // Set key-value pairs (values must be objects, use Box)
+    m.Set("name", Box.Str("Alice"));
+    m.Set("age", Box.I64(30));
+    Say("Len: " + Fmt.Int(m.get_Len()));
+
+    // Get values
+    Say("name: " + Box.ToStr(m.Get("name")));
+    Say("age: " + Fmt.Int(Box.ToI64(m.Get("age"))));
+
+    // Has check
+    Say("Has name: " + Fmt.Bool(m.Has("name")));
+
+    // SetIfMissing (returns false if key exists)
+    Say("SetIfMissing name: " + Fmt.Bool(m.SetIfMissing("name", Box.Str("Bob"))));
+
+    // Remove
+    Say("Remove age: " + Fmt.Bool(m.Remove("age")));
+
+    // Clear
+    m.Clear();
+    Say("Len after Clear: " + Fmt.Int(m.get_Len()));
+}
+```
+
+### BASIC Example
+
+```basic
+DIM m AS OBJECT = Viper.Threads.ConcurrentMap.New()
+PRINT "Empty: "; m.IsEmpty
+
+' Set key-value pairs (values are objects, use Box)
+m.Set("name", Viper.Core.Box.Str("Alice"))
+m.Set("age", Viper.Core.Box.I64(30))
+PRINT "Len: "; m.Len
+
+' Get values - use static call form for obj-returning methods
+DIM nameVal AS OBJECT = Viper.Threads.ConcurrentMap.Get(m, "name")
+PRINT "name: "; Viper.Core.Box.ToStr(nameVal)
+
+DIM ageVal AS OBJECT = Viper.Threads.ConcurrentMap.Get(m, "age")
+PRINT "age: "; Viper.Core.Box.ToI64(ageVal)
+
+' Has check
+PRINT "Has name: "; m.Has("name")
+
+' SetIfMissing (returns false if key exists)
+PRINT "SetIfMissing name: "; m.SetIfMissing("name", Viper.Core.Box.Str("Bob"))
+
+' Remove and Clear
+PRINT "Remove age: "; m.Remove("age")
+m.Clear()
+PRINT "Len after Clear: "; m.Len
+```
+
 ---
 
 ## Viper.Threads.ConcurrentQueue
@@ -1147,6 +1319,77 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 - `Dequeue` blocks until an item is available.
 - `TryDequeue` and `Peek` return NULL immediately if the queue is empty.
 - Values are retained (reference count incremented) while in the queue.
+
+### Zia Example
+
+```zia
+module ConcQueueDemo;
+
+bind Viper.Terminal;
+bind Viper.Threads.ConcurrentQueue as CQ;
+bind Viper.Core.Box as Box;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var q = CQ.New();
+    Say("Empty: " + Fmt.Bool(q.get_IsEmpty()));
+
+    // Enqueue items
+    q.Enqueue(Box.I64(10));
+    q.Enqueue(Box.I64(20));
+    q.Enqueue(Box.I64(30));
+    Say("Len: " + Fmt.Int(q.get_Len()));
+
+    // Peek (non-destructive)
+    Say("Peek: " + Fmt.Int(Box.ToI64(q.Peek())));
+
+    // TryDequeue (non-blocking)
+    Say("TryDequeue: " + Fmt.Int(Box.ToI64(q.TryDequeue())));
+
+    // Dequeue (blocking, but items available)
+    Say("Dequeue: " + Fmt.Int(Box.ToI64(q.Dequeue())));
+
+    // DequeueTimeout
+    Say("DequeueTimeout: " + Fmt.Int(Box.ToI64(q.DequeueTimeout(100))));
+    Say("Empty after all: " + Fmt.Bool(q.get_IsEmpty()));
+
+    // Clear
+    q.Enqueue(Box.I64(99));
+    q.Clear();
+    Say("Len after clear: " + Fmt.Int(q.get_Len()));
+}
+```
+
+### BASIC Example
+
+```basic
+DIM q AS OBJECT = Viper.Threads.ConcurrentQueue.New()
+PRINT "Empty: "; q.IsEmpty
+
+' Enqueue items (values are objects, use Box)
+q.Enqueue(Viper.Core.Box.I64(10))
+q.Enqueue(Viper.Core.Box.I64(20))
+q.Enqueue(Viper.Core.Box.I64(30))
+PRINT "Len: "; q.Len
+
+' Peek (non-destructive)
+PRINT "Peek: "; Viper.Core.Box.ToI64(q.Peek())
+
+' TryDequeue (non-blocking)
+PRINT "TryDequeue: "; Viper.Core.Box.ToI64(q.TryDequeue())
+
+' Dequeue (blocking, but items available)
+PRINT "Dequeue: "; Viper.Core.Box.ToI64(q.Dequeue())
+
+' DequeueTimeout
+PRINT "DequeueTimeout: "; Viper.Core.Box.ToI64(q.DequeueTimeout(100))
+PRINT "Empty after all: "; q.IsEmpty
+
+' Clear
+q.Enqueue(Viper.Core.Box.I64(99))
+q.Clear()
+PRINT "Len after clear: "; q.Len
+```
 
 ---
 

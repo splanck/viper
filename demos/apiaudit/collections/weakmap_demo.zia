@@ -1,0 +1,75 @@
+// weakmap_demo.zia - Comprehensive API audit for Viper.Collections.WeakMap
+// Tests: New, Set, Get, Has, Remove, Keys, Len, IsEmpty, Clear, Compact
+
+module WeakMapDemo;
+
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+bind Viper.Fmt;
+
+func start() {
+    Say("=== WeakMap API Audit ===");
+
+    // --- New ---
+    Say("--- New ---");
+    var wm = WeakMap.New();
+    SayInt(wm.Len);       // 0
+    SayBool(wm.IsEmpty);  // 1
+
+    // --- Set / Len ---
+    Say("--- Set / Len ---");
+    var obj1 = Box.Str("value1");
+    var obj2 = Box.Str("value2");
+    var obj3 = Box.Str("value3");
+    wm.Set("key1", obj1);
+    wm.Set("key2", obj2);
+    wm.Set("key3", obj3);
+    SayInt(wm.Len);       // 3
+    SayBool(wm.IsEmpty);  // 0
+
+    // --- Get ---
+    Say("--- Get ---");
+    Say(Box.ToStr(wm.Get("key1")));   // value1
+    Say(Box.ToStr(wm.Get("key2")));   // value2
+    Say(Box.ToStr(wm.Get("key3")));   // value3
+
+    // --- Has ---
+    Say("--- Has ---");
+    SayBool(wm.Has("key1"));   // 1
+    SayBool(wm.Has("key4"));   // 0
+
+    // --- Set (update existing) ---
+    Say("--- Set (update) ---");
+    var obj1b = Box.Str("VALUE1");
+    wm.Set("key1", obj1b);
+    Say(Box.ToStr(wm.Get("key1")));   // VALUE1
+    SayInt(wm.Len);                   // 3
+
+    // --- Keys ---
+    Say("--- Keys ---");
+    var keys = wm.Keys();
+    SayInt(keys.Len);                 // 3
+
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(wm.Remove("key2"));       // 1
+    SayBool(wm.Has("key2"));          // 0
+    SayInt(wm.Len);                   // 2
+    SayBool(wm.Remove("key2"));       // 0
+
+    // --- Compact ---
+    Say("--- Compact ---");
+    var removed = wm.Compact();
+    // Compact removes stale entries (values collected by GC)
+    // Since we still hold references, nothing should be removed
+    SayInt(wm.Len);                   // 2
+
+    // --- Clear ---
+    Say("--- Clear ---");
+    wm.Clear();
+    SayInt(wm.Len);                   // 0
+    SayBool(wm.IsEmpty);              // 1
+
+    Say("=== WeakMap audit complete ===");
+}

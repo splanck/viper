@@ -1,0 +1,25 @@
+// API Audit: Viper.Network.WebSocket (Zia)
+// NOTE: WebSocket requires live server - API surface documentation only
+module WebSocketDemo;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Network.WebSocket ===");
+    Say("WebSocket API surface (requires live server):");
+    Say("  Connect(str) -> obj       -- connect to WS URL");
+    Say("  ConnectFor(str,i64) -> obj -- connect with timeout ms");
+    Say("  .Url -> str               -- get connection URL");
+    Say("  .IsOpen -> i1             -- check if connected");
+    Say("  .CloseCode -> i64         -- get close status code");
+    Say("  .CloseReason -> str       -- get close reason");
+    Say("  .Send(str)                -- send text message");
+    Say("  .SendBytes(obj)           -- send binary data");
+    Say("  .Ping()                   -- send ping frame");
+    Say("  .Recv() -> str            -- receive text (blocking)");
+    Say("  .RecvFor(i64) -> str      -- receive with timeout ms");
+    Say("  .RecvBytes() -> obj       -- receive binary (blocking)");
+    Say("  .RecvBytesFor(i64) -> obj -- receive binary with timeout");
+    Say("  .Close()                  -- close connection");
+    Say("  .CloseWith(i64,str)       -- close with code and reason");
+    Say("=== WebSocket Audit Complete ===");
+}

@@ -1,0 +1,45 @@
+// =============================================================================
+// API Audit: Viper.IO.Glob - File Pattern Matching
+// =============================================================================
+// Tests: Match, Files
+// =============================================================================
+
+module GlobDemo;
+bind Viper.Terminal;
+bind Glob = Viper.IO.Glob;
+bind Dir = Viper.IO.Dir;
+
+func start() {
+    Say("=== API Audit: Viper.IO.Glob ===");
+
+    // --- Match ---
+    Say("--- Match ---");
+    Say("Match('*.txt', 'file.txt'):");
+    SayBool(Glob.Match("*.txt", "file.txt"));
+    Say("Match('*.txt', 'file.bas'):");
+    SayBool(Glob.Match("*.txt", "file.bas"));
+    Say("Match('*.zia', 'demo.zia'):");
+    SayBool(Glob.Match("*.zia", "demo.zia"));
+    Say("Match('test*', 'test_file'):");
+    SayBool(Glob.Match("test*", "test_file"));
+    Say("Match('test*', 'other_file'):");
+    SayBool(Glob.Match("test*", "other_file"));
+    Say("Match('?at', 'cat'):");
+    SayBool(Glob.Match("?at", "cat"));
+    Say("Match('?at', 'boat'):");
+    SayBool(Glob.Match("?at", "boat"));
+
+    // --- Files ---
+    Say("--- Files ---");
+    var cwd = Dir.Current();
+    Say("Searching for *.zia in current directory:");
+    var files = Glob.Files(cwd, "*.zia");
+    Say("Files() returned (Seq object)");
+
+    // Search for a pattern that likely matches nothing
+    Say("Searching for *.nonexistent:");
+    var empty = Glob.Files(cwd, "*.nonexistent");
+    Say("Files() returned for no-match pattern");
+
+    Say("=== Glob Demo Complete ===");
+}

@@ -278,15 +278,16 @@ void *rt_result_err_value(void *obj)
 
 void *rt_result_expect(void *obj, rt_string msg)
 {
+    const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
     if (!obj)
     {
-        fprintf(stderr, "Result expect: %s (NULL Result)\n", rt_string_cstr(msg));
+        fprintf(stderr, "Result expect: %s (NULL Result)\n", msg_str);
         abort();
     }
     Result *r = (Result *)obj;
     if (r->variant != RESULT_OK)
     {
-        fprintf(stderr, "Result expect: %s\n", rt_string_cstr(msg));
+        fprintf(stderr, "Result expect: %s\n", msg_str);
         abort();
     }
     return r->value.ptr;
@@ -294,15 +295,16 @@ void *rt_result_expect(void *obj, rt_string msg)
 
 void *rt_result_expect_err(void *obj, rt_string msg)
 {
+    const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
     if (!obj)
     {
-        fprintf(stderr, "Result expect_err: %s (NULL Result)\n", rt_string_cstr(msg));
+        fprintf(stderr, "Result expect_err: %s (NULL Result)\n", msg_str);
         abort();
     }
     Result *r = (Result *)obj;
     if (r->variant != RESULT_ERR)
     {
-        fprintf(stderr, "Result expect_err: %s\n", rt_string_cstr(msg));
+        fprintf(stderr, "Result expect_err: %s\n", msg_str);
         abort();
     }
     return r->value.ptr;

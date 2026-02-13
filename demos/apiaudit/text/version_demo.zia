@@ -1,0 +1,73 @@
+module VersionDemo;
+bind Viper.Terminal;
+bind Ver = Viper.Text.Version;
+
+func start() {
+    Say("=== Viper.Text.Version API Audit ===");
+
+    // --- Parse ---
+    Say("--- Parse ---");
+    var v1 = Ver.Parse("1.2.3");
+    var v2 = Ver.Parse("2.0.0-alpha.1+build.42");
+
+    // --- IsValid ---
+    Say("--- IsValid ---");
+    SayBool(Ver.IsValid("1.2.3"));
+    SayBool(Ver.IsValid("2.0.0-alpha.1"));
+    SayBool(Ver.IsValid("not-a-version"));
+    SayBool(Ver.IsValid("1.2"));
+    SayBool(Ver.IsValid("0.0.0"));
+
+    // --- get_Major / get_Minor / get_Patch ---
+    Say("--- get_Major / get_Minor / get_Patch ---");
+    SayInt(Ver.get_Major(v1));
+    SayInt(Ver.get_Minor(v1));
+    SayInt(Ver.get_Patch(v1));
+
+    SayInt(Ver.get_Major(v2));
+    SayInt(Ver.get_Minor(v2));
+    SayInt(Ver.get_Patch(v2));
+
+    // --- get_Prerelease ---
+    Say("--- get_Prerelease ---");
+    Say(Ver.get_Prerelease(v1));
+    Say(Ver.get_Prerelease(v2));
+
+    // --- get_Build ---
+    Say("--- get_Build ---");
+    Say(Ver.get_Build(v1));
+    Say(Ver.get_Build(v2));
+
+    // --- ToString ---
+    Say("--- ToString ---");
+    Say(Ver.ToString(v1));
+    Say(Ver.ToString(v2));
+
+    // --- Cmp ---
+    Say("--- Cmp ---");
+    var v3 = Ver.Parse("1.0.0");
+    var v4 = Ver.Parse("2.0.0");
+    var v5 = Ver.Parse("1.0.0");
+    SayInt(Ver.Cmp(v3, v4));
+    SayInt(Ver.Cmp(v4, v3));
+    SayInt(Ver.Cmp(v3, v5));
+
+    // --- Satisfies ---
+    Say("--- Satisfies ---");
+    var v6 = Ver.Parse("1.5.3");
+    SayBool(Ver.Satisfies(v6, ">=1.0.0"));
+    SayBool(Ver.Satisfies(v6, ">=2.0.0"));
+
+    // --- BumpMajor / BumpMinor / BumpPatch ---
+    Say("--- BumpMajor / BumpMinor / BumpPatch ---");
+    Say(Ver.BumpMajor(v1));
+    Say(Ver.BumpMinor(v1));
+    Say(Ver.BumpPatch(v1));
+
+    var v7 = Ver.Parse("0.9.9");
+    Say(Ver.BumpMajor(v7));
+    Say(Ver.BumpMinor(v7));
+    Say(Ver.BumpPatch(v7));
+
+    Say("=== Version Demo Complete ===");
+}

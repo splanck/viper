@@ -1,0 +1,88 @@
+// =============================================================================
+// API Audit: Viper.Math.Random - Random Number Generation
+// =============================================================================
+// Tests: Seed, Next, NextInt, Range, Dice, Chance, Gaussian, Exponential
+// Note: Random outputs are non-deterministic, so we just verify no crashes.
+// =============================================================================
+
+module RandomDemo;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Math.Random ===");
+
+    // --- Seed ---
+    Say("--- Seed ---");
+    Random.Seed(42);
+    Say("Seeded with 42");
+
+    // --- Next ---
+    Say("--- Next ---");
+    Say("Random.Next() [0.0..1.0]:");
+    SayNum(Random.Next());
+    Say("Random.Next() [0.0..1.0]:");
+    SayNum(Random.Next());
+    Say("Random.Next() [0.0..1.0]:");
+    SayNum(Random.Next());
+
+    // --- NextInt ---
+    Say("--- NextInt ---");
+    Say("Random.NextInt(100):");
+    SayInt(Random.NextInt(100));
+    Say("Random.NextInt(100):");
+    SayInt(Random.NextInt(100));
+    Say("Random.NextInt(10):");
+    SayInt(Random.NextInt(10));
+    Say("Random.NextInt(1):");
+    SayInt(Random.NextInt(1));
+
+    // --- Range ---
+    Say("--- Range ---");
+    Say("Random.Range(1, 6):");
+    SayInt(Random.Range(1, 6));
+    Say("Random.Range(1, 6):");
+    SayInt(Random.Range(1, 6));
+    Say("Random.Range(10, 20):");
+    SayInt(Random.Range(10, 20));
+    Say("Random.Range(-5, 5):");
+    SayInt(Random.Range(-5, 5));
+
+    // --- Dice ---
+    Say("--- Dice ---");
+    Say("Random.Dice(6):");
+    SayInt(Random.Dice(6));
+    Say("Random.Dice(6):");
+    SayInt(Random.Dice(6));
+    Say("Random.Dice(20):");
+    SayInt(Random.Dice(20));
+
+    // --- Chance ---
+    Say("--- Chance ---");
+    Say("Random.Chance(1.0) [always true]:");
+    SayInt(Random.Chance(1.0));
+    Say("Random.Chance(0.0) [always false]:");
+    SayInt(Random.Chance(0.0));
+    Say("Random.Chance(0.5):");
+    SayInt(Random.Chance(0.5));
+
+    // --- Gaussian ---
+    Say("--- Gaussian ---");
+    Say("Random.Gaussian(0.0, 1.0):");
+    SayNum(Random.Gaussian(0.0, 1.0));
+    Say("Random.Gaussian(0.0, 1.0):");
+    SayNum(Random.Gaussian(0.0, 1.0));
+    Say("Random.Gaussian(100.0, 15.0):");
+    SayNum(Random.Gaussian(100.0, 15.0));
+
+    // --- Exponential ---
+    Say("--- Exponential ---");
+    Say("Random.Exponential(1.0):");
+    SayNum(Random.Exponential(1.0));
+    Say("Random.Exponential(1.0):");
+    SayNum(Random.Exponential(1.0));
+    Say("Random.Exponential(0.5):");
+    SayNum(Random.Exponential(0.5));
+
+    Say("=== Random Audit Complete ===");
+}
