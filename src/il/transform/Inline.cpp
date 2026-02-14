@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <climits>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace il::core;
@@ -105,11 +106,22 @@ struct InlineCost
     }
 };
 
+/// @brief Build a composite key for the block-depth map.
+/// @details Concatenates the function name and block label with a NUL separator
+///          so that no valid identifier can collide with the combined key.
+/// @param fn Function name prefix.
+/// @param label Block label suffix.
+/// @return Composite key suitable for BlockDepthMap lookups.
 std::string depthKey(const std::string &fn, const std::string &label)
 {
     return fn + kDepthKeySep + label;
 }
 
+/// @brief Query the inline depth recorded for a specific block.
+/// @param depths Map of (function+label) → depth values.
+/// @param fn Owning function name.
+/// @param label Block label within the function.
+/// @return Recorded depth, or 0 if no entry exists.
 unsigned getBlockDepth(const BlockDepthMap &depths, const std::string &fn, const std::string &label)
 {
     auto it = depths.find(depthKey(fn, label));
@@ -118,6 +130,11 @@ unsigned getBlockDepth(const BlockDepthMap &depths, const std::string &fn, const
     return it->second;
 }
 
+/// @brief Record the inline depth for a specific block.
+/// @param depths Map of (function+label) → depth values (modified in-place).
+/// @param fn Owning function name.
+/// @param label Block label within the function.
+/// @param depth Inline nesting depth to store.
 void setBlockDepth(BlockDepthMap &depths,
                    const std::string &fn,
                    const std::string &label,
@@ -126,11 +143,17 @@ void setBlockDepth(BlockDepthMap &depths,
     depths[depthKey(fn, label)] = depth;
 }
 
+/// @brief Test whether an instruction is a direct (non-indirect) call.
+/// @param I Instruction to inspect.
+/// @return True when the opcode is Call and a callee name is present.
 bool isDirectCall(const Instr &I)
 {
     return I.op == Opcode::Call && !I.callee.empty();
 }
 
+/// @brief Test whether an instruction is part of the exception-handling framework.
+/// @param I Instruction to inspect.
+/// @return True for EhPush, EhPop, EhEntry, ResumeSame, ResumeNext, ResumeLabel.
 bool isEHSensitive(const Instr &I)
 {
     switch (I.op)
@@ -147,12 +170,19 @@ bool isEHSensitive(const Instr &I)
     }
 }
 
+/// @brief Test whether a terminator instruction is unsupported for inlining.
+/// @details The inliner only handles Ret, Br, CBr, and SwitchI32 terminators.
+/// @param I Terminator instruction to check.
+/// @return True when the terminator cannot be inlined.
 bool hasUnsupportedTerminator(const Instr &I)
 {
     return !(I.op == Opcode::Ret || I.op == Opcode::Br || I.op == Opcode::CBr ||
              I.op == Opcode::SwitchI32);
 }
 
+/// @brief Count the total number of instructions across all blocks of a function.
+/// @param F Function to measure.
+/// @return Sum of instruction counts in every block.
 unsigned countInstructions(const Function &F)
 {
     unsigned n = 0;
@@ -161,6 +191,11 @@ unsigned countInstructions(const Function &F)
     return n;
 }
 
+/// @brief Look up the debug name for an SSA value, falling back to a default.
+/// @param F Function whose valueNames table is queried.
+/// @param id SSA value identifier.
+/// @param fallback String returned when no name is recorded for @p id.
+/// @return The stored name if present and non-empty; otherwise @p fallback.
 std::string lookupValueName(const Function &F, unsigned id, const std::string &fallback)
 {
     if (id < F.valueNames.size() && !F.valueNames[id].empty())
@@ -168,6 +203,10 @@ std::string lookupValueName(const Function &F, unsigned id, const std::string &f
     return fallback;
 }
 
+/// @brief Record a debug name for an SSA value, growing the table if needed.
+/// @param F Function whose valueNames table is modified.
+/// @param id SSA value identifier.
+/// @param name Name to associate; empty names are silently ignored.
 void ensureValueName(Function &F, unsigned id, const std::string &name)
 {
     if (name.empty())
@@ -260,27 +299,35 @@ unsigned countConstantArgs(const Instr &callInstr)
     return count;
 }
 
+/// @brief Generate a block label that does not collide with existing labels.
+/// @details Builds an unordered_set of existing labels for O(1) collision checks,
+///          then appends increasing numeric suffixes until a unique name is found.
+///          This replaces a previous O(n) linear scan per candidate, improving
+///          performance from O(n*k) to O(n+k) where n = block count, k = attempts.
+/// @param function Function whose blocks define the label namespace.
+/// @param base Desired label prefix; returned as-is when no collision occurs.
+/// @return A label guaranteed to be unique within @p function.
 std::string makeUniqueLabel(const Function &function, const std::string &base)
 {
+    std::unordered_set<std::string> existingLabels;
+    existingLabels.reserve(function.blocks.size());
+    for (const auto &block : function.blocks)
+        existingLabels.insert(block.label);
+
     std::string candidate = base;
     unsigned suffix = 0;
-    auto labelExists = [&](const std::string &label)
-    {
-        for (const auto &block : function.blocks)
-        {
-            if (block.label == label)
-                return true;
-        }
-        return false;
-    };
-
-    while (labelExists(candidate))
+    while (existingLabels.count(candidate))
     {
         candidate = base + "." + std::to_string(++suffix);
     }
     return candidate;
 }
 
+/// @brief Remap a temporary value through a substitution map.
+/// @param v The value to remap.
+/// @param map Mapping from old temporary IDs to replacement values.
+/// @return The replacement value if \p v is a temporary found in \p map,
+///         otherwise \p v unchanged.
 Value remapValue(const Value &v, const std::unordered_map<unsigned, Value> &map)
 {
     if (v.kind != Value::Kind::Temp)
@@ -291,6 +338,12 @@ Value remapValue(const Value &v, const std::unordered_map<unsigned, Value> &map)
     return it->second;
 }
 
+/// @brief Replace all uses of a temporary in a basic block.
+/// @details Scans every instruction operand and branch argument in \p block,
+///          replacing any temporary whose ID matches \p from with \p replacement.
+/// @param block The basic block to rewrite.
+/// @param from  The temporary ID to search for.
+/// @param replacement The value to substitute in place of the old temporary.
 void replaceUsesInBlock(BasicBlock &block, unsigned from, const Value &replacement)
 {
     for (auto &instr : block.instructions)

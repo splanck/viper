@@ -1,8 +1,8 @@
 // test_index.viper - Test index-based lookups
 module test_index;
 
-bind Viper.Terminal;
-bind Viper.Fmt;
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
 
 bind "./executor";
 

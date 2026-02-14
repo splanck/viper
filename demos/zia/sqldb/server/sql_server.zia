@@ -6,8 +6,8 @@
 
 module sql_server;
 
-bind Viper.String;
-bind Viper.Fmt;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
 
 bind "../executor";
 bind "../types";

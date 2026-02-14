@@ -1,0 +1,66 @@
+// test_bug002.zia - Reproduce BUG-002: String value corruption
+module test_bug002;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+bind "./executor";
+bind "./types";
+
+func showNames(exec: Executor, label: String) {
+    Terminal.Say(label);
+    var r = exec.executeSql("SELECT name FROM users");
+    var i = 0;
+    while i < r.rowCount() {
+        var row = r.getRow(i);
+        if row != null {
+            var v = row;
+            Terminal.Say("  [" + Fmt.Int(i) + "] '" + v.getValue(0).toString() + "'");
+        }
+        i = i + 1;
+    }
+}
+
+func main() {
+    Terminal.Say("=== BUG-002 Minimal Repro ===");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER, city TEXT)");
+    exec.executeSql("INSERT INTO users VALUES (1, 'Alice', 30, 'NYC')");
+    exec.executeSql("INSERT INTO users VALUES (2, 'Bob', 25, 'LA')");
+    exec.executeSql("INSERT INTO users VALUES (3, 'Charlie', 35, 'NYC')");
+
+    showNames(exec, "After insert:");
+
+    // Query 1: Simple SELECT *
+    exec.executeSql("SELECT * FROM users");
+    showNames(exec, "After SELECT *:");
+
+    // Query 2: SELECT with WHERE
+    exec.executeSql("SELECT * FROM users WHERE age > 25");
+    showNames(exec, "After WHERE:");
+
+    // Query 3: SELECT with compound WHERE
+    exec.executeSql("SELECT * FROM users WHERE age > 25 AND city = 'NYC'");
+    showNames(exec, "After compound WHERE:");
+
+    // Query 4: SELECT * ORDER BY
+    exec.executeSql("SELECT * FROM users ORDER BY age");
+    showNames(exec, "After ORDER BY:");
+
+    // Query 5: SELECT specific cols
+    exec.executeSql("SELECT name FROM users");
+    showNames(exec, "After SELECT name:");
+
+    // Query 6: SELECT specific cols with WHERE
+    exec.executeSql("SELECT name FROM users WHERE city = 'NYC'");
+    showNames(exec, "After SELECT name WHERE:");
+
+    // Query 7: SELECT specific cols ORDER BY
+    exec.executeSql("SELECT name, age FROM users ORDER BY age");
+    showNames(exec, "After SELECT name,age ORDER BY:");
+
+    Terminal.Say("=== Done ===");
+}

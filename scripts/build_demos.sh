@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build native ARM64 binaries for all demos
+# Build native binaries for all demos using viper project format
 # Usage: ./scripts/build_demos.sh [--clean]
 
 set -e
@@ -9,28 +9,15 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$ROOT_DIR/build"
 BIN_DIR="$ROOT_DIR/demos/bin"
 BASIC_DIR="$ROOT_DIR/demos/basic"
-TMP_DIR="/tmp/viper_demo_build_$$"
-
-ILC="$BUILD_DIR/src/tools/viper/viper"
-ZIA="$BUILD_DIR/src/tools/zia/zia"
-RUNTIME_LIB="$BUILD_DIR/src/runtime/libviper_runtime.a"
-GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
-GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
 ZIA_DIR="$ROOT_DIR/demos/zia"
 
-# macOS frameworks needed for graphics
-MACOS_GFX_FRAMEWORKS="-framework Cocoa -framework IOKit -framework CoreFoundation -framework UniformTypeIdentifiers"
+VIPER="$BUILD_DIR/src/tools/viper/viper"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
-
-cleanup() {
-    rm -rf "$TMP_DIR"
-}
-trap cleanup EXIT
 
 usage() {
     echo "Usage: $0 [--clean]"
@@ -56,20 +43,8 @@ for arg in "$@"; do
 done
 
 # Check prerequisites
-if [[ ! -x "$ILC" ]]; then
-    echo -e "${RED}Error: viper tool not found at $ILC${NC}"
-    echo "Run 'cmake --build build' first"
-    exit 1
-fi
-
-if [[ ! -f "$RUNTIME_LIB" ]]; then
-    echo -e "${RED}Error: Runtime library not found at $RUNTIME_LIB${NC}"
-    echo "Run 'cmake --build build' first"
-    exit 1
-fi
-
-if [[ ! -x "$ZIA" ]]; then
-    echo -e "${RED}Error: zia not found at $ZIA${NC}"
+if [[ ! -x "$VIPER" ]]; then
+    echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
     echo "Run 'cmake --build build' first"
     exit 1
 fi
@@ -83,70 +58,47 @@ fi
 
 # Create directories
 mkdir -p "$BIN_DIR"
-mkdir -p "$TMP_DIR"
 
 if [[ $CLEAN -eq 1 ]]; then
     echo "Cleaning existing binaries..."
     rm -f "$BIN_DIR"/*
 fi
 
-# Demo configurations: name:source_path
+# Demo configurations: name:project_dir
 BASIC_DEMOS=(
-    "chess:${BASIC_DIR}/chess/chess.bas"
-    "vtris:${BASIC_DIR}/vtris/vtris.bas"
-    "frogger:${BASIC_DIR}/frogger/frogger.bas"
-    "centipede:${BASIC_DIR}/centipede/centipede.bas"
-    "pacman:${BASIC_DIR}/pacman/pacman.bas"
+    "chess:${BASIC_DIR}/chess"
+    "vtris:${BASIC_DIR}/vtris"
+    "frogger:${BASIC_DIR}/frogger"
+    "centipede:${BASIC_DIR}/centipede"
+    "pacman:${BASIC_DIR}/pacman"
 )
 
-# Zia demo configurations: name:source_path
 ZIA_DEMOS=(
-    "paint:${ZIA_DIR}/paint/main.zia"
-    "viperide:${ZIA_DIR}/viperide/main.zia"
-    "pacman-zia:${ZIA_DIR}/pacman/main_modular.zia"
+    "paint:${ZIA_DIR}/paint"
+    # viperide requires unimplemented vipergfx GUI widget layer (vg_* symbols)
+    #"viperide:${ZIA_DIR}/viperide"
+    "pacman-zia:${ZIA_DIR}/pacman"
+    "sqldb:${ZIA_DIR}/sqldb"
 )
 
-build_basic_demo() {
+build_demo() {
     local name="$1"
-    local source="$2"
-    local source_path="$source"
-
-    if [[ ! -f "$source_path" ]]; then
-        echo -e "${RED}  Error: Source file not found: $source_path${NC}"
-        return 1
-    fi
-
-    local il_file="$TMP_DIR/${name}.il"
-    local asm_file="$TMP_DIR/${name}.s"
-    local obj_file="$TMP_DIR/${name}.o"
+    local project_dir="$2"
     local exe_file="$BIN_DIR/${name}"
 
-    echo -n "  Compiling BASIC to IL... "
-    if ! "$ILC" front basic -emit-il "$source_path" > "$il_file" 2>/dev/null; then
-        echo -e "${RED}FAILED${NC}"
+    if [[ ! -f "$project_dir/viper.project" ]]; then
+        echo -e "${RED}  Error: No viper.project found in $project_dir${NC}"
         return 1
     fi
-    echo -e "${GREEN}OK${NC}"
 
-    echo -n "  Generating ARM64 assembly... "
-    if ! "$ILC" codegen arm64 "$il_file" -S "$asm_file" 2>/dev/null; then
+    echo -n "  Compiling... "
+    if ! "$VIPER" build "$project_dir" -o "$exe_file" 2>/tmp/viper_build_err_$$; then
         echo -e "${RED}FAILED${NC}"
+        head -20 /tmp/viper_build_err_$$
+        rm -f /tmp/viper_build_err_$$
         return 1
     fi
-    echo -e "${GREEN}OK${NC}"
-
-    echo -n "  Assembling... "
-    if ! as "$asm_file" -o "$obj_file" 2>&1; then
-        echo -e "${RED}FAILED${NC}"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-
-    echo -n "  Linking... "
-    if ! clang++ "$obj_file" "$RUNTIME_LIB" -o "$exe_file" 2>&1; then
-        echo -e "${RED}FAILED${NC}"
-        return 1
-    fi
+    rm -f /tmp/viper_build_err_$$
     echo -e "${GREEN}OK${NC}"
 
     local size=$(ls -lh "$exe_file" | awk '{print $5}')
@@ -154,58 +106,7 @@ build_basic_demo() {
     return 0
 }
 
-build_zia_demo() {
-    local name="$1"
-    local source="$2"
-    local source_path="$source"
-
-    if [[ ! -f "$source_path" ]]; then
-        echo -e "${RED}  Error: Source file not found: $source_path${NC}"
-        return 1
-    fi
-
-    local il_file="$TMP_DIR/${name}.il"
-    local asm_file="$TMP_DIR/${name}.s"
-    local obj_file="$TMP_DIR/${name}.o"
-    local exe_file="$BIN_DIR/${name}"
-
-    echo -n "  Compiling Zia to IL... "
-    if ! "$ZIA" "$source_path" --emit-il > "$il_file" 2>/dev/null; then
-        echo -e "${RED}FAILED${NC}"
-        # Show the actual error
-        "$ZIA" "$source_path" --emit-il 2>&1 | head -20
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-
-    echo -n "  Generating ARM64 assembly... "
-    if ! "$ILC" codegen arm64 "$il_file" -S "$asm_file" 2>/dev/null; then
-        echo -e "${RED}FAILED${NC}"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-
-    echo -n "  Assembling... "
-    if ! as "$asm_file" -o "$obj_file" 2>&1; then
-        echo -e "${RED}FAILED${NC}"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-
-    echo -n "  Linking... "
-    # Zia demos typically need graphics libraries
-    if ! clang++ "$obj_file" "$RUNTIME_LIB" "$GFX_LIB" "$GUI_LIB" $MACOS_GFX_FRAMEWORKS -o "$exe_file" 2>&1; then
-        echo -e "${RED}FAILED${NC}"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-
-    local size=$(ls -lh "$exe_file" | awk '{print $5}')
-    echo -e "  ${GREEN}Built: $exe_file ($size)${NC}"
-    return 0
-}
-
-echo "Building Viper demos as native ARM64 binaries"
+echo "Building Viper demos as native binaries"
 echo "=============================================="
 echo ""
 
@@ -216,10 +117,10 @@ echo "=== BASIC Demos ==="
 echo ""
 
 for demo in "${BASIC_DEMOS[@]}"; do
-    IFS=':' read -r name source <<< "$demo"
+    IFS=':' read -r name project_dir <<< "$demo"
     echo "Building $name..."
 
-    if build_basic_demo "$name" "$source"; then
+    if build_demo "$name" "$project_dir"; then
         ((SUCCEEDED++))
     else
         ((FAILED++))
@@ -231,10 +132,10 @@ echo "=== Zia Demos ==="
 echo ""
 
 for demo in "${ZIA_DEMOS[@]}"; do
-    IFS=':' read -r name source <<< "$demo"
+    IFS=':' read -r name project_dir <<< "$demo"
     echo "Building $name..."
 
-    if build_zia_demo "$name" "$source"; then
+    if build_demo "$name" "$project_dir"; then
         ((SUCCEEDED++))
     else
         ((FAILED++))

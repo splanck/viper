@@ -3,7 +3,7 @@
 
 module result;
 
-bind Viper.Fmt;
+bind Fmt = Viper.Fmt;
 
 bind "./schema";
 

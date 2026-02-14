@@ -134,6 +134,7 @@ entity InsertStmt {
 
 entity SelectStmt {
     expose List[Expr] columns;      // SELECT columns (or * for all)
+    expose List[String] columnAliases; // Column aliases (AS ...)
     expose String tableName;        // FROM table (for backwards compat)
     expose String tableAlias;       // Table alias (e.g., FROM users u)
     expose List[String] tableNames;    // Multiple tables for JOINs
@@ -156,6 +157,7 @@ entity SelectStmt {
 
     expose func init() {
         columns = [];
+        columnAliases = [];
         tableName = "";
         tableAlias = "";
         tableNames = [];
@@ -196,6 +198,12 @@ entity SelectStmt {
 
     expose func addColumn(col: Expr) {
         columns.add(col);
+        columnAliases.add("");
+    }
+
+    expose func addColumnWithAlias(col: Expr, alias: String) {
+        columns.add(col);
+        columnAliases.add(alias);
     }
 
     expose func addOrderBy(expr: Expr, isDesc: Integer) {

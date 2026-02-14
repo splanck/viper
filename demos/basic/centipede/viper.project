@@ -1,0 +1,4 @@
+project centipede
+version 0.1.0
+lang basic
+entry centipede.bas

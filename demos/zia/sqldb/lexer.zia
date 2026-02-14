@@ -3,7 +3,7 @@
 
 module lexer;
 
-bind Viper.String;
+bind String = Viper.String;
 
 bind "./token";
 
@@ -113,18 +113,32 @@ entity Lexer {
         var startLine = line;
         var startCol = column;
         var quote = advance();
-        var startPos = pos;
+        var text = "";
 
-        while (!isAtEnd() && peek() != quote) {
-            if (peek() == "\\") {
+        while (!isAtEnd()) {
+            var ch = peek();
+            if ch == quote {
+                // Check for doubled quote (SQL-standard escape: '' -> ')
+                if peekNext() == quote {
+                    text = text + quote;
+                    advance();
+                    advance();
+                    continue;
+                }
+                break;
+            }
+            if ch == "\\" {
                 advance();
-                if (!isAtEnd()) { advance(); }
+                if (!isAtEnd()) {
+                    text = text + peek();
+                    advance();
+                }
             } else {
+                text = text + ch;
                 advance();
             }
         }
 
-        var text = String.Substring(source, startPos, pos - startPos);
         if (!isAtEnd()) { advance(); }
 
         var tok = new Token(TK_STRING, text, startLine, startCol);

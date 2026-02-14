@@ -12,10 +12,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
+#include "frontends/common/StringUtils.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>
 #include <string_view>
+
+using il::frontends::common::string_utils::iequals;
 
 namespace il::frontends::zia
 {
@@ -128,17 +131,6 @@ const CollectionMethodInfo stringMethods[] = {
 /// @param methods The method table to search.
 /// @param methodName The method name to find.
 /// @return The method info if found, nullptr otherwise.
-/// @brief Case-insensitive string_view equality check.
-bool iequals(std::string_view a, std::string_view b)
-{
-    if (a.size() != b.size())
-        return false;
-    return std::equal(a.begin(),
-                      a.end(),
-                      b.begin(),
-                      [](char ca, char cb) { return std::tolower(ca) == std::tolower(cb); });
-}
-
 template <std::size_t N>
 const CollectionMethodInfo *findMethod(const CollectionMethodInfo (&methods)[N],
                                        std::string_view methodName)

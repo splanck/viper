@@ -1,0 +1,4 @@
+project chess
+version 0.1.0
+lang basic
+entry chess.bas

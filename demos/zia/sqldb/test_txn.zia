@@ -3,9 +3,9 @@
 
 module test_txn;
 
-bind Viper.Terminal;
-bind Viper.Fmt;
-bind Viper.String;
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+bind String = Viper.String;
 
 bind "./storage/page";
 bind "./storage/serializer";

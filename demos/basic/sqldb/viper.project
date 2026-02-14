@@ -1,0 +1,4 @@
+project sqldb
+version 0.1.0
+lang basic
+entry main.bas

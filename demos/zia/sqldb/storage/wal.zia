@@ -3,9 +3,9 @@
 
 module wal;
 
-bind Viper.IO;
-bind Viper.String;
-bind Viper.Fmt;
+bind IO = Viper.IO;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
 
 bind "./page";
 bind "./serializer";

@@ -3,10 +3,10 @@
 
 module test_persistence;
 
-bind Viper.Terminal;
-bind Viper.Fmt;
-bind Viper.IO;
-bind Viper.String;
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+bind IO = Viper.IO;
+bind String = Viper.String;
 
 bind "./executor";
 

@@ -3,8 +3,8 @@
 
 module pager;
 
-bind Viper.IO;
-bind Viper.String;
+bind IO = Viper.IO;
+bind String = Viper.String;
 
 bind "./page";
 bind "./serializer";

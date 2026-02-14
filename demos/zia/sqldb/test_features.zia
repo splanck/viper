@@ -1,8 +1,8 @@
 // test_features.viper - Test various SQL features
 module test_features;
 
-bind Viper.Terminal;
-bind Viper.Fmt;
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
 
 bind "./executor";
 

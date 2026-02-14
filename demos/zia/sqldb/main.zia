@@ -3,7 +3,8 @@
 
 module main;
 
-bind Viper.Terminal;
+bind Terminal = Viper.Terminal;
+bind String = Viper.String;
 
 bind "./executor";
 
@@ -14,6 +15,7 @@ bind "./executor";
 func main() {
     Terminal.Say("ViperSQL - SQLite Clone in ViperLang");
     Terminal.Say("Type SQL commands or 'exit' to quit.");
+    Terminal.Say("Type .help for meta-commands.");
     Terminal.Say("");
 
     var exec = new Executor();
@@ -22,7 +24,12 @@ func main() {
     var running = true;
     while running {
         Terminal.Print("sql> ");
-        var input = Terminal.ReadLine() ?? "";
+        var rawInput = Terminal.ReadLine();
+        if rawInput == null {
+            running = false;
+            continue;
+        }
+        var input = rawInput ?? "";
 
         if input == "exit" || input == "quit" {
             running = false;
@@ -33,10 +40,78 @@ func main() {
             continue;
         }
 
+        // Handle meta-commands (starting with .)
+        var trimmed = String.Trim(input);
+        if String.StartsWith(trimmed, ".") {
+            processMetaCommand(trimmed, exec);
+            continue;
+        }
+
         var result = exec.executeSql(input);
         Terminal.Say(result.toString());
         Terminal.Say("");
     }
 
     Terminal.Say("Goodbye!");
+}
+
+func processMetaCommand(cmd: String, exec: Executor) {
+    var lower = String.ToLower(cmd);
+
+    if lower == ".help" {
+        Terminal.Say("");
+        Terminal.Say("Meta-commands:");
+        Terminal.Say("  .help          Show this help");
+        Terminal.Say("  .quit/.exit    Exit the shell");
+        Terminal.Say("  .tables        List all tables");
+        Terminal.Say("  .schema        Show all table schemas");
+        Terminal.Say("  .schema <tbl>  Show table schema");
+        Terminal.Say("");
+        return;
+    }
+
+    if lower == ".quit" || lower == ".exit" {
+        Terminal.Say("Goodbye!");
+        return;
+    }
+
+    if lower == ".tables" {
+        var result = exec.executeSql("SHOW TABLES");
+        Terminal.Say(result.toString());
+        Terminal.Say("");
+        return;
+    }
+
+    if lower == ".schema" {
+        // Show schema for all tables
+        var tablesResult = exec.executeSql("SHOW TABLES");
+        var ti = 0;
+        while ti < tablesResult.rowCount() {
+            var row = tablesResult.getRow(ti);
+            if row != null {
+                var r = row;
+                var tableName = r.getValue(0).textValue;
+                Terminal.Say("");
+                Terminal.Say("Table: " + tableName);
+                var descResult = exec.executeSql("DESCRIBE " + tableName);
+                Terminal.Say(descResult.toString());
+            }
+            ti = ti + 1;
+        }
+        Terminal.Say("");
+        return;
+    }
+
+    if String.StartsWith(lower, ".schema ") {
+        var tableName = String.Substring(cmd, 8, String.Length(cmd) - 8);
+        tableName = String.Trim(tableName);
+        var result = exec.executeSql("DESCRIBE " + tableName);
+        Terminal.Say(result.toString());
+        Terminal.Say("");
+        return;
+    }
+
+    Terminal.Say("Unknown command: " + cmd);
+    Terminal.Say("Type .help for help");
+    Terminal.Say("");
 }

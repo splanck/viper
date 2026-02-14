@@ -3,8 +3,8 @@
 
 module types;
 
-bind Viper.String;
-bind Viper.Fmt;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
 
 //=============================================================================
 // SQL TYPE CONSTANTS
@@ -169,26 +169,42 @@ entity SqlValue {
         return "?";
     }
 
-    // Format for SQL output (with quotes)
+    // Format for SQL output (with quotes, escaping single quotes with '')
     expose func toSqlString() -> String {
         if (kind == SQL_NULL) { return "NULL"; }
         if (kind == SQL_INTEGER) { return Fmt.Int(intValue); }
         if (kind == SQL_REAL) { return textValue; }
-        if (kind == SQL_TEXT) { return "'" + textValue + "'"; }
+        if (kind == SQL_TEXT) {
+            // Escape single quotes by doubling them
+            var escaped = "";
+            var i = 0;
+            var len = String.Length(textValue);
+            while i < len {
+                var ch = String.Substring(textValue, i, 1);
+                if ch == "'" {
+                    escaped = escaped + "''";
+                } else {
+                    escaped = escaped + ch;
+                }
+                i = i + 1;
+            }
+            return "'" + escaped + "'";
+        }
         if (kind == SQL_BLOB) { return "X'" + textValue + "'"; }
         return "?";
     }
 
+    // Compare two values. Returns -1, 0, 1 for ordering.
+    // Returns 2 if either side is NULL (SQL three-valued logic).
     expose func compare(other: SqlValue) -> Integer {
         var result = 0;
 
-        if kind == SQL_NULL && other.kind == SQL_NULL {
-            result = 0;
-        } else if kind == SQL_NULL {
-            result = -1;
-        } else if other.kind == SQL_NULL {
-            result = 1;
-        } else if kind == SQL_INTEGER && other.kind == SQL_INTEGER {
+        // NULL comparisons return 2 (NULL/unknown) per SQL spec
+        if kind == SQL_NULL || other.kind == SQL_NULL {
+            return 2;
+        }
+
+        if kind == SQL_INTEGER && other.kind == SQL_INTEGER {
             if intValue < other.intValue {
                 result = -1;
             } else if intValue > other.intValue {
@@ -254,6 +270,43 @@ entity SqlValue {
             } else {
                 result = 0;
             }
+        } else if kind == SQL_REAL && other.kind == SQL_INTEGER {
+            // Convert integer to float for comparison
+            var otherReal = other.intValue * 1.0;
+            if realValue < otherReal {
+                result = -1;
+            } else if realValue > otherReal {
+                result = 1;
+            } else {
+                result = 0;
+            }
+        } else if kind == SQL_INTEGER && other.kind == SQL_REAL {
+            var myReal = intValue * 1.0;
+            if myReal < other.realValue {
+                result = -1;
+            } else if myReal > other.realValue {
+                result = 1;
+            } else {
+                result = 0;
+            }
+        } else if kind == SQL_REAL && other.kind == SQL_TEXT {
+            var otherReal = stringToNumber(other.textValue);
+            if realValue < otherReal {
+                result = -1;
+            } else if realValue > otherReal {
+                result = 1;
+            } else {
+                result = 0;
+            }
+        } else if kind == SQL_TEXT && other.kind == SQL_REAL {
+            var myReal = stringToNumber(textValue);
+            if myReal < other.realValue {
+                result = -1;
+            } else if myReal > other.realValue {
+                result = 1;
+            } else {
+                result = 0;
+            }
         } else if kind < other.kind {
             result = -1;
         } else if kind > other.kind {
@@ -264,6 +317,13 @@ entity SqlValue {
     }
 
     expose func equals(other: SqlValue) -> Boolean {
+        return compare(other) == 0;
+    }
+
+    // NULL-safe equality for constraint checks (NULL == NULL is true)
+    expose func nullSafeEquals(other: SqlValue) -> Boolean {
+        if kind == SQL_NULL && other.kind == SQL_NULL { return true; }
+        if kind == SQL_NULL || other.kind == SQL_NULL { return false; }
         return compare(other) == 0;
     }
 }

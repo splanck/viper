@@ -3,7 +3,7 @@
 
 module serializer;
 
-bind Viper.String;
+bind String = Viper.String;
 
 bind "../types";
 bind "../table";

@@ -1,0 +1,4 @@
+project frogger
+version 0.1.0
+lang basic
+entry frogger.bas

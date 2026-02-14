@@ -1,0 +1,4 @@
+project varc
+version 0.1.0
+lang zia
+entry varc.zia

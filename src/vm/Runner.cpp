@@ -132,6 +132,14 @@ class Runner::Impl
 #endif
 
     // Single-step support ----------------------------------------------------
+
+    /// @brief Execute a single IL instruction and return the resulting status.
+    /// @details Lazily prepares execution state on the first call, then delegates
+    ///          to the VM's internal single-step mechanism.  The returned status
+    ///          distinguishes between normal advancement, breakpoint hits, pause
+    ///          requests, and program termination.
+    /// @return A StepResult indicating whether execution advanced, hit a
+    ///         breakpoint, paused, or halted.
     StepResult step()
     {
         ensurePrepared();
@@ -149,6 +157,11 @@ class Runner::Impl
         return {StepStatus::Halted};
     }
 
+    /// @brief Resume execution until a breakpoint, pause, trap, or halt occurs.
+    /// @details Repeatedly calls step() in a tight loop, returning only when a
+    ///          non-advancing status is encountered.  This is the primary entry
+    ///          point for debugger "continue" semantics.
+    /// @return A RunStatus reflecting the reason execution stopped.
     RunStatus continueRun()
     {
         ensurePrepared();
@@ -339,11 +352,19 @@ bool Runner::unregisterExtern(std::string_view name)
     return il::vm::RuntimeBridge::unregisterExtern(name);
 }
 
+/// @brief Execute a single IL instruction through the facade.
+/// @details Forwards to the private implementation's single-step logic,
+///          preparing execution state on first invocation if needed.
+/// @return A StepResult indicating the outcome of the single step.
 Runner::StepResult Runner::step()
 {
     return impl->step();
 }
 
+/// @brief Resume execution until a stopping condition is reached.
+/// @details Forwards to the private implementation, which loops over single
+///          steps until a breakpoint, pause, trap, or halt interrupts execution.
+/// @return A RunStatus describing why execution stopped.
 Runner::RunStatus Runner::continueRun()
 {
     return impl->continueRun();

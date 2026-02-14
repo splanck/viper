@@ -3,7 +3,7 @@
 
 module token;
 
-bind Viper.Fmt;
+bind Fmt = Viper.Fmt;
 
 //=============================================================================
 // TOKEN TYPE CONSTANTS

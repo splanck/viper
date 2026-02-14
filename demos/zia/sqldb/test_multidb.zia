@@ -3,8 +3,8 @@
 
 module test_multidb;
 
-bind Viper.Terminal;
-bind Viper.Fmt;
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
 
 bind "./executor";
 

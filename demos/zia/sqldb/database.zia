@@ -54,7 +54,7 @@ entity Database {
         var i = 0;
         while i < tables.count() {
             if tables.get(i).name == tableName {
-                tables.remove(i);
+                tables.removeAt(i);
                 return true;
             }
             i = i + 1;

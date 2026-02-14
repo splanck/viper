@@ -3,8 +3,8 @@
 
 module parser;
 
-bind Viper.String;
-bind Viper.Fmt;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
 
 bind "./token";
 bind "./lexer";
@@ -84,7 +84,8 @@ entity Parser {
         if kind == TK_NUMBER {
             var text = currentToken.text;
             advance();
-            return exprReal(0.0, text);
+            var floatVal = stringToNumber(text);
+            return exprReal(floatVal, text);
         }
 
         // String literal
@@ -114,7 +115,18 @@ entity Parser {
             // Check for function call
             if currentToken.kind == TK_LPAREN {
                 advance();
-                var funcExpr = exprFunction(name);
+
+                // Check for DISTINCT inside function (e.g., COUNT(DISTINCT col))
+                var funcName = name;
+                if currentToken.kind == TK_DISTINCT {
+                    var upperName = String.ToUpper(name);
+                    if upperName == "COUNT" {
+                        funcName = "COUNT_DISTINCT";
+                    }
+                    advance();
+                }
+
+                var funcExpr = exprFunction(funcName);
 
                 // Parse arguments - handle full expressions
                 while currentToken.kind != TK_RPAREN && hasError == false {
@@ -213,11 +225,6 @@ entity Parser {
             var operand = parseUnaryExpr();
             return exprUnary(OP_NEG, operand);
         }
-        if currentToken.kind == TK_NOT {
-            advance();
-            var operand = parseUnaryExpr();
-            return exprUnary(OP_NOT, operand);
-        }
         return parsePrimaryExpr();
     }
 
@@ -238,12 +245,14 @@ entity Parser {
 
     expose func parseAddExpr() -> Expr {
         var left = parseMulExpr();
-        while currentToken.kind == TK_PLUS || currentToken.kind == TK_MINUS {
+        while currentToken.kind == TK_PLUS || currentToken.kind == TK_MINUS || currentToken.kind == TK_CONCAT {
             var op = currentToken.kind;
             advance();
             var right = parseMulExpr();
             if op == TK_PLUS {
                 left = exprBinary(OP_ADD, left, right);
+            } else if op == TK_CONCAT {
+                left = exprBinary(OP_CONCAT, left, right);
             } else {
                 left = exprBinary(OP_SUB, left, right);
             }
@@ -279,23 +288,161 @@ entity Parser {
             advance();
             return exprBinary(OP_GE, left, parseAddExpr());
         }
+
+        // BETWEEN low AND high
+        if kind == TK_BETWEEN {
+            advance();
+            var low = parseAddExpr();
+            if currentToken.kind != TK_AND {
+                setError("Expected AND in BETWEEN expression");
+                return left;
+            }
+            advance();
+            var high = parseAddExpr();
+            var geExpr = exprBinary(OP_GE, left, low);
+            var leExpr = exprBinary(OP_LE, left, high);
+            return exprBinary(OP_AND, geExpr, leExpr);
+        }
+
+        // LIKE pattern
+        if kind == TK_LIKE {
+            advance();
+            var pattern = parseAddExpr();
+            return exprBinary(OP_LIKE, left, pattern);
+        }
+
+        // IS NULL / IS NOT NULL
+        if kind == TK_IS {
+            advance();
+            if currentToken.kind == TK_NOT {
+                advance();
+                if currentToken.kind == TK_NULL {
+                    advance();
+                    return exprBinary(OP_IS, left, exprInt(1));
+                }
+                setError("Expected NULL after IS NOT");
+                return left;
+            }
+            if currentToken.kind == TK_NULL {
+                advance();
+                return exprBinary(OP_IS, left, exprNull());
+            }
+            setError("Expected NULL after IS");
+            return left;
+        }
+
+        // NOT BETWEEN / NOT LIKE / NOT IN
+        if kind == TK_NOT {
+            if currentToken.kind == TK_NOT {
+                advance();
+                if currentToken.kind == TK_BETWEEN {
+                    advance();
+                    var low = parseAddExpr();
+                    if currentToken.kind != TK_AND {
+                        setError("Expected AND in NOT BETWEEN expression");
+                        return left;
+                    }
+                    advance();
+                    var high = parseAddExpr();
+                    var geExpr = exprBinary(OP_GE, left, low);
+                    var leExpr = exprBinary(OP_LE, left, high);
+                    return exprUnary(OP_NOT, exprBinary(OP_AND, geExpr, leExpr));
+                }
+                if currentToken.kind == TK_LIKE {
+                    advance();
+                    var pattern = parseAddExpr();
+                    return exprUnary(OP_NOT, exprBinary(OP_LIKE, left, pattern));
+                }
+                if currentToken.kind == TK_IN {
+                    advance();
+                    if currentToken.kind != TK_LPAREN {
+                        setError("Expected '(' after NOT IN");
+                        return left;
+                    }
+                    advance();
+                    var inExpr = parseInList(left);
+                    return exprUnary(OP_NOT, inExpr);
+                }
+            }
+        }
+
+        // IN (value-list) or IN (subquery)
         if kind == TK_IN {
             advance();
             if currentToken.kind != TK_LPAREN {
                 setError("Expected '(' after IN");
                 return left;
             }
-            var right = parsePrimaryExpr();
-            return exprBinary(OP_IN, left, right);
+            advance();
+            return parseInList(left);
         }
+
         return left;
     }
 
+    // Parse IN value list or subquery after '(' has been consumed
+    hide func parseInList(left: Expr) -> Expr {
+        // Check for subquery
+        if currentToken.kind == TK_SELECT {
+            var subquerySql = "SELECT";
+            advance();
+            var depth = 1;
+            while depth > 0 && hasError == false {
+                if currentToken.kind == TK_LPAREN {
+                    depth = depth + 1;
+                    subquerySql = subquerySql + " (";
+                } else if currentToken.kind == TK_RPAREN {
+                    depth = depth - 1;
+                    if depth > 0 {
+                        subquerySql = subquerySql + ")";
+                    }
+                } else if currentToken.kind == TK_EOF {
+                    setError("Unexpected end of input in subquery");
+                    return left;
+                } else if currentToken.kind == TK_STRING {
+                    subquerySql = subquerySql + " '" + currentToken.text + "'";
+                } else {
+                    subquerySql = subquerySql + " " + currentToken.text;
+                }
+                advance();
+            }
+            return exprBinary(OP_IN, left, exprSubquery(subquerySql));
+        }
+
+        // Value list: IN (val1, val2, ...)
+        var listExpr = exprFunction("__IN_LIST__");
+        while hasError == false {
+            var val = parseExpr();
+            if hasError { return left; }
+            listExpr.args.add(val);
+            if currentToken.kind == TK_COMMA {
+                advance();
+            } else {
+                break;
+            }
+        }
+        if currentToken.kind != TK_RPAREN {
+            setError("Expected ) after IN list");
+            return left;
+        }
+        advance();
+        return exprBinary(OP_IN, left, listExpr);
+    }
+
+    expose func parseNotExpr() -> Expr {
+        if currentToken.kind == TK_NOT {
+            advance();
+            var operand = parseNotExpr();
+            return exprUnary(OP_NOT, operand);
+        }
+        return parseCompExpr();
+    }
+
     expose func parseAndExpr() -> Expr {
-        var left = parseCompExpr();
+        var left = parseNotExpr();
         while currentToken.kind == TK_AND {
             advance();
-            var right = parseCompExpr();
+            var right = parseNotExpr();
             left = exprBinary(OP_AND, left, right);
         }
         return left;
@@ -433,6 +580,40 @@ entity Parser {
                     setError("Expected default value");
                     return col;
                 }
+            } else if currentToken.kind == TK_FOREIGN {
+                advance();
+                if currentToken.kind == TK_KEY {
+                    advance();
+                }
+                if currentToken.kind != TK_REFERENCES {
+                    setError("Expected REFERENCES after FOREIGN KEY");
+                    return col;
+                }
+                // Fall through to REFERENCES handling below
+                advance();
+                if currentToken.kind != TK_IDENTIFIER {
+                    setError("Expected referenced table name");
+                    return col;
+                }
+                col.refTableName = currentToken.text;
+                col.isForeignKey = true;
+                advance();
+                if currentToken.kind != TK_LPAREN {
+                    setError("Expected ( after table name");
+                    return col;
+                }
+                advance();
+                if currentToken.kind != TK_IDENTIFIER {
+                    setError("Expected referenced column name");
+                    return col;
+                }
+                col.refColumnName = currentToken.text;
+                advance();
+                if currentToken.kind != TK_RPAREN {
+                    setError("Expected ) after column name");
+                    return col;
+                }
+                advance();
             } else if currentToken.kind == TK_REFERENCES {
                 advance();
                 if currentToken.kind != TK_IDENTIFIER {
@@ -613,20 +794,23 @@ entity Parser {
                 }
 
                 // Handle column alias
+                var colAlias = "";
                 if currentToken.kind == TK_AS {
                     advance();
                     if currentToken.kind == TK_IDENTIFIER {
+                        colAlias = currentToken.text;
                         advance();
                     }
                 } else if currentToken.kind == TK_IDENTIFIER {
                     var maybeAlias = currentToken.text;
                     var upperAlias = String.ToUpper(maybeAlias);
                     if upperAlias != "FROM" && upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" {
+                        colAlias = maybeAlias;
                         advance();
                     }
                 }
 
-                stmt.addColumn(col);
+                stmt.addColumnWithAlias(col, colAlias);
 
                 if currentToken.kind == TK_COMMA {
                     advance();

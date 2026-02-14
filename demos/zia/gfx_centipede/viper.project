@@ -1,0 +1,4 @@
+project gfx_centipede
+version 0.1.0
+lang zia
+entry main.zia

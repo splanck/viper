@@ -3,9 +3,9 @@
 
 module repl;
 
-bind Viper.Terminal;
-bind Viper.String;
-bind Viper.Fmt;
+bind Terminal = Viper.Terminal;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
 
 bind "./executor";
 

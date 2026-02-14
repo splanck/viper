@@ -3,9 +3,9 @@
 
 module executor;
 
-bind Viper.String;
-bind Viper.Fmt;
-bind Viper.IO;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+bind IO = Viper.IO;
 
 bind "./types";
 bind "./schema";
@@ -36,6 +36,14 @@ entity Executor {
     hide Table? outerTable;
     hide String outerTableAlias;
     hide String currentTableAlias;
+    hide Integer subqueryDepth;
+
+    // Subquery result cache to avoid re-executing the same subquery per row
+    // This prevents native codegen string corruption from repeated recursive calls
+    // Stores cloned scalar values (for scalar subqueries) and value lists (for IN subqueries)
+    hide List[String] subqueryCacheKeys;
+    hide List[SqlValue] subqueryCacheScalars;
+    hide List[List[SqlValue]] subqueryCacheLists;
 
     expose func init() {
         server = new DatabaseServer();
@@ -48,6 +56,10 @@ entity Executor {
         outerTable = null;
         outerTableAlias = "";
         currentTableAlias = "";
+        subqueryDepth = 0;
+        subqueryCacheKeys = [];
+        subqueryCacheScalars = [];
+        subqueryCacheLists = [];
     }
 
     // Refresh db and indexMgr references from server's current database
@@ -118,36 +130,229 @@ entity Executor {
         return sqlNull();
     }
 
-    // Evaluate a scalar subquery
+    // Flatten nested subqueries in a SQL string by pre-evaluating inner
+    // (SELECT ...) expressions and substituting their results as literals.
+    // This avoids deep recursion through executeSelect which causes
+    // stack overflow in native codegen.
+    expose func flattenSubqueries(sql: String) -> String {
+        // Look for "( SELECT" or "(SELECT" pattern (parser adds space after paren)
+        var result = sql;
+        var maxPasses = 4;
+        var pass = 0;
+        while pass < maxPasses {
+            // Find the LAST occurrence of a subquery pattern to flatten innermost first
+            var idx = -1;
+            var searchPos = 0;
+            var len = String.Length(result);
+            while searchPos < len - 9 {
+                var ch = String.Substring(result, searchPos, 1);
+                if ch == "(" {
+                    // Check if followed by SELECT (with optional space)
+                    var remaining = len - searchPos - 1;
+                    if remaining >= 7 {
+                        var after = String.Substring(result, searchPos + 1, 7);
+                        var upperAfter = String.ToUpper(after);
+                        if upperAfter == "SELECT " || upperAfter == " SELECT" {
+                            idx = searchPos;
+                        }
+                    }
+                }
+                searchPos = searchPos + 1;
+            }
+
+            if idx < 0 {
+                return result;
+            }
+
+            // Found inner subquery at idx. Extract it.
+            // Find matching closing paren
+            var depth = 1;
+            var pos = idx + 1;
+            while pos < len && depth > 0 {
+                var ch = String.Substring(result, pos, 1);
+                if ch == "(" {
+                    depth = depth + 1;
+                } else if ch == ")" {
+                    depth = depth - 1;
+                }
+                if depth > 0 {
+                    pos = pos + 1;
+                }
+            }
+            if depth != 0 {
+                return result;
+            }
+
+            // Extract the inner SQL (without outer parens)
+            var innerSql = String.Substring(result, idx + 1, pos - idx - 1);
+
+            // Execute the inner subquery
+            var savedOuterRow2 = outerRow;
+            var savedOuterTable2 = outerTable;
+            var savedOuterAlias2 = outerTableAlias;
+            var savedCurrentAlias2 = currentTableAlias;
+
+            var innerResult = executeSubquerySelect(innerSql);
+
+            outerRow = savedOuterRow2;
+            outerTable = savedOuterTable2;
+            outerTableAlias = savedOuterAlias2;
+            currentTableAlias = savedCurrentAlias2;
+
+            // Get scalar result
+            var replacement = "NULL";
+            if innerResult.success && innerResult.rowCount() > 0 {
+                var firstRow = innerResult.getRow(0);
+                if firstRow != null {
+                    var fr = firstRow;
+                    if fr.columnCount() > 0 {
+                        var val = fr.getValue(0);
+                        if val.kind == SQL_INTEGER {
+                            replacement = Fmt.Int(val.intValue);
+                        } else if val.kind == SQL_REAL {
+                            replacement = val.textValue;
+                        } else if val.kind == SQL_TEXT {
+                            replacement = "'" + val.textValue + "'";
+                        }
+                    }
+                }
+            }
+
+            // Substitute: before + replacement + after
+            var before = String.Substring(result, 0, idx);
+            var after = String.Substring(result, pos + 1, len - pos - 1);
+            result = before + replacement + after;
+
+            pass = pass + 1;
+        }
+        return result;
+    }
+
+    // Evaluate a scalar subquery (with caching for non-correlated subqueries)
     expose func evalSubquery(expr: Expr, outerRowContext: Row, outerTableContext: Table) -> SqlValue {
+        // Guard against very deep nesting to prevent stack overflow
+        if subqueryDepth >= 8 {
+            return sqlNull();
+        }
+
+        // Check scalar subquery cache first (avoids repeated recursive calls
+        // that cause string corruption in native codegen)
+        var cacheKey = expr.subquerySQL;
+        var ci = 0;
+        while ci < subqueryCacheKeys.count() {
+            if subqueryCacheKeys.get(ci) == cacheKey {
+                return subqueryCacheScalars.get(ci);
+            }
+            ci = ci + 1;
+        }
+
         // Set outer context for correlated subqueries
         var savedOuterRow = outerRow;
         var savedOuterTable = outerTable;
         var savedOuterAlias = outerTableAlias;
+        var savedCurrentAlias = currentTableAlias;
 
         outerRow = outerRowContext;
         outerTable = outerTableContext;
         outerTableAlias = currentTableAlias;
 
-        // Execute the subquery
-        var result = executeSql(expr.subquerySQL);
+        // Clone and flatten nested subqueries to avoid deep recursion stack overflow
+        var sql = String.Substring(expr.subquerySQL, 0, String.Length(expr.subquerySQL));
+        sql = flattenSubqueries(sql);
 
-        // Restore outer context
+        // Execute the subquery via dedicated path to avoid full executeSql recursion
+        subqueryDepth = subqueryDepth + 1;
+        var result = executeSubquerySelect(sql);
+        subqueryDepth = subqueryDepth - 1;
+
+        // Restore ALL outer context including currentTableAlias
         outerRow = savedOuterRow;
         outerTable = savedOuterTable;
         outerTableAlias = savedOuterAlias;
+        currentTableAlias = savedCurrentAlias;
 
         // Return scalar value from first row, first column
+        // Clone the value to prevent string lifetime issues with nested subqueries
         if result.success && result.rowCount() > 0 {
             var firstRow = result.getRow(0);
             if firstRow != null {
                 var r = firstRow;
                 if r.columnCount() > 0 {
-                    return r.getValue(0);
+                    var val = cloneValue(r.getValue(0));
+                    // Cache the cloned value for subsequent calls
+                    subqueryCacheKeys.add(cacheKey);
+                    subqueryCacheScalars.add(val);
+                    // Add empty list to keep indices aligned
+                    var emptyList: List[SqlValue] = [];
+                    subqueryCacheLists.add(emptyList);
+                    return val;
                 }
             }
         }
-        return sqlNull();
+        // Cache null result too
+        var nullVal = sqlNull();
+        subqueryCacheKeys.add(cacheKey);
+        subqueryCacheScalars.add(nullVal);
+        var emptyList2: List[SqlValue] = [];
+        subqueryCacheLists.add(emptyList2);
+        return nullVal;
+    }
+
+    // Evaluate an IN subquery: returns the list of cloned values from the subquery.
+    // Uses same save/restore pattern as evalSubquery to avoid string corruption
+    // in native codegen during recursive calls.
+    expose func evalInSubquery(subqueryExpr: Expr) -> List[SqlValue] {
+        // Check list cache first
+        var cacheKey = subqueryExpr.subquerySQL;
+        var ci = 0;
+        while ci < subqueryCacheKeys.count() {
+            if subqueryCacheKeys.get(ci) == cacheKey {
+                return subqueryCacheLists.get(ci);
+            }
+            ci = ci + 1;
+        }
+
+        // Save ALL executor state
+        var savedOuterRow = outerRow;
+        var savedOuterTable = outerTable;
+        var savedOuterAlias = outerTableAlias;
+        var savedCurrentAlias = currentTableAlias;
+
+        // Clone and flatten nested subqueries
+        var sql = String.Substring(subqueryExpr.subquerySQL, 0, String.Length(subqueryExpr.subquerySQL));
+        sql = flattenSubqueries(sql);
+
+        subqueryDepth = subqueryDepth + 1;
+        var subResult = executeSubquerySelect(sql);
+        subqueryDepth = subqueryDepth - 1;
+
+        // Restore ALL executor state
+        outerRow = savedOuterRow;
+        outerTable = savedOuterTable;
+        outerTableAlias = savedOuterAlias;
+        currentTableAlias = savedCurrentAlias;
+
+        // Clone all result values
+        var values = new List[SqlValue]();
+        if subResult.success {
+            var si = 0;
+            while si < subResult.rowCount() {
+                var subRow = subResult.getRow(si);
+                if subRow != null {
+                    var sr = subRow;
+                    if sr.columnCount() > 0 {
+                        values.add(cloneValue(sr.getValue(0)));
+                    }
+                }
+                si = si + 1;
+            }
+        }
+
+        // Cache the result
+        subqueryCacheKeys.add(cacheKey);
+        subqueryCacheScalars.add(sqlNull());
+        subqueryCacheLists.add(values);
+        return values;
     }
 
     expose func evalColumn(expr: Expr, row: Row, table: Table) -> SqlValue {
@@ -184,23 +389,58 @@ entity Executor {
 
     expose func evalBinary(expr: Expr, row: Row, table: Table) -> SqlValue {
         var left = evalExpr(expr.getLeft(), row, table);
-        var right = evalExpr(expr.getRight(), row, table);
         var op = expr.op;
+        // For IN with subqueries, don't evaluate right side through evalExpr
+        // (which would call evalSubquery and cache a scalar). The IN handler
+        // processes the subquery separately with its own list cache.
+        var right = sqlNull();
+        if op == OP_IN {
+            var maybeSubquery = expr.getRight();
+            if maybeSubquery.kind != EXPR_SUBQUERY {
+                right = evalExpr(maybeSubquery, row, table);
+            }
+        } else {
+            right = evalExpr(expr.getRight(), row, table);
+        }
 
-        // Arithmetic
+        // Arithmetic (supports INTEGER and REAL)
         if op == OP_ADD {
             if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
                 return sqlInteger(left.intValue + right.intValue);
+            }
+            if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                var lv = left.realValue;
+                if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                var rv = right.realValue;
+                if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                var res = lv + rv;
+                return sqlReal(res, Fmt.Num(res));
             }
         }
         if op == OP_SUB {
             if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
                 return sqlInteger(left.intValue - right.intValue);
             }
+            if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                var lv = left.realValue;
+                if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                var rv = right.realValue;
+                if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                var res = lv - rv;
+                return sqlReal(res, Fmt.Num(res));
+            }
         }
         if op == OP_MUL {
             if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
                 return sqlInteger(left.intValue * right.intValue);
+            }
+            if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                var lv = left.realValue;
+                if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                var rv = right.realValue;
+                if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                var res = lv * rv;
+                return sqlReal(res, Fmt.Num(res));
             }
         }
         if op == OP_DIV {
@@ -209,41 +449,76 @@ entity Executor {
                     return sqlInteger(left.intValue / right.intValue);
                 }
             }
+            if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                var lv = left.realValue;
+                if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                var rv = right.realValue;
+                if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                if rv != 0.0 {
+                    var res = lv / rv;
+                    return sqlReal(res, Fmt.Num(res));
+                }
+            }
         }
 
         // Comparison - return 1 for true, 0 for false
+        // compare() returns 2 for NULL comparisons (SQL three-valued logic)
         if op == OP_EQ {
-            if left.compare(right) == 0 {
-                return sqlInteger(1);
-            }
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp == 0 { return sqlInteger(1); }
             return sqlInteger(0);
         }
         if op == OP_NE {
-            if left.compare(right) != 0 {
-                return sqlInteger(1);
-            }
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp != 0 { return sqlInteger(1); }
             return sqlInteger(0);
         }
         if op == OP_LT {
-            if left.compare(right) < 0 {
-                return sqlInteger(1);
-            }
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp < 0 { return sqlInteger(1); }
             return sqlInteger(0);
         }
         if op == OP_LE {
-            if left.compare(right) <= 0 {
-                return sqlInteger(1);
-            }
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp <= 0 { return sqlInteger(1); }
             return sqlInteger(0);
         }
         if op == OP_GT {
-            if left.compare(right) > 0 {
-                return sqlInteger(1);
-            }
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp > 0 { return sqlInteger(1); }
             return sqlInteger(0);
         }
         if op == OP_GE {
-            if left.compare(right) >= 0 {
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp >= 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+
+        // IS NULL / IS NOT NULL
+        if op == OP_IS {
+            if right.kind == SQL_NULL {
+                // IS NULL
+                if left.kind == SQL_NULL { return sqlInteger(1); }
+                return sqlInteger(0);
+            } else {
+                // IS NOT NULL (right is int 1 as marker)
+                if left.kind != SQL_NULL { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+        }
+
+        // LIKE pattern matching
+        if op == OP_LIKE {
+            if left.kind == SQL_NULL { return sqlInteger(0); }
+            var leftStr = left.toString();
+            var pattern = right.toString();
+            if matchLike(leftStr, pattern) {
                 return sqlInteger(1);
             }
             return sqlInteger(0);
@@ -263,27 +538,31 @@ entity Executor {
             return sqlInteger(0);
         }
 
-        // IN operator - right side is a subquery
+        // IN operator - right side is a subquery or value list
         if op == OP_IN {
+            if left.kind == SQL_NULL { return sqlInteger(0); }
             var rightExpr = expr.getRight();
             if rightExpr.kind == EXPR_SUBQUERY {
-                // Execute subquery and check if left value is in results
-                var subResult = executeSql(rightExpr.subquerySQL);
-                if subResult.success {
-                    var i = 0;
-                    while i < subResult.rowCount() {
-                        var subRow = subResult.getRow(i);
-                        if subRow != null {
-                            var sr = subRow;
-                            if sr.columnCount() > 0 {
-                                var subVal = sr.getValue(0);
-                                if left.compare(subVal) == 0 {
-                                    return sqlInteger(1);
-                                }
-                            }
-                        }
-                        i = i + 1;
+                // Delegate to dedicated method that properly saves/restores
+                // executor state (avoids string corruption in native codegen)
+                var subValues = evalInSubquery(rightExpr);
+                // Compare left value against subquery results
+                var i = 0;
+                while i < subValues.count() {
+                    if left.compare(subValues.get(i)) == 0 {
+                        return sqlInteger(1);
                     }
+                    i = i + 1;
+                }
+            } else if rightExpr.kind == EXPR_FUNCTION {
+                // IN value list (args contain the list values)
+                var i = 0;
+                while i < rightExpr.args.count() {
+                    var listVal = evalExpr(rightExpr.args.get(i), row, table);
+                    if left.compare(listVal) == 0 {
+                        return sqlInteger(1);
+                    }
+                    i = i + 1;
                 }
             }
             return sqlInteger(0);
@@ -316,8 +595,15 @@ entity Executor {
             if operand.kind == SQL_INTEGER {
                 return sqlInteger(-operand.intValue);
             }
+            if operand.kind == SQL_REAL {
+                var neg = -operand.realValue;
+                return sqlReal(neg, Fmt.Num(neg));
+            }
         }
         if expr.op == OP_NOT {
+            if operand.kind == SQL_NULL {
+                return sqlInteger(0);
+            }
             if operand.intValue == 0 {
                 return sqlInteger(1);
             }
@@ -325,6 +611,63 @@ entity Executor {
         }
 
         return sqlNull();
+    }
+
+    // Deep-clone a SqlValue with fresh string allocation to avoid retain issues
+    hide func cloneValue(v: SqlValue) -> SqlValue {
+        var c = new SqlValue();
+        c.kind = v.kind;
+        c.intValue = v.intValue;
+        c.realValue = v.realValue;
+        if v.kind == SQL_TEXT || v.kind == SQL_BLOB || v.kind == SQL_REAL {
+            var len = String.Length(v.textValue);
+            c.textValue = String.Substring(v.textValue, 0, len);
+        } else {
+            c.textValue = "";
+        }
+        return c;
+    }
+
+    // LIKE pattern matching: % matches any sequence, _ matches single char
+    hide func matchLike(text: String, pattern: String) -> Boolean {
+        var tLen = String.Length(text);
+        var pLen = String.Length(pattern);
+        var ti = 0;
+        var pi = 0;
+        var starTi = -1;
+        var starPi = -1;
+
+        while ti < tLen {
+            if pi < pLen {
+                var pch = String.Substring(pattern, pi, 1);
+                if pch == "%" {
+                    starTi = ti;
+                    starPi = pi;
+                    pi = pi + 1;
+                    continue;
+                }
+                var tch = String.Substring(text, ti, 1);
+                if pch == "_" || String.ToLower(pch) == String.ToLower(tch) {
+                    ti = ti + 1;
+                    pi = pi + 1;
+                    continue;
+                }
+            }
+            // Mismatch - backtrack to last %
+            if starPi >= 0 {
+                starTi = starTi + 1;
+                ti = starTi;
+                pi = starPi + 1;
+                continue;
+            }
+            return false;
+        }
+
+        // Skip trailing % in pattern
+        while pi < pLen && String.Substring(pattern, pi, 1) == "%" {
+            pi = pi + 1;
+        }
+        return pi == pLen;
     }
 
     expose func evalFunction(expr: Expr, row: Row, table: Table) -> SqlValue {
@@ -670,6 +1013,7 @@ entity Executor {
         if expr.kind == EXPR_FUNCTION {
             var funcName = String.ToUpper(expr.funcName);
             if funcName == "COUNT" { return true; }
+            if funcName == "COUNT_DISTINCT" { return true; }
             if funcName == "SUM" { return true; }
             if funcName == "AVG" { return true; }
             // MIN/MAX with 2 args = scalar, with 1 arg = aggregate
@@ -696,6 +1040,38 @@ entity Executor {
     expose func evalAggregate(expr: Expr, matchingRows: List[Integer], table: Table) -> SqlValue {
         var funcName = String.ToUpper(expr.funcName);
         var hasArg = expr.args.count() > 0;
+
+        // COUNT(DISTINCT column) - count distinct non-NULL values
+        if funcName == "COUNT_DISTINCT" && hasArg {
+            var seen = new List[String]();
+            var i = 0;
+            while i < matchingRows.count() {
+                var rowIdx = matchingRows.get(i);
+                var maybeRow = table.getRow(rowIdx);
+                if maybeRow != null {
+                    var row = maybeRow;
+                    var argExpr = expr.args.get(0);
+                    var val = evalExpr(argExpr, row, table);
+                    if val.kind != SQL_NULL {
+                        var valStr = val.toString();
+                        var found = false;
+                        var k = 0;
+                        while k < seen.count() {
+                            if seen.get(k) == valStr {
+                                found = true;
+                                k = seen.count();
+                            }
+                            k = k + 1;
+                        }
+                        if found == false {
+                            seen.add(valStr);
+                        }
+                    }
+                }
+                i = i + 1;
+            }
+            return sqlInteger(seen.count());
+        }
 
         // COUNT(*)
         if funcName == "COUNT" && hasArg {
@@ -730,7 +1106,9 @@ entity Executor {
         // SUM(column)
         if funcName == "SUM" {
             var sumInt = 0;
+            var sumReal = 0.0;
             var hasValue = false;
+            var hasReal = false;
             var i = 0;
             while i < matchingRows.count() {
                 var rowIdx = matchingRows.get(i);
@@ -743,6 +1121,10 @@ entity Executor {
                         if val.kind == SQL_INTEGER {
                             sumInt = sumInt + val.intValue;
                             hasValue = true;
+                        } else if val.kind == SQL_REAL {
+                            sumReal = sumReal + val.realValue;
+                            hasValue = true;
+                            hasReal = true;
                         }
                     }
                 }
@@ -751,13 +1133,19 @@ entity Executor {
             if hasValue == false {
                 return sqlNull();
             }
+            if hasReal {
+                var total = sumReal + sumInt * 1.0;
+                return sqlReal(total, Fmt.Num(total));
+            }
             return sqlInteger(sumInt);
         }
 
         // AVG(column)
         if funcName == "AVG" {
             var sumInt = 0;
+            var sumReal = 0.0;
             var count = 0;
+            var hasReal = false;
             var i = 0;
             while i < matchingRows.count() {
                 var rowIdx = matchingRows.get(i);
@@ -770,6 +1158,10 @@ entity Executor {
                         if val.kind == SQL_INTEGER {
                             sumInt = sumInt + val.intValue;
                             count = count + 1;
+                        } else if val.kind == SQL_REAL {
+                            sumReal = sumReal + val.realValue;
+                            count = count + 1;
+                            hasReal = true;
                         }
                     }
                 }
@@ -778,13 +1170,15 @@ entity Executor {
             if count == 0 {
                 return sqlNull();
             }
-            return sqlInteger(sumInt / count);
+            var total = sumReal + sumInt * 1.0;
+            var avg = total / count;
+            return sqlReal(avg, Fmt.Num(avg));
         }
 
-        // MIN(column)
+        // MIN(column) - handles INTEGER and REAL
         if funcName == "MIN" {
             var hasMin = false;
-            var minVal = 0;
+            var minResult = sqlNull();
             var i = 0;
             while i < matchingRows.count() {
                 var rowIdx = matchingRows.get(i);
@@ -794,10 +1188,15 @@ entity Executor {
                     if hasArg {
                         var argExpr = expr.args.get(0);
                         var val = evalExpr(argExpr, row, table);
-                        if val.kind == SQL_INTEGER {
-                            if hasMin == false || val.intValue < minVal {
-                                minVal = val.intValue;
+                        if val.kind != SQL_NULL {
+                            if hasMin == false {
+                                minResult = val;
                                 hasMin = true;
+                            } else {
+                                var cmp = val.compare(minResult);
+                                if cmp < 0 {
+                                    minResult = val;
+                                }
                             }
                         }
                     }
@@ -807,13 +1206,13 @@ entity Executor {
             if hasMin == false {
                 return sqlNull();
             }
-            return sqlInteger(minVal);
+            return minResult;
         }
 
-        // MAX(column)
+        // MAX(column) - handles INTEGER and REAL
         if funcName == "MAX" {
             var hasMax = false;
-            var maxVal = 0;
+            var maxResult = sqlNull();
             var i = 0;
             while i < matchingRows.count() {
                 var rowIdx = matchingRows.get(i);
@@ -823,10 +1222,15 @@ entity Executor {
                     if hasArg {
                         var argExpr = expr.args.get(0);
                         var val = evalExpr(argExpr, row, table);
-                        if val.kind == SQL_INTEGER {
-                            if hasMax == false || val.intValue > maxVal {
-                                maxVal = val.intValue;
+                        if val.kind != SQL_NULL {
+                            if hasMax == false {
+                                maxResult = val;
                                 hasMax = true;
+                            } else {
+                                var cmp = val.compare(maxResult);
+                                if cmp > 0 {
+                                    maxResult = val;
+                                }
                             }
                         }
                     }
@@ -836,7 +1240,7 @@ entity Executor {
             if hasMax == false {
                 return sqlNull();
             }
-            return sqlInteger(maxVal);
+            return maxResult;
         }
 
         return sqlNull();
@@ -861,16 +1265,7 @@ entity Executor {
         var i = 0;
         while i < stmt.columnCount() {
             var stmtCol = stmt.getColumn(i);
-            var col = new Column();
-            col.initWithName(stmtCol.name, stmtCol.typeCode);
-            col.notNull = stmtCol.notNull;
-            col.primaryKey = stmtCol.primaryKey;
-            col.autoIncrement = stmtCol.autoIncrement;
-            col.unique = stmtCol.unique;
-            col.isForeignKey = stmtCol.isForeignKey;
-            col.refTableName = stmtCol.refTableName;
-            col.refColumnName = stmtCol.refColumnName;
-            table.addColumn(col);
+            table.addColumn(stmtCol);
             i = i + 1;
         }
 
@@ -890,6 +1285,7 @@ entity Executor {
         }
 
         var t = table;
+        var hasColumnList = stmt.columnNames.count() > 0;
         var rowsInserted = 0;
         var r = 0;
         while r < stmt.rowCount() {
@@ -903,10 +1299,37 @@ entity Executor {
                 if col != null {
                     var column = col;
 
+                    // Find the value index for this column
+                    var valIdx = -1;
+                    if hasColumnList {
+                        // Map column name to value position
+                        var ci = 0;
+                        while ci < stmt.columnNames.count() {
+                            if String.ToUpper(stmt.columnNames.get(ci)) == String.ToUpper(column.name) {
+                                valIdx = ci;
+                                break;
+                            }
+                            ci = ci + 1;
+                        }
+                    } else {
+                        // No column list — positional mapping
+                        if c < valueExprs.count() {
+                            valIdx = c;
+                        }
+                    }
+
                     // Check for autoincrement
-                    if column.autoIncrement && c < valueExprs.count() {
-                        var valExpr = valueExprs.get(c);
-                        if valExpr.kind == EXPR_LITERAL && valExpr.literalValue.kind == SQL_NULL {
+                    if column.autoIncrement {
+                        if valIdx >= 0 {
+                            var valExpr = valueExprs.get(valIdx);
+                            if valExpr.kind == EXPR_LITERAL && valExpr.literalValue.kind == SQL_NULL {
+                                var autoVal = sqlInteger(t.nextAutoIncrement());
+                                row.setValue(c, autoVal);
+                                c = c + 1;
+                                continue;
+                            }
+                        } else {
+                            // Column not in INSERT list — auto-generate
                             var autoVal = sqlInteger(t.nextAutoIncrement());
                             row.setValue(c, autoVal);
                             c = c + 1;
@@ -914,8 +1337,8 @@ entity Executor {
                         }
                     }
 
-                    if c < valueExprs.count() {
-                        var valExpr = valueExprs.get(c);
+                    if valIdx >= 0 {
+                        var valExpr = valueExprs.get(valIdx);
                         var val = evalExpr(valExpr, row, t);
                         row.setValue(c, val);
                     } else if column.hasDefault {
@@ -968,7 +1391,7 @@ entity Executor {
                     if val.kind == SQL_NULL {
                         return "PRIMARY KEY constraint failed: " + col.name + " cannot be NULL";
                     }
-                    // Check uniqueness
+                    // Check uniqueness using nullSafeEquals
                     var i = 0;
                     while i < table.rowCount() {
                         if i != excludeRowIdx {
@@ -977,7 +1400,7 @@ entity Executor {
                                 var existingRow = maybeRow;
                                 if existingRow.deleted == false {
                                     var existingVal = existingRow.getValue(c);
-                                    if val.compare(existingVal) == 0 {
+                                    if val.nullSafeEquals(existingVal) {
                                         return "PRIMARY KEY constraint failed: duplicate value in " + col.name;
                                     }
                                 }
@@ -997,7 +1420,7 @@ entity Executor {
                                 var existingRow = maybeRow;
                                 if existingRow.deleted == false {
                                     var existingVal = existingRow.getValue(c);
-                                    if val.compare(existingVal) == 0 {
+                                    if val.nullSafeEquals(existingVal) {
                                         return "UNIQUE constraint failed: duplicate value in " + col.name;
                                     }
                                 }
@@ -1011,29 +1434,30 @@ entity Executor {
                 if col.isForeignKey {
                     if val.kind != SQL_NULL {
                         var refTable = db.findTable(col.refTableName);
-                        if refTable != null {
-                            var rt = refTable;
-                            var refColIdx = rt.findColumnIndex(col.refColumnName);
-                            if refColIdx >= 0 {
-                                var found = false;
-                                var i = 0;
-                                while i < rt.rowCount() {
-                                    var maybeRow = rt.getRow(i);
-                                    if maybeRow != null {
-                                        var refRow = maybeRow;
-                                        if refRow.deleted == false {
-                                            var refVal = refRow.getValue(refColIdx);
-                                            if val.compare(refVal) == 0 {
-                                                found = true;
-                                                i = rt.rowCount();  // break
-                                            }
+                        if refTable == null {
+                            return "FOREIGN KEY constraint failed: referenced table '" + col.refTableName + "' not found";
+                        }
+                        var rt = refTable;
+                        var refColIdx = rt.findColumnIndex(col.refColumnName);
+                        if refColIdx >= 0 {
+                            var found = false;
+                            var i = 0;
+                            while i < rt.rowCount() {
+                                var maybeRow = rt.getRow(i);
+                                if maybeRow != null {
+                                    var refRow = maybeRow;
+                                    if refRow.deleted == false {
+                                        var refVal = refRow.getValue(refColIdx);
+                                        if val.nullSafeEquals(refVal) {
+                                            found = true;
+                                            i = rt.rowCount();  // break
                                         }
                                     }
-                                    i = i + 1;
                                 }
-                                if found == false {
-                                    return "FOREIGN KEY constraint failed: " + col.name + " references " + col.refTableName + "(" + col.refColumnName + ")";
-                                }
+                                i = i + 1;
+                            }
+                            if found == false {
+                                return "FOREIGN KEY constraint failed: " + col.name + " references " + col.refTableName + "(" + col.refColumnName + ")";
                             }
                         }
                     }
@@ -1088,13 +1512,26 @@ entity Executor {
         } else {
             var c = 0;
             while c < stmt.columns.count() {
-                var colExpr = stmt.columns.get(c);
-                if colExpr.kind == EXPR_COLUMN {
-                    result.addColumnName(colExpr.columnName);
-                } else if colExpr.kind == EXPR_FUNCTION {
-                    result.addColumnName(colExpr.funcName);
+                // Check for column alias first
+                var alias = "";
+                if c < stmt.columnAliases.count() {
+                    alias = stmt.columnAliases.get(c);
+                }
+                if alias != "" {
+                    result.addColumnName(alias);
                 } else {
-                    result.addColumnName("col" + Fmt.Int(c));
+                    var colExpr = stmt.columns.get(c);
+                    if colExpr.kind == EXPR_COLUMN {
+                        result.addColumnName(colExpr.columnName);
+                    } else if colExpr.kind == EXPR_FUNCTION {
+                        var displayName = colExpr.funcName;
+                        if displayName == "COUNT_DISTINCT" {
+                            displayName = "COUNT";
+                        }
+                        result.addColumnName(displayName);
+                    } else {
+                        result.addColumnName("col" + Fmt.Int(c));
+                    }
                 }
                 c = c + 1;
             }
@@ -1196,7 +1633,7 @@ entity Executor {
                     if stmt.selectAll {
                         var c = 0;
                         while c < rowData.columnCount() {
-                            resultRow.addValue(rowData.getValue(c));
+                            resultRow.addValue(cloneValue(rowData.getValue(c)));
                             c = c + 1;
                         }
                     } else {
@@ -1204,7 +1641,7 @@ entity Executor {
                         while c < stmt.columns.count() {
                             var colExpr = stmt.columns.get(c);
                             var val = evalExpr(colExpr, rowData, t);
-                            resultRow.addValue(val);
+                            resultRow.addValue(cloneValue(val));
                             c = c + 1;
                         }
                     }
@@ -1344,8 +1781,9 @@ entity Executor {
             var leftVal = evalHavingValue(left, groupRows, table);
             var rightVal = evalHavingValue(right, groupRows, table);
 
-            // Comparison operators
+            // Comparison operators (handle NULL: compare returns 2)
             var cmp = leftVal.compare(rightVal);
+            if cmp == 2 { return false; }
             if op == OP_EQ { return cmp == 0; }
             if op == OP_NE { return cmp != 0; }
             if op == OP_LT { return cmp < 0; }
@@ -1529,6 +1967,24 @@ entity Executor {
             r = r + 1;
         }
 
+        // Compact rows list to remove soft-deleted entries
+        // This prevents SIGBUS when inserting into a fully-emptied table
+        if rowsDeleted > 0 {
+            var compacted: List[Row] = [];
+            var cr = 0;
+            while cr < t.rowCount() {
+                var checkRow = t.getRow(cr);
+                if checkRow != null {
+                    var checkData = checkRow;
+                    if checkData.deleted == false {
+                        compacted.add(checkData);
+                    }
+                }
+                cr = cr + 1;
+            }
+            t.rows = compacted;
+        }
+
         result.message = "Deleted " + Fmt.Int(rowsDeleted) + " row(s)";
         result.rowsAffected = rowsDeleted;
         return result;
@@ -1560,6 +2016,15 @@ entity Executor {
                         var val2 = evalExpr(orderExpr, r2, table);
                         var cmp = val1.compare(val2);
 
+                        // Handle NULL (cmp==2): NULLs sort last
+                        if cmp == 2 {
+                            if val1.kind == SQL_NULL && val2.kind != SQL_NULL {
+                                shouldSwap = isDesc == 1;
+                            } else if val1.kind != SQL_NULL && val2.kind == SQL_NULL {
+                                shouldSwap = isDesc == 0;
+                            }
+                            break;
+                        }
                         if cmp != 0 {
                             if isDesc == 1 {
                                 shouldSwap = cmp < 0;
@@ -1591,7 +2056,15 @@ entity Executor {
             }
             var row = result.getRow(i);
             if row != null {
-                newRows.add(row);
+                // Deep-clone row to avoid string retain issues when old list is freed
+                var clonedRow = new Row();
+                clonedRow.init();
+                var vc = 0;
+                while vc < row.columnCount() {
+                    clonedRow.addValue(cloneValue(row.getValue(vc)));
+                    vc = vc + 1;
+                }
+                newRows.add(clonedRow);
                 count = count + 1;
             }
             i = i + 1;
@@ -1600,10 +2073,41 @@ entity Executor {
     }
 
     //=========================================================================
+    // SUBQUERY EXECUTION (avoids full executeSql recursion)
+    //=========================================================================
+
+    // Dedicated path for subquery execution that parses and runs a SELECT
+    // without going through the full executeSql dispatch. This avoids
+    // string lifetime corruption in native codegen during recursive calls.
+    expose func executeSubquerySelect(sql: String) -> QueryResult {
+        var parser = new Parser(sql);
+        if parser.currentKind() == TK_SELECT {
+            parser.advance();
+            var stmt = parser.parseSelectStmt();
+            if parser.hasError {
+                var result = new QueryResult();
+                result.init();
+                result.setError(parser.error);
+                return result;
+            }
+            return executeSelect(stmt);
+        }
+        var result = new QueryResult();
+        result.init();
+        result.setError("Subquery must be a SELECT statement");
+        return result;
+    }
+
+    //=========================================================================
     // MAIN EXECUTION ENTRY POINT
     //=========================================================================
 
     expose func executeSql(sql: String) -> QueryResult {
+        // Clear subquery cache for each new top-level SQL statement
+        subqueryCacheKeys = [];
+        subqueryCacheScalars = [];
+        subqueryCacheLists = [];
+
         var parser = new Parser(sql);
 
         var kind = parser.currentKind();
@@ -1983,6 +2487,26 @@ entity Executor {
             return result;
         }
 
+        // Transaction stubs
+        if kind == TK_BEGIN {
+            var result = new QueryResult();
+            result.init();
+            result.message = "BEGIN (transactions not yet supported - auto-commit mode)";
+            return result;
+        }
+        if kind == TK_COMMIT {
+            var result = new QueryResult();
+            result.init();
+            result.message = "COMMIT (transactions not yet supported - auto-commit mode)";
+            return result;
+        }
+        if kind == TK_ROLLBACK {
+            var result = new QueryResult();
+            result.init();
+            result.message = "ROLLBACK (transactions not yet supported - auto-commit mode)";
+            return result;
+        }
+
         var result = new QueryResult();
         result.init();
         result.setError("Unknown SQL statement");
@@ -2157,29 +2681,41 @@ entity Executor {
             var right = evalJoinExpr(expr.getRight(), tables, aliases, combinedRow, colOffsets);
             var op = expr.op;
 
-            // Comparison operators
+            // Comparison operators (handle NULL: compare returns 2)
             if op == OP_EQ {
-                if left.compare(right) == 0 { return sqlInteger(1); }
+                var cmp = left.compare(right);
+                if cmp == 2 { return sqlInteger(0); }
+                if cmp == 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
             if op == OP_NE {
-                if left.compare(right) != 0 { return sqlInteger(1); }
+                var cmp = left.compare(right);
+                if cmp == 2 { return sqlInteger(0); }
+                if cmp != 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
             if op == OP_LT {
-                if left.compare(right) < 0 { return sqlInteger(1); }
+                var cmp = left.compare(right);
+                if cmp == 2 { return sqlInteger(0); }
+                if cmp < 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
             if op == OP_LE {
-                if left.compare(right) <= 0 { return sqlInteger(1); }
+                var cmp = left.compare(right);
+                if cmp == 2 { return sqlInteger(0); }
+                if cmp <= 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
             if op == OP_GT {
-                if left.compare(right) > 0 { return sqlInteger(1); }
+                var cmp = left.compare(right);
+                if cmp == 2 { return sqlInteger(0); }
+                if cmp > 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
             if op == OP_GE {
-                if left.compare(right) >= 0 { return sqlInteger(1); }
+                var cmp = left.compare(right);
+                if cmp == 2 { return sqlInteger(0); }
+                if cmp >= 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
 
@@ -2261,15 +2797,30 @@ entity Executor {
         } else {
             var c = 0;
             while c < stmt.columns.count() {
-                var colExpr = stmt.columns.get(c);
-                if colExpr.kind == EXPR_COLUMN {
-                    if colExpr.tableName != "" {
-                        result.addColumnName(colExpr.tableName + "." + colExpr.columnName);
-                    } else {
-                        result.addColumnName(colExpr.columnName);
-                    }
+                // Check for column alias first
+                var alias = "";
+                if c < stmt.columnAliases.count() {
+                    alias = stmt.columnAliases.get(c);
+                }
+                if alias != "" {
+                    result.addColumnName(alias);
                 } else {
-                    result.addColumnName("expr" + Fmt.Int(c));
+                    var colExpr = stmt.columns.get(c);
+                    if colExpr.kind == EXPR_COLUMN {
+                        if colExpr.tableName != "" {
+                            result.addColumnName(colExpr.tableName + "." + colExpr.columnName);
+                        } else {
+                            result.addColumnName(colExpr.columnName);
+                        }
+                    } else if colExpr.kind == EXPR_FUNCTION {
+                        var displayName = colExpr.funcName;
+                        if displayName == "COUNT_DISTINCT" {
+                            displayName = "COUNT";
+                        }
+                        result.addColumnName(displayName);
+                    } else {
+                        result.addColumnName("expr" + Fmt.Int(c));
+                    }
                 }
                 c = c + 1;
             }
@@ -2433,34 +2984,427 @@ entity Executor {
             ri = ri + 1;
         }
 
-        // Build result rows
-        ri = 0;
-        while ri < filteredRows.count() {
-            var combinedRow = filteredRows.get(ri);
+        // Check for GROUP BY / aggregates on JOIN results
+        var isAggregate = hasAggregates(stmt);
+
+        if isAggregate || stmt.groupByExprs.count() > 0 {
+            // GROUP BY on JOIN results
+            executeJoinGroupBy(stmt, filteredRows, tables, aliases, colOffsets, totalCols, result);
+        } else {
+            // Build result rows (regular non-aggregate query)
+            ri = 0;
+            while ri < filteredRows.count() {
+                var combinedRow = filteredRows.get(ri);
+                var resultRow = new Row();
+                resultRow.init();
+
+                if stmt.selectAll {
+                    var c = 0;
+                    while c < totalCols {
+                        resultRow.addValue(cloneValue(combinedRow.getValue(c)));
+                        c = c + 1;
+                    }
+                } else {
+                    var c = 0;
+                    while c < stmt.columns.count() {
+                        var colExpr = stmt.columns.get(c);
+                        var val = evalJoinExpr(colExpr, tables, aliases, combinedRow, colOffsets);
+                        resultRow.addValue(cloneValue(val));
+                        c = c + 1;
+                    }
+                }
+
+                result.addRow(resultRow);
+                ri = ri + 1;
+            }
+        }
+
+        // Apply DISTINCT
+        if stmt.isDistinct {
+            applyDistinct(result);
+        }
+
+        // Apply ORDER BY on JOIN results
+        if stmt.orderByExprs.count() > 0 {
+            sortJoinResults(result, stmt);
+        }
+
+        // Apply LIMIT/OFFSET
+        if stmt.limitValue >= 0 || stmt.offsetValue > 0 {
+            applyLimitOffset(result, stmt.limitValue, stmt.offsetValue);
+        }
+
+        return result;
+    }
+
+    // Execute GROUP BY on JOIN results
+    hide func executeJoinGroupBy(stmt: SelectStmt, filteredRows: List[Row],
+                                  tables: List[Table], aliases: List[String],
+                                  colOffsets: List[Integer], totalCols: Integer,
+                                  result: QueryResult) {
+        var groupKeys = new List[String]();
+        var groupRowLists = new List[List[Row]]();
+
+        if stmt.groupByExprs.count() > 0 {
+            var i = 0;
+            while i < filteredRows.count() {
+                var row = filteredRows.get(i);
+                var key = "";
+                var g = 0;
+                while g < stmt.groupByExprs.count() {
+                    var groupExpr = stmt.groupByExprs.get(g);
+                    var val = evalJoinExpr(groupExpr, tables, aliases, row, colOffsets);
+                    if g > 0 { key = key + "|"; }
+                    key = key + val.toString();
+                    g = g + 1;
+                }
+
+                var groupIdx = -1;
+                var k = 0;
+                while k < groupKeys.count() {
+                    if groupKeys.get(k) == key {
+                        groupIdx = k;
+                        k = groupKeys.count();
+                    }
+                    k = k + 1;
+                }
+
+                if groupIdx < 0 {
+                    groupKeys.add(key);
+                    var newList = new List[Row]();
+                    newList.add(row);
+                    groupRowLists.add(newList);
+                } else {
+                    groupRowLists.get(groupIdx).add(row);
+                }
+                i = i + 1;
+            }
+        } else {
+            // No GROUP BY but has aggregates — treat all rows as one group
+            groupKeys.add("");
+            groupRowLists.add(filteredRows);
+        }
+
+        // Build result rows from groups
+        var g = 0;
+        while g < groupKeys.count() {
+            var groupRows = groupRowLists.get(g);
             var resultRow = new Row();
             resultRow.init();
 
-            if stmt.selectAll {
-                var c = 0;
-                while c < totalCols {
-                    resultRow.addValue(combinedRow.getValue(c));
-                    c = c + 1;
+            var firstRow = groupRows.get(0);
+
+            var c = 0;
+            while c < stmt.columns.count() {
+                var colExpr = stmt.columns.get(c);
+                if isAggregateExpr(colExpr) {
+                    var val = evalJoinAggregate(colExpr, groupRows, tables, aliases, colOffsets);
+                    resultRow.addValue(cloneValue(val));
+                } else {
+                    var val = evalJoinExpr(colExpr, tables, aliases, firstRow, colOffsets);
+                    resultRow.addValue(cloneValue(val));
                 }
-            } else {
-                var c = 0;
-                while c < stmt.columns.count() {
-                    var colExpr = stmt.columns.get(c);
-                    var val = evalJoinExpr(colExpr, tables, aliases, combinedRow, colOffsets);
-                    resultRow.addValue(val);
-                    c = c + 1;
+                c = c + 1;
+            }
+
+            // Check HAVING condition
+            if stmt.havingClause != null {
+                var hc = stmt.havingClause;
+                if evalJoinHaving(hc, groupRows, tables, aliases, colOffsets) == false {
+                    g = g + 1;
+                    continue;
                 }
             }
 
             result.addRow(resultRow);
-            ri = ri + 1;
+            g = g + 1;
+        }
+    }
+
+    // Evaluate aggregate function over JOIN group rows
+    hide func evalJoinAggregate(expr: Expr, groupRows: List[Row],
+                                 tables: List[Table], aliases: List[String],
+                                 colOffsets: List[Integer]) -> SqlValue {
+        var funcName = String.ToUpper(expr.funcName);
+        var hasArg = expr.args.count() > 0;
+
+        // COUNT(*)
+        if funcName == "COUNT" && hasArg {
+            var arg0 = expr.args.get(0);
+            if arg0.kind == EXPR_STAR {
+                return sqlInteger(groupRows.count());
+            }
         }
 
-        return result;
+        // COUNT_DISTINCT
+        if funcName == "COUNT_DISTINCT" && hasArg {
+            var seen = new List[String]();
+            var i = 0;
+            while i < groupRows.count() {
+                var row = groupRows.get(i);
+                var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
+                if val.kind != SQL_NULL {
+                    var valStr = val.toString();
+                    var found = false;
+                    var k = 0;
+                    while k < seen.count() {
+                        if seen.get(k) == valStr { found = true; k = seen.count(); }
+                        k = k + 1;
+                    }
+                    if found == false { seen.add(valStr); }
+                }
+                i = i + 1;
+            }
+            return sqlInteger(seen.count());
+        }
+
+        // COUNT(column)
+        if funcName == "COUNT" {
+            var count = 0;
+            var i = 0;
+            while i < groupRows.count() {
+                var row = groupRows.get(i);
+                if hasArg {
+                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
+                    if val.kind != SQL_NULL { count = count + 1; }
+                }
+                i = i + 1;
+            }
+            return sqlInteger(count);
+        }
+
+        // SUM
+        if funcName == "SUM" {
+            var sumInt = 0;
+            var sumReal = 0.0;
+            var hasValue = false;
+            var hasReal = false;
+            var i = 0;
+            while i < groupRows.count() {
+                var row = groupRows.get(i);
+                if hasArg {
+                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
+                    if val.kind == SQL_INTEGER { sumInt = sumInt + val.intValue; hasValue = true; }
+                    else if val.kind == SQL_REAL { sumReal = sumReal + val.realValue; hasValue = true; hasReal = true; }
+                }
+                i = i + 1;
+            }
+            if hasValue == false { return sqlNull(); }
+            if hasReal {
+                var total = sumReal + sumInt * 1.0;
+                return sqlReal(total, Fmt.Num(total));
+            }
+            return sqlInteger(sumInt);
+        }
+
+        // AVG
+        if funcName == "AVG" {
+            var sumInt = 0;
+            var sumReal = 0.0;
+            var count = 0;
+            var hasReal = false;
+            var i = 0;
+            while i < groupRows.count() {
+                var row = groupRows.get(i);
+                if hasArg {
+                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
+                    if val.kind == SQL_INTEGER { sumInt = sumInt + val.intValue; count = count + 1; }
+                    else if val.kind == SQL_REAL { sumReal = sumReal + val.realValue; count = count + 1; hasReal = true; }
+                }
+                i = i + 1;
+            }
+            if count == 0 { return sqlNull(); }
+            var total = sumReal + sumInt * 1.0;
+            var avg = total / count;
+            return sqlReal(avg, Fmt.Num(avg));
+        }
+
+        // MIN
+        if funcName == "MIN" {
+            var hasMin = false;
+            var minResult = sqlNull();
+            var i = 0;
+            while i < groupRows.count() {
+                var row = groupRows.get(i);
+                if hasArg {
+                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
+                    if val.kind != SQL_NULL {
+                        if hasMin == false { minResult = val; hasMin = true; }
+                        else if val.compare(minResult) < 0 { minResult = val; }
+                    }
+                }
+                i = i + 1;
+            }
+            return minResult;
+        }
+
+        // MAX
+        if funcName == "MAX" {
+            var hasMax = false;
+            var maxResult = sqlNull();
+            var i = 0;
+            while i < groupRows.count() {
+                var row = groupRows.get(i);
+                if hasArg {
+                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
+                    if val.kind != SQL_NULL {
+                        if hasMax == false { maxResult = val; hasMax = true; }
+                        else if val.compare(maxResult) > 0 { maxResult = val; }
+                    }
+                }
+                i = i + 1;
+            }
+            return maxResult;
+        }
+
+        return sqlNull();
+    }
+
+    // Evaluate HAVING expression for JOIN groups
+    hide func evalJoinHaving(expr: Expr, groupRows: List[Row],
+                              tables: List[Table], aliases: List[String],
+                              colOffsets: List[Integer]) -> Boolean {
+        if expr.kind == EXPR_BINARY {
+            var left = expr.getLeft();
+            var right = expr.getRight();
+            var op = expr.op;
+
+            if op == OP_AND {
+                return evalJoinHaving(left, groupRows, tables, aliases, colOffsets) && evalJoinHaving(right, groupRows, tables, aliases, colOffsets);
+            }
+            if op == OP_OR {
+                return evalJoinHaving(left, groupRows, tables, aliases, colOffsets) || evalJoinHaving(right, groupRows, tables, aliases, colOffsets);
+            }
+
+            var leftVal = evalJoinHavingValue(left, groupRows, tables, aliases, colOffsets);
+            var rightVal = evalJoinHavingValue(right, groupRows, tables, aliases, colOffsets);
+
+            var cmp = leftVal.compare(rightVal);
+            if cmp == 2 { return false; }
+            if op == OP_EQ { return cmp == 0; }
+            if op == OP_NE { return cmp != 0; }
+            if op == OP_LT { return cmp < 0; }
+            if op == OP_LE { return cmp <= 0; }
+            if op == OP_GT { return cmp > 0; }
+            if op == OP_GE { return cmp >= 0; }
+        }
+        return false;
+    }
+
+    // Evaluate a value in JOIN HAVING context
+    hide func evalJoinHavingValue(expr: Expr, groupRows: List[Row],
+                                    tables: List[Table], aliases: List[String],
+                                    colOffsets: List[Integer]) -> SqlValue {
+        if expr.kind == EXPR_FUNCTION && isAggregateExpr(expr) {
+            return evalJoinAggregate(expr, groupRows, tables, aliases, colOffsets);
+        }
+        if expr.kind == EXPR_LITERAL {
+            return expr.literalValue;
+        }
+        if expr.kind == EXPR_COLUMN && groupRows.count() > 0 {
+            var firstRow = groupRows.get(0);
+            return evalJoinExpr(expr, tables, aliases, firstRow, colOffsets);
+        }
+        return sqlNull();
+    }
+
+    // Sort JOIN results using result column name resolution
+    hide func sortJoinResults(result: QueryResult, stmt: SelectStmt) {
+        var n = result.rowCount();
+        var i = 0;
+        while i < n - 1 {
+            var j = 0;
+            while j < n - i - 1 {
+                var row1 = result.getRow(j);
+                var row2 = result.getRow(j + 1);
+                if row1 != null && row2 != null {
+                    var r1 = row1;
+                    var r2 = row2;
+                    var shouldSwap = false;
+
+                    var e = 0;
+                    while e < stmt.orderByExprs.count() {
+                        var orderExpr = stmt.orderByExprs.get(e);
+                        var isDesc = stmt.orderByDir.get(e);
+
+                        var colIdx = findResultColumnIndex(result, orderExpr);
+                        if colIdx >= 0 {
+                            var val1 = r1.getValue(colIdx);
+                            var val2 = r2.getValue(colIdx);
+                            var cmp = val1.compare(val2);
+
+                            if cmp == 2 {
+                                if val1.kind == SQL_NULL && val2.kind != SQL_NULL {
+                                    shouldSwap = isDesc == 1;
+                                } else if val1.kind != SQL_NULL && val2.kind == SQL_NULL {
+                                    shouldSwap = isDesc == 0;
+                                }
+                                break;
+                            }
+                            if cmp != 0 {
+                                if isDesc == 1 { shouldSwap = cmp < 0; }
+                                else { shouldSwap = cmp > 0; }
+                                break;
+                            }
+                        }
+                        e = e + 1;
+                    }
+
+                    if shouldSwap {
+                        result.swapRows(j, j + 1);
+                    }
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    // Find column index in result for ORDER BY expression
+    hide func findResultColumnIndex(result: QueryResult, expr: Expr) -> Integer {
+        if expr.kind == EXPR_COLUMN {
+            var searchName = expr.columnName;
+            var searchTable = expr.tableName;
+
+            var i = 0;
+            while i < result.columnNames.count() {
+                var colName = result.columnNames.get(i);
+
+                // Try qualified match (e.g., "o.amount")
+                if searchTable != "" {
+                    if colName == searchTable + "." + searchName {
+                        return i;
+                    }
+                }
+
+                // Try exact name match
+                if colName == searchName {
+                    return i;
+                }
+
+                // Try suffix match (e.g., column named "orders.amount" matches "amount")
+                var suffix = "." + searchName;
+                var suffixLen = String.Length(suffix);
+                var colLen = String.Length(colName);
+                if colLen > suffixLen {
+                    if String.Substring(colName, colLen - suffixLen, suffixLen) == suffix {
+                        return i;
+                    }
+                }
+                i = i + 1;
+            }
+        }
+        if expr.kind == EXPR_FUNCTION {
+            var funcName = expr.funcName;
+            var i = 0;
+            while i < result.columnNames.count() {
+                if result.columnNames.get(i) == funcName {
+                    return i;
+                }
+                i = i + 1;
+            }
+        }
+        return -1;
     }
 
     //=========================================================================
@@ -2482,6 +3426,9 @@ entity Executor {
                 var table = maybeTable;
                 content = content + generateCreateTable(table) + "\n\n";
 
+                // Clone table name to prevent string corruption during serialization
+                var tblName = String.Substring(table.name, 0, String.Length(table.name));
+
                 // Generate INSERT statements for each row
                 var ri = 0;
                 while ri < table.rowCount() {
@@ -2489,7 +3436,7 @@ entity Executor {
                     if maybeRow != null {
                         var row = maybeRow;
                         if row.deleted == false {
-                            content = content + generateInsert(table, row) + "\n";
+                            content = content + generateInsert(tblName, row) + "\n";
                         }
                     }
                     ri = ri + 1;
@@ -2514,8 +3461,14 @@ entity Executor {
 
         // Write to file
         IO.File.WriteAllText(filename, content);
-        result.message = "Database saved to '" + filename + "'";
 
+        // Verify the file was actually written
+        if IO.File.Exists(filename) == false {
+            result.setError("Failed to save database to '" + filename + "': file could not be written");
+            return result;
+        }
+
+        result.message = "Database saved to '" + filename + "'";
         return result;
     }
 
@@ -2557,14 +3510,15 @@ entity Executor {
     }
 
     // Generate INSERT statement for a row
-    hide func generateInsert(table: Table, row: Row) -> String {
-        var sql = "INSERT INTO " + table.name + " VALUES (";
+    hide func generateInsert(tableName: String, row: Row) -> String {
+        var sql = "INSERT INTO " + tableName + " VALUES (";
         var ci = 0;
         while ci < row.columnCount() {
             if ci > 0 {
                 sql = sql + ", ";
             }
-            sql = sql + row.getValue(ci).toSqlString();
+            var val = cloneValue(row.getValue(ci));
+            sql = sql + val.toSqlString();
             ci = ci + 1;
         }
         sql = sql + ");";

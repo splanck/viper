@@ -3,8 +3,8 @@
 
 module index;
 
-bind Viper.String;
-bind Viper.Fmt;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
 
 bind "./types";
 bind "./schema";
@@ -138,7 +138,7 @@ entity SqlIndex {
         var i = 0;
         while i < entries.count() {
             if entries.get(i).rowIndex == rowIdx {
-                entries.remove(i);
+                entries.removeAt(i);
                 return;
             }
             i = i + 1;
@@ -268,8 +268,8 @@ entity IndexManager {
         while i < count {
             var currentName = indexNames.get(i);
             if currentName == idxName {
-                indexes.remove(i);
-                indexNames.remove(i);
+                indexes.removeAt(i);
+                indexNames.removeAt(i);
                 return true;
             }
             i = i + 1;

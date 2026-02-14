@@ -4,8 +4,8 @@
 
 module test_server;
 
-bind Viper.Terminal;
-bind Viper.Fmt;
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
 
 bind "./server/sql_server";
 bind "./types";

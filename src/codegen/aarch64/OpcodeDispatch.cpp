@@ -479,6 +479,28 @@ bool lowerInstruction(const il::core::Instr &ins,
                             MInstr{MOpcode::StrFprFpImm,
                                    {MOperand::vregOp(RegClass::FPR, srcF), MOperand::immOp(off)}});
                     }
+                    else if (isStr)
+                    {
+                        // String store to alloca: retain the new value before storing.
+                        // Without this retain, consuming runtime functions like
+                        // rt_str_concat (which unrefs both inputs) can drop the
+                        // refcount to zero prematurely, causing use-after-free.
+                        // The VM's storeSlotToPtr always does retain+release for
+                        // Str stores.  We omit the release of the old value here
+                        // because native alloca slots are not zero-initialised and
+                        // the first store would pass garbage to rt_str_release_maybe.
+                        // This matches the VM's effective behaviour: the VM retains
+                        // on every alloca store but never releases on function exit,
+                        // so alloca retains are "leaked" in both backends.
+                        bbOut().instrs.push_back(MInstr{
+                            MOpcode::MovRR,
+                            {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, v)}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::StrRegFpImm,
+                                   {MOperand::vregOp(RegClass::GPR, v), MOperand::immOp(off)}});
+                    }
                     else
                     {
                         bbOut().instrs.push_back(

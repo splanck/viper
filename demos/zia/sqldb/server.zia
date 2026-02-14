@@ -4,7 +4,7 @@
 
 module server;
 
-bind Viper.Fmt;
+bind Fmt = Viper.Fmt;
 
 bind "./database";
 bind "./table";

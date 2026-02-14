@@ -3,7 +3,7 @@
 
 module txn;
 
-bind Viper.Fmt;
+bind Fmt = Viper.Fmt;
 
 bind "./page";
 bind "./wal";

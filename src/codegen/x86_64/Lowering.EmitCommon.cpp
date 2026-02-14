@@ -824,46 +824,25 @@ std::optional<int> EmitCommon::icmpConditionCode(std::string_view opcode) noexce
         return std::nullopt;
     }
 
+    /// Static lookup table mapping icmp suffix strings to SETcc condition codes.
+    /// Order: eq=0, ne=1, slt=2, sle=3, sgt=4, sge=5, ugt=6, uge=7, ult=8, ule=9.
+    struct Entry
+    {
+        std::string_view suffix;
+        int code;
+    };
+    static constexpr Entry kTable[] = {
+        {"eq", 0},  {"ne", 1},  {"slt", 2}, {"sle", 3}, {"sgt", 4},
+        {"sge", 5}, {"ugt", 6}, {"uge", 7}, {"ult", 8}, {"ule", 9},
+    };
+
     const std::string_view suffix = opcode.substr(5);
-    if (suffix == "eq")
+    for (const auto &entry : kTable)
     {
-        return 0;
-    }
-    if (suffix == "ne")
-    {
-        return 1;
-    }
-    if (suffix == "slt")
-    {
-        return 2;
-    }
-    if (suffix == "sle")
-    {
-        return 3;
-    }
-    if (suffix == "sgt")
-    {
-        return 4;
-    }
-    if (suffix == "sge")
-    {
-        return 5;
-    }
-    if (suffix == "ugt")
-    {
-        return 6;
-    }
-    if (suffix == "uge")
-    {
-        return 7;
-    }
-    if (suffix == "ult")
-    {
-        return 8;
-    }
-    if (suffix == "ule")
-    {
-        return 9;
+        if (entry.suffix == suffix)
+        {
+            return entry.code;
+        }
     }
     return std::nullopt;
 }
@@ -880,30 +859,25 @@ std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexce
         return std::nullopt;
     }
 
+    /// Static lookup table mapping fcmp suffix strings to SETcc condition codes.
+    /// Uses unsigned condition codes because UCOMISD clears SF/OF:
+    /// lt→8 ("b"/below), le→9 ("be"/below-or-equal), gt→6 ("a"/above), ge→7 ("ae"/above-or-equal).
+    struct Entry
+    {
+        std::string_view suffix;
+        int code;
+    };
+    static constexpr Entry kTable[] = {
+        {"eq", 0}, {"ne", 1}, {"lt", 8}, {"le", 9}, {"gt", 6}, {"ge", 7},
+    };
+
     const std::string_view suffix = opcode.substr(5);
-    if (suffix == "eq")
+    for (const auto &entry : kTable)
     {
-        return 0;
-    }
-    if (suffix == "ne")
-    {
-        return 1;
-    }
-    if (suffix == "lt")
-    {
-        return 8; // "b" (below) — UCOMISD clears SF/OF, so signed codes are wrong
-    }
-    if (suffix == "le")
-    {
-        return 9; // "be" (below or equal)
-    }
-    if (suffix == "gt")
-    {
-        return 6; // "a" (above)
-    }
-    if (suffix == "ge")
-    {
-        return 7; // "ae" (above or equal)
+        if (entry.suffix == suffix)
+        {
+            return entry.code;
+        }
     }
     return std::nullopt;
 }

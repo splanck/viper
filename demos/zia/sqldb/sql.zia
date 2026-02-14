@@ -25,9 +25,9 @@
 
 module sql;
 
-bind Viper.Terminal;
-bind Viper.String;
-bind Viper.Fmt;
+bind Terminal = Viper.Terminal;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
 
 //=============================================================================
 // SECTION 1: TOKEN TYPES
@@ -1202,7 +1202,7 @@ entity SqlIndex {
         var i = 0;
         while i < entries.count() {
             if entries.get(i).rowIndex == rowIdx {
-                entries.remove(i);
+                entries.removeAt(i);
                 return;
             }
             i = i + 1;
@@ -1326,8 +1326,8 @@ entity IndexManager {
         while i < count {
             var currentName = indexNames.get(i);
             if currentName == idxName {
-                indexes.remove(i);
-                indexNames.remove(i);
+                indexes.removeAt(i);
+                indexNames.removeAt(i);
                 return true;
             }
             i = i + 1;
@@ -3084,7 +3084,7 @@ entity Database {
         var i = 0;
         while i < tables.count() {
             if tables.get(i).name == tableName {
-                tables.remove(i);
+                tables.removeAt(i);
                 return true;
             }
             i = i + 1;
