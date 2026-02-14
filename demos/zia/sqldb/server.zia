@@ -5,10 +5,18 @@
 module server;
 
 bind Fmt = Viper.Fmt;
+bind IO = Viper.IO;
 
 bind "./database";
 bind "./table";
 bind "./index";
+bind "./storage/page";
+bind "./storage/serializer";
+bind "./storage/pager";
+bind "./storage/buffer";
+bind "./storage/schema_page";
+bind "./storage/data_page";
+bind "./storage/engine";
 
 //=============================================================================
 // DATABASE SERVER ENTITY
@@ -21,6 +29,11 @@ entity DatabaseServer {
     expose List[Database] dbList;
     expose List[IndexManager] indexManagers;
 
+    // Parallel list tracking per-database storage engines (null for in-memory databases)
+    expose List[StorageEngine?] storageEngines;
+    // Parallel list tracking per-database file paths ("" for in-memory databases)
+    expose List[String] dbFilePaths;
+
     // Current database context
     expose String currentDbName;
     expose Integer currentDbIndex;
@@ -29,6 +42,8 @@ entity DatabaseServer {
         dbNames = [];
         dbList = [];
         indexManagers = [];
+        storageEngines = [];
+        dbFilePaths = [];
         currentDbName = "";
         currentDbIndex = -1;
 
@@ -63,6 +78,79 @@ entity DatabaseServer {
         idxMgr.init();
         indexManagers.add(idxMgr);
 
+        // No storage engine by default (in-memory)
+        storageEngines.add(null);
+        dbFilePaths.add("");
+
+        return true;
+    }
+
+    // Create a new database with persistent file storage
+    expose func createDatabaseWithFile(name: String, filePath: String) -> Boolean {
+        // Check if database already exists
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                return false;
+            }
+            i = i + 1;
+        }
+
+        // Create new database
+        var db = new Database();
+        db.initWithName(name);
+        dbNames.add(name);
+        dbList.add(db);
+
+        // Create index manager for this database
+        var idxMgr = new IndexManager();
+        idxMgr.init();
+        indexManagers.add(idxMgr);
+
+        // Create storage engine for persistent file
+        var se = new StorageEngine();
+        se.init();
+
+        var isNew = true;
+        var ok = false;
+        if IO.File.Exists(filePath) {
+            ok = se.openDatabase(filePath);
+            isNew = false;
+        } else {
+            ok = se.createDatabase(filePath);
+        }
+
+        if ok == false {
+            // Rollback: remove the database we just added
+            var newDbNames: List[String] = [];
+            var newDbList: List[Database] = [];
+            var newIdxMgrs: List[IndexManager] = [];
+            var j = 0;
+            while j < dbNames.count() - 1 {
+                newDbNames.add(dbNames.get(j));
+                newDbList.add(dbList.get(j));
+                newIdxMgrs.add(indexManagers.get(j));
+                j = j + 1;
+            }
+            dbNames = newDbNames;
+            dbList = newDbList;
+            indexManagers = newIdxMgrs;
+            return false;
+        }
+
+        storageEngines.add(se);
+        dbFilePaths.add(filePath);
+
+        // If reopening existing file, load tables
+        if isNew == false {
+            var tables = se.loadAllTables();
+            var k = 0;
+            while k < tables.count() {
+                db.addTable(tables.get(k));
+                k = k + 1;
+            }
+        }
+
         return true;
     }
 
@@ -93,11 +181,20 @@ entity DatabaseServer {
             return false;  // Database not found
         }
 
+        // Close storage engine if this database has one
+        var maybeSe = storageEngines.get(dropIdx);
+        if maybeSe != null {
+            var se = maybeSe;
+            se.closeDatabase();
+        }
+
         // Workaround for BUG-002: List.remove() doesn't work
         // Rebuild lists without the dropped database
         var newDbNames: List[String] = [];
         var newDbList: List[Database] = [];
         var newIndexManagers: List[IndexManager] = [];
+        var newStorageEngines: List[StorageEngine?] = [];
+        var newDbFilePaths: List[String] = [];
 
         i = 0;
         while i < dbNames.count() {
@@ -105,6 +202,8 @@ entity DatabaseServer {
                 newDbNames.add(dbNames.get(i));
                 newDbList.add(dbList.get(i));
                 newIndexManagers.add(indexManagers.get(i));
+                newStorageEngines.add(storageEngines.get(i));
+                newDbFilePaths.add(dbFilePaths.get(i));
             }
             i = i + 1;
         }
@@ -112,6 +211,8 @@ entity DatabaseServer {
         dbNames = newDbNames;
         dbList = newDbList;
         indexManagers = newIndexManagers;
+        storageEngines = newStorageEngines;
+        dbFilePaths = newDbFilePaths;
 
         // Update currentDbIndex if needed (if current was after dropped)
         if currentDbIndex > dropIdx {
@@ -179,6 +280,26 @@ entity DatabaseServer {
             i = i + 1;
         }
         return null;
+    }
+
+    // Get storage engine for a database (null if in-memory)
+    expose func getStorageEngine(name: String) -> StorageEngine? {
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                return storageEngines.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Get storage engine for current database
+    expose func currentStorageEngine() -> StorageEngine? {
+        if currentDbIndex < 0 || currentDbIndex >= storageEngines.count() {
+            return null;
+        }
+        return storageEngines.get(currentDbIndex);
     }
 
     //=========================================================================

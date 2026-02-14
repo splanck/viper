@@ -309,6 +309,193 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+//===----------------------------------------------------------------------===//
+// BUG-FE-007: Non-existent entity method through field chain
+//===----------------------------------------------------------------------===//
+
+/// @brief Calling a non-existent method on an entity field should fail compilation.
+TEST(ZiaBugFixes, BugFE007_NonExistentEntityMethodError)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Inner {
+    expose Integer x;
+    expose func init() { x = 0; }
+    expose func getX() -> Integer { return x; }
+}
+
+entity Outer {
+    expose Inner inner;
+    expose func init() {
+        inner = new Inner();
+        inner.init();
+    }
+}
+
+func start() {
+    var outer = new Outer();
+    outer.init();
+    outer.inner.nonExistentMethod();
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe007a.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    // Should fail: Inner has no method 'nonExistentMethod'
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(result.diagnostics.errorCount() > 0);
+}
+
+/// @brief Calling a valid method on an entity field should compile successfully.
+TEST(ZiaBugFixes, BugFE007_ValidEntityFieldMethodDispatch)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Inner {
+    expose Integer x;
+    expose func init() { x = 42; }
+    expose func getX() -> Integer { return x; }
+}
+
+entity Outer {
+    expose Inner inner;
+    expose func init() {
+        inner = new Inner();
+        inner.init();
+    }
+    expose func getInnerX() -> Integer {
+        return inner.getX();
+    }
+}
+
+func start() {
+    var outer = new Outer();
+    outer.init();
+    var val = outer.inner.getX();
+    Viper.Terminal.SayInt(val);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe007b.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// BUG-FE-005: Complex functions with many locals (regression test)
+//===----------------------------------------------------------------------===//
+
+/// @brief Functions with 15+ locals and complex control flow should compile.
+TEST(ZiaBugFixes, BugFE005_ManyLocalsComplexControlFlow)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func complexFunc() -> Integer {
+    var a = 0;
+    var b = 1;
+    var c = 2;
+    var d = 3;
+    var e = 4;
+    var f = 5;
+    var g = 6;
+    var h = 7;
+    var i = 8;
+    var j = 9;
+    var k = 10;
+    var l = 11;
+    var m = 12;
+    var n = 13;
+    var o = 14;
+    var p = 15;
+    var q = 16;
+
+    var idx = 0;
+    while idx < 10 {
+        var kind = (idx % 4) + 1;
+        if kind == 1 {
+            a = a + 1;
+            b = idx;
+        } else if kind == 2 {
+            c = c + a + b;
+            d = d + 1;
+        } else if kind == 3 {
+            e = e + 1;
+            f = f + c;
+        } else {
+            g = g + 1;
+            h = h + d;
+        }
+        idx = idx + 1;
+    }
+
+    return a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q;
+}
+
+func start() {
+    var result = complexFunc();
+    Viper.Terminal.SayInt(result);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe005.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// BUG-FE-006: List method calls on function parameters (regression test)
+//===----------------------------------------------------------------------===//
+
+/// @brief List.add() on a function parameter should compile correctly.
+TEST(ZiaBugFixes, BugFE006_ListParamMethodCalls)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func categorize(items: List[Integer], evens: List[Integer], odds: List[Integer]) {
+    var i = 0;
+    var total = items.count();
+    while i < total {
+        var val = items.get(i);
+        if val % 2 == 0 {
+            evens.add(val);
+        } else {
+            odds.add(val);
+        }
+        i = i + 1;
+    }
+}
+
+func start() {
+    var items: List[Integer] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    var evens: List[Integer] = [];
+    var odds: List[Integer] = [];
+    categorize(items, evens, odds);
+    Viper.Terminal.SayInt(evens.count());
+    Viper.Terminal.SayInt(odds.count());
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe006.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

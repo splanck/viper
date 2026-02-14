@@ -166,7 +166,7 @@ entity BufferPool {
         return true;
     }
 
-    // Flush all dirty pages to disk
+    // Flush all dirty pages to disk and update the file header
     expose func flushAll() {
         var i = 0;
         while i < pages.count() {
@@ -176,6 +176,8 @@ entity BufferPool {
             }
             i = i + 1;
         }
+        // Keep header in sync so data is recoverable even without closeDatabase()
+        pager.flushHeader();
     }
 
     // Delete a page (free for reuse)

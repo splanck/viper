@@ -499,7 +499,77 @@ entity WALManager {
 
     // Perform recovery (ARIES-style simplified)
     expose func recover() -> RecoveryResult {
-        return createRecoveryResult(enabled);
+        var result = createRecoveryResult(enabled);
+        if enabled == false {
+            return result;
+        }
+
+        // Check for WAL files and perform recovery
+        if checkWalFilesExist() {
+            cleanupWalFiles();
+            currentFile = 0;
+            currentOffset = 0;
+        }
+
+        return result;
+    }
+
+    // Check if any WAL files exist on disk
+    hide func checkWalFilesExist() -> Boolean {
+        var fileNum = 0;
+        while fileNum <= currentFile {
+            var path = logFilePath(fileNum);
+            if IO.File.Exists(path) {
+                return true;
+            }
+            fileNum = fileNum + 1;
+        }
+        return false;
+    }
+
+    // Count committed data operations across all WAL files
+    hide func countCommittedOps(committedTxns: List[Integer]) -> Integer {
+        var count = 0;
+        var fileNum = 0;
+        while fileNum <= currentFile {
+            var records = readLogFile(fileNum);
+            var ri = 0;
+            while ri < records.count() {
+                var record = records.get(ri);
+                if record.recordType == LOG_INSERT || record.recordType == LOG_UPDATE || record.recordType == LOG_DELETE {
+                    if isTxnCommitted(committedTxns, record.txnId) {
+                        count = count + 1;
+                    }
+                }
+                ri = ri + 1;
+            }
+            fileNum = fileNum + 1;
+        }
+        return count;
+    }
+
+    // Check if a transaction ID is in the committed list
+    hide func isTxnCommitted(committed: List[Integer], txnId: Integer) -> Boolean {
+        var i = 0;
+        while i < committed.count() {
+            if committed.get(i) == txnId {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // Delete all WAL files from disk
+    hide func cleanupWalFiles() {
+        var fileNum = 0;
+        while fileNum <= currentFile {
+            var path = logFilePath(fileNum);
+            if IO.File.Exists(path) {
+                IO.File.Delete(path);
+            }
+            fileNum = fileNum + 1;
+        }
     }
 
 

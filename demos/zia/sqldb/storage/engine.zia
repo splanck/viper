@@ -13,6 +13,7 @@ bind "./pager";
 bind "./buffer";
 bind "./schema_page";
 bind "./data_page";
+bind "./wal";
 bind "../types";
 bind "../table";
 bind "../schema";
@@ -33,6 +34,12 @@ entity StorageEngine {
     // Tracks the next table ID to assign
     hide Integer nextTableId;
 
+    // Write-Ahead Log for crash recovery (Phase 4)
+    expose WALManager wal;
+    hide Integer nextTxnId;
+    hide RowSerializer rowSerializer;
+    hide Boolean walEnabled;
+
     expose func init() {
         pool = new BufferPool();
         pool.init();
@@ -44,6 +51,15 @@ entity StorageEngine {
         isPersistent = false;
         tableMetas = [];
         nextTableId = 1;
+        wal = new WALManager();
+        wal.init();
+        nextTxnId = 1;
+        rowSerializer = new RowSerializer();
+        rowSerializer.init();
+        walEnabled = false;
+        rowPageIds = [];
+        rowSlotIdxs = [];
+        rowTableNames = [];
     }
 
     //=========================================================================
@@ -76,6 +92,7 @@ entity StorageEngine {
         isPersistent = true;
         tableMetas = [];
         nextTableId = 1;
+
         return true;
     }
 
@@ -117,9 +134,14 @@ entity StorageEngine {
         return true;
     }
 
-    // Close the database, flushing all dirty pages
+    // Close the database, flushing all dirty pages and WAL
     expose func closeDatabase() {
         if isPersistent {
+            if walEnabled {
+                // Checkpoint: flush WAL then data
+                var activeTxns: List[Integer] = [];
+                wal.checkpoint(activeTxns);
+            }
             pool.flushAll();
             pool.closeDatabase();
             isPersistent = false;
@@ -244,6 +266,7 @@ entity StorageEngine {
     }
 
     // Load all rows for a table by walking its data page chain
+    // Also tracks row locations for Phase 5 incremental operations
     expose func loadTableRows(meta: TableMeta) -> List[Row] {
         var allRows: List[Row] = [];
         var pageId = meta.firstDataPage;
@@ -256,6 +279,8 @@ entity StorageEngine {
                 var j = 0;
                 while j < pageRows.count() {
                     allRows.add(pageRows.get(j));
+                    // Track row location for incremental updates
+                    trackRowLocation(meta.tableName, pageId, j);
                     j = j + 1;
                 }
                 var nextId = dataMgr.getNextPageId(p);
@@ -285,6 +310,13 @@ entity StorageEngine {
         }
         var m = meta;
 
+        // WAL: begin implicit transaction
+        var txnId = nextTxnId;
+        nextTxnId = nextTxnId + 1;
+        if walEnabled {
+            wal.logBegin(txnId);
+        }
+
         // Walk data page chain to find a page with space
         var pageId = m.firstDataPage;
         var lastPageId = INVALID_PAGE_ID;
@@ -298,6 +330,12 @@ entity StorageEngine {
                     var slot = dataMgr.insertRow(p, row);
                     pool.unpinPage(pageId, true);
                     if slot >= 0 {
+                        // WAL: log the insert
+                        if walEnabled {
+                            var rowBuf = serializeRow(row);
+                            wal.logInsert(txnId, m.tableId, pageId, slot, rowBuf);
+                            wal.logCommit(txnId);
+                        }
                         // Update row count in metadata
                         m.rowCount = m.rowCount + 1;
                         updateMetaInSchema(m);
@@ -335,12 +373,22 @@ entity StorageEngine {
         pool.unpinPage(newPage.pageId, true);
 
         if slot >= 0 {
+            // WAL: log the insert
+            if walEnabled {
+                var rowBuf = serializeRow(row);
+                wal.logInsert(txnId, m.tableId, newPage.pageId, slot, rowBuf);
+                wal.logCommit(txnId);
+            }
             m.rowCount = m.rowCount + 1;
             updateMetaInSchema(m);
             pool.flushAll();
             return true;
         }
 
+        // WAL: abort on failure
+        if walEnabled {
+            wal.logAbort(txnId);
+        }
         return false;
     }
 
@@ -356,6 +404,13 @@ entity StorageEngine {
             return false;
         }
         var m = meta;
+
+        // WAL: begin implicit transaction for the rewrite
+        var txnId = nextTxnId;
+        nextTxnId = nextTxnId + 1;
+        if walEnabled {
+            wal.logBegin(txnId);
+        }
 
         // Free all existing data pages
         var pageId = m.firstDataPage;
@@ -387,8 +442,13 @@ entity StorageEngine {
             if curPage != null {
                 var cp = curPage;
                 if dataMgr.canFitRow(cp, row) {
-                    dataMgr.insertRow(cp, row);
+                    var slot = dataMgr.insertRow(cp, row);
                     pool.unpinPage(currentPageId, true);
+                    // WAL: log each re-inserted row
+                    if walEnabled && slot >= 0 {
+                        var rowBuf = serializeRow(row);
+                        wal.logInsert(txnId, m.tableId, currentPageId, slot, rowBuf);
+                    }
                 } else {
                     // Current page full, allocate new page
                     var newPage = pool.newPage(PAGE_TYPE_DATA);
@@ -396,12 +456,22 @@ entity StorageEngine {
                     dataMgr.setNextPageId(cp, newPage.pageId);
                     pool.unpinPage(currentPageId, true);
 
-                    dataMgr.insertRow(newPage, row);
+                    var slot = dataMgr.insertRow(newPage, row);
                     currentPageId = newPage.pageId;
                     pool.unpinPage(newPage.pageId, true);
+                    // WAL: log each re-inserted row
+                    if walEnabled && slot >= 0 {
+                        var rowBuf = serializeRow(row);
+                        wal.logInsert(txnId, m.tableId, currentPageId, slot, rowBuf);
+                    }
                 }
             }
             i = i + 1;
+        }
+
+        // WAL: commit the rewrite transaction
+        if walEnabled {
+            wal.logCommit(txnId);
         }
 
         // Update metadata
@@ -457,5 +527,112 @@ entity StorageEngine {
             schemaMgr.updateTable(sp, meta);
             pool.unpinPage(1, true);
         }
+    }
+
+    // Serialize a row to a BinaryBuffer for WAL logging
+    hide func serializeRow(row: Row) -> BinaryBuffer {
+        var buf = new BinaryBuffer();
+        buf.init();
+        rowSerializer.serializeRow(row, buf);
+        return buf;
+    }
+
+    // Enable WAL for crash recovery
+    expose func enableWal(walDir: String) {
+        wal = new WALManager();
+        wal.initWithDir(walDir);
+        walEnabled = true;
+    }
+
+    //=========================================================================
+    // ROW LOCATION TRACKING (Phase 5)
+    //=========================================================================
+
+    // Per-row location: maps row index → (pageId, slotIdx) for in-place updates
+    hide List[Integer] rowPageIds;
+    hide List[Integer] rowSlotIdxs;
+    hide List[String] rowTableNames;
+
+    // Record a row's storage location after loading or inserting
+    expose func trackRowLocation(tableName: String, pageId: Integer, slotIdx: Integer) {
+        rowPageIds.add(pageId);
+        rowSlotIdxs.add(slotIdx);
+        rowTableNames.add(tableName);
+    }
+
+    // Find a row's location by table name and row index within that table
+    expose func findRowLocation(tableName: String, rowIndex: Integer) -> List[Integer] {
+        var result: List[Integer] = [];
+        var matchCount = 0;
+        var i = 0;
+        while i < rowTableNames.count() {
+            if rowTableNames.get(i) == tableName {
+                if matchCount == rowIndex {
+                    result.add(rowPageIds.get(i));
+                    result.add(rowSlotIdxs.get(i));
+                    return result;
+                }
+                matchCount = matchCount + 1;
+            }
+            i = i + 1;
+        }
+        // Not found
+        result.add(INVALID_PAGE_ID);
+        result.add(-1);
+        return result;
+    }
+
+    // Clear row locations for a table (used before rewrite)
+    expose func clearRowLocations(tableName: String) {
+        var newPageIds: List[Integer] = [];
+        var newSlotIdxs: List[Integer] = [];
+        var newTableNames: List[String] = [];
+        var i = 0;
+        while i < rowTableNames.count() {
+            if rowTableNames.get(i) != tableName {
+                newPageIds.add(rowPageIds.get(i));
+                newSlotIdxs.add(rowSlotIdxs.get(i));
+                newTableNames.add(rowTableNames.get(i));
+            }
+            i = i + 1;
+        }
+        rowPageIds = newPageIds;
+        rowSlotIdxs = newSlotIdxs;
+        rowTableNames = newTableNames;
+    }
+
+    // Delete a specific row by its storage location
+    expose func deleteRowByLocation(tableName: String, pageId: Integer, slotIdx: Integer) -> Boolean {
+        if isPersistent == false || pageId == INVALID_PAGE_ID {
+            return false;
+        }
+
+        var page = pool.fetchPage(pageId);
+        if page != null {
+            var p = page;
+            dataMgr.deleteRow(p, slotIdx);
+            pool.unpinPage(pageId, true);
+            return true;
+        }
+        return false;
+    }
+
+    // Update a specific row by its storage location
+    expose func updateRowByLocation(tableName: String, pageId: Integer, slotIdx: Integer, newRow: Row) -> Boolean {
+        if isPersistent == false || pageId == INVALID_PAGE_ID {
+            return false;
+        }
+
+        var page = pool.fetchPage(pageId);
+        if page != null {
+            var p = page;
+            var ok = dataMgr.updateRow(p, slotIdx, newRow);
+            pool.unpinPage(pageId, true);
+            if ok {
+                return true;
+            }
+            // If in-place update failed (row grew too large), fall through
+        }
+        return false;
     }
 }

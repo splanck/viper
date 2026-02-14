@@ -59,18 +59,29 @@ entity BinaryBuffer {
         writeByte((val / 256) % 256);
     }
 
-    // Write a 4-byte integer (little-endian)
+    // Write a 4-byte integer (little-endian, two's complement for negatives)
     expose func writeInt32(val: Integer) {
-        writeByte(val % 256);
-        writeByte((val / 256) % 256);
-        writeByte((val / 65536) % 256);
-        writeByte((val / 16777216) % 256);
+        var v = val;
+        if v < 0 { v = v + 4294967296; }
+        writeByte(v % 256);
+        writeByte((v / 256) % 256);
+        writeByte((v / 65536) % 256);
+        writeByte((v / 16777216) % 256);
     }
 
-    // Write an 8-byte integer (little-endian)
+    // Write an 8-byte integer (little-endian, two's complement for negatives)
     expose func writeInt64(val: Integer) {
-        writeInt32(val % 4294967296);
-        writeInt32(val / 4294967296);
+        var lo = val % 4294967296;
+        var hi = val / 4294967296;
+        if lo < 0 {
+            lo = lo + 4294967296;
+            hi = hi - 1;
+        }
+        if hi < 0 {
+            hi = hi + 4294967296;
+        }
+        writeInt32(lo);
+        writeInt32(hi);
     }
 
     // Write a string (length-prefixed)
@@ -112,10 +123,15 @@ entity BinaryBuffer {
         return b0 + (b1 * 256) + (b2 * 65536) + (b3 * 16777216);
     }
 
-    // Read an 8-byte integer
+    // Read an 8-byte integer (two's complement sign reconstruction)
     expose func readInt64() -> Integer {
         var lo = readInt32();
         var hi = readInt32();
+        // If high word has bit 31 set, the original value was negative
+        if hi >= 2147483648 {
+            var signedHi = hi - 4294967296;
+            return lo + (signedHi * 4294967296);
+        }
         return lo + (hi * 4294967296);
     }
 

@@ -190,30 +190,36 @@ entity Pager {
     }
 
     // Close the database
+    // Write the current header state (pageCount, freeListHead, etc.) to disk
+    // Called after page allocations and during close to keep the header current
+    expose func flushHeader() {
+        if isOpen == false { return; }
+        var header = new BinaryBuffer();
+        header.initWithCapacity(PAGE_SIZE);
+
+        writeHeaderMagic(header);
+
+        header.seek(HEADER_VERSION_OFFSET);
+        header.writeInt32(fileVersion);
+
+        header.seek(HEADER_PAGE_SIZE_OFFSET);
+        header.writeInt32(PAGE_SIZE);
+
+        header.seek(HEADER_PAGE_COUNT_OFFSET);
+        header.writeInt64(pageCount);
+
+        header.seek(HEADER_SCHEMA_PAGE_OFFSET);
+        header.writeInt64(schemaPageId);
+
+        header.seek(HEADER_FREELIST_HEAD_OFFSET);
+        header.writeInt64(freeListHead);
+
+        writePageToFile(0, header);
+    }
+
     expose func closeDatabase() {
         if isOpen {
-            // Update header with current state
-            var header = new BinaryBuffer();
-            header.initWithCapacity(PAGE_SIZE);
-
-            writeHeaderMagic(header);
-
-            header.seek(HEADER_VERSION_OFFSET);
-            header.writeInt32(fileVersion);
-
-            header.seek(HEADER_PAGE_SIZE_OFFSET);
-            header.writeInt32(PAGE_SIZE);
-
-            header.seek(HEADER_PAGE_COUNT_OFFSET);
-            header.writeInt64(pageCount);
-
-            header.seek(HEADER_SCHEMA_PAGE_OFFSET);
-            header.writeInt64(schemaPageId);
-
-            header.seek(HEADER_FREELIST_HEAD_OFFSET);
-            header.writeInt64(freeListHead);
-
-            writePageToFile(0, header);
+            flushHeader();
         }
         isOpen = false;
     }

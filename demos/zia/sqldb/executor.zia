@@ -2180,11 +2180,24 @@ entity Executor {
                 }
                 return executeCreateIndex(stmt);
             }
-            // CREATE DATABASE
+            // CREATE DATABASE [name] [FILE 'path']
             if parser.currentKind() == TK_DATABASE {
                 parser.advance();
                 if parser.currentKind() == TK_IDENTIFIER {
                     var dbName = parser.currentText();
+                    parser.advance();
+                    // Check for optional FILE 'path' clause
+                    if parser.currentKind() == TK_FILE {
+                        parser.advance();
+                        if parser.currentKind() == TK_STRING {
+                            var filePath = parser.currentText();
+                            return executeCreateDatabaseWithFile(dbName, filePath);
+                        }
+                        var result = new QueryResult();
+                        result.init();
+                        result.setError("FILE requires a file path string");
+                        return result;
+                    }
                     return executeCreateDatabase(dbName);
                 }
                 var result = new QueryResult();
@@ -2634,6 +2647,25 @@ entity Executor {
         return result;
     }
 
+    // CREATE DATABASE with persistent file
+    expose func executeCreateDatabaseWithFile(dbName: String, filePath: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if server.databaseExists(dbName) {
+            result.setError("Database '" + dbName + "' already exists");
+            return result;
+        }
+
+        if server.createDatabaseWithFile(dbName, filePath) {
+            result.message = "Database '" + dbName + "' created with persistent storage at '" + filePath + "'";
+        } else {
+            result.setError("Failed to create persistent database '" + dbName + "'");
+        }
+
+        return result;
+    }
+
     // DROP DATABASE
     expose func executeDropDatabase(dbName: String) -> QueryResult {
         var result = new QueryResult();
@@ -2675,6 +2707,8 @@ entity Executor {
 
         if server.useDatabase(dbName) {
             refreshCurrentDatabase();
+            // Switch storage engine to match the new database
+            storageEngine = server.currentStorageEngine();
             result.message = "Switched to database '" + dbName + "'";
         } else {
             result.setError("Failed to switch to database '" + dbName + "'");

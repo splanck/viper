@@ -19,7 +19,6 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include <iostream>
 
 namespace il::frontends::zia
 {
@@ -233,6 +232,13 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     }
                     parentName = parentIt->second.baseClass;
                 }
+
+                // Entity type found but method not in it or any parent — emit error
+                diag_.report({il::support::Severity::Error,
+                              "Entity type '" + typeName + "' has no method '" +
+                                  fieldExpr->field + "'",
+                              expr->loc, "V3100"});
+                return {Value::constInt(0), Type(Type::Kind::Void)};
             }
 
             // Handle interface method calls

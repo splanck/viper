@@ -169,3 +169,72 @@ These need to be fixed in the platform itself.
 - **Fixed**: 2026-02-12
 
 ---
+
+## BUG-FE-005: Zia compiler emits bad IL for complex functions with many locals
+
+- **Status**: CANNOT REPRODUCE
+- **Severity**: Medium
+- **Component**: Zia frontend — IL code generation
+- **Symptom**: Functions with many local variables and control flow (e.g., WAL `recover()` implementation with 15+ locals across nested while/if) fail IL verification with `operand type mismatch: pointer type mismatch: operand 0 must be ptr` on `load` instructions. The generated IL has incorrect pointer types for some stack slots.
+- **Root cause**: Could not reproduce with standalone test cases. Functions with 17+ locals and complex nested while/if control flow compile and run correctly. The original failure may have been caused by interaction with BUG-FE-007 (calling non-existent entity methods), which has been fixed.
+- **Regression test**: `test_zia_bugfixes.cpp:BugFE005_ManyLocalsComplexControlFlow`
+- **Found**: 2026-02-13
+- **Closed**: 2026-02-14
+
+---
+
+## BUG-FE-006: Zia compiler generates wrong IL types for List method calls on function parameters
+
+- **Status**: CANNOT REPRODUCE
+- **Severity**: Medium
+- **Component**: Zia frontend — call lowering
+- **Symptom**: When a `List[Integer]` (or other List type) is passed as a parameter to a function, calling `.add()` on it fails with `call arg type mismatch: @Viper.Collections.List.Push parameter 0 expects ptr but got i64`. The same `.add()` call works fine on a List that is a local variable or entity field.
+- **Root cause**: Could not reproduce with standalone test cases. List parameters passed to functions and modified with `.add()`, `.get()`, `.count()` all work correctly. The original failure may have been caused by interaction with BUG-FE-007 (calling non-existent entity methods), which has been fixed.
+- **Regression test**: `test_zia_bugfixes.cpp:BugFE006_ListParamMethodCalls`
+- **Found**: 2026-02-13
+- **Closed**: 2026-02-14
+
+---
+
+## BUG-FE-007: Zia entity field method dispatch produces null indirect callee
+
+- **Status**: FIXED
+- **Severity**: High
+- **Component**: Zia frontend — `Lowerer_Expr_Call.cpp`
+- **Symptom**: Calling a method on an entity field (e.g., `wal.enable()` where `wal` is a `WALManager` field) crashes at runtime with "Null indirect callee". The entity object is valid (fields are accessible), but method calls on it fail.
+- **Root cause**: The original code was calling a method that did not exist on the entity type (e.g., `enable()` when the actual method was `initWithDir()`). The Zia lowerer's `lowerCall()` found the entity type via `getOrCreateEntityTypeInfo()` but when `findMethod()` and `findVtableSlot()` both returned null, it fell through to the generic indirect call path. This path called `lowerField()` on the non-existent method name, which returned `{Value::constInt(0), Type(I64)}` — a null function pointer. The generated `call.indirect 0` then crashed at runtime.
+- **Fix**: Added proper error reporting to the lowerer. When an entity type is found but the method does not exist (and is not inherited from any parent), the lowerer now emits a compile-time error `"Entity type 'X' has no method 'Y'"` (code V3100) instead of silently generating a null indirect call. Also added a `DiagnosticEngine` reference to the Lowerer class to support proper error reporting.
+- **Verification**: (1) Non-existent entity method calls now produce clear compile errors. (2) Valid entity field method dispatch works correctly (e.g., `engine.wal.isEnabled()`, `engine.wal.initWithDir(path)`). (3) All 1149 tests pass.
+- **Regression test**: `test_zia_bugfixes.cpp:BugFE007_NonExistentEntityMethodError`, `test_zia_bugfixes.cpp:BugFE007_ValidEntityFieldMethodDispatch`
+- **Found**: 2026-02-13
+- **Fixed**: 2026-02-14
+
+---
+
+## BUG-STORAGE-001: BinaryBuffer negative integer serialization truncation
+
+- **Status**: FIXED
+- **Severity**: High
+- **Component**: ViperSQL storage layer — `serializer.zia`
+- **Symptom**: Negative integers (e.g., -42) written via `writeInt32`/`writeInt64` and read back via `readInt32`/`readInt64` produce incorrect positive values. `-42` becomes `214` after a round-trip through file I/O.
+- **Root cause**: `writeInt32` used modulo (`%`) and division (`/`) to split integers into bytes, but negative values in Zia's truncated division produce negative byte values (e.g., `-42 % 256 = -42`). These negative values were stored in the BinaryBuffer's `List[Integer]` but when transferred to `Collections.Bytes` (uint8 array) for file I/O, they were silently converted to unsigned (e.g., -42 → 214). On read-back, `Collections.Bytes.Get` returned the unsigned value, losing the sign.
+- **Fix**: Added two's complement handling: `writeInt32` converts negative values to unsigned (`val + 2^32`), `writeInt64` properly splits negative 64-bit values into unsigned 32-bit lo/hi words, and `readInt64` reconstructs the sign from the high word's bit 31.
+- **Verification**: All serialization round-trip tests pass, including negative values (-42, -1, -273, -40). Stress tests 10 and 12 confirm correct behavior.
+- **Found**: 2026-02-13
+- **Fixed**: 2026-02-13
+
+---
+
+## BUG-STORAGE-002: Pager header not updated on flushAll — data loss without explicit close
+
+- **Status**: FIXED
+- **Severity**: High
+- **Component**: ViperSQL storage layer — `pager.zia`, `buffer.zia`
+- **Symptom**: If a persistent database is written to (INSERT/UPDATE/DELETE with proper flush) but `closeDatabase()` is never called, reopening the file loses all data pages allocated after creation. The file header's `pageCount` field stays at the initial value (2 = header + schema page), so `readPage()` rejects any page ID >= 2 as out of bounds.
+- **Root cause**: The `pageCount` field in the file header was only updated during `closeDatabase()`. The `BufferPool.flushAll()` method wrote dirty data pages to disk but did not update the header, so the on-disk header was stale. When reopening, the pager read `pageCount=2` from the header and refused to load data pages that physically existed in the file.
+- **Fix**: (1) Extracted header writing into a reusable `Pager.flushHeader()` method. (2) Made `BufferPool.flushAll()` call `pager.flushHeader()` after flushing dirty pages, ensuring the header is always in sync with the actual page count.
+- **Verification**: Stress test 11 ("Data survives without explicit CLOSE") passes. All 41 stress tests pass in both VM and native.
+- **Found**: 2026-02-13
+- **Fixed**: 2026-02-13
+
+---

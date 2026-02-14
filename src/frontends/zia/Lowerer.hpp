@@ -381,7 +381,8 @@ class Lowerer
     /// @details The lowerer uses sema for:
     /// - Expression type lookup (sema.typeOf)
     /// - Runtime function resolution (sema.runtimeCallee)
-    explicit Lowerer(Sema &sema, CompilerOptions options = {});
+    explicit Lowerer(Sema &sema, il::support::DiagnosticEngine &diag,
+                     CompilerOptions options = {});
 
     /// @brief Lower a module to IL.
     /// @param module The parsed and analyzed module.
@@ -403,6 +404,9 @@ class Lowerer
 
     /// @brief Semantic analysis results.
     Sema &sema_;
+
+    /// @brief Diagnostic engine for error reporting.
+    il::support::DiagnosticEngine &diag_;
 
     /// @brief Frontend compilation options.
     CompilerOptions options_;

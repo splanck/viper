@@ -126,7 +126,7 @@ CompilerResult compile(const CompilerInput &input,
 
     debugTime("Phase 4: IL Lowering");
     // Phase 4: IL Lowering
-    Lowerer lowerer(sema, options);
+    Lowerer lowerer(sema, result.diagnostics, options);
     result.module = lowerer.lower(*module);
     debugTime("Phase 4: Done");
 

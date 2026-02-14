@@ -5,16 +5,16 @@ bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
 
-bind "./demos/zia/sqldb/storage/page";
-bind "./demos/zia/sqldb/storage/serializer";
-bind "./demos/zia/sqldb/storage/pager";
-bind "./demos/zia/sqldb/storage/buffer";
-bind "./demos/zia/sqldb/storage/schema_page";
-bind "./demos/zia/sqldb/storage/data_page";
-bind "./demos/zia/sqldb/storage/engine";
-bind "./demos/zia/sqldb/types";
-bind "./demos/zia/sqldb/table";
-bind "./demos/zia/sqldb/schema";
+bind "./storage/page";
+bind "./storage/serializer";
+bind "./storage/pager";
+bind "./storage/buffer";
+bind "./storage/schema_page";
+bind "./storage/data_page";
+bind "./storage/engine";
+bind "./types";
+bind "./table";
+bind "./schema";
 
 Integer passed = 0;
 Integer failed = 0;
