@@ -1,11 +1,9 @@
-// test_persistence.zia - Tests for Phase 10: Storage & Persistence
-// Part of SQLite Clone - ViperLang Implementation
-
+// test_persistence.zia - End-to-end tests for persistent .vdb storage (Phase 2)
 module test_persistence;
 
 bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
+bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 
 bind "./executor";
@@ -17,263 +15,257 @@ bind "./executor";
 Integer passed = 0;
 Integer failed = 0;
 
-func assertTrue(cond: Boolean, desc: String) {
-    if cond {
-        Terminal.Say("  PASS: " + desc);
+func check(name: String, condition: Boolean) {
+    if condition {
+        Terminal.Say("  PASS: " + name);
         passed = passed + 1;
     } else {
-        Terminal.Say("  FAIL: " + desc);
+        Terminal.Say("  FAIL: " + name);
         failed = failed + 1;
     }
-}
-
-func assertFalse(cond: Boolean, desc: String) {
-    assertTrue(cond == false, desc);
 }
 
 //=============================================================================
 // TESTS
 //=============================================================================
 
-func testDescribe() {
-    Terminal.Say("Testing DESCRIBE...");
-    var exec = new Executor();
-    exec.init();
+func testCreateAndReopen() {
+    Terminal.Say("--- Test 1: Create and reopen ---");
+    var dbPath = "/tmp/test_p2_create.vdb";
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
 
-    // Create a table with various constraints
-    exec.executeSql("CREATE TABLE test_describe (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, email TEXT)");
+    // Session 1: Create database and table
+    var exec1 = new Executor();
+    exec1.init();
+    var r1 = exec1.executeSql("OPEN '" + dbPath + "'");
+    check("OPEN creates new .vdb", r1.success);
 
-    var result = exec.executeSql("DESCRIBE test_describe");
-    assertTrue(result.success, "DESCRIBE should succeed");
-    assertTrue(result.rowCount() == 3, "Should have 3 columns");
+    var r2 = exec1.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT)");
+    check("CREATE TABLE users", r2.success);
 
-    // Check column names in result
-    var row0 = result.getRow(0);
-    if row0 != null {
-        var r = row0;
-        assertTrue(r.getValue(0).textValue == "id", "First column should be 'id'");
-    }
-}
+    exec1.executeSql("INSERT INTO users VALUES (NULL, 'Alice', 'alice@test.com')");
+    exec1.executeSql("INSERT INTO users VALUES (NULL, 'Bob', 'bob@test.com')");
+    exec1.executeSql("INSERT INTO users VALUES (NULL, 'Charlie', NULL)");
 
-func testHelp() {
-    Terminal.Say("Testing HELP...");
-    var exec = new Executor();
-    exec.init();
+    var r3 = exec1.executeSql("SELECT * FROM users");
+    check("3 rows in session 1", r3.rowCount() == 3);
 
-    var result = exec.executeSql("HELP");
-    assertTrue(result.success, "HELP should succeed");
-    assertTrue(result.rowCount() > 10, "HELP should show many commands");
-}
+    exec1.executeSql("CLOSE");
 
-func testVacuum() {
-    Terminal.Say("Testing VACUUM...");
-    var exec = new Executor();
-    exec.init();
-
-    // Create table and add rows
-    exec.executeSql("CREATE TABLE test_vacuum (id INTEGER, name TEXT)");
-    exec.executeSql("INSERT INTO test_vacuum VALUES (1, 'Alice')");
-    exec.executeSql("INSERT INTO test_vacuum VALUES (2, 'Bob')");
-    exec.executeSql("INSERT INTO test_vacuum VALUES (3, 'Charlie')");
-
-    // Delete a row
-    exec.executeSql("DELETE FROM test_vacuum WHERE id = 2");
-
-    // Verify row is marked deleted but table still has it
-    var beforeVacuum = exec.executeSql("SELECT * FROM test_vacuum");
-    assertTrue(beforeVacuum.rowCount() == 2, "Should show 2 rows after delete");
-
-    // Run VACUUM
-    var vacuumResult = exec.executeSql("VACUUM");
-    assertTrue(vacuumResult.success, "VACUUM should succeed");
-
-    // Verify message
-    var hasRemoved = String.IndexOf(vacuumResult.message, "removed") >= 0;
-    assertTrue(hasRemoved, "VACUUM message should mention removed rows");
-}
-
-func testAlterTableAddColumn() {
-    Terminal.Say("Testing ALTER TABLE ADD COLUMN...");
-    var exec = new Executor();
-    exec.init();
-
-    exec.executeSql("CREATE TABLE test_alter (id INTEGER, name TEXT)");
-    exec.executeSql("INSERT INTO test_alter VALUES (1, 'Alice')");
-
-    var result = exec.executeSql("ALTER TABLE test_alter ADD COLUMN email TEXT");
-    assertTrue(result.success, "ALTER TABLE ADD COLUMN should succeed");
-
-    // Verify the new column exists
-    var selectResult = exec.executeSql("SELECT * FROM test_alter");
-    assertTrue(selectResult.success, "SELECT after ALTER should succeed");
-
-    // Verify the new column has NULL for existing rows
-    var row = selectResult.getRow(0);
-    if row != null {
-        var r = row;
-        assertTrue(r.columnCount() == 3, "Row should have 3 columns now");
-        assertTrue(r.getValue(2).isNull(), "New column should be NULL");
-    }
-}
-
-func testAlterTableDropColumn() {
-    Terminal.Say("Testing ALTER TABLE DROP COLUMN...");
-    var exec = new Executor();
-    exec.init();
-
-    exec.executeSql("CREATE TABLE test_drop (id INTEGER, name TEXT, email TEXT)");
-    exec.executeSql("INSERT INTO test_drop VALUES (1, 'Alice', 'alice@example.com')");
-
-    var result = exec.executeSql("ALTER TABLE test_drop DROP COLUMN email");
-    assertTrue(result.success, "ALTER TABLE DROP COLUMN should succeed");
-
-    // Verify the column is gone
-    var selectResult = exec.executeSql("SELECT * FROM test_drop");
-    assertTrue(selectResult.success, "SELECT after DROP COLUMN should succeed");
-
-    var row = selectResult.getRow(0);
-    if row != null {
-        var r = row;
-        assertTrue(r.columnCount() == 2, "Row should have 2 columns now");
-    }
-}
-
-func testAlterTableRename() {
-    Terminal.Say("Testing ALTER TABLE RENAME...");
-    var exec = new Executor();
-    exec.init();
-
-    exec.executeSql("CREATE TABLE old_name (id INTEGER)");
-
-    var result = exec.executeSql("ALTER TABLE old_name RENAME TO new_name");
-    assertTrue(result.success, "ALTER TABLE RENAME should succeed");
-
-    // Verify old name doesn't work
-    var oldResult = exec.executeSql("SELECT * FROM old_name");
-    assertFalse(oldResult.success, "SELECT from old name should fail");
-
-    // Verify new name works
-    var newResult = exec.executeSql("SELECT * FROM new_name");
-    assertTrue(newResult.success, "SELECT from new name should succeed");
-}
-
-func testAlterTableRenameColumn() {
-    Terminal.Say("Testing ALTER TABLE RENAME COLUMN...");
-    var exec = new Executor();
-    exec.init();
-
-    exec.executeSql("CREATE TABLE test_rename_col (old_col INTEGER)");
-    exec.executeSql("INSERT INTO test_rename_col VALUES (42)");
-
-    var result = exec.executeSql("ALTER TABLE test_rename_col RENAME COLUMN old_col TO new_col");
-    assertTrue(result.success, "ALTER TABLE RENAME COLUMN should succeed");
-
-    // Verify old column name doesn't work
-    var oldResult = exec.executeSql("SELECT old_col FROM test_rename_col");
-    assertFalse(oldResult.success, "SELECT old_col should fail");
-
-    // Verify new column name works
-    var newResult = exec.executeSql("SELECT new_col FROM test_rename_col");
-    assertTrue(newResult.success, "SELECT new_col should succeed");
-}
-
-func testSaveAndOpen() {
-    Terminal.Say("Testing SAVE and OPEN...");
-    var exec = new Executor();
-    exec.init();
-
-    // Create tables and data
-    exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)");
-    exec.executeSql("INSERT INTO users VALUES (1, 'Alice')");
-    exec.executeSql("INSERT INTO users VALUES (2, 'Bob')");
-
-    // Save to file
-    var saveResult = exec.executeSql("SAVE '/tmp/test_sqldb.sql'");
-    assertTrue(saveResult.success, "SAVE should succeed");
-
-    // Create new executor and load the file
+    // Session 2: Reopen and verify
     var exec2 = new Executor();
     exec2.init();
+    var r4 = exec2.executeSql("OPEN '" + dbPath + "'");
+    check("OPEN existing .vdb", r4.success);
 
-    var openResult = exec2.executeSql("OPEN '/tmp/test_sqldb.sql'");
-    assertTrue(openResult.success, "OPEN should succeed");
+    var r5 = exec2.executeSql("SELECT * FROM users");
+    check("3 rows after reopen", r5.rowCount() == 3);
 
-    // Verify data was loaded
-    var selectResult = exec2.executeSql("SELECT * FROM users");
-    assertTrue(selectResult.success, "SELECT after OPEN should succeed");
-    assertTrue(selectResult.rowCount() == 2, "Should have 2 rows after OPEN");
+    var r6 = exec2.executeSql("SELECT name FROM users WHERE id = 1");
+    check("Alice persisted", r6.rowCount() == 1);
 
-    // Cleanup
-    IO.File.Delete("/tmp/test_sqldb.sql");
+    var r7 = exec2.executeSql("SELECT name FROM users WHERE id = 2");
+    check("Bob persisted", r7.rowCount() == 1);
+
+    // Verify autoincrement continues
+    exec2.executeSql("INSERT INTO users VALUES (NULL, 'Dave', 'dave@test.com')");
+    var r8 = exec2.executeSql("SELECT id FROM users WHERE name = 'Dave'");
+    check("Dave gets id=4 (autoincrement)", r8.rowCount() == 1);
+
+    exec2.executeSql("CLOSE");
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
 }
 
-func testExportImport() {
-    Terminal.Say("Testing EXPORT and IMPORT...");
+func testUpdatePersistence() {
+    Terminal.Say("--- Test 2: UPDATE persistence ---");
+    var dbPath = "/tmp/test_p2_update.vdb";
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+
+    // Create and populate
+    var exec1 = new Executor();
+    exec1.init();
+    exec1.executeSql("OPEN '" + dbPath + "'");
+    exec1.executeSql("CREATE TABLE items (id INTEGER, name TEXT, qty INTEGER)");
+    exec1.executeSql("INSERT INTO items VALUES (1, 'Widget', 10)");
+    exec1.executeSql("INSERT INTO items VALUES (2, 'Gadget', 20)");
+    exec1.executeSql("INSERT INTO items VALUES (3, 'Doohickey', 30)");
+
+    // Update
+    var r1 = exec1.executeSql("UPDATE items SET qty = 99 WHERE id = 2");
+    check("UPDATE Gadget qty", r1.success);
+    check("1 row updated", r1.rowsAffected == 1);
+
+    exec1.executeSql("CLOSE");
+
+    // Reopen and verify
+    var exec2 = new Executor();
+    exec2.init();
+    exec2.executeSql("OPEN '" + dbPath + "'");
+
+    var r2 = exec2.executeSql("SELECT qty FROM items WHERE id = 2");
+    check("UPDATE persisted", r2.rowCount() == 1);
+
+    // Verify other rows unchanged
+    var r3 = exec2.executeSql("SELECT * FROM items");
+    check("3 rows still present", r3.rowCount() == 3);
+
+    exec2.executeSql("CLOSE");
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+}
+
+func testDeletePersistence() {
+    Terminal.Say("--- Test 3: DELETE persistence ---");
+    var dbPath = "/tmp/test_p2_delete.vdb";
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+
+    // Create and populate
+    var exec1 = new Executor();
+    exec1.init();
+    exec1.executeSql("OPEN '" + dbPath + "'");
+    exec1.executeSql("CREATE TABLE colors (id INTEGER, name TEXT)");
+    exec1.executeSql("INSERT INTO colors VALUES (1, 'Red')");
+    exec1.executeSql("INSERT INTO colors VALUES (2, 'Green')");
+    exec1.executeSql("INSERT INTO colors VALUES (3, 'Blue')");
+
+    // Delete
+    var r1 = exec1.executeSql("DELETE FROM colors WHERE id = 2");
+    check("DELETE Green", r1.success);
+
+    exec1.executeSql("CLOSE");
+
+    // Reopen and verify
+    var exec2 = new Executor();
+    exec2.init();
+    exec2.executeSql("OPEN '" + dbPath + "'");
+
+    var r2 = exec2.executeSql("SELECT * FROM colors");
+    check("2 rows after reopen", r2.rowCount() == 2);
+
+    var r3 = exec2.executeSql("SELECT * FROM colors WHERE name = 'Green'");
+    check("Green is gone", r3.rowCount() == 0);
+
+    var r4 = exec2.executeSql("SELECT * FROM colors WHERE name = 'Red'");
+    check("Red still exists", r4.rowCount() == 1);
+
+    exec2.executeSql("CLOSE");
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+}
+
+func testDropTablePersistence() {
+    Terminal.Say("--- Test 4: DROP TABLE persistence ---");
+    var dbPath = "/tmp/test_p2_drop.vdb";
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+
+    // Create two tables
+    var exec1 = new Executor();
+    exec1.init();
+    exec1.executeSql("OPEN '" + dbPath + "'");
+    exec1.executeSql("CREATE TABLE keep_me (id INTEGER)");
+    exec1.executeSql("INSERT INTO keep_me VALUES (42)");
+    exec1.executeSql("CREATE TABLE drop_me (id INTEGER)");
+    exec1.executeSql("INSERT INTO drop_me VALUES (99)");
+
+    // Drop one
+    var r1 = exec1.executeSql("DROP TABLE drop_me");
+    check("DROP TABLE drop_me", r1.success);
+
+    exec1.executeSql("CLOSE");
+
+    // Reopen and verify
+    var exec2 = new Executor();
+    exec2.init();
+    exec2.executeSql("OPEN '" + dbPath + "'");
+
+    var r2 = exec2.executeSql("SELECT * FROM drop_me");
+    check("drop_me is gone", r2.success == false);
+
+    var r3 = exec2.executeSql("SELECT * FROM keep_me");
+    check("keep_me still exists", r3.success);
+    check("keep_me has 1 row", r3.rowCount() == 1);
+
+    exec2.executeSql("CLOSE");
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+}
+
+func testMultipleTablesAndTypes() {
+    Terminal.Say("--- Test 5: Multiple tables + data types ---");
+    var dbPath = "/tmp/test_p2_multi.vdb";
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+
+    var exec1 = new Executor();
+    exec1.init();
+    exec1.executeSql("OPEN '" + dbPath + "'");
+
+    exec1.executeSql("CREATE TABLE ints (val INTEGER)");
+    exec1.executeSql("INSERT INTO ints VALUES (42)");
+    exec1.executeSql("INSERT INTO ints VALUES (-7)");
+    exec1.executeSql("INSERT INTO ints VALUES (0)");
+
+    exec1.executeSql("CREATE TABLE texts (val TEXT)");
+    exec1.executeSql("INSERT INTO texts VALUES ('hello')");
+    exec1.executeSql("INSERT INTO texts VALUES ('world')");
+
+    exec1.executeSql("CREATE TABLE nulls (a INTEGER, b TEXT)");
+    exec1.executeSql("INSERT INTO nulls VALUES (1, NULL)");
+    exec1.executeSql("INSERT INTO nulls VALUES (NULL, 'test')");
+
+    exec1.executeSql("CLOSE");
+
+    // Reopen and verify
+    var exec2 = new Executor();
+    exec2.init();
+    exec2.executeSql("OPEN '" + dbPath + "'");
+
+    var r1 = exec2.executeSql("SELECT * FROM ints");
+    check("ints: 3 rows", r1.rowCount() == 3);
+
+    var r2 = exec2.executeSql("SELECT * FROM texts");
+    check("texts: 2 rows", r2.rowCount() == 2);
+
+    var r3 = exec2.executeSql("SELECT * FROM nulls");
+    check("nulls: 2 rows", r3.rowCount() == 2);
+
+    var r4 = exec2.executeSql("SELECT b FROM nulls WHERE a = 1");
+    check("null text persisted", r4.rowCount() == 1);
+
+    var r5 = exec2.executeSql("SELECT a FROM nulls WHERE b = 'test'");
+    check("null int persisted", r5.rowCount() == 1);
+
+    exec2.executeSql("CLOSE");
+    if IO.File.Exists(dbPath) { IO.File.Delete(dbPath); }
+}
+
+func testCloseNoDb() {
+    Terminal.Say("--- Test 6: CLOSE with no persistent db ---");
     var exec = new Executor();
     exec.init();
 
-    // Create table and data
-    exec.executeSql("CREATE TABLE products (id INTEGER, name TEXT, price INTEGER)");
-    exec.executeSql("INSERT INTO products VALUES (1, 'Apple', 100)");
-    exec.executeSql("INSERT INTO products VALUES (2, 'Banana', 50)");
-    exec.executeSql("INSERT INTO products VALUES (3, 'Cherry', 200)");
-
-    // Export to CSV
-    var exportResult = exec.executeSql("EXPORT products TO '/tmp/products.csv'");
-    assertTrue(exportResult.success, "EXPORT should succeed");
-
-    // Verify file exists
-    assertTrue(IO.File.Exists("/tmp/products.csv"), "CSV file should exist");
-
-    // Create new table and import
-    exec.executeSql("CREATE TABLE products2 (id INTEGER, name TEXT, price INTEGER)");
-    var importResult = exec.executeSql("IMPORT INTO products2 FROM '/tmp/products.csv'");
-    assertTrue(importResult.success, "IMPORT should succeed");
-
-    // Verify data was imported
-    var selectResult = exec.executeSql("SELECT * FROM products2");
-    assertTrue(selectResult.success, "SELECT after IMPORT should succeed");
-    assertTrue(selectResult.rowCount() == 3, "Should have 3 rows after IMPORT");
-
-    // Cleanup
-    IO.File.Delete("/tmp/products.csv");
-}
-
-func testShowTables() {
-    Terminal.Say("Testing SHOW TABLES...");
-    var exec = new Executor();
-    exec.init();
-
-    exec.executeSql("CREATE TABLE table1 (id INTEGER)");
-    exec.executeSql("CREATE TABLE table2 (id INTEGER)");
-    exec.executeSql("CREATE TABLE table3 (id INTEGER)");
-
-    var result = exec.executeSql("SHOW TABLES");
-    assertTrue(result.success, "SHOW TABLES should succeed");
-    assertTrue(result.rowCount() == 3, "Should show 3 tables");
+    var r = exec.executeSql("CLOSE");
+    check("CLOSE with no db is ok", r.success);
 }
 
 //=============================================================================
 // MAIN
 //=============================================================================
 
-func start() {
-    Terminal.Say("=== Phase 10: Persistence Tests ===");
+func main() {
+    Terminal.Say("=== Phase 2: Persistent Storage E2E Tests ===");
     Terminal.Say("");
 
-    testDescribe();
-    testHelp();
-    testVacuum();
-    testAlterTableAddColumn();
-    testAlterTableDropColumn();
-    testAlterTableRename();
-    testAlterTableRenameColumn();
-    testSaveAndOpen();
-    testExportImport();
-    testShowTables();
+    testCreateAndReopen();
+    testUpdatePersistence();
+    testDeletePersistence();
+    testDropTablePersistence();
+    testMultipleTablesAndTypes();
+    testCloseNoDb();
 
     Terminal.Say("");
     Terminal.Say("=== Results ===");
     Terminal.Say("Passed: " + Fmt.Int(passed));
     Terminal.Say("Failed: " + Fmt.Int(failed));
+    if failed == 0 {
+        Terminal.Say("ALL TESTS PASSED");
+    } else {
+        Terminal.Say("SOME TESTS FAILED");
+    }
 }

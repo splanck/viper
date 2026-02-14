@@ -1,0 +1,83 @@
+// Test that refactored Pager works with BinFile I/O
+module test_pager_io;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+bind IO = Viper.IO;
+bind Collections = Viper.Collections;
+
+bind "./storage/page";
+bind "./storage/serializer";
+bind "./storage/pager";
+bind "./types";
+
+func main() {
+    Terminal.Say("=== Pager BinFile I/O Test ===");
+
+    var dbPath = "/tmp/test_pager_binfile.vdb";
+    if IO.File.Exists(dbPath) {
+        IO.File.Delete(dbPath);
+    }
+
+    // Test 1: Create database (uses writePageToFile)
+    var pager = new Pager();
+    pager.init();
+    var ok = pager.createDatabase(dbPath);
+    if ok { Terminal.Say("createDatabase: OK"); } else { Terminal.Say("createDatabase: FAIL"); }
+
+    // Test 2: Close and reopen (uses readPageIntoBuffer)
+    pager.closeDatabase();
+    Terminal.Say("closeDatabase done");
+
+    var pager2 = new Pager();
+    pager2.init();
+    var ok2 = pager2.openDatabase(dbPath);
+    if ok2 { Terminal.Say("openDatabase: OK"); } else { Terminal.Say("openDatabase: FAIL"); }
+    Terminal.Say("pageCount: " + Fmt.Int(pager2.pageCount));
+
+    // Test 3: Read a page back
+    var page = pager2.readPage(0);
+    if page != null {
+        var p = page;
+        Terminal.Say("Page 0 type: " + Fmt.Int(p.pageType));
+    } else {
+        Terminal.Say("FAIL: readPage returned null");
+    }
+
+    // Test 4: Allocate and write a new page
+    var pid = pager2.allocatePage();
+    Terminal.Say("Allocated page: " + Fmt.Int(pid));
+
+    var newPage = new Page();
+    newPage.initWithId(pid, PAGE_TYPE_DATA);
+    newPage.data.seek(0);
+    newPage.data.writeByte(PAGE_TYPE_DATA);
+    newPage.data.writeInt32(42);  // Some test data
+    newPage.markDirty();
+
+    var wrote = pager2.writePage(newPage);
+    if wrote { Terminal.Say("writePage: OK"); } else { Terminal.Say("writePage: FAIL"); }
+
+    // Test 5: Reopen and verify
+    pager2.closeDatabase();
+
+    var pager3 = new Pager();
+    pager3.init();
+    pager3.openDatabase(dbPath);
+    Terminal.Say("Reopened pageCount: " + Fmt.Int(pager3.pageCount));
+
+    var verifyPage = pager3.readPage(pid);
+    if verifyPage != null {
+        var vp = verifyPage;
+        vp.data.seek(0);
+        var ptype = vp.data.readByte();
+        var testData = vp.data.readInt32();
+        Terminal.Say("Verified page type: " + Fmt.Int(ptype));
+        Terminal.Say("Verified test data: " + Fmt.Int(testData));
+    } else {
+        Terminal.Say("FAIL: verify readPage returned null");
+    }
+
+    pager3.closeDatabase();
+    Terminal.Say("ALL DONE");
+}

@@ -1233,9 +1233,6 @@ class LinearAllocator
 
         // Release scratch registers
         releaseScratch(scratch);
-
-        // Advance instruction counter for LRU tracking
-        ++currentInstrIdx_;
     }
 
     void releaseScratch(std::vector<PhysReg> &scratch)

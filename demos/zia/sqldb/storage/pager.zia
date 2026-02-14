@@ -5,6 +5,7 @@ module pager;
 
 bind IO = Viper.IO;
 bind String = Viper.String;
+bind Collections = Viper.Collections;
 
 bind "./page";
 bind "./serializer";
@@ -279,34 +280,39 @@ entity Pager {
         return page;
     }
 
-    // Read page data into an existing buffer (returns false on failure)
+    // Read page data into an existing buffer using BinFile (O(PAGE_SIZE) I/O)
     hide func readPageIntoBuffer(pageId: Integer, dest: BinaryBuffer) -> Boolean {
         if IO.File.Exists(filename) == false {
             return false;
         }
 
-        var content = IO.File.ReadAllText(filename);
+        var f = IO.BinFile.Open(filename, "r");
+        var fileSize = f.Size;
         var startOffset = pageId * PAGE_SIZE;
 
-        if startOffset + PAGE_SIZE > String.Length(content) {
+        if startOffset + PAGE_SIZE > fileSize {
+            f.Close();
             return false;
         }
 
-        var pageData = String.Substring(content, startOffset, PAGE_SIZE);
+        // Seek to page offset and read PAGE_SIZE bytes
+        f.Seek(startOffset, 0);
+        var raw = Collections.Bytes.New(PAGE_SIZE);
+        var nread = f.Read(raw, 0, PAGE_SIZE);
+        f.Close();
 
-        // Copy page data into destination buffer
-        dest.seek(0);
-        var i = 0;
-        var len = String.Length(pageData);
-        while i < len && i < PAGE_SIZE {
-            var ch = String.Substring(pageData, i, 1);
-            var code = String.Asc(ch);
-            dest.writeByte(code);
-            i = i + 1;
+        if nread < PAGE_SIZE {
+            return false;
         }
-        // Fill remaining with zeros
+
+        // Copy Bytes into destination BinaryBuffer
+        var bytes = dest.getBytes();
+        while bytes.count() < PAGE_SIZE {
+            bytes.add(0);
+        }
+        var i = 0;
         while i < PAGE_SIZE {
-            dest.writeByte(0);
+            bytes.set(i, Collections.Bytes.Get(raw, i));
             i = i + 1;
         }
         dest.seek(0);
@@ -329,13 +335,15 @@ entity Pager {
     }
 
     //=========================================================================
-    // LOW-LEVEL FILE I/O
+    // LOW-LEVEL FILE I/O (BinFile-based, O(PAGE_SIZE) per operation)
     //=========================================================================
 
-    // Convert binary buffer to string for file storage
-    // (workaround: Zia doesn't have binary file I/O)
-    hide func bufferToString(buf: BinaryBuffer) -> String {
-        var result = "";
+    // Write a page to the file at the given page ID using BinFile
+    hide func writePageToFile(pageId: Integer, buf: BinaryBuffer) {
+        var startOffset = pageId * PAGE_SIZE;
+
+        // Convert BinaryBuffer to Bytes
+        var raw = Collections.Bytes.New(PAGE_SIZE);
         var bytes = buf.getBytes();
         var i = 0;
         while i < PAGE_SIZE {
@@ -343,80 +351,36 @@ entity Pager {
             if i < bytes.count() {
                 b = bytes.get(i);
             }
-            result = result + String.Chr(b);
+            Collections.Bytes.Set(raw, i, b);
             i = i + 1;
         }
-        return result;
-    }
 
-    // Convert string back to binary buffer
-    hide func stringToBuffer(s: String) -> BinaryBuffer {
-        var buf = new BinaryBuffer();
-        buf.initWithCapacity(PAGE_SIZE);
-        var i = 0;
-        var len = String.Length(s);
-        while i < len && i < PAGE_SIZE {
-            var ch = String.Substring(s, i, 1);
-            var code = String.Asc(ch);
-            buf.writeByte(code);
-            i = i + 1;
-        }
-        // Fill remaining with zeros
-        while i < PAGE_SIZE {
-            buf.writeByte(0);
-            i = i + 1;
-        }
-        buf.seek(0);
-        return buf;
-    }
-
-    // Write a page to the file at the given page ID
-    hide func writePageToFile(pageId: Integer, buf: BinaryBuffer) {
-        // Read entire file, update the page, write back
-        // (This is inefficient but necessary without seek support)
-        var content = "";
-        if IO.File.Exists(filename) {
-            content = IO.File.ReadAllText(filename);
-        }
-
-        // Pad content to the right length
-        var targetLen = (pageId + 1) * PAGE_SIZE;
-        while String.Length(content) < targetLen {
-            content = content + String.Chr(0);
-        }
-
-        // Build new content with updated page
-        var pageData = bufferToString(buf);
-        var startOffset = pageId * PAGE_SIZE;
-
-        var newContent = "";
-        if startOffset > 0 {
-            newContent = String.Substring(content, 0, startOffset);
-        }
-        newContent = newContent + pageData;
-        var endOffset = startOffset + PAGE_SIZE;
-        if endOffset < String.Length(content) {
-            newContent = newContent + String.Substring(content, endOffset, String.Length(content) - endOffset);
-        }
-
-        IO.File.WriteAllText(filename, newContent);
-    }
-
-    // Read a page from the file at the given page ID
-    hide func readPageFromFile(pageId: Integer) -> BinaryBuffer? {
+        // If file doesn't exist, create it; otherwise open for read+write
         if IO.File.Exists(filename) == false {
-            return null;
+            var f = IO.BinFile.Open(filename, "w");
+            // Pad with zeros up to the page offset
+            if startOffset > 0 {
+                var zeros = Collections.Bytes.New(startOffset);
+                f.Write(zeros, 0, startOffset);
+            }
+            f.Write(raw, 0, PAGE_SIZE);
+            f.Flush();
+            f.Close();
+        } else {
+            var f = IO.BinFile.Open(filename, "rw");
+            var fileSize = f.Size;
+            // Extend file if needed
+            if startOffset > fileSize {
+                f.Seek(fileSize, 0);
+                var padLen = startOffset - fileSize;
+                var zeros = Collections.Bytes.New(padLen);
+                f.Write(zeros, 0, padLen);
+            }
+            f.Seek(startOffset, 0);
+            f.Write(raw, 0, PAGE_SIZE);
+            f.Flush();
+            f.Close();
         }
-
-        var content = IO.File.ReadAllText(filename);
-        var startOffset = pageId * PAGE_SIZE;
-
-        if startOffset + PAGE_SIZE > String.Length(content) {
-            return null;
-        }
-
-        var pageData = String.Substring(content, startOffset, PAGE_SIZE);
-        return stringToBuffer(pageData);
     }
 
     //=========================================================================

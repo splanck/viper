@@ -17,6 +17,13 @@ bind "./parser";
 bind "./database";
 bind "./result";
 bind "./server";
+bind "./storage/page";
+bind "./storage/serializer";
+bind "./storage/pager";
+bind "./storage/buffer";
+bind "./storage/schema_page";
+bind "./storage/data_page";
+bind "./storage/engine";
 
 //=============================================================================
 // EXECUTOR ENTITY
@@ -30,6 +37,9 @@ entity Executor {
     // Using non-optional because server always has a current database
     expose Database db;
     expose IndexManager indexMgr;
+
+    // Persistent storage engine (null when using in-memory mode)
+    hide StorageEngine? storageEngine;
 
     // Context for correlated subqueries
     hide Row? outerRow;
@@ -52,6 +62,7 @@ entity Executor {
         // Direct assignment from server lists (guaranteed non-null after server.init())
         db = server.dbList.get(0);
         indexMgr = server.indexManagers.get(0);
+        storageEngine = null;
         outerRow = null;
         outerTable = null;
         outerTableAlias = "";
@@ -1270,6 +1281,14 @@ entity Executor {
         }
 
         db.addTable(table);
+
+        // Persist to storage engine if active
+        if storageEngine != null {
+            var se = storageEngine;
+            se.persistTable(table);
+            se.flush();
+        }
+
         result.message = "Table '" + stmt.tableName + "' created";
         return result;
     }
@@ -1363,8 +1382,21 @@ entity Executor {
             // Update all indexes on this table
             updateIndexesAfterInsert(stmt.tableName, row, newRowIdx, t);
 
+            // Persist row to storage engine
+            if storageEngine != null {
+                var se = storageEngine;
+                se.insertRowStorage(stmt.tableName, row);
+                se.updateAutoIncrement(stmt.tableName, t.autoIncrementValue);
+            }
+
             rowsInserted = rowsInserted + 1;
             r = r + 1;
+        }
+
+        // Flush after all rows inserted
+        if storageEngine != null && rowsInserted > 0 {
+            var se = storageEngine;
+            se.flush();
         }
 
         result.message = "Inserted " + Fmt.Int(rowsInserted) + " row(s)";
@@ -1934,6 +1966,13 @@ entity Executor {
             r = r + 1;
         }
 
+        // Persist updated rows via full table rewrite
+        if storageEngine != null && rowsUpdated > 0 {
+            var se = storageEngine;
+            se.rewriteTableRows(stmt.tableName, t.rows);
+            se.flush();
+        }
+
         result.message = "Updated " + Fmt.Int(rowsUpdated) + " row(s)";
         result.rowsAffected = rowsUpdated;
         return result;
@@ -1983,6 +2022,13 @@ entity Executor {
                 cr = cr + 1;
             }
             t.rows = compacted;
+
+            // Persist surviving rows via full table rewrite
+            if storageEngine != null {
+                var se = storageEngine;
+                se.rewriteTableRows(stmt.tableName, t.rows);
+                se.flush();
+            }
         }
 
         result.message = "Deleted " + Fmt.Int(rowsDeleted) + " row(s)";
@@ -2273,6 +2319,12 @@ entity Executor {
                 if parser.currentKind() == TK_IDENTIFIER {
                     var tableName = parser.currentText();
                     if db.dropTable(tableName) {
+                        // Persist table drop to storage engine
+                        if storageEngine != null {
+                            var se = storageEngine;
+                            se.dropTableStorage(tableName);
+                            se.flush();
+                        }
                         var result = new QueryResult();
                         result.init();
                         result.message = "Table '" + tableName + "' dropped";
@@ -2402,6 +2454,11 @@ entity Executor {
             result.init();
             result.setError("OPEN requires a filename: OPEN 'filename'");
             return result;
+        }
+
+        // CLOSE command: close persistent database
+        if kind == TK_CLOSE {
+            return executeClose();
         }
 
         // EXPORT command: EXPORT table TO 'filename'
@@ -3544,11 +3601,17 @@ entity Executor {
         return sql;
     }
 
-    // OPEN command - load database from SQL dump file
+    // OPEN command - load database from SQL dump file or persistent .vdb file
     expose func executeOpen(filename: String) -> QueryResult {
         var result = new QueryResult();
         result.init();
 
+        // Detect persistent binary database by .vdb extension
+        if String.EndsWith(filename, ".vdb") {
+            return executeOpenPersistent(filename);
+        }
+
+        // SQL dump mode (existing behavior)
         if IO.File.Exists(filename) == false {
             result.setError("File not found: " + filename);
             return result;
@@ -3583,6 +3646,69 @@ entity Executor {
         if errors > 0 {
             result.message = result.message + ", " + Fmt.Int(errors) + " errors";
         }
+        return result;
+    }
+
+    // Open a persistent binary database (.vdb file)
+    hide func executeOpenPersistent(filename: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Close any existing storage engine
+        if storageEngine != null {
+            var oldSe = storageEngine;
+            oldSe.closeDatabase();
+            storageEngine = null;
+        }
+
+        var se = new StorageEngine();
+        se.init();
+
+        var isNew = IO.File.Exists(filename) == false;
+        var ok = false;
+        if isNew {
+            ok = se.createDatabase(filename);
+        } else {
+            ok = se.openDatabase(filename);
+        }
+
+        if ok == false {
+            result.setError("Failed to open database: " + filename);
+            return result;
+        }
+
+        storageEngine = se;
+
+        if isNew == false {
+            // Load all tables from persistent storage into in-memory model
+            var tables = se.loadAllTables();
+            var i = 0;
+            while i < tables.count() {
+                db.addTable(tables.get(i));
+                i = i + 1;
+            }
+            result.message = "Opened persistent database '" + filename + "': " + Fmt.Int(tables.count()) + " table(s) loaded";
+        } else {
+            result.message = "Created persistent database '" + filename + "'";
+        }
+
+        return result;
+    }
+
+    // CLOSE command - flush and close persistent storage
+    expose func executeClose() -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if storageEngine == null {
+            result.message = "No persistent database open";
+            return result;
+        }
+
+        var se = storageEngine;
+        se.closeDatabase();
+        storageEngine = null;
+        result.message = "Database closed";
         return result;
     }
 
@@ -3992,8 +4118,14 @@ entity Executor {
         var row8 = new Row();
         row8.init();
         row8.addValue(sqlText("OPEN 'filename'"));
-        row8.addValue(sqlText("Load database from file"));
+        row8.addValue(sqlText("Load database from file (.sql or .vdb)"));
         result.addRow(row8);
+
+        var row8b = new Row();
+        row8b.init();
+        row8b.addValue(sqlText("CLOSE"));
+        row8b.addValue(sqlText("Close persistent database (.vdb)"));
+        result.addRow(row8b);
 
         var row9 = new Row();
         row9.init();

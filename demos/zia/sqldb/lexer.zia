@@ -254,6 +254,8 @@ entity Lexer {
         if (word == "DATABASE") { return TK_DATABASE; }
         if (word == "DATABASES") { return TK_DATABASES; }
         if (word == "USE") { return TK_USE; }
+        if (word == "CLOSE") { return TK_CLOSE; }
+        if (word == "FILE") { return TK_FILE; }
         return TK_IDENTIFIER;
     }
 

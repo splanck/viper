@@ -1,0 +1,461 @@
+// engine.zia - Storage Engine Adapter
+// Bridges BufferPool/SchemaPage/DataPage to high-level database operations
+
+module engine;
+
+bind IO = Viper.IO;
+bind String = Viper.String;
+bind Terminal = Viper.Terminal;
+
+bind "./page";
+bind "./serializer";
+bind "./pager";
+bind "./buffer";
+bind "./schema_page";
+bind "./data_page";
+bind "../types";
+bind "../table";
+bind "../schema";
+
+//=============================================================================
+// STORAGE ENGINE
+//=============================================================================
+
+entity StorageEngine {
+    expose BufferPool pool;
+    expose SchemaPageManager schemaMgr;
+    expose DataPageManager dataMgr;
+    expose String filename;
+    expose Boolean isPersistent;
+
+    // Cached table metadata (mirrors what's in the schema page)
+    hide List[TableMeta] tableMetas;
+    // Tracks the next table ID to assign
+    hide Integer nextTableId;
+
+    expose func init() {
+        pool = new BufferPool();
+        pool.init();
+        schemaMgr = new SchemaPageManager();
+        schemaMgr.init();
+        dataMgr = new DataPageManager();
+        dataMgr.init();
+        filename = "";
+        isPersistent = false;
+        tableMetas = [];
+        nextTableId = 1;
+    }
+
+    //=========================================================================
+    // DATABASE LIFECYCLE
+    //=========================================================================
+
+    // Create a new persistent database file
+    expose func createDatabase(fname: String) -> Boolean {
+        filename = fname;
+
+        // Delete existing file if present
+        if IO.File.Exists(fname) {
+            IO.File.Delete(fname);
+        }
+
+        var ok = pool.createDatabase(fname);
+        if ok == false {
+            return false;
+        }
+
+        // Initialize schema page
+        var schemaPage = pool.fetchPage(1);
+        if schemaPage != null {
+            var sp = schemaPage;
+            schemaMgr.initSchemaPage(sp);
+            pool.unpinPage(1, true);
+        }
+
+        pool.flushAll();
+        isPersistent = true;
+        tableMetas = [];
+        nextTableId = 1;
+        return true;
+    }
+
+    // Open an existing persistent database file
+    expose func openDatabase(fname: String) -> Boolean {
+        filename = fname;
+
+        if IO.File.Exists(fname) == false {
+            return false;
+        }
+
+        var ok = pool.openDatabase(fname);
+        if ok == false {
+            return false;
+        }
+
+        // Load schema metadata
+        var schemaPage = pool.fetchPage(1);
+        if schemaPage != null {
+            var sp = schemaPage;
+            tableMetas = schemaMgr.readAllTables(sp);
+            pool.unpinPage(1, false);
+        } else {
+            tableMetas = [];
+        }
+
+        // Compute next table ID
+        nextTableId = 1;
+        var i = 0;
+        while i < tableMetas.count() {
+            var m = tableMetas.get(i);
+            if m.tableId >= nextTableId {
+                nextTableId = m.tableId + 1;
+            }
+            i = i + 1;
+        }
+
+        isPersistent = true;
+        return true;
+    }
+
+    // Close the database, flushing all dirty pages
+    expose func closeDatabase() {
+        if isPersistent {
+            pool.flushAll();
+            pool.closeDatabase();
+            isPersistent = false;
+        }
+    }
+
+    //=========================================================================
+    // TABLE SCHEMA PERSISTENCE
+    //=========================================================================
+
+    // Persist a newly created table's schema to the database file
+    // Returns the assigned table ID, or -1 on failure
+    expose func persistTable(table: Table) -> Integer {
+        if isPersistent == false {
+            return -1;
+        }
+
+        // Create metadata for the table
+        var meta = new TableMeta();
+        meta.initFromTable(nextTableId, table);
+        nextTableId = nextTableId + 1;
+
+        // Allocate the first data page for this table
+        var dataPage = pool.newPage(PAGE_TYPE_DATA);
+        dataMgr.initDataPage(dataPage, meta.tableId);
+        meta.firstDataPage = dataPage.pageId;
+        pool.unpinPage(dataPage.pageId, true);
+
+        // Write metadata to schema page
+        var schemaPage = pool.fetchPage(1);
+        if schemaPage != null {
+            var sp = schemaPage;
+            schemaMgr.addTable(sp, meta);
+            pool.unpinPage(1, true);
+        }
+
+        tableMetas.add(meta);
+        pool.flushAll();
+        return meta.tableId;
+    }
+
+    // Remove a table's schema and data pages from storage
+    expose func dropTableStorage(tableName: String) -> Boolean {
+        if isPersistent == false {
+            return false;
+        }
+
+        // Find the table metadata
+        var meta = findMeta(tableName);
+        if meta == null {
+            return false;
+        }
+        var m = meta;
+
+        // Free all data pages in the chain
+        var pageId = m.firstDataPage;
+        while pageId != INVALID_PAGE_ID {
+            var page = pool.fetchPage(pageId);
+            var nextPageId = INVALID_PAGE_ID;
+            if page != null {
+                var p = page;
+                nextPageId = dataMgr.getNextPageId(p);
+                pool.unpinPage(pageId, false);
+            }
+            pool.deletePage(pageId);
+            pageId = nextPageId;
+        }
+
+        // Remove from schema page
+        var schemaPage = pool.fetchPage(1);
+        if schemaPage != null {
+            var sp = schemaPage;
+            schemaMgr.removeTable(sp, tableName);
+            pool.unpinPage(1, true);
+        }
+
+        // Remove from cached metadata
+        var newMetas: List[TableMeta] = [];
+        var i = 0;
+        while i < tableMetas.count() {
+            var tm = tableMetas.get(i);
+            if tm.tableName != tableName {
+                newMetas.add(tm);
+            }
+            i = i + 1;
+        }
+        tableMetas = newMetas;
+
+        pool.flushAll();
+        return true;
+    }
+
+    //=========================================================================
+    // TABLE DATA LOADING (Eager Load on Open)
+    //=========================================================================
+
+    // Load all tables from schema into in-memory Table entities
+    expose func loadAllTables() -> List[Table] {
+        var tables: List[Table] = [];
+
+        var i = 0;
+        while i < tableMetas.count() {
+            var meta = tableMetas.get(i);
+            var table = meta.toTable();
+
+            // Load all rows for this table
+            var rows = loadTableRows(meta);
+            var j = 0;
+            while j < rows.count() {
+                table.addRow(rows.get(j));
+                j = j + 1;
+            }
+
+            // Restore auto-increment value
+            table.autoIncrementValue = meta.nextAutoIncrement;
+
+            tables.add(table);
+            i = i + 1;
+        }
+
+        return tables;
+    }
+
+    // Load all rows for a table by walking its data page chain
+    expose func loadTableRows(meta: TableMeta) -> List[Row] {
+        var allRows: List[Row] = [];
+        var pageId = meta.firstDataPage;
+
+        while pageId != INVALID_PAGE_ID {
+            var page = pool.fetchPage(pageId);
+            if page != null {
+                var p = page;
+                var pageRows = dataMgr.forEachRow(p);
+                var j = 0;
+                while j < pageRows.count() {
+                    allRows.add(pageRows.get(j));
+                    j = j + 1;
+                }
+                var nextId = dataMgr.getNextPageId(p);
+                pool.unpinPage(pageId, false);
+                pageId = nextId;
+            } else {
+                pageId = INVALID_PAGE_ID;
+            }
+        }
+
+        return allRows;
+    }
+
+    //=========================================================================
+    // ROW PERSISTENCE (Write-Through on DML)
+    //=========================================================================
+
+    // Persist a single row insertion for a table
+    expose func insertRowStorage(tableName: String, row: Row) -> Boolean {
+        if isPersistent == false {
+            return false;
+        }
+
+        var meta = findMeta(tableName);
+        if meta == null {
+            return false;
+        }
+        var m = meta;
+
+        // Walk data page chain to find a page with space
+        var pageId = m.firstDataPage;
+        var lastPageId = INVALID_PAGE_ID;
+
+        while pageId != INVALID_PAGE_ID {
+            var page = pool.fetchPage(pageId);
+            if page != null {
+                var p = page;
+                if dataMgr.canFitRow(p, row) {
+                    // Insert here
+                    var slot = dataMgr.insertRow(p, row);
+                    pool.unpinPage(pageId, true);
+                    if slot >= 0 {
+                        // Update row count in metadata
+                        m.rowCount = m.rowCount + 1;
+                        updateMetaInSchema(m);
+                        pool.flushAll();
+                        return true;
+                    }
+                }
+                lastPageId = pageId;
+                var nextId = dataMgr.getNextPageId(p);
+                pool.unpinPage(pageId, false);
+                pageId = nextId;
+            } else {
+                pageId = INVALID_PAGE_ID;
+            }
+        }
+
+        // No page had space — allocate a new data page
+        var newPage = pool.newPage(PAGE_TYPE_DATA);
+        dataMgr.initDataPage(newPage, m.tableId);
+
+        // Link the new page to the chain
+        if lastPageId != INVALID_PAGE_ID {
+            var lastPage = pool.fetchPage(lastPageId);
+            if lastPage != null {
+                var lp = lastPage;
+                dataMgr.setNextPageId(lp, newPage.pageId);
+                pool.unpinPage(lastPageId, true);
+            }
+        } else {
+            // First data page was never set (shouldn't happen)
+            m.firstDataPage = newPage.pageId;
+        }
+
+        var slot = dataMgr.insertRow(newPage, row);
+        pool.unpinPage(newPage.pageId, true);
+
+        if slot >= 0 {
+            m.rowCount = m.rowCount + 1;
+            updateMetaInSchema(m);
+            pool.flushAll();
+            return true;
+        }
+
+        return false;
+    }
+
+    // Rewrite all rows for a table (used after UPDATE/DELETE)
+    // Drops all existing data pages and re-inserts the given rows
+    expose func rewriteTableRows(tableName: String, rows: List[Row]) -> Boolean {
+        if isPersistent == false {
+            return false;
+        }
+
+        var meta = findMeta(tableName);
+        if meta == null {
+            return false;
+        }
+        var m = meta;
+
+        // Free all existing data pages
+        var pageId = m.firstDataPage;
+        while pageId != INVALID_PAGE_ID {
+            var page = pool.fetchPage(pageId);
+            var nextPageId = INVALID_PAGE_ID;
+            if page != null {
+                var p = page;
+                nextPageId = dataMgr.getNextPageId(p);
+                pool.unpinPage(pageId, false);
+            }
+            pool.deletePage(pageId);
+            pageId = nextPageId;
+        }
+
+        // Allocate a fresh first data page
+        var firstPage = pool.newPage(PAGE_TYPE_DATA);
+        dataMgr.initDataPage(firstPage, m.tableId);
+        m.firstDataPage = firstPage.pageId;
+
+        // Insert all rows, allocating new pages as needed
+        var currentPageId = firstPage.pageId;
+        pool.unpinPage(firstPage.pageId, true);
+
+        var i = 0;
+        while i < rows.count() {
+            var row = rows.get(i);
+            var curPage = pool.fetchPage(currentPageId);
+            if curPage != null {
+                var cp = curPage;
+                if dataMgr.canFitRow(cp, row) {
+                    dataMgr.insertRow(cp, row);
+                    pool.unpinPage(currentPageId, true);
+                } else {
+                    // Current page full, allocate new page
+                    var newPage = pool.newPage(PAGE_TYPE_DATA);
+                    dataMgr.initDataPage(newPage, m.tableId);
+                    dataMgr.setNextPageId(cp, newPage.pageId);
+                    pool.unpinPage(currentPageId, true);
+
+                    dataMgr.insertRow(newPage, row);
+                    currentPageId = newPage.pageId;
+                    pool.unpinPage(newPage.pageId, true);
+                }
+            }
+            i = i + 1;
+        }
+
+        // Update metadata
+        m.rowCount = rows.count();
+        updateMetaInSchema(m);
+        pool.flushAll();
+        return true;
+    }
+
+    //=========================================================================
+    // UPDATE METADATA IN SCHEMA
+    //=========================================================================
+
+    // Update autoIncrement value for a table
+    expose func updateAutoIncrement(tableName: String, nextVal: Integer) {
+        var meta = findMeta(tableName);
+        if meta != null {
+            var m = meta;
+            m.nextAutoIncrement = nextVal;
+            updateMetaInSchema(m);
+        }
+    }
+
+    // Flush all dirty pages to disk
+    expose func flush() {
+        if isPersistent {
+            pool.flushAll();
+        }
+    }
+
+    //=========================================================================
+    // INTERNAL HELPERS
+    //=========================================================================
+
+    // Find table metadata by name
+    hide func findMeta(tableName: String) -> TableMeta? {
+        var i = 0;
+        while i < tableMetas.count() {
+            var m = tableMetas.get(i);
+            if m.tableName == tableName {
+                return m;
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Update a table's metadata in the schema page
+    hide func updateMetaInSchema(meta: TableMeta) {
+        var schemaPage = pool.fetchPage(1);
+        if schemaPage != null {
+            var sp = schemaPage;
+            schemaMgr.updateTable(sp, meta);
+            pool.unpinPage(1, true);
+        }
+    }
+}

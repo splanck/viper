@@ -137,6 +137,10 @@ final TK_DATABASE = 134;
 final TK_DATABASES = 135;
 final TK_USE = 136;
 
+// Keywords - Persistent Storage (Phase 2)
+final TK_CLOSE = 137;
+final TK_FILE = 138;
+
 // Operators
 final TK_PLUS = 140;
 final TK_MINUS = 141;
