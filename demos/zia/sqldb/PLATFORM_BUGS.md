@@ -183,16 +183,24 @@ These need to be fixed in the platform itself.
 
 ---
 
-## BUG-FE-006: Zia compiler generates wrong IL types for List method calls on function parameters
+## BUG-FE-006: Zia compiler generates wrong IL for List.add() through entity field chains
 
-- **Status**: CANNOT REPRODUCE
+- **Status**: CONFIRMED (workaround exists)
 - **Severity**: Medium
 - **Component**: Zia frontend — call lowering
-- **Symptom**: When a `List[Integer]` (or other List type) is passed as a parameter to a function, calling `.add()` on it fails with `call arg type mismatch: @Viper.Collections.List.Push parameter 0 expects ptr but got i64`. The same `.add()` call works fine on a List that is a local variable or entity field.
-- **Root cause**: Could not reproduce with standalone test cases. List parameters passed to functions and modified with `.add()`, `.get()`, `.count()` all work correctly. The original failure may have been caused by interaction with BUG-FE-007 (calling non-existent entity methods), which has been fixed.
-- **Regression test**: `test_zia_bugfixes.cpp:BugFE006_ListParamMethodCalls`
+- **Symptom**: Calling `.add()` on a List accessed through an entity field chain (e.g., `result.committedTxns.add(value)`) fails with IL verification error: `call arg type mismatch: @Viper.Collections.List.Push parameter 0 expects ptr but got i64`. Direct List locals and simple entity field Lists work fine.
+- **Root cause**: The lowerer resolves the entity field chain to a value, but when the List is accessed through a multi-level entity field dereference, the resulting IL type is `i64` instead of `ptr`, causing a type mismatch in the generated call instruction.
+- **Workaround**: Assign the entity field List to a local variable before calling methods on it:
+  ```zia
+  // FAILS: result.committedTxns.add(record.txnId)
+  // WORKS:
+  var committed = result.committedTxns;
+  committed.add(record.txnId);
+  result.committedTxns = committed;
+  ```
+- **Regression test**: `test_zia_bugfixes.cpp:BugFE006_ListParamMethodCalls` (simple case — passes)
 - **Found**: 2026-02-13
-- **Closed**: 2026-02-14
+- **Reproduced**: 2026-02-14 (in WAL recovery code with entity field chains)
 
 ---
 
@@ -207,6 +215,33 @@ These need to be fixed in the platform itself.
 - **Verification**: (1) Non-existent entity method calls now produce clear compile errors. (2) Valid entity field method dispatch works correctly (e.g., `engine.wal.isEnabled()`, `engine.wal.initWithDir(path)`). (3) All 1149 tests pass.
 - **Regression test**: `test_zia_bugfixes.cpp:BugFE007_NonExistentEntityMethodError`, `test_zia_bugfixes.cpp:BugFE007_ValidEntityFieldMethodDispatch`
 - **Found**: 2026-02-13
+- **Fixed**: 2026-02-14
+
+---
+
+## BUG-VM-001: VM SIGSEGV on heavy entity allocation in long-running programs
+
+- **Status**: CONFIRMED (native workaround)
+- **Severity**: High
+- **Component**: VM interpreter — memory management
+- **Symptom**: Programs that create many entity objects (e.g., multiple Executor/StorageEngine instances across test functions) crash with SIGSEGV after a threshold of cumulative allocations. The crash point is non-deterministic but correlates with total allocation pressure — e.g., 3 rounds of 50-row INSERT+DELETE tests work, but adding a 4th round with 100 rows crashes.
+- **Root cause**: The VM's entity/heap object pool appears to have a resource exhaustion issue. Each Zia entity method call allocates temporary objects (BinaryBuffer, Row, Value, etc.) that accumulate without proper collection. After enough rounds of heavy operations, some internal data structure overflows or a freed object is accessed.
+- **Reproduction**: Run `test_stress3.zia` with original 100-row DELETE tests after the multi-database test — crashes during the 3rd or 4th test function.
+- **Workaround**: (1) Reduce per-test row counts to stay within VM limits when running in the interpreter. (2) Build as native binary (`viper build`) which does not have this limitation — native binaries successfully handle 1000+ row operations across many test functions.
+- **Found**: 2026-02-14
+
+---
+
+## BUG-STORAGE-003: rewriteTableRows() did not rebuild row location tracking
+
+- **Status**: FIXED
+- **Severity**: High
+- **Component**: ViperSQL storage layer — `engine.zia`, `executor.zia`
+- **Symptom**: After a DELETE that falls back to full table rewrite, subsequent operations on the same table in the same session could crash or produce wrong results. Additionally, the executor's DELETE handler called `clearRowLocations()` unconditionally before deciding whether to rewrite, leaving tracking empty. INSERT operations after DELETE worked but had stale tracking state.
+- **Root cause**: `rewriteTableRows()` re-inserted all surviving rows into fresh data pages but never called `trackRowLocation()` for the new page/slot positions. Additionally, the DELETE incremental path had a fundamental design flaw: after compacting the in-memory row list, row indices shifted but tracking entries were not updated, making `findRowLocation()` return wrong pages/slots.
+- **Fix**: (1) `rewriteTableRows()` now calls `clearRowLocations(tableName)` at the start and `trackRowLocation()` after each row insert, making it self-contained and correct. (2) The executor DELETE path was simplified to always compact in-memory first, then call `rewriteTableRows()` (which rebuilds tracking). The broken incremental DELETE path was removed. (3) The executor UPDATE rewrite fallback no longer calls a redundant `clearRowLocations()` since `rewriteTableRows()` handles it internally.
+- **Verification**: All 131 Zia tests pass (54 engine + 26 persistence + 17 phase3 + 34 stress3). All 18 native-scale stress tests pass (including 1000-row DELETE, 200-row UPDATE, 50 open/close cycles, 100-row DELETE + 150-row re-INSERT). All 1149 C++ tests pass.
+- **Found**: 2026-02-14
 - **Fixed**: 2026-02-14
 
 ---

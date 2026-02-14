@@ -40,6 +40,10 @@ entity StorageEngine {
     hide RowSerializer rowSerializer;
     hide Boolean walEnabled;
 
+    // Last insert location for row tracking (Phase 5)
+    expose Integer lastInsertPageId;
+    expose Integer lastInsertSlotIdx;
+
     expose func init() {
         pool = new BufferPool();
         pool.init();
@@ -57,6 +61,8 @@ entity StorageEngine {
         rowSerializer = new RowSerializer();
         rowSerializer.init();
         walEnabled = false;
+        lastInsertPageId = INVALID_PAGE_ID;
+        lastInsertSlotIdx = -1;
         rowPageIds = [];
         rowSlotIdxs = [];
         rowTableNames = [];
@@ -131,7 +137,108 @@ entity StorageEngine {
         }
 
         isPersistent = true;
+
+        // Auto-enable WAL: check if WAL log files exist next to the database
+        var walDir = fname + ".wal";
+        var walFile0 = walDir + "/wal_0.log";
+        if IO.File.Exists(walFile0) {
+            enableWal(walDir);
+            // Perform crash recovery if WAL files exist
+            performRecovery();
+        }
+
         return true;
+    }
+
+    // Perform WAL crash recovery (redo committed transactions)
+    expose func performRecovery() -> RecoveryResult {
+        if walEnabled == false {
+            return createRecoveryResult(false);
+        }
+
+        // Phase 1: Analysis — read all WAL records, identify committed transactions
+        var committedTxns: List[Integer] = [];
+        var abortedTxns: List[Integer] = [];
+        var activeTxns: List[Integer] = [];
+        var allRecords: List[LogRecord] = [];
+
+        var fileNum = 0;
+        while fileNum <= wal.currentFile + 5 {
+            var records = wal.readLogFile(fileNum);
+            if records.count() == 0 && fileNum > wal.currentFile {
+                fileNum = fileNum + 1;
+                if fileNum > wal.currentFile + 5 {
+                    // Stop scanning after 5 empty files past currentFile
+                }
+            } else {
+                var ri = 0;
+                while ri < records.count() {
+                    var record = records.get(ri);
+                    allRecords.add(record);
+
+                    if record.recordType == LOG_BEGIN {
+                        activeTxns.add(record.txnId);
+                    } else if record.recordType == LOG_COMMIT {
+                        committedTxns.add(record.txnId);
+                        activeTxns = wal.removeTxnFromList(activeTxns, record.txnId);
+                    } else if record.recordType == LOG_ABORT {
+                        abortedTxns.add(record.txnId);
+                        activeTxns = wal.removeTxnFromList(activeTxns, record.txnId);
+                    }
+                    ri = ri + 1;
+                }
+            }
+            fileNum = fileNum + 1;
+        }
+
+        // Phase 2: Redo — replay committed INSERT operations
+        var redoCount = 0;
+        var ri = 0;
+        while ri < allRecords.count() {
+            var record = allRecords.get(ri);
+            if record.recordType == LOG_INSERT {
+                if wal.isTxnCommitted(committedTxns, record.txnId) {
+                    // Check if this insert needs to be redone
+                    // The row should be at (pageId, slotId) — verify it exists
+                    if record.pageId != INVALID_PAGE_ID {
+                        var page = pool.fetchPage(record.pageId);
+                        if page != null {
+                            var p = page;
+                            // The page exists — check if slot is occupied
+                            var slotCount = dataMgr.getRowCount(p);
+                            if record.slotId >= slotCount {
+                                // Slot doesn't exist yet — redo the insert
+                                record.afterImage.seek(0);
+                                var row = rowSerializer.deserializeRow(record.afterImage);
+                                dataMgr.insertRow(p, row);
+                                pool.unpinPage(record.pageId, true);
+                                redoCount = redoCount + 1;
+                            } else {
+                                pool.unpinPage(record.pageId, false);
+                            }
+                        }
+                    }
+                }
+            }
+            ri = ri + 1;
+        }
+
+        // Phase 3: Flush recovered data and clean up WAL
+        if redoCount > 0 {
+            pool.flushAll();
+        }
+        wal.cleanupWalFiles();
+        wal.resetState();
+
+        // Build result
+        var result = new RecoveryResult();
+        result.init();
+        result.recoveryComplete = true;
+        result.committedTxns = committedTxns;
+        result.abortedTxns = abortedTxns;
+        result.activeTxnsAtCrash = activeTxns;
+        result.redoCount = redoCount;
+        return result;
     }
 
     // Close the database, flushing all dirty pages and WAL
@@ -336,6 +443,9 @@ entity StorageEngine {
                             wal.logInsert(txnId, m.tableId, pageId, slot, rowBuf);
                             wal.logCommit(txnId);
                         }
+                        // Track insert location for Phase 5 row tracking
+                        lastInsertPageId = pageId;
+                        lastInsertSlotIdx = slot;
                         // Update row count in metadata
                         m.rowCount = m.rowCount + 1;
                         updateMetaInSchema(m);
@@ -379,6 +489,9 @@ entity StorageEngine {
                 wal.logInsert(txnId, m.tableId, newPage.pageId, slot, rowBuf);
                 wal.logCommit(txnId);
             }
+            // Track insert location for Phase 5 row tracking
+            lastInsertPageId = newPage.pageId;
+            lastInsertSlotIdx = slot;
             m.rowCount = m.rowCount + 1;
             updateMetaInSchema(m);
             pool.flushAll();
@@ -412,6 +525,9 @@ entity StorageEngine {
             wal.logBegin(txnId);
         }
 
+        // Clear existing row tracking for this table — will be rebuilt below
+        clearRowLocations(tableName);
+
         // Free all existing data pages
         var pageId = m.firstDataPage;
         while pageId != INVALID_PAGE_ID {
@@ -443,6 +559,10 @@ entity StorageEngine {
                 var cp = curPage;
                 if dataMgr.canFitRow(cp, row) {
                     var slot = dataMgr.insertRow(cp, row);
+                    // Track new location for Phase 5 incremental operations
+                    if slot >= 0 {
+                        trackRowLocation(tableName, currentPageId, slot);
+                    }
                     pool.unpinPage(currentPageId, true);
                     // WAL: log each re-inserted row
                     if walEnabled && slot >= 0 {
@@ -458,6 +578,10 @@ entity StorageEngine {
 
                     var slot = dataMgr.insertRow(newPage, row);
                     currentPageId = newPage.pageId;
+                    // Track new location for Phase 5 incremental operations
+                    if slot >= 0 {
+                        trackRowLocation(tableName, currentPageId, slot);
+                    }
                     pool.unpinPage(newPage.pageId, true);
                     // WAL: log each re-inserted row
                     if walEnabled && slot >= 0 {
@@ -526,6 +650,16 @@ entity StorageEngine {
             var sp = schemaPage;
             schemaMgr.updateTable(sp, meta);
             pool.unpinPage(1, true);
+        }
+    }
+
+    // Update row count for a table in persistent metadata
+    expose func updateRowCountInMeta(tableName: String, newCount: Integer) {
+        var meta = findMeta(tableName);
+        if meta != null {
+            var m = meta;
+            m.rowCount = newCount;
+            updateMetaInSchema(m);
         }
     }
 

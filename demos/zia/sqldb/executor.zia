@@ -1382,10 +1382,13 @@ entity Executor {
             // Update all indexes on this table
             updateIndexesAfterInsert(stmt.tableName, row, newRowIdx, t);
 
-            // Persist row to storage engine
+            // Persist row to storage engine and track location
             if storageEngine != null {
                 var se = storageEngine;
-                se.insertRowStorage(stmt.tableName, row);
+                var insertOk = se.insertRowStorage(stmt.tableName, row);
+                if insertOk {
+                    se.trackRowLocation(stmt.tableName, se.lastInsertPageId, se.lastInsertSlotIdx);
+                }
                 se.updateAutoIncrement(stmt.tableName, t.autoIncrementValue);
             }
 
@@ -1912,6 +1915,7 @@ entity Executor {
 
         var t = table;
         var rowsUpdated = 0;
+        var updatedIndices: List[Integer] = [];
 
         var r = 0;
         while r < t.rowCount() {
@@ -1959,6 +1963,7 @@ entity Executor {
                             }
                             i = i + 1;
                         }
+                        updatedIndices.add(r);
                         rowsUpdated = rowsUpdated + 1;
                     }
                 }
@@ -1966,10 +1971,32 @@ entity Executor {
             r = r + 1;
         }
 
-        // Persist updated rows via full table rewrite
+        // Persist updated rows — try incremental in-place updates first
         if storageEngine != null && rowsUpdated > 0 {
             var se = storageEngine;
-            se.rewriteTableRows(stmt.tableName, t.rows);
+            var needsRewrite = false;
+            var ui = 0;
+            while ui < updatedIndices.count() {
+                var rowIdx = updatedIndices.get(ui);
+                var loc = se.findRowLocation(stmt.tableName, rowIdx);
+                var locPageId = loc.get(0);
+                var locSlotIdx = loc.get(1);
+                if locPageId != INVALID_PAGE_ID {
+                    var updRow = t.getRow(rowIdx);
+                    var ok = se.updateRowByLocation(stmt.tableName, locPageId, locSlotIdx, updRow);
+                    if ok == false {
+                        needsRewrite = true;
+                    }
+                } else {
+                    needsRewrite = true;
+                }
+                ui = ui + 1;
+            }
+            // Fall back to full rewrite if any in-place update failed
+            // rewriteTableRows() clears + rebuilds row tracking internally
+            if needsRewrite {
+                se.rewriteTableRows(stmt.tableName, t.rows);
+            }
             se.flush();
         }
 
@@ -1990,6 +2017,7 @@ entity Executor {
 
         var t = table;
         var rowsDeleted = 0;
+        var deletedIndices: List[Integer] = [];
 
         var r = 0;
         while r < t.rowCount() {
@@ -1999,6 +2027,7 @@ entity Executor {
                 if rowData.deleted == false {
                     if evalCondition(stmt.whereClause, rowData, t) {
                         rowData.deleted = true;
+                        deletedIndices.add(r);
                         rowsDeleted = rowsDeleted + 1;
                     }
                 }
@@ -2007,8 +2036,8 @@ entity Executor {
         }
 
         // Compact rows list to remove soft-deleted entries
-        // This prevents SIGBUS when inserting into a fully-emptied table
         if rowsDeleted > 0 {
+            // Compact in-memory list first
             var compacted: List[Row] = [];
             var cr = 0;
             while cr < t.rowCount() {
@@ -2023,7 +2052,7 @@ entity Executor {
             }
             t.rows = compacted;
 
-            // Persist surviving rows via full table rewrite
+            // Persist via full table rewrite (rewriteTableRows clears + rebuilds tracking)
             if storageEngine != null {
                 var se = storageEngine;
                 se.rewriteTableRows(stmt.tableName, t.rows);
@@ -3710,6 +3739,13 @@ entity Executor {
             result.setError("Failed to open database: " + filename);
             return result;
         }
+
+        // Auto-enable WAL for new databases
+        if isNew {
+            var walDir = filename + ".wal";
+            se.enableWal(walDir);
+        }
+        // Note: for existing databases, WAL is auto-enabled in openDatabase() if WAL dir exists
 
         storageEngine = se;
 

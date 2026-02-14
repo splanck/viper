@@ -138,6 +138,12 @@ entity DatabaseServer {
             return false;
         }
 
+        // Auto-enable WAL for persistent databases
+        if isNew {
+            var walDir = filePath + ".wal";
+            se.enableWal(walDir);
+        }
+
         storageEngines.add(se);
         dbFilePaths.add(filePath);
 

@@ -497,18 +497,35 @@ entity WALManager {
         return records;
     }
 
-    // Perform recovery (ARIES-style simplified)
+    // Perform basic recovery (analysis only — full redo done by StorageEngine)
     expose func recover() -> RecoveryResult {
         var result = createRecoveryResult(enabled);
         if enabled == false {
             return result;
         }
 
-        // Check for WAL files and perform recovery
+        // Analysis: identify committed transactions
         if checkWalFilesExist() {
-            cleanupWalFiles();
-            currentFile = 0;
-            currentOffset = 0;
+            var committed: List[Integer] = [];
+            var aborted: List[Integer] = [];
+            var fileNum = 0;
+            while fileNum <= currentFile + 5 {
+                var records = readLogFile(fileNum);
+                var ri = 0;
+                while ri < records.count() {
+                    var record = records.get(ri);
+                    if record.recordType == LOG_COMMIT {
+                        committed.add(record.txnId);
+                    } else if record.recordType == LOG_ABORT {
+                        aborted.add(record.txnId);
+                    }
+                    ri = ri + 1;
+                }
+                fileNum = fileNum + 1;
+            }
+            result.committedTxns = committed;
+            result.abortedTxns = aborted;
+            result.recoveryComplete = true;
         }
 
         return result;
@@ -549,7 +566,7 @@ entity WALManager {
     }
 
     // Check if a transaction ID is in the committed list
-    hide func isTxnCommitted(committed: List[Integer], txnId: Integer) -> Boolean {
+    expose func isTxnCommitted(committed: List[Integer], txnId: Integer) -> Boolean {
         var i = 0;
         while i < committed.count() {
             if committed.get(i) == txnId {
@@ -561,7 +578,7 @@ entity WALManager {
     }
 
     // Delete all WAL files from disk
-    hide func cleanupWalFiles() {
+    expose func cleanupWalFiles() {
         var fileNum = 0;
         while fileNum <= currentFile {
             var path = logFilePath(fileNum);
@@ -573,8 +590,17 @@ entity WALManager {
     }
 
 
+    // Reset WAL state after recovery
+    expose func resetState() {
+        currentFile = 0;
+        currentOffset = 0;
+        bufferPosition = 0;
+        logBuffer = new BinaryBuffer();
+        logBuffer.initWithCapacity(WAL_BUFFER_SIZE);
+    }
+
     // Helper to remove transaction from list (returns new list)
-    hide func removeTxnFromList(list: List[Integer], txnId: Integer) -> List[Integer] {
+    expose func removeTxnFromList(list: List[Integer], txnId: Integer) -> List[Integer] {
         // Workaround for BUG-002: List.remove() doesn't work
         var newList: List[Integer] = [];
         var i = 0;
