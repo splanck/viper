@@ -496,6 +496,175 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+//===----------------------------------------------------------------------===//
+// BUG-FE-006: Entity field chain List method calls generate wrong IL types
+//===----------------------------------------------------------------------===//
+
+/// @brief Entity field chain List.add() should compile when entity B is declared
+///        AFTER entity A (forward reference pattern).
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_ForwardRef)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity User {
+    expose Container container;
+    expose func init() {
+        container = new Container();
+        container.init();
+    }
+    expose func addItem(val: Integer) {
+        container.items.add(val);
+    }
+}
+
+entity Container {
+    expose List[Integer] items;
+    expose func init() { items = []; }
+}
+
+func start() {
+    var u = new User();
+    u.init();
+    u.addItem(42);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe006_fwd.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Entity field chain List.add() should compile when entity B is declared
+///        BEFORE entity A (normal declaration order).
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_NormalOrder)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Container {
+    expose List[Integer] items;
+    expose func init() { items = []; }
+}
+
+entity User {
+    expose Container container;
+    expose func init() {
+        container = new Container();
+        container.init();
+    }
+    expose func addItem(val: Integer) {
+        container.items.add(val);
+    }
+}
+
+func start() {
+    var u = new User();
+    u.init();
+    u.addItem(42);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe006_norm.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Multiple entity field chains with different collection types.
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainMultipleCollections)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Manager {
+    expose DataStore store;
+    expose func init() {
+        store = new DataStore();
+        store.init();
+    }
+    expose func addValue(v: Integer) {
+        store.values.add(v);
+    }
+    expose func addName(n: String) {
+        store.names.add(n);
+    }
+}
+
+entity DataStore {
+    expose List[Integer] values;
+    expose List[String] names;
+    expose func init() {
+        values = [];
+        names = [];
+    }
+}
+
+func start() {
+    var m = new Manager();
+    m.init();
+    m.addValue(10);
+    m.addName("hello");
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe006_multi.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Entity field chain accessing an entity-typed field (not just List).
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainEntityField_ForwardRef)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Outer {
+    expose Middle mid;
+    expose func init() {
+        mid = new Middle();
+        mid.init();
+    }
+    expose func getInnerVal() -> Integer {
+        return mid.inner.value;
+    }
+}
+
+entity Middle {
+    expose Inner inner;
+    expose func init() {
+        inner = new Inner();
+        inner.value = 99;
+    }
+}
+
+entity Inner {
+    expose Integer value;
+}
+
+func start() {
+    var o = new Outer();
+    o.init();
+    Viper.Terminal.SayInt(o.getInnerVal());
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe006_entity_chain.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

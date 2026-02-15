@@ -1,4 +1,5 @@
-// test_stress2.zia - Comprehensive stress tests for persistent storage
+// test_stress2.zia — Comprehensive stress tests for persistent storage
+// Part of ViperSQL
 module test_stress2;
 
 bind Terminal = Viper.Terminal;
@@ -6,24 +7,8 @@ bind IO = Viper.IO;
 bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 
-bind "./executor";
-
-//=============================================================================
-// TEST UTILITIES
-//=============================================================================
-
-Integer passed = 0;
-Integer failed = 0;
-
-func check(name: String, condition: Boolean) {
-    if condition {
-        Terminal.Say("  PASS: " + name);
-        passed = passed + 1;
-    } else {
-        Terminal.Say("  FAIL: " + name);
-        failed = failed + 1;
-    }
-}
+bind "../executor";
+bind "./test_common";
 
 //=============================================================================
 // STRESS TESTS
@@ -575,13 +560,5 @@ func main() {
     stressNegativeIntegers();
     stressLargeRowCount();
 
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passed));
-    Terminal.Say("Failed: " + Fmt.Int(failed));
-    if failed == 0 {
-        Terminal.Say("ALL TESTS PASSED");
-    } else {
-        Terminal.Say("SOME TESTS FAILED");
-    }
+    printResults();
 }

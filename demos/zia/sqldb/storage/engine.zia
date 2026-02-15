@@ -1,4 +1,5 @@
-// engine.zia - Storage Engine Adapter
+// engine.zia — Storage Engine Adapter
+// Part of ViperSQL
 // Bridges BufferPool/SchemaPage/DataPage to high-level database operations
 
 module engine;

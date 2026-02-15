@@ -1,5 +1,5 @@
-// stmt.viper - Statement Types
-// Part of SQLite Clone - ViperLang Implementation
+// stmt.zia — Statement Types
+// Part of ViperSQL
 
 module stmt;
 

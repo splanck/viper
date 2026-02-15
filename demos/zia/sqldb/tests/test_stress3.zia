@@ -1,4 +1,5 @@
-// test_stress3.zia - Phase 3-5 stress tests
+// test_stress3.zia — Phase 3-5 stress tests
+// Part of ViperSQL
 // Tests: multi-database persistence, incremental UPDATE/DELETE, WAL integration
 module test_stress3;
 
@@ -7,24 +8,8 @@ bind IO = Viper.IO;
 bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 
-bind "./executor";
-
-//=============================================================================
-// TEST UTILITIES
-//=============================================================================
-
-Integer passed = 0;
-Integer failed = 0;
-
-func check(name: String, condition: Boolean) {
-    if condition {
-        Terminal.Say("  PASS: " + name);
-        passed = passed + 1;
-    } else {
-        Terminal.Say("  FAIL: " + name);
-        failed = failed + 1;
-    }
-}
+bind "../executor";
+bind "./test_common";
 
 func cleanup(path: String) {
     if IO.File.Exists(path) { IO.File.Delete(path); }
@@ -550,13 +535,5 @@ func main() {
     stress9();
     stress10();
 
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passed));
-    Terminal.Say("Failed: " + Fmt.Int(failed));
-    if failed == 0 {
-        Terminal.Say("ALL TESTS PASSED");
-    } else {
-        Terminal.Say("SOME TESTS FAILED");
-    }
+    printResults();
 }

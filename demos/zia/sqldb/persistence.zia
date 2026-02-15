@@ -1,0 +1,328 @@
+// persistence.zia — Database Save/Open/Close Operations
+// Part of ViperSQL
+
+module persistence;
+
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+bind IO = Viper.IO;
+
+bind "./types";
+bind "./schema";
+bind "./table";
+bind "./index";
+bind "./database";
+bind "./result";
+bind "./parser";
+bind "./server";
+bind "./storage/page";
+bind "./storage/serializer";
+bind "./storage/pager";
+bind "./storage/buffer";
+bind "./storage/schema_page";
+bind "./storage/data_page";
+bind "./storage/engine";
+bind "./executor";
+
+//=============================================================================
+// PERSISTENCE MANAGER ENTITY
+//=============================================================================
+
+entity PersistenceManager {
+    expose Executor exec;
+
+    expose func init(executor: Executor) {
+        exec = executor;
+    }
+
+    // SAVE command - save database to file as SQL dump
+    expose func executeSave(filename: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var content = "";
+
+        // Generate CREATE TABLE statements
+        var ti = 0;
+        while ti < exec.db.tableCount() {
+            var maybeTable = exec.db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                content = content + generateCreateTable(table) + "\n\n";
+
+                // Clone table name to prevent string corruption during serialization
+                var tblName = String.Substring(table.name, 0, String.Length(table.name));
+
+                // Generate INSERT statements for each row
+                var ri = 0;
+                while ri < table.rowCount() {
+                    var maybeRow = table.getRow(ri);
+                    if maybeRow != null {
+                        var row = maybeRow;
+                        if row.deleted == false {
+                            content = content + generateInsert(tblName, row) + "\n";
+                        }
+                    }
+                    ri = ri + 1;
+                }
+                if table.rowCount() > 0 {
+                    content = content + "\n";
+                }
+            }
+            ti = ti + 1;
+        }
+
+        // Generate CREATE INDEX statements
+        var ii = 0;
+        while ii < exec.indexMgr.indexCount() {
+            var maybeIdx = exec.indexMgr.getIndex(ii);
+            if maybeIdx != null {
+                var idx = maybeIdx;
+                content = content + generateCreateIndex(idx) + "\n";
+            }
+            ii = ii + 1;
+        }
+
+        // Write to file
+        IO.File.WriteAllText(filename, content);
+
+        // Verify the file was actually written
+        if IO.File.Exists(filename) == false {
+            result.setError("Failed to save database to '" + filename + "': file could not be written");
+            return result;
+        }
+
+        result.message = "Database saved to '" + filename + "'";
+        return result;
+    }
+
+    // Generate CREATE TABLE statement for a table
+    hide func generateCreateTable(table: Table) -> String {
+        var sql = "CREATE TABLE " + table.name + " (\n";
+        var ci = 0;
+        while ci < table.columnCount() {
+            var maybeCol = table.getColumn(ci);
+            if maybeCol != null {
+                var col = maybeCol;
+                if ci > 0 {
+                    sql = sql + ",\n";
+                }
+                sql = sql + "  " + col.name + " " + col.typeName();
+                if col.primaryKey {
+                    sql = sql + " PRIMARY KEY";
+                }
+                if col.autoIncrement {
+                    sql = sql + " AUTOINCREMENT";
+                }
+                if col.notNull {
+                    sql = sql + " NOT NULL";
+                }
+                if col.unique {
+                    sql = sql + " UNIQUE";
+                }
+                if col.hasDefault {
+                    sql = sql + " DEFAULT " + col.defaultValue.toSqlString();
+                }
+                if col.isForeignKey {
+                    sql = sql + " REFERENCES " + col.refTableName + "(" + col.refColumnName + ")";
+                }
+            }
+            ci = ci + 1;
+        }
+        sql = sql + "\n);";
+        return sql;
+    }
+
+    // Generate INSERT statement for a row
+    hide func generateInsert(tableName: String, row: Row) -> String {
+        var sql = "INSERT INTO " + tableName + " VALUES (";
+        var ci = 0;
+        while ci < row.columnCount() {
+            if ci > 0 {
+                sql = sql + ", ";
+            }
+            var val = exec.cloneValue(row.getValue(ci));
+            sql = sql + val.toSqlString();
+            ci = ci + 1;
+        }
+        sql = sql + ");";
+        return sql;
+    }
+
+    // Generate CREATE INDEX statement
+    hide func generateCreateIndex(idx: SqlIndex) -> String {
+        var sql = "CREATE ";
+        if idx.isUnique {
+            sql = sql + "UNIQUE ";
+        }
+        sql = sql + "INDEX " + idx.name + " ON " + idx.tableName + " (";
+        var ci = 0;
+        while ci < idx.columnCount() {
+            if ci > 0 {
+                sql = sql + ", ";
+            }
+            sql = sql + idx.getColumnName(ci);
+            ci = ci + 1;
+        }
+        sql = sql + ");";
+        return sql;
+    }
+
+    // OPEN command - load database from SQL dump file or persistent .vdb file
+    expose func executeOpen(filename: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Detect persistent binary database by .vdb extension
+        if String.EndsWith(filename, ".vdb") {
+            return executeOpenPersistent(filename);
+        }
+
+        // SQL dump mode (existing behavior)
+        if IO.File.Exists(filename) == false {
+            result.setError("File not found: " + filename);
+            return result;
+        }
+
+        var content = IO.File.ReadAllText(filename);
+        if content == "" {
+            result.setError("Failed to read file or file is empty: " + filename);
+            return result;
+        }
+
+        // Split content into statements by semicolon
+        var statements = splitStatements(content);
+        var executed = 0;
+        var errors = 0;
+
+        var i = 0;
+        while i < statements.count() {
+            var stmt = String.Trim(statements.get(i));
+            if stmt != "" {
+                var stmtResult = exec.executeSql(stmt);
+                if stmtResult.success {
+                    executed = executed + 1;
+                } else {
+                    errors = errors + 1;
+                }
+            }
+            i = i + 1;
+        }
+
+        result.message = "Loaded '" + filename + "': " + Fmt.Int(executed) + " statements executed";
+        if errors > 0 {
+            result.message = result.message + ", " + Fmt.Int(errors) + " errors";
+        }
+        return result;
+    }
+
+    // Open a persistent binary database (.vdb file)
+    hide func executeOpenPersistent(filename: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Close any existing storage engine
+        if exec.storageEngine != null {
+            var oldSe = exec.storageEngine;
+            oldSe.closeDatabase();
+            exec.storageEngine = null;
+        }
+
+        var se = new StorageEngine();
+        se.init();
+
+        var isNew = IO.File.Exists(filename) == false;
+        var ok = false;
+        if isNew {
+            ok = se.createDatabase(filename);
+        } else {
+            ok = se.openDatabase(filename);
+        }
+
+        if ok == false {
+            result.setError("Failed to open database: " + filename);
+            return result;
+        }
+
+        // Auto-enable WAL for new databases
+        if isNew {
+            var walDir = filename + ".wal";
+            se.enableWal(walDir);
+        }
+        // Note: for existing databases, WAL is auto-enabled in openDatabase() if WAL dir exists
+
+        exec.storageEngine = se;
+
+        if isNew == false {
+            // Load all tables from persistent storage into in-memory model
+            var tables = se.loadAllTables();
+            var i = 0;
+            while i < tables.count() {
+                exec.db.addTable(tables.get(i));
+                i = i + 1;
+            }
+            result.message = "Opened persistent database '" + filename + "': " + Fmt.Int(tables.count()) + " table(s) loaded";
+        } else {
+            result.message = "Created persistent database '" + filename + "'";
+        }
+
+        return result;
+    }
+
+    // CLOSE command - flush and close persistent storage
+    expose func executeClose() -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if exec.storageEngine == null {
+            result.message = "No persistent database open";
+            return result;
+        }
+
+        var se = exec.storageEngine;
+        se.closeDatabase();
+        exec.storageEngine = null;
+        result.message = "Database closed";
+        return result;
+    }
+
+    // Split SQL content into individual statements
+    hide func splitStatements(content: String) -> List[String] {
+        var statements: List[String] = [];
+        var current = "";
+        var inString = false;
+        var stringChar = "";
+
+        var i = 0;
+        var len = String.Length(content);
+        while i < len {
+            var ch = String.Substring(content, i, 1);
+
+            if inString {
+                current = current + ch;
+                if ch == stringChar {
+                    inString = false;
+                }
+            } else {
+                if ch == "'" || ch == "\"" {
+                    inString = true;
+                    stringChar = ch;
+                    current = current + ch;
+                } else if ch == ";" {
+                    statements.add(current);
+                    current = "";
+                } else {
+                    current = current + ch;
+                }
+            }
+            i = i + 1;
+        }
+
+        // Add any remaining content
+        if String.Trim(current) != "" {
+            statements.add(current);
+        }
+
+        return statements;
+    }
+}

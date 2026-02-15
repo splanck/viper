@@ -1,4 +1,5 @@
-// Test that refactored Pager works with BinFile I/O
+// test_pager_io.zia — Test that refactored Pager works with BinFile I/O
+// Part of ViperSQL
 module test_pager_io;
 
 bind Terminal = Viper.Terminal;
@@ -6,10 +7,10 @@ bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
 bind Collections = Viper.Collections;
 
-bind "./storage/page";
-bind "./storage/serializer";
-bind "./storage/pager";
-bind "./types";
+bind "../storage/page";
+bind "../storage/serializer";
+bind "../storage/pager";
+bind "../types";
 
 func main() {
     Terminal.Say("=== Pager BinFile I/O Test ===");

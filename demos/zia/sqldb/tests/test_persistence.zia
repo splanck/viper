@@ -1,4 +1,5 @@
-// test_persistence.zia - End-to-end tests for persistent .vdb storage (Phase 2)
+// test_persistence.zia — End-to-end tests for persistent .vdb storage (Phase 2)
+// Part of ViperSQL
 module test_persistence;
 
 bind Terminal = Viper.Terminal;
@@ -6,24 +7,8 @@ bind IO = Viper.IO;
 bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 
-bind "./executor";
-
-//=============================================================================
-// TEST UTILITIES
-//=============================================================================
-
-Integer passed = 0;
-Integer failed = 0;
-
-func check(name: String, condition: Boolean) {
-    if condition {
-        Terminal.Say("  PASS: " + name);
-        passed = passed + 1;
-    } else {
-        Terminal.Say("  FAIL: " + name);
-        failed = failed + 1;
-    }
-}
+bind "../executor";
+bind "./test_common";
 
 //=============================================================================
 // TESTS
@@ -259,13 +244,5 @@ func main() {
     testMultipleTablesAndTypes();
     testCloseNoDb();
 
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passed));
-    Terminal.Say("Failed: " + Fmt.Int(failed));
-    if failed == 0 {
-        Terminal.Say("ALL TESTS PASSED");
-    } else {
-        Terminal.Say("SOME TESTS FAILED");
-    }
+    printResults();
 }

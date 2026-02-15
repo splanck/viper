@@ -1,0 +1,168 @@
+// setops.zia — SQL Set Operations (UNION, EXCEPT, INTERSECT)
+// Part of ViperSQL
+
+module setops;
+
+bind "./types";
+bind "./result";
+
+//=============================================================================
+// SET OPERATIONS
+//=============================================================================
+
+// Execute UNION or UNION ALL
+func executeUnion(first: QueryResult, second: QueryResult, unionAll: Boolean) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    // Copy column names from first result
+    var ci = 0;
+    while ci < first.columnNames.count() {
+        result.addColumnName(first.columnNames.get(ci));
+        ci = ci + 1;
+    }
+
+    // Add all rows from first result
+    var ri = 0;
+    while ri < first.rowCount() {
+        var row = first.getRow(ri);
+        if row != null {
+            result.addRow(row);
+        }
+        ri = ri + 1;
+    }
+
+    // Add rows from second result
+    ri = 0;
+    while ri < second.rowCount() {
+        var row = second.getRow(ri);
+        if row != null {
+            var r = row;
+            if unionAll {
+                // UNION ALL: add all rows including duplicates
+                result.addRow(r);
+            } else {
+                // UNION: only add if not duplicate
+                if isDuplicateRow(result, r) == false {
+                    result.addRow(r);
+                }
+            }
+        }
+        ri = ri + 1;
+    }
+
+    return result;
+}
+
+// Execute EXCEPT - returns rows in first that are not in second
+func executeExcept(first: QueryResult, second: QueryResult) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    // Copy column names from first result
+    var ci = 0;
+    while ci < first.columnNames.count() {
+        result.addColumnName(first.columnNames.get(ci));
+        ci = ci + 1;
+    }
+
+    // Add rows from first that are not in second
+    var ri = 0;
+    while ri < first.rowCount() {
+        var row = first.getRow(ri);
+        if row != null {
+            var r = row;
+            // Check if this row exists in second result
+            if isRowInResult(second, r) == false {
+                // Only add if not already in result (avoid duplicates)
+                if isDuplicateRow(result, r) == false {
+                    result.addRow(r);
+                }
+            }
+        }
+        ri = ri + 1;
+    }
+
+    return result;
+}
+
+// Execute INTERSECT - returns rows that exist in both results
+func executeIntersect(first: QueryResult, second: QueryResult) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    // Copy column names from first result
+    var ci = 0;
+    while ci < first.columnNames.count() {
+        result.addColumnName(first.columnNames.get(ci));
+        ci = ci + 1;
+    }
+
+    // Add rows from first that also exist in second
+    var ri = 0;
+    while ri < first.rowCount() {
+        var row = first.getRow(ri);
+        if row != null {
+            var r = row;
+            // Check if this row exists in second result
+            if isRowInResult(second, r) {
+                // Only add if not already in result (avoid duplicates)
+                if isDuplicateRow(result, r) == false {
+                    result.addRow(r);
+                }
+            }
+        }
+        ri = ri + 1;
+    }
+
+    return result;
+}
+
+// Check if a row is a duplicate of any existing row in result
+func isDuplicateRow(result: QueryResult, row: Row) -> Boolean {
+    var ri = 0;
+    while ri < result.rowCount() {
+        var existingRow = result.getRow(ri);
+        if existingRow != null {
+            var er = existingRow;
+            if rowsEqual(er, row) {
+                return true;
+            }
+        }
+        ri = ri + 1;
+    }
+    return false;
+}
+
+// Check if two rows are equal
+func rowsEqual(row1: Row, row2: Row) -> Boolean {
+    if row1.columnCount() != row2.columnCount() {
+        return false;
+    }
+    var ci = 0;
+    while ci < row1.columnCount() {
+        var v1 = row1.getValue(ci);
+        var v2 = row2.getValue(ci);
+        if v1.compare(v2) != 0 {
+            return false;
+        }
+        ci = ci + 1;
+    }
+    return true;
+}
+
+// Check if a row exists in a result set
+func isRowInResult(result: QueryResult, row: Row) -> Boolean {
+    var ri = 0;
+    while ri < result.rowCount() {
+        var existingRow = result.getRow(ri);
+        if existingRow != null {
+            var er = existingRow;
+            if rowsEqual(er, row) {
+                return true;
+            }
+        }
+        ri = ri + 1;
+    }
+    return false;
+}

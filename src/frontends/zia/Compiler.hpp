@@ -50,7 +50,7 @@
 /// The compiler automatically resolves and merges imported modules:
 /// - Relative imports: `import ./utils;` or `import ../lib/helper;`
 /// - Simple imports: `import foo;` (looks in same directory)
-/// - Circular imports are detected and reported as errors
+/// - Circular imports are allowed (skipped without error)
 /// - Maximum import depth of 50 levels
 /// - Maximum of 100 imported files
 ///
@@ -61,7 +61,7 @@
 /// iterate `result.diagnostics` for detailed error information.
 ///
 /// @invariant All compilation phases are executed in order.
-/// @invariant Circular imports are detected before infinite recursion.
+/// @invariant Circular imports are safely skipped (depth limit prevents runaway).
 /// @invariant Result module is valid only if succeeded() returns true.
 ///
 /// @see Lexer.hpp - Tokenization

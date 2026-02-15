@@ -6,36 +6,16 @@ module test_storage;
 bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 
-bind "./storage/page";
-bind "./storage/serializer";
-bind "./storage/pager";
-bind "./storage/buffer";
-bind "./storage/data_page";
-bind "./storage/schema_page";
-bind "./types";
-bind "./table";
-bind "./schema";
-
-//=============================================================================
-// TEST UTILITIES
-//=============================================================================
-
-Integer passed = 0;
-Integer failed = 0;
-
-func assertTrue(cond: Boolean, desc: String) {
-    if cond {
-        Terminal.Say("  PASS: " + desc);
-        passed = passed + 1;
-    } else {
-        Terminal.Say("  FAIL: " + desc);
-        failed = failed + 1;
-    }
-}
-
-func assertFalse(cond: Boolean, desc: String) {
-    assertTrue(cond == false, desc);
-}
+bind "../storage/page";
+bind "../storage/serializer";
+bind "../storage/pager";
+bind "../storage/buffer";
+bind "../storage/data_page";
+bind "../storage/schema_page";
+bind "../types";
+bind "../table";
+bind "../schema";
+bind "./test_common";
 
 //=============================================================================
 // TESTS
@@ -429,8 +409,5 @@ func start() {
     testSchemaPage();
     testEndToEnd();
 
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passed));
-    Terminal.Say("Failed: " + Fmt.Int(failed));
+    printResults();
 }

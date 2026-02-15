@@ -1,33 +1,22 @@
-// Test StorageEngine adapter entity
+// test_engine.zia — Test StorageEngine adapter entity
+// Part of ViperSQL
 module test_engine;
 
 bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
 
-bind "./storage/page";
-bind "./storage/serializer";
-bind "./storage/pager";
-bind "./storage/buffer";
-bind "./storage/schema_page";
-bind "./storage/data_page";
-bind "./storage/engine";
-bind "./types";
-bind "./table";
-bind "./schema";
-
-Integer passed = 0;
-Integer failed = 0;
-
-func assert(cond: Boolean, msg: String) {
-    if cond {
-        passed = passed + 1;
-        Terminal.Say("  PASS: " + msg);
-    } else {
-        failed = failed + 1;
-        Terminal.Say("  FAIL: " + msg);
-    }
-}
+bind "../storage/page";
+bind "../storage/serializer";
+bind "../storage/pager";
+bind "../storage/buffer";
+bind "../storage/schema_page";
+bind "../storage/data_page";
+bind "../storage/engine";
+bind "../types";
+bind "../table";
+bind "../schema";
+bind "./test_common";
 
 func main() {
     Terminal.Say("=== StorageEngine Test Suite ===");
@@ -599,12 +588,5 @@ func main() {
     //=====================================================================
     // Summary
     //=====================================================================
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passed));
-    Terminal.Say("Failed: " + Fmt.Int(failed));
-
-    if failed == 0 {
-        Terminal.Say("ALL TESTS PASSED");
-    }
+    printResults();
 }

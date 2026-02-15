@@ -1142,9 +1142,9 @@ void BytecodeVM::run()
                 // Check for alloca overflow
                 if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size())
                 {
-                    // Grow buffer if needed (up to 1MB limit)
+                    // Grow buffer if needed (up to 16MB limit)
                     size_t newSize = allocaBuffer_.size() * 2;
-                    if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
+                    if (newSize > 16 * 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
                     {
                         trap(TrapKind::StackOverflow, "alloca stack overflow");
                         break;
@@ -2613,7 +2613,7 @@ L_ALLOCA:
     if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size())
     {
         size_t newSize = allocaBuffer_.size() * 2;
-        if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
+        if (newSize > 16 * 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
         {
             trap(TrapKind::StackOverflow, "alloca stack overflow");
             return;

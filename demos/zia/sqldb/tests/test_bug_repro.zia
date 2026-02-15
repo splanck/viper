@@ -1,3 +1,5 @@
+// test_bug_repro.zia — Bug reproduction harness
+// Part of ViperSQL
 module test_bug_repro;
 
 bind Terminal = Viper.Terminal;
@@ -5,12 +7,12 @@ bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 bind IO = Viper.IO;
 
-bind "./storage/page";
-bind "./storage/serializer";
-bind "./storage/wal";
-bind "./types";
-bind "./table";
-bind "./schema";
+bind "../storage/page";
+bind "../storage/serializer";
+bind "../storage/wal";
+bind "../types";
+bind "../table";
+bind "../schema";
 
 // Test BUG-FE-005: Complex function with 15+ locals
 // Test BUG-FE-006: List parameter method calls

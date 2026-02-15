@@ -59,6 +59,173 @@ std::string Lowerer::qualifyName(const std::string &name) const
     return namespacePrefix_ + "." + name;
 }
 
+//=============================================================================
+// Type Layout Pre-Registration (BUG-FE-006 fix)
+//=============================================================================
+
+void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations)
+{
+    for (auto &decl : declarations)
+    {
+        if (decl->kind == DeclKind::Entity)
+        {
+            registerEntityLayout(*static_cast<EntityDecl *>(decl.get()));
+        }
+        else if (decl->kind == DeclKind::Value)
+        {
+            registerValueLayout(*static_cast<ValueDecl *>(decl.get()));
+        }
+        else if (decl->kind == DeclKind::Namespace)
+        {
+            auto *ns = static_cast<NamespaceDecl *>(decl.get());
+            std::string savedPrefix = namespacePrefix_;
+            if (namespacePrefix_.empty())
+                namespacePrefix_ = ns->name;
+            else
+                namespacePrefix_ = namespacePrefix_ + "." + ns->name;
+
+            registerAllTypeLayouts(ns->declarations);
+
+            namespacePrefix_ = savedPrefix;
+        }
+    }
+}
+
+void Lowerer::registerEntityLayout(EntityDecl &decl)
+{
+    // Skip uninstantiated generic types
+    if (!decl.genericParams.empty())
+        return;
+
+    std::string qualifiedName = qualifyName(decl.name);
+
+    // Skip if already registered
+    if (entityTypes_.find(qualifiedName) != entityTypes_.end())
+        return;
+
+    EntityTypeInfo info;
+    info.name = qualifiedName;
+    info.baseClass = decl.baseClass;
+    info.totalSize = kEntityFieldsOffset;
+    info.classId = nextClassId_++;
+    info.vtableName = "__vtable_" + qualifiedName;
+
+    for (const auto &iface : decl.interfaces)
+    {
+        info.implementedInterfaces.insert(iface);
+    }
+
+    // Copy inherited fields from parent entity
+    if (!decl.baseClass.empty())
+    {
+        auto parentIt = entityTypes_.find(decl.baseClass);
+        if (parentIt != entityTypes_.end())
+        {
+            const EntityTypeInfo &parent = parentIt->second;
+            for (const auto &parentField : parent.fields)
+            {
+                info.fieldIndex[parentField.name] = info.fields.size();
+                info.fields.push_back(parentField);
+            }
+            info.totalSize = parent.totalSize;
+            info.vtable = parent.vtable;
+            info.vtableIndex = parent.vtableIndex;
+        }
+    }
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            TypeRef fieldType =
+                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+
+            Type ilFieldType = mapType(fieldType);
+            size_t alignment = getILTypeAlignment(ilFieldType);
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = alignTo(info.totalSize, alignment);
+            layout.size = getILTypeSize(ilFieldType);
+
+            info.fieldIndex[field->name] = info.fields.size();
+            info.fields.push_back(layout);
+            info.totalSize = layout.offset + layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+
+            // Build vtable
+            std::string methodQualName = qualifiedName + "." + method->name;
+            auto vtableIt = info.vtableIndex.find(method->name);
+            if (vtableIt != info.vtableIndex.end())
+            {
+                info.vtable[vtableIt->second] = methodQualName;
+            }
+            else
+            {
+                info.vtableIndex[method->name] = info.vtable.size();
+                info.vtable.push_back(methodQualName);
+            }
+        }
+    }
+
+    entityTypes_[qualifiedName] = std::move(info);
+}
+
+void Lowerer::registerValueLayout(ValueDecl &decl)
+{
+    // Skip uninstantiated generic types
+    if (!decl.genericParams.empty())
+        return;
+
+    std::string qualifiedName = qualifyName(decl.name);
+
+    // Skip if already registered
+    if (valueTypes_.find(qualifiedName) != valueTypes_.end())
+        return;
+
+    ValueTypeInfo info;
+    info.name = qualifiedName;
+    info.totalSize = 0;
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            TypeRef fieldType =
+                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+
+            Type ilFieldType = mapType(fieldType);
+            size_t alignment = getILTypeAlignment(ilFieldType);
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = alignTo(info.totalSize, alignment);
+            layout.size = getILTypeSize(ilFieldType);
+
+            info.fieldIndex[field->name] = info.fields.size();
+            info.fields.push_back(layout);
+            info.totalSize = layout.offset + layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+        }
+    }
+
+    valueTypes_[qualifiedName] = std::move(info);
+}
+
 void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl)
 {
     // Save current namespace prefix
@@ -618,46 +785,14 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
     if (!decl.genericParams.empty())
         return;
 
-    // Use qualified name for value types inside namespaces
     std::string qualifiedName = qualifyName(decl.name);
 
-    // Compute field layout
-    ValueTypeInfo info;
-    info.name = qualifiedName;
-    info.totalSize = 0;
-
-    for (auto &member : decl.members)
+    // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
+    if (valueTypes_.find(qualifiedName) == valueTypes_.end())
     {
-        if (member->kind == DeclKind::Field)
-        {
-            auto *field = static_cast<FieldDecl *>(member.get());
-            TypeRef fieldType =
-                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
-
-            Type ilFieldType = mapType(fieldType);
-            size_t alignment = getILTypeAlignment(ilFieldType);
-
-            FieldLayout layout;
-            layout.name = field->name;
-            layout.type = fieldType;
-            layout.offset = alignTo(info.totalSize, alignment);
-            layout.size = getILTypeSize(ilFieldType);
-
-            // Add to lookup map before pushing to vector
-            info.fieldIndex[field->name] = info.fields.size();
-            info.fields.push_back(layout);
-            info.totalSize = layout.offset + layout.size;
-        }
-        else if (member->kind == DeclKind::Method)
-        {
-            auto *method = static_cast<MethodDecl *>(member.get());
-            info.methodMap[method->name] = method;
-            info.methods.push_back(method);
-        }
+        registerValueLayout(decl);
     }
 
-    // Store the value type info and get reference for method lowering
-    valueTypes_[qualifiedName] = std::move(info);
     const ValueTypeInfo &storedInfo = valueTypes_[qualifiedName];
 
     // Lower all methods using qualified type name
@@ -673,96 +808,19 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
     if (!decl.genericParams.empty())
         return;
 
-    // Compute field layout (entity fields start after object header + vtable ptr)
-    // Use qualified name for entities inside namespaces
     std::string qualifiedName = qualifyName(decl.name);
 
-    EntityTypeInfo info;
-    info.name = qualifiedName;
-    info.baseClass = decl.baseClass; // Store parent class for super calls (may need qualifying)
-    info.totalSize = kEntityFieldsOffset; // Space for header + vtable ptr
-    info.classId = nextClassId_++;
-    info.vtableName = "__vtable_" + qualifiedName;
-
-    // BUG-VL-010 fix: Store implemented interfaces for interface method dispatch
-    for (const auto &iface : decl.interfaces)
+    // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
+    // If not registered yet (e.g., in pending generic instantiation), do it now.
+    auto it = entityTypes_.find(qualifiedName);
+    if (it == entityTypes_.end())
     {
-        info.implementedInterfaces.insert(iface);
+        registerEntityLayout(decl);
     }
 
-    // BUG-VL-006 fix: Copy inherited fields from parent entity
-    // BUG-VL-011 fix: Also copy vtable from parent and override methods
-    if (!decl.baseClass.empty())
-    {
-        auto parentIt = entityTypes_.find(decl.baseClass);
-        if (parentIt != entityTypes_.end())
-        {
-            const EntityTypeInfo &parent = parentIt->second;
-            // Copy all parent fields to this entity (they keep the same offsets)
-            for (const auto &parentField : parent.fields)
-            {
-                info.fieldIndex[parentField.name] = info.fields.size();
-                info.fields.push_back(parentField);
-            }
-            // Start child fields after parent's fields
-            info.totalSize = parent.totalSize;
-
-            // Inherit parent's vtable
-            info.vtable = parent.vtable;
-            info.vtableIndex = parent.vtableIndex;
-        }
-    }
-
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
-            auto *field = static_cast<FieldDecl *>(member.get());
-            TypeRef fieldType =
-                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
-
-            Type ilFieldType = mapType(fieldType);
-            size_t alignment = getILTypeAlignment(ilFieldType);
-
-            FieldLayout layout;
-            layout.name = field->name;
-            layout.type = fieldType;
-            layout.offset = alignTo(info.totalSize, alignment);
-            layout.size = getILTypeSize(ilFieldType);
-
-            // Add to lookup map before pushing to vector
-            info.fieldIndex[field->name] = info.fields.size();
-            info.fields.push_back(layout);
-            info.totalSize = layout.offset + layout.size;
-        }
-        else if (member->kind == DeclKind::Method)
-        {
-            auto *method = static_cast<MethodDecl *>(member.get());
-            info.methodMap[method->name] = method;
-            info.methods.push_back(method);
-
-            // Build vtable: check if method overrides parent or add new slot
-            std::string methodQualName = qualifiedName + "." + method->name;
-            auto vtableIt = info.vtableIndex.find(method->name);
-            if (vtableIt != info.vtableIndex.end())
-            {
-                // Override parent method - update vtable entry
-                info.vtable[vtableIt->second] = methodQualName;
-            }
-            else
-            {
-                // New method - add to vtable
-                info.vtableIndex[method->name] = info.vtable.size();
-                info.vtable.push_back(methodQualName);
-            }
-        }
-    }
-
-    // Store the entity type info and get reference for method lowering
-    entityTypes_[qualifiedName] = std::move(info);
     EntityTypeInfo &storedInfo = entityTypes_[qualifiedName];
 
-    // Lower all methods first (so they are defined before vtable references them)
+    // Lower all methods (so they are defined before vtable references them)
     for (auto *method : storedInfo.methods)
     {
         lowerMethodDecl(*method, qualifiedName, true);

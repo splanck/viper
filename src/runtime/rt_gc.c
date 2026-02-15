@@ -157,7 +157,8 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse)
         if (!new_entries)
         {
             gc_unlock();
-            return;
+            rt_trap("rt_gc_track: failed to grow GC tracking table (out of memory)");
+            return; /* unreachable — rt_trap terminates */
         }
         g_gc.entries = new_entries;
         g_gc.capacity = new_cap;

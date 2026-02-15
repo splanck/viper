@@ -7,38 +7,11 @@ bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 
-bind "./storage/page";
-bind "./storage/serializer";
-bind "./storage/wal";
-bind "./types";
-
-//=============================================================================
-// TEST HARNESS
-//=============================================================================
-
-var testsPassed = 0;
-var testsFailed = 0;
-
-func assert(condition: Boolean, testName: String) {
-    if condition {
-        testsPassed = testsPassed + 1;
-        Terminal.Say("[PASS] " + testName);
-    } else {
-        testsFailed = testsFailed + 1;
-        Terminal.Say("[FAIL] " + testName);
-    }
-}
-
-func printSummary() {
-    Terminal.Say("");
-    Terminal.Say("===========================================");
-    Terminal.Say("WAL TEST SUMMARY");
-    Terminal.Say("===========================================");
-    Terminal.Say("Passed: " + Fmt.Int(testsPassed));
-    Terminal.Say("Failed: " + Fmt.Int(testsFailed));
-    Terminal.Say("Total:  " + Fmt.Int(testsPassed + testsFailed));
-    Terminal.Say("===========================================");
-}
+bind "../storage/page";
+bind "../storage/serializer";
+bind "../storage/wal";
+bind "../types";
+bind "./test_common";
 
 //=============================================================================
 // LSN TESTS
@@ -453,5 +426,5 @@ func main() {
     testRecoveryResultInit();
     testRecoveryResultToString();
 
-    printSummary();
+    printResults();
 }

@@ -185,22 +185,16 @@ These need to be fixed in the platform itself.
 
 ## BUG-FE-006: Zia compiler generates wrong IL for List.add() through entity field chains
 
-- **Status**: CONFIRMED (workaround exists)
+- **Status**: FIXED
 - **Severity**: Medium
-- **Component**: Zia frontend — call lowering
+- **Component**: Zia frontend — call lowering, declaration lowering
 - **Symptom**: Calling `.add()` on a List accessed through an entity field chain (e.g., `result.committedTxns.add(value)`) fails with IL verification error: `call arg type mismatch: @Viper.Collections.List.Push parameter 0 expects ptr but got i64`. Direct List locals and simple entity field Lists work fine.
-- **Root cause**: The lowerer resolves the entity field chain to a value, but when the List is accessed through a multi-level entity field dereference, the resulting IL type is `i64` instead of `ptr`, causing a type mismatch in the generated call instruction.
-- **Workaround**: Assign the entity field List to a local variable before calling methods on it:
-  ```zia
-  // FAILS: result.committedTxns.add(record.txnId)
-  // WORKS:
-  var committed = result.committedTxns;
-  committed.add(record.txnId);
-  result.committedTxns = committed;
-  ```
-- **Regression test**: `test_zia_bugfixes.cpp:BugFE006_ListParamMethodCalls` (simple case — passes)
+- **Root cause**: Entity declaration order in the lowerer's single-pass design. When entity A's methods reference entity B (declared later in the same file), `getOrCreateEntityTypeInfo("B")` returns `nullptr` because B hasn't been lowered yet. The `lowerField()` function falls through to return `{Value::constInt(0), Type(I64)}` — producing wrong IL types for non-integer fields (List, Entity, Ptr all got `i64` instead of `ptr`).
+- **Fix**: Two-pass entity/value type registration. Added a pre-pass (`registerAllTypeLayouts()`) in `Lowerer::lower()` that registers all entity and value type layouts (field offsets, sizes, types) BEFORE any method bodies are lowered. Modified `lowerEntityDecl()`/`lowerValueDecl()` to skip layout computation for already-registered types. Also improved the `lowerField()` fallthrough to use sema-informed types as a safety net instead of hardcoded `I64`.
+- **Verification**: All 1150 tests pass. Forward-reference entity field chain tests added.
+- **Regression test**: `test_zia_bugfixes.cpp:BugFE006_EntityFieldChainListAdd_ForwardRef`, `BugFE006_EntityFieldChainListAdd_NormalOrder`, `BugFE006_EntityFieldChainMultipleCollections`, `BugFE006_EntityFieldChainEntityField_ForwardRef`
 - **Found**: 2026-02-13
-- **Reproduced**: 2026-02-14 (in WAL recovery code with entity field chains)
+- **Fixed**: 2026-02-14
 
 ---
 
@@ -221,14 +215,17 @@ These need to be fixed in the platform itself.
 
 ## BUG-VM-001: VM SIGSEGV on heavy entity allocation in long-running programs
 
-- **Status**: CONFIRMED (native workaround)
+- **Status**: HARDENED (defensive fixes applied)
 - **Severity**: High
-- **Component**: VM interpreter — memory management
+- **Component**: VM interpreter — memory management, runtime (C)
 - **Symptom**: Programs that create many entity objects (e.g., multiple Executor/StorageEngine instances across test functions) crash with SIGSEGV after a threshold of cumulative allocations. The crash point is non-deterministic but correlates with total allocation pressure — e.g., 3 rounds of 50-row INSERT+DELETE tests work, but adding a 4th round with 100 rows crashes.
-- **Root cause**: The VM's entity/heap object pool appears to have a resource exhaustion issue. Each Zia entity method call allocates temporary objects (BinaryBuffer, Row, Value, etc.) that accumulate without proper collection. After enough rounds of heavy operations, some internal data structure overflows or a freed object is accessed.
-- **Reproduction**: Run `test_stress3.zia` with original 100-row DELETE tests after the multi-database test — crashes during the 3rd or 4th test function.
-- **Workaround**: (1) Reduce per-test row counts to stay within VM limits when running in the interpreter. (2) Build as native binary (`viper build`) which does not have this limitation — native binaries successfully handle 1000+ row operations across many test functions.
+- **Root cause**: Multiple contributing factors: (1) GC tracking table silently fails when `realloc()` fails to grow the table, causing untracked objects and potential dangling references. (2) `rt_obj_new_i64()` returned NULL on allocation failure without any diagnostic, causing silent null-pointer dereferences downstream. (3) Entity reference counting may not properly release entity references when VM frames are torn down, leading to refcount leaks and eventual address space exhaustion.
+- **Fix**: Defensive hardening: (1) `rt_gc_track()` now calls `rt_trap()` on realloc failure instead of silently returning — a failed GC track is a critical error that should not be ignored. (2) `rt_obj_new_i64()` now calls `rt_trap()` with a diagnostic message on allocation failure instead of returning NULL. These changes make memory management failures immediately visible rather than causing non-deterministic crashes later.
+- **Reproduction**: Run `test_stress3.zia` with original 100-row DELETE tests after the multi-database test — previously crashed during the 3rd or 4th test function.
+- **Workaround**: Build as native binary (`viper build`) which has a different memory management path and does not exhibit this limitation.
+- **Regression test**: `EntityStressTests.cpp` (5 stress tests: many entities, List fields, chained entities, interleaved types, forward-ref field chains)
 - **Found**: 2026-02-14
+- **Hardened**: 2026-02-14
 
 ---
 
@@ -273,3 +270,23 @@ These need to be fixed in the platform itself.
 - **Fixed**: 2026-02-13
 
 ---
+
+## BUG-NAT-005: Native codegen string lifetime bug — concatenated strings corrupted after function calls
+
+- **Status**: OPEN (workaround available)
+- **Severity**: Medium
+- **Component**: Native codegen (AArch64) — string lifetime management
+- **Symptom**: Local variables holding concatenated strings (e.g., `var tbl = "prefix_" + Fmt.Int(i)`) become corrupted after calling functions that do heavy string operations internally (e.g., `executeSql()`). The variable's string pointer ends up pointing to overwritten memory, producing empty strings or fragments of other strings (like SQL column definitions).
+- **Root cause**: The native codegen does not properly retain concatenated string results stored in local variables. The concatenation creates a temporary string, and while the variable holds a pointer to it, subsequent function calls that create their own temporary strings can reuse the same memory region. The VM's reference-counting keeps the string alive, but the native codegen's retain/release logic misses this case.
+- **Reproduction**:
+  ```zia
+  var tbl = "sv_" + Fmt.Int(i);          // tbl = "sv_0" (correct)
+  exec.executeSql("CREATE TABLE " + tbl); // works, but corrupts tbl
+  Terminal.Say(tbl);                       // prints "" or garbage
+  ```
+- **Workaround**: Rebuild concatenated strings inline at each use site instead of storing in a variable:
+  ```zia
+  exec.executeSql("CREATE TABLE sv_" + Fmt.Int(i) + " ...");
+  exec.executeSql("INSERT INTO sv_" + Fmt.Int(i) + " ...");
+  ```
+- **Found**: 2026-02-14

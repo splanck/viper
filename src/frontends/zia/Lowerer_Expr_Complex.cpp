@@ -244,8 +244,11 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         }
     }
 
-    // Unknown field access
-    return {Value::constInt(0), Type(Type::Kind::I64)};
+    // Unknown field access — use sema type to determine correct IL type as fallback.
+    // This prevents silent I64 mistyping for non-integer fields (BUG-FE-006 safety net).
+    TypeRef exprType = sema_.typeOf(expr);
+    Type fallbackType = exprType ? mapType(exprType) : Type(Type::Kind::I64);
+    return {Value::constInt(0), fallbackType};
 }
 
 //=============================================================================

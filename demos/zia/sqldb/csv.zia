@@ -1,0 +1,299 @@
+// csv.zia — CSV Import/Export Operations
+// Part of ViperSQL
+
+module csv;
+
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+bind IO = Viper.IO;
+
+bind "./types";
+bind "./schema";
+bind "./table";
+bind "./result";
+bind "./executor";
+
+//=============================================================================
+// CSV HANDLER ENTITY
+//=============================================================================
+
+entity CsvHandler {
+    expose Executor exec;
+
+    expose func init(executor: Executor) {
+        exec = executor;
+    }
+
+    // EXPORT command - export table to CSV
+    expose func executeExport(tableName: String, filename: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var maybeTable = exec.db.findTable(tableName);
+        if maybeTable == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        var table = maybeTable;
+
+        var csv = "";
+
+        // Header row
+        var ci = 0;
+        while ci < table.columnCount() {
+            var maybeCol = table.getColumn(ci);
+            if maybeCol != null {
+                var col = maybeCol;
+                if ci > 0 {
+                    csv = csv + ",";
+                }
+                csv = csv + escapeCSV(col.name);
+            }
+            ci = ci + 1;
+        }
+        csv = csv + "\n";
+
+        // Data rows
+        var ri = 0;
+        while ri < table.rowCount() {
+            var maybeRow = table.getRow(ri);
+            if maybeRow != null {
+                var row = maybeRow;
+                if row.deleted == false {
+                    ci = 0;
+                    while ci < row.columnCount() {
+                        if ci > 0 {
+                            csv = csv + ",";
+                        }
+                        var val = row.getValue(ci);
+                        if val.isNull() {
+                            csv = csv + "";
+                        } else {
+                            csv = csv + escapeCSV(val.toString());
+                        }
+                        ci = ci + 1;
+                    }
+                    csv = csv + "\n";
+                }
+            }
+            ri = ri + 1;
+        }
+
+        IO.File.WriteAllText(filename, csv);
+
+        var rowCount = 0;
+        ri = 0;
+        while ri < table.rowCount() {
+            var maybeRow = table.getRow(ri);
+            if maybeRow != null {
+                var row = maybeRow;
+                if row.deleted == false {
+                    rowCount = rowCount + 1;
+                }
+            }
+            ri = ri + 1;
+        }
+        result.message = "Exported " + Fmt.Int(rowCount) + " rows to '" + filename + "'";
+
+        return result;
+    }
+
+    // Escape a value for CSV output
+    hide func escapeCSV(value: String) -> String {
+        var needsQuotes = false;
+        var i = 0;
+        var len = String.Length(value);
+        while i < len {
+            var ch = String.Substring(value, i, 1);
+            if ch == "," || ch == "\"" || ch == "\n" || ch == "\r" {
+                needsQuotes = true;
+                break;
+            }
+            i = i + 1;
+        }
+
+        if needsQuotes {
+            // Escape quotes by doubling them
+            var escaped = "";
+            i = 0;
+            while i < len {
+                var ch = String.Substring(value, i, 1);
+                if ch == "\"" {
+                    escaped = escaped + "\"\"";
+                } else {
+                    escaped = escaped + ch;
+                }
+                i = i + 1;
+            }
+            return "\"" + escaped + "\"";
+        }
+        return value;
+    }
+
+    // IMPORT command - import CSV data into table
+    expose func executeImport(tableName: String, filename: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var maybeTable = exec.db.findTable(tableName);
+        if maybeTable == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        var table = maybeTable;
+
+        if IO.File.Exists(filename) == false {
+            result.setError("File not found: " + filename);
+            return result;
+        }
+
+        var content = IO.File.ReadAllText(filename);
+        if content == "" {
+            result.setError("Failed to read file or file is empty: " + filename);
+            return result;
+        }
+
+        var lines = splitLines(content);
+        if lines.count() < 2 {
+            result.setError("CSV file must have at least a header row and one data row");
+            return result;
+        }
+
+        // Parse header to get column mapping
+        var headerFields = parseCSVLine(lines.get(0));
+        var colIndices: List[Integer] = [];
+        var fi = 0;
+        while fi < headerFields.count() {
+            var fieldName = String.Trim(headerFields.get(fi));
+            var colIdx = table.findColumnIndex(fieldName);
+            colIndices.add(colIdx);
+            fi = fi + 1;
+        }
+
+        // Import data rows
+        var imported = 0;
+        var li = 1;
+        while li < lines.count() {
+            var line = String.Trim(lines.get(li));
+            if line != "" {
+                var fields = parseCSVLine(line);
+                var values: List[SqlValue] = [];
+
+                // Build row with correct column order
+                var ci = 0;
+                while ci < table.columnCount() {
+                    var val = sqlNull();
+
+                    // Find if this column has data in the CSV
+                    var csvIdx = -1;
+                    var fi2 = 0;
+                    while fi2 < colIndices.count() {
+                        if colIndices.get(fi2) == ci {
+                            csvIdx = fi2;
+                            break;
+                        }
+                        fi2 = fi2 + 1;
+                    }
+
+                    if csvIdx >= 0 && csvIdx < fields.count() {
+                        var fieldVal = fields.get(csvIdx);
+                        val = parseCSVValue(fieldVal, table, ci);
+                    }
+                    values.add(val);
+                    ci = ci + 1;
+                }
+
+                if table.insertRow(values) {
+                    imported = imported + 1;
+                }
+            }
+            li = li + 1;
+        }
+
+        result.message = "Imported " + Fmt.Int(imported) + " rows from '" + filename + "'";
+        return result;
+    }
+
+    // Split content into lines
+    hide func splitLines(content: String) -> List[String] {
+        var lines: List[String] = [];
+        var current = "";
+        var i = 0;
+        var len = String.Length(content);
+        while i < len {
+            var ch = String.Substring(content, i, 1);
+            if ch == "\n" {
+                lines.add(current);
+                current = "";
+            } else if ch != "\r" {
+                current = current + ch;
+            }
+            i = i + 1;
+        }
+        if current != "" {
+            lines.add(current);
+        }
+        return lines;
+    }
+
+    // Parse a CSV line into fields
+    hide func parseCSVLine(line: String) -> List[String] {
+        var fields: List[String] = [];
+        var current = "";
+        var inQuotes = false;
+        var i = 0;
+        var len = String.Length(line);
+
+        while i < len {
+            var ch = String.Substring(line, i, 1);
+
+            if inQuotes {
+                if ch == "\"" {
+                    // Check for escaped quote
+                    if i + 1 < len && String.Substring(line, i + 1, 1) == "\"" {
+                        current = current + "\"";
+                        i = i + 1;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    current = current + ch;
+                }
+            } else {
+                if ch == "\"" {
+                    inQuotes = true;
+                } else if ch == "," {
+                    fields.add(current);
+                    current = "";
+                } else {
+                    current = current + ch;
+                }
+            }
+            i = i + 1;
+        }
+        fields.add(current);
+        return fields;
+    }
+
+    // Parse a CSV value according to column type
+    hide func parseCSVValue(value: String, table: Table, colIdx: Integer) -> SqlValue {
+        var trimmed = String.Trim(value);
+        if trimmed == "" {
+            return sqlNull();
+        }
+
+        var maybeCol = table.getColumn(colIdx);
+        if maybeCol == null {
+            return sqlText(trimmed);
+        }
+        var col = maybeCol;
+
+        if col.typeCode == SQL_INTEGER {
+            return sqlInteger(stringToInt(trimmed));
+        }
+        if col.typeCode == SQL_REAL {
+            return sqlReal(stringToNumber(trimmed), trimmed);
+        }
+        return sqlText(trimmed);
+    }
+}

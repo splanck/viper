@@ -1,5 +1,5 @@
-// table.viper - Table Entity
-// Part of SQLite Clone - ViperLang Implementation
+// table.zia — Table Entity
+// Part of ViperSQL
 
 module table;
 

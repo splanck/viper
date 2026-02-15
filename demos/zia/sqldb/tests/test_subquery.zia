@@ -1,23 +1,12 @@
-// test_subquery.viper - Test subquery support
+// test_subquery.zia — Test subquery support
+// Part of ViperSQL
 module test_subquery;
 
 bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 
-bind "./executor";
-
-Integer passed = 0;
-Integer failed = 0;
-
-func assert(condition: Boolean, msg: String) {
-    if condition {
-        passed = passed + 1;
-        Terminal.Say("  PASS: " + msg);
-    } else {
-        failed = failed + 1;
-        Terminal.Say("  FAIL: " + msg);
-    }
-}
+bind "../executor";
+bind "./test_common";
 
 func main() {
     var exec = new Executor();
@@ -107,8 +96,5 @@ func main() {
     assert(r7.rowCount() == 2, "Should return Alice and Bob (Engineering with salary >= 70000)");
 
     // Print results
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passed));
-    Terminal.Say("Failed: " + Fmt.Int(failed));
+    printResults();
 }

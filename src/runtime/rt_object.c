@@ -103,6 +103,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+extern void rt_trap(const char *msg);
+
 /// @brief Allocate a zeroed payload tagged as a heap object.
 /// @details Requests storage from @ref rt_heap_alloc with the
 ///          @ref RT_HEAP_OBJECT tag so that reference counting and deallocation
@@ -130,7 +132,14 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
 {
     void *payload = alloc_payload((size_t)byte_size);
     if (!payload)
-        return NULL;
+    {
+        char buf[128];
+        snprintf(buf, sizeof(buf),
+                 "rt_obj_new_i64: allocation failed (class_id=%lld, size=%lld bytes)",
+                 (long long)class_id, (long long)byte_size);
+        rt_trap(buf);
+        return NULL; /* unreachable — rt_trap terminates */
+    }
     rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
     if (hdr)
         hdr->class_id = class_id;

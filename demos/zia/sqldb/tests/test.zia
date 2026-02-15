@@ -1,29 +1,13 @@
-// test.viper - SQL Tests
-// Part of SQLite Clone - ViperLang Implementation
+// test.zia — SQL Tests
+// Part of ViperSQL
 
 module test;
 
 bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 
-bind "./executor";
-
-//=============================================================================
-// TEST HARNESS
-//=============================================================================
-
-Integer testsPassed = 0;
-Integer testsFailed = 0;
-
-func assert(condition: Boolean, message: String) {
-    if condition {
-        testsPassed = testsPassed + 1;
-        Terminal.Say("  PASS: " + message);
-    } else {
-        testsFailed = testsFailed + 1;
-        Terminal.Say("  FAIL: " + message);
-    }
-}
+bind "../executor";
+bind "./test_common";
 
 func runTests() {
     Terminal.Say("=== ViperSQL Test Suite ===");
@@ -35,10 +19,7 @@ func runTests() {
     testUpdate();
     testDelete();
 
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(testsPassed));
-    Terminal.Say("Failed: " + Fmt.Int(testsFailed));
+    printResults();
 }
 
 //=============================================================================

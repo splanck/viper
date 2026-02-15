@@ -1,5 +1,5 @@
-// parser.viper - SQL Parser with proper OOP design
-// Part of SQLite Clone - ViperLang Implementation
+// parser.zia — SQL Parser with proper OOP design
+// Part of ViperSQL
 
 module parser;
 
@@ -854,6 +854,36 @@ entity Parser {
         }
 
         stmt.addTable(firstTableName, firstTableAlias);
+
+        // Parse comma-separated tables (implicit cross join: FROM a, b, c)
+        while currentToken.kind == TK_COMMA {
+            advance();
+            if currentToken.kind != TK_IDENTIFIER {
+                setError("Expected table name after comma");
+                return stmt;
+            }
+            var extraTableName = currentToken.text;
+            var extraTableAlias = "";
+            advance();
+
+            // Optional alias
+            if currentToken.kind == TK_AS {
+                advance();
+                if currentToken.kind == TK_IDENTIFIER {
+                    extraTableAlias = currentToken.text;
+                    advance();
+                }
+            } else if currentToken.kind == TK_IDENTIFIER {
+                var maybeAlias = currentToken.text;
+                var upperAlias = String.ToUpper(maybeAlias);
+                if upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" && upperAlias != "JOIN" && upperAlias != "INNER" && upperAlias != "LEFT" && upperAlias != "RIGHT" && upperAlias != "FULL" && upperAlias != "CROSS" {
+                    extraTableAlias = maybeAlias;
+                    advance();
+                }
+            }
+
+            stmt.addJoin(extraTableName, extraTableAlias, 0, null);
+        }
 
         // Parse JOINs
         while currentToken.kind == TK_JOIN || currentToken.kind == TK_INNER || currentToken.kind == TK_LEFT || currentToken.kind == TK_RIGHT || currentToken.kind == TK_FULL || currentToken.kind == TK_CROSS {

@@ -438,6 +438,11 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_vm_tco_string_retain ${_VIPER_VM_DIR}/TcoStringRetainTests.cpp)
     target_link_libraries(test_vm_tco_string_retain PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_tco_string_retain test_vm_tco_string_retain)
+
+    # Entity allocation stress tests (BUG-VM-001 regression)
+    viper_add_test(test_vm_entity_stress ${_VIPER_VM_DIR}/EntityStressTests.cpp)
+    target_link_libraries(test_vm_entity_stress PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common fe_zia)
+    viper_add_ctest(test_vm_entity_stress test_vm_entity_stress)
 endfunction()
 
 function(viper_add_vm_path_tests)

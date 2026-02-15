@@ -138,8 +138,11 @@ bool ImportResolver::processModule(ModuleDecl &module,
 
     if (inProgressFiles_.count(normalizedPath) != 0)
     {
-        reportCycle(viaImportLoc, normalizedPath);
-        return false;
+        // Circular bind — not an error. The in-progress file's declarations
+        // will be included in the final merged AST when its outer processModule
+        // call completes. Sema's multi-pass analysis (register types → register
+        // signatures → analyze bodies) handles forward references correctly.
+        return true;
     }
 
     inProgressFiles_.insert(normalizedPath);
@@ -170,8 +173,11 @@ bool ImportResolver::processModule(ModuleDecl &module,
 
         if (inProgressFiles_.count(normalizedBindPath) != 0)
         {
-            reportCycle(bind.loc, normalizedBindPath);
-            return false;
+            // Circular bind — skip this import. The target file is currently
+            // being processed by an outer call and its declarations will be
+            // available in the final merged AST. The BindDecl remains in the
+            // AST so Sema will still create the Module symbol for qualified access.
+            continue;
         }
 
         auto boundModule = parseFile(bindFilePath, bind.loc);

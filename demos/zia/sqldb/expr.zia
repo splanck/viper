@@ -1,5 +1,5 @@
-// expr.viper - Expression Types
-// Part of SQLite Clone - ViperLang Implementation
+// expr.zia — Expression Types
+// Part of ViperSQL
 
 module expr;
 

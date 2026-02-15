@@ -1,5 +1,5 @@
-// index.viper - Index Entities
-// Part of SQLite Clone - ViperLang Implementation
+// index.zia — Index Entities
+// Part of ViperSQL
 
 module index;
 

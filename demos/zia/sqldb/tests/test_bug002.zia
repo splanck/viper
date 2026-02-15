@@ -1,11 +1,12 @@
-// test_bug002.zia - Reproduce BUG-002: String value corruption
+// test_bug002.zia — Reproduce BUG-002: String value corruption
+// Part of ViperSQL
 module test_bug002;
 
 bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 
-bind "./executor";
-bind "./types";
+bind "../executor";
+bind "../types";
 
 func showNames(exec: Executor, label: String) {
     Terminal.Say(label);

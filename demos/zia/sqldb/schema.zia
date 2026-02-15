@@ -1,5 +1,5 @@
-// schema.viper - Column and Row entities
-// Part of SQLite Clone - ViperLang Implementation
+// schema.zia — Column and Row entities
+// Part of ViperSQL
 
 module schema;
 

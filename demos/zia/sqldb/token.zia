@@ -1,5 +1,5 @@
-// token.viper - Token types and Token entity
-// Part of SQLite Clone - ViperLang Implementation
+// token.zia — Token types and Token entity
+// Part of ViperSQL
 
 module token;
 

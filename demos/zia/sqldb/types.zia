@@ -1,5 +1,5 @@
-// types.viper - SQL Value Types
-// Part of SQLite Clone - ViperLang Implementation
+// types.zia — SQL Value Types
+// Part of ViperSQL
 
 module types;
 

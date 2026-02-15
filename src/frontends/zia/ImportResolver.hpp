@@ -15,10 +15,10 @@
 /// module's AST. This ensures that all imported symbols (functions, types,
 /// constants) are visible during semantic analysis and lowering.
 ///
-/// The resolution algorithm uses a depth-first traversal with cycle detection:
+/// The resolution algorithm uses a depth-first traversal with cycle handling:
 ///   1. Normalize the import path to a canonical form.
 ///   2. Check if the file is already fully processed (skip) or in-progress
-///      (circular import error).
+///      (circular bind — skip without error).
 ///   3. Mark the file as in-progress and push it onto the import stack.
 ///   4. Parse the file using the Zia lexer and parser.
 ///   5. Recursively resolve any imports within the parsed module.
@@ -60,8 +60,9 @@ namespace il::frontends::zia
 /// @details The resolver loads imported files recursively and prepends imported
 ///          declarations into the importing module, ensuring imported symbols
 ///          are available during semantic analysis and lowering. Circular imports
-///          are detected via the inProgressFiles_ set and reported with a full
-///          cycle trace showing the import chain.
+///          are allowed — when a file is already being processed (in
+///          inProgressFiles_), the bind is skipped and the declarations are
+///          resolved through the outer call's completion.
 class ImportResolver
 {
   public:
@@ -84,7 +85,7 @@ class ImportResolver
     /// @param modulePath Filesystem path of the root module (used to resolve
     ///                   relative import paths).
     /// @return True if all imports were resolved successfully, false if any import
-    ///         failed (missing file, circular dependency, depth/count exceeded).
+    ///         failed (missing file, depth/count exceeded).
     bool resolve(ModuleDecl &module, const std::string &modulePath);
 
   private:
@@ -145,10 +146,10 @@ class ImportResolver
                        il::support::SourceLoc viaImportLoc,
                        size_t depth);
 
-    /// @brief Emit a diagnostic error for a detected circular import.
-    /// @details Constructs an error message showing the full cycle trace by walking
-    ///          importStack_ from the point where the cycle begins. For example:
-    ///          "circular import detected: a.zia -> b.zia -> c.zia -> a.zia".
+    /// @brief Emit a diagnostic error for a detected circular import (unused).
+    /// @details Retained for diagnostics/debugging. Circular binds are now handled
+    ///          by skipping re-entry (returning true / continuing), so this method
+    ///          is no longer called during normal compilation.
     /// @param importLoc Source location of the `bind` statement that closes the cycle.
     /// @param normalizedImportPath The normalized path of the file being re-imported.
     void reportCycle(il::support::SourceLoc importLoc, const std::string &normalizedImportPath);
@@ -166,7 +167,9 @@ class ImportResolver
 
     /// @brief Set of file paths currently being processed (normalized).
     /// @details Files in this set are on the current recursion stack. If an import
-    ///          targets a file in this set, a circular import is detected.
+    ///          targets a file in this set, the circular bind is skipped (the
+    ///          in-progress file's declarations will be merged when its outer
+    ///          processModule call completes).
     std::set<std::string> inProgressFiles_;
 
     /// @brief Stack of file paths mirroring the current recursion chain.

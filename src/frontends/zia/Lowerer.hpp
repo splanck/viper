@@ -581,6 +581,20 @@ class Lowerer
     /// @param decl The entity type declaration.
     void lowerEntityDecl(EntityDecl &decl);
 
+    /// @brief Pre-pass: register all entity/value type layouts without lowering methods.
+    /// @details Ensures all type layouts are available in entityTypes_/valueTypes_
+    ///          before any method bodies are lowered, fixing forward-reference issues
+    ///          where entity A's methods reference entity B declared later.
+    void registerAllTypeLayouts(std::vector<DeclPtr> &declarations);
+
+    /// @brief Register a single entity type's field layout without lowering methods.
+    /// @param decl The entity declaration.
+    void registerEntityLayout(EntityDecl &decl);
+
+    /// @brief Register a single value type's field layout without lowering methods.
+    /// @param decl The value declaration.
+    void registerValueLayout(ValueDecl &decl);
+
     /// @brief Emit vtable global for an entity type.
     /// @param info The entity type info with vtable entries.
     void emitVtable(const EntityTypeInfo &info);

@@ -129,7 +129,7 @@ func start() {
     EXPECT_TRUE(foundError);
 }
 
-TEST(ZiaBinds, CircularBindDetected)
+TEST(ZiaBinds, CircularBindAllowed)
 {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
@@ -144,6 +144,7 @@ func a() {
 
 func start() {
     a();
+    b();
 }
 )";
     const fs::path aPath = writeFile(dir, "a.zia", aSource);
@@ -156,27 +157,175 @@ bind "a.zia";
 func b() {
 }
 )";
-    const fs::path bPath = writeFile(dir, "b.zia", bSource);
+    writeFile(dir, "b.zia", bSource);
 
     SourceManager sm;
     CompilerInput input{.source = aSource, .path = aPathStr};
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
-    EXPECT_FALSE(result.succeeded());
-
-    const uint32_t bFileId = sm.addFile(bPath.string());
-
-    bool foundCycle = false;
-    for (const auto &d : result.diagnostics.diagnostics())
+    if (!result.succeeded())
     {
-        if (d.message.find("Circular import detected") == std::string::npos)
-            continue;
-        foundCycle = true;
-        EXPECT_EQ(d.code, "V1000");
-        EXPECT_EQ(d.loc.file_id, bFileId);
+        std::cerr << "Diagnostics for CircularBindAllowed:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
     }
-    EXPECT_TRUE(foundCycle);
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify functions from both files are present in the output
+    bool hasA = false;
+    bool hasB = false;
+    bool hasMain = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "a")
+            hasA = true;
+        if (fn.name == "b")
+            hasB = true;
+        if (fn.name == "main")
+            hasMain = true;
+    }
+    EXPECT_TRUE(hasA);
+    EXPECT_TRUE(hasB);
+    EXPECT_TRUE(hasMain);
+
+    (void)aPath;
+}
+
+TEST(ZiaBinds, CircularBindCrossReference)
+{
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "cycle_cross";
+
+    // File A defines entity Foo and uses entity Bar from B
+    const std::string aSource = R"(
+module A;
+bind "b.zia";
+
+entity Foo {
+    expose Integer x;
+    expose func init(Integer val) { x = val; }
+}
+
+func useFoo() -> Integer {
+    Foo f = new Foo(10);
+    return f.x;
+}
+
+func start() {
+    Integer a = useFoo();
+    Integer b = useBar();
+    Viper.Terminal.SayInt(a);
+    Viper.Terminal.SayInt(b);
+}
+)";
+    const fs::path aPath = writeFile(dir, "a.zia", aSource);
+    const std::string aPathStr = aPath.string();
+
+    // File B defines entity Bar and uses entity Foo from A
+    const std::string bSource = R"(
+module B;
+bind "a.zia";
+
+entity Bar {
+    expose Integer y;
+    expose func init(Integer val) { y = val; }
+}
+
+func useBar() -> Integer {
+    Bar b = new Bar(20);
+    return b.y;
+}
+)";
+    writeFile(dir, "b.zia", bSource);
+
+    SourceManager sm;
+    CompilerInput input{.source = aSource, .path = aPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for CircularBindCrossReference:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify all four key symbols are present
+    bool hasFooInit = false;
+    bool hasBarInit = false;
+    bool hasUseFoo = false;
+    bool hasUseBar = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "Foo.init")
+            hasFooInit = true;
+        if (fn.name == "Bar.init")
+            hasBarInit = true;
+        if (fn.name == "useFoo")
+            hasUseFoo = true;
+        if (fn.name == "useBar")
+            hasUseBar = true;
+    }
+    EXPECT_TRUE(hasFooInit);
+    EXPECT_TRUE(hasBarInit);
+    EXPECT_TRUE(hasUseFoo);
+    EXPECT_TRUE(hasUseBar);
+
+    (void)aPath;
+}
+
+TEST(ZiaBinds, CircularBindSelfImport)
+{
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "self_import";
+
+    // File binds itself - should not infinite loop
+    const std::string aSource = R"(
+module A;
+bind "./a";
+
+func start() {
+    Viper.Terminal.Say("self");
+}
+)";
+    const fs::path aPath = writeFile(dir, "a.zia", aSource);
+    const std::string aPathStr = aPath.string();
+
+    SourceManager sm;
+    CompilerInput input{.source = aSource, .path = aPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for CircularBindSelfImport:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    bool hasMain = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+            hasMain = true;
+    }
+    EXPECT_TRUE(hasMain);
+
+    (void)aPath;
 }
 
 /// @brief Test that transitive binds maintain correct declaration order (Bug #26).

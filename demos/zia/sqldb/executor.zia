@@ -1,5 +1,5 @@
-// executor.viper - SQL Executor with proper OOP design
-// Part of SQLite Clone - ViperLang Implementation
+// executor.zia — SQL Executor with proper OOP design
+// Part of ViperSQL
 
 module executor;
 
@@ -24,6 +24,10 @@ bind "./storage/buffer";
 bind "./storage/schema_page";
 bind "./storage/data_page";
 bind "./storage/engine";
+bind "./setops";
+bind "./join";
+bind "./persistence";
+bind "./csv";
 
 //=============================================================================
 // EXECUTOR ENTITY
@@ -38,8 +42,13 @@ entity Executor {
     expose Database db;
     expose IndexManager indexMgr;
 
+    // Helper modules (initialized in init())
+    expose JoinEngine joinEngine;
+    expose PersistenceManager persistence;
+    expose CsvHandler csvHandler;
+
     // Persistent storage engine (null when using in-memory mode)
-    hide StorageEngine? storageEngine;
+    expose StorageEngine? storageEngine;
 
     // Context for correlated subqueries
     hide Row? outerRow;
@@ -71,6 +80,9 @@ entity Executor {
         subqueryCacheKeys = [];
         subqueryCacheScalars = [];
         subqueryCacheLists = [];
+        joinEngine = new JoinEngine(self);
+        persistence = new PersistenceManager(self);
+        csvHandler = new CsvHandler(self);
     }
 
     // Refresh db and indexMgr references from server's current database
@@ -625,7 +637,7 @@ entity Executor {
     }
 
     // Deep-clone a SqlValue with fresh string allocation to avoid retain issues
-    hide func cloneValue(v: SqlValue) -> SqlValue {
+    expose func cloneValue(v: SqlValue) -> SqlValue {
         var c = new SqlValue();
         c.kind = v.kind;
         c.intValue = v.intValue;
@@ -1518,7 +1530,7 @@ entity Executor {
     expose func executeSelect(stmt: SelectStmt) -> QueryResult {
         // Check for multi-table (JOIN) query
         if stmt.tableNames.count() > 1 {
-            return executeCrossJoin(stmt);
+            return joinEngine.executeCrossJoin(stmt);
         }
 
         var result = new QueryResult();
@@ -1656,6 +1668,12 @@ entity Executor {
 
         } else {
             // Regular (non-aggregate) query
+            // Sort matchingRows BEFORE projection so ORDER BY evaluates
+            // against full table rows (not projected result rows)
+            if stmt.orderByExprs.count() > 0 {
+                sortMatchingRows(matchingRows, stmt.orderByExprs, stmt.orderByDir, t);
+            }
+
             var i = 0;
             while i < matchingRows.count() {
                 var rowIdx = matchingRows.get(i);
@@ -1692,9 +1710,9 @@ entity Executor {
             applyDistinct(result);
         }
 
-        // Apply ORDER BY
-        if stmt.orderByExprs.count() > 0 {
-            sortResults(result, stmt.orderByExprs, stmt.orderByDir, t);
+        // Apply ORDER BY for aggregate/GROUP BY paths (regular path sorted above)
+        if stmt.orderByExprs.count() > 0 && (hasAggregates(stmt) || stmt.groupByExprs.count() > 0) {
+            sortResults(result, stmt.orderByExprs, stmt.orderByDir, t, stmt.columns);
         }
 
         // Apply LIMIT/OFFSET
@@ -2069,8 +2087,110 @@ entity Executor {
     // HELPER METHODS
     //=========================================================================
 
-    hide func sortResults(result: QueryResult, orderExprs: List[Expr], orderDir: List[Integer], table: Table) {
-        // Simple bubble sort
+    // Sort row indices by evaluating ORDER BY expressions against actual table rows.
+    // This avoids the column-index mismatch that occurs when sorting projected result rows.
+    hide func sortMatchingRows(rows: List[Integer], orderExprs: List[Expr], orderDir: List[Integer], table: Table) {
+        var n = rows.count();
+        var i = 0;
+        while i < n - 1 {
+            var j = 0;
+            while j < n - i - 1 {
+                var row1 = table.getRow(rows.get(j));
+                var row2 = table.getRow(rows.get(j + 1));
+                if row1 != null && row2 != null {
+                    var r1 = row1;
+                    var r2 = row2;
+                    var shouldSwap = false;
+
+                    var e = 0;
+                    while e < orderExprs.count() {
+                        var orderExpr = orderExprs.get(e);
+                        var isDesc = orderDir.get(e);
+                        var val1 = evalExpr(orderExpr, r1, table);
+                        var val2 = evalExpr(orderExpr, r2, table);
+                        var cmp = val1.compare(val2);
+
+                        if cmp == 2 {
+                            if val1.kind == SQL_NULL && val2.kind != SQL_NULL {
+                                shouldSwap = isDesc == 1;
+                            } else if val1.kind != SQL_NULL && val2.kind == SQL_NULL {
+                                shouldSwap = isDesc == 0;
+                            }
+                            break;
+                        }
+                        if cmp != 0 {
+                            if isDesc == 1 {
+                                shouldSwap = cmp < 0;
+                            } else {
+                                shouldSwap = cmp > 0;
+                            }
+                            break;
+                        }
+                        e = e + 1;
+                    }
+
+                    if shouldSwap {
+                        var tmp = rows.get(j);
+                        rows.set(j, rows.get(j + 1));
+                        rows.set(j + 1, tmp);
+                    }
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    // Map an ORDER BY expression to a result column index by matching
+    // against the SELECT column expressions. Returns -1 if no match.
+    hide func findOrderByResultIndex(orderExpr: Expr, selectCols: List[Expr]) -> Integer {
+        var c = 0;
+        while c < selectCols.count() {
+            var colExpr = selectCols.get(c);
+
+            // Match aggregate functions (SUM, COUNT, AVG, MIN, MAX)
+            if orderExpr.kind == EXPR_FUNCTION && colExpr.kind == EXPR_FUNCTION {
+                if String.ToUpper(orderExpr.funcName) == String.ToUpper(colExpr.funcName) {
+                    if orderExpr.args.count() == colExpr.args.count() {
+                        var argsMatch = true;
+                        if orderExpr.args.count() > 0 {
+                            var oarg = orderExpr.args.get(0);
+                            var carg = colExpr.args.get(0);
+                            if oarg.kind == EXPR_COLUMN && carg.kind == EXPR_COLUMN {
+                                if oarg.columnName != carg.columnName {
+                                    argsMatch = false;
+                                }
+                            }
+                        }
+                        if argsMatch {
+                            return c;
+                        }
+                    }
+                }
+            }
+
+            // Match column references
+            if orderExpr.kind == EXPR_COLUMN && colExpr.kind == EXPR_COLUMN {
+                if orderExpr.columnName == colExpr.columnName {
+                    return c;
+                }
+            }
+
+            c = c + 1;
+        }
+        return -1;
+    }
+
+    hide func sortResults(result: QueryResult, orderExprs: List[Expr], orderDir: List[Integer], table: Table, selectCols: List[Expr]) {
+        // Pre-compute column index mappings for ORDER BY expressions
+        var colMappings = new List[Integer]();
+        var e = 0;
+        while e < orderExprs.count() {
+            colMappings.add(findOrderByResultIndex(orderExprs.get(e), selectCols));
+            e = e + 1;
+        }
+
+        // Bubble sort using mapped column indices when available
         var n = result.rowCount();
         var i = 0;
         while i < n - 1 {
@@ -2083,12 +2203,23 @@ entity Executor {
                     var r2 = row2;
                     var shouldSwap = false;
 
-                    var e = 0;
+                    e = 0;
                     while e < orderExprs.count() {
                         var orderExpr = orderExprs.get(e);
                         var isDesc = orderDir.get(e);
-                        var val1 = evalExpr(orderExpr, r1, table);
-                        var val2 = evalExpr(orderExpr, r2, table);
+                        var colIdx = colMappings.get(e);
+
+                        var val1 = sqlNull();
+                        var val2 = sqlNull();
+                        if colIdx >= 0 {
+                            // Use mapped result column index
+                            val1 = r1.getValue(colIdx);
+                            val2 = r2.getValue(colIdx);
+                        } else {
+                            // Fallback to evalExpr for complex expressions
+                            val1 = evalExpr(orderExpr, r1, table);
+                            val2 = evalExpr(orderExpr, r2, table);
+                        }
                         var cmp = val1.compare(val2);
 
                         // Handle NULL (cmp==2): NULLs sort last
@@ -2121,7 +2252,7 @@ entity Executor {
         }
     }
 
-    hide func applyLimitOffset(result: QueryResult, limitVal: Integer, offsetVal: Integer) {
+    expose func applyLimitOffset(result: QueryResult, limitVal: Integer, offsetVal: Integer) {
         var newRows: List[Row] = [];
         var i = offsetVal;
         var count = 0;
@@ -2473,7 +2604,7 @@ entity Executor {
             }
             if parser.currentKind() == TK_STRING {
                 var filename = parser.currentText();
-                return executeSave(filename);
+                return persistence.executeSave(filename);
             }
             var result = new QueryResult();
             result.init();
@@ -2490,7 +2621,7 @@ entity Executor {
             }
             if parser.currentKind() == TK_STRING {
                 var filename = parser.currentText();
-                return executeOpen(filename);
+                return persistence.executeOpen(filename);
             }
             var result = new QueryResult();
             result.init();
@@ -2500,7 +2631,7 @@ entity Executor {
 
         // CLOSE command: close persistent database
         if kind == TK_CLOSE {
-            return executeClose();
+            return persistence.executeClose();
         }
 
         // EXPORT command: EXPORT table TO 'filename'
@@ -2513,7 +2644,7 @@ entity Executor {
                     parser.advance();
                     if parser.currentKind() == TK_STRING {
                         var filename = parser.currentText();
-                        return executeExport(tableName, filename);
+                        return csvHandler.executeExport(tableName, filename);
                     }
                 }
             }
@@ -2536,7 +2667,7 @@ entity Executor {
                     parser.advance();
                     if parser.currentKind() == TK_STRING {
                         var filename = parser.currentText();
-                        return executeImport(tableName, filename);
+                        return csvHandler.executeImport(tableName, filename);
                     }
                 }
             }
@@ -2745,1356 +2876,6 @@ entity Executor {
 
         return result;
     }
-
-    //=========================================================================
-    // JOIN OPERATIONS
-    //=========================================================================
-
-    // Create a row with a specific number of NULL values
-    hide func makeJoinRow(numCols: Integer) -> Row {
-        var row = new Row();
-        row.init();
-        var i = 0;
-        while i < numCols {
-            row.addValue(sqlNull());
-            i = i + 1;
-        }
-        return row;
-    }
-
-    // Find column value in a combined row for JOIN queries
-    hide func findJoinColumnValue(tableName: String, columnName: String,
-                                   tables: List[Table], aliases: List[String],
-                                   combinedRow: Row, colOffsets: List[Integer]) -> SqlValue {
-        var ti = 0;
-        while ti < tables.count() {
-            var tbl = tables.get(ti);
-            var alias = aliases.get(ti);
-
-            // Check if this table matches the requested table name or alias
-            if tableName == alias || tableName == tbl.name || tableName == "" {
-                var colIdx = tbl.findColumnIndex(columnName);
-                if colIdx >= 0 {
-                    var offset = colOffsets.get(ti);
-                    return combinedRow.getValue(offset + colIdx);
-                }
-            }
-            ti = ti + 1;
-        }
-        return sqlNull();
-    }
-
-    // Evaluate expression in JOIN context
-    hide func evalJoinExpr(expr: Expr, tables: List[Table], aliases: List[String],
-                           combinedRow: Row, colOffsets: List[Integer]) -> SqlValue {
-        if expr.kind == EXPR_LITERAL {
-            return expr.literalValue;
-        }
-
-        if expr.kind == EXPR_COLUMN {
-            return findJoinColumnValue(expr.tableName, expr.columnName,
-                                       tables, aliases, combinedRow, colOffsets);
-        }
-
-        if expr.kind == EXPR_BINARY {
-            var left = evalJoinExpr(expr.getLeft(), tables, aliases, combinedRow, colOffsets);
-            var right = evalJoinExpr(expr.getRight(), tables, aliases, combinedRow, colOffsets);
-            var op = expr.op;
-
-            // Comparison operators (handle NULL: compare returns 2)
-            if op == OP_EQ {
-                var cmp = left.compare(right);
-                if cmp == 2 { return sqlInteger(0); }
-                if cmp == 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-            if op == OP_NE {
-                var cmp = left.compare(right);
-                if cmp == 2 { return sqlInteger(0); }
-                if cmp != 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-            if op == OP_LT {
-                var cmp = left.compare(right);
-                if cmp == 2 { return sqlInteger(0); }
-                if cmp < 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-            if op == OP_LE {
-                var cmp = left.compare(right);
-                if cmp == 2 { return sqlInteger(0); }
-                if cmp <= 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-            if op == OP_GT {
-                var cmp = left.compare(right);
-                if cmp == 2 { return sqlInteger(0); }
-                if cmp > 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-            if op == OP_GE {
-                var cmp = left.compare(right);
-                if cmp == 2 { return sqlInteger(0); }
-                if cmp >= 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-
-            // Logical operators
-            if op == OP_AND {
-                if left.intValue != 0 && right.intValue != 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-            if op == OP_OR {
-                if left.intValue != 0 || right.intValue != 0 { return sqlInteger(1); }
-                return sqlInteger(0);
-            }
-
-            // Arithmetic operators
-            if op == OP_ADD { return sqlInteger(left.intValue + right.intValue); }
-            if op == OP_SUB { return sqlInteger(left.intValue - right.intValue); }
-            if op == OP_MUL { return sqlInteger(left.intValue * right.intValue); }
-            if op == OP_DIV {
-                if right.intValue != 0 {
-                    return sqlInteger(left.intValue / right.intValue);
-                }
-                return sqlNull();
-            }
-        }
-
-        return sqlNull();
-    }
-
-    // Execute a multi-table JOIN query
-    expose func executeCrossJoin(stmt: SelectStmt) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        // Load all tables
-        var tables = new List[Table]();
-        var aliases = new List[String]();
-        var colOffsets = new List[Integer]();
-        var totalCols = 0;
-
-        var ti = 0;
-        while ti < stmt.tableNames.count() {
-            var tblName = stmt.tableNames.get(ti);
-            var maybeTable = db.findTable(tblName);
-            if maybeTable == null {
-                result.setError("Table '" + tblName + "' does not exist");
-                return result;
-            }
-            var tbl = maybeTable;
-            tables.add(tbl);
-
-            var alias = stmt.tableAliases.get(ti);
-            if alias == "" {
-                alias = tblName;
-            }
-            aliases.add(alias);
-
-            colOffsets.add(totalCols);
-            totalCols = totalCols + tbl.columnCount();
-            ti = ti + 1;
-        }
-
-        // Build column names for result
-        if stmt.selectAll {
-            ti = 0;
-            while ti < tables.count() {
-                var tbl = tables.get(ti);
-                var alias = aliases.get(ti);
-                var c = 0;
-                while c < tbl.columnCount() {
-                    var maybeCol = tbl.getColumn(c);
-                    if maybeCol != null {
-                        var col = maybeCol;
-                        result.addColumnName(alias + "." + col.name);
-                    }
-                    c = c + 1;
-                }
-                ti = ti + 1;
-            }
-        } else {
-            var c = 0;
-            while c < stmt.columns.count() {
-                // Check for column alias first
-                var alias = "";
-                if c < stmt.columnAliases.count() {
-                    alias = stmt.columnAliases.get(c);
-                }
-                if alias != "" {
-                    result.addColumnName(alias);
-                } else {
-                    var colExpr = stmt.columns.get(c);
-                    if colExpr.kind == EXPR_COLUMN {
-                        if colExpr.tableName != "" {
-                            result.addColumnName(colExpr.tableName + "." + colExpr.columnName);
-                        } else {
-                            result.addColumnName(colExpr.columnName);
-                        }
-                    } else if colExpr.kind == EXPR_FUNCTION {
-                        var displayName = colExpr.funcName;
-                        if displayName == "COUNT_DISTINCT" {
-                            displayName = "COUNT";
-                        }
-                        result.addColumnName(displayName);
-                    } else {
-                        result.addColumnName("expr" + Fmt.Int(c));
-                    }
-                }
-                c = c + 1;
-            }
-        }
-
-        // Build cartesian product starting with first table
-        var combinedRows = new List[Row]();
-
-        if tables.count() > 0 {
-            var firstTable = tables.get(0);
-            var r = 0;
-            while r < firstTable.rowCount() {
-                var maybeRow = firstTable.getRow(r);
-                if maybeRow != null {
-                    var srcRow = maybeRow;
-                    if srcRow.deleted == false {
-                        var newRow = makeJoinRow(totalCols);
-                        var c = 0;
-                        while c < firstTable.columnCount() {
-                            newRow.setValue(c, srcRow.getValue(c));
-                            c = c + 1;
-                        }
-                        combinedRows.add(newRow);
-                    }
-                }
-                r = r + 1;
-            }
-        }
-
-        // Extend with each additional table
-        ti = 1;
-        while ti < tables.count() {
-            var tbl = tables.get(ti);
-            var offset = colOffsets.get(ti);
-            var newCombined = new List[Row]();
-
-            // Get join type (0=CROSS, 1=INNER, 2=LEFT, 3=RIGHT, 4=FULL)
-            var joinType = 0;
-            if ti - 1 < stmt.joinTypes.count() {
-                joinType = stmt.joinTypes.get(ti - 1);
-            }
-
-            // Check if we have a join condition
-            var hasJoinCond = ti - 1 < stmt.joinConditions.count();
-
-            // For RIGHT/FULL JOIN: track matched right rows
-            var rightMatched = new List[Integer]();
-            if joinType == 3 || joinType == 4 {
-                var rInit = 0;
-                while rInit < tbl.rowCount() {
-                    rightMatched.add(0);
-                    rInit = rInit + 1;
-                }
-            }
-
-            var ci = 0;
-            while ci < combinedRows.count() {
-                var existing = combinedRows.get(ci);
-                var foundMatch = false;
-
-                var r = 0;
-                while r < tbl.rowCount() {
-                    var maybeRow = tbl.getRow(r);
-                    if maybeRow != null {
-                        var srcRow = maybeRow;
-                        if srcRow.deleted == false {
-                            // Create combined row
-                            var newRow = makeJoinRow(totalCols);
-                            var c = 0;
-                            while c < offset {
-                                newRow.setValue(c, existing.getValue(c));
-                                c = c + 1;
-                            }
-                            c = 0;
-                            while c < tbl.columnCount() {
-                                newRow.setValue(offset + c, srcRow.getValue(c));
-                                c = c + 1;
-                            }
-
-                            // Check join condition for non-CROSS joins
-                            var includeRow = true;
-                            if hasJoinCond && (joinType == 1 || joinType == 2 || joinType == 3 || joinType == 4) {
-                                var joinCond = stmt.joinConditions.get(ti - 1);
-                                var joinResult = evalJoinExpr(joinCond, tables, aliases, newRow, colOffsets);
-                                if joinResult.intValue == 0 {
-                                    includeRow = false;
-                                }
-                            }
-
-                            if includeRow {
-                                newCombined.add(newRow);
-                                foundMatch = true;
-                                if joinType == 3 || joinType == 4 {
-                                    rightMatched.set(r, 1);
-                                }
-                            }
-                        }
-                    }
-                    r = r + 1;
-                }
-
-                // LEFT/FULL JOIN: add NULL row if no match
-                if (joinType == 2 || joinType == 4) && foundMatch == false {
-                    var nullRow = makeJoinRow(totalCols);
-                    var c = 0;
-                    while c < offset {
-                        nullRow.setValue(c, existing.getValue(c));
-                        c = c + 1;
-                    }
-                    newCombined.add(nullRow);
-                }
-
-                ci = ci + 1;
-            }
-
-            // RIGHT/FULL JOIN: add unmatched right rows
-            if joinType == 3 || joinType == 4 {
-                var rCheck = 0;
-                while rCheck < tbl.rowCount() {
-                    if rightMatched.get(rCheck) == 0 {
-                        var maybeRightRow = tbl.getRow(rCheck);
-                        if maybeRightRow != null {
-                            var rightRow = maybeRightRow;
-                            if rightRow.deleted == false {
-                                var nullRow = makeJoinRow(totalCols);
-                                var c = 0;
-                                while c < tbl.columnCount() {
-                                    nullRow.setValue(offset + c, rightRow.getValue(c));
-                                    c = c + 1;
-                                }
-                                newCombined.add(nullRow);
-                            }
-                        }
-                    }
-                    rCheck = rCheck + 1;
-                }
-            }
-
-            combinedRows = newCombined;
-            ti = ti + 1;
-        }
-
-        // Apply WHERE clause
-        var filteredRows = new List[Row]();
-        var ri = 0;
-        while ri < combinedRows.count() {
-            var row = combinedRows.get(ri);
-            var includeRow = true;
-
-            if stmt.whereClause != null {
-                var wc = stmt.whereClause;
-                var whereResult = evalJoinExpr(wc, tables, aliases, row, colOffsets);
-                if whereResult.intValue == 0 {
-                    includeRow = false;
-                }
-            }
-
-            if includeRow {
-                filteredRows.add(row);
-            }
-            ri = ri + 1;
-        }
-
-        // Check for GROUP BY / aggregates on JOIN results
-        var isAggregate = hasAggregates(stmt);
-
-        if isAggregate || stmt.groupByExprs.count() > 0 {
-            // GROUP BY on JOIN results
-            executeJoinGroupBy(stmt, filteredRows, tables, aliases, colOffsets, totalCols, result);
-        } else {
-            // Build result rows (regular non-aggregate query)
-            ri = 0;
-            while ri < filteredRows.count() {
-                var combinedRow = filteredRows.get(ri);
-                var resultRow = new Row();
-                resultRow.init();
-
-                if stmt.selectAll {
-                    var c = 0;
-                    while c < totalCols {
-                        resultRow.addValue(cloneValue(combinedRow.getValue(c)));
-                        c = c + 1;
-                    }
-                } else {
-                    var c = 0;
-                    while c < stmt.columns.count() {
-                        var colExpr = stmt.columns.get(c);
-                        var val = evalJoinExpr(colExpr, tables, aliases, combinedRow, colOffsets);
-                        resultRow.addValue(cloneValue(val));
-                        c = c + 1;
-                    }
-                }
-
-                result.addRow(resultRow);
-                ri = ri + 1;
-            }
-        }
-
-        // Apply DISTINCT
-        if stmt.isDistinct {
-            applyDistinct(result);
-        }
-
-        // Apply ORDER BY on JOIN results
-        if stmt.orderByExprs.count() > 0 {
-            sortJoinResults(result, stmt);
-        }
-
-        // Apply LIMIT/OFFSET
-        if stmt.limitValue >= 0 || stmt.offsetValue > 0 {
-            applyLimitOffset(result, stmt.limitValue, stmt.offsetValue);
-        }
-
-        return result;
-    }
-
-    // Execute GROUP BY on JOIN results
-    hide func executeJoinGroupBy(stmt: SelectStmt, filteredRows: List[Row],
-                                  tables: List[Table], aliases: List[String],
-                                  colOffsets: List[Integer], totalCols: Integer,
-                                  result: QueryResult) {
-        var groupKeys = new List[String]();
-        var groupRowLists = new List[List[Row]]();
-
-        if stmt.groupByExprs.count() > 0 {
-            var i = 0;
-            while i < filteredRows.count() {
-                var row = filteredRows.get(i);
-                var key = "";
-                var g = 0;
-                while g < stmt.groupByExprs.count() {
-                    var groupExpr = stmt.groupByExprs.get(g);
-                    var val = evalJoinExpr(groupExpr, tables, aliases, row, colOffsets);
-                    if g > 0 { key = key + "|"; }
-                    key = key + val.toString();
-                    g = g + 1;
-                }
-
-                var groupIdx = -1;
-                var k = 0;
-                while k < groupKeys.count() {
-                    if groupKeys.get(k) == key {
-                        groupIdx = k;
-                        k = groupKeys.count();
-                    }
-                    k = k + 1;
-                }
-
-                if groupIdx < 0 {
-                    groupKeys.add(key);
-                    var newList = new List[Row]();
-                    newList.add(row);
-                    groupRowLists.add(newList);
-                } else {
-                    groupRowLists.get(groupIdx).add(row);
-                }
-                i = i + 1;
-            }
-        } else {
-            // No GROUP BY but has aggregates — treat all rows as one group
-            groupKeys.add("");
-            groupRowLists.add(filteredRows);
-        }
-
-        // Build result rows from groups
-        var g = 0;
-        while g < groupKeys.count() {
-            var groupRows = groupRowLists.get(g);
-            var resultRow = new Row();
-            resultRow.init();
-
-            var firstRow = groupRows.get(0);
-
-            var c = 0;
-            while c < stmt.columns.count() {
-                var colExpr = stmt.columns.get(c);
-                if isAggregateExpr(colExpr) {
-                    var val = evalJoinAggregate(colExpr, groupRows, tables, aliases, colOffsets);
-                    resultRow.addValue(cloneValue(val));
-                } else {
-                    var val = evalJoinExpr(colExpr, tables, aliases, firstRow, colOffsets);
-                    resultRow.addValue(cloneValue(val));
-                }
-                c = c + 1;
-            }
-
-            // Check HAVING condition
-            if stmt.havingClause != null {
-                var hc = stmt.havingClause;
-                if evalJoinHaving(hc, groupRows, tables, aliases, colOffsets) == false {
-                    g = g + 1;
-                    continue;
-                }
-            }
-
-            result.addRow(resultRow);
-            g = g + 1;
-        }
-    }
-
-    // Evaluate aggregate function over JOIN group rows
-    hide func evalJoinAggregate(expr: Expr, groupRows: List[Row],
-                                 tables: List[Table], aliases: List[String],
-                                 colOffsets: List[Integer]) -> SqlValue {
-        var funcName = String.ToUpper(expr.funcName);
-        var hasArg = expr.args.count() > 0;
-
-        // COUNT(*)
-        if funcName == "COUNT" && hasArg {
-            var arg0 = expr.args.get(0);
-            if arg0.kind == EXPR_STAR {
-                return sqlInteger(groupRows.count());
-            }
-        }
-
-        // COUNT_DISTINCT
-        if funcName == "COUNT_DISTINCT" && hasArg {
-            var seen = new List[String]();
-            var i = 0;
-            while i < groupRows.count() {
-                var row = groupRows.get(i);
-                var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
-                if val.kind != SQL_NULL {
-                    var valStr = val.toString();
-                    var found = false;
-                    var k = 0;
-                    while k < seen.count() {
-                        if seen.get(k) == valStr { found = true; k = seen.count(); }
-                        k = k + 1;
-                    }
-                    if found == false { seen.add(valStr); }
-                }
-                i = i + 1;
-            }
-            return sqlInteger(seen.count());
-        }
-
-        // COUNT(column)
-        if funcName == "COUNT" {
-            var count = 0;
-            var i = 0;
-            while i < groupRows.count() {
-                var row = groupRows.get(i);
-                if hasArg {
-                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
-                    if val.kind != SQL_NULL { count = count + 1; }
-                }
-                i = i + 1;
-            }
-            return sqlInteger(count);
-        }
-
-        // SUM
-        if funcName == "SUM" {
-            var sumInt = 0;
-            var sumReal = 0.0;
-            var hasValue = false;
-            var hasReal = false;
-            var i = 0;
-            while i < groupRows.count() {
-                var row = groupRows.get(i);
-                if hasArg {
-                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
-                    if val.kind == SQL_INTEGER { sumInt = sumInt + val.intValue; hasValue = true; }
-                    else if val.kind == SQL_REAL { sumReal = sumReal + val.realValue; hasValue = true; hasReal = true; }
-                }
-                i = i + 1;
-            }
-            if hasValue == false { return sqlNull(); }
-            if hasReal {
-                var total = sumReal + sumInt * 1.0;
-                return sqlReal(total, Fmt.Num(total));
-            }
-            return sqlInteger(sumInt);
-        }
-
-        // AVG
-        if funcName == "AVG" {
-            var sumInt = 0;
-            var sumReal = 0.0;
-            var count = 0;
-            var hasReal = false;
-            var i = 0;
-            while i < groupRows.count() {
-                var row = groupRows.get(i);
-                if hasArg {
-                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
-                    if val.kind == SQL_INTEGER { sumInt = sumInt + val.intValue; count = count + 1; }
-                    else if val.kind == SQL_REAL { sumReal = sumReal + val.realValue; count = count + 1; hasReal = true; }
-                }
-                i = i + 1;
-            }
-            if count == 0 { return sqlNull(); }
-            var total = sumReal + sumInt * 1.0;
-            var avg = total / count;
-            return sqlReal(avg, Fmt.Num(avg));
-        }
-
-        // MIN
-        if funcName == "MIN" {
-            var hasMin = false;
-            var minResult = sqlNull();
-            var i = 0;
-            while i < groupRows.count() {
-                var row = groupRows.get(i);
-                if hasArg {
-                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
-                    if val.kind != SQL_NULL {
-                        if hasMin == false { minResult = val; hasMin = true; }
-                        else if val.compare(minResult) < 0 { minResult = val; }
-                    }
-                }
-                i = i + 1;
-            }
-            return minResult;
-        }
-
-        // MAX
-        if funcName == "MAX" {
-            var hasMax = false;
-            var maxResult = sqlNull();
-            var i = 0;
-            while i < groupRows.count() {
-                var row = groupRows.get(i);
-                if hasArg {
-                    var val = evalJoinExpr(expr.args.get(0), tables, aliases, row, colOffsets);
-                    if val.kind != SQL_NULL {
-                        if hasMax == false { maxResult = val; hasMax = true; }
-                        else if val.compare(maxResult) > 0 { maxResult = val; }
-                    }
-                }
-                i = i + 1;
-            }
-            return maxResult;
-        }
-
-        return sqlNull();
-    }
-
-    // Evaluate HAVING expression for JOIN groups
-    hide func evalJoinHaving(expr: Expr, groupRows: List[Row],
-                              tables: List[Table], aliases: List[String],
-                              colOffsets: List[Integer]) -> Boolean {
-        if expr.kind == EXPR_BINARY {
-            var left = expr.getLeft();
-            var right = expr.getRight();
-            var op = expr.op;
-
-            if op == OP_AND {
-                return evalJoinHaving(left, groupRows, tables, aliases, colOffsets) && evalJoinHaving(right, groupRows, tables, aliases, colOffsets);
-            }
-            if op == OP_OR {
-                return evalJoinHaving(left, groupRows, tables, aliases, colOffsets) || evalJoinHaving(right, groupRows, tables, aliases, colOffsets);
-            }
-
-            var leftVal = evalJoinHavingValue(left, groupRows, tables, aliases, colOffsets);
-            var rightVal = evalJoinHavingValue(right, groupRows, tables, aliases, colOffsets);
-
-            var cmp = leftVal.compare(rightVal);
-            if cmp == 2 { return false; }
-            if op == OP_EQ { return cmp == 0; }
-            if op == OP_NE { return cmp != 0; }
-            if op == OP_LT { return cmp < 0; }
-            if op == OP_LE { return cmp <= 0; }
-            if op == OP_GT { return cmp > 0; }
-            if op == OP_GE { return cmp >= 0; }
-        }
-        return false;
-    }
-
-    // Evaluate a value in JOIN HAVING context
-    hide func evalJoinHavingValue(expr: Expr, groupRows: List[Row],
-                                    tables: List[Table], aliases: List[String],
-                                    colOffsets: List[Integer]) -> SqlValue {
-        if expr.kind == EXPR_FUNCTION && isAggregateExpr(expr) {
-            return evalJoinAggregate(expr, groupRows, tables, aliases, colOffsets);
-        }
-        if expr.kind == EXPR_LITERAL {
-            return expr.literalValue;
-        }
-        if expr.kind == EXPR_COLUMN && groupRows.count() > 0 {
-            var firstRow = groupRows.get(0);
-            return evalJoinExpr(expr, tables, aliases, firstRow, colOffsets);
-        }
-        return sqlNull();
-    }
-
-    // Sort JOIN results using result column name resolution
-    hide func sortJoinResults(result: QueryResult, stmt: SelectStmt) {
-        var n = result.rowCount();
-        var i = 0;
-        while i < n - 1 {
-            var j = 0;
-            while j < n - i - 1 {
-                var row1 = result.getRow(j);
-                var row2 = result.getRow(j + 1);
-                if row1 != null && row2 != null {
-                    var r1 = row1;
-                    var r2 = row2;
-                    var shouldSwap = false;
-
-                    var e = 0;
-                    while e < stmt.orderByExprs.count() {
-                        var orderExpr = stmt.orderByExprs.get(e);
-                        var isDesc = stmt.orderByDir.get(e);
-
-                        var colIdx = findResultColumnIndex(result, orderExpr);
-                        if colIdx >= 0 {
-                            var val1 = r1.getValue(colIdx);
-                            var val2 = r2.getValue(colIdx);
-                            var cmp = val1.compare(val2);
-
-                            if cmp == 2 {
-                                if val1.kind == SQL_NULL && val2.kind != SQL_NULL {
-                                    shouldSwap = isDesc == 1;
-                                } else if val1.kind != SQL_NULL && val2.kind == SQL_NULL {
-                                    shouldSwap = isDesc == 0;
-                                }
-                                break;
-                            }
-                            if cmp != 0 {
-                                if isDesc == 1 { shouldSwap = cmp < 0; }
-                                else { shouldSwap = cmp > 0; }
-                                break;
-                            }
-                        }
-                        e = e + 1;
-                    }
-
-                    if shouldSwap {
-                        result.swapRows(j, j + 1);
-                    }
-                }
-                j = j + 1;
-            }
-            i = i + 1;
-        }
-    }
-
-    // Find column index in result for ORDER BY expression
-    hide func findResultColumnIndex(result: QueryResult, expr: Expr) -> Integer {
-        if expr.kind == EXPR_COLUMN {
-            var searchName = expr.columnName;
-            var searchTable = expr.tableName;
-
-            var i = 0;
-            while i < result.columnNames.count() {
-                var colName = result.columnNames.get(i);
-
-                // Try qualified match (e.g., "o.amount")
-                if searchTable != "" {
-                    if colName == searchTable + "." + searchName {
-                        return i;
-                    }
-                }
-
-                // Try exact name match
-                if colName == searchName {
-                    return i;
-                }
-
-                // Try suffix match (e.g., column named "orders.amount" matches "amount")
-                var suffix = "." + searchName;
-                var suffixLen = String.Length(suffix);
-                var colLen = String.Length(colName);
-                if colLen > suffixLen {
-                    if String.Substring(colName, colLen - suffixLen, suffixLen) == suffix {
-                        return i;
-                    }
-                }
-                i = i + 1;
-            }
-        }
-        if expr.kind == EXPR_FUNCTION {
-            var funcName = expr.funcName;
-            var i = 0;
-            while i < result.columnNames.count() {
-                if result.columnNames.get(i) == funcName {
-                    return i;
-                }
-                i = i + 1;
-            }
-        }
-        return -1;
-    }
-
-    //=========================================================================
-    // STORAGE & PERSISTENCE (Phase 10)
-    //=========================================================================
-
-    // SAVE command - save database to file as SQL dump
-    expose func executeSave(filename: String) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        var content = "";
-
-        // Generate CREATE TABLE statements
-        var ti = 0;
-        while ti < db.tableCount() {
-            var maybeTable = db.getTable(ti);
-            if maybeTable != null {
-                var table = maybeTable;
-                content = content + generateCreateTable(table) + "\n\n";
-
-                // Clone table name to prevent string corruption during serialization
-                var tblName = String.Substring(table.name, 0, String.Length(table.name));
-
-                // Generate INSERT statements for each row
-                var ri = 0;
-                while ri < table.rowCount() {
-                    var maybeRow = table.getRow(ri);
-                    if maybeRow != null {
-                        var row = maybeRow;
-                        if row.deleted == false {
-                            content = content + generateInsert(tblName, row) + "\n";
-                        }
-                    }
-                    ri = ri + 1;
-                }
-                if table.rowCount() > 0 {
-                    content = content + "\n";
-                }
-            }
-            ti = ti + 1;
-        }
-
-        // Generate CREATE INDEX statements
-        var ii = 0;
-        while ii < indexMgr.indexCount() {
-            var maybeIdx = indexMgr.getIndex(ii);
-            if maybeIdx != null {
-                var idx = maybeIdx;
-                content = content + generateCreateIndex(idx) + "\n";
-            }
-            ii = ii + 1;
-        }
-
-        // Write to file
-        IO.File.WriteAllText(filename, content);
-
-        // Verify the file was actually written
-        if IO.File.Exists(filename) == false {
-            result.setError("Failed to save database to '" + filename + "': file could not be written");
-            return result;
-        }
-
-        result.message = "Database saved to '" + filename + "'";
-        return result;
-    }
-
-    // Generate CREATE TABLE statement for a table
-    hide func generateCreateTable(table: Table) -> String {
-        var sql = "CREATE TABLE " + table.name + " (\n";
-        var ci = 0;
-        while ci < table.columnCount() {
-            var maybeCol = table.getColumn(ci);
-            if maybeCol != null {
-                var col = maybeCol;
-                if ci > 0 {
-                    sql = sql + ",\n";
-                }
-                sql = sql + "  " + col.name + " " + col.typeName();
-                if col.primaryKey {
-                    sql = sql + " PRIMARY KEY";
-                }
-                if col.autoIncrement {
-                    sql = sql + " AUTOINCREMENT";
-                }
-                if col.notNull {
-                    sql = sql + " NOT NULL";
-                }
-                if col.unique {
-                    sql = sql + " UNIQUE";
-                }
-                if col.hasDefault {
-                    sql = sql + " DEFAULT " + col.defaultValue.toSqlString();
-                }
-                if col.isForeignKey {
-                    sql = sql + " REFERENCES " + col.refTableName + "(" + col.refColumnName + ")";
-                }
-            }
-            ci = ci + 1;
-        }
-        sql = sql + "\n);";
-        return sql;
-    }
-
-    // Generate INSERT statement for a row
-    hide func generateInsert(tableName: String, row: Row) -> String {
-        var sql = "INSERT INTO " + tableName + " VALUES (";
-        var ci = 0;
-        while ci < row.columnCount() {
-            if ci > 0 {
-                sql = sql + ", ";
-            }
-            var val = cloneValue(row.getValue(ci));
-            sql = sql + val.toSqlString();
-            ci = ci + 1;
-        }
-        sql = sql + ");";
-        return sql;
-    }
-
-    // Generate CREATE INDEX statement
-    hide func generateCreateIndex(idx: SqlIndex) -> String {
-        var sql = "CREATE ";
-        if idx.isUnique {
-            sql = sql + "UNIQUE ";
-        }
-        sql = sql + "INDEX " + idx.name + " ON " + idx.tableName + " (";
-        var ci = 0;
-        while ci < idx.columnCount() {
-            if ci > 0 {
-                sql = sql + ", ";
-            }
-            sql = sql + idx.getColumnName(ci);
-            ci = ci + 1;
-        }
-        sql = sql + ");";
-        return sql;
-    }
-
-    // OPEN command - load database from SQL dump file or persistent .vdb file
-    expose func executeOpen(filename: String) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        // Detect persistent binary database by .vdb extension
-        if String.EndsWith(filename, ".vdb") {
-            return executeOpenPersistent(filename);
-        }
-
-        // SQL dump mode (existing behavior)
-        if IO.File.Exists(filename) == false {
-            result.setError("File not found: " + filename);
-            return result;
-        }
-
-        var content = IO.File.ReadAllText(filename);
-        if content == "" {
-            result.setError("Failed to read file or file is empty: " + filename);
-            return result;
-        }
-
-        // Split content into statements by semicolon
-        var statements = splitStatements(content);
-        var executed = 0;
-        var errors = 0;
-
-        var i = 0;
-        while i < statements.count() {
-            var stmt = String.Trim(statements.get(i));
-            if stmt != "" {
-                var stmtResult = executeSql(stmt);
-                if stmtResult.success {
-                    executed = executed + 1;
-                } else {
-                    errors = errors + 1;
-                }
-            }
-            i = i + 1;
-        }
-
-        result.message = "Loaded '" + filename + "': " + Fmt.Int(executed) + " statements executed";
-        if errors > 0 {
-            result.message = result.message + ", " + Fmt.Int(errors) + " errors";
-        }
-        return result;
-    }
-
-    // Open a persistent binary database (.vdb file)
-    hide func executeOpenPersistent(filename: String) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        // Close any existing storage engine
-        if storageEngine != null {
-            var oldSe = storageEngine;
-            oldSe.closeDatabase();
-            storageEngine = null;
-        }
-
-        var se = new StorageEngine();
-        se.init();
-
-        var isNew = IO.File.Exists(filename) == false;
-        var ok = false;
-        if isNew {
-            ok = se.createDatabase(filename);
-        } else {
-            ok = se.openDatabase(filename);
-        }
-
-        if ok == false {
-            result.setError("Failed to open database: " + filename);
-            return result;
-        }
-
-        // Auto-enable WAL for new databases
-        if isNew {
-            var walDir = filename + ".wal";
-            se.enableWal(walDir);
-        }
-        // Note: for existing databases, WAL is auto-enabled in openDatabase() if WAL dir exists
-
-        storageEngine = se;
-
-        if isNew == false {
-            // Load all tables from persistent storage into in-memory model
-            var tables = se.loadAllTables();
-            var i = 0;
-            while i < tables.count() {
-                db.addTable(tables.get(i));
-                i = i + 1;
-            }
-            result.message = "Opened persistent database '" + filename + "': " + Fmt.Int(tables.count()) + " table(s) loaded";
-        } else {
-            result.message = "Created persistent database '" + filename + "'";
-        }
-
-        return result;
-    }
-
-    // CLOSE command - flush and close persistent storage
-    expose func executeClose() -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        if storageEngine == null {
-            result.message = "No persistent database open";
-            return result;
-        }
-
-        var se = storageEngine;
-        se.closeDatabase();
-        storageEngine = null;
-        result.message = "Database closed";
-        return result;
-    }
-
-    // Split SQL content into individual statements
-    hide func splitStatements(content: String) -> List[String] {
-        var statements: List[String] = [];
-        var current = "";
-        var inString = false;
-        var stringChar = "";
-
-        var i = 0;
-        var len = String.Length(content);
-        while i < len {
-            var ch = String.Substring(content, i, 1);
-
-            if inString {
-                current = current + ch;
-                if ch == stringChar {
-                    inString = false;
-                }
-            } else {
-                if ch == "'" || ch == "\"" {
-                    inString = true;
-                    stringChar = ch;
-                    current = current + ch;
-                } else if ch == ";" {
-                    statements.add(current);
-                    current = "";
-                } else {
-                    current = current + ch;
-                }
-            }
-            i = i + 1;
-        }
-
-        // Add any remaining content
-        if String.Trim(current) != "" {
-            statements.add(current);
-        }
-
-        return statements;
-    }
-
-    // EXPORT command - export table to CSV
-    expose func executeExport(tableName: String, filename: String) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        var maybeTable = db.findTable(tableName);
-        if maybeTable == null {
-            result.setError("Table '" + tableName + "' not found");
-            return result;
-        }
-        var table = maybeTable;
-
-        var csv = "";
-
-        // Header row
-        var ci = 0;
-        while ci < table.columnCount() {
-            var maybeCol = table.getColumn(ci);
-            if maybeCol != null {
-                var col = maybeCol;
-                if ci > 0 {
-                    csv = csv + ",";
-                }
-                csv = csv + escapeCSV(col.name);
-            }
-            ci = ci + 1;
-        }
-        csv = csv + "\n";
-
-        // Data rows
-        var ri = 0;
-        while ri < table.rowCount() {
-            var maybeRow = table.getRow(ri);
-            if maybeRow != null {
-                var row = maybeRow;
-                if row.deleted == false {
-                    ci = 0;
-                    while ci < row.columnCount() {
-                        if ci > 0 {
-                            csv = csv + ",";
-                        }
-                        var val = row.getValue(ci);
-                        if val.isNull() {
-                            csv = csv + "";
-                        } else {
-                            csv = csv + escapeCSV(val.toString());
-                        }
-                        ci = ci + 1;
-                    }
-                    csv = csv + "\n";
-                }
-            }
-            ri = ri + 1;
-        }
-
-        IO.File.WriteAllText(filename, csv);
-
-        var rowCount = 0;
-        ri = 0;
-        while ri < table.rowCount() {
-            var maybeRow = table.getRow(ri);
-            if maybeRow != null {
-                var row = maybeRow;
-                if row.deleted == false {
-                    rowCount = rowCount + 1;
-                }
-            }
-            ri = ri + 1;
-        }
-        result.message = "Exported " + Fmt.Int(rowCount) + " rows to '" + filename + "'";
-
-        return result;
-    }
-
-    // Escape a value for CSV output
-    hide func escapeCSV(value: String) -> String {
-        var needsQuotes = false;
-        var i = 0;
-        var len = String.Length(value);
-        while i < len {
-            var ch = String.Substring(value, i, 1);
-            if ch == "," || ch == "\"" || ch == "\n" || ch == "\r" {
-                needsQuotes = true;
-                break;
-            }
-            i = i + 1;
-        }
-
-        if needsQuotes {
-            // Escape quotes by doubling them
-            var escaped = "";
-            i = 0;
-            while i < len {
-                var ch = String.Substring(value, i, 1);
-                if ch == "\"" {
-                    escaped = escaped + "\"\"";
-                } else {
-                    escaped = escaped + ch;
-                }
-                i = i + 1;
-            }
-            return "\"" + escaped + "\"";
-        }
-        return value;
-    }
-
-    // IMPORT command - import CSV data into table
-    expose func executeImport(tableName: String, filename: String) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        var maybeTable = db.findTable(tableName);
-        if maybeTable == null {
-            result.setError("Table '" + tableName + "' not found");
-            return result;
-        }
-        var table = maybeTable;
-
-        if IO.File.Exists(filename) == false {
-            result.setError("File not found: " + filename);
-            return result;
-        }
-
-        var content = IO.File.ReadAllText(filename);
-        if content == "" {
-            result.setError("Failed to read file or file is empty: " + filename);
-            return result;
-        }
-
-        var lines = splitLines(content);
-        if lines.count() < 2 {
-            result.setError("CSV file must have at least a header row and one data row");
-            return result;
-        }
-
-        // Parse header to get column mapping
-        var headerFields = parseCSVLine(lines.get(0));
-        var colIndices: List[Integer] = [];
-        var fi = 0;
-        while fi < headerFields.count() {
-            var fieldName = String.Trim(headerFields.get(fi));
-            var colIdx = table.findColumnIndex(fieldName);
-            colIndices.add(colIdx);
-            fi = fi + 1;
-        }
-
-        // Import data rows
-        var imported = 0;
-        var li = 1;
-        while li < lines.count() {
-            var line = String.Trim(lines.get(li));
-            if line != "" {
-                var fields = parseCSVLine(line);
-                var values: List[SqlValue] = [];
-
-                // Build row with correct column order
-                var ci = 0;
-                while ci < table.columnCount() {
-                    var val = sqlNull();
-
-                    // Find if this column has data in the CSV
-                    var csvIdx = -1;
-                    var fi2 = 0;
-                    while fi2 < colIndices.count() {
-                        if colIndices.get(fi2) == ci {
-                            csvIdx = fi2;
-                            break;
-                        }
-                        fi2 = fi2 + 1;
-                    }
-
-                    if csvIdx >= 0 && csvIdx < fields.count() {
-                        var fieldVal = fields.get(csvIdx);
-                        val = parseCSVValue(fieldVal, table, ci);
-                    }
-                    values.add(val);
-                    ci = ci + 1;
-                }
-
-                if table.insertRow(values) {
-                    imported = imported + 1;
-                }
-            }
-            li = li + 1;
-        }
-
-        result.message = "Imported " + Fmt.Int(imported) + " rows from '" + filename + "'";
-        return result;
-    }
-
-    // Split content into lines
-    hide func splitLines(content: String) -> List[String] {
-        var lines: List[String] = [];
-        var current = "";
-        var i = 0;
-        var len = String.Length(content);
-        while i < len {
-            var ch = String.Substring(content, i, 1);
-            if ch == "\n" {
-                lines.add(current);
-                current = "";
-            } else if ch != "\r" {
-                current = current + ch;
-            }
-            i = i + 1;
-        }
-        if current != "" {
-            lines.add(current);
-        }
-        return lines;
-    }
-
-    // Parse a CSV line into fields
-    hide func parseCSVLine(line: String) -> List[String] {
-        var fields: List[String] = [];
-        var current = "";
-        var inQuotes = false;
-        var i = 0;
-        var len = String.Length(line);
-
-        while i < len {
-            var ch = String.Substring(line, i, 1);
-
-            if inQuotes {
-                if ch == "\"" {
-                    // Check for escaped quote
-                    if i + 1 < len && String.Substring(line, i + 1, 1) == "\"" {
-                        current = current + "\"";
-                        i = i + 1;
-                    } else {
-                        inQuotes = false;
-                    }
-                } else {
-                    current = current + ch;
-                }
-            } else {
-                if ch == "\"" {
-                    inQuotes = true;
-                } else if ch == "," {
-                    fields.add(current);
-                    current = "";
-                } else {
-                    current = current + ch;
-                }
-            }
-            i = i + 1;
-        }
-        fields.add(current);
-        return fields;
-    }
-
-    // Parse a CSV value according to column type
-    hide func parseCSVValue(value: String, table: Table, colIdx: Integer) -> SqlValue {
-        var trimmed = String.Trim(value);
-        if trimmed == "" {
-            return sqlNull();
-        }
-
-        var maybeCol = table.getColumn(colIdx);
-        if maybeCol == null {
-            return sqlText(trimmed);
-        }
-        var col = maybeCol;
-
-        if col.typeCode == SQL_INTEGER {
-            return sqlInteger(stringToInt(trimmed));
-        }
-        if col.typeCode == SQL_REAL {
-            return sqlReal(stringToNumber(trimmed), trimmed);
-        }
-        return sqlText(trimmed);
-    }
-
     // VACUUM command - remove deleted rows and reclaim space
     expose func executeVacuum() -> QueryResult {
         var result = new QueryResult();
@@ -4443,172 +3224,4 @@ entity Executor {
         return result;
     }
 
-    //=========================================================================
-    // UNION OPERATION (Phase 11)
-    //=========================================================================
-
-    // Execute UNION or UNION ALL
-    expose func executeUnion(first: QueryResult, second: QueryResult, unionAll: Boolean) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        // Copy column names from first result
-        var ci = 0;
-        while ci < first.columnNames.count() {
-            result.addColumnName(first.columnNames.get(ci));
-            ci = ci + 1;
-        }
-
-        // Add all rows from first result
-        var ri = 0;
-        while ri < first.rowCount() {
-            var row = first.getRow(ri);
-            if row != null {
-                result.addRow(row);
-            }
-            ri = ri + 1;
-        }
-
-        // Add rows from second result
-        ri = 0;
-        while ri < second.rowCount() {
-            var row = second.getRow(ri);
-            if row != null {
-                var r = row;
-                if unionAll {
-                    // UNION ALL: add all rows including duplicates
-                    result.addRow(r);
-                } else {
-                    // UNION: only add if not duplicate
-                    if isDuplicateRow(result, r) == false {
-                        result.addRow(r);
-                    }
-                }
-            }
-            ri = ri + 1;
-        }
-
-        return result;
-    }
-
-    // Check if a row is a duplicate of any existing row in result
-    hide func isDuplicateRow(result: QueryResult, row: Row) -> Boolean {
-        var ri = 0;
-        while ri < result.rowCount() {
-            var existingRow = result.getRow(ri);
-            if existingRow != null {
-                var er = existingRow;
-                if rowsEqual(er, row) {
-                    return true;
-                }
-            }
-            ri = ri + 1;
-        }
-        return false;
-    }
-
-    // Check if two rows are equal
-    hide func rowsEqual(row1: Row, row2: Row) -> Boolean {
-        if row1.columnCount() != row2.columnCount() {
-            return false;
-        }
-        var ci = 0;
-        while ci < row1.columnCount() {
-            var v1 = row1.getValue(ci);
-            var v2 = row2.getValue(ci);
-            if v1.compare(v2) != 0 {
-                return false;
-            }
-            ci = ci + 1;
-        }
-        return true;
-    }
-
-    //=========================================================================
-    // EXCEPT OPERATION (Phase 8)
-    //=========================================================================
-
-    // Execute EXCEPT - returns rows in first that are not in second
-    expose func executeExcept(first: QueryResult, second: QueryResult) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        // Copy column names from first result
-        var ci = 0;
-        while ci < first.columnNames.count() {
-            result.addColumnName(first.columnNames.get(ci));
-            ci = ci + 1;
-        }
-
-        // Add rows from first that are not in second
-        var ri = 0;
-        while ri < first.rowCount() {
-            var row = first.getRow(ri);
-            if row != null {
-                var r = row;
-                // Check if this row exists in second result
-                if isRowInResult(second, r) == false {
-                    // Only add if not already in result (avoid duplicates)
-                    if isDuplicateRow(result, r) == false {
-                        result.addRow(r);
-                    }
-                }
-            }
-            ri = ri + 1;
-        }
-
-        return result;
-    }
-
-    //=========================================================================
-    // INTERSECT OPERATION (Phase 8)
-    //=========================================================================
-
-    // Execute INTERSECT - returns rows that exist in both results
-    expose func executeIntersect(first: QueryResult, second: QueryResult) -> QueryResult {
-        var result = new QueryResult();
-        result.init();
-
-        // Copy column names from first result
-        var ci = 0;
-        while ci < first.columnNames.count() {
-            result.addColumnName(first.columnNames.get(ci));
-            ci = ci + 1;
-        }
-
-        // Add rows from first that also exist in second
-        var ri = 0;
-        while ri < first.rowCount() {
-            var row = first.getRow(ri);
-            if row != null {
-                var r = row;
-                // Check if this row exists in second result
-                if isRowInResult(second, r) {
-                    // Only add if not already in result (avoid duplicates)
-                    if isDuplicateRow(result, r) == false {
-                        result.addRow(r);
-                    }
-                }
-            }
-            ri = ri + 1;
-        }
-
-        return result;
-    }
-
-    // Check if a row exists in a result set
-    hide func isRowInResult(result: QueryResult, row: Row) -> Boolean {
-        var ri = 0;
-        while ri < result.rowCount() {
-            var existingRow = result.getRow(ri);
-            if existingRow != null {
-                var er = existingRow;
-                if rowsEqual(er, row) {
-                    return true;
-                }
-            }
-            ri = ri + 1;
-        }
-        return false;
-    }
 }

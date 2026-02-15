@@ -1,5 +1,5 @@
-// lexer.viper - SQL Lexer
-// Part of SQLite Clone - ViperLang Implementation
+// lexer.zia — SQL Lexer
+// Part of ViperSQL
 
 module lexer;
 

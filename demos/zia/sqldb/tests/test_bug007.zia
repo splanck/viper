@@ -1,3 +1,5 @@
+// test_bug007.zia — Reproduce BUG-007
+// Part of ViperSQL
 module test_bug007;
 
 bind Terminal = Viper.Terminal;
@@ -5,12 +7,12 @@ bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 bind IO = Viper.IO;
 
-bind "./storage/page";
-bind "./storage/serializer";
-bind "./storage/wal";
-bind "./types";
-bind "./table";
-bind "./schema";
+bind "../storage/page";
+bind "../storage/serializer";
+bind "../storage/wal";
+bind "../types";
+bind "../table";
+bind "../schema";
 
 // Entity that has a WALManager field — same pattern as StorageEngine
 entity TestEngine {

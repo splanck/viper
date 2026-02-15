@@ -1,0 +1,42 @@
+// test_common.zia — Shared Test Harness
+// Part of ViperSQL
+
+module test_common;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+Integer passed = 0;
+Integer failed = 0;
+
+func assert(condition: Boolean, msg: String) {
+    if condition {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg);
+    }
+}
+
+func check(name: String, condition: Boolean) {
+    assert(condition, name);
+}
+
+func assertTrue(cond: Boolean, desc: String) {
+    assert(cond, desc);
+}
+
+func assertFalse(cond: Boolean, desc: String) {
+    assert(cond == false, desc);
+}
+
+func printResults() {
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passed));
+    Terminal.Say("Failed: " + Fmt.Int(failed));
+    if failed == 0 {
+        Terminal.Say("ALL TESTS PASSED");
+    }
+}

@@ -1,5 +1,5 @@
-// result.viper - Query Result
-// Part of SQLite Clone - ViperLang Implementation
+// result.zia — Query Result
+// Part of ViperSQL
 
 module result;
 
