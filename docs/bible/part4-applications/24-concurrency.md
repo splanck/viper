@@ -1324,7 +1324,7 @@ This example demonstrates several best practices:
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1357,29 +1357,6 @@ MUTEX_UNLOCK m
 SUB MyWorker()
     PRINT "In thread"
 END SUB
-```
-
-**Pascal**
-```pascal
-uses ViperThreading;
-var
-    t: TThread;
-    m: TMutex;
-
-procedure Worker;
-begin
-    WriteLn('In thread');
-end;
-
-begin
-    t := ThreadSpawn(@Worker);
-    ThreadJoin(t);
-
-    m := MutexCreate;
-    MutexLock(m);
-    { critical section }
-    MutexUnlock(m);
-end.
 ```
 
 ---

@@ -998,9 +998,9 @@ Always remember: `ReadLine()` returns a string, even if the user types digits. Y
 
 ---
 
-## The Three Languages
+## The Two Languages
 
-Viper supports three syntax styles. The concepts -- values, variables, types, operations -- are identical in all three. Only the spelling and punctuation differ.
+Viper supports two syntax styles. The concepts -- values, variables, types, operations -- are identical in both. Only the spelling and punctuation differ.
 
 **Zia**
 ```rust
@@ -1029,25 +1029,7 @@ PRINT name; " is "; age
 
 BASIC requires you to declare variables with `DIM` and specify their type explicitly. Some find this more verbose; others appreciate the explicitness. BASIC uses `;` to concatenate in `PRINT` statements rather than `+`.
 
-**Pascal**
-```pascal
-var
-    name: string;
-    age: Integer;
-const
-    PI = 3.14159;
-begin
-    name := 'Alice';
-    age := 30;
-
-    age := age + 1;
-    WriteLn(name, ' is ', age);
-end.
-```
-
-Pascal uses `:=` for assignment (to distinguish from `=` in comparisons). Variables are declared in a `var` section before use. String literals use single quotes `'...'` instead of double quotes.
-
-**What's the same across all three:**
+**What's the same across both:**
 - The concept of naming values
 - Integers and floating-point numbers
 - String text values
@@ -1057,7 +1039,7 @@ Pascal uses `:=` for assignment (to distinguish from `=` in comparisons). Variab
 - Basic arithmetic operations
 - Comparison operators
 
-The syntax differs, but the ideas are identical. Once you understand these concepts, learning any of the three syntaxes is straightforward.
+The syntax differs, but the ideas are identical. Once you understand these concepts, learning either syntax is straightforward.
 
 ---
 

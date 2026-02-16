@@ -28,10 +28,10 @@
 ///      ▼ (builds hash indexes)
 /// RuntimeRegistry       O(1) method/property lookup with parsed signatures
 ///      │
-///      ├─────────────────┬─────────────────┐
-///      ▼                 ▼                 ▼
-/// BASIC Frontend    Zia Frontend    Pascal Frontend
-/// (toBasicType)     (toZiaType)     (future)
+///      ├─────────────────┐
+///      ▼                 ▼
+/// BASIC Frontend    Zia Frontend
+/// (toBasicType)     (toZiaType)
 /// ```
 ///
 /// ## Key Components

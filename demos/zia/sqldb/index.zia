@@ -1,5 +1,13 @@
 // index.zia — Index Entities
 // Part of ViperSQL
+//
+// Hash-based in-memory index for accelerating WHERE clause lookups on
+// indexed columns. Each HashIndex maps column values to lists of row
+// indices using a configurable number of buckets with chaining. The
+// IndexManager tracks all indexes per database and provides lookup,
+// creation, and maintenance (insert/delete/rebuild) operations.
+// Indexes are created via CREATE INDEX and used automatically by the
+// executor when a WHERE clause filters on an indexed column.
 
 module index;
 

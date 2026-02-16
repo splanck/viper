@@ -1,8 +1,10 @@
 // test_auth.zia — Tests for User Authentication (Phase 10)
-// Part of ViperSQL
+// Part of ViperSQL Test Suite
 //
 // Tests CREATE USER, DROP USER, ALTER USER, SHOW USERS,
 // and sys.users system view.
+//
+// Dependencies: executor.zia, server.zia, result.zia, types.zia
 
 module test_auth;
 
@@ -10,43 +12,11 @@ bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;
 bind String = Viper.String;
 
+bind "./test_common";
 bind "../executor";
 bind "../server";
 bind "../result";
 bind "../types";
-
-//=============================================================================
-// TEST HARNESS
-//=============================================================================
-
-var passed: Integer;
-var failed: Integer;
-
-func assert(cond: Boolean, msg: String) {
-    if cond {
-        passed = passed + 1;
-        Terminal.Say("  PASS: " + msg);
-    } else {
-        failed = failed + 1;
-        Terminal.Say("  FAIL: " + msg);
-    }
-}
-
-func assertResult(result: QueryResult, msg: String) {
-    assert(result.success, msg);
-}
-
-func assertError(result: QueryResult, msg: String) {
-    assert(result.success == false, msg);
-}
-
-func assertMessage(result: QueryResult, expected: String, msg: String) {
-    assert(result.message == expected, msg);
-}
-
-func assertRowCount(result: QueryResult, expected: Integer, msg: String) {
-    assert(result.rows.count() == expected, msg);
-}
 
 //=============================================================================
 // HELPER
@@ -70,26 +40,26 @@ func testCreateUser() {
 
     // Default admin user should exist
     var r1 = exec.executeSql("SHOW USERS");
-    assertResult(r1, "SHOW USERS succeeds");
+    assertSuccess(r1, "SHOW USERS succeeds");
     assert(r1.rows.count() >= 1, "At least 1 user (admin)");
 
     // Create a new user
     var r2 = exec.executeSql("CREATE USER testuser PASSWORD 'mypass123'");
-    assertResult(r2, "CREATE USER succeeds");
+    assertSuccess(r2, "CREATE USER succeeds");
     assertMessage(r2, "User 'testuser' created", "CREATE USER message correct");
 
     // Verify user appears in SHOW USERS
     var r3 = exec.executeSql("SHOW USERS");
-    assertResult(r3, "SHOW USERS after create");
+    assertSuccess(r3, "SHOW USERS after create");
     assert(r3.rows.count() >= 2, "At least 2 users after create");
 
     // Duplicate user fails
     var r4 = exec.executeSql("CREATE USER testuser PASSWORD 'other'");
-    assertError(r4, "Duplicate CREATE USER fails");
+    assertFailure(r4, "Duplicate CREATE USER fails");
 
     // Create another user
     var r5 = exec.executeSql("CREATE USER readonly PASSWORD 'read'");
-    assertResult(r5, "Create second user succeeds");
+    assertSuccess(r5, "Create second user succeeds");
 }
 
 //=============================================================================
@@ -103,7 +73,7 @@ func testDropUser() {
     // Create a user, then drop it
     exec.executeSql("CREATE USER tempuser PASSWORD 'temp'");
     var r1 = exec.executeSql("DROP USER tempuser");
-    assertResult(r1, "DROP USER succeeds");
+    assertSuccess(r1, "DROP USER succeeds");
     assertMessage(r1, "User 'tempuser' dropped", "DROP USER message correct");
 
     // Verify user is gone
@@ -120,11 +90,11 @@ func testDropUser() {
 
     // Drop non-existent user fails
     var r3 = exec.executeSql("DROP USER nonexistent");
-    assertError(r3, "DROP non-existent user fails");
+    assertFailure(r3, "DROP non-existent user fails");
 
     // Cannot drop admin
     var r4 = exec.executeSql("DROP USER admin");
-    assertError(r4, "Cannot drop admin user");
+    assertFailure(r4, "Cannot drop admin user");
 }
 
 //=============================================================================
@@ -140,7 +110,7 @@ func testAlterUser() {
 
     // Change password
     var r1 = exec.executeSql("ALTER USER alice PASSWORD 'newpass'");
-    assertResult(r1, "ALTER USER PASSWORD succeeds");
+    assertSuccess(r1, "ALTER USER PASSWORD succeeds");
     assertMessage(r1, "User 'alice' updated", "ALTER USER message correct");
 
     // Verify password changed via server
@@ -152,13 +122,13 @@ func testAlterUser() {
 
     // ALTER USER with SET keyword
     var r2 = exec.executeSql("ALTER USER alice SET PASSWORD 'finalpass'");
-    assertResult(r2, "ALTER USER SET PASSWORD succeeds");
+    assertSuccess(r2, "ALTER USER SET PASSWORD succeeds");
     var canVerify2 = exec.server.verifyPassword("alice", "finalpass");
     assert(canVerify2, "SET PASSWORD works");
 
     // ALTER non-existent user fails
     var r3 = exec.executeSql("ALTER USER nobody PASSWORD 'x'");
-    assertError(r3, "ALTER non-existent user fails");
+    assertFailure(r3, "ALTER non-existent user fails");
 }
 
 //=============================================================================
@@ -171,7 +141,7 @@ func testShowUsers() {
 
     // Default: only admin
     var r1 = exec.executeSql("SHOW USERS");
-    assertResult(r1, "SHOW USERS succeeds");
+    assertSuccess(r1, "SHOW USERS succeeds");
     assert(r1.columnNames.count() == 1, "SHOW USERS has 1 column");
     assert(r1.columnNames.get(0) == "username", "Column name is 'username'");
     assertRowCount(r1, 1, "Default: 1 user (admin)");
@@ -201,7 +171,7 @@ func testSysUsersView() {
 
     // Query sys.users
     var r1 = exec.executeSql("SELECT * FROM sys.users");
-    assertResult(r1, "SELECT FROM sys.users succeeds");
+    assertSuccess(r1, "SELECT FROM sys.users succeeds");
     assert(r1.columnNames.count() == 2, "sys.users has 2 columns");
     assert(r1.columnNames.get(0) == "username", "First column is username");
     assert(r1.columnNames.get(1) == "is_superuser", "Second column is is_superuser");
@@ -267,31 +237,27 @@ func testSyntaxErrors() {
 
     // CREATE USER without password
     var r1 = exec.executeSql("CREATE USER nopass");
-    assertError(r1, "CREATE USER without PASSWORD fails");
+    assertFailure(r1, "CREATE USER without PASSWORD fails");
 
     // DROP USER without name
     var r2 = exec.executeSql("DROP USER");
-    assertError(r2, "DROP USER without name fails");
+    assertFailure(r2, "DROP USER without name fails");
 
     // ALTER USER without PASSWORD
     var r3 = exec.executeSql("ALTER USER admin");
-    assertError(r3, "ALTER USER without PASSWORD fails");
+    assertFailure(r3, "ALTER USER without PASSWORD fails");
 
     // ALTER USER with invalid syntax
     var r4 = exec.executeSql("ALTER USER admin RENAME 'x'");
-    assertError(r4, "ALTER USER with invalid keyword fails");
+    assertFailure(r4, "ALTER USER with invalid keyword fails");
 }
 
 //=============================================================================
 // ENTRY POINT
 //=============================================================================
 
-func start() {
+func main() -> Integer {
     Terminal.Say("=== Phase 10: User Authentication Tests ===");
-    Terminal.Say("");
-
-    passed = 0;
-    failed = 0;
 
     testCreateUser();
     testDropUser();
@@ -301,11 +267,6 @@ func start() {
     testPasswordVerification();
     testSyntaxErrors();
 
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passed));
-    Terminal.Say("Failed: " + Fmt.Int(failed));
-    if failed == 0 {
-        Terminal.Say("ALL TESTS PASSED");
-    }
+    printResults();
+    return 0;
 }

@@ -1,5 +1,12 @@
 // database.zia — Database Container
 // Part of ViperSQL
+//
+// A Database holds a collection of named tables and views. The
+// DatabaseServer (server.zia) maintains one Database per named
+// database (e.g., "main", user-created databases). Tables are
+// stored in-memory; persistent storage is managed separately by
+// the StorageEngine. Views are stored as (name, SQL) pairs and
+// expanded inline by the executor at query time.
 
 module database;
 

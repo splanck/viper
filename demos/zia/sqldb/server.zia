@@ -1,6 +1,13 @@
-// server.zia - Multi-Database Server (Phase 1)
-// Part of ViperSQL - Production Database Server
-// Manages multiple databases in a single server instance
+// server.zia — Multi-Database Server
+// Part of ViperSQL
+//
+// The DatabaseServer manages multiple named databases within a single server
+// instance. It provides thread-safe database creation, lookup, and deletion
+// with Monitor-based synchronization for concurrent access. Each database
+// has an optional persistent StorageEngine for disk-backed storage.
+//
+// Also manages server-wide user authentication (CREATE/DROP USER, password
+// verification) using SHA-256 hashed passwords stored in memory.
 
 module server;
 

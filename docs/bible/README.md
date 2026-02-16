@@ -4,7 +4,7 @@
 
 This book teaches you to program computers. You don't need any prior experience. By the end, you'll be building sophisticated applications: games, tools, networked systems, and more.
 
-We teach primarily in **Zia**, a modern language designed for clarity and power. Every concept is also shown in **BASIC** and **Pascal** for those who prefer different styles or need to work with existing code.
+We teach primarily in **Zia**, a modern language designed for clarity and power. Every concept is also shown in **BASIC** for those who prefer a different style or need to work with existing code.
 
 ---
 
@@ -83,16 +83,15 @@ The Viper Bible is organized as a journey, not a dictionary. Each chapter builds
 |----------|----------|
 | [A. Zia Reference](appendices/a-zia-reference.md) | Complete syntax and semantics |
 | [B. BASIC Reference](appendices/b-basic-reference.md) | Complete syntax and semantics |
-| C. Pascal Reference | Complete syntax and semantics (planned) |
 | [D. Runtime Library](appendices/d-runtime-reference.md) | All built-in functions and types |
 | [E. Error Messages](appendices/e-error-messages.md) | What they mean and how to fix them |
 | [F. Glossary](appendices/f-glossary.md) | Programming terms explained |
 
 ---
 
-## The Three Languages
+## The Two Languages
 
-Viper supports three languages that all compile to the same underlying system. This book emphasizes Zia but shows all three:
+Viper supports two languages that both compile to the same underlying system. This book emphasizes Zia but shows both:
 
 **Zia** — Modern, clean, C-like syntax. Our recommended choice for new projects.
 ```rust
@@ -108,15 +107,7 @@ SUB Greet(name AS STRING)
 END SUB
 ```
 
-**Pascal** — Structured, explicit, educational heritage. Familiar to many programmers.
-```pascal
-procedure Greet(name: string);
-begin
-    WriteLn('Hello, ', name, '!');
-end;
-```
-
-All three are equally powerful. They access the same runtime library. Code written in one can call code written in another. Choose the style that feels right to you.
+Both are equally powerful. They access the same runtime library. Code written in one can call code written in the other. Choose the style that feels right to you.
 
 ---
 

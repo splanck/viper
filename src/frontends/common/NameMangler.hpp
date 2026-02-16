@@ -10,7 +10,7 @@
 //
 // This header provides a NameMangler class that generates unique names for
 // temporaries and basic blocks during AST-to-IL lowering. It is shared across
-// multiple language frontends (BASIC, Pascal, etc.).
+// multiple language frontends (BASIC, Zia, etc.).
 //
 // Name mangling is essential for translating source language identifiers
 // into IL's internal representation while ensuring:
@@ -47,7 +47,7 @@ inline std::string mangleMethod(std::string_view className, std::string_view met
 }
 
 /// @brief Mangle a constructor name: "ClassName.CtorName"
-/// @details Pascal uses explicit constructor names (e.g., Create),
+/// @details Languages may use explicit constructor names (e.g., Create),
 ///          while BASIC uses a fixed ".__ctor" suffix.
 inline std::string mangleConstructor(std::string_view className, std::string_view ctorName)
 {
@@ -55,7 +55,7 @@ inline std::string mangleConstructor(std::string_view className, std::string_vie
 }
 
 /// @brief Mangle a destructor name: "ClassName.DtorName"
-/// @details Pascal uses explicit destructor names (e.g., Destroy),
+/// @details Languages may use explicit destructor names (e.g., Destroy),
 ///          while BASIC uses a fixed ".__dtor" suffix.
 inline std::string mangleDestructor(std::string_view className, std::string_view dtorName)
 {

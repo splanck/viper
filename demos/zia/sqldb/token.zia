@@ -1,5 +1,10 @@
-// token.zia — Token types and Token entity
+// token.zia — Token Types and Token Entity
 // Part of ViperSQL
+//
+// Defines the TK_* constants for every SQL token kind (keywords,
+// operators, literals, punctuation) and the Token entity that carries
+// the kind, text, and source location (line/column) for error reporting.
+// Used by the Lexer to produce tokens and by the Parser to match them.
 
 module token;
 

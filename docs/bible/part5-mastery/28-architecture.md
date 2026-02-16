@@ -2168,42 +2168,6 @@ CLASS UserService
 END CLASS
 ```
 
-**Pascal**
-```pascal
-unit Application;
-
-interface
-
-type
-    IRepository = interface
-        function FindById(id: string): TObject;
-        procedure Save(item: TObject);
-    end;
-
-    TUserService = class
-    private
-        FRepo: IRepository;
-    public
-        constructor Create(repo: IRepository);
-        function CreateUser(name: string): TUser;
-    end;
-
-implementation
-
-constructor TUserService.Create(repo: IRepository);
-begin
-    FRepo := repo;
-end;
-
-function TUserService.CreateUser(name: string): TUser;
-begin
-    Result := TUser.Create(name);
-    FRepo.Save(Result);
-end;
-
-end.
-```
-
 ---
 
 ## Summary

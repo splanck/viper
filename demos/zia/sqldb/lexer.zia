@@ -1,5 +1,11 @@
 // lexer.zia — SQL Lexer
 // Part of ViperSQL
+//
+// Converts a raw SQL string into a stream of tokens for the parser.
+// Handles whitespace/comment skipping, keyword recognition (140+ SQL
+// keywords), numeric literals (integer and real), quoted strings with
+// both backslash and SQL-standard doubled-quote escaping, and all
+// single/multi-character operators. Keywords are case-insensitive.
 
 module lexer;
 
@@ -52,6 +58,7 @@ entity Lexer {
         return ch;
     }
 
+    // Skip whitespace, single-line comments (-- ...), and block comments (/* ... */)
     hide func skipWhitespace() {
         while (!isAtEnd()) {
             var ch = peek();
@@ -89,6 +96,7 @@ entity Lexer {
         return isAlpha(ch) || isDigit(ch);
     }
 
+    // Read an integer or real number literal (e.g., 42, 3.14)
     hide func readNumber() -> Token {
         var startLine = line;
         var startCol = column;
@@ -109,6 +117,8 @@ entity Lexer {
         return tok;
     }
 
+    // Read a quoted string literal. Supports both backslash escapes (\')
+    // and SQL-standard doubled quotes ('') for embedding quote characters.
     hide func readString() -> Token {
         var startLine = line;
         var startCol = column;
@@ -145,6 +155,8 @@ entity Lexer {
         return tok;
     }
 
+    // Read an identifier or keyword. The text is uppercased and checked
+    // against the keyword table; unrecognized words become TK_IDENTIFIER.
     hide func readIdentifier() -> Token {
         var startLine = line;
         var startCol = column;
@@ -161,6 +173,9 @@ entity Lexer {
         return tok;
     }
 
+    // Map an uppercased word to its TK_* token kind, or TK_IDENTIFIER
+    // if it is not a reserved keyword. This is a linear scan over all
+    // SQL keywords — fast enough for typical query lengths.
     hide func lookupKeyword(word: String) -> Integer {
         if (word == "CREATE") { return TK_CREATE; }
         if (word == "TABLE") { return TK_TABLE; }
@@ -279,6 +294,9 @@ entity Lexer {
         return TK_IDENTIFIER;
     }
 
+    // Return the next token from the input. Dispatches to specialized
+    // readers for numbers, identifiers/keywords, and strings, then
+    // handles operators and punctuation inline.
     expose func nextToken() -> Token {
         skipWhitespace();
 

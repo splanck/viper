@@ -330,20 +330,18 @@ You might wonder: why not go straight from source code to machine code? IL exist
 
 **Multiple Languages, One Backend**
 
-Viper supports three frontend languages: Zia, BASIC, and Pascal. All three compile to the same IL:
+Viper supports two frontend languages: Zia and BASIC. Both compile to the same IL:
 
 ```
-Zia ─┐
-           ├──► IL ───► VM/Native
-BASIC ─────┤
-           │
-Pascal ────┘
+Zia ───┐
+       ├──► IL ───► VM/Native
+BASIC ─┘
 ```
 
 This means:
-- The VM only needs to understand IL, not three different languages
-- Improvements to the VM benefit all languages
-- You can mix languages in the same project—they all speak IL
+- The VM only needs to understand IL, not two different languages
+- Improvements to the VM benefit both languages
+- You can mix languages in the same project—they both speak IL
 
 **Platform Independence**
 
@@ -355,7 +353,7 @@ IL is a convenient place to optimize code. Transformations that would be complex
 
 ### The Same Logic, Three Syntaxes
 
-Here's the same function in all three Viper languages:
+Here's the same function in both Viper languages:
 
 **Zia**
 ```rust
@@ -371,15 +369,7 @@ FUNCTION Square(x AS INTEGER) AS INTEGER
 END FUNCTION
 ```
 
-**Pascal**
-```pascal
-function Square(x: Integer): Integer;
-begin
-    Square := x * x;
-end;
-```
-
-All three produce identical IL:
+Both produce identical IL:
 
 ```
 .func square(i64) -> i64
@@ -1012,19 +1002,7 @@ SUB Main()
 END SUB
 ```
 
-**Pascal** (structured, begin/end syntax)
-```pascal
-procedure Greet(name: String);
-begin
-    WriteLn('Hello, ', name, '!');
-end;
-
-begin
-    Greet('World');
-end.
-```
-
-### All Produce the Same IL
+### Both Produce the Same IL
 
 ```
 .func greet(str) -> void
@@ -1045,10 +1023,10 @@ entry:
 
 ### Mixing Languages
 
-Because all three compile to the same IL, you can:
+Because both compile to the same IL, you can:
 - Call BASIC functions from Zia
-- Use Pascal modules in BASIC programs
-- Share data structures across all three
+- Call Zia functions from BASIC
+- Share data structures across both languages
 
 This interoperability is automatic—no special configuration needed.
 
@@ -1193,11 +1171,10 @@ func fib(n: Integer) -> Integer {
 ```
 For `fib(4)`, draw the call tree and show the stack state at each call and return.
 
-**Exercise 25.9 (Challenge) - Three-Language Project**
-Create a small project that uses all three languages:
+**Exercise 25.9 (Challenge) - Two-Language Project**
+Create a small project that uses both languages:
 - A Zia main program
 - A BASIC utility module
-- A Pascal math module
 
 Verify they can call each other's functions. Use `--dump-il` on each to see how they share the same IL format.
 

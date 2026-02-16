@@ -1,0 +1,1188 @@
+// dml.zia — DML (INSERT/UPDATE/DELETE) Handler
+// Part of ViperSQL
+//
+// Implements SQL DML operations: INSERT, UPDATE, DELETE including
+// multi-table variants (INSERT...SELECT, UPDATE...FROM, DELETE...USING),
+// constraint validation, index maintenance, and foreign key cascades.
+//
+// The DmlHandler is invoked by the Executor for all data modification
+// statements. It holds a back-reference to the Executor for access to
+// shared state (database, indexes, storage engine, transaction journal).
+
+module dml;
+
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+
+bind "./types";
+bind "./schema";
+bind "./table";
+bind "./expr";
+bind "./stmt";
+bind "./result";
+bind "./database";
+bind "./index";
+bind "./parser";
+bind "./executor";
+bind "./storage/page";
+bind "./storage/engine";
+bind "./optimizer/optimizer";
+
+//=============================================================================
+// DML HANDLER ENTITY
+//=============================================================================
+
+entity DmlHandler {
+    expose Executor exec;
+
+    expose func init(executor: Executor) {
+        exec = executor;
+    }
+
+    expose func executeInsert(stmt: InsertStmt) -> QueryResult {
+        // Acquire exclusive lock on target table
+        if exec.acquireExclusiveLock(stmt.tableName) == false {
+            return exec.lockTimeoutError(stmt.tableName);
+        }
+
+        var result = new QueryResult();
+        result.init();
+
+        var table = exec.findTable(stmt.tableName);
+        if table == null {
+            result.setError("Table '" + stmt.tableName + "' not found");
+            return result;
+        }
+
+        var t = table;
+        var hasColumnList = stmt.columnNames.count() > 0;
+
+        // Handle INSERT...SELECT
+        if stmt.hasSelect {
+            return executeInsertSelect(stmt, t);
+        }
+
+        // Statement-level atomicity: save journal position for rollback on error
+        var stmtSavepoint = exec.journal.count();
+
+        var rowsInserted = 0;
+        var r = 0;
+        while r < stmt.rowCount() {
+            var valueExprs = stmt.valueRows.get(r);
+            var row = new Row();
+            row.initWithCount(t.columnCount());
+
+            var c = 0;
+            while c < t.columnCount() {
+                var col = t.getColumn(c);
+                if col != null {
+                    var column = col;
+
+                    // Find the value index for this column
+                    var valIdx = -1;
+                    if hasColumnList {
+                        // Map column name to value position
+                        var ci = 0;
+                        while ci < stmt.columnNames.count() {
+                            if String.ToUpper(stmt.columnNames.get(ci)) == String.ToUpper(column.name) {
+                                valIdx = ci;
+                                break;
+                            }
+                            ci = ci + 1;
+                        }
+                    } else {
+                        // No column list — positional mapping
+                        if c < valueExprs.count() {
+                            valIdx = c;
+                        }
+                    }
+
+                    // Check for autoincrement
+                    if column.autoIncrement {
+                        if valIdx >= 0 {
+                            var valExpr = valueExprs.get(valIdx);
+                            if valExpr.kind == EXPR_LITERAL && valExpr.literalValue.kind == SQL_NULL {
+                                var autoVal = sqlInteger(t.nextAutoIncrement());
+                                row.setValue(c, autoVal);
+                                c = c + 1;
+                                continue;
+                            }
+                        } else {
+                            // Column not in INSERT list — auto-generate
+                            var autoVal = sqlInteger(t.nextAutoIncrement());
+                            row.setValue(c, autoVal);
+                            c = c + 1;
+                            continue;
+                        }
+                    }
+
+                    if valIdx >= 0 {
+                        var valExpr = valueExprs.get(valIdx);
+                        var val = exec.evalExpr(valExpr, row, t);
+                        row.setValue(c, val);
+                    } else if column.hasDefault {
+                        row.setValue(c, column.defaultValue);
+                    } else {
+                        row.setValue(c, sqlNull());
+                    }
+                }
+                c = c + 1;
+            }
+
+            // Validate constraints before inserting
+            var constraintError = validateConstraints(t, row, -1);
+            if constraintError != "" {
+                // Statement-level rollback: undo all rows from this statement
+                exec.undoToSavepoint(stmtSavepoint);
+                result.setError(constraintError);
+                return result;
+            }
+
+            var newRowIdx = t.rowCount();
+            t.addRow(row);
+
+            // Update all indexes on this table
+            var indexError = updateIndexesAfterInsert(stmt.tableName, row, newRowIdx, t);
+            if indexError != "" {
+                // Undo the row addition and all previous rows from this statement
+                t.rows.removeAt(newRowIdx);
+                exec.undoToSavepoint(stmtSavepoint);
+                result.setError(indexError);
+                return result;
+            }
+
+            // Record in transaction journal
+            exec.journalInsert(stmt.tableName, newRowIdx);
+
+            // Persist row to storage engine and track location
+            if exec.storageEngine != null {
+                var se = exec.storageEngine;
+                var insertOk = se.insertRowStorage(stmt.tableName, row);
+                if insertOk {
+                    se.trackRowLocation(stmt.tableName, se.lastInsertPageId, se.lastInsertSlotIdx);
+                }
+                se.updateAutoIncrement(stmt.tableName, t.autoIncrementValue);
+            }
+
+            rowsInserted = rowsInserted + 1;
+            r = r + 1;
+        }
+
+        // Flush after all rows inserted
+        if exec.storageEngine != null && rowsInserted > 0 {
+            var se = exec.storageEngine;
+            se.flush();
+        }
+
+        // Update optimizer statistics
+        if rowsInserted > 0 {
+            exec.optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
+        }
+
+        result.message = "Inserted " + Fmt.Int(rowsInserted) + " row(s)";
+        result.rowsAffected = rowsInserted;
+        exec.clearStatementJournal();
+        return result;
+    }
+
+    // Execute INSERT...SELECT
+    hide func executeInsertSelect(stmt: InsertStmt, t: Table) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Execute the SELECT query
+        var selectResult = exec.executeSql(stmt.selectSQL);
+        if selectResult.success == false {
+            result.setError(selectResult.message);
+            return result;
+        }
+
+        var hasColumnList = stmt.columnNames.count() > 0;
+        var rowsInserted = 0;
+        var ri = 0;
+        while ri < selectResult.rowCount() {
+            var srcRow = selectResult.getRow(ri);
+            var newRow = new Row();
+            newRow.initWithCount(t.columnCount());
+
+            var c = 0;
+            while c < t.columnCount() {
+                var col = t.getColumn(c);
+                if col != null {
+                    var column = col;
+
+                    // Find the source value index for this column
+                    var valIdx = -1;
+                    if hasColumnList {
+                        // Map column name to SELECT result column position
+                        var ci = 0;
+                        while ci < stmt.columnNames.count() {
+                            if String.ToUpper(stmt.columnNames.get(ci)) == String.ToUpper(column.name) {
+                                valIdx = ci;
+                                break;
+                            }
+                            ci = ci + 1;
+                        }
+                    } else {
+                        // Positional mapping
+                        if c < srcRow.columnCount() {
+                            valIdx = c;
+                        }
+                    }
+
+                    // Handle autoincrement
+                    if column.autoIncrement {
+                        if valIdx >= 0 {
+                            var srcVal = srcRow.getValue(valIdx);
+                            if srcVal.isNull() {
+                                newRow.setValue(c, sqlInteger(t.nextAutoIncrement()));
+                                c = c + 1;
+                                continue;
+                            }
+                        } else {
+                            newRow.setValue(c, sqlInteger(t.nextAutoIncrement()));
+                            c = c + 1;
+                            continue;
+                        }
+                    }
+
+                    if valIdx >= 0 {
+                        newRow.setValue(c, srcRow.getValue(valIdx));
+                    } else if column.hasDefault {
+                        newRow.setValue(c, column.defaultValue);
+                    } else {
+                        newRow.setValue(c, sqlNull());
+                    }
+                }
+                c = c + 1;
+            }
+
+            // Validate constraints
+            var constraintError = validateConstraints(t, newRow, -1);
+            if constraintError != "" {
+                result.setError(constraintError);
+                return result;
+            }
+
+            var newRowIdx = t.rowCount();
+            t.addRow(newRow);
+            updateIndexesAfterInsert(stmt.tableName, newRow, newRowIdx, t);
+
+            if exec.storageEngine != null {
+                var se = exec.storageEngine;
+                var insertOk = se.insertRowStorage(stmt.tableName, newRow);
+                if insertOk {
+                    se.trackRowLocation(stmt.tableName, se.lastInsertPageId, se.lastInsertSlotIdx);
+                }
+                se.updateAutoIncrement(stmt.tableName, t.autoIncrementValue);
+            }
+
+            rowsInserted = rowsInserted + 1;
+            ri = ri + 1;
+        }
+
+        if exec.storageEngine != null && rowsInserted > 0 {
+            var se = exec.storageEngine;
+            se.flush();
+        }
+
+        // Update optimizer statistics
+        if rowsInserted > 0 {
+            exec.optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
+        }
+
+        result.message = "Inserted " + Fmt.Int(rowsInserted) + " row(s)";
+        result.rowsAffected = rowsInserted;
+        exec.clearStatementJournal();
+        return result;
+    }
+
+    // Validate constraints for a row (returns error message or empty string)
+    hide func validateConstraints(table: Table, row: Row, excludeRowIdx: Integer) -> String {
+        var c = 0;
+        while c < table.columnCount() {
+            var maybeCol = table.getColumn(c);
+            if maybeCol != null {
+                var col = maybeCol;
+                var val = row.getValue(c);
+
+                // Check NOT NULL constraint
+                if col.notNull && val.kind == SQL_NULL {
+                    return "NOT NULL constraint failed: " + col.name;
+                }
+
+                // Check PRIMARY KEY constraint (implies NOT NULL and UNIQUE)
+                if col.primaryKey {
+                    if val.kind == SQL_NULL {
+                        return "PRIMARY KEY constraint failed: " + col.name + " cannot be NULL";
+                    }
+                    // Check uniqueness using nullSafeEquals
+                    var i = 0;
+                    while i < table.rowCount() {
+                        if i != excludeRowIdx {
+                            var maybeRow = table.getRow(i);
+                            if maybeRow != null {
+                                var existingRow = maybeRow;
+                                if existingRow.deleted == false {
+                                    var existingVal = existingRow.getValue(c);
+                                    if val.nullSafeEquals(existingVal) {
+                                        return "PRIMARY KEY constraint failed: duplicate value in " + col.name;
+                                    }
+                                }
+                            }
+                        }
+                        i = i + 1;
+                    }
+                }
+
+                // Check UNIQUE constraint
+                if col.unique && val.kind != SQL_NULL {
+                    var i = 0;
+                    while i < table.rowCount() {
+                        if i != excludeRowIdx {
+                            var maybeRow = table.getRow(i);
+                            if maybeRow != null {
+                                var existingRow = maybeRow;
+                                if existingRow.deleted == false {
+                                    var existingVal = existingRow.getValue(c);
+                                    if val.nullSafeEquals(existingVal) {
+                                        return "UNIQUE constraint failed: duplicate value in " + col.name;
+                                    }
+                                }
+                            }
+                        }
+                        i = i + 1;
+                    }
+                }
+
+                // Check FOREIGN KEY constraint
+                if col.isForeignKey {
+                    if val.kind != SQL_NULL {
+                        var refTable = exec.findTable(col.refTableName);
+                        if refTable == null {
+                            return "FOREIGN KEY constraint failed: referenced table '" + col.refTableName + "' not found";
+                        }
+                        var rt = refTable;
+                        var refColIdx = rt.findColumnIndex(col.refColumnName);
+                        if refColIdx >= 0 {
+                            var found = false;
+                            var i = 0;
+                            while i < rt.rowCount() {
+                                var maybeRow = rt.getRow(i);
+                                if maybeRow != null {
+                                    var refRow = maybeRow;
+                                    if refRow.deleted == false {
+                                        var refVal = refRow.getValue(refColIdx);
+                                        if val.nullSafeEquals(refVal) {
+                                            found = true;
+                                            i = rt.rowCount();  // break
+                                        }
+                                    }
+                                }
+                                i = i + 1;
+                            }
+                            if found == false {
+                                return "FOREIGN KEY constraint failed: " + col.name + " references " + col.refTableName + "(" + col.refColumnName + ")";
+                            }
+                        }
+                    }
+                }
+
+                // Check CHECK constraint (NULL values always pass per SQL standard)
+                if col.checkExprSQL != "" && val.kind != SQL_NULL {
+                    var checkResult = evaluateCheckConstraint(col.checkExprSQL, col.name, val);
+                    if checkResult != "" {
+                        return checkResult;
+                    }
+                }
+            }
+            c = c + 1;
+        }
+        return "";
+    }
+
+    // Evaluate a CHECK constraint expression against a column value
+    hide func evaluateCheckConstraint(checkSQL: String, colName: String, val: SqlValue) -> String {
+        // Build a SQL expression that substitutes the column name with the actual value
+        // We parse the check expression and evaluate it with a single-column temp row/table
+        var tempTable = new Table();
+        tempTable.init();
+        var tempCol = new Column();
+        tempCol.initWithName(colName, val.kind);
+        tempTable.addColumn(tempCol);
+
+        var tempRow = new Row();
+        tempRow.initWithCount(1);
+        tempRow.setValue(0, val);
+
+        // Parse and evaluate the check expression
+        var parser = new Parser(checkSQL);
+        var checkExpr = parser.parseExpr();
+        if parser.hasError {
+            return "CHECK constraint parse error: " + parser.error;
+        }
+
+        var result = exec.evalExpr(checkExpr, tempRow, tempTable);
+
+        // CHECK passes if result is non-zero (true)
+        if result.kind == SQL_INTEGER && result.intValue != 0 {
+            return "";
+        }
+        if result.kind == SQL_NULL {
+            // NULL in CHECK is considered passing (SQL standard)
+            return "";
+        }
+        return "CHECK constraint failed: " + colName;
+    }
+
+    // Update all indexes for a table after inserting a row
+    hide func updateIndexesAfterInsert(tableName: String, row: Row, rowIdx: Integer, table: Table) -> String {
+        var i = 0;
+        while i < exec.indexMgr.indexCount() {
+            var idx = exec.indexMgr.indexes.get(i);
+            if idx.tableName == tableName {
+                var ok = idx.addEntry(row, rowIdx, table);
+                if ok == false {
+                    return "UNIQUE constraint failed: duplicate value in index '" + idx.name + "'";
+                }
+            }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    //=========================================================================
+    // Multi-table UPDATE...FROM
+    //=========================================================================
+    hide func executeUpdateFrom(stmt: UpdateStmt) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var table = exec.findTable(stmt.tableName);
+        if table == null {
+            result.setError("Table '" + stmt.tableName + "' not found");
+            return result;
+        }
+        var t1 = table;
+
+        var fromTable = exec.findTable(stmt.fromTableName);
+        if fromTable == null {
+            result.setError("FROM table '" + stmt.fromTableName + "' not found");
+            return result;
+        }
+        var t2 = fromTable;
+        var t2Alias = stmt.fromTableAlias;
+
+        // Build merged table schema for expression evaluation
+        var mergedTable = new Table();
+        mergedTable.init();
+        // Add columns from target table (with table name prefix handling)
+        var c = 0;
+        while c < t1.columnCount() {
+            var col = t1.getColumn(c);
+            if col != null {
+                var mc = new Column();
+                mc.initWithName(col.name, col.typeCode);
+                mergedTable.addColumn(mc);
+            }
+            c = c + 1;
+        }
+        // Add columns from FROM table
+        c = 0;
+        while c < t2.columnCount() {
+            var col = t2.getColumn(c);
+            if col != null {
+                var mc = new Column();
+                mc.initWithName(col.name, col.typeCode);
+                mergedTable.addColumn(mc);
+            }
+            c = c + 1;
+        }
+
+        var stmtSavepoint = exec.journal.count();
+        var rowsUpdated = 0;
+        var t1ColCount = t1.columnCount();
+
+        // Nested loop: for each t1 row, find matching t2 rows
+        var r1 = 0;
+        while r1 < t1.rowCount() {
+            var row1 = t1.getRow(r1);
+            if row1 != null {
+                var rd1 = row1;
+                if rd1.deleted == false {
+                    var r2 = 0;
+                    while r2 < t2.rowCount() {
+                        var row2 = t2.getRow(r2);
+                        if row2 != null {
+                            var rd2 = row2;
+                            if rd2.deleted == false {
+                                // Build merged row
+                                var mergedRow = new Row();
+                                mergedRow.initWithCount(t1ColCount + t2.columnCount());
+                                var mc = 0;
+                                while mc < t1ColCount {
+                                    mergedRow.setValue(mc, rd1.getValue(mc));
+                                    mc = mc + 1;
+                                }
+                                mc = 0;
+                                while mc < t2.columnCount() {
+                                    mergedRow.setValue(t1ColCount + mc, rd2.getValue(mc));
+                                    mc = mc + 1;
+                                }
+
+                                // Evaluate WHERE against merged context
+                                // Need to handle table-qualified column names
+                                if evalConditionMultiTable(stmt.whereClause, mergedRow, mergedTable, stmt.tableName, t1, t2Alias, t2) {
+                                    // Record before-image for rollback
+                                    exec.journalUpdate(stmt.tableName, r1, rd1);
+
+                                    // Evaluate SET expressions in merged context
+                                    var si = 0;
+                                    while si < stmt.setColumns.count() {
+                                        var colName = stmt.setColumns.get(si);
+                                        var valExpr = stmt.setValues.get(si);
+                                        var colIdx = t1.findColumnIndex(colName);
+                                        if colIdx >= 0 {
+                                            var val = evalExprMultiTable(valExpr, mergedRow, mergedTable, stmt.tableName, t1, t2Alias, t2);
+                                            rd1.setValue(colIdx, val);
+                                        }
+                                        si = si + 1;
+                                    }
+                                    rowsUpdated = rowsUpdated + 1;
+                                    r2 = t2.rowCount(); // break inner loop (first match only)
+                                }
+                            }
+                        }
+                        r2 = r2 + 1;
+                    }
+                }
+            }
+            r1 = r1 + 1;
+        }
+
+        result.message = "Updated " + Fmt.Int(rowsUpdated) + " row(s)";
+        result.rowsAffected = rowsUpdated;
+        exec.clearStatementJournal();
+        return result;
+    }
+
+    //=========================================================================
+    // Multi-table DELETE...USING
+    //=========================================================================
+    hide func executeDeleteUsing(stmt: DeleteStmt) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var table = exec.findTable(stmt.tableName);
+        if table == null {
+            result.setError("Table '" + stmt.tableName + "' not found");
+            return result;
+        }
+        var t1 = table;
+
+        var usingTable = exec.findTable(stmt.usingTableName);
+        if usingTable == null {
+            result.setError("USING table '" + stmt.usingTableName + "' not found");
+            return result;
+        }
+        var t2 = usingTable;
+        var t2Alias = stmt.usingTableAlias;
+
+        // Build merged table schema
+        var mergedTable = new Table();
+        mergedTable.init();
+        var c = 0;
+        while c < t1.columnCount() {
+            var col = t1.getColumn(c);
+            if col != null {
+                var mc = new Column();
+                mc.initWithName(col.name, col.typeCode);
+                mergedTable.addColumn(mc);
+            }
+            c = c + 1;
+        }
+        c = 0;
+        while c < t2.columnCount() {
+            var col = t2.getColumn(c);
+            if col != null {
+                var mc = new Column();
+                mc.initWithName(col.name, col.typeCode);
+                mergedTable.addColumn(mc);
+            }
+            c = c + 1;
+        }
+
+        var stmtSavepoint = exec.journal.count();
+        var rowsDeleted = 0;
+        var deletedIndices: List[Integer] = [];
+        var t1ColCount = t1.columnCount();
+
+        var r1 = 0;
+        while r1 < t1.rowCount() {
+            var row1 = t1.getRow(r1);
+            if row1 != null {
+                var rd1 = row1;
+                if rd1.deleted == false {
+                    var r2 = 0;
+                    while r2 < t2.rowCount() {
+                        var row2 = t2.getRow(r2);
+                        if row2 != null {
+                            var rd2 = row2;
+                            if rd2.deleted == false {
+                                var mergedRow = new Row();
+                                mergedRow.initWithCount(t1ColCount + t2.columnCount());
+                                var mc = 0;
+                                while mc < t1ColCount {
+                                    mergedRow.setValue(mc, rd1.getValue(mc));
+                                    mc = mc + 1;
+                                }
+                                mc = 0;
+                                while mc < t2.columnCount() {
+                                    mergedRow.setValue(t1ColCount + mc, rd2.getValue(mc));
+                                    mc = mc + 1;
+                                }
+
+                                if evalConditionMultiTable(stmt.whereClause, mergedRow, mergedTable, stmt.tableName, t1, t2Alias, t2) {
+                                    exec.journalDelete(stmt.tableName, r1, rd1);
+                                    rd1.deleted = true;
+                                    deletedIndices.add(r1);
+                                    rowsDeleted = rowsDeleted + 1;
+                                    r2 = t2.rowCount(); // break
+                                }
+                            }
+                        }
+                        r2 = r2 + 1;
+                    }
+                }
+            }
+            r1 = r1 + 1;
+        }
+
+        // Compact and rebuild indexes
+        if rowsDeleted > 0 && exec.inTransaction == false {
+            exec.compactTable(t1);
+            exec.rebuildTableIndexes(stmt.tableName, t1);
+        }
+
+        result.message = "Deleted " + Fmt.Int(rowsDeleted) + " row(s)";
+        result.rowsAffected = rowsDeleted;
+        exec.clearStatementJournal();
+        return result;
+    }
+
+    // Multi-table expression evaluation helpers
+    hide func resolveColumnMultiTable(colExpr: Expr, mergedRow: Row, mergedTable: Table, t1Name: String, t1: Table, t2Name: String, t2: Table) -> SqlValue {
+        var tblName = colExpr.tableName;
+        var colName = colExpr.columnName;
+
+        // If table-qualified, resolve from that table's columns
+        if tblName != "" {
+            if tblName == t1Name || String.ToUpper(tblName) == String.ToUpper(t1Name) {
+                var idx = t1.findColumnIndex(colName);
+                if idx >= 0 { return mergedRow.getValue(idx); }
+            }
+            if tblName == t2Name || String.ToUpper(tblName) == String.ToUpper(t2Name) {
+                var idx = t2.findColumnIndex(colName);
+                if idx >= 0 { return mergedRow.getValue(t1.columnCount() + idx); }
+            }
+        }
+
+        // Unqualified: search t1 first, then t2
+        var idx = t1.findColumnIndex(colName);
+        if idx >= 0 { return mergedRow.getValue(idx); }
+        idx = t2.findColumnIndex(colName);
+        if idx >= 0 { return mergedRow.getValue(t1.columnCount() + idx); }
+
+        return sqlNull();
+    }
+
+    hide func evalExprMultiTable(expr: Expr, mergedRow: Row, mergedTable: Table, t1Name: String, t1: Table, t2Name: String, t2: Table) -> SqlValue {
+        if expr.kind == EXPR_LITERAL { return expr.literalValue; }
+        if expr.kind == EXPR_COLUMN {
+            return resolveColumnMultiTable(expr, mergedRow, mergedTable, t1Name, t1, t2Name, t2);
+        }
+        if expr.kind == EXPR_BINARY {
+            var left = evalExprMultiTable(expr.args.get(0), mergedRow, mergedTable, t1Name, t1, t2Name, t2);
+            var right = evalExprMultiTable(expr.args.get(1), mergedRow, mergedTable, t1Name, t1, t2Name, t2);
+            return evalBinaryValues(expr.op, left, right);
+        }
+        if expr.kind == EXPR_UNARY {
+            var operand = evalExprMultiTable(expr.args.get(0), mergedRow, mergedTable, t1Name, t1, t2Name, t2);
+            if expr.op == OP_NEG {
+                if operand.kind == SQL_INTEGER { return sqlInteger(-operand.intValue); }
+            }
+            if expr.op == OP_NOT {
+                if operand.intValue == 0 { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+        }
+        if expr.kind == EXPR_FUNCTION {
+            return exec.evalFunction(expr, mergedRow, mergedTable);
+        }
+        // Fall back to single-table eval for complex cases
+        return exec.evalExpr(expr, mergedRow, mergedTable);
+    }
+
+    hide func evalConditionMultiTable(expr: Expr?, mergedRow: Row, mergedTable: Table, t1Name: String, t1: Table, t2Name: String, t2: Table) -> Boolean {
+        if expr == null { return true; }
+        var e = expr;
+        var result = evalExprMultiTable(e, mergedRow, mergedTable, t1Name, t1, t2Name, t2);
+        return result.intValue != 0;
+    }
+
+    // Helper: evaluate binary operation on two SqlValues (no row context)
+    hide func evalBinaryValues(op: Integer, left: SqlValue, right: SqlValue) -> SqlValue {
+        if op == OP_EQ {
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp == 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_NE {
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp != 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_LT {
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp < 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_LE {
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp <= 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_GT {
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp > 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_GE {
+            var cmp = left.compare(right);
+            if cmp == 2 { return sqlInteger(0); }
+            if cmp >= 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_AND {
+            if left.intValue != 0 && right.intValue != 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_OR {
+            if left.intValue != 0 || right.intValue != 0 { return sqlInteger(1); }
+            return sqlInteger(0);
+        }
+        if op == OP_ADD {
+            if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                return sqlInteger(left.intValue + right.intValue);
+            }
+        }
+        if op == OP_SUB {
+            if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                return sqlInteger(left.intValue - right.intValue);
+            }
+        }
+        if op == OP_MUL {
+            if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                return sqlInteger(left.intValue * right.intValue);
+            }
+        }
+        if op == OP_DIV {
+            if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                if right.intValue != 0 {
+                    return sqlInteger(left.intValue / right.intValue);
+                }
+            }
+        }
+        if op == OP_CONCAT {
+            return sqlText(left.toString() + right.toString());
+        }
+        return sqlNull();
+    }
+
+    expose func executeUpdate(stmt: UpdateStmt) -> QueryResult {
+        // Acquire exclusive lock on target table
+        if exec.acquireExclusiveLock(stmt.tableName) == false {
+            return exec.lockTimeoutError(stmt.tableName);
+        }
+        // Also lock FROM table if present (shared for reads)
+        if stmt.hasFrom && stmt.fromTableName != "" {
+            if exec.acquireSharedLock(stmt.fromTableName) == false {
+                return exec.lockTimeoutError(stmt.fromTableName);
+            }
+        }
+
+        // Route to multi-table UPDATE if FROM clause present
+        if stmt.hasFrom {
+            return executeUpdateFrom(stmt);
+        }
+
+        var result = new QueryResult();
+        result.init();
+
+        var table = exec.findTable(stmt.tableName);
+        if table == null {
+            result.setError("Table '" + stmt.tableName + "' not found");
+            return result;
+        }
+
+        var t = table;
+        var rowsUpdated = 0;
+        var updatedIndices: List[Integer] = [];
+
+        // Statement-level atomicity: save journal position for rollback on error
+        var stmtSavepoint = exec.journal.count();
+
+        var r = 0;
+        while r < t.rowCount() {
+            var row = t.getRow(r);
+            if row != null {
+                var rowData = row;
+                if rowData.deleted == false {
+                    if exec.evalCondition(stmt.whereClause, rowData, t) {
+                        // Create a copy of the row with updated values
+                        var updatedRow = new Row();
+                        updatedRow.initWithCount(t.columnCount());
+                        var c = 0;
+                        while c < t.columnCount() {
+                            updatedRow.setValue(c, rowData.getValue(c));
+                            c = c + 1;
+                        }
+
+                        // Apply updates to the copy
+                        var i = 0;
+                        while i < stmt.setColumns.count() {
+                            var colName = stmt.setColumns.get(i);
+                            var valExpr = stmt.setValues.get(i);
+                            var colIdx = t.findColumnIndex(colName);
+                            if colIdx >= 0 {
+                                var val = exec.evalExpr(valExpr, rowData, t);
+                                updatedRow.setValue(colIdx, val);
+                            }
+                            i = i + 1;
+                        }
+
+                        // Validate constraints (exclude current row index for uniqueness check)
+                        var constraintError = validateConstraints(t, updatedRow, r);
+                        if constraintError != "" {
+                            // Statement-level rollback: undo all rows updated so far
+                            exec.undoToSavepoint(stmtSavepoint);
+                            result.setError(constraintError);
+                            return result;
+                        }
+
+                        // Record before-image in transaction journal
+                        exec.journalUpdate(stmt.tableName, r, rowData);
+
+                        // Deep-copy the old row for cascade check
+                        var oldRowCopy = new Row();
+                        oldRowCopy.initWithCount(t.columnCount());
+                        var oc = 0;
+                        while oc < t.columnCount() {
+                            oldRowCopy.setValue(oc, rowData.getValue(oc));
+                            oc = oc + 1;
+                        }
+
+                        // Apply the updates to the actual row
+                        i = 0;
+                        while i < stmt.setColumns.count() {
+                            var colName = stmt.setColumns.get(i);
+                            var colIdx = t.findColumnIndex(colName);
+                            if colIdx >= 0 {
+                                rowData.setValue(colIdx, updatedRow.getValue(colIdx));
+                            }
+                            i = i + 1;
+                        }
+
+                        // Handle FK cascades for this updated row
+                        var cascErr = handleUpdateCascade(stmt.tableName, t, r, oldRowCopy, rowData);
+                        if cascErr != "" {
+                            // Undo this update and all previous updates
+                            exec.undoToSavepoint(stmtSavepoint);
+                            result.setError(cascErr);
+                            return result;
+                        }
+
+                        updatedIndices.add(r);
+                        rowsUpdated = rowsUpdated + 1;
+                    }
+                }
+            }
+            r = r + 1;
+        }
+
+        // Persist updated rows — try incremental in-place updates first
+        if exec.storageEngine != null && rowsUpdated > 0 {
+            var se = exec.storageEngine;
+            var needsRewrite = false;
+            var ui = 0;
+            while ui < updatedIndices.count() {
+                var rowIdx = updatedIndices.get(ui);
+                var loc = se.findRowLocation(stmt.tableName, rowIdx);
+                var locPageId = loc.get(0);
+                var locSlotIdx = loc.get(1);
+                if locPageId != INVALID_PAGE_ID {
+                    var updRow = t.getRow(rowIdx);
+                    var ok = se.updateRowByLocation(stmt.tableName, locPageId, locSlotIdx, updRow);
+                    if ok == false {
+                        needsRewrite = true;
+                    }
+                } else {
+                    needsRewrite = true;
+                }
+                ui = ui + 1;
+            }
+            // Fall back to full rewrite if any in-place update failed
+            // rewriteTableRows() clears + rebuilds row tracking internally
+            if needsRewrite {
+                se.rewriteTableRows(stmt.tableName, t.rows);
+            }
+            se.flush();
+        }
+
+        // Update optimizer statistics
+        if rowsUpdated > 0 {
+            exec.optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
+        }
+
+        result.message = "Updated " + Fmt.Int(rowsUpdated) + " row(s)";
+        result.rowsAffected = rowsUpdated;
+        exec.clearStatementJournal();
+        return result;
+    }
+
+    expose func executeDelete(stmt: DeleteStmt) -> QueryResult {
+        // Acquire exclusive lock on target table
+        if exec.acquireExclusiveLock(stmt.tableName) == false {
+            return exec.lockTimeoutError(stmt.tableName);
+        }
+        // Also lock USING table if present (shared for reads)
+        if stmt.hasUsing && stmt.usingTableName != "" {
+            if exec.acquireSharedLock(stmt.usingTableName) == false {
+                return exec.lockTimeoutError(stmt.usingTableName);
+            }
+        }
+
+        // Route to multi-table DELETE if USING clause present
+        if stmt.hasUsing {
+            return executeDeleteUsing(stmt);
+        }
+
+        var result = new QueryResult();
+        result.init();
+
+        var table = exec.findTable(stmt.tableName);
+        if table == null {
+            result.setError("Table '" + stmt.tableName + "' not found");
+            return result;
+        }
+
+        var t = table;
+        var rowsDeleted = 0;
+        var deletedIndices: List[Integer] = [];
+
+        // Statement-level atomicity savepoint
+        var stmtSavepoint = exec.journal.count();
+
+        var r = 0;
+        while r < t.rowCount() {
+            var row = t.getRow(r);
+            if row != null {
+                var rowData = row;
+                if rowData.deleted == false {
+                    if exec.evalCondition(stmt.whereClause, rowData, t) {
+                        // Record in transaction journal before soft-delete
+                        exec.journalDelete(stmt.tableName, r, rowData);
+                        rowData.deleted = true;
+                        deletedIndices.add(r);
+                        rowsDeleted = rowsDeleted + 1;
+                    }
+                }
+            }
+            r = r + 1;
+        }
+
+        // Handle FK cascades for deleted rows
+        if rowsDeleted > 0 {
+            var cascadeError = handleDeleteCascade(stmt.tableName, t, deletedIndices);
+            if cascadeError != "" {
+                // Statement-level rollback: undo all deletes and cascaded changes
+                exec.undoToSavepoint(stmtSavepoint);
+                result.setError(cascadeError);
+                return result;
+            }
+        }
+
+        // Compact rows (deferred during explicit transactions)
+        if rowsDeleted > 0 && exec.inTransaction == false {
+            exec.compactTable(t);
+
+            // Rebuild indexes since row compaction changed indices
+            exec.rebuildTableIndexes(stmt.tableName, t);
+
+            // Persist via full table rewrite (rewriteTableRows clears + rebuilds tracking)
+            if exec.storageEngine != null {
+                var se = exec.storageEngine;
+                se.rewriteTableRows(stmt.tableName, t.rows);
+                se.flush();
+            }
+        }
+
+        // Update optimizer statistics
+        if rowsDeleted > 0 {
+            exec.optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
+        }
+
+        result.message = "Deleted " + Fmt.Int(rowsDeleted) + " row(s)";
+        result.rowsAffected = rowsDeleted;
+        exec.clearStatementJournal();
+        return result;
+    }
+
+    //=========================================================================
+    // FOREIGN KEY CASCADE HANDLING
+    //=========================================================================
+
+    // Handle ON DELETE CASCADE/RESTRICT/SET NULL for all tables referencing the deleted rows
+    hide func handleDeleteCascade(parentTableName: String, parentTable: Table, deletedIndices: List[Integer]) -> String {
+        // Find all tables that have FK references to parentTableName
+        var ti = 0;
+        while ti < exec.db.tableCount() {
+            var maybeTable = exec.db.getTable(ti);
+            if maybeTable != null {
+                var childTable = maybeTable;
+                var ci = 0;
+                while ci < childTable.columnCount() {
+                    var maybeCol = childTable.getColumn(ci);
+                    if maybeCol != null {
+                        var col = maybeCol;
+                        if col.isForeignKey && col.refTableName == parentTableName {
+                            // This column references the parent table
+                            var refColIdx = parentTable.findColumnIndex(col.refColumnName);
+                            if refColIdx < 0 {
+                                ci = ci + 1;
+                                continue;
+                            }
+
+                            // Check each deleted parent row
+                            var di = 0;
+                            while di < deletedIndices.count() {
+                                var parentIdx = deletedIndices.get(di);
+                                var parentRow = parentTable.getRow(parentIdx);
+                                if parentRow != null {
+                                    var pr = parentRow;
+                                    var parentVal = pr.getValue(refColIdx);
+
+                                    // Find child rows referencing this value
+                                    var cr = 0;
+                                    while cr < childTable.rowCount() {
+                                        var childRow = childTable.getRow(cr);
+                                        if childRow != null {
+                                            var crd = childRow;
+                                            if crd.deleted == false {
+                                                var childVal = crd.getValue(ci);
+                                                if childVal.nullSafeEquals(parentVal) {
+                                                    // Found a referencing row
+                                                    if col.onDeleteAction == FK_CASCADE {
+                                                        // CASCADE: delete the child row
+                                                        exec.journalDelete(childTable.name, cr, crd);
+                                                        crd.deleted = true;
+                                                    } else if col.onDeleteAction == FK_SET_NULL {
+                                                        // SET NULL: set the FK column to NULL
+                                                        exec.journalUpdate(childTable.name, cr, crd);
+                                                        crd.setValue(ci, sqlNull());
+                                                    } else if col.onDeleteAction == FK_RESTRICT {
+                                                        return "FOREIGN KEY constraint failed: RESTRICT prevents deletion of " + parentTableName + " row referenced by " + childTable.name;
+                                                    } else {
+                                                        // NO ACTION: check if reference still exists
+                                                        return "FOREIGN KEY constraint failed: " + childTable.name + "." + col.name + " references " + parentTableName + "(" + col.refColumnName + ")";
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        cr = cr + 1;
+                                    }
+                                }
+                                di = di + 1;
+                            }
+
+                            // Compact child table if CASCADE deleted rows (outside transaction)
+                            if col.onDeleteAction == FK_CASCADE && exec.inTransaction == false {
+                                exec.compactTable(childTable);
+                                exec.rebuildTableIndexes(childTable.name, childTable);
+                            }
+                        }
+                    }
+                    ci = ci + 1;
+                }
+            }
+            ti = ti + 1;
+        }
+        return "";
+    }
+
+    // Handle ON UPDATE CASCADE/RESTRICT/SET NULL when a PK/referenced column is updated
+    hide func handleUpdateCascade(parentTableName: String, parentTable: Table, rowIdx: Integer, oldRow: Row, newRow: Row) -> String {
+        // Find all tables that have FK references to parentTableName
+        var ti = 0;
+        while ti < exec.db.tableCount() {
+            var maybeTable = exec.db.getTable(ti);
+            if maybeTable != null {
+                var childTable = maybeTable;
+                var ci = 0;
+                while ci < childTable.columnCount() {
+                    var maybeCol = childTable.getColumn(ci);
+                    if maybeCol != null {
+                        var col = maybeCol;
+                        if col.isForeignKey && col.refTableName == parentTableName {
+                            var refColIdx = parentTable.findColumnIndex(col.refColumnName);
+                            if refColIdx < 0 {
+                                ci = ci + 1;
+                                continue;
+                            }
+
+                            var oldVal = oldRow.getValue(refColIdx);
+                            var newVal = newRow.getValue(refColIdx);
+
+                            // Only cascade if the referenced column actually changed
+                            if oldVal.nullSafeEquals(newVal) == false {
+                                // Find child rows referencing the old value
+                                var cr = 0;
+                                while cr < childTable.rowCount() {
+                                    var childRow = childTable.getRow(cr);
+                                    if childRow != null {
+                                        var crd = childRow;
+                                        if crd.deleted == false {
+                                            var childVal = crd.getValue(ci);
+                                            if childVal.nullSafeEquals(oldVal) {
+                                                if col.onUpdateAction == FK_CASCADE {
+                                                    // CASCADE: update the FK column to new value
+                                                    exec.journalUpdate(childTable.name, cr, crd);
+                                                    crd.setValue(ci, newVal);
+                                                } else if col.onUpdateAction == FK_SET_NULL {
+                                                    exec.journalUpdate(childTable.name, cr, crd);
+                                                    crd.setValue(ci, sqlNull());
+                                                } else if col.onUpdateAction == FK_RESTRICT {
+                                                    return "FOREIGN KEY constraint failed: RESTRICT prevents update of " + parentTableName + " row referenced by " + childTable.name;
+                                                }
+                                                // NO ACTION: no error for updates (reference becomes dangling)
+                                            }
+                                        }
+                                    }
+                                    cr = cr + 1;
+                                }
+                            }
+                        }
+                    }
+                    ci = ci + 1;
+                }
+            }
+            ti = ti + 1;
+        }
+        return "";
+    }
+}

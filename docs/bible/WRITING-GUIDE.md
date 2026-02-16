@@ -32,9 +32,9 @@ We are not writing documentation. We are writing a *book* — one that someone c
    - Walk through what happens, line by line
    - Then generalize to the concept
 
-5. **All three languages, Zia first**
+5. **Both languages, Zia first**
    - Primary examples in Zia
-   - Follow with BASIC and Pascal equivalents
+   - Follow with BASIC equivalents
    - Use comparison to illuminate, not confuse
 
 ---
@@ -55,8 +55,8 @@ A simple, complete, working program that demonstrates the concept. Walk through 
 ### 4. Deeper Exploration (multiple sections)
 Build complexity gradually. Each section introduces one new aspect. More examples, more explanation.
 
-### 5. The Three Languages
-Show how the concept works in Zia, BASIC, and Pascal. Highlight similarities and differences.
+### 5. The Two Languages
+Show how the concept works in Zia and BASIC. Highlight similarities and differences.
 
 ### 6. Common Mistakes
 What goes wrong? Show broken code, explain why it's broken, show the fix.
@@ -115,9 +115,9 @@ func start() {
 ```
 ~~~
 
-### The Three Languages Pattern
+### The Two Languages Pattern
 
-When showing the same concept in all three languages, use this structure:
+When showing the same concept in both languages, use this structure:
 
 ```markdown
 **Zia**
@@ -128,11 +128,6 @@ When showing the same concept in all three languages, use this structure:
 **BASIC**
 ```basic
 ' BASIC code here
-```
-
-**Pascal**
-```pascal
-{ Pascal code here }
 ```
 ```
 
@@ -234,7 +229,7 @@ Before considering a chapter complete:
 - [ ] Explains the "why" before showing code
 - [ ] Shows complete, working examples
 - [ ] Walks through code line-by-line for key examples
-- [ ] Demonstrates concept in all three languages
+- [ ] Demonstrates concept in both languages
 - [ ] Addresses common mistakes
 - [ ] Includes 4+ exercises with increasing difficulty
 - [ ] Links to next chapter

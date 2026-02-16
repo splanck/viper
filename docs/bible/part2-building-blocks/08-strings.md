@@ -1890,7 +1890,7 @@ Lowercase: hello world from viper
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1945,32 +1945,6 @@ PRINT LTRIM$(RTRIM$(text))
 ```
 
 BASIC uses 1-based indexing for strings and has functions like `MID$`, `LEFT$`, `RIGHT$`, `INSTR`.
-
-**Pascal**
-```pascal
-var text: string;
-begin
-    text := 'Hello, World!';
-
-    { Length }
-    WriteLn(Length(text));
-
-    { Substring }
-    WriteLn(Copy(text, 1, 5));  { Pascal is 1-indexed }
-
-    { Search }
-    WriteLn(Pos('World', text));
-
-    { Case }
-    WriteLn(UpperCase(text));
-    WriteLn(LowerCase(text));
-
-    { Trim }
-    WriteLn(Trim(text));
-end.
-```
-
-Pascal is also 1-indexed and uses `Copy`, `Pos`, and similar functions.
 
 ---
 

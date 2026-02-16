@@ -17,7 +17,7 @@
 ///
 /// The Viper compiler uses a layered architecture where runtime function
 /// signatures are defined once in `runtime.def` and parsed into structured
-/// form by the IL layer's RuntimeRegistry. Each frontend (BASIC, Zia, Pascal)
+/// form by the IL layer's RuntimeRegistry. Each frontend (BASIC, Zia)
 /// then provides a thin adapter to map IL types to their native type systems:
 ///
 /// ```
@@ -31,9 +31,9 @@
 ///                 │                                       │               │
 ///                 ▼                                       ▼               ▼
 ///           ┌──────────┐                           ┌──────────┐    ┌──────────┐
-///           │  BASIC   │                           │   Zia    │    │  Pascal  │
-///           │ BasicType│                           │ TypeRef  │    │ (future) │
-///           └──────────┘                           └──────────┘    └──────────┘
+///           │  BASIC   │                           │   Zia    │
+///           │ BasicType│                           │ TypeRef  │
+///           └──────────┘                           └──────────┘
 /// ```
 ///
 /// ## Type Mapping

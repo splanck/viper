@@ -87,13 +87,13 @@ ViperDOS is the native operating system for the Viper Platform. Its purpose is t
 where Viper applications execute directly on hardware, without requiring a host operating system.
 
 Today, Viper applications run on Linux, Windows, and macOS through the Viper runtime. ViperDOS eliminates this
-dependency. Applications written in Zia, Viper BASIC, or Viper Pascal compile to Viper IL and execute natively on
+dependency. Applications written in Zia or Viper BASIC compile to Viper IL and execute natively on
 ViperDOS, with the kernel providing memory management, scheduling, I/O, and graphics services directly.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │  Viper Application (.vpr)                                      │
-│  (Zia / Viper BASIC / Viper Pascal)                     │
+│  (Zia / Viper BASIC)                                    │
 ├────────────────────────────────────────────────────────────────┤
 │  Viper Runtime Libraries (Viper.*)                            │
 ├────────────────────────────────────────────────────────────────┤

@@ -203,7 +203,7 @@ Zia has its own vocabulary:
 | hide | private |
 | init | constructor |
 
-When you see code from other languages in "The Three Languages" sections, they use their own terminology -- BASIC uses `CLASS`, Pascal uses `class`. But these all compile to the same underlying system. The concepts are universal; only the words differ.
+When you see code from other languages in "The Two Languages" sections, they use their own terminology -- BASIC uses `CLASS`. But these all compile to the same underlying system. The concepts are universal; only the words differ.
 
 ---
 
@@ -1466,7 +1466,7 @@ Notice how:
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 
@@ -1507,34 +1507,6 @@ END CLASS
 DIM dog AS Dog
 dog = NEW Dog("Rex")
 dog.Bark()
-```
-
-**Pascal**
-
-```pascal
-type
-    Dog = class
-    public
-        name: string;
-        constructor Create(n: string);
-        procedure Bark;
-    end;
-
-constructor Dog.Create(n: string);
-begin
-    name := n;
-end;
-
-procedure Dog.Bark;
-begin
-    WriteLn(name, ' says woof!');
-end;
-
-var dog: Dog;
-begin
-    dog := Dog.Create('Rex');
-    dog.Bark;
-end.
 ```
 
 ---

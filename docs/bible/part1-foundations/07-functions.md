@@ -1412,7 +1412,7 @@ Each function does one thing. They're short. They have clear names. They build o
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1449,26 +1449,6 @@ CALL Greet("Alice")
 ```
 
 BASIC distinguishes between `FUNCTION` (returns a value) and `SUB` (no return value, short for "subroutine"). The return value is assigned to the function name, which feels strange to modern programmers but was common in early languages.
-
-**Pascal**
-```pascal
-function Add(a, b: Integer): Integer;
-begin
-    Add := a + b;
-end;
-
-procedure Greet(name: string);
-begin
-    WriteLn('Hello, ', name);
-end;
-
-begin
-    var sum := Add(3, 4);
-    Greet('Alice');
-end.
-```
-
-Pascal uses `function` (returns a value) and `procedure` (no return value). Like BASIC, the return value is assigned to the function name. Pascal was designed for teaching programming, and its clear distinction between functions and procedures helped students understand the difference.
 
 ---
 

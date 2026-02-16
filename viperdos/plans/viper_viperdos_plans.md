@@ -54,8 +54,8 @@ src/
 ├── vm/               # Virtual machine implementation
 ├── codegen/          # Native code generation (x86-64)
 ├── il/               # Intermediate language core
-├── frontends/        # Language frontends (BASIC, Pascal, Zia)
-├── tools/            # CLI tools (vbasic, vpascal, ilrun, etc.)
+├── frontends/        # Language frontends (BASIC, Zia)
+├── tools/            # CLI tools (vbasic, ilrun, etc.)
 ├── tui/              # Terminal UI library
 ├── lib/
 │   ├── graphics/     # Graphics library (vgfx)
@@ -1619,7 +1619,7 @@ For ViperDOS on aarch64:
 
 ### Overview
 
-Frontends (BASIC, Pascal, Zia) parse source code and generate IL. They are largely platform-agnostic C++.
+Frontends (BASIC, Zia) parse source code and generate IL. They are largely platform-agnostic C++.
 
 ### Platform Considerations
 

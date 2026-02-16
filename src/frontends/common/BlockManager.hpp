@@ -9,8 +9,8 @@
 // Purpose: Basic block creation and management for language frontends.
 //
 // This provides a unified abstraction for creating and tracking basic blocks
-// during lowering. Both BASIC and Pascal frontends need deterministic block
-// naming and insertion point management.
+// during lowering. Language frontends need deterministic block naming and
+// insertion point management.
 //
 // Key Invariants:
 //   - Block names are deterministic (based on counter)

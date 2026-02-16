@@ -1,5 +1,11 @@
-// schema.zia — Column and Row entities
+// schema.zia — Column and Row Entities
 // Part of ViperSQL
+//
+// Defines the fundamental data structures for table metadata and row
+// storage. Column carries schema information (name, type, constraints
+// like PRIMARY KEY, NOT NULL, UNIQUE, FOREIGN KEY, CHECK, DEFAULT).
+// Row holds an ordered list of SqlValues and a soft-delete flag.
+// Both are used throughout the executor, storage, and join engines.
 
 module schema;
 

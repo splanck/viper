@@ -1,5 +1,12 @@
-// stmt.zia — Statement Types
+// stmt.zia — Statement AST Nodes
 // Part of ViperSQL
+//
+// Defines typed AST nodes for each SQL statement kind: SelectStmt,
+// InsertStmt, UpdateStmt, DeleteStmt, CreateTableStmt, and others.
+// The parser produces these from the token stream; the executor
+// dispatches on the statement type to execute the appropriate logic.
+// Each statement carries its parsed components (table names, column
+// lists, expressions, clauses) as structured fields.
 
 module stmt;
 

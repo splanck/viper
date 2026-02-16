@@ -9,7 +9,7 @@
 // Purpose: Common diagnostic formatting utilities for language frontends.
 //
 // This header provides utility functions for formatting diagnostic messages
-// that are shared across multiple language frontends (BASIC, Pascal, etc.).
+// that are shared across multiple language frontends (BASIC, Zia, etc.).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

@@ -8,52 +8,10 @@
 
 ### Release Overview
 
-Version 0.1.3 adds two new language frontends (Pascal and Zia), expands the runtime library with additional
+Version 0.1.3 adds a new language frontend (Zia), expands the runtime library with additional
 classes, and introduces basic threading support.
 
 ### New Features
-
-#### Pascal Frontend
-
-Pascal compiler with OOP support:
-
-- Lexer, parser, semantic analyzer, and IL lowerer
-- Case-insensitive keywords, `begin`/`end` blocks
-- Classes with single inheritance, virtual methods, constructors/destructors
-- Units with `interface`/`implementation` sections
-- Exception handling with `try`/`except`/`finally`
-
-Example:
-
-```pascal
-program HelloWorld;
-
-type
-  TGreeter = class
-  private
-    FName: String;
-  public
-    constructor Create(AName: String);
-    procedure SayHello;
-  end;
-
-constructor TGreeter.Create(AName: String);
-begin
-  FName := AName;
-end;
-
-procedure TGreeter.SayHello;
-begin
-  WriteLn('Hello, ', FName, '!');
-end;
-
-var
-  G: TGreeter;
-begin
-  G := TGreeter.Create('World');
-  G.SayHello;
-end.
-```
 
 #### Zia Frontend
 
@@ -163,8 +121,6 @@ Shared components extracted for frontend reuse:
 
 **BASIC**: Monopoly, Pac-Man, Particles
 
-**Pascal** (ported from BASIC): Snake, Frogger, vTris, Centipede
-
 **Zia**: Frogger, entity examples, collection demos
 
 ### Project Statistics
@@ -174,13 +130,12 @@ Shared components extracted for frontend reuse:
 | Total Lines (LOC)   | 243,000 | 369,000 | +126,000 |
 | C/C++ Source Files  | 1,372   | 1,638   | +266     |
 | Runtime Classes     | 14      | 44      | +30      |
-| Language Frontends  | 1       | 3       | +2       |
+| Language Frontends  | 1       | 2       | +1       |
 | Test Files          | 530     | 551     | +21      |
 | Documentation Files | 584     | 613     | +29      |
 
 ### Documentation
 
-- Pascal language reference and tutorial
 - Zia reference and getting started guide
 - Runtime library documentation (12 files covering all namespaces)
 - Threading ADR
@@ -188,11 +143,11 @@ Shared components extracted for frontend reuse:
 ### Architecture
 
 ```
-┌──────────────┐  ┌───────────────┐  ┌───────────────┐
-│ BASIC Source │  │ Pascal Source │  │ Zia Src │
-└──────┬───────┘  └──────┬────────┘  └───────┬───────┘
-       │                 │                   │
-       ▼                 ▼                   ▼
+┌──────────────┐  ┌───────────────┐
+│ BASIC Source │  │  Zia Source  │
+└──────┬───────┘  └──────┬────────┘
+       │                 │
+       ▼                 ▼
 ┌─────────────────────────────────────────────────────┐
 │                     Viper IL                        │
 └─────────────────────────┬───────────────────────────┘
@@ -760,9 +715,6 @@ Compile to native:
 # Tetris game (BASIC)
 ./vbasic demos/basic/vtris/vtris.bas
 
-# Snake game (Pascal)
-./vpascal demos/pascal/snake/snake.pas
-
 # Frogger (Zia)
 ./zia demos/zia/frogger/main.zia
 ```
@@ -774,7 +726,6 @@ Compile to native:
 | Feature           | v0.1.0           | v0.1.1              | v0.1.2          | v0.1.3           |
 |-------------------|------------------|---------------------|-----------------|------------------|
 | BASIC Compiler    | Complete         | Enhanced with OOP   | Stable          | Stable           |
-| Pascal Compiler   | No               | No                  | No              | Complete         |
 | Zia         | No               | No                  | No              | Complete         |
 | IL Format         | Baseline         | Extended            | Stable          | Stable           |
 | VM Execution      | 3 dispatch modes | Optimized           | Stable          | +Threading       |

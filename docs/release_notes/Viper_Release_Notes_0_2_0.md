@@ -50,11 +50,6 @@ New user-friendly compiler drivers replace verbose `viper` subcommands:
 
 The `viper` tool remains available for advanced use cases.
 
-#### Pascal Frontend Moved to Experimental
-
-The Pascal frontend has been moved out of the default build. It remains available by enabling the
-`VIPER_BUILD_PASCAL` CMake option. BASIC and Zia are now the supported frontends.
-
 ### New Features
 
 #### GUI Widget Library (`Viper.GUI.*`)
@@ -198,8 +193,7 @@ Sprite, tilemap, and camera support for 2D games:
 ### Breaking Changes
 
 1. **ViperLang renamed to Zia**: Update file extensions from `.viper` to `.zia`
-2. **Pascal not in default build**: Enable with `-DVIPER_BUILD_PASCAL=ON`
-3. **New CLI tools**: Use `vbasic`, `zia`, `ilrun` instead of `viper` subcommands
+2. **New CLI tools**: Use `vbasic`, `zia`, `ilrun` instead of `viper` subcommands
 
 ### Migration from v0.1.3
 

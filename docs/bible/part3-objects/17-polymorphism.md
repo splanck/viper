@@ -1143,7 +1143,7 @@ Notice how `Group` is itself `Drawable`. This is the *Composite Pattern* — tre
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1193,41 +1193,6 @@ DIM animals() AS Animal = [NEW Dog(), NEW Cat()]
 FOR EACH a IN animals
     a.Speak()   ' Polymorphism in action
 NEXT
-```
-
-**Pascal**
-```pascal
-type
-    IAnimal = interface
-        procedure Speak;
-    end;
-
-    TDog = class(TInterfacedObject, IAnimal)
-        procedure Speak;
-    end;
-
-    TCat = class(TInterfacedObject, IAnimal)
-        procedure Speak;
-    end;
-
-procedure TDog.Speak;
-begin
-    WriteLn('Woof!');
-end;
-
-procedure TCat.Speak;
-begin
-    WriteLn('Meow!');
-end;
-
-var
-    animals: array of IAnimal;
-    a: IAnimal;
-begin
-    animals := [TDog.Create, TCat.Create];
-    for a in animals do
-        a.Speak;  { Polymorphism at work }
-end.
 ```
 
 ---

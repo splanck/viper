@@ -356,7 +356,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
 #include "il/runtime/RuntimeSignatures.inc"
-// Legacy C-symbol aliases for BASIC/Pascal frontends (DUAL mode only).
+// Legacy C-symbol aliases for BASIC frontends (DUAL mode only).
 // These provide lookup-by-C-name for functions whose canonical names are in
 // the generated RuntimeSignatures.inc above.
 #if VIPER_RUNTIME_NS_DUAL
@@ -555,7 +555,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    // Legacy terminal helpers for BASIC/Pascal frontends (raw rt_term_* names).
+    // Legacy terminal helpers for BASIC frontends (raw rt_term_* names).
     DescriptorRow{"rt_term_color_i32",
                   std::nullopt,
                   "void(i32,i32)",
@@ -697,7 +697,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    // Pascal-compatible wrappers (i64 arguments instead of i32)
+    // i64 wrappers (for frontends that use 64-bit integers)
     DescriptorRow{"rt_term_locate",
                   std::nullopt,
                   "void(i64,i64)",

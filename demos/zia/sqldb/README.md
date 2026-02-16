@@ -1717,7 +1717,7 @@ All tests use a shared harness (`tests/test_common.zia`) providing `assert()`, `
 
 ```bash
 # Core SQL functionality
-viper run demos/zia/sqldb/tests/test.zia
+viper run demos/zia/sqldb/tests/test_basic_crud.zia
 viper run demos/zia/sqldb/tests/test_advanced.zia
 
 # Specific feature areas
@@ -1725,7 +1725,7 @@ viper run demos/zia/sqldb/tests/test_constraints.zia
 viper run demos/zia/sqldb/tests/test_functions.zia
 viper run demos/zia/sqldb/tests/test_subquery.zia
 viper run demos/zia/sqldb/tests/test_index.zia
-viper run demos/zia/sqldb/tests/test_features.zia
+viper run demos/zia/sqldb/tests/test_sql_features.zia
 
 # Multi-database and persistence
 viper run demos/zia/sqldb/tests/test_multidb.zia
@@ -1739,8 +1739,8 @@ viper run demos/zia/sqldb/tests/test_wal.zia
 viper run demos/zia/sqldb/tests/test_txn.zia
 
 # Stress tests and native codegen validation
-viper run demos/zia/sqldb/tests/test_stress2.zia
-viper run demos/zia/sqldb/tests/test_stress3.zia
+viper run demos/zia/sqldb/tests/test_storage_persistence.zia
+viper run demos/zia/sqldb/tests/test_storage_stress.zia
 viper run demos/zia/sqldb/tests/test_native_stress.zia
 viper run demos/zia/sqldb/tests/test_native_edge.zia
 viper run demos/zia/sqldb/tests/test_native_torture.zia
@@ -1773,7 +1773,7 @@ viper run demos/zia/sqldb/tests/test_readme_examples.zia
 All tests also pass when compiled to native ARM64 machine code:
 
 ```bash
-viper build demos/zia/sqldb/tests/test.zia -o /tmp/test_sql && /tmp/test_sql
+viper build demos/zia/sqldb/tests/test_basic_crud.zia -o /tmp/test_sql && /tmp/test_sql
 viper build demos/zia/sqldb/tests/test_native_torture.zia -o /tmp/test_torture && /tmp/test_torture
 ```
 
@@ -1781,13 +1781,13 @@ viper build demos/zia/sqldb/tests/test_native_torture.zia -o /tmp/test_torture &
 
 | Test File | Focus Area | Assertions |
 |-----------|------------|------------|
-| `test.zia` | Core CRUD operations | Basic SQL |
+| `test_basic_crud.zia` | Core CRUD operations | Basic SQL |
 | `test_advanced.zia` | UNION, EXCEPT, INTERSECT, CASE | Set operations |
 | `test_constraints.zia` | NOT NULL, UNIQUE, PK, FK, DEFAULT | Data integrity |
 | `test_functions.zia` | String, math, null-handling functions | Built-in functions |
 | `test_subquery.zia` | Scalar and IN subqueries | Nested queries |
 | `test_index.zia` | Index creation, lookup, unique indexes | Index operations |
-| `test_features.zia` | ORDER BY, LIMIT, arithmetic, misc features | Query features |
+| `test_sql_features.zia` | ORDER BY, LIMIT, arithmetic, misc features | Query features |
 | `test_multidb.zia` | CREATE/USE/DROP DATABASE | Multi-database |
 | `test_optimizer.zia` | Cost estimation, access path selection | Query optimizer |
 | `test_persistence.zia` | SAVE/OPEN round-trips, .vdb files | Persistence |
@@ -1797,8 +1797,8 @@ viper build demos/zia/sqldb/tests/test_native_torture.zia -o /tmp/test_torture &
 | `test_wal.zia` | Write-ahead log operations | WAL |
 | `test_txn.zia` | Transaction manager | Transactions |
 | `test_server.zia` | Wire protocol server | Network server |
-| `test_stress2.zia` | Large datasets, persistence stress | Stress testing |
-| `test_stress3.zia` | Multi-database persistence | Stress testing |
+| `test_storage_persistence.zia` | Large datasets, persistence stress | Stress testing |
+| `test_storage_stress.zia` | Multi-database persistence | Stress testing |
 | `test_stress4_native.zia` | Native codegen correctness | Native stress |
 | `test_native_stress.zia` | 15 native stress tests (73 assertions) | Native codegen |
 | `test_native_edge.zia` | 10 edge case tests (68 assertions) | Edge cases |

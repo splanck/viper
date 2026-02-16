@@ -1,6 +1,11 @@
-// test_features.zia — Test various SQL features
+// test_sql_features.zia — Extended SQL Feature Tests
 // Part of ViperSQL
-module test_features;
+//
+// Tests SQL features beyond basic CRUD: CREATE INDEX with lookups,
+// string functions (UPPER, LOWER, LENGTH), math functions, CASE
+// expressions, subqueries, ORDER BY, LIMIT, and arithmetic operators.
+
+module test_sql_features;
 
 bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;

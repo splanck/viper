@@ -1,6 +1,13 @@
-// engine.zia — Storage Engine Adapter
+// engine.zia — Storage Engine
 // Part of ViperSQL
-// Bridges BufferPool/SchemaPage/DataPage to high-level database operations
+//
+// Bridges the low-level page-based storage (BufferPool, SchemaPage, DataPage)
+// to high-level database operations (create/drop table, insert/update/delete
+// rows, load/save schema). The StorageEngine owns a Pager, BufferPool, and
+// WALManager, coordinating them for persistent database operations.
+//
+// Thread Safety: All public methods are protected by a Monitor lock,
+// allowing concurrent sessions to safely read/write through the engine.
 
 module engine;
 

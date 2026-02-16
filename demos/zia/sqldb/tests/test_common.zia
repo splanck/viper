@@ -1,13 +1,38 @@
 // test_common.zia — Shared Test Harness
 // Part of ViperSQL
+//
+// Provides assertion helpers, result inspection utilities, and test
+// organization functions used across all ViperSQL test files.
+//
+// Usage:
+//   bind "./test_common";
+//   func main() -> Integer {
+//       section("My Tests");
+//       assert(1 + 1 == 2, "basic math");
+//       assertSuccess(exec.executeSql("SELECT 1"), "simple query");
+//       printResults();
+//       return 0;
+//   }
 
 module test_common;
 
 bind Terminal = Viper.Terminal;
+bind String = Viper.String;
 bind Fmt = Viper.Fmt;
+
+bind "../result";
+bind "../types";
+
+//=============================================================================
+// TEST COUNTERS
+//=============================================================================
 
 Integer passed = 0;
 Integer failed = 0;
+
+//=============================================================================
+// CORE ASSERTIONS
+//=============================================================================
 
 func assert(condition: Boolean, msg: String) {
     if condition {
@@ -30,6 +55,140 @@ func assertTrue(cond: Boolean, desc: String) {
 func assertFalse(cond: Boolean, desc: String) {
     assert(cond == false, desc);
 }
+
+//=============================================================================
+// VALUE ASSERTIONS
+//=============================================================================
+
+func assertEq(actual: String, expected: String, msg: String) {
+    if actual == expected {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg + " (expected '" + expected + "', got '" + actual + "')");
+    }
+}
+
+func assertEqInt(actual: Integer, expected: Integer, msg: String) {
+    if actual == expected {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg + " (expected " + Fmt.Int(expected) + ", got " + Fmt.Int(actual) + ")");
+    }
+}
+
+//=============================================================================
+// QUERY RESULT ASSERTIONS
+//=============================================================================
+
+func assertSuccess(result: QueryResult, msg: String) {
+    if result.success {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg + " => " + result.message);
+    }
+}
+
+func assertFailure(result: QueryResult, msg: String) {
+    if result.success == false {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg + " (expected failure, got success)");
+    }
+}
+
+func assertRowCount(result: QueryResult, expected: Integer, msg: String) {
+    var actual = result.rows.count();
+    if actual == expected {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg + " (expected " + Fmt.Int(expected) + " rows, got " + Fmt.Int(actual) + ")");
+    }
+}
+
+func assertColumnCount(result: QueryResult, expected: Integer, msg: String) {
+    var actual = result.columnNames.count();
+    if actual == expected {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg + " (expected " + Fmt.Int(expected) + " columns, got " + Fmt.Int(actual) + ")");
+    }
+}
+
+func assertMessage(result: QueryResult, expected: String, msg: String) {
+    if result.message == expected {
+        passed = passed + 1;
+        Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Terminal.Say("  FAIL: " + msg + " (expected message '" + expected + "', got '" + result.message + "')");
+    }
+}
+
+//=============================================================================
+// VALUE EXTRACTION HELPERS
+//=============================================================================
+
+// Extract a cell value as a String from a query result.
+// Returns "NULL_ROW" if the row index is out of bounds.
+func val(result: QueryResult, row: Integer, col: Integer) -> String {
+    var r = result.getRow(row);
+    if r == null { return "NULL_ROW"; }
+    var rr = r;
+    return rr.getValue(col).toString();
+}
+
+// Extract a cell value as a SqlValue from a query result.
+// Returns sqlNull() if the row index is out of bounds.
+func getVal(result: QueryResult, row: Integer, col: Integer) -> SqlValue {
+    var r = result.getRow(row);
+    if r == null { return sqlNull(); }
+    var rr = r;
+    return rr.getValue(col);
+}
+
+//=============================================================================
+// STRING UTILITIES
+//=============================================================================
+
+// Check if a string contains a substring (case-sensitive).
+func stringContains(s: String, sub: String) -> Boolean {
+    var sLen = String.Length(s);
+    var subLen = String.Length(sub);
+    if subLen > sLen { return false; }
+    var i = 0;
+    while i <= sLen - subLen {
+        var slice = String.Substring(s, i, subLen);
+        if slice == sub { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+//=============================================================================
+// TEST ORGANIZATION
+//=============================================================================
+
+// Print a section header to visually group related tests.
+func section(name: String) {
+    Terminal.Say("");
+    Terminal.Say("--- " + name + " ---");
+}
+
+//=============================================================================
+// RESULTS REPORTING
+//=============================================================================
 
 func printResults() {
     Terminal.Say("");

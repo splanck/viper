@@ -1,10 +1,25 @@
 // join.zia — Multi-Table JOIN Engine
 // Part of ViperSQL
+//
+// Implements SQL JOIN operations using two strategies:
+//   - Hash Join: For INNER JOINs with equi-conditions (t1.col = t2.col).
+//     Uses a build/probe approach with 64-bucket hash table on the right
+//     table. O(n+m) average time vs O(n*m) for nested loop.
+//   - Nested Loop Join: For LEFT/RIGHT/FULL OUTER/CROSS JOINs and
+//     non-equi conditions. Evaluates every (left, right) row pair against
+//     the join condition. Falls back to this for all join types that
+//     cannot use hash join.
+//
+// The join engine is invoked by the Executor when a SELECT references
+// multiple tables. Multi-way joins (3+ tables) are executed as a chain
+// of pairwise joins, with the optimizer potentially reordering tables
+// to place smaller tables first (see optimizer/optimizer.zia).
 
 module join;
 
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
+bind Viper.Math;
 
 bind "./types";
 bind "./schema";
@@ -68,8 +83,17 @@ entity JoinEngine {
         return -1;
     }
 
-    // Execute hash join for a single pair of tables (INNER JOIN with equi-condition)
-    // Returns the combined rows using hash-based matching instead of nested loop
+    // Execute hash join for a single pair of tables (INNER JOIN with equi-condition).
+    //
+    // Build phase: Scan the right table and insert each row into a hash table
+    //   with 64 buckets, keyed by the join column's string value. Uses the same
+    //   multiplicative hash (computeKeyHash) as GROUP BY.
+    //
+    // Probe phase: For each existing left row, hash the join column value,
+    //   look up the matching bucket, and emit a combined row for each match.
+    //   Collisions within a bucket are resolved by exact string comparison.
+    //
+    // Returns the combined rows (left columns + right columns) for all matches.
     hide func executeHashJoinStep(existing: List[Row], rightTable: Table,
                                    leftTable: Table, leftAlias: String, rightAlias: String,
                                    joinCond: Expr, colOffsets: List[Integer],
@@ -794,7 +818,7 @@ entity JoinEngine {
 
         // Apply DISTINCT
         if stmt.isDistinct {
-            exec.applyDistinct(result);
+            exec.queryHandler.applyDistinct(result);
         }
 
         // Apply ORDER BY on JOIN results
@@ -804,7 +828,7 @@ entity JoinEngine {
 
         // Apply LIMIT/OFFSET
         if stmt.limitValue >= 0 || stmt.offsetValue > 0 {
-            exec.applyLimitOffset(result, stmt.limitValue, stmt.offsetValue);
+            exec.queryHandler.applyLimitOffset(result, stmt.limitValue, stmt.offsetValue);
         }
 
         return result;

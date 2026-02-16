@@ -8,9 +8,9 @@
 // File: frontends/common/InstructionEmitter.hpp
 // Purpose: Common instruction emission helpers for all language frontends.
 //
-// This provides the core instruction emission methods shared by both BASIC
-// and Pascal frontends. Each method constructs an IL instruction and appends
-// it to the current basic block.
+// This provides the core instruction emission methods shared by all language
+// frontends. Each method constructs an IL instruction and appends it to the
+// current basic block.
 //
 // Key Invariants:
 //   - All emit methods produce valid IL instructions
@@ -36,7 +36,7 @@ namespace il::frontends::common
 
 /// @brief Common instruction emission helpers for language frontends.
 /// @details Provides methods for emitting IL instructions that are shared
-///          across BASIC, Pascal, and future language frontends.
+///          across all language frontends.
 class InstructionEmitter
 {
   public:

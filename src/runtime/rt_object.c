@@ -451,12 +451,11 @@ int64_t rt_obj_is_null(void *self)
 /// count reaches zero through other paths, it will be freed.
 ///
 /// **Usage example:**
-/// ```pascal
-/// type
-///   TNode = class
-///     weak parent: TNode;  // Does not keep parent alive
-///     children: TList;
-///   end;
+/// ```
+/// class Node
+///   weak parent: Node  ' Does not keep parent alive
+///   children: List
+/// end class
 /// ```
 ///
 /// @param addr Address of the field to store to.
@@ -478,10 +477,10 @@ void rt_weak_store(void **addr, void *value)
 /// still alive and return NULL if it has been freed.
 ///
 /// **Usage example:**
-/// ```pascal
-/// var node: TNode;
-/// if node.parent <> nil then
-///   // Use parent - but be careful, it may have been freed!
+/// ```
+/// dim node as Node
+/// if node.parent <> nothing then
+///   ' Use parent - but be careful, it may have been freed!
 /// ```
 ///
 /// @param addr Address of the field to load from.

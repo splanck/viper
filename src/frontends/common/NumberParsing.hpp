@@ -9,7 +9,7 @@
 // Purpose: Common number parsing utilities for language frontends.
 //
 // This header provides utilities for parsing numeric literals that are shared
-// across multiple language frontends (BASIC, Pascal, etc.).
+// across multiple language frontends (BASIC, Zia, etc.).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

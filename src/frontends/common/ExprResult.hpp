@@ -9,8 +9,8 @@
 // Purpose: Common expression result type for all language frontends.
 //
 // This type represents the result of lowering an expression: the IL value
-// produced and its IL type. Both BASIC (RVal) and Pascal (LowerResult) use
-// essentially the same structure, so this provides a unified abstraction.
+// produced and its IL type. All language frontends use this unified
+// abstraction for expression lowering results.
 //
 // Key Invariants:
 //   - value is a valid IL Value (temp, const, or global reference)

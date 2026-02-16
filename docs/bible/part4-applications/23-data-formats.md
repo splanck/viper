@@ -1432,7 +1432,7 @@ func start() {
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1461,24 +1461,6 @@ json = JSON_TOSTRING(obj)
 ```
 
 BASIC uses functions rather than methods and requires escaping double quotes by doubling them.
-
-**Pascal**
-```pascal
-uses ViperJSON;
-var
-    data, obj: TJSONValue;
-    name, json: String;
-begin
-    data := JSONParse('{"name": "test", "value": 42}');
-    name := data['name'].AsString;
-
-    obj := JSONObject;
-    obj.SetValue('score', 100);
-    json := obj.ToString;
-end.
-```
-
-Pascal uses bracket notation for JSON access and methods for type conversion, similar to Zia but with Pascal syntax conventions.
 
 ---
 

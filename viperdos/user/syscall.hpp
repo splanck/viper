@@ -470,6 +470,34 @@ inline i64 waitpid(u64 pid, i32 *status = nullptr) {
     return r.error;
 }
 
+/**
+ * @brief Non-blocking wait for a specific child process (WNOHANG).
+ *
+ * @param pid Process ID to wait for.
+ * @param status Output: Exit status of the child (optional).
+ * @return Child PID if reaped, 0 if still running, negative error on failure.
+ */
+inline i64 waitpid_nohang(u64 pid, i32 *status = nullptr) {
+    SyscallResult r =
+        syscall3(SYS_WAITPID, pid, reinterpret_cast<u64>(status), 1 /* WNOHANG */);
+    if (r.error == 0) {
+        return static_cast<i64>(r.val0);
+    }
+    return r.error;
+}
+
+/**
+ * @brief Send a signal to a task.
+ *
+ * @param task_id Target task ID (not viper/process ID).
+ * @param signal Signal number (e.g. 9 = SIGKILL).
+ * @return 0 on success, negative error on failure.
+ */
+inline i64 kill(u64 task_id, i32 signal) {
+    SyscallResult r = syscall2(SYS_KILL, task_id, static_cast<u64>(signal));
+    return r.error;
+}
+
 /** @} */
 
 /**

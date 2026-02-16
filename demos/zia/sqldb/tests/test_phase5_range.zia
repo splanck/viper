@@ -7,52 +7,11 @@ bind Terminal = Viper.Terminal;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 
+bind "./test_common";
 bind "../executor";
 bind "../types";
 
-var passCount = 0;
-var failCount = 0;
-
-func assert(condition: Boolean, msg: String) {
-    if condition {
-        passCount = passCount + 1;
-    } else {
-        Terminal.Say("FAIL: " + msg);
-        failCount = failCount + 1;
-    }
-}
-
-func check(result: QueryResult, label: String) {
-    if result.success == false {
-        Terminal.Say("FAIL: " + label + " => " + result.message);
-        failCount = failCount + 1;
-    } else {
-        passCount = passCount + 1;
-    }
-}
-
-func val(result: QueryResult, row: Integer, col: Integer) -> String {
-    var r = result.getRow(row);
-    if r == null { return "NULL_ROW"; }
-    var rr = r;
-    return rr.getValue(col).toString();
-}
-
-func contains(s: String, sub: String) -> Boolean {
-    var sLen = String.Length(s);
-    var subLen = String.Length(sub);
-    if subLen > sLen { return false; }
-    var i = 0;
-    while i <= sLen - subLen {
-        if String.Substring(s, i, subLen) == sub {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
-}
-
-func main() {
+func main() -> Integer {
     Terminal.Say("=== Phase 5: Index Range Query Tests ===");
 
     var exec = new Executor();
@@ -63,7 +22,7 @@ func main() {
     //=========================================================================
     Terminal.Say("--- Setup ---");
 
-    check(exec.executeSql("CREATE TABLE scores (id INTEGER PRIMARY KEY, name TEXT, score INTEGER, grade TEXT)"), "create scores");
+    assertSuccess(exec.executeSql("CREATE TABLE scores (id INTEGER PRIMARY KEY, name TEXT, score INTEGER, grade TEXT)"), "create scores");
 
     // Insert 100 rows
     var i = 1;
@@ -76,12 +35,12 @@ func main() {
         else if score >= 70 { grade = "C"; }
         else if score >= 60 { grade = "D"; }
         else { grade = "F"; }
-        check(exec.executeSql("INSERT INTO scores VALUES (" + Fmt.Int(i) + ", 'Student" + Fmt.Int(i) + "', " + Fmt.Int(score) + ", '" + grade + "')"), "insert " + Fmt.Int(i));
+        assertSuccess(exec.executeSql("INSERT INTO scores VALUES (" + Fmt.Int(i) + ", 'Student" + Fmt.Int(i) + "', " + Fmt.Int(score) + ", '" + grade + "')"), "insert " + Fmt.Int(i));
         i = i + 1;
     }
 
     // Create index on score column for range queries
-    check(exec.executeSql("CREATE INDEX idx_score ON scores(score)"), "create score index");
+    assertSuccess(exec.executeSql("CREATE INDEX idx_score ON scores(score)"), "create score index");
 
     //=========================================================================
     // 1. Greater-than (>) with index
@@ -89,7 +48,7 @@ func main() {
     Terminal.Say("--- Greater Than ---");
 
     var r1 = exec.executeSql("SELECT name, score FROM scores WHERE score > 95");
-    check(r1, "score > 95");
+    assertSuccess(r1, "score > 95");
     // With our data: score = i*3+10, capped at 100. So scores > 95 are 97, 100, 100, 100...
     assert(r1.rowCount() > 0, "should find rows with score > 95, got " + Fmt.Int(r1.rowCount()));
 
@@ -112,7 +71,7 @@ func main() {
     Terminal.Say("--- Greater Than Or Equal ---");
 
     var r2 = exec.executeSql("SELECT COUNT(*) FROM scores WHERE score >= 90");
-    check(r2, "score >= 90");
+    assertSuccess(r2, "score >= 90");
     var countGe90 = val(r2, 0, 0);
     assert(countGe90 != "0", "should find rows >= 90, got " + countGe90);
 
@@ -122,7 +81,7 @@ func main() {
     Terminal.Say("--- Less Than ---");
 
     var r3 = exec.executeSql("SELECT name, score FROM scores WHERE score < 20");
-    check(r3, "score < 20");
+    assertSuccess(r3, "score < 20");
     // score = i*3+10, so score < 20 means i*3+10 < 20 means i < 3.33 so i=1,2,3
     // i=1: score=13, i=2: score=16, i=3: score=19
     assert(r3.rowCount() == 3, "should find 3 rows with score < 20, got " + Fmt.Int(r3.rowCount()));
@@ -146,7 +105,7 @@ func main() {
     Terminal.Say("--- Less Than Or Equal ---");
 
     var r4 = exec.executeSql("SELECT COUNT(*) FROM scores WHERE score <= 19");
-    check(r4, "score <= 19");
+    assertSuccess(r4, "score <= 19");
     var countLe19 = val(r4, 0, 0);
     assert(countLe19 == "3", "should find 3 rows with score <= 19, got " + countLe19);
 
@@ -156,7 +115,7 @@ func main() {
     Terminal.Say("--- BETWEEN ---");
 
     var r5 = exec.executeSql("SELECT name, score FROM scores WHERE score BETWEEN 50 AND 60");
-    check(r5, "score BETWEEN 50 AND 60");
+    assertSuccess(r5, "score BETWEEN 50 AND 60");
     assert(r5.rowCount() > 0, "should find rows between 50-60, got " + Fmt.Int(r5.rowCount()));
 
     // Verify all returned scores are in [50, 60]
@@ -178,12 +137,12 @@ func main() {
     Terminal.Say("--- EXPLAIN Range ---");
 
     var r6 = exec.executeSql("EXPLAIN SELECT * FROM scores WHERE score > 50");
-    check(r6, "explain range query");
+    assertSuccess(r6, "explain range query");
     var foundRange = false;
     i = 0;
     while i < r6.rowCount() {
         var line = val(r6, i, 0);
-        if contains(line, "IndexSeek") || contains(line, "range") || contains(line, "Index") {
+        if stringContains(line, "IndexSeek") || stringContains(line, "range") || stringContains(line, "Index") {
             foundRange = true;
         }
         i = i + 1;
@@ -197,7 +156,7 @@ func main() {
 
     // No index on 'name' column
     var r7 = exec.executeSql("SELECT * FROM scores WHERE name > 'Student50'");
-    check(r7, "range on non-indexed column");
+    assertSuccess(r7, "range on non-indexed column");
     assert(r7.rowCount() > 0, "should find rows with name > Student50");
 
     //=========================================================================
@@ -206,7 +165,7 @@ func main() {
     Terminal.Say("--- Range With Aggregates ---");
 
     var r8 = exec.executeSql("SELECT COUNT(*), MIN(score), MAX(score) FROM scores WHERE score >= 50 AND score <= 70");
-    check(r8, "range with aggregates");
+    assertSuccess(r8, "range with aggregates");
     var cnt = val(r8, 0, 0);
     var minScore = val(r8, 0, 1);
     var maxScore = val(r8, 0, 2);
@@ -221,21 +180,21 @@ func main() {
     Terminal.Say("--- Correctness Check ---");
 
     // Create a second table without an index
-    check(exec.executeSql("CREATE TABLE scores2 (id INTEGER PRIMARY KEY, score INTEGER)"), "create scores2");
+    assertSuccess(exec.executeSql("CREATE TABLE scores2 (id INTEGER PRIMARY KEY, score INTEGER)"), "create scores2");
     i = 1;
     while i <= 50 {
-        check(exec.executeSql("INSERT INTO scores2 VALUES (" + Fmt.Int(i) + ", " + Fmt.Int(i * 5) + ")"), "insert scores2 " + Fmt.Int(i));
+        assertSuccess(exec.executeSql("INSERT INTO scores2 VALUES (" + Fmt.Int(i) + ", " + Fmt.Int(i * 5) + ")"), "insert scores2 " + Fmt.Int(i));
         i = i + 1;
     }
 
     // Query without index
     var rNoIdx = exec.executeSql("SELECT COUNT(*) FROM scores2 WHERE score > 100");
-    check(rNoIdx, "no-index range count");
+    assertSuccess(rNoIdx, "no-index range count");
 
     // Create index and re-query
-    check(exec.executeSql("CREATE INDEX idx_scores2 ON scores2(score)"), "create scores2 index");
+    assertSuccess(exec.executeSql("CREATE INDEX idx_scores2 ON scores2(score)"), "create scores2 index");
     var rWithIdx = exec.executeSql("SELECT COUNT(*) FROM scores2 WHERE score > 100");
-    check(rWithIdx, "with-index range count");
+    assertSuccess(rWithIdx, "with-index range count");
 
     assert(val(rNoIdx, 0, 0) == val(rWithIdx, 0, 0), "indexed and non-indexed range counts should match: " + val(rNoIdx, 0, 0) + " vs " + val(rWithIdx, 0, 0));
 
@@ -246,21 +205,21 @@ func main() {
 
     // Empty result
     var r10 = exec.executeSql("SELECT * FROM scores WHERE score > 999");
-    check(r10, "no matches");
+    assertSuccess(r10, "no matches");
     assert(r10.rowCount() == 0, "should find 0 rows with score > 999");
 
     // All matches
     var r11 = exec.executeSql("SELECT COUNT(*) FROM scores WHERE score >= 0");
-    check(r11, "all match");
+    assertSuccess(r11, "all match");
     assert(val(r11, 0, 0) == "100", "all 100 rows should match score >= 0, got " + val(r11, 0, 0));
 
     // Boundary value
     var r12 = exec.executeSql("SELECT COUNT(*) FROM scores WHERE score >= 100");
-    check(r12, "boundary value");
+    assertSuccess(r12, "boundary value");
 
     //=========================================================================
     // Summary
     //=========================================================================
-    Terminal.Say("");
-    Terminal.Say("=== Phase 5 Range: " + Fmt.Int(passCount) + " passed, " + Fmt.Int(failCount) + " failed ===");
+    printResults();
+    return 0;
 }

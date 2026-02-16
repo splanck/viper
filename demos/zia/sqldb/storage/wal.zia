@@ -1,5 +1,26 @@
-// wal.zia - Write-Ahead Logging
-// Part of ViperSQL - Phase 4: Durability
+// wal.zia — Write-Ahead Logging (WAL)
+// Part of ViperSQL
+//
+// Implements ARIES-style write-ahead logging for crash recovery.
+// Currently supports two of the three ARIES phases:
+//   - Analysis phase: Scans the log to identify active transactions
+//     and dirty pages at the time of the crash.
+//   - Redo phase: Replays committed transactions' log records to
+//     restore the database to a consistent state.
+//   - Undo phase: NOT YET IMPLEMENTED (would rollback uncommitted
+//     transactions using before-images).
+//
+// Log Record Format (binary):
+//   [4 bytes] LSN (log sequence number)
+//   [1 byte]  Record type (LOG_BEGIN, LOG_COMMIT, LOG_INSERT, etc.)
+//   [4 bytes] Transaction ID
+//   [variable] Payload (depends on record type):
+//     - INSERT/UPDATE/DELETE: table name length + table name + serialized row data
+//     - PAGE_WRITE: page ID + full 4KB page image
+//     - BEGIN/COMMIT/ABORT: no additional payload
+//
+// Thread Safety: All public methods are protected by a Monitor lock,
+// allowing concurrent sessions to write log records safely.
 
 module wal;
 

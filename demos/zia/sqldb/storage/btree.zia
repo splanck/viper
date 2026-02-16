@@ -1,5 +1,22 @@
-// btree.zia - B-Tree Implementation
-// Part of ViperSQL - B-Tree Indexes (Phase 3)
+// btree.zia — B-Tree Index Implementation
+// Part of ViperSQL
+//
+// Implements a disk-based B-tree index structure for ordered key lookups.
+// Each B-tree node is stored in a single 4KB page via the BufferPool.
+//
+// Key design decisions:
+//   - Order (max keys per node) is determined by page capacity
+//   - Keys are stored as string values (serialized from SqlValue)
+//   - Leaf nodes store (key, rowId) pairs pointing to data pages
+//   - Internal nodes store keys and child page IDs
+//   - Node splits propagate upward; root splits create a new root
+//
+// Search: Binary search within each node, O(log n) tree traversal.
+// Insert: Search to leaf, insert key, split if overflow, propagate up.
+//
+// Note: This B-tree is not yet integrated with the SQL CREATE INDEX
+// command. Currently, SQL indexes use in-memory hash tables (index.zia).
+// B-tree integration is planned for a future release.
 
 module btree;
 

@@ -16,6 +16,7 @@
 #include "shell_cmds.hpp"
 #include "../../../version.h"
 #include "../../syscall.hpp"
+#include "embedded_shell.hpp"
 #include "shell_io.hpp"
 
 namespace consoled {
@@ -27,6 +28,11 @@ namespace consoled {
 static char s_current_dir[256] = "/";
 static int s_last_rc = 0;
 static const char *s_last_error = nullptr;
+static EmbeddedShell *s_shell_instance = nullptr;
+
+void shell_set_instance(EmbeddedShell *shell) {
+    s_shell_instance = shell;
+}
 
 const char *shell_current_dir() {
     return s_current_dir;
@@ -834,9 +840,11 @@ static void run_program(const char *path, const char *args) {
         sys::channel_close(static_cast<int32_t>(bootstrap_send));
     }
 
-    shell_print("Started process ");
-    shell_put_num(static_cast<int64_t>(pid));
-    shell_print("\n");
+    // Enter foreground mode: forward keyboard to child via kernel TTY,
+    // detect child exit via non-blocking waitpid
+    if (s_shell_instance) {
+        s_shell_instance->enter_foreground(pid, tid);
+    }
     s_last_rc = 0;
 }
 

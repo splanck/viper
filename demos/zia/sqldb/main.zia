@@ -1,5 +1,10 @@
 // main.zia — Entry Point
 // Part of ViperSQL
+//
+// Interactive SQL shell (REPL). Creates a DatabaseServer and Executor,
+// then enters a read-eval-print loop. Supports multi-line input (lines
+// ending without ';' are accumulated), meta-commands (.tables, .schema,
+// .help, .quit), and prints results in tabular format.
 
 module main;
 

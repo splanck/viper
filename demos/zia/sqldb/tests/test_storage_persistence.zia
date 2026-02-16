@@ -1,6 +1,11 @@
-// test_stress2.zia — Comprehensive stress tests for persistent storage
+// test_storage_persistence.zia — Persistent Storage Stress Tests
 // Part of ViperSQL
-module test_stress2;
+//
+// Validates the OPEN/CLOSE persistence cycle under load: bulk INSERT
+// with reopen verification, incremental UPDATE/DELETE across sessions,
+// and data integrity after multiple save/restore cycles.
+
+module test_storage_persistence;
 
 bind Terminal = Viper.Terminal;
 bind IO = Viper.IO;

@@ -1,5 +1,11 @@
 // setops.zia — SQL Set Operations (UNION, EXCEPT, INTERSECT)
 // Part of ViperSQL
+//
+// Implements SQL set operations that combine results from two SELECT
+// queries. UNION returns all rows from both (UNION ALL keeps duplicates).
+// EXCEPT returns rows in the first result but not the second. INTERSECT
+// returns rows present in both. Duplicate detection uses string-based
+// row comparison with hash bucketing for efficient lookups.
 
 module setops;
 

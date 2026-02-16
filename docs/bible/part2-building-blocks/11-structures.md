@@ -1518,7 +1518,7 @@ This example demonstrates:
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1555,24 +1555,6 @@ PRINT p.x
 ```
 
 BASIC uses `TYPE` to define structures and doesn't support methods directly — you use regular SUBs and FUNCTIONs instead.
-
-**Pascal**
-```pascal
-type
-    Point = record
-        x: Double;
-        y: Double;
-    end;
-
-var p: Point;
-begin
-    p.x := 3.0;
-    p.y := 4.0;
-    WriteLn(p.x);
-end.
-```
-
-Pascal uses `record` for structures. Methods require using objects (covered in Part III).
 
 ---
 

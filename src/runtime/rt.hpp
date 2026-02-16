@@ -181,7 +181,7 @@ extern "C"
     int32_t rt_keypressed(void);
     int64_t rt_keypressed_i64(void);
 
-    // Pascal-compatible wrappers (i64 arguments)
+    // i64 wrappers (for frontends that use 64-bit integers)
     void rt_term_locate(int64_t row, int64_t col);
     void rt_term_color(int64_t fg, int64_t bg);
     void rt_term_textcolor(int64_t fg);

@@ -2,7 +2,7 @@
 # Viper common frontend library
 #
 # This library provides shared infrastructure used by all language frontends
-# (BASIC, Pascal, and future languages). It includes:
+# (BASIC, Zia, and future languages). It includes:
 #   - ExprResult: Common expression result type
 #   - BlockManager: Basic block creation and tracking
 #   - InstructionEmitter: IL instruction emission helpers

@@ -756,16 +756,16 @@ void rt_term_flush(void)
 }
 
 // =============================================================================
-// Pascal-Compatible Wrappers (i64 arguments)
+// i64 Wrappers (for frontends that use 64-bit integers)
 // =============================================================================
 
-/// @brief Move cursor to position (for Pascal which uses i64 integers).
+/// @brief Move cursor to position (i64 wrapper).
 void rt_term_locate(int64_t row, int64_t col)
 {
     rt_term_locate_i32((int32_t)row, (int32_t)col);
 }
 
-/// @brief Set terminal colors (for Pascal which uses i64 integers).
+/// @brief Set terminal colors (i64 wrapper).
 void rt_term_color(int64_t fg, int64_t bg)
 {
     rt_term_color_i32((int32_t)fg, (int32_t)bg);
@@ -813,7 +813,7 @@ void rt_sleep_ms_i64(int64_t ms)
     rt_sleep_ms((int32_t)ms);
 }
 
-/// @brief Check if a key is available (i64 wrapper for Pascal).
+/// @brief Check if a key is available (i64 wrapper).
 int64_t rt_keypressed_i64(void)
 {
     return (int64_t)rt_keypressed();

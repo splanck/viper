@@ -1196,7 +1196,7 @@ This helps you see if inputs are arriving at the right times.
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1248,34 +1248,6 @@ IF CONTROLLERCONNECTED(0) THEN
     moveX = CONTROLLERAXIS(0, AXIS_LEFT_X)
     player.x = player.x + moveX * speed * dt
 END IF
-```
-
-**Pascal**
-```pascal
-uses ViperInput;
-
-{ Keyboard }
-if IsKeyDown(VK_SPACE) then
-    player.charging := True;
-if WasKeyPressed(VK_ESCAPE) then
-    PauseGame;
-
-{ Mouse }
-var
-    mx, my: Integer;
-begin
-    mx := MouseX;
-    my := MouseY;
-    if WasMousePressed(mbLeft) then
-        HandleClick(mx, my);
-end;
-
-{ Controller }
-if IsControllerConnected(0) then
-begin
-    moveX := ControllerAxis(0, axLeftX);
-    player.x := player.x + moveX * speed * dt;
-end;
 ```
 
 ---

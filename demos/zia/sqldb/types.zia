@@ -1,5 +1,12 @@
 // types.zia — SQL Value Types
 // Part of ViperSQL
+//
+// Defines the SqlValue entity, the universal runtime representation of
+// a SQL value. Each SqlValue has a kind (SQL_NULL, SQL_INTEGER, SQL_REAL,
+// SQL_TEXT, SQL_BLOB) and carries the corresponding typed payload.
+// Provides comparison, type coercion, arithmetic, and display formatting.
+// Factory functions (sqlNull, sqlInteger, sqlReal, sqlText) create values
+// concisely throughout the codebase.
 
 module types;
 

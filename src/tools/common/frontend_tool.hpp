@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tools/common/frontend_tool.hpp
-// Purpose: Shared infrastructure for language frontend CLI tools (vbasic, vpascal).
+// Purpose: Shared infrastructure for language frontend CLI tools (vbasic, zia).
 // Key invariants: All frontend tools share the same argument parsing logic.
 // Ownership/Lifetime: N/A.
 //
@@ -62,10 +62,10 @@ struct FrontendToolConfig
 /// @brief Callbacks for language-specific behavior in frontend tools.
 struct FrontendToolCallbacks
 {
-    /// @brief File extension for this language (e.g., ".bas", ".pas").
+    /// @brief File extension for this language (e.g., ".bas", ".zia").
     std::string_view fileExtension;
 
-    /// @brief Language name for error messages (e.g., "BASIC", "Pascal").
+    /// @brief Language name for error messages (e.g., "BASIC", "Zia").
     std::string_view languageName;
 
     /// @brief Callback to print usage/help information for the tool.

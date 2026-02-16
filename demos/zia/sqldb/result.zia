@@ -1,5 +1,11 @@
 // result.zia — Query Result
 // Part of ViperSQL
+//
+// QueryResult is the universal return type for all SQL operations.
+// SELECT queries populate columnNames and rows; DML statements set
+// rowsAffected and a status message. Errors are indicated by
+// success=false with a descriptive message. The toString() method
+// renders results in a tabular format similar to psql output.
 
 module result;
 

@@ -1056,7 +1056,7 @@ Suddenly VideoPlayer might break. Its author assumed a certain order of operatio
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 Different Viper language styles express inheritance differently:
 
@@ -1103,37 +1103,6 @@ CLASS Dog EXTENDS Animal
     END SUB
 END CLASS
 ```
-
-**Pascal**
-```pascal
-type
-    Animal = class
-        name: string;
-        procedure Speak; virtual;
-    end;
-
-    Dog = class(Animal)
-        constructor Init(n: string);
-        procedure Speak; override;
-    end;
-
-procedure Animal.Speak;
-begin
-    WriteLn('...');
-end;
-
-constructor Dog.Init(n: string);
-begin
-    name := n;
-end;
-
-procedure Dog.Speak;
-begin
-    WriteLn(name, ' says: Woof!');
-end;
-```
-
-Note that Pascal requires explicit `virtual` on base methods (indicating they can be overridden) and `override` on derived methods. This extra verbosity catches errors at compile time.
 
 ---
 

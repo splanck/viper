@@ -1121,7 +1121,7 @@ test "containsAt detects @" {
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1148,31 +1148,6 @@ END NAMESPACE
 USING MyModule
 CALL Hello()
 ```
-
-**Pascal**
-```pascal
-{ Pascal uses units }
-unit MyModule;
-
-interface
-    procedure Hello;
-
-implementation
-    procedure Hello;
-    begin
-        ...
-    end;
-
-end.
-
-{ Using }
-uses MyModule;
-begin
-    Hello;
-end.
-```
-
-Pascal explicitly separates `interface` (what's visible to other units) from `implementation` (the actual code). This makes the public/private distinction very clear.
 
 ---
 

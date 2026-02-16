@@ -1,10 +1,16 @@
-// optimizer.zia - Query Optimizer (Simplified)
-// Part of ViperSQL - Phase 7: Query Optimizer
+// optimizer.zia — Cost-Based Query Optimizer
+// Part of ViperSQL
 //
 // Provides basic cost-based query optimization including:
-// - Table statistics (row counts)
-// - Cost estimation
-// - Access path selection
+//   - Table statistics collection (row counts, column cardinality)
+//   - Cost estimation for different access paths (table scan vs index seek)
+//   - Access path selection: chooses index scan when selectivity is favorable
+//   - Multi-table join ordering: reorders INNER JOINs by table size (smallest
+//     first) for 3+ table queries to minimize intermediate result sizes
+//
+// The optimizer runs after parsing and before execution, annotating the
+// AST with access path hints that the Executor and JoinEngine use to
+// choose between table scan, index lookup, nested loop, and hash join.
 
 module optimizer;
 

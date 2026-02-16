@@ -1,7 +1,11 @@
-// test.zia — SQL Tests
+// test_basic_crud.zia — Basic CRUD Operations
 // Part of ViperSQL
+//
+// Tests the fundamental SQL operations: CREATE TABLE (with duplicate
+// detection), INSERT (single and multi-row), SELECT (with WHERE, ORDER BY,
+// LIMIT), UPDATE, and DELETE. Validates row counts and error handling.
 
-module test;
+module test_basic_crud;
 
 bind Terminal = Viper.Terminal;
 bind Fmt = Viper.Fmt;

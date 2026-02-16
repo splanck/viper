@@ -1116,7 +1116,7 @@ This is the power of interfaces: *designing for extension without modification*.
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1145,25 +1145,6 @@ CLASS Document IMPLEMENTS Printable
     END SUB
 END CLASS
 ```
-
-**Pascal**
-```pascal
-type
-    IPrintable = interface
-        procedure Print;
-    end;
-
-    TDocument = class(TInterfacedObject, IPrintable)
-        procedure Print;
-    end;
-
-procedure TDocument.Print;
-begin
-    WriteLn('Printing document');
-end;
-```
-
-Pascal prefixes interfaces with `I` by convention (IPrintable, IDrawable, etc.).
 
 ---
 

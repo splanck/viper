@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tools/common/CommonUsage.hpp
-// Purpose: Shared CLI option text for frontend tools (vbasic, vpascal, zia).
+// Purpose: Shared CLI option text for frontend tools (vbasic, zia).
 // Key invariants: All frontend tools share the same option descriptions.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@ namespace viper::tools
 
 /// @brief Print shared CLI option descriptions to an output stream.
 /// @details Outputs the standard option descriptions used by all frontend tools.
-///          This ensures consistency across vbasic, vpascal, and zia help text.
+///          This ensures consistency across vbasic and zia help text.
 /// @param os Output stream to write to (typically std::cerr).
 inline void printSharedOptions(std::ostream &os)
 {

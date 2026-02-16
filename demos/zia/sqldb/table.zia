@@ -1,5 +1,11 @@
 // table.zia — Table Entity
 // Part of ViperSQL
+//
+// In-memory representation of a SQL table: named columns with type
+// metadata (schema.zia) and an ordered list of rows. Supports soft
+// deletion (row.deleted flag), AUTOINCREMENT tracking, and schema
+// introspection. The StorageEngine persists tables to disk; this
+// entity is the live working copy used during query execution.
 
 module table;
 

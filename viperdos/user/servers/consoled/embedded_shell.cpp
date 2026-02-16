@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "embedded_shell.hpp"
+#include "../../syscall.hpp"
 #include "keymap.hpp"
 #include "shell_cmds.hpp"
 #include "shell_io.hpp"
@@ -66,9 +67,12 @@ void EmbeddedShell::handle_char(char c) {
         m_input_len = 0;
         m_cursor_pos = 0;
         m_browsing_history = false;
-        print_prompt();
+
+        // Don't print prompt if we just entered foreground mode
+        if (!is_foreground()) {
+            print_prompt();
+        }
         m_buffer->end_batch();
-        shell_io_flush();
         return;
     }
 
@@ -351,6 +355,102 @@ void EmbeddedShell::history_navigate(int direction) {
     m_input_len = shell_strlen(m_input_buf);
     m_cursor_pos = m_input_len;
     redraw_input_line();
+}
+
+void EmbeddedShell::enter_foreground(uint64_t pid, uint64_t task_id) {
+    m_fg_pid = pid;
+    m_fg_task_id = task_id;
+    // Don't print prompt — we're in foreground mode now
+}
+
+bool EmbeddedShell::check_foreground() {
+    if (m_fg_pid == 0)
+        return false;
+
+    int32_t status = 0;
+    int64_t result = sys::waitpid_nohang(m_fg_pid, &status);
+
+    if (result > 0) {
+        // Child exited normally
+        m_fg_pid = 0;
+        m_fg_task_id = 0;
+        shell_print("\n");
+        print_prompt();
+        m_buffer->end_batch();
+        return true;
+    }
+    if (result < 0) {
+        // Error (e.g., child already gone or not our child)
+        m_fg_pid = 0;
+        m_fg_task_id = 0;
+        shell_print("\n");
+        print_prompt();
+        m_buffer->end_batch();
+        return true;
+    }
+    // result == 0: child still running
+    return false;
+}
+
+void EmbeddedShell::forward_to_foreground(char c) {
+    if (m_fg_pid == 0)
+        return;
+
+    // Ctrl+C: kill the foreground process
+    if (c == 0x03) {
+        shell_print("^C\n");
+        sys::kill(m_fg_task_id, 9); // SIGKILL
+        // Don't clear fg state here; check_foreground will detect exit
+        return;
+    }
+
+    // Convert '\r' (from keymap Enter) to '\n' for kernel TTY
+    if (c == '\r')
+        c = '\n';
+
+    sys::tty_push_input(c);
+}
+
+void EmbeddedShell::forward_special_key(uint16_t keycode) {
+    if (m_fg_pid == 0)
+        return;
+
+    const char *seq = nullptr;
+    switch (keycode) {
+        case KEY_UP:
+            seq = "\033[A";
+            break;
+        case KEY_DOWN:
+            seq = "\033[B";
+            break;
+        case KEY_RIGHT:
+            seq = "\033[C";
+            break;
+        case KEY_LEFT:
+            seq = "\033[D";
+            break;
+        case KEY_HOME:
+            seq = "\033[H";
+            break;
+        case KEY_END:
+            seq = "\033[F";
+            break;
+        case KEY_DELETE:
+            seq = "\033[3~";
+            break;
+        case KEY_PAGEUP:
+            seq = "\033[5~";
+            break;
+        case KEY_PAGEDOWN:
+            seq = "\033[6~";
+            break;
+        default:
+            return;
+    }
+
+    while (*seq) {
+        sys::tty_push_input(*seq++);
+    }
 }
 
 } // namespace consoled

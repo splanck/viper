@@ -3583,4 +3583,4 @@ arr.join(separator)           // -> string
 
 ---
 
-*[Back to Table of Contents](../README.md) | [Prev: Appendix C](c-pascal-reference.md) | [Next: Appendix E: Error Messages](e-error-messages.md)*
+*[Back to Table of Contents](../README.md) | [Prev: Appendix B](b-basic-reference.md) | [Next: Appendix E: Error Messages](e-error-messages.md)*

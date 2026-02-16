@@ -434,9 +434,9 @@ The compiler reached the end of the file still expecting to find the closing bra
 
 ---
 
-## The Same Program in BASIC and Pascal
+## The Same Program in BASIC
 
-Viper supports three languages that express the same concepts differently. Seeing the same program in different languages helps you understand what's fundamental (the ideas) versus what's surface-level (the syntax).
+Viper supports two languages that express the same concepts differently. Seeing the same program in a different language helps you understand what's fundamental (the ideas) versus what's surface-level (the syntax).
 
 ### BASIC
 
@@ -458,34 +458,13 @@ To run this, save it as `hello.bas` and run:
 vbasic hello.bas
 ```
 
-### Pascal
-
-```pascal
-program Hello;
-begin
-    WriteLn('Hello, World!');
-end.
-```
-
-Pascal (created in 1970) sits between BASIC's simplicity and Zia's modern style:
-
-- `program Hello;` instead of `module Hello;` — same idea, different keyword
-- `begin` and `end.` instead of `{` and `}` — same structure, spelled out in words
-- `WriteLn` instead of `Say` — "Write Line" is more descriptive but more to type
-- Single quotes (`'`) instead of double quotes (`"`) for strings
-- A period (`.`) after `end` to mark the program's end
-
-Pascal was designed for teaching programming and emphasizes clarity. The word `begin` is clearer than `{` for newcomers, though `{` becomes natural with practice.
-
-To run this, save it as `hello.pas` and run it with `viper run hello.pas` (once Pascal support is available).
-
 ### What's the Same?
 
-Look at what all three versions share:
+Look at what both versions share:
 
-1. **A name for the program** — `Hello` in all cases
-2. **A way to mark where code starts and ends** — braces, `begin`/`end`, or just file boundaries
-3. **A function to display text** — `Say`, `PRINT`, `WriteLn`
+1. **A name for the program** — `Hello` in both cases
+2. **A way to mark where code starts and ends** — braces or just file boundaries
+3. **A function to display text** — `Say`, `PRINT`
 4. **The text to display, in quotes**
 
 These are the *concepts*. The syntax — the specific characters and words — is just how each language spells those concepts. Learning to see through syntax to the underlying ideas is a key skill in programming.

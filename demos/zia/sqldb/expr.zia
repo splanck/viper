@@ -1,5 +1,11 @@
-// expr.zia — Expression Types
+// expr.zia — Expression AST Nodes
 // Part of ViperSQL
+//
+// Defines the Expr entity used by the parser to represent SQL expressions
+// as an abstract syntax tree. Each Expr has a kind (EXPR_LITERAL, EXPR_COLUMN,
+// EXPR_BINARY, EXPR_FUNCTION, EXPR_SUBQUERY, etc.) and carries child nodes,
+// operator info, and literal values. The executor's evalExpr() walks this
+// tree to produce SqlValue results during query execution.
 
 module expr;
 

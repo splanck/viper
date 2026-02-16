@@ -1078,7 +1078,7 @@ This program demonstrates:
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 ### Zia
 ```rust
@@ -1115,28 +1115,6 @@ Continue:
 ```
 
 BASIC uses `ON ERROR GOTO` for older-style error handling. The `ERR` variable contains the error number, and `ERROR$` contains the message.
-
-### Pascal
-```pascal
-try
-    riskyOperation();
-except
-    on E: EFileNotFoundException do
-        WriteLn('File not found');
-    on E: Exception do
-        WriteLn('Error: ', E.Message);
-end;
-
-try
-    riskyOperation();
-finally
-    cleanup();
-end;
-
-raise Exception.Create('Something went wrong');
-```
-
-Pascal uses `try`/`except` (not catch) and `raise` (not throw). Note that `finally` is a separate construct from `except`.
 
 ---
 

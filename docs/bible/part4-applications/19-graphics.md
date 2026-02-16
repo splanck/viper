@@ -1232,7 +1232,7 @@ canvas.drawText(405, 315, "(400,300)");
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1252,19 +1252,7 @@ FILL RECT 100, 100, 200, 150
 REFRESH
 ```
 
-**Pascal**
-```pascal
-uses ViperGraphics;
-var canvas: TCanvas;
-begin
-    canvas := TCanvas.Create(800, 600);
-    canvas.SetColor(clRed);
-    canvas.FillRect(100, 100, 200, 150);
-    canvas.Show;
-end.
-```
-
-The concepts are identical across all three languages — only the syntax differs. A canvas is a canvas. A rectangle is a rectangle. RGB colors work the same way. Once you understand graphics in one language, you understand them in all.
+The concepts are identical across both languages — only the syntax differs. A canvas is a canvas. A rectangle is a rectangle. RGB colors work the same way. Once you understand graphics in one language, you understand them in the other.
 
 ---
 

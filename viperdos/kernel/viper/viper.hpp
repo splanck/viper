@@ -287,13 +287,16 @@ void exit(i32 code);
  *
  * @details
  * If child_id is -1, waits for any child. If a matching ZOMBIE child exists,
- * reaps it immediately. Otherwise blocks the caller until a child exits.
+ * reaps it immediately. Otherwise blocks the caller until a child exits
+ * (unless nohang is true, in which case returns 0 immediately).
  *
  * @param child_id Process ID to wait for, or -1 for any child.
  * @param status Output: exit status of the reaped child.
- * @return Process ID of reaped child on success, negative error on failure.
+ * @param nohang If true, return 0 immediately if no zombie child (WNOHANG).
+ * @return Process ID of reaped child on success, 0 if nohang and no zombie,
+ *         negative error on failure.
  */
-i64 wait(i64 child_id, i32 *status);
+i64 wait(i64 child_id, i32 *status, bool nohang = false);
 
 /**
  * @brief Adjust the heap break for a process (sbrk implementation).

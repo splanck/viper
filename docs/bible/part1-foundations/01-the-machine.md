@@ -124,20 +124,19 @@ Programming languages are a gift from programmers to other programmers (includin
 
 ---
 
-## Why Three Languages?
+## Why Two Languages?
 
-Viper gives you three languages: Zia, BASIC, and Pascal. Why?
+Viper gives you two languages: Zia and BASIC. Why?
 
 They're different ways to express the same ideas. Like how you can give directions by listing turns ("left, right, straight, left") or by giving landmarks ("past the church, toward the lake"). Same destination, different paths.
 
 Each language has its own personality:
 - **Zia** is modern and concise, inspired by contemporary languages like Rust. It uses curly braces and feels familiar if you've seen any C-like language.
 - **BASIC** (Beginner's All-purpose Symbolic Instruction Code) was designed in the 1960s specifically to be easy for newcomers. Its syntax reads almost like English.
-- **Pascal** was created in the 1970s as a teaching language, emphasizing structured programming and clear, readable code.
 
 Some people find one style more natural than another. Some languages are better suited for certain tasks. And understanding multiple languages helps you see the underlying concepts more clearly — the things that stay the same no matter how you express them.
 
-Here's "create a variable x with value 0" in all three:
+Here's "create a variable x with value 0" in both:
 
 **Zia**
 ```rust
@@ -150,15 +149,9 @@ DIM x AS INTEGER
 x = 0
 ```
 
-**Pascal**
-```pascal
-var x: Integer;
-x := 0;
-```
+Different words, same idea. Both compile to the same machine code. Both produce the same result. The syntax varies — Zia uses `var`, BASIC uses `DIM`. But the concept is identical: set aside a place in memory, give it a name, and put a value there.
 
-Different words, same idea. All three compile to the same machine code. All three produce the same result. The syntax varies — Zia uses `var`, BASIC uses `DIM`, Pascal uses `var` but with a colon before the type. But the concept is identical: set aside a place in memory, give it a name, and put a value there.
-
-This book teaches primarily in Zia because it's modern and clean, and its patterns transfer well to other popular languages you might learn later. But you'll see BASIC and Pascal examples throughout, and you're free to use whichever you prefer. Learning one will help you understand the others.
+This book teaches primarily in Zia because it's modern and clean, and its patterns transfer well to other popular languages you might learn later. But you'll see BASIC examples throughout, and you're free to use whichever you prefer. Learning one will help you understand the other.
 
 ---
 

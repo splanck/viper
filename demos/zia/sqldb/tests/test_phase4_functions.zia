@@ -8,38 +8,12 @@ bind Terminal = Viper.Terminal;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 
+bind "./test_common";
+
 bind "../executor";
 bind "../types";
 
-var passCount = 0;
-var failCount = 0;
-
-func assert(condition: Boolean, msg: String) {
-    if condition {
-        passCount = passCount + 1;
-    } else {
-        Terminal.Say("FAIL: " + msg);
-        failCount = failCount + 1;
-    }
-}
-
-func check(result: QueryResult, label: String) {
-    if result.success == false {
-        Terminal.Say("FAIL: " + label + " => " + result.message);
-        failCount = failCount + 1;
-    } else {
-        passCount = passCount + 1;
-    }
-}
-
-func val(result: QueryResult, row: Integer, col: Integer) -> String {
-    var r = result.getRow(row);
-    if r == null { return "NULL_ROW"; }
-    var rr = r;
-    return rr.getValue(col).toString();
-}
-
-func main() {
+func main() -> Integer {
     Terminal.Say("=== Phase 4: Additional Built-in Functions Tests ===");
 
     var exec = new Executor();
@@ -48,12 +22,12 @@ func main() {
     //=========================================================================
     // Setup test data
     //=========================================================================
-    check(exec.executeSql("CREATE TABLE math_test (id INTEGER PRIMARY KEY, val INTEGER, fval REAL)"), "create math_test");
-    check(exec.executeSql("INSERT INTO math_test VALUES (1, 8, '2.5')"), "insert 1");
-    check(exec.executeSql("INSERT INTO math_test VALUES (2, -5, '3.7')"), "insert 2");
-    check(exec.executeSql("INSERT INTO math_test VALUES (3, 0, '0.0')"), "insert 3");
-    check(exec.executeSql("INSERT INTO math_test VALUES (4, 16, '1.44')"), "insert 4");
-    check(exec.executeSql("INSERT INTO math_test VALUES (5, 100, '2.718281828')"), "insert 5");
+    assertSuccess(exec.executeSql("CREATE TABLE math_test (id INTEGER PRIMARY KEY, val INTEGER, fval REAL)"), "create math_test");
+    assertSuccess(exec.executeSql("INSERT INTO math_test VALUES (1, 8, '2.5')"), "insert 1");
+    assertSuccess(exec.executeSql("INSERT INTO math_test VALUES (2, -5, '3.7')"), "insert 2");
+    assertSuccess(exec.executeSql("INSERT INTO math_test VALUES (3, 0, '0.0')"), "insert 3");
+    assertSuccess(exec.executeSql("INSERT INTO math_test VALUES (4, 16, '1.44')"), "insert 4");
+    assertSuccess(exec.executeSql("INSERT INTO math_test VALUES (5, 100, '2.718281828')"), "insert 5");
 
     //=========================================================================
     // POWER / POW
@@ -184,7 +158,7 @@ func main() {
     Terminal.Say("--- RANDOM ---");
 
     r = exec.executeSql("SELECT RANDOM() FROM math_test WHERE id = 1");
-    check(r, "RANDOM() returns successfully");
+    assertSuccess(r, "RANDOM() returns successfully");
     // Just check it returns an integer
     var randVal = val(r, 0, 0);
     assert(randVal != "NULL", "RANDOM() returns non-null: " + randVal);
@@ -195,9 +169,9 @@ func main() {
     Terminal.Say("");
     Terminal.Say("--- LEFT ---");
 
-    check(exec.executeSql("CREATE TABLE str_test (id INTEGER PRIMARY KEY, name TEXT)"), "create str_test");
-    check(exec.executeSql("INSERT INTO str_test VALUES (1, 'Hello World')"), "insert str 1");
-    check(exec.executeSql("INSERT INTO str_test VALUES (2, 'Testing')"), "insert str 2");
+    assertSuccess(exec.executeSql("CREATE TABLE str_test (id INTEGER PRIMARY KEY, name TEXT)"), "create str_test");
+    assertSuccess(exec.executeSql("INSERT INTO str_test VALUES (1, 'Hello World')"), "insert str 1");
+    assertSuccess(exec.executeSql("INSERT INTO str_test VALUES (2, 'Testing')"), "insert str 2");
 
     r = exec.executeSql("SELECT LEFT(name, 5) FROM str_test WHERE id = 1");
     assert(val(r, 0, 0) == "Hello", "LEFT('Hello World', 5) = 'Hello': " + val(r, 0, 0));
@@ -346,10 +320,6 @@ func main() {
     //=========================================================================
     // Summary
     //=========================================================================
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passCount));
-    Terminal.Say("Failed: " + Fmt.Int(failCount));
-
-    Terminal.Say("=== Phase 4 Functions: " + Fmt.Int(passCount) + " passed, " + Fmt.Int(failCount) + " failed ===");
+    printResults();
+    return 0;
 }

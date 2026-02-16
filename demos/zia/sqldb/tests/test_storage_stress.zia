@@ -1,7 +1,11 @@
-// test_stress3.zia — Phase 3-5 stress tests
+// test_storage_stress.zia — Multi-Database and WAL Stress Tests
 // Part of ViperSQL
-// Tests: multi-database persistence, incremental UPDATE/DELETE, WAL integration
-module test_stress3;
+//
+// Stress tests for advanced storage features: multi-database interleaved
+// DML with separate persistence files, incremental UPDATE/DELETE across
+// sessions, and WAL integration under concurrent modification patterns.
+
+module test_storage_stress;
 
 bind Terminal = Viper.Terminal;
 bind IO = Viper.IO;

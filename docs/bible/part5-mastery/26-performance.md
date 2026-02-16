@@ -1346,7 +1346,7 @@ When debugging performance, look for these usual suspects:
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1377,24 +1377,6 @@ SUB Benchmark(name AS STRING, work AS SUB())
 
     PRINT name; ": "; elapsed; " ms total"
 END SUB
-```
-
-**Pascal**
-```pascal
-uses ViperTime;
-
-procedure Benchmark(name: String; work: procedure);
-var
-    start, elapsed: Int64;
-    i: Integer;
-begin
-    start := TimeMillis;
-    for i := 1 to 1000 do
-        work;
-    elapsed := TimeMillis - start;
-
-    WriteLn(name, ': ', elapsed, ' ms total');
-end;
 ```
 
 ---

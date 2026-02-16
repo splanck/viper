@@ -7,38 +7,11 @@ bind Terminal = Viper.Terminal;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 
+bind "./test_common";
 bind "../executor";
 bind "../types";
 
-var passCount = 0;
-var failCount = 0;
-
-func assert(condition: Boolean, msg: String) {
-    if condition {
-        passCount = passCount + 1;
-    } else {
-        Terminal.Say("FAIL: " + msg);
-        failCount = failCount + 1;
-    }
-}
-
-func check(result: QueryResult, label: String) {
-    if result.success == false {
-        Terminal.Say("FAIL: " + label + " => " + result.message);
-        failCount = failCount + 1;
-    } else {
-        passCount = passCount + 1;
-    }
-}
-
-func val(result: QueryResult, row: Integer, col: Integer) -> String {
-    var r = result.getRow(row);
-    if r == null { return "NULL"; }
-    var rr = r;
-    return rr.getValue(col).toString();
-}
-
-func main() {
+func main() -> Integer {
     Terminal.Say("=== README Examples Test Suite ===");
     Terminal.Say("");
 
@@ -52,33 +25,33 @@ func main() {
 
     // CREATE TABLE
     var r = exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, age INTEGER DEFAULT 0)");
-    check(r, "CREATE TABLE users");
+    assertSuccess(r, "CREATE TABLE users");
 
     // INSERT rows
     r = exec.executeSql("INSERT INTO users (name, email, age) VALUES ('Alice', 'alice@example.com', 30)");
-    check(r, "INSERT Alice");
+    assertSuccess(r, "INSERT Alice");
     r = exec.executeSql("INSERT INTO users (name, email, age) VALUES ('Bob', 'bob@example.com', 25)");
-    check(r, "INSERT Bob");
+    assertSuccess(r, "INSERT Bob");
     r = exec.executeSql("INSERT INTO users (name, email, age) VALUES ('Charlie', 'charlie@example.com', 35)");
-    check(r, "INSERT Charlie");
+    assertSuccess(r, "INSERT Charlie");
 
     // SELECT all
     r = exec.executeSql("SELECT * FROM users");
-    check(r, "SELECT * FROM users");
+    assertSuccess(r, "SELECT * FROM users");
     assert(r.rowCount() == 3, "users has 3 rows");
 
     // SELECT with WHERE
     r = exec.executeSql("SELECT name, age FROM users WHERE age > 25");
-    check(r, "SELECT with WHERE");
+    assertSuccess(r, "SELECT with WHERE");
     assert(r.rowCount() == 2, "2 users older than 25");
 
     // UPDATE
     r = exec.executeSql("UPDATE users SET age = 31 WHERE name = 'Alice'");
-    check(r, "UPDATE Alice age");
+    assertSuccess(r, "UPDATE Alice age");
 
     // DELETE
     r = exec.executeSql("DELETE FROM users WHERE name = 'Charlie'");
-    check(r, "DELETE Charlie");
+    assertSuccess(r, "DELETE Charlie");
 
     r = exec.executeSql("SELECT * FROM users");
     assert(r.rowCount() == 2, "2 users after delete");
@@ -89,9 +62,9 @@ func main() {
     Terminal.Say("--- Data Types ---");
 
     r = exec.executeSql("CREATE TABLE type_demo (i INTEGER, r REAL, t TEXT)");
-    check(r, "CREATE type_demo");
+    assertSuccess(r, "CREATE type_demo");
     r = exec.executeSql("INSERT INTO type_demo VALUES (42, 3.14, 'hello')");
-    check(r, "INSERT type_demo");
+    assertSuccess(r, "INSERT type_demo");
     r = exec.executeSql("SELECT * FROM type_demo");
     assert(val(r, 0, 0) == "42", "integer value");
     assert(val(r, 0, 1) == "3.14", "real value");
@@ -99,7 +72,7 @@ func main() {
 
     // NULL handling
     r = exec.executeSql("INSERT INTO type_demo VALUES (NULL, NULL, NULL)");
-    check(r, "INSERT NULLs");
+    assertSuccess(r, "INSERT NULLs");
     r = exec.executeSql("SELECT * FROM type_demo WHERE i IS NULL");
     assert(r.rowCount() == 1, "1 row with NULL i");
     r = exec.executeSql("SELECT * FROM type_demo WHERE i IS NOT NULL");
@@ -111,12 +84,12 @@ func main() {
     Terminal.Say("--- Constraints ---");
 
     r = exec.executeSql("CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, price REAL DEFAULT 0.0, category TEXT DEFAULT 'general')");
-    check(r, "CREATE products");
+    assertSuccess(r, "CREATE products");
 
     r = exec.executeSql("INSERT INTO products (name, price, category) VALUES ('Widget', 9.99, 'hardware')");
-    check(r, "INSERT Widget");
+    assertSuccess(r, "INSERT Widget");
     r = exec.executeSql("INSERT INTO products (name, price, category) VALUES ('Gadget', 24.99, 'electronics')");
-    check(r, "INSERT Gadget");
+    assertSuccess(r, "INSERT Gadget");
 
     // NOT NULL violation
     r = exec.executeSql("INSERT INTO products (name) VALUES (NULL)");
@@ -128,7 +101,7 @@ func main() {
 
     // FOREIGN KEY
     r = exec.executeSql("CREATE TABLE orders (id INTEGER PRIMARY KEY, product_id INTEGER REFERENCES products(id), quantity INTEGER)");
-    check(r, "CREATE orders with FK");
+    assertSuccess(r, "CREATE orders with FK");
 
     // ---------------------------------------------------------------
     // EXPRESSIONS & ARITHMETIC
@@ -136,19 +109,19 @@ func main() {
     Terminal.Say("--- Expressions & Arithmetic ---");
 
     r = exec.executeSql("SELECT name, price * 1.1 AS with_tax FROM products WHERE price > 10");
-    check(r, "arithmetic in SELECT");
+    assertSuccess(r, "arithmetic in SELECT");
     assert(r.rowCount() == 1, "1 product > 10");
 
     r = exec.executeSql("SELECT name, price FROM products WHERE price BETWEEN 5 AND 20");
-    check(r, "BETWEEN query");
+    assertSuccess(r, "BETWEEN query");
     assert(r.rowCount() == 1, "1 product between 5 and 20");
 
     r = exec.executeSql("SELECT name FROM products WHERE name LIKE 'W%'");
-    check(r, "LIKE query");
+    assertSuccess(r, "LIKE query");
     assert(r.rowCount() == 1, "1 product starting with W");
 
     r = exec.executeSql("SELECT name FROM products WHERE category IN ('hardware', 'electronics')");
-    check(r, "IN query");
+    assertSuccess(r, "IN query");
     assert(r.rowCount() == 2, "2 products in categories");
 
     // ---------------------------------------------------------------
@@ -157,9 +130,9 @@ func main() {
     Terminal.Say("--- String Functions ---");
 
     r = exec.executeSql("CREATE TABLE strings_demo (val TEXT)");
-    check(r, "CREATE strings_demo");
+    assertSuccess(r, "CREATE strings_demo");
     r = exec.executeSql("INSERT INTO strings_demo VALUES ('Hello World')");
-    check(r, "INSERT string");
+    assertSuccess(r, "INSERT string");
 
     r = exec.executeSql("SELECT UPPER(val) FROM strings_demo");
     assert(val(r, 0, 0) == "HELLO WORLD", "UPPER function");
@@ -191,7 +164,7 @@ func main() {
     Terminal.Say("--- Math & Null Functions ---");
 
     r = exec.executeSql("CREATE TABLE nums (x INTEGER)");
-    check(r, "CREATE nums");
+    assertSuccess(r, "CREATE nums");
     r = exec.executeSql("INSERT INTO nums VALUES (-5)");
     r = exec.executeSql("INSERT INTO nums VALUES (10)");
     r = exec.executeSql("INSERT INTO nums VALUES (3)");
@@ -226,7 +199,7 @@ func main() {
     Terminal.Say("--- Aggregate Functions ---");
 
     r = exec.executeSql("CREATE TABLE scores (student TEXT, score INTEGER)");
-    check(r, "CREATE scores");
+    assertSuccess(r, "CREATE scores");
     r = exec.executeSql("INSERT INTO scores VALUES ('Alice', 85)");
     r = exec.executeSql("INSERT INTO scores VALUES ('Bob', 92)");
     r = exec.executeSql("INSERT INTO scores VALUES ('Alice', 78)");
@@ -254,11 +227,11 @@ func main() {
     Terminal.Say("--- GROUP BY and HAVING ---");
 
     r = exec.executeSql("SELECT student, AVG(score) FROM scores GROUP BY student");
-    check(r, "GROUP BY student");
+    assertSuccess(r, "GROUP BY student");
     assert(r.rowCount() == 3, "3 student groups");
 
     r = exec.executeSql("SELECT student, SUM(score) AS total FROM scores GROUP BY student HAVING SUM(score) > 170");
-    check(r, "GROUP BY + HAVING");
+    assertSuccess(r, "GROUP BY + HAVING");
     assert(r.rowCount() == 1, "1 student with total > 170");
     assert(val(r, 0, 0) == "Bob", "Bob has highest total");
 
@@ -268,21 +241,21 @@ func main() {
     Terminal.Say("--- ORDER BY, LIMIT, OFFSET ---");
 
     r = exec.executeSql("SELECT * FROM scores ORDER BY score DESC");
-    check(r, "ORDER BY DESC");
+    assertSuccess(r, "ORDER BY DESC");
     assert(val(r, 0, 1) == "95", "highest score first");
 
     r = exec.executeSql("SELECT * FROM scores ORDER BY score ASC LIMIT 3");
-    check(r, "ORDER BY + LIMIT");
+    assertSuccess(r, "ORDER BY + LIMIT");
     assert(r.rowCount() == 3, "limited to 3 rows");
     assert(val(r, 0, 1) == "78", "lowest score first");
 
     r = exec.executeSql("SELECT * FROM scores ORDER BY score DESC LIMIT 2 OFFSET 1");
-    check(r, "LIMIT + OFFSET");
+    assertSuccess(r, "LIMIT + OFFSET");
     assert(r.rowCount() == 2, "2 rows with offset");
 
     // DISTINCT
     r = exec.executeSql("SELECT DISTINCT student FROM scores");
-    check(r, "DISTINCT");
+    assertSuccess(r, "DISTINCT");
     assert(r.rowCount() == 3, "3 distinct students");
 
     // ---------------------------------------------------------------
@@ -291,13 +264,13 @@ func main() {
     Terminal.Say("--- Joins ---");
 
     r = exec.executeSql("CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT)");
-    check(r, "CREATE departments");
+    assertSuccess(r, "CREATE departments");
     r = exec.executeSql("INSERT INTO departments VALUES (1, 'Engineering')");
     r = exec.executeSql("INSERT INTO departments VALUES (2, 'Marketing')");
     r = exec.executeSql("INSERT INTO departments VALUES (3, 'Sales')");
 
     r = exec.executeSql("CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER)");
-    check(r, "CREATE employees");
+    assertSuccess(r, "CREATE employees");
     r = exec.executeSql("INSERT INTO employees VALUES (1, 'Alice', 1)");
     r = exec.executeSql("INSERT INTO employees VALUES (2, 'Bob', 2)");
     r = exec.executeSql("INSERT INTO employees VALUES (3, 'Charlie', 1)");
@@ -305,12 +278,12 @@ func main() {
 
     // INNER JOIN
     r = exec.executeSql("SELECT employees.name, departments.name FROM employees INNER JOIN departments ON employees.dept_id = departments.id");
-    check(r, "INNER JOIN");
+    assertSuccess(r, "INNER JOIN");
     assert(r.rowCount() == 3, "3 employees with departments");
 
     // LEFT JOIN
     r = exec.executeSql("SELECT employees.name, departments.name FROM employees LEFT JOIN departments ON employees.dept_id = departments.id");
-    check(r, "LEFT JOIN");
+    assertSuccess(r, "LEFT JOIN");
     assert(r.rowCount() == 4, "4 employees including NULL dept");
 
     // CROSS JOIN (comma syntax)
@@ -323,12 +296,12 @@ func main() {
     r = exec.executeSql("INSERT INTO sizes VALUES ('L')");
 
     r = exec.executeSql("SELECT c, s FROM colors, sizes");
-    check(r, "implicit CROSS JOIN");
+    assertSuccess(r, "implicit CROSS JOIN");
     assert(r.rowCount() == 6, "2 * 3 = 6 cross join rows");
 
     // JOIN with aliases
     r = exec.executeSql("SELECT e.name, d.name FROM employees e JOIN departments d ON e.dept_id = d.id");
-    check(r, "JOIN with aliases");
+    assertSuccess(r, "JOIN with aliases");
     assert(r.rowCount() == 3, "3 rows with aliases");
 
     // ---------------------------------------------------------------
@@ -338,17 +311,17 @@ func main() {
 
     // Scalar subquery in WHERE
     r = exec.executeSql("SELECT name FROM scores WHERE score > (SELECT AVG(score) FROM scores)");
-    check(r, "scalar subquery in WHERE");
+    assertSuccess(r, "scalar subquery in WHERE");
     assert(r.rowCount() > 0, "found scores above average");
 
     // IN subquery
     r = exec.executeSql("SELECT name FROM employees WHERE dept_id IN (SELECT id FROM departments WHERE name = 'Engineering')");
-    check(r, "IN subquery");
+    assertSuccess(r, "IN subquery");
     assert(r.rowCount() == 2, "2 engineers");
 
     // NOT IN subquery
     r = exec.executeSql("SELECT name FROM employees WHERE dept_id NOT IN (SELECT id FROM departments WHERE name = 'Engineering')");
-    check(r, "NOT IN subquery");
+    assertSuccess(r, "NOT IN subquery");
 
     // ---------------------------------------------------------------
     // SET OPERATIONS
@@ -367,22 +340,22 @@ func main() {
 
     // UNION (removes duplicates)
     r = exec.executeSql("SELECT member FROM team_a UNION SELECT member FROM team_b");
-    check(r, "UNION");
+    assertSuccess(r, "UNION");
     assert(r.rowCount() == 5, "5 unique members");
 
     // UNION ALL (keeps duplicates)
     r = exec.executeSql("SELECT member FROM team_a UNION ALL SELECT member FROM team_b");
-    check(r, "UNION ALL");
+    assertSuccess(r, "UNION ALL");
     assert(r.rowCount() == 6, "6 total including duplicates");
 
     // EXCEPT
     r = exec.executeSql("SELECT member FROM team_a EXCEPT SELECT member FROM team_b");
-    check(r, "EXCEPT");
+    assertSuccess(r, "EXCEPT");
     assert(r.rowCount() == 2, "2 members only in team A");
 
     // INTERSECT
     r = exec.executeSql("SELECT member FROM team_a INTERSECT SELECT member FROM team_b");
-    check(r, "INTERSECT");
+    assertSuccess(r, "INTERSECT");
     assert(r.rowCount() == 1, "1 member in both teams");
     assert(val(r, 0, 0) == "Bob", "Bob in both teams");
 
@@ -392,7 +365,7 @@ func main() {
     Terminal.Say("--- CASE Expressions ---");
 
     r = exec.executeSql("SELECT name, CASE WHEN score >= 90 THEN 'A' WHEN score >= 80 THEN 'B' WHEN score >= 70 THEN 'C' ELSE 'F' END AS grade FROM scores");
-    check(r, "CASE expression");
+    assertSuccess(r, "CASE expression");
     assert(r.rowCount() == 5, "5 graded scores");
 
     // ---------------------------------------------------------------
@@ -401,17 +374,17 @@ func main() {
     Terminal.Say("--- Indexes ---");
 
     r = exec.executeSql("CREATE INDEX idx_score ON scores (score)");
-    check(r, "CREATE INDEX");
+    assertSuccess(r, "CREATE INDEX");
 
     r = exec.executeSql("CREATE UNIQUE INDEX idx_email ON users (email)");
-    check(r, "CREATE UNIQUE INDEX");
+    assertSuccess(r, "CREATE UNIQUE INDEX");
 
     r = exec.executeSql("SELECT * FROM scores WHERE score = 92");
-    check(r, "query with index");
+    assertSuccess(r, "query with index");
     assert(r.rowCount() == 1, "found 1 score via index");
 
     r = exec.executeSql("DROP INDEX idx_score");
-    check(r, "DROP INDEX");
+    assertSuccess(r, "DROP INDEX");
 
     // ---------------------------------------------------------------
     // ALTER TABLE
@@ -419,16 +392,16 @@ func main() {
     Terminal.Say("--- ALTER TABLE ---");
 
     r = exec.executeSql("ALTER TABLE users ADD COLUMN city TEXT");
-    check(r, "ALTER TABLE ADD COLUMN");
+    assertSuccess(r, "ALTER TABLE ADD COLUMN");
 
     r = exec.executeSql("SELECT * FROM users");
     assert(r.rowCount() > 0, "users still has rows after ALTER");
 
     r = exec.executeSql("ALTER TABLE users RENAME COLUMN city TO location");
-    check(r, "ALTER TABLE RENAME COLUMN");
+    assertSuccess(r, "ALTER TABLE RENAME COLUMN");
 
     r = exec.executeSql("ALTER TABLE users DROP COLUMN location");
-    check(r, "ALTER TABLE DROP COLUMN");
+    assertSuccess(r, "ALTER TABLE DROP COLUMN");
 
     // ---------------------------------------------------------------
     // SHOW and DESCRIBE
@@ -436,11 +409,11 @@ func main() {
     Terminal.Say("--- SHOW and DESCRIBE ---");
 
     r = exec.executeSql("SHOW TABLES");
-    check(r, "SHOW TABLES");
+    assertSuccess(r, "SHOW TABLES");
     assert(r.rowCount() > 0, "has tables");
 
     r = exec.executeSql("DESCRIBE users");
-    check(r, "DESCRIBE users");
+    assertSuccess(r, "DESCRIBE users");
     assert(r.rowCount() > 0, "has column info");
 
     // ---------------------------------------------------------------
@@ -449,30 +422,30 @@ func main() {
     Terminal.Say("--- Multi-Database ---");
 
     r = exec.executeSql("CREATE DATABASE analytics");
-    check(r, "CREATE DATABASE");
+    assertSuccess(r, "CREATE DATABASE");
 
     r = exec.executeSql("SHOW DATABASES");
-    check(r, "SHOW DATABASES");
+    assertSuccess(r, "SHOW DATABASES");
     assert(r.rowCount() == 2, "2 databases");
 
     r = exec.executeSql("USE analytics");
-    check(r, "USE analytics");
+    assertSuccess(r, "USE analytics");
 
     r = exec.executeSql("CREATE TABLE events (id INTEGER, event TEXT)");
-    check(r, "CREATE TABLE in analytics");
+    assertSuccess(r, "CREATE TABLE in analytics");
 
     r = exec.executeSql("INSERT INTO events VALUES (1, 'click')");
-    check(r, "INSERT into analytics");
+    assertSuccess(r, "INSERT into analytics");
 
     r = exec.executeSql("USE main");
-    check(r, "USE main");
+    assertSuccess(r, "USE main");
 
     // Verify tables are isolated
     r = exec.executeSql("SELECT * FROM events");
     assert(r.success == false, "events not visible in main");
 
     r = exec.executeSql("DROP DATABASE analytics");
-    check(r, "DROP DATABASE");
+    assertSuccess(r, "DROP DATABASE");
 
     // ---------------------------------------------------------------
     // VACUUM
@@ -480,10 +453,10 @@ func main() {
     Terminal.Say("--- VACUUM ---");
 
     r = exec.executeSql("DELETE FROM scores WHERE student = 'Charlie'");
-    check(r, "DELETE for vacuum test");
+    assertSuccess(r, "DELETE for vacuum test");
 
     r = exec.executeSql("VACUUM");
-    check(r, "VACUUM");
+    assertSuccess(r, "VACUUM");
 
     // ---------------------------------------------------------------
     // STRING CONCATENATION OPERATOR
@@ -491,7 +464,7 @@ func main() {
     Terminal.Say("--- String Concatenation ---");
 
     r = exec.executeSql("SELECT 'Hello' || ' ' || 'World' FROM users");
-    check(r, "|| concatenation");
+    assertSuccess(r, "|| concatenation");
     assert(val(r, 0, 0) == "Hello World", "|| concat works");
 
     // ---------------------------------------------------------------
@@ -500,7 +473,7 @@ func main() {
     Terminal.Say("--- Column Aliases ---");
 
     r = exec.executeSql("SELECT name AS user_name, age AS user_age FROM users");
-    check(r, "column aliases");
+    assertSuccess(r, "column aliases");
 
     // ---------------------------------------------------------------
     // COMPLEX QUERIES
@@ -509,7 +482,7 @@ func main() {
 
     // GROUP BY + ORDER BY aggregates
     r = exec.executeSql("SELECT student, SUM(score) AS total FROM scores GROUP BY student ORDER BY SUM(score) DESC");
-    check(r, "GROUP BY + ORDER BY aggregate");
+    assertSuccess(r, "GROUP BY + ORDER BY aggregate");
     assert(r.rowCount() > 0, "has grouped+ordered rows");
 
     // Multi-table FROM
@@ -521,12 +494,12 @@ func main() {
     r = exec.executeSql("INSERT INTO t2 VALUES (20)");
 
     r = exec.executeSql("SELECT a, b FROM t1, t2 WHERE a + b > 11");
-    check(r, "multi-table WHERE");
+    assertSuccess(r, "multi-table WHERE");
     assert(r.rowCount() == 3, "3 rows where a + b > 11");
 
     // ---------------------------------------------------------------
     // RESULTS
     // ---------------------------------------------------------------
-    Terminal.Say("");
-    Terminal.Say("=== README Examples: " + Fmt.Int(passCount) + " passed, " + Fmt.Int(failCount) + " failed ===");
+    printResults();
+    return 0;
 }

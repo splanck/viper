@@ -10,7 +10,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 
 - Target audience: Complete beginners who have never written code
 - Approach: Narrative, explanatory, concept-first
-- Primary language: Zia (with BASIC and Pascal for comparison)
+- Primary language: Zia (with BASIC for comparison)
 - Goal: Readers can build sophisticated applications by the end
 
 ---
@@ -21,10 +21,8 @@ This document maps existing Viper documentation and code examples to the Bible's
 |----------|-------|-------|-------------|
 | Existing docs | 144 | ~28,000 | Appendices, reference validation |
 | BASIC examples | 50+ | ~400 | Exercise inspiration, code patterns |
-| Pascal examples | 6 | ~320 | Exercise inspiration |
 | Zia examples | 1 | ~5 | Needs expansion |
 | BASIC demos | 7 games | ~9,600 | Part IV projects (esp. Frogger) |
-| Pascal demos | 4 games | ~2,550 | Alternative implementations |
 | Zia demos | 1 game | ~1,800 | Module system showcase |
 | Runtime headers | 80+ | varies | Part II/III API teaching |
 
@@ -38,7 +36,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 |---------|-----------------|---------------|
 | 0. Getting Started | `/docs/getting-started.md` | Installation, verify setup |
 | 1. The Machine | New | Mental model, what computers do |
-| 2. First Program | `hello.zia`, `hello.bas`, `hello.pas` | Hello World, anatomy of a program |
+| 2. First Program | `hello.zia`, `hello.bas` | Hello World, anatomy of a program |
 | 3. Values and Names | Basic examples | Variables, types, literals |
 | 4. Making Decisions | `ex1_hello_cond.bas`, `ex4_if_elseif.bas` | if/else, conditions, booleans |
 | 5. Repetition | `ex3_for_table.bas`, loop examples | for, while, loop patterns |
@@ -79,8 +77,8 @@ This document maps existing Viper documentation and code examples to the Bible's
 
 | Chapter | Source Material | Content Needs |
 |---------|-----------------|---------------|
-| 14. Objects and Classes | `oop_shapes.pas`, OOP examples | Creating types, methods |
-| 15. Inheritance | `oop_shapes.pas` | Extending types |
+| 14. Objects and Classes | OOP examples | Creating types, methods |
+| 15. Inheritance | OOP examples | Extending types |
 | 16. Interfaces | Language references | Contracts, polymorphism |
 | 17. Polymorphism | Demo games (enemy types, etc.) | Practical OOP patterns |
 | 18. Design Patterns | Chess, Pacman demos | Common solutions |
@@ -135,7 +133,6 @@ Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/zia/frogger/` (16 modul
 |----------|--------|-------|
 | A. Zia Reference | `/docs/zia-reference.md` | Reformatted |
 | B. BASIC Reference | `/docs/basic-reference.md` | Reformatted |
-| C. Pascal Reference | `/docs/pascal-reference.md` | Planned (not yet written) |
 | D. Runtime Library | `/docs/viperlib/*.md` | Consolidated |
 | E. Error Messages | `/docs/devdocs/specs/errors.md` | Expanded with solutions |
 | F. Glossary | New | Terms from all chapters |
@@ -146,18 +143,18 @@ Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/zia/frogger/` (16 modul
 
 ### By Concept (for teaching)
 
-| Concept | Zia | BASIC | Pascal |
-|---------|-----------|-------|--------|
-| Hello World | `hello.zia` | many | `hello.pas` |
-| Variables | needs creation | `ex5_input_echo.bas` | examples |
-| Loops | needs creation | `ex3_for_table.bas` | `fibonacci.pas` |
-| Arrays | needs creation | `ex6_array_sum.bas` | examples |
-| Functions | needs creation | `fib.bas`, `fact.bas` | `factorial.pas` |
-| Strings | needs creation | 12 string examples | examples |
-| File I/O | needs creation | file examples | examples |
-| OOP | needs creation | OOP demos | `oop_shapes.pas` |
-| Graphics | needs creation | Particles demo | demos |
-| Games | Frogger demo | 7 game demos | 4 game demos |
+| Concept | Zia | BASIC |
+|---------|-----------|-------|
+| Hello World | `hello.zia` | many |
+| Variables | needs creation | `ex5_input_echo.bas` |
+| Loops | needs creation | `ex3_for_table.bas` |
+| Arrays | needs creation | `ex6_array_sum.bas` |
+| Functions | needs creation | `fib.bas`, `fact.bas` |
+| Strings | needs creation | 12 string examples |
+| File I/O | needs creation | file examples |
+| OOP | needs creation | OOP demos |
+| Graphics | needs creation | Particles demo |
+| Games | Frogger demo | 7 game demos |
 
 ### Gap: Zia Examples
 
@@ -175,16 +172,16 @@ The Zia frontend has excellent demos but lacks small teaching examples. Need to 
 
 ### Commonly Used (teach early)
 
-| Function | Zia | BASIC | Pascal |
-|----------|-----------|-------|--------|
-| Print text | `Viper.Terminal.Say()` | `PRINT` | `WriteLn` |
-| Read input | `Viper.Terminal.Ask()` | `INPUT` | `ReadLn` |
-| String length | `.Length` | `LEN()` | `Length()` |
-| Substring | `.Substring()` | `MID$()` | `Copy()` |
-| Number to string | `ToString()` | `STR$()` | `IntToStr()` |
-| String to number | `Parse()` | `VAL()` | `StrToInt()` |
-| Random number | `Viper.Math.Random()` | `RND` | `Random()` |
-| Absolute value | `Viper.Math.Abs()` | `ABS()` | `Abs()` |
+| Function | Zia | BASIC |
+|----------|-----------|-------|
+| Print text | `Viper.Terminal.Say()` | `PRINT` |
+| Read input | `Viper.Terminal.Ask()` | `INPUT` |
+| String length | `.Length` | `LEN()` |
+| Substring | `.Substring()` | `MID$()` |
+| Number to string | `ToString()` | `STR$()` |
+| String to number | `Parse()` | `VAL()` |
+| Random number | `Viper.Math.Random()` | `RND` |
+| Absolute value | `Viper.Math.Abs()` | `ABS()` |
 
 ### By Chapter
 

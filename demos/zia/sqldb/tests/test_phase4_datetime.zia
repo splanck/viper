@@ -7,38 +7,11 @@ bind Terminal = Viper.Terminal;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 
+bind "./test_common";
 bind "../executor";
 bind "../types";
 
-var passCount = 0;
-var failCount = 0;
-
-func assert(condition: Boolean, msg: String) {
-    if condition {
-        passCount = passCount + 1;
-    } else {
-        Terminal.Say("FAIL: " + msg);
-        failCount = failCount + 1;
-    }
-}
-
-func check(result: QueryResult, label: String) {
-    if result.success == false {
-        Terminal.Say("FAIL: " + label + " => " + result.message);
-        failCount = failCount + 1;
-    } else {
-        passCount = passCount + 1;
-    }
-}
-
-func val(result: QueryResult, row: Integer, col: Integer) -> String {
-    var r = result.getRow(row);
-    if r == null { return "NULL_ROW"; }
-    var rr = r;
-    return rr.getValue(col).toString();
-}
-
-func main() {
+func main() -> Integer {
     Terminal.Say("=== Phase 4: Date/Time Functions Tests ===");
 
     var exec = new Executor();
@@ -51,7 +24,7 @@ func main() {
     Terminal.Say("--- DATETIME construction ---");
 
     var r = exec.executeSql("SELECT DATETIME(2025, 6, 15, 10, 30, 0)");
-    check(r, "DATETIME(2025,6,15,10,30,0)");
+    assertSuccess(r, "DATETIME(2025,6,15,10,30,0)");
     var dtVal = val(r, 0, 0);
     Terminal.Say("DATETIME result: " + dtVal);
     // Should contain 2025 and 06 and 15
@@ -59,7 +32,7 @@ func main() {
 
     // DATETIME with just date (no time)
     r = exec.executeSql("SELECT DATETIME(2025, 1, 1)");
-    check(r, "DATETIME date only");
+    assertSuccess(r, "DATETIME date only");
     var dtVal2 = val(r, 0, 0);
     Terminal.Say("DATETIME date-only result: " + dtVal2);
     assert(String.Length(dtVal2) >= 10, "DATETIME date-only is a string: " + dtVal2);
@@ -71,27 +44,27 @@ func main() {
     Terminal.Say("--- YEAR/MONTH/DAY extraction ---");
 
     r = exec.executeSql("SELECT YEAR('2025-06-15T10:30:00')");
-    check(r, "YEAR");
+    assertSuccess(r, "YEAR");
     assert(val(r, 0, 0) == "2025", "YEAR('2025-06-15T10:30:00')=2025: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT MONTH('2025-06-15T10:30:00')");
-    check(r, "MONTH");
+    assertSuccess(r, "MONTH");
     assert(val(r, 0, 0) == "6", "MONTH('2025-06-15T10:30:00')=6: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT DAY('2025-06-15T10:30:00')");
-    check(r, "DAY");
+    assertSuccess(r, "DAY");
     assert(val(r, 0, 0) == "15", "DAY('2025-06-15T10:30:00')=15: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT HOUR('2025-06-15T10:30:45')");
-    check(r, "HOUR");
+    assertSuccess(r, "HOUR");
     assert(val(r, 0, 0) == "10", "HOUR=10: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT MINUTE('2025-06-15T10:30:45')");
-    check(r, "MINUTE");
+    assertSuccess(r, "MINUTE");
     assert(val(r, 0, 0) == "30", "MINUTE=30: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT SECOND('2025-06-15T10:30:45')");
-    check(r, "SECOND");
+    assertSuccess(r, "SECOND");
     assert(val(r, 0, 0) == "45", "SECOND=45: " + val(r, 0, 0));
 
     //=========================================================================
@@ -101,11 +74,11 @@ func main() {
     Terminal.Say("--- DATE/TIME extraction ---");
 
     r = exec.executeSql("SELECT DATE('2025-06-15T10:30:00')");
-    check(r, "DATE()");
+    assertSuccess(r, "DATE()");
     assert(val(r, 0, 0) == "2025-06-15", "DATE='2025-06-15': " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT TIME('2025-06-15T10:30:45')");
-    check(r, "TIME()");
+    assertSuccess(r, "TIME()");
     assert(val(r, 0, 0) == "10:30:45", "TIME='10:30:45': " + val(r, 0, 0));
 
     //=========================================================================
@@ -116,17 +89,17 @@ func main() {
 
     // Add 10 days to 2025-01-01
     r = exec.executeSql("SELECT DATE(DATE_ADD('2025-01-01T00:00:00', 10))");
-    check(r, "DATE_ADD");
+    assertSuccess(r, "DATE_ADD");
     assert(val(r, 0, 0) == "2025-01-11", "DATE_ADD 10 days: " + val(r, 0, 0));
 
     // Subtract 5 days from 2025-01-15
     r = exec.executeSql("SELECT DATE(DATE_SUB('2025-01-15T00:00:00', 5))");
-    check(r, "DATE_SUB");
+    assertSuccess(r, "DATE_SUB");
     assert(val(r, 0, 0) == "2025-01-10", "DATE_SUB 5 days: " + val(r, 0, 0));
 
     // Add days across month boundary
     r = exec.executeSql("SELECT DATE(DATE_ADD('2025-01-30T00:00:00', 5))");
-    check(r, "DATE_ADD cross month");
+    assertSuccess(r, "DATE_ADD cross month");
     assert(val(r, 0, 0) == "2025-02-04", "DATE_ADD cross month: " + val(r, 0, 0));
 
     //=========================================================================
@@ -136,15 +109,15 @@ func main() {
     Terminal.Say("--- DATEDIFF ---");
 
     r = exec.executeSql("SELECT DATEDIFF('2025-01-15T00:00:00', '2025-01-10T00:00:00')");
-    check(r, "DATEDIFF");
+    assertSuccess(r, "DATEDIFF");
     assert(val(r, 0, 0) == "5", "DATEDIFF 5 days: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT DATEDIFF('2025-01-10T00:00:00', '2025-01-15T00:00:00')");
-    check(r, "DATEDIFF negative");
+    assertSuccess(r, "DATEDIFF negative");
     assert(val(r, 0, 0) == "-5", "DATEDIFF -5 days: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT DATEDIFF('2025-03-01T00:00:00', '2025-02-01T00:00:00')");
-    check(r, "DATEDIFF cross month");
+    assertSuccess(r, "DATEDIFF cross month");
     assert(val(r, 0, 0) == "28", "DATEDIFF Feb=28 days: " + val(r, 0, 0));
 
     //=========================================================================
@@ -154,7 +127,7 @@ func main() {
     Terminal.Say("--- TIMEDIFF ---");
 
     r = exec.executeSql("SELECT TIMEDIFF('2025-01-01T01:00:00', '2025-01-01T00:00:00')");
-    check(r, "TIMEDIFF");
+    assertSuccess(r, "TIMEDIFF");
     assert(val(r, 0, 0) == "3600", "TIMEDIFF 1 hour=3600: " + val(r, 0, 0));
 
     //=========================================================================
@@ -164,26 +137,26 @@ func main() {
     Terminal.Say("--- NOW / CURRENT_DATE / CURRENT_TIME ---");
 
     r = exec.executeSql("SELECT NOW()");
-    check(r, "NOW()");
+    assertSuccess(r, "NOW()");
     var nowVal = val(r, 0, 0);
     Terminal.Say("NOW() = " + nowVal);
     assert(String.Length(nowVal) >= 10, "NOW() returns datetime string: " + nowVal);
     assert(nowVal != "NULL", "NOW() is not NULL");
 
     r = exec.executeSql("SELECT CURRENT_DATE");
-    check(r, "CURRENT_DATE");
+    assertSuccess(r, "CURRENT_DATE");
     var cdVal = val(r, 0, 0);
     Terminal.Say("CURRENT_DATE = " + cdVal);
     assert(String.Length(cdVal) == 10, "CURRENT_DATE is YYYY-MM-DD: " + cdVal);
 
     r = exec.executeSql("SELECT CURRENT_TIME");
-    check(r, "CURRENT_TIME");
+    assertSuccess(r, "CURRENT_TIME");
     var ctVal = val(r, 0, 0);
     Terminal.Say("CURRENT_TIME = " + ctVal);
     assert(String.Length(ctVal) == 8, "CURRENT_TIME is HH:MM:SS: " + ctVal);
 
     r = exec.executeSql("SELECT CURRENT_TIMESTAMP");
-    check(r, "CURRENT_TIMESTAMP");
+    assertSuccess(r, "CURRENT_TIMESTAMP");
     var ctsVal = val(r, 0, 0);
     Terminal.Say("CURRENT_TIMESTAMP = " + ctsVal);
     assert(String.Length(ctsVal) >= 10, "CURRENT_TIMESTAMP is datetime: " + ctsVal);
@@ -196,13 +169,13 @@ func main() {
 
     // 2025-06-15 is a Sunday (0)
     r = exec.executeSql("SELECT DAYOFWEEK('2025-06-15T00:00:00')");
-    check(r, "DAYOFWEEK");
+    assertSuccess(r, "DAYOFWEEK");
     Terminal.Say("DAYOFWEEK(2025-06-15) = " + val(r, 0, 0));
     assert(val(r, 0, 0) == "0", "2025-06-15 is Sunday(0): " + val(r, 0, 0));
 
     // 2025-06-16 is a Monday (1)
     r = exec.executeSql("SELECT DAYOFWEEK('2025-06-16T00:00:00')");
-    check(r, "DAYOFWEEK Monday");
+    assertSuccess(r, "DAYOFWEEK Monday");
     assert(val(r, 0, 0) == "1", "2025-06-16 is Monday(1): " + val(r, 0, 0));
 
     //=========================================================================
@@ -213,14 +186,14 @@ func main() {
 
     // Epoch for 2025-01-01 00:00:00 UTC
     r = exec.executeSql("SELECT EPOCH('2025-01-01T00:00:00')");
-    check(r, "EPOCH");
+    assertSuccess(r, "EPOCH");
     var epochVal = val(r, 0, 0);
     Terminal.Say("EPOCH(2025-01-01) = " + epochVal);
     assert(epochVal != "0", "EPOCH is non-zero: " + epochVal);
 
     // Round-trip: FROM_EPOCH(EPOCH(dt)) should give back the same date
     r = exec.executeSql("SELECT DATE(FROM_EPOCH(EPOCH('2025-06-15T10:30:00')))");
-    check(r, "EPOCH round-trip");
+    assertSuccess(r, "EPOCH round-trip");
     assert(val(r, 0, 0) == "2025-06-15", "EPOCH round-trip date: " + val(r, 0, 0));
 
     //=========================================================================
@@ -230,7 +203,7 @@ func main() {
     Terminal.Say("--- STRFTIME ---");
 
     r = exec.executeSql("SELECT STRFTIME('%Y-%m-%d', '2025-06-15T10:30:00')");
-    check(r, "STRFTIME");
+    assertSuccess(r, "STRFTIME");
     assert(val(r, 0, 0) == "2025-06-15", "STRFTIME %Y-%m-%d: " + val(r, 0, 0));
 
     //=========================================================================
@@ -239,42 +212,42 @@ func main() {
     Terminal.Say("");
     Terminal.Say("--- Date/time with table data ---");
 
-    check(exec.executeSql("CREATE TABLE events (id INTEGER PRIMARY KEY, name TEXT, event_date TEXT)"), "create events");
-    check(exec.executeSql("INSERT INTO events VALUES (1, 'Launch', '2025-01-15T09:00:00')"), "event 1");
-    check(exec.executeSql("INSERT INTO events VALUES (2, 'Update', '2025-03-20T14:30:00')"), "event 2");
-    check(exec.executeSql("INSERT INTO events VALUES (3, 'Release', '2025-06-15T18:00:00')"), "event 3");
-    check(exec.executeSql("INSERT INTO events VALUES (4, 'Meeting', '2025-06-15T10:00:00')"), "event 4");
+    assertSuccess(exec.executeSql("CREATE TABLE events (id INTEGER PRIMARY KEY, name TEXT, event_date TEXT)"), "create events");
+    assertSuccess(exec.executeSql("INSERT INTO events VALUES (1, 'Launch', '2025-01-15T09:00:00')"), "event 1");
+    assertSuccess(exec.executeSql("INSERT INTO events VALUES (2, 'Update', '2025-03-20T14:30:00')"), "event 2");
+    assertSuccess(exec.executeSql("INSERT INTO events VALUES (3, 'Release', '2025-06-15T18:00:00')"), "event 3");
+    assertSuccess(exec.executeSql("INSERT INTO events VALUES (4, 'Meeting', '2025-06-15T10:00:00')"), "event 4");
 
     // Extract year from column
     r = exec.executeSql("SELECT name, YEAR(event_date) FROM events WHERE id = 1");
-    check(r, "YEAR from column");
+    assertSuccess(r, "YEAR from column");
     assert(val(r, 0, 1) == "2025", "Year of event 1: " + val(r, 0, 1));
 
     // Extract month from column
     r = exec.executeSql("SELECT name, MONTH(event_date) FROM events WHERE id = 2");
-    check(r, "MONTH from column");
+    assertSuccess(r, "MONTH from column");
     assert(val(r, 0, 1) == "3", "Month of event 2: " + val(r, 0, 1));
 
     // Filter by month
     r = exec.executeSql("SELECT COUNT(*) FROM events WHERE MONTH(event_date) = 6");
-    check(r, "Filter by month");
+    assertSuccess(r, "Filter by month");
     assert(val(r, 0, 0) == "2", "2 events in June: " + val(r, 0, 0));
 
     // Filter by day
     r = exec.executeSql("SELECT COUNT(*) FROM events WHERE DAY(event_date) = 15");
-    check(r, "Filter by day");
+    assertSuccess(r, "Filter by day");
     assert(val(r, 0, 0) == "3", "3 events on day 15: " + val(r, 0, 0));
 
     // DATEDIFF between events
     r = exec.executeSql("SELECT DATEDIFF('2025-06-15T00:00:00', '2025-01-15T00:00:00')");
-    check(r, "DATEDIFF events");
+    assertSuccess(r, "DATEDIFF events");
     var diffVal = val(r, 0, 0);
     Terminal.Say("Days between Jan 15 and Jun 15: " + diffVal);
     assert(diffVal == "151", "151 days between Jan 15 and Jun 15: " + diffVal);
 
     // DATE_ADD on column data
     r = exec.executeSql("SELECT name, DATE(DATE_ADD(event_date, 30)) AS plus30 FROM events WHERE id = 1");
-    check(r, "DATE_ADD on column");
+    assertSuccess(r, "DATE_ADD on column");
     assert(val(r, 0, 1) == "2025-02-14", "Launch + 30 days: " + val(r, 0, 1));
 
     //=========================================================================
@@ -284,15 +257,15 @@ func main() {
     Terminal.Say("--- NULL handling ---");
 
     r = exec.executeSql("SELECT YEAR(NULL)");
-    check(r, "YEAR(NULL)");
+    assertSuccess(r, "YEAR(NULL)");
     assert(val(r, 0, 0) == "NULL", "YEAR(NULL) is NULL: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT DATEDIFF(NULL, '2025-01-01T00:00:00')");
-    check(r, "DATEDIFF(NULL, ...)");
+    assertSuccess(r, "DATEDIFF(NULL, ...)");
     assert(val(r, 0, 0) == "NULL", "DATEDIFF(NULL, ...) is NULL: " + val(r, 0, 0));
 
     r = exec.executeSql("SELECT DATE_ADD(NULL, 5)");
-    check(r, "DATE_ADD(NULL, ...)");
+    assertSuccess(r, "DATE_ADD(NULL, ...)");
     assert(val(r, 0, 0) == "NULL", "DATE_ADD(NULL, ...) is NULL: " + val(r, 0, 0));
 
     //=========================================================================
@@ -301,21 +274,17 @@ func main() {
     Terminal.Say("");
     Terminal.Say("--- Date/time in INSERT ---");
 
-    check(exec.executeSql("CREATE TABLE logs (id INTEGER PRIMARY KEY, msg TEXT, ts TEXT)"), "create logs");
-    check(exec.executeSql("INSERT INTO logs VALUES (1, 'startup', DATETIME(2025, 1, 1, 0, 0, 0))"), "log 1");
-    check(exec.executeSql("INSERT INTO logs VALUES (2, 'request', DATETIME(2025, 1, 1, 12, 30, 0))"), "log 2");
+    assertSuccess(exec.executeSql("CREATE TABLE logs (id INTEGER PRIMARY KEY, msg TEXT, ts TEXT)"), "create logs");
+    assertSuccess(exec.executeSql("INSERT INTO logs VALUES (1, 'startup', DATETIME(2025, 1, 1, 0, 0, 0))"), "log 1");
+    assertSuccess(exec.executeSql("INSERT INTO logs VALUES (2, 'request', DATETIME(2025, 1, 1, 12, 30, 0))"), "log 2");
 
     r = exec.executeSql("SELECT HOUR(ts) FROM logs WHERE id = 2");
-    check(r, "HOUR from log");
+    assertSuccess(r, "HOUR from log");
     assert(val(r, 0, 0) == "12", "Log 2 hour=12: " + val(r, 0, 0));
 
     //=========================================================================
     // Summary
     //=========================================================================
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passCount));
-    Terminal.Say("Failed: " + Fmt.Int(failCount));
-
-    Terminal.Say("=== Phase 4 DateTime: " + Fmt.Int(passCount) + " passed, " + Fmt.Int(failCount) + " failed ===");
+    printResults();
+    return 0;
 }

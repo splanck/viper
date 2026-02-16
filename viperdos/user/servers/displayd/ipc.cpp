@@ -124,8 +124,15 @@ void handle_create_surface(int32_t client_channel,
     }
 
     // Set focus to new surface (unless it's a SYSTEM surface like desktop)
+    // Match mouse-click behavior: send focus events, bring to front
     if (!(surf->flags & SURFACE_FLAG_SYSTEM)) {
+        Surface *old_focused = find_surface_by_id(g_focused_surface);
+        if (old_focused && old_focused->id != surf->id) {
+            queue_focus_event(old_focused, false);
+        }
         g_focused_surface = surf->id;
+        bring_to_front(surf);
+        queue_focus_event(surf, true);
     }
 
     // If client passed an event channel with CREATE_SURFACE, store it now.
@@ -501,7 +508,17 @@ void handle_request(int32_t client_channel,
 
             Surface *surf = find_surface_by_id(req->surface_id);
             if (surf && !(surf->flags & SURFACE_FLAG_SYSTEM)) {
-                g_focused_surface = surf->id;
+                // Match mouse-click behavior: send focus events, bring to front
+                if (g_focused_surface != surf->id) {
+                    Surface *old_focused = find_surface_by_id(g_focused_surface);
+                    if (old_focused) {
+                        queue_focus_event(old_focused, false);
+                    }
+                    g_focused_surface = surf->id;
+                    bring_to_front(surf);
+                    queue_focus_event(surf, true);
+                }
+                composite();
                 reply.status = 0;
             }
 

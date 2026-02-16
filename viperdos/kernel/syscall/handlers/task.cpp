@@ -416,15 +416,19 @@ SyscallResult sys_wait(u64 a0, u64, u64, u64, u64, u64) {
 }
 
 /// @brief Wait for a specific child process (by PID) to exit.
-SyscallResult sys_waitpid(u64 a0, u64 a1, u64, u64, u64, u64) {
+/// @param a0 PID to wait for (-1 = any child).
+/// @param a1 Pointer to i32 status (may be null).
+/// @param a2 Flags: bit 0 = WNOHANG (return 0 if no zombie instead of blocking).
+SyscallResult sys_waitpid(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     i64 pid = static_cast<i64>(a0);
     i32 *status = reinterpret_cast<i32 *>(a1);
+    bool nohang = (a2 & 1) != 0;
 
     if (status && !validate_user_write(status, sizeof(i32))) {
         return err_invalid_arg();
     }
 
-    i64 result = viper::wait(pid, status);
+    i64 result = viper::wait(pid, status, nohang);
     if (result < 0) {
         return err_code(result);
     }

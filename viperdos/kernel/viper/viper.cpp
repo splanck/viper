@@ -509,7 +509,7 @@ void exit(i32 code) {
 }
 
 /** @copydoc viper::wait */
-i64 wait(i64 child_id, i32 *status) {
+i64 wait(i64 child_id, i32 *status, bool nohang) {
     Viper *v = current();
     if (!v)
         return error::VERR_NOT_SUPPORTED;
@@ -532,6 +532,11 @@ i64 wait(i64 child_id, i32 *status) {
         // Check if we have any children at all
         if (!v->first_child) {
             return error::VERR_NOT_FOUND;
+        }
+
+        // WNOHANG: return 0 immediately if no zombie (child still running)
+        if (nohang) {
+            return 0;
         }
 
         // No zombie found - block and wait

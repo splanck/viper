@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: runtime/rt_exc.h
-// Purpose: Runtime exception support for Pascal exception handling.
+// Purpose: Runtime exception support for structured exception handling.
 // Key invariants: Exception objects are ref-counted and contain a message string.
 // Ownership/Lifetime: Exception objects follow normal ref-counting rules.
 //

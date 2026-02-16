@@ -729,7 +729,7 @@ vbasic <file.bas> --emit-il # Compile to IL
 
 | Type | Purpose | Examples |
 |------|---------|----------|
-| Language | Add language support | Pascal, Lua, IL |
+| Language | Add language support | Lua, IL |
 | Theme | Color schemes | Monokai, Solarized |
 | Formatter | Code formatting | Prettier-style |
 | Linter | Code analysis | Style checker |
@@ -741,21 +741,21 @@ vbasic <file.bas> --emit-il # Compile to IL
 
 ```json
 {
-    "name": "viper-pascal",
-    "displayName": "Pascal Language",
+    "name": "viper-il",
+    "displayName": "Viper IL Language",
     "version": "1.0.0",
-    "description": "Pascal language support for ViperIDE",
+    "description": "Viper IL language support for ViperIDE",
     "main": "extension.zia",
     "contributes": {
         "languages": [{
-            "id": "pascal",
-            "extensions": [".pas", ".pp"],
+            "id": "il",
+            "extensions": [".il"],
             "configuration": "./language-configuration.json"
         }],
         "grammars": [{
-            "language": "pascal",
-            "scopeName": "source.pascal",
-            "path": "./syntaxes/pascal.json"
+            "language": "il",
+            "scopeName": "source.il",
+            "path": "./syntaxes/il.json"
         }]
     }
 }

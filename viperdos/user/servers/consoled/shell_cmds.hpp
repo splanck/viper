@@ -8,6 +8,11 @@
 
 namespace consoled {
 
+class EmbeddedShell; // Forward declaration
+
+/// Set the shell instance pointer (called during init).
+void shell_set_instance(EmbeddedShell *shell);
+
 /// Get the current working directory for the embedded shell.
 const char *shell_current_dir();
 

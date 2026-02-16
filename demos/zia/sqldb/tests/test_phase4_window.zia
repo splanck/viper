@@ -7,38 +7,12 @@ bind Terminal = Viper.Terminal;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 
+bind "./test_common";
+
 bind "../executor";
 bind "../types";
 
-var passCount = 0;
-var failCount = 0;
-
-func assert(condition: Boolean, msg: String) {
-    if condition {
-        passCount = passCount + 1;
-    } else {
-        Terminal.Say("FAIL: " + msg);
-        failCount = failCount + 1;
-    }
-}
-
-func check(result: QueryResult, label: String) {
-    if result.success == false {
-        Terminal.Say("FAIL: " + label + " => " + result.message);
-        failCount = failCount + 1;
-    } else {
-        passCount = passCount + 1;
-    }
-}
-
-func val(result: QueryResult, row: Integer, col: Integer) -> String {
-    var r = result.getRow(row);
-    if r == null { return "NULL_ROW"; }
-    var rr = r;
-    return rr.getValue(col).toString();
-}
-
-func main() {
+func main() -> Integer {
     Terminal.Say("=== Phase 4: Window Functions Tests ===");
 
     var exec = new Executor();
@@ -47,15 +21,15 @@ func main() {
     //=========================================================================
     // Setup test data
     //=========================================================================
-    check(exec.executeSql("CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, dept TEXT, salary INTEGER)"), "create employees");
-    check(exec.executeSql("INSERT INTO employees VALUES (1, 'Alice', 'Engineering', 90000)"), "emp 1");
-    check(exec.executeSql("INSERT INTO employees VALUES (2, 'Bob', 'Engineering', 80000)"), "emp 2");
-    check(exec.executeSql("INSERT INTO employees VALUES (3, 'Charlie', 'Sales', 70000)"), "emp 3");
-    check(exec.executeSql("INSERT INTO employees VALUES (4, 'Dave', 'Sales', 60000)"), "emp 4");
-    check(exec.executeSql("INSERT INTO employees VALUES (5, 'Eve', 'Engineering', 85000)"), "emp 5");
-    check(exec.executeSql("INSERT INTO employees VALUES (6, 'Frank', 'Sales', 75000)"), "emp 6");
-    check(exec.executeSql("INSERT INTO employees VALUES (7, 'Grace', 'Marketing', 65000)"), "emp 7");
-    check(exec.executeSql("INSERT INTO employees VALUES (8, 'Heidi', 'Marketing', 70000)"), "emp 8");
+    assertSuccess(exec.executeSql("CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, dept TEXT, salary INTEGER)"), "create employees");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (1, 'Alice', 'Engineering', 90000)"), "emp 1");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (2, 'Bob', 'Engineering', 80000)"), "emp 2");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (3, 'Charlie', 'Sales', 70000)"), "emp 3");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (4, 'Dave', 'Sales', 60000)"), "emp 4");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (5, 'Eve', 'Engineering', 85000)"), "emp 5");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (6, 'Frank', 'Sales', 75000)"), "emp 6");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (7, 'Grace', 'Marketing', 65000)"), "emp 7");
+    assertSuccess(exec.executeSql("INSERT INTO employees VALUES (8, 'Heidi', 'Marketing', 70000)"), "emp 8");
 
     //=========================================================================
     // ROW_NUMBER
@@ -65,7 +39,7 @@ func main() {
 
     // Test 1: Simple ROW_NUMBER with ORDER BY
     var r = exec.executeSql("SELECT name, salary, ROW_NUMBER() OVER (ORDER BY salary DESC) AS rn FROM employees");
-    check(r, "ROW_NUMBER");
+    assertSuccess(r, "ROW_NUMBER");
     // Sorted by salary DESC: Alice(90000), Eve(85000), Bob(80000), Frank(75000),
     // Charlie/Heidi(70000), Grace(65000), Dave(60000)
     assert(val(r, 0, 2) == "1", "row 0 rn=1: " + val(r, 0, 2));
@@ -73,7 +47,7 @@ func main() {
 
     // Test 2: ROW_NUMBER with PARTITION BY
     r = exec.executeSql("SELECT name, dept, salary, ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) AS rn FROM employees");
-    check(r, "ROW_NUMBER with PARTITION");
+    assertSuccess(r, "ROW_NUMBER with PARTITION");
 
     // Find Engineering rows and check their row numbers
     // Engineering: Alice(90000)=1, Eve(85000)=2, Bob(80000)=3
@@ -105,16 +79,16 @@ func main() {
     Terminal.Say("--- RANK ---");
 
     // Create data with ties
-    check(exec.executeSql("CREATE TABLE scores (id INTEGER PRIMARY KEY, name TEXT, score INTEGER)"), "create scores");
-    check(exec.executeSql("INSERT INTO scores VALUES (1, 'A', 100)"), "score 1");
-    check(exec.executeSql("INSERT INTO scores VALUES (2, 'B', 90)"), "score 2");
-    check(exec.executeSql("INSERT INTO scores VALUES (3, 'C', 90)"), "score 3");
-    check(exec.executeSql("INSERT INTO scores VALUES (4, 'D', 80)"), "score 4");
-    check(exec.executeSql("INSERT INTO scores VALUES (5, 'E', 80)"), "score 5");
-    check(exec.executeSql("INSERT INTO scores VALUES (6, 'F', 70)"), "score 6");
+    assertSuccess(exec.executeSql("CREATE TABLE scores (id INTEGER PRIMARY KEY, name TEXT, score INTEGER)"), "create scores");
+    assertSuccess(exec.executeSql("INSERT INTO scores VALUES (1, 'A', 100)"), "score 1");
+    assertSuccess(exec.executeSql("INSERT INTO scores VALUES (2, 'B', 90)"), "score 2");
+    assertSuccess(exec.executeSql("INSERT INTO scores VALUES (3, 'C', 90)"), "score 3");
+    assertSuccess(exec.executeSql("INSERT INTO scores VALUES (4, 'D', 80)"), "score 4");
+    assertSuccess(exec.executeSql("INSERT INTO scores VALUES (5, 'E', 80)"), "score 5");
+    assertSuccess(exec.executeSql("INSERT INTO scores VALUES (6, 'F', 70)"), "score 6");
 
     r = exec.executeSql("SELECT name, score, RANK() OVER (ORDER BY score DESC) AS rnk FROM scores");
-    check(r, "RANK");
+    assertSuccess(r, "RANK");
 
     // Expected: A=1, B=2, C=2, D=4, E=4, F=6
     // Find rows by name and check rank
@@ -138,7 +112,7 @@ func main() {
     Terminal.Say("--- DENSE_RANK ---");
 
     r = exec.executeSql("SELECT name, score, DENSE_RANK() OVER (ORDER BY score DESC) AS drnk FROM scores");
-    check(r, "DENSE_RANK");
+    assertSuccess(r, "DENSE_RANK");
 
     // Expected: A=1, B=2, C=2, D=3, E=3, F=4
     i = 0;
@@ -161,12 +135,12 @@ func main() {
     Terminal.Say("--- SUM OVER ---");
 
     r = exec.executeSql("SELECT name, salary, SUM(salary) OVER (ORDER BY salary) AS running_sum FROM employees");
-    check(r, "SUM OVER");
+    assertSuccess(r, "SUM OVER");
     // The running sum should increase with each row (sorted by salary ASC)
 
     // Test with PARTITION BY
     r = exec.executeSql("SELECT name, dept, salary, SUM(salary) OVER (PARTITION BY dept ORDER BY salary) AS dept_running_sum FROM employees");
-    check(r, "SUM OVER PARTITION");
+    assertSuccess(r, "SUM OVER PARTITION");
 
     // Check that the running sum within Engineering partition adds up correctly
     // Engineering sorted by salary: Bob(80000), Eve(85000), Alice(90000)
@@ -195,7 +169,7 @@ func main() {
     Terminal.Say("--- COUNT OVER ---");
 
     r = exec.executeSql("SELECT name, dept, COUNT(*) OVER (PARTITION BY dept) AS dept_count FROM employees");
-    check(r, "COUNT OVER PARTITION");
+    assertSuccess(r, "COUNT OVER PARTITION");
 
     // Every Engineering row should have dept_count=3
     // Every Sales row should have dept_count=3
@@ -223,16 +197,12 @@ func main() {
     Terminal.Say("--- Multiple Window Functions ---");
 
     r = exec.executeSql("SELECT name, salary, ROW_NUMBER() OVER (ORDER BY salary DESC) AS rn, RANK() OVER (ORDER BY salary DESC) AS rnk FROM scores");
-    check(r, "multiple window functions");
+    assertSuccess(r, "multiple window functions");
     assert(r.rowCount() == 6, "6 rows in result");
 
     //=========================================================================
     // Summary
     //=========================================================================
-    Terminal.Say("");
-    Terminal.Say("=== Results ===");
-    Terminal.Say("Passed: " + Fmt.Int(passCount));
-    Terminal.Say("Failed: " + Fmt.Int(failCount));
-
-    Terminal.Say("=== Phase 4 Window: " + Fmt.Int(passCount) + " passed, " + Fmt.Int(failCount) + " failed ===");
+    printResults();
+    return 0;
 }

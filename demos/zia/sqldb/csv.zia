@@ -1,5 +1,10 @@
 // csv.zia — CSV Import/Export Operations
 // Part of ViperSQL
+//
+// Handles IMPORT CSV and EXPORT CSV commands. Import reads a CSV file,
+// auto-creates the target table from the header row, and inserts all
+// data rows with type inference (integer, real, or text). Export writes
+// a table's contents to a CSV file with quoted fields and proper escaping.
 
 module csv;
 

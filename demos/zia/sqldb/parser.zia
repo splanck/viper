@@ -1,5 +1,10 @@
-// parser.zia — SQL Parser with proper OOP design
+// parser.zia — SQL Parser
 // Part of ViperSQL
+//
+// Recursive descent parser that converts a stream of SQL tokens (from the
+// Lexer) into typed AST nodes (SelectStmt, InsertStmt, CreateTableStmt, etc.).
+// Supports the full ViperSQL SQL dialect including DDL, DML, transactions,
+// CTEs, window functions, set operations, and user management commands.
 
 module parser;
 

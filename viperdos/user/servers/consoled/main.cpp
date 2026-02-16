@@ -21,6 +21,7 @@
 #include "embedded_shell.hpp"
 #include "keymap.hpp"
 #include "request.hpp"
+#include "shell_cmds.hpp"
 #include "shell_io.hpp"
 #include "text_buffer.hpp"
 #include <gui.h>
@@ -128,23 +129,19 @@ class ConsoleServer {
         while (true) {
             bool didWork = false;
 
-            // Process IPC messages (CONSOLED service for other apps)
+            // 1. Check foreground process exit (non-blocking)
+            if (m_shell.is_foreground()) {
+                if (m_shell.check_foreground()) {
+                    didWork = true;
+                }
+            }
+
+            // 2. Process IPC messages (child process output via CONSOLED service)
             if (m_isPrimary && m_serviceChannel >= 0) {
                 didWork |= processIpcMessages(msgBuf, handles);
             }
 
-            // Present with frame rate limiting
-            uint64_t now = sys::uptime();
-            uint64_t timeSincePresent = now - m_lastPresentTime;
-            if (m_textBuffer.needs_present() && timeSincePresent >= FRAME_INTERVAL_MS) {
-                int present_err = gui_present_async(m_window);
-                if (present_err == 0) {
-                    m_textBuffer.clear_needs_present();
-                    m_lastPresentTime = now;
-                }
-            }
-
-            // Process GUI events
+            // 3. Process GUI events (keyboard input)
             while (gui_poll_event(m_window, &event) == 0) {
                 didWork = true;
                 if (!handleEvent(event)) {
@@ -152,12 +149,21 @@ class ConsoleServer {
                 }
             }
 
-            // Sleep if no work
+            // 4. Present with frame rate limiting (AFTER events, synchronous)
+            uint64_t now = sys::uptime();
+            if (m_textBuffer.needs_present() && (now - m_lastPresentTime) >= FRAME_INTERVAL_MS) {
+                gui_present(m_window);
+                m_textBuffer.clear_needs_present();
+                m_lastPresentTime = now;
+            }
+
+            // 5. Sleep if no work
             if (!didWork) {
                 if (m_textBuffer.needs_present()) {
-                    uint64_t remaining = FRAME_INTERVAL_MS - timeSincePresent;
-                    if (remaining > 0 && remaining <= FRAME_INTERVAL_MS) {
-                        sys::sleep(remaining);
+                    // Need to present soon — sleep until next frame
+                    uint64_t elapsed = now - m_lastPresentTime;
+                    if (elapsed < FRAME_INTERVAL_MS) {
+                        sys::sleep(FRAME_INTERVAL_MS - elapsed);
                     }
                 } else {
                     sys::sleep(5); // Brief sleep to let other tasks run
@@ -323,6 +329,7 @@ class ConsoleServer {
         // Initialize embedded shell I/O and print banner + prompt
         shell_io_init(&m_ansiParser, &m_textBuffer, m_window);
         m_shell.init(&m_textBuffer, &m_ansiParser);
+        shell_set_instance(&m_shell);
 
         // Fill background and draw initial content
         gui_fill_rect(m_window, 0, 0, m_windowWidth, m_windowHeight, DEFAULT_BG);
@@ -405,19 +412,20 @@ class ConsoleServer {
         if (event.type == GUI_EVENT_KEY && event.key.pressed) {
             char c = keycode_to_ascii(event.key.keycode, event.key.modifiers);
 
-            // Handle special keys (arrows, home, end, delete)
-            m_shell.handle_special_key(event.key.keycode, event.key.modifiers);
-
-            // Handle ASCII characters
-            if (c != 0) {
-                m_shell.handle_char(c);
-            }
-
-            // Force synchronous present after command execution
-            if (m_shell.command_just_ran()) {
-                gui_present(m_window);
-                m_textBuffer.clear_needs_present();
-                m_lastPresentTime = sys::uptime();
+            if (m_shell.is_foreground()) {
+                // Forward keyboard input to foreground process via kernel TTY
+                if (c != 0) {
+                    m_shell.forward_to_foreground(c);
+                } else {
+                    // Forward special keys as ANSI escape sequences
+                    m_shell.forward_special_key(event.key.keycode);
+                }
+            } else {
+                // Normal shell input handling
+                m_shell.handle_special_key(event.key.keycode, event.key.modifiers);
+                if (c != 0) {
+                    m_shell.handle_char(c);
+                }
             }
         } else if (event.type == GUI_EVENT_CLOSE) {
             Debug::print("[consoled] Closing console...\n");

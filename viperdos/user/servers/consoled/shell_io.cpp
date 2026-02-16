@@ -11,14 +11,11 @@ namespace consoled {
 static AnsiParser *g_parser = nullptr;
 static TextBuffer *g_buffer = nullptr;
 static gui_window_t *g_window = nullptr;
-static uint32_t g_char_count = 0;
-static constexpr uint32_t PRESENT_THRESHOLD = 512;
 
 void shell_io_init(AnsiParser *parser, TextBuffer *buf, gui_window_t *window) {
     g_parser = parser;
     g_buffer = buf;
     g_window = window;
-    g_char_count = 0;
 }
 
 TextBuffer *shell_get_buffer() {
@@ -26,18 +23,7 @@ TextBuffer *shell_get_buffer() {
 }
 
 void shell_io_flush() {
-    if (g_window && g_char_count > 0) {
-        gui_present_async(g_window);
-        g_char_count = 0;
-    }
-}
-
-static void maybe_present(size_t chars_written) {
-    g_char_count += static_cast<uint32_t>(chars_written);
-    if (g_char_count >= PRESENT_THRESHOLD && g_window) {
-        gui_present_async(g_window);
-        g_char_count = 0;
-    }
+    // No-op: presentation is handled by the main event loop (synchronous gui_present).
 }
 
 void shell_print(const char *s) {
@@ -46,7 +32,6 @@ void shell_print(const char *s) {
     size_t len = shell_strlen(s);
     if (len > 0) {
         g_parser->write(s, len);
-        maybe_present(len);
     }
 }
 
@@ -54,7 +39,6 @@ void shell_print_char(char c) {
     if (!g_parser)
         return;
     g_parser->write(&c, 1);
-    maybe_present(1);
 }
 
 void shell_put_num(int64_t n) {

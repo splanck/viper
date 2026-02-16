@@ -37,6 +37,22 @@ class EmbeddedShell {
         return m_command_ran;
     }
 
+    /// Returns true if a foreground process is running.
+    bool is_foreground() const { return m_fg_pid != 0; }
+
+    /// Check if foreground process has exited (non-blocking).
+    /// Returns true if foreground mode ended.
+    bool check_foreground();
+
+    /// Forward a keyboard character to the foreground process via kernel TTY.
+    void forward_to_foreground(char c);
+
+    /// Forward a special key (arrow, home, etc.) as ANSI escape sequence to foreground.
+    void forward_special_key(uint16_t keycode);
+
+    /// Enter foreground mode for a spawned child process.
+    void enter_foreground(uint64_t pid, uint64_t task_id);
+
   private:
     void execute_command();
     void clear_input_line();
@@ -65,6 +81,10 @@ class EmbeddedShell {
     size_t m_history_index = 0; // Write index (circular)
     size_t m_history_browse = 0;
     bool m_browsing_history = false;
+
+    // Foreground process state
+    uint64_t m_fg_pid = 0;     // Child viper ID (0 = no foreground process)
+    uint64_t m_fg_task_id = 0; // Child task ID (for kill)
 };
 
 } // namespace consoled

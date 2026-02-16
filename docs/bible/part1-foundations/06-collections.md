@@ -1479,7 +1479,7 @@ func displayScores(names: [String], scores: [i64]) {
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 Different languages handle arrays with different syntax, but the concepts are identical.
 
@@ -1531,33 +1531,6 @@ PRINT UBOUND(numbers) + 1
 ```
 
 BASIC uses parentheses `()` instead of brackets `[]` for array access. Arrays must be declared with a fixed size using `DIM`.
-
-**Pascal**
-```pascal
-var
-    numbers: array[0..2] of Integer;
-    i: Integer;
-begin
-    numbers[0] := 10;
-    numbers[1] := 20;
-    numbers[2] := 30;
-
-    { Access }
-    WriteLn(numbers[0]);
-
-    { Modify }
-    numbers[1] := 25;
-
-    { Iterate }
-    for i := 0 to 2 do
-        WriteLn(numbers[i]);
-
-    { Length }
-    WriteLn(Length(numbers));
-end.
-```
-
-Pascal declares array bounds explicitly in the type (`array[0..2] of Integer`). The bounds can start at any number, not just 0, which was one of its original design features.
 
 ---
 

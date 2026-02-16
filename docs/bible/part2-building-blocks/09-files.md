@@ -1488,7 +1488,7 @@ This program demonstrates:
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1542,38 +1542,6 @@ END IF
 ```
 
 BASIC uses file numbers (#1, #2, etc.) and requires explicit OPEN/CLOSE. The FOR clause specifies the mode: INPUT (read), OUTPUT (write), APPEND (append).
-
-**Pascal**
-```pascal
-var
-    f: TextFile;
-    line: string;
-begin
-    { Read }
-    AssignFile(f, 'file.txt');
-    Reset(f);
-    ReadLn(f, line);
-    CloseFile(f);
-
-    { Write }
-    AssignFile(f, 'file.txt');
-    Rewrite(f);
-    WriteLn(f, 'Hello!');
-    CloseFile(f);
-
-    { Append }
-    AssignFile(f, 'file.txt');
-    Append(f);
-    WriteLn(f, 'More text');
-    CloseFile(f);
-
-    { Check existence }
-    if FileExists('file.txt') then
-        WriteLn('File exists');
-end.
-```
-
-Pascal uses file variables and procedures like AssignFile, Reset (open for reading), Rewrite (open for writing), and Append.
 
 ---
 

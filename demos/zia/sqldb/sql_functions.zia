@@ -97,6 +97,19 @@ func fmtTimeParts(h: Integer, m: Integer, s: Integer) -> String {
 // STRING FUNCTIONS
 //=============================================================================
 
+// Evaluate a SQL string function. Supported functions:
+//   UPPER(s), LOWER(s)           — case conversion
+//   LENGTH(s)                    — string length
+//   SUBSTR(s, start [, len])     — substring extraction (1-indexed)
+//   TRIM(s), LTRIM(s), RTRIM(s) — whitespace removal
+//   REPLACE(s, from, to)         — substring replacement
+//   CONCAT(a, b, ...)            — string concatenation
+//   INSTR(s, sub)                — find substring position (1-indexed, 0 if not found)
+//   LEFT(s, n), RIGHT(s, n)     — take n chars from left/right
+//   LPAD(s, len [, pad])         — left-pad to target length
+//   RPAD(s, len [, pad])         — right-pad to target length
+//   REVERSE(s)                   — reverse string
+//   HEX(n)                       — integer to hexadecimal string
 func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "UPPER" && args.count() > 0 {
         var arg = args.get(0);
@@ -359,6 +372,19 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 // MATH FUNCTIONS
 //=============================================================================
 
+// Evaluate a SQL math function. Supported functions:
+//   ABS(n)              — absolute value (integer only)
+//   MOD(a, b)           — modulo (integer only)
+//   ROUND(n)            — round to integer
+//   MIN(a, b), MAX(a,b) — scalar min/max of two values
+//   POWER(b, e)         — exponentiation (integer and real)
+//   SQRT(n)             — square root
+//   CEIL(n), FLOOR(n)   — ceiling and floor
+//   SIGN(n)             — returns -1, 0, or 1
+//   LOG(n), LN(n)       — natural logarithm
+//   LOG10(n), LOG2(n)   — base-10 and base-2 logarithm
+//   EXP(n)              — e^n
+//   PI()                — constant pi
 func evalMathFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "ABS" && args.count() > 0 {
         var arg = args.get(0);
@@ -543,6 +569,14 @@ func evalMathFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 // CONDITIONAL FUNCTIONS (pre-evaluated args only)
 //=============================================================================
 
+// Evaluate a SQL conditional/type function. Supported functions:
+//   NULLIF(a, b)             — returns NULL if a == b, else a
+//   TYPEOF(v)                — returns type name as text
+//   CAST_INTEGER(v)          — convert to integer
+//   CAST_REAL(v)             — convert to real
+//   CAST_TEXT(v)             — convert to text
+//   GREATEST(a, b, ...)      — largest value (NULL-propagating)
+//   LEAST(a, b, ...)         — smallest value (NULL-propagating)
 func evalConditionalFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "NULLIF" && args.count() >= 2 {
         var a = args.get(0);
@@ -633,6 +667,21 @@ func evalConditionalFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 // DATE/TIME FUNCTIONS
 //=============================================================================
 
+// Evaluate a SQL date/time function. Supported functions:
+//   NOW(), CURRENT_TIMESTAMP     — current date+time as ISO string
+//   CURRENT_DATE, CURRENT_TIME   — current date or time only
+//   DATETIME(y, m, d [,h,m,s])   — construct ISO datetime string
+//   DATE(dt), TIME(dt)           — extract date or time portion
+//   YEAR(dt), MONTH(dt), DAY(dt) — extract date components
+//   HOUR(dt), MINUTE(dt), SECOND(dt) — extract time components
+//   DAYOFWEEK(dt)                — day of week (0=Sunday)
+//   DATE_ADD(dt, days)           — add days to date
+//   DATE_SUB(dt, days)           — subtract days from date
+//   DATEDIFF(dt1, dt2)           — difference in days
+//   TIMEDIFF(dt1, dt2)           — difference in seconds
+//   STRFTIME(fmt, dt)            — format datetime with pattern
+//   EPOCH(dt)                    — convert to Unix epoch seconds
+//   FROM_EPOCH(secs)             — convert epoch to ISO string
 func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "NOW" || name == "CURRENT_TIMESTAMP" {
         var ts = DateTime.Now();
@@ -817,10 +866,15 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 // Dispatch a SQL function call, returning sqlNull() if not recognized.
 // This is the non-optional version used by the executor.
 func dispatchSqlFunctionOrNull(name: String, args: List[SqlValue]) -> SqlValue {
+    // Workaround: Zia compiler doesn't narrow SqlValue? to SqlValue after null check.
+    // Use an explicit list accumulator to sidestep the type issue.
+    var found: List[SqlValue] = [];
     var result = dispatchSqlFunction(name, args);
     if result != null {
-        var r = result;
-        return r;
+        found.add(result);
+    }
+    if found.count() > 0 {
+        return found.get(0);
     }
     return sqlNull();
 }

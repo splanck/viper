@@ -1824,7 +1824,7 @@ This example demonstrates:
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1868,30 +1868,6 @@ DIM udp AS UdpSocket
 udp = UDP_CREATE()
 UDP_SEND udp, "Hello", "192.168.1.100", 5000
 UDP_CLOSE udp
-```
-
-**Pascal**
-```pascal
-uses ViperNetwork;
-var
-    response: THttpResponse;
-    sock: TTcpSocket;
-    reply: String;
-    udp: TUdpSocket;
-begin
-    response := HttpGet('https://api.example.com/data');
-    if response.Ok then
-        WriteLn(response.Body);
-
-    sock := TcpConnect('example.com', 80);
-    TcpWrite(sock, 'Hello'#10);
-    reply := TcpReadLine(sock);
-    TcpClose(sock);
-
-    udp := UdpCreate();
-    UdpSend(udp, 'Hello', '192.168.1.100', 5000);
-    UdpClose(udp);
-end.
 ```
 
 ---

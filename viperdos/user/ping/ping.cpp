@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // Parse IP address from string (e.g., "192.168.1.1")
 static bool parse_ip(const char *str, u32 *ip_out) {
@@ -71,25 +72,24 @@ static void print_ip(u32 ip) {
     printf("%u.%u.%u.%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF);
 }
 
-// Read a line from console (simple implementation)
+// Read a line from console using libc read/write (routes through kernel TTY)
 static void read_line(char *buf, size_t max) {
     size_t i = 0;
     while (i < max - 1) {
-        char c = sys::getchar();
-        if (c == '\r' || c == '\n') {
-            sys::putchar('\n');
+        char c = 0;
+        if (read(STDIN_FILENO, &c, 1) != 1)
             break;
-        } else if (c == 127 || c == 8) // Backspace
-        {
+        if (c == '\r' || c == '\n') {
+            write(STDOUT_FILENO, "\n", 1);
+            break;
+        } else if (c == 127 || c == 8) { // Backspace
             if (i > 0) {
                 i--;
-                sys::putchar('\b');
-                sys::putchar(' ');
-                sys::putchar('\b');
+                write(STDOUT_FILENO, "\b \b", 3);
             }
         } else if (c >= 32) {
             buf[i++] = c;
-            sys::putchar(c);
+            write(STDOUT_FILENO, &c, 1);
         }
     }
     buf[i] = '\0';

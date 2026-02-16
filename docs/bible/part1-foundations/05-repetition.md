@@ -1261,7 +1261,7 @@ while count < 5 {
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1308,31 +1308,7 @@ NEXT i
 
 BASIC's `FOR` includes the end value (unlike Zia's `..`). `WEND` ends the `WHILE` block. `STEP` specifies the increment.
 
-**Pascal**
-```pascal
-var i: Integer;
-begin
-    { while loop }
-    i := 0;
-    while i < 5 do
-    begin
-        WriteLn(i);
-        i := i + 1;
-    end;
-
-    { for loop }
-    for i := 0 to 4 do
-        WriteLn(i);
-
-    { for counting down }
-    for i := 10 downto 1 do
-        WriteLn(i);
-end.
-```
-
-Pascal uses `do` and `begin`/`end` for blocks. `to` counts up, `downto` counts backward.
-
-All three languages express the same ideas with different syntax. The concepts - checking conditions, iterating ranges, breaking and continuing - are universal.
+Both languages express the same ideas with different syntax. The concepts - checking conditions, iterating ranges, breaking and continuing - are universal.
 
 ---
 

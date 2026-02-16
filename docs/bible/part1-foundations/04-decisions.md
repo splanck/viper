@@ -1304,7 +1304,7 @@ This is more concise than setting a variable in each branch.
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 ```rust
@@ -1354,30 +1354,7 @@ END SELECT
 
 BASIC uses `THEN` and `END IF`. The `SELECT CASE` is its version of `match`.
 
-**Pascal**
-```pascal
-var score: Integer;
-begin
-    score := 85;
-
-    if score >= 60 then
-        WriteLn('You passed!')
-    else
-        WriteLn('Try again.');
-
-    case score div 10 of
-        10, 9: WriteLn('A');
-        8: WriteLn('B');
-        7: WriteLn('C');
-        6: WriteLn('D');
-        else WriteLn('F');
-    end;
-end.
-```
-
-Pascal uses `then` instead of braces, and `case` for pattern matching.
-
-All three express the same logic. The keywords differ, but the structure — condition, then branch, else branch — is universal.
+Both express the same logic. The keywords differ, but the structure — condition, then branch, else branch — is universal.
 
 ---
 

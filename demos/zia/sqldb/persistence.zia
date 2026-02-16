@@ -1,5 +1,12 @@
 // persistence.zia — Database Save/Open/Close Operations
 // Part of ViperSQL
+//
+// Implements the SAVE, OPEN, and CLOSE SQL commands for text-based
+// database persistence. SAVE serializes tables to a .sql dump file
+// (CREATE TABLE + INSERT statements). OPEN reads and executes a dump
+// file to restore the database. This is the simple persistence path;
+// the StorageEngine (storage/engine.zia) provides page-based binary
+// persistence with WAL crash recovery for production use.
 
 module persistence;
 

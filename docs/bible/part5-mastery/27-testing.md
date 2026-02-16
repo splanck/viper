@@ -1793,7 +1793,7 @@ test "sumOfList returns total of all elements" {
 
 ---
 
-## The Three Languages
+## The Two Languages
 
 **Zia**
 
@@ -1817,19 +1817,6 @@ TEST "example test"
     ASSERT_EQUAL actual, expected
     ASSERT_THROWS RiskyCode
 END TEST
-```
-
-**Pascal**
-
-```pascal
-uses ViperTest;
-
-procedure TestExample;
-begin
-    Assert(1 + 1 = 2);
-    AssertEqual(actual, expected);
-    AssertThrows(@RiskyCode);
-end;
 ```
 
 ---

@@ -113,8 +113,20 @@ void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, bool pr
 
     // If client has event channel, send directly
     if (surf->event_channel >= 0) {
-        sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
+        int64_t r = sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
+        if (r != 0) {
+            debug_print("[evt] key send failed ch=");
+            debug_print_dec(static_cast<uint64_t>(surf->event_channel));
+            debug_print(" surf=");
+            debug_print_dec(surf->id);
+            debug_print(" err=");
+            debug_print_dec(static_cast<uint64_t>(-r));
+            debug_print("\n");
+        }
     } else {
+        debug_print("[evt] queue key (no channel) surf=");
+        debug_print_dec(surf->id);
+        debug_print("\n");
         if (!surf->event_queue.push(ev)) {
             // Overflow - key event dropped
         }
