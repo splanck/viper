@@ -55,8 +55,8 @@ constexpr usize BLOCK_SIZE = 4096;
 /** @brief Default number of cached blocks. */
 constexpr usize DEFAULT_CACHE_BLOCKS = 64;
 
-/** @brief Default number of read-ahead blocks. */
-constexpr usize DEFAULT_READ_AHEAD_BLOCKS = 4;
+/** @brief Default number of read-ahead blocks (0 = disabled). */
+constexpr usize DEFAULT_READ_AHEAD_BLOCKS = 0;
 
 /** @brief Default hash table size for block lookup. */
 constexpr usize DEFAULT_HASH_SIZE = 32;
@@ -298,10 +298,16 @@ class BlockCache {
     // Internal helpers
     /** @brief Hash a block number into the lookup table index. */
     u32 hash_func(u64 block_num);
-    /** @brief Find a cached block by block number, or nullptr if not present. */
+    /** @brief Find a valid cached block by block number, or nullptr if not present. */
     CacheBlock *find(u64 block_num);
+    /** @brief Find any block by number (including loading blocks with valid=false). */
+    CacheBlock *find_any(u64 block_num);
     /** @brief Evict an LRU block with refcount 0 and return it for reuse. */
     CacheBlock *evict();
+    /** @brief Find an eviction victim without performing writeback or hash removal. */
+    CacheBlock *find_eviction_victim();
+    /** @brief Read-ahead without holding the cache lock during I/O. */
+    void read_ahead_unlocked(u64 block_num);
     /** @brief Mark a block most-recently-used by moving it to LRU head. */
     void touch(CacheBlock *block);
     /** @brief Remove a block from the LRU list. */

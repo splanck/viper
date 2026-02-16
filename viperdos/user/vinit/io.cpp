@@ -316,19 +316,22 @@ static void console_write_direct(const char *s, usize len) {
         sys::print("\n");
     }
 
-    // Send with retry if buffer is full - keep trying until success
+    // Send with retry if buffer is full
     usize total_len = sizeof(WriteRequest) + len;
     u32 retry_count = 0;
+    constexpr u32 MAX_RETRIES = 500;
     while (true) {
         i64 err = sys::channel_send(channel, buf, total_len, nullptr, 0);
         if (err == 0)
             break;
-        // Buffer full - sleep briefly to let consoled catch up
+        if (err == VERR_CHANNEL_CLOSED)
+            break; // Receiver gone, don't retry
         retry_count++;
-        if (retry_count == 100) {
-            sys::print("[shell] write stuck after 100 retries!\n");
+        if (retry_count >= MAX_RETRIES) {
+            // Drop message rather than freeze the system
+            break;
         }
-        sys::sleep(1);
+        sys::yield(); // Give consoled CPU time to drain the channel
     }
 }
 
@@ -347,8 +350,8 @@ static void console_write(const char *s, usize len) {
     for (usize i = 0; i < len; i++) {
         g_output_buffer[g_output_len++] = s[i];
 
-        // Flush on newline or when buffer is full
-        if (s[i] == '\n' || g_output_len >= OUTPUT_BUFFER_SIZE - 1) {
+        // Flush when buffer is full (newlines are batched)
+        if (g_output_len >= OUTPUT_BUFFER_SIZE - 1) {
             console_flush_buffer();
         }
     }
@@ -515,8 +518,9 @@ void print_char(char c) {
     if (g_console_ready) {
         char buf[2] = {c, '\0'};
         console_write(buf, 1);
-        // Flush immediately for interactive echo
-        console_flush_buffer();
+        // Don't flush here — let the buffer accumulate.
+        // Callers that need immediate display (readline, prompt)
+        // call flush_console() at the right points.
     } else {
         sys::putchar(c);
     }

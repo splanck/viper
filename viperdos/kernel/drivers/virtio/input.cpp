@@ -22,6 +22,10 @@
  */
 namespace virtio {
 
+// Static input device storage (avoids heap allocation and lifetime leaks)
+static InputDevice g_input_devices[2];
+static usize g_next_input_slot = 0;
+
 // Global input device pointers
 InputDevice *keyboard = nullptr;
 InputDevice *mouse = nullptr;
@@ -360,11 +364,15 @@ void input_init() {
 
         serial::puts("[virtio-input] Found INPUT device, initializing...\n");
 
-        // Try to initialize as input device
-        InputDevice *dev = new InputDevice();
+        // Allocate the next available static device slot
+        if (g_next_input_slot >= 2) {
+            serial::puts("[virtio-input] No free device slots (2 already used)\n");
+            continue;
+        }
+        InputDevice *dev = &g_input_devices[g_next_input_slot++];
+
         if (!dev->init(info->base)) {
             serial::puts("[virtio-input] Init failed!\n");
-            delete dev;
             continue;
         }
 
@@ -385,7 +393,6 @@ void input_init() {
             serial::puts("[virtio-input] *** MOUSE ASSIGNED ***\n");
         } else {
             serial::puts("[virtio-input] Device not assigned (duplicate or unknown)\n");
-            delete dev;
         }
     }
 
@@ -429,18 +436,9 @@ bool InputDevice::set_led(u16 led, bool on) {
     statusq_.submit(desc);
     statusq_.kick();
 
-    // Wait for completion (blocking with timeout)
-    bool completed = false;
-    for (u32 i = 0; i < 100000; i++) {
-        i32 used = statusq_.poll_used();
-        if (used == desc) {
-            completed = true;
-            break;
-        }
-        asm volatile("yield" ::: "memory");
-    }
+    // Wait for completion
+    bool completed = poll_for_completion(statusq_, desc, POLL_TIMEOUT_SHORT);
 
-    // Free the descriptor
     statusq_.free_desc(desc);
 
     if (!completed) {

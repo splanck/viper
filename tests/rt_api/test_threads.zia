@@ -27,8 +27,15 @@ func start() {
     cm.Clear();
     SayBool(cm.IsEmpty);
 
-    // NOTE: SafeI64 fails with "unsupported on this platform" (BUG-017)
-    // var si = new Viper.Threads.SafeI64(0);
+    var si = new Viper.Threads.SafeI64(0);
+    SayInt(si.Get());
+    si.Set(42);
+    SayInt(si.Get());
+    var added = si.Add(8);
+    SayInt(added);
+    var cas = si.CompareExchange(50, 100);
+    SayInt(cas);
+    SayInt(si.Get());
 
     var g = new Viper.Threads.Gate(3);
     SayInt(g.Permits);

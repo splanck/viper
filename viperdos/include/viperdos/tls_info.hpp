@@ -96,3 +96,6 @@ struct TLSInfo {
     unsigned char _reserved[2];           /**< Reserved/padding for alignment; set to 0. */
     char hostname[TLS_INFO_HOSTNAME_MAX]; /**< Session hostname (SNI / verification name). */
 };
+
+// ABI size guard — this struct crosses the kernel/user syscall boundary
+static_assert(sizeof(TLSInfo) == 136, "TLSInfo ABI size mismatch");

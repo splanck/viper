@@ -85,21 +85,30 @@ bool read_block(u64 block, void *data) {
     return true;
 }
 
+// Bitmap bit operations
+inline bool bit_get(const u8 *bitmap, u64 bit) {
+    return (bitmap[bit / 8] & (1 << (bit % 8))) != 0;
+}
+
+inline void bit_set(u8 *bitmap, u64 bit) {
+    bitmap[bit / 8] |= static_cast<u8>(1 << (bit % 8));
+}
+
 /// @brief Check whether a block is marked as used in the on-disk bitmap.
 bool is_block_used_disk(u64 block) {
-    return (disk_bitmap[block / 8] & (1 << (block % 8))) != 0;
+    return bit_get(disk_bitmap, block);
 }
 
 /// @brief Mark a block as used in the computed (expected) bitmap.
 void mark_block_computed(u64 block) {
     if (block < sb.total_blocks) {
-        computed_bitmap[block / 8] |= (1 << (block % 8));
+        bit_set(computed_bitmap, block);
     }
 }
 
 /// @brief Check whether a block is marked as used in the computed bitmap.
 bool is_block_computed(u64 block) {
-    return (computed_bitmap[block / 8] & (1 << (block % 8))) != 0;
+    return bit_get(computed_bitmap, block);
 }
 
 /// @brief Record that a block is owned by the given inode and mark it in the computed bitmap.
@@ -303,7 +312,11 @@ void check_directory(u64 ino, const std::string &path) {
             char name[256] = {};
             memcpy(name, data + pos + sizeof(DirEntry), entry->name_len);
 
-            // Check . and .. (both by name and by inode/type patterns)
+            // Detect "." and ".." entries using both name matching and structural
+            // heuristics. The secondary checks handle edge cases where the name
+            // bytes may be corrupt but the inode/type/length metadata is consistent:
+            //  - "." : name_len==1, type==DIR, inode==self
+            //  - "..": name_len==2, type==DIR, first byte is NUL (corrupt name)
             bool is_dot_entry =
                 (strcmp(name, ".") == 0) ||
                 (entry->name_len == 1 && entry->file_type == file_type::DIR && entry->inode == ino);

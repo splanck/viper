@@ -170,23 +170,46 @@ bool ShellManager::poll_output(AnsiParser &parser) {
     if (m_output_recv < 0)
         return false;
 
-    uint8_t buf[4096];
-    uint32_t handles[4];
-    uint32_t handle_count = 4;
-
-    // Non-blocking receive
-    int64_t n = sys::channel_recv(m_output_recv, buf, sizeof(buf), handles, &handle_count);
-
-    // Debug: log first successful receive and periodic status during startup
+    // Debug counters
     static uint32_t recv_success_count = 0;
     static uint64_t last_status_log = 0;
     static uint32_t poll_count = 0;
     poll_count++;
 
-    uint64_t now = sys::uptime();
-    if (n > 0) {
+    bool got_any = false;
+    constexpr int MAX_DRAIN = 8;
+
+    for (int batch = 0; batch < MAX_DRAIN; batch++) {
+        uint8_t buf[4096];
+        uint32_t handles[4];
+        uint32_t handle_count = 4;
+
+        int64_t n = sys::channel_recv(m_output_recv, buf, sizeof(buf), handles, &handle_count);
+
+        if (n <= 0 || n < static_cast<int64_t>(sizeof(uint32_t))) {
+            // Debug: log periodic status during startup
+            if (!got_any && batch == 0) {
+                uint64_t now = sys::uptime();
+                if (recv_success_count == 0 && now - last_status_log >= 1000) {
+                    last_status_log = now;
+                    debug_print("[consoled] poll_output waiting: ch=");
+                    debug_print_dec(static_cast<uint64_t>(m_output_recv));
+                    debug_print(" polls=");
+                    debug_print_dec(poll_count);
+                    debug_print(" time=");
+                    debug_print_dec(now);
+                    debug_print("ms\n");
+                }
+            }
+            break;
+        }
+
+        got_any = true;
+
+        // Debug: log first few successful receives
         if (recv_success_count < 3) {
             recv_success_count++;
+            uint64_t now = sys::uptime();
             debug_print("[consoled] poll_output SUCCESS #");
             debug_print_dec(recv_success_count);
             debug_print(" ch=");
@@ -199,23 +222,10 @@ bool ShellManager::poll_output(AnsiParser &parser) {
             debug_print_dec(now);
             debug_print("ms\n");
         }
-    } else if (recv_success_count == 0 && now - last_status_log >= 1000) {
-        // Log once per second during startup if no data yet
-        last_status_log = now;
-        debug_print("[consoled] poll_output waiting: ch=");
-        debug_print_dec(static_cast<uint64_t>(m_output_recv));
-        debug_print(" polls=");
-        debug_print_dec(poll_count);
-        debug_print(" time=");
-        debug_print_dec(now);
-        debug_print("ms\n");
-    }
 
-    if (n > 0 && n >= static_cast<int64_t>(sizeof(uint32_t))) {
         uint32_t msg_type = *reinterpret_cast<uint32_t *>(buf);
 
         if (msg_type == CON_WRITE) {
-            // Parse CON_WRITE message
             struct {
                 uint32_t type;
                 uint32_t request_id;
@@ -228,19 +238,18 @@ bool ShellManager::poll_output(AnsiParser &parser) {
             if (text_len > req->length)
                 text_len = req->length;
 
-            // Display the text through ANSI parser
             parser.write(text, text_len);
         }
 
-        // Close any handles received (shouldn't normally receive any)
+        // Close any handles received
         for (uint32_t i = 0; i < handle_count; i++) {
             if (handles[i] != 0xFFFFFFFF) {
                 sys::channel_close(static_cast<int32_t>(handles[i]));
             }
         }
-        return true; // Data was received and processed
     }
-    return false; // No data available
+
+    return got_any;
 }
 
 void ShellManager::close() {

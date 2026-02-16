@@ -104,4 +104,8 @@ constexpr u16 LINK_UP = 1;  ///< Link is up
 constexpr u16 ANNOUNCE = 2; ///< Announce gratuitous ARP
 } // namespace net_status
 
+// ABI size guards — these structs cross the kernel/user boundary
+static_assert(sizeof(NetHeader) == 10, "NetHeader must be 10 bytes (virtio spec)");
+static_assert(sizeof(NetConfig) == 12, "NetConfig must be 12 bytes (virtio spec)");
+
 } // namespace virtio

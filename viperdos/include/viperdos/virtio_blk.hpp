@@ -114,4 +114,8 @@ struct BlkConfig {
     u32 blk_size; ///< Logical block size (if BLK_SIZE feature)
 };
 
+// ABI size guards — these structs cross the kernel/user boundary
+static_assert(sizeof(BlkReqHeader) == 16, "BlkReqHeader must be 16 bytes (virtio spec)");
+static_assert(sizeof(BlkConfig) == 24, "BlkConfig must be 24 bytes (virtio spec)");
+
 } // namespace virtio

@@ -272,7 +272,7 @@ void TextBuffer::clear_to_bos() {
 }
 
 void TextBuffer::scroll_up() {
-    // Shift buffer up by one row
+    // Shift cell buffer up by one row
     for (uint32_t y = 0; y < m_rows - 1; y++) {
         for (uint32_t x = 0; x < m_cols; x++) {
             cell_at(x, y) = cell_at(x, y + 1);
@@ -287,7 +287,38 @@ void TextBuffer::scroll_up() {
         c.bg = m_bg_color;
     }
 
-    redraw_all();
+    // Shift pixel buffer directly instead of redrawing all cells
+    uint32_t *pixels = gui_get_pixels(m_window);
+    uint32_t stride = gui_get_stride(m_window);
+    if (pixels && stride > 0) {
+        uint32_t stride_px = stride / 4;
+        uint32_t text_x_start = PADDING;
+        uint32_t text_y_start = PADDING;
+        uint32_t text_width = m_cols * FONT_WIDTH;
+        uint32_t row_height = FONT_HEIGHT;
+        uint32_t text_height = m_rows * row_height;
+
+        // Shift pixel rows up by FONT_HEIGHT
+        for (uint32_t py = text_y_start; py < text_y_start + text_height - row_height; py++) {
+            uint32_t *dst = &pixels[py * stride_px + text_x_start];
+            uint32_t *src = &pixels[(py + row_height) * stride_px + text_x_start];
+            for (uint32_t px = 0; px < text_width; px++) {
+                dst[px] = src[px];
+            }
+        }
+
+        // Only redraw the bottom row (newly cleared)
+        for (uint32_t x = 0; x < m_cols; x++) {
+            draw_cell(x, m_rows - 1);
+        }
+    } else {
+        // Fallback: full redraw if pixel buffer unavailable
+        redraw_all();
+    }
+
+    if (m_cursor_visible) {
+        draw_cursor();
+    }
     m_needs_present = true;
 }
 

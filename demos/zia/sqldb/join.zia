@@ -39,6 +39,136 @@ entity JoinEngine {
         return row;
     }
 
+    //=========================================================================
+    // HASH JOIN SUPPORT
+    //=========================================================================
+
+    // Check if a join condition is a simple equi-join (table1.col = table2.col)
+    hide func isEquiJoin(cond: Expr) -> Boolean {
+        if cond.kind != EXPR_BINARY || cond.op != OP_EQ {
+            return false;
+        }
+        var left = cond.getLeft();
+        var right = cond.getRight();
+        return left.kind == EXPR_COLUMN && right.kind == EXPR_COLUMN;
+    }
+
+    // Extract the column index from a join table for the equi-join condition
+    hide func getJoinColumnIndex(cond: Expr, tbl: Table, tblAlias: String, isLeft: Boolean) -> Integer {
+        var colExpr = cond.getLeft();
+        if isLeft == false {
+            colExpr = cond.getRight();
+        }
+        if colExpr.kind == EXPR_COLUMN {
+            // Check if table name matches
+            if colExpr.tableName == tblAlias || colExpr.tableName == tbl.name || colExpr.tableName == "" {
+                return tbl.findColumnIndex(colExpr.columnName);
+            }
+        }
+        return -1;
+    }
+
+    // Execute hash join for a single pair of tables (INNER JOIN with equi-condition)
+    // Returns the combined rows using hash-based matching instead of nested loop
+    hide func executeHashJoinStep(existing: List[Row], rightTable: Table,
+                                   leftTable: Table, leftAlias: String, rightAlias: String,
+                                   joinCond: Expr, colOffsets: List[Integer],
+                                   leftTableIdx: Integer, rightTableIdx: Integer,
+                                   totalCols: Integer, tables: List[Table],
+                                   aliases: List[String]) -> List[Row] {
+        var result = new List[Row]();
+        var rightOffset = colOffsets.get(rightTableIdx);
+
+        // Determine which side of the equi-join refers to which table
+        var leftJoinCol = getJoinColumnIndex(joinCond, leftTable, leftAlias, true);
+        var rightJoinCol = getJoinColumnIndex(joinCond, rightTable, rightAlias, false);
+
+        // If left side refers to right table, swap
+        if leftJoinCol < 0 {
+            leftJoinCol = getJoinColumnIndex(joinCond, leftTable, leftAlias, false);
+            rightJoinCol = getJoinColumnIndex(joinCond, rightTable, rightAlias, true);
+        }
+
+        if leftJoinCol < 0 || rightJoinCol < 0 {
+            return result;
+        }
+
+        // Build hash table on right table: hash(key) -> list of row indices
+        var numBuckets = 64;
+        var bucketKeys = new List[List[String]]();
+        var bucketIndices = new List[List[Integer]]();
+        var bi = 0;
+        while bi < numBuckets {
+            bucketKeys.add(new List[String]());
+            bucketIndices.add(new List[Integer]());
+            bi = bi + 1;
+        }
+
+        var ri = 0;
+        while ri < rightTable.rowCount() {
+            var maybeRow = rightTable.getRow(ri);
+            if maybeRow != null {
+                var row = maybeRow;
+                if row.deleted == false {
+                    var keyVal = row.getValue(rightJoinCol);
+                    var keyStr = keyVal.toString();
+                    var rawHash = exec.computeKeyHash(keyStr);
+                    var h = rawHash % numBuckets;
+                    if h >= 0 && h < numBuckets {
+                        bucketKeys.get(h).add(keyStr);
+                        bucketIndices.get(h).add(ri);
+                    }
+                }
+            }
+            ri = ri + 1;
+        }
+
+        // Probe: for each existing (left) row, find matching right rows via hash
+        var li = 0;
+        while li < existing.count() {
+            var leftRow = existing.get(li);
+            var leftOffset = colOffsets.get(leftTableIdx);
+            var leftKeyVal = leftRow.getValue(leftOffset + leftJoinCol);
+            var leftKeyStr = leftKeyVal.toString();
+            var rawHash = exec.computeKeyHash(leftKeyStr);
+            var h = rawHash % numBuckets;
+
+            if h >= 0 && h < numBuckets {
+                var bKeys = bucketKeys.get(h);
+                var bIndices = bucketIndices.get(h);
+                var bj = 0;
+                while bj < bKeys.count() {
+                    if bKeys.get(bj) == leftKeyStr {
+                        var rightRowIdx = bIndices.get(bj);
+                        var maybeRightRow = rightTable.getRow(rightRowIdx);
+                        if maybeRightRow != null {
+                            var rightRow = maybeRightRow;
+                            var newRow = makeJoinRow(totalCols);
+                            var c = 0;
+                            while c < rightOffset {
+                                newRow.setValue(c, leftRow.getValue(c));
+                                c = c + 1;
+                            }
+                            c = 0;
+                            while c < rightTable.columnCount() {
+                                newRow.setValue(rightOffset + c, rightRow.getValue(c));
+                                c = c + 1;
+                            }
+                            result.add(newRow);
+                        }
+                    }
+                    bj = bj + 1;
+                }
+            }
+            li = li + 1;
+        }
+        return result;
+    }
+
+    //=========================================================================
+    // JOIN COLUMN LOOKUPS
+    //=========================================================================
+
     // Find column value in a combined row for JOIN queries
     hide func findJoinColumnValue(tableName: String, columnName: String,
                                    tables: List[Table], aliases: List[String],
@@ -141,6 +271,174 @@ entity JoinEngine {
         return sqlNull();
     }
 
+    //=========================================================================
+    // JOIN ORDERING OPTIMIZATION
+    //=========================================================================
+
+    // Check if a join condition references a specific table (by alias or name)
+    hide func condReferencesTable(cond: Expr, tbl: Table, alias: String) -> Boolean {
+        if cond.kind == EXPR_COLUMN {
+            return cond.tableName == alias || cond.tableName == tbl.name;
+        }
+        if cond.kind == EXPR_BINARY {
+            if condReferencesTable(cond.getLeft(), tbl, alias) {
+                return true;
+            }
+            return condReferencesTable(cond.getRight(), tbl, alias);
+        }
+        return false;
+    }
+
+    // Find a join condition that connects a candidate table to any already-joined table.
+    // Returns the index into joinConditions, or -1 if none found.
+    hide func findConditionForTable(joinConditions: List[Expr],
+                                     condUsed: List[Integer],
+                                     candTable: Table, candAlias: String,
+                                     joinedTables: List[Table],
+                                     joinedAliases: List[String]) -> Integer {
+        var ci = 0;
+        while ci < joinConditions.count() {
+            if condUsed.get(ci) == 0 {
+                var cond = joinConditions.get(ci);
+                // Check if this condition references the candidate table
+                if condReferencesTable(cond, candTable, candAlias) {
+                    // Check if it also references any already-joined table
+                    var ji = 0;
+                    while ji < joinedTables.count() {
+                        if condReferencesTable(cond, joinedTables.get(ji), joinedAliases.get(ji)) {
+                            return ci;
+                        }
+                        ji = ji + 1;
+                    }
+                }
+            }
+            ci = ci + 1;
+        }
+        return -1;
+    }
+
+    // Reorder tables for all-INNER-JOIN queries by row count (smallest first).
+    // Returns true if reordering was applied.
+    // Modifies tables, aliases in-place and populates reorderedConds.
+    hide func reorderInnerJoinTables(tables: List[Table], aliases: List[String],
+                                      joinConditions: List[Expr],
+                                      reorderedConds: List[Expr]) -> Boolean {
+        if tables.count() < 3 {
+            return false;
+        }
+
+        // Find the smallest table to start with
+        var bestIdx = 0;
+        var bestRows = tables.get(0).rowCount();
+        var i = 1;
+        while i < tables.count() {
+            var rc = tables.get(i).rowCount();
+            if rc < bestRows {
+                bestRows = rc;
+                bestIdx = i;
+            }
+            i = i + 1;
+        }
+
+        // Build reordered lists using greedy smallest-first
+        var newTables = new List[Table]();
+        var newAliases = new List[String]();
+        var used = new List[Integer]();
+        var condUsed = new List[Integer]();
+        i = 0;
+        while i < tables.count() {
+            used.add(0);
+            i = i + 1;
+        }
+        i = 0;
+        while i < joinConditions.count() {
+            condUsed.add(0);
+            i = i + 1;
+        }
+
+        // Start with the smallest table
+        newTables.add(tables.get(bestIdx));
+        newAliases.add(aliases.get(bestIdx));
+        used.set(bestIdx, 1);
+
+        // Greedily add remaining tables, preferring smallest with a condition
+        var added = 1;
+        while added < tables.count() {
+            var nextIdx = -1;
+            var nextRows = -1;
+            var nextCondIdx = -1;
+
+            // Pass 1: find smallest unused table that has a condition to joined tables
+            i = 0;
+            while i < tables.count() {
+                if used.get(i) == 0 {
+                    var condIdx = findConditionForTable(joinConditions, condUsed,
+                        tables.get(i), aliases.get(i), newTables, newAliases);
+                    if condIdx >= 0 {
+                        var rc = tables.get(i).rowCount();
+                        if nextIdx < 0 || rc < nextRows {
+                            nextIdx = i;
+                            nextRows = rc;
+                            nextCondIdx = condIdx;
+                        }
+                    }
+                }
+                i = i + 1;
+            }
+
+            // Pass 2: if no condition-connected table, pick smallest unused
+            if nextIdx < 0 {
+                i = 0;
+                while i < tables.count() {
+                    if used.get(i) == 0 {
+                        var rc = tables.get(i).rowCount();
+                        if nextIdx < 0 || rc < nextRows {
+                            nextIdx = i;
+                            nextRows = rc;
+                        }
+                    }
+                    i = i + 1;
+                }
+            }
+
+            if nextIdx >= 0 {
+                newTables.add(tables.get(nextIdx));
+                newAliases.add(aliases.get(nextIdx));
+                used.set(nextIdx, 1);
+                if nextCondIdx >= 0 {
+                    reorderedConds.add(joinConditions.get(nextCondIdx));
+                    condUsed.set(nextCondIdx, 1);
+                } else {
+                    // No condition — create a dummy null condition
+                    reorderedConds.add(null);
+                }
+                added = added + 1;
+            }
+        }
+
+        // Check if order actually changed
+        var changed = false;
+        i = 0;
+        while i < tables.count() {
+            if newTables.get(i) != tables.get(i) {
+                changed = true;
+            }
+            i = i + 1;
+        }
+
+        if changed {
+            // Replace tables and aliases in-place
+            i = 0;
+            while i < tables.count() {
+                tables.set(i, newTables.get(i));
+                aliases.set(i, newAliases.get(i));
+                i = i + 1;
+            }
+        }
+
+        return changed;
+    }
+
     // Execute a multi-table JOIN query
     expose func executeCrossJoin(stmt: SelectStmt) -> QueryResult {
         var result = new QueryResult();
@@ -172,6 +470,37 @@ entity JoinEngine {
             colOffsets.add(totalCols);
             totalCols = totalCols + tbl.columnCount();
             ti = ti + 1;
+        }
+
+        // Join ordering optimization: for all-INNER-JOIN queries with 3+ tables,
+        // reorder tables by row count (smallest first) to minimize intermediate
+        // result sizes. Only applies when ALL joins are INNER (type 1).
+        var reorderedConds = new List[Expr]();
+        var didReorder = false;
+        if tables.count() >= 3 && stmt.joinTypes.count() >= 2 {
+            var allInner = true;
+            var jt = 0;
+            while jt < stmt.joinTypes.count() {
+                if stmt.joinTypes.get(jt) != 1 {
+                    allInner = false;
+                }
+                jt = jt + 1;
+            }
+            if allInner {
+                didReorder = reorderInnerJoinTables(tables, aliases,
+                    stmt.joinConditions, reorderedConds);
+                if didReorder {
+                    // Rebuild colOffsets for reordered tables
+                    colOffsets = new List[Integer]();
+                    totalCols = 0;
+                    ti = 0;
+                    while ti < tables.count() {
+                        colOffsets.add(totalCols);
+                        totalCols = totalCols + tables.get(ti).columnCount();
+                        ti = ti + 1;
+                    }
+                }
+            }
         }
 
         // Build column names for result
@@ -254,14 +583,60 @@ entity JoinEngine {
             var offset = colOffsets.get(ti);
             var newCombined = new List[Row]();
 
-            // Get join type (0=CROSS, 1=INNER, 2=LEFT, 3=RIGHT, 4=FULL)
+            // Get join type and condition, accounting for possible reordering
             var joinType = 0;
-            if ti - 1 < stmt.joinTypes.count() {
-                joinType = stmt.joinTypes.get(ti - 1);
+            var hasJoinCond = false;
+            var joinCond: Expr = null;
+
+            if didReorder {
+                // Reordered: all joins are INNER, conditions from reorderedConds
+                joinType = 1;
+                if ti - 1 < reorderedConds.count() {
+                    joinCond = reorderedConds.get(ti - 1);
+                    hasJoinCond = joinCond != null;
+                }
+            } else {
+                // Original order: use stmt's join types and conditions
+                if ti - 1 < stmt.joinTypes.count() {
+                    joinType = stmt.joinTypes.get(ti - 1);
+                }
+                if ti - 1 < stmt.joinConditions.count() {
+                    joinCond = stmt.joinConditions.get(ti - 1);
+                    hasJoinCond = true;
+                }
             }
 
-            // Check if we have a join condition
-            var hasJoinCond = ti - 1 < stmt.joinConditions.count();
+            // Try hash join for INNER JOIN with equi-condition
+            var usedHashJoin = false;
+            if joinType == 1 && hasJoinCond {
+                if isEquiJoin(joinCond) {
+                    // Find which previously-joined table the condition references
+                    var leftTableIdx = 0;
+                    if ti > 1 {
+                        var lti = 0;
+                        while lti < ti {
+                            if condReferencesTable(joinCond, tables.get(lti), aliases.get(lti)) {
+                                leftTableIdx = lti;
+                                lti = ti;
+                            }
+                            lti = lti + 1;
+                        }
+                    }
+                    var leftTable = tables.get(leftTableIdx);
+                    var hashResult = executeHashJoinStep(
+                        combinedRows, tbl,
+                        leftTable, aliases.get(leftTableIdx), aliases.get(ti),
+                        joinCond, colOffsets, leftTableIdx, ti, totalCols, tables, aliases);
+                    combinedRows = hashResult;
+                    usedHashJoin = true;
+                }
+            }
+
+            if usedHashJoin {
+                ti = ti + 1;
+            }
+
+            if usedHashJoin == false {
 
             // For RIGHT/FULL JOIN: track matched right rows
             var rightMatched = new List[Integer]();
@@ -300,7 +675,6 @@ entity JoinEngine {
                             // Check join condition for non-CROSS joins
                             var includeRow = true;
                             if hasJoinCond && (joinType == 1 || joinType == 2 || joinType == 3 || joinType == 4) {
-                                var joinCond = stmt.joinConditions.get(ti - 1);
                                 var joinResult = evalJoinExpr(joinCond, tables, aliases, newRow, colOffsets);
                                 if joinResult.intValue == 0 {
                                     includeRow = false;
@@ -358,6 +732,8 @@ entity JoinEngine {
 
             combinedRows = newCombined;
             ti = ti + 1;
+
+            } // end if usedHashJoin == false
         }
 
         // Apply WHERE clause

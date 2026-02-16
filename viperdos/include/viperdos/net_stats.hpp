@@ -79,3 +79,6 @@ struct NetStats {
 
     unsigned int _reserved[8]; /**< Reserved for future use. */
 };
+
+// ABI size guard — this struct crosses the kernel/user syscall boundary
+static_assert(sizeof(NetStats) == 240, "NetStats ABI size mismatch");

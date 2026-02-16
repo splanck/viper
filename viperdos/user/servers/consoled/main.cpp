@@ -142,7 +142,8 @@ class ConsoleServer {
                         m_hadFirstShellOutput = true;
                         Debug::print("[consoled] First shell output received\n");
                         if (m_textBuffer.needs_present()) {
-                            gui_present_async(m_window);
+                            // Use synchronous present to guarantee displayd composites
+                            gui_present(m_window);
                             m_textBuffer.clear_needs_present();
                             m_lastPresentTime = sys::uptime();
                         }

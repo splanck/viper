@@ -117,6 +117,9 @@ struct CapInfo {
     unsigned int rights;      /**< Rights bitmask (`CAP_RIGHT_*`). */
 };
 
+// ABI size guard — this struct crosses the kernel/user syscall boundary
+static_assert(sizeof(CapInfo) == 12, "CapInfo ABI size mismatch");
+
 /**
  * @brief One entry in the capability table returned by `SYS_CAP_LIST`.
  *
@@ -133,3 +136,6 @@ struct CapListEntry {
     unsigned char _reserved;  /**< Reserved/padding. */
     unsigned int rights;      /**< Rights bitmask (`CAP_RIGHT_*`). */
 };
+
+// ABI size guard
+static_assert(sizeof(CapListEntry) == 12, "CapListEntry ABI size mismatch");

@@ -24,6 +24,7 @@
 #include "../../arch/aarch64/timer.hpp"
 #include "../../console/serial.hpp"
 #include "../../lib/crc32.hpp"
+#include "../../lib/lru_list.hpp"
 #include "../../mm/kheap.hpp"
 #include "../../mm/slab.hpp"
 #include "../cache.hpp"
@@ -92,43 +93,15 @@ CachedInode *InodeCache::find(u64 ino) {
 }
 
 void InodeCache::remove_from_lru(CachedInode *ci) {
-    if (ci->lru_prev) {
-        ci->lru_prev->lru_next = ci->lru_next;
-    } else {
-        lru_head_ = ci->lru_next;
-    }
-
-    if (ci->lru_next) {
-        ci->lru_next->lru_prev = ci->lru_prev;
-    } else {
-        lru_tail_ = ci->lru_prev;
-    }
-
-    ci->lru_prev = nullptr;
-    ci->lru_next = nullptr;
+    lib::lru_remove(ci, lru_head_, lru_tail_);
 }
 
 void InodeCache::add_to_lru_head(CachedInode *ci) {
-    ci->lru_prev = nullptr;
-    ci->lru_next = lru_head_;
-
-    if (lru_head_) {
-        lru_head_->lru_prev = ci;
-    }
-    lru_head_ = ci;
-
-    if (!lru_tail_) {
-        lru_tail_ = ci;
-    }
+    lib::lru_add_head(ci, lru_head_, lru_tail_);
 }
 
 void InodeCache::touch(CachedInode *ci) {
-    if (ci == lru_head_) {
-        return;
-    }
-
-    remove_from_lru(ci);
-    add_to_lru_head(ci);
+    lib::lru_touch(ci, lru_head_, lru_tail_);
 }
 
 void InodeCache::insert_hash(CachedInode *ci) {

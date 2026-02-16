@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../mm/pmm.hpp"
 #include "../../mm/vma.hpp"
 #include "../../viper/address_space.hpp"
 #include "../../viper/viper.hpp"
@@ -28,16 +29,7 @@ static constexpr u32 MAP_PRIVATE = 0x02;
 static constexpr u32 MAP_FIXED = 0x10;
 static constexpr u32 MAP_ANONYMOUS = 0x20;
 
-static constexpr u64 PAGE_SIZE = 4096;
-static constexpr u64 PAGE_MASK = PAGE_SIZE - 1;
-
-static u64 page_align_up(u64 addr) {
-    return (addr + PAGE_MASK) & ~PAGE_MASK;
-}
-
-static u64 page_align_down(u64 addr) {
-    return addr & ~PAGE_MASK;
-}
+// Page alignment helpers from pmm.hpp (pmm::page_align_up, pmm::page_align_down)
 
 /// Convert POSIX prot flags to kernel VMA prot flags
 static u32 posix_to_vma_prot(u32 posix_prot) {
@@ -72,7 +64,7 @@ SyscallResult sys_mmap(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5) {
     }
 
     // Round up to page boundary
-    usize aligned_len = page_align_up(len);
+    usize aligned_len = pmm::page_align_up(len);
 
     // Must have either MAP_PRIVATE or MAP_SHARED
     if (!(flags & MAP_PRIVATE) && !(flags & MAP_SHARED)) {
@@ -93,13 +85,13 @@ SyscallResult sys_mmap(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5) {
     u64 map_addr;
     if (flags & MAP_FIXED) {
         // Use exact address
-        map_addr = page_align_down(addr);
+        map_addr = pmm::page_align_down(addr);
         if (map_addr == 0) {
             return err_invalid_arg();
         }
     } else {
         // Allocate from mmap region
-        map_addr = page_align_up(v->mmap_next);
+        map_addr = pmm::page_align_up(v->mmap_next);
         v->mmap_next = map_addr + aligned_len;
     }
 
@@ -126,8 +118,8 @@ SyscallResult sys_mmap(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5) {
 /// @brief Unmap a previously mapped memory region from the process's address space.
 /// @details Removes both the page table mappings and the VMA tracking entries.
 SyscallResult sys_munmap(u64 a0, u64 a1, u64, u64, u64, u64) {
-    u64 addr = page_align_down(a0);
-    usize len = static_cast<usize>(page_align_up(a1));
+    u64 addr = pmm::page_align_down(a0);
+    usize len = static_cast<usize>(pmm::page_align_up(a1));
 
     if (len == 0 || addr == 0) {
         return err_invalid_arg();
@@ -158,8 +150,8 @@ SyscallResult sys_munmap(u64 a0, u64 a1, u64, u64, u64, u64) {
 /// @details Updates both the VMA protection metadata and the actual page table
 ///   entries (PTE) for already-faulted pages, including TLB invalidation.
 SyscallResult sys_mprotect(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
-    u64 addr = page_align_down(a0);
-    usize len = static_cast<usize>(page_align_up(a1));
+    u64 addr = pmm::page_align_down(a0);
+    usize len = static_cast<usize>(pmm::page_align_up(a1));
     u32 prot = static_cast<u32>(a2);
 
     if (len == 0 || addr == 0) {
@@ -191,7 +183,7 @@ SyscallResult sys_mprotect(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     v->vma_list.release_lock(saved);
 
     // Update page table entries for already-mapped pages
-    for (u64 va = addr; va < end; va += PAGE_SIZE) {
+    for (u64 va = addr; va < end; va += pmm::PAGE_SIZE) {
         u64 old_pte = as->read_pte(va);
         if (!(old_pte & viper::pte::VALID))
             continue;

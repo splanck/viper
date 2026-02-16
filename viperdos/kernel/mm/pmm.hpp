@@ -63,6 +63,16 @@ constexpr u64 page_align_down(u64 addr) {
 }
 
 /**
+ * @brief Convert a byte count to the number of pages needed to hold it.
+ *
+ * @param bytes Size in bytes.
+ * @return Minimum number of pages required (rounds up).
+ */
+constexpr u64 bytes_to_pages(u64 bytes) {
+    return (bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+}
+
+/**
  * @brief Initialize the physical memory manager.
  *
  * @details

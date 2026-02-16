@@ -290,3 +290,47 @@ These need to be fixed in the platform itself.
   exec.executeSql("INSERT INTO sv_" + Fmt.Int(i) + " ...");
   ```
 - **Found**: 2026-02-14
+
+---
+
+## BUG-PARSE-001: Zia parser rejects `match` as variable/parameter name
+
+- **Status**: FIXED
+- **Severity**: Medium
+- **Component**: Zia frontend parser — `Parser_Tokens.cpp`, `Parser_Expr.cpp`, `Parser_Stmt.cpp`
+- **Symptom**: Using `match` as a variable name causes parse error "expected variable name" in any context. For example: `var match = 0; if match { ... }` fails to compile. This also affects `match` used as function parameter name or any identifier context.
+- **Root cause**: Three issues:
+  1. `checkIdentifierLike()` in `Parser_Tokens.cpp` only allowed `KwValue` as a contextual keyword but not `KwMatch`, so `var match = 0;` was rejected.
+  2. `parsePrimary()` in `Parser_Expr.cpp` unconditionally treated `KwMatch` as a match expression keyword, so `return match;` or `if match {` tried to parse a match expression instead of a variable reference.
+  3. `parseStatement()` in `Parser_Stmt.cpp` unconditionally treated `KwMatch` as a match statement keyword, so `match = 10;` (assignment) was misinterpreted.
+- **Fix**:
+  1. Added `KwMatch` to the contextual keyword switch in `checkIdentifierLike()`.
+  2. In `parsePrimary()` and `parseStatement()`, added lookahead: only treat `match` as a keyword when the next token is an identifier, literal, `(`, or boolean — tokens that start a scrutinee expression. When followed by `;`, `)`, `{`, `=`, operators, etc., treat `match` as an identifier.
+- **Verification**: All 1150 existing tests pass. New test `ZiaStatements.MatchAsVariableName` added and passes.
+- **Found**: 2026-02-15
+- **Fixed**: 2026-02-15
+
+---
+
+## BUG-NAT-006: AArch64 callee-side stack parameter loading clobbers register allocator assignments
+
+- **Status**: FIXED
+- **Severity**: Critical
+- **Component**: Native codegen (AArch64) — `LowerILToMIR.cpp`
+- **Symptom**: Functions with more than 8 parameters (where overflow args are passed on the stack per AAPCS64) crash or produce wrong results when compiled natively. Register parameters that were correctly spilled to stack slots in the prologue get clobbered by the stack parameter loading code. In the ViperSQL case, `executeHashJoinStep` (13 params, 5 on stack) crashed with `rt_list_get: index out of bounds` because the `existing` parameter (a List) was corrupted — its count field read as 2 instead of 1, and list element data was garbage.
+- **Root cause**: Two issues in `LowerILToMIR.cpp` entry block parameter setup:
+  1. **Stack params not implemented**: The callee-side code had `continue; // Stack param - not handled yet` for parameters beyond the 8 register slots, silently ignoring them.
+  2. **Physical register conflict**: After implementing stack param loading, the code used a hardcoded physical register (initially X9, then X10) to load from the caller's stack area `[FP + 16 + idx * 8]` and store to the spill slot. However, the register allocator independently assigned vregs to these same physical registers for earlier parameter values. The prologue sequence was: (a) spill register params to slots, (b) reload into vregs (allocator assigns phys regs like X10), (c) load stack params using hardcoded X10 — step (c) clobbered the vreg from step (b).
+
+  Assembly showing the conflict:
+  ```asm
+  str x1, [x29, #-416]    ; spill 'existing' (param 1)
+  ldr x10, [x29, #-416]   ; reload into vreg → allocator assigns X10
+  ...                      ; X10 holds 'existing', still live
+  ldr x10, [x29, #0x10]   ; CLOBBER! stack param load overwrites X10
+  ```
+- **Fix**: Changed stack param loading to use virtual registers instead of hardcoded physical registers. The temporary vreg is defined by `LdrRegFpImm` and used by `StrRegFpImm`, letting the register allocator choose a non-conflicting physical register. This also handles the secondary issue where `emitStrToFp` uses X9 (kScratchGPR) as scratch for large offsets, which would clobber X9 if used as the load target.
+- **Verification**: All 1151 tests pass (including new `test_codegen_arm64_callee_stack_params` with 3 test cases: 10 params, 10 params with cross-call liveness, 13 params with register pressure). ViperSQL hash join test suite (129 tests) passes in both VM and native.
+- **Regression test**: `test_codegen_arm64_callee_stack_params.cpp` (CalleeStackParamsSum10, CalleeStackParamsSurviveCall, CalleeStackParams13Wide)
+- **Found**: 2026-02-15
+- **Fixed**: 2026-02-15

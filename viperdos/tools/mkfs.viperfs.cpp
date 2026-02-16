@@ -49,6 +49,7 @@ class DiskImage {
     u64 total_blocks;
     u64 next_free_block;
     u64 next_free_inode;
+    u64 blocks_used{0}; // Tracks total allocated blocks (metadata + data)
 
     // Layout fields computed during create(), reused during finalize()
     u64 bitmap_start;
@@ -122,6 +123,7 @@ class DiskImage {
         for (u64 i = 0; i < data_start; i++) {
             mark_block_used(i);
         }
+        blocks_used = data_start;
 
         next_free_block = data_start;
         next_free_inode = ROOT_INODE + 1; // Start at 3 (0, 1 reserved, 2 is root)
@@ -183,6 +185,7 @@ class DiskImage {
             u64 bit = next_free_block % 8;
             if (!(bitmap[byte] & (1 << bit))) {
                 bitmap[byte] |= (1 << bit);
+                blocks_used++;
                 return next_free_block++;
             }
             next_free_block++;
@@ -611,8 +614,6 @@ u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data,
         blocks_needed = 0; // Empty file
     inode.blocks = blocks_needed;
 
-    constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64);
-
     // Direct blocks (0-11)
     for (u64 i = 0; i < blocks_needed && i < 12; i++) {
         u64 block = img.alloc_block();
@@ -868,14 +869,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Count actual free blocks from bitmap
-    u64 used_blocks = 0;
-    for (u64 i = 0; i < img.total_blocks; i++) {
-        if (img.bitmap[i / 8] & (1 << (i % 8))) {
-            used_blocks++;
-        }
-    }
-    u64 actual_free_blocks = img.total_blocks - used_blocks;
+    u64 actual_free_blocks = img.total_blocks - img.blocks_used;
 
     // Update superblock with correct free_blocks count
     Superblock sb = {};
@@ -899,7 +893,7 @@ int main(int argc, char **argv) {
     printf("Created %s (%lu MB, %lu blocks used, %lu free)\n",
            image_path,
            size_mb,
-           used_blocks,
+           img.blocks_used,
            actual_free_blocks);
     return 0;
 }

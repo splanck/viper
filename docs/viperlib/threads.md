@@ -38,11 +38,15 @@ OS threads for Viper programs (VM and native backends).
 | Method                    | Signature                       | Description                                |
 |--------------------------|----------------------------------|--------------------------------------------|
 | `Start(entry, arg)`      | `Thread(Ptr, Ptr)`               | Start a new thread running `entry(arg)`    |
+| `StartSafe(entry, arg)`  | `Thread(Ptr, Ptr)`               | Start a thread with error boundaries — traps are captured instead of crashing |
 | `Join()`                 | `Void()`                         | Wait until the thread finishes             |
 | `TryJoin()`              | `Boolean()`                      | Non-blocking join attempt                  |
 | `JoinFor(ms)`            | `Boolean(Integer)`               | Join with timeout in milliseconds          |
 | `Sleep(ms)`              | `Void(Integer)`                  | Sleep the current thread (ms, clamped)     |
-| `Yield()`                | `Void()`                         | Yield the current thread’s time slice      |
+| `Yield()`                | `Void()`                         | Yield the current thread's time slice      |
+| `SafeJoin()`             | `Void()`                         | Join a safe thread handle                  |
+| `SafeGetId()`            | `Integer()`                      | Get the ID of a safe thread handle         |
+| `SafeIsAlive()`          | `Boolean()`                      | Check if a safe thread is still running    |
 
 ### Properties
 
@@ -50,6 +54,8 @@ OS threads for Viper programs (VM and native backends).
 |------------|-----------------------|----------------------------------------|
 | `Id`       | `Integer` (read-only) | Monotonic thread id (1, 2, 3, …)       |
 | `IsAlive`  | `Boolean` (read-only) | True while entry function is running   |
+| `HasError` | `Boolean` (read-only) | True if a safe thread exited with a trap (only for `StartSafe` threads) |
+| `Error`    | `String` (read-only)  | Error message if the safe thread trapped (empty otherwise) |
 
 ### Entry Function
 
@@ -76,6 +82,32 @@ entry:
 
 - **Native:** `entry` is a raw code pointer with C ABI `void (*)(void *)`.
 - **VM:** `entry` is a VM function pointer (internally `il::core::Function*`) and is invoked by a per-thread VM runner.
+
+### Safe Threads (Error Boundaries)
+
+`StartSafe(entry, arg)` is like `Start` but wraps the thread entry in a trap recovery context
+using `setjmp`/`longjmp`. If the entry function triggers a trap (null dereference, bounds check
+failure, etc.), the trap is captured instead of crashing the process.
+
+After the thread finishes, check `HasError` and `Error` on the returned handle:
+
+```zia
+var t = Viper.Threads.Thread.StartSafe(&worker, 0);
+Viper.Threads.Thread.Sleep(500);   // wait for thread
+if (t.HasError) {
+    Say("Thread trapped: " + t.Error);
+} else {
+    Say("Thread completed normally");
+}
+```
+
+Use `SafeJoin()`, `SafeGetId()`, and `SafeIsAlive()` instead of `Join()`, `Id`, and `IsAlive`
+for safe thread handles, as they wrap the internal thread structure.
+
+**Use cases:**
+- Database servers: isolate per-connection errors so one bad query doesn't crash all sessions
+- Plugin systems: run untrusted code without risking process stability
+- Test runners: run tests in threads and capture failures
 
 ### Join Timeouts
 
@@ -526,7 +558,7 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 
 | Method           | Signature             | Description                                                     |
 |------------------|-----------------------|-----------------------------------------------------------------|
-| `Submit(cb, arg)`| `Boolean(Object, Object)` | Submit a task for async execution; returns false if shut down  |
+| `Submit(cb, arg)`| `Boolean(Ptr, Ptr)` | Submit a function pointer task for async execution; returns false if shut down  |
 | `Wait()`         | `Void()`              | Block until all pending tasks complete                          |
 | `WaitFor(ms)`    | `Boolean(Integer)`    | Wait with timeout; returns true if all tasks completed          |
 | `Shutdown()`     | `Void()`              | Graceful shutdown: finish pending tasks, then stop workers      |
@@ -618,6 +650,8 @@ Promise which is used to set the value.
 | Method          | Signature           | Description                                          |
 |-----------------|---------------------|------------------------------------------------------|
 | `Get()`         | `Object()`          | Block until resolved, return value (traps on error)  |
+| `TryGetVal()`   | `Object()`          | Non-blocking get: returns value if resolved, NULL otherwise |
+| `GetForVal(ms)` | `Object(Integer)`   | Timed get: returns value if resolved within `ms` milliseconds, NULL on timeout |
 | `Wait()`        | `Void()`            | Block until resolved (value or error)                |
 | `WaitFor(ms)`   | `Boolean(Integer)`  | Wait with timeout, returns true if resolved          |
 
@@ -1167,11 +1201,14 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 
 ### Methods
 
-| Method                     | Signature                          | Description                                         |
-|----------------------------|------------------------------------|-----------------------------------------------------|
-| `Delay(ms)`                | `Future(Integer)`                  | Return a Future that resolves after `ms` milliseconds with NULL |
-| `All(futures)`             | `Future(Seq)`                      | Return a Future that resolves when all input futures resolve (with a Seq of results) |
-| `Any(futures)`             | `Future(Seq)`                      | Return a Future that resolves with the value of whichever input future completes first |
+| Method                            | Signature                          | Description                                         |
+|-----------------------------------|------------------------------------|-----------------------------------------------------|
+| `Delay(ms)`                       | `Future(Integer)`                  | Return a Future that resolves after `ms` milliseconds with NULL |
+| `All(futures)`                    | `Future(Seq)`                      | Return a Future that resolves when all input futures resolve (with a Seq of results) |
+| `Any(futures)`                    | `Future(Seq)`                      | Return a Future that resolves with the value of whichever input future completes first |
+| `Run(callback, arg)`              | `Future(Ptr, Ptr)`                 | Spawn a thread to run `callback(arg)`, return Future with result |
+| `Map(future, mapper, arg)`        | `Future(Future, Ptr, Ptr)`         | Chain a transformation on a Future's result          |
+| `RunCancellable(callback, arg, token)` | `Future(Ptr, Ptr, CancelToken)` | Like `Run` but linked to a cancellation token      |
 
 ### Notes
 
@@ -1179,6 +1216,9 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 - `Delay` returns a Future that resolves with NULL after the specified delay.
 - `All` returns a Future resolving to a Seq of results. If any input future has an error, the combined Future resolves with an error.
 - `Any` returns a Future resolving with the value of the first completed input future.
+- `Run` spawns a new thread to execute the callback and returns a Future that resolves with the callback's return value.
+- `Map` chains a transformation: when the input future resolves, `mapper` is called with the result and `arg`, producing a new Future.
+- `RunCancellable` is like `Run` but associates the spawned task with a `CancelToken` for cooperative cancellation.
 
 ---
 

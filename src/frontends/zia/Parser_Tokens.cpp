@@ -71,6 +71,7 @@ bool Parser::checkIdentifierLike()
     switch (peek().kind)
     {
         case TokenKind::KwValue: // Common parameter name (e.g., setValue(Integer value))
+        case TokenKind::KwMatch: // Common variable name (e.g., var match = false)
             return true;
         default:
             return false;

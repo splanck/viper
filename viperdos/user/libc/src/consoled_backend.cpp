@@ -32,6 +32,7 @@
 #include "../include/stddef.h"
 #include "../include/stdint.h"
 #include "../include/sys/types.h"
+#include <viperdos/syscall_abi.hpp>
 
 namespace {
 
@@ -108,13 +109,13 @@ static bool send_to_consoled(const void *buf, size_t count) {
         int64_t err = sys::channel_send(g_consoled_channel, msg, total_len, nullptr, 0);
         if (err == 0)
             return true;
-        if (err == -300 /* VERR_WOULD_BLOCK */) {
+        if (err == VERR_WOULD_BLOCK) {
             // Buffer full - sleep 1ms to let consoled drain its queue
             sys::sleep(1);
             continue;
         }
         // Fatal channel error - mark disconnected but allow reconnection
-        if (err == -301 /* VERR_CHANNEL_CLOSED */ || err == -100 /* VERR_INVALID_HANDLE */) {
+        if (err == VERR_CHANNEL_CLOSED || err == VERR_INVALID_HANDLE) {
             g_output_ready = false;
             g_consoled_channel = -1;
         }

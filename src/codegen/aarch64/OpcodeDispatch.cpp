@@ -789,6 +789,14 @@ bool lowerInstruction(const il::core::Instr &ins,
             else if (!ins.callee.empty())
             {
                 // Fallback: emit call without args for noreturn functions
+                // WARNING: This path should NOT be reached for normal function calls
+                // with arguments. If we get here for a call with args, it means
+                // lowerCallWithArgs failed to materialize an argument.
+                if (!ins.operands.empty())
+                {
+                    fprintf(stderr, "WARNING: lowerCallWithArgs failed for %s with %zu args\n",
+                            ins.callee.c_str(), ins.operands.size());
+                }
                 bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(ins.callee)}});
             }
             return true;

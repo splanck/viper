@@ -94,4 +94,8 @@ struct DirEnt {
  */
 constexpr usize MAX_PATH = 256;
 
+// ABI size guards — these structs cross the kernel/user syscall boundary
+static_assert(sizeof(Stat) == 56, "Stat ABI size mismatch");
+static_assert(sizeof(DirEnt) == 272, "DirEnt ABI size mismatch");
+
 } // namespace viper

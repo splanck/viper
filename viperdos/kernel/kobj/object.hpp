@@ -52,6 +52,9 @@ class Object {
     virtual ~Object() = default;
 
     // Reference counting
+    // NOTE: ref()/unref() use non-atomic operations. This is correct for the
+    // current single-core scheduler but must be replaced with __atomic builtins
+    // before enabling SMP support.
     /**
      * @brief Increment the reference count.
      *

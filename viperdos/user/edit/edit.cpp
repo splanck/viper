@@ -16,6 +16,8 @@
 #include <syscall.hpp>
 
 #include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -51,78 +53,15 @@ static bool running = true;
 static char message[128] = {0};
 static bool show_help = false;
 
-// =============================================================================
-// Utility Functions
-// =============================================================================
-
-static int strlen(const char *s) {
-    int len = 0;
-    while (s[len])
-        len++;
-    return len;
-}
-
-static void strcpy(char *dst, const char *src) {
-    while (*src)
-        *dst++ = *src++;
-    *dst = '\0';
-}
-
-static void strncpy(char *dst, const char *src, int n) {
-    while (n-- > 0 && *src)
-        *dst++ = *src++;
-    *dst = '\0';
-}
-
-static void memmove(void *dst, const void *src, int n) {
-    char *d = static_cast<char *>(dst);
-    const char *s = static_cast<const char *>(src);
-    if (d < s) {
-        while (n--)
-            *d++ = *s++;
-    } else if (d > s) {
-        d += n;
-        s += n;
-        while (n--)
-            *--d = *--s;
-    }
-}
-
-static void itoa(int n, char *buf) {
-    char tmp[16];
-    int i = 0;
-    bool neg = false;
-
-    if (n < 0) {
-        neg = true;
-        n = -n;
-    }
-    if (n == 0) {
-        tmp[i++] = '0';
-    } else {
-        while (n > 0) {
-            tmp[i++] = '0' + (n % 10);
-            n /= 10;
-        }
-    }
-    if (neg)
-        tmp[i++] = '-';
-
-    int j = 0;
-    while (i > 0)
-        buf[j++] = tmp[--i];
-    buf[j] = '\0';
-}
+// Utility functions: strlen, strcpy, strncpy, memmove from <string.h>;
+// itoa from <stdlib.h> (3-arg: value, buf, base).
 
 // =============================================================================
 // Terminal I/O
 // =============================================================================
 
 static void term_write(const char *s) {
-    int len = 0;
-    while (s[len])
-        len++;
-    write(STDOUT_FILENO, s, len);
+    write(STDOUT_FILENO, s, strlen(s));
 }
 
 static void term_write_char(char c) {
@@ -147,10 +86,10 @@ static void term_home() {
 static void term_goto(int row, int col) {
     char buf[32];
     term_write("\033[");
-    itoa(row + 1, buf);
+    itoa(row + 1, buf, 10);
     term_write(buf);
     term_write(";");
-    itoa(col + 1, buf);
+    itoa(col + 1, buf, 10);
     term_write(buf);
     term_write("H");
 }
@@ -307,16 +246,16 @@ static void draw_status_bar() {
     int li = 0;
     lineinfo[li++] = ' ';
     lineinfo[li++] = 'L';
-    itoa(cursor_row + 1, numbuf);
+    itoa(cursor_row + 1, numbuf, 10);
     for (int i = 0; numbuf[i]; i++)
         lineinfo[li++] = numbuf[i];
     lineinfo[li++] = '/';
-    itoa(line_count, numbuf);
+    itoa(line_count, numbuf, 10);
     for (int i = 0; numbuf[i]; i++)
         lineinfo[li++] = numbuf[i];
     lineinfo[li++] = ' ';
     lineinfo[li++] = 'C';
-    itoa(cursor_col + 1, numbuf);
+    itoa(cursor_col + 1, numbuf, 10);
     for (int i = 0; numbuf[i]; i++)
         lineinfo[li++] = numbuf[i];
     lineinfo[li++] = ' ';
@@ -437,7 +376,7 @@ static bool load_file(const char *path) {
 
     char msg[64] = "Loaded ";
     char numbuf[16];
-    itoa(line_count, numbuf);
+    itoa(line_count, numbuf, 10);
     int p = 7;
     for (int i = 0; numbuf[i]; i++)
         msg[p++] = numbuf[i];
@@ -487,7 +426,7 @@ static bool save_file() {
 
     char msg[64] = "Saved ";
     char numbuf[16];
-    itoa(total_bytes, numbuf);
+    itoa(total_bytes, numbuf, 10);
     int p = 6;
     for (int i = 0; numbuf[i]; i++)
         msg[p++] = numbuf[i];

@@ -77,8 +77,7 @@ bool init() {
         serial::puts(" id1=");
         serial::put_hex(id1);
         serial::puts(" (expected 0x31, 0x10)\n");
-        // Continue anyway - QEMU might have slightly different ID values
-        // but the register layout is still PL031
+        return false;
     }
 
     // Ensure RTC is enabled (bit 0 of RTCCR)

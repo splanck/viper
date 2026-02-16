@@ -211,6 +211,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             // Float params use d0, d1, d2... (independently numbered)
             std::size_t gprArgIdx = 0;
             std::size_t fprArgIdx = 0;
+            // Track stack argument index for parameters that overflow registers.
+            // AAPCS64: stack args are laid out in argument order regardless of class.
+            std::size_t stackArgIdx = 0;
 
             for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi)
             {
@@ -227,34 +230,77 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 funcParamSpillOffset[param.id] = spillOffset;
 
                 // Get the ABI register for this parameter using independent GPR/FPR indexing
-                PhysReg src;
+                bool isStackParam = false;
+                PhysReg src{};
                 if (cls == RegClass::FPR)
                 {
                     if (fprArgIdx < ti_->f64ArgOrder.size())
                         src = ti_->f64ArgOrder[fprArgIdx++];
                     else
-                        continue; // Stack param - not handled yet
+                        isStackParam = true;
                 }
                 else
                 {
                     if (gprArgIdx < ti_->intArgOrder.size())
                         src = ti_->intArgOrder[gprArgIdx++];
                     else
-                        continue; // Stack param - not handled yet
+                        isStackParam = true;
                 }
 
-                // Emit store: str xN, [fp, #offset]
-                if (cls == RegClass::FPR)
+                if (isStackParam)
                 {
-                    bbOut().instrs.push_back(
-                        MInstr{MOpcode::StrFprFpImm,
-                               {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
+                    // Stack parameter: load from caller's outgoing arg area.
+                    // After prologue (stp x29, x30, [sp, #-16]!; mov x29, sp),
+                    // caller's stack args are at [FP + 16 + stackArgIdx * 8].
+                    const int callerArgOffset =
+                        16 + static_cast<int>(stackArgIdx) * 8;
+                    ++stackArgIdx;
+
+                    // Load from caller's stack arg area into spill slot via a temporary
+                    // vreg. IMPORTANT: We must NOT use a hardcoded physical register here
+                    // because the register allocator may have assigned that register to a
+                    // vreg for an earlier parameter that is still live. Using a vreg lets
+                    // the allocator pick a non-conflicting physical register.
+                    if (cls == RegClass::FPR)
+                    {
+                        const uint16_t tmpVid = nextVRegId++;
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::LdrFprFpImm,
+                                   {MOperand::vregOp(RegClass::FPR, tmpVid),
+                                    MOperand::immOp(callerArgOffset)}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::StrFprFpImm,
+                                   {MOperand::vregOp(RegClass::FPR, tmpVid),
+                                    MOperand::immOp(spillOffset)}});
+                    }
+                    else
+                    {
+                        const uint16_t tmpVid = nextVRegId++;
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::LdrRegFpImm,
+                                   {MOperand::vregOp(RegClass::GPR, tmpVid),
+                                    MOperand::immOp(callerArgOffset)}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::StrRegFpImm,
+                                   {MOperand::vregOp(RegClass::GPR, tmpVid),
+                                    MOperand::immOp(spillOffset)}});
+                    }
                 }
                 else
                 {
-                    bbOut().instrs.push_back(
-                        MInstr{MOpcode::StrRegFpImm,
-                               {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
+                    // Register parameter: store ABI register to spill slot
+                    if (cls == RegClass::FPR)
+                    {
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::StrFprFpImm,
+                                   {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
+                    }
+                    else
+                    {
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::StrRegFpImm,
+                                   {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
+                    }
                 }
 
                 // Create vreg for this param and load from spill slot

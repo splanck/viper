@@ -25,6 +25,11 @@
  * Both kernel and user-space code include this header to ensure type
  * consistency across the ABI boundary.
  *
+ * **Endianness**: All ABI structures in `include/viperdos/` assume
+ * little-endian byte order (AArch64 default configuration). Network-byte-order
+ * fields (e.g., IP/TCP headers) are explicitly converted using the helpers in
+ * `kernel/lib/endian.hpp`.
+ *
  * The aliases mirror common low-level systems conventions:
  * - `u*` for unsigned integers, `i*` for signed integers
  * - `usize`/`isize` for sizes and signed sizes

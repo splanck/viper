@@ -12,6 +12,7 @@
 #include "fat32.hpp"
 #include "../../console/serial.hpp"
 #include "../../drivers/virtio/blk.hpp"
+#include "../../lib/mem.hpp"
 
 namespace fs::fat32 {
 
@@ -272,7 +273,8 @@ bool FAT32::write_fat(u32 cluster, u32 value) {
         return false;
     }
 
-    // Preserve upper 4 bits
+    // FAT32 entries are only 28 bits wide; the upper 4 bits of the 32-bit
+    // word are reserved and must be preserved on write (per Microsoft FAT spec).
     u32 *entry = reinterpret_cast<u32 *>(&sector_buf_[entry_offset]);
     *entry = (*entry & 0xF0000000) | (value & cluster::MASK);
 
@@ -348,6 +350,11 @@ void FAT32::free_chain(u32 start_cluster) {
 // Directory Operations
 // ============================================================================
 
+/// @brief Convert a FAT32 8.3 directory entry name to a human-readable string.
+/// @details FAT short names are stored as 8 bytes of name + 3 bytes of extension,
+///   each right-padded with spaces (0x20). This function trims trailing spaces,
+///   inserts a dot separator before the extension (if present), and NUL-terminates.
+///   Example: "FOO     TXT" → "FOO.TXT", "README     " → "README".
 void FAT32::parse_short_name(const DirEntry *entry, char *out) {
     int j = 0;
 
@@ -715,9 +722,7 @@ i64 FAT32::write(FileInfo *info, u64 offset, const void *buf, usize len) {
                 copy_len = len - bytes_written;
             }
 
-            for (usize i = 0; i < copy_len; i++) {
-                sector_buf_[copy_start + i] = src[bytes_written + i];
-            }
+            lib::memcpy(sector_buf_ + copy_start, src + bytes_written, copy_len);
 
             if (!write_sector(sector + s, sector_buf_)) {
                 return bytes_written > 0 ? static_cast<i64>(bytes_written) : -1;

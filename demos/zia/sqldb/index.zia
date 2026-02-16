@@ -202,6 +202,52 @@ entity SqlIndex {
         return results;
     }
 
+    // Range lookup: find all row indices where the indexed column satisfies a range predicate
+    // rangeType: 1=GT(>), 2=GE(>=), 3=LT(<), 4=LE(<=), 5=BETWEEN
+    // For BETWEEN, both boundVal and upperVal are used
+    expose func lookupRange(boundVal: SqlValue, upperVal: SqlValue, rangeType: Integer, tbl: Table) -> List[Integer] {
+        var results: List[Integer] = [];
+        var i = 0;
+        while i < entries.count() {
+            var entry = entries.get(i);
+            var rowIdx = entry.rowIndex;
+            if rowIdx >= 0 && rowIdx < tbl.rowCount() {
+                var maybeRow = tbl.getRow(rowIdx);
+                if maybeRow != null {
+                    var row = maybeRow;
+                    if row.deleted == false {
+                        var colIdx = tbl.findColumnIndex(columnNames.get(0));
+                        if colIdx >= 0 {
+                            var val = row.getValue(colIdx);
+                            if checkRangeMatch(val, boundVal, upperVal, rangeType) {
+                                results.add(rowIdx);
+                            }
+                        }
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        return results;
+    }
+
+    // Check if a value matches a range predicate
+    hide func checkRangeMatch(val: SqlValue, boundVal: SqlValue, upperVal: SqlValue, rangeType: Integer) -> Boolean {
+        var cmp = val.compare(boundVal);
+        if cmp == 2 { return false; }
+        if rangeType == 1 { return cmp > 0; }
+        if rangeType == 2 { return cmp >= 0; }
+        if rangeType == 3 { return cmp < 0; }
+        if rangeType == 4 { return cmp <= 0; }
+        if rangeType == 5 {
+            if cmp < 0 { return false; }
+            var cmpUpper = val.compare(upperVal);
+            if cmpUpper == 2 { return false; }
+            return cmpUpper <= 0;
+        }
+        return false;
+    }
+
     // Rebuild the entire index from table data
     expose func rebuild(tbl: Table) {
         entries = [];

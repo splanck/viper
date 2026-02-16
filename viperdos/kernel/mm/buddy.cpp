@@ -21,6 +21,7 @@
 #include "buddy.hpp"
 #include "../arch/aarch64/cpu.hpp"
 #include "../console/serial.hpp"
+#include "pmm.hpp"
 
 namespace mm::buddy {
 
@@ -115,9 +116,9 @@ bool BuddyAllocator::init(u64 mem_start, u64 mem_end, u64 reserved_end) {
     }
 
     // Align boundaries
-    mem_start_ = (mem_start + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    mem_end_ = mem_end & ~(PAGE_SIZE - 1);
-    reserved_end = (reserved_end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    mem_start_ = pmm::page_align_up(mem_start);
+    mem_end_ = pmm::page_align_down(mem_end);
+    reserved_end = pmm::page_align_up(reserved_end);
 
     if (mem_end_ <= mem_start_ || reserved_end >= mem_end_) {
         serial::puts("[buddy] Invalid memory range\n");

@@ -1021,11 +1021,31 @@ ExprPtr Parser::parsePrimary()
         return std::make_unique<NewExpr>(loc, std::move(type), std::move(args));
     }
 
-    // Match expression (can be used as value)
+    // Match expression or 'match' used as identifier
     if (check(TokenKind::KwMatch))
     {
-        advance(); // consume 'match'
-        return parseMatchExpression(loc);
+        // Look ahead: 'match' is a keyword (match expression) only when followed by
+        // something that starts a scrutinee expression (identifier, literal, parenthesis).
+        // When followed by ';', ')', ',', '.', operators, etc., treat it as a variable name.
+        auto nextKind = peek(1).kind;
+        bool isMatchExpr = (nextKind == TokenKind::Identifier ||
+                            nextKind == TokenKind::IntegerLiteral ||
+                            nextKind == TokenKind::NumberLiteral ||
+                            nextKind == TokenKind::StringLiteral ||
+                            nextKind == TokenKind::LParen ||
+                            nextKind == TokenKind::KwTrue ||
+                            nextKind == TokenKind::KwFalse ||
+                            nextKind == TokenKind::KwNull ||
+                            nextKind == TokenKind::KwSelf);
+        if (isMatchExpr)
+        {
+            advance(); // consume 'match'
+            return parseMatchExpression(loc);
+        }
+        // Otherwise treat 'match' as an identifier
+        std::string name = peek().text;
+        advance();
+        return std::make_unique<IdentExpr>(loc, std::move(name));
     }
 
     // Identifier (including contextual keywords like 'value' used as variable names)

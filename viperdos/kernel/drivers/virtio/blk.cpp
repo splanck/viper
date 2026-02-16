@@ -8,6 +8,7 @@
 #include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
 #include "../../include/constants.hpp"
+#include "../../arch/aarch64/exceptions.hpp"
 #include "../../lib/mem.hpp"
 #include "../../mm/pmm.hpp"
 
@@ -91,8 +92,6 @@ static u64 find_blk_by_capacity(u64 expected_sectors) {
 static BlkDevice g_blk_device;
 static bool g_blk_initialized = false;
 
-// Use centralized VirtIO IRQ base
-constexpr u32 VIRTIO_IRQ_BASE = kernel::constants::hw::VIRTIO_IRQ_BASE;
 
 /**
  * @brief IRQ handler for virtio-blk interrupts.
@@ -121,10 +120,8 @@ BlkDevice *blk_device() {
  * including) request-buffer allocation, DRIVER_OK, and IRQ registration.
  */
 bool BlkDevice::init_common(u64 base, const char *label) {
-    // Calculate device index for IRQ (device base - VIRTIO_BASE) / VIRTIO_STRIDE
-    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
-                                     kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
-    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
+    // Calculate IRQ number from device base address
+    irq_num_ = compute_irq_number(base);
 
     serial::puts("[virtio-blk] Initializing ");
     serial::puts(label);
@@ -294,13 +291,8 @@ bool BlkDevice::wait_for_completion_internal(i32 desc_head) {
 // Block Request Implementation
 // =============================================================================
 
-/** @copydoc virtio::BlkDevice::do_request */
-i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf) {
-    if (type == blk_type::OUT && readonly_) {
-        serial::puts("[virtio-blk] Write to read-only device\n");
-        return -1;
-    }
-
+/// @brief Allocate a request slot and configure the header for a block I/O request.
+i32 BlkDevice::prepare_request(u32 type, u64 sector) {
     i32 req_idx = find_free_request_slot();
     if (req_idx < 0) {
         serial::puts("[virtio-blk] No free request slots\n");
@@ -319,13 +311,16 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf) {
     req.header.sector = sector;
     req.status = 0xFF;
 
-    // Calculate physical addresses
+    return req_idx;
+}
+
+/// @brief Build a 3-descriptor chain (header → data → status) for a block request.
+/// @return Head descriptor index, or -1 on failure.
+i32 BlkDevice::build_request_chain(i32 req_idx, u32 type, void *buf, u32 buf_len) {
     u64 header_phys = requests_phys_ + req_idx * sizeof(PendingRequest);
     u64 status_phys = header_phys + OFFSETOF(PendingRequest, status);
     u64 buf_phys = pmm::virt_to_phys(buf);
-    u32 buf_len = count * sector_size_;
 
-    // Allocate 3 descriptors for the request chain
     i32 desc0 = vq_.alloc_desc();
     i32 desc1 = vq_.alloc_desc();
     i32 desc2 = vq_.alloc_desc();
@@ -337,52 +332,74 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf) {
             vq_.free_desc(desc1);
         if (desc2 >= 0)
             vq_.free_desc(desc2);
-        async.in_use = false;
         serial::puts("[virtio-blk] No free descriptors\n");
         return -1;
     }
 
+    AsyncRequest &async = async_requests_[req_idx];
     async.desc_head = desc0;
     async.desc_data = desc1;
     async.desc_status = desc2;
 
-    // Setup descriptor chain
     vq_.set_desc(desc0, header_phys, sizeof(BlkReqHeader), desc_flags::NEXT);
     vq_.chain_desc(desc0, desc1);
 
     u16 data_flags = desc_flags::NEXT;
-    if (type == blk_type::IN) {
+    if (type == blk_type::IN)
         data_flags |= desc_flags::WRITE;
-    }
     vq_.set_desc(desc1, buf_phys, buf_len, data_flags);
     vq_.chain_desc(desc1, desc2);
 
     vq_.set_desc(desc2, status_phys, 1, desc_flags::WRITE);
+    return desc0;
+}
 
-    // Clear completion state and submit
+/// @brief Free the 3 descriptors used by a block request and release the slot.
+void BlkDevice::release_request(i32 req_idx) {
+    AsyncRequest &async = async_requests_[req_idx];
+    if (async.desc_head >= 0)
+        vq_.free_desc(async.desc_head);
+    if (async.desc_data >= 0)
+        vq_.free_desc(async.desc_data);
+    if (async.desc_status >= 0)
+        vq_.free_desc(async.desc_status);
+    async.in_use = false;
+}
+
+/** @copydoc virtio::BlkDevice::do_request */
+i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf) {
+    if (type == blk_type::OUT && readonly_) {
+        serial::puts("[virtio-blk] Write to read-only device\n");
+        return -1;
+    }
+
+    i32 req_idx = prepare_request(type, sector);
+    if (req_idx < 0)
+        return -1;
+
+    i32 desc0 = build_request_chain(req_idx, type, buf, count * sector_size_);
+    if (desc0 < 0) {
+        async_requests_[req_idx].in_use = false;
+        return -1;
+    }
+
+    // Clear completion state and submit atomically w.r.t. interrupts
+    exceptions::disable_interrupts();
     io_complete_ = false;
     completed_desc_ = -1;
     asm volatile("dsb sy" ::: "memory");
     vq_.submit(desc0);
     vq_.kick();
+    exceptions::enable_interrupts();
 
-    // Wait for completion
     if (!wait_for_completion_internal(desc0)) {
         serial::puts("[virtio-blk] Request timed out!\n");
-        vq_.free_desc(desc0);
-        vq_.free_desc(desc1);
-        vq_.free_desc(desc2);
-        async.in_use = false;
+        release_request(req_idx);
         return -1;
     }
 
-    // Free descriptors and check status
-    vq_.free_desc(desc0);
-    vq_.free_desc(desc1);
-    vq_.free_desc(desc2);
-
-    u8 status = req.status;
-    async.in_use = false;
+    u8 status = requests_[req_idx].status;
+    release_request(req_idx);
 
     if (status != blk_status::OK) {
         serial::puts("[virtio-blk] Request failed, status=");
@@ -458,10 +475,13 @@ i32 BlkDevice::flush() {
     vq_.chain_desc(desc0, desc1);
     vq_.set_desc(desc1, status_phys, 1, desc_flags::WRITE);
 
+    exceptions::disable_interrupts();
     io_complete_ = false;
     completed_desc_ = -1;
+    asm volatile("dsb sy" ::: "memory");
     vq_.submit(desc0);
     vq_.kick();
+    exceptions::enable_interrupts();
 
     if (!wait_for_completion_internal(desc0)) {
         serial::puts("[virtio-blk] Flush timeout\n");

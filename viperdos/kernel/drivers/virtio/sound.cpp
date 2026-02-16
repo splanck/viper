@@ -129,11 +129,15 @@ bool SoundDevice::init() {
         query->size = sizeof(SndPcmInfo);
 
         usize resp_size = sizeof(SndHdr) + query->count * sizeof(SndPcmInfo);
+        // Clamp response to buffer capacity
+        if (resp_size > pmm::PAGE_SIZE)
+            resp_size = pmm::PAGE_SIZE;
+        u32 max_infos = (resp_size - sizeof(SndHdr)) / sizeof(SndPcmInfo);
         if (send_control(sizeof(SndQueryInfo), resp_size)) {
             SndHdr *resp_hdr = reinterpret_cast<SndHdr *>(resp_buf_);
             if (resp_hdr->code == snd_cmd::S_OK) {
                 SndPcmInfo *infos = reinterpret_cast<SndPcmInfo *>(resp_buf_ + sizeof(SndHdr));
-                for (u32 i = 0; i < query->count; i++) {
+                for (u32 i = 0; i < max_infos && i < query->count; i++) {
                     if (infos[i].direction == snd_dir::OUTPUT) {
                         if (num_output_streams_ == 0)
                             first_output_stream_ = i;
@@ -179,20 +183,16 @@ bool SoundDevice::send_control(usize cmd_size, usize resp_size) {
     controlq_.submit(cmd_desc);
     controlq_.kick();
 
-    for (u32 i = 0; i < 1000000; i++) {
-        i32 used = controlq_.poll_used();
-        if (used == cmd_desc) {
-            controlq_.free_desc(cmd_desc);
-            controlq_.free_desc(resp_desc);
-            return true;
-        }
-        asm volatile("yield" ::: "memory");
-    }
+    bool completed = poll_for_completion(controlq_, cmd_desc);
 
     controlq_.free_desc(cmd_desc);
     controlq_.free_desc(resp_desc);
-    serial::puts("[virtio-snd] Control command timeout\n");
-    return false;
+
+    if (!completed) {
+        serial::puts("[virtio-snd] Control command timeout\n");
+        return false;
+    }
+    return true;
 }
 
 bool SoundDevice::send_stream_cmd(u32 code, u32 stream_id) {
@@ -208,6 +208,11 @@ bool SoundDevice::send_stream_cmd(u32 code, u32 stream_id) {
     return resp->code == snd_cmd::S_OK;
 }
 
+/// @brief Map a sample rate in Hz to the virtio-snd rate index.
+/// @details The indices correspond to the VIRTIO_SND_PCM_RATE_* enumeration
+///   in the virtio-sound specification. Returns index 7 (48 kHz) as the
+///   default fallback for unrecognised rates, since 48 kHz is the most
+///   widely supported PCM rate across hardware and emulators.
 u8 SoundDevice::rate_to_index(u32 sample_rate) {
     switch (sample_rate) {
         case 5512:
@@ -249,7 +254,7 @@ bool SoundDevice::configure_stream(u32 stream_id, u32 sample_rate, u8 channels, 
     cmd->hdr.code = snd_cmd::R_PCM_SET_PARAMS;
     cmd->stream_id = stream_id;
     cmd->buffer_bytes = PCM_BUF_SIZE;
-    cmd->period_bytes = PCM_BUF_SIZE / 4; // 4 periods per buffer
+    cmd->period_bytes = PCM_BUF_SIZE / PERIODS_PER_BUFFER;
     cmd->features = 0;
     cmd->channels = channels;
     cmd->format = (bits == 8) ? snd_fmt::U8 : snd_fmt::S16;
@@ -347,24 +352,18 @@ i64 SoundDevice::write_pcm(u32 stream_id, const void *data, usize len) {
     txq_.kick();
 
     // Wait for completion
-    for (u32 i = 0; i < 1000000; i++) {
-        i32 used = txq_.poll_used();
-        if (used == data_desc) {
-            txq_.free_desc(data_desc);
-            txq_.free_desc(status_desc);
-
-            SndPcmStatus *st = reinterpret_cast<SndPcmStatus *>(status_buf_);
-            if (st->status != snd_cmd::S_OK) {
-                return -1;
-            }
-            return static_cast<i64>(len);
-        }
-        asm volatile("yield" ::: "memory");
-    }
+    bool completed = poll_for_completion(txq_, data_desc);
 
     txq_.free_desc(data_desc);
     txq_.free_desc(status_desc);
-    return -1;
+
+    if (!completed)
+        return -1;
+
+    SndPcmStatus *st = reinterpret_cast<SndPcmStatus *>(status_buf_);
+    if (st->status != snd_cmd::S_OK)
+        return -1;
+    return static_cast<i64>(len);
 }
 
 // =============================================================================

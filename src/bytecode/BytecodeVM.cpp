@@ -3360,8 +3360,68 @@ static void unified_thread_start_handler(void **args, void *result)
         *reinterpret_cast<void **>(result) = thread;
 }
 
-/// Static initializer to register the unified Thread.Start handler.
-/// This overrides the standard VM handler when BytecodeVM is linked.
+/// Handler for Viper.Threads.Thread.StartSafe - handles both standard VM and BytecodeVM.
+/// Uses rt_thread_start_safe to wrap execution in trap recovery via setjmp/longjmp.
+static void unified_thread_start_safe_handler(void **args, void *result)
+{
+    void *entry = nullptr;
+    void *arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void **>(args[1]);
+
+    if (!entry)
+        rt_trap("Thread.StartSafe: null entry");
+
+    // Check for standard VM first
+    il::vm::VM *stdVm = il::vm::activeVMInstance();
+    if (stdVm)
+    {
+        std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
+        if (!program)
+            rt_trap("Thread.StartSafe: invalid runtime state");
+
+        const il::core::Module &module = stdVm->module();
+        const il::core::Function *entryFn = resolveILEntry(module, entry);
+        if (!entryFn)
+            rt_trap("Thread.StartSafe: invalid entry");
+        validateEntrySignature(*entryFn);
+
+        auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
+        void *thread =
+            rt_thread_start_safe(reinterpret_cast<void *>(&vm_thread_entry_trampoline_bc), payload);
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    // Check for BytecodeVM
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule)
+    {
+        const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
+        if (!entryFn)
+            rt_trap("Thread.StartSafe: invalid bytecode entry");
+
+        auto *payload =
+            new BytecodeThreadPayload{bcModule, entryFn, arg, bcVm->runtimeBridgeEnabled()};
+        void *thread = rt_thread_start_safe(
+            reinterpret_cast<void *>(&bytecode_thread_entry_trampoline), payload);
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    // No VM active - direct call (native code path)
+    void *thread = rt_thread_start_safe(entry, arg);
+    if (result)
+        *reinterpret_cast<void **>(result) = thread;
+}
+
+/// Static initializer to register the unified Thread.Start and Thread.StartSafe handlers.
+/// This overrides the standard VM handlers when BytecodeVM is linked.
 struct UnifiedThreadHandlerRegistrar
 {
     UnifiedThreadHandlerRegistrar()
@@ -3369,15 +3429,26 @@ struct UnifiedThreadHandlerRegistrar
         using il::runtime::signatures::make_signature;
         using il::runtime::signatures::SigParam;
 
-        il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Thread.Start";
-        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
-        ext.fn = reinterpret_cast<void *>(&unified_thread_start_handler);
-        il::vm::RuntimeBridge::registerExtern(ext);
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Thread.Start";
+            ext.signature =
+                make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_thread_start_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Thread.StartSafe";
+            ext.signature =
+                make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_thread_start_safe_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
     }
 };
 
-// Register the unified handler when the library is loaded
+// Register the unified handlers when the library is loaded
 [[maybe_unused]] const UnifiedThreadHandlerRegistrar kUnifiedThreadHandlerRegistrar{};
 
 } // anonymous namespace

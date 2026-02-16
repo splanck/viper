@@ -571,6 +571,45 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Test 'match' keyword used as a variable name (contextual keyword).
+TEST(ZiaStatements, MatchAsVariableName)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func test(Integer val) -> Integer {
+    if val >= 0 {
+        var match = 0;
+        if val == 1 {
+            match = 10;
+        } else if val == 2 {
+            match = 20;
+        } else if val == 3 {
+            var extra = val * 100;
+            match = extra;
+        }
+        if match > 0 {
+            return match;
+        }
+    }
+    return 0;
+}
+
+func start() {
+    Viper.Terminal.Say(Viper.Fmt.Int(test(1)));
+    Viper.Terminal.Say(Viper.Fmt.Int(test(2)));
+    Viper.Terminal.Say(Viper.Fmt.Int(test(3)));
+}
+)";
+    CompilerInput input{.source = source, .path = "match_as_var.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

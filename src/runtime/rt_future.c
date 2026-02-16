@@ -387,6 +387,72 @@ int8_t rt_future_try_get(void *obj, void **out)
     return success;
 }
 
+void *rt_future_try_get_val(void *obj)
+{
+    if (!obj)
+        return NULL;
+
+    future_impl *f = (future_impl *)obj;
+    promise_impl *p = f->promise;
+    void *result = NULL;
+
+#ifdef _WIN32
+    EnterCriticalSection(&p->mutex);
+    if (p->done && !p->is_error)
+        result = p->value;
+    LeaveCriticalSection(&p->mutex);
+#else
+    pthread_mutex_lock(&p->mutex);
+    if (p->done && !p->is_error)
+        result = p->value;
+    pthread_mutex_unlock(&p->mutex);
+#endif
+
+    return result;
+}
+
+void *rt_future_get_for_val(void *obj, int64_t ms)
+{
+    if (!obj)
+        return NULL;
+
+    future_impl *f = (future_impl *)obj;
+    promise_impl *p = f->promise;
+    void *result = NULL;
+
+#ifdef _WIN32
+    EnterCriticalSection(&p->mutex);
+    if (!p->done)
+    {
+        SleepConditionVariableCS(&p->cond, &p->mutex, (DWORD)ms);
+    }
+    if (p->done && !p->is_error)
+        result = p->value;
+    LeaveCriticalSection(&p->mutex);
+#else
+    pthread_mutex_lock(&p->mutex);
+    if (!p->done)
+    {
+        struct timespec ts;
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        ts.tv_sec = tv.tv_sec + ms / 1000;
+        ts.tv_nsec = (tv.tv_usec + (ms % 1000) * 1000) * 1000;
+        if (ts.tv_nsec >= 1000000000)
+        {
+            ts.tv_sec++;
+            ts.tv_nsec -= 1000000000;
+        }
+        pthread_cond_timedwait(&p->cond, &p->mutex, &ts);
+    }
+    if (p->done && !p->is_error)
+        result = p->value;
+    pthread_mutex_unlock(&p->mutex);
+#endif
+
+    return result;
+}
+
 void rt_future_wait(void *obj)
 {
     if (!obj)

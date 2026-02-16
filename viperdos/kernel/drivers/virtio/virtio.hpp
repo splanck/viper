@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "../../include/constants.hpp"
 #include "../../include/types.hpp"
 
 /**
@@ -361,5 +362,22 @@ DmaBuffer alloc_dma_buffer(u64 pages, bool zero_fill = true);
  * @param buf Buffer to free. Safe to call with invalid buffer.
  */
 void free_dma_buffer(DmaBuffer &buf);
+
+// =============================================================================
+// IRQ Calculation Helper
+// =============================================================================
+
+/**
+ * @brief Compute the GIC IRQ number for a virtio-mmio device at the given base address.
+ *
+ * @param device_base MMIO base address of the device.
+ * @return GIC IRQ number.
+ */
+inline u32 compute_irq_number(u64 device_base) {
+    u32 device_index = static_cast<u32>(
+        (device_base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
+        kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
+    return kernel::constants::hw::VIRTIO_IRQ_BASE + device_index;
+}
 
 } // namespace virtio

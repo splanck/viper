@@ -35,6 +35,9 @@ void flip_buffers() {
     if (total_pixels & 1) {
         g_fb[total_pixels - 1] = g_back_buffer[total_pixels - 1];
     }
+
+    // Ensure framebuffer writes reach memory before display scanout
+    __asm__ volatile("dsb sy" ::: "memory");
 }
 
 void composite() {
@@ -95,19 +98,33 @@ void composite() {
         // Draw decorations first
         draw_window_decorations(surf);
 
-        // Blit surface content to back buffer
+        // Blit surface content to back buffer (row-based for performance)
         for (uint32_t sy = 0; sy < surf->height; sy++) {
             int32_t dst_y = surf->y + static_cast<int32_t>(sy);
             if (dst_y < 0 || dst_y >= static_cast<int32_t>(g_fb_height))
                 continue;
 
-            for (uint32_t sx = 0; sx < surf->width; sx++) {
-                int32_t dst_x = surf->x + static_cast<int32_t>(sx);
-                if (dst_x < 0 || dst_x >= static_cast<int32_t>(g_fb_width))
-                    continue;
+            // Calculate visible horizontal span (clamp once per row)
+            int32_t src_start = 0;
+            int32_t dst_x_start = surf->x;
+            if (dst_x_start < 0) {
+                src_start = -dst_x_start;
+                dst_x_start = 0;
+            }
+            int32_t dst_x_end = surf->x + static_cast<int32_t>(surf->width);
+            if (dst_x_end > static_cast<int32_t>(g_fb_width))
+                dst_x_end = static_cast<int32_t>(g_fb_width);
 
-                uint32_t pixel = surf->pixels[sy * (surf->stride / 4) + sx];
-                g_back_buffer[dst_y * (g_fb_pitch / 4) + dst_x] = pixel;
+            if (dst_x_start >= dst_x_end)
+                continue;
+
+            uint32_t copy_width = static_cast<uint32_t>(dst_x_end - dst_x_start);
+            uint32_t *src_row = &surf->pixels[sy * (surf->stride / 4) + src_start];
+            uint32_t *dst_row =
+                &g_back_buffer[dst_y * (g_fb_pitch / 4) + dst_x_start];
+
+            for (uint32_t i = 0; i < copy_width; i++) {
+                dst_row[i] = src_row[i];
             }
         }
 

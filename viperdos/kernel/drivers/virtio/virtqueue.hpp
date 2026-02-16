@@ -308,4 +308,32 @@ class Virtqueue {
     usize legacy_alloc_pages_{0};
 };
 
+// ============================================================================
+// Polling Helpers
+// ============================================================================
+
+/// @brief Default timeout for control/command queue polling (iterations).
+constexpr u32 POLL_TIMEOUT_DEFAULT = 1000000;
+/// @brief Shorter timeout for auxiliary queues (cursor, LED status).
+constexpr u32 POLL_TIMEOUT_SHORT = 100000;
+
+/**
+ * @brief Poll a virtqueue until the expected descriptor completes or timeout.
+ *
+ * @param vq            Virtqueue to poll.
+ * @param expected_desc Descriptor head index to wait for.
+ * @param timeout_iters Maximum number of polling iterations.
+ * @return true if the descriptor completed, false on timeout.
+ */
+inline bool poll_for_completion(Virtqueue &vq, i32 expected_desc,
+                                u32 timeout_iters = POLL_TIMEOUT_DEFAULT) {
+    for (u32 i = 0; i < timeout_iters; i++) {
+        i32 used = vq.poll_used();
+        if (used == expected_desc)
+            return true;
+        asm volatile("yield" ::: "memory");
+    }
+    return false;
+}
+
 } // namespace virtio

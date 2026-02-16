@@ -1,0 +1,39 @@
+// test_safe_thread.zia — Test Thread.StartSafe error boundaries
+module TestSafeThread;
+
+bind Viper.Terminal;
+
+func worker_ok(arg: Ptr) {
+    Say("worker running");
+}
+
+func worker_trap(arg: Ptr) {
+    // Trigger a trap via out-of-bounds access
+    var list = new Viper.Collections.List();
+    var x = list.Get(999);
+}
+
+func start() {
+    Say("test1: normal Thread.Start");
+    var t0 = Viper.Threads.Thread.Start(&worker_ok, 0);
+    t0.Join();
+    Say("test1 done");
+
+    Say("test2: Thread.StartSafe with OK worker");
+    var t1 = Viper.Threads.Thread.StartSafe(&worker_ok, 0);
+    Viper.Threads.Thread.Sleep(500);
+    Say("test2 done");
+
+    Say("test3: Thread.StartSafe with trapping worker");
+    var t2 = Viper.Threads.Thread.StartSafe(&worker_trap, 0);
+    Viper.Threads.Thread.Sleep(500);
+    Say("test3: checking error...");
+    if (t2.HasError) {
+        Say("test3: caught error: " + t2.Error);
+    } else {
+        Say("test3: no error (thread completed normally)");
+    }
+    Say("test3 done");
+
+    Say("ALL TESTS PASSED");
+}

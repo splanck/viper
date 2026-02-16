@@ -37,16 +37,15 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array) {
     }
 
     // Align boundaries to page size
-    constexpr u64 PAGE_SIZE = 4096;
-    mem_start_ = (mem_start + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    mem_end_ = mem_end & ~(PAGE_SIZE - 1);
+    mem_start_ = pmm::page_align_up(mem_start);
+    mem_end_ = pmm::page_align_down(mem_end);
 
     if (mem_end_ <= mem_start_) {
         serial::puts("[cow] Invalid memory range\n");
         return false;
     }
 
-    total_pages_ = (mem_end_ - mem_start_) >> 12;
+    total_pages_ = (mem_end_ - mem_start_) >> pmm::PAGE_SHIFT;
 
     serial::puts("[cow] Initializing COW manager: ");
     serial::put_hex(mem_start_);
@@ -58,7 +57,7 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array) {
 
     // Calculate required size for page info array
     u64 info_size = total_pages_ * sizeof(PageInfo);
-    u64 info_pages = (info_size + PAGE_SIZE - 1) / PAGE_SIZE;
+    u64 info_pages = pmm::bytes_to_pages(info_size);
 
     serial::puts("[cow] Page info array: ");
     serial::put_dec(info_size);

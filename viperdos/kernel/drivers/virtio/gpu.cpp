@@ -77,7 +77,7 @@ bool GpuDevice::init() {
     write32(reg::QUEUE_SEL, 1);
     u32 cursor_queue_size = read32(reg::QUEUE_NUM_MAX);
     if (cursor_queue_size > 0) {
-        if (!cursorq_.init(this, 1, cursor_queue_size > 16 ? 16 : cursor_queue_size)) {
+        if (!cursorq_.init(this, 1, cursor_queue_size > MAX_CURSOR_QUEUE_SIZE ? MAX_CURSOR_QUEUE_SIZE : cursor_queue_size)) {
             serial::puts("[virtio-gpu] Warning: cursor queue init failed\n");
             // Not fatal - cursor is optional
         }
@@ -127,6 +127,12 @@ bool GpuDevice::init() {
     return true;
 }
 
+/// @brief Submit a command/response pair to the GPU controlq and wait for completion.
+/// @details Uses a two-descriptor chain: a device-readable command buffer followed
+///   by a device-writable response buffer. Polls for completion with a timeout
+///   via poll_for_completion(). A DSB memory barrier is issued before descriptor
+///   setup to ensure the command buffer contents are visible to the device.
+/// @return true if the device responded successfully, false on timeout or device error.
 bool GpuDevice::send_command(usize cmd_size, usize resp_size) {
     // Allocate descriptors
     i32 cmd_desc = controlq_.alloc_desc();
@@ -155,16 +161,8 @@ bool GpuDevice::send_command(usize cmd_size, usize resp_size) {
     controlq_.submit(cmd_desc);
     controlq_.kick();
 
-    // Wait for completion (polling)
-    bool completed = false;
-    for (u32 i = 0; i < 1000000; i++) {
-        i32 used = controlq_.poll_used();
-        if (used == cmd_desc) {
-            completed = true;
-            break;
-        }
-        asm volatile("yield" ::: "memory");
-    }
+    // Wait for completion
+    bool completed = poll_for_completion(controlq_, cmd_desc);
 
     // Free descriptors
     controlq_.free_desc(cmd_desc);
@@ -400,17 +398,9 @@ bool GpuDevice::send_cursor_command(usize cmd_size) {
     cursorq_.kick();
 
     // Wait for completion
-    for (u32 i = 0; i < 100000; i++) {
-        i32 used = cursorq_.poll_used();
-        if (used == desc) {
-            cursorq_.free_desc(desc);
-            return true;
-        }
-        asm volatile("yield" ::: "memory");
-    }
-
+    bool completed = poll_for_completion(cursorq_, desc, POLL_TIMEOUT_SHORT);
     cursorq_.free_desc(desc);
-    return false;
+    return completed;
 }
 
 bool GpuDevice::setup_cursor(const u32 *pixels, u32 width, u32 height, u32 hot_x, u32 hot_y) {

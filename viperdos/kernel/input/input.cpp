@@ -381,34 +381,30 @@ static void handle_mouse_abs(virtio::InputDevice *dev, u16 code, i32 value) {
         i32 new_x = has_range ? scale_abs_to_screen(value, min, max, g_screen_width)
                               : clamp_i32(value, 0, static_cast<i32>(g_screen_width) - 1);
         i32 dx = new_x - g_mouse_x;
-        if (dx != 0) {
-            g_mouse.dx += dx;
-            g_mouse_x = new_x;
-            g_mouse.x = new_x;
+        g_mouse.dx += dx;
+        g_mouse_x = new_x;
+        g_mouse.x = new_x;
 
-            Event ev;
-            ev.type = EventType::MouseMove;
-            ev.modifiers = current_modifiers;
-            ev.code = 0;
-            ev.value = 0;
-            push_event(ev);
-        }
+        Event ev;
+        ev.type = EventType::MouseMove;
+        ev.modifiers = current_modifiers;
+        ev.code = 0;
+        ev.value = 0;
+        push_event(ev);
     } else if (code == ABS_Y) {
         i32 new_y = has_range ? scale_abs_to_screen(value, min, max, g_screen_height)
                               : clamp_i32(value, 0, static_cast<i32>(g_screen_height) - 1);
         i32 dy = new_y - g_mouse_y;
-        if (dy != 0) {
-            g_mouse.dy += dy;
-            g_mouse_y = new_y;
-            g_mouse.y = new_y;
+        g_mouse.dy += dy;
+        g_mouse_y = new_y;
+        g_mouse.y = new_y;
 
-            Event ev;
-            ev.type = EventType::MouseMove;
-            ev.modifiers = current_modifiers;
-            ev.code = 0;
-            ev.value = 0;
-            push_event(ev);
-        }
+        Event ev;
+        ev.type = EventType::MouseMove;
+        ev.modifiers = current_modifiers;
+        ev.code = 0;
+        ev.value = 0;
+        push_event(ev);
     }
 }
 

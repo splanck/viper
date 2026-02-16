@@ -7,6 +7,7 @@
 #include "cache.hpp"
 #include "../console/serial.hpp"
 #include "../drivers/virtio/blk.hpp"
+#include "../lib/lru_list.hpp"
 #include "../lib/spinlock.hpp"
 
 /**
@@ -138,48 +139,33 @@ CacheBlock *BlockCache::find(u64 block_num) {
     return nullptr;
 }
 
+CacheBlock *BlockCache::find_any(u64 block_num) {
+    u32 h = hash_func(block_num);
+    CacheBlock *b = hash_[h];
+
+    while (b) {
+        if (b->block_num == block_num) {
+            return b;
+        }
+        b = b->hash_next;
+    }
+
+    return nullptr;
+}
+
 /** @copydoc fs::BlockCache::remove_from_lru */
 void BlockCache::remove_from_lru(CacheBlock *block) {
-    if (block->lru_prev) {
-        block->lru_prev->lru_next = block->lru_next;
-    } else {
-        lru_head_ = block->lru_next;
-    }
-
-    if (block->lru_next) {
-        block->lru_next->lru_prev = block->lru_prev;
-    } else {
-        lru_tail_ = block->lru_prev;
-    }
-
-    block->lru_prev = nullptr;
-    block->lru_next = nullptr;
+    lib::lru_remove(block, lru_head_, lru_tail_);
 }
 
 /** @copydoc fs::BlockCache::add_to_lru_head */
 void BlockCache::add_to_lru_head(CacheBlock *block) {
-    block->lru_prev = nullptr;
-    block->lru_next = lru_head_;
-
-    if (lru_head_) {
-        lru_head_->lru_prev = block;
-    }
-    lru_head_ = block;
-
-    if (!lru_tail_) {
-        lru_tail_ = block;
-    }
+    lib::lru_add_head(block, lru_head_, lru_tail_);
 }
 
 /** @copydoc fs::BlockCache::touch */
 void BlockCache::touch(CacheBlock *block) {
-    // Move to head of LRU
-    if (block == lru_head_) {
-        return; // Already at head
-    }
-
-    remove_from_lru(block);
-    add_to_lru_head(block);
+    lib::lru_touch(block, lru_head_, lru_tail_);
 }
 
 /** @copydoc fs::BlockCache::insert_hash */
@@ -228,6 +214,18 @@ CacheBlock *BlockCache::evict() {
     }
 
     // All blocks are in use or pinned
+    serial::puts("[cache] WARNING: All cache blocks in use or pinned!\n");
+    return nullptr;
+}
+
+CacheBlock *BlockCache::find_eviction_victim() {
+    CacheBlock *block = lru_tail_;
+    while (block) {
+        if (block->refcount == 0 && !block->pinned) {
+            return block;
+        }
+        block = block->lru_prev;
+    }
     serial::puts("[cache] WARNING: All cache blocks in use or pinned!\n");
     return nullptr;
 }
@@ -327,57 +325,148 @@ void BlockCache::read_ahead(u64 block_num) {
     }
 }
 
+void BlockCache::read_ahead_unlocked(u64 block_num) {
+    for (usize i = 1; i <= READ_AHEAD_BLOCKS; i++) {
+        u64 ahead = block_num + i;
+
+        u64 daif = cache_lock.acquire();
+        CacheBlock *existing = find_any(ahead);
+        if (existing) {
+            cache_lock.release(daif);
+            continue; // Already cached or being loaded
+        }
+
+        CacheBlock *block = find_eviction_victim();
+        if (!block) {
+            cache_lock.release(daif);
+            break;
+        }
+
+        // Save dirty state and remove from hash before releasing lock
+        bool was_dirty = block->valid && block->dirty;
+        u64 wb_num = block->block_num;
+
+        if (block->valid) {
+            remove_hash(block);
+        }
+
+        // Reserve under new block_num
+        block->block_num = ahead;
+        block->valid = false;
+        block->dirty = false;
+        block->refcount = 1; // Prevent eviction during load
+        insert_hash(block);
+
+        cache_lock.release(daif);
+
+        // Write back dirty data if needed
+        if (was_dirty) {
+            write_block(wb_num, block->data);
+        }
+
+        // Read new data
+        bool ok = read_block(ahead, block->data);
+
+        daif = cache_lock.acquire();
+        if (ok) {
+            block->valid = true;
+        } else {
+            remove_hash(block);
+            block->block_num = 0;
+        }
+        block->refcount = 0; // Prefetched, not actively referenced
+        readahead_count_++;
+        cache_lock.release(daif);
+    }
+}
+
 /** @copydoc fs::BlockCache::get */
 CacheBlock *BlockCache::get(u64 block_num) {
-    SpinlockGuard guard(cache_lock);
+retry:
+    u64 daif = cache_lock.acquire();
 
-    // Check cache first
-    CacheBlock *block = find(block_num);
+    // Check cache (find_any matches both valid and loading blocks)
+    CacheBlock *block = find_any(block_num);
 
     if (block) {
+        if (!block->valid) {
+            // Block is being loaded by another caller — yield and retry
+            cache_lock.release(daif);
+            asm volatile("yield");
+            goto retry;
+        }
         hits_++;
         block->refcount++;
         touch(block);
         last_block_ = block_num;
+        cache_lock.release(daif);
         return block;
     }
 
-    // Cache miss - need to load from disk
+    // Cache miss
     misses_++;
+    u64 prev_last_block = last_block_;
 
-    // Get a free block
-    block = evict();
+    block = find_eviction_victim();
     if (!block) {
         serial::puts("[cache] Failed to evict block\n");
+        cache_lock.release(daif);
         return nullptr;
     }
 
-    // Load from disk
-    if (!read_block(block_num, block->data)) {
+    // Save dirty state before modifying block
+    bool was_dirty = block->valid && block->dirty;
+    u64 wb_block_num = block->block_num;
+
+    // Remove from hash under old block_num
+    if (block->valid) {
+        remove_hash(block);
+    }
+
+    // Reserve under new block_num: visible in hash with valid=false
+    // This prevents duplicate loads and lets other callers yield/retry
+    block->block_num = block_num;
+    block->valid = false;
+    block->dirty = false;
+    block->refcount = 1;
+    insert_hash(block);
+    touch(block);
+
+    // Release lock for ALL disk I/O (prevents deadlock)
+    cache_lock.release(daif);
+
+    // Write back dirty data if needed (old block contents)
+    if (was_dirty) {
+        write_block(wb_block_num, block->data);
+    }
+
+    // Read new block data
+    bool ok = read_block(block_num, block->data);
+
+    // Re-acquire lock to finalize
+    daif = cache_lock.acquire();
+
+    if (!ok) {
         serial::puts("[cache] Failed to read block ");
         serial::put_dec(block_num);
         serial::puts("\n");
+        remove_hash(block);
+        block->refcount = 0;
+        block->block_num = 0;
+        cache_lock.release(daif);
         return nullptr;
     }
 
-    // Set up the block
-    block->block_num = block_num;
     block->valid = true;
-    block->dirty = false;
-    block->refcount = 1;
-
-    // Add to hash
-    insert_hash(block);
-
-    // Move to LRU head
-    touch(block);
-
-    // Detect sequential access and trigger read-ahead
-    bool is_sequential = (block_num == last_block_ + 1);
     last_block_ = block_num;
 
+    bool is_sequential = (block_num == prev_last_block + 1);
+
+    cache_lock.release(daif);
+
+    // Read-ahead with lock released
     if (is_sequential) {
-        read_ahead(block_num);
+        read_ahead_unlocked(block_num);
     }
 
     return block;
@@ -385,43 +474,81 @@ CacheBlock *BlockCache::get(u64 block_num) {
 
 /** @copydoc fs::BlockCache::get_for_write */
 CacheBlock *BlockCache::get_for_write(u64 block_num) {
-    SpinlockGuard guard(cache_lock);
+retry:
+    u64 daif = cache_lock.acquire();
 
-    // Check cache first (inline get logic to avoid double-locking)
-    CacheBlock *block = find(block_num);
+    CacheBlock *block = find_any(block_num);
 
     if (block) {
+        if (!block->valid) {
+            // Block is being loaded by another caller — yield and retry
+            cache_lock.release(daif);
+            asm volatile("yield");
+            goto retry;
+        }
         hits_++;
         block->refcount++;
         touch(block);
         block->dirty = true;
+        cache_lock.release(daif);
         return block;
     }
 
-    // Cache miss - need to load from disk
+    // Cache miss
     misses_++;
 
-    block = evict();
+    block = find_eviction_victim();
     if (!block) {
         serial::puts("[cache] Failed to evict block\n");
+        cache_lock.release(daif);
         return nullptr;
     }
 
-    if (!read_block(block_num, block->data)) {
-        serial::puts("[cache] Failed to read block ");
-        serial::put_dec(block_num);
-        serial::puts("\n");
-        return nullptr;
+    // Save dirty state before modifying block
+    bool was_dirty = block->valid && block->dirty;
+    u64 wb_block_num = block->block_num;
+
+    // Remove from hash under old block_num
+    if (block->valid) {
+        remove_hash(block);
     }
 
+    // Reserve under new block_num
     block->block_num = block_num;
-    block->valid = true;
-    block->dirty = true; // Mark as dirty for write
+    block->valid = false;
+    block->dirty = false;
     block->refcount = 1;
-
     insert_hash(block);
     touch(block);
 
+    // Release lock for disk I/O (prevents deadlock)
+    cache_lock.release(daif);
+
+    // Write back dirty data if needed
+    if (was_dirty) {
+        write_block(wb_block_num, block->data);
+    }
+
+    // Read new block data
+    bool ok = read_block(block_num, block->data);
+
+    // Re-acquire lock to finalize
+    daif = cache_lock.acquire();
+
+    if (!ok) {
+        serial::puts("[cache] Failed to read block ");
+        serial::put_dec(block_num);
+        serial::puts("\n");
+        remove_hash(block);
+        block->refcount = 0;
+        block->block_num = 0;
+        cache_lock.release(daif);
+        return nullptr;
+    }
+
+    block->valid = true;
+    block->dirty = true; // Mark dirty for write
+    cache_lock.release(daif);
     return block;
 }
 
@@ -453,26 +580,9 @@ void BlockCache::sync_block(CacheBlock *block) {
 
 /** @copydoc fs::BlockCache::sync */
 void BlockCache::sync() {
-    SpinlockGuard guard(cache_lock);
+    u64 daif = cache_lock.acquire();
 
-    // Count dirty blocks
-    u32 dirty_count = 0;
-    for (usize i = 0; i < CACHE_BLOCKS; i++) {
-        if (blocks_[i].valid && blocks_[i].dirty) {
-            dirty_count++;
-        }
-    }
-
-    if (dirty_count == 0) {
-        return; // Nothing to sync
-    }
-
-    serial::puts("[cache] Syncing ");
-    serial::put_dec(dirty_count);
-    serial::puts(" dirty blocks...\n");
-
-    // Collect dirty block indices and sort by block number for sequential writes
-    // (Better flash performance - reduces seek time and improves wear leveling)
+    // Collect dirty block indices
     usize dirty_indices[CACHE_BLOCKS];
     u32 count = 0;
 
@@ -481,6 +591,15 @@ void BlockCache::sync() {
             dirty_indices[count++] = i;
         }
     }
+
+    if (count == 0) {
+        cache_lock.release(daif);
+        return; // Nothing to sync
+    }
+
+    serial::puts("[cache] Syncing ");
+    serial::put_dec(count);
+    serial::puts(" dirty blocks...\n");
 
     // Simple insertion sort by block number (cache is small, O(n^2) is fine)
     for (u32 i = 1; i < count; i++) {
@@ -495,12 +614,26 @@ void BlockCache::sync() {
         dirty_indices[j + 1] = key;
     }
 
-    // Write blocks in sorted order
+    // Write each block with lock released (prevents deadlock)
     u32 synced = 0;
     for (u32 i = 0; i < count; i++) {
-        sync_block(&blocks_[dirty_indices[i]]);
+        CacheBlock *block = &blocks_[dirty_indices[i]];
+        if (!block->valid || !block->dirty)
+            continue; // May have changed while unlocked
+
+        u64 bn = block->block_num;
+        block->refcount++; // Prevent eviction while unlocked
+        cache_lock.release(daif);
+
+        write_block(bn, block->data);
+
+        daif = cache_lock.acquire();
+        block->dirty = false;
+        block->refcount--;
         synced++;
     }
+
+    cache_lock.release(daif);
 
     serial::puts("[cache] Synced ");
     serial::put_dec(synced);
@@ -509,17 +642,28 @@ void BlockCache::sync() {
 
 /** @copydoc fs::BlockCache::invalidate */
 void BlockCache::invalidate(u64 block_num) {
-    SpinlockGuard guard(cache_lock);
+    u64 daif = cache_lock.acquire();
 
     CacheBlock *block = find(block_num);
     if (block) {
         if (block->dirty) {
-            sync_block(block);
+            // Write back with lock released (prevents deadlock)
+            block->refcount++;
+            u64 bn = block->block_num;
+            cache_lock.release(daif);
+
+            write_block(bn, block->data);
+
+            daif = cache_lock.acquire();
+            block->dirty = false;
+            block->refcount--;
         }
         remove_hash(block);
         block->valid = false;
         block->pinned = false;
     }
+
+    cache_lock.release(daif);
 }
 
 /** @copydoc fs::BlockCache::dump_stats */
@@ -582,33 +726,68 @@ void BlockCache::dump_stats() {
 
 /** @copydoc fs::BlockCache::pin */
 bool BlockCache::pin(u64 block_num) {
-    SpinlockGuard guard(cache_lock);
+    u64 daif = cache_lock.acquire();
 
     // First try to find in cache
     CacheBlock *block = find(block_num);
 
     if (!block) {
-        // Need to load from disk
-        block = evict();
+        // Need to load from disk — find victim and release lock for I/O
+        block = find_eviction_victim();
         if (!block) {
             serial::puts("[cache] Failed to pin block - no space\n");
+            cache_lock.release(daif);
             return false;
         }
 
-        if (!read_block(block_num, block->data)) {
-            serial::puts("[cache] Failed to read block for pinning\n");
-            return false;
+        // Write back dirty victim with lock released
+        if (block->valid && block->dirty) {
+            block->refcount++;
+            u64 wb_num = block->block_num;
+            cache_lock.release(daif);
+
+            write_block(wb_num, block->data);
+
+            daif = cache_lock.acquire();
+            block->dirty = false;
+            block->refcount--;
         }
 
+        // Remove old hash entry
+        if (block->valid) {
+            remove_hash(block);
+        }
+
+        // Reserve for new block
         block->block_num = block_num;
-        block->valid = true;
+        block->valid = false;
         block->dirty = false;
-        block->refcount = 0;
+        block->refcount = 1; // Prevent eviction during load
         insert_hash(block);
         touch(block);
+
+        // Release lock for disk read
+        cache_lock.release(daif);
+
+        bool ok = read_block(block_num, block->data);
+
+        daif = cache_lock.acquire();
+
+        if (!ok) {
+            serial::puts("[cache] Failed to read block for pinning\n");
+            remove_hash(block);
+            block->refcount = 0;
+            block->block_num = 0;
+            cache_lock.release(daif);
+            return false;
+        }
+
+        block->valid = true;
+        block->refcount = 0;
     }
 
     block->pinned = true;
+    cache_lock.release(daif);
     return true;
 }
 

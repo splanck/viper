@@ -300,6 +300,9 @@ class BlkDevice : public Device {
      * @return 0 on success, -1 on error.
      */
     i32 do_request(u32 type, u64 sector, u32 count, void *buf);
+    i32 prepare_request(u32 type, u64 sector);
+    i32 build_request_chain(i32 req_idx, u32 type, void *buf, u32 buf_len);
+    void release_request(i32 req_idx);
 
     /**
      * @brief Submit an async request (internal helper).

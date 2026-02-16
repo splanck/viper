@@ -375,6 +375,7 @@ class GpuDevice : public Device {
 
     static constexpr u32 CURSOR_RES_ID = 100;
     static constexpr u32 MAX_CURSOR_DIM = 64;
+    static constexpr u32 MAX_CURSOR_QUEUE_SIZE = 16;
 
     /**
      * @brief Send a command and wait for response.

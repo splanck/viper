@@ -160,10 +160,10 @@ class NetDevice : public Device {
     u64 rx_packets_{0};
     u64 tx_bytes_{0};
     u64 rx_bytes_{0};
+    u64 rx_dropped_{0};
 
     // IRQ number
     u32 irq_num_{0};
-    u32 device_index_{0};
 
     // Internal methods
     void queue_rx_buffer(usize idx);

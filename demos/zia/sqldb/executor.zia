@@ -30,6 +30,7 @@ bind "./setops";
 bind "./join";
 bind "./persistence";
 bind "./csv";
+bind "./optimizer/optimizer";
 
 //=============================================================================
 // TRANSACTION JOURNAL
@@ -91,6 +92,9 @@ entity Executor {
     expose PersistenceManager persistence;
     expose CsvHandler csvHandler;
 
+    // Query optimizer (cost-based access path selection)
+    expose QueryOptimizer optimizer;
+
     // Persistent storage engine (null when using in-memory mode)
     expose StorageEngine? storageEngine;
 
@@ -139,6 +143,8 @@ entity Executor {
         joinEngine = new JoinEngine(self);
         persistence = new PersistenceManager(self);
         csvHandler = new CsvHandler(self);
+        optimizer = new QueryOptimizer();
+        optimizer.init();
     }
 
     // Refresh db and indexMgr references from server's current database
@@ -1678,6 +1684,150 @@ entity Executor {
         return false;
     }
 
+    // Check if a range predicate (>, >=, <, <=) can use an index
+    expose func canUseIndexRange(expr: Expr?, tableName: String) -> Boolean {
+        if expr == null {
+            return false;
+        }
+        var e = expr;
+        if e.kind != EXPR_BINARY {
+            return false;
+        }
+
+        // Check for range operators
+        var isRange = e.op == OP_GT || e.op == OP_GE || e.op == OP_LT || e.op == OP_LE;
+        if isRange == false {
+            // Check for BETWEEN (AND of two range conditions on same column)
+            if e.op == OP_AND {
+                return canUseBetweenIndex(e, tableName);
+            }
+            return false;
+        }
+
+        var left = e.getLeft();
+        var right = e.getRight();
+
+        // column op literal
+        if left.kind == EXPR_COLUMN && right.kind == EXPR_LITERAL {
+            return indexMgr.findIndexForColumn(tableName, left.columnName) != null;
+        }
+        // literal op column
+        if left.kind == EXPR_LITERAL && right.kind == EXPR_COLUMN {
+            return indexMgr.findIndexForColumn(tableName, right.columnName) != null;
+        }
+        return false;
+    }
+
+    // Check if a BETWEEN-style AND expression can use an index
+    hide func canUseBetweenIndex(expr: Expr, tableName: String) -> Boolean {
+        var left = expr.getLeft();
+        var right = expr.getRight();
+
+        // Both sides must be range comparisons on the same column
+        if left.kind != EXPR_BINARY || right.kind != EXPR_BINARY {
+            return false;
+        }
+
+        var leftIsRange = left.op == OP_GE || left.op == OP_GT;
+        var rightIsRange = right.op == OP_LE || right.op == OP_LT;
+        if leftIsRange == false || rightIsRange == false {
+            return false;
+        }
+
+        // Extract column names
+        var leftCol = "";
+        if left.getLeft().kind == EXPR_COLUMN {
+            leftCol = left.getLeft().columnName;
+        }
+        var rightCol = "";
+        if right.getLeft().kind == EXPR_COLUMN {
+            rightCol = right.getLeft().columnName;
+        }
+
+        if leftCol == "" || leftCol != rightCol {
+            return false;
+        }
+
+        return indexMgr.findIndexForColumn(tableName, leftCol) != null;
+    }
+
+    // Perform index range lookup
+    expose func indexRangeLookup(expr: Expr, tableName: String, table: Table) -> List[Integer] {
+        var left = expr.getLeft();
+        var right = expr.getRight();
+
+        // Handle BETWEEN (AND of two range conditions)
+        if expr.op == OP_AND {
+            return indexBetweenLookup(expr, tableName, table);
+        }
+
+        var colName = "";
+        var boundVal = sqlNull();
+        var rangeType = 0;
+
+        // column op literal
+        if left.kind == EXPR_COLUMN && right.kind == EXPR_LITERAL {
+            colName = left.columnName;
+            boundVal = right.literalValue;
+            if expr.op == OP_GT { rangeType = 1; }
+            else if expr.op == OP_GE { rangeType = 2; }
+            else if expr.op == OP_LT { rangeType = 3; }
+            else if expr.op == OP_LE { rangeType = 4; }
+        }
+        // literal op column — reverse the operator direction
+        else if left.kind == EXPR_LITERAL && right.kind == EXPR_COLUMN {
+            colName = right.columnName;
+            boundVal = left.literalValue;
+            if expr.op == OP_GT { rangeType = 3; }
+            else if expr.op == OP_GE { rangeType = 4; }
+            else if expr.op == OP_LT { rangeType = 1; }
+            else if expr.op == OP_LE { rangeType = 2; }
+        }
+
+        if colName == "" || rangeType == 0 {
+            return new List[Integer]();
+        }
+
+        var maybeIdx = indexMgr.findIndexForColumn(tableName, colName);
+        if maybeIdx == null {
+            return new List[Integer]();
+        }
+        var idx = maybeIdx;
+        return idx.lookupRange(boundVal, sqlNull(), rangeType, table);
+    }
+
+    // Handle BETWEEN via AND of two range conditions
+    hide func indexBetweenLookup(expr: Expr, tableName: String, table: Table) -> List[Integer] {
+        var leftExpr = expr.getLeft();
+        var rightExpr = expr.getRight();
+
+        // Extract column and bounds
+        var colName = "";
+        var lowerVal = sqlNull();
+        var upperVal = sqlNull();
+
+        if leftExpr.getLeft().kind == EXPR_COLUMN {
+            colName = leftExpr.getLeft().columnName;
+        }
+        if leftExpr.getRight().kind == EXPR_LITERAL {
+            lowerVal = leftExpr.getRight().literalValue;
+        }
+        if rightExpr.getRight().kind == EXPR_LITERAL {
+            upperVal = rightExpr.getRight().literalValue;
+        }
+
+        if colName == "" {
+            return new List[Integer]();
+        }
+
+        var maybeIdx = indexMgr.findIndexForColumn(tableName, colName);
+        if maybeIdx == null {
+            return new List[Integer]();
+        }
+        var idx = maybeIdx;
+        return idx.lookupRange(lowerVal, upperVal, 5, table);
+    }
+
     // Get matching row indices using an index
     expose func indexLookup(expr: Expr, tableName: String, table: Table) -> List[Integer] {
         var left = expr.getLeft();
@@ -1975,6 +2125,9 @@ entity Executor {
 
         db.addTable(table);
 
+        // Initialize optimizer statistics for this table
+        optimizer.stats.setRowCount(stmt.tableName, 0);
+
         // Persist to storage engine if active
         if storageEngine != null {
             var se = storageEngine;
@@ -2146,6 +2299,11 @@ entity Executor {
             se.flush();
         }
 
+        // Update optimizer statistics
+        if rowsInserted > 0 {
+            optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
+        }
+
         result.message = "Inserted " + Fmt.Int(rowsInserted) + " row(s)";
         result.rowsAffected = rowsInserted;
         clearStatementJournal();
@@ -2251,6 +2409,11 @@ entity Executor {
         if storageEngine != null && rowsInserted > 0 {
             var se = storageEngine;
             se.flush();
+        }
+
+        // Update optimizer statistics
+        if rowsInserted > 0 {
+            optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
         }
 
         result.message = "Inserted " + Fmt.Int(rowsInserted) + " row(s)";
@@ -2716,29 +2879,78 @@ entity Executor {
         }
 
         // First pass: collect matching row indices
-        // Try to use index lookup for simple equality conditions
+        // Use optimizer to choose access path (index seek vs table scan)
         var matchingRows = new List[Integer]();
         var usedIndex = false;
+        var accessPathUsed = "TABLE_SCAN";
 
         if stmt.whereClause != null && canUseIndex(stmt.whereClause, stmt.tableName) {
+            // Compare optimizer costs: index seek vs table scan
+            var scanPath = optimizer.createTableScan(stmt.tableName);
+            var selectivityPct = optimizer.estimateSelectivityPct(true);
             var wc = stmt.whereClause;
-            matchingRows = indexLookup(wc, stmt.tableName, t);
-            usedIndex = true;
-            // Filter out deleted rows from index results
-            var filtered = new List[Integer]();
-            var fi = 0;
-            while fi < matchingRows.count() {
-                var rowIdx = matchingRows.get(fi);
-                var maybeRow = t.getRow(rowIdx);
-                if maybeRow != null {
-                    var row = maybeRow;
-                    if row.deleted == false {
-                        filtered.add(rowIdx);
-                    }
-                }
-                fi = fi + 1;
+            var idxColName = "";
+            if wc.getLeft().kind == EXPR_COLUMN {
+                idxColName = wc.getLeft().columnName;
+            } else if wc.getRight().kind == EXPR_COLUMN {
+                idxColName = wc.getRight().columnName;
             }
-            matchingRows = filtered;
+            var idxName = "";
+            var maybeIdx = indexMgr.findIndexForColumn(stmt.tableName, idxColName);
+            if maybeIdx != null {
+                var foundIdx = maybeIdx;
+                idxName = foundIdx.name;
+            }
+            var seekPath = optimizer.createIndexSeek(stmt.tableName, idxName, selectivityPct);
+
+            // Use index if it has lower cost
+            if seekPath.estimatedCost < scanPath.estimatedCost {
+                matchingRows = indexLookup(wc, stmt.tableName, t);
+                usedIndex = true;
+                accessPathUsed = "INDEX_SEEK";
+                // Filter out deleted rows from index results
+                var filtered = new List[Integer]();
+                var fi = 0;
+                while fi < matchingRows.count() {
+                    var rowIdx = matchingRows.get(fi);
+                    var maybeRow = t.getRow(rowIdx);
+                    if maybeRow != null {
+                        var row = maybeRow;
+                        if row.deleted == false {
+                            filtered.add(rowIdx);
+                        }
+                    }
+                    fi = fi + 1;
+                }
+                matchingRows = filtered;
+            }
+        }
+
+        // Try range index if equality index was not used
+        if usedIndex == false && stmt.whereClause != null && canUseIndexRange(stmt.whereClause, stmt.tableName) {
+            var wc = stmt.whereClause;
+            var scanPath = optimizer.createTableScan(stmt.tableName);
+            var rangeSel = RANGE_SELECTIVITY;
+            var rangeColName = "";
+            if wc.getLeft().kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft().columnName;
+            } else if wc.op == OP_AND && wc.getLeft().getLeft().kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft().getLeft().columnName;
+            }
+            var rangeIdxName = "";
+            var maybeRangeIdx = indexMgr.findIndexForColumn(stmt.tableName, rangeColName);
+            if maybeRangeIdx != null {
+                var rIdx = maybeRangeIdx;
+                rangeIdxName = rIdx.name;
+            }
+            var rangePath = optimizer.createIndexSeek(stmt.tableName, rangeIdxName, rangeSel);
+
+            // Use range index scan if cost-effective
+            if rangePath.estimatedCost < scanPath.estimatedCost {
+                matchingRows = indexRangeLookup(wc, stmt.tableName, t);
+                usedIndex = true;
+                accessPathUsed = "INDEX_RANGE_SCAN";
+            }
         }
 
         // Fall back to linear scan if no index was used
@@ -3947,6 +4159,11 @@ entity Executor {
             se.flush();
         }
 
+        // Update optimizer statistics
+        if rowsUpdated > 0 {
+            optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
+        }
+
         result.message = "Updated " + Fmt.Int(rowsUpdated) + " row(s)";
         result.rowsAffected = rowsUpdated;
         clearStatementJournal();
@@ -4017,6 +4234,11 @@ entity Executor {
                 se.rewriteTableRows(stmt.tableName, t.rows);
                 se.flush();
             }
+        }
+
+        // Update optimizer statistics
+        if rowsDeleted > 0 {
+            optimizer.stats.setRowCount(stmt.tableName, t.rowCount());
         }
 
         result.message = "Deleted " + Fmt.Int(rowsDeleted) + " row(s)";
@@ -5119,6 +5341,26 @@ entity Executor {
             return result;
         }
 
+        // EXPLAIN command: EXPLAIN SELECT ...
+        if kind == TK_EXPLAIN {
+            parser.advance();
+            if parser.currentKind() == TK_SELECT {
+                parser.advance();
+                var stmt = parser.parseSelectStmt();
+                if parser.hasError {
+                    var result = new QueryResult();
+                    result.init();
+                    result.setError(parser.error);
+                    return result;
+                }
+                return executeExplain(stmt);
+            }
+            var result = new QueryResult();
+            result.init();
+            result.setError("EXPLAIN currently supports SELECT statements only");
+            return result;
+        }
+
         // Transaction commands
         if kind == TK_BEGIN {
             return executeBegin();
@@ -5134,6 +5376,168 @@ entity Executor {
         result.init();
         result.setError("Unknown SQL statement");
         return result;
+    }
+
+    //=========================================================================
+    // EXPLAIN QUERY PLAN
+    //=========================================================================
+
+    hide func executeExplain(stmt: SelectStmt) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        result.addColumnName("plan");
+
+        // Handle expression-only SELECT (no table)
+        if stmt.tableName == "" && stmt.tableNames.count() == 0 {
+            var row = new Row();
+            row.init();
+            row.addValue(sqlText("ExpressionScan (no table, cost=0.00)"));
+            result.addRow(row);
+            return result;
+        }
+
+        // Handle JOIN queries
+        if stmt.tableNames.count() > 1 {
+            var plan = new QueryPlan();
+            plan.init();
+
+            // Build access paths for all tables
+            var ti = 0;
+            while ti < stmt.tableNames.count() {
+                var tName = stmt.tableNames.get(ti);
+                var path = optimizer.createTableScan(tName);
+                plan.addAccessPath(path);
+                ti = ti + 1;
+            }
+
+            // Determine join order (smaller tables first)
+            if stmt.tableNames.count() == 2 {
+                var joinPlan = optimizer.createJoinPlan(stmt.tableNames.get(0), stmt.tableNames.get(1));
+                plan.setJoinOrder(joinPlan.joinOrder);
+                plan.setJoinType(joinPlan.joinType);
+            } else {
+                plan.setJoinOrder(stmt.tableNames);
+                plan.setJoinType(JOIN_NESTED_LOOP);
+            }
+
+            // Output each line of the plan as a row
+            var planStr = optimizer.explainPlan(plan);
+            var lines = splitPlanLines(planStr);
+            var li = 0;
+            while li < lines.count() {
+                var line = lines.get(li);
+                if line != "" {
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlText(line));
+                    result.addRow(row);
+                }
+                li = li + 1;
+            }
+            return result;
+        }
+
+        // Single-table query
+        var plan = new QueryPlan();
+        plan.init();
+
+        // Check if an index would be used
+        if stmt.whereClause != null && canUseIndex(stmt.whereClause, stmt.tableName) {
+            var wc = stmt.whereClause;
+            var idxColName = "";
+            if wc.getLeft().kind == EXPR_COLUMN {
+                idxColName = wc.getLeft().columnName;
+            } else if wc.getRight().kind == EXPR_COLUMN {
+                idxColName = wc.getRight().columnName;
+            }
+            var maybeIdx = indexMgr.findIndexForColumn(stmt.tableName, idxColName);
+            if maybeIdx != null {
+                var foundIdx = maybeIdx;
+                var selectivityPct = optimizer.estimateSelectivityPct(true);
+                var seekPath = optimizer.createIndexSeek(stmt.tableName, foundIdx.name, selectivityPct);
+                var scanPath = optimizer.createTableScan(stmt.tableName);
+
+                if seekPath.estimatedCost < scanPath.estimatedCost {
+                    plan.addAccessPath(seekPath);
+                    plan.description = "Index selected for equality predicate on " + idxColName;
+                } else {
+                    plan.addAccessPath(scanPath);
+                    plan.description = "Table scan preferred over index (small table)";
+                }
+            } else {
+                var path = optimizer.createTableScan(stmt.tableName);
+                plan.addAccessPath(path);
+            }
+        } else if stmt.whereClause != null && canUseIndexRange(stmt.whereClause, stmt.tableName) {
+            // Range predicate with index
+            var wc = stmt.whereClause;
+            var rangeColName = "";
+            if wc.getLeft().kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft().columnName;
+            } else if wc.op == OP_AND && wc.getLeft().getLeft().kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft().getLeft().columnName;
+            }
+            var maybeIdx = indexMgr.findIndexForColumn(stmt.tableName, rangeColName);
+            if maybeIdx != null {
+                var foundIdx = maybeIdx;
+                var rangePath = optimizer.createIndexSeek(stmt.tableName, foundIdx.name, RANGE_SELECTIVITY);
+                var scanPath = optimizer.createTableScan(stmt.tableName);
+                if rangePath.estimatedCost < scanPath.estimatedCost {
+                    plan.addAccessPath(rangePath);
+                    plan.description = "Index range scan on " + rangeColName;
+                } else {
+                    plan.addAccessPath(scanPath);
+                    plan.description = "Table scan preferred over range index (small table)";
+                }
+            } else {
+                var path = optimizer.createTableScan(stmt.tableName);
+                plan.addAccessPath(path);
+            }
+        } else {
+            var path = optimizer.createTableScan(stmt.tableName);
+            plan.addAccessPath(path);
+            if stmt.whereClause != null {
+                plan.description = "No index available for WHERE clause";
+            }
+        }
+
+        // Output each line of the plan as a row
+        var planStr = optimizer.explainPlan(plan);
+        var lines = splitPlanLines(planStr);
+        var li = 0;
+        while li < lines.count() {
+            var line = lines.get(li);
+            if line != "" {
+                var row = new Row();
+                row.init();
+                row.addValue(sqlText(line));
+                result.addRow(row);
+            }
+            li = li + 1;
+        }
+        return result;
+    }
+
+    // Split plan string into lines (by newline characters)
+    hide func splitPlanLines(s: String) -> List[String] {
+        var lines = new List[String]();
+        var current = "";
+        var i = 0;
+        var len = String.Length(s);
+        while i < len {
+            var ch = String.Substring(s, i, 1);
+            if ch == "\n" {
+                lines.add(current);
+                current = "";
+            } else {
+                current = current + ch;
+            }
+            i = i + 1;
+        }
+        if current != "" {
+            lines.add(current);
+        }
+        return lines;
     }
 
     //=========================================================================

@@ -207,6 +207,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_ThreadsRwLock,
     RTCLS_ThreadsPromise,
     RTCLS_ThreadsFuture,
+    RTCLS_ThreadsAsync,
     RTCLS_ThreadsParallel,
     RTCLS_Tcp,
     RTCLS_TcpServer,

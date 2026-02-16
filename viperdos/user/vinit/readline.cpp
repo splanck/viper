@@ -188,6 +188,11 @@ usize readline(char *buf, usize maxlen) {
     history_index = history_count;
 
     while (len < maxlen - 1) {
+        // Flush any buffered output before blocking for input.
+        // This batches all output from one editing operation into a single
+        // IPC message instead of flushing per-character.
+        flush_console();
+
         i32 input = get_input_char();
 
         // Handle special keys from consoled (negative values)
@@ -356,6 +361,7 @@ usize readline(char *buf, usize maxlen) {
             }
             print_char('\r');
             print_char('\n');
+            flush_console();
             break;
         }
 
@@ -373,6 +379,7 @@ usize readline(char *buf, usize maxlen) {
         if (c == 3) // Ctrl+C
         {
             print_str("^C\n");
+            flush_console();
             len = 0;
             pos = 0;
             break;

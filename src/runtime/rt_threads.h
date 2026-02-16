@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "rt_string.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -139,6 +140,44 @@ extern "C"
     /// @brief Yield the current thread's time slice.
     /// @details Allows other runnable threads to execute without sleeping.
     void rt_thread_yield(void);
+
+    // =========================================================================
+    // Viper.Threads.Thread (safe start with error boundaries)
+    // =========================================================================
+
+    /// @brief Start a new thread with trap recovery (error boundary).
+    /// @details Like rt_thread_start but wraps the entry function in a
+    ///          setjmp/longjmp recovery point. If the thread's code calls
+    ///          rt_trap(), instead of terminating the process the error is
+    ///          captured and the thread exits cleanly.
+    /// @param entry Function pointer representing the thread entry.
+    /// @param arg Argument passed to the entry function.
+    /// @return Thread object handle, or NULL on allocation failure.
+    void *rt_thread_start_safe(void *entry, void *arg);
+
+    /// @brief Check whether a safe-started thread exited with a trap error.
+    /// @param thread Thread handle returned by rt_thread_start_safe.
+    /// @return 1 if the thread trapped, 0 otherwise.
+    int8_t rt_thread_has_error(void *thread);
+
+    /// @brief Get the error message if the thread trapped.
+    /// @param thread Thread handle returned by rt_thread_start_safe.
+    /// @return Error message string, or empty string if no error.
+    rt_string rt_thread_get_error(void *thread);
+
+    /// @brief Join the underlying thread of a safe-started thread.
+    /// @param thread Thread handle returned by rt_thread_start_safe.
+    void rt_thread_safe_join(void *thread);
+
+    /// @brief Get the thread ID of a safe-started thread.
+    /// @param thread Thread handle returned by rt_thread_start_safe.
+    /// @return Thread identifier, or 0 on error.
+    int64_t rt_thread_safe_get_id(void *thread);
+
+    /// @brief Check whether a safe-started thread is still running.
+    /// @param thread Thread handle returned by rt_thread_start_safe.
+    /// @return 1 if alive, 0 if finished.
+    int8_t rt_thread_safe_is_alive(void *thread);
 
     // =========================================================================
     // Viper.Threads.SafeI64

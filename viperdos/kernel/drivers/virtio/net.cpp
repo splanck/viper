@@ -36,8 +36,6 @@ namespace virtio {
 static NetDevice g_net_device;
 static bool g_net_initialized = false;
 
-// Use centralized VirtIO IRQ base
-constexpr u32 VIRTIO_IRQ_BASE = kernel::constants::hw::VIRTIO_IRQ_BASE;
 
 /**
  * @brief IRQ handler for virtio-net interrupts.
@@ -168,9 +166,7 @@ bool NetDevice::init() {
         return false;
     }
 
-    device_index_ =
-        static_cast<u32>((base - kc::hw::VIRTIO_MMIO_BASE) / kc::hw::VIRTIO_DEVICE_STRIDE);
-    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
+    irq_num_ = compute_irq_number(base);
 
     serial::puts("[virtio-net] Initializing at ");
     serial::put_hex(base);
@@ -215,14 +211,28 @@ void NetDevice::destroy() {
     rx_vq_.destroy();
     tx_vq_.destroy();
 
-    // Note: We don't free pmm pages as the kernel doesn't track them dynamically
+    // Free DMA buffer allocations
+    if (rx_buffers_phys_) {
+        usize rx_pool_size = RX_BUFFER_COUNT * sizeof(RxBuffer);
+        pmm::free_pages(rx_buffers_phys_, (rx_pool_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE);
+        rx_buffers_phys_ = 0;
+        rx_buffers_ = nullptr;
+    }
+    if (tx_header_phys_) {
+        pmm::free_pages(tx_header_phys_, 1);
+        tx_header_phys_ = 0;
+        tx_header_ = nullptr;
+    }
+    if (tx_data_phys_) {
+        pmm::free_pages(tx_data_phys_, 1);
+        tx_data_phys_ = 0;
+        tx_data_buf_ = nullptr;
+    }
 }
 
 /// @brief Copy the 6-byte MAC address into the caller's buffer.
 void NetDevice::get_mac(u8 *mac_out) const {
-    for (int i = 0; i < 6; i++) {
-        mac_out[i] = mac_[i];
-    }
+    lib::memcpy(mac_out, mac_, 6);
 }
 
 /// @brief Submit an RX buffer to the device via a descriptor in the RX virtqueue.
@@ -367,13 +377,17 @@ void NetDevice::poll_rx() {
 
                     rx_packets_++;
                     rx_bytes_ += frame_len;
+                } else {
+                    rx_dropped_++;
                 }
             }
 
-            // Mark buffer as not in use (will be refilled)
-            rx_buffers_[buf_idx].in_use = false;
-            desc_to_buffer_[desc] = 0xFF; // Clear mapping
+            // Free descriptor before marking buffer unused to prevent
+            // refill_rx_buffers() from reusing the slot while the
+            // descriptor is still live in the virtqueue.
             rx_vq_.free_desc(desc);
+            desc_to_buffer_[desc] = 0xFF; // Clear mapping
+            rx_buffers_[buf_idx].in_use = false;
         }
     }
 

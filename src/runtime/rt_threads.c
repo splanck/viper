@@ -118,8 +118,11 @@
 #include "rt_object.h"
 
 #include <errno.h>
+#include <setjmp.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #if defined(_WIN32)
 
@@ -986,3 +989,118 @@ void rt_thread_yield(void)
 }
 
 #endif
+
+//===----------------------------------------------------------------------===//
+// Safe Thread Implementation (platform-independent)
+//===----------------------------------------------------------------------===//
+
+/// @brief Function pointer type for safe thread entry (matches rt_thread_entry_fn).
+typedef void (*rt_safe_entry_fn)(void *);
+
+/// @brief Context for a safe thread that captures trap errors instead of
+///        terminating the process.
+typedef struct SafeThreadCtx
+{
+    rt_safe_entry_fn entry;
+    void *arg;
+    void *thread;         // The underlying thread handle from rt_thread_start
+    int8_t trapped;       // 1 if the thread exited due to a trap
+    char error[512];      // Captured trap error message
+} SafeThreadCtx;
+
+/// @brief Entry point wrapper that sets up trap recovery.
+static void safe_thread_entry(void *ctx_ptr)
+{
+    SafeThreadCtx *ctx = (SafeThreadCtx *)ctx_ptr;
+    if (!ctx || !ctx->entry)
+        return;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+
+    if (setjmp(recovery) == 0)
+    {
+        ctx->entry(ctx->arg);
+    }
+    else
+    {
+        ctx->trapped = 1;
+        const char *err = rt_trap_get_error();
+        snprintf(ctx->error, sizeof(ctx->error), "%s", err ? err : "Unknown trap");
+    }
+
+    rt_trap_clear_recovery();
+}
+
+void *rt_thread_start_safe(void *entry, void *arg)
+{
+    if (!entry)
+        rt_trap("Thread.StartSafe: null entry");
+    if (!entry)
+        return NULL;
+
+    SafeThreadCtx *ctx =
+        (SafeThreadCtx *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(SafeThreadCtx));
+    if (!ctx)
+        rt_trap("Thread.StartSafe: failed to allocate context");
+    if (!ctx)
+        return NULL;
+
+    ctx->entry = (rt_safe_entry_fn)entry;
+    ctx->arg = arg;
+    ctx->trapped = 0;
+    ctx->error[0] = '\0';
+
+    ctx->thread = rt_thread_start((void *)safe_thread_entry, ctx);
+    return ctx;
+}
+
+int8_t rt_thread_has_error(void *obj)
+{
+    if (!obj)
+        return 0;
+    SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
+    return ctx->trapped;
+}
+
+rt_string rt_thread_get_error(void *obj)
+{
+    if (!obj)
+        return rt_const_cstr("");
+    SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
+    if (!ctx->trapped || ctx->error[0] == '\0')
+        return rt_const_cstr("");
+    return rt_string_from_bytes(ctx->error, strlen(ctx->error));
+}
+
+/// @brief Join the underlying thread of a safe-started thread.
+void rt_thread_safe_join(void *obj)
+{
+    if (!obj)
+        rt_trap("Thread.SafeJoin: null object");
+    SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
+    if (ctx->thread)
+        rt_thread_join(ctx->thread);
+}
+
+/// @brief Get the thread ID of a safe-started thread.
+int64_t rt_thread_safe_get_id(void *obj)
+{
+    if (!obj)
+        return 0;
+    SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
+    if (ctx->thread)
+        return rt_thread_get_id(ctx->thread);
+    return 0;
+}
+
+/// @brief Check if a safe-started thread is alive.
+int8_t rt_thread_safe_is_alive(void *obj)
+{
+    if (!obj)
+        return 0;
+    SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
+    if (ctx->thread)
+        return rt_thread_get_is_alive(ctx->thread);
+    return 0;
+}

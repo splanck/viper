@@ -7,6 +7,7 @@
 #include "ramfb.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
+#include "../lib/endian.hpp"
 #include "fwcfg.hpp"
 
 /**
@@ -37,21 +38,7 @@ struct RAMFBCfg {
 // DRM FourCC codes for pixel formats (from constants.hpp)
 constexpr u32 DRM_FORMAT_XRGB8888 = kc::magic::DRM_FORMAT_XRGB8888;
 
-// Byte swap helpers (ramfb uses big-endian)
-/**
- * @brief Convert a 32-bit value from host order to big-endian.
- */
-static inline u32 cpu_to_be32(u32 v) {
-    return ((v >> 24) & 0xFF) | ((v >> 8) & 0xFF00) | ((v << 8) & 0xFF0000) |
-           ((v << 24) & 0xFF000000);
-}
-
-/**
- * @brief Convert a 64-bit value from host order to big-endian.
- */
-static inline u64 cpu_to_be64(u64 v) {
-    return (static_cast<u64>(cpu_to_be32(v & 0xFFFFFFFF)) << 32) | cpu_to_be32(v >> 32);
-}
+// Byte swap helpers — see kernel/lib/endian.hpp
 
 // Framebuffer memory (from constants.hpp)
 constexpr uintptr FB_BASE = kc::mem::FB_BASE;
@@ -106,12 +93,12 @@ bool init(u32 width, u32 height) {
 
     // Configure ramfb
     RAMFBCfg cfg;
-    cfg.addr = cpu_to_be64(FB_BASE);
-    cfg.fourcc = cpu_to_be32(DRM_FORMAT_XRGB8888);
+    cfg.addr = lib::cpu_to_be64(FB_BASE);
+    cfg.fourcc = lib::cpu_to_be32(DRM_FORMAT_XRGB8888);
     cfg.flags = 0;
-    cfg.width = cpu_to_be32(width);
-    cfg.height = cpu_to_be32(height);
-    cfg.stride = cpu_to_be32(stride);
+    cfg.width = lib::cpu_to_be32(width);
+    cfg.height = lib::cpu_to_be32(height);
+    cfg.stride = lib::cpu_to_be32(stride);
 
     serial::puts("[ramfb] Writing config via DMA: addr=");
     serial::put_hex(FB_BASE);

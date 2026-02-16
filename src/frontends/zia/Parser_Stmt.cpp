@@ -81,10 +81,24 @@ StmtPtr Parser::parseStatement()
         return parseGuardStmt();
     }
 
-    // Match statement
+    // Match statement (only when followed by a scrutinee, not when used as identifier)
     if (check(TokenKind::KwMatch))
     {
-        return parseMatchStmt();
+        auto nextKind = peek(1).kind;
+        bool isMatchStmt = (nextKind == TokenKind::Identifier ||
+                            nextKind == TokenKind::IntegerLiteral ||
+                            nextKind == TokenKind::NumberLiteral ||
+                            nextKind == TokenKind::StringLiteral ||
+                            nextKind == TokenKind::LParen ||
+                            nextKind == TokenKind::KwTrue ||
+                            nextKind == TokenKind::KwFalse ||
+                            nextKind == TokenKind::KwNull ||
+                            nextKind == TokenKind::KwSelf);
+        if (isMatchStmt)
+        {
+            return parseMatchStmt();
+        }
+        // else: fall through to expression statement parsing (e.g., match = 10;)
     }
 
     // Break

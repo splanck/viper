@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <setjmp.h>
 #include <stdint.h>
 
 #include "viper/runtime/rt.h"
@@ -37,6 +38,17 @@ extern "C"
     /// @brief Print trap message and terminate process.
     /// @param msg Null-terminated message string.
     void rt_abort(const char *msg);
+
+    /// @brief Set a thread-local recovery point for trap interception.
+    /// @param buf Jump buffer to longjmp to on trap, or NULL to clear.
+    void rt_trap_set_recovery(jmp_buf *buf);
+
+    /// @brief Clear the thread-local trap recovery point.
+    void rt_trap_clear_recovery(void);
+
+    /// @brief Get the error message captured by the last intercepted trap.
+    /// @return Null-terminated error string (thread-local storage).
+    const char *rt_trap_get_error(void);
 
     /// @brief Print string @p s to stdout.
     /// @param s Reference-counted string.

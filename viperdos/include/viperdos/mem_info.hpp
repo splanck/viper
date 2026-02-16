@@ -62,3 +62,6 @@ struct MemInfo {
     unsigned long long used_bytes;  /**< `used_pages * page_size`. */
     unsigned char _reserved[8];     /**< Reserved for future ABI extension; set to 0. */
 };
+
+// ABI size guard — this struct crosses the kernel/user syscall boundary
+static_assert(sizeof(MemInfo) == 64, "MemInfo ABI size mismatch");

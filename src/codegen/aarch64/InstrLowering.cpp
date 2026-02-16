@@ -234,7 +234,52 @@ bool materializeValueToVReg(const il::core::Value &v,
 
             const auto &argOrder = (cls == RegClass::FPR) ? ti.f64ArgOrder : ti.intArgOrder;
             if (classIdx >= static_cast<int>(argOrder.size()))
-                return false; // Stack parameter — not yet handled here
+            {
+                // Stack parameter: compute the caller arg offset.
+                // After prologue, caller's stack args are at [FP + 16 + stackArgIdx * 8].
+                // Count how many parameters before this one also overflow to stack.
+                int stackArgIdx = 0;
+                int gprCount = 0;
+                int fprCount = 0;
+                for (int i = 0; i < pIdx; ++i)
+                {
+                    const bool pIsFP =
+                        bb.params[static_cast<std::size_t>(i)].type.kind ==
+                        il::core::Type::Kind::F64;
+                    if (pIsFP)
+                    {
+                        if (fprCount < static_cast<int>(ti.f64ArgOrder.size()))
+                            ++fprCount;
+                        else
+                            ++stackArgIdx;
+                    }
+                    else
+                    {
+                        if (gprCount < static_cast<int>(ti.intArgOrder.size()))
+                            ++gprCount;
+                        else
+                            ++stackArgIdx;
+                    }
+                }
+                const int callerArgOffset = 16 + stackArgIdx * 8;
+                outVReg = nextVRegId++;
+                outCls = cls;
+                if (cls == RegClass::FPR)
+                {
+                    out.instrs.push_back(
+                        MInstr{MOpcode::LdrFprFpImm,
+                               {MOperand::vregOp(cls, outVReg),
+                                MOperand::immOp(callerArgOffset)}});
+                }
+                else
+                {
+                    out.instrs.push_back(
+                        MInstr{MOpcode::LdrRegFpImm,
+                               {MOperand::vregOp(cls, outVReg),
+                                MOperand::immOp(callerArgOffset)}});
+                }
+                return true;
+            }
 
             outVReg = nextVRegId++;
             outCls = cls;

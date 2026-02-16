@@ -103,3 +103,6 @@ struct TaskInfo {
     unsigned int parent_id;          /**< Parent task ID (0 for root tasks). */
     int exit_code;                   /**< Exit code (valid if state == EXITED). */
 };
+
+// ABI size guard — this struct crosses the kernel/user syscall boundary
+static_assert(sizeof(TaskInfo) == 64, "TaskInfo ABI size mismatch");

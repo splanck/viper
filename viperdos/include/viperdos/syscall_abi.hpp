@@ -175,6 +175,9 @@ inline bool is_err(VError e) {
     return e < 0;
 }
 
+// ABI size guard — SyscallResult mirrors the register layout (x0-x3)
+static_assert(sizeof(SyscallResult) == 32, "SyscallResult ABI size mismatch");
+
 } // namespace viper
 
 #endif // __cplusplus

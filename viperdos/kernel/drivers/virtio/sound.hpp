@@ -266,7 +266,8 @@ class SoundDevice : public Device {
     u64 status_buf_phys_{0};
 
     static constexpr usize CMD_BUF_SIZE = 4096;
-    static constexpr usize PCM_BUF_SIZE = 16384; // 16KB PCM buffer
+    static constexpr usize PCM_BUF_SIZE = 16384;       // 16KB PCM buffer
+    static constexpr u32 PERIODS_PER_BUFFER = 4;
 
     bool send_control(usize cmd_size, usize resp_size);
     bool send_stream_cmd(u32 code, u32 stream_id);

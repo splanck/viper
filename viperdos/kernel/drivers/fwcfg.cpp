@@ -7,6 +7,7 @@
 #include "fwcfg.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
+#include "../lib/endian.hpp"
 
 // Suppress warnings for DMA control constants that document the full interface
 #pragma GCC diagnostic push
@@ -64,21 +65,7 @@ struct FWCfgFile {
     char name[56]; // Null-terminated filename
 };
 
-// Byte swap helpers
-/**
- * @brief Convert a 16-bit value from big-endian to host order.
- */
-static inline u16 be16(u16 v) {
-    return (v >> 8) | (v << 8);
-}
-
-/**
- * @brief Convert a 32-bit value from big-endian to host order.
- */
-static inline u32 be32(u32 v) {
-    return ((v >> 24) & 0xFF) | ((v >> 8) & 0xFF00) | ((v << 8) & 0xFF0000) |
-           ((v << 24) & 0xFF000000);
-}
+// Byte swap helpers — see kernel/lib/endian.hpp
 
 // String comparison helper
 /**
@@ -105,7 +92,7 @@ static bool str_equal(const char *a, const char *b) {
 void select(u16 sel) {
     // fw_cfg selector is written in big-endian format
     volatile u16 *selector = reinterpret_cast<volatile u16 *>(FWCFG_BASE + FWCFG_SELECTOR);
-    *selector = be16(sel);
+    *selector = lib::be16(sel);
     asm volatile("dsb sy" ::: "memory");
 }
 
@@ -127,18 +114,6 @@ void write(const void *buf, u32 size) {
     }
 }
 
-// Helper to swap 64-bit value to big-endian
-/**
- * @brief Convert a 64-bit value from host order to big-endian.
- *
- * @param v Value in host order.
- * @return Value encoded as big-endian.
- */
-static inline u64 cpu_to_be64(u64 v) {
-    u32 hi = be32(v >> 32);
-    u32 lo = be32(v & 0xFFFFFFFF);
-    return (static_cast<u64>(lo) << 32) | hi;
-}
 
 /** @copydoc fwcfg::dma_write */
 void dma_write(u16 sel, const void *buf, u32 size) {
@@ -147,9 +122,9 @@ void dma_write(u16 sel, const void *buf, u32 size) {
 
     // Set up the DMA descriptor
     dma.control =
-        be32(FW_CFG_DMA_CTL_SELECT | FW_CFG_DMA_CTL_WRITE | (static_cast<u32>(sel) << 16));
-    dma.length = be32(size);
-    dma.address = cpu_to_be64(reinterpret_cast<uintptr>(buf));
+        lib::be32(FW_CFG_DMA_CTL_SELECT | FW_CFG_DMA_CTL_WRITE | (static_cast<u32>(sel) << 16));
+    dma.length = lib::be32(size);
+    dma.address = lib::cpu_to_be64(reinterpret_cast<uintptr>(buf));
 
     // Memory barrier before DMA
     asm volatile("dsb sy" ::: "memory");
@@ -157,17 +132,17 @@ void dma_write(u16 sel, const void *buf, u32 size) {
     // Write the physical address of the DMA descriptor to the DMA register
     // The DMA register is 64-bit big-endian
     volatile u64 *dma_reg = reinterpret_cast<volatile u64 *>(FWCFG_BASE + FWCFG_DMA);
-    *dma_reg = cpu_to_be64(reinterpret_cast<uintptr>(&dma));
+    *dma_reg = lib::cpu_to_be64(reinterpret_cast<uintptr>(&dma));
 
     // Memory barrier
     asm volatile("dsb sy" ::: "memory");
 
     // Wait for DMA to complete (control word becomes 0 or has error bit)
-    while (be32(dma.control) & ~FW_CFG_DMA_CTL_ERROR) {
+    while (lib::be32(dma.control) & ~FW_CFG_DMA_CTL_ERROR) {
         asm volatile("dsb sy" ::: "memory");
     }
 
-    if (be32(dma.control) & FW_CFG_DMA_CTL_ERROR) {
+    if (lib::be32(dma.control) & FW_CFG_DMA_CTL_ERROR) {
         serial::puts("[fwcfg] DMA write error!\n");
     }
 }
@@ -225,7 +200,7 @@ u32 find_file(const char *name, u16 *selector) {
     // Read file count (big-endian u32)
     u32 count_be = 0;
     read(&count_be, 4);
-    u32 count = be32(count_be);
+    u32 count = lib::be32(count_be);
 
     // Search for the file
     for (u32 i = 0; i < count; i++) {
@@ -233,8 +208,8 @@ u32 find_file(const char *name, u16 *selector) {
         read(&file, sizeof(file));
 
         if (str_equal(name, file.name)) {
-            *selector = be16(file.select);
-            return be32(file.size);
+            *selector = lib::be16(file.select);
+            return lib::be32(file.size);
         }
     }
 

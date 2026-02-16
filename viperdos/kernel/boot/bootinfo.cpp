@@ -244,7 +244,9 @@ bool get_ram_region(u64 &out_base, u64 &out_size) {
         return false;
     }
 
-    // Find contiguous block containing kernel (0x40000000) or first usable region
+    // Find contiguous block containing kernel or first usable region.
+    // 0x40000000 (1 GiB) is the UEFI conventional load address for the kernel
+    // image on AArch64, matching our linker script's base address.
     u64 kernel_addr = 0x40000000;
     u64 block_start = 0;
     u64 block_end = 0;

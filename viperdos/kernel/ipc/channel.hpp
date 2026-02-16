@@ -47,9 +47,9 @@ constexpr u32 MAX_MSG_SIZE = 8192;
 /** @brief Maximum number of channels that can exist at once. */
 constexpr u32 MAX_CHANNELS = 64;
 /** @brief Default number of queued messages per channel. */
-constexpr u32 DEFAULT_PENDING = 8;
+constexpr u32 DEFAULT_PENDING = 16;
 /** @brief Maximum configurable pending message capacity. */
-constexpr u32 MAX_PENDING = 8;
+constexpr u32 MAX_PENDING = 16;
 /** @brief Maximum number of handles that can be transferred in one message. */
 constexpr u32 MAX_HANDLES_PER_MSG = 4;
 

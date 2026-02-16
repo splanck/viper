@@ -100,6 +100,20 @@ extern "C"
     /// @return Error message, or empty string if no error.
     rt_string rt_future_get_error(void *future);
 
+    /// @brief Try to get the value without blocking (IL-friendly).
+    /// @details Returns the value if resolved, or NULL if pending or error.
+    /// @param future Future object pointer.
+    /// @return The value, or NULL if not yet resolved or resolved with error.
+    void *rt_future_try_get_val(void *future);
+
+    /// @brief Get the value with a timeout (IL-friendly).
+    /// @details Blocks up to @p ms milliseconds. Returns the value if resolved,
+    ///          or NULL if timed out or resolved with error.
+    /// @param future Future object pointer.
+    /// @param ms Timeout in milliseconds.
+    /// @return The value, or NULL on timeout/error.
+    void *rt_future_get_for_val(void *future, int64_t ms);
+
     /// @brief Try to get the value without blocking.
     /// @details Returns immediately if resolved, NULL if pending or error.
     /// @param future Future object pointer.

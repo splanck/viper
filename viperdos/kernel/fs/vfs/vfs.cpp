@@ -25,6 +25,7 @@
 #include "../../console/console.hpp"
 #include "../../console/gcon.hpp"
 #include "../../console/serial.hpp"
+#include "../../lib/mem.hpp"
 #include "../../lib/str.hpp"
 #include "../../sched/task.hpp"
 #include "../../viper/viper.hpp"
@@ -190,6 +191,12 @@ u64 resolve_path(const char *path) {
             path++;
         usize len = path - start;
 
+        // Reject oversized path components
+        if (len > ::fs::viperfs::MAX_NAME_LEN) {
+            fs->release_inode(current);
+            return 0;
+        }
+
         // Lookup component
         if (!::fs::viperfs::is_directory(current)) {
             fs->release_inode(current);
@@ -224,8 +231,7 @@ static bool get_absolute_path(const char *path, char *abs_path, usize abs_size) 
         usize len = lib::strlen(path);
         if (len >= abs_size)
             return false;
-        for (usize i = 0; i <= len; i++)
-            abs_path[i] = path[i];
+        lib::memcpy(abs_path, path, len + 1);
         return true;
     }
 
@@ -235,6 +241,68 @@ static bool get_absolute_path(const char *path, char *abs_path, usize abs_size) 
         cwd = t->cwd;
 
     return normalize_path(path, cwd, abs_path, abs_size);
+}
+
+/**
+ * @brief Result of splitting a user-writable path into parent + leaf name.
+ *
+ * @details
+ * Used by mkdir, rmdir, unlink, and symlink to factor out the common
+ * path normalization, sys/user routing, and parent/name splitting logic.
+ */
+struct SplitPath {
+    char abs[MAX_PATH];      // Normalized absolute path
+    char parent[MAX_PATH];   // Parent directory path
+    char name[::fs::viperfs::MAX_NAME_LEN + 1]; // Leaf component
+    usize name_len;          // Length of leaf component
+};
+
+/**
+ * @brief Normalize a path and split it into parent directory + leaf name.
+ *
+ * @details
+ * Performs the common sequence shared by mkdir/rmdir/unlink/symlink:
+ * 1. Convert relative paths to absolute using the task's cwd.
+ * 2. Reject /sys paths (system disk is read-only).
+ * 3. Require the path to be on the user disk.
+ * 4. Find the last '/' to split parent from leaf name.
+ *
+ * @param path         Input path (absolute or relative).
+ * @param[out] out     Filled with the split result on success.
+ * @return true on success, false if the path is invalid or on the system disk.
+ */
+static bool split_user_path(const char *path, SplitPath &out) {
+    if (!get_absolute_path(path, out.abs, sizeof(out.abs)))
+        return false;
+
+    // Reject system disk paths (read-only)
+    const char *effective_path = nullptr;
+    if (is_sys_path(out.abs, &effective_path))
+        return false;
+
+    if (!is_user_path(out.abs, &effective_path))
+        return false;
+
+    // Split into parent directory + leaf name at last '/'
+    usize path_len = lib::strlen(out.abs);
+    usize last_slash = 0;
+    for (usize i = 0; i < path_len; i++) {
+        if (out.abs[i] == '/')
+            last_slash = i;
+    }
+
+    if (last_slash == 0) {
+        out.parent[0] = '/';
+        out.parent[1] = '\0';
+    } else {
+        lib::memcpy(out.parent, out.abs, last_slash);
+        out.parent[last_slash] = '\0';
+    }
+
+    out.name_len = path_len - last_slash - 1;
+    lib::memcpy(out.name, out.abs + last_slash + 1, out.name_len + 1);
+
+    return true;
 }
 
 /**
@@ -302,14 +370,12 @@ static void split_path(const char *path, char *parent, char *filename) {
         parent[0] = '/';
         parent[1] = '\0';
     } else {
-        for (usize i = 0; i < last_slash; i++)
-            parent[i] = path[i];
+        lib::memcpy(parent, path, last_slash);
         parent[last_slash] = '\0';
     }
 
     usize fn_len = path_len - last_slash - 1;
-    for (usize i = 0; i <= fn_len; i++)
-        filename[i] = path[last_slash + 1 + i];
+    lib::memcpy(filename, path + last_slash + 1, fn_len + 1);
 }
 
 /**
@@ -317,7 +383,7 @@ static void split_path(const char *path, char *parent, char *filename) {
  */
 static u64 create_file_if_needed(::fs::viperfs::ViperFS *fs, const char *abs_path) {
     char parent_path[MAX_PATH];
-    char filename[256];
+    char filename[::fs::viperfs::MAX_NAME_LEN + 1];
     split_path(abs_path, parent_path, filename);
 
     u64 parent_ino = resolve_path(parent_path);
@@ -386,36 +452,25 @@ i32 open(const char *path, u32 oflags) {
     }
 
     if (sel.fs_type == FsType::FAT32) {
-        // FAT32: open and cache file info
-        ::fs::fat32::FileInfo fi{};
         const char *effective = nullptr;
-        if (is_user_path(abs_path, &effective)) {
-            if (sel.fat32->open(effective, &fi)) {
-                desc->inode_num = fi.first_cluster;
-                desc->fat32_size = fi.size;
-                desc->fat32_attr = fi.attr;
-                desc->fat32_is_dir = fi.is_directory;
-                if (oflags & flags::O_APPEND) {
-                    desc->offset = fi.size;
-                }
-            } else if (oflags & flags::O_CREAT) {
-                if (sel.fat32->create_file(effective, &fi)) {
-                    desc->inode_num = fi.first_cluster;
-                    desc->fat32_size = fi.size;
-                    desc->fat32_attr = fi.attr;
-                    desc->fat32_is_dir = fi.is_directory;
-                } else {
-                    fdt->free(fd);
-                    return -1;
-                }
-            } else {
-                fdt->free(fd);
-                return -1;
-            }
-        } else {
+        if (!is_user_path(abs_path, &effective)) {
             fdt->free(fd);
             return -1;
         }
+        ::fs::fat32::FileInfo fi{};
+        bool opened = sel.fat32->open(effective, &fi);
+        if (!opened && (oflags & flags::O_CREAT))
+            opened = sel.fat32->create_file(effective, &fi);
+        if (!opened) {
+            fdt->free(fd);
+            return -1;
+        }
+        desc->inode_num = fi.first_cluster;
+        desc->fat32_size = fi.size;
+        desc->fat32_attr = fi.attr;
+        desc->fat32_is_dir = fi.is_directory;
+        if (oflags & flags::O_APPEND)
+            desc->offset = fi.size;
     } else {
         if (oflags & flags::O_APPEND) {
             ::fs::viperfs::Inode *inode = sel.viperfs->read_inode(ino);
@@ -510,6 +565,34 @@ i32 close(i32 fd) {
     return 0;
 }
 
+/// @brief Read from stdin (fd 0) by polling the console for input.
+static i64 handle_stdin_read(void *buf, usize len) {
+    char *s = static_cast<char *>(buf);
+    usize count = 0;
+    if (len == 0)
+        return 0;
+
+    // Block until at least one character is available.
+    while (!console::has_input()) {
+        console::poll_input();
+        task::yield();
+    }
+
+    while (count < len) {
+        console::poll_input();
+        i32 c = console::getchar();
+        if (c < 0)
+            break; // No more input available
+        char ch = static_cast<char>(c);
+        if (ch == '\r')
+            ch = '\n';
+        s[count++] = ch;
+        if (ch == '\n')
+            break; // Line complete
+    }
+    return static_cast<i64>(count);
+}
+
 /** @copydoc fs::vfs::read */
 i64 read(i32 fd, void *buf, usize len) {
     FDTable *fdt = current_fdt();
@@ -518,34 +601,8 @@ i64 read(i32 fd, void *buf, usize len) {
 
     FileDesc *desc = fdt->get(fd);
     if (!desc) {
-        // Special handling for stdin - read from console
-        if (fd == 0) {
-            char *s = static_cast<char *>(buf);
-            usize count = 0;
-            if (len == 0) {
-                return 0;
-            }
-
-            // Block until at least one character is available.
-            while (!console::has_input()) {
-                console::poll_input();
-                task::yield();
-            }
-
-            while (count < len) {
-                console::poll_input();
-                i32 c = console::getchar();
-                if (c < 0)
-                    break; // No more input available
-                char ch = static_cast<char>(c);
-                if (ch == '\r')
-                    ch = '\n';
-                s[count++] = ch;
-                if (ch == '\n')
-                    break; // Line complete
-            }
-            return static_cast<i64>(count);
-        }
+        if (fd == 0)
+            return handle_stdin_read(buf, len);
         return -1;
     }
 
@@ -588,20 +645,23 @@ i64 read(i32 fd, void *buf, usize len) {
     return bytes;
 }
 
+/// @brief Write to stdout/stderr (fd 1 or 2) via serial and graphical console.
+static i64 handle_stdout_write(const void *buf, usize len) {
+    const char *s = static_cast<const char *>(buf);
+    for (usize i = 0; i < len; i++) {
+        serial::putc(s[i]);
+        if (gcon::is_available()) {
+            gcon::putc(s[i]);
+        }
+    }
+    return static_cast<i64>(len);
+}
+
 /** @copydoc fs::vfs::write */
 i64 write(i32 fd, const void *buf, usize len) {
-    // Special handling for stdout/stderr - write to console
-    // This is always allowed regardless of filesystem state
-    if (fd == 1 || fd == 2) {
-        const char *s = static_cast<const char *>(buf);
-        for (usize i = 0; i < len; i++) {
-            serial::putc(s[i]);
-            if (gcon::is_available()) {
-                gcon::putc(s[i]);
-            }
-        }
-        return static_cast<i64>(len);
-    }
+    // Special handling for stdout/stderr - always allowed
+    if (fd == 1 || fd == 2)
+        return handle_stdout_write(buf, len);
 
     FDTable *fdt = current_fdt();
     if (!fdt)
@@ -910,13 +970,57 @@ static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file
     ent->namelen = static_cast<u8>(name_len > 255 ? 255 : name_len);
 
     // Copy name
-    for (usize i = 0; i < ent->namelen; i++) {
-        ent->name[i] = name[i];
-    }
+    lib::memcpy(ent->name, name, ent->namelen);
     ent->name[ent->namelen] = '\0';
 
     gctx->bytes_written += reclen;
     gctx->entries_written++;
+}
+
+/// @brief Read directory entries from a FAT32 directory into a DirEnt buffer.
+static i64 getdents_fat32(FileDesc *desc, void *buf, usize len) {
+    if (!desc->fat32_is_dir)
+        return -1;
+
+    ::fs::fat32::FAT32 *fat = desc->fs.fat32;
+    if (!fat)
+        return -1;
+
+    constexpr i32 MAX_FAT_ENTRIES = 128;
+    static ::fs::fat32::FileInfo fat_entries[MAX_FAT_ENTRIES];
+    u32 dir_cluster = static_cast<u32>(desc->inode_num);
+    i32 count = fat->read_dir(dir_cluster, fat_entries, MAX_FAT_ENTRIES);
+    if (count < 0)
+        return -1;
+
+    u8 *out = static_cast<u8 *>(buf);
+    usize bytes_written = 0;
+    usize entries_to_skip = desc->offset;
+    usize entries_written = 0;
+
+    for (i32 i = 0; i < count; i++) {
+        if (static_cast<usize>(i) < entries_to_skip)
+            continue;
+
+        usize reclen = sizeof(DirEnt);
+        if (bytes_written + reclen > len)
+            break;
+
+        DirEnt *ent = reinterpret_cast<DirEnt *>(out + bytes_written);
+        ent->ino = fat_entries[i].first_cluster;
+        ent->reclen = static_cast<u16>(reclen);
+        ent->type = fat_entries[i].is_directory ? 2 : 1;
+        usize name_len = lib::strlen(fat_entries[i].name);
+        ent->namelen = static_cast<u8>(name_len > 255 ? 255 : name_len);
+        lib::memcpy(ent->name, fat_entries[i].name, ent->namelen);
+        ent->name[ent->namelen] = '\0';
+
+        bytes_written += reclen;
+        entries_written++;
+    }
+
+    desc->offset += entries_written;
+    return static_cast<i64>(bytes_written);
 }
 
 /** @copydoc fs::vfs::getdents */
@@ -932,54 +1036,8 @@ i64 getdents(i32 fd, void *buf, usize len) {
     if (!desc)
         return -1;
 
-    if (desc->fs_type == FsType::FAT32) {
-        // FAT32 directory listing
-        if (!desc->fat32_is_dir)
-            return -1;
-
-        ::fs::fat32::FAT32 *fat = desc->fs.fat32;
-        if (!fat)
-            return -1;
-
-        // Read FAT32 directory entries
-        constexpr i32 MAX_FAT_ENTRIES = 128;
-        static ::fs::fat32::FileInfo fat_entries[MAX_FAT_ENTRIES];
-        u32 dir_cluster = static_cast<u32>(desc->inode_num);
-        i32 count = fat->read_dir(dir_cluster, fat_entries, MAX_FAT_ENTRIES);
-        if (count < 0)
-            return -1;
-
-        // Pack into DirEnt format, skipping already-read entries
-        u8 *out = static_cast<u8 *>(buf);
-        usize bytes_written = 0;
-        usize entries_to_skip = desc->offset;
-        usize entries_written = 0;
-
-        for (i32 i = 0; i < count; i++) {
-            if (static_cast<usize>(i) < entries_to_skip)
-                continue;
-
-            usize reclen = sizeof(DirEnt);
-            if (bytes_written + reclen > len)
-                break;
-
-            DirEnt *ent = reinterpret_cast<DirEnt *>(out + bytes_written);
-            ent->ino = fat_entries[i].first_cluster;
-            ent->reclen = static_cast<u16>(reclen);
-            ent->type = fat_entries[i].is_directory ? 2 : 1;
-            usize name_len = lib::strlen(fat_entries[i].name);
-            ent->namelen = static_cast<u8>(name_len > 255 ? 255 : name_len);
-            for (usize j = 0; j < ent->namelen; j++)
-                ent->name[j] = fat_entries[i].name[j];
-            ent->name[ent->namelen] = '\0';
-
-            bytes_written += reclen;
-            entries_written++;
-        }
-
-        desc->offset += entries_written;
-        return static_cast<i64>(bytes_written);
-    }
+    if (desc->fs_type == FsType::FAT32)
+        return getdents_fat32(desc, buf, len);
 
     // ViperFS getdents
     ::fs::viperfs::ViperFS *fs = fd_viperfs(desc);
@@ -1022,34 +1080,13 @@ i32 mkdir(const char *path) {
     if (!path)
         return -1;
 
-    // Normalize path
-    char abs_path[MAX_PATH];
-    if (path[0] == '/') {
-        usize len = lib::strlen(path);
-        if (len >= MAX_PATH)
-            return -1;
-        for (usize i = 0; i <= len; i++)
-            abs_path[i] = path[i];
-    } else {
-        const char *cwd = "/";
-        task::Task *t = task::current();
-        if (t && t->cwd[0])
-            cwd = t->cwd;
-        if (!normalize_path(path, cwd, abs_path, sizeof(abs_path)))
-            return -1;
-    }
-
-    // Check if path is on user disk (writable)
-    const char *effective_path = nullptr;
-    if (is_sys_path(abs_path, &effective_path))
-        return -1; // System disk is read-only
-
-    if (!is_user_path(abs_path, &effective_path))
+    SplitPath sp;
+    if (!split_user_path(path, sp))
         return -1;
 
     // FAT32 mkdir
     if (g_user_fat32_available) {
-        return ::fs::fat32::fat32().create_dir(effective_path) ? 0 : -1;
+        return ::fs::fat32::fat32().create_dir(sp.abs) ? 0 : -1;
     }
 
     if (!::fs::viperfs::user_viperfs_available())
@@ -1057,31 +1094,7 @@ i32 mkdir(const char *path) {
 
     auto *fs = &::fs::viperfs::user_viperfs();
 
-    // Find parent directory and new directory name
-    char parent_path[MAX_PATH];
-    char dirname[256];
-    usize path_len = lib::strlen(abs_path);
-    usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++) {
-        if (abs_path[i] == '/')
-            last_slash = i;
-    }
-
-    if (last_slash == 0) {
-        parent_path[0] = '/';
-        parent_path[1] = '\0';
-    } else {
-        for (usize i = 0; i < last_slash; i++)
-            parent_path[i] = abs_path[i];
-        parent_path[last_slash] = '\0';
-    }
-
-    usize dn_len = path_len - last_slash - 1;
-    for (usize i = 0; i <= dn_len; i++)
-        dirname[i] = abs_path[last_slash + 1 + i];
-
-    // Resolve parent directory
-    u64 parent_ino = resolve_path(parent_path);
+    u64 parent_ino = resolve_path(sp.parent);
     if (parent_ino == 0)
         return -1;
 
@@ -1089,7 +1102,7 @@ i32 mkdir(const char *path) {
     if (!parent)
         return -1;
 
-    u64 new_ino = fs->create_dir(parent, dirname, dn_len);
+    u64 new_ino = fs->create_dir(parent, sp.name, sp.name_len);
     fs->release_inode(parent);
 
     return (new_ino != 0) ? 0 : -1;
@@ -1100,34 +1113,13 @@ i32 rmdir(const char *path) {
     if (!path)
         return -1;
 
-    // Normalize path
-    char abs_path[MAX_PATH];
-    if (path[0] == '/') {
-        usize len = lib::strlen(path);
-        if (len >= MAX_PATH)
-            return -1;
-        for (usize i = 0; i <= len; i++)
-            abs_path[i] = path[i];
-    } else {
-        const char *cwd = "/";
-        task::Task *t = task::current();
-        if (t && t->cwd[0])
-            cwd = t->cwd;
-        if (!normalize_path(path, cwd, abs_path, sizeof(abs_path)))
-            return -1;
-    }
-
-    // Check if path is on user disk
-    const char *effective_path = nullptr;
-    if (is_sys_path(abs_path, &effective_path))
-        return -1; // System disk is read-only
-
-    if (!is_user_path(abs_path, &effective_path))
+    SplitPath sp;
+    if (!split_user_path(path, sp))
         return -1;
 
     // FAT32 rmdir
     if (g_user_fat32_available) {
-        return ::fs::fat32::fat32().remove(effective_path) ? 0 : -1;
+        return ::fs::fat32::fat32().remove(sp.abs) ? 0 : -1;
     }
 
     if (!::fs::viperfs::user_viperfs_available())
@@ -1135,30 +1127,7 @@ i32 rmdir(const char *path) {
 
     auto *fs = &::fs::viperfs::user_viperfs();
 
-    // Find parent directory and directory name
-    char parent_path[MAX_PATH];
-    char dirname[256];
-    usize path_len = lib::strlen(abs_path);
-    usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++) {
-        if (abs_path[i] == '/')
-            last_slash = i;
-    }
-
-    if (last_slash == 0) {
-        parent_path[0] = '/';
-        parent_path[1] = '\0';
-    } else {
-        for (usize i = 0; i < last_slash; i++)
-            parent_path[i] = abs_path[i];
-        parent_path[last_slash] = '\0';
-    }
-
-    usize dn_len = path_len - last_slash - 1;
-    for (usize i = 0; i <= dn_len; i++)
-        dirname[i] = abs_path[last_slash + 1 + i];
-
-    u64 parent_ino = resolve_path(parent_path);
+    u64 parent_ino = resolve_path(sp.parent);
     if (parent_ino == 0)
         return -1;
 
@@ -1166,7 +1135,7 @@ i32 rmdir(const char *path) {
     if (!parent)
         return -1;
 
-    bool ok = fs->rmdir(parent, dirname, dn_len);
+    bool ok = fs->rmdir(parent, sp.name, sp.name_len);
     fs->release_inode(parent);
 
     return ok ? 0 : -1;
@@ -1177,34 +1146,13 @@ i32 unlink(const char *path) {
     if (!path)
         return -1;
 
-    // Normalize path
-    char abs_path[MAX_PATH];
-    if (path[0] == '/') {
-        usize len = lib::strlen(path);
-        if (len >= MAX_PATH)
-            return -1;
-        for (usize i = 0; i <= len; i++)
-            abs_path[i] = path[i];
-    } else {
-        const char *cwd = "/";
-        task::Task *t = task::current();
-        if (t && t->cwd[0])
-            cwd = t->cwd;
-        if (!normalize_path(path, cwd, abs_path, sizeof(abs_path)))
-            return -1;
-    }
-
-    // Check if path is on user disk
-    const char *effective_path = nullptr;
-    if (is_sys_path(abs_path, &effective_path))
-        return -1; // System disk is read-only
-
-    if (!is_user_path(abs_path, &effective_path))
+    SplitPath sp;
+    if (!split_user_path(path, sp))
         return -1;
 
     // FAT32 unlink
     if (g_user_fat32_available) {
-        return ::fs::fat32::fat32().remove(effective_path) ? 0 : -1;
+        return ::fs::fat32::fat32().remove(sp.abs) ? 0 : -1;
     }
 
     if (!::fs::viperfs::user_viperfs_available())
@@ -1212,30 +1160,7 @@ i32 unlink(const char *path) {
 
     auto *fs = &::fs::viperfs::user_viperfs();
 
-    // Find parent directory and filename
-    char parent_path[MAX_PATH];
-    char filename[256];
-    usize path_len = lib::strlen(abs_path);
-    usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++) {
-        if (abs_path[i] == '/')
-            last_slash = i;
-    }
-
-    if (last_slash == 0) {
-        parent_path[0] = '/';
-        parent_path[1] = '\0';
-    } else {
-        for (usize i = 0; i < last_slash; i++)
-            parent_path[i] = abs_path[i];
-        parent_path[last_slash] = '\0';
-    }
-
-    usize fn_len = path_len - last_slash - 1;
-    for (usize i = 0; i <= fn_len; i++)
-        filename[i] = abs_path[last_slash + 1 + i];
-
-    u64 parent_ino = resolve_path(parent_path);
+    u64 parent_ino = resolve_path(sp.parent);
     if (parent_ino == 0)
         return -1;
 
@@ -1243,7 +1168,7 @@ i32 unlink(const char *path) {
     if (!parent)
         return -1;
 
-    bool ok = fs->unlink_file(parent, filename, fn_len);
+    bool ok = fs->unlink_file(parent, sp.name, sp.name_len);
     fs->release_inode(parent);
 
     return ok ? 0 : -1;
@@ -1254,29 +1179,8 @@ i32 symlink(const char *target, const char *linkpath) {
     if (!target || !linkpath)
         return -1;
 
-    // Normalize linkpath
-    char abs_path[MAX_PATH];
-    if (linkpath[0] == '/') {
-        usize len = lib::strlen(linkpath);
-        if (len >= MAX_PATH)
-            return -1;
-        for (usize i = 0; i <= len; i++)
-            abs_path[i] = linkpath[i];
-    } else {
-        const char *cwd = "/";
-        task::Task *t = task::current();
-        if (t && t->cwd[0])
-            cwd = t->cwd;
-        if (!normalize_path(linkpath, cwd, abs_path, sizeof(abs_path)))
-            return -1;
-    }
-
-    // Check if linkpath is on user disk
-    const char *effective_path = nullptr;
-    if (is_sys_path(abs_path, &effective_path))
-        return -1; // System disk is read-only
-
-    if (!is_user_path(abs_path, &effective_path))
+    SplitPath sp;
+    if (!split_user_path(linkpath, sp))
         return -1;
 
     if (!::fs::viperfs::user_viperfs_available())
@@ -1284,30 +1188,7 @@ i32 symlink(const char *target, const char *linkpath) {
 
     auto *fs = &::fs::viperfs::user_viperfs();
 
-    // Find parent directory and link name
-    char parent_path[MAX_PATH];
-    char linkname[256];
-    usize path_len = lib::strlen(abs_path);
-    usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++) {
-        if (abs_path[i] == '/')
-            last_slash = i;
-    }
-
-    if (last_slash == 0) {
-        parent_path[0] = '/';
-        parent_path[1] = '\0';
-    } else {
-        for (usize i = 0; i < last_slash; i++)
-            parent_path[i] = abs_path[i];
-        parent_path[last_slash] = '\0';
-    }
-
-    usize ln_len = path_len - last_slash - 1;
-    for (usize i = 0; i <= ln_len; i++)
-        linkname[i] = abs_path[last_slash + 1 + i];
-
-    u64 parent_ino = resolve_path(parent_path);
+    u64 parent_ino = resolve_path(sp.parent);
     if (parent_ino == 0)
         return -1;
 
@@ -1315,7 +1196,7 @@ i32 symlink(const char *target, const char *linkpath) {
     if (!parent)
         return -1;
 
-    u64 link_ino = fs->create_symlink(parent, linkname, ln_len, target, lib::strlen(target));
+    u64 link_ino = fs->create_symlink(parent, sp.name, sp.name_len, target, lib::strlen(target));
     fs->release_inode(parent);
 
     return (link_ino != 0) ? 0 : -1;
@@ -1415,11 +1296,13 @@ bool process_path_components(char *src, char *out, usize out_size) {
         if (out_pos + comp_len + 1 >= out_size)
             return false;
 
-        if (stack_depth < 64)
-            component_starts[stack_depth++] = out_pos;
+        if (stack_depth >= 64)
+            return false; // Path too deeply nested
 
-        for (usize i = 0; i < comp_len; i++)
-            out[out_pos++] = comp_start[i];
+        component_starts[stack_depth++] = out_pos;
+
+        lib::memcpy(out + out_pos, comp_start, comp_len);
+        out_pos += comp_len;
         out[out_pos++] = '/';
     }
 

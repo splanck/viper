@@ -62,6 +62,7 @@ void poll_mouse() {
         return;
     }
 
+#ifdef DISPLAYD_DEBUG_MOUSE
     static uint32_t call_count = 0;
     call_count++;
     if (call_count % 100 == 0) {
@@ -71,6 +72,7 @@ void poll_mouse() {
         debug_print_dec(state.y);
         debug_print(")\n");
     }
+#endif
 
     bool cursor_moved = (state.x != g_last_mouse_x || state.y != g_last_mouse_y);
 

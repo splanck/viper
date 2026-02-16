@@ -37,6 +37,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -47,6 +48,29 @@
 #if !RT_PLATFORM_WINDOWS
 #include <unistd.h>
 #endif
+
+// =============================================================================
+// Thread-local trap recovery for safe threads
+// =============================================================================
+
+static _Thread_local jmp_buf *rt_trap_recovery_ = NULL;
+static _Thread_local char rt_trap_error_[512] = "";
+
+void rt_trap_set_recovery(jmp_buf *buf)
+{
+    rt_trap_recovery_ = buf;
+}
+
+void rt_trap_clear_recovery(void)
+{
+    rt_trap_recovery_ = NULL;
+    rt_trap_error_[0] = '\0';
+}
+
+const char *rt_trap_get_error(void)
+{
+    return rt_trap_error_;
+}
 
 /// @brief Terminate the runtime immediately due to a fatal condition.
 /// @details Prints @p msg to stderr when provided, otherwise emits the generic
@@ -94,13 +118,19 @@ RT_WEAK void vm_trap(const char *msg)
 #endif
 
 /// @brief Raise a runtime trap using the currently configured trap handler.
-/// @details Simply forwards the message to @ref vm_trap so that tools or
-///          embedders can install custom behaviour by overriding the weak
-///          symbol.
+/// @details If a thread-local recovery point is set (via rt_trap_set_recovery),
+///          the trap message is captured and control is transferred to the
+///          recovery point via longjmp instead of terminating the process.
+///          Otherwise forwards the message to @ref vm_trap.
 /// @param msg Null-terminated string describing the trap condition.
 /// @return This function does not return.
 void rt_trap(const char *msg)
 {
+    if (rt_trap_recovery_)
+    {
+        snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", msg ? msg : "Unknown trap");
+        longjmp(*rt_trap_recovery_, 1);
+    }
     vm_trap(msg);
 }
 

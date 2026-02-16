@@ -131,6 +131,7 @@ if (NOT WIN32)
             test_codegen_arm64_obj_field_gep
             test_codegen_arm64_arr_obj_put_get
             test_codegen_arm64_call_stack_args
+            test_codegen_arm64_callee_stack_params
             test_codegen_arm64_call_convention
             test_codegen_arm64_fp
             test_codegen_arm64_indirect_call
