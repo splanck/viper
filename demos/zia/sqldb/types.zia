@@ -36,11 +36,12 @@ func stringToInt(text: String) -> Integer {
 
     while i < len {
         var ch = String.Substring(text, i, 1);
+        if ch == "." {
+            break;  // Stop at decimal point for integer truncation
+        }
         var code = String.Asc(ch);
-        if code >= 48 {
-            if code <= 57 {
-                result = result * 10 + (code - 48);
-            }
+        if code >= 48 && code <= 57 {
+            result = result * 10 + (code - 48);
         }
         i = i + 1;
     }

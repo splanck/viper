@@ -1,8 +1,8 @@
 # ViperSQL
 
-A complete SQL database engine written entirely in [Zia](../../../docs/zia-guide.md), the high-level language frontend for the Viper compiler toolchain. ViperSQL implements a substantial subset of SQL including DDL, DML, joins, subqueries, aggregations, indexes, persistent storage, CSV import/export, multi-database support, and a wire-protocol server.
+A complete SQL database engine written entirely in [Zia](../../../docs/zia-guide.md), the high-level language frontend for the Viper compiler toolchain. ViperSQL implements a substantial subset of SQL including DDL, DML, joins, subqueries, aggregations, views, CHECK constraints, CAST expressions, EXISTS/NOT EXISTS, derived tables, INSERT...SELECT, transactions (BEGIN/COMMIT/ROLLBACK), ON DELETE/UPDATE CASCADE, window functions, Common Table Expressions (CTEs), multi-table UPDATE/DELETE, date/time functions, indexes, persistent storage, CSV import/export, multi-database support, and a wire-protocol server.
 
-**24,500+ lines of Zia** across 62 source files, with **1,000+ automated test assertions** across 30 test files.
+**27,000+ lines of Zia** across 62 source files, with **1,700+ automated test assertions** across 38 test files.
 
 Runs both interpreted (via the Viper VM) and compiled to native ARM64/x86-64 machine code.
 
@@ -30,8 +30,12 @@ Runs both interpreted (via the Viper VM) and compiled to native ARM64/x86-64 mac
   - [Query Clauses](#query-clauses)
   - [Expressions and Operators](#expressions-and-operators)
   - [Built-in Functions](#built-in-functions)
+  - [Date/Time Functions](#datetime-functions)
   - [Aggregate Functions](#aggregate-functions)
+  - [Window Functions](#window-functions)
+  - [Common Table Expressions (CTEs)](#common-table-expressions-ctes)
   - [Joins](#joins)
+  - [Multi-Table UPDATE/DELETE](#multi-table-updatedelete)
   - [Subqueries](#subqueries)
   - [Set Operations](#set-operations)
   - [Indexes](#indexes)
@@ -353,6 +357,24 @@ Rename a column:
 ALTER TABLE users RENAME COLUMN email TO contact_email;
 ```
 
+#### CREATE VIEW / DROP VIEW
+
+Views are named queries that act as virtual tables:
+
+```sql
+-- Create a view
+CREATE VIEW active_users AS SELECT * FROM users WHERE status = 'active';
+
+-- Query the view like a table
+SELECT name FROM active_users WHERE age > 30;
+
+-- Views support WHERE, ORDER BY, LIMIT on the outer query
+SELECT * FROM active_users ORDER BY name LIMIT 10;
+
+-- Drop a view
+DROP VIEW active_users;
+```
+
 ### DML Statements
 
 #### INSERT
@@ -373,6 +395,19 @@ Insert with expressions:
 
 ```sql
 INSERT INTO stats (name, value) VALUES ('total', 100 + 50);
+```
+
+Insert from a SELECT query (INSERT...SELECT):
+
+```sql
+-- Copy all rows from one table to another
+INSERT INTO archive SELECT * FROM users;
+
+-- Copy specific columns with a filter
+INSERT INTO vip_users (name, age) SELECT name, age FROM users WHERE age > 30;
+
+-- Insert aggregated data
+INSERT INTO summary SELECT COUNT(*), AVG(age) FROM users;
 ```
 
 #### SELECT
@@ -402,6 +437,24 @@ Column aliases:
 SELECT name AS employee_name, salary * 12 AS annual_salary FROM employees;
 ```
 
+SELECT without FROM (expression evaluation):
+
+```sql
+SELECT 1 + 2;
+SELECT CAST('42' AS INTEGER);
+SELECT EXISTS (SELECT 1 FROM users);
+```
+
+Derived tables (subqueries in FROM):
+
+```sql
+-- Use a subquery as a virtual table
+SELECT name FROM (SELECT * FROM users WHERE age > 25) AS adults ORDER BY name;
+
+-- Aggregate in subquery, filter in outer
+SELECT cnt FROM (SELECT COUNT(*) AS cnt FROM users) AS stats;
+```
+
 #### UPDATE
 
 ```sql
@@ -415,6 +468,29 @@ UPDATE products SET price = price * 1.1, category = 'premium' WHERE price > 50;
 DELETE FROM orders WHERE status = 'cancelled';
 DELETE FROM logs;  -- deletes all rows
 ```
+
+#### Transactions
+
+ViperSQL supports explicit transactions with `BEGIN`, `COMMIT`, and `ROLLBACK`:
+
+```sql
+BEGIN;
+INSERT INTO accounts VALUES (1, 'Alice', 1000);
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+INSERT INTO transfers VALUES (1, 1, 2, 100);
+COMMIT;  -- all changes become permanent
+
+BEGIN;
+DELETE FROM accounts WHERE id = 1;
+ROLLBACK;  -- all changes within the transaction are undone
+```
+
+**Statement-level atomicity**: Multi-row INSERT and UPDATE statements are atomic — if any row fails a constraint check, all changes from that statement are rolled back automatically.
+
+**Transaction rules**:
+- Nested `BEGIN` is not allowed (returns an error)
+- `COMMIT`/`ROLLBACK` without an active transaction returns an error
+- DELETE compaction is deferred during transactions and applied on COMMIT
 
 ### Query Clauses
 
@@ -572,6 +648,23 @@ FROM students;
 
 CASE can be used anywhere an expression is valid: SELECT lists, WHERE clauses, ORDER BY, etc.
 
+#### CAST
+
+Explicitly convert values between types:
+
+```sql
+SELECT CAST('42' AS INTEGER);     -- 42 (integer)
+SELECT CAST(3.7 AS INTEGER);      -- 3 (truncated)
+SELECT CAST(42 AS TEXT);           -- '42' (text)
+SELECT CAST('3.14' AS REAL);       -- 3.14 (real)
+SELECT CAST(NULL AS INTEGER);     -- NULL (preserved)
+
+-- CAST in expressions
+SELECT CAST('10' AS INTEGER) + 5;  -- 15
+```
+
+Supported target types: `INTEGER`, `INT`, `REAL`, `FLOAT`, `TEXT`, `VARCHAR`.
+
 ### Built-in Functions
 
 #### String Functions
@@ -598,6 +691,35 @@ CASE can be used anywhere an expression is valid: SELECT lists, WHERE clauses, O
 | `MIN(a, b)` | Minimum of two values | `MIN(5, 3)` | `3` |
 | `MAX(a, b)` | Maximum of two values | `MAX(5, 3)` | `5` |
 | `ROUND(x)` | Round to nearest integer | `ROUND(3.7)` | `4` |
+| `POWER(x, y)` / `POW(x, y)` | Raise x to the power y | `POWER(2, 10)` | `1024` |
+| `SQRT(x)` | Square root | `SQRT(144)` | `12` |
+| `CEIL(x)` / `CEILING(x)` | Round up to integer | `CEIL(3.2)` | `4` |
+| `FLOOR(x)` | Round down to integer | `FLOOR(3.9)` | `3` |
+| `SIGN(x)` | Sign (-1, 0, or 1) | `SIGN(-42)` | `-1` |
+| `LOG(x)` / `LN(x)` | Natural logarithm | `LOG(2.718)` | `~1` |
+| `LOG10(x)` | Base-10 logarithm | `LOG10(100)` | `2` |
+| `LOG2(x)` | Base-2 logarithm | `LOG2(8)` | `3` |
+| `EXP(x)` | e raised to x | `EXP(1)` | `~2.718` |
+| `PI()` | Pi constant | `PI()` | `3.14159...` |
+| `RANDOM()` / `RAND()` | Random integer | `RANDOM()` | varies |
+
+#### Extended String Functions
+
+| Function | Description | Example | Result |
+|----------|-------------|---------|--------|
+| `LEFT(s, n)` | First n characters | `LEFT('hello', 3)` | `hel` |
+| `RIGHT(s, n)` | Last n characters | `RIGHT('hello', 3)` | `llo` |
+| `LPAD(s, len, pad)` | Left-pad to length | `LPAD('42', 5, '0')` | `00042` |
+| `RPAD(s, len, pad)` | Right-pad to length | `RPAD('hi', 5, '.')` | `hi...` |
+| `REVERSE(s)` | Reverse a string | `REVERSE('hello')` | `olleh` |
+| `HEX(n)` | Integer to hex | `HEX(255)` | `FF` |
+
+#### Conditional Functions
+
+| Function | Description | Example | Result |
+|----------|-------------|---------|--------|
+| `GREATEST(a, b, ...)` | Largest value | `GREATEST(1, 5, 3)` | `5` |
+| `LEAST(a, b, ...)` | Smallest value | `LEAST(1, 5, 3)` | `1` |
 
 #### NULL Handling Functions
 
@@ -608,6 +730,76 @@ CASE can be used anywhere an expression is valid: SELECT lists, WHERE clauses, O
 | `NULLIF(a, b)` | NULL if a equals b | `NULLIF(5, 5)` | `NULL` |
 | `IIF(cond, true_val, false_val)` | Inline conditional | `IIF(age > 18, 'adult', 'minor')` | depends |
 | `TYPEOF(expr)` | Returns type name as string | `TYPEOF(42)` | `integer` |
+
+### Date/Time Functions
+
+ViperSQL provides date/time functions powered by the Viper runtime's `DateTime` library. Dates are stored as TEXT in ISO format (`YYYY-MM-DDTHH:MM:SS`) or as INTEGER Unix timestamps.
+
+#### Current Date/Time
+
+| Function | Description | Example | Result |
+|----------|-------------|---------|--------|
+| `NOW()` | Current local datetime | `SELECT NOW()` | `2025-06-15T14:30:00` |
+| `CURRENT_DATE` | Current date (no parens) | `SELECT CURRENT_DATE` | `2025-06-15` |
+| `CURRENT_TIME` | Current time (no parens) | `SELECT CURRENT_TIME` | `14:30:00` |
+| `CURRENT_TIMESTAMP` | Current datetime (no parens) | `SELECT CURRENT_TIMESTAMP` | `2025-06-15T14:30:00` |
+
+#### Construction
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `DATETIME(y, m, d [, h, min, s])` | Build datetime string | `DATETIME(2025, 6, 15, 10, 30, 0)` |
+| `FROM_EPOCH(seconds)` | Unix epoch to ISO string | `FROM_EPOCH(1750000000)` |
+
+#### Extraction
+
+| Function | Description | Example | Result |
+|----------|-------------|---------|--------|
+| `DATE(dt)` | Extract date portion | `DATE('2025-06-15T10:30:00')` | `2025-06-15` |
+| `TIME(dt)` | Extract time portion | `TIME('2025-06-15T10:30:00')` | `10:30:00` |
+| `YEAR(dt)` | Extract year | `YEAR('2025-06-15T10:30:00')` | `2025` |
+| `MONTH(dt)` | Extract month (1-12) | `MONTH('2025-06-15T10:30:00')` | `6` |
+| `DAY(dt)` | Extract day (1-31) | `DAY('2025-06-15T10:30:00')` | `15` |
+| `HOUR(dt)` | Extract hour (0-23) | `HOUR('2025-06-15T10:30:00')` | `10` |
+| `MINUTE(dt)` | Extract minute (0-59) | `MINUTE('2025-06-15T10:30:00')` | `30` |
+| `SECOND(dt)` | Extract second (0-59) | `SECOND('2025-06-15T10:30:45')` | `45` |
+| `DAYOFWEEK(dt)` | Day of week (0=Sun, 6=Sat) | `DAYOFWEEK('2025-06-15T00:00:00')` | `0` |
+| `EPOCH(dt)` | Convert to Unix epoch | `EPOCH('2025-01-01T00:00:00')` | `1735707600` |
+
+#### Arithmetic
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `DATE_ADD(dt, days)` | Add days to datetime | `DATE_ADD('2025-01-01T00:00:00', 10)` |
+| `DATE_SUB(dt, days)` | Subtract days from datetime | `DATE_SUB('2025-01-15T00:00:00', 5)` |
+| `DATEDIFF(dt1, dt2)` | Difference in days | `DATEDIFF('2025-06-15T00:00:00', '2025-01-15T00:00:00')` → `151` |
+| `TIMEDIFF(dt1, dt2)` | Difference in seconds | `TIMEDIFF('2025-01-01T01:00:00', '2025-01-01T00:00:00')` → `3600` |
+
+#### Formatting
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `STRFTIME(format, dt)` | Format with strftime codes | `STRFTIME('%Y-%m-%d', '2025-06-15T10:30:00')` |
+
+Date/time usage examples:
+
+```sql
+-- Store events with timestamps
+CREATE TABLE events (id INTEGER PRIMARY KEY, name TEXT, event_date TEXT);
+INSERT INTO events VALUES (1, 'Launch', DATETIME(2025, 1, 15, 9, 0, 0));
+INSERT INTO events VALUES (2, 'Release', DATETIME(2025, 6, 15, 18, 0, 0));
+
+-- Query by date components
+SELECT name FROM events WHERE MONTH(event_date) = 6;
+SELECT name, YEAR(event_date) AS yr FROM events;
+
+-- Date arithmetic
+SELECT name, DATE(DATE_ADD(event_date, 30)) AS plus_30_days FROM events;
+SELECT DATEDIFF('2025-06-15T00:00:00', '2025-01-15T00:00:00') AS days_between;
+
+-- Insert with current timestamp
+INSERT INTO logs VALUES (1, 'startup', NOW());
+```
 
 ### Aggregate Functions
 
@@ -637,6 +829,91 @@ FROM employees
 GROUP BY department
 HAVING COUNT(*) >= 2
 ORDER BY avg_salary DESC;
+```
+
+### Window Functions
+
+Window functions compute values across a set of rows related to the current row, without collapsing the result set like aggregate functions do.
+
+#### Ranking Functions
+
+```sql
+-- ROW_NUMBER: unique sequential number per partition
+SELECT name, dept, salary,
+    ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) AS rn
+FROM employees;
+
+-- RANK: same rank for ties, gaps after ties
+SELECT name, score,
+    RANK() OVER (ORDER BY score DESC) AS rnk
+FROM scores;
+-- A=100→1, B=90→2, C=90→2, D=80→4
+
+-- DENSE_RANK: same rank for ties, no gaps
+SELECT name, score,
+    DENSE_RANK() OVER (ORDER BY score DESC) AS drnk
+FROM scores;
+-- A=100→1, B=90→2, C=90→2, D=80→3
+```
+
+#### Aggregate Window Functions
+
+```sql
+-- Running sum within a partition
+SELECT name, dept, salary,
+    SUM(salary) OVER (PARTITION BY dept ORDER BY salary) AS running_sum
+FROM employees;
+
+-- Total count per partition (no ORDER BY = full partition)
+SELECT name, dept,
+    COUNT(*) OVER (PARTITION BY dept) AS dept_count
+FROM employees;
+
+-- Multiple window functions in one query
+SELECT name, salary,
+    ROW_NUMBER() OVER (ORDER BY salary DESC) AS rn,
+    RANK() OVER (ORDER BY salary DESC) AS rnk
+FROM employees;
+```
+
+Supported window functions: `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `SUM()`, `COUNT()`, `AVG()`, `MIN()`, `MAX()`.
+
+### Common Table Expressions (CTEs)
+
+CTEs define temporary named result sets using the `WITH` clause, making complex queries more readable:
+
+```sql
+-- Simple CTE
+WITH active AS (
+    SELECT * FROM users WHERE status = 'active'
+)
+SELECT name, email FROM active ORDER BY name;
+
+-- CTE with aggregation
+WITH dept_stats AS (
+    SELECT dept, AVG(salary) AS avg_salary, COUNT(*) AS cnt
+    FROM employees GROUP BY dept
+)
+SELECT dept, avg_salary FROM dept_stats WHERE cnt >= 3;
+
+-- Multiple CTEs
+WITH
+    engineers AS (SELECT * FROM employees WHERE dept = 'Engineering'),
+    high_paid AS (SELECT * FROM engineers WHERE salary > 80000)
+SELECT name, salary FROM high_paid ORDER BY salary DESC;
+
+-- CTE with INSERT...SELECT
+WITH new_data AS (
+    SELECT name, salary FROM employees WHERE dept = 'Sales'
+)
+INSERT INTO archive SELECT * FROM new_data;
+
+-- CTE with UPDATE...FROM
+WITH total_shipped AS (
+    SELECT item_id, SUM(quantity) AS total FROM shipments GROUP BY item_id
+)
+UPDATE inventory SET stock = inventory.stock - ts.total
+FROM total_shipped ts WHERE inventory.id = ts.item_id;
 ```
 
 ### Joins
@@ -713,6 +990,40 @@ FROM authors a, books b, reviews r
 WHERE b.author_id = a.id AND r.book_id = b.id;
 ```
 
+### Multi-Table UPDATE/DELETE
+
+#### UPDATE...FROM
+
+Update rows in one table based on values from another table:
+
+```sql
+-- Update prices from a lookup table
+UPDATE products SET price = pu.new_price
+FROM price_updates pu
+WHERE products.id = pu.product_id;
+
+-- Update with calculation
+UPDATE products SET price = products.price - d.discount
+FROM discounts d
+WHERE products.category = d.category;
+```
+
+#### DELETE...USING
+
+Delete rows in one table based on matches in another table:
+
+```sql
+-- Delete orders for discontinued products
+DELETE FROM orders
+USING discontinued d
+WHERE orders.product_id = d.product_id;
+
+-- Without alias
+DELETE FROM orders
+USING to_remove
+WHERE orders.product_id = to_remove.product_id;
+```
+
 ### Subqueries
 
 #### Scalar Subqueries
@@ -737,6 +1048,23 @@ WHERE dept_id IN (SELECT id FROM departments WHERE name = 'Engineering');
 SELECT name
 FROM employees
 WHERE dept_id NOT IN (SELECT id FROM departments WHERE location = 'Remote');
+```
+
+#### EXISTS / NOT EXISTS
+
+Test whether a subquery returns any rows:
+
+```sql
+-- Find customers who have placed orders
+SELECT name FROM customers
+WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = customers.id);
+
+-- Find customers without orders
+SELECT name FROM customers
+WHERE NOT EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = customers.id);
+
+-- EXISTS in a SELECT expression (returns 1 or 0)
+SELECT EXISTS (SELECT 1 FROM users) AS has_users;
 ```
 
 ### Set Operations
@@ -793,7 +1121,7 @@ CREATE INDEX idx_orders_date_status ON orders (order_date, status);
 DROP INDEX idx_users_email;
 ```
 
-Indexes are automatically used by the query optimizer when filtering with `=` on indexed columns.
+Indexes are automatically used by the query optimizer when filtering with `=` on indexed columns. Unique indexes enforce uniqueness at INSERT time. Indexes are automatically maintained during INSERT, UPDATE, and DELETE operations.
 
 ### Constraints
 
@@ -807,6 +1135,7 @@ Constraints enforce data integrity rules on columns:
 | `UNIQUE` | All values must be distinct | `email TEXT UNIQUE` |
 | `DEFAULT value` | Default value when not specified | `status TEXT DEFAULT 'active'` |
 | `REFERENCES table(col)` | Foreign key reference | `dept_id INTEGER REFERENCES departments(id)` |
+| `CHECK(expr)` | Enforce arbitrary condition | `age INTEGER CHECK(age >= 0)` |
 
 Multiple constraints can be combined:
 
@@ -816,8 +1145,45 @@ CREATE TABLE users (
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     role TEXT DEFAULT 'user',
+    age INTEGER CHECK(age >= 0),
     manager_id INTEGER REFERENCES users(id)
 );
+```
+
+CHECK constraints are evaluated on INSERT and UPDATE. NULL values always pass CHECK (per SQL standard):
+
+```sql
+CREATE TABLE scores (id INTEGER PRIMARY KEY, score INTEGER CHECK(score >= 0));
+INSERT INTO scores VALUES (1, 100);     -- OK
+INSERT INTO scores VALUES (2, -5);      -- Error: CHECK constraint failed
+INSERT INTO scores VALUES (3, NULL);    -- OK (NULL passes CHECK)
+UPDATE scores SET score = -1 WHERE id = 1;  -- Error: CHECK constraint failed
+```
+
+#### Foreign Key Actions
+
+Foreign keys support `ON DELETE` and `ON UPDATE` actions:
+
+| Action | Description |
+|--------|-------------|
+| `CASCADE` | Delete/update referencing rows automatically |
+| `SET NULL` | Set the FK column to NULL in referencing rows |
+| `RESTRICT` | Prevent the delete/update if references exist |
+| `NO ACTION` | Default — error if references exist (same as RESTRICT) |
+
+```sql
+CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE employees (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    dept_id INTEGER REFERENCES departments(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- Deleting a department automatically deletes its employees
+DELETE FROM departments WHERE id = 1;
+
+-- Updating a department PK automatically updates employee FK values
+UPDATE departments SET id = 10 WHERE id = 2;
 ```
 
 ### Multi-Database
@@ -960,10 +1326,19 @@ Executor
 ├── JoinEngine          -- cross joins, multi-table joins, join GROUP BY, sorting
 ├── PersistenceManager  -- SAVE, OPEN, CLOSE commands
 ├── CsvHandler          -- EXPORT, IMPORT commands
-└── IndexManager        -- hash-based index lookups
+└── IndexManager        -- bucket-accelerated hash index lookups
 ```
 
 Each helper holds an `Executor` reference (via Zia's circular bind support) for shared state access.
+
+### Transaction Management
+
+The executor provides ACID transaction support:
+
+- **Atomicity**: Changes within a transaction are all-or-nothing. Statement-level atomicity ensures individual statements are atomic even outside explicit transactions.
+- **Journal-based rollback**: INSERT, UPDATE, and DELETE operations record journal entries (with before-images for updates). ROLLBACK replays the journal in reverse.
+- **FK cascade handling**: ON DELETE/UPDATE CASCADE, SET NULL, and RESTRICT actions are enforced during DELETE and UPDATE operations, with cascaded changes also tracked in the journal.
+- **Deferred compaction**: During transactions, DELETE operations use soft-delete; compaction is deferred to COMMIT.
 
 ### Storage Engine
 
@@ -988,6 +1363,16 @@ The optimizer (`optimizer/optimizer.zia`) provides cost-based query optimization
 - Access path selection (table scan vs. index scan vs. index seek)
 - Cost estimation with configurable selectivity constants
 - Automatic index selection for equality predicates
+
+### Performance Optimizations
+
+ViperSQL includes several algorithmic optimizations for efficient query processing:
+
+- **Quicksort** — ORDER BY uses iterative quicksort with median-of-three pivot selection (O(n log n)) for result rows, row indices, and join results
+- **Hash-based GROUP BY** — Group key deduplication uses 128-bucket hash tables for O(n) amortized grouping instead of O(n*g) linear scan
+- **Hash-based DISTINCT** — Duplicate elimination uses hash buckets for O(n) amortized deduplication
+- **Bucket-based index lookup** — Hash indexes use 64-bucket acceleration structures, reducing lookup from O(n) to O(n/b) per query
+- **Short-circuit AND/OR** — Boolean expressions short-circuit: `FALSE AND ...` returns immediately without evaluating the right side, and `TRUE OR ...` returns immediately
 
 ### Wire Protocol Server
 
@@ -1036,6 +1421,16 @@ viper run demos/zia/sqldb/tests/test_native_edge.zia
 viper run demos/zia/sqldb/tests/test_native_torture.zia
 viper run demos/zia/sqldb/tests/test_native_extreme.zia
 
+# Phase feature tests
+viper run demos/zia/sqldb/tests/test_phase1.zia
+viper run demos/zia/sqldb/tests/test_phase2.zia
+viper run demos/zia/sqldb/tests/test_phase3.zia
+viper run demos/zia/sqldb/tests/test_phase4_functions.zia
+viper run demos/zia/sqldb/tests/test_phase4_cte.zia
+viper run demos/zia/sqldb/tests/test_phase4_multitable.zia
+viper run demos/zia/sqldb/tests/test_phase4_window.zia
+viper run demos/zia/sqldb/tests/test_phase4_datetime.zia
+
 # Documentation examples (verifies all README examples)
 viper run demos/zia/sqldb/tests/test_readme_examples.zia
 ```
@@ -1076,6 +1471,14 @@ viper build demos/zia/sqldb/tests/test_native_torture.zia -o /tmp/test_torture &
 | `test_native_edge.zia` | 10 edge case tests (68 assertions) | Edge cases |
 | `test_native_torture.zia` | 16 torture tests (75 assertions) | Complex queries |
 | `test_native_extreme.zia` | 12 extreme tests (54 assertions) | Extreme scenarios |
+| `test_phase1.zia` | INSERT...SELECT, EXISTS, CAST, Views, CHECK, Derived tables (105 assertions) | Phase 1 features |
+| `test_phase2.zia` | Quicksort, hash GROUP BY, hash DISTINCT, index buckets, short-circuit (169 assertions) | Performance |
+| `test_phase3_txn.zia` | BEGIN/COMMIT/ROLLBACK, atomicity, ON DELETE/UPDATE CASCADE (110 assertions) | Transactions |
+| `test_phase4_functions.zia` | POWER, SQRT, LOG, LEFT, RIGHT, REVERSE, HEX, GREATEST, LEAST (58 assertions) | Extended functions |
+| `test_phase4_cte.zia` | WITH clause, multiple CTEs, CTE chaining, CTE with INSERT/JOIN (49 assertions) | CTEs |
+| `test_phase4_multitable.zia` | UPDATE...FROM, DELETE...USING, multi-table with CTE (62 assertions) | Multi-table ops |
+| `test_phase4_window.zia` | ROW_NUMBER, RANK, DENSE_RANK, SUM/COUNT OVER, PARTITION BY (54 assertions) | Window functions |
+| `test_phase4_datetime.zia` | NOW, YEAR, MONTH, DATEDIFF, DATE_ADD, STRFTIME, EPOCH (81 assertions) | Date/time |
 | `test_readme_examples.zia` | All README documentation examples (129 assertions) | Documentation |
 
 ---
@@ -1123,7 +1526,7 @@ sqldb/
 │   ├── wal.zia           Write-ahead log manager
 │   └── txn.zia           Transaction manager (BEGIN/COMMIT/ROLLBACK)
 │
-└── tests/                30 test files with 1,000+ assertions
+└── tests/                38 test files with 1,700+ assertions
     ├── test_common.zia   Shared test harness
     ├── test.zia          Core SQL tests
     ├── test_advanced.zia Set operations and CASE

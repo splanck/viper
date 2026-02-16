@@ -141,6 +141,25 @@ final TK_USE = 136;
 final TK_CLOSE = 137;
 final TK_FILE = 138;
 
+// Keywords - FK Actions (Phase 3)
+final TK_CASCADE = 139;
+final TK_RESTRICT = 170;
+final TK_ACTION = 171;
+
+// Keywords - Phase 4: CTEs, Window Functions, Multi-table DML
+final TK_WITH = 200;
+final TK_OVER = 201;
+final TK_PARTITION = 202;
+final TK_USING = 203;
+final TK_ROWS = 204;
+final TK_RANGE = 205;
+final TK_UNBOUNDED = 206;
+final TK_PRECEDING = 207;
+final TK_FOLLOWING = 208;
+final TK_CURRENT = 209;
+final TK_ROW = 210;
+final TK_RECURSIVE = 211;
+
 // Operators
 final TK_PLUS = 140;
 final TK_MINUS = 141;

@@ -1,0 +1,357 @@
+// test_phase1.zia — Phase 1 Feature Tests
+// Tests for INSERT...SELECT, EXISTS, CAST, Views, CHECK, Derived tables
+
+module test_phase1;
+
+bind Terminal = Viper.Terminal;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+
+bind "../executor";
+bind "../types";
+
+var passCount = 0;
+var failCount = 0;
+
+func assert(condition: Boolean, msg: String) {
+    if condition {
+        passCount = passCount + 1;
+    } else {
+        Terminal.Say("FAIL: " + msg);
+        failCount = failCount + 1;
+    }
+}
+
+func check(result: QueryResult, label: String) {
+    if result.success == false {
+        Terminal.Say("FAIL: " + label + " => " + result.message);
+        failCount = failCount + 1;
+    } else {
+        passCount = passCount + 1;
+    }
+}
+
+func val(result: QueryResult, row: Integer, col: Integer) -> String {
+    var r = result.getRow(row);
+    if r == null { return "NULL_ROW"; }
+    var rr = r;
+    return rr.getValue(col).toString();
+}
+
+func getValue(result: QueryResult, row: Integer, col: Integer) -> SqlValue {
+    var r = result.getRow(row);
+    if r == null { return sqlNull(); }
+    var rr = r;
+    return rr.getValue(col);
+}
+
+func main() {
+    Terminal.Say("=== Phase 1 Feature Tests ===");
+
+    var exec = new Executor();
+    exec.init();
+
+    //=========================================================================
+    // INSERT...SELECT
+    //=========================================================================
+    Terminal.Say("");
+    Terminal.Say("--- INSERT...SELECT ---");
+
+    // Setup source table
+    check(exec.executeSql("CREATE TABLE src (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)"), "create src");
+    check(exec.executeSql("INSERT INTO src VALUES (1, 'Alice', 30)"), "insert 1");
+    check(exec.executeSql("INSERT INTO src VALUES (2, 'Bob', 25)"), "insert 2");
+    check(exec.executeSql("INSERT INTO src VALUES (3, 'Charlie', 35)"), "insert 3");
+
+    // Test 1: Basic INSERT...SELECT (all columns)
+    check(exec.executeSql("CREATE TABLE dst (id INTEGER, name TEXT, age INTEGER)"), "create dst");
+    var r = exec.executeSql("INSERT INTO dst SELECT * FROM src");
+    check(r, "INSERT...SELECT basic");
+    assert(r.message == "Inserted 3 row(s)", "INSERT...SELECT 3 rows: " + r.message);
+
+    r = exec.executeSql("SELECT COUNT(*) FROM dst");
+    assert(val(r, 0, 0) == "3", "dst has 3 rows");
+
+    r = exec.executeSql("SELECT name FROM dst WHERE id = 2");
+    assert(val(r, 0, 0) == "Bob", "dst row id=2 is Bob");
+
+    // Test 2: INSERT...SELECT with column list
+    check(exec.executeSql("CREATE TABLE dst2 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INTEGER)"), "create dst2");
+    r = exec.executeSql("INSERT INTO dst2 (name, age) SELECT name, age FROM src");
+    check(r, "INSERT...SELECT with cols");
+    assert(r.message == "Inserted 3 row(s)", "INSERT...SELECT col list: " + r.message);
+
+    // Test 3: INSERT...SELECT with WHERE filter
+    check(exec.executeSql("CREATE TABLE dst3 (id INTEGER, name TEXT, age INTEGER)"), "create dst3");
+    r = exec.executeSql("INSERT INTO dst3 SELECT * FROM src WHERE age > 28");
+    check(r, "INSERT...SELECT WHERE");
+    assert(r.message == "Inserted 2 row(s)", "INSERT...SELECT WHERE 2 rows: " + r.message);
+
+    r = exec.executeSql("SELECT name FROM dst3 ORDER BY name");
+    assert(val(r, 0, 0) == "Alice", "dst3 row 0 = Alice");
+    assert(val(r, 1, 0) == "Charlie", "dst3 row 1 = Charlie");
+
+    // Test 4: INSERT...SELECT with expressions
+    check(exec.executeSql("CREATE TABLE dst4 (name TEXT, double_age INTEGER)"), "create dst4");
+    r = exec.executeSql("INSERT INTO dst4 SELECT name, age * 2 FROM src WHERE id = 1");
+    check(r, "INSERT...SELECT expr");
+    assert(r.message == "Inserted 1 row(s)", "INSERT...SELECT expr 1 row: " + r.message);
+
+    r = exec.executeSql("SELECT double_age FROM dst4");
+    assert(val(r, 0, 0) == "60", "dst4 double_age = 60");
+
+    // Test 5: INSERT...SELECT with aggregation
+    check(exec.executeSql("CREATE TABLE summary (total_count INTEGER, avg_age INTEGER)"), "create summary");
+    r = exec.executeSql("INSERT INTO summary SELECT COUNT(*), AVG(age) FROM src");
+    check(r, "INSERT...SELECT agg");
+
+    r = exec.executeSql("SELECT total_count FROM summary");
+    assert(val(r, 0, 0) == "3", "summary total_count = 3");
+
+    // Test 6: INSERT...SELECT from same table (duplicate data)
+    var beforeCount = exec.executeSql("SELECT COUNT(*) FROM src");
+    r = exec.executeSql("INSERT INTO dst SELECT * FROM src");
+    check(r, "INSERT...SELECT append");
+
+    r = exec.executeSql("SELECT COUNT(*) FROM dst");
+    assert(val(r, 0, 0) == "6", "dst now has 6 rows after append");
+
+    //=========================================================================
+    // EXISTS / NOT EXISTS
+    //=========================================================================
+    Terminal.Say("");
+    Terminal.Say("--- EXISTS / NOT EXISTS ---");
+
+    // Setup: reuse src table from above
+    check(exec.executeSql("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, amount INTEGER)"), "create orders");
+    check(exec.executeSql("INSERT INTO orders VALUES (1, 1, 100)"), "order 1");
+    check(exec.executeSql("INSERT INTO orders VALUES (2, 1, 200)"), "order 2");
+    check(exec.executeSql("INSERT INTO orders VALUES (3, 3, 150)"), "order 3");
+
+    // Test 1: EXISTS - find customers who have orders
+    r = exec.executeSql("SELECT name FROM src WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = src.id)");
+    check(r, "EXISTS basic");
+    // Only Alice (id=1) and Charlie (id=3) have orders
+    assert(r.rowCount() == 2, "EXISTS returns 2 rows: " + Fmt.Int(r.rowCount()));
+
+    // Test 2: NOT EXISTS - find customers without orders
+    r = exec.executeSql("SELECT name FROM src WHERE NOT EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = src.id)");
+    check(r, "NOT EXISTS basic");
+    assert(r.rowCount() == 1, "NOT EXISTS returns 1 row: " + Fmt.Int(r.rowCount()));
+    assert(val(r, 0, 0) == "Bob", "NOT EXISTS result = Bob");
+
+    // Test 3: EXISTS with empty result
+    r = exec.executeSql("SELECT name FROM src WHERE EXISTS (SELECT 1 FROM orders WHERE orders.amount > 9999)");
+    check(r, "EXISTS empty subquery");
+    assert(r.rowCount() == 0, "EXISTS empty returns 0 rows");
+
+    // Test 4: EXISTS in a non-correlated context
+    r = exec.executeSql("SELECT name FROM src WHERE EXISTS (SELECT 1 FROM orders)");
+    check(r, "EXISTS non-correlated");
+    assert(r.rowCount() == 3, "EXISTS non-correlated returns all 3 rows");
+
+    // Test 5: NOT EXISTS with non-correlated empty table
+    check(exec.executeSql("CREATE TABLE empty_tbl (x INTEGER)"), "create empty");
+    r = exec.executeSql("SELECT name FROM src WHERE NOT EXISTS (SELECT 1 FROM empty_tbl)");
+    check(r, "NOT EXISTS empty table");
+    assert(r.rowCount() == 3, "NOT EXISTS empty table returns all 3 rows");
+
+    // Test 6: EXISTS in SELECT expression
+    r = exec.executeSql("SELECT EXISTS (SELECT 1 FROM orders)");
+    check(r, "EXISTS in SELECT");
+    assert(val(r, 0, 0) == "1", "EXISTS returns 1 when rows exist");
+
+    r = exec.executeSql("SELECT EXISTS (SELECT 1 FROM empty_tbl)");
+    check(r, "EXISTS empty in SELECT");
+    assert(val(r, 0, 0) == "0", "EXISTS returns 0 when no rows");
+
+    //=========================================================================
+    // CAST(expr AS type)
+    //=========================================================================
+    Terminal.Say("");
+    Terminal.Say("--- CAST ---");
+
+    // Test 1: CAST text to integer
+    r = exec.executeSql("SELECT CAST('42' AS INTEGER)");
+    check(r, "CAST text to int");
+    assert(val(r, 0, 0) == "42", "CAST '42' AS INTEGER = 42");
+
+    // Test 2: CAST text to real
+    r = exec.executeSql("SELECT CAST('3.14' AS REAL)");
+    check(r, "CAST text to real");
+    assert(val(r, 0, 0) == "3.14", "CAST '3.14' AS REAL = 3.14");
+
+    // Test 3: CAST integer to text
+    r = exec.executeSql("SELECT CAST(42 AS TEXT)");
+    check(r, "CAST int to text");
+    assert(val(r, 0, 0) == "42", "CAST 42 AS TEXT = '42'");
+
+    // Test 4: CAST real to integer (truncation)
+    r = exec.executeSql("SELECT CAST(3.7 AS INTEGER)");
+    check(r, "CAST real to int");
+    assert(val(r, 0, 0) == "3", "CAST 3.7 AS INTEGER = 3");
+
+    // Test 5: CAST integer to real
+    r = exec.executeSql("SELECT CAST(5 AS REAL)");
+    check(r, "CAST int to real");
+    assert(val(r, 0, 0) == "5", "CAST 5 AS REAL = 5");
+
+    // Test 6: CAST NULL preserves NULL
+    r = exec.executeSql("SELECT CAST(NULL AS INTEGER)");
+    check(r, "CAST null to int");
+    assert(val(r, 0, 0) == "NULL", "CAST NULL AS INTEGER = NULL");
+
+    // Test 7: CAST in WHERE clause
+    r = exec.executeSql("SELECT name FROM src WHERE CAST(age AS TEXT) = '30'");
+    check(r, "CAST in WHERE");
+    assert(val(r, 0, 0) == "Alice", "CAST WHERE = Alice");
+
+    // Test 8: CAST in expressions
+    r = exec.executeSql("SELECT CAST('10' AS INTEGER) + 5");
+    check(r, "CAST in expr");
+    assert(val(r, 0, 0) == "15", "CAST '10' + 5 = 15");
+
+    //=========================================================================
+    // CREATE VIEW / DROP VIEW
+    //=========================================================================
+    Terminal.Say("");
+    Terminal.Say("--- CREATE VIEW / DROP VIEW ---");
+
+    // Test 1: Create and query a simple view
+    r = exec.executeSql("CREATE VIEW adults AS SELECT * FROM src WHERE age >= 30");
+    check(r, "CREATE VIEW");
+    assert(r.message == "View 'adults' created", "view created msg");
+
+    r = exec.executeSql("SELECT * FROM adults");
+    check(r, "SELECT from view");
+    assert(r.rowCount() == 2, "view returns 2 rows: " + Fmt.Int(r.rowCount()));
+
+    // Test 2: View with specific columns
+    r = exec.executeSql("CREATE VIEW names AS SELECT name FROM src");
+    check(r, "CREATE VIEW names");
+
+    r = exec.executeSql("SELECT * FROM names");
+    check(r, "SELECT from names view");
+    assert(r.rowCount() == 3, "names view returns 3 rows");
+
+    // Test 3: Query view with WHERE clause
+    r = exec.executeSql("SELECT name FROM adults WHERE age = 35");
+    check(r, "SELECT from view with WHERE");
+    assert(r.rowCount() == 1, "view WHERE returns 1 row");
+    assert(val(r, 0, 0) == "Charlie", "view WHERE = Charlie");
+
+    // Test 4: Query view with ORDER BY
+    r = exec.executeSql("SELECT name FROM adults ORDER BY name");
+    check(r, "SELECT from view ORDER BY");
+    assert(val(r, 0, 0) == "Alice", "view ORDER BY first = Alice");
+    assert(val(r, 1, 0) == "Charlie", "view ORDER BY second = Charlie");
+
+    // Test 5: View with aggregation in definition
+    r = exec.executeSql("CREATE VIEW age_stats AS SELECT COUNT(*) AS cnt, AVG(age) AS avg_age FROM src");
+    check(r, "CREATE VIEW age_stats");
+
+    r = exec.executeSql("SELECT * FROM age_stats");
+    check(r, "SELECT from aggregate view");
+    assert(val(r, 0, 0) == "3", "agg view count = 3");
+
+    // Test 6: Drop view
+    r = exec.executeSql("DROP VIEW adults");
+    check(r, "DROP VIEW");
+    assert(r.message == "View 'adults' dropped", "view dropped msg");
+
+    // Test 7: Query dropped view should fail
+    r = exec.executeSql("SELECT * FROM adults");
+    assert(r.success == false, "dropped view query fails");
+
+    // Test 8: Duplicate view name
+    r = exec.executeSql("CREATE VIEW names AS SELECT name FROM src");
+    assert(r.success == false, "duplicate view fails");
+
+    // Test 9: View name conflicts with table
+    r = exec.executeSql("CREATE VIEW src AS SELECT * FROM src");
+    assert(r.success == false, "view name conflicts with table");
+
+    //=========================================================================
+    // CHECK constraints
+    //=========================================================================
+    Terminal.Say("");
+    Terminal.Say("--- CHECK Constraints ---");
+
+    // Test 1: CHECK with comparison
+    check(exec.executeSql("CREATE TABLE checked (id INTEGER PRIMARY KEY, age INTEGER CHECK(age >= 0), name TEXT)"), "create checked table");
+
+    r = exec.executeSql("INSERT INTO checked VALUES (1, 25, 'Alice')");
+    check(r, "INSERT valid age");
+
+    r = exec.executeSql("INSERT INTO checked VALUES (2, -1, 'Bob')");
+    assert(r.success == false, "INSERT negative age fails CHECK");
+
+    r = exec.executeSql("INSERT INTO checked VALUES (3, 0, 'Charlie')");
+    check(r, "INSERT age=0 passes CHECK");
+
+    // Test 2: CHECK with range
+    check(exec.executeSql("CREATE TABLE scores (id INTEGER PRIMARY KEY, score INTEGER CHECK(score >= 0))"), "create scores");
+
+    r = exec.executeSql("INSERT INTO scores VALUES (1, 100)");
+    check(r, "INSERT score=100");
+
+    r = exec.executeSql("INSERT INTO scores VALUES (2, -5)");
+    assert(r.success == false, "INSERT score=-5 fails CHECK");
+
+    // Test 3: CHECK allows NULL (SQL standard)
+    r = exec.executeSql("INSERT INTO checked VALUES (4, NULL, 'Dave')");
+    check(r, "INSERT NULL age passes CHECK (SQL standard)");
+
+    // Test 4: Verify valid rows were inserted
+    r = exec.executeSql("SELECT COUNT(*) FROM checked");
+    assert(val(r, 0, 0) == "3", "checked has 3 valid rows");
+
+    // Test 5: CHECK on UPDATE
+    r = exec.executeSql("UPDATE checked SET age = -10 WHERE id = 1");
+    assert(r.success == false, "UPDATE to negative age fails CHECK");
+
+    r = exec.executeSql("UPDATE checked SET age = 30 WHERE id = 1");
+    check(r, "UPDATE to valid age passes CHECK");
+
+    //=========================================================================
+    // Derived Tables (subqueries in FROM)
+    //=========================================================================
+    Terminal.Say("");
+    Terminal.Say("--- Derived Tables ---");
+
+    // Test 1: Simple derived table
+    r = exec.executeSql("SELECT * FROM (SELECT name, age FROM src) AS t");
+    check(r, "derived table basic");
+    assert(r.rowCount() == 3, "derived table returns 3 rows: " + Fmt.Int(r.rowCount()));
+
+    // Test 2: Derived table with WHERE on outer query
+    r = exec.executeSql("SELECT name FROM (SELECT name, age FROM src) AS t WHERE age > 28");
+    check(r, "derived table with WHERE");
+    assert(r.rowCount() == 2, "derived WHERE returns 2 rows: " + Fmt.Int(r.rowCount()));
+
+    // Test 3: Derived table with aggregation in subquery
+    r = exec.executeSql("SELECT cnt FROM (SELECT COUNT(*) AS cnt FROM src) AS stats");
+    check(r, "derived table with agg");
+    assert(val(r, 0, 0) == "3", "derived agg count = 3");
+
+    // Test 4: Derived table with ORDER BY on outer
+    r = exec.executeSql("SELECT name FROM (SELECT * FROM src) AS t ORDER BY name");
+    check(r, "derived table ORDER BY");
+    assert(val(r, 0, 0) == "Alice", "derived ORDER first = Alice");
+    assert(val(r, 2, 0) == "Charlie", "derived ORDER last = Charlie");
+
+    // Test 5: Derived table with LIMIT
+    r = exec.executeSql("SELECT name FROM (SELECT * FROM src ORDER BY age) AS t LIMIT 2");
+    check(r, "derived table LIMIT");
+    assert(r.rowCount() == 2, "derived LIMIT returns 2 rows");
+
+    //=========================================================================
+    // Summary
+    //=========================================================================
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passCount));
+    Terminal.Say("Failed: " + Fmt.Int(failCount));
+
+    Terminal.Say("=== Phase 1: " + Fmt.Int(passCount) + " passed, " + Fmt.Int(failCount) + " failed ===");
+}

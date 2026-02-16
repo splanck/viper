@@ -551,6 +551,37 @@ rt_string rt_datetime_to_iso(int64_t timestamp)
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
+/// @brief Converts a timestamp to local ISO 8601 format (no Z suffix).
+///
+/// Like rt_datetime_to_iso but uses local time instead of UTC.
+/// Format: YYYY-MM-DDTHH:MM:SS
+///
+/// @param timestamp Unix timestamp (seconds since epoch).
+/// @return Local ISO 8601 formatted string, or empty string if invalid.
+rt_string rt_datetime_to_local(int64_t timestamp)
+{
+    time_t t = (time_t)timestamp;
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
+    if (!tm)
+    {
+        return rt_string_from_bytes("", 0);
+    }
+
+    char buffer[32];
+    int len = snprintf(buffer,
+                       sizeof(buffer),
+                       "%04d-%02d-%02dT%02d:%02d:%02d",
+                       tm->tm_year + 1900,
+                       tm->tm_mon + 1,
+                       tm->tm_mday,
+                       tm->tm_hour,
+                       tm->tm_min,
+                       tm->tm_sec);
+
+    return rt_string_from_bytes(buffer, (size_t)len);
+}
+
 /// @brief Creates a Unix timestamp from date/time components.
 ///
 /// Combines year, month, day, hour, minute, and second components into a

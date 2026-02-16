@@ -192,11 +192,21 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `Second(timestamp)`              | `Integer(Integer)`          | Extracts the second (0-59) from a timestamp              |
 | `DayOfWeek(timestamp)`           | `Integer(Integer)`          | Returns day of week (0=Sunday, 6=Saturday)               |
 | `Format(timestamp, format)`      | `String(Integer, String)`   | Formats a timestamp using strftime-style format          |
-| `ToISO(timestamp)`               | `String(Integer)`           | Returns ISO 8601 formatted string                        |
-| `Create(y, m, d, h, min, s)`     | `Integer(Integer...)`       | Creates a timestamp from components                      |
+| `ToISO(timestamp)`               | `String(Integer)`           | Returns ISO 8601 formatted string in UTC (with Z suffix) |
+| `ToLocal(timestamp)`             | `String(Integer)`           | Returns ISO 8601 formatted string in local time (no Z)   |
+| `Create(y, m, d, h, min, s)`     | `Integer(Integer...)`       | Creates a timestamp from local time components           |
 | `AddSeconds(timestamp, seconds)` | `Integer(Integer, Integer)` | Adds seconds to a timestamp                              |
 | `AddDays(timestamp, days)`       | `Integer(Integer, Integer)` | Adds days to a timestamp                                 |
 | `Diff(t1, t2)`                   | `Integer(Integer, Integer)` | Returns the difference in seconds between two timestamps |
+
+### Notes
+
+- `Create` interprets components in the **local time zone**
+- `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second` extract components in the **local time zone**
+- `ToISO` formats in **UTC** (appends `Z` suffix)
+- `ToLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
+- `Format` uses the **local time zone** with strftime-style format strings
+- `Diff` returns absolute seconds regardless of time zones
 
 ### Zia Example
 
@@ -213,6 +223,16 @@ func start() {
     Say("Month: " + Fmt.Int(DateTime.Month(now)));
     Say("Day: " + Fmt.Int(DateTime.Day(now)));
     Say("Hour: " + Fmt.Int(DateTime.Hour(now)));
+
+    // Local ISO format (consistent with Create)
+    Say("Local: " + DateTime.ToLocal(now));
+
+    // UTC ISO format
+    Say("UTC: " + DateTime.ToISO(now));
+
+    // Create a specific date and format it
+    var christmas = DateTime.Create(2025, 12, 25, 12, 0, 0);
+    Say("Christmas: " + DateTime.ToLocal(christmas));
 }
 ```
 
@@ -233,8 +253,13 @@ PRINT "Hour: "; Viper.Time.DateTime.Hour(now)
 PRINT Viper.Time.DateTime.Format(now, "%Y-%m-%d %H:%M:%S")
 ' Output: "2025-12-06 14:30:00"
 
-PRINT Viper.Time.DateTime.ToISO(now)
+' Local ISO (no Z suffix, consistent with Create)
+PRINT Viper.Time.DateTime.ToLocal(now)
 ' Output: "2025-12-06T14:30:00"
+
+' UTC ISO (with Z suffix)
+PRINT Viper.Time.DateTime.ToISO(now)
+' Output: "2025-12-06T19:30:00Z"
 
 ' Create a specific date
 DIM birthday AS INTEGER

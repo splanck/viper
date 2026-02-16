@@ -12,15 +12,21 @@ bind "./table";
 entity Database {
     expose String name;
     expose List[Table] tables;
+    expose List[String] viewNames;
+    expose List[String] viewDefs;
 
     expose func init() {
         name = "default";
         tables = [];
+        viewNames = [];
+        viewDefs = [];
     }
 
     expose func initWithName(dbName: String) {
         name = dbName;
         tables = [];
+        viewNames = [];
+        viewDefs = [];
     }
 
     expose func tableCount() -> Integer {
@@ -55,6 +61,46 @@ entity Database {
         while i < tables.count() {
             if tables.get(i).name == tableName {
                 tables.removeAt(i);
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    expose func addView(viewName: String, sql: String) {
+        viewNames.add(viewName);
+        viewDefs.add(sql);
+    }
+
+    expose func findView(viewName: String) -> String {
+        var i = 0;
+        while i < viewNames.count() {
+            if viewNames.get(i) == viewName {
+                return viewDefs.get(i);
+            }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    expose func dropView(viewName: String) -> Boolean {
+        var i = 0;
+        while i < viewNames.count() {
+            if viewNames.get(i) == viewName {
+                viewNames.removeAt(i);
+                viewDefs.removeAt(i);
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    expose func isView(name: String) -> Boolean {
+        var i = 0;
+        while i < viewNames.count() {
+            if viewNames.get(i) == name {
                 return true;
             }
             i = i + 1;

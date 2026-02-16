@@ -73,10 +73,15 @@ extern "C"
     /// @return Formatted date/time string.
     rt_string rt_datetime_format(int64_t timestamp, rt_string format);
 
-    /// @brief Convert timestamp to ISO 8601 format.
+    /// @brief Convert timestamp to ISO 8601 format (UTC).
     /// @param timestamp Unix timestamp in seconds.
     /// @return ISO 8601 formatted string (e.g., "2025-12-05T14:30:00Z").
     rt_string rt_datetime_to_iso(int64_t timestamp);
+
+    /// @brief Convert timestamp to local ISO 8601 format (no Z suffix).
+    /// @param timestamp Unix timestamp in seconds.
+    /// @return Local ISO 8601 formatted string (e.g., "2025-12-05T14:30:00").
+    rt_string rt_datetime_to_local(int64_t timestamp);
 
     /// @brief Create timestamp from date/time components.
     /// @param year Year (e.g., 2025).

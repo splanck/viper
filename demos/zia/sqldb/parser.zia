@@ -107,10 +107,88 @@ entity Parser {
             return parseCaseExpr();
         }
 
+        // CAST(expr AS type)
+        if kind == TK_CAST {
+            advance();
+            if currentToken.kind != TK_LPAREN {
+                setError("Expected '(' after CAST");
+                return exprNull();
+            }
+            advance();
+            var castArg = parseExpr();
+            if hasError { return exprNull(); }
+            if currentToken.kind != TK_AS {
+                setError("Expected AS in CAST expression");
+                return exprNull();
+            }
+            advance();
+            // Parse target type keyword
+            var typeName = String.ToUpper(currentToken.text);
+            advance();
+            if currentToken.kind != TK_RPAREN {
+                setError("Expected ')' after CAST type");
+                return exprNull();
+            }
+            advance();
+            // Represent as function: CAST_INTEGER, CAST_REAL, CAST_TEXT
+            var castFunc = exprFunction("CAST_" + typeName);
+            castFunc.args.add(castArg);
+            return castFunc;
+        }
+
+        // Keywords that can be used as function names: LEFT(), RIGHT(), CURRENT_DATE, etc.
+        if (kind == TK_LEFT || kind == TK_RIGHT || kind == TK_CURRENT || kind == TK_ROW) && currentToken.kind != TK_EOF {
+            var kwName = String.ToUpper(currentToken.text);
+            advance();
+            // If followed by '(', parse as function call
+            if currentToken.kind == TK_LPAREN {
+                advance();
+                var funcExpr = exprFunction(kwName);
+                while currentToken.kind != TK_RPAREN && hasError == false {
+                    if currentToken.kind == TK_STAR {
+                        funcExpr.args.add(exprStar());
+                        advance();
+                    } else {
+                        var argExpr = parseExpr();
+                        funcExpr.args.add(argExpr);
+                    }
+                    if currentToken.kind == TK_COMMA {
+                        advance();
+                    }
+                }
+                if currentToken.kind == TK_RPAREN {
+                    advance();
+                }
+                // Check for OVER clause (window function)
+                if currentToken.kind == TK_OVER {
+                    return parseWindowOver(funcExpr);
+                }
+                return funcExpr;
+            }
+            // Otherwise treat as column name
+            if currentToken.kind == TK_DOT {
+                advance();
+                if currentToken.kind != TK_IDENTIFIER {
+                    setError("Expected column name after dot");
+                    return exprNull();
+                }
+                var colName = currentToken.text;
+                advance();
+                return exprTableColumn(kwName, colName);
+            }
+            return exprColumn(kwName);
+        }
+
         // Identifier (column ref or function call)
         if kind == TK_IDENTIFIER {
             var name = currentToken.text;
             advance();
+
+            // SQL date/time keywords that act as zero-arg functions (no parentheses)
+            var upperName = String.ToUpper(name);
+            if upperName == "CURRENT_DATE" || upperName == "CURRENT_TIME" || upperName == "CURRENT_TIMESTAMP" {
+                return exprFunction(upperName);
+            }
 
             // Check for function call
             if currentToken.kind == TK_LPAREN {
@@ -147,6 +225,12 @@ entity Parser {
                 if currentToken.kind == TK_RPAREN {
                     advance();
                 }
+
+                // Check for OVER clause (window function)
+                if currentToken.kind == TK_OVER {
+                    return parseWindowOver(funcExpr);
+                }
+
                 return funcExpr;
             }
 
@@ -213,6 +297,46 @@ entity Parser {
                 setError("Expected ) after parenthesized expression");
             }
             return inner;
+        }
+
+        // EXISTS (SELECT ...)
+        if kind == TK_EXISTS {
+            advance();
+            if currentToken.kind != TK_LPAREN {
+                setError("Expected '(' after EXISTS");
+                return exprNull();
+            }
+            advance();
+            if currentToken.kind != TK_SELECT {
+                setError("Expected SELECT after EXISTS (");
+                return exprNull();
+            }
+            var existsSql = "SELECT";
+            advance();
+            var depth = 1;
+            while depth > 0 && hasError == false {
+                if currentToken.kind == TK_LPAREN {
+                    depth = depth + 1;
+                    existsSql = existsSql + " (";
+                } else if currentToken.kind == TK_RPAREN {
+                    depth = depth - 1;
+                    if depth > 0 {
+                        existsSql = existsSql + ")";
+                    }
+                } else if currentToken.kind == TK_EOF {
+                    setError("Unexpected end of input in EXISTS subquery");
+                    return exprNull();
+                } else if currentToken.kind == TK_STRING {
+                    existsSql = existsSql + " '" + currentToken.text + "'";
+                } else {
+                    existsSql = existsSql + " " + currentToken.text;
+                }
+                advance();
+            }
+            var existsExpr = new Expr();
+            existsExpr.init();
+            existsExpr.initExists(existsSql);
+            return existsExpr;
         }
 
         setError("Unexpected token in expression");
@@ -462,6 +586,89 @@ entity Parser {
         return parseOrExpr();
     }
 
+    // Parse OVER (...) clause for window functions
+    // Converts a function expression into a window expression
+    hide func parseWindowOver(funcExpr: Expr) -> Expr {
+        // Skip OVER
+        advance();
+
+        var winExpr = new Expr();
+        winExpr.init();
+        winExpr.initWindow(funcExpr.funcName);
+        // Copy function args to window expr
+        var ai = 0;
+        while ai < funcExpr.args.count() {
+            winExpr.args.add(funcExpr.args.get(ai));
+            ai = ai + 1;
+        }
+
+        // Expect (
+        if currentToken.kind != TK_LPAREN {
+            setError("Expected '(' after OVER");
+            return exprNull();
+        }
+        advance();
+
+        // Parse PARTITION BY (optional)
+        if currentToken.kind == TK_PARTITION {
+            advance();
+            if currentToken.kind != TK_BY {
+                setError("Expected BY after PARTITION");
+                return exprNull();
+            }
+            advance();
+            // Parse partition expressions
+            var parsePartition = true;
+            while parsePartition && hasError == false {
+                var pExpr = parseExpr();
+                winExpr.partitionBy.add(pExpr);
+                if currentToken.kind == TK_COMMA {
+                    advance();
+                } else {
+                    parsePartition = false;
+                }
+            }
+        }
+
+        // Parse ORDER BY (optional)
+        if currentToken.kind == TK_ORDER {
+            advance();
+            if currentToken.kind != TK_BY {
+                setError("Expected BY after ORDER");
+                return exprNull();
+            }
+            advance();
+            // Parse order expressions
+            var parseOrder = true;
+            while parseOrder && hasError == false {
+                var oExpr = parseExpr();
+                winExpr.windowOrderBy.add(oExpr);
+                var dir = 0;  // ASC
+                if currentToken.kind == TK_ASC {
+                    advance();
+                } else if currentToken.kind == TK_DESC {
+                    dir = 1;
+                    advance();
+                }
+                winExpr.windowOrderDir.add(dir);
+                if currentToken.kind == TK_COMMA {
+                    advance();
+                } else {
+                    parseOrder = false;
+                }
+            }
+        }
+
+        // Expect )
+        if currentToken.kind != TK_RPAREN {
+            setError("Expected ')' to close OVER clause");
+            return exprNull();
+        }
+        advance();
+
+        return winExpr;
+    }
+
     // Parse CASE WHEN ... THEN ... ELSE ... END expression
     expose func parseCaseExpr() -> Expr {
         var expr = new Expr();
@@ -614,6 +821,8 @@ entity Parser {
                     return col;
                 }
                 advance();
+                // Parse optional ON DELETE / ON UPDATE actions
+                parseForeignKeyActions(col);
             } else if currentToken.kind == TK_REFERENCES {
                 advance();
                 if currentToken.kind != TK_IDENTIFIER {
@@ -639,12 +848,97 @@ entity Parser {
                     return col;
                 }
                 advance();
+                // Parse optional ON DELETE / ON UPDATE actions
+                parseForeignKeyActions(col);
+            } else if currentToken.kind == TK_CHECK {
+                advance();
+                if currentToken.kind != TK_LPAREN {
+                    setError("Expected '(' after CHECK");
+                    return col;
+                }
+                advance();
+                // Capture CHECK expression as SQL text
+                var checkSql = "";
+                var depth = 1;
+                while depth > 0 && hasError == false {
+                    if currentToken.kind == TK_LPAREN {
+                        depth = depth + 1;
+                        checkSql = checkSql + "(";
+                    } else if currentToken.kind == TK_RPAREN {
+                        depth = depth - 1;
+                        if depth > 0 {
+                            checkSql = checkSql + ")";
+                        }
+                    } else if currentToken.kind == TK_EOF {
+                        setError("Unexpected end of input in CHECK expression");
+                        return col;
+                    } else if currentToken.kind == TK_STRING {
+                        checkSql = checkSql + "'" + currentToken.text + "'";
+                    } else {
+                        if checkSql != "" {
+                            checkSql = checkSql + " ";
+                        }
+                        checkSql = checkSql + currentToken.text;
+                    }
+                    advance();
+                }
+                col.checkExprSQL = checkSql;
             } else {
                 break;
             }
         }
 
         return col;
+    }
+
+    // Parse optional ON DELETE / ON UPDATE actions for foreign keys
+    hide func parseForeignKeyActions(col: Column) {
+        // Look for ON DELETE or ON UPDATE (can have both in any order)
+        var maxActions = 2;
+        var parsed = 0;
+        while parsed < maxActions && currentToken.kind == TK_ON {
+            advance();
+            if currentToken.kind == TK_DELETE {
+                advance();
+                col.onDeleteAction = parseFkAction();
+            } else if currentToken.kind == TK_UPDATE {
+                advance();
+                col.onUpdateAction = parseFkAction();
+            } else {
+                break;
+            }
+            parsed = parsed + 1;
+        }
+    }
+
+    // Parse a single FK action keyword: CASCADE, RESTRICT, SET NULL, NO ACTION
+    hide func parseFkAction() -> Integer {
+        if currentToken.kind == TK_CASCADE {
+            advance();
+            return FK_CASCADE;
+        }
+        if currentToken.kind == TK_RESTRICT {
+            advance();
+            return FK_RESTRICT;
+        }
+        // SET NULL
+        if currentToken.kind == TK_SET {
+            advance();
+            if currentToken.kind == TK_NULL {
+                advance();
+                return FK_SET_NULL;
+            }
+            return FK_NO_ACTION;
+        }
+        // NO ACTION (NO is just an identifier, not a keyword)
+        if currentToken.kind == TK_IDENTIFIER && String.ToUpper(currentToken.text) == "NO" {
+            advance();
+            if currentToken.kind == TK_ACTION {
+                advance();
+            }
+            return FK_NO_ACTION;
+        }
+        return FK_NO_ACTION;
     }
 
     //=========================================================================
@@ -727,6 +1021,40 @@ entity Parser {
             if expect(TK_RPAREN) == false {
                 return stmt;
             }
+        }
+
+        // Check for INSERT...SELECT vs INSERT...VALUES
+        if currentToken.kind == TK_SELECT {
+            // INSERT INTO table [(cols)] SELECT ...
+            // Capture SELECT statement as SQL text (same pattern as subquery capture)
+            stmt.hasSelect = true;
+            var selectSql = "SELECT";
+            advance();
+            var depth = 0;
+            while currentToken.kind != TK_EOF && hasError == false {
+                if currentToken.kind == TK_SEMICOLON {
+                    break;
+                }
+                if currentToken.kind == TK_LPAREN {
+                    depth = depth + 1;
+                    selectSql = selectSql + " (";
+                } else if currentToken.kind == TK_RPAREN {
+                    if depth > 0 {
+                        depth = depth - 1;
+                        selectSql = selectSql + ")";
+                    } else {
+                        break;
+                    }
+                } else if currentToken.kind == TK_STRING {
+                    selectSql = selectSql + " '" + currentToken.text + "'";
+                } else {
+                    selectSql = selectSql + " " + currentToken.text;
+                }
+                advance();
+            }
+            stmt.selectSQL = selectSql;
+            matchToken(TK_SEMICOLON);
+            return stmt;
         }
 
         if expect(TK_VALUES) == false {
@@ -820,10 +1148,67 @@ entity Parser {
             }
         }
 
-        // Expect FROM
-        if expect(TK_FROM) == false {
+        // FROM clause (optional for expressions like SELECT 1+1, SELECT EXISTS(...))
+        if currentToken.kind != TK_FROM {
+            // No FROM clause — expression-only SELECT
+            matchToken(TK_SEMICOLON);
             return stmt;
         }
+        advance();
+
+        // Check for derived table: FROM (SELECT ...) AS alias
+        if currentToken.kind == TK_LPAREN {
+            advance();
+            if currentToken.kind == TK_SELECT {
+                // Capture subquery SQL
+                var derivedSql = "SELECT";
+                advance();
+                var depth = 1;
+                while depth > 0 && hasError == false {
+                    if currentToken.kind == TK_LPAREN {
+                        depth = depth + 1;
+                        derivedSql = derivedSql + " (";
+                    } else if currentToken.kind == TK_RPAREN {
+                        depth = depth - 1;
+                        if depth > 0 {
+                            derivedSql = derivedSql + ")";
+                        }
+                    } else if currentToken.kind == TK_EOF {
+                        setError("Unexpected end of input in derived table");
+                        return stmt;
+                    } else if currentToken.kind == TK_STRING {
+                        derivedSql = derivedSql + " '" + currentToken.text + "'";
+                    } else {
+                        derivedSql = derivedSql + " " + currentToken.text;
+                    }
+                    advance();
+                }
+                stmt.derivedTableSQL = derivedSql;
+                stmt.hasDerivedTable = true;
+
+                // Parse optional alias: AS alias or just alias
+                if currentToken.kind == TK_AS {
+                    advance();
+                }
+                if currentToken.kind == TK_IDENTIFIER {
+                    stmt.derivedTableAlias = currentToken.text;
+                    stmt.tableName = currentToken.text;
+                    stmt.tableAlias = currentToken.text;
+                    advance();
+                } else {
+                    stmt.derivedTableAlias = "_derived";
+                    stmt.tableName = "_derived";
+                }
+
+                stmt.addTable(stmt.tableName, stmt.tableAlias);
+
+                // Skip ahead to WHERE/ORDER BY/etc. parsing
+                // (derived tables don't support JOINs for now)
+            } else {
+                setError("Expected SELECT in derived table subquery");
+                return stmt;
+            }
+        } else {
 
         // Parse table name
         if currentToken.kind != TK_IDENTIFIER {
@@ -974,6 +1359,8 @@ entity Parser {
             stmt.addJoin(joinTableName, joinTableAlias, joinType, joinCondition);
         }
 
+        } // end else (non-derived table FROM clause)
+
         // Optional WHERE
         if currentToken.kind == TK_WHERE {
             advance();
@@ -1095,6 +1482,30 @@ entity Parser {
             }
         }
 
+        // Parse optional FROM clause (UPDATE...FROM syntax)
+        if currentToken.kind == TK_FROM {
+            advance();
+            if currentToken.kind == TK_IDENTIFIER {
+                stmt.fromTableName = currentToken.text;
+                stmt.hasFrom = true;
+                advance();
+                // Optional alias
+                if currentToken.kind == TK_AS {
+                    advance();
+                    if currentToken.kind == TK_IDENTIFIER {
+                        stmt.fromTableAlias = currentToken.text;
+                        advance();
+                    }
+                } else if currentToken.kind == TK_IDENTIFIER && currentToken.kind != TK_WHERE && currentToken.kind != TK_SET {
+                    stmt.fromTableAlias = currentToken.text;
+                    advance();
+                }
+                if stmt.fromTableAlias == "" {
+                    stmt.fromTableAlias = stmt.fromTableName;
+                }
+            }
+        }
+
         if currentToken.kind == TK_WHERE {
             advance();
             stmt.whereClause = parseExpr();
@@ -1118,6 +1529,30 @@ entity Parser {
         }
         stmt.tableName = currentToken.text;
         advance();
+
+        // Parse optional USING clause (DELETE...USING syntax)
+        if currentToken.kind == TK_USING {
+            advance();
+            if currentToken.kind == TK_IDENTIFIER {
+                stmt.usingTableName = currentToken.text;
+                stmt.hasUsing = true;
+                advance();
+                // Optional alias
+                if currentToken.kind == TK_AS {
+                    advance();
+                    if currentToken.kind == TK_IDENTIFIER {
+                        stmt.usingTableAlias = currentToken.text;
+                        advance();
+                    }
+                } else if currentToken.kind == TK_IDENTIFIER && currentToken.kind != TK_WHERE {
+                    stmt.usingTableAlias = currentToken.text;
+                    advance();
+                }
+                if stmt.usingTableAlias == "" {
+                    stmt.usingTableAlias = stmt.usingTableName;
+                }
+            }
+        }
 
         if currentToken.kind == TK_WHERE {
             advance();

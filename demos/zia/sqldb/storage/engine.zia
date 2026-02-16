@@ -742,6 +742,23 @@ entity StorageEngine {
             return false;
         }
 
+        // WAL: log the delete before modifying the page
+        if walEnabled {
+            var meta = findMeta(tableName);
+            var tableId = 0;
+            if meta != null {
+                var m = meta;
+                tableId = m.tableId;
+            }
+            var txnId = nextTxnId;
+            nextTxnId = nextTxnId + 1;
+            wal.logBegin(txnId);
+            var emptyBuf = new BinaryBuffer();
+            emptyBuf.init();
+            wal.logDelete(txnId, tableId, pageId, slotIdx, emptyBuf);
+            wal.logCommit(txnId);
+        }
+
         var page = pool.fetchPage(pageId);
         if page != null {
             var p = page;
@@ -756,6 +773,24 @@ entity StorageEngine {
     expose func updateRowByLocation(tableName: String, pageId: Integer, slotIdx: Integer, newRow: Row) -> Boolean {
         if isPersistent == false || pageId == INVALID_PAGE_ID {
             return false;
+        }
+
+        // WAL: log the update before modifying the page
+        if walEnabled {
+            var meta = findMeta(tableName);
+            var tableId = 0;
+            if meta != null {
+                var m = meta;
+                tableId = m.tableId;
+            }
+            var txnId = nextTxnId;
+            nextTxnId = nextTxnId + 1;
+            wal.logBegin(txnId);
+            var afterBuf = serializeRow(newRow);
+            var emptyBuf = new BinaryBuffer();
+            emptyBuf.init();
+            wal.logUpdate(txnId, tableId, pageId, slotIdx, emptyBuf, afterBuf);
+            wal.logCommit(txnId);
         }
 
         var page = pool.fetchPage(pageId);

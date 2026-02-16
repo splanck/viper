@@ -37,13 +37,15 @@ entity IndexEntry {
 // SQL INDEX
 //=============================================================================
 
-// SqlIndex - Hash-based index on one or more columns
+// SqlIndex - Hash-based index on one or more columns (with bucket acceleration)
 entity SqlIndex {
     expose String name;
     expose String tableName;
     expose List[String] columnNames;
     expose Boolean isUnique;
     expose List[IndexEntry] entries;
+    expose List[List[IndexEntry]] buckets;
+    expose Integer bucketCount;
 
     expose func init() {
         name = "";
@@ -51,6 +53,9 @@ entity SqlIndex {
         columnNames = [];
         isUnique = false;
         entries = [];
+        bucketCount = 64;
+        buckets = [];
+        initBuckets();
     }
 
     expose func initWithNames(idxName: String, tblName: String) {
@@ -59,6 +64,19 @@ entity SqlIndex {
         columnNames = [];
         isUnique = false;
         entries = [];
+        bucketCount = 64;
+        buckets = [];
+        initBuckets();
+    }
+
+    // Initialize empty bucket lists
+    expose func initBuckets() {
+        buckets = [];
+        var i = 0;
+        while i < bucketCount {
+            buckets.add(new List[IndexEntry]());
+            i = i + 1;
+        }
     }
 
     expose func addColumn(colName: String) {
@@ -113,23 +131,26 @@ entity SqlIndex {
     expose func addEntry(row: Row, rowIdx: Integer, tbl: Table) -> Boolean {
         var keyStr = buildKeyString(row, tbl);
         var hash = hashString(keyStr);
+        var bIdx = hash % bucketCount;
+        var bucket = buckets.get(bIdx);
 
-        // Check for unique constraint violation
+        // Check for unique constraint violation (search only in bucket)
         if isUnique {
             var i = 0;
-            while i < entries.count() {
-                if entries.get(i).keyString == keyStr {
+            while i < bucket.count() {
+                if bucket.get(i).keyString == keyStr {
                     return false;  // Duplicate found
                 }
                 i = i + 1;
             }
         }
 
-        // Add new entry
+        // Add new entry to both flat list and bucket
         var entry = new IndexEntry();
         entry.init();
         entry.initWith(hash, keyStr, rowIdx);
         entries.add(entry);
+        bucket.add(entry);
         return true;
     }
 
@@ -138,6 +159,18 @@ entity SqlIndex {
         var i = 0;
         while i < entries.count() {
             if entries.get(i).rowIndex == rowIdx {
+                // Also remove from bucket
+                var hash = entries.get(i).keyHash;
+                var bIdx = hash % bucketCount;
+                var bucket = buckets.get(bIdx);
+                var j = 0;
+                while j < bucket.count() {
+                    if bucket.get(j).rowIndex == rowIdx {
+                        bucket.removeAt(j);
+                        j = bucket.count();  // break
+                    }
+                    j = j + 1;
+                }
                 entries.removeAt(i);
                 return;
             }
@@ -145,16 +178,18 @@ entity SqlIndex {
         }
     }
 
-    // Lookup entries matching a single key value
+    // Lookup entries matching a single key value (bucket-accelerated)
     expose func lookupSingle(keyVal: SqlValue, tbl: Table) -> List[Integer] {
         var results: List[Integer] = [];
         var keyStr = keyVal.toString();
         var hash = hashString(keyStr);
+        var bIdx = hash % bucketCount;
+        var bucket = buckets.get(bIdx);
 
-        // Linear search through entries with matching hash
+        // Search only within the matching bucket
         var i = 0;
-        while i < entries.count() {
-            var entry = entries.get(i);
+        while i < bucket.count() {
+            var entry = bucket.get(i);
             if entry.keyHash == hash {
                 // Verify key matches (hash collision check)
                 if entry.keyString == keyStr {
@@ -170,6 +205,7 @@ entity SqlIndex {
     // Rebuild the entire index from table data
     expose func rebuild(tbl: Table) {
         entries = [];
+        initBuckets();
         var i = 0;
         while i < tbl.rowCount() {
             var row = tbl.getRow(i);

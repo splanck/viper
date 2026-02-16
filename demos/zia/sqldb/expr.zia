@@ -17,6 +17,8 @@ final EXPR_FUNCTION = 5;     // Function call (COUNT, SUM, etc.)
 final EXPR_STAR = 6;         // SELECT * wildcard
 final EXPR_SUBQUERY = 7;     // Scalar subquery (SELECT ...)
 final EXPR_CASE = 8;         // CASE WHEN ... THEN ... ELSE ... END
+final EXPR_EXISTS = 9;       // EXISTS (SELECT ...)
+final EXPR_WINDOW = 10;      // Window function: func() OVER (...)
 
 //=============================================================================
 // BINARY OPERATOR CONSTANTS
@@ -77,6 +79,11 @@ entity Expr {
     expose List[Expr] caseResults;     // THEN results
     expose Expr? caseElse;             // ELSE result (null if no ELSE)
 
+    // For EXPR_WINDOW
+    expose List[Expr] partitionBy;     // PARTITION BY expressions
+    expose List[Expr] windowOrderBy;   // ORDER BY expressions for window
+    expose List[Integer] windowOrderDir; // 0=ASC, 1=DESC for each ORDER BY
+
     expose func init() {
         kind = EXPR_LITERAL;
         literalValue = new SqlValue();
@@ -90,6 +97,9 @@ entity Expr {
         caseConditions = [];
         caseResults = [];
         caseElse = null;
+        partitionBy = [];
+        windowOrderBy = [];
+        windowOrderDir = [];
     }
 
     expose func initLiteral(val: SqlValue) {
@@ -131,6 +141,20 @@ entity Expr {
     expose func initSubquery(sql: String) {
         kind = EXPR_SUBQUERY;
         subquerySQL = sql;
+    }
+
+    expose func initExists(sql: String) {
+        kind = EXPR_EXISTS;
+        subquerySQL = sql;
+    }
+
+    expose func initWindow(name: String) {
+        kind = EXPR_WINDOW;
+        funcName = name;
+        args = [];
+        partitionBy = [];
+        windowOrderBy = [];
+        windowOrderDir = [];
     }
 
     expose func initCase() {

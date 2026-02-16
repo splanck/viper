@@ -5,6 +5,12 @@ module schema;
 
 bind "./types";
 
+// Foreign key action constants
+final FK_NO_ACTION = 0;   // Default: error if referenced
+final FK_CASCADE = 1;     // Delete/update referencing rows
+final FK_SET_NULL = 2;    // Set referencing columns to NULL
+final FK_RESTRICT = 3;    // Prevent the operation (same as NO ACTION for us)
+
 //=============================================================================
 // COLUMN ENTITY
 //=============================================================================
@@ -21,6 +27,9 @@ entity Column {
     expose Boolean isForeignKey;
     expose String refTableName;
     expose String refColumnName;
+    expose Integer onDeleteAction;
+    expose Integer onUpdateAction;
+    expose String checkExprSQL;
 
     expose func init() {
         name = "";
@@ -35,6 +44,9 @@ entity Column {
         isForeignKey = false;
         refTableName = "";
         refColumnName = "";
+        onDeleteAction = FK_NO_ACTION;
+        onUpdateAction = FK_NO_ACTION;
+        checkExprSQL = "";
     }
 
     expose func initWithName(n: String, t: Integer) {
@@ -50,6 +62,9 @@ entity Column {
         isForeignKey = false;
         refTableName = "";
         refColumnName = "";
+        onDeleteAction = FK_NO_ACTION;
+        onUpdateAction = FK_NO_ACTION;
+        checkExprSQL = "";
     }
 
     expose func typeName() -> String {

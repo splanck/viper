@@ -693,6 +693,7 @@ RT_FUNC(DateTimeNow,        rt_datetime_now,         "Viper.Time.DateTime.Now", 
 RT_FUNC(DateTimeNowMs,      rt_datetime_now_ms,      "Viper.Time.DateTime.NowMs",      "i64()")
 RT_FUNC(DateTimeSecond,     rt_datetime_second,      "Viper.Time.DateTime.Second",     "i64(i64)")
 RT_FUNC(DateTimeToISO,      rt_datetime_to_iso,      "Viper.Time.DateTime.ToISO",      "str(i64)")
+RT_FUNC(DateTimeToLocal,    rt_datetime_to_local,    "Viper.Time.DateTime.ToLocal",    "str(i64)")
 RT_FUNC(DateTimeYear,       rt_datetime_year,        "Viper.Time.DateTime.Year",       "i64(i64)")
 
 //=============================================================================
@@ -4327,6 +4328,7 @@ RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("NowMs", "i64()", DateTimeNowMs)
     RT_METHOD("Second", "i64(i64)", DateTimeSecond)
     RT_METHOD("ToISO", "str(i64)", DateTimeToISO)
+    RT_METHOD("ToLocal", "str(i64)", DateTimeToLocal)
     RT_METHOD("Year", "i64(i64)", DateTimeYear)
 RT_CLASS_END()
 

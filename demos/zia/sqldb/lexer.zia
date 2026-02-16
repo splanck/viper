@@ -167,6 +167,7 @@ entity Lexer {
         if (word == "DROP") { return TK_DROP; }
         if (word == "ALTER") { return TK_ALTER; }
         if (word == "INDEX") { return TK_INDEX; }
+        if (word == "VIEW") { return TK_VIEW; }
         if (word == "SELECT") { return TK_SELECT; }
         if (word == "INSERT") { return TK_INSERT; }
         if (word == "UPDATE") { return TK_UPDATE; }
@@ -213,6 +214,9 @@ entity Lexer {
         if (word == "CHECK") { return TK_CHECK; }
         if (word == "CONSTRAINT") { return TK_CONSTRAINT; }
         if (word == "AUTOINCREMENT") { return TK_AUTOINCREMENT; }
+        if (word == "CASCADE") { return TK_CASCADE; }
+        if (word == "RESTRICT") { return TK_RESTRICT; }
+        if (word == "ACTION") { return TK_ACTION; }
         if (word == "INT") { return TK_INT; }
         if (word == "INTEGER") { return TK_INTEGER_TYPE; }
         if (word == "REAL") { return TK_REAL; }
@@ -256,6 +260,18 @@ entity Lexer {
         if (word == "USE") { return TK_USE; }
         if (word == "CLOSE") { return TK_CLOSE; }
         if (word == "FILE") { return TK_FILE; }
+        if (word == "WITH") { return TK_WITH; }
+        if (word == "OVER") { return TK_OVER; }
+        if (word == "PARTITION") { return TK_PARTITION; }
+        if (word == "USING") { return TK_USING; }
+        if (word == "ROWS") { return TK_ROWS; }
+        if (word == "RANGE") { return TK_RANGE; }
+        if (word == "UNBOUNDED") { return TK_UNBOUNDED; }
+        if (word == "PRECEDING") { return TK_PRECEDING; }
+        if (word == "FOLLOWING") { return TK_FOLLOWING; }
+        if (word == "CURRENT") { return TK_CURRENT; }
+        if (word == "ROW") { return TK_ROW; }
+        if (word == "RECURSIVE") { return TK_RECURSIVE; }
         return TK_IDENTIFIER;
     }
 

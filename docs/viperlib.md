@@ -23,5 +23,5 @@ The Viper Runtime Library documentation has been reorganized into separate files
 | [System](viperlib/system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
 | [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Html`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `Pattern`, `Serialize`, `StringBuilder`, `Template`, `Toml`, `Uuid` |
 | [Threads](viperlib/threads.md)           | `Async`, `Barrier`, `CancelToken`, `ConcurrentMap`, `Debouncer`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `Future`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
-| [Time & Timing](viperlib/time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
+| [Time & Timing](viperlib/time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
 | [Utilities](viperlib/utilities.md)       | `Convert`, `Fmt`, `Log`                                                   |

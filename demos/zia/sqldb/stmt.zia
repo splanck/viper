@@ -66,11 +66,15 @@ entity InsertStmt {
     expose String tableName;
     expose List[String] columnNames;  // Optional column list
     expose List[List[Expr]] valueRows;  // VALUES (...), (...)
+    expose String selectSQL;  // For INSERT...SELECT
+    expose Boolean hasSelect;  // True if INSERT...SELECT (not VALUES)
 
     expose func init() {
         tableName = "";
         columnNames = [];
         valueRows = [];
+        selectSQL = "";
+        hasSelect = false;
     }
 
     expose func addColumnName(name: String) {
@@ -231,12 +235,19 @@ entity UpdateStmt {
     expose List[String] setColumns;     // Columns to update
     expose List[Expr] setValues;        // Values to set
     expose Expr? whereClause;           // WHERE condition (optional)
+    // UPDATE...FROM support (Phase 4)
+    expose String fromTableName;        // FROM table name
+    expose String fromTableAlias;       // FROM table alias
+    expose Boolean hasFrom;             // True if FROM clause present
 
     expose func init() {
         tableName = "";
         setColumns = [];
         setValues = [];
         whereClause = null;
+        fromTableName = "";
+        fromTableAlias = "";
+        hasFrom = false;
     }
 
     expose func addSet(colName: String, val: Expr) {
@@ -269,10 +280,17 @@ entity UpdateStmt {
 entity DeleteStmt {
     expose String tableName;
     expose Expr? whereClause;           // WHERE condition (optional)
+    // DELETE...USING support (Phase 4)
+    expose String usingTableName;       // USING table name
+    expose String usingTableAlias;      // USING table alias
+    expose Boolean hasUsing;            // True if USING clause present
 
     expose func init() {
         tableName = "";
         whereClause = null;
+        usingTableName = "";
+        usingTableAlias = "";
+        hasUsing = false;
     }
 
     expose func toString() -> String {
