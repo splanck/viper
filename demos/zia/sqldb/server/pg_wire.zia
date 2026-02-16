@@ -1,0 +1,662 @@
+// pg_wire.zia — PostgreSQL Wire Protocol v3 Implementation
+// Part of ViperSQL - Phase 9
+//
+// Implements the PostgreSQL v3 wire protocol for standard client connectivity.
+// Supports: psql, pgAdmin, JDBC, ODBC (via psqlODBC), Python psycopg2, etc.
+//
+// Protocol Reference: https://www.postgresql.org/docs/current/protocol.html
+//
+// Message format:
+//   Backend (server→client): byte1(type) + int32(length_incl_self) + body
+//   Frontend (client→server): byte1(type) + int32(length_incl_self) + body
+//   Startup: int32(length) + int32(protocol_version) + key\0value\0...\0
+
+module pg_wire;
+
+bind Viper.Collections;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+bind Network = Viper.Network;
+
+//=============================================================================
+// PROTOCOL CONSTANTS
+//=============================================================================
+
+// Protocol versions / special request codes
+final PG_PROTOCOL_V3 = 196608;       // 3.0 << 16 = 196608
+final PG_SSL_REQUEST = 80877103;      // 1234 << 16 | 5679
+final PG_CANCEL_REQUEST = 80877102;   // 1234 << 16 | 5678
+
+// Backend message types (server → client)
+final PG_AUTH = 82;                   // 'R' — Authentication
+final PG_PARAM_STATUS = 83;          // 'S' — ParameterStatus
+final PG_BACKEND_KEY = 75;           // 'K' — BackendKeyData
+final PG_READY = 90;                 // 'Z' — ReadyForQuery
+final PG_ROW_DESC = 84;             // 'T' — RowDescription
+final PG_DATA_ROW = 68;             // 'D' — DataRow
+final PG_CMD_COMPLETE = 67;         // 'C' — CommandComplete
+final PG_ERROR_RESP = 69;           // 'E' — ErrorResponse
+final PG_NOTICE_RESP = 78;          // 'N' — NoticeResponse
+final PG_EMPTY_QUERY = 73;          // 'I' — EmptyQueryResponse
+
+// Frontend message types (client → server)
+final PG_QUERY = 81;                // 'Q' — Query
+final PG_TERMINATE = 88;            // 'X' — Terminate
+final PG_PASSWORD = 112;            // 'p' — PasswordMessage
+final PG_PARSE = 80;                // 'P' — Parse (extended query)
+final PG_BIND = 66;                 // 'B' — Bind (extended query)
+final PG_DESCRIBE = 68;             // 'D' — Describe (extended query)
+final PG_EXECUTE = 69;              // 'E' — Execute (extended query)
+final PG_SYNC = 83;                 // 'S' — Sync (extended query)
+
+// Transaction status indicators for ReadyForQuery
+final PG_TXN_IDLE = 73;             // 'I' — Idle (not in transaction)
+final PG_TXN_IN_TXN = 84;          // 'T' — In transaction block
+final PG_TXN_ERROR = 69;           // 'E' — Failed transaction block
+
+// PostgreSQL type OIDs (for RowDescription)
+final PG_OID_BOOL = 16;
+final PG_OID_BYTEA = 17;
+final PG_OID_INT8 = 20;
+final PG_OID_INT4 = 23;
+final PG_OID_TEXT = 25;
+final PG_OID_FLOAT8 = 701;
+final PG_OID_VARCHAR = 1043;
+final PG_OID_NUMERIC = 1700;
+
+//=============================================================================
+// BIG-ENDIAN ENCODING HELPERS
+//=============================================================================
+
+func writeInt32BE(buf: Bytes, offset: Integer, value: Integer) {
+    // Handle negative values (e.g., -1 for NULL in DataRow)
+    if value < 0 {
+        // For -1: write 0xFF 0xFF 0xFF 0xFF
+        var unsigned = 4294967296 + value;  // 2^32 + value
+        buf.Set(offset,     (unsigned / 16777216) % 256);
+        buf.Set(offset + 1, (unsigned / 65536) % 256);
+        buf.Set(offset + 2, (unsigned / 256) % 256);
+        buf.Set(offset + 3, unsigned % 256);
+        return;
+    }
+    buf.Set(offset,     (value / 16777216) % 256);
+    buf.Set(offset + 1, (value / 65536) % 256);
+    buf.Set(offset + 2, (value / 256) % 256);
+    buf.Set(offset + 3, value % 256);
+}
+
+func writeInt16BE(buf: Bytes, offset: Integer, value: Integer) {
+    buf.Set(offset,     (value / 256) % 256);
+    buf.Set(offset + 1, value % 256);
+}
+
+func readInt32BE(data: Bytes, offset: Integer) -> Integer {
+    var b0 = data.Get(offset);
+    var b1 = data.Get(offset + 1);
+    var b2 = data.Get(offset + 2);
+    var b3 = data.Get(offset + 3);
+    return b0 * 16777216 + b1 * 65536 + b2 * 256 + b3;
+}
+
+func readInt16BE(data: Bytes, offset: Integer) -> Integer {
+    var b0 = data.Get(offset);
+    var b1 = data.Get(offset + 1);
+    return b0 * 256 + b1;
+}
+
+//=============================================================================
+// MESSAGE BUFFER — Growable buffer for building PG messages
+//=============================================================================
+
+entity PgMsg {
+    expose Bytes buf;
+    expose Integer pos;
+    expose Integer cap;
+
+    expose func init(capacity: Integer) {
+        buf = Bytes.New(capacity);
+        pos = 0;
+        cap = capacity;
+    }
+
+    // Ensure space for 'needed' more bytes
+    hide func ensureCapacity(needed: Integer) {
+        if pos + needed <= cap { return; }
+        var newCap = cap * 2;
+        while newCap < pos + needed {
+            newCap = newCap * 2;
+        }
+        var newBuf = Bytes.New(newCap);
+        Bytes.Copy(newBuf, 0, buf, 0, pos);
+        buf = newBuf;
+        cap = newCap;
+    }
+
+    expose func writeByte(b: Integer) {
+        ensureCapacity(1);
+        buf.Set(pos, b);
+        pos = pos + 1;
+    }
+
+    expose func writeInt16(v: Integer) {
+        ensureCapacity(2);
+        writeInt16BE(buf, pos, v);
+        pos = pos + 2;
+    }
+
+    expose func writeInt32(v: Integer) {
+        ensureCapacity(4);
+        writeInt32BE(buf, pos, v);
+        pos = pos + 4;
+    }
+
+    // Write a null-terminated C string
+    expose func writeCString(s: String) {
+        var sBytes = Bytes.FromStr(s);
+        ensureCapacity(sBytes.Len + 1);
+        Bytes.Copy(buf, pos, sBytes, 0, sBytes.Len);
+        pos = pos + sBytes.Len;
+        buf.Set(pos, 0);
+        pos = pos + 1;
+    }
+
+    // Write raw bytes
+    expose func writeRawBytes(data: Bytes) {
+        ensureCapacity(data.Len);
+        Bytes.Copy(buf, pos, data, 0, data.Len);
+        pos = pos + data.Len;
+    }
+
+    // Get the built message as a trimmed Bytes object
+    expose func toBytes() -> Bytes {
+        return buf.Slice(0, pos);
+    }
+
+    // Reset buffer for reuse
+    expose func reset() {
+        pos = 0;
+    }
+}
+
+//=============================================================================
+// STARTUP MESSAGE PARSING
+//=============================================================================
+
+entity PgStartupInfo {
+    expose Integer protocolVersion;
+    expose String user;
+    expose String database;
+    expose String password;
+    expose Boolean isSSL;
+    expose Boolean isCancel;
+    expose Integer cancelPid;
+    expose Integer cancelKey;
+
+    expose func init() {
+        protocolVersion = 0;
+        user = "";
+        database = "";
+        password = "";
+        isSSL = false;
+        isCancel = false;
+        cancelPid = 0;
+        cancelKey = 0;
+    }
+}
+
+// Extract a null-terminated string from bytes at the given offset
+// Returns the string and advances the position past the null terminator
+func readCStringAt(data: Bytes, startPos: Integer, dataLen: Integer) -> String {
+    var pos = startPos;
+    while pos < dataLen && data.Get(pos) != 0 {
+        pos = pos + 1;
+    }
+    if pos == startPos { return ""; }
+    var slice: Bytes = data.Slice(startPos, pos);
+    return slice.ToStr();
+}
+
+// Find the end of a null-terminated string starting at offset
+func findNullTerminator(data: Bytes, startPos: Integer, dataLen: Integer) -> Integer {
+    var pos = startPos;
+    while pos < dataLen && data.Get(pos) != 0 {
+        pos = pos + 1;
+    }
+    return pos;
+}
+
+// Parse key-value pairs from a PG startup body into the info entity
+func parseStartupParams(body: Bytes, info: PgStartupInfo) {
+    var bodyLen = body.Len;
+    var pos = 4;  // Skip protocol version (4 bytes)
+    var parsing = true;
+    while pos < bodyLen && parsing {
+        if body.Get(pos) == 0 {
+            parsing = false;
+        } else {
+            var keyEnd = findNullTerminator(body, pos, bodyLen);
+            var key = readCStringAt(body, pos, bodyLen);
+            pos = keyEnd + 1;
+
+            var valEnd = findNullTerminator(body, pos, bodyLen);
+            var val = readCStringAt(body, pos, bodyLen);
+            pos = valEnd + 1;
+
+            if key == "user" { info.user = val; }
+            if key == "database" { info.database = val; }
+        }
+    }
+
+    if info.database == "" {
+        info.database = info.user;
+    }
+}
+
+// Read and parse the startup message from a new client connection
+func pgReadStartup(client: Ptr) -> PgStartupInfo {
+    var info = new PgStartupInfo();
+
+    // Read 4-byte message length
+    var lenBytes: Bytes = Network.Tcp.RecvExact(client, 4);
+    var length = readInt32BE(lenBytes, 0);
+
+    // Sanity check: startup message should be 8-10000 bytes
+    if length < 8 || length > 10000 {
+        info.protocolVersion = -1;
+        return info;
+    }
+
+    // Read the rest of the message body
+    var body: Bytes = Network.Tcp.RecvExact(client, length - 4);
+
+    // Read version/request code (first 4 bytes of body)
+    var code = readInt32BE(body, 0);
+
+    // SSL request
+    if code == PG_SSL_REQUEST {
+        info.isSSL = true;
+        return info;
+    }
+
+    // Cancel request
+    if code == PG_CANCEL_REQUEST {
+        info.isCancel = true;
+        return info;
+    }
+
+    // Normal startup
+    info.protocolVersion = code;
+    parseStartupParams(body, info);
+    return info;
+}
+
+//=============================================================================
+// CLIENT MESSAGE READING
+//=============================================================================
+
+entity PgClientMsg {
+    expose Integer msgType;
+    expose Bytes body;
+    expose Boolean valid;
+
+    expose func init() {
+        msgType = 0;
+        body = Bytes.New(0);
+        valid = false;
+    }
+}
+
+// Read a single message from the client (after startup phase)
+func pgReadMessage(client: Ptr) -> PgClientMsg {
+    var msg = new PgClientMsg();
+    msg.init();
+
+    // Read 1-byte message type
+    var typeBuf: Bytes = Network.Tcp.RecvExact(client, 1);
+    msg.msgType = typeBuf.Get(0);
+
+    // Read 4-byte length (includes itself)
+    var lenBuf: Bytes = Network.Tcp.RecvExact(client, 4);
+    var length = readInt32BE(lenBuf, 0);
+
+    // Read message body (length - 4 bytes)
+    if length > 4 {
+        var bodyData: Bytes = Network.Tcp.RecvExact(client, length - 4);
+        msg.body = bodyData;
+    }
+
+    msg.valid = true;
+    return msg;
+}
+
+// Extract the query string from a Query ('Q') message body
+func pgExtractQuery(body: Bytes) -> String {
+    // Query body is: query_string\0
+    var end = 0;
+    while end < body.Len && body.Get(end) != 0 {
+        end = end + 1;
+    }
+    if end == 0 { return ""; }
+    var slice: Bytes = body.Slice(0, end);
+    return slice.ToStr();
+}
+
+//=============================================================================
+// SERVER MESSAGE SENDING
+//=============================================================================
+
+// Send a complete PG message: type_byte + int32(length) + body
+func pgSendMsg(client: Ptr, msgType: Integer, body: PgMsg) {
+    var bodyBytes = body.toBytes();
+    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msg = Bytes.New(msgLen);
+    msg.Set(0, msgType);
+    writeInt32BE(msg, 1, bodyBytes.Len + 4);  // length includes itself
+    if bodyBytes.Len > 0 {
+        Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    }
+    Network.Tcp.SendAll(client, msg);
+}
+
+// AuthenticationOk: R + int32(8) + int32(0)
+func pgSendAuthOk(client: Ptr) {
+    var msg = Bytes.New(9);
+    msg.Set(0, PG_AUTH);        // 'R'
+    writeInt32BE(msg, 1, 8);    // length = 8 (includes self + auth type)
+    writeInt32BE(msg, 5, 0);    // auth type 0 = OK
+    Network.Tcp.SendAll(client, msg);
+}
+
+// AuthenticationCleartextPassword: R + int32(8) + int32(3)
+func pgSendAuthCleartext(client: Ptr) {
+    var msg = Bytes.New(9);
+    msg.Set(0, PG_AUTH);
+    writeInt32BE(msg, 1, 8);
+    writeInt32BE(msg, 5, 3);    // auth type 3 = cleartext password
+    Network.Tcp.SendAll(client, msg);
+}
+
+// ParameterStatus: S + int32(len) + name\0 + value\0
+func pgSendParameterStatus(client: Ptr, name: String, value: String) {
+    var body = new PgMsg(64);
+    body.writeCString(name);
+    body.writeCString(value);
+    pgSendMsg(client, PG_PARAM_STATUS, body);
+}
+
+// BackendKeyData: K + int32(12) + int32(pid) + int32(secret_key)
+func pgSendBackendKeyData(client: Ptr, pid: Integer, secretKey: Integer) {
+    var msg = Bytes.New(13);
+    msg.Set(0, PG_BACKEND_KEY);     // 'K'
+    writeInt32BE(msg, 1, 12);       // length
+    writeInt32BE(msg, 5, pid);
+    writeInt32BE(msg, 9, secretKey);
+    Network.Tcp.SendAll(client, msg);
+}
+
+// ReadyForQuery: Z + int32(5) + byte(status)
+func pgSendReadyForQuery(client: Ptr, txnStatus: Integer) {
+    var msg = Bytes.New(6);
+    msg.Set(0, PG_READY);           // 'Z'
+    writeInt32BE(msg, 1, 5);        // length = 5
+    msg.Set(5, txnStatus);          // 'I', 'T', or 'E'
+    Network.Tcp.SendAll(client, msg);
+}
+
+// RowDescription: T + int32(len) + int16(numCols) + [field]*
+// Field: name\0 + int32(tableOid) + int16(colAttNum) + int32(typeOid)
+//        + int16(typeLen) + int32(typeMod) + int16(format)
+func pgSendRowDescription(client: Ptr, columnNames: List[String]) {
+    var body = new PgMsg(256);
+
+    // Number of columns
+    body.writeInt16(columnNames.count());
+
+    // Field descriptors
+    var i = 0;
+    while i < columnNames.count() {
+        body.writeCString(columnNames.get(i));  // field name
+        body.writeInt32(0);                     // table OID (0 = not from table)
+        body.writeInt16(0);                     // column attribute number
+        body.writeInt32(PG_OID_TEXT);           // type OID (all TEXT for now)
+        body.writeInt16(-1);                    // type size (-1 = variable)
+        body.writeInt32(-1);                    // type modifier
+        body.writeInt16(0);                     // format code (0 = text)
+        i = i + 1;
+    }
+
+    pgSendMsg(client, PG_ROW_DESC, body);
+}
+
+// DataRow: D + int32(len) + int16(numCols) + [int32(colLen) + bytes]*
+// NULL columns have colLen = -1 (no bytes follow)
+func pgSendDataRow(client: Ptr, values: List[String], nullFlags: List[Integer]) {
+    var body = new PgMsg(512);
+
+    // Number of columns
+    body.writeInt16(values.count());
+
+    // Column values (nullFlags: 1 = null, 0 = non-null)
+    var i = 0;
+    while i < values.count() {
+        var isNull = 0;
+        if i < nullFlags.count() {
+            isNull = nullFlags.get(i);
+        }
+        if isNull == 1 {
+            // NULL value: length = -1
+            body.writeInt32(-1);
+        } else {
+            // Non-null: length + UTF-8 bytes (text format)
+            var valBytes = Bytes.FromStr(values.get(i));
+            body.writeInt32(valBytes.Len);
+            body.writeRawBytes(valBytes);
+        }
+        i = i + 1;
+    }
+
+    pgSendMsg(client, PG_DATA_ROW, body);
+}
+
+// CommandComplete: C + int32(len) + tag\0
+func pgSendCommandComplete(client: Ptr, tag: String) {
+    var body = new PgMsg(64);
+    body.writeCString(tag);
+    pgSendMsg(client, PG_CMD_COMPLETE, body);
+}
+
+// ErrorResponse: E + int32(len) + [field_type + string\0]* + \0
+// Field types: 'S' severity, 'V' severity (non-localized), 'C' SQLSTATE,
+//              'M' message, 'D' detail, 'H' hint
+func pgSendErrorResponse(client: Ptr, sqlstate: String, message: String) {
+    var body = new PgMsg(256);
+
+    // Severity
+    body.writeByte(83);  // 'S'
+    body.writeCString("ERROR");
+
+    // Non-localized severity
+    body.writeByte(86);  // 'V'
+    body.writeCString("ERROR");
+
+    // SQLSTATE code (5 chars)
+    body.writeByte(67);  // 'C'
+    body.writeCString(sqlstate);
+
+    // Message
+    body.writeByte(77);  // 'M'
+    body.writeCString(message);
+
+    // Terminator
+    body.writeByte(0);
+
+    pgSendMsg(client, PG_ERROR_RESP, body);
+}
+
+// EmptyQueryResponse: I + int32(4)
+func pgSendEmptyQueryResponse(client: Ptr) {
+    var msg = Bytes.New(5);
+    msg.Set(0, PG_EMPTY_QUERY);
+    writeInt32BE(msg, 1, 4);
+    Network.Tcp.SendAll(client, msg);
+}
+
+// NoticeResponse: N + int32(len) + [field_type + string\0]* + \0
+func pgSendNotice(client: Ptr, message: String) {
+    var body = new PgMsg(128);
+
+    body.writeByte(83);  // 'S'
+    body.writeCString("NOTICE");
+
+    body.writeByte(86);  // 'V'
+    body.writeCString("NOTICE");
+
+    body.writeByte(67);  // 'C'
+    body.writeCString("00000");  // Successful completion
+
+    body.writeByte(77);  // 'M'
+    body.writeCString(message);
+
+    body.writeByte(0);
+
+    pgSendMsg(client, PG_NOTICE_RESP, body);
+}
+
+//=============================================================================
+// STARTUP HANDSHAKE
+//=============================================================================
+
+// Read startup message, handle SSL/cancel, optionally exchange password.
+// Returns PgStartupInfo on success (with password field populated if auth requested).
+// Does NOT send AuthOk or parameters — caller must do that via pgCompleteStartup.
+func pgHandleStartup(client: Ptr, sessionId: Integer, authRequired: Boolean) -> PgStartupInfo? {
+    var startup = pgReadStartup(client);
+
+    // Handle SSL request — respond 'N' (no SSL), then read the real startup
+    if startup.isSSL {
+        var noSSL = Bytes.New(1);
+        noSSL.Set(0, 78);  // 'N'
+        Network.Tcp.SendAll(client, noSSL);
+
+        // Now read the actual startup message
+        startup = pgReadStartup(client);
+    }
+
+    // Handle cancel request — close connection
+    if startup.isCancel {
+        return null;
+    }
+
+    // Validate protocol version
+    if startup.protocolVersion != PG_PROTOCOL_V3 {
+        pgSendErrorResponse(client, "08004", "Unsupported protocol version");
+        return null;
+    }
+
+    // Authentication exchange
+    if authRequired {
+        pgSendAuthCleartext(client);
+        var pwMsg = pgReadMessage(client);
+        if pwMsg.valid == false || pwMsg.msgType != PG_PASSWORD {
+            pgSendErrorResponse(client, "08004", "Expected password message");
+            return null;
+        }
+        // Password body is a null-terminated string (same format as Query)
+        startup.password = pgExtractQuery(pwMsg.body);
+    }
+
+    return startup;
+}
+
+// Send the post-authentication startup sequence:
+// AuthOk, ParameterStatus messages, BackendKeyData, ReadyForQuery
+func pgCompleteStartup(client: Ptr, sessionId: Integer, user: String) {
+    pgSendAuthOk(client);
+
+    // Send server parameters (psql expects these)
+    pgSendParameterStatus(client, "server_version", "14.0");
+    pgSendParameterStatus(client, "server_encoding", "UTF8");
+    pgSendParameterStatus(client, "client_encoding", "UTF8");
+    pgSendParameterStatus(client, "DateStyle", "ISO, MDY");
+    pgSendParameterStatus(client, "TimeZone", "UTC");
+    pgSendParameterStatus(client, "integer_datetimes", "on");
+    pgSendParameterStatus(client, "standard_conforming_strings", "on");
+    pgSendParameterStatus(client, "application_name", "");
+    pgSendParameterStatus(client, "is_superuser", "on");
+    pgSendParameterStatus(client, "session_authorization", user);
+
+    // Send BackendKeyData (process ID = session ID)
+    pgSendBackendKeyData(client, sessionId, 0);
+
+    // Send ReadyForQuery (idle)
+    pgSendReadyForQuery(client, PG_TXN_IDLE);
+}
+
+//=============================================================================
+// COMMAND TAG GENERATION
+//=============================================================================
+
+// Generate the PostgreSQL command tag for CommandComplete
+// PG tags follow specific formats: "SELECT N", "INSERT 0 N", "UPDATE N", etc.
+func pgCommandTag(query: String, rowsAffected: Integer, rowCount: Integer) -> String {
+    var upper = String.ToUpper(String.Trim(query));
+
+    // SELECT: "SELECT N" where N is number of rows
+    if stringStartsWithPg(upper, "SELECT") {
+        return "SELECT " + Fmt.Int(rowCount);
+    }
+    if stringStartsWithPg(upper, "SHOW") {
+        return "SELECT " + Fmt.Int(rowCount);
+    }
+
+    // INSERT: "INSERT 0 N"
+    if stringStartsWithPg(upper, "INSERT") {
+        return "INSERT 0 " + Fmt.Int(rowsAffected);
+    }
+
+    // UPDATE: "UPDATE N"
+    if stringStartsWithPg(upper, "UPDATE") {
+        return "UPDATE " + Fmt.Int(rowsAffected);
+    }
+
+    // DELETE: "DELETE N"
+    if stringStartsWithPg(upper, "DELETE") {
+        return "DELETE " + Fmt.Int(rowsAffected);
+    }
+
+    // User management
+    if stringStartsWithPg(upper, "CREATE USER") { return "CREATE ROLE"; }
+    if stringStartsWithPg(upper, "DROP USER") { return "DROP ROLE"; }
+    if stringStartsWithPg(upper, "ALTER USER") { return "ALTER ROLE"; }
+
+    // DDL commands
+    if stringStartsWithPg(upper, "CREATE TABLE") { return "CREATE TABLE"; }
+    if stringStartsWithPg(upper, "CREATE TEMP") { return "CREATE TABLE"; }
+    if stringStartsWithPg(upper, "CREATE TEMPORARY") { return "CREATE TABLE"; }
+    if stringStartsWithPg(upper, "CREATE DATABASE") { return "CREATE DATABASE"; }
+    if stringStartsWithPg(upper, "CREATE INDEX") { return "CREATE INDEX"; }
+    if stringStartsWithPg(upper, "CREATE VIEW") { return "CREATE VIEW"; }
+    if stringStartsWithPg(upper, "DROP TABLE") { return "DROP TABLE"; }
+    if stringStartsWithPg(upper, "DROP DATABASE") { return "DROP DATABASE"; }
+    if stringStartsWithPg(upper, "DROP INDEX") { return "DROP INDEX"; }
+    if stringStartsWithPg(upper, "DROP VIEW") { return "DROP VIEW"; }
+    if stringStartsWithPg(upper, "ALTER TABLE") { return "ALTER TABLE"; }
+    if stringStartsWithPg(upper, "ALTER DATABASE") { return "ALTER DATABASE"; }
+
+    // Transaction control
+    if stringStartsWithPg(upper, "BEGIN") { return "BEGIN"; }
+    if stringStartsWithPg(upper, "COMMIT") { return "COMMIT"; }
+    if stringStartsWithPg(upper, "ROLLBACK") { return "ROLLBACK"; }
+
+    // SET
+    if stringStartsWithPg(upper, "SET") { return "SET"; }
+
+    return "OK";
+}
+
+// Simple starts-with helper (avoids cross-module dependency)
+func stringStartsWithPg(s: String, prefix: String) -> Boolean {
+    var prefixLen = String.Length(prefix);
+    if String.Length(s) < prefixLen { return false; }
+    return String.Substring(s, 0, prefixLen) == prefix;
+}

@@ -1,0 +1,370 @@
+// sql_window.zia — Window Function Engine
+// Part of ViperSQL
+//
+// Provides window function computation over result sets.
+// Functions operate on QueryResult data without needing executor state.
+
+module sql_window;
+
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+
+bind "./types";
+bind "./table";
+bind "./expr";
+bind "./stmt";
+bind "./result";
+
+//=============================================================================
+// WINDOW EXPRESSION RESOLUTION
+//=============================================================================
+
+// Resolve an expression against a result row (using column names from result)
+func resolveWindowExpr(expr: Expr, row: Row, result: QueryResult) -> SqlValue {
+    if expr.kind == EXPR_LITERAL { return expr.literalValue; }
+    if expr.kind == EXPR_COLUMN {
+        var ci = 0;
+        while ci < result.columnNames.count() {
+            if String.ToUpper(result.columnNames.get(ci)) == String.ToUpper(expr.columnName) {
+                return row.getValue(ci);
+            }
+            ci = ci + 1;
+        }
+    }
+    return sqlNull();
+}
+
+//=============================================================================
+// WINDOW SORTING
+//=============================================================================
+
+// Compare two rows for window sorting: first by partition key, then by ORDER BY
+func compareWindowRows(idxA: Integer, idxB: Integer, partKeys: List[String], winExpr: Expr, result: QueryResult) -> Integer {
+    var keyA = partKeys.get(idxA);
+    var keyB = partKeys.get(idxB);
+    if keyA < keyB { return -1; }
+    if keyA > keyB { return 1; }
+
+    var rowA = result.rows.get(idxA);
+    var rowB = result.rows.get(idxB);
+    var oi = 0;
+    while oi < winExpr.windowOrderBy.count() {
+        var oExpr = winExpr.windowOrderBy.get(oi);
+        var valA = resolveWindowExpr(oExpr, rowA, result);
+        var valB = resolveWindowExpr(oExpr, rowB, result);
+        var cmp = valA.compare(valB);
+        if cmp == 2 { cmp = 0; }  // NULL == NULL for ordering
+        var dir = 0;
+        if oi < winExpr.windowOrderDir.count() {
+            dir = winExpr.windowOrderDir.get(oi);
+        }
+        if dir == 1 { cmp = -cmp; }  // DESC
+        if cmp != 0 { return cmp; }
+        oi = oi + 1;
+    }
+    return 0;
+}
+
+// Sort indices by partition key and window ORDER BY (insertion sort)
+func sortWindowIndices(indices: List[Integer], partKeys: List[String], winExpr: Expr, result: QueryResult) {
+    var n = indices.count();
+    var i = 1;
+    while i < n {
+        var key = indices.get(i);
+        var j = i - 1;
+        while j >= 0 && compareWindowRows(indices.get(j), key, partKeys, winExpr, result) > 0 {
+            indices.set(j + 1, indices.get(j));
+            j = j - 1;
+        }
+        indices.set(j + 1, key);
+        i = i + 1;
+    }
+}
+
+// Check if two rows have equal ORDER BY values
+func windowOrderValuesEqual(winExpr: Expr, rowA: Row, rowB: Row, result: QueryResult) -> Boolean {
+    var oi = 0;
+    while oi < winExpr.windowOrderBy.count() {
+        var oExpr = winExpr.windowOrderBy.get(oi);
+        var valA = resolveWindowExpr(oExpr, rowA, result);
+        var valB = resolveWindowExpr(oExpr, rowB, result);
+        var cmp = valA.compare(valB);
+        if cmp != 0 { return false; }
+        oi = oi + 1;
+    }
+    return true;
+}
+
+//=============================================================================
+// WINDOW FUNCTION COMPUTATION
+//=============================================================================
+
+// Compute window function values for a specific result column
+func computeWindowColumn(winExpr: Expr, result: QueryResult, colIdx: Integer, table: Table) {
+    var funcName = String.ToUpper(winExpr.funcName);
+    var rowCount = result.rowCount();
+    if rowCount == 0 { return; }
+
+    // Build partition keys for each row
+    var partKeys: List[String] = [];
+    var ri = 0;
+    while ri < rowCount {
+        var row = result.rows.get(ri);
+        var key = "";
+        var pi = 0;
+        while pi < winExpr.partitionBy.count() {
+            if pi > 0 { key = key + "|"; }
+            var pExpr = winExpr.partitionBy.get(pi);
+            var pVal = resolveWindowExpr(pExpr, row, result);
+            key = key + pVal.toString();
+            pi = pi + 1;
+        }
+        partKeys.add(key);
+        ri = ri + 1;
+    }
+
+    // Build sort indices
+    var indices: List[Integer] = [];
+    ri = 0;
+    while ri < rowCount {
+        indices.add(ri);
+        ri = ri + 1;
+    }
+
+    // Sort indices by (partitionKey, orderBy columns)
+    sortWindowIndices(indices, partKeys, winExpr, result);
+
+    // Initialize window values with nulls
+    var windowValues: List[SqlValue] = [];
+    ri = 0;
+    while ri < rowCount {
+        windowValues.add(sqlNull());
+        ri = ri + 1;
+    }
+
+    // Process rows in sorted order, tracking partitions
+    var partStart = 0;
+    while partStart < rowCount {
+        var currentPartKey = partKeys.get(indices.get(partStart));
+        var partEnd = partStart + 1;
+        while partEnd < rowCount && partKeys.get(indices.get(partEnd)) == currentPartKey {
+            partEnd = partEnd + 1;
+        }
+
+        var partSize = partEnd - partStart;
+        var hasWindowOrder = winExpr.windowOrderBy.count() > 0;
+
+        if funcName == "ROW_NUMBER" {
+            var wi = 0;
+            while wi < partSize {
+                var origIdx = indices.get(partStart + wi);
+                windowValues.set(origIdx, sqlInteger(wi + 1));
+                wi = wi + 1;
+            }
+        } else if funcName == "RANK" {
+            var wi = 0;
+            var currentRank = 1;
+            while wi < partSize {
+                var origIdx = indices.get(partStart + wi);
+                if wi > 0 {
+                    var prevIdx = indices.get(partStart + wi - 1);
+                    if windowOrderValuesEqual(winExpr, result.rows.get(origIdx), result.rows.get(prevIdx), result) == false {
+                        currentRank = wi + 1;
+                    }
+                }
+                windowValues.set(origIdx, sqlInteger(currentRank));
+                wi = wi + 1;
+            }
+        } else if funcName == "DENSE_RANK" {
+            var wi = 0;
+            var currentRank = 1;
+            while wi < partSize {
+                var origIdx = indices.get(partStart + wi);
+                if wi > 0 {
+                    var prevIdx = indices.get(partStart + wi - 1);
+                    if windowOrderValuesEqual(winExpr, result.rows.get(origIdx), result.rows.get(prevIdx), result) == false {
+                        currentRank = currentRank + 1;
+                    }
+                }
+                windowValues.set(origIdx, sqlInteger(currentRank));
+                wi = wi + 1;
+            }
+        } else if funcName == "SUM" {
+            if hasWindowOrder {
+                var runningSum = 0;
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if argVal.kind == SQL_INTEGER {
+                            runningSum = runningSum + argVal.intValue;
+                        }
+                    }
+                    windowValues.set(origIdx, sqlInteger(runningSum));
+                    wi = wi + 1;
+                }
+            } else {
+                var totalSum = 0;
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if argVal.kind == SQL_INTEGER { totalSum = totalSum + argVal.intValue; }
+                    }
+                    wi = wi + 1;
+                }
+                wi = 0;
+                while wi < partSize {
+                    windowValues.set(indices.get(partStart + wi), sqlInteger(totalSum));
+                    wi = wi + 1;
+                }
+            }
+        } else if funcName == "COUNT" {
+            if hasWindowOrder {
+                var runningCount = 0;
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    runningCount = runningCount + 1;
+                    windowValues.set(origIdx, sqlInteger(runningCount));
+                    wi = wi + 1;
+                }
+            } else {
+                var wi = 0;
+                while wi < partSize {
+                    windowValues.set(indices.get(partStart + wi), sqlInteger(partSize));
+                    wi = wi + 1;
+                }
+            }
+        } else if funcName == "AVG" {
+            if hasWindowOrder {
+                var runningSum = 0;
+                var runningCount = 0;
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if argVal.kind == SQL_INTEGER { runningSum = runningSum + argVal.intValue; }
+                    }
+                    runningCount = runningCount + 1;
+                    windowValues.set(origIdx, sqlInteger(runningSum / runningCount));
+                    wi = wi + 1;
+                }
+            } else {
+                var totalSum = 0;
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if argVal.kind == SQL_INTEGER { totalSum = totalSum + argVal.intValue; }
+                    }
+                    wi = wi + 1;
+                }
+                var avgVal = totalSum / partSize;
+                wi = 0;
+                while wi < partSize {
+                    windowValues.set(indices.get(partStart + wi), sqlInteger(avgVal));
+                    wi = wi + 1;
+                }
+            }
+        } else if funcName == "MIN" {
+            if hasWindowOrder {
+                var runMin = sqlNull();
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if runMin.kind == SQL_NULL || argVal.compare(runMin) < 0 {
+                            runMin = argVal;
+                        }
+                    }
+                    windowValues.set(origIdx, runMin);
+                    wi = wi + 1;
+                }
+            } else {
+                var partMin = sqlNull();
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if partMin.kind == SQL_NULL || argVal.compare(partMin) < 0 { partMin = argVal; }
+                    }
+                    wi = wi + 1;
+                }
+                wi = 0;
+                while wi < partSize {
+                    windowValues.set(indices.get(partStart + wi), partMin);
+                    wi = wi + 1;
+                }
+            }
+        } else if funcName == "MAX" {
+            if hasWindowOrder {
+                var runMax = sqlNull();
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if runMax.kind == SQL_NULL || argVal.compare(runMax) > 0 { runMax = argVal; }
+                    }
+                    windowValues.set(origIdx, runMax);
+                    wi = wi + 1;
+                }
+            } else {
+                var partMax = sqlNull();
+                var wi = 0;
+                while wi < partSize {
+                    var origIdx = indices.get(partStart + wi);
+                    var row = result.rows.get(origIdx);
+                    if winExpr.args.count() > 0 {
+                        var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
+                        if partMax.kind == SQL_NULL || argVal.compare(partMax) > 0 { partMax = argVal; }
+                    }
+                    wi = wi + 1;
+                }
+                wi = 0;
+                while wi < partSize {
+                    windowValues.set(indices.get(partStart + wi), partMax);
+                    wi = wi + 1;
+                }
+            }
+        }
+
+        partStart = partEnd;
+    }
+
+    // Replace result column values with computed window values
+    ri = 0;
+    while ri < rowCount {
+        var row = result.rows.get(ri);
+        if colIdx < row.columnCount() {
+            row.setValue(colIdx, windowValues.get(ri));
+        }
+        ri = ri + 1;
+    }
+}
+
+// Apply window functions to the result set
+func applyWindowFunctions(stmt: SelectStmt, result: QueryResult, table: Table) {
+    var colIdx = 0;
+    while colIdx < stmt.columns.count() {
+        var colExpr = stmt.columns.get(colIdx);
+        if colExpr.kind == EXPR_WINDOW {
+            computeWindowColumn(colExpr, result, colIdx, table);
+        }
+        colIdx = colIdx + 1;
+    }
+}

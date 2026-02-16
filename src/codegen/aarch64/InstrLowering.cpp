@@ -180,6 +180,22 @@ bool materializeValueToVReg(const il::core::Value &v,
             MInstr{MOpcode::MovRI, {MOperand::vregOp(outCls, outVReg), MOperand::immOp(0)}});
         return true;
     }
+    if (v.kind == il::core::Value::Kind::GlobalAddr)
+    {
+        // Direct GlobalAddr (function pointer or global symbol address)
+        // Materialize via PC-relative AdrPage + AddPageOff
+        outVReg = nextVRegId++;
+        outCls = RegClass::GPR;
+        const std::string &sym = v.str;
+        out.instrs.push_back(
+            MInstr{MOpcode::AdrPage,
+                   {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::labelOp(sym)}});
+        out.instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                    {MOperand::vregOp(RegClass::GPR, outVReg),
+                                     MOperand::vregOp(RegClass::GPR, outVReg),
+                                     MOperand::labelOp(sym)}});
+        return true;
+    }
     if (v.kind == il::core::Value::Kind::Temp)
     {
         // First check if we already materialized this temp (includes block params

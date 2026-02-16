@@ -1,0 +1,845 @@
+// sql_functions.zia — SQL Built-in Function Evaluation
+// Part of ViperSQL
+//
+// Provides standalone functions for evaluating SQL scalar functions.
+// Functions take pre-evaluated SqlValue arguments and return SqlValue results.
+// This module is used by the Executor to delegate function evaluation.
+
+module sql_functions;
+
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+bind Viper.Math;
+bind DateTime = Viper.Time.DateTime;
+
+bind "./types";
+
+//=============================================================================
+// DATE/TIME HELPER FUNCTIONS
+//=============================================================================
+
+// Find position of a single character in a string, returns -1 if not found
+func findChar(s: String, ch: String) -> Integer {
+    var i = 0;
+    var len = String.Length(s);
+    while i < len {
+        if String.Substring(s, i, 1) == ch {
+            return i;
+        }
+        i = i + 1;
+    }
+    return 0 - 1;
+}
+
+// Convert SqlValue to integer (handles TEXT, REAL, INTEGER)
+func sqlToInt(val: SqlValue) -> Integer {
+    if val.kind == SQL_INTEGER { return val.intValue; }
+    if val.kind == SQL_REAL { return stringToInt(val.textValue); }
+    if val.kind == SQL_TEXT { return stringToInt(val.textValue); }
+    return 0;
+}
+
+// Parse a SQL value (text ISO string or integer epoch) into an i64 timestamp
+func parseDateTimeArg(val: SqlValue) -> Integer {
+    if val.kind == SQL_INTEGER {
+        return val.intValue;
+    }
+    var s = val.toString();
+    var sLen = String.Length(s);
+    if sLen < 10 { return 0; }
+
+    var yearStr = String.Substring(s, 0, 4);
+    var monthStr = String.Substring(s, 5, 2);
+    var dayStr = String.Substring(s, 8, 2);
+
+    var yr = stringToInt(yearStr);
+    var mo = stringToInt(monthStr);
+    var dy = stringToInt(dayStr);
+    var hr = 0;
+    var mn = 0;
+    var sc = 0;
+
+    if sLen >= 19 {
+        var sep = String.Substring(s, 10, 1);
+        if sep == "T" || sep == " " {
+            hr = stringToInt(String.Substring(s, 11, 2));
+            mn = stringToInt(String.Substring(s, 14, 2));
+            sc = stringToInt(String.Substring(s, 17, 2));
+        }
+    }
+
+    return DateTime.Create(yr, mo, dy, hr, mn, sc);
+}
+
+// Format year, month, day into YYYY-MM-DD string
+func fmtDateParts(y: Integer, m: Integer, d: Integer) -> String {
+    var result = Fmt.Int(y) + "-";
+    if m < 10 { result = result + "0"; }
+    result = result + Fmt.Int(m) + "-";
+    if d < 10 { result = result + "0"; }
+    result = result + Fmt.Int(d);
+    return result;
+}
+
+// Format hour, minute, second into HH:MM:SS string
+func fmtTimeParts(h: Integer, m: Integer, s: Integer) -> String {
+    var result = "";
+    if h < 10 { result = result + "0"; }
+    result = result + Fmt.Int(h) + ":";
+    if m < 10 { result = result + "0"; }
+    result = result + Fmt.Int(m) + ":";
+    if s < 10 { result = result + "0"; }
+    result = result + Fmt.Int(s);
+    return result;
+}
+
+//=============================================================================
+// STRING FUNCTIONS
+//=============================================================================
+
+func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
+    if name == "UPPER" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_TEXT {
+            return sqlText(String.ToUpper(arg.textValue));
+        }
+    }
+    if name == "LOWER" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_TEXT {
+            return sqlText(String.ToLower(arg.textValue));
+        }
+    }
+    if name == "LENGTH" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_TEXT {
+            return sqlInteger(String.Length(arg.textValue));
+        }
+    }
+
+    if (name == "SUBSTR" || name == "SUBSTRING") && args.count() >= 2 {
+        var strArg = args.get(0);
+        var startArg = args.get(1);
+        if strArg.kind == SQL_TEXT && startArg.kind == SQL_INTEGER {
+            var str = strArg.textValue;
+            var start = startArg.intValue - 1;
+            if start < 0 { start = 0; }
+            var len = String.Length(str) - start;
+            if args.count() >= 3 {
+                var lenArg = args.get(2);
+                if lenArg.kind == SQL_INTEGER {
+                    len = lenArg.intValue;
+                }
+            }
+            if start >= String.Length(str) {
+                return sqlText("");
+            }
+            return sqlText(String.Substring(str, start, len));
+        }
+    }
+
+    if name == "TRIM" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_TEXT {
+            var s = arg.textValue;
+            var start = 0;
+            while start < String.Length(s) && String.Substring(s, start, 1) == " " {
+                start = start + 1;
+            }
+            var end = String.Length(s);
+            while end > start && String.Substring(s, end - 1, 1) == " " {
+                end = end - 1;
+            }
+            return sqlText(String.Substring(s, start, end - start));
+        }
+    }
+
+    if name == "LTRIM" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_TEXT {
+            var s = arg.textValue;
+            var start = 0;
+            while start < String.Length(s) && String.Substring(s, start, 1) == " " {
+                start = start + 1;
+            }
+            return sqlText(String.Substring(s, start, String.Length(s) - start));
+        }
+    }
+
+    if name == "RTRIM" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_TEXT {
+            var s = arg.textValue;
+            var end = String.Length(s);
+            while end > 0 && String.Substring(s, end - 1, 1) == " " {
+                end = end - 1;
+            }
+            return sqlText(String.Substring(s, 0, end));
+        }
+    }
+
+    if name == "REPLACE" && args.count() >= 3 {
+        var strArg = args.get(0);
+        var fromArg = args.get(1);
+        var toArg = args.get(2);
+        if strArg.kind == SQL_TEXT && fromArg.kind == SQL_TEXT && toArg.kind == SQL_TEXT {
+            var str = strArg.textValue;
+            var from = fromArg.textValue;
+            var to = toArg.textValue;
+            var result = "";
+            var i = 0;
+            var fromLen = String.Length(from);
+            var strLen = String.Length(str);
+            while i < strLen {
+                if i + fromLen <= strLen && String.Substring(str, i, fromLen) == from {
+                    result = result + to;
+                    i = i + fromLen;
+                } else {
+                    result = result + String.Substring(str, i, 1);
+                    i = i + 1;
+                }
+            }
+            return sqlText(result);
+        }
+    }
+
+    if name == "CONCAT" && args.count() > 0 {
+        var result = "";
+        var i = 0;
+        while i < args.count() {
+            var arg = args.get(i);
+            if arg.kind == SQL_TEXT {
+                result = result + arg.textValue;
+            } else if arg.kind == SQL_INTEGER {
+                result = result + Fmt.Int(arg.intValue);
+            }
+            i = i + 1;
+        }
+        return sqlText(result);
+    }
+
+    if name == "INSTR" && args.count() >= 2 {
+        var strArg = args.get(0);
+        var subArg = args.get(1);
+        if strArg.kind == SQL_TEXT && subArg.kind == SQL_TEXT {
+            var str = strArg.textValue;
+            var sub = subArg.textValue;
+            var subLen = String.Length(sub);
+            var strLen = String.Length(str);
+            var i = 0;
+            while i + subLen <= strLen {
+                if String.Substring(str, i, subLen) == sub {
+                    return sqlInteger(i + 1);
+                }
+                i = i + 1;
+            }
+            return sqlInteger(0);
+        }
+    }
+
+    if name == "LEFT" && args.count() >= 2 {
+        var strArg = args.get(0);
+        var nArg = args.get(1);
+        if strArg.kind == SQL_NULL || nArg.kind == SQL_NULL { return sqlNull(); }
+        if strArg.kind == SQL_TEXT && nArg.kind == SQL_INTEGER {
+            var s = strArg.textValue;
+            var n = nArg.intValue;
+            var sLen = String.Length(s);
+            if n >= sLen { return strArg; }
+            if n <= 0 { return sqlText(""); }
+            return sqlText(String.Substring(s, 0, n));
+        }
+    }
+
+    if name == "RIGHT" && args.count() >= 2 {
+        var strArg = args.get(0);
+        var nArg = args.get(1);
+        if strArg.kind == SQL_NULL || nArg.kind == SQL_NULL { return sqlNull(); }
+        if strArg.kind == SQL_TEXT && nArg.kind == SQL_INTEGER {
+            var s = strArg.textValue;
+            var n = nArg.intValue;
+            var sLen = String.Length(s);
+            if n >= sLen { return strArg; }
+            if n <= 0 { return sqlText(""); }
+            return sqlText(String.Substring(s, sLen - n, n));
+        }
+    }
+
+    if name == "LPAD" && args.count() >= 2 {
+        var strArg = args.get(0);
+        var lenArg = args.get(1);
+        if strArg.kind == SQL_NULL || lenArg.kind == SQL_NULL { return sqlNull(); }
+        var s = strArg.toString();
+        var targetLen = lenArg.intValue;
+        var pad = " ";
+        if args.count() >= 3 {
+            var padArg = args.get(2);
+            if padArg.kind == SQL_TEXT { pad = padArg.textValue; }
+        }
+        var sLen = String.Length(s);
+        if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
+        var result = "";
+        var padLen = String.Length(pad);
+        if padLen == 0 { return sqlText(s); }
+        var needed = targetLen - sLen;
+        var pi = 0;
+        while pi < needed {
+            var ci = pi % padLen;
+            result = result + String.Substring(pad, ci, 1);
+            pi = pi + 1;
+        }
+        result = result + s;
+        return sqlText(result);
+    }
+
+    if name == "RPAD" && args.count() >= 2 {
+        var strArg = args.get(0);
+        var lenArg = args.get(1);
+        if strArg.kind == SQL_NULL || lenArg.kind == SQL_NULL { return sqlNull(); }
+        var s = strArg.toString();
+        var targetLen = lenArg.intValue;
+        var pad = " ";
+        if args.count() >= 3 {
+            var padArg = args.get(2);
+            if padArg.kind == SQL_TEXT { pad = padArg.textValue; }
+        }
+        var sLen = String.Length(s);
+        if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
+        var result = s;
+        var padLen = String.Length(pad);
+        if padLen == 0 { return sqlText(s); }
+        var needed = targetLen - sLen;
+        var pi = 0;
+        while pi < needed {
+            var ci = pi % padLen;
+            result = result + String.Substring(pad, ci, 1);
+            pi = pi + 1;
+        }
+        return sqlText(result);
+    }
+
+    if name == "REVERSE" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        if arg.kind == SQL_TEXT {
+            var s = arg.textValue;
+            var result = "";
+            var i = String.Length(s) - 1;
+            while i >= 0 {
+                result = result + String.Substring(s, i, 1);
+                i = i - 1;
+            }
+            return sqlText(result);
+        }
+    }
+
+    if name == "HEX" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        if arg.kind == SQL_INTEGER {
+            var v = arg.intValue;
+            if v == 0 { return sqlText("0"); }
+            var result = "";
+            var neg = false;
+            if v < 0 { neg = true; v = -v; }
+            while v > 0 {
+                var digit = v % 16;
+                result = String.Substring("0123456789ABCDEF", digit, 1) + result;
+                v = v / 16;
+            }
+            if neg { result = "-" + result; }
+            return sqlText(result);
+        }
+    }
+
+    return null;
+}
+
+//=============================================================================
+// MATH FUNCTIONS
+//=============================================================================
+
+func evalMathFunc(name: String, args: List[SqlValue]) -> SqlValue? {
+    if name == "ABS" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_INTEGER {
+            var v = arg.intValue;
+            if v < 0 { v = -v; }
+            return sqlInteger(v);
+        }
+    }
+
+    if name == "MOD" && args.count() >= 2 {
+        var a = args.get(0);
+        var b = args.get(1);
+        if a.kind == SQL_INTEGER && b.kind == SQL_INTEGER {
+            if b.intValue != 0 {
+                return sqlInteger(a.intValue % b.intValue);
+            }
+        }
+    }
+
+    if name == "ROUND" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_INTEGER {
+            return arg;
+        }
+    }
+
+    if name == "MIN" && args.count() == 2 {
+        var a = args.get(0);
+        var b = args.get(1);
+        if a.compare(b) <= 0 { return a; }
+        return b;
+    }
+
+    if name == "MAX" && args.count() == 2 {
+        var a = args.get(0);
+        var b = args.get(1);
+        if a.compare(b) >= 0 { return a; }
+        return b;
+    }
+
+    if (name == "POWER" || name == "POW") && args.count() >= 2 {
+        var baseArg = args.get(0);
+        var expArg = args.get(1);
+        if baseArg.kind == SQL_NULL || expArg.kind == SQL_NULL { return sqlNull(); }
+        if baseArg.kind == SQL_INTEGER && expArg.kind == SQL_INTEGER {
+            var b = baseArg.intValue;
+            var e = expArg.intValue;
+            if e == 0 { return sqlInteger(1); }
+            if e < 0 {
+                if b == 1 { return sqlInteger(1); }
+                if b == -1 {
+                    if e % 2 == 0 { return sqlInteger(1); }
+                    return sqlInteger(-1);
+                }
+                return sqlInteger(0);
+            }
+            var result = 1;
+            var i = 0;
+            while i < e {
+                result = result * b;
+                i = i + 1;
+            }
+            return sqlInteger(result);
+        }
+        var bVal = 0.0;
+        var eVal = 0.0;
+        if baseArg.kind == SQL_INTEGER { bVal = baseArg.intValue * 1.0; }
+        else if baseArg.kind == SQL_REAL { bVal = baseArg.realValue; }
+        else { bVal = stringToNumber(baseArg.textValue); }
+        if expArg.kind == SQL_INTEGER { eVal = expArg.intValue * 1.0; }
+        else if expArg.kind == SQL_REAL { eVal = expArg.realValue; }
+        else { eVal = stringToNumber(expArg.textValue); }
+        var pr = Pow(bVal, eVal);
+        var prStr = Fmt.Num(pr);
+        return sqlReal(pr, prStr);
+    }
+
+    if name == "SQRT" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var v = 0.0;
+        if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
+        else if arg.kind == SQL_REAL { v = arg.realValue; }
+        else { v = stringToNumber(arg.textValue); }
+        var sr = Sqrt(v);
+        return sqlReal(sr, Fmt.Num(sr));
+    }
+
+    if (name == "CEIL" || name == "CEILING") && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        if arg.kind == SQL_INTEGER { return arg; }
+        var v = 0.0;
+        if arg.kind == SQL_REAL { v = arg.realValue; }
+        else { v = stringToNumber(arg.textValue); }
+        var cr = Ceil(v);
+        var ci = stringToInt(Fmt.Num(cr));
+        return sqlInteger(ci);
+    }
+
+    if name == "FLOOR" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        if arg.kind == SQL_INTEGER { return arg; }
+        var v = 0.0;
+        if arg.kind == SQL_REAL { v = arg.realValue; }
+        else { v = stringToNumber(arg.textValue); }
+        var fr = Floor(v);
+        var fi = stringToInt(Fmt.Num(fr));
+        return sqlInteger(fi);
+    }
+
+    if name == "SIGN" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        if arg.kind == SQL_INTEGER {
+            if arg.intValue > 0 { return sqlInteger(1); }
+            if arg.intValue < 0 { return sqlInteger(-1); }
+            return sqlInteger(0);
+        }
+        if arg.kind == SQL_REAL {
+            if arg.realValue > 0.0 { return sqlInteger(1); }
+            if arg.realValue < 0.0 { return sqlInteger(-1); }
+            return sqlInteger(0);
+        }
+    }
+
+    if (name == "LOG" || name == "LN") && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var v = 0.0;
+        if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
+        else if arg.kind == SQL_REAL { v = arg.realValue; }
+        else { v = stringToNumber(arg.textValue); }
+        var lr = Log(v);
+        return sqlReal(lr, Fmt.Num(lr));
+    }
+
+    if name == "LOG10" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var v = 0.0;
+        if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
+        else if arg.kind == SQL_REAL { v = arg.realValue; }
+        else { v = stringToNumber(arg.textValue); }
+        var lr = Log10(v);
+        return sqlReal(lr, Fmt.Num(lr));
+    }
+
+    if name == "LOG2" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var v = 0.0;
+        if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
+        else if arg.kind == SQL_REAL { v = arg.realValue; }
+        else { v = stringToNumber(arg.textValue); }
+        var lr = Log2(v);
+        return sqlReal(lr, Fmt.Num(lr));
+    }
+
+    if name == "EXP" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var v = 0.0;
+        if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
+        else if arg.kind == SQL_REAL { v = arg.realValue; }
+        else { v = stringToNumber(arg.textValue); }
+        var er = Exp(v);
+        return sqlReal(er, Fmt.Num(er));
+    }
+
+    if name == "PI" {
+        var piVal = 3.14159265358979;
+        return sqlReal(piVal, "3.14159265358979");
+    }
+
+    return null;
+}
+
+//=============================================================================
+// CONDITIONAL FUNCTIONS (pre-evaluated args only)
+//=============================================================================
+
+func evalConditionalFunc(name: String, args: List[SqlValue]) -> SqlValue? {
+    if name == "NULLIF" && args.count() >= 2 {
+        var a = args.get(0);
+        var b = args.get(1);
+        if a.compare(b) == 0 {
+            return sqlNull();
+        }
+        return a;
+    }
+
+    if name == "TYPEOF" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlText("null"); }
+        if arg.kind == SQL_INTEGER { return sqlText("integer"); }
+        if arg.kind == SQL_TEXT { return sqlText("text"); }
+        if arg.kind == SQL_REAL { return sqlText("real"); }
+        if arg.kind == SQL_BLOB { return sqlText("blob"); }
+        return sqlText("unknown");
+    }
+
+    if name == "CAST_INTEGER" || name == "CAST_INT" {
+        if args.count() > 0 {
+            var arg = args.get(0);
+            if arg.kind == SQL_INTEGER { return arg; }
+            if arg.kind == SQL_REAL { return sqlInteger(stringToInt(arg.textValue)); }
+            if arg.kind == SQL_TEXT { return sqlInteger(stringToInt(arg.textValue)); }
+            if arg.kind == SQL_NULL { return sqlNull(); }
+        }
+    }
+
+    if name == "CAST_REAL" || name == "CAST_FLOAT" || name == "CAST_DOUBLE" {
+        if args.count() > 0 {
+            var arg = args.get(0);
+            if arg.kind == SQL_REAL { return arg; }
+            if arg.kind == SQL_INTEGER {
+                var f = arg.intValue * 1.0;
+                return sqlReal(f, Fmt.Num(f));
+            }
+            if arg.kind == SQL_TEXT {
+                var f = stringToNumber(arg.textValue);
+                return sqlReal(f, Fmt.Num(f));
+            }
+            if arg.kind == SQL_NULL { return sqlNull(); }
+        }
+    }
+
+    if name == "CAST_TEXT" || name == "CAST_VARCHAR" || name == "CAST_CHAR" {
+        if args.count() > 0 {
+            var arg = args.get(0);
+            return sqlText(arg.toString());
+        }
+    }
+
+    if name == "GREATEST" && args.count() > 0 {
+        var best = args.get(0);
+        if best.kind == SQL_NULL { return sqlNull(); }
+        var i = 1;
+        while i < args.count() {
+            var arg = args.get(i);
+            if arg.kind == SQL_NULL { return sqlNull(); }
+            if arg.compare(best) > 0 {
+                best = arg;
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+
+    if name == "LEAST" && args.count() > 0 {
+        var best = args.get(0);
+        if best.kind == SQL_NULL { return sqlNull(); }
+        var i = 1;
+        while i < args.count() {
+            var arg = args.get(i);
+            if arg.kind == SQL_NULL { return sqlNull(); }
+            if arg.compare(best) < 0 {
+                best = arg;
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+
+    return null;
+}
+
+//=============================================================================
+// DATE/TIME FUNCTIONS
+//=============================================================================
+
+func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
+    if name == "NOW" || name == "CURRENT_TIMESTAMP" {
+        var ts = DateTime.Now();
+        return sqlText(DateTime.ToLocal(ts));
+    }
+
+    if name == "CURRENT_DATE" {
+        var ts = DateTime.Now();
+        var y = DateTime.Year(ts);
+        var m = DateTime.Month(ts);
+        var d = DateTime.Day(ts);
+        return sqlText(fmtDateParts(y, m, d));
+    }
+
+    if name == "CURRENT_TIME" {
+        var ts = DateTime.Now();
+        var h = DateTime.Hour(ts);
+        var mi = DateTime.Minute(ts);
+        var s = DateTime.Second(ts);
+        return sqlText(fmtTimeParts(h, mi, s));
+    }
+
+    if name == "DATETIME" && args.count() >= 3 {
+        var yv = args.get(0);
+        var mv = args.get(1);
+        var dv = args.get(2);
+        if yv.kind == SQL_NULL || mv.kind == SQL_NULL || dv.kind == SQL_NULL { return sqlNull(); }
+        var yi = sqlToInt(yv);
+        var mi = sqlToInt(mv);
+        var di = sqlToInt(dv);
+        var hi = 0;
+        var mni = 0;
+        var si = 0;
+        if args.count() >= 4 { hi = sqlToInt(args.get(3)); }
+        if args.count() >= 5 { mni = sqlToInt(args.get(4)); }
+        if args.count() >= 6 { si = sqlToInt(args.get(5)); }
+        return sqlText(fmtDateParts(yi, mi, di) + "T" + fmtTimeParts(hi, mni, si));
+    }
+
+    if name == "DATE" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var s = arg.toString();
+        if String.Length(s) >= 10 {
+            return sqlText(String.Substring(s, 0, 10));
+        }
+        return sqlText(s);
+    }
+
+    if name == "TIME" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var s = arg.toString();
+        var tPos = findChar(s, "T");
+        if tPos < 0 { tPos = findChar(s, " "); }
+        if tPos >= 0 && String.Length(s) >= tPos + 9 {
+            return sqlText(String.Substring(s, tPos + 1, 8));
+        }
+        return sqlText("00:00:00");
+    }
+
+    if name == "YEAR" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(DateTime.Year(parseDateTimeArg(arg)));
+    }
+
+    if name == "MONTH" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(DateTime.Month(parseDateTimeArg(arg)));
+    }
+
+    if name == "DAY" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(DateTime.Day(parseDateTimeArg(arg)));
+    }
+
+    if name == "HOUR" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(DateTime.Hour(parseDateTimeArg(arg)));
+    }
+
+    if name == "MINUTE" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(DateTime.Minute(parseDateTimeArg(arg)));
+    }
+
+    if name == "SECOND" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(DateTime.Second(parseDateTimeArg(arg)));
+    }
+
+    if name == "DAYOFWEEK" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(DateTime.DayOfWeek(parseDateTimeArg(arg)));
+    }
+
+    if name == "DATE_ADD" && args.count() >= 2 {
+        var arg = args.get(0);
+        var daysArg = args.get(1);
+        if arg.kind == SQL_NULL || daysArg.kind == SQL_NULL { return sqlNull(); }
+        var ts = parseDateTimeArg(arg);
+        var days = sqlToInt(daysArg);
+        var result = DateTime.AddDays(ts, days);
+        return sqlText(DateTime.ToLocal(result));
+    }
+
+    if name == "DATE_SUB" && args.count() >= 2 {
+        var arg = args.get(0);
+        var daysArg = args.get(1);
+        if arg.kind == SQL_NULL || daysArg.kind == SQL_NULL { return sqlNull(); }
+        var ts = parseDateTimeArg(arg);
+        var days = sqlToInt(daysArg);
+        var result = DateTime.AddDays(ts, 0 - days);
+        return sqlText(DateTime.ToLocal(result));
+    }
+
+    if name == "DATEDIFF" && args.count() >= 2 {
+        var arg1 = args.get(0);
+        var arg2 = args.get(1);
+        if arg1.kind == SQL_NULL || arg2.kind == SQL_NULL { return sqlNull(); }
+        var ts1 = parseDateTimeArg(arg1);
+        var ts2 = parseDateTimeArg(arg2);
+        var y1 = DateTime.Year(ts1);
+        var m1 = DateTime.Month(ts1);
+        var d1 = DateTime.Day(ts1);
+        var y2 = DateTime.Year(ts2);
+        var m2 = DateTime.Month(ts2);
+        var d2 = DateTime.Day(ts2);
+        var noon1 = DateTime.Create(y1, m1, d1, 12, 0, 0);
+        var noon2 = DateTime.Create(y2, m2, d2, 12, 0, 0);
+        var diffSecs = DateTime.Diff(noon1, noon2);
+        if diffSecs >= 0 {
+            return sqlInteger((diffSecs + 43200) / 86400);
+        }
+        return sqlInteger((diffSecs - 43200) / 86400);
+    }
+
+    if name == "TIMEDIFF" && args.count() >= 2 {
+        var arg1 = args.get(0);
+        var arg2 = args.get(1);
+        if arg1.kind == SQL_NULL || arg2.kind == SQL_NULL { return sqlNull(); }
+        var ts1 = parseDateTimeArg(arg1);
+        var ts2 = parseDateTimeArg(arg2);
+        return sqlInteger(DateTime.Diff(ts1, ts2));
+    }
+
+    if name == "STRFTIME" && args.count() >= 2 {
+        var fmtArg = args.get(0);
+        var dtArg = args.get(1);
+        if fmtArg.kind == SQL_NULL || dtArg.kind == SQL_NULL { return sqlNull(); }
+        var ts = parseDateTimeArg(dtArg);
+        return sqlText(DateTime.Format(ts, fmtArg.toString()));
+    }
+
+    if name == "EPOCH" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        return sqlInteger(parseDateTimeArg(arg));
+    }
+
+    if name == "FROM_EPOCH" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        var secs = sqlToInt(arg);
+        return sqlText(DateTime.ToLocal(secs));
+    }
+
+    return null;
+}
+
+//=============================================================================
+// MASTER DISPATCH
+//=============================================================================
+
+// Dispatch a SQL function call, returning sqlNull() if not recognized.
+// This is the non-optional version used by the executor.
+func dispatchSqlFunctionOrNull(name: String, args: List[SqlValue]) -> SqlValue {
+    var result = dispatchSqlFunction(name, args);
+    if result != null {
+        var r = result;
+        return r;
+    }
+    return sqlNull();
+}
+
+// Dispatch a SQL function call to the appropriate category handler.
+// Takes the function name (UPPER-CASED) and pre-evaluated arguments.
+// Returns null if the function is not recognized by any category.
+func dispatchSqlFunction(name: String, args: List[SqlValue]) -> SqlValue? {
+    var result = evalStringFunc(name, args);
+    if result != null { return result; }
+
+    result = evalMathFunc(name, args);
+    if result != null { return result; }
+
+    result = evalConditionalFunc(name, args);
+    if result != null { return result; }
+
+    result = evalDateFunc(name, args);
+    if result != null { return result; }
+
+    return null;
+}

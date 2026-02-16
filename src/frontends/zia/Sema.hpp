@@ -557,6 +557,13 @@ class Sema
     /// @brief Register interface member signatures for cross-module resolution.
     void registerInterfaceMembers(InterfaceDecl &decl);
 
+    /// @brief Pre-pass: Eagerly resolve types of final constants from literal initializers.
+    /// @param declarations The declaration list to process.
+    /// @details Scans for GlobalVarDecl with isFinal and literal initializer, updating
+    ///          the symbol's type from unknown() to the concrete type. This allows
+    ///          forward references to final constants in entity/function bodies.
+    void registerFinalConstantTypes(std::vector<DeclPtr> &declarations);
+
     /// @brief Pass 2: Register member signatures (fields, methods) for type declarations.
     /// @param declarations The declaration list to process.
     void registerMemberSignatures(std::vector<DeclPtr> &declarations);

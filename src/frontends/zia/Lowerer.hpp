@@ -587,6 +587,12 @@ class Lowerer
     ///          where entity A's methods reference entity B declared later.
     void registerAllTypeLayouts(std::vector<DeclPtr> &declarations);
 
+    /// @brief Pre-register all `final` constant declarations before the main lowering pass.
+    /// @details Ensures that `final` constants are available in globalConstants_ before any
+    ///          entity/function method bodies are lowered, fixing forward-reference issues
+    ///          where an entity method references a `final` defined later in the same file.
+    void registerAllFinalConstants(std::vector<DeclPtr> &declarations);
+
     /// @brief Register a single entity type's field layout without lowering methods.
     /// @param decl The entity declaration.
     void registerEntityLayout(EntityDecl &decl);

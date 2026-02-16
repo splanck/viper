@@ -1,0 +1,110 @@
+// tcp_server.zia — ViperSQL TCP Server
+// Part of ViperSQL - Multi-User Foundation (Phase 7) + PG Wire Protocol (Phase 9)
+//
+// Main entry point for the multi-user TCP server.
+// Creates a shared DatabaseServer, initializes the thread pool,
+// and runs the accept loop dispatching connections to workers.
+//
+// The server accepts PostgreSQL wire protocol v3 connections (psql, JDBC, ODBC).
+// A text protocol server is also available on a separate port for simple clients.
+//
+// Usage:
+//   viper run demos/zia/sqldb/server/tcp_server.zia
+//
+// Connect via psql:
+//   psql -h localhost -p 5432 -U admin -d main
+//
+// Connect via text protocol:
+//   nc localhost 5433
+
+module tcp_server;
+
+bind Terminal = Viper.Terminal;
+bind Network = Viper.Network;
+bind Fmt = Viper.Fmt;
+bind Threads = Viper.Threads;
+
+bind "../server";
+bind "./threadpool";
+bind "./connection";
+
+//=============================================================================
+// SERVER CONFIGURATION
+//=============================================================================
+
+final PG_PORT = 5432;            // PostgreSQL wire protocol port
+final TEXT_PORT = 5433;          // Text protocol port (for nc/telnet)
+
+//=============================================================================
+// SERVER STARTUP
+//=============================================================================
+
+// Start the ViperSQL TCP server with PG wire protocol
+func sqlServerStart(pgPort: Integer, textPort: Integer) {
+    Terminal.Say("========================================");
+    Terminal.Say("  ViperSQL Server v0.2");
+    Terminal.Say("  PostgreSQL Wire Protocol v3");
+    Terminal.Say("========================================");
+
+    // Create the shared DatabaseServer
+    var dbServer = new DatabaseServer();
+    dbServer.init();
+
+    Terminal.Say("Database server initialized (database: main)");
+
+    // Initialize connection handler with shared server
+    sql_connection_init(dbServer);
+
+    Terminal.Say("Thread model: thread-per-connection");
+    Terminal.Say("");
+
+    // Start text protocol listener on separate thread (if port > 0)
+    if textPort > 0 {
+        var textArgs: List[Integer] = [];
+        textArgs.add(textPort);
+        Threads.Thread.StartSafe(&textProtocolListener, textArgs);
+        Terminal.Say("Text protocol listening on port " + Fmt.Int(textPort));
+    }
+
+    // Start PG wire protocol listener (main thread)
+    var pgServer = Network.TcpServer.Listen(pgPort);
+    Terminal.Say("PG wire protocol listening on port " + Fmt.Int(pgPort));
+    Terminal.Say("");
+    Terminal.Say("Connect via: psql -h localhost -p " + Fmt.Int(pgPort) + " -U admin -d main");
+    Terminal.Say("Press Ctrl+C to stop.");
+    Terminal.Say("");
+
+    // Accept loop — dispatch PG wire connections
+    var running = 1;
+    while running == 1 {
+        var client = Network.TcpServer.Accept(pgServer);
+        Threads.Thread.StartSafe(&handlePgClient, client);
+    }
+
+    // Shutdown
+    Terminal.Say("Shutting down...");
+    Network.TcpServer.Close(pgServer);
+    Terminal.Say("Server stopped.");
+}
+
+// Text protocol listener — runs on a separate thread
+func textProtocolListener(args: List[Integer]) {
+    var port = args.get(0);
+    var server = Network.TcpServer.Listen(port);
+
+    var running = 1;
+    while running == 1 {
+        var client = Network.TcpServer.Accept(server);
+        Threads.Thread.StartSafe(&handleSqlClient, client);
+    }
+
+    Network.TcpServer.Close(server);
+}
+
+//=============================================================================
+// MAIN ENTRY POINT
+//=============================================================================
+
+func start() {
+    sqlServerStart(PG_PORT, TEXT_PORT);
+}

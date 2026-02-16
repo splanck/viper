@@ -272,6 +272,10 @@ entity Lexer {
         if (word == "CURRENT") { return TK_CURRENT; }
         if (word == "ROW") { return TK_ROW; }
         if (word == "RECURSIVE") { return TK_RECURSIVE; }
+        if (word == "TEMPORARY") { return TK_TEMPORARY; }
+        if (word == "TEMP") { return TK_TEMPORARY; }
+        if (word == "USER") { return TK_USER; }
+        if (word == "PASSWORD") { return TK_PASSWORD; }
         return TK_IDENTIFIER;
     }
 

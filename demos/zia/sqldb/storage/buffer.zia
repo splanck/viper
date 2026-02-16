@@ -3,6 +3,8 @@
 
 module buffer;
 
+bind Threads = Viper.Threads;
+
 bind "./page";
 bind "./pager";
 bind "./serializer";
@@ -19,6 +21,7 @@ final DEFAULT_POOL_SIZE = 100;
 //=============================================================================
 
 // LRU-style buffer pool for caching pages
+// Thread-safe: all public methods are protected by a Monitor lock.
 entity BufferPool {
     expose Pager pager;
     hide List[Page] pages;
@@ -26,6 +29,7 @@ entity BufferPool {
     hide List[Integer] accessOrder;  // For LRU eviction
     hide Integer maxSize;
     hide Integer accessCounter;
+    hide List[Integer] lock;  // Monitor object for thread safety
 
     expose func init() {
         pager = new Pager();
@@ -35,6 +39,7 @@ entity BufferPool {
         accessOrder = [];
         maxSize = DEFAULT_POOL_SIZE;
         accessCounter = 0;
+        lock = [];
     }
 
     expose func initWithSize(poolSize: Integer) {
@@ -45,6 +50,7 @@ entity BufferPool {
         accessOrder = [];
         maxSize = poolSize;
         accessCounter = 0;
+        lock = [];
     }
 
     expose func initWithPager(existingPager: Pager) {
@@ -54,6 +60,7 @@ entity BufferPool {
         accessOrder = [];
         maxSize = DEFAULT_POOL_SIZE;
         accessCounter = 0;
+        lock = [];
     }
 
     //=========================================================================
@@ -62,21 +69,29 @@ entity BufferPool {
 
     // Create a new database
     expose func createDatabase(filename: String) -> Boolean {
-        return pager.createDatabase(filename);
+        Threads.Monitor.Enter(lock);
+        var result = pager.createDatabase(filename);
+        Threads.Monitor.Exit(lock);
+        return result;
     }
 
     // Open an existing database
     expose func openDatabase(filename: String) -> Boolean {
-        return pager.openDatabase(filename);
+        Threads.Monitor.Enter(lock);
+        var result = pager.openDatabase(filename);
+        Threads.Monitor.Exit(lock);
+        return result;
     }
 
     // Close the database and flush all dirty pages
     expose func closeDatabase() {
-        flushAll();
+        Threads.Monitor.Enter(lock);
+        flushAllInternal();
         pager.closeDatabase();
         pages = [];
         pageIds = [];
         accessOrder = [];
+        Threads.Monitor.Exit(lock);
     }
 
     //=========================================================================
@@ -85,6 +100,13 @@ entity BufferPool {
 
     // Fetch a page (from cache or disk)
     expose func fetchPage(pageId: Integer) -> Page? {
+        Threads.Monitor.Enter(lock);
+        var result = fetchPageInternal(pageId);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func fetchPageInternal(pageId: Integer) -> Page? {
         // Check if page is in cache
         var cacheIdx = findInCache(pageId);
         if cacheIdx >= 0 {
@@ -119,6 +141,13 @@ entity BufferPool {
 
     // Create a new page
     expose func newPage(pageType: Integer) -> Page {
+        Threads.Monitor.Enter(lock);
+        var result = newPageInternal(pageType);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func newPageInternal(pageType: Integer) -> Page {
         var pageId = pager.allocatePage();
 
         var page = new Page();
@@ -142,6 +171,7 @@ entity BufferPool {
 
     // Unpin a page (allow eviction)
     expose func unpinPage(pageId: Integer, isDirty: Boolean) {
+        Threads.Monitor.Enter(lock);
         var cacheIdx = findInCache(pageId);
         if cacheIdx >= 0 {
             var page = pages.get(cacheIdx);
@@ -150,12 +180,15 @@ entity BufferPool {
                 page.markDirty();
             }
         }
+        Threads.Monitor.Exit(lock);
     }
 
     // Flush a specific page to disk
     expose func flushPage(pageId: Integer) -> Boolean {
+        Threads.Monitor.Enter(lock);
         var cacheIdx = findInCache(pageId);
         if cacheIdx < 0 {
+            Threads.Monitor.Exit(lock);
             return false;
         }
 
@@ -163,11 +196,19 @@ entity BufferPool {
         if page.dirty {
             pager.writePage(page);
         }
+        Threads.Monitor.Exit(lock);
         return true;
     }
 
     // Flush all dirty pages to disk and update the file header
     expose func flushAll() {
+        Threads.Monitor.Enter(lock);
+        flushAllInternal();
+        Threads.Monitor.Exit(lock);
+    }
+
+    // Internal flush (no locking) — called by closeDatabase and flushAll
+    hide func flushAllInternal() {
         var i = 0;
         while i < pages.count() {
             var page = pages.get(i);
@@ -182,6 +223,7 @@ entity BufferPool {
 
     // Delete a page (free for reuse)
     expose func deletePage(pageId: Integer) {
+        Threads.Monitor.Enter(lock);
         // Remove from cache if present
         var cacheIdx = findInCache(pageId);
         if cacheIdx >= 0 {
@@ -190,6 +232,7 @@ entity BufferPool {
 
         // Add to free list
         pager.freePage(pageId);
+        Threads.Monitor.Exit(lock);
     }
 
     //=========================================================================

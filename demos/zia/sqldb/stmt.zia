@@ -25,10 +25,12 @@ final STMT_DROP_TABLE = 6;
 entity CreateTableStmt {
     expose String tableName;
     expose List[Column] columns;
+    expose Boolean isTemporary;
 
     expose func init() {
         tableName = "";
         columns = [];
+        isTemporary = false;
     }
 
     expose func addColumn(col: Column) {

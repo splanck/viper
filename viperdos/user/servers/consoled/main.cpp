@@ -8,7 +8,9 @@
  * @file main.cpp
  * @brief Console server (consoled) main entry point.
  *
- * Refactored using OOP principles with ConsoleServer class.
+ * Uses an embedded shell that runs commands in-process, writing directly
+ * to the TextBuffer via AnsiParser. This matches the architecture of every
+ * other working GUI app in ViperDOS (direct drawing + synchronous present).
  */
 //===----------------------------------------------------------------------===//
 
@@ -16,9 +18,10 @@
 #include "../../syscall.hpp"
 #include "ansi.hpp"
 #include "console_protocol.hpp"
+#include "embedded_shell.hpp"
 #include "keymap.hpp"
 #include "request.hpp"
-#include "shell.hpp"
+#include "shell_io.hpp"
 #include "text_buffer.hpp"
 #include <gui.h>
 
@@ -83,8 +86,7 @@ class ConsoleServer {
   public:
     ConsoleServer()
         : m_window(nullptr), m_windowWidth(0), m_windowHeight(0), m_serviceChannel(-1),
-          m_isPrimary(false), m_instanceId(0), m_lastPresentTime(0), m_hadFirstShellOutput(false),
-          m_shellSpawnTime(0) {}
+          m_isPrimary(false), m_instanceId(0), m_lastPresentTime(0) {}
 
     bool init() {
         sys::print("\033[0m"); // Reset console colors
@@ -112,7 +114,6 @@ class ConsoleServer {
         }
 
         registerService();
-        spawnShell();
 
         return true;
     }
@@ -126,33 +127,14 @@ class ConsoleServer {
 
         while (true) {
             bool didWork = false;
-            uint64_t now = sys::uptime();
 
-            // Process IPC messages
+            // Process IPC messages (CONSOLED service for other apps)
             if (m_isPrimary && m_serviceChannel >= 0) {
                 didWork |= processIpcMessages(msgBuf, handles);
             }
 
-            // Poll shell output
-            if (m_shellManager.has_shell()) {
-                if (m_shellManager.poll_output(m_ansiParser)) {
-                    didWork = true;
-                    // Force immediate present for first shell output (bypass frame limiting)
-                    if (!m_hadFirstShellOutput) {
-                        m_hadFirstShellOutput = true;
-                        Debug::print("[consoled] First shell output received\n");
-                        if (m_textBuffer.needs_present()) {
-                            // Use synchronous present to guarantee displayd composites
-                            gui_present(m_window);
-                            m_textBuffer.clear_needs_present();
-                            m_lastPresentTime = sys::uptime();
-                        }
-                    }
-                }
-            }
-
             // Present with frame rate limiting
-            now = sys::uptime();
+            uint64_t now = sys::uptime();
             uint64_t timeSincePresent = now - m_lastPresentTime;
             if (m_textBuffer.needs_present() && timeSincePresent >= FRAME_INTERVAL_MS) {
                 int present_err = gui_present_async(m_window);
@@ -162,26 +144,17 @@ class ConsoleServer {
                 }
             }
 
-            // Process GUI events (limit per iteration to allow poll_output to run)
-            uint32_t eventsProcessed = 0;
-            constexpr uint32_t MAX_EVENTS_PER_LOOP = 16;
-            while (eventsProcessed < MAX_EVENTS_PER_LOOP && gui_poll_event(m_window, &event) == 0) {
-                eventsProcessed++;
+            // Process GUI events
+            while (gui_poll_event(m_window, &event) == 0) {
                 didWork = true;
                 if (!handleEvent(event)) {
                     return; // Window closed
                 }
             }
 
-            // Sleep if no work - but not during startup polling period
+            // Sleep if no work
             if (!didWork) {
-                // During first 2 seconds after shell spawn, don't sleep - aggressively poll
-                bool inStartupPoll = m_shellManager.has_shell() && !m_hadFirstShellOutput &&
-                                     (now - m_shellSpawnTime) < 2000;
-                if (inStartupPoll) {
-                    // Don't sleep - just continue polling
-                    // This avoids relying on timer wakeups which seem unreliable
-                } else if (m_textBuffer.needs_present()) {
+                if (m_textBuffer.needs_present()) {
                     uint64_t remaining = FRAME_INTERVAL_MS - timeSincePresent;
                     if (remaining > 0 && remaining <= FRAME_INTERVAL_MS) {
                         sys::sleep(remaining);
@@ -202,8 +175,7 @@ class ConsoleServer {
     // Console components
     TextBuffer m_textBuffer;
     AnsiParser m_ansiParser;
-    ShellManager m_shellManager;
-    LocalShell m_localShell;
+    EmbeddedShell m_shell;
     RequestHandler m_requestHandler;
 
     // Service state
@@ -211,8 +183,6 @@ class ConsoleServer {
     bool m_isPrimary;
     uint32_t m_instanceId;
     uint64_t m_lastPresentTime;
-    bool m_hadFirstShellOutput;
-    uint64_t m_shellSpawnTime;
 
     bool receiveBootstrapCaps() {
         Debug::print("[consoled] Checking bootstrap channel...\n");
@@ -349,12 +319,26 @@ class ConsoleServer {
 
         m_ansiParser.init(&m_textBuffer, DEFAULT_FG, DEFAULT_BG);
         m_requestHandler.init(&m_textBuffer, &m_ansiParser);
-        m_localShell.init(&m_textBuffer, &m_ansiParser);
 
+        // Initialize embedded shell I/O and print banner + prompt
+        shell_io_init(&m_ansiParser, &m_textBuffer, m_window);
+        m_shell.init(&m_textBuffer, &m_ansiParser);
+
+        // Fill background and draw initial content
         gui_fill_rect(m_window, 0, 0, m_windowWidth, m_windowHeight, DEFAULT_BG);
-        m_textBuffer.redraw_all();
-        gui_present_async(m_window);
 
+        // Print banner and prompt (writes to text buffer via AnsiParser)
+        m_shell.print_banner();
+        m_shell.print_prompt();
+
+        // Redraw with prompt content and present synchronously
+        m_textBuffer.redraw_all();
+        gui_present(m_window); // Synchronous — prompt visible immediately
+
+        // Ensure we have keyboard focus (critical when launched from workbench)
+        gui_request_focus(m_window);
+
+        Debug::print("[consoled] Shell initialized, prompt displayed\n");
         return true;
     }
 
@@ -389,14 +373,6 @@ class ConsoleServer {
         Debug::print("[consoled] Ready.\n");
     }
 
-    void spawnShell() {
-        if (!m_shellManager.spawn()) {
-            Debug::print("[consoled] Failed to spawn shell, will use legacy mode\n");
-        } else {
-            m_shellSpawnTime = sys::uptime();
-        }
-    }
-
     bool processIpcMessages(uint8_t *msgBuf, uint32_t *handles) {
         uint32_t messagesProcessed = 0;
 
@@ -429,14 +405,22 @@ class ConsoleServer {
         if (event.type == GUI_EVENT_KEY && event.key.pressed) {
             char c = keycode_to_ascii(event.key.keycode, event.key.modifiers);
 
-            if (m_shellManager.has_shell()) {
-                m_shellManager.send_input(c, event.key.keycode, event.key.modifiers);
-            } else if (c != 0 && !m_isPrimary) {
-                m_localShell.handle_input(c);
+            // Handle special keys (arrows, home, end, delete)
+            m_shell.handle_special_key(event.key.keycode, event.key.modifiers);
+
+            // Handle ASCII characters
+            if (c != 0) {
+                m_shell.handle_char(c);
+            }
+
+            // Force synchronous present after command execution
+            if (m_shell.command_just_ran()) {
+                gui_present(m_window);
+                m_textBuffer.clear_needs_present();
+                m_lastPresentTime = sys::uptime();
             }
         } else if (event.type == GUI_EVENT_CLOSE) {
             Debug::print("[consoled] Closing console...\n");
-            m_shellManager.close();
             if (m_window) {
                 gui_destroy_window(m_window);
                 m_window = nullptr;

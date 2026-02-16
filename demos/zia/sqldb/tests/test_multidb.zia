@@ -19,7 +19,7 @@ func testDefaultDatabase() {
     exec.init();
 
     // Server should start with 'main' database
-    assertTrue(exec.server.currentDbName == "main", "Default database should be 'main'");
+    assertTrue(exec.currentDbName == "main", "Default database should be 'main'");
     assertTrue(exec.server.databaseCount() == 1, "Should have 1 database initially");
 }
 
@@ -48,7 +48,7 @@ func testUseDatabase() {
     exec.executeSql("CREATE DATABASE mydb");
     var result = exec.executeSql("USE mydb");
     assertTrue(result.success, "USE mydb should succeed");
-    assertTrue(exec.server.currentDbName == "mydb", "Current database should be 'mydb'");
+    assertTrue(exec.currentDbName == "mydb", "Current database should be 'mydb'");
 
     // Try to use non-existent database
     result = exec.executeSql("USE nonexistent");

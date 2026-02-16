@@ -665,6 +665,98 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+//===----------------------------------------------------------------------===//
+// Final Constant Forward Reference
+//===----------------------------------------------------------------------===//
+
+/// @brief Test that entity methods can reference `final` constants defined later
+/// in the same file. This was a bug where the single-pass lowering processed
+/// entity methods before later `final` declarations, causing them to resolve to 0.
+TEST(ZiaBugFixes, FinalConstantForwardReference)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Config {
+    expose Integer val;
+    expose func init() {
+        val = DEFAULT_SIZE;
+    }
+}
+
+final DEFAULT_SIZE = 42;
+
+func start() {
+    var c = new Config();
+    c.init();
+    Viper.Terminal.SayInt(c.val);
+}
+)";
+
+    CompilerInput input{.source = source, .path = "final_forward_ref.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify the constant was inlined correctly by checking the IL output
+    // The entity method should use const 42, not 0
+    if (result.succeeded())
+    {
+        auto &mod = result.module;
+        bool found42 = false;
+        for (auto &fn : mod.functions)
+        {
+            for (auto &bb : fn.blocks)
+            {
+                for (auto &instr : bb.instructions)
+                {
+                    for (auto &op : instr.operands)
+                    {
+                        if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == 42)
+                        {
+                            found42 = true;
+                        }
+                    }
+                }
+            }
+        }
+        EXPECT_TRUE(found42);
+    }
+}
+
+/// @brief Test that multiple finals defined after an entity all resolve correctly.
+TEST(ZiaBugFixes, MultipleFinalConstantsForwardReference)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity MathHelper {
+    expose func getSum() -> Integer {
+        return VAL_A + VAL_B + VAL_C;
+    }
+}
+
+final VAL_A = 10;
+final VAL_B = 20;
+final VAL_C = 30;
+
+func start() {
+    var h = new MathHelper();
+    Viper.Terminal.SayInt(h.getSum());
+}
+)";
+
+    CompilerInput input{.source = source, .path = "multi_final_forward_ref.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

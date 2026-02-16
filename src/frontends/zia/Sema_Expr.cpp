@@ -208,6 +208,16 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
         errorUndefined(expr->loc, expr->name);
         return types::unknown();
     }
+
+    // For variables and parameters, respect flow-sensitive type narrowing
+    // (e.g., after `if x != null`, x is narrowed from T? to T)
+    if (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter)
+    {
+        TypeRef narrowed = lookupVarType(expr->name);
+        if (narrowed)
+            return narrowed;
+    }
+
     return sym->type;
 }
 

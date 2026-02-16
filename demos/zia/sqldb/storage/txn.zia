@@ -4,10 +4,200 @@
 module txn;
 
 bind Fmt = Viper.Fmt;
+bind Threads = Viper.Threads;
+bind Time = Viper.Time;
 
 bind "./page";
 bind "./wal";
 bind "./serializer";
+
+//=============================================================================
+// TABLE LOCK MANAGER (Multi-User Concurrency Control)
+//=============================================================================
+
+// Lock acquisition timeout and retry interval (milliseconds)
+final LOCK_TIMEOUT_MS = 5000;
+final LOCK_RETRY_INTERVAL_MS = 10;
+
+// Thread-safe table-level lock manager for concurrent access.
+// Uses parallel lists to track lock ownership (tableName → sessionId → mode).
+// Lock modes: LOCK_SHARED (1) for reads, LOCK_EXCLUSIVE (2) for writes.
+// Compatibility: S+S = OK, S+X = conflict, X+X = conflict.
+// Blocking: spins with SleepMs + timeout on conflict.
+entity TableLockManager {
+    hide List[String] lockTableNames;
+    hide List[Integer] lockSessionIds;
+    hide List[Integer] lockModes;
+    hide List[Integer] monitor;
+
+    expose func init() {
+        lockTableNames = [];
+        lockSessionIds = [];
+        lockModes = [];
+        monitor = [];
+    }
+
+    // Acquire a table lock (blocking with timeout).
+    // Returns true if acquired, false on timeout.
+    expose func acquireTableLock(sessionId: Integer, tableName: String, mode: Integer) -> Boolean {
+        var waited = 0;
+        while waited < LOCK_TIMEOUT_MS {
+            Threads.Monitor.Enter(monitor);
+
+            // Check if this session already holds an adequate lock
+            var alreadyHeld = false;
+            var i = 0;
+            while i < lockTableNames.count() {
+                if lockSessionIds.get(i) == sessionId && lockTableNames.get(i) == tableName {
+                    if lockModes.get(i) >= mode {
+                        alreadyHeld = true;
+                    }
+                }
+                i = i + 1;
+            }
+
+            if alreadyHeld {
+                Threads.Monitor.Exit(monitor);
+                return true;
+            }
+
+            // Check for conflicts with other sessions
+            var conflict = false;
+            i = 0;
+            while i < lockTableNames.count() {
+                if lockTableNames.get(i) == tableName && lockSessionIds.get(i) != sessionId {
+                    if mode == LOCK_EXCLUSIVE || lockModes.get(i) == LOCK_EXCLUSIVE {
+                        conflict = true;
+                    }
+                }
+                i = i + 1;
+            }
+
+            if conflict == false {
+                // Grant the lock
+                lockTableNames.add(tableName);
+                lockSessionIds.add(sessionId);
+                lockModes.add(mode);
+                Threads.Monitor.Exit(monitor);
+                return true;
+            }
+
+            Threads.Monitor.Exit(monitor);
+
+            // Wait and retry
+            Time.SleepMs(LOCK_RETRY_INTERVAL_MS);
+            waited = waited + LOCK_RETRY_INTERVAL_MS;
+        }
+
+        return false;  // Timeout
+    }
+
+    // Release all locks held by a session
+    expose func releaseAllLocks(sessionId: Integer) {
+        Threads.Monitor.Enter(monitor);
+        var newNames: List[String] = [];
+        var newSessions: List[Integer] = [];
+        var newModes: List[Integer] = [];
+        var i = 0;
+        while i < lockTableNames.count() {
+            if lockSessionIds.get(i) != sessionId {
+                newNames.add(lockTableNames.get(i));
+                newSessions.add(lockSessionIds.get(i));
+                newModes.add(lockModes.get(i));
+            }
+            i = i + 1;
+        }
+        lockTableNames = newNames;
+        lockSessionIds = newSessions;
+        lockModes = newModes;
+        Threads.Monitor.Exit(monitor);
+    }
+
+    // Release a specific table lock held by a session
+    expose func releaseTableLock(sessionId: Integer, tableName: String) {
+        Threads.Monitor.Enter(monitor);
+        var newNames: List[String] = [];
+        var newSessions: List[Integer] = [];
+        var newModes: List[Integer] = [];
+        var i = 0;
+        while i < lockTableNames.count() {
+            var skip = false;
+            if lockSessionIds.get(i) == sessionId && lockTableNames.get(i) == tableName {
+                skip = true;
+            }
+            if skip == false {
+                newNames.add(lockTableNames.get(i));
+                newSessions.add(lockSessionIds.get(i));
+                newModes.add(lockModes.get(i));
+            }
+            i = i + 1;
+        }
+        lockTableNames = newNames;
+        lockSessionIds = newSessions;
+        lockModes = newModes;
+        Threads.Monitor.Exit(monitor);
+    }
+
+    // Get total active lock count (for diagnostics)
+    expose func lockCount() -> Integer {
+        Threads.Monitor.Enter(monitor);
+        var count = lockTableNames.count();
+        Threads.Monitor.Exit(monitor);
+        return count;
+    }
+
+    // Get lock count for a specific session
+    expose func sessionLockCount(sessionId: Integer) -> Integer {
+        Threads.Monitor.Enter(monitor);
+        var count = 0;
+        var i = 0;
+        while i < lockTableNames.count() {
+            if lockSessionIds.get(i) == sessionId {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(monitor);
+        return count;
+    }
+
+    // Non-blocking lock attempt. Returns true if lock granted, false if conflict.
+    // Does NOT retry or sleep. Useful for testing and try-lock semantics.
+    expose func tryAcquireTableLock(sessionId: Integer, tableName: String, mode: Integer) -> Boolean {
+        Threads.Monitor.Enter(monitor);
+
+        // Check if already held
+        var i = 0;
+        while i < lockTableNames.count() {
+            if lockSessionIds.get(i) == sessionId && lockTableNames.get(i) == tableName {
+                if lockModes.get(i) >= mode {
+                    Threads.Monitor.Exit(monitor);
+                    return true;
+                }
+            }
+            i = i + 1;
+        }
+
+        // Check for conflicts
+        i = 0;
+        while i < lockTableNames.count() {
+            if lockTableNames.get(i) == tableName && lockSessionIds.get(i) != sessionId {
+                if mode == LOCK_EXCLUSIVE || lockModes.get(i) == LOCK_EXCLUSIVE {
+                    Threads.Monitor.Exit(monitor);
+                    return false;  // Conflict
+                }
+            }
+            i = i + 1;
+        }
+
+        // Grant lock
+        lockTableNames.add(tableName);
+        lockSessionIds.add(sessionId);
+        lockModes.add(mode);
+        Threads.Monitor.Exit(monitor);
+        return true;
+    }
+}
 
 //=============================================================================
 // TRANSACTION CONSTANTS

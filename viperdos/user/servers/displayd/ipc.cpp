@@ -11,6 +11,7 @@
 
 #include "ipc.hpp"
 #include "compositor.hpp"
+#include "events.hpp"
 #include "state.hpp"
 #include "surface.hpp"
 
@@ -19,8 +20,8 @@ namespace displayd {
 void handle_create_surface(int32_t client_channel,
                            const uint8_t *data,
                            size_t len,
-                           const uint32_t * /*handles*/,
-                           uint32_t /*handle_count*/) {
+                           const uint32_t *handles,
+                           uint32_t handle_count) {
     if (len < sizeof(CreateSurfaceRequest))
         return;
     auto *req = reinterpret_cast<const CreateSurfaceRequest *>(data);
@@ -125,6 +126,13 @@ void handle_create_surface(int32_t client_channel,
     // Set focus to new surface (unless it's a SYSTEM surface like desktop)
     if (!(surf->flags & SURFACE_FLAG_SYSTEM)) {
         g_focused_surface = surf->id;
+    }
+
+    // If client passed an event channel with CREATE_SURFACE, store it now.
+    // This eliminates the race between surface creation and event subscription.
+    if (handle_count > 0) {
+        surf->event_channel = static_cast<int32_t>(handles[0]);
+        flush_events(surf); // Drain any events queued during creation
     }
 
     reply.status = 0;
@@ -334,6 +342,7 @@ void handle_request(int32_t client_channel,
                 // Store the new event channel (write endpoint from client)
                 surf->event_channel = static_cast<int32_t>(handles[0]);
                 reply.status = 0;
+                flush_events(surf); // Drain any events queued before subscription
 
                 debug_print("[displayd] Subscribed events for surface ");
                 debug_print_dec(surf->id);
@@ -473,6 +482,26 @@ void handle_request(int32_t client_channel,
                     surf->hscroll.scroll_pos = req->scroll_pos;
                 }
                 composite();
+                reply.status = 0;
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            break;
+        }
+
+        case DISP_REQUEST_FOCUS: {
+            if (len < sizeof(RequestFocusRequest))
+                return;
+            auto *req = reinterpret_cast<const RequestFocusRequest *>(data);
+
+            GenericReply reply;
+            reply.type = DISP_GENERIC_REPLY;
+            reply.request_id = req->request_id;
+            reply.status = -1;
+
+            Surface *surf = find_surface_by_id(req->surface_id);
+            if (surf && !(surf->flags & SURFACE_FLAG_SYSTEM)) {
+                g_focused_surface = surf->id;
                 reply.status = 0;
             }
 

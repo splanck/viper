@@ -39,6 +39,13 @@ enum KeyCode : uint16_t {
     KEY_DOT = 52,
     KEY_SLASH = 53,
     KEY_SPACE = 57,
+    KEY_HOME = 102,
+    KEY_UP = 103,
+    KEY_LEFT = 105,
+    KEY_RIGHT = 106,
+    KEY_END = 107,
+    KEY_DOWN = 108,
+    KEY_DELETE = 111,
 };
 
 // =============================================================================

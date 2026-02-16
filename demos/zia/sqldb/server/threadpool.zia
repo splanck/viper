@@ -1,0 +1,25 @@
+// threadpool.zia — SQL Server Connection Manager
+// Part of ViperSQL - Multi-User Foundation (Phase 7)
+//
+// Uses a thread-per-connection model (like PostgreSQL):
+// each accepted TCP connection spawns a dedicated worker thread.
+// Thread.StartSafe provides error isolation so one bad query
+// cannot crash other connections.
+
+module threadpool;
+
+bind Terminal = Viper.Terminal;
+bind Threads = Viper.Threads;
+bind Fmt = Viper.Fmt;
+
+bind "./connection";
+
+//=============================================================================
+// CONNECTION MANAGER
+//=============================================================================
+
+// Spawn a new worker thread for a client connection.
+// Uses Thread.StartSafe for error isolation.
+func sql_pool_submit(client: Ptr) {
+    Threads.Thread.StartSafe(&handleSqlClient, client);
+}

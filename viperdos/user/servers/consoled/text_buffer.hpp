@@ -122,6 +122,14 @@ class TextBuffer {
         return m_rows;
     }
 
+    // Batch mode — suppresses cursor draw/erase during bulk writes
+    void begin_batch();
+    void end_batch();
+
+    bool batch_mode() const {
+        return m_batch_mode;
+    }
+
     // Presentation tracking
     bool needs_present() const {
         return m_needs_present;
@@ -156,6 +164,7 @@ class TextBuffer {
 
     // Presentation
     bool m_needs_present = false;
+    bool m_batch_mode = false;
 };
 
 } // namespace consoled

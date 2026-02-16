@@ -1,0 +1,64 @@
+// session.zia — Per-Connection Session
+// Part of ViperSQL - Multi-User Foundation (Phase 7)
+//
+// Each client connection gets a Session with its own Executor.
+// The Session tracks connection metadata while the Executor
+// handles SQL execution with per-connection state.
+
+module session;
+
+bind Fmt = Viper.Fmt;
+
+bind "./executor";
+bind "./server";
+
+//=============================================================================
+// SESSION ENTITY
+//=============================================================================
+
+entity Session {
+    expose Integer sessionId;
+    expose String clientHost;
+    expose String username;
+    expose Boolean authenticated;
+    expose Integer queryCount;
+
+    // Per-session SQL executor (owns transaction state, subquery context, etc.)
+    expose Executor executor;
+
+    expose func init() {
+        sessionId = 0;
+        clientHost = "";
+        username = "";
+        authenticated = false;
+        queryCount = 0;
+    }
+
+    // Initialize a session with a shared DatabaseServer
+    // Each session gets its own Executor that shares the server's databases
+    expose func initWithServer(id: Integer, host: String, server: DatabaseServer) {
+        sessionId = id;
+        clientHost = host;
+        username = "";
+        authenticated = false;
+        queryCount = 0;
+        executor = new Executor();
+        executor.initWithServer(server, sessionId);
+    }
+
+    expose func toString() -> String {
+        return "Session[" + Fmt.Int(sessionId) + "] " + clientHost + " user=" + username + " db=" + executor.currentDbName;
+    }
+
+    // Execute a SQL query in this session's context
+    expose func executeSql(sql: String) -> QueryResult {
+        queryCount = queryCount + 1;
+        return executor.executeSql(sql);
+    }
+
+    // Clean up session resources (called on disconnect)
+    // Drops all temporary tables created during this session.
+    expose func disconnect() {
+        executor.cleanupTempTables();
+    }
+}

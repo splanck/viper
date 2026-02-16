@@ -949,6 +949,8 @@ entity Parser {
         var stmt = new CreateTableStmt();
         stmt.init();
 
+        // Check for TEMPORARY/TEMP flag (already consumed by caller)
+        // The TABLE token is still expected next
         if expect(TK_TABLE) == false {
             return stmt;
         }
@@ -1217,8 +1219,17 @@ entity Parser {
         }
         var firstTableName = currentToken.text;
         var firstTableAlias = "";
-        stmt.tableName = firstTableName;
         advance();
+        // Support dotted table names: schema.table (e.g., information_schema.tables, sys.databases)
+        if currentToken.kind == TK_DOT {
+            advance();
+            // Accept any token after dot — keywords like DATABASES are valid here
+            if currentToken.kind != TK_EOF && currentToken.kind != TK_SEMICOLON {
+                firstTableName = firstTableName + "." + currentToken.text;
+                advance();
+            }
+        }
+        stmt.tableName = firstTableName;
 
         // Optional table alias
         if currentToken.kind == TK_AS {

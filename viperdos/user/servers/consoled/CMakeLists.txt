@@ -8,6 +8,9 @@ add_executable(consoled.sys
         request.cpp
         shell.cpp
         text_buffer.cpp
+        embedded_shell.cpp
+        shell_io.cpp
+        shell_cmds.cpp
 )
 
 target_compile_options(consoled.sys PRIVATE ${USER_COMPILE_OPTIONS})

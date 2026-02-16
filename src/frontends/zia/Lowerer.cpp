@@ -91,7 +91,11 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     stringTable_.setEmitter([this](const std::string &label, const std::string &content)
                             { builder_->addGlobalStr(label, content); });
 
-    // Pre-pass: register all entity/value type layouts so that field access
+    // Pre-pass 1: register all `final` constants so that entity/function
+    // method bodies can reference constants defined later in the same file.
+    registerAllFinalConstants(module.declarations);
+
+    // Pre-pass 2: register all entity/value type layouts so that field access
     // in any method body can resolve types, even for forward-declared entities.
     // This fixes BUG-FE-006 where entity A's methods reference entity B
     // declared later in the same file.

@@ -6,6 +6,7 @@ module wal;
 bind IO = Viper.IO;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
+bind Threads = Viper.Threads;
 
 bind "./page";
 bind "./serializer";
@@ -269,6 +270,7 @@ entity LogRecordSerializer {
 //=============================================================================
 
 // Write-Ahead Log Manager
+// Thread-safe: all log-writing methods are protected by a Monitor lock.
 entity WALManager {
     expose String logDir;            // Directory for log files
     expose Integer currentFile;      // Current log file number
@@ -279,6 +281,7 @@ entity WALManager {
     expose Boolean enabled;          // WAL enabled flag
 
     hide LogRecordSerializer serializer;
+    hide List[Integer] lock;         // Monitor object for thread safety
 
     expose func init() {
         logDir = "";
@@ -292,6 +295,7 @@ entity WALManager {
         enabled = false;
         serializer = new LogRecordSerializer();
         serializer.init();
+        lock = [];
     }
 
     expose func initWithDir(dir: String) {
@@ -304,8 +308,16 @@ entity WALManager {
     // LOG WRITING
     //=========================================================================
 
-    // Append a log record
+    // Append a log record (public, thread-safe)
     expose func appendRecord(record: LogRecord) -> LSN {
+        Threads.Monitor.Enter(lock);
+        var lsn = appendRecordInternal(record);
+        Threads.Monitor.Exit(lock);
+        return lsn;
+    }
+
+    // Append a log record (internal, no locking)
+    hide func appendRecordInternal(record: LogRecord) -> LSN {
         if enabled == false {
             var dummyLSN = new LSN();
             dummyLSN.init();
@@ -324,7 +336,7 @@ entity WALManager {
         // Check if we need to flush or rotate
         var recordSize = recordBuf.size();
         if bufferPosition + recordSize > WAL_BUFFER_SIZE {
-            flush();
+            flushInternal();
         }
 
         // Check for log file rotation
@@ -349,54 +361,73 @@ entity WALManager {
 
     // Log a BEGIN record
     expose func logBegin(txnId: Integer) -> LSN {
+        Threads.Monitor.Enter(lock);
         var record = new LogRecord();
         record.initBegin(txnId);
-        return appendRecord(record);
+        var lsn = appendRecordInternal(record);
+        Threads.Monitor.Exit(lock);
+        return lsn;
     }
 
     // Log a COMMIT record (forces flush)
     expose func logCommit(txnId: Integer) -> LSN {
+        Threads.Monitor.Enter(lock);
         var record = new LogRecord();
         record.initCommit(txnId);
-        var lsn = appendRecord(record);
-        flush();  // Force write for durability
+        var lsn = appendRecordInternal(record);
+        flushInternal();  // Force write for durability
+        Threads.Monitor.Exit(lock);
         return lsn;
     }
 
     // Log an ABORT record
     expose func logAbort(txnId: Integer) -> LSN {
+        Threads.Monitor.Enter(lock);
         var record = new LogRecord();
         record.initAbort(txnId);
-        return appendRecord(record);
+        var lsn = appendRecordInternal(record);
+        Threads.Monitor.Exit(lock);
+        return lsn;
     }
 
     // Log an INSERT record
     expose func logInsert(txnId: Integer, tableId: Integer, pageId: Integer, slotId: Integer, rowData: BinaryBuffer) -> LSN {
+        Threads.Monitor.Enter(lock);
         var record = new LogRecord();
         record.initInsert(txnId, tableId, pageId, slotId, rowData);
-        return appendRecord(record);
+        var lsn = appendRecordInternal(record);
+        Threads.Monitor.Exit(lock);
+        return lsn;
     }
 
     // Log an UPDATE record
     expose func logUpdate(txnId: Integer, tableId: Integer, pageId: Integer, slotId: Integer, before: BinaryBuffer, after: BinaryBuffer) -> LSN {
+        Threads.Monitor.Enter(lock);
         var record = new LogRecord();
         record.initUpdate(txnId, tableId, pageId, slotId, before, after);
-        return appendRecord(record);
+        var lsn = appendRecordInternal(record);
+        Threads.Monitor.Exit(lock);
+        return lsn;
     }
 
     // Log a DELETE record
     expose func logDelete(txnId: Integer, tableId: Integer, pageId: Integer, slotId: Integer, rowData: BinaryBuffer) -> LSN {
+        Threads.Monitor.Enter(lock);
         var record = new LogRecord();
         record.initDelete(txnId, tableId, pageId, slotId, rowData);
-        return appendRecord(record);
+        var lsn = appendRecordInternal(record);
+        Threads.Monitor.Exit(lock);
+        return lsn;
     }
 
     // Write a checkpoint
     expose func checkpoint(activeTxns: List[Integer]) -> LSN {
+        Threads.Monitor.Enter(lock);
         var record = new LogRecord();
         record.initCheckpoint(activeTxns);
-        var lsn = appendRecord(record);
-        flush();
+        var lsn = appendRecordInternal(record);
+        flushInternal();
+        Threads.Monitor.Exit(lock);
         return lsn;
     }
 
@@ -404,8 +435,15 @@ entity WALManager {
     // LOG FILE MANAGEMENT
     //=========================================================================
 
-    // Flush buffer to disk
+    // Flush buffer to disk (public, thread-safe)
     expose func flush() {
+        Threads.Monitor.Enter(lock);
+        flushInternal();
+        Threads.Monitor.Exit(lock);
+    }
+
+    // Flush buffer to disk (internal, no locking)
+    hide func flushInternal() {
         if bufferPosition == 0 {
             return;
         }
@@ -446,9 +484,9 @@ entity WALManager {
         bufferPosition = 0;
     }
 
-    // Rotate to a new log file
+    // Rotate to a new log file (internal, called under lock)
     hide func rotateLogFile() {
-        flush();
+        flushInternal();
         currentFile = currentFile + 1;
         currentOffset = 0;
     }

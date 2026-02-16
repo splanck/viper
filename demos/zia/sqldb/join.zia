@@ -453,7 +453,7 @@ entity JoinEngine {
         var ti = 0;
         while ti < stmt.tableNames.count() {
             var tblName = stmt.tableNames.get(ti);
-            var maybeTable = exec.db.findTable(tblName);
+            var maybeTable = exec.findTable(tblName);
             if maybeTable == null {
                 result.setError("Table '" + tblName + "' does not exist");
                 return result;

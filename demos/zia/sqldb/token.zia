@@ -146,6 +146,10 @@ final TK_CASCADE = 139;
 final TK_RESTRICT = 170;
 final TK_ACTION = 171;
 
+// Keywords - User Management (Phase 10)
+final TK_USER = 213;
+final TK_PASSWORD = 215;
+
 // Keywords - Phase 4: CTEs, Window Functions, Multi-table DML
 final TK_WITH = 200;
 final TK_OVER = 201;
@@ -159,6 +163,7 @@ final TK_FOLLOWING = 208;
 final TK_CURRENT = 209;
 final TK_ROW = 210;
 final TK_RECURSIVE = 211;
+final TK_TEMPORARY = 212;
 
 // Operators
 final TK_PLUS = 140;

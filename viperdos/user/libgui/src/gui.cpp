@@ -773,23 +773,67 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
     }
     req.title[i] = '\0';
 
-    CreateSurfaceReply reply;
-    uint32_t handles[4];
-    uint32_t handle_count = 4;
+    // Create event channel pair BEFORE creating surface — eliminates the race
+    // between surface creation (which sets focus) and event subscription
+    int32_t ev_recv = -1;
+    auto ev_ch = sys::channel_create();
+    if (ev_ch.error != 0)
+        return nullptr;
+    int32_t ev_send = static_cast<int32_t>(ev_ch.val0); // Write end for displayd
+    ev_recv = static_cast<int32_t>(ev_ch.val1);          // Read end for us
 
-    if (!send_request_recv_reply(
-            &req, sizeof(req), &reply, sizeof(reply), handles, &handle_count)) {
+    // Create reply channel
+    auto reply_ch = sys::channel_create();
+    if (reply_ch.error != 0) {
+        sys::channel_close(ev_send);
+        sys::channel_close(ev_recv);
+        return nullptr;
+    }
+    int32_t reply_send = static_cast<int32_t>(reply_ch.val0);
+    int32_t reply_recv = static_cast<int32_t>(reply_ch.val1);
+
+    // Send CREATE_SURFACE with reply channel AND event channel atomically.
+    // displayd stores the event channel during surface creation, so events
+    // are routed to the channel from the moment the surface gains focus.
+    uint32_t send_handles[2] = {static_cast<uint32_t>(reply_send),
+                                static_cast<uint32_t>(ev_send)};
+    int64_t send_err =
+        sys::channel_send(g_display_channel, &req, sizeof(req), send_handles, 2);
+    if (send_err != 0) {
+        sys::channel_close(reply_recv);
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
-    if (reply.status != 0 || handle_count == 0) {
+    // Wait for reply (500 attempts * 10ms = 5 second timeout)
+    CreateSurfaceReply reply;
+    uint32_t recv_handles[4];
+    uint32_t recv_handle_count = 4;
+    bool got_reply = false;
+    for (uint32_t j = 0; j < 500; j++) {
+        recv_handle_count = 4;
+        int64_t n = sys::channel_recv(
+            reply_recv, &reply, sizeof(reply), recv_handles, &recv_handle_count);
+        if (n > 0) {
+            got_reply = true;
+            break;
+        }
+        if (n != VERR_WOULD_BLOCK)
+            break;
+        sys::sleep(10);
+    }
+    sys::channel_close(reply_recv);
+
+    if (!got_reply || reply.status != 0 || recv_handle_count == 0) {
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
     // Map shared memory
-    auto map_result = sys::shm_map(handles[0]);
+    auto map_result = sys::shm_map(recv_handles[0]);
     if (map_result.error != 0) {
-        sys::shm_close(handles[0]);
+        sys::shm_close(recv_handles[0]);
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
@@ -797,7 +841,8 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
     gui_window_t *win = new gui_window_t();
     if (!win) {
         sys::shm_unmap(map_result.virt_addr);
-        sys::shm_close(handles[0]);
+        sys::shm_close(recv_handles[0]);
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
@@ -805,9 +850,9 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
     win->width = width;
     win->height = height;
     win->stride = reply.stride;
-    win->shm_handle = handles[0];
+    win->shm_handle = recv_handles[0];
     win->pixels = reinterpret_cast<uint32_t *>(map_result.virt_addr);
-    win->event_channel = -1;
+    win->event_channel = ev_recv; // Set atomically — no separate subscribe needed
 
     // Copy title
     i = 0;
@@ -818,55 +863,6 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
         }
     }
     win->title[i] = '\0';
-
-    // Subscribe to events via dedicated channel (avoids flooding service channel)
-    auto ev_ch = sys::channel_create();
-    if (ev_ch.error == 0) {
-        int32_t ev_send = static_cast<int32_t>(ev_ch.val0); // Write end for displayd
-        int32_t ev_recv = static_cast<int32_t>(ev_ch.val1); // Read end for us
-
-        SubscribeEventsRequest sub_req;
-        sub_req.type = DISP_SUBSCRIBE_EVENTS;
-        sub_req.request_id = g_request_id++;
-        sub_req.surface_id = win->surface_id;
-
-        // Create reply channel for subscribe request
-        auto reply_ch = sys::channel_create();
-        if (reply_ch.error == 0) {
-            int32_t reply_send = static_cast<int32_t>(reply_ch.val0);
-            int32_t reply_recv = static_cast<int32_t>(reply_ch.val1);
-
-            // Send subscribe request with reply channel first, then event channel
-            uint32_t send_handles[2] = {static_cast<uint32_t>(reply_send),
-                                        static_cast<uint32_t>(ev_send)};
-            int64_t err =
-                sys::channel_send(g_display_channel, &sub_req, sizeof(sub_req), send_handles, 2);
-
-            if (err == 0) {
-                // Wait for reply (100 attempts * 10ms = 1 second timeout)
-                GenericReply sub_reply;
-                for (uint32_t j = 0; j < 100; j++) {
-                    int64_t n = sys::channel_recv(
-                        reply_recv, &sub_reply, sizeof(sub_reply), nullptr, nullptr);
-                    if (n > 0) {
-                        if (sub_reply.status == 0) {
-                            win->event_channel = ev_recv;
-                        }
-                        break;
-                    }
-                    if (n != VERR_WOULD_BLOCK)
-                        break;
-                    sys::sleep(10);
-                }
-            }
-            sys::channel_close(reply_recv);
-        }
-
-        // If subscription failed, close the event channel
-        if (win->event_channel < 0) {
-            sys::channel_close(ev_recv);
-        }
-    }
 
     return win;
 }
@@ -1015,7 +1011,6 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title,
                                               uint32_t width,
                                               uint32_t height,
                                               uint32_t flags) {
-    sys::print("[gui] create_window_ex entry\n");
     if (!g_initialized)
         return nullptr;
 
@@ -1036,23 +1031,65 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title,
     }
     req.title[i] = '\0';
 
-    CreateSurfaceReply reply;
-    uint32_t handles[4];
-    uint32_t handle_count = 4;
+    // Create event channel pair BEFORE creating surface — eliminates the race
+    // between surface creation (which sets focus) and event subscription
+    int32_t ev_recv = -1;
+    auto ev_ch = sys::channel_create();
+    if (ev_ch.error != 0)
+        return nullptr;
+    int32_t ev_send = static_cast<int32_t>(ev_ch.val0);
+    ev_recv = static_cast<int32_t>(ev_ch.val1);
 
-    if (!send_request_recv_reply(
-            &req, sizeof(req), &reply, sizeof(reply), handles, &handle_count)) {
+    // Create reply channel
+    auto reply_ch = sys::channel_create();
+    if (reply_ch.error != 0) {
+        sys::channel_close(ev_send);
+        sys::channel_close(ev_recv);
+        return nullptr;
+    }
+    int32_t reply_send = static_cast<int32_t>(reply_ch.val0);
+    int32_t reply_recv = static_cast<int32_t>(reply_ch.val1);
+
+    // Send CREATE_SURFACE with reply channel AND event channel atomically
+    uint32_t send_handles[2] = {static_cast<uint32_t>(reply_send),
+                                static_cast<uint32_t>(ev_send)};
+    int64_t send_err =
+        sys::channel_send(g_display_channel, &req, sizeof(req), send_handles, 2);
+    if (send_err != 0) {
+        sys::channel_close(reply_recv);
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
-    if (reply.status != 0 || handle_count == 0) {
+    // Wait for reply
+    CreateSurfaceReply reply;
+    uint32_t recv_handles[4];
+    uint32_t recv_handle_count = 4;
+    bool got_reply = false;
+    for (uint32_t j = 0; j < 500; j++) {
+        recv_handle_count = 4;
+        int64_t n = sys::channel_recv(
+            reply_recv, &reply, sizeof(reply), recv_handles, &recv_handle_count);
+        if (n > 0) {
+            got_reply = true;
+            break;
+        }
+        if (n != VERR_WOULD_BLOCK)
+            break;
+        sys::sleep(10);
+    }
+    sys::channel_close(reply_recv);
+
+    if (!got_reply || reply.status != 0 || recv_handle_count == 0) {
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
     // Map shared memory
-    auto map_result = sys::shm_map(handles[0]);
+    auto map_result = sys::shm_map(recv_handles[0]);
     if (map_result.error != 0) {
-        sys::shm_close(handles[0]);
+        sys::shm_close(recv_handles[0]);
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
@@ -1060,7 +1097,8 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title,
     gui_window_t *win = new gui_window_t();
     if (!win) {
         sys::shm_unmap(map_result.virt_addr);
-        sys::shm_close(handles[0]);
+        sys::shm_close(recv_handles[0]);
+        sys::channel_close(ev_recv);
         return nullptr;
     }
 
@@ -1068,9 +1106,9 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title,
     win->width = width;
     win->height = height;
     win->stride = reply.stride;
-    win->shm_handle = handles[0];
+    win->shm_handle = recv_handles[0];
     win->pixels = reinterpret_cast<uint32_t *>(map_result.virt_addr);
-    win->event_channel = -1;
+    win->event_channel = ev_recv; // Set atomically — no separate subscribe needed
 
     // Copy title
     i = 0;
@@ -1081,55 +1119,6 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title,
         }
     }
     win->title[i] = '\0';
-
-    // Subscribe to events via dedicated channel (avoids flooding service channel)
-    auto ev_ch = sys::channel_create();
-    if (ev_ch.error == 0) {
-        int32_t ev_send = static_cast<int32_t>(ev_ch.val0); // Write end for displayd
-        int32_t ev_recv = static_cast<int32_t>(ev_ch.val1); // Read end for us
-
-        SubscribeEventsRequest sub_req;
-        sub_req.type = DISP_SUBSCRIBE_EVENTS;
-        sub_req.request_id = g_request_id++;
-        sub_req.surface_id = win->surface_id;
-
-        // Create reply channel for subscribe request
-        auto reply_ch = sys::channel_create();
-        if (reply_ch.error == 0) {
-            int32_t reply_send = static_cast<int32_t>(reply_ch.val0);
-            int32_t reply_recv = static_cast<int32_t>(reply_ch.val1);
-
-            // Send subscribe request with reply channel first, then event channel
-            uint32_t send_handles[2] = {static_cast<uint32_t>(reply_send),
-                                        static_cast<uint32_t>(ev_send)};
-            int64_t err =
-                sys::channel_send(g_display_channel, &sub_req, sizeof(sub_req), send_handles, 2);
-
-            if (err == 0) {
-                // Wait for reply (100 attempts * 10ms = 1 second timeout)
-                GenericReply sub_reply;
-                for (uint32_t j = 0; j < 100; j++) {
-                    int64_t n = sys::channel_recv(
-                        reply_recv, &sub_reply, sizeof(sub_reply), nullptr, nullptr);
-                    if (n > 0) {
-                        if (sub_reply.status == 0) {
-                            win->event_channel = ev_recv;
-                        }
-                        break;
-                    }
-                    if (n != VERR_WOULD_BLOCK)
-                        break;
-                    sys::sleep(10);
-                }
-            }
-            sys::channel_close(reply_recv);
-        }
-
-        // If subscription failed, close the event channel
-        if (win->event_channel < 0) {
-            sys::channel_close(ev_recv);
-        }
-    }
 
     return win;
 }
@@ -1808,67 +1797,31 @@ extern "C" void gui_present_region(
  * }
  * @endcode
  */
+extern "C" int gui_request_focus(gui_window_t *win) {
+    if (!win || !g_initialized)
+        return -1;
+
+    RequestFocusRequest req;
+    req.type = DISP_REQUEST_FOCUS;
+    req.request_id = g_request_id++;
+    req.surface_id = win->surface_id;
+
+    GenericReply reply;
+    if (!send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply))) {
+        return -1;
+    }
+    return reply.status;
+}
+
 extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
     if (!win || !event)
         return -1;
 
-    // Debug: check if desktop is polling and what its event_channel is
-    static int desktop_poll_dbg = 0;
-    if (win->surface_id == 1) {
-        if (++desktop_poll_dbg % 2000 == 0) {
-            sys::print("[gui] sid=1 poll evch=");
-            char buf[16];
-            int32_t ch = win->event_channel;
-            int idx = 0;
-            if (ch < 0) {
-                buf[idx++] = '-';
-                ch = -ch;
-            }
-            char tmp[16];
-            int ti = 0;
-            do {
-                tmp[ti++] = '0' + (ch % 10);
-                ch /= 10;
-            } while (ch > 0);
-            while (ti > 0)
-                buf[idx++] = tmp[--ti];
-            buf[idx] = '\0';
-            sys::print(buf);
-            sys::print("\n");
-        }
-    }
-
     // If we have an event channel, receive directly from it (fast path)
     if (win->event_channel >= 0) {
-        // Buffer large enough for any event type
         uint8_t ev_buf[64];
         uint32_t recv_handles[4];
         uint32_t handle_count = 4;
-
-        // Debug: show which channel we're polling (only for surface 1 = desktop)
-        static int poll_dbg_count = 0;
-        if (win->surface_id == 1 && ++poll_dbg_count % 1000 == 0) {
-            sys::print("[gui] DESKTOP poll ch=");
-            char buf[16];
-            // Simple decimal conversion
-            int32_t ch = win->event_channel;
-            int idx = 0;
-            if (ch < 0) {
-                buf[idx++] = '-';
-                ch = -ch;
-            }
-            char tmp[16];
-            int ti = 0;
-            do {
-                tmp[ti++] = '0' + (ch % 10);
-                ch /= 10;
-            } while (ch > 0);
-            while (ti > 0)
-                buf[idx++] = tmp[--ti];
-            buf[idx] = '\0';
-            sys::print(buf);
-            sys::print("\n");
-        }
 
         int64_t n = sys::channel_recv(
             win->event_channel, ev_buf, sizeof(ev_buf), recv_handles, &handle_count);
@@ -1883,28 +1836,6 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
 
         // First 4 bytes is event type
         uint32_t ev_type = *reinterpret_cast<uint32_t *>(ev_buf);
-
-        // Debug: event received - distinguish desktop vs other windows
-        if (ev_type == DISP_EVENT_MOUSE) {
-            if (win->surface_id == 1) {
-                sys::print("[gui] DESKTOP GOT mouse ch=");
-                char buf[16];
-                int32_t ch = win->event_channel;
-                int idx = 0;
-                char tmp[16];
-                int ti = 0;
-                do {
-                    tmp[ti++] = '0' + (ch % 10);
-                    ch /= 10;
-                } while (ch > 0);
-                while (ti > 0)
-                    buf[idx++] = tmp[--ti];
-                buf[idx] = '\0';
-                sys::print(buf);
-                sys::print("\n");
-            }
-            // Don't log non-desktop mouse events (too noisy)
-        }
 
         switch (ev_type) {
             case DISP_EVENT_MOUSE: {
@@ -2006,7 +1937,17 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
         return 0; // Event available
     }
 
-    // Fall back to request/reply for legacy compatibility (slow path)
+    // Fall back to request/reply for legacy compatibility (slow path).
+    // Rate-limit to ~60Hz to avoid hammering displayd with channel creation.
+    static uint64_t last_fallback_poll = 0;
+    uint64_t now = sys::uptime();
+    if (now - last_fallback_poll < 16) {
+        sys::yield();
+        event->type = GUI_EVENT_NONE;
+        return -1;
+    }
+    last_fallback_poll = now;
+
     PollEventRequest req;
     req.type = DISP_POLL_EVENT;
     req.request_id = g_request_id++;

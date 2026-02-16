@@ -275,6 +275,10 @@ bool Sema::analyze(ModuleDecl &module)
         }
     }
 
+    // Pre-pass: eagerly resolve types of final constants from literal initializers
+    // This allows forward references to final constants in entity/function bodies
+    registerFinalConstantTypes(module.declarations);
+
     // Second pass: register all method/field signatures (before analyzing bodies)
     // This ensures cross-module method calls can be resolved regardless of declaration order
     registerMemberSignatures(module.declarations);
@@ -549,6 +553,70 @@ void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations)
     }
 }
 
+/// @brief Pre-pass: Eagerly resolve types of final constants from literal initializers.
+/// @details Scans declarations for final globals with literal initializers and updates
+///          the registered symbol type from unknown() to the concrete literal type.
+///          This allows forward references to final constants in entity/function bodies.
+/// @param declarations The declaration list to process.
+void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations)
+{
+    for (auto &decl : declarations)
+    {
+        if (decl->kind == DeclKind::GlobalVar)
+        {
+            auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
+            if (!gvar->isFinal || !gvar->initializer)
+                continue;
+
+            // Look up the symbol — it was registered in Pass 1 with unknown type
+            std::string name = qualifyName(gvar->name);
+            Symbol *sym = lookupSymbol(name);
+            if (!sym || !sym->type->isUnknown())
+                continue;
+
+            // Infer type directly from literal initializer
+            Expr *init = gvar->initializer.get();
+            TypeRef inferredType = nullptr;
+            if (dynamic_cast<IntLiteralExpr *>(init))
+                inferredType = types::integer();
+            else if (dynamic_cast<NumberLiteralExpr *>(init))
+                inferredType = types::number();
+            else if (dynamic_cast<BoolLiteralExpr *>(init))
+                inferredType = types::boolean();
+            else if (dynamic_cast<StringLiteralExpr *>(init))
+                inferredType = types::string();
+            else if (auto *unary = dynamic_cast<UnaryExpr *>(init))
+            {
+                // Handle negated literals: final X = -42
+                if (unary->op == UnaryOp::Neg)
+                {
+                    if (dynamic_cast<IntLiteralExpr *>(unary->operand.get()))
+                        inferredType = types::integer();
+                    else if (dynamic_cast<NumberLiteralExpr *>(unary->operand.get()))
+                        inferredType = types::number();
+                }
+            }
+
+            if (inferredType)
+                sym->type = inferredType;
+        }
+        else if (decl->kind == DeclKind::Namespace)
+        {
+            // Recurse into namespace declarations
+            auto *ns = static_cast<NamespaceDecl *>(decl.get());
+            std::string savedPrefix = namespacePrefix_;
+            if (namespacePrefix_.empty())
+                namespacePrefix_ = ns->name;
+            else
+                namespacePrefix_ = namespacePrefix_ + "." + ns->name;
+
+            registerFinalConstantTypes(ns->declarations);
+
+            namespacePrefix_ = savedPrefix;
+        }
+    }
+}
+
 /// @brief Pass 3: Analyze declaration bodies (functions, types, globals).
 /// @param declarations The declaration list to process.
 void Sema::analyzeDeclarationBodies(std::vector<DeclPtr> &declarations)
@@ -702,6 +770,9 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
                 break;
         }
     }
+
+    // Pre-pass: resolve final constant types for forward references
+    registerFinalConstantTypes(decl.declarations);
 
     // Second pass: register members for types
     registerMemberSignatures(decl.declarations);

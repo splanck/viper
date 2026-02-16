@@ -7,6 +7,7 @@ module engine;
 bind IO = Viper.IO;
 bind String = Viper.String;
 bind Terminal = Viper.Terminal;
+bind Threads = Viper.Threads;
 
 bind "./page";
 bind "./serializer";
@@ -23,6 +24,7 @@ bind "../schema";
 // STORAGE ENGINE
 //=============================================================================
 
+// Thread-safe: all public methods are protected by a Monitor lock.
 entity StorageEngine {
     expose BufferPool pool;
     expose SchemaPageManager schemaMgr;
@@ -44,6 +46,9 @@ entity StorageEngine {
     // Last insert location for row tracking (Phase 5)
     expose Integer lastInsertPageId;
     expose Integer lastInsertSlotIdx;
+
+    // Monitor object for thread safety
+    hide List[Integer] lock;
 
     expose func init() {
         pool = new BufferPool();
@@ -67,6 +72,7 @@ entity StorageEngine {
         rowPageIds = [];
         rowSlotIdxs = [];
         rowTableNames = [];
+        lock = [];
     }
 
     //=========================================================================
@@ -75,6 +81,13 @@ entity StorageEngine {
 
     // Create a new persistent database file
     expose func createDatabase(fname: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = createDatabaseInternal(fname);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func createDatabaseInternal(fname: String) -> Boolean {
         filename = fname;
 
         // Delete existing file if present
@@ -105,6 +118,13 @@ entity StorageEngine {
 
     // Open an existing persistent database file
     expose func openDatabase(fname: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = openDatabaseInternal(fname);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func openDatabaseInternal(fname: String) -> Boolean {
         filename = fname;
 
         if IO.File.Exists(fname) == false {
@@ -143,9 +163,9 @@ entity StorageEngine {
         var walDir = fname + ".wal";
         var walFile0 = walDir + "/wal_0.log";
         if IO.File.Exists(walFile0) {
-            enableWal(walDir);
+            enableWalInternal(walDir);
             // Perform crash recovery if WAL files exist
-            performRecovery();
+            performRecoveryInternal();
         }
 
         return true;
@@ -153,6 +173,13 @@ entity StorageEngine {
 
     // Perform WAL crash recovery (redo committed transactions)
     expose func performRecovery() -> RecoveryResult {
+        Threads.Monitor.Enter(lock);
+        var result = performRecoveryInternal();
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func performRecoveryInternal() -> RecoveryResult {
         if walEnabled == false {
             return createRecoveryResult(false);
         }
@@ -244,6 +271,7 @@ entity StorageEngine {
 
     // Close the database, flushing all dirty pages and WAL
     expose func closeDatabase() {
+        Threads.Monitor.Enter(lock);
         if isPersistent {
             if walEnabled {
                 // Checkpoint: flush WAL then data
@@ -254,6 +282,7 @@ entity StorageEngine {
             pool.closeDatabase();
             isPersistent = false;
         }
+        Threads.Monitor.Exit(lock);
     }
 
     //=========================================================================
@@ -263,6 +292,13 @@ entity StorageEngine {
     // Persist a newly created table's schema to the database file
     // Returns the assigned table ID, or -1 on failure
     expose func persistTable(table: Table) -> Integer {
+        Threads.Monitor.Enter(lock);
+        var result = persistTableInternal(table);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func persistTableInternal(table: Table) -> Integer {
         if isPersistent == false {
             return -1;
         }
@@ -293,6 +329,13 @@ entity StorageEngine {
 
     // Remove a table's schema and data pages from storage
     expose func dropTableStorage(tableName: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = dropTableStorageInternal(tableName);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func dropTableStorageInternal(tableName: String) -> Boolean {
         if isPersistent == false {
             return false;
         }
@@ -348,6 +391,13 @@ entity StorageEngine {
 
     // Load all tables from schema into in-memory Table entities
     expose func loadAllTables() -> List[Table] {
+        Threads.Monitor.Enter(lock);
+        var result = loadAllTablesInternal();
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func loadAllTablesInternal() -> List[Table] {
         var tables: List[Table] = [];
 
         var i = 0;
@@ -356,7 +406,7 @@ entity StorageEngine {
             var table = meta.toTable();
 
             // Load all rows for this table
-            var rows = loadTableRows(meta);
+            var rows = loadTableRowsInternal(meta);
             var j = 0;
             while j < rows.count() {
                 table.addRow(rows.get(j));
@@ -376,6 +426,13 @@ entity StorageEngine {
     // Load all rows for a table by walking its data page chain
     // Also tracks row locations for Phase 5 incremental operations
     expose func loadTableRows(meta: TableMeta) -> List[Row] {
+        Threads.Monitor.Enter(lock);
+        var result = loadTableRowsInternal(meta);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func loadTableRowsInternal(meta: TableMeta) -> List[Row] {
         var allRows: List[Row] = [];
         var pageId = meta.firstDataPage;
 
@@ -388,7 +445,7 @@ entity StorageEngine {
                 while j < pageRows.count() {
                     allRows.add(pageRows.get(j));
                     // Track row location for incremental updates
-                    trackRowLocation(meta.tableName, pageId, j);
+                    trackRowLocationInternal(meta.tableName, pageId, j);
                     j = j + 1;
                 }
                 var nextId = dataMgr.getNextPageId(p);
@@ -408,6 +465,13 @@ entity StorageEngine {
 
     // Persist a single row insertion for a table
     expose func insertRowStorage(tableName: String, row: Row) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = insertRowStorageInternal(tableName, row);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func insertRowStorageInternal(tableName: String, row: Row) -> Boolean {
         if isPersistent == false {
             return false;
         }
@@ -509,6 +573,13 @@ entity StorageEngine {
     // Rewrite all rows for a table (used after UPDATE/DELETE)
     // Drops all existing data pages and re-inserts the given rows
     expose func rewriteTableRows(tableName: String, rows: List[Row]) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = rewriteTableRowsInternal(tableName, rows);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func rewriteTableRowsInternal(tableName: String, rows: List[Row]) -> Boolean {
         if isPersistent == false {
             return false;
         }
@@ -527,7 +598,7 @@ entity StorageEngine {
         }
 
         // Clear existing row tracking for this table — will be rebuilt below
-        clearRowLocations(tableName);
+        clearRowLocationsInternal(tableName);
 
         // Free all existing data pages
         var pageId = m.firstDataPage;
@@ -562,7 +633,7 @@ entity StorageEngine {
                     var slot = dataMgr.insertRow(cp, row);
                     // Track new location for Phase 5 incremental operations
                     if slot >= 0 {
-                        trackRowLocation(tableName, currentPageId, slot);
+                        trackRowLocationInternal(tableName, currentPageId, slot);
                     }
                     pool.unpinPage(currentPageId, true);
                     // WAL: log each re-inserted row
@@ -581,7 +652,7 @@ entity StorageEngine {
                     currentPageId = newPage.pageId;
                     // Track new location for Phase 5 incremental operations
                     if slot >= 0 {
-                        trackRowLocation(tableName, currentPageId, slot);
+                        trackRowLocationInternal(tableName, currentPageId, slot);
                     }
                     pool.unpinPage(newPage.pageId, true);
                     // WAL: log each re-inserted row
@@ -612,19 +683,23 @@ entity StorageEngine {
 
     // Update autoIncrement value for a table
     expose func updateAutoIncrement(tableName: String, nextVal: Integer) {
+        Threads.Monitor.Enter(lock);
         var meta = findMeta(tableName);
         if meta != null {
             var m = meta;
             m.nextAutoIncrement = nextVal;
             updateMetaInSchema(m);
         }
+        Threads.Monitor.Exit(lock);
     }
 
     // Flush all dirty pages to disk
     expose func flush() {
+        Threads.Monitor.Enter(lock);
         if isPersistent {
             pool.flushAll();
         }
+        Threads.Monitor.Exit(lock);
     }
 
     //=========================================================================
@@ -656,12 +731,14 @@ entity StorageEngine {
 
     // Update row count for a table in persistent metadata
     expose func updateRowCountInMeta(tableName: String, newCount: Integer) {
+        Threads.Monitor.Enter(lock);
         var meta = findMeta(tableName);
         if meta != null {
             var m = meta;
             m.rowCount = newCount;
             updateMetaInSchema(m);
         }
+        Threads.Monitor.Exit(lock);
     }
 
     // Serialize a row to a BinaryBuffer for WAL logging
@@ -674,6 +751,13 @@ entity StorageEngine {
 
     // Enable WAL for crash recovery
     expose func enableWal(walDir: String) {
+        Threads.Monitor.Enter(lock);
+        enableWalInternal(walDir);
+        Threads.Monitor.Exit(lock);
+    }
+
+    // Internal enableWal (no locking) — called by openDatabaseInternal
+    hide func enableWalInternal(walDir: String) {
         wal = new WALManager();
         wal.initWithDir(walDir);
         walEnabled = true;
@@ -690,6 +774,13 @@ entity StorageEngine {
 
     // Record a row's storage location after loading or inserting
     expose func trackRowLocation(tableName: String, pageId: Integer, slotIdx: Integer) {
+        Threads.Monitor.Enter(lock);
+        trackRowLocationInternal(tableName, pageId, slotIdx);
+        Threads.Monitor.Exit(lock);
+    }
+
+    // Internal trackRowLocation (no locking) — called by loadTableRowsInternal, rewriteTableRowsInternal
+    hide func trackRowLocationInternal(tableName: String, pageId: Integer, slotIdx: Integer) {
         rowPageIds.add(pageId);
         rowSlotIdxs.add(slotIdx);
         rowTableNames.add(tableName);
@@ -697,6 +788,13 @@ entity StorageEngine {
 
     // Find a row's location by table name and row index within that table
     expose func findRowLocation(tableName: String, rowIndex: Integer) -> List[Integer] {
+        Threads.Monitor.Enter(lock);
+        var result = findRowLocationInternal(tableName, rowIndex);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func findRowLocationInternal(tableName: String, rowIndex: Integer) -> List[Integer] {
         var result: List[Integer] = [];
         var matchCount = 0;
         var i = 0;
@@ -719,6 +817,13 @@ entity StorageEngine {
 
     // Clear row locations for a table (used before rewrite)
     expose func clearRowLocations(tableName: String) {
+        Threads.Monitor.Enter(lock);
+        clearRowLocationsInternal(tableName);
+        Threads.Monitor.Exit(lock);
+    }
+
+    // Internal clearRowLocations (no locking) — called by rewriteTableRowsInternal
+    hide func clearRowLocationsInternal(tableName: String) {
         var newPageIds: List[Integer] = [];
         var newSlotIdxs: List[Integer] = [];
         var newTableNames: List[String] = [];
@@ -738,6 +843,13 @@ entity StorageEngine {
 
     // Delete a specific row by its storage location
     expose func deleteRowByLocation(tableName: String, pageId: Integer, slotIdx: Integer) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = deleteRowByLocationInternal(tableName, pageId, slotIdx);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func deleteRowByLocationInternal(tableName: String, pageId: Integer, slotIdx: Integer) -> Boolean {
         if isPersistent == false || pageId == INVALID_PAGE_ID {
             return false;
         }
@@ -771,6 +883,13 @@ entity StorageEngine {
 
     // Update a specific row by its storage location
     expose func updateRowByLocation(tableName: String, pageId: Integer, slotIdx: Integer, newRow: Row) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = updateRowByLocationInternal(tableName, pageId, slotIdx, newRow);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func updateRowByLocationInternal(tableName: String, pageId: Integer, slotIdx: Integer, newRow: Row) -> Boolean {
         if isPersistent == false || pageId == INVALID_PAGE_ID {
             return false;
         }

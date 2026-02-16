@@ -1,0 +1,423 @@
+// system_views.zia — System Views (INFORMATION_SCHEMA and sys.*)
+// Part of ViperSQL - Phase 8.2
+//
+// Virtual views generated from live server state.
+// Called by the executor when SELECT targets a system view name.
+
+module system_views;
+
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+
+bind "./types";
+bind "./schema";
+bind "./table";
+bind "./database";
+bind "./result";
+bind "./server";
+
+//=============================================================================
+// SYSTEM VIEW DETECTION
+//=============================================================================
+
+// Check if a table name refers to a system view
+func isSystemView(tableName: String) -> Boolean {
+    var upper = String.ToUpper(tableName);
+    if upper == "INFORMATION_SCHEMA.TABLES" { return true; }
+    if upper == "INFORMATION_SCHEMA.COLUMNS" { return true; }
+    if upper == "INFORMATION_SCHEMA.SCHEMATA" { return true; }
+    if upper == "SYS.DATABASES" { return true; }
+    if upper == "SYS.TABLES" { return true; }
+    if upper == "SYS.COLUMNS" { return true; }
+    if upper == "SYS.STATS" { return true; }
+    if upper == "SYS.USERS" { return true; }
+    return false;
+}
+
+// Execute a system view query
+func executeSystemView(tableName: String, server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var upper = String.ToUpper(tableName);
+
+    if upper == "INFORMATION_SCHEMA.TABLES" {
+        return viewInformationSchemaTables(server, currentDbName);
+    }
+    if upper == "INFORMATION_SCHEMA.COLUMNS" {
+        return viewInformationSchemaColumns(server, currentDbName);
+    }
+    if upper == "INFORMATION_SCHEMA.SCHEMATA" {
+        return viewInformationSchemaSchemata(server);
+    }
+    if upper == "SYS.DATABASES" {
+        return viewSysDatabases(server);
+    }
+    if upper == "SYS.TABLES" {
+        return viewSysTables(server, currentDbName);
+    }
+    if upper == "SYS.COLUMNS" {
+        return viewSysColumns(server, currentDbName);
+    }
+    if upper == "SYS.STATS" {
+        return viewSysStats(server);
+    }
+    if upper == "SYS.USERS" {
+        return viewSysUsers(server);
+    }
+
+    var result = new QueryResult();
+    result.init();
+    result.setError("Unknown system view: " + tableName);
+    return result;
+}
+
+//=============================================================================
+// INFORMATION_SCHEMA.TABLES
+//=============================================================================
+
+func viewInformationSchemaTables(server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("table_catalog");
+    result.addColumnName("table_schema");
+    result.addColumnName("table_name");
+    result.addColumnName("table_type");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var db = server.dbList.get(di);
+        var ti = 0;
+        while ti < db.tableCount() {
+            var maybeTable = db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                var row = new Row();
+                row.init();
+                row.addValue(sqlText(dbName));
+                row.addValue(sqlText("public"));
+                row.addValue(sqlText(table.name));
+                row.addValue(sqlText("BASE TABLE"));
+                result.addRow(row);
+            }
+            ti = ti + 1;
+        }
+        // Add views
+        var vi = 0;
+        while vi < db.viewNames.count() {
+            var row = new Row();
+            row.init();
+            row.addValue(sqlText(dbName));
+            row.addValue(sqlText("public"));
+            row.addValue(sqlText(db.viewNames.get(vi)));
+            row.addValue(sqlText("VIEW"));
+            result.addRow(row);
+            vi = vi + 1;
+        }
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// INFORMATION_SCHEMA.COLUMNS
+//=============================================================================
+
+func viewInformationSchemaColumns(server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("table_catalog");
+    result.addColumnName("table_name");
+    result.addColumnName("column_name");
+    result.addColumnName("ordinal_position");
+    result.addColumnName("data_type");
+    result.addColumnName("is_nullable");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var db = server.dbList.get(di);
+        var ti = 0;
+        while ti < db.tableCount() {
+            var maybeTable = db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                var ci = 0;
+                while ci < table.columnCount() {
+                    var col = table.getColumn(ci);
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlText(dbName));
+                    row.addValue(sqlText(table.name));
+                    row.addValue(sqlText(col.name));
+                    row.addValue(sqlInteger(ci + 1));
+                    row.addValue(sqlText(columnTypeName(col.typeCode)));
+                    if col.notNull {
+                        row.addValue(sqlText("NO"));
+                    } else {
+                        row.addValue(sqlText("YES"));
+                    }
+                    result.addRow(row);
+                    ci = ci + 1;
+                }
+            }
+            ti = ti + 1;
+        }
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// INFORMATION_SCHEMA.SCHEMATA
+//=============================================================================
+
+func viewInformationSchemaSchemata(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("catalog_name");
+    result.addColumnName("schema_name");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var row = new Row();
+        row.init();
+        row.addValue(sqlText(server.dbNames.get(di)));
+        row.addValue(sqlText("public"));
+        result.addRow(row);
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// SYS.DATABASES
+//=============================================================================
+
+func viewSysDatabases(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("name");
+    result.addColumnName("table_count");
+    result.addColumnName("is_persistent");
+    result.addColumnName("file_path");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var db = server.dbList.get(di);
+
+        var isPersistent = false;
+        var filePath = "";
+        if di < server.dbFilePaths.count() {
+            filePath = server.dbFilePaths.get(di);
+            if filePath != "" {
+                isPersistent = true;
+            }
+        }
+
+        var row = new Row();
+        row.init();
+        row.addValue(sqlText(dbName));
+        row.addValue(sqlInteger(db.tableCount()));
+        if isPersistent {
+            row.addValue(sqlText("YES"));
+        } else {
+            row.addValue(sqlText("NO"));
+        }
+        row.addValue(sqlText(filePath));
+        result.addRow(row);
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// SYS.TABLES — Tables in current database with row counts
+//=============================================================================
+
+func viewSysTables(server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("database_name");
+    result.addColumnName("table_name");
+    result.addColumnName("row_count");
+    result.addColumnName("column_count");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var db = server.dbList.get(di);
+        var ti = 0;
+        while ti < db.tableCount() {
+            var maybeTable = db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                var row = new Row();
+                row.init();
+                row.addValue(sqlText(dbName));
+                row.addValue(sqlText(table.name));
+                row.addValue(sqlInteger(table.rowCount()));
+                row.addValue(sqlInteger(table.columnCount()));
+                result.addRow(row);
+            }
+            ti = ti + 1;
+        }
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// SYS.COLUMNS — All columns across all tables
+//=============================================================================
+
+func viewSysColumns(server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("table_name");
+    result.addColumnName("column_name");
+    result.addColumnName("data_type");
+    result.addColumnName("is_primary_key");
+    result.addColumnName("is_nullable");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var db = server.dbList.get(di);
+        var ti = 0;
+        while ti < db.tableCount() {
+            var maybeTable = db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                var ci = 0;
+                while ci < table.columnCount() {
+                    var col = table.getColumn(ci);
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlText(table.name));
+                    row.addValue(sqlText(col.name));
+                    row.addValue(sqlText(columnTypeName(col.typeCode)));
+                    if col.primaryKey {
+                        row.addValue(sqlText("YES"));
+                    } else {
+                        row.addValue(sqlText("NO"));
+                    }
+                    if col.notNull {
+                        row.addValue(sqlText("NO"));
+                    } else {
+                        row.addValue(sqlText("YES"));
+                    }
+                    result.addRow(row);
+                    ci = ci + 1;
+                }
+            }
+            ti = ti + 1;
+        }
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// SYS.STATS — Server-wide statistics
+//=============================================================================
+
+func viewSysStats(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("stat_name");
+    result.addColumnName("stat_value");
+
+    // Database count
+    var row1 = new Row();
+    row1.init();
+    row1.addValue(sqlText("database_count"));
+    row1.addValue(sqlInteger(server.dbNames.count()));
+    result.addRow(row1);
+
+    // Total table count across all databases
+    var totalTables = 0;
+    var totalRows = 0;
+    var di = 0;
+    while di < server.dbList.count() {
+        var db = server.dbList.get(di);
+        totalTables = totalTables + db.tableCount();
+        var ti = 0;
+        while ti < db.tableCount() {
+            var maybeTable = db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                totalRows = totalRows + table.rowCount();
+            }
+            ti = ti + 1;
+        }
+        di = di + 1;
+    }
+
+    var row2 = new Row();
+    row2.init();
+    row2.addValue(sqlText("total_tables"));
+    row2.addValue(sqlInteger(totalTables));
+    result.addRow(row2);
+
+    var row3 = new Row();
+    row3.init();
+    row3.addValue(sqlText("total_rows"));
+    row3.addValue(sqlInteger(totalRows));
+    result.addRow(row3);
+
+    return result;
+}
+
+//=============================================================================
+// SYS.USERS — Registered database users
+//=============================================================================
+
+func viewSysUsers(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("username");
+    result.addColumnName("is_superuser");
+
+    var users = server.listUsers();
+    var i = 0;
+    while i < users.count() {
+        var row = new Row();
+        row.init();
+        var username = users.get(i);
+        row.addValue(sqlText(username));
+        if username == "admin" {
+            row.addValue(sqlText("YES"));
+        } else {
+            row.addValue(sqlText("NO"));
+        }
+        result.addRow(row);
+        i = i + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// HELPERS
+//=============================================================================
+
+func columnTypeName(dataType: Integer) -> String {
+    if dataType == SQL_INTEGER { return "INTEGER"; }
+    if dataType == SQL_REAL { return "REAL"; }
+    if dataType == SQL_TEXT { return "TEXT"; }
+    if dataType == SQL_BLOB { return "BLOB"; }
+    return "UNKNOWN";
+}

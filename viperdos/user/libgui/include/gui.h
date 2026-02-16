@@ -402,6 +402,13 @@ void gui_present_region(gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, u
 // =============================================================================
 
 /**
+ * @brief Request keyboard focus for this window.
+ * @param win Window handle.
+ * @return 0 on success, -1 on failure.
+ */
+int gui_request_focus(gui_window_t *win);
+
+/**
  * @brief Poll for an event (non-blocking).
  * @param win Window handle.
  * @param event Output event structure.

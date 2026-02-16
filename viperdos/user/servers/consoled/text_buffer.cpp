@@ -117,8 +117,8 @@ void TextBuffer::reset_colors() {
 }
 
 void TextBuffer::putchar(char ch) {
-    // Erase old cursor
-    if (m_cursor_visible) {
+    // Erase old cursor (skip in batch mode — no cursor to erase)
+    if (m_cursor_visible && !m_batch_mode) {
         draw_cell(m_cursor_x, m_cursor_y);
     }
 
@@ -141,14 +141,14 @@ void TextBuffer::putchar(char ch) {
         }
     }
 
-    // Draw new cursor
-    if (m_cursor_visible) {
+    // Draw new cursor (skip in batch mode)
+    if (m_cursor_visible && !m_batch_mode) {
         draw_cursor();
     }
 }
 
 void TextBuffer::newline() {
-    if (m_cursor_visible) {
+    if (m_cursor_visible && !m_batch_mode) {
         draw_cell(m_cursor_x, m_cursor_y);
     }
 
@@ -160,18 +160,18 @@ void TextBuffer::newline() {
         scroll_up();
     }
 
-    if (m_cursor_visible) {
+    if (m_cursor_visible && !m_batch_mode) {
         draw_cursor();
     }
     m_needs_present = true;
 }
 
 void TextBuffer::carriage_return() {
-    if (m_cursor_visible) {
+    if (m_cursor_visible && !m_batch_mode) {
         draw_cell(m_cursor_x, m_cursor_y);
     }
     m_cursor_x = 0;
-    if (m_cursor_visible) {
+    if (m_cursor_visible && !m_batch_mode) {
         draw_cursor();
     }
     m_needs_present = true;
@@ -188,14 +188,14 @@ void TextBuffer::tab() {
 
 void TextBuffer::backspace() {
     if (m_cursor_x > 0) {
-        if (m_cursor_visible) {
+        if (m_cursor_visible && !m_batch_mode) {
             draw_cell(m_cursor_x, m_cursor_y);
         }
         m_cursor_x--;
         Cell &c = cell_at(m_cursor_x, m_cursor_y);
         c.ch = ' ';
         draw_cell(m_cursor_x, m_cursor_y);
-        if (m_cursor_visible) {
+        if (m_cursor_visible && !m_batch_mode) {
             draw_cursor();
         }
         m_needs_present = true;
@@ -316,10 +316,31 @@ void TextBuffer::scroll_up() {
         redraw_all();
     }
 
-    if (m_cursor_visible) {
+    if (m_cursor_visible && !m_batch_mode) {
         draw_cursor();
     }
     m_needs_present = true;
+}
+
+void TextBuffer::begin_batch() {
+    if (!m_batch_mode) {
+        m_batch_mode = true;
+        // Erase cursor so it doesn't linger during batch writes
+        if (m_cursor_visible) {
+            draw_cell(m_cursor_x, m_cursor_y);
+        }
+    }
+}
+
+void TextBuffer::end_batch() {
+    if (m_batch_mode) {
+        m_batch_mode = false;
+        // Redraw cursor at its final position
+        if (m_cursor_visible) {
+            draw_cursor();
+        }
+        m_needs_present = true;
+    }
 }
 
 void TextBuffer::draw_cell(uint32_t cx, uint32_t cy) {

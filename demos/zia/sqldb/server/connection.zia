@@ -1,0 +1,545 @@
+// connection.zia — SQL Connection Handler
+// Part of ViperSQL - Multi-User Foundation (Phase 7) + PG Wire Protocol (Phase 9)
+//
+// Handles client TCP connections in two modes:
+//   1. PG Wire Protocol (Phase 9) — Binary PostgreSQL v3 protocol for psql/JDBC/ODBC
+//   2. Text Protocol (Phase 7) — Simple text-based protocol for nc/telnet
+//
+// The server auto-detects the protocol based on the first bytes received.
+
+module connection;
+
+bind Terminal = Viper.Terminal;
+bind String = Viper.String;
+bind Network = Viper.Network;
+bind Fmt = Viper.Fmt;
+bind Threads = Viper.Threads;
+bind Viper.Collections;
+
+bind "../executor";
+bind "../result";
+bind "../server";
+bind "../session";
+bind "../types";
+bind "./pg_wire";
+
+//=============================================================================
+// CONSTANTS
+//=============================================================================
+
+final SQL_MAX_QUERY_SIZE = 65536;    // 64KB max query
+final SQL_RECV_TIMEOUT = 300000;     // 5 minute idle timeout
+
+//=============================================================================
+// SHARED SERVER STATE
+//=============================================================================
+
+// The shared DatabaseServer — set by sql_server_init() before accepting connections
+var shared_server: DatabaseServer;
+
+// Session counter (protected by Monitor)
+var session_counter: Integer;
+var session_lock: List[Integer];
+
+// Server statistics
+var active_connections: Integer;
+var total_queries: Integer;
+
+//=============================================================================
+// INITIALIZATION
+//=============================================================================
+
+// Initialize the connection module with a shared DatabaseServer
+func sql_connection_init(server: DatabaseServer) {
+    shared_server = server;
+    session_counter = 0;
+    session_lock = [];
+    active_connections = 0;
+    total_queries = 0;
+}
+
+// Get a new session ID (thread-safe)
+func nextSessionId() -> Integer {
+    Threads.Monitor.Enter(session_lock);
+    session_counter = session_counter + 1;
+    var id = session_counter;
+    Threads.Monitor.Exit(session_lock);
+    return id;
+}
+
+// Increment active connection count
+func connectionOpened() {
+    Threads.Monitor.Enter(session_lock);
+    active_connections = active_connections + 1;
+    Threads.Monitor.Exit(session_lock);
+}
+
+// Decrement active connection count
+func connectionClosed() {
+    Threads.Monitor.Enter(session_lock);
+    active_connections = active_connections - 1;
+    Threads.Monitor.Exit(session_lock);
+}
+
+// Increment query count
+func queryExecuted() {
+    Threads.Monitor.Enter(session_lock);
+    total_queries = total_queries + 1;
+    Threads.Monitor.Exit(session_lock);
+}
+
+// Get current active connection count
+func sql_getActiveConnections() -> Integer {
+    return active_connections;
+}
+
+// Get total queries executed
+func sql_getTotalQueries() -> Integer {
+    return total_queries;
+}
+
+//=============================================================================
+// PG WIRE PROTOCOL CONNECTION HANDLER (Phase 9)
+//=============================================================================
+
+// Handle a PostgreSQL wire protocol client connection.
+// Called by the thread pool worker for each accepted connection.
+func handlePgClient(client: Ptr) {
+    var clientHost = Network.Tcp.get_Host(client);
+    var sessionId = nextSessionId();
+    connectionOpened();
+
+    Terminal.Say("[PG Session " + Fmt.Int(sessionId) + "] Connected from " + clientHost);
+
+    // Set recv timeout
+    Network.Tcp.SetRecvTimeout(client, SQL_RECV_TIMEOUT);
+
+    // Perform PG startup handshake (SSL negotiation, password exchange)
+    var startupInfo = pgHandleStartup(client, sessionId, true);
+    if startupInfo == null {
+        Terminal.Say("[PG Session " + Fmt.Int(sessionId) + "] Startup failed, closing");
+        connectionClosed();
+        Network.Tcp.Close(client);
+        return;
+    }
+    var info = startupInfo;
+
+    // Verify credentials against server user database
+    if shared_server.verifyPassword(info.user, info.password) == false {
+        pgSendErrorResponse(client, "28P01", "password authentication failed for user \"" + info.user + "\"");
+        Terminal.Say("[PG Session " + Fmt.Int(sessionId) + "] Auth failed for " + info.user);
+        connectionClosed();
+        Network.Tcp.Close(client);
+        return;
+    }
+
+    // Auth successful — complete handshake (AuthOk, params, BackendKeyData, ReadyForQuery)
+    pgCompleteStartup(client, sessionId, info.user);
+
+    // Create a per-connection session with its own executor
+    var session = new Session();
+    session.initWithServer(sessionId, clientHost, shared_server);
+    session.username = info.user;
+    session.authenticated = true;
+
+    // Switch to requested database if specified
+    if info.database != "" && info.database != "main" {
+        var useResult = session.executeSql("USE " + info.database);
+        if useResult.success == false {
+            // Database doesn't exist — send error but continue on 'main'
+            pgSendNotice(client, "database \"" + info.database + "\" does not exist, using \"main\"");
+        }
+    }
+
+    Terminal.Say("[PG Session " + Fmt.Int(sessionId) + "] User=" + info.user + " DB=" + session.executor.currentDbName);
+
+    // Main query loop — read messages and respond
+    var running = true;
+    while running {
+        var msg = pgReadMessage(client);
+
+        if msg.valid == false {
+            // Connection closed or read error
+            running = false;
+        } else if msg.msgType == PG_QUERY {
+            // Simple Query protocol
+            var query = pgExtractQuery(msg.body);
+            handlePgQuery(client, session, query);
+        } else if msg.msgType == PG_TERMINATE {
+            // Client wants to disconnect
+            running = false;
+        } else if msg.msgType == PG_PARSE || msg.msgType == PG_BIND || msg.msgType == PG_EXECUTE || msg.msgType == PG_DESCRIBE {
+            // Extended query protocol — not yet supported
+            // Send error and ReadyForQuery
+            pgSendErrorResponse(client, "0A000", "Extended query protocol not supported. Use simple query mode.");
+            pgSendReadyForQuery(client, getTxnStatus(session));
+        } else if msg.msgType == PG_SYNC {
+            // Sync message — just send ReadyForQuery
+            pgSendReadyForQuery(client, getTxnStatus(session));
+        } else {
+            // Unknown message type — ignore silently
+        }
+    }
+
+    // Cleanup: roll back any active transaction
+    session.executeSql("ROLLBACK");
+    session.disconnect();
+
+    Terminal.Say("[PG Session " + Fmt.Int(sessionId) + "] Disconnected");
+    connectionClosed();
+    Network.Tcp.Close(client);
+}
+
+// Handle a single PG Query message
+func handlePgQuery(client: Ptr, session: Session, query: String) {
+    var trimmed = String.Trim(query);
+
+    // Empty query
+    if String.Length(trimmed) == 0 {
+        pgSendEmptyQueryResponse(client);
+        pgSendReadyForQuery(client, getTxnStatus(session));
+        return;
+    }
+
+    // Handle multiple semicolon-separated queries (psql sends these)
+    // For simplicity, split on ';' and execute each
+    var queries = splitQueries(trimmed);
+    var qi = 0;
+    while qi < queries.count() {
+        var q = String.Trim(queries.get(qi));
+        if String.Length(q) > 0 {
+            executePgSingleQuery(client, session, q);
+        }
+        qi = qi + 1;
+    }
+
+    // Send ReadyForQuery after all queries in the batch
+    pgSendReadyForQuery(client, getTxnStatus(session));
+}
+
+// Execute a single query and send PG wire protocol responses
+func executePgSingleQuery(client: Ptr, session: Session, query: String) {
+    queryExecuted();
+
+    // Intercept PG-specific SET commands that our executor doesn't handle
+    var upper = String.ToUpper(query);
+    if isPgSetCommand(upper) {
+        pgSendCommandComplete(client, "SET");
+        return;
+    }
+
+    // Intercept pg_catalog queries (sent by psql on connect)
+    if isPgCatalogQuery(upper) {
+        sendEmptySelectResult(client, query);
+        return;
+    }
+
+    // Execute the query
+    var result = session.executeSql(query);
+
+    if result.success == false {
+        // Send error response
+        pgSendErrorResponse(client, "42000", result.message);
+        return;
+    }
+
+    // Determine if this is a SELECT-type query (has column names)
+    if result.columnNames.count() > 0 {
+        // Send RowDescription
+        pgSendRowDescription(client, result.columnNames);
+
+        // Send DataRows
+        var ri = 0;
+        while ri < result.rows.count() {
+            var row = result.rows.get(ri);
+            var values: List[String] = [];
+            var nullFlags: List[Integer] = [];
+
+            var ci = 0;
+            while ci < row.columnCount() {
+                var val = row.getValue(ci);
+                if val.isNull() {
+                    values.add("");
+                    nullFlags.add(1);
+                } else {
+                    values.add(val.toString());
+                    nullFlags.add(0);
+                }
+                ci = ci + 1;
+            }
+
+            pgSendDataRow(client, values, nullFlags);
+            ri = ri + 1;
+        }
+
+        // Send CommandComplete
+        var tag = pgCommandTag(query, result.rowsAffected, result.rows.count());
+        pgSendCommandComplete(client, tag);
+    } else {
+        // Non-SELECT: just CommandComplete
+        var tag = pgCommandTag(query, result.rowsAffected, 0);
+        pgSendCommandComplete(client, tag);
+    }
+}
+
+// Get the PG transaction status byte for ReadyForQuery
+func getTxnStatus(session: Session) -> Integer {
+    if session.executor.isInTransaction() {
+        return PG_TXN_IN_TXN;
+    }
+    return PG_TXN_IDLE;
+}
+
+// Check if this is a PG-specific SET command we should handle silently
+func isPgSetCommand(upper: String) -> Boolean {
+    if stringStartsWithConn(upper, "SET CLIENT_ENCODING") { return true; }
+    if stringStartsWithConn(upper, "SET DATESTYLE") { return true; }
+    if stringStartsWithConn(upper, "SET TIMEZONE") { return true; }
+    if stringStartsWithConn(upper, "SET EXTRA_FLOAT_DIGITS") { return true; }
+    if stringStartsWithConn(upper, "SET APPLICATION_NAME") { return true; }
+    if stringStartsWithConn(upper, "SET SEARCH_PATH") { return true; }
+    if stringStartsWithConn(upper, "SET INTERVALSTYLE") { return true; }
+    if stringStartsWithConn(upper, "SET LOCK_TIMEOUT") { return true; }
+    if stringStartsWithConn(upper, "SET STATEMENT_TIMEOUT") { return true; }
+    if stringStartsWithConn(upper, "SET IDLE_IN_TRANSACTION_SESSION_TIMEOUT") { return true; }
+    if stringStartsWithConn(upper, "SET ROW_SECURITY") { return true; }
+    if stringStartsWithConn(upper, "RESET") { return true; }
+    return false;
+}
+
+// Check if this is a pg_catalog system query (sent by psql/drivers on connect)
+func isPgCatalogQuery(upper: String) -> Boolean {
+    if stringContainsConn(upper, "PG_CATALOG") { return true; }
+    if stringContainsConn(upper, "PG_CLASS") { return true; }
+    if stringContainsConn(upper, "PG_NAMESPACE") { return true; }
+    if stringContainsConn(upper, "PG_ATTRIBUTE") { return true; }
+    if stringContainsConn(upper, "PG_TYPE") { return true; }
+    if stringContainsConn(upper, "PG_SETTINGS") { return true; }
+    if stringContainsConn(upper, "PG_DATABASE") { return true; }
+    if stringContainsConn(upper, "PG_ROLES") { return true; }
+    if stringContainsConn(upper, "PG_USER") { return true; }
+    if stringContainsConn(upper, "PG_PROC") { return true; }
+    if stringContainsConn(upper, "CURRENT_SCHEMA") { return true; }
+    // version() function call
+    if upper == "SELECT VERSION()" { return true; }
+    return false;
+}
+
+// Send an empty SELECT result (0 rows) for pg_catalog queries
+func sendEmptySelectResult(client: Ptr, query: String) {
+    // For version() queries, return a reasonable version string
+    var upper = String.ToUpper(query);
+    if upper == "SELECT VERSION()" {
+        var cols: List[String] = [];
+        cols.add("version");
+        pgSendRowDescription(client, cols);
+
+        var vals: List[String] = [];
+        vals.add("ViperSQL 0.1 on Viper VM, 64-bit");
+        var nulls: List[Integer] = [];
+        nulls.add(0);
+        pgSendDataRow(client, vals, nulls);
+
+        pgSendCommandComplete(client, "SELECT 1");
+        return;
+    }
+
+    // For all other pg_catalog queries, send empty result with no columns
+    var emptyCols: List[String] = [];
+    pgSendRowDescription(client, emptyCols);
+    pgSendCommandComplete(client, "SELECT 0");
+}
+
+//=============================================================================
+// TEXT PROTOCOL CONNECTION HANDLER (Phase 7 — preserved for compatibility)
+//=============================================================================
+
+// Handle a single SQL client connection using the simple text protocol.
+func handleSqlClient(client: Ptr) {
+    var clientHost = Network.Tcp.get_Host(client);
+    var sessionId = nextSessionId();
+    connectionOpened();
+
+    // Create a per-connection session with its own executor
+    var session = new Session();
+    session.initWithServer(sessionId, clientHost, shared_server);
+    session.authenticated = true;  // Text protocol uses trust mode
+
+    Terminal.Say("[Session " + Fmt.Int(sessionId) + "] Connected from " + clientHost);
+
+    // Set recv timeout
+    Network.Tcp.SetRecvTimeout(client, SQL_RECV_TIMEOUT);
+
+    // Send welcome banner
+    var banner = "ViperSQL Server\nReady.\n\n";
+    Network.Tcp.SendStr(client, banner);
+
+    // Recv/execute/send loop
+    var running = true;
+    while running {
+        // Receive a query (text terminated by newline)
+        var rawQuery = Network.Tcp.RecvStr(client, SQL_MAX_QUERY_SIZE);
+
+        // Empty recv = client disconnected or timeout
+        if String.Length(rawQuery) == 0 {
+            running = false;
+        } else {
+            // Trim whitespace
+            var query = String.Trim(rawQuery);
+
+            if String.Length(query) == 0 {
+                // Empty query, just send ready prompt
+                Network.Tcp.SendStr(client, "\n");
+            } else if query == "quit" || query == "exit" || query == "\\q" {
+                // Client wants to disconnect
+                Network.Tcp.SendStr(client, "BYE\n\n");
+                running = false;
+            } else {
+                // Execute the SQL query
+                queryExecuted();
+                var result = session.executeSql(query);
+
+                // Format and send the result
+                var response = formatResultForClient(result);
+                Network.Tcp.SendStr(client, response);
+            }
+        }
+    }
+
+    // Cleanup: roll back any active transaction (no-op if none active)
+    session.executeSql("ROLLBACK");
+    session.disconnect();
+
+    Terminal.Say("[Session " + Fmt.Int(sessionId) + "] Disconnected");
+    connectionClosed();
+    Network.Tcp.Close(client);
+}
+
+//=============================================================================
+// RESULT FORMATTING (Text Protocol)
+//=============================================================================
+
+// Format a QueryResult as text for the client
+// Uses tab-separated columns, newline-separated rows, double-newline terminator
+func formatResultForClient(result: QueryResult) -> String {
+    var output = "";
+
+    if result.success == false {
+        output = "ERROR: " + result.message + "\n\n";
+        return output;
+    }
+
+    // Column headers
+    if result.columnNames.count() > 0 {
+        var i = 0;
+        while i < result.columnNames.count() {
+            if i > 0 {
+                output = output + "\t";
+            }
+            output = output + result.columnNames.get(i);
+            i = i + 1;
+        }
+        output = output + "\n";
+
+        // Separator
+        i = 0;
+        while i < result.columnNames.count() {
+            if i > 0 {
+                output = output + "\t";
+            }
+            output = output + "--------";
+            i = i + 1;
+        }
+        output = output + "\n";
+    }
+
+    // Data rows
+    var rowIdx = 0;
+    while rowIdx < result.rows.count() {
+        var row = result.rows.get(rowIdx);
+        var colIdx = 0;
+        while colIdx < row.columnCount() {
+            if colIdx > 0 {
+                output = output + "\t";
+            }
+            output = output + row.getValue(colIdx).toString();
+            colIdx = colIdx + 1;
+        }
+        output = output + "\n";
+        rowIdx = rowIdx + 1;
+    }
+
+    // Status line
+    if result.rowsAffected > 0 {
+        output = output + "(" + Fmt.Int(result.rowsAffected) + " rows affected)\n";
+    } else if result.rows.count() > 0 {
+        output = output + "(" + Fmt.Int(result.rows.count()) + " rows)\n";
+    }
+
+    // Message (if any)
+    if String.Length(result.message) > 0 && result.rows.count() == 0 {
+        output = output + result.message + "\n";
+    }
+
+    // Double newline terminates the response
+    output = output + "\n";
+    return output;
+}
+
+//=============================================================================
+// STRING HELPERS (local to avoid cross-module dependencies)
+//=============================================================================
+
+func stringStartsWithConn(s: String, prefix: String) -> Boolean {
+    var prefixLen = String.Length(prefix);
+    if String.Length(s) < prefixLen { return false; }
+    return String.Substring(s, 0, prefixLen) == prefix;
+}
+
+func stringContainsConn(s: String, sub: String) -> Boolean {
+    var sLen = String.Length(s);
+    var subLen = String.Length(sub);
+    if subLen > sLen { return false; }
+    var i = 0;
+    while i <= sLen - subLen {
+        if String.Substring(s, i, subLen) == sub { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// Split a query string on semicolons (respecting quoted strings)
+func splitQueries(input: String) -> List[String] {
+    var queries: List[String] = [];
+    var current = "";
+    var inSingleQuote = false;
+    var inDoubleQuote = false;
+    var i = 0;
+    var len = String.Length(input);
+
+    while i < len {
+        var ch = String.Substring(input, i, 1);
+
+        if ch == "'" && inDoubleQuote == false {
+            inSingleQuote = !inSingleQuote;
+            current = current + ch;
+        } else if ch == "\"" && inSingleQuote == false {
+            inDoubleQuote = !inDoubleQuote;
+            current = current + ch;
+        } else if ch == ";" && inSingleQuote == false && inDoubleQuote == false {
+            queries.add(current);
+            current = "";
+        } else {
+            current = current + ch;
+        }
+        i = i + 1;
+    }
+
+    // Add the last query if non-empty
+    var trimmed = String.Trim(current);
+    if String.Length(trimmed) > 0 {
+        queries.add(current);
+    }
+
+    return queries;
+}

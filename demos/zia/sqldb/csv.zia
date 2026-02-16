@@ -29,7 +29,7 @@ entity CsvHandler {
         var result = new QueryResult();
         result.init();
 
-        var maybeTable = exec.db.findTable(tableName);
+        var maybeTable = exec.findTable(tableName);
         if maybeTable == null {
             result.setError("Table '" + tableName + "' not found");
             return result;
@@ -135,7 +135,7 @@ entity CsvHandler {
         var result = new QueryResult();
         result.init();
 
-        var maybeTable = exec.db.findTable(tableName);
+        var maybeTable = exec.findTable(tableName);
         if maybeTable == null {
             result.setError("Table '" + tableName + "' not found");
             return result;

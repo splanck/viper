@@ -60,6 +60,55 @@ std::string Lowerer::qualifyName(const std::string &name) const
 }
 
 //=============================================================================
+// Final Constant Pre-Registration
+//=============================================================================
+
+void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
+{
+    for (auto &decl : declarations)
+    {
+        if (decl->kind == DeclKind::GlobalVar)
+        {
+            auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
+            if (gvar->isFinal && gvar->initializer)
+            {
+                std::string qualifiedName = qualifyName(gvar->name);
+                // Skip if already registered
+                if (globalConstants_.find(qualifiedName) != globalConstants_.end())
+                    continue;
+
+                Expr *init = gvar->initializer.get();
+
+                if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
+                    globalConstants_[qualifiedName] = Value::constInt(intLit->value);
+                else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
+                    globalConstants_[qualifiedName] = Value::constFloat(numLit->value);
+                else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
+                    globalConstants_[qualifiedName] = Value::constBool(boolLit->value);
+                else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
+                {
+                    std::string label = stringTable_.intern(strLit->value);
+                    globalConstants_[qualifiedName] = Value::constStr(label);
+                }
+            }
+        }
+        else if (decl->kind == DeclKind::Namespace)
+        {
+            auto *ns = static_cast<NamespaceDecl *>(decl.get());
+            std::string savedPrefix = namespacePrefix_;
+            if (namespacePrefix_.empty())
+                namespacePrefix_ = ns->name;
+            else
+                namespacePrefix_ = namespacePrefix_ + "." + ns->name;
+
+            registerAllFinalConstants(ns->declarations);
+
+            namespacePrefix_ = savedPrefix;
+        }
+    }
+}
+
+//=============================================================================
 // Type Layout Pre-Registration (BUG-FE-006 fix)
 //=============================================================================
 

@@ -31,6 +31,10 @@ bind "./join";
 bind "./persistence";
 bind "./csv";
 bind "./optimizer/optimizer";
+bind "./storage/txn";
+bind "./sql_functions";
+bind "./sql_window";
+bind "./system_views";
 
 //=============================================================================
 // TRANSACTION JOURNAL
@@ -110,6 +114,19 @@ entity Executor {
     hide String currentTableAlias;
     hide Integer subqueryDepth;
 
+    // Per-executor current database context (for multi-user: each executor tracks its own)
+    expose String currentDbName;
+    hide Integer currentDbIndex;
+
+    // Concurrency control: session ID and shared lock manager
+    // In standalone mode (init()), sessionId=0 and tableLockMgr=null (no locking).
+    // In multi-user mode (initWithServer()), uses shared lock manager from server.
+    hide Integer sessionId;
+    hide TableLockManager? tableLockMgr;
+
+    // Per-session temporary tables (CREATE TEMP TABLE goes here)
+    hide Database? tempDb;
+
     // Random seed for RANDOM() function
     hide Integer randomSeed;
 
@@ -128,6 +145,10 @@ entity Executor {
         db = server.dbList.get(0);
         indexMgr = server.indexManagers.get(0);
         storageEngine = null;
+        currentDbName = "main";
+        currentDbIndex = 0;
+        sessionId = 0;
+        tableLockMgr = null;
         inTransaction = false;
         journal = [];
         txnDirtyTables = [];
@@ -137,6 +158,9 @@ entity Executor {
         currentTableAlias = "";
         subqueryDepth = 0;
         randomSeed = 42;
+        var td = new Database();
+        td.initWithName("tempdb");
+        tempDb = td;
         subqueryCacheKeys = [];
         subqueryCacheScalars = [];
         subqueryCacheLists = [];
@@ -147,11 +171,78 @@ entity Executor {
         optimizer.init();
     }
 
-    // Refresh db and indexMgr references from server's current database
+    // Initialize with a shared DatabaseServer (for multi-user: multiple executors share one server)
+    // sessId is the unique session identifier used for table-level lock ownership.
+    expose func initWithServer(existingServer: DatabaseServer, sessId: Integer) {
+        server = existingServer;
+        // Start on the 'main' database (index 0)
+        db = server.dbList.get(0);
+        indexMgr = server.indexManagers.get(0);
+        storageEngine = server.getStorageEngine("main");
+        currentDbName = "main";
+        currentDbIndex = 0;
+        sessionId = sessId;
+        tableLockMgr = server.tableLockMgr;
+        inTransaction = false;
+        journal = [];
+        txnDirtyTables = [];
+        outerRow = null;
+        outerTable = null;
+        outerTableAlias = "";
+        currentTableAlias = "";
+        subqueryDepth = 0;
+        randomSeed = 42;
+        var td = new Database();
+        td.initWithName("tempdb");
+        tempDb = td;
+        subqueryCacheKeys = [];
+        subqueryCacheScalars = [];
+        subqueryCacheLists = [];
+        joinEngine = new JoinEngine(self);
+        persistence = new PersistenceManager(self);
+        csvHandler = new CsvHandler(self);
+        optimizer = new QueryOptimizer();
+        optimizer.init();
+    }
+
+    // Refresh db and indexMgr references from per-executor current database
     hide func refreshCurrentDatabase() {
-        // Server's currentDbIndex is always valid after init
-        db = server.dbList.get(server.currentDbIndex);
-        indexMgr = server.indexManagers.get(server.currentDbIndex);
+        db = server.dbList.get(currentDbIndex);
+        indexMgr = server.indexManagers.get(currentDbIndex);
+    }
+
+    // Look up a table by name, checking temp tables first, then current database.
+    // This ensures temp tables shadow regular tables with the same name.
+    expose func findTable(tableName: String) -> Table? {
+        if tempDb != null {
+            var tdb = tempDb;
+            var tempTable = tdb.findTable(tableName);
+            if tempTable != null {
+                return tempTable;
+            }
+        }
+        return db.findTable(tableName);
+    }
+
+    // Check if a table is a temp table
+    hide func isTempTable(tableName: String) -> Boolean {
+        if tempDb != null {
+            var tdb = tempDb;
+            return tdb.findTable(tableName) != null;
+        }
+        return false;
+    }
+
+    // Clean up all temp tables (called on session disconnect)
+    expose func cleanupTempTables() {
+        var td = new Database();
+        td.initWithName("tempdb");
+        tempDb = td;
+    }
+
+    // Check if currently in a transaction block (for PG wire protocol status)
+    expose func isInTransaction() -> Boolean {
+        return inTransaction;
     }
 
     //=========================================================================
@@ -807,453 +898,27 @@ entity Executor {
     expose func evalFunction(expr: Expr, row: Row, table: Table) -> SqlValue {
         var name = String.ToUpper(expr.funcName);
 
-        // String functions
-        if name == "UPPER" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_TEXT {
-                return sqlText(String.ToUpper(arg.textValue));
-            }
-        }
-        if name == "LOWER" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_TEXT {
-                return sqlText(String.ToLower(arg.textValue));
-            }
-        }
-        if name == "LENGTH" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_TEXT {
-                return sqlInteger(String.Length(arg.textValue));
-            }
-        }
-
-        // SUBSTR(string, start) or SUBSTR(string, start, length)
-        if (name == "SUBSTR" || name == "SUBSTRING") && expr.args.count() >= 2 {
-            var strArg = evalExpr(expr.args.get(0), row, table);
-            var startArg = evalExpr(expr.args.get(1), row, table);
-            if strArg.kind == SQL_TEXT && startArg.kind == SQL_INTEGER {
-                var str = strArg.textValue;
-                var start = startArg.intValue - 1;  // SQL uses 1-based indexing
-                if start < 0 { start = 0; }
-                var len = String.Length(str) - start;
-
-                if expr.args.count() >= 3 {
-                    var lenArg = evalExpr(expr.args.get(2), row, table);
-                    if lenArg.kind == SQL_INTEGER {
-                        len = lenArg.intValue;
-                    }
-                }
-
-                if start >= String.Length(str) {
-                    return sqlText("");
-                }
-                return sqlText(String.Substring(str, start, len));
-            }
-        }
-
-        // TRIM(string) - removes leading and trailing spaces
-        if name == "TRIM" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_TEXT {
-                var s = arg.textValue;
-                // Trim leading spaces
-                var start = 0;
-                while start < String.Length(s) && String.Substring(s, start, 1) == " " {
-                    start = start + 1;
-                }
-                // Trim trailing spaces
-                var end = String.Length(s);
-                while end > start && String.Substring(s, end - 1, 1) == " " {
-                    end = end - 1;
-                }
-                return sqlText(String.Substring(s, start, end - start));
-            }
-        }
-
-        // LTRIM(string) - removes leading spaces
-        if name == "LTRIM" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_TEXT {
-                var s = arg.textValue;
-                var start = 0;
-                while start < String.Length(s) && String.Substring(s, start, 1) == " " {
-                    start = start + 1;
-                }
-                return sqlText(String.Substring(s, start, String.Length(s) - start));
-            }
-        }
-
-        // RTRIM(string) - removes trailing spaces
-        if name == "RTRIM" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_TEXT {
-                var s = arg.textValue;
-                var end = String.Length(s);
-                while end > 0 && String.Substring(s, end - 1, 1) == " " {
-                    end = end - 1;
-                }
-                return sqlText(String.Substring(s, 0, end));
-            }
-        }
-
-        // REPLACE(string, from, to)
-        if name == "REPLACE" && expr.args.count() >= 3 {
-            var strArg = evalExpr(expr.args.get(0), row, table);
-            var fromArg = evalExpr(expr.args.get(1), row, table);
-            var toArg = evalExpr(expr.args.get(2), row, table);
-            if strArg.kind == SQL_TEXT && fromArg.kind == SQL_TEXT && toArg.kind == SQL_TEXT {
-                var str = strArg.textValue;
-                var from = fromArg.textValue;
-                var to = toArg.textValue;
-                // Simple replacement - find and replace all occurrences
-                var result = "";
-                var i = 0;
-                var fromLen = String.Length(from);
-                var strLen = String.Length(str);
-                while i < strLen {
-                    if i + fromLen <= strLen && String.Substring(str, i, fromLen) == from {
-                        result = result + to;
-                        i = i + fromLen;
-                    } else {
-                        result = result + String.Substring(str, i, 1);
-                        i = i + 1;
-                    }
-                }
-                return sqlText(result);
-            }
-        }
-
-        // CONCAT(str1, str2, ...) or string concatenation
-        if name == "CONCAT" && expr.args.count() > 0 {
-            var result = "";
-            var i = 0;
-            while i < expr.args.count() {
-                var arg = evalExpr(expr.args.get(i), row, table);
-                if arg.kind == SQL_TEXT {
-                    result = result + arg.textValue;
-                } else if arg.kind == SQL_INTEGER {
-                    result = result + Fmt.Int(arg.intValue);
-                }
-                i = i + 1;
-            }
-            return sqlText(result);
-        }
-
-        // INSTR(string, substring) - find position of substring (1-based, 0 if not found)
-        if name == "INSTR" && expr.args.count() >= 2 {
-            var strArg = evalExpr(expr.args.get(0), row, table);
-            var subArg = evalExpr(expr.args.get(1), row, table);
-            if strArg.kind == SQL_TEXT && subArg.kind == SQL_TEXT {
-                var str = strArg.textValue;
-                var sub = subArg.textValue;
-                var subLen = String.Length(sub);
-                var strLen = String.Length(str);
-                var i = 0;
-                while i + subLen <= strLen {
-                    if String.Substring(str, i, subLen) == sub {
-                        return sqlInteger(i + 1);  // 1-based
-                    }
-                    i = i + 1;
-                }
-                return sqlInteger(0);  // Not found
-            }
-        }
-
-        // Math functions
-        if name == "ABS" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_INTEGER {
-                var v = arg.intValue;
-                if v < 0 { v = -v; }
-                return sqlInteger(v);
-            }
-        }
-
-        // MOD(a, b) or a % b
-        if name == "MOD" && expr.args.count() >= 2 {
-            var a = evalExpr(expr.args.get(0), row, table);
-            var b = evalExpr(expr.args.get(1), row, table);
-            if a.kind == SQL_INTEGER && b.kind == SQL_INTEGER {
-                if b.intValue != 0 {
-                    return sqlInteger(a.intValue % b.intValue);
-                }
-            }
-        }
-
-        // ROUND(value) - rounds to nearest integer
-        if name == "ROUND" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_INTEGER {
-                return arg;  // Already an integer
-            }
-        }
-
-        // MIN(a, b) - minimum of two values (different from aggregate MIN)
-        if name == "MIN" && expr.args.count() == 2 {
-            var a = evalExpr(expr.args.get(0), row, table);
-            var b = evalExpr(expr.args.get(1), row, table);
-            if a.compare(b) <= 0 {
-                return a;
-            }
-            return b;
-        }
-
-        // MAX(a, b) - maximum of two values (different from aggregate MAX)
-        if name == "MAX" && expr.args.count() == 2 {
-            var a = evalExpr(expr.args.get(0), row, table);
-            var b = evalExpr(expr.args.get(1), row, table);
-            if a.compare(b) >= 0 {
-                return a;
-            }
-            return b;
-        }
-
-        // Null handling functions
+        // Short-circuit functions (need lazy argument evaluation)
         if name == "COALESCE" {
             var i = 0;
             while i < expr.args.count() {
                 var arg = evalExpr(expr.args.get(i), row, table);
-                if arg.kind != SQL_NULL {
-                    return arg;
-                }
+                if arg.kind != SQL_NULL { return arg; }
                 i = i + 1;
             }
+            return sqlNull();
         }
-
-        // IFNULL(expr, value) - returns value if expr is NULL
         if name == "IFNULL" && expr.args.count() >= 2 {
             var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL {
-                return evalExpr(expr.args.get(1), row, table);
-            }
+            if arg.kind == SQL_NULL { return evalExpr(expr.args.get(1), row, table); }
             return arg;
         }
-
-        // NULLIF(expr1, expr2) - returns NULL if expr1 == expr2
-        if name == "NULLIF" && expr.args.count() >= 2 {
-            var a = evalExpr(expr.args.get(0), row, table);
-            var b = evalExpr(expr.args.get(1), row, table);
-            if a.compare(b) == 0 {
-                return sqlNull();
-            }
-            return a;
-        }
-
-        // IIF(condition, true_value, false_value) - inline IF
         if name == "IIF" && expr.args.count() >= 3 {
             var cond = evalExpr(expr.args.get(0), row, table);
-            if cond.intValue != 0 {
-                return evalExpr(expr.args.get(1), row, table);
-            }
+            if cond.intValue != 0 { return evalExpr(expr.args.get(1), row, table); }
             return evalExpr(expr.args.get(2), row, table);
         }
-
-        // TYPEOF(expr) - returns the type name
-        if name == "TYPEOF" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlText("null"); }
-            if arg.kind == SQL_INTEGER { return sqlText("integer"); }
-            if arg.kind == SQL_TEXT { return sqlText("text"); }
-            if arg.kind == SQL_REAL { return sqlText("real"); }
-            if arg.kind == SQL_BLOB { return sqlText("blob"); }
-            return sqlText("unknown");
-        }
-
-        // CAST functions: CAST_INTEGER, CAST_REAL, CAST_TEXT, CAST_INT, CAST_VARCHAR
-        if name == "CAST_INTEGER" || name == "CAST_INT" {
-            if expr.args.count() > 0 {
-                var arg = evalExpr(expr.args.get(0), row, table);
-                if arg.kind == SQL_NULL { return sqlNull(); }
-                if arg.kind == SQL_INTEGER { return arg; }
-                if arg.kind == SQL_REAL {
-                    // Parse integer from text representation (truncates decimal part)
-                    return sqlInteger(stringToInt(arg.textValue));
-                }
-                if arg.kind == SQL_TEXT { return sqlInteger(stringToInt(arg.textValue)); }
-                return sqlInteger(0);
-            }
-        }
-        if name == "CAST_REAL" || name == "CAST_FLOAT" || name == "CAST_DOUBLE" {
-            if expr.args.count() > 0 {
-                var arg = evalExpr(expr.args.get(0), row, table);
-                if arg.kind == SQL_NULL { return sqlNull(); }
-                if arg.kind == SQL_REAL { return arg; }
-                if arg.kind == SQL_INTEGER {
-                    var intStr = Fmt.Int(arg.intValue);
-                    return sqlReal(stringToNumber(intStr), intStr);
-                }
-                if arg.kind == SQL_TEXT { return sqlReal(stringToNumber(arg.textValue), arg.textValue); }
-                return sqlReal(0.0, "0");
-            }
-        }
-        if name == "CAST_TEXT" || name == "CAST_VARCHAR" {
-            if expr.args.count() > 0 {
-                var arg = evalExpr(expr.args.get(0), row, table);
-                if arg.kind == SQL_NULL { return sqlNull(); }
-                return sqlText(arg.toString());
-            }
-        }
-
-        //=====================================================================
-        // Phase 4: Additional math functions
-        //=====================================================================
-
-        // POWER(base, exp) / POW(base, exp)
-        if (name == "POWER" || name == "POW") && expr.args.count() >= 2 {
-            var baseArg = evalExpr(expr.args.get(0), row, table);
-            var expArg = evalExpr(expr.args.get(1), row, table);
-            if baseArg.kind == SQL_NULL || expArg.kind == SQL_NULL { return sqlNull(); }
-            // Integer power for integer args
-            if baseArg.kind == SQL_INTEGER && expArg.kind == SQL_INTEGER {
-                var b = baseArg.intValue;
-                var e = expArg.intValue;
-                if e == 0 { return sqlInteger(1); }
-                if e < 0 {
-                    // Integer negative power returns 0 (truncated)
-                    if b == 1 { return sqlInteger(1); }
-                    if b == -1 {
-                        if e % 2 == 0 { return sqlInteger(1); }
-                        return sqlInteger(-1);
-                    }
-                    return sqlInteger(0);
-                }
-                var result = 1;
-                var i = 0;
-                while i < e {
-                    result = result * b;
-                    i = i + 1;
-                }
-                return sqlInteger(result);
-            }
-            // Float power using Viper.Math.Pow
-            var bVal = 0.0;
-            var eVal = 0.0;
-            if baseArg.kind == SQL_INTEGER { bVal = baseArg.intValue * 1.0; }
-            else if baseArg.kind == SQL_REAL { bVal = baseArg.realValue; }
-            else { bVal = stringToNumber(baseArg.textValue); }
-            if expArg.kind == SQL_INTEGER { eVal = expArg.intValue * 1.0; }
-            else if expArg.kind == SQL_REAL { eVal = expArg.realValue; }
-            else { eVal = stringToNumber(expArg.textValue); }
-            var pr = Pow(bVal, eVal);
-            var prStr = Fmt.Num(pr);
-            return sqlReal(pr, prStr);
-        }
-
-        // SQRT(value)
-        if name == "SQRT" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var v = 0.0;
-            if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
-            else if arg.kind == SQL_REAL { v = arg.realValue; }
-            else { v = stringToNumber(arg.textValue); }
-            var sr = Sqrt(v);
-            var srStr = Fmt.Num(sr);
-            return sqlReal(sr, srStr);
-        }
-
-        // CEIL(value) / CEILING(value)
-        if (name == "CEIL" || name == "CEILING") && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            if arg.kind == SQL_INTEGER { return arg; }
-            var v = 0.0;
-            if arg.kind == SQL_REAL { v = arg.realValue; }
-            else { v = stringToNumber(arg.textValue); }
-            var cr = Ceil(v);
-            // Convert to integer
-            var ci = stringToInt(Fmt.Num(cr));
-            return sqlInteger(ci);
-        }
-
-        // FLOOR(value)
-        if name == "FLOOR" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            if arg.kind == SQL_INTEGER { return arg; }
-            var v = 0.0;
-            if arg.kind == SQL_REAL { v = arg.realValue; }
-            else { v = stringToNumber(arg.textValue); }
-            var fr = Floor(v);
-            var fi = stringToInt(Fmt.Num(fr));
-            return sqlInteger(fi);
-        }
-
-        // SIGN(value) — returns -1, 0, or 1
-        if name == "SIGN" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            if arg.kind == SQL_INTEGER {
-                if arg.intValue > 0 { return sqlInteger(1); }
-                if arg.intValue < 0 { return sqlInteger(-1); }
-                return sqlInteger(0);
-            }
-            if arg.kind == SQL_REAL {
-                if arg.realValue > 0.0 { return sqlInteger(1); }
-                if arg.realValue < 0.0 { return sqlInteger(-1); }
-                return sqlInteger(0);
-            }
-        }
-
-        // LOG(value) / LN(value) — natural logarithm
-        if (name == "LOG" || name == "LN") && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var v = 0.0;
-            if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
-            else if arg.kind == SQL_REAL { v = arg.realValue; }
-            else { v = stringToNumber(arg.textValue); }
-            var lr = Log(v);
-            var lrStr = Fmt.Num(lr);
-            return sqlReal(lr, lrStr);
-        }
-
-        // LOG10(value)
-        if name == "LOG10" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var v = 0.0;
-            if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
-            else if arg.kind == SQL_REAL { v = arg.realValue; }
-            else { v = stringToNumber(arg.textValue); }
-            var lr = Log10(v);
-            var lrStr = Fmt.Num(lr);
-            return sqlReal(lr, lrStr);
-        }
-
-        // LOG2(value)
-        if name == "LOG2" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var v = 0.0;
-            if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
-            else if arg.kind == SQL_REAL { v = arg.realValue; }
-            else { v = stringToNumber(arg.textValue); }
-            var lr = Log2(v);
-            var lrStr = Fmt.Num(lr);
-            return sqlReal(lr, lrStr);
-        }
-
-        // EXP(value) — e^x
-        if name == "EXP" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var v = 0.0;
-            if arg.kind == SQL_INTEGER { v = arg.intValue * 1.0; }
-            else if arg.kind == SQL_REAL { v = arg.realValue; }
-            else { v = stringToNumber(arg.textValue); }
-            var er = Exp(v);
-            var erStr = Fmt.Num(er);
-            return sqlReal(er, erStr);
-        }
-
-        // PI() — returns pi constant
-        if name == "PI" {
-            var piVal = 3.14159265358979;
-            return sqlReal(piVal, "3.14159265358979");
-        }
-
-        // RANDOM() — returns pseudo-random integer using LCG
+        // RANDOM needs executor state (randomSeed)
         if name == "RANDOM" || name == "RAND" {
             randomSeed = (randomSeed * 1103515245 + 12345) % 2147483647;
             var rv = randomSeed;
@@ -1261,382 +926,19 @@ entity Executor {
             return sqlInteger(rv);
         }
 
-        //=====================================================================
-        // Phase 4: Additional string functions
-        //=====================================================================
-
-        // LEFT(string, n) — leftmost n characters
-        if name == "LEFT" && expr.args.count() >= 2 {
-            var strArg = evalExpr(expr.args.get(0), row, table);
-            var nArg = evalExpr(expr.args.get(1), row, table);
-            if strArg.kind == SQL_NULL || nArg.kind == SQL_NULL { return sqlNull(); }
-            if strArg.kind == SQL_TEXT && nArg.kind == SQL_INTEGER {
-                var s = strArg.textValue;
-                var n = nArg.intValue;
-                var sLen = String.Length(s);
-                if n >= sLen { return strArg; }
-                if n <= 0 { return sqlText(""); }
-                return sqlText(String.Substring(s, 0, n));
-            }
+        // Pre-evaluate all arguments for delegation to sql_functions module
+        var evalArgs: List[SqlValue] = [];
+        var ai = 0;
+        while ai < expr.args.count() {
+            evalArgs.add(evalExpr(expr.args.get(ai), row, table));
+            ai = ai + 1;
         }
 
-        // RIGHT(string, n) — rightmost n characters
-        if name == "RIGHT" && expr.args.count() >= 2 {
-            var strArg = evalExpr(expr.args.get(0), row, table);
-            var nArg = evalExpr(expr.args.get(1), row, table);
-            if strArg.kind == SQL_NULL || nArg.kind == SQL_NULL { return sqlNull(); }
-            if strArg.kind == SQL_TEXT && nArg.kind == SQL_INTEGER {
-                var s = strArg.textValue;
-                var n = nArg.intValue;
-                var sLen = String.Length(s);
-                if n >= sLen { return strArg; }
-                if n <= 0 { return sqlText(""); }
-                return sqlText(String.Substring(s, sLen - n, n));
-            }
-        }
-
-        // LPAD(string, length, pad) — left-pad string to length
-        if name == "LPAD" && expr.args.count() >= 2 {
-            var strArg = evalExpr(expr.args.get(0), row, table);
-            var lenArg = evalExpr(expr.args.get(1), row, table);
-            if strArg.kind == SQL_NULL || lenArg.kind == SQL_NULL { return sqlNull(); }
-            var s = strArg.toString();
-            var targetLen = lenArg.intValue;
-            var pad = " ";
-            if expr.args.count() >= 3 {
-                var padArg = evalExpr(expr.args.get(2), row, table);
-                if padArg.kind == SQL_TEXT { pad = padArg.textValue; }
-            }
-            var sLen = String.Length(s);
-            if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
-            var result = "";
-            var padLen = String.Length(pad);
-            if padLen == 0 { return sqlText(s); }
-            var needed = targetLen - sLen;
-            var pi = 0;
-            while pi < needed {
-                var ci = pi % padLen;
-                result = result + String.Substring(pad, ci, 1);
-                pi = pi + 1;
-            }
-            result = result + s;
-            return sqlText(result);
-        }
-
-        // RPAD(string, length, pad) — right-pad string to length
-        if name == "RPAD" && expr.args.count() >= 2 {
-            var strArg = evalExpr(expr.args.get(0), row, table);
-            var lenArg = evalExpr(expr.args.get(1), row, table);
-            if strArg.kind == SQL_NULL || lenArg.kind == SQL_NULL { return sqlNull(); }
-            var s = strArg.toString();
-            var targetLen = lenArg.intValue;
-            var pad = " ";
-            if expr.args.count() >= 3 {
-                var padArg = evalExpr(expr.args.get(2), row, table);
-                if padArg.kind == SQL_TEXT { pad = padArg.textValue; }
-            }
-            var sLen = String.Length(s);
-            if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
-            var result = s;
-            var padLen = String.Length(pad);
-            if padLen == 0 { return sqlText(s); }
-            var needed = targetLen - sLen;
-            var pi = 0;
-            while pi < needed {
-                var ci = pi % padLen;
-                result = result + String.Substring(pad, ci, 1);
-                pi = pi + 1;
-            }
-            return sqlText(result);
-        }
-
-        // REVERSE(string) — reverse characters
-        if name == "REVERSE" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            if arg.kind == SQL_TEXT {
-                var s = arg.textValue;
-                var result = "";
-                var i = String.Length(s) - 1;
-                while i >= 0 {
-                    result = result + String.Substring(s, i, 1);
-                    i = i - 1;
-                }
-                return sqlText(result);
-            }
-        }
-
-        // HEX(value) — convert integer to hex string
-        if name == "HEX" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            if arg.kind == SQL_INTEGER {
-                var v = arg.intValue;
-                if v == 0 { return sqlText("0"); }
-                var result = "";
-                var neg = false;
-                if v < 0 { neg = true; v = -v; }
-                while v > 0 {
-                    var digit = v % 16;
-                    if digit < 10 {
-                        result = String.Substring("0123456789ABCDEF", digit, 1) + result;
-                    } else {
-                        result = String.Substring("0123456789ABCDEF", digit, 1) + result;
-                    }
-                    v = v / 16;
-                }
-                if neg { result = "-" + result; }
-                return sqlText(result);
-            }
-        }
-
-        //=====================================================================
-        // Phase 4: Conditional functions
-        //=====================================================================
-
-        // GREATEST(a, b, ...) — returns the largest value
-        if name == "GREATEST" && expr.args.count() > 0 {
-            var best = evalExpr(expr.args.get(0), row, table);
-            if best.kind == SQL_NULL { return sqlNull(); }
-            var i = 1;
-            while i < expr.args.count() {
-                var arg = evalExpr(expr.args.get(i), row, table);
-                if arg.kind == SQL_NULL { return sqlNull(); }
-                var cmp = arg.compare(best);
-                if cmp > 0 {
-                    best = arg;
-                }
-                i = i + 1;
-            }
-            return best;
-        }
-
-        // LEAST(a, b, ...) — returns the smallest value
-        if name == "LEAST" && expr.args.count() > 0 {
-            var best = evalExpr(expr.args.get(0), row, table);
-            if best.kind == SQL_NULL { return sqlNull(); }
-            var i = 1;
-            while i < expr.args.count() {
-                var arg = evalExpr(expr.args.get(i), row, table);
-                if arg.kind == SQL_NULL { return sqlNull(); }
-                var cmp = arg.compare(best);
-                if cmp < 0 {
-                    best = arg;
-                }
-                i = i + 1;
-            }
-            return best;
-        }
-
-        //=====================================================================
-        // Phase 4: Date/Time functions
-        //=====================================================================
-
-        // NOW() / CURRENT_TIMESTAMP — returns current datetime as ISO string
-        if name == "NOW" || name == "CURRENT_TIMESTAMP" {
-            var ts = DateTime.Now();
-            return sqlText(DateTime.ToLocal(ts));
-        }
-
-        // CURRENT_DATE — returns current date as YYYY-MM-DD string
-        if name == "CURRENT_DATE" {
-            var ts = DateTime.Now();
-            var y = DateTime.Year(ts);
-            var m = DateTime.Month(ts);
-            var d = DateTime.Day(ts);
-            return sqlText(fmtDateParts(y, m, d));
-        }
-
-        // CURRENT_TIME — returns current time as HH:MM:SS string
-        if name == "CURRENT_TIME" {
-            var ts = DateTime.Now();
-            var h = DateTime.Hour(ts);
-            var mi = DateTime.Minute(ts);
-            var s = DateTime.Second(ts);
-            return sqlText(fmtTimeParts(h, mi, s));
-        }
-
-        // DATETIME(y, m, d [, h, min, s]) — construct datetime string
-        if name == "DATETIME" && expr.args.count() >= 3 {
-            var yv = evalExpr(expr.args.get(0), row, table);
-            var mv = evalExpr(expr.args.get(1), row, table);
-            var dv = evalExpr(expr.args.get(2), row, table);
-            if yv.kind == SQL_NULL || mv.kind == SQL_NULL || dv.kind == SQL_NULL { return sqlNull(); }
-            var yi = sqlToInt(yv);
-            var mi = sqlToInt(mv);
-            var di = sqlToInt(dv);
-            var hi = 0;
-            var mni = 0;
-            var si = 0;
-            if expr.args.count() >= 4 { hi = sqlToInt(evalExpr(expr.args.get(3), row, table)); }
-            if expr.args.count() >= 5 { mni = sqlToInt(evalExpr(expr.args.get(4), row, table)); }
-            if expr.args.count() >= 6 { si = sqlToInt(evalExpr(expr.args.get(5), row, table)); }
-            // Build ISO string directly without timezone conversion
-            return sqlText(fmtDateParts(yi, mi, di) + "T" + fmtTimeParts(hi, mni, si));
-        }
-
-        // DATE(expr) — extract date portion from datetime string
-        if name == "DATE" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var s = arg.toString();
-            if String.Length(s) >= 10 {
-                return sqlText(String.Substring(s, 0, 10));
-            }
-            return sqlText(s);
-        }
-
-        // TIME(expr) — extract time portion from datetime string
-        if name == "TIME" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var s = arg.toString();
-            var tPos = findChar(s, "T");
-            if tPos < 0 { tPos = findChar(s, " "); }
-            if tPos >= 0 && String.Length(s) >= tPos + 9 {
-                return sqlText(String.Substring(s, tPos + 1, 8));
-            }
-            return sqlText("00:00:00");
-        }
-
-        // YEAR(dt) — extract year from datetime string or timestamp
-        if name == "YEAR" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            return sqlInteger(DateTime.Year(ts));
-        }
-
-        // MONTH(dt) — extract month from datetime string or timestamp
-        if name == "MONTH" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            return sqlInteger(DateTime.Month(ts));
-        }
-
-        // DAY(dt) — extract day from datetime string or timestamp
-        if name == "DAY" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            return sqlInteger(DateTime.Day(ts));
-        }
-
-        // HOUR(dt) — extract hour from datetime string or timestamp
-        if name == "HOUR" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            return sqlInteger(DateTime.Hour(ts));
-        }
-
-        // MINUTE(dt) — extract minute from datetime string or timestamp
-        if name == "MINUTE" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            return sqlInteger(DateTime.Minute(ts));
-        }
-
-        // SECOND(dt) — extract second from datetime string or timestamp
-        if name == "SECOND" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            return sqlInteger(DateTime.Second(ts));
-        }
-
-        // DAYOFWEEK(dt) — day of week (0=Sunday, 6=Saturday)
-        if name == "DAYOFWEEK" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            return sqlInteger(DateTime.DayOfWeek(ts));
-        }
-
-        // DATE_ADD(dt, days) — add days to a datetime, returns ISO string
-        if name == "DATE_ADD" && expr.args.count() >= 2 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            var daysArg = evalExpr(expr.args.get(1), row, table);
-            if arg.kind == SQL_NULL || daysArg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            var days = sqlToInt(daysArg);
-            var result = DateTime.AddDays(ts, days);
-            return sqlText(DateTime.ToLocal(result));
-        }
-
-        // DATE_SUB(dt, days) — subtract days from a datetime
-        if name == "DATE_SUB" && expr.args.count() >= 2 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            var daysArg = evalExpr(expr.args.get(1), row, table);
-            if arg.kind == SQL_NULL || daysArg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(arg);
-            var days = sqlToInt(daysArg);
-            var result = DateTime.AddDays(ts, 0 - days);
-            return sqlText(DateTime.ToLocal(result));
-        }
-
-        // DATEDIFF(dt1, dt2) — difference in days between two datetimes
-        if name == "DATEDIFF" && expr.args.count() >= 2 {
-            var arg1 = evalExpr(expr.args.get(0), row, table);
-            var arg2 = evalExpr(expr.args.get(1), row, table);
-            if arg1.kind == SQL_NULL || arg2.kind == SQL_NULL { return sqlNull(); }
-            var ts1 = parseDateTimeArg(arg1);
-            var ts2 = parseDateTimeArg(arg2);
-            // Normalize to noon to avoid DST edge cases
-            var y1 = DateTime.Year(ts1);
-            var m1 = DateTime.Month(ts1);
-            var d1 = DateTime.Day(ts1);
-            var y2 = DateTime.Year(ts2);
-            var m2 = DateTime.Month(ts2);
-            var d2 = DateTime.Day(ts2);
-            var noon1 = DateTime.Create(y1, m1, d1, 12, 0, 0);
-            var noon2 = DateTime.Create(y2, m2, d2, 12, 0, 0);
-            var diffSecs = DateTime.Diff(noon1, noon2);
-            // Round to nearest day to handle DST transitions
-            if diffSecs >= 0 {
-                return sqlInteger((diffSecs + 43200) / 86400);
-            }
-            return sqlInteger((diffSecs - 43200) / 86400);
-        }
-
-        // TIMEDIFF(dt1, dt2) — difference in seconds between two datetimes
-        if name == "TIMEDIFF" && expr.args.count() >= 2 {
-            var arg1 = evalExpr(expr.args.get(0), row, table);
-            var arg2 = evalExpr(expr.args.get(1), row, table);
-            if arg1.kind == SQL_NULL || arg2.kind == SQL_NULL { return sqlNull(); }
-            var ts1 = parseDateTimeArg(arg1);
-            var ts2 = parseDateTimeArg(arg2);
-            return sqlInteger(DateTime.Diff(ts1, ts2));
-        }
-
-        // STRFTIME(format, dt) — format a datetime string
-        if name == "STRFTIME" && expr.args.count() >= 2 {
-            var fmtArg = evalExpr(expr.args.get(0), row, table);
-            var dtArg = evalExpr(expr.args.get(1), row, table);
-            if fmtArg.kind == SQL_NULL || dtArg.kind == SQL_NULL { return sqlNull(); }
-            var ts = parseDateTimeArg(dtArg);
-            return sqlText(DateTime.Format(ts, fmtArg.toString()));
-        }
-
-        // EPOCH(dt) — convert datetime to Unix epoch seconds
-        if name == "EPOCH" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            return sqlInteger(parseDateTimeArg(arg));
-        }
-
-        // FROM_EPOCH(seconds) — convert Unix epoch seconds to ISO datetime string
-        if name == "FROM_EPOCH" && expr.args.count() > 0 {
-            var arg = evalExpr(expr.args.get(0), row, table);
-            if arg.kind == SQL_NULL { return sqlNull(); }
-            var secs = sqlToInt(arg);
-            return sqlText(DateTime.ToLocal(secs));
-        }
-
-        return sqlNull();
+        // Delegate to sql_functions module
+        return dispatchSqlFunctionOrNull(name, evalArgs);
     }
+
+    // (CAST/conditional/string/math/date functions delegated to sql_functions module)
 
     expose func evalCondition(expr: Expr?, row: Row, table: Table) -> Boolean {
         if expr == null {
@@ -2105,10 +1407,16 @@ entity Executor {
     //=========================================================================
 
     expose func executeCreateTable(stmt: CreateTableStmt) -> QueryResult {
+        // Acquire exclusive lock on table name (prevents concurrent CREATE)
+        if acquireExclusiveLock(stmt.tableName) == false {
+            return lockTimeoutError(stmt.tableName);
+        }
+
         var result = new QueryResult();
         result.init();
 
-        if db.findTable(stmt.tableName) != null {
+        // Check both temp and regular tables for name conflict
+        if findTable(stmt.tableName) != null {
             result.setError("Table '" + stmt.tableName + "' already exists");
             return result;
         }
@@ -2123,19 +1431,25 @@ entity Executor {
             i = i + 1;
         }
 
-        db.addTable(table);
+        if stmt.isTemporary && tempDb != null {
+            // Temp tables go in per-session tempDb (not persisted)
+            var tdb = tempDb;
+            tdb.addTable(table);
+            result.message = "Temporary table '" + stmt.tableName + "' created";
+        } else {
+            db.addTable(table);
+            // Persist to storage engine if active
+            if storageEngine != null {
+                var se = storageEngine;
+                se.persistTable(table);
+                se.flush();
+            }
+            result.message = "Table '" + stmt.tableName + "' created";
+        }
 
         // Initialize optimizer statistics for this table
         optimizer.stats.setRowCount(stmt.tableName, 0);
 
-        // Persist to storage engine if active
-        if storageEngine != null {
-            var se = storageEngine;
-            se.persistTable(table);
-            se.flush();
-        }
-
-        result.message = "Table '" + stmt.tableName + "' created";
         return result;
     }
 
@@ -2147,7 +1461,7 @@ entity Executor {
             result.setError("View '" + viewName + "' already exists");
             return result;
         }
-        if db.findTable(viewName) != null {
+        if findTable(viewName) != null {
             result.setError("A table with name '" + viewName + "' already exists");
             return result;
         }
@@ -2170,10 +1484,15 @@ entity Executor {
     }
 
     expose func executeInsert(stmt: InsertStmt) -> QueryResult {
+        // Acquire exclusive lock on target table
+        if acquireExclusiveLock(stmt.tableName) == false {
+            return lockTimeoutError(stmt.tableName);
+        }
+
         var result = new QueryResult();
         result.init();
 
-        var table = db.findTable(stmt.tableName);
+        var table = findTable(stmt.tableName);
         if table == null {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
@@ -2483,7 +1802,7 @@ entity Executor {
                 // Check FOREIGN KEY constraint
                 if col.isForeignKey {
                     if val.kind != SQL_NULL {
-                        var refTable = db.findTable(col.refTableName);
+                        var refTable = findTable(col.refTableName);
                         if refTable == null {
                             return "FOREIGN KEY constraint failed: referenced table '" + col.refTableName + "' not found";
                         }
@@ -2807,9 +2126,29 @@ entity Executor {
     }
 
     expose func executeSelect(stmt: SelectStmt) -> QueryResult {
+        // Acquire shared locks on all FROM/JOIN tables
+        if stmt.tableNames.count() > 0 {
+            var li = 0;
+            while li < stmt.tableNames.count() {
+                if acquireSharedLock(stmt.tableNames.get(li)) == false {
+                    return lockTimeoutError(stmt.tableNames.get(li));
+                }
+                li = li + 1;
+            }
+        } else if stmt.tableName != "" {
+            if acquireSharedLock(stmt.tableName) == false {
+                return lockTimeoutError(stmt.tableName);
+            }
+        }
+
         // Handle SELECT without FROM (e.g., SELECT 1+1, SELECT EXISTS(...))
         if stmt.tableName == "" && stmt.tableNames.count() == 0 {
             return executeExpressionSelect(stmt);
+        }
+
+        // Handle system views (information_schema.*, sys.*)
+        if isSystemView(stmt.tableName) {
+            return executeSystemView(stmt.tableName, server, currentDbName);
         }
 
         // Handle derived table (subquery in FROM)
@@ -2825,7 +2164,7 @@ entity Executor {
         var result = new QueryResult();
         result.init();
 
-        var table = db.findTable(stmt.tableName);
+        var table = findTable(stmt.tableName);
         if table == null {
             // Check if it's a view
             var viewSql = db.findView(stmt.tableName);
@@ -3315,383 +2654,20 @@ entity Executor {
     }
 
     //=========================================================================
-    // Window Functions
-    //=========================================================================
-
-    // Apply window functions to the result set
-    hide func applyWindowFunctions(stmt: SelectStmt, result: QueryResult, table: Table) {
-        // Find which SELECT columns are window functions
-        var colIdx = 0;
-        while colIdx < stmt.columns.count() {
-            var colExpr = stmt.columns.get(colIdx);
-            if colExpr.kind == EXPR_WINDOW {
-                computeWindowColumn(colExpr, result, colIdx, table);
-            }
-            colIdx = colIdx + 1;
-        }
-    }
-
-    // Compute window function values for a specific result column
-    hide func computeWindowColumn(winExpr: Expr, result: QueryResult, colIdx: Integer, table: Table) {
-        var funcName = String.ToUpper(winExpr.funcName);
-        var rowCount = result.rowCount();
-        if rowCount == 0 { return; }
-
-        // Build partition keys for each row
-        var partKeys: List[String] = [];
-        var ri = 0;
-        while ri < rowCount {
-            var row = result.rows.get(ri);
-            var key = "";
-            var pi = 0;
-            while pi < winExpr.partitionBy.count() {
-                if pi > 0 { key = key + "|"; }
-                var pExpr = winExpr.partitionBy.get(pi);
-                // Resolve partition expression against result row
-                var pVal = resolveWindowExpr(pExpr, row, result);
-                key = key + pVal.toString();
-                pi = pi + 1;
-            }
-            partKeys.add(key);
-            ri = ri + 1;
-        }
-
-        // Sort result rows by partition key + window ORDER BY
-        // Build sort indices
-        var indices: List[Integer] = [];
-        ri = 0;
-        while ri < rowCount {
-            indices.add(ri);
-            ri = ri + 1;
-        }
-
-        // Sort indices by (partitionKey, orderBy columns)
-        sortWindowIndices(indices, partKeys, winExpr, result);
-
-        // Now compute window function values in sorted order
-        var windowValues: List[SqlValue] = [];
-        // Initialize with nulls
-        ri = 0;
-        while ri < rowCount {
-            windowValues.add(sqlNull());
-            ri = ri + 1;
-        }
-
-        // Process rows in sorted order, tracking partitions
-        var partStart = 0;
-        while partStart < rowCount {
-            var currentPartKey = partKeys.get(indices.get(partStart));
-            // Find end of this partition
-            var partEnd = partStart + 1;
-            while partEnd < rowCount && partKeys.get(indices.get(partEnd)) == currentPartKey {
-                partEnd = partEnd + 1;
-            }
-
-            // Compute values for this partition window
-            var partSize = partEnd - partStart;
-
-            // When no ORDER BY: aggregate functions use whole partition
-            var hasWindowOrder = winExpr.windowOrderBy.count() > 0;
-
-            if funcName == "ROW_NUMBER" {
-                var wi = 0;
-                while wi < partSize {
-                    var origIdx = indices.get(partStart + wi);
-                    windowValues.set(origIdx, sqlInteger(wi + 1));
-                    wi = wi + 1;
-                }
-            } else if funcName == "RANK" {
-                var wi = 0;
-                var currentRank = 1;
-                while wi < partSize {
-                    var origIdx = indices.get(partStart + wi);
-                    if wi > 0 {
-                        // Compare with previous row's ORDER BY values
-                        var prevIdx = indices.get(partStart + wi - 1);
-                        if windowOrderValuesEqual(winExpr, result.rows.get(origIdx), result.rows.get(prevIdx), result) == false {
-                            currentRank = wi + 1;
-                        }
-                    }
-                    windowValues.set(origIdx, sqlInteger(currentRank));
-                    wi = wi + 1;
-                }
-            } else if funcName == "DENSE_RANK" {
-                var wi = 0;
-                var currentRank = 1;
-                while wi < partSize {
-                    var origIdx = indices.get(partStart + wi);
-                    if wi > 0 {
-                        var prevIdx = indices.get(partStart + wi - 1);
-                        if windowOrderValuesEqual(winExpr, result.rows.get(origIdx), result.rows.get(prevIdx), result) == false {
-                            currentRank = currentRank + 1;
-                        }
-                    }
-                    windowValues.set(origIdx, sqlInteger(currentRank));
-                    wi = wi + 1;
-                }
-            } else if funcName == "SUM" {
-                if hasWindowOrder {
-                    // Running sum with ORDER BY
-                    var runningSum = 0;
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if argVal.kind == SQL_INTEGER {
-                                runningSum = runningSum + argVal.intValue;
-                            }
-                        }
-                        windowValues.set(origIdx, sqlInteger(runningSum));
-                        wi = wi + 1;
-                    }
-                } else {
-                    // Total partition sum without ORDER BY
-                    var totalSum = 0;
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if argVal.kind == SQL_INTEGER { totalSum = totalSum + argVal.intValue; }
-                        }
-                        wi = wi + 1;
-                    }
-                    wi = 0;
-                    while wi < partSize {
-                        windowValues.set(indices.get(partStart + wi), sqlInteger(totalSum));
-                        wi = wi + 1;
-                    }
-                }
-            } else if funcName == "COUNT" {
-                if hasWindowOrder {
-                    var runningCount = 0;
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        runningCount = runningCount + 1;
-                        windowValues.set(origIdx, sqlInteger(runningCount));
-                        wi = wi + 1;
-                    }
-                } else {
-                    // Total partition count
-                    var wi = 0;
-                    while wi < partSize {
-                        windowValues.set(indices.get(partStart + wi), sqlInteger(partSize));
-                        wi = wi + 1;
-                    }
-                }
-            } else if funcName == "AVG" {
-                if hasWindowOrder {
-                    var runningSum = 0;
-                    var runningCount = 0;
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if argVal.kind == SQL_INTEGER { runningSum = runningSum + argVal.intValue; }
-                        }
-                        runningCount = runningCount + 1;
-                        windowValues.set(origIdx, sqlInteger(runningSum / runningCount));
-                        wi = wi + 1;
-                    }
-                } else {
-                    var totalSum = 0;
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if argVal.kind == SQL_INTEGER { totalSum = totalSum + argVal.intValue; }
-                        }
-                        wi = wi + 1;
-                    }
-                    var avgVal = totalSum / partSize;
-                    wi = 0;
-                    while wi < partSize {
-                        windowValues.set(indices.get(partStart + wi), sqlInteger(avgVal));
-                        wi = wi + 1;
-                    }
-                }
-            } else if funcName == "MIN" {
-                // MIN always uses full partition (or running with ORDER BY)
-                if hasWindowOrder {
-                    var runMin = sqlNull();
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if runMin.kind == SQL_NULL || argVal.compare(runMin) < 0 {
-                                runMin = argVal;
-                            }
-                        }
-                        windowValues.set(origIdx, runMin);
-                        wi = wi + 1;
-                    }
-                } else {
-                    var partMin = sqlNull();
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if partMin.kind == SQL_NULL || argVal.compare(partMin) < 0 { partMin = argVal; }
-                        }
-                        wi = wi + 1;
-                    }
-                    wi = 0;
-                    while wi < partSize {
-                        windowValues.set(indices.get(partStart + wi), partMin);
-                        wi = wi + 1;
-                    }
-                }
-            } else if funcName == "MAX" {
-                if hasWindowOrder {
-                    var runMax = sqlNull();
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if runMax.kind == SQL_NULL || argVal.compare(runMax) > 0 { runMax = argVal; }
-                        }
-                        windowValues.set(origIdx, runMax);
-                        wi = wi + 1;
-                    }
-                } else {
-                    var partMax = sqlNull();
-                    var wi = 0;
-                    while wi < partSize {
-                        var origIdx = indices.get(partStart + wi);
-                        var row = result.rows.get(origIdx);
-                        if winExpr.args.count() > 0 {
-                            var argVal = resolveWindowExpr(winExpr.args.get(0), row, result);
-                            if partMax.kind == SQL_NULL || argVal.compare(partMax) > 0 { partMax = argVal; }
-                        }
-                        wi = wi + 1;
-                    }
-                    wi = 0;
-                    while wi < partSize {
-                        windowValues.set(indices.get(partStart + wi), partMax);
-                        wi = wi + 1;
-                    }
-                }
-            }
-
-            partStart = partEnd;
-        }
-
-        // Replace result column values with computed window values
-        ri = 0;
-        while ri < rowCount {
-            var row = result.rows.get(ri);
-            if colIdx < row.columnCount() {
-                row.setValue(colIdx, windowValues.get(ri));
-            }
-            ri = ri + 1;
-        }
-    }
-
-    // Resolve an expression against a result row (using column names from result)
-    hide func resolveWindowExpr(expr: Expr, row: Row, result: QueryResult) -> SqlValue {
-        if expr.kind == EXPR_LITERAL { return expr.literalValue; }
-        if expr.kind == EXPR_COLUMN {
-            // Find column by name in result column names
-            var ci = 0;
-            while ci < result.columnNames.count() {
-                if String.ToUpper(result.columnNames.get(ci)) == String.ToUpper(expr.columnName) {
-                    return row.getValue(ci);
-                }
-                ci = ci + 1;
-            }
-        }
-        return sqlNull();
-    }
-
-    // Sort indices by partition key and window ORDER BY
-    hide func sortWindowIndices(indices: List[Integer], partKeys: List[String], winExpr: Expr, result: QueryResult) {
-        // Simple insertion sort (sufficient for window functions)
-        var n = indices.count();
-        var i = 1;
-        while i < n {
-            var key = indices.get(i);
-            var j = i - 1;
-            while j >= 0 && compareWindowRows(indices.get(j), key, partKeys, winExpr, result) > 0 {
-                indices.set(j + 1, indices.get(j));
-                j = j - 1;
-            }
-            indices.set(j + 1, key);
-            i = i + 1;
-        }
-    }
-
-    // Compare two rows for window sorting: first by partition key, then by ORDER BY
-    hide func compareWindowRows(idxA: Integer, idxB: Integer, partKeys: List[String], winExpr: Expr, result: QueryResult) -> Integer {
-        // Compare partition keys first
-        var keyA = partKeys.get(idxA);
-        var keyB = partKeys.get(idxB);
-        if keyA < keyB { return -1; }
-        if keyA > keyB { return 1; }
-
-        // Same partition — compare by ORDER BY expressions
-        var rowA = result.rows.get(idxA);
-        var rowB = result.rows.get(idxB);
-        var oi = 0;
-        while oi < winExpr.windowOrderBy.count() {
-            var oExpr = winExpr.windowOrderBy.get(oi);
-            var valA = resolveWindowExpr(oExpr, rowA, result);
-            var valB = resolveWindowExpr(oExpr, rowB, result);
-            var cmp = valA.compare(valB);
-            if cmp == 2 { cmp = 0; }  // NULL == NULL for ordering
-            var dir = 0;
-            if oi < winExpr.windowOrderDir.count() {
-                dir = winExpr.windowOrderDir.get(oi);
-            }
-            if dir == 1 { cmp = -cmp; }  // DESC
-            if cmp != 0 { return cmp; }
-            oi = oi + 1;
-        }
-        return 0;
-    }
-
-    // Check if two rows have equal ORDER BY values
-    hide func windowOrderValuesEqual(winExpr: Expr, rowA: Row, rowB: Row, result: QueryResult) -> Boolean {
-        var oi = 0;
-        while oi < winExpr.windowOrderBy.count() {
-            var oExpr = winExpr.windowOrderBy.get(oi);
-            var valA = resolveWindowExpr(oExpr, rowA, result);
-            var valB = resolveWindowExpr(oExpr, rowB, result);
-            var cmp = valA.compare(valB);
-            if cmp != 0 { return false; }
-            oi = oi + 1;
-        }
-        return true;
-    }
-
-    //=========================================================================
     // Multi-table UPDATE...FROM
     //=========================================================================
     hide func executeUpdateFrom(stmt: UpdateStmt) -> QueryResult {
         var result = new QueryResult();
         result.init();
 
-        var table = db.findTable(stmt.tableName);
+        var table = findTable(stmt.tableName);
         if table == null {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
         }
         var t1 = table;
 
-        var fromTable = db.findTable(stmt.fromTableName);
+        var fromTable = findTable(stmt.fromTableName);
         if fromTable == null {
             result.setError("FROM table '" + stmt.fromTableName + "' not found");
             return result;
@@ -3799,14 +2775,14 @@ entity Executor {
         var result = new QueryResult();
         result.init();
 
-        var table = db.findTable(stmt.tableName);
+        var table = findTable(stmt.tableName);
         if table == null {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
         }
         var t1 = table;
 
-        var usingTable = db.findTable(stmt.usingTableName);
+        var usingTable = findTable(stmt.usingTableName);
         if usingTable == null {
             result.setError("USING table '" + stmt.usingTableName + "' not found");
             return result;
@@ -4031,6 +3007,17 @@ entity Executor {
     }
 
     expose func executeUpdate(stmt: UpdateStmt) -> QueryResult {
+        // Acquire exclusive lock on target table
+        if acquireExclusiveLock(stmt.tableName) == false {
+            return lockTimeoutError(stmt.tableName);
+        }
+        // Also lock FROM table if present (shared for reads)
+        if stmt.hasFrom && stmt.fromTableName != "" {
+            if acquireSharedLock(stmt.fromTableName) == false {
+                return lockTimeoutError(stmt.fromTableName);
+            }
+        }
+
         // Route to multi-table UPDATE if FROM clause present
         if stmt.hasFrom {
             return executeUpdateFrom(stmt);
@@ -4039,7 +3026,7 @@ entity Executor {
         var result = new QueryResult();
         result.init();
 
-        var table = db.findTable(stmt.tableName);
+        var table = findTable(stmt.tableName);
         if table == null {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
@@ -4171,6 +3158,17 @@ entity Executor {
     }
 
     expose func executeDelete(stmt: DeleteStmt) -> QueryResult {
+        // Acquire exclusive lock on target table
+        if acquireExclusiveLock(stmt.tableName) == false {
+            return lockTimeoutError(stmt.tableName);
+        }
+        // Also lock USING table if present (shared for reads)
+        if stmt.hasUsing && stmt.usingTableName != "" {
+            if acquireSharedLock(stmt.usingTableName) == false {
+                return lockTimeoutError(stmt.usingTableName);
+            }
+        }
+
         // Route to multi-table DELETE if USING clause present
         if stmt.hasUsing {
             return executeDeleteUsing(stmt);
@@ -4179,7 +3177,7 @@ entity Executor {
         var result = new QueryResult();
         result.init();
 
-        var table = db.findTable(stmt.tableName);
+        var table = findTable(stmt.tableName);
         if table == null {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
@@ -4881,6 +3879,18 @@ entity Executor {
     }
 
     expose func executeSql(sql: String) -> QueryResult {
+        var result = executeSqlDispatch(sql);
+
+        // For non-transactional statements, release locks after each statement.
+        // During transactions, locks are held until COMMIT/ROLLBACK.
+        if inTransaction == false {
+            releaseSessionLocks();
+        }
+
+        return result;
+    }
+
+    hide func executeSqlDispatch(sql: String) -> QueryResult {
         // Clear subquery cache for each new top-level SQL statement
         subqueryCacheKeys = [];
         subqueryCacheScalars = [];
@@ -4899,6 +3909,12 @@ entity Executor {
 
         if kind == TK_CREATE {
             parser.advance();
+            // CREATE TEMP TABLE / CREATE TEMPORARY TABLE
+            var isTemp = false;
+            if parser.currentKind() == TK_TEMPORARY {
+                isTemp = true;
+                parser.advance();
+            }
             if parser.currentKind() == TK_TABLE {
                 var stmt = parser.parseCreateTableStmt();
                 if parser.hasError {
@@ -4907,6 +3923,7 @@ entity Executor {
                     result.setError(parser.error);
                     return result;
                 }
+                stmt.isTemporary = isTemp;
                 return executeCreateTable(stmt);
             }
             if parser.currentKind() == TK_INDEX || parser.currentKind() == TK_UNIQUE {
@@ -4976,6 +3993,33 @@ entity Executor {
                     parser.advance();
                 }
                 return executeCreateView(viewName, viewSql);
+            }
+            // CREATE USER name PASSWORD 'password'
+            if parser.currentKind() == TK_USER {
+                parser.advance();
+                if parser.currentKind() != TK_IDENTIFIER {
+                    var result = new QueryResult();
+                    result.init();
+                    result.setError("CREATE USER requires a username");
+                    return result;
+                }
+                var userName = parser.currentText();
+                parser.advance();
+                if parser.currentKind() != TK_PASSWORD {
+                    var result = new QueryResult();
+                    result.init();
+                    result.setError("Expected PASSWORD after username: CREATE USER name PASSWORD 'pass'");
+                    return result;
+                }
+                parser.advance();
+                if parser.currentKind() != TK_STRING {
+                    var result = new QueryResult();
+                    result.init();
+                    result.setError("Expected password string");
+                    return result;
+                }
+                var password = parser.currentText();
+                return executeCreateUser(userName, password);
             }
         }
 
@@ -5103,7 +4147,19 @@ entity Executor {
                 parser.advance();
                 if parser.currentKind() == TK_IDENTIFIER {
                     var tableName = parser.currentText();
-                    if db.dropTable(tableName) {
+                    // Acquire exclusive lock on table being dropped
+                    if acquireExclusiveLock(tableName) == false {
+                        return lockTimeoutError(tableName);
+                    }
+                    // Try dropping from temp tables first, then regular tables
+                    if isTempTable(tableName) && tempDb != null {
+                        var tdb = tempDb;
+                        tdb.dropTable(tableName);
+                        var result = new QueryResult();
+                        result.init();
+                        result.message = "Temporary table '" + tableName + "' dropped";
+                        return result;
+                    } else if db.dropTable(tableName) {
                         // Persist table drop to storage engine
                         if storageEngine != null {
                             var se = storageEngine;
@@ -5156,6 +4212,18 @@ entity Executor {
                 result.setError("DROP VIEW requires a view name");
                 return result;
             }
+            // DROP USER name
+            if parser.currentKind() == TK_USER {
+                parser.advance();
+                if parser.currentKind() == TK_IDENTIFIER {
+                    var userName = parser.currentText();
+                    return executeDropUser(userName);
+                }
+                var result = new QueryResult();
+                result.init();
+                result.setError("DROP USER requires a username");
+                return result;
+            }
         }
 
         // USE command: USE database_name
@@ -5191,7 +4259,7 @@ entity Executor {
                     row.init();
                     var dbName = dbNames.get(i);
                     // Mark current database with asterisk
-                    if dbName == server.currentDbName {
+                    if dbName == currentDbName {
                         row.addValue(sqlText(dbName + " *"));
                     } else {
                         row.addValue(sqlText(dbName));
@@ -5202,8 +4270,40 @@ entity Executor {
                 return result;
             }
 
-            // SHOW TABLES (default)
+            // SHOW USERS
+            if parser.currentKind() == TK_IDENTIFIER && String.ToUpper(parser.currentText()) == "USERS" {
+                result.addColumnName("username");
+                var users = server.listUsers();
+                var ui = 0;
+                while ui < users.count() {
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlText(users.get(ui)));
+                    result.addRow(row);
+                    ui = ui + 1;
+                }
+                return result;
+            }
+
+            // SHOW TABLES (default) — includes temp tables marked with (TEMP)
             result.addColumnName("table_name");
+            // Show temp tables first
+            if tempDb != null {
+                var tdb = tempDb;
+                var ti = 0;
+                while ti < tdb.tableCount() {
+                    var tt = tdb.getTable(ti);
+                    if tt != null {
+                        var tempTbl = tt;
+                        var row = new Row();
+                        row.init();
+                        row.addValue(sqlText(tempTbl.name + " (TEMP)"));
+                        result.addRow(row);
+                    }
+                    ti = ti + 1;
+                }
+            }
+            // Then regular tables
             var i = 0;
             while i < db.tableCount() {
                 var t = db.getTable(i);
@@ -5324,16 +4424,51 @@ entity Executor {
             return result;
         }
 
-        // ALTER TABLE command
+        // ALTER TABLE / ALTER USER command
         if kind == TK_ALTER {
             parser.advance();
             if parser.currentKind() == TK_TABLE {
                 parser.advance();
                 if parser.currentKind() == TK_IDENTIFIER {
                     var tableName = parser.currentText();
+                    // Acquire exclusive lock on table being altered
+                    if acquireExclusiveLock(tableName) == false {
+                        return lockTimeoutError(tableName);
+                    }
                     parser.advance();
                     return executeAlterTable(parser, tableName);
                 }
+            }
+            // ALTER USER name [SET] PASSWORD 'newpass'
+            if parser.currentKind() == TK_USER {
+                parser.advance();
+                if parser.currentKind() != TK_IDENTIFIER {
+                    var result = new QueryResult();
+                    result.init();
+                    result.setError("ALTER USER requires a username");
+                    return result;
+                }
+                var userName = parser.currentText();
+                parser.advance();
+                // Optional SET keyword
+                if parser.currentKind() == TK_SET {
+                    parser.advance();
+                }
+                if parser.currentKind() != TK_PASSWORD {
+                    var result = new QueryResult();
+                    result.init();
+                    result.setError("ALTER USER: expected PASSWORD");
+                    return result;
+                }
+                parser.advance();
+                if parser.currentKind() != TK_STRING {
+                    var result = new QueryResult();
+                    result.init();
+                    result.setError("ALTER USER: expected password string");
+                    return result;
+                }
+                var newPassword = parser.currentText();
+                return executeAlterUser(userName, newPassword);
             }
             var result = new QueryResult();
             result.init();
@@ -5541,6 +4676,39 @@ entity Executor {
     }
 
     //=========================================================================
+    // CONCURRENCY CONTROL HELPERS
+    //=========================================================================
+
+    // Acquire a shared (read) lock on a table. No-op in standalone mode.
+    hide func acquireSharedLock(tableName: String) -> Boolean {
+        if tableLockMgr == null { return true; }
+        var lm = tableLockMgr;
+        return lm.acquireTableLock(sessionId, tableName, LOCK_SHARED);
+    }
+
+    // Acquire an exclusive (write) lock on a table. No-op in standalone mode.
+    hide func acquireExclusiveLock(tableName: String) -> Boolean {
+        if tableLockMgr == null { return true; }
+        var lm = tableLockMgr;
+        return lm.acquireTableLock(sessionId, tableName, LOCK_EXCLUSIVE);
+    }
+
+    // Release all locks held by this session. No-op in standalone mode.
+    hide func releaseSessionLocks() {
+        if tableLockMgr == null { return; }
+        var lm = tableLockMgr;
+        lm.releaseAllLocks(sessionId);
+    }
+
+    // Return a lock timeout error result for the given table
+    hide func lockTimeoutError(tableName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        result.setError("Lock timeout: could not acquire lock on '" + tableName + "'");
+        return result;
+    }
+
+    //=========================================================================
     // TRANSACTION MANAGEMENT
     //=========================================================================
 
@@ -5570,7 +4738,7 @@ entity Executor {
         var i = 0;
         while i < txnDirtyTables.count() {
             var tblName = txnDirtyTables.get(i);
-            var table = db.findTable(tblName);
+            var table = findTable(tblName);
             if table != null {
                 var t = table;
                 compactTable(t);
@@ -5588,6 +4756,10 @@ entity Executor {
         inTransaction = false;
         journal = [];
         txnDirtyTables = [];
+
+        // Release all table locks held during the transaction
+        releaseSessionLocks();
+
         result.message = "COMMIT";
         return result;
     }
@@ -5612,7 +4784,7 @@ entity Executor {
         var t = 0;
         while t < txnDirtyTables.count() {
             var tblName = txnDirtyTables.get(t);
-            var table = db.findTable(tblName);
+            var table = findTable(tblName);
             if table != null {
                 var tbl = table;
                 rebuildTableIndexes(tblName, tbl);
@@ -5623,13 +4795,17 @@ entity Executor {
         inTransaction = false;
         journal = [];
         txnDirtyTables = [];
+
+        // Release all table locks held during the transaction
+        releaseSessionLocks();
+
         result.message = "ROLLBACK";
         return result;
     }
 
     // Undo a single journal entry
     hide func undoJournalEntry(entry: JournalEntry) {
-        var table = db.findTable(entry.tableName);
+        var table = findTable(entry.tableName);
         if table == null { return; }
         var t = table;
 
@@ -5696,7 +4872,7 @@ entity Executor {
         var t = 0;
         while t < txnDirtyTables.count() {
             var tblName = txnDirtyTables.get(t);
-            var table = db.findTable(tblName);
+            var table = findTable(tblName);
             if table != null {
                 var tbl = table;
                 rebuildTableIndexes(tblName, tbl);
@@ -5763,10 +4939,15 @@ entity Executor {
     }
 
     expose func executeCreateIndex(stmt: CreateIndexStmt) -> QueryResult {
+        // Acquire exclusive lock on table (index creation modifies table metadata)
+        if acquireExclusiveLock(stmt.tableName) == false {
+            return lockTimeoutError(stmt.tableName);
+        }
+
         var result = new QueryResult();
         result.init();
 
-        var table = db.findTable(stmt.tableName);
+        var table = findTable(stmt.tableName);
         if table == null {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
@@ -5855,7 +5036,7 @@ entity Executor {
             return result;
         }
 
-        if dbName == server.currentDbName {
+        if dbName == currentDbName {
             result.setError("Cannot drop the current database. Use another database first.");
             return result;
         }
@@ -5884,10 +5065,23 @@ entity Executor {
             return result;
         }
 
-        if server.useDatabase(dbName) {
+        // Find the database index and switch per-executor state
+        var foundIdx = -1;
+        var si = 0;
+        while si < server.dbNames.count() {
+            if server.dbNames.get(si) == dbName {
+                foundIdx = si;
+                si = server.dbNames.count();  // break
+            }
+            si = si + 1;
+        }
+
+        if foundIdx >= 0 {
+            currentDbName = dbName;
+            currentDbIndex = foundIdx;
             refreshCurrentDatabase();
             // Switch storage engine to match the new database
-            storageEngine = server.currentStorageEngine();
+            storageEngine = server.getStorageEngine(dbName);
             result.message = "Switched to database '" + dbName + "'";
         } else {
             result.setError("Failed to switch to database '" + dbName + "'");
@@ -6035,7 +5229,7 @@ entity Executor {
         var result = new QueryResult();
         result.init();
 
-        var maybeTable = db.findTable(tableName);
+        var maybeTable = findTable(tableName);
         if maybeTable == null {
             result.setError("Table '" + tableName + "' not found");
             return result;
@@ -6094,7 +5288,7 @@ entity Executor {
         var result = new QueryResult();
         result.init();
 
-        var maybeTable = db.findTable(tableName);
+        var maybeTable = findTable(tableName);
         if maybeTable == null {
             result.setError("Table '" + tableName + "' not found");
             return result;
@@ -6243,89 +5437,47 @@ entity Executor {
         return result;
     }
 
-}
+    //=========================================================================
+    // USER MANAGEMENT (Phase 10)
+    //=========================================================================
 
-//=============================================================================
-// DATE/TIME HELPER FUNCTIONS
-//=============================================================================
-
-// Find position of a single character in a string, returns -1 if not found
-func findChar(s: String, ch: String) -> Integer {
-    var i = 0;
-    var len = String.Length(s);
-    while i < len {
-        if String.Substring(s, i, 1) == ch {
-            return i;
+    hide func executeCreateUser(userName: String, password: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        if server.createUser(userName, password) {
+            result.message = "User '" + userName + "' created";
+        } else {
+            result.setError("User '" + userName + "' already exists");
         }
-        i = i + 1;
+        return result;
     }
-    return 0 - 1;
-}
 
-// Convert SqlValue to integer (handles TEXT, REAL, INTEGER)
-func sqlToInt(val: SqlValue) -> Integer {
-    if val.kind == SQL_INTEGER { return val.intValue; }
-    if val.kind == SQL_REAL { return stringToInt(val.textValue); }
-    if val.kind == SQL_TEXT { return stringToInt(val.textValue); }
-    return 0;
-}
-
-// Parse a SQL value (text ISO string or integer epoch) into an i64 timestamp
-func parseDateTimeArg(val: SqlValue) -> Integer {
-    if val.kind == SQL_INTEGER {
-        // Integer is treated as Unix epoch seconds
-        return val.intValue;
-    }
-    // Parse ISO string: "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS"
-    var s = val.toString();
-    var sLen = String.Length(s);
-    if sLen < 10 { return 0; }
-
-    // Extract year: chars 0-3
-    var yearStr = String.Substring(s, 0, 4);
-    // Extract month: chars 5-6
-    var monthStr = String.Substring(s, 5, 2);
-    // Extract day: chars 8-9
-    var dayStr = String.Substring(s, 8, 2);
-
-    var yr = stringToInt(yearStr);
-    var mo = stringToInt(monthStr);
-    var dy = stringToInt(dayStr);
-    var hr = 0;
-    var mn = 0;
-    var sc = 0;
-
-    // Extract time if present (after T or space at position 10)
-    if sLen >= 19 {
-        var sep = String.Substring(s, 10, 1);
-        if sep == "T" || sep == " " {
-            hr = stringToInt(String.Substring(s, 11, 2));
-            mn = stringToInt(String.Substring(s, 14, 2));
-            sc = stringToInt(String.Substring(s, 17, 2));
+    hide func executeDropUser(userName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        if userName == "admin" {
+            result.setError("Cannot drop the admin user");
+            return result;
         }
+        if server.dropUser(userName) {
+            result.message = "User '" + userName + "' dropped";
+        } else {
+            result.setError("User '" + userName + "' not found");
+        }
+        return result;
     }
 
-    return DateTime.Create(yr, mo, dy, hr, mn, sc);
+    hide func executeAlterUser(userName: String, newPassword: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        if server.changePassword(userName, newPassword) {
+            result.message = "User '" + userName + "' updated";
+        } else {
+            result.setError("User '" + userName + "' not found");
+        }
+        return result;
+    }
+
 }
 
-// Format year, month, day into YYYY-MM-DD string
-func fmtDateParts(y: Integer, m: Integer, d: Integer) -> String {
-    var result = Fmt.Int(y) + "-";
-    if m < 10 { result = result + "0"; }
-    result = result + Fmt.Int(m) + "-";
-    if d < 10 { result = result + "0"; }
-    result = result + Fmt.Int(d);
-    return result;
-}
-
-// Format hour, minute, second into HH:MM:SS string
-func fmtTimeParts(h: Integer, m: Integer, s: Integer) -> String {
-    var result = "";
-    if h < 10 { result = result + "0"; }
-    result = result + Fmt.Int(h) + ":";
-    if m < 10 { result = result + "0"; }
-    result = result + Fmt.Int(m) + ":";
-    if s < 10 { result = result + "0"; }
-    result = result + Fmt.Int(s);
-    return result;
-}
+// Date/time helpers moved to sql_functions.zia

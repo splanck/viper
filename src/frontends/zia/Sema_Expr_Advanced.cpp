@@ -180,6 +180,21 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
             return sym->type;
         }
 
+        // Check if fullName is a valid runtime class or sub-namespace
+        // (e.g., "Viper.Collections.List" when accessed via alias "Collections.List")
+        if (isValidRuntimeNamespace(fullName))
+        {
+            return types::module(fullName);
+        }
+
+        // Also check typeRegistry_ for the qualified name directly
+        // (handles runtime types that are registered but not in importedSymbols_)
+        auto typeIt = typeRegistry_.find(fullName);
+        if (typeIt != typeRegistry_.end())
+        {
+            return typeIt->second;
+        }
+
         // If not found in global scope, report error
         error(expr->loc,
               "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");
@@ -373,10 +388,11 @@ TypeRef Sema::analyzeCoalesce(CoalesceExpr *expr)
     TypeRef leftType = analyzeExpr(expr->left.get());
     TypeRef rightType = analyzeExpr(expr->right.get());
 
-    // Left should be optional
+    // If left is non-optional (e.g. after flow-sensitive narrowing),
+    // ?? is a no-op — just return the left type.
     if (leftType->kind != TypeKindSem::Optional)
     {
-        error(expr->left->loc, "Left side of ?? must be optional");
+        return leftType;
     }
 
     // Result is the unwrapped type

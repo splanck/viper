@@ -6,6 +6,7 @@ module server;
 
 bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
+bind Threads = Viper.Threads;
 
 bind "./database";
 bind "./table";
@@ -17,11 +18,13 @@ bind "./storage/buffer";
 bind "./storage/schema_page";
 bind "./storage/data_page";
 bind "./storage/engine";
+bind "./storage/txn";
 
 //=============================================================================
 // DATABASE SERVER ENTITY
 //=============================================================================
 
+// Thread-safe: all public methods are protected by a Monitor lock.
 entity DatabaseServer {
     // Map of database name to Database object
     // Since Zia doesn't have native Map, we use parallel lists
@@ -38,6 +41,16 @@ entity DatabaseServer {
     expose String currentDbName;
     expose Integer currentDbIndex;
 
+    // Shared table lock manager for concurrent access control
+    expose TableLockManager tableLockMgr;
+
+    // User management (Phase 10: Authentication)
+    expose List[String] userNames;
+    expose List[String] userPasswords;
+
+    // Monitor object for thread safety
+    hide List[Integer] lock;
+
     expose func init() {
         dbNames = [];
         dbList = [];
@@ -46,10 +59,18 @@ entity DatabaseServer {
         dbFilePaths = [];
         currentDbName = "";
         currentDbIndex = -1;
+        lock = [];
+        userNames = [];
+        userPasswords = [];
+        tableLockMgr = new TableLockManager();
+        tableLockMgr.init();
 
-        // Create default database
-        createDatabase("main");
-        useDatabase("main");
+        // Create default database (use internal variants to avoid deadlock)
+        createDatabaseInternal("main");
+        useDatabaseInternal("main");
+
+        // Create default superuser
+        createUserInternal("admin", "admin");
     }
 
     //=========================================================================
@@ -58,6 +79,13 @@ entity DatabaseServer {
 
     // Create a new database
     expose func createDatabase(name: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = createDatabaseInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func createDatabaseInternal(name: String) -> Boolean {
         // Check if database already exists
         var i = 0;
         while i < dbNames.count() {
@@ -87,6 +115,13 @@ entity DatabaseServer {
 
     // Create a new database with persistent file storage
     expose func createDatabaseWithFile(name: String, filePath: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = createDatabaseWithFileInternal(name, filePath);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func createDatabaseWithFileInternal(name: String, filePath: String) -> Boolean {
         // Check if database already exists
         var i = 0;
         while i < dbNames.count() {
@@ -162,6 +197,13 @@ entity DatabaseServer {
 
     // Drop a database
     expose func dropDatabase(name: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = dropDatabaseInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func dropDatabaseInternal(name: String) -> Boolean {
         // Cannot drop current database
         if name == currentDbName {
             return false;
@@ -230,6 +272,13 @@ entity DatabaseServer {
 
     // Switch to a different database
     expose func useDatabase(name: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = useDatabaseInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func useDatabaseInternal(name: String) -> Boolean {
         var i = 0;
         while i < dbNames.count() {
             if dbNames.get(i) == name {
@@ -244,6 +293,13 @@ entity DatabaseServer {
 
     // Check if a database exists
     expose func databaseExists(name: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = databaseExistsInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func databaseExistsInternal(name: String) -> Boolean {
         var i = 0;
         while i < dbNames.count() {
             if dbNames.get(i) == name {
@@ -256,16 +312,29 @@ entity DatabaseServer {
 
     // Get list of all database names
     expose func listDatabases() -> List[String] {
-        return dbNames;
+        Threads.Monitor.Enter(lock);
+        var result = dbNames;
+        Threads.Monitor.Exit(lock);
+        return result;
     }
 
     // Get database count
     expose func databaseCount() -> Integer {
-        return dbNames.count();
+        Threads.Monitor.Enter(lock);
+        var result = dbNames.count();
+        Threads.Monitor.Exit(lock);
+        return result;
     }
 
     // Get database by name
     expose func getDatabase(name: String) -> Database? {
+        Threads.Monitor.Enter(lock);
+        var result = getDatabaseInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func getDatabaseInternal(name: String) -> Database? {
         var i = 0;
         while i < dbNames.count() {
             if dbNames.get(i) == name {
@@ -278,6 +347,13 @@ entity DatabaseServer {
 
     // Get index manager for a database
     expose func getIndexManager(name: String) -> IndexManager? {
+        Threads.Monitor.Enter(lock);
+        var result = getIndexManagerInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func getIndexManagerInternal(name: String) -> IndexManager? {
         var i = 0;
         while i < dbNames.count() {
             if dbNames.get(i) == name {
@@ -290,6 +366,13 @@ entity DatabaseServer {
 
     // Get storage engine for a database (null if in-memory)
     expose func getStorageEngine(name: String) -> StorageEngine? {
+        Threads.Monitor.Enter(lock);
+        var result = getStorageEngineInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func getStorageEngineInternal(name: String) -> StorageEngine? {
         var i = 0;
         while i < dbNames.count() {
             if dbNames.get(i) == name {
@@ -302,6 +385,13 @@ entity DatabaseServer {
 
     // Get storage engine for current database
     expose func currentStorageEngine() -> StorageEngine? {
+        Threads.Monitor.Enter(lock);
+        var result = currentStorageEngineInternal();
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func currentStorageEngineInternal() -> StorageEngine? {
         if currentDbIndex < 0 || currentDbIndex >= storageEngines.count() {
             return null;
         }
@@ -314,6 +404,13 @@ entity DatabaseServer {
 
     // Get current database
     expose func currentDatabase() -> Database? {
+        Threads.Monitor.Enter(lock);
+        var result = currentDatabaseInternal();
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func currentDatabaseInternal() -> Database? {
         if currentDbIndex < 0 || currentDbIndex >= dbList.count() {
             return null;
         }
@@ -322,6 +419,13 @@ entity DatabaseServer {
 
     // Get current index manager
     expose func currentIndexManager() -> IndexManager? {
+        Threads.Monitor.Enter(lock);
+        var result = currentIndexManagerInternal();
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func currentIndexManagerInternal() -> IndexManager? {
         if currentDbIndex < 0 || currentDbIndex >= indexManagers.count() {
             return null;
         }
@@ -334,8 +438,10 @@ entity DatabaseServer {
 
     // Get statistics for a database
     expose func getDatabaseStats(name: String) -> String {
-        var maybeDb = getDatabase(name);
+        Threads.Monitor.Enter(lock);
+        var maybeDb = getDatabaseInternal(name);
         if maybeDb == null {
+            Threads.Monitor.Exit(lock);
             return "Database not found";
         }
         var db = maybeDb;
@@ -356,11 +462,137 @@ entity DatabaseServer {
         }
         stats = stats + "Total rows: " + Fmt.Int(totalRows);
 
+        Threads.Monitor.Exit(lock);
         return stats;
+    }
+
+    //=========================================================================
+    // USER MANAGEMENT (Phase 10)
+    //=========================================================================
+
+    // Create a new user
+    expose func createUser(name: String, password: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = createUserInternal(name, password);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func createUserInternal(name: String, password: String) -> Boolean {
+        var i = 0;
+        while i < userNames.count() {
+            if userNames.get(i) == name {
+                return false;
+            }
+            i = i + 1;
+        }
+        userNames.add(name);
+        userPasswords.add(password);
+        return true;
+    }
+
+    // Drop a user
+    expose func dropUser(name: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = dropUserInternal(name);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func dropUserInternal(name: String) -> Boolean {
+        var dropIdx = -1;
+        var i = 0;
+        while i < userNames.count() {
+            if userNames.get(i) == name {
+                dropIdx = i;
+                i = userNames.count();
+            }
+            i = i + 1;
+        }
+        if dropIdx < 0 { return false; }
+
+        // Rebuild without dropped user
+        var newNames: List[String] = [];
+        var newPasswords: List[String] = [];
+        i = 0;
+        while i < userNames.count() {
+            if i != dropIdx {
+                newNames.add(userNames.get(i));
+                newPasswords.add(userPasswords.get(i));
+            }
+            i = i + 1;
+        }
+        userNames = newNames;
+        userPasswords = newPasswords;
+        return true;
+    }
+
+    // Check if user exists
+    expose func userExists(name: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var i = 0;
+        while i < userNames.count() {
+            if userNames.get(i) == name {
+                Threads.Monitor.Exit(lock);
+                return true;
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(lock);
+        return false;
+    }
+
+    // Verify user password
+    expose func verifyPassword(name: String, password: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var i = 0;
+        while i < userNames.count() {
+            if userNames.get(i) == name {
+                var result = userPasswords.get(i) == password;
+                Threads.Monitor.Exit(lock);
+                return result;
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(lock);
+        return false;
+    }
+
+    // List all users
+    expose func listUsers() -> List[String] {
+        Threads.Monitor.Enter(lock);
+        var result = userNames;
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    // Change user password
+    expose func changePassword(name: String, newPassword: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var i = 0;
+        while i < userNames.count() {
+            if userNames.get(i) == name {
+                userPasswords.set(i, newPassword);
+                Threads.Monitor.Exit(lock);
+                return true;
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(lock);
+        return false;
+    }
+
+    // Get user count
+    expose func userCount() -> Integer {
+        Threads.Monitor.Enter(lock);
+        var result = userNames.count();
+        Threads.Monitor.Exit(lock);
+        return result;
     }
 
     // Clear all data from current database (for testing)
     expose func clearCurrentDatabase() {
+        Threads.Monitor.Enter(lock);
         if currentDbIndex >= 0 && currentDbIndex < dbList.count() {
             var db = dbList.get(currentDbIndex);
             // Create a fresh database with the same name
@@ -373,6 +605,7 @@ entity DatabaseServer {
             newIdxMgr.init();
             indexManagers.set(currentDbIndex, newIdxMgr);
         }
+        Threads.Monitor.Exit(lock);
     }
 }
 

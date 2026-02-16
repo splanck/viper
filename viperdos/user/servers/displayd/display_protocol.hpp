@@ -36,6 +36,7 @@ enum MsgType : uint32_t {
     DISP_RESTORE_WINDOW = 13,   // Restore/focus a window
     DISP_SET_SCROLLBAR = 14,    // Configure scrollbar
     DISP_SET_MENU = 15,         // Set/update menu bar for surface (Amiga/Mac style)
+    DISP_REQUEST_FOCUS = 16,    // Request keyboard focus for a surface
 
     // Replies
     DISP_INFO_REPLY = 0x81,
@@ -323,6 +324,13 @@ struct ListWindowsReply {
 // Request: Restore/focus a window
 struct RestoreWindowRequest {
     uint32_t type; // DISP_RESTORE_WINDOW
+    uint32_t request_id;
+    uint32_t surface_id;
+};
+
+// Request: Request keyboard focus
+struct RequestFocusRequest {
+    uint32_t type; // DISP_REQUEST_FOCUS
     uint32_t request_id;
     uint32_t surface_id;
 };
