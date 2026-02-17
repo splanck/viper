@@ -13,13 +13,15 @@
 //
 // KNOWN LIMITATIONS:
 //
-// 1. Only entry-block allocas are promoted. Allocas inside loops represent
-//    different storage on each iteration and cannot be safely promoted.
+// 1. Only allocas whose defining block dominates all their uses are promoted.
+//    This covers entry-block allocas (which dominate everything) and allocas
+//    in non-entry blocks whose uses are fully dominated by the defining block.
 //
 //===----------------------------------------------------------------------===//
 
 #include "il/transform/Mem2Reg.hpp"
 #include "il/analysis/CFG.hpp"
+#include "il/analysis/Dominators.hpp"
 #include "il/utils/Utils.hpp"
 #include <algorithm>
 #include <functional>
@@ -114,6 +116,7 @@ struct AllocaInfo
     bool hasStore{false};
     bool singleBlock{true};
     bool typeConsistent{true}; ///< False if loads/stores use different types.
+    std::vector<BasicBlock *> useBlocks; ///< Blocks (other than defining) containing uses.
 };
 
 struct VarState
@@ -141,9 +144,10 @@ using LabelIndexCache =
 ///
 /// @details Performs two sweeps over @p F.  The first collects every alloca
 /// result and records its defining block.  The second inspects each use to mark
-/// whether the address escapes, whether a store writes to it, and whether all
-/// uses stay inside a single block.  The resulting table drives the promotion
-/// logic.
+/// whether the address escapes, whether a store writes to it, whether all uses
+/// stay inside a single block, and which blocks contain uses.
+/// The resulting table drives the promotion logic; the caller uses the
+/// @c useBlocks field with a dominator tree to filter non-entry-block allocas.
 ///
 /// @param F Function to analyze.
 /// @return Map from temp ids to their @c AllocaInfo metadata.
@@ -151,15 +155,12 @@ static AllocaMap collectAllocas(Function &F)
 {
     AllocaMap infos;
     infos.reserve(F.valueNames.size());
-    // Only collect allocas from the entry block. Allocas inside loops
-    // represent different storage on each iteration and cannot be promoted.
-    if (!F.blocks.empty())
-    {
-        BasicBlock &entry = F.blocks.front();
-        for (auto &I : entry.instructions)
+    // Collect allocas from ALL blocks. The promotion filter in mem2reg() uses
+    // dominance to decide which non-entry allocas are safe to promote.
+    for (auto &B : F.blocks)
+        for (auto &I : B.instructions)
             if (I.op == Opcode::Alloca && I.result)
-                infos[*I.result] = AllocaInfo{&entry, *I.result, Type{}, false, false};
-    }
+                infos[*I.result] = AllocaInfo{&B, *I.result, Type{}, false, false};
 
     for (auto &B : F.blocks)
         for (auto &I : B.instructions)
@@ -173,7 +174,10 @@ static AllocaMap collectAllocas(Function &F)
                     continue;
                 AllocaInfo &AI = it->second;
                 if (&B != AI.block)
+                {
                     AI.singleBlock = false;
+                    AI.useBlocks.push_back(&B);
+                }
                 if (I.op == Opcode::Store && oi == 0)
                 {
                     AI.hasStore = true;
@@ -822,6 +826,23 @@ void mem2reg(Module &M, Mem2RegStats *stats)
         runSROA(F);
 
         AllocaMap infos = collectAllocas(F);
+
+        // Lazily compute the dominator tree only when there are non-entry-block
+        // allocas with cross-block uses, to avoid the overhead for simple cases.
+        BasicBlock *entryBlock = F.blocks.empty() ? nullptr : &F.blocks.front();
+        bool needDomTree = false;
+        for (const auto &[id, info] : infos)
+        {
+            if (!info.singleBlock && info.block != entryBlock)
+            {
+                needDomTree = true;
+                break;
+            }
+        }
+        std::optional<viper::analysis::DomTree> domTree;
+        if (needDomTree)
+            domTree = viper::analysis::computeDominatorTree(cfg, F);
+
         AllocaMap promotable;
         for (auto &[id, info] : infos)
         {
@@ -829,6 +850,23 @@ void mem2reg(Module &M, Mem2RegStats *stats)
                 continue;
             if (!isPromotableScalarType(info.type))
                 continue;
+            // For non-entry-block allocas with multi-block uses: only promote if
+            // the defining block dominates every block that contains a use.
+            // Single-block allocas are always safe (no cross-block SSA needed).
+            if (!info.singleBlock && info.block != entryBlock && domTree)
+            {
+                bool dominated = true;
+                for (BasicBlock *useBlk : info.useBlocks)
+                {
+                    if (!domTree->dominates(info.block, useBlk))
+                    {
+                        dominated = false;
+                        break;
+                    }
+                }
+                if (!dominated)
+                    continue;
+            }
             promotable.emplace(id, info);
         }
         promoteVariables(F, promotable, stats, cfg);

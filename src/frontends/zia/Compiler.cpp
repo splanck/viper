@@ -130,44 +130,15 @@ CompilerResult compile(const CompilerInput &input,
     result.module = lowerer.lower(*module);
     debugTime("Phase 4: Done");
 
-    // Phase 5: IL Optimization
+    // Phase 5: IL Optimization — use the canonical registered pipelines.
+    // O1 and O2 pipelines are defined in PassManager's constructor and include
+    // the full sequence of passes (SCCP, LICM, loop transforms, inlining, etc.).
     if (options.optLevel != OptLevel::O0)
     {
         il::transform::PassManager pm;
-        // Note: Verification between passes is disabled because passes like Mem2Reg
-        // create new temporaries that don't have proper type information set.
-        // The verifier now handles block-order-independent IL correctly, but
-        // inter-pass verification needs passes to maintain complete type info.
         pm.setVerifyBetweenPasses(false);
-
-        // Use optimized pipeline based on optimization level.
-        // Note: SCCP is still disabled due to infinite loop on certain CFG patterns.
-        if (options.optLevel == OptLevel::O2)
-        {
-            // Aggressive optimization pipeline with CFG simplification
-            // Note: SimplifyCFG is run only once at the start due to issues
-            // with running it after other passes that modify temp definitions.
-            il::transform::PassManager::Pipeline pipeline = {"simplify-cfg",
-                                                             "mem2reg",
-                                                             "dce",
-                                                             "licm",
-                                                             "gvn",
-                                                             "earlycse",
-                                                             "dse",
-                                                             "peephole",
-                                                             "dce"};
-            pm.run(result.module, pipeline);
-        }
-        else
-        {
-            // Standard optimization (O1): core passes for good performance
-            // Note: SimplifyCFG is run only once at the start. Running it again
-            // after other passes can cause issues where temps become undefined
-            // due to block transformations (tracked as a future improvement).
-            il::transform::PassManager::Pipeline pipeline = {
-                "simplify-cfg", "mem2reg", "peephole", "dce"};
-            pm.run(result.module, pipeline);
-        }
+        const std::string pipelineId = (options.optLevel == OptLevel::O2) ? "O2" : "O1";
+        pm.runPipeline(result.module, pipelineId);
     }
 
     return result;

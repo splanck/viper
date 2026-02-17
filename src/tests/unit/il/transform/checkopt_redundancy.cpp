@@ -124,10 +124,19 @@ TEST(CheckOpt, EliminatesRedundantInNestedLoops)
 
 TEST(CheckOpt, DoesNotEliminateAcrossSiblingBlocks)
 {
+    // Uses a function-parameter temp as the divisor so that constant-operand
+    // elimination does not fire.  This tests the dominance-based redundancy
+    // rule: neither sibling block dominates the other, so both checks survive.
     Module M;
     Function F;
     F.name = "siblings";
     F.retType = Type(Type::Kind::Void);
+
+    // Function parameter %0 : i64 — used as divisor (non-constant temp)
+    Param divisorParam;
+    divisorParam.id = 0;
+    divisorParam.type = Type(Type::Kind::I64);
+    F.params.push_back(divisorParam);
 
     BasicBlock entry;
     entry.label = "entry";
@@ -145,7 +154,7 @@ TEST(CheckOpt, DoesNotEliminateAcrossSiblingBlocks)
     Instr chkL;
     chkL.op = Opcode::SDivChk0;
     chkL.type = Type(Type::Kind::I64);
-    chkL.operands = {Value::constInt(8), Value::constInt(2)};
+    chkL.operands = {Value::constInt(8), Value::temp(0)}; // divisor is a temp
     Instr brL;
     brL.op = Opcode::Br;
     brL.type = Type(Type::Kind::Void);
@@ -159,7 +168,7 @@ TEST(CheckOpt, DoesNotEliminateAcrossSiblingBlocks)
     Instr chkR;
     chkR.op = Opcode::SDivChk0;
     chkR.type = Type(Type::Kind::I64);
-    chkR.operands = {Value::constInt(8), Value::constInt(2)};
+    chkR.operands = {Value::constInt(8), Value::temp(0)}; // same divisor temp
     Instr brR;
     brR.op = Opcode::Br;
     brR.type = Type(Type::Kind::Void);
@@ -193,6 +202,123 @@ TEST(CheckOpt, DoesNotEliminateAcrossSiblingBlocks)
             if (I.op == Opcode::SDivChk0)
                 ++checkCount;
     EXPECT_EQ(checkCount, 2U);
+}
+
+TEST(CheckOpt, EliminatesIdxChkWithConstantOperandsInBounds)
+{
+    // After SCCP runs rewriteConstants(), operands that were proven constant
+    // appear as ConstInt literals.  CheckOpt should fold idx.chk(5, 0, 10)
+    // at compile time since 0 <= 5 < 10 is trivially true.
+    Module M;
+    Function F;
+    F.name = "const_idxchk";
+    F.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr chk;
+    chk.result = 0;
+    chk.op = Opcode::IdxChk;
+    chk.type = Type(Type::Kind::I64);
+    chk.operands = {Value::constInt(5), Value::constInt(0), Value::constInt(10)};
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(chk), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    // Check must be eliminated — index 5 is provably in [0, 10).
+    size_t chkCount = 0;
+    for (const auto &I : Fn.blocks[0].instructions)
+        if (I.op == Opcode::IdxChk)
+            ++chkCount;
+    EXPECT_EQ(chkCount, 0U);
+}
+
+TEST(CheckOpt, EliminatesSDivChk0WithNonZeroConstDivisor)
+{
+    // sdiv.chk0(lhs, 3) is trivially safe: divisor 3 != 0.
+    Module M;
+    Function F;
+    F.name = "const_sdiv";
+    F.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr chk;
+    chk.result = 1;
+    chk.op = Opcode::SDivChk0;
+    chk.type = Type(Type::Kind::I64);
+    chk.operands = {Value::constInt(12), Value::constInt(3)};
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(chk), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    size_t chkCount = 0;
+    for (const auto &I : Fn.blocks[0].instructions)
+        if (I.op == Opcode::SDivChk0)
+            ++chkCount;
+    EXPECT_EQ(chkCount, 0U);
+}
+
+TEST(CheckOpt, PreservesIdxChkWhenOutOfBounds)
+{
+    // idx.chk(15, 0, 10) — 15 is NOT in [0, 10) — check must be preserved.
+    Module M;
+    Function F;
+    F.name = "oob_idxchk";
+    F.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr chk;
+    chk.result = 2;
+    chk.op = Opcode::IdxChk;
+    chk.type = Type(Type::Kind::I64);
+    chk.operands = {Value::constInt(15), Value::constInt(0), Value::constInt(10)};
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(chk), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    size_t chkCount = 0;
+    for (const auto &I : Fn.blocks[0].instructions)
+        if (I.op == Opcode::IdxChk)
+            ++chkCount;
+    EXPECT_EQ(chkCount, 1U); // must remain — would trap at runtime
 }
 
 TEST(CheckOpt, PreservesTrapBehaviourWhenDominanceMissing)

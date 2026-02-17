@@ -206,7 +206,8 @@ bool isEhStructuralOpcode(il::core::Opcode op)
 
 /// @brief Determine whether a block participates in exception-handling structure.
 /// @param block Block to inspect.
-/// @return True when the block contains EH structural instructions or resume terminators.
+/// @return True when the block contains EH structural instructions, resume terminators,
+///         or has the canonical handler parameter signature (%err:Error, %tok:ResumeTok).
 bool isEHSensitiveBlock(const il::core::BasicBlock &block)
 {
     if (block.instructions.empty())
@@ -214,6 +215,18 @@ bool isEHSensitiveBlock(const il::core::BasicBlock &block)
 
     if (block.instructions.front().op == il::core::Opcode::EhEntry)
         return true;
+
+    // Detect handler blocks by their canonical parameter signature.  The BASIC
+    // lowerer always creates handler blocks with exactly (%err:Error, %tok:ResumeTok)
+    // as the first two parameters.  Checking the parameter types is more robust
+    // than relying on instruction ordering because it cannot be perturbed by
+    // SimplifyCFG sub-passes that reorder or eliminate instructions.
+    if (block.params.size() >= 2 &&
+        block.params[0].type.kind == il::core::Type::Kind::Error &&
+        block.params[1].type.kind == il::core::Type::Kind::ResumeTok)
+    {
+        return true;
+    }
 
     for (const auto &instr : block.instructions)
     {

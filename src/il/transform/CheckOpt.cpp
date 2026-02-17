@@ -110,6 +110,90 @@ CheckKey makeCheckKey(const Instr &instr)
     return key;
 }
 
+/// @brief Test whether a check instruction is trivially satisfied by constant operands.
+///
+/// @details After SCCP runs its constant-rewriting phase, any operand that was proven
+///          constant appears in the IR as a ConstInt/ConstFloat literal rather than a
+///          Temp reference.  This helper exploits that property to eliminate checks
+///          whose condition can be verified at compile time without consulting the
+///          SCCP lattice directly.
+///
+///          Rules applied per opcode:
+///          - IdxChk(index, lo, hi)     — all three ConstInt and lo <= index < hi
+///          - SDivChk0 / UDivChk0 /
+///            SRemChk0 / URemChk0
+///            (lhs, divisor)            — divisor is a non-zero ConstInt
+///
+/// @param instr Check instruction to inspect.
+/// @param replacementOut When the function returns true and the check has a result,
+///        this is set to the value that should replace all uses of the result
+///        (the pass-through value of the check).
+/// @return True when the check condition is statically guaranteed to succeed.
+bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut)
+{
+    auto isConstInt = [](const Value &v) { return v.kind == Value::Kind::ConstInt; };
+
+    switch (instr.op)
+    {
+        case Opcode::IdxChk:
+        {
+            // idx.chk index lo hi — passes when lo <= index < hi
+            if (instr.operands.size() < 3)
+                return false;
+            const Value &index = instr.operands[0];
+            const Value &lo    = instr.operands[1];
+            const Value &hi    = instr.operands[2];
+            if (!isConstInt(index) || !isConstInt(lo) || !isConstInt(hi))
+                return false;
+            if (lo.i64 <= index.i64 && index.i64 < hi.i64)
+            {
+                replacementOut = index; // result is the index value
+                return true;
+            }
+            return false;
+        }
+
+        case Opcode::SDivChk0:
+        case Opcode::SRemChk0:
+        {
+            // sdiv/srem.chk0 lhs divisor — passes when divisor != 0
+            if (instr.operands.size() < 2)
+                return false;
+            const Value &divisor = instr.operands[1];
+            if (!isConstInt(divisor))
+                return false;
+            if (divisor.i64 != 0)
+            {
+                replacementOut = divisor; // result is the divisor
+                return true;
+            }
+            return false;
+        }
+
+        case Opcode::UDivChk0:
+        case Opcode::URemChk0:
+        {
+            // udiv/urem.chk0 lhs divisor — passes when divisor != 0 (unsigned)
+            if (instr.operands.size() < 2)
+                return false;
+            const Value &divisor = instr.operands[1];
+            if (!isConstInt(divisor))
+                return false;
+            // Reinterpret as unsigned: any non-zero bit pattern passes.
+            const auto udivisor = static_cast<unsigned long long>(divisor.i64);
+            if (udivisor != 0)
+            {
+                replacementOut = divisor; // result is the divisor
+                return true;
+            }
+            return false;
+        }
+
+        default:
+            return false;
+    }
+}
+
 /// @brief Information about a dominating check instruction.
 struct DominatingCheck
 {
@@ -299,6 +383,53 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             Instr &instr = block->instructions[idx];
             if (!isCheckOpcode(instr.op))
                 continue;
+
+            // Constant-operand elimination: if SCCP has already inlined the
+            // operands as literals and the check condition is statically
+            // satisfied, remove the check and replace its result with the
+            // pass-through value.  This avoids redundant runtime checks for
+            // patterns like idx.chk(5, 0, 10) where the bounds are known.
+            //
+            // Type constraint: ConstInt values type as I64 in the verifier.
+            // When the check result type is narrower (e.g. I32 for IdxChk)
+            // and the result has uses, substituting an I64 constant would
+            // produce a type mismatch that the verifier rejects.  In that
+            // case fall through to the dominance-based check instead.
+            Value trivialReplacement;
+            if (isCheckTriviallyTrue(instr, trivialReplacement))
+            {
+                if (instr.result && useInfo.hasUses(*instr.result))
+                {
+                    // Check whether the replacement type matches the result type.
+                    // ConstInt values type as I64; if the instruction result is
+                    // narrower we cannot safely substitute without a type error.
+                    const bool replacementIsI64ConstInt =
+                        trivialReplacement.kind == Value::Kind::ConstInt &&
+                        !trivialReplacement.isBool;
+                    if (replacementIsI64ConstInt && instr.type.kind != Type::Kind::I64)
+                    {
+                        // Type mismatch — fall through to dominance-based check.
+                        // The dominance check can still replace with a same-typed
+                        // Temp if a dominating occurrence already holds the result.
+                    }
+                    else
+                    {
+                        useInfo.replaceAllUses(*instr.result, trivialReplacement);
+                        toErase.push_back({block, idx});
+                        changed = true;
+                        continue;
+                    }
+                }
+                else
+                {
+                    // Result is either absent or has no live uses — safe to erase
+                    // without substitution regardless of type.
+                    toErase.push_back({block, idx});
+                    changed = true;
+                    continue;
+                }
+            }
+
             CheckKey key = makeCheckKey(instr);
             auto it = available.find(key);
             if (it != available.end() && domTree.dominates(it->second.block, block))

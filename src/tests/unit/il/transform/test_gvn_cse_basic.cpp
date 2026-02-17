@@ -101,7 +101,7 @@ TEST(GVNCSE, EarlyCSE_WithinBlock_Commutative)
     F.valueNames.resize(id);
     M.functions.push_back(std::move(F));
 
-    il::transform::runEarlyCSE(M.functions.front());
+    il::transform::runEarlyCSE(M, M.functions.front());
 
     BasicBlock &B = M.functions.front().blocks.front();
     ASSERT_EQ(B.instructions.size(), 2U); // add + ret

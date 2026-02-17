@@ -25,6 +25,7 @@
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/MemorySSA.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/CheckOpt.hpp"
 #include "il/transform/LICM.hpp"
@@ -71,6 +72,13 @@ PassManager::PassManager()
             viper::analysis::CFGContext ctx(module);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
+    analysisRegistry_.registerFunctionAnalysis<viper::analysis::PostDomTree>(
+        "post-dominators",
+        [](core::Module &module, core::Function &fn)
+        {
+            viper::analysis::CFGContext ctx(module);
+            return viper::analysis::computePostDominatorTree(ctx, fn);
+        });
     analysisRegistry_.registerFunctionAnalysis<LoopInfo>(
         "loop-info",
         [](core::Module &module, core::Function &fn) { return computeLoopInfo(module, fn); });
@@ -82,6 +90,15 @@ PassManager::PassManager()
         "basic-aa",
         [](core::Module &module, core::Function &fn)
         { return viper::analysis::BasicAA(module, fn); });
+    // MemorySSA: precise def-use chains for memory operations; used by DSE for
+    // cross-block dead-store elimination without false read-barriers on calls.
+    analysisRegistry_.registerFunctionAnalysis<viper::analysis::MemorySSA>(
+        "memory-ssa",
+        [](core::Module &module, core::Function &fn)
+        {
+            viper::analysis::BasicAA aa(module, fn);
+            return viper::analysis::computeMemorySSA(fn, aa);
+        });
 
     addSimplifyCFG(false); // Register simplify-cfg pass (non-aggressive by default)
     registerLoopSimplifyPass(passRegistry_);

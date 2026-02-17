@@ -31,13 +31,16 @@ namespace il::transform
 struct InlineCostConfig
 {
     /// Base instruction count threshold for inlining.
-    unsigned instrThreshold = 32;
+    /// Raised from 32 to 80 to capture medium-sized helper functions.
+    unsigned instrThreshold = 80;
 
     /// Maximum number of blocks in callee.
-    unsigned blockBudget = 4;
+    /// Raised from 4 to 8 to allow inlining functions with conditional branches.
+    unsigned blockBudget = 8;
 
     /// Maximum inline depth for nested inlining.
-    unsigned maxInlineDepth = 2;
+    /// Raised from 2 to 3 to allow deeper utility-function chains to collapse.
+    unsigned maxInlineDepth = 3;
 
     /// Bonus (subtracted from cost) for each constant argument.
     unsigned constArgBonus = 4;

@@ -589,6 +589,13 @@ function(viper_add_il_utils_test)
     viper_add_ctest(test_il_gvn_cse_basic test_il_gvn_cse_basic)
 
     viper_add_test(
+            test_il_earlycse_domtree
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_earlycse_domtree.cpp)
+    target_link_libraries(
+            test_il_earlycse_domtree PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_earlycse_domtree test_il_earlycse_domtree)
+
+    viper_add_test(
             test_il_loopsimplify_invariants
             ${VIPER_TESTS_DIR}/unit/il/transform/loopsimplify_invariants.cpp)
     target_link_libraries(
@@ -628,6 +635,13 @@ function(viper_add_il_utils_test)
     target_link_libraries(
             test_il_inline_multiblock PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_inline_multiblock test_il_inline_multiblock)
+
+    viper_add_test(
+            test_il_callgraph_scc
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_callgraph_scc.cpp)
+    target_link_libraries(
+            test_il_callgraph_scc PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform il_analysis)
+    viper_add_ctest(test_il_callgraph_scc test_il_callgraph_scc)
     viper_add_test(
             test_il_mem2reg_sroa
             ${_VIPER_IL_DIR}/transform/mem2reg_sroa.cpp)
@@ -738,6 +752,30 @@ function(viper_add_il_utils_test)
             test_il_opt_review_calleffects PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_opt_review_calleffects test_il_opt_review_calleffects)
 
+    # Canonical pipeline test: verifies runPipeline("O1"/"O2") uses full passes including SCCP
+    viper_add_test(
+            test_il_canonical_pipeline
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_canonical_pipeline.cpp)
+    target_link_libraries(
+            test_il_canonical_pipeline PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_canonical_pipeline test_il_canonical_pipeline)
+
+    # Mem2Reg non-entry-block promotion test
+    viper_add_test(
+            test_il_mem2reg_nonentry
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_mem2reg_nonentry.cpp)
+    target_link_libraries(
+            test_il_mem2reg_nonentry PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_mem2reg_nonentry test_il_mem2reg_nonentry)
+
+    # Inliner threshold test: verifies new instrThreshold=80, blockBudget=8, maxInlineDepth=3
+    viper_add_test(
+            test_il_inline_threshold
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_inline_threshold.cpp)
+    target_link_libraries(
+            test_il_inline_threshold PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_inline_threshold test_il_inline_threshold)
+
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_opcode_info test_il_opcode_info)
@@ -770,6 +808,10 @@ function(viper_add_il_analysis_tests)
     target_link_libraries(test_analysis_dominators PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
     viper_add_ctest(test_analysis_dominators test_analysis_dominators)
 
+    viper_add_test(test_analysis_post_dominators ${_VIPER_ANALYSIS_DIR}/PostDominatorsTests.cpp)
+    target_link_libraries(test_analysis_post_dominators PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
+    viper_add_ctest(test_analysis_post_dominators test_analysis_post_dominators)
+
     viper_add_test(test_analysis_acyclic ${_VIPER_ANALYSIS_DIR}/AcyclicTests.cpp)
     target_link_libraries(test_analysis_acyclic PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
     viper_add_ctest(test_analysis_acyclic test_analysis_acyclic)
@@ -777,6 +819,11 @@ function(viper_add_il_analysis_tests)
     viper_add_test(test_analysis_basic_aa ${_VIPER_ANALYSIS_DIR}/BasicAATests.cpp)
     target_link_libraries(test_analysis_basic_aa PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
     viper_add_ctest(test_analysis_basic_aa test_analysis_basic_aa)
+
+    viper_add_test(test_analysis_memory_ssa ${_VIPER_ANALYSIS_DIR}/MemorySSATests.cpp)
+    target_link_libraries(test_analysis_memory_ssa
+        PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform viper_test_common)
+    viper_add_ctest(test_analysis_memory_ssa test_analysis_memory_ssa)
 endfunction()
 
 function(viper_add_il_verify_examples)

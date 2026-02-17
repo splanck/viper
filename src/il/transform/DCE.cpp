@@ -316,6 +316,14 @@ void dce(Module &M)
             if (numParams == 0)
                 continue;
 
+            // Handler blocks have a required ABI: (%err:Error, %tok:ResumeTok).
+            // The VM populates both slots on exception dispatch regardless of
+            // whether user code references %err.  Never remove params from a
+            // block that starts with eh.entry (the handler entry marker).
+            if (!B.instructions.empty() &&
+                B.instructions.front().op == il::core::Opcode::EhEntry)
+                continue;
+
             // Identify which param indices to keep (those with non-zero use counts).
             std::vector<size_t> keepIndices;
             keepIndices.reserve(numParams);

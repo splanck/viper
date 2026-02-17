@@ -16,7 +16,7 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "frontends/zia/Compiler.hpp"
 #include "il/api/expected_api.hpp"
-#include "il/transform/SimplifyCFG.hpp"
+#include "il/transform/PassManager.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/native_compiler.hpp"
@@ -281,13 +281,16 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
 
-    // Apply SimplifyCFG for BASIC (matches cmd_front_basic.cpp behavior)
-    auto initialVerify = il::verify::Verifier::verify(result.module);
-    if (!initialVerify)
+    // Apply the canonical IL optimizer pipeline based on the project's opt level.
     {
-        il::transform::SimplifyCFG simplifyCfg;
-        for (auto &function : result.module.functions)
-            simplifyCfg.run(function);
+        il::transform::PassManager pm;
+        pm.setVerifyBetweenPasses(false);
+        if (project.optimizeLevel == "O2")
+            pm.runPipeline(result.module, "O2");
+        else if (project.optimizeLevel == "O1")
+            pm.runPipeline(result.module, "O1");
+        else
+            pm.runPipeline(result.module, "O0");
     }
 
     return std::move(result.module);

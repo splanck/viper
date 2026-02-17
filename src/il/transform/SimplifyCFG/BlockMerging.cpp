@@ -71,9 +71,13 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
 
     for (auto &candidate : F.blocks)
     {
-        if (&candidate == &block)
-            continue;
-
+        // Intentionally visit the block itself so that self-loop edges (e.g. a
+        // CBr whose false branch targets its own block after ForwardingElimination
+        // collapsed the loop back-edge) are counted as predecessor edges.  A
+        // block with a self-loop is a loop header and must not be merged into its
+        // entry-side predecessor — doing so would fold initialisation code inside
+        // the loop body and rewrite the self-loop into a back-edge to the merged
+        // predecessor.
         il::core::Instr *term = findTerminator(candidate);
         if (!term)
             continue;
@@ -84,7 +88,8 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
                 continue;
 
             ++predecessorEdges;
-            if (predecessorEdges == 1)
+            // Only use non-self blocks as the merge target candidate.
+            if (&candidate != &block && predecessorEdges == 1)
             {
                 predBlock = &candidate;
                 predTerm = term;

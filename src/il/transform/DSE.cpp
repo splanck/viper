@@ -19,6 +19,7 @@
 
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/MemorySSA.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
@@ -507,6 +508,53 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
     }
 
     return changed;
+}
+
+/// MemorySSA-based dead store elimination.
+///
+/// Uses the MemorySSA analysis to discover dead stores that runCrossBlockDSE
+/// misses because it conservatively treats calls as read barriers for all
+/// allocas.  Since MemorySSA's dead-store computation skips calls for
+/// non-escaping allocas (they cannot access non-escaping stack memory), this
+/// pass eliminates stores in functions that contain runtime calls inside loops
+/// or conditional branches — the most common pattern in Zia-lowered code.
+bool runMemorySSADSE(Function &F, AnalysisManager &AM)
+{
+    viper::analysis::MemorySSA &mssa =
+        AM.getFunctionResult<viper::analysis::MemorySSA>("memory-ssa", F);
+
+    std::vector<std::pair<Block *, size_t>> toRemove;
+
+    for (auto &B : F.blocks)
+    {
+        for (size_t i = 0; i < B.instructions.size(); ++i)
+        {
+            if (B.instructions[i].op == Opcode::Store &&
+                mssa.isDeadStore(&B, i))
+            {
+                toRemove.emplace_back(&B, i);
+            }
+        }
+    }
+
+    if (toRemove.empty())
+        return false;
+
+    // Erase in reverse order to keep indices stable.
+    std::sort(toRemove.begin(),
+              toRemove.end(),
+              [](const auto &a, const auto &b)
+              {
+                  if (a.first != b.first)
+                      return a.first > b.first;
+                  return a.second > b.second;
+              });
+
+    for (const auto &[block, idx] : toRemove)
+        block->instructions.erase(block->instructions.begin() +
+                                  static_cast<long>(idx));
+
+    return true;
 }
 
 } // namespace il::transform

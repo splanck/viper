@@ -331,15 +331,34 @@ void Lowerer::ensureGosubStack()
 
     BasicBlock *savedBlock = ctx.current();
     BasicBlock *entry = &func->blocks.front();
-    ctx.setCurrent(entry);
 
     auto savedLoc = curLoc;
     curLoc = {};
 
+    // If the entry block is already terminated (GOSUB is first encountered
+    // inside a compound statement such as a DO/WHILE or IF body, so the entry
+    // branch to the first line block was already emitted), temporarily park the
+    // terminator so that the alloca/store prologue can be appended before it.
+    Instr savedTerm;
+    const bool wasTerminated = entry->terminated;
+    if (wasTerminated && !entry->instructions.empty())
+    {
+        savedTerm = std::move(entry->instructions.back());
+        entry->instructions.pop_back();
+        entry->terminated = false;
+    }
+
+    ctx.setCurrent(entry);
     Value spSlot = emitAlloca(8);
     Value stackSlot = emitAlloca(kGosubStackDepth * 4);
     emitStore(Type(Type::Kind::I64), spSlot, Value::constInt(0));
     state.setPrologue(spSlot, stackSlot);
+
+    if (wasTerminated)
+    {
+        entry->instructions.push_back(std::move(savedTerm));
+        entry->terminated = true;
+    }
 
     curLoc = savedLoc;
     ctx.setCurrent(savedBlock);

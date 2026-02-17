@@ -437,6 +437,10 @@ void registerDSEPass(PassRegistry &registry)
         [](core::Function &fn, AnalysisManager &am)
         {
             bool changed = runDSE(fn, am);
+            // MemorySSA-based cross-block DSE: catches stores that
+            // runDSE's conservative call-barrier logic would miss for
+            // non-escaping allocas.
+            changed |= runMemorySSADSE(fn, am);
             if (!changed)
                 return PreservedAnalyses::all();
             PreservedAnalyses p; // conservatively invalidate function analyses
@@ -448,9 +452,9 @@ void registerDSEPass(PassRegistry &registry)
 void registerEarlyCSEPass(PassRegistry &registry)
 {
     registry.registerFunctionPass("earlycse",
-                                  [](core::Function &fn, AnalysisManager &)
+                                  [](core::Function &fn, AnalysisManager &am)
                                   {
-                                      bool changed = runEarlyCSE(fn);
+                                      bool changed = runEarlyCSE(am.module(), fn);
                                       if (!changed)
                                           return PreservedAnalyses::all();
                                       PreservedAnalyses p;

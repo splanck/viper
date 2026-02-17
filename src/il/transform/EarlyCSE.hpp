@@ -6,26 +6,34 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/EarlyCSE.hpp
-// Purpose: EarlyCSE (GVN-lite) -- simple within-block common subexpression
-//          elimination for pure, side-effect-free instructions. Commutes
-//          operands for commutative ops to improve matching. Skips memory ops.
+// Purpose: EarlyCSE (GVN-lite) -- common subexpression elimination over the
+//          dominator tree. Commutes operands for commutative ops to improve
+//          matching. Skips memory ops and side-effecting instructions. Each
+//          block's expressions are visible to all dominated successors.
 // Key invariants:
 //   - Only eliminates instructions that are pure and non-trapping.
-//   - Operates block-locally; no cross-block analysis.
-// Ownership/Lifetime: Free function operating on a caller-owned Function.
-// Links: il/core/Function.hpp, il/transform/ValueKey.hpp
+//   - Walks the dominator tree in pre-order; tables are scoped per domtree level.
+// Ownership/Lifetime: Free function operating on a caller-owned Module + Function.
+// Links: il/core/Function.hpp, il/core/Module.hpp, il/transform/ValueKey.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
 #include "il/core/Function.hpp"
+#include "il/core/Module.hpp"
 
 namespace il::transform
 {
 
-/// \brief Eliminate redundant pure instructions within each basic block.
+/// \brief Eliminate redundant pure instructions across dominator-tree scope.
+/// \details Walks the dominator tree in pre-order, maintaining a stack of
+///          expression tables. An expression computed in a dominator block is
+///          visible in all blocks it dominates, enabling cross-block CSE.
+///          Only pure, non-trapping, non-memory instructions are considered.
+/// \param M Module containing \p F (needed for CFG construction).
+/// \param F Function to optimize in place.
 /// \return True when any instruction was removed or simplified.
-bool runEarlyCSE(il::core::Function &F);
+bool runEarlyCSE(il::core::Module &M, il::core::Function &F);
 
 } // namespace il::transform

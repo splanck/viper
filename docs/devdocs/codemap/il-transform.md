@@ -32,12 +32,12 @@ Last updated: 2026-02-17
 | `DCE.hpp`        | Dead code elimination                                          |
 | `DSE.cpp`        | Dead store elimination implementation                          |
 | `DSE.hpp`        | Dead store elimination (intra-block and cross-block)           |
-| `Mem2Reg.cpp`    | Stack slot promotion implementation                            |
-| `Mem2Reg.hpp`    | Stack slot promotion to SSA                                    |
+| `Mem2Reg.cpp`    | Stack slot promotion implementation (promotes allocas from any block, not just entry) |
+| `Mem2Reg.hpp`    | Stack slot promotion to SSA with SROA; non-entry allocas promoted when domination holds |
 | `Peephole.cpp`   | Local algebraic simplifications implementation                 |
 | `Peephole.hpp`   | Local algebraic simplifications (57 rules: int/float/unsigned)  |
-| `EarlyCSE.cpp`   | Early CSE implementation                                       |
-| `EarlyCSE.hpp`   | Early common subexpression elimination                         |
+| `EarlyCSE.cpp`   | Dominator-tree-scoped CSE implementation (pre-order DFS with scope-stack) |
+| `EarlyCSE.hpp`   | CSE over dominator tree; `runEarlyCSE(Module&, Function&)`     |
 | `GVN.cpp`        | Global value numbering implementation                          |
 | `GVN.hpp`        | Global value numbering with load elimination                   |
 | `Inline.cpp`     | Function inlining implementation                               |

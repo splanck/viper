@@ -49,4 +49,18 @@ bool runDSE(il::core::Function &F, AnalysisManager &AM);
 /// \return True when any store was removed.
 bool runCrossBlockDSE(il::core::Function &F, AnalysisManager &AM);
 
+/// \brief MemorySSA-based dead store elimination.
+/// \details Uses the MemorySSA analysis to find dead stores with greater
+/// precision than the conservative BFS in runCrossBlockDSE.  The key
+/// improvement is that calls are NOT treated as read barriers for non-escaping
+/// allocas (because calls cannot access stack memory that has not escaped).
+///
+/// This pass should run after runDSE (intra-block) and is designed to catch
+/// the cases that runCrossBlockDSE misses due to conservative call modelling.
+///
+/// \param F Function to transform in place.
+/// \param AM Analysis manager providing MemorySSA and BasicAA results.
+/// \return True when any store was removed.
+bool runMemorySSADSE(il::core::Function &F, AnalysisManager &AM);
+
 } // namespace il::transform

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the `ilc front basic` subcommand. The driver parses BASIC source,
+// Implements the `viper front basic` subcommand. The driver parses BASIC source,
 // optionally emits IL, or executes the compiled program inside the VM. Argument
 // parsing, source loading, compilation, verification, and execution are staged
 // into helpers so other tools can reuse the same behaviour.
@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Command-line entry point for the BASIC frontend of `ilc`.
+/// @brief Command-line entry point for the BASIC frontend of `viper`.
 /// @details Documents the supporting helpers used to parse arguments, load
 ///          BASIC source files, and either emit IL or execute the program
 ///          through the virtual machine.  The implementation keeps side effects
@@ -23,7 +23,7 @@
 #include "cli.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/api/expected_api.hpp"
-#include "il/transform/SimplifyCFG.hpp"
+#include "il/transform/PassManager.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/source_loader.hpp"
@@ -63,6 +63,7 @@ struct FrontBasicConfig
     std::optional<uint32_t> sourceFileId{};
     std::vector<std::string> programArgs; ///< Arguments to pass to BASIC program after '--'.
     bool noRuntimeNamespaces{false};
+    std::string optLevel{"O0"}; ///< Optimization level: "O0", "O1", or "O2"; default = O0.
 };
 
 /// @brief Identify diagnostics that reflect SourceManager identifier overflow.
@@ -122,6 +123,14 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
+        }
+        else if (arg == "-O0")
+        {
+            config.optLevel = "O0";
+        }
+        else if (arg == "-O1" || arg == "-O2")
+        {
+            config.optLevel = std::string(arg.substr(1));
         }
         else if (arg == "--no-runtime-namespaces")
         {
@@ -201,29 +210,40 @@ int runFrontBasic(const FrontBasicConfig &config,
     core::Module module = std::move(result.module);
 
     std::optional<il::support::Expected<void>> cachedVerification{};
-    if (config.run)
-    {
-        auto initialVerify = il::verify::Verifier::verify(module);
-        if (!initialVerify)
-        {
-            il::transform::SimplifyCFG simplifyCfg;
-            for (auto &function : module.functions)
-            {
-                simplifyCfg.run(function);
-            }
-
-            cachedVerification = il::verify::Verifier::verify(module);
-        }
-        else
-        {
-            cachedVerification = std::move(initialVerify);
-        }
-    }
 
     if (config.emitIl)
     {
         io::Serializer::write(module, std::cout);
         return 0;
+    }
+
+    // Debugging and source-trace modes preserve the original IL structure so that
+    // IP-to-source-location mappings remain accurate.  Optimization is skipped
+    // for those paths; it is applied unconditionally for normal (fast-VM) runs.
+    bool useStandardVm = config.debugVm || config.shared.trace.enabled();
+
+    // Apply the IL optimizer pipeline for normal (non-debug) runs.  Debug and
+    // trace modes skip optimization because block merging / elimination would
+    // invalidate the IP-to-source-location table, breaking trace output.
+    //
+    // Verify the module BEFORE handing it to the optimizer: in debug builds the
+    // optimizer asserts on invalid IL via verifyPreconditions, which would crash
+    // instead of producing a nice source-annotated diagnostic.  Skip optimization
+    // (and cache the failure) when the module is already ill-formed so that the
+    // reporter below can emit the verifier error with proper file locations.
+    if (!useStandardVm && !config.optLevel.empty())
+    {
+        auto preOptVerify = il::verify::Verifier::verify(module);
+        if (preOptVerify)
+        {
+            il::transform::PassManager pm;
+            pm.setVerifyBetweenPasses(false);
+            pm.runPipeline(module, config.optLevel);
+        }
+        else
+        {
+            cachedVerification = std::move(preOptVerify);
+        }
     }
 
     auto verification =
@@ -242,9 +262,6 @@ int runFrontBasic(const FrontBasicConfig &config,
             return 1;
         }
     }
-
-    // Use standard VM for debugging (when --debug-vm or --trace is specified)
-    bool useStandardVm = config.debugVm || config.shared.trace.enabled();
 
     if (useStandardVm)
     {

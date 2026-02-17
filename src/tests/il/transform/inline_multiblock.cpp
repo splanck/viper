@@ -165,10 +165,16 @@ Function makeLargeHelper()
         return block;
     };
 
+    // 9 forwarding blocks (b0..b7 + exit) exceeds blockBudget=8, so this
+    // function will not be inlined regardless of instruction count.
     f.blocks.push_back(makeForwardBlock("b0", "b1", std::nullopt));
     f.blocks.push_back(makeForwardBlock("b1", "b2", std::nullopt));
     f.blocks.push_back(makeForwardBlock("b2", "b3", std::nullopt));
-    f.blocks.push_back(makeForwardBlock("b3", "exit", x.id));
+    f.blocks.push_back(makeForwardBlock("b3", "b4", std::nullopt));
+    f.blocks.push_back(makeForwardBlock("b4", "b5", std::nullopt));
+    f.blocks.push_back(makeForwardBlock("b5", "b6", std::nullopt));
+    f.blocks.push_back(makeForwardBlock("b6", "b7", std::nullopt));
+    f.blocks.push_back(makeForwardBlock("b7", "exit", x.id));
 
     BasicBlock exit;
     exit.label = "exit";

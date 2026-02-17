@@ -63,4 +63,48 @@ struct DomTree
 /// @return Dominator tree with immediate dominators and child map.
 DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F);
 
+/// @brief Post-dominator tree for a function.
+///
+/// @details Stores immediate post-dominator relationships.  A block X
+/// post-dominates block Y if every path from Y to any exit passes through X.
+/// The tree is rooted at a virtual exit node represented by `nullptr`; all
+/// actual exit blocks (blocks with no CFG successors) have their entry in
+/// @c ipostdom set to `nullptr`.
+///
+/// Queries are analogous to forward dominator queries:
+///   - @ref postDominates(A, B) — true iff A is an ancestor of B in the tree.
+///   - @ref immediatePostDominator(B) — immediate parent of B in the tree.
+struct PostDomTree
+{
+    std::unordered_map<il::core::Block *, il::core::Block *>
+        ipostdom; ///< Maps each block to its immediate post-dominator
+    std::unordered_map<il::core::Block *, std::vector<il::core::Block *>>
+        children; ///< Maps each block to the blocks it immediately post-dominates
+
+    /// @brief Return true if block @p A post-dominates block @p B.
+    /// @param A Potential post-dominator.
+    /// @param B Block being tested.
+    /// @return True if every path from @p B to any exit passes through @p A.
+    bool postDominates(il::core::Block *A, il::core::Block *B) const;
+
+    /// @brief Return the immediate post-dominator of block @p B.
+    /// @param B Block whose immediate post-dominator is requested.
+    /// @return Immediate post-dominator, or nullptr for exit blocks
+    ///         (whose post-dominator is the virtual exit).
+    il::core::Block *immediatePostDominator(il::core::Block *B) const;
+};
+
+/// @brief Compute post-dominator tree for function @p F.
+///
+/// @details Applies the Cooper-Harvey-Kennedy iterative algorithm on the
+/// reversed CFG.  Exit blocks (those with no successors) are the roots; a
+/// virtual exit node represented by @c nullptr connects them all.  The
+/// computation is analogous to @ref computeDominatorTree but uses successor
+/// lists instead of predecessor lists.
+///
+/// @param ctx CFG context providing traversal utilities.
+/// @param F Function to analyze.
+/// @return Post-dominator tree with immediate post-dominators and child map.
+PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &F);
+
 } // namespace viper::analysis
