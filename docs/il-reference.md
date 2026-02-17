@@ -61,7 +61,7 @@ entry:
 
 - **Symbol names**: `@name` for functions and globals
 - **Basic blocks**: Labeled with `label:` (no caret prefix)
-- **Terminators**: Every block must end with `ret`, `br`, `cbr`, or `switch`
+- **Terminators**: Every block must end with `ret`, `br`, `cbr`, `switch.i32`, `trap`, `trap.from_err`, or `resume.*`
 - **SSA form**: Values (`%vX`) are defined once and used multiple times
 
 ---
@@ -75,33 +75,6 @@ entry:
 ```il
 %sum = add %a, %b
 %t0 = add 10, 20
-```
-
-**`sub`** — Integer subtraction (no overflow check).
-
-```il
-%diff = sub %a, %b
-%t0 = sub 10, 5
-```
-
-**`mul`** — Integer multiplication (no overflow check).
-
-```il
-%prod = mul %a, %b
-%t0 = mul 3, 7
-```
-
-**`addr_of`** — Take address of global variable or constant.
-
-```il
-%t41 = addr_of @.Lstr
-```
-
-**`gaddr`** — Address of a mutable module-level global (modvar).
-
-```il
-%p = gaddr @.Counter        # pointer to module variable storage
-store i64, %p, 1            # write 1 into the counter
 ```
 
 **`fadd`** — Floating-point addition.
@@ -152,18 +125,11 @@ store i64, %p, 1            # write 1 into the counter
 %diff = isub.ovf %lhs, %rhs
 ```
 
-**`sdiv.chk0`** — Signed integer division with divide-by-zero check (traps if divisor is zero).
+**`mul`** — Integer multiplication (no overflow check).
 
 ```il
-%t0 = sdiv.chk0 %a, %b
-%t3 = sdiv.chk0 %t2, 5
-```
-
-**`udiv.chk0`** — Unsigned integer division with divide-by-zero check (traps if divisor is zero).
-
-```il
-%t2 = udiv.chk0 %a, %b
-%t4 = udiv.chk0 10, 2
+%prod = mul %a, %b
+%t0 = mul 3, 7
 ```
 
 **`sdiv`** — Signed integer division (no divide-by-zero check; undefined behavior on zero).
@@ -173,11 +139,11 @@ store i64, %p, 1            # write 1 into the counter
 %t0 = sdiv 20, 4
 ```
 
-**`udiv`** — Unsigned integer division (no divide-by-zero check; undefined behavior on zero).
+**`sdiv.chk0`** — Signed integer division with divide-by-zero check (traps if divisor is zero).
 
 ```il
-%quot = udiv %a, %b
-%t0 = udiv 20, 4
+%t0 = sdiv.chk0 %a, %b
+%t3 = sdiv.chk0 %t2, 5
 ```
 
 **`srem`** — Signed integer remainder (no divide-by-zero check; undefined behavior on zero).
@@ -187,18 +153,39 @@ store i64, %p, 1            # write 1 into the counter
 %t0 = srem 17, 5
 ```
 
-**`urem`** — Unsigned integer remainder (no divide-by-zero check; undefined behavior on zero).
-
-```il
-%rem = urem %a, %b
-%t0 = urem 17, 5
-```
-
 **`srem.chk0`** — Signed integer remainder with divide-by-zero check (traps if divisor is zero).
 
 ```il
 %rem = srem.chk0 %a, %b
 %t0 = srem.chk0 17, 5
+```
+
+**`sub`** — Integer subtraction (no overflow check).
+
+```il
+%diff = sub %a, %b
+%t0 = sub 10, 5
+```
+
+**`udiv`** — Unsigned integer division (no divide-by-zero check; undefined behavior on zero).
+
+```il
+%quot = udiv %a, %b
+%t0 = udiv 20, 4
+```
+
+**`udiv.chk0`** — Unsigned integer division with divide-by-zero check (traps if divisor is zero).
+
+```il
+%t2 = udiv.chk0 %a, %b
+%t4 = udiv.chk0 10, 2
+```
+
+**`urem`** — Unsigned integer remainder (no divide-by-zero check; undefined behavior on zero).
+
+```il
+%rem = urem %a, %b
+%t0 = urem 17, 5
 ```
 
 **`urem.chk0`** — Unsigned integer remainder with divide-by-zero check (traps if divisor is zero).
@@ -246,6 +233,18 @@ store i64, %p, 1            # write 1 into the counter
 ```il
 %t28 = fcmp_ne 1, 2
 %t20 = fcmp_ne %t18, %t18
+```
+
+**`fcmp_ord`** — Floating-point ordered comparison; returns 1 (true) if both operands are non-NaN.
+
+```il
+%t0 = fcmp_ord %a, %b
+```
+
+**`fcmp_uno`** — Floating-point unordered comparison; returns 1 (true) if either operand is NaN.
+
+```il
+%t0 = fcmp_uno %a, %b
 ```
 
 **`icmp_eq`** — Integer comparison; suffix indicates predicate.
@@ -316,11 +315,24 @@ store i64, %p, 1            # write 1 into the counter
 
 ### Memory
 
+**`addr_of`** — Take address of global variable or constant.
+
+```il
+%t41 = addr_of @.Lstr
+```
+
 **`alloca`** — Allocate stack memory; operand is size in bytes; returns pointer.
 
 ```il
 %a_slot = alloca 8
 %b_slot = alloca 8
+```
+
+**`gaddr`** — Address of a mutable module-level global (modvar).
+
+```il
+%p = gaddr @.Counter        # pointer to module variable storage
+store i64, %p, 1            # write 1 into the counter
 ```
 
 **`gep`** — Get element pointer; compute address offset from base pointer (base + offset).
@@ -385,7 +397,7 @@ ret 0
 
 ```il
 switch.i32 %sel, ^default(%sel), 0 -> ^case0(%sel)
-switch.i32 %arg, ^default(%arg) junk, 0 -> ^case0(%arg)
+switch.i32 %arg, ^default(%arg), 0 -> ^case0(%arg), 1 -> ^case1(%arg)
 ```
 
 ### Exceptions
@@ -491,6 +503,13 @@ trap.from_err i32 6
 %t5 = cast.ui_to_fp %ui
 ```
 
+**`const.f64`** — Load a 64-bit floating-point constant.
+
+```il
+%pi = const.f64 3.141592653589793
+%t0 = const.f64 0.0
+```
+
 **`const_null`** — Create null pointer constant.
 
 ```il
@@ -505,28 +524,28 @@ trap.from_err i32 6
 %sB = const_str @.L1
 ```
 
-**`err.get_kind`** — Extract error kind from error value.
-
-```il
-%k = err.get_kind %e
-%k = err.get_kind %err
-```
-
-**`err.get_code`** — Extract error code from error value.
+**`err.get_code`** — Extract error code from error value; returns `i32`.
 
 ```il
 %code = err.get_code %err
 %c = err.get_code %e
 ```
 
-**`err.get_ip`** — Extract instruction pointer from error value.
+**`err.get_ip`** — Extract instruction pointer from error value; returns `i64`.
 
 ```il
 %ip = err.get_ip %err
 %ptr = err.get_ip %e
 ```
 
-**`err.get_line`** — Extract line number from error value.
+**`err.get_kind`** — Extract error kind from error value; returns `i32`.
+
+```il
+%k = err.get_kind %e
+%k = err.get_kind %err
+```
+
+**`err.get_line`** — Extract line number from error value; returns `i32`.
 
 ```il
 %ln = err.get_line %e
@@ -545,11 +564,18 @@ Compatibility:
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
 
+**`fptosi`** — Convert floating-point to signed integer (no check; undefined on NaN or overflow; use `cast.fp_to_si.rte.chk` for checked conversion).
+
+```il
+%i = fptosi %f
+%t0 = fptosi 3.7
+```
+
 **`func`** — Begin function definition with signature.
 
 ```il
 func @main() -> i64 {
-func @add(i64, i64) -> i64 {
+func @add(i64 %a, i64 %b) -> i64 {
 ```
 
 **`global`** — Define global constant or variable.
@@ -559,7 +585,7 @@ global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
 ```
 
-**`idx.chk`** — Check array index bounds; traps if index is out of range [lo, hi].
+**`idx.chk`** — Check array index bounds; traps if index is out of range [lo, hi).
 
 ```il
 %t0 = idx.chk %idx16, %lo16, %hi16
@@ -621,13 +647,6 @@ resume.same %tok
 %fn = sitofp %n2
 ```
 
-**`fptosi`** — Convert floating-point to signed integer (traps on NaN or overflow).
-
-```il
-%i = fptosi %f
-%t0 = fptosi 3.7
-```
-
 **`target`** — Specify target architecture or platform.
 
 ```il
@@ -671,6 +690,6 @@ The verifier enforces structural and type rules. Typical checks include:
 - `il-verify <file.il>` — static checks with precise diagnostics.
 - `il-dis <file.il>` — pretty-printer / disassembler.
 - `viper -run <file.il>` — run on the VM (uses runtime bridges).
-- `viper opt <file.il> -p simplifycfg` — run transforms (e.g., SimplifyCFG).
+- `viper il-opt <file.il> --passes "simplify-cfg"` — run transforms (e.g., SimplifyCFG).
 
 > Use `--help` on each tool for full options.

@@ -1179,9 +1179,8 @@ entity TradeLogger implements Observer {
 
     func onUpdate(event: String, data: any) {
         if event == "price_change" {
-            var timestamp = now();
-            var logEntry = timestamp + "," + data.symbol + "," +
-                           data.oldPrice + "," + data.newPrice;
+            // In real code, use Time.DateTime.Now() for timestamp
+            var logEntry = data.symbol + "," + data.oldPrice + "," + data.newPrice;
             Say("[LOG] " + logEntry);
             // In real code: append(self.logFile, logEntry);
         }

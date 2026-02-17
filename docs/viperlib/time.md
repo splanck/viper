@@ -555,7 +555,7 @@ Duration type for representing and manipulating time spans. Duration is a static
 
 | Method          | Signature          | Description                                      |
 |-----------------|--------------------|--------------------------------------------------|
-| `ToString(dur)` | `String(Integer)` | Format as "HH:MM:SS" (e.g., "02:00:00")         |
+| `ToString(dur)` | `String(Integer)` | Format as "d.HH:MM:SS" or "HH:MM:SS" (e.g., "02:00:00", "1.02:30:00") |
 | `ToISO(dur)`    | `String(Integer)` | Format as ISO 8601 duration (e.g., "PT2H")       |
 
 ### Notes
@@ -596,7 +596,7 @@ PRINT "ToISO: "; Viper.Time.Duration.ToISO(d)          ' Output: PT2H
 
 ' Create from components
 DIM d2 AS INTEGER = Viper.Time.Duration.Create(1, 2, 30, 0, 0)
-PRINT "Complex: "; Viper.Time.Duration.ToString(d2)    ' Output: 26:30:00
+PRINT "Complex: "; Viper.Time.Duration.ToString(d2)    ' Output: 1.02:30:00
 
 ' Arithmetic
 DIM sum AS INTEGER = Viper.Time.Duration.Add(d, d2)
@@ -647,8 +647,8 @@ A time range defined by start and end timestamps (in seconds). Useful for repres
 
 - Timestamps are Unix timestamps in seconds (not milliseconds)
 - `Contains` checks if `Start <= ts <= End`
-- `Intersection` traps if the ranges do not overlap
-- `Union` returns a contiguous range from the earliest start to the latest end
+- `Intersection` returns `null` if the ranges do not overlap (does not trap)
+- `Union` returns `null` if the ranges are neither overlapping nor contiguous
 
 ### Zia Example
 
@@ -702,7 +702,7 @@ PRINT r.ToString()
 
 ## Viper.Time.RelativeTime
 
-Formats time durations and timestamps into human-readable relative descriptions (e.g., "5m", "2h", "3d").
+Formats time durations and timestamps into human-readable relative descriptions.
 
 **Type:** Static utility class
 
@@ -710,16 +710,17 @@ Formats time durations and timestamps into human-readable relative descriptions 
 
 | Method                  | Signature                   | Description                                                        |
 |-------------------------|-----------------------------|--------------------------------------------------------------------|
-| `Format(timestamp)`     | `String(Integer)`           | Format a timestamp relative to the current time                    |
+| `Format(timestamp)`     | `String(Integer)`           | Format a timestamp relative to now (e.g., "2 hours ago", "in 3 days", "just now") |
 | `FormatFrom(ts, base)`  | `String(Integer, Integer)`  | Format a timestamp relative to a given base timestamp              |
-| `FormatDuration(ms)`    | `String(Integer)`           | Format a duration in milliseconds as a human-readable string       |
-| `FormatShort(timestamp)`| `String(Integer)`           | Format a timestamp relative to now using short notation            |
+| `FormatDuration(ms)`    | `String(Integer)`           | Format a duration in milliseconds (e.g., "45s", "2h 30m", "1d 5h 20m") |
+| `FormatShort(timestamp)`| `String(Integer)`           | Format a timestamp relative to now in short form (e.g., "2h", "3d", "5m") |
 
 ### Notes
 
-- `FormatDuration` produces compact output: "1h", "30m", "5s", "1d"
+- `Format` produces verbose, locale-friendly strings like "2 hours ago", "in 3 days", "just now"
+- `FormatShort` produces compact single-unit strings like "2h", "3d", "5m", "now"
+- `FormatDuration` produces compact multi-unit strings like "45s", "2h 30m", "1d 5h 20m"
 - `Format` and `FormatShort` compare against the current system time
-- Output is always in the largest appropriate unit (e.g., 3600000ms becomes "1h", not "60m")
 
 ### Zia Example
 

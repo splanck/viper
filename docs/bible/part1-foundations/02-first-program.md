@@ -69,7 +69,7 @@ If you see your project folder name in the terminal prompt, you're in the right 
 Let's make sure Viper is properly installed. In your terminal, type:
 
 ```bash
-viper --version
+zia --version
 ```
 
 You should see something like:

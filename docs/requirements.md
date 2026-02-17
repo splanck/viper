@@ -434,27 +434,27 @@ These compiler extensions are **mandatory** for compiling Viper OS. Without them
 
 | Builtin | Purpose | Usage |
 |---------|---------|-------|
-| `__builtin_va_list` | Variadic argument list type | `stdarg.h` implementation |
-| `__builtin_va_start(ap, last)` | Start variadic processing | Variadic functions |
-| `__builtin_va_arg(ap, type)` | Get next variadic argument | Variadic functions |
-| `__builtin_va_end(ap)` | End variadic processing | Variadic functions |
-| `__builtin_va_copy(dest, src)` | Copy va_list | Variadic forwarding |
-| `__builtin_inf()` | Positive infinity | Float special values |
-| `__builtin_nan("")` | Quiet NaN | Float special values |
-| `__builtin_huge_val()` | HUGE_VAL | Overflow handling |
-| `__builtin_expect(expr, val)` | Branch prediction | Performance hints |
-| `__builtin_unreachable()` | Unreachable code marker | Optimization |
+| `__builtin_add_overflow(a, b, res)` | Checked addition | Safe arithmetic |
 | `__builtin_assume(cond)` | Assumption for optimizer | Optimization |
+| `__builtin_bswap16/32/64(x)` | Byte swap | Endian conversion |
 | `__builtin_clz(x)` | Count leading zeros | Bit manipulation |
 | `__builtin_ctz(x)` | Count trailing zeros | Bit manipulation |
-| `__builtin_popcount(x)` | Population count | Bit counting |
-| `__builtin_bswap16/32/64(x)` | Byte swap | Endian conversion |
-| `__builtin_add_overflow(a, b, res)` | Checked addition | Safe arithmetic |
-| `__builtin_sub_overflow(a, b, res)` | Checked subtraction | Safe arithmetic |
-| `__builtin_mul_overflow(a, b, res)` | Checked multiplication | Safe arithmetic |
+| `__builtin_expect(expr, val)` | Branch prediction | Performance hints |
+| `__builtin_huge_val()` | HUGE_VAL | Overflow handling |
+| `__builtin_inf()` | Positive infinity | Float special values |
 | `__builtin_memcpy(d, s, n)` | Optimized memcpy | Memory operations |
-| `__builtin_memset(s, c, n)` | Optimized memset | Memory operations |
 | `__builtin_memmove(d, s, n)` | Optimized memmove | Memory operations |
+| `__builtin_memset(s, c, n)` | Optimized memset | Memory operations |
+| `__builtin_mul_overflow(a, b, res)` | Checked multiplication | Safe arithmetic |
+| `__builtin_nan("")` | Quiet NaN | Float special values |
+| `__builtin_popcount(x)` | Population count | Bit counting |
+| `__builtin_sub_overflow(a, b, res)` | Checked subtraction | Safe arithmetic |
+| `__builtin_unreachable()` | Unreachable code marker | Optimization |
+| `__builtin_va_arg(ap, type)` | Get next variadic argument | Variadic functions |
+| `__builtin_va_copy(dest, src)` | Copy va_list | Variadic forwarding |
+| `__builtin_va_end(ap)` | End variadic processing | Variadic functions |
+| `__builtin_va_list` | Variadic argument list type | `stdarg.h` implementation |
+| `__builtin_va_start(ap, last)` | Start variadic processing | Variadic functions |
 
 ### 6.2 Atomic Builtins (GCC-style)
 
@@ -482,17 +482,17 @@ Memory order constants:
 
 | Attribute | Purpose | Example |
 |-----------|---------|---------|
-| `__attribute__((packed))` | Remove padding | Compact structs |
 | `__attribute__((aligned(N)))` | Alignment control | Memory layout |
-| `__attribute__((unused))` | Suppress unused warnings | Optional params |
-| `__attribute__((noreturn))` | No-return function | `abort()`, `exit()` |
-| `__attribute__((noinline))` | Prevent inlining | Debug support |
 | `__attribute__((always_inline))` | Force inlining | Critical paths |
-| `__attribute__((visibility("default")))` | Symbol visibility | Shared libraries |
-| `__attribute__((weak))` | Weak symbol | Optional implementations |
 | `__attribute__((constructor))` | Run before main | Initialization |
 | `__attribute__((destructor))` | Run after main | Cleanup |
 | `__attribute__((format(printf, N, M)))` | Format string checking | Printf-like |
+| `__attribute__((noinline))` | Prevent inlining | Debug support |
+| `__attribute__((noreturn))` | No-return function | `abort()`, `exit()` |
+| `__attribute__((packed))` | Remove padding | Compact structs |
+| `__attribute__((unused))` | Suppress unused warnings | Optional params |
+| `__attribute__((visibility("default")))` | Symbol visibility | Shared libraries |
+| `__attribute__((weak))` | Weak symbol | Optional implementations |
 
 ---
 
@@ -539,23 +539,23 @@ Memory order constants:
 
 | Macro | Platform |
 |-------|----------|
-| `_WIN32` | Windows (32 or 64-bit) |
-| `_WIN64` | Windows 64-bit |
+| `__ANDROID__` | Android |
 | `__APPLE__` | macOS/iOS |
 | `__linux__` | Linux |
 | `__unix__` | Unix-like systems |
-| `__ANDROID__` | Android |
 | `__viperdos__` | Viper OS (custom) |
+| `_WIN32` | Windows (32 or 64-bit) |
+| `_WIN64` | Windows 64-bit |
 
 ### 7.4 Architecture Detection
 
 | Macro | Architecture |
 |-------|--------------|
-| `__x86_64__` / `_M_X64` | x86-64 |
-| `__i386__` / `_M_IX86` | x86 32-bit |
 | `__aarch64__` / `_M_ARM64` | ARM64 |
 | `__arm__` / `_M_ARM` | ARM 32-bit |
+| `__i386__` / `_M_IX86` | x86 32-bit |
 | `__riscv` | RISC-V |
+| `__x86_64__` / `_M_X64` | x86-64 |
 
 ---
 
@@ -1267,9 +1267,9 @@ The userspace includes a complete custom C++ standard library at `user/libc/incl
 
 | Compiler | Minimum Version | Recommended |
 |----------|-----------------|-------------|
-| GCC | 8.0 | 11+ |
-| Clang | 7.0 | 15+ |
-| Apple Clang | 10.0 | 14+ |
+| Apple Clang | 10.0 | 16+ |
+| Clang | 7.0 | 16+ |
+| GCC | 8.0 | 12+ |
 
 ---
 
@@ -1337,7 +1337,7 @@ int main() {
 
 Compile with:
 ```bash
-clang++ -std=c++17 -Wall -Wextra vcpp_test.cpp -o vcpp_test
+clang++ -std=c++20 -Wall -Wextra vcpp_test.cpp -o vcpp_test
 ```
 
 ---

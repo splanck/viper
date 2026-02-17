@@ -4,7 +4,7 @@ Shared support and infrastructure used across the toolchain.
 
 Directories: `src/support/`, `src/common/`, `src/parse/`, `src/pass/`.
 
-Last updated: 2026-01-15
+Last updated: 2026-02-17
 
 ## Overview
 
@@ -18,21 +18,21 @@ Last updated: 2026-01-15
 
 | File                  | Purpose                                         |
 |-----------------------|-------------------------------------------------|
-| `source_manager.cpp`  | Source file registration implementation         |
-| `source_manager.hpp`  | Source file registration and path normalization |
 | `source_location.cpp` | Source location implementation                  |
 | `source_location.hpp` | Source location value type (file, line, column) |
+| `source_manager.cpp`  | Source file registration implementation         |
+| `source_manager.hpp`  | Source file registration and path normalization |
 
 ## Diagnostics (`src/support/`)
 
-| File                 | Purpose                                             |
-|----------------------|-----------------------------------------------------|
-| `diagnostics.cpp`    | Diagnostic engine implementation                    |
-| `diagnostics.hpp`    | Diagnostic engine: collect, count, print messages   |
-| `diag_expected.cpp`  | Expected/diagnostic wrapper implementation          |
-| `diag_expected.hpp`  | Expected/diagnostic wrapper for result-style errors |
-| `diag_capture.cpp`   | Diagnostic buffer capture implementation            |
-| `diag_capture.hpp`   | Diagnostic buffer capture for tests                 |
+| File                | Purpose                                             |
+|---------------------|-----------------------------------------------------|
+| `diag_capture.cpp`  | Diagnostic buffer capture implementation            |
+| `diag_capture.hpp`  | Diagnostic buffer capture for tests                 |
+| `diag_expected.cpp` | Expected/diagnostic wrapper implementation          |
+| `diag_expected.hpp` | Expected/diagnostic wrapper for result-style errors |
+| `diagnostics.cpp`   | Diagnostic engine implementation                    |
+| `diagnostics.hpp`   | Diagnostic engine: collect, count, print messages   |
 
 ## Memory (`src/support/`)
 
@@ -54,18 +54,18 @@ Last updated: 2026-01-15
 
 | File              | Purpose                                 |
 |-------------------|-----------------------------------------|
+| `alignment.hpp`   | Alignment utilities                     |
 | `options.hpp`     | Global compile-time options and toggles |
 | `result.hpp`      | Minimal Result<T> helper                |
 | `small_vector.hpp`| Small-buffer-optimized vector type      |
-| `alignment.hpp`   | Alignment utilities                     |
 
 ## Common Utilities (`src/common/`)
 
 | File                 | Purpose                                                |
 |----------------------|--------------------------------------------------------|
+| `IntegerHelpers.hpp` | Integer helpers (width/signedness, overflow policies)  |
 | `Mangle.cpp`         | Name mangling implementation                           |
 | `Mangle.hpp`         | Name mangling helpers used by frontends/codegen        |
-| `IntegerHelpers.hpp` | Integer helpers (width/signedness, overflow policies)  |
 | `RunProcess.cpp`     | Test helper to spawn subprocesses implementation       |
 | `RunProcess.hpp`     | Test helper to spawn subprocesses with env/dir control |
 

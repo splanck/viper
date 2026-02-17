@@ -46,14 +46,14 @@ been created to help understand the structure, organization, and complexity of t
 
 ## Quick Facts
 
-| Metric                | Value                                     |
-|-----------------------|-------------------------------------------|
-| **Total Lines**       | 44,260 LOC                                |
-| **Total Files**       | 151 (107 headers, 44 implementations)     |
-| **Subdirectories**    | 8 major subsystems                        |
-| **Main Pipeline**     | Lexer → Parser → Semantic → Lowering → IL |
-| **Largest File**      | lower/builtins/Common.cpp (1,021 LOC)     |
-| **Largest Component** | Lowerer (5,000+ LOC for IL generation)    |
+| Metric                | Value                                             |
+|-----------------------|---------------------------------------------------|
+| **Total Lines**       | ~72,190 LOC                                       |
+| **Total Files**       | 269 (114 headers, 155 implementations) + 1 .def   |
+| **Subdirectories**    | 10 top-level + 4 lower/ subdirs                   |
+| **Main Pipeline**     | Lexer → Parser → Semantic → Lowering → IL         |
+| **Largest File**      | Lowerer.hpp (1,432 LOC)                           |
+| **Largest Component** | Lowerer (split across 10+ files, ~9,000+ LOC)     |
 
 ## Navigation Guide
 
@@ -94,17 +94,18 @@ been created to help understand the structure, organization, and complexity of t
 
 ### Problem Areas to Watch
 
-- **Large centralized files**: Common.cpp (1,021 LOC), Lowerer.Procedure.cpp (1,147 LOC)
+- **Large centralized files**: Lower_OOP_Emit.cpp (1,102 LOC), lower/builtins/Common.cpp (1,035 LOC)
 - **Scattered complexity**: SELECT CASE handling spans parsing, semantic, lowering
 - **Expression lowering**: Split across 5+ files with multiple passes
-- **OOP implementation**: Spread across 6 files with name mangling complexity
+- **OOP implementation**: Spread across 13+ files in lower/oop/ with name mangling complexity
 
 ### Recommended Investigation Areas
 
-1. **Builtin handling** - 1,000+ LOC centralized in one file (refactoring candidate)
-2. **SELECT CASE** - Complex multi-file implementation (maintainability question)
-3. **Expression lowering** - Multiple passes may hide optimization opportunities
-4. **Test coverage** - Need to verify test coverage for sem/ and lower/ subsystems
+1. **OOP lowering** - 1,100+ LOC in Lower_OOP_Emit.cpp (refactoring candidate)
+2. **Builtin handling** - 1,000+ LOC centralized in lower/builtins/Common.cpp
+3. **SELECT CASE** - Complex multi-file implementation (maintainability question)
+4. **Expression lowering** - Multiple passes may hide optimization opportunities
+5. **Test coverage** - Need to verify test coverage for sem/ and lower/ subsystems
 
 ## File Organization Patterns
 
@@ -162,10 +163,18 @@ Subdirectories:
 
 - `ast/` - AST node definitions (9 files)
 - `builtins/` - Builtin function definitions (4 files)
-- `constfold/` - Constant folding (7 files)
-- `lower/` - IL lowering (22 files total with subdirs)
+- `constfold/` - Constant folding (9 files)
+- `detail/` - Internal OOP semantic declarations (1 file)
+- `diag/` - BASIC-specific diagnostics (1 file)
+- `lower/` - IL lowering machinery (19 files)
+- `lower/builtins/` - Builtin function lowering (6 files)
+- `lower/common/` - Shared lowering infrastructure (4 files)
+- `lower/detail/` - Lowering helper implementations (5 files)
+- `lower/oop/` - OOP IL lowering (13 files)
+- `passes/` - Compiler passes (2 files)
 - `print/` - AST printing utilities (5 files)
-- `sem/` - Semantic checking (9 files)
+- `sem/` - Semantic checking (25+ files)
+- `types/` - BASIC to IL type mapping (2 files)
 
 ## Next Steps
 
@@ -177,5 +186,6 @@ Subdirectories:
 ---
 
 **Generated**: November 11, 2025
+**Last Reviewed**: 2026-02-17
 **Exploration Level**: Very Thorough
 **Total Documentation**: ~886 lines across 3 files

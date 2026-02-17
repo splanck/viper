@@ -899,24 +899,24 @@ x86-64 backend but is tailored for the ARM instruction set and AAPCS64 calling c
 
 ### Supported Features
 
-- Integer arithmetic (add, sub, mul)
-- Floating-point arithmetic (fadd, fsub, fmul, fdiv)
+- Array and object operations
 - Bitwise operations (and, or, xor, shifts)
 - Comparisons and conditional branches
+- Floating-point arithmetic (fadd, fsub, fmul, fdiv)
 - Function calls (direct)
-- Switch statements
+- Integer arithmetic (add, sub, mul)
 - Local variables (FP-relative addressing)
-- Array and object operations
+- Switch statements
 
 ### AArch64 Register Usage
 
-**Integer Arguments:** X0-X7
-**Float Arguments:** V0-V7 (D registers)
-**Return Values:** X0 (integer), V0 (float)
 **Callee-saved:** X19-X28
 **Caller-saved:** X9-X15
+**Float Arguments:** V0-V7 (D registers)
 **Frame Pointer:** X29 (FP)
+**Integer Arguments:** X0-X7
 **Link Register:** X30 (LR)
+**Return Values:** X0 (integer), V0 (float)
 **Stack Pointer:** SP
 
 ### Source Files
@@ -940,7 +940,7 @@ src/codegen/aarch64/
 ├── TargetAArch64.hpp/cpp      # Target description
 ├── TerminatorLowering.hpp/cpp # Branch/call/ret lowering
 ├── fastpaths/                 # Fast-path implementations
-└── generated/                 # Generated dispatch tables
+└── generated/                 # Generated opcode/format tables (EncodingTable.inc, OpFmtTable.inc)
 ```
 
 ### Usage
@@ -977,43 +977,43 @@ src/codegen/
 ├── aarch64/                       # ARM64 backend (see above)
 │
 └── x86_64/                        # x86-64 backend
-    ├── Backend.hpp                # High-level facade
-    ├── Backend.cpp                # Pipeline orchestration
+    ├── AsmEmitter.hpp/cpp         # Assembly emission
+    ├── Backend.hpp/cpp            # High-level facade and pipeline orchestration
+    ├── CallLowering.hpp/cpp       # Calling convention
     ├── CodegenPipeline.hpp/cpp    # End-to-end pipeline
-    ├── MachineIR.hpp/cpp          # MIR data structures
-    ├── TargetX64.hpp/cpp          # x86-64 target description
+    ├── FrameLowering.hpp/cpp      # Stack frame layout
+    ├── ISel.hpp/cpp               # Instruction selection
+    ├── LowerDiv.cpp               # Division/modulo lowering
     ├── LowerILToMIR.hpp/cpp       # IL → MIR lowering
-    ├── LoweringRules.hpp/cpp      # Lowering rule registry
-    ├── LoweringRuleTable.hpp/cpp  # Rule table generator
+    ├── LowerOvf.cpp               # Overflow-checked arithmetic lowering
     ├── Lowering.Arith.cpp         # Arithmetic ops lowering
     ├── Lowering.Bitwise.cpp       # Bitwise ops lowering
     ├── Lowering.CF.cpp            # Control flow lowering
-    ├── Lowering.Mem.cpp           # Memory ops lowering
     ├── Lowering.EH.cpp            # Exception handling lowering
     ├── Lowering.EmitCommon.*      # Shared lowering helpers
-    ├── ISel.hpp/cpp               # Instruction selection
-    ├── Peephole.hpp/cpp           # Peephole optimization
-    ├── LowerDiv.cpp               # Division/modulo lowering
-    ├── LowerOvf.cpp               # Overflow-checked arithmetic lowering
-    ├── Unsupported.hpp            # Unsupported opcode tracking
-    ├── CallLowering.hpp/cpp       # Calling convention
-    ├── FrameLowering.hpp/cpp      # Stack frame layout
-    ├── RegAllocLinear.hpp/cpp     # Register allocation
-    ├── ParallelCopyResolver.hpp   # Parallel copy resolution
+    ├── Lowering.Mem.cpp           # Memory ops lowering
+    ├── LoweringRules.hpp/cpp      # Lowering rule registry
+    ├── LoweringRuleTable.hpp/cpp  # Rule table generator
+    ├── MachineIR.hpp/cpp          # MIR data structures
     ├── OperandUtils.hpp           # Operand utilities
-    ├── ra/                        # Register allocation internals
-    │   ├── Allocator.hpp/cpp      # Linear scan allocator
-    │   ├── LiveIntervals.hpp/cpp  # Live interval analysis
-    │   ├── Spiller.hpp/cpp        # Spill code insertion
-    │   └── Coalescer.hpp/cpp      # Copy coalescing
-    ├── AsmEmitter.hpp/cpp         # Assembly emission
+    ├── ParallelCopyResolver.hpp   # Parallel copy resolution
+    ├── Peephole.hpp/cpp           # Peephole optimization
+    ├── RegAllocLinear.hpp/cpp     # Register allocation (top-level driver)
+    ├── TargetX64.hpp/cpp          # x86-64 target description
+    ├── Unsupported.hpp            # Unsupported opcode tracking
     ├── asmfmt/Format.hpp/cpp      # Formatting helpers
-    └── passes/                    # Pipeline passes
-        ├── PassManager.hpp/cpp    # Pass orchestration
-        ├── LoweringPass.hpp/cpp   # IL lowering pass
-        ├── LegalizePass.hpp/cpp   # Instruction selection pass
-        ├── RegAllocPass.hpp/cpp   # Register allocation pass
-        └── EmitPass.hpp/cpp       # Assembly emission pass
+    ├── generated/                 # Generated opcode/format tables (EncodingTable.inc, OpFmtTable.inc)
+    ├── passes/                    # Pipeline passes
+    │   ├── EmitPass.hpp/cpp       # Assembly emission pass
+    │   ├── LegalizePass.hpp/cpp   # Instruction selection pass
+    │   ├── LoweringPass.hpp/cpp   # IL lowering pass
+    │   ├── PassManager.hpp/cpp    # Pass orchestration
+    │   └── RegAllocPass.hpp/cpp   # Register allocation pass
+    └── ra/                        # Register allocation internals
+        ├── Allocator.hpp/cpp      # Linear scan allocator
+        ├── Coalescer.hpp/cpp      # Copy coalescing
+        ├── LiveIntervals.hpp/cpp  # Live interval analysis
+        └── Spiller.hpp/cpp        # Spill code insertion
 ```
 
 ### Key Files by Functionality
@@ -1034,16 +1034,16 @@ src/codegen/
 **Legalization:**
 
 - `ISel.hpp` — Instruction selection and legalization
-- `Peephole.hpp` — Simple peephole optimizations
 - `LowerDiv.cpp` — Division/remainder lowering
 - `LowerOvf.cpp` — Overflow-checked arithmetic lowering
+- `Peephole.hpp` — Simple peephole optimizations
 
 **Register Allocation:**
 
 - `ra/Allocator.hpp` — Linear scan algorithm
+- `ra/Coalescer.hpp` — Copy coalescing
 - `ra/LiveIntervals.hpp` — Liveness analysis
 - `ra/Spiller.hpp` — Spill code insertion
-- `ra/Coalescer.hpp` — Copy coalescing
 
 **ABI & Frame:**
 
@@ -1084,21 +1084,21 @@ src/codegen/
 
 **Supported Features:**
 
-- Integer arithmetic (add, sub, mul, div, rem)
-- Floating-point arithmetic (add, sub, mul, div)
+- Basic exception handling
 - Bitwise operations (and, or, xor, shifts)
 - Comparisons and branches
+- Floating-point arithmetic (add, sub, mul, div)
 - Function calls (direct)
+- Integer arithmetic (add, sub, mul, div, rem)
 - Local variables (via stack)
-- Basic exception handling
 
 **Limitations:**
 
-- No indirect calls
-- No SIMD instructions
 - No advanced optimizations (loop opts, inlining, etc.)
 - No debug info generation
+- No indirect calls
 - No position-independent code (PIC)
+- No SIMD instructions
 
 ### Future Phases
 

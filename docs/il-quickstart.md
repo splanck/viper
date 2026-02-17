@@ -171,12 +171,10 @@ entry:
 ### Switch Statements
 
 ```il
-func @classify(i32 %n) -> i32 {
+func @classify(i64 %n) -> i64 {
 entry:
-  switch.i32 %n, default,
-    0 -> zero,
-    1 -> one,
-    2 -> two
+  %n32 = cast.si_narrow.chk %n
+  switch.i32 %n32, ^default, 0 -> ^zero, 1 -> ^one, 2 -> ^two
 
 default:
   ret 99
@@ -232,23 +230,23 @@ viper -run program.il
 Apply optimization passes:
 
 ```sh
-viper opt program.il -p simplifycfg -o optimized.il
+viper il-opt program.il --passes "simplify-cfg" -o optimized.il
 ```
 
 Preset pipelines via `viper il-opt`:
 
 ```sh
-# O1 (default): mem2reg + SCCP + LICM + peephole + DCE
+# O1 (default): simplify-cfg + mem2reg + SCCP + LICM + peephole + DCE
 viper il-opt program.il --pipeline O1 -o program.o1.il
 
-# O2: adds loop-simplify + EarlyCSE + DSE for extra cleanup
+# O2: adds loop-simplify + loop-unroll + indvars + inline + GVN + EarlyCSE + DSE + late-cleanup
 viper il-opt program.il --pipeline O2 -o program.o2.il
 
 # Custom sequence
 viper il-opt program.il --passes "simplify-cfg,mem2reg,sccp,dce" -o out.il
 ```
 
-Available passes: `simplifycfg`, `mem2reg`, `sccp`, `licm`, `dce`, `dse`, `earlycse`, `gvn`, `peephole`, `inline`, `loop-simplify`, `loop-unroll`
+Available passes: `check-opt`, `dce`, `dse`, `earlycse`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `sccp`, `simplify-cfg`
 
 ---
 

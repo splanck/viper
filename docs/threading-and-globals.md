@@ -1,6 +1,12 @@
+---
+status: active
+audience: developers
+last-verified: 2026-02-17
+---
+
 # Threading Model and Global State
 
-This document describes the VM’s concurrency model and the scope of process-global state shared across VM instances.
+This document describes the VM's concurrency model and the scope of process-global state shared across VM instances.
 It also covers how `Viper.Threads` is implemented in the VM.
 
 ---
@@ -260,14 +266,14 @@ If you need isolated external function sets:
 
 ## Source Code References
 
-| Component        | Location                        | Purpose                          |
-|------------------|---------------------------------|----------------------------------|
-| Active VM TLS    | `src/vm/VMContext.cpp`          | Thread-local active VM pointer   |
-| ActiveVMGuard    | `src/vm/VMContext.cpp`          | RAII guard for VM activation     |
-| ProgramState     | `src/vm/VM.hpp`                 | Shared globals + RtContext state |
-| Threads override | `src/vm/ThreadsRuntime.cpp`     | VM override for Thread.Start     |
-| Extern Registry  | `src/vm/RuntimeBridge.cpp`      | Process-global function registry |
-| Frontend Options | `src/frontends/basic/Options.hpp` | Atomic feature flags           |
+| Component        | Location                          | Purpose                          |
+|------------------|-----------------------------------|----------------------------------|
+| Active VM TLS    | `src/vm/VMContext.cpp`            | Thread-local active VM pointer   |
+| ActiveVMGuard    | `src/vm/VMContext.cpp`            | RAII guard for VM activation     |
+| Extern Registry  | `src/vm/RuntimeBridge.cpp`        | Process-global function registry |
+| Frontend Options | `src/frontends/basic/Options.hpp` | Atomic feature flags             |
+| ProgramState     | `src/vm/VM.hpp`                   | Shared globals + RtContext state |
+| Threads override | `src/vm/ThreadsRuntime.cpp`       | VM override for Thread.Start     |
 
 ---
 
@@ -278,3 +284,7 @@ If you need isolated external function sets:
 | Active VM        | Thread-local   | Automatic via TLS | One VM per thread          |
 | Extern Registry  | Process-global | Mutex-protected   | Shared by all VMs          |
 | Frontend Options | Process-global | Atomic (relaxed)  | Configure before threading |
+
+> **Key invariants:** (1) Never share a single `VM` instance across threads. (2) Set all
+> `FrontendOptions` flags before spawning compilation worker threads. (3) External function
+> registrations made by any VM are visible to all VMs in the process.

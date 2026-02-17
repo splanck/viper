@@ -356,7 +356,7 @@ entry:
 
 ### Common mistakes
 
-- Forgetting the version line (`il 0.1.2`).
+- Forgetting the version line (`il 0.1`; use `il 0.1.2` for experimental features).
 - Missing terminators at the end of blocks.
 - Mismatched types in instructions or extern calls.
 
@@ -487,14 +487,13 @@ values (for example, `br next` is the same as `br next()`).
 
 ```text
 il 0.1
-func @loop(%n: i64) -> i64 {
-entry(%n: i64):
+func @loop(i64 %n) -> i64 {
+entry:
   br body(%n, 0)
-body(%i: i64, %acc: i64):
+body(%i:i64, %acc:i64):
   %cmp = scmp_ge %i, %n
-  cbr %cmp, done(%acc), body(%i, %acc) ; illustrative loop
-  trap ; unreachable
- done(%r: i64):
+  cbr %cmp, done(%acc), body(%i, %acc)
+done(%r:i64):
   ret %r
 }
 ```
@@ -526,10 +525,10 @@ switch.i32 %scrutinee, ^default, 1 -> ^case_one, 2 -> ^case_two
 ```
 
 The first operand is the `i32` value to test. The first label after the operand
-is the mandatory default target, written using the caret form (e.g.
-`^default(args?)`). Subsequent entries pair a distinct 32-bit integer constant
-with a branch target using `value -> ^label(args?)`. When no case matches, the
-default label is taken. Each target may optionally supply block arguments.
+is the mandatory default target (e.g. `^default(args?)`; the `^` caret prefix is
+optional). Subsequent entries pair a distinct 32-bit integer constant with a
+branch target using `value -> label(args?)`. When no case matches, the default
+label is taken. Each target may optionally supply block arguments.
 
 ##### `ret`
 
@@ -556,18 +555,19 @@ operands.
 
 ##### Integer Arithmetic
 
-| Instr  | Form        | Result                                             |
-|--------|-------------|----------------------------------------------------|
-| `add`  | `add x, y`  | `i64`                                              |
-| `sub`  | `sub x, y`  | `i64`                                              |
-| `mul`  | `mul x, y`  | `i64`                                              |
-| `sdiv` | `sdiv x, y` | `i64` (trap on divide-by-zero or `INT64_MIN / -1`) |
-| `udiv` | `udiv x, y` | `i64` (trap on divide-by-zero)                     |
-| `srem` | `srem x, y` | `i64` (trap on divide-by-zero)                     |
-| `urem` | `urem x, y` | `i64` (trap on divide-by-zero)                     |
+| Instr  | Form        | Result                                |
+|--------|-------------|---------------------------------------|
+| `add`  | `add x, y`  | `i64`                                 |
+| `mul`  | `mul x, y`  | `i64`                                 |
+| `sdiv` | `sdiv x, y` | `i64` (no divide-by-zero check)       |
+| `srem` | `srem x, y` | `i64` (no divide-by-zero check)       |
+| `sub`  | `sub x, y`  | `i64`                                 |
+| `udiv` | `udiv x, y` | `i64` (no divide-by-zero check)       |
+| `urem` | `urem x, y` | `i64` (no divide-by-zero check)       |
 
 `sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and the remainder keeps the dividend's sign.
-Front ends such as BASIC map `\` to `sdiv` and `MOD` to `srem`.
+Neither checks for division by zero; use `sdiv.chk0` or `srem.chk0` for checked variants that trap on zero divisors.
+Front ends such as BASIC map `\` to `sdiv.chk0` and `MOD` to `srem.chk0`.
 
 ```text
 il 0.1
@@ -583,11 +583,11 @@ entry:
 | Instr       | Form             | Result | Notes                              |
 |-------------|------------------|--------|------------------------------------|
 | `iadd.ovf`  | `iadd.ovf x, y`  | `i64`  | trap on signed overflow            |
-| `isub.ovf`  | `isub.ovf x, y`  | `i64`  | trap on signed overflow            |
 | `imul.ovf`  | `imul.ovf x, y`  | `i64`  | trap on signed overflow            |
+| `isub.ovf`  | `isub.ovf x, y`  | `i64`  | trap on signed overflow            |
 | `sdiv.chk0` | `sdiv.chk0 x, y` | `i64`  | trap on divide-by-zero or overflow |
-| `udiv.chk0` | `udiv.chk0 x, y` | `i64`  | trap on divide-by-zero             |
 | `srem.chk0` | `srem.chk0 x, y` | `i64`  | trap on divide-by-zero             |
+| `udiv.chk0` | `udiv.chk0 x, y` | `i64`  | trap on divide-by-zero             |
 | `urem.chk0` | `urem.chk0 x, y` | `i64`  | trap on divide-by-zero             |
 
 The `.ovf` variants detect signed overflow and trap before producing a wrapped result. The `.chk0` variants explicitly
@@ -598,11 +598,11 @@ check for zero divisors.
 | Instr  | Form        | Result |
 |--------|-------------|--------|
 | `and`  | `and x, y`  | `i64`  |
-| `or`   | `or x, y`   | `i64`  |
-| `xor`  | `xor x, y`  | `i64`  |
-| `shl`  | `shl x, y`  | `i64`  |
-| `lshr` | `lshr x, y` | `i64`  |
 | `ashr` | `ashr x, y` | `i64`  |
+| `lshr` | `lshr x, y` | `i64`  |
+| `or`   | `or x, y`   | `i64`  |
+| `shl`  | `shl x, y`  | `i64`  |
+| `xor`  | `xor x, y`  | `i64`  |
 
 Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 
@@ -615,9 +615,9 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 | Instr  | Form        | Result |
 |--------|-------------|--------|
 | `fadd` | `fadd x, y` | `f64`  |
-| `fsub` | `fsub x, y` | `f64`  |
-| `fmul` | `fmul x, y` | `f64`  |
 | `fdiv` | `fdiv x, y` | `f64`  |
+| `fmul` | `fmul x, y` | `f64`  |
+| `fsub` | `fsub x, y` | `f64`  |
 
 ```text
 %f = fmul 2.0, 4.0
@@ -639,41 +639,41 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 
 ##### Conversions
 
-| Instr                   | Form                          | Result | Notes                                                   |
-|-------------------------|-------------------------------|--------|---------------------------------------------------------|
-| `sitofp`                | `sitofp x`                    | `f64`  | signed int to float                                     |
-| `fptosi`                | `fptosi x`                    | `i64`  | float to signed int (undefined on NaN/overflow; use `cast.fp_to_si.rte.chk` for checked) |
-| `cast.si_to_fp`         | `cast.si_to_fp i16 x`         | `f64`  | signed int (any size) to float                          |
-| `cast.ui_to_fp`         | `cast.ui_to_fp i16 x`         | `f64`  | unsigned int to float                                   |
-| `cast.fp_to_si.rte.chk` | `cast.fp_to_si.rte.chk i32 x` | `i32`  | float to signed int (round-to-even, trap on overflow)   |
-| `cast.fp_to_ui.rte.chk` | `cast.fp_to_ui.rte.chk i32 x` | `i32`  | float to unsigned int (round-to-even, trap on overflow) |
-| `cast.si_narrow.chk`    | `cast.si_narrow.chk i16 x`    | `i16`  | narrow signed int, trap on overflow                     |
-| `cast.ui_narrow.chk`    | `cast.ui_narrow.chk i16 x`    | `i16`  | narrow unsigned int, trap on overflow                   |
-| `zext1`                 | `zext1 x`                     | `i64`  | zero-extend i1 to i64                                   |
-| `trunc1`                | `trunc1 x`                    | `i1`   | truncate i64 to i1                                      |
+| Instr                   | Form                       | Result | Notes                                                           |
+|-------------------------|----------------------------|--------|-----------------------------------------------------------------|
+| `cast.fp_to_si.rte.chk` | `cast.fp_to_si.rte.chk x` | `i64`  | float to signed int (round-to-even, trap on overflow)           |
+| `cast.fp_to_ui.rte.chk` | `cast.fp_to_ui.rte.chk x` | `i64`  | float to unsigned int (round-to-even, trap on overflow)         |
+| `cast.si_narrow.chk`    | `cast.si_narrow.chk x`    | `i64`  | narrow signed int, trap on overflow                             |
+| `cast.si_to_fp`         | `cast.si_to_fp x`          | `f64`  | signed int to float                                             |
+| `cast.ui_narrow.chk`    | `cast.ui_narrow.chk x`    | `i64`  | narrow unsigned int, trap on overflow                           |
+| `cast.ui_to_fp`         | `cast.ui_to_fp x`          | `f64`  | unsigned int to float                                           |
+| `fptosi`                | `fptosi x`                 | `i64`  | float to signed int (no check; undefined on NaN or overflow)    |
+| `sitofp`                | `sitofp x`                 | `f64`  | signed int to float                                             |
+| `trunc1`                | `trunc1 x`                 | `i1`   | truncate i64 to i1                                              |
+| `zext1`                 | `zext1 x`                  | `i64`  | zero-extend i1 to i64                                           |
 
 The `cast.*` family provides type-aware conversions with explicit overflow and rounding behavior. The `.rte` suffix
 denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-overflow.
 
 ```text
 %f = sitofp 42
-%i = cast.fp_to_si.rte.chk i32 3.7
+%i = cast.fp_to_si.rte.chk 3.7
 ```
 
 ##### Memory Operations
 
 | Instr        | Form                     | Result                                          |
 |--------------|--------------------------|-------------------------------------------------|
+| `addr_of`    | `addr_of @global`        | `ptr`                                           |
 | `alloca`     | `alloca size`            | `ptr` (size < 0 traps; memory zero-initialized) |
+| `const.f64`  | `const.f64 3.14`         | `f64` (load floating-point constant)            |
+| `const_null` | `const_null`             | `ptr`                                           |
+| `const_str`  | `const_str @label`       | `str`                                           |
+| `gaddr`      | `gaddr @global`          | `ptr` (address of mutable module-level global)  |
 | `gep`        | `gep ptr, offs`          | `ptr` (no bounds checks)                        |
-| `idx.chk`    | `idx.chk idx, lo, hi`    | `i64` (trap if idx < lo or idx >= hi)            |
+| `idx.chk`    | `idx.chk idx, lo, hi`    | `i64` (trap if idx < lo or idx >= hi)           |
 | `load`       | `load type, ptr`         | `type` (null or misaligned trap)                |
 | `store`      | `store type, ptr, value` | — (null or misaligned trap)                     |
-| `addr_of`    | `addr_of @global`        | `ptr`                                           |
-| `gaddr`      | `gaddr @global`          | `ptr` (address of mutable module-level global)  |
-| `const_str`  | `const_str @label`       | `str`                                           |
-| `const_null` | `const_null`             | `ptr`                                           |
-| `const.f64`  | `const.f64 3.14`         | `f64` (load floating-point constant)            |
 
 `idx.chk` performs bounds checking for array accesses, trapping if the index is outside `[lo, hi)`. It returns the checked index value.
 
@@ -717,37 +717,37 @@ IL provides a structured error handling system with error values, handler stacks
 **Handler Stack Operations:**
 | Instr | Form | Notes |
 |-------|------|-------|
-| `eh.push` | `eh.push ^handler` | Push error handler block onto stack |
-| `eh.pop` | `eh.pop` | Pop error handler from stack |
 | `eh.entry` | `eh.entry` | Mark entry to error handler block |
+| `eh.pop` | `eh.pop` | Pop error handler from stack |
+| `eh.push` | `eh.push ^handler` | Push error handler block onto stack |
 
 **Trap Operations:**
 | Instr | Form | Notes |
 |-------|------|-------|
 | `trap` | `trap` | Unconditional trap (abort) |
-| `trap.kind` | `trap.kind kind_code` | Trap with specific kind |
-| `trap.err` | `trap.err %error_val` | Trap with error value |
-| `trap.from_err` | `trap.from_err type value` | Create and trap with new error |
+| `trap.err` | `trap.err code, msg` | Create an error value (i32 code, str message); returns `error` |
+| `trap.from_err` | `trap.from_err i32 code` | Terminate with error kind and code |
+| `trap.kind` | `trap.kind` | Read current trap kind from most recent error; returns `i64` |
 
 **Resume Operations:**
 | Instr | Form | Notes |
 |-------|------|-------|
-| `resume.same` | `resume.same %tok` | Resume at same instruction |
-| `resume.next` | `resume.next %tok` | Resume at next instruction |
 | `resume.label` | `resume.label %tok, ^label` | Resume at specific label |
+| `resume.next` | `resume.next %tok` | Resume at next instruction |
+| `resume.same` | `resume.same %tok` | Resume at same instruction |
 
 **Error Value Accessors:**
 | Instr | Form | Result |
 |-------|------|--------|
-| `err.get_kind` | `err.get_kind %err` | `i32` |
 | `err.get_code` | `err.get_code %err` | `i32` |
-| `err.get_ip` | `err.get_ip %err` | `ptr` |
+| `err.get_ip` | `err.get_ip %err` | `i64` |
+| `err.get_kind` | `err.get_kind %err` | `i32` |
 | `err.get_line` | `err.get_line %err` | `i32` |
 
 **Example:**
 
 ```il
-func @divide(a: i64, b: i64) -> i64 {
+func @divide(i64 %a, i64 %b) -> i64 {
 entry:
   eh.push ^handler
   %result = sdiv.chk0 %a, %b
@@ -755,8 +755,6 @@ entry:
   ret %result
 handler:
   eh.entry
-  %err = err.get_kind %error
-  ; handle error...
   trap
 }
 ```
@@ -768,47 +766,46 @@ names. Legacy `@rt_*` aliases are maintained for compatibility when built with `
 
 ##### Console I/O
 
-| Function                  | Signature     | Notes                                  |
-|---------------------------|---------------|----------------------------------------|
-| `@Viper.Terminal.PrintStr` | `str -> void` | write string to stdout                 |
-| `@Viper.Terminal.PrintI64` | `i64 -> void` | write integer to stdout                |
+| Function                   | Signature     | Notes                                  |
+|----------------------------|---------------|----------------------------------------|
 | `@Viper.Terminal.PrintF64` | `f64 -> void` | write float to stdout                  |
+| `@Viper.Terminal.PrintI64` | `i64 -> void` | write integer to stdout                |
+| `@Viper.Terminal.PrintStr` | `str -> void` | write string to stdout                 |
 | `@Viper.Terminal.ReadLine` | `-> str`      | read line from stdin, newline stripped |
 
 ##### String Operations
 
-| Function                    | Signature                | Notes                                          |
-|-----------------------------|--------------------------|------------------------------------------------|
-| `@Viper.String.Len`        | `str -> i64`             | length in bytes                                |
-| `@Viper.String.Concat`     | `str × str -> str`       | concatenate strings                            |
-| `@Viper.String.Mid`        | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
-| `@Viper.Convert.ToString_Int`    | `i64 -> str`             | convert integer to string                      |
-| `@Viper.Convert.ToString_Double` | `f64 -> str`             | convert double to string                       |
+| Function                              | Signature                | Notes                                          |
+|---------------------------------------|--------------------------|------------------------------------------------|
+| `@Viper.Core.Convert.ToString_Double` | `f64 -> str`             | convert double to string                       |
+| `@Viper.Core.Convert.ToString_Int`    | `i64 -> str`             | convert integer to string                      |
+| `@Viper.String.Concat`                | `str × str -> str`       | concatenate strings                            |
+| `@Viper.String.get_Length`            | `str -> i64`             | length in bytes                                |
+| `@Viper.String.Mid`                   | `str × i64 -> str`       | substring from start index to end              |
+| `@Viper.String.MidLen`                | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
 
 ##### Type Conversion
 
-| Function                  | Signature    | Notes                                               |
-|---------------------------|--------------|-----------------------------------------------------|
-| `@Viper.Convert.ToInt`    | `str -> i64` | convert string to integer; traps on invalid numeric |
-| `@Viper.Convert.ToDouble` | `str -> f64` | convert string to double; traps on invalid numeric  |
+| Function                       | Signature    | Notes                                               |
+|--------------------------------|--------------|-----------------------------------------------------|
+| `@Viper.Core.Convert.ToDouble` | `str -> f64` | convert string to double; traps on invalid numeric  |
+| `@Viper.Core.Convert.ToInt`    | `str -> i64` | convert string to integer; traps on invalid numeric |
 
 ##### Memory Management
 
-| Function     | Signature         | Notes                                     |
-|--------------|-------------------|-------------------------------------------|
-| `@rt_alloc`  | `i64 -> ptr`      | allocate bytes; negative size traps       |
-| `@rt_free`   | `ptr -> void`     | deallocate buffer (optional in v0.1.2)    |
-| `@rt_str_eq` | `str × str -> i1` | string equality (internal runtime helper) |
+| Function    | Signature    | Notes                               |
+|-------------|--------------|-------------------------------------|
+| `@rt_alloc` | `i64 -> ptr` | allocate bytes; negative size traps |
 
 #### Terminal & Keyboard Features
 
-RuntimeFeature → Symbol
+RuntimeFeature → Canonical Viper name → C runtime symbol
 
-- `TermCls`    → `rt_term_cls`
-- `TermColor`  → `rt_term_color_i32`
-- `TermLocate` → `rt_term_locate_i32`
-- `GetKey`     → `rt_getkey_str`
-- `InKey`      → `rt_inkey_str`
+- `TermCls`    → `Viper.Terminal.Clear`       → `rt_term_cls`
+- `TermColor`  → `Viper.Terminal.SetColor`    → `rt_term_color_i32`
+- `TermLocate` → `Viper.Terminal.SetPosition` → `rt_term_locate_i32`
+- `GetKey`     → `Viper.Terminal.GetKey`      → `rt_getkey_str`
+- `InKey`      → `Viper.Terminal.InKey`       → `rt_inkey_str`
 
 These helpers are gated by feature requests during lowering rather than being emitted unconditionally.
 
@@ -832,7 +829,7 @@ null or misaligned) trap deterministically.
 #### Verifier Rules
 
 Operand and result type checks are now table-driven from `OpcodeInfo`. The
-verifier still has bespoke handlers for `idxchk`, calls, and the handful of ops
+verifier still has bespoke handlers for `idx.chk`, calls, and the handful of ops
 wired directly to runtime contracts. Passes can also observe the
 `hasSideEffects` flag directly via the shared verifier table.
 
@@ -875,31 +872,51 @@ decl        ::= extern | global | func
 extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type
 global      ::= "global" ("const")? type SYMBOL "=" ginit
 ginit       ::= STRING | INT | FLOAT | "null" | SYMBOL
-func        ::= "func" SYMBOL "(" params? ")" "->" type "{" block+ "}"
-params      ::= param ("," param)*
-param       ::= IDENT ":" type
+func        ::= "func" SYMBOL "(" func_params? ")" "->" type "{" block+ "}"
+func_params ::= func_param ("," func_param)*
+func_param  ::= type TEMP | TEMP ":" type   (* canonical: "type %name"; legacy "%name: type" also accepted *)
 type_list   ::= type ("," type)*
-block       ::= LABEL ("(" params? ")")? ":" instr* term
+block       ::= LABEL ("(" blk_params? ")")? ":" instr* term
+blk_params  ::= blk_param ("," blk_param)*
+blk_param   ::= TEMP ":" type               (* block params always use "%name: type" form *)
 instr       ::= TEMP "=" op | op
-term        ::= "ret" value? | "br" LABEL ("(" value_list? ")")? | "cbr" value "," LABEL ("(" value_list? ")")?," LABEL ("(" value_list? ")")? | "trap"
-op          ::= "add" value "," value | "sub" value "," value | "mul" value "," value | "sdiv" value "," value |
-                "udiv" value "," value | "srem" value "," value | "urem" value "," value |
-                "and" value "," value | "or" value "," value | "xor" value "," value |
-                "shl" value "," value | "lshr" value "," value | "ashr" value "," value |
-                "fadd" value "," value | "fsub" value "," value | "fmul" value "," value | "fdiv" value "," value |
-                "icmp_eq" value "," value | "icmp_ne" value "," value |
-                "scmp_lt" value "," value | "scmp_le" value "," value |
-                "scmp_gt" value "," value | "scmp_ge" value "," value |
-                "ucmp_lt" value "," value | "ucmp_le" value "," value |
-                "ucmp_gt" value "," value | "ucmp_ge" value "," value |
-                "fcmp_lt" value "," value | "fcmp_le" value "," value |
-                "fcmp_gt" value "," value | "fcmp_ge" value "," value |
-                "fcmp_eq" value "," value | "fcmp_ne" value "," value |
-                "sitofp" value | "fptosi" value | "zext1" value | "trunc1" value |
-                "alloca" value | "gep" value "," value |
-                "load" type "," value | "store" type "," value "," value |
-                "addr_of" SYMBOL | "const_str" SYMBOL | "const_null" |
-                "call" SYMBOL "(" args? ")"
+term        ::= "ret" value? | "br" label_ref | "cbr" value "," label_ref "," label_ref | "trap" | "trap.from_err" type value | "switch.i32" value "," label_ref ("," INT "->" label_ref)* | "resume.same" value | "resume.next" value | "resume.label" value "," label_ref
+label_ref   ::= ("^")? LABEL ("(" value_list? ")")?   (* "^" caret is optional; args passed to block params *)
+op          ::= "add" value "," value | "and" value "," value | "ashr" value "," value |
+                "alloca" value | "addr_of" SYMBOL |
+                "call" SYMBOL "(" args? ")" | "call.indirect" value "(" args? ")" |
+                "cast.fp_to_si.rte.chk" value | "cast.fp_to_ui.rte.chk" value |
+                "cast.si_narrow.chk" value | "cast.si_to_fp" value |
+                "cast.ui_narrow.chk" value | "cast.ui_to_fp" value |
+                "const.f64" FLOAT | "const_null" | "const_str" SYMBOL |
+                "eh.entry" | "eh.pop" | "eh.push" label_ref |
+                "err.get_code" value | "err.get_ip" value |
+                "err.get_kind" value | "err.get_line" value |
+                "fadd" value "," value | "fdiv" value "," value |
+                "fcmp_eq" value "," value | "fcmp_ge" value "," value |
+                "fcmp_gt" value "," value | "fcmp_le" value "," value |
+                "fcmp_lt" value "," value | "fcmp_ne" value "," value |
+                "fcmp_ord" value "," value | "fcmp_uno" value "," value |
+                "fmul" value "," value | "fptosi" value | "fsub" value "," value |
+                "gaddr" SYMBOL | "gep" value "," value |
+                "iadd.ovf" value "," value | "icmp_eq" value "," value |
+                "icmp_ne" value "," value | "idx.chk" value "," value "," value |
+                "imul.ovf" value "," value | "isub.ovf" value "," value |
+                "load" type "," value | "lshr" value "," value | "mul" value "," value |
+                "or" value "," value |
+                "scmp_ge" value "," value | "scmp_gt" value "," value |
+                "scmp_le" value "," value | "scmp_lt" value "," value |
+                "sdiv" value "," value | "sdiv.chk0" value "," value |
+                "shl" value "," value | "sitofp" value |
+                "srem" value "," value | "srem.chk0" value "," value |
+                "store" type "," value "," value | "sub" value "," value |
+                "trap.err" value "," value | "trap.kind" |
+                "trunc1" value |
+                "ucmp_ge" value "," value | "ucmp_gt" value "," value |
+                "ucmp_le" value "," value | "ucmp_lt" value "," value |
+                "udiv" value "," value | "udiv.chk0" value "," value |
+                "urem" value "," value | "urem.chk0" value "," value |
+                "xor" value "," value | "zext1" value
 args        ::= value ("," value)*
 value_list  ::= value ("," value)*
 value       ::= TEMP | SYMBOL | literal
@@ -928,25 +945,26 @@ under [examples/il](../examples/il/).
 
 ### BASIC to IL Lowering Reference
 
-**Note:** Built-in math functions use runtime helpers. These are internal helpers that have not yet been migrated to the
-`Viper.*` namespace and still use `@rt_*` names.
+**Note:** Built-in math functions use `@rt_*` helpers in lowered IL. These are registered
+runtime functions that remain under the `rt_*` naming scheme; the constfold pass recognizes
+these names and folds literal calls at compile time.
 
-| BASIC        | IL runtime call          |
-|--------------|--------------------------|
-| `SQR(x)`     | `call @rt_sqrt(x)`       |
-| `ABS(i)`     | `call @rt_abs_i64(i)`    |
-| `ABS(x#)`    | `call @rt_abs_f64(x)`    |
-| `FLOOR(x)`   | `call @rt_floor(x)`      |
-| `CEIL(x)`    | `call @rt_ceil(x)`       |
-| `F(x)`       | `call <retTy> @F(args…)` |
-| `S(x$, a())` | `call void @S(str, ptr)` |
+| BASIC        | IL runtime call              |
+|--------------|------------------------------|
+| `ABS(i)`     | `call @rt_abs_i64(i)`        |
+| `ABS(x#)`    | `call @rt_abs_f64(x)`        |
+| `CEIL(x)`    | `call @rt_ceil(x)`           |
+| `F(x)`       | `%r = call @F(%x)`           |
+| `FLOOR(x)`   | `call @rt_floor(%x)`         |
+| `S(x$, a())` | `call @S(%x, %a)`            |
+| `SQR(x)`     | `call @rt_sqrt(x)`           |
 
 Integer arguments to `SQR`, `FLOOR`, and `CEIL` are first widened to `f64`.
 
 > **Arrays today.** BASIC array declarations and accesses lower to runtime
-> helpers such as `@rt_arr_i32_new`, `@rt_arr_i32_len`, `@rt_arr_i32_get`, and
-> `@rt_arr_i32_set`. The front end emits bounds checks in IL; failing a check
-> calls `@rt_arr_oob_panic` before touching the array storage.
+> helpers such as `@rt_arr_i64_new`, `@rt_arr_i64_len`, `@rt_arr_i64_get`, and
+> `@rt_arr_i64_set` (or the corresponding `_str` and `_f64` variants). The
+> front end emits bounds checks in IL via `idx.chk` before accessing array storage.
 
 ### Procedure calls
 
@@ -954,13 +972,13 @@ User-defined `FUNCTION` and `SUB` calls lower to direct `call` instructions.
 Arguments are evaluated left-to-right and converted to the callee's expected
 types:
 
-| BASIC form                    | Lowered IL                                  | Notes                                                    |
-|-------------------------------|---------------------------------------------|----------------------------------------------------------|
-| `F(1)` (callee expects `f64`) | `%t0 = sitofp 1`<br>`%r = call f64 @F(%t0)` | Widen integer arguments with `sitofp` before the call.   |
-| `CALL P(T$)`                  | `call void @P(str %T)`                      | String parameters pass runtime-managed handles directly. |
-| `CALL P(A())`                 | `call void @P(ptr %A)`                      | Arrays pass by reference without copying.                |
-| `CALL S()`                    | `call void @S()`                            | `SUB` invocation used as a statement.                    |
-| `X = F()`                     | `%x = call i64 @F()`                        | `FUNCTION` invocation used as an expression.             |
+| BASIC form                    | Lowered IL                              | Notes                                                    |
+|-------------------------------|-----------------------------------------|----------------------------------------------------------|
+| `F(1)` (callee expects `f64`) | `%t0 = sitofp 1`<br>`%r = call @F(%t0)` | Widen integer arguments with `sitofp` before the call.   |
+| `CALL P(T$)`                  | `call @P(%T)`                           | String parameters pass runtime-managed handles directly. |
+| `CALL P(A())`                 | `call @P(%A)`                           | Arrays pass by reference without copying.                |
+| `CALL S()`                    | `call @S()`                             | `SUB` invocation used as a statement.                    |
+| `X = F()`                     | `%x = call @F()`                        | `FUNCTION` invocation used as an expression.             |
 
 Recursive calls lower the same way; see [factorial.bas](#example-4-read-input-and-compute-factorial)
 for a recursion sanity check.
@@ -983,7 +1001,7 @@ This ordering guarantees functions are listed before `@main`.
 | BASIC                              | IL                                                         |
 |------------------------------------|------------------------------------------------------------|
 | `FUNCTION f(...) ... END FUNCTION` | `func @f(<params>) -> <retTy>`<br>`entry_f`/`ret_f` blocks |
-| `SUB s(...) ... END SUB`           | `func @s(<params>)`<br>`entry_s`/`ret_s` blocks            |
+| `SUB s(...) ... END SUB`           | `func @s(<params>) -> void`<br>`entry_s`/`ret_s` blocks    |
 
 Return type is derived from the name suffix (`$` → `str`, `#` → `f64`, none →
 `i64`). Parameters lower by scalar type or as array handles.
@@ -1005,11 +1023,11 @@ func @F(i64 %X) -> i64 {
 ```
 
 ```il
-func @S(i64 %X) {
+func @S(i64 %X) -> void {
   entry_S:
     br ret_S
   ret_S:
-    ret void
+    ret
 }
 ```
 
@@ -1083,7 +1101,7 @@ func @F(i64 %X) -> i64 {
 
 ### Return statements
 
-`RETURN` lowers directly to an IL `ret` terminator (or `ret void` for `SUB`).
+`RETURN` lowers directly to an IL `ret` terminator (bare `ret` with no operand for `SUB`, since void functions use `ret` without a value).
 Once emitted, the current block is considered closed and no further statements
 from the same BASIC block are lowered. This prevents generating dead
 instructions after a `RETURN` and ensures each block has exactly one
@@ -1169,25 +1187,54 @@ Folds literal computations at the IL level.
 
 #### Supported folds
 
-| Pattern                                  | Result                |
-|------------------------------------------|-----------------------|
-| `ABS(i64 lit)`                           | absolute value as i64 |
-| `ABS(f64 lit)`                           | absolute value as f64 |
-| `FLOOR(f64 lit)`                         | `floor` result        |
-| `CEIL(f64 lit)`                          | `ceil` result         |
-| `SQR(f64 lit ≥ 0)`                       | `sqrt` result         |
-| `POW(f64 lit, i64 lit)` *(\|exp\| ≤ 16)* | `pow` result          |
-| `SIN(0)`                                 | `0`                   |
-| `COS(0)`                                 | `1`                   |
+**Runtime call folds** (all operands must be compile-time literals):
 
-All floating-point folds use C math semantics and emit exact `f64` literals in the
-optimized IL.
+| BASIC / runtime call                          | Result                                 |
+|-----------------------------------------------|----------------------------------------|
+| `ABS(i64 lit)` (`rt_abs_i64`)                 | absolute value as `i64`               |
+| `ABS(f64 lit)` (`rt_abs_f64`)                 | absolute value as `f64`               |
+| `ACOS(1.0)` (`rt_acos`)                       | `0.0`                                  |
+| `ASIN(0.0)` (`rt_asin`)                       | `0.0`                                  |
+| `ATAN(0.0)` (`rt_atan`)                       | `0.0`                                  |
+| `CEIL(f64 lit)` (`rt_ceil`)                   | `ceil` result as `f64`                |
+| `CLAMP(f64, f64, f64)` (`rt_clamp_f64`)       | clamped `f64`                          |
+| `CLAMP(i64, i64, i64)` (`rt_clamp_i64`)       | clamped `i64`                          |
+| `COS(0.0)` (`rt_cos`)                         | `1.0`                                  |
+| `EXP(0.0)` (`rt_exp`)                         | `1.0`                                  |
+| `FIX(f64 lit)` (`rt_fix_trunc`)               | truncated `f64`                        |
+| `FLOOR(f64 lit)` (`rt_floor`, `rt_int_floor`) | `floor` result as `f64`               |
+| `LOG(1.0)` (`rt_log`)                         | `0.0`                                  |
+| `MAX(f64, f64)` (`rt_max_f64`)                | larger `f64`                           |
+| `MAX(i64, i64)` (`rt_max_i64`)                | larger `i64`                           |
+| `MIN(f64, f64)` (`rt_min_f64`)                | smaller `f64`                          |
+| `MIN(i64, i64)` (`rt_min_i64`)                | smaller `i64`                          |
+| `POW(f64, i64)` *(\|exp\| ≤ 16)*             | `pow` result as `f64`                 |
+| `ROUND(f64, i64)` (`rt_round_even`)           | banker's-rounded `f64`                |
+| `SGN(f64 lit)` (`rt_sgn_f64`)                 | `-1.0`, `0.0`, or `1.0`              |
+| `SGN(i64 lit)` (`rt_sgn_i64`)                 | `-1`, `0`, or `1`                    |
+| `SIN(0.0)` (`rt_sin`)                         | `0.0`                                  |
+| `SQR(f64 lit ≥ 0)` (`rt_sqrt`)               | `sqrt` result as `f64`               |
+| `TAN(0.0)` (`rt_tan`)                         | `0.0`                                  |
+
+**IL opcode folds** (constant operands only):
+
+| Opcode                   | Condition                        | Result             |
+|--------------------------|----------------------------------|--------------------|
+| `cast.fp_to_si.rte.chk`  | finite `f64` literal, in range   | `i64` literal      |
+| `iadd.ovf`               | both `i64` literals, no overflow | `i64` sum          |
+| `imul.ovf`               | both `i64` literals, no overflow | `i64` product      |
+| `isub.ovf`               | both `i64` literals, no overflow | `i64` difference   |
+| `sdiv.chk0`              | both `i64`, divisor ≠ 0          | `i64` quotient     |
+| `srem.chk0`              | both `i64`, divisor ≠ 0          | `i64` remainder    |
+
+All floating-point folds use C math semantics (`std::floor`, `std::sqrt`, etc.) and emit
+exact `f64` literals in the optimized IL.
 
 #### Caveats
 
-* Only the patterns above are folded.
-* No general trigonometric folding beyond `SIN(0)` and `COS(0)`.
-* `POW` folds only for small integer exponents and `SQR` requires non‑negative inputs.
+* Trig functions fold only at the identity points listed above, not for general inputs.
+* `POW` folds only when the exponent is an integer literal with `|exp| ≤ 16` and the result is finite.
+* `SQR` requires a non-negative input; negative inputs are not folded (would trap at runtime).
 
 <a id="mem2reg"></a>
 
@@ -1227,13 +1274,13 @@ entry:
   %t1 = icmp_eq 0, 0
   cbr %t1, T, F
 T:
-  store i64 %t0, 2
+  store i64, %t0, 2
   br Join
 F:
-  store i64 %t0, 3
+  store i64, %t0, 3
   br Join
 Join:
-  %t2 = load i64 %t0
+  %t2 = load i64, %t0
   ret %t2
 }
 ```
@@ -1267,16 +1314,16 @@ il 0.1
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
-  store i64 %t0, 0
+  store i64, %t0, 0
   br L1
 L1:
-  %t1 = load i64 %t0
+  %t1 = load i64, %t0
   %t2 = add %t1, 1
-  store i64 %t0, %t2
+  store i64, %t0, %t2
   %t3 = scmp_lt %t2, 10
   cbr %t3, L1, Exit
 Exit:
-  %t4 = load i64 %t0
+  %t4 = load i64, %t0
   ret %t4
 }
 ```
@@ -1319,7 +1366,7 @@ the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). Ne
 
 - `@rt_print_str` → `@Viper.Terminal.PrintStr`
 - `@rt_print_i64` → `@Viper.Terminal.PrintI64`
-- `@rt_str_len` → `@Viper.String.Len`
+- `@rt_str_len` → `@Viper.String.get_Length`
 
 #### Example 1 — Hello, arithmetic, and a conditional branch
 

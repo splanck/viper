@@ -321,12 +321,14 @@ native codegen even though the VM tolerates it.
 - **BUG-ARM-006**: NullPtr not lowered (FIXED 2024-12-03)
 - **BUG-ARM-007**: tempVReg lookup order for block parameters (FIXED 2024-12-03)
 - **BUG-ARM-008**: Array parameters to functions - callee not in operands[0] (FIXED 2024-12-03)
+- **BUG-ARM-009**: Nested object field access bus error - cross-block value issue (FIXED 2024-12-03)
 - **BUG-ARM-010**: srem.chk0 (MOD) opcode not lowered (FIXED 2024-12-03)
 - **BUG-ARM-011**: Cbz not allocated by register allocator (FIXED 2024-12-03)
 - **BUG-ARM-012**: Cbz range limitation with .L labels (FIXED 2024-12-03 - use cmp+b.eq instead)
 - **BUG-ARM-013**: String array put passes pointer-to-value instead of value (FIXED 2024-12-03)
 - **BUG-ARM-014**: Module-level constants crash - was cross-block const_str issue (FIXED 2024-12-03)
-- **BUG-ARM-009**: Nested object field access bus error - cross-block value issue (FIXED 2024-12-03)
+- **BUG-NAT-001**: AArch64 regalloc double-increment of instruction counter - caused wrong spill victim selection under register pressure, leading to corrupted results or infinite loops. Duplicate `++currentInstrIdx_` removed from `allocateInstruction()` in `RegAllocLinear.cpp` (FIXED)
+- **BUG-NAT-006**: AArch64 callee stack param loading used hardcoded phys regs (X9/X10) conflicting with regalloc. Fix: use vregs for stack param temporaries. Key: `emitStrToFp`/`emitLdrFromFp` use kScratchGPR (X9) for large offsets — never use X9 as an explicit MIR operand alongside FP-relative stores with large offsets (FIXED)
 
 ---
 

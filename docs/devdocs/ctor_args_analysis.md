@@ -8,26 +8,26 @@ constructor.
 ## Test Result
 
 ```
-$ ./build/src/tools/vbasic/vbasic src/tests/e2e/test_ctor_args.bas
+$ viper front basic -run src/tests/e2e/test_ctor_args.bas
 Constructor called with: 10, 20
 PASS: constructor args work
 ```
 
 ## Code Flow Analysis
 
-### 1. Parser (`Parser_Stmt_OOP.cpp:592-627`)
+### 1. Parser (`src/frontends/basic/Parser_Stmt_OOP.cpp:620-631`)
 
 When parsing `SUB NEW`:
 
-- Line 592-593: Identifies `SUB NEW` by checking if the sub name equals "NEW"
-- Line 594: Creates a `ConstructorDecl` AST node
-- Line 603: **`ctor->params = parseParamList()`** - parses constructor parameters
-- Line 616: Parses the procedure body
-- Line 624: Adds constructor to class members
+- Line 620: Identifies `SUB NEW` by checking if the sub name equals "NEW"
+- Line 622: Creates a `ConstructorDecl` AST node
+- Line 631: **`ctor->params = parseParamList()`** - parses constructor parameters
+- Body parsing continues until `END SUB`
+- Adds constructor to class members
 
-### 2. Semantic Analysis (`Semantic_OOP_Builder.cpp:152-165`)
+### 2. Semantic Analysis (`src/frontends/basic/Semantic_OOP_Builder.cpp:123-165`)
 
-Constructor parameters are captured:
+Constructor parameters are captured in `processConstructorDecl`:
 
 - Line 154: `info.hasConstructor = true` - marks class as having a constructor
 - Lines 155-162: Copies each `ctor.params` into `info.ctorParams`
@@ -41,13 +41,13 @@ Constructor parameters are captured:
   }
   ```
 
-### 3. Constructor Emission (`Lower_OOP_Emit.cpp:237-313`)
+### 3. Constructor Emission (`src/frontends/basic/lower/oop/Lower_OOP_Emit.cpp:256-303`)
 
 The constructor function is generated with parameters:
 
-- Line 246: `metadata.paramCount = 1 + ctor.params.size()` - counts parameters (including ME)
-- Line 248: First IR param is `{"ME", Type::Ptr}` - the object reference
-- Lines 249-259: Each constructor parameter is added to `metadata.irParams`:
+- Line 256: `metadata.paramCount = 1 + ctor.params.size()` - counts parameters (including ME)
+- Line 258: First IR param is `{"ME", Type::Ptr}` - the object reference
+- Lines 259-263: Each constructor parameter is added to `metadata.irParams`:
   ```cpp
   for (const auto &param : ctor.params)
   {
@@ -55,22 +55,22 @@ The constructor function is generated with parameters:
       metadata.irParams.push_back({param.name, ilParamTy});
   }
   ```
-- Line 261: Function name is mangled with `mangleClassCtor(qualify(klass.name))`
-- Line 262: IL function is created with all parameters
-- Line 293: Parameters are initialized in the constructor body
+- Line 271: Function name is mangled with `mangleClassCtor(qualify(klass.name))`
+- Line 272: IL function is created with all parameters
+- Line 303: Parameters are initialized in the constructor body
 
-### 4. NEW Expression Lowering (`Lower_OOP_Alloc.cpp:46-183`)
+### 4. NEW Expression Lowering (`src/frontends/basic/lower/oop/Lower_OOP_Alloc.cpp:134-197`)
 
 When lowering `NEW Point(10, 20)`:
 
-1. **Object Allocation** (lines 116-131):
+1. **Object Allocation** (lines 134-150):
     - Retrieves object size and class ID from `classLayouts_`
     - Calls `rt_obj_new_i64` to allocate the object
 
-2. **VTable Initialization** (lines 134-145):
+2. **VTable Initialization** (lines 152-162):
     - Stores vtable pointer at offset 0
 
-3. **Build Constructor Arguments** (lines 147-178):
+3. **Build Constructor Arguments** (lines 163-193):
    ```cpp
    std::vector<Value> ctorArgs;
    ctorArgs.reserve(expr.args.size() + 1);
@@ -96,14 +96,14 @@ When lowering `NEW Point(10, 20)`:
    }
    ```
 
-4. **Call Constructor** (line 181):
+4. **Call Constructor** (line 197):
    ```cpp
    emitCall(mangleClassCtor(expr.className), ctorArgs);
    ```
 
 ## Key Data Structures
 
-### ClassInfo::CtorParam (`OopIndex.hpp:90-94`)
+### ClassInfo::CtorParam (`src/frontends/basic/OopIndex.hpp:92-98`)
 
 ```cpp
 struct CtorParam
@@ -113,7 +113,7 @@ struct CtorParam
 };
 ```
 
-### ClassInfo (`OopIndex.hpp:76-141`)
+### ClassInfo (`src/frontends/basic/OopIndex.hpp:78-141`)
 
 - `hasConstructor`: True if class declares a constructor
 - `hasSynthCtor`: True when lowering must synthesize a constructor

@@ -68,7 +68,7 @@ graphics, and sophisticated object interactions.
 
 ## New Bug Documented
 
-### **BUG-074 CRITICAL**: Constructor Corruption When Class Uses Previously-Defined Class
+### **BUG-074 CRITICAL**: Constructor Corruption When Class Uses Previously-Defined Class — RESOLVED (2025-11-17)
 
 **Symptom**: When a class B uses another class A that was defined earlier in the source file, the constructor for class
 B becomes corrupted with string cleanup code from unrelated contexts, causing "use before def" errors.
@@ -94,7 +94,7 @@ references work correctly.
 
 **Impact**: CRITICAL - Severely restricts multi-class programs. Must use counterintuitive class ordering.
 
-**Documentation**: Added to `/bugs/basic_bugs.md` as BUG-074 with full details, examples, and IL evidence.
+**Documentation**: Added to `docs/bugs/basic_bugs.md` as BUG-074 with full details, examples, and IL evidence. BUG-074 is now RESOLVED.
 
 ---
 
@@ -138,14 +138,14 @@ references work correctly.
 
 ## Known Bugs Worked Around
 
-1. **BUG-067**: Array Fields in Classes Not Supported
-    - **Workaround**: Used multiple scalar fields (card1Suit, card1Rank, card2Suit, card2Rank) instead of arrays
+1. **BUG-067**: Array Fields in Classes Not Supported — RESOLVED
+    - Original workaround: Used multiple scalar fields (card1Suit, card1Rank, card2Suit, card2Rank) instead of arrays
 
 2. **BUG-069**: Objects Not Initialized in Constructor
-    - **Workaround**: Avoided object fields where possible, used calculated values
+    - Original workaround: Avoided object fields where possible, used calculated values
 
-3. **BUG-074**: Constructor Corruption (NEW - discovered during this test)
-    - **Workaround**: Defined classes in reverse dependency order (Deck before Card, etc.)
+3. **BUG-074**: Constructor Corruption (discovered during this test) — RESOLVED (2025-11-17)
+    - Original workaround: Defined classes in reverse dependency order (Deck before Card, etc.)
 
 ---
 

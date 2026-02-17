@@ -29,56 +29,56 @@
 
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
-| `Width`       | Integer | Canvas width in pixels                             |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
+| `Width`       | Integer | Canvas width in pixels                             |
 
 ### Methods
 
 | Method                                | Signature                             | Description                                                |
 |---------------------------------------|---------------------------------------|------------------------------------------------------------|
-| `Flip()`                              | `Void()`                              | Presents the back buffer and displays drawn content        |
-| `Clear(color)`                        | `Void(Integer)`                       | Clears the canvas with a solid color                       |
-| `Line(x1, y1, x2, y2, color)`         | `Void(Integer...)`                    | Draws a line between two points                            |
-| `Box(x, y, w, h, color)`              | `Void(Integer...)`                    | Draws a filled rectangle                                   |
-| `Frame(x, y, w, h, color)`            | `Void(Integer...)`                    | Draws a rectangle outline                                  |
-| `Disc(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a filled circle                                      |
-| `Ring(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a circle outline                                     |
-| `Plot(x, y, color)`                   | `Void(Integer, Integer, Integer)`     | Sets a single pixel                                        |
-| `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none)      |
-| `KeyHeld(keycode)`                    | `Integer(Integer)`                    | Returns non-zero if the specified key is held down         |
-| `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
-| `TextBg(x, y, text, fg, bg)`          | `Void(Integer, Integer, String, Integer, Integer)` | Draws text with foreground and background colors |
-| `TextWidth(text)`                     | `Integer(String)`                     | Returns the width of rendered text in pixels (8 per char)  |
-| `TextHeight()`                        | `Integer()`                           | Returns the height of rendered text in pixels (always 8)   |
-| `Blit(x, y, pixels)`                  | `Void(Integer, Integer, Pixels)`      | Blits a Pixels buffer to the canvas at (x, y)              |
-| `BlitRegion(dx, dy, pixels, sx, sy, w, h)` | `Void(Integer...)`               | Blits a region of a Pixels buffer to the canvas            |
-| `BlitAlpha(x, y, pixels)`             | `Void(Integer, Integer, Pixels)`      | Blits with alpha blending (respects alpha channel)         |
-| `ThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)`            | Draws a line with specified thickness (rounded caps)       |
-| `RoundBox(x, y, w, h, radius, color)` | `Void(Integer...)`                    | Draws a filled rectangle with rounded corners              |
-| `RoundFrame(x, y, w, h, radius, color)` | `Void(Integer...)`                  | Draws a rectangle outline with rounded corners             |
-| `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected area starting at (x, y)              |
-| `Triangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`                 | Draws a filled triangle                                    |
-| `TriangleFrame(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`            | Draws a triangle outline                                   |
-| `Ellipse(cx, cy, rx, ry, color)`      | `Void(Integer...)`                    | Draws a filled ellipse                                     |
-| `EllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)`                    | Draws an ellipse outline                                   |
 | `Arc(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`         | Draws a filled arc (pie slice)                             |
 | `ArcFrame(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`    | Draws an arc outline                                       |
 | `Bezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)`                  | Draws a quadratic Bezier curve                             |
-| `Polyline(points, count, color)`      | `Void(Pointer, Integer, Integer)`     | Draws connected line segments                              |
-| `Polygon(points, count, color)`       | `Void(Pointer, Integer, Integer)`     | Draws a filled polygon                                     |
-| `PolygonFrame(points, count, color)`  | `Void(Pointer, Integer, Integer)`     | Draws a polygon outline                                    |
-| `GetPixel(x, y)`                      | `Integer(Integer, Integer)`           | Gets pixel color at (x, y)                                 |
-| `CopyRect(x, y, w, h)`                | `Pixels(Integer...)`                  | Copies canvas region to a Pixels buffer                    |
-| `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
-| `SaveBmp(path)`                       | `Integer(String)`                     | Saves canvas to BMP file (returns 1 on success)            |
-| `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
+| `Blit(x, y, pixels)`                  | `Void(Integer, Integer, Pixels)`      | Blits a Pixels buffer to the canvas at (x, y)              |
+| `BlitAlpha(x, y, pixels)`             | `Void(Integer, Integer, Pixels)`      | Blits with alpha blending (respects alpha channel)         |
+| `BlitRegion(dx, dy, pixels, sx, sy, w, h)` | `Void(Integer...)`               | Blits a region of a Pixels buffer to the canvas            |
+| `Box(x, y, w, h, color)`              | `Void(Integer...)`                    | Draws a filled rectangle                                   |
+| `Clear(color)`                        | `Void(Integer)`                       | Clears the canvas with a solid color                       |
 | `ClearClipRect()`                     | `Void()`                              | Clears clipping rectangle; restores full canvas drawing    |
-| `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
+| `CopyRect(x, y, w, h)`                | `Pixels(Integer...)`                  | Copies canvas region to a Pixels buffer                    |
+| `Disc(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a filled circle                                      |
+| `Ellipse(cx, cy, rx, ry, color)`      | `Void(Integer...)`                    | Draws a filled ellipse                                     |
+| `EllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)`                    | Draws an ellipse outline                                   |
+| `Flip()`                              | `Void()`                              | Presents the back buffer and displays drawn content        |
+| `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected area starting at (x, y)              |
+| `Frame(x, y, w, h, color)`            | `Void(Integer...)`                    | Draws a rectangle outline                                  |
 | `Fullscreen()`                        | `Void()`                              | Enters fullscreen mode                                     |
-| `Windowed()`                          | `Void()`                              | Exits fullscreen mode (returns to windowed)                |
+| `GetPixel(x, y)`                      | `Integer(Integer, Integer)`           | Gets pixel color at (x, y)                                 |
 | `GradientH(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a horizontal gradient (left c1 to right c2)          |
 | `GradientV(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a vertical gradient (top c1 to bottom c2)            |
+| `KeyHeld(keycode)`                    | `Integer(Integer)`                    | Returns non-zero if the specified key is held down         |
+| `Line(x1, y1, x2, y2, color)`         | `Void(Integer...)`                    | Draws a line between two points                            |
+| `Plot(x, y, color)`                   | `Void(Integer, Integer, Integer)`     | Sets a single pixel                                        |
+| `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none)      |
+| `Polygon(points, count, color)`       | `Void(Pointer, Integer, Integer)`     | Draws a filled polygon                                     |
+| `PolygonFrame(points, count, color)`  | `Void(Pointer, Integer, Integer)`     | Draws a polygon outline                                    |
+| `Polyline(points, count, color)`      | `Void(Pointer, Integer, Integer)`     | Draws connected line segments                              |
+| `Ring(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a circle outline                                     |
+| `RoundBox(x, y, w, h, radius, color)` | `Void(Integer...)`                    | Draws a filled rectangle with rounded corners              |
+| `RoundFrame(x, y, w, h, radius, color)` | `Void(Integer...)`                  | Draws a rectangle outline with rounded corners             |
+| `SaveBmp(path)`                       | `Integer(String)`                     | Saves canvas to BMP file (returns 1 on success)            |
+| `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
+| `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
+| `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
+| `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
+| `TextBg(x, y, text, fg, bg)`          | `Void(Integer, Integer, String, Integer, Integer)` | Draws text with foreground and background colors |
+| `TextHeight()`                        | `Integer()`                           | Returns the height of rendered text in pixels (always 8)   |
+| `TextWidth(text)`                     | `Integer(String)`                     | Returns the width of rendered text in pixels (8 per char)  |
+| `ThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)`            | Draws a line with specified thickness (rounded caps)       |
+| `Triangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`                 | Draws a filled triangle                                    |
+| `TriangleFrame(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`            | Draws a triangle outline                                   |
+| `Windowed()`                          | `Void()`                              | Exits fullscreen mode (returns to windowed)                |
 
 ### Color Format
 
@@ -356,26 +356,26 @@ Color utility functions for graphics operations.
 
 | Method                   | Signature                                     | Description                                                                     |
 |--------------------------|-----------------------------------------------|---------------------------------------------------------------------------------|
-| `RGB(r, g, b)`           | `Integer(Integer, Integer, Integer)`          | Creates a color value from red, green, blue components (0-255 each)             |
-| `RGBA(r, g, b, a)`       | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
-| `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue (0-360), saturation (0-100), lightness (0-100)         |
-| `FromHex(hex)`           | `Integer(String)`                             | Parses a hex color string (e.g., "#FF0000" or "#FF000080")                      |
-| `ToHex(color)`           | `String(Integer)`                             | Converts a color to hex string (e.g., "#RRGGBB" or "#RRGGBBAA")                |
-| `GetR(color)`            | `Integer(Integer)`                            | Extracts red component (0-255) from a packed color                              |
-| `GetG(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |
-| `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
-| `GetA(color)`            | `Integer(Integer)`                            | Extracts alpha component (0-255) from a packed color                            |
-| `GetH(color)`            | `Integer(Integer)`                            | Extracts hue (0-360) from a packed color                                        |
-| `GetS(color)`            | `Integer(Integer)`                            | Extracts saturation (0-100) from a packed color                                 |
-| `GetL(color)`            | `Integer(Integer)`                            | Extracts lightness (0-100) from a packed color                                  |
-| `Lerp(c1, c2, t)`        | `Integer(Integer, Integer, Integer)`          | Linearly interpolates between two colors (t: 0-100, where 0=c1, 100=c2)        |
 | `Brighten(color, amount)` | `Integer(Integer, Integer)`                  | Brightens a color by the given amount (0-100)                                   |
-| `Darken(color, amount)`  | `Integer(Integer, Integer)`                   | Darkens a color by the given amount (0-100)                                     |
-| `Saturate(color, amount)` | `Integer(Integer, Integer)`                  | Increases saturation of a color (0-100)                                         |
-| `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
 | `Complement(color)`      | `Integer(Integer)`                            | Returns the complementary color (opposite on color wheel)                       |
+| `Darken(color, amount)`  | `Integer(Integer, Integer)`                   | Darkens a color by the given amount (0-100)                                     |
+| `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
+| `FromHex(hex)`           | `Integer(String)`                             | Parses a hex color string (e.g., "#FF0000" or "#FF000080")                      |
+| `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue (0-360), saturation (0-100), lightness (0-100)         |
+| `GetA(color)`            | `Integer(Integer)`                            | Extracts alpha component (0-255) from a packed color                            |
+| `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
+| `GetG(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |
+| `GetH(color)`            | `Integer(Integer)`                            | Extracts hue (0-360) from a packed color                                        |
+| `GetL(color)`            | `Integer(Integer)`                            | Extracts lightness (0-100) from a packed color                                  |
+| `GetR(color)`            | `Integer(Integer)`                            | Extracts red component (0-255) from a packed color                              |
+| `GetS(color)`            | `Integer(Integer)`                            | Extracts saturation (0-100) from a packed color                                 |
 | `Grayscale(color)`       | `Integer(Integer)`                            | Converts a color to grayscale                                                   |
 | `Invert(color)`          | `Integer(Integer)`                            | Inverts a color (255 minus each channel)                                        |
+| `Lerp(c1, c2, t)`        | `Integer(Integer, Integer, Integer)`          | Linearly interpolates between two colors (t: 0-100, where 0=c1, 100=c2)        |
+| `RGB(r, g, b)`           | `Integer(Integer, Integer, Integer)`          | Creates a color value from red, green, blue components (0-255 each)             |
+| `RGBA(r, g, b, a)`       | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
+| `Saturate(color, amount)` | `Integer(Integer, Integer)`                  | Increases saturation of a color (0-100)                                         |
+| `ToHex(color)`           | `String(Integer)`                             | Converts a color to hex string (e.g., "#RRGGBB" or "#RRGGBBAA")                |
 
 ### Zia Example
 
@@ -481,26 +481,26 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 
 | Method                            | Signature                                                            | Description                                                                       |
 |-----------------------------------|----------------------------------------------------------------------|-----------------------------------------------------------------------------------|
-| `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
-| `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set pixel color at (x, y). Silently ignores out of bounds                         |
-| `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with a color                                                   |
+| `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return a box-blurred copy (radius 1-10)                                           |
 | `Clear()`                         | `Void()`                                                             | Clear buffer to transparent black (0x00000000)                                    |
-| `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
-| `ToBytes()`                       | `Bytes()`                                                            | Convert to raw bytes (RGBA, row-major)                                            |
-| `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
-| `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
+| `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
+| `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with a color                                                   |
 | `FlipH()`                         | `Pixels()`                                                           | Return a horizontally flipped copy (mirror left-right)                            |
 | `FlipV()`                         | `Pixels()`                                                           | Return a vertically flipped copy (mirror top-bottom)                              |
-| `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
-| `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
-| `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
-| `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return a scaled copy using nearest-neighbor interpolation                         |
-| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return a scaled copy using bilinear interpolation (smoother than Scale)           |
-| `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
+| `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
 | `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
+| `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
+| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return a scaled copy using bilinear interpolation (smoother than Scale)           |
+| `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
+| `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
+| `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
+| `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
+| `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
+| `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return a scaled copy using nearest-neighbor interpolation                         |
+| `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set pixel color at (x, y). Silently ignores out of bounds                         |
 | `Tint(color)`                     | `Pixels(Integer)`                                                    | Return a copy with a color tint applied (0x00RRGGBB)                              |
-| `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return a box-blurred copy (radius 1-10)                                           |
+| `ToBytes()`                       | `Bytes()`                                                            | Convert to raw bytes (RGBA, row-major)                                            |
 
 ### Static Methods
 
@@ -668,31 +668,31 @@ pixels.SavePng("output.png")
 
 | Property     | Type    | Access | Description                                  |
 |--------------|---------|--------|----------------------------------------------|
-| `X`          | Integer | R/W    | X position in pixels                         |
-| `Y`          | Integer | R/W    | Y position in pixels                         |
-| `Width`      | Integer | Read   | Width of current frame in pixels             |
-| `Height`     | Integer | Read   | Height of current frame in pixels            |
-| `ScaleX`     | Integer | R/W    | Horizontal scale (100 = 100%)                |
-| `ScaleY`     | Integer | R/W    | Vertical scale (100 = 100%)                  |
-| `Rotation`   | Integer | R/W    | Rotation in degrees                          |
-| `Visible`    | Integer | R/W    | Visibility (1 = visible, 0 = hidden)         |
-| `Frame`      | Integer | R/W    | Current animation frame index                |
-| `FrameCount` | Integer | Read   | Total number of animation frames             |
 | `FlipX`      | Integer | R/W    | Horizontal flip (1 = flipped, 0 = normal)    |
 | `FlipY`      | Integer | R/W    | Vertical flip (1 = flipped, 0 = normal)      |
+| `Frame`      | Integer | R/W    | Current animation frame index                |
+| `FrameCount` | Integer | Read   | Total number of animation frames             |
+| `Height`     | Integer | Read   | Height of current frame in pixels            |
+| `Rotation`   | Integer | R/W    | Rotation in degrees                          |
+| `ScaleX`     | Integer | R/W    | Horizontal scale (100 = 100%)                |
+| `ScaleY`     | Integer | R/W    | Vertical scale (100 = 100%)                  |
+| `Visible`    | Integer | R/W    | Visibility (1 = visible, 0 = hidden)         |
+| `Width`      | Integer | Read   | Width of current frame in pixels             |
+| `X`          | Integer | R/W    | X position in pixels                         |
+| `Y`          | Integer | R/W    | Y position in pixels                         |
 
 ### Methods
 
 | Method                      | Signature                          | Description                                           |
 |-----------------------------|------------------------------------|-------------------------------------------------------|
-| `Draw(canvas)`              | `Void(Canvas)`                     | Draw the sprite to a canvas                           |
-| `SetOrigin(x, y)`           | `Void(Integer, Integer)`           | Set origin point for rotation/scaling                 |
 | `AddFrame(pixels)`          | `Void(Pixels)`                     | Add an animation frame                                |
-| `SetFrameDelay(ms)`         | `Void(Integer)`                    | Set delay between animation frames (milliseconds)     |
-| `Update()`                  | `Void()`                           | Advance animation (call each frame)                   |
-| `Overlaps(other)`           | `Integer(Sprite)`                  | Check bounding box overlap (returns 1 or 0)           |
 | `Contains(x, y)`            | `Integer(Integer, Integer)`        | Check if point is inside sprite (returns 1 or 0)      |
+| `Draw(canvas)`              | `Void(Canvas)`                     | Draw the sprite to a canvas                           |
 | `Move(dx, dy)`              | `Void(Integer, Integer)`           | Move sprite by delta amounts                          |
+| `Overlaps(other)`           | `Integer(Sprite)`                  | Check bounding box overlap (returns 1 or 0)           |
+| `SetFrameDelay(ms)`         | `Void(Integer)`                    | Set delay between animation frames (milliseconds)     |
+| `SetOrigin(x, y)`           | `Void(Integer, Integer)`           | Set origin point for rotation/scaling                 |
+| `Update()`                  | `Void()`                           | Advance animation (call each frame)                   |
 
 ### Zia Example
 
@@ -820,22 +820,22 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 
 | Method                                         | Signature                                    | Description                                           |
 |------------------------------------------------|----------------------------------------------|-------------------------------------------------------|
-| `SetTileset(pixels)`                           | `Void(Pixels)`                               | Set the tileset image (tiles arranged in grid)        |
-| `SetTile(x, y, index)`                         | `Void(Integer, Integer, Integer)`            | Set tile at position (0 = empty)                      |
-| `GetTile(x, y)`                                | `Integer(Integer, Integer)`                  | Get tile index at position                            |
-| `Fill(index)`                                  | `Void(Integer)`                              | Fill entire map with a tile                           |
 | `Clear()`                                      | `Void()`                                     | Clear map (set all to 0)                              |
-| `FillRect(x, y, w, h, index)`                  | `Void(Integer...)`                           | Fill rectangular region                               |
+| `CollideBody(body)`                            | `Integer(Object)`                            | Resolve a Physics2D.Body against solid/one-way tiles (returns 1 on collision) |
 | `Draw(canvas, offsetX, offsetY)`               | `Void(Canvas, Integer, Integer)`             | Draw tilemap with scroll offset                       |
 | `DrawRegion(canvas, ox, oy, vx, vy, vw, vh)`   | `Void(Canvas, Integer...)`                   | Draw only visible region (for optimization)           |
-| `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
-| `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
+| `Fill(index)`                                  | `Void(Integer)`                              | Fill entire map with a tile                           |
+| `FillRect(x, y, w, h, index)`                  | `Void(Integer...)`                           | Fill rectangular region                               |
+| `GetCollision(tileId)`                         | `Integer(Integer)`                           | Get collision type for a tile ID                      |
+| `GetTile(x, y)`                                | `Integer(Integer, Integer)`                  | Get tile index at position                            |
+| `IsSolidAt(pixelX, pixelY)`                    | `Integer(Integer, Integer)`                  | Check if a pixel position is on a solid tile          |
+| `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up) |
+| `SetTile(x, y, index)`                         | `Void(Integer, Integer, Integer)`            | Set tile at position (0 = empty)                      |
+| `SetTileset(pixels)`                           | `Void(Pixels)`                               | Set the tileset image (tiles arranged in grid)        |
 | `ToPixelX(tileX)`                              | `Integer(Integer)`                           | Convert tile X to pixel X                             |
 | `ToPixelY(tileY)`                              | `Integer(Integer)`                           | Convert tile Y to pixel Y                             |
-| `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up) |
-| `GetCollision(tileId)`                         | `Integer(Integer)`                           | Get collision type for a tile ID                      |
-| `IsSolidAt(pixelX, pixelY)`                    | `Integer(Integer, Integer)`                  | Check if a pixel position is on a solid tile          |
-| `CollideBody(body)`                            | `Integer(Object)`                            | Resolve a Physics2D.Body against solid/one-way tiles (returns 1 on collision) |
+| `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
+| `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 
 ### Zia Example
 
@@ -960,14 +960,14 @@ Tiles in the tileset image are arranged left-to-right, top-to-bottom:
 
 | Method                           | Signature                              | Description                                      |
 |----------------------------------|----------------------------------------|--------------------------------------------------|
+| `ClearBounds()`                  | `Void()`                               | Remove camera bounds                             |
 | `Follow(x, y)`                   | `Void(Integer, Integer)`               | Center camera on world position                  |
+| `Move(dx, dy)`                   | `Void(Integer, Integer)`               | Move camera by delta amounts                     |
+| `SetBounds(minX, minY, maxX, maxY)` | `Void(Integer, Integer, Integer, Integer)` | Limit camera movement range         |
 | `ToScreenX(worldX)`              | `Integer(Integer)`                     | Convert world X to screen X                      |
 | `ToScreenY(worldY)`              | `Integer(Integer)`                     | Convert world Y to screen Y                      |
 | `ToWorldX(screenX)`              | `Integer(Integer)`                     | Convert screen X to world X                      |
 | `ToWorldY(screenY)`              | `Integer(Integer)`                     | Convert screen Y to world Y                      |
-| `Move(dx, dy)`                   | `Void(Integer, Integer)`               | Move camera by delta amounts                     |
-| `SetBounds(minX, minY, maxX, maxY)` | `Void(Integer, Integer, Integer, Integer)` | Limit camera movement range         |
-| `ClearBounds()`                  | `Void()`                               | Remove camera bounds                             |
 
 ### Zia Example
 
@@ -1125,16 +1125,16 @@ Creates a scene node. Scene nodes support parent-child hierarchies where child t
 | Method                            | Signature                      | Description                                    |
 |-----------------------------------|--------------------------------|------------------------------------------------|
 | `AddChild(child)`                 | `Void(SceneNode)`              | Add a child node                               |
-| `RemoveChild(child)`              | `Void(SceneNode)`              | Remove a child node                            |
-| `GetChild(index)`                 | `SceneNode(Integer)`           | Get child by index                             |
-| `Find(name)`                      | `SceneNode(String)`            | Find a descendant node by name                 |
 | `Detach()`                        | `Void()`                       | Remove this node from its parent               |
 | `Draw(canvas)`                    | `Void(Canvas)`                 | Draw this node and all children to a canvas    |
 | `DrawWithCamera(canvas, camera)`  | `Void(Canvas, Camera)`         | Draw with camera transform applied             |
-| `Update()`                        | `Void()`                       | Update node and all children (for animations)  |
+| `Find(name)`                      | `SceneNode(String)`            | Find a descendant node by name                 |
+| `GetChild(index)`                 | `SceneNode(Integer)`           | Get child by index                             |
 | `Move(dx, dy)`                    | `Void(Integer, Integer)`       | Move the node by delta amounts                 |
+| `RemoveChild(child)`              | `Void(SceneNode)`              | Remove a child node                            |
 | `SetPosition(x, y)`              | `Void(Integer, Integer)`       | Set both X and Y position at once              |
 | `SetScale(scale)`                 | `Void(Integer)`                | Set both ScaleX and ScaleY to the same value   |
+| `Update()`                        | `Void()`                       | Update node and all children (for animations)  |
 
 ### Zia Example
 
@@ -1249,11 +1249,11 @@ Root container for a scene graph. Manages rendering order and provides scene-lev
 | Method                           | Signature                      | Description                                    |
 |----------------------------------|--------------------------------|------------------------------------------------|
 | `Add(node)`                      | `Void(SceneNode)`              | Add a root-level node to the scene             |
-| `Remove(node)`                   | `Void(SceneNode)`              | Remove a node from the scene                   |
 | `Clear()`                        | `Void()`                       | Remove all nodes                               |
-| `Find(name)`                     | `SceneNode(String)`            | Find a node by name                            |
 | `Draw(canvas)`                   | `Void(Canvas)`                 | Render all visible nodes to canvas             |
 | `DrawWithCamera(canvas, camera)` | `Void(Canvas, Camera)`         | Render all visible nodes with camera transform |
+| `Find(name)`                     | `SceneNode(String)`            | Find a node by name                            |
+| `Remove(node)`                   | `Void(SceneNode)`              | Remove a node from the scene                   |
 | `Update()`                       | `Void()`                       | Update all nodes (advances animations)         |
 
 ### Zia Example
@@ -1403,16 +1403,16 @@ Creates a sprite batch with the given initial capacity (use 0 for default). Spri
 | Method                                          | Signature                                              | Description                                    |
 |-------------------------------------------------|--------------------------------------------------------|------------------------------------------------|
 | `Begin()`                                       | `Void()`                                               | Begin batch - call before drawing              |
-| `End(canvas)`                                   | `Void(Canvas)`                                         | End batch and flush all draws to the canvas    |
 | `Draw(sprite, x, y)`                            | `Void(Sprite, Integer, Integer)`                       | Draw sprite at position                        |
-| `DrawScaled(sprite, x, y, scale)`               | `Void(Sprite, Integer, Integer, Integer)`              | Draw sprite with uniform scale (100 = 100%)    |
 | `DrawEx(sprite, x, y, scaleX, scaleY, rotation)`| `Void(Sprite, Integer, Integer, Integer, Integer, Integer)` | Draw with full transform              |
 | `DrawPixels(pixels, x, y)`                      | `Void(Pixels, Integer, Integer)`                       | Draw pixels buffer at position                 |
 | `DrawRegion(pixels, dx, dy, sx, sy, sw, sh)`    | `Void(Pixels, Integer...)`                             | Draw a sub-region of a Pixels buffer           |
+| `DrawScaled(sprite, x, y, scale)`               | `Void(Sprite, Integer, Integer, Integer)`              | Draw sprite with uniform scale (100 = 100%)    |
+| `End(canvas)`                                   | `Void(Canvas)`                                         | End batch and flush all draws to the canvas    |
+| `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
+| `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
 | `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off)     |
 | `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB) for all sprites          |
-| `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
-| `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
 
 ### Zia Example
 

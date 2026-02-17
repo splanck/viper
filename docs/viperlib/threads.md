@@ -37,16 +37,16 @@ OS threads for Viper programs (VM and native backends).
 
 | Method                    | Signature                       | Description                                |
 |--------------------------|----------------------------------|--------------------------------------------|
-| `Start(entry, arg)`      | `Thread(Ptr, Ptr)`               | Start a new thread running `entry(arg)`    |
-| `StartSafe(entry, arg)`  | `Thread(Ptr, Ptr)`               | Start a thread with error boundaries — traps are captured instead of crashing |
 | `Join()`                 | `Void()`                         | Wait until the thread finishes             |
-| `TryJoin()`              | `Boolean()`                      | Non-blocking join attempt                  |
 | `JoinFor(ms)`            | `Boolean(Integer)`               | Join with timeout in milliseconds          |
-| `Sleep(ms)`              | `Void(Integer)`                  | Sleep the current thread (ms, clamped)     |
-| `Yield()`                | `Void()`                         | Yield the current thread's time slice      |
-| `SafeJoin()`             | `Void()`                         | Join a safe thread handle                  |
 | `SafeGetId()`            | `Integer()`                      | Get the ID of a safe thread handle         |
 | `SafeIsAlive()`          | `Boolean()`                      | Check if a safe thread is still running    |
+| `SafeJoin()`             | `Void()`                         | Join a safe thread handle                  |
+| `Sleep(ms)`              | `Void(Integer)`                  | Sleep the current thread (ms, clamped)     |
+| `Start(entry, arg)`      | `Thread(Ptr, Ptr)`               | Start a new thread running `entry(arg)`    |
+| `StartSafe(entry, arg)`  | `Thread(Ptr, Ptr)`               | Start a thread with error boundaries — traps are captured instead of crashing |
+| `TryJoin()`              | `Boolean()`                      | Non-blocking join attempt                  |
+| `Yield()`                | `Void()`                         | Yield the current thread's time slice      |
 
 ### Properties
 
@@ -156,13 +156,13 @@ FIFO-fair, re-entrant monitor for explicit object locking.
 | Method                      | Signature                    | Description                                         |
 |----------------------------|------------------------------|-----------------------------------------------------|
 | `Enter(obj)`               | `Void(Object)`               | Acquire monitor (blocks, FIFO)                      |
-| `TryEnter(obj)`            | `Boolean(Object)`            | Try to acquire immediately                          |
-| `TryEnterFor(obj, ms)`     | `Boolean(Object, Integer)`   | Try to acquire with timeout (ms)                    |
 | `Exit(obj)`                | `Void(Object)`               | Release monitor (balances `Enter`)                  |
-| `Wait(obj)`                | `Void(Object)`               | Release monitor and wait for `Pause`/`PauseAll`     |
-| `WaitFor(obj, ms)`         | `Boolean(Object, Integer)`   | Wait with timeout (returns false on timeout)        |
 | `Pause(obj)`               | `Void(Object)`               | Wake one waiter (FIFO)                              |
 | `PauseAll(obj)`            | `Void(Object)`               | Wake all waiters (FIFO order, then FIFO re-acquire) |
+| `TryEnter(obj)`            | `Boolean(Object)`            | Try to acquire immediately                          |
+| `TryEnterFor(obj, ms)`     | `Boolean(Object, Integer)`   | Try to acquire with timeout (ms)                    |
+| `Wait(obj)`                | `Void(Object)`               | Release monitor and wait for `Pause`/`PauseAll`     |
+| `WaitFor(obj, ms)`         | `Boolean(Object, Integer)`   | Wait with timeout (returns false on timeout)        |
 
 ### Notes
 
@@ -227,10 +227,10 @@ FIFO-serialized “safe variable” for shared counters and flags.
 
 | Method                               | Signature                             | Description                                    |
 |--------------------------------------|----------------------------------------|------------------------------------------------|
-| `Get()`                              | `Integer()`                            | Read current value                              |
-| `Set(value)`                         | `Void(Integer)`                        | Write value                                     |
 | `Add(delta)`                         | `Integer(Integer)`                     | Add and return new value                        |
 | `CompareExchange(expected, desired)` | `Integer(Integer, Integer)`            | CAS; returns the value read before any update   |
+| `Get()`                              | `Integer()`                            | Read current value                              |
+| `Set(value)`                         | `Void(Integer)`                        | Write value                                     |
 
 ### Notes
 
@@ -306,10 +306,10 @@ FIFO-fair permit gate (semaphore concept).
 | Method              | Signature            | Description                                          |
 |--------------------|----------------------|------------------------------------------------------|
 | `Enter()`          | `Void()`             | Acquire one permit (blocks, FIFO)                    |
-| `TryEnter()`       | `Boolean()`          | Try to acquire immediately                           |
-| `TryEnterFor(ms)`  | `Boolean(Integer)`   | Try to acquire with timeout in milliseconds          |
 | `Leave()`          | `Void()`             | Release one permit; wakes one waiter if present      |
 | `Leave(count)`     | `Void(Integer)`      | Release `count` permits; wakes up to `count` waiters |
+| `TryEnter()`       | `Boolean()`          | Try to acquire immediately                           |
+| `TryEnterFor(ms)`  | `Boolean(Integer)`   | Try to acquire with timeout in milliseconds          |
 
 ### Properties
 
@@ -462,10 +462,10 @@ Writer-preference reader-writer lock.
 |-------------------|---------------|---------------------------------------------------------|
 | `ReadEnter()`      | `Void()`      | Acquire shared read lock (blocks on writer)             |
 | `ReadExit()`       | `Void()`      | Release read lock                                       |
-| `WriteEnter()`     | `Void()`      | Acquire exclusive write lock (blocks on readers/writer) |
-| `WriteExit()`      | `Void()`      | Release write lock                                      |
 | `TryReadEnter()`   | `Boolean()`   | Non-blocking read acquire                               |
 | `TryWriteEnter()`  | `Boolean()`   | Non-blocking write acquire                              |
+| `WriteEnter()`     | `Void()`      | Acquire exclusive write lock (blocks on readers/writer) |
+| `WriteExit()`      | `Void()`      | Release write lock                                      |
 
 ### Properties
 

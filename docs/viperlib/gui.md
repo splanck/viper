@@ -144,14 +144,14 @@ Main application class that manages the window and widget tree.
 
 ### Methods
 
-| Method                          | Signature                    | Description                              |
-|---------------------------------|------------------------------|------------------------------------------|
-| `Poll()`                        | `Void()`                     | Poll events and update widget states     |
-| `Render()`                      | `Void()`                     | Render all widgets to the window         |
-| `SetFont(font, size)`           | `Void(Font, Double)`         | Set default font for all widgets         |
-| `WasFileDropped()`              | `Integer()`                  | 1 if a file was dropped on the window    |
-| `GetDroppedFileCount()`         | `Integer()`                  | Number of files dropped                  |
-| `GetDroppedFile(index)`         | `String(Integer)`            | Get path of dropped file by index        |
+| Method                  | Signature            | Description                              |
+|-------------------------|----------------------|------------------------------------------|
+| `GetDroppedFile(index)` | `String(Integer)`    | Get path of dropped file by index        |
+| `GetDroppedFileCount()` | `Integer()`          | Number of files dropped                  |
+| `Poll()`                | `Void()`             | Poll events and update widget states     |
+| `Render()`              | `Void()`             | Render all widgets to the window         |
+| `SetFont(font, size)`   | `Void(Font, Double)` | Set default font for all widgets         |
+| `WasFileDropped()`      | `Integer()`          | 1 if a file was dropped on the window    |
 
 ### Example
 
@@ -222,30 +222,30 @@ app.SetFont(font, 14);
 
 All widgets share these common functions:
 
-| Method                              | Signature                         | Description                              |
-|-------------------------------------|-----------------------------------|------------------------------------------|
-| `SetVisible(visible)`               | `Void(Integer)`                   | Set visibility (1=visible, 0=hidden)     |
-| `SetEnabled(enabled)`               | `Void(Integer)`                   | Set enabled state (1=enabled, 0=disabled)|
-| `SetSize(width, height)`            | `Void(Integer, Integer)`          | Set fixed size in pixels                 |
-| `SetPosition(x, y)`                 | `Void(Integer, Integer)`          | Set position in pixels                   |
-| `SetFlex(flex)`                     | `Void(Double)`                    | Set flex factor for layout               |
-| `AddChild(child)`                   | `Void(Object)`                    | Add a child widget                       |
-| `IsHovered()`                       | `Integer()`                       | 1 if mouse is over widget                |
-| `IsPressed()`                       | `Integer()`                       | 1 if widget is pressed                   |
-| `IsFocused()`                       | `Integer()`                       | 1 if widget has keyboard focus           |
-| `WasClicked()`                      | `Integer()`                       | 1 if widget was clicked this frame       |
-| `SetTooltip(text)`                  | `Void(String)`                    | Set tooltip text for this widget         |
-| `SetTooltipRich(title, body)`       | `Void(String, String)`            | Set rich tooltip with title and body     |
-| `ClearTooltip()`                    | `Void()`                          | Remove tooltip from widget               |
-| `SetDraggable(enabled)`             | `Void(Integer)`                   | Enable/disable drag source               |
-| `SetDragData(type, data)`           | `Void(String, String)`            | Set drag data type and payload           |
-| `IsBeingDragged()`                  | `Integer()`                       | 1 if widget is being dragged             |
-| `SetDropTarget(enabled)`            | `Void(Integer)`                   | Enable/disable drop target               |
-| `SetAcceptedDropTypes(types)`       | `Void(String)`                    | Set accepted drop type(s)                |
-| `IsDragOver()`                      | `Integer()`                       | 1 if a drag is hovering over widget      |
-| `WasDropped()`                      | `Integer()`                       | 1 if something was dropped this frame    |
-| `GetDropType()`                     | `String()`                        | Get the type of the dropped data         |
-| `GetDropData()`                     | `String()`                        | Get the dropped data payload             |
+| Method                        | Signature                | Description                              |
+|-------------------------------|--------------------------|------------------------------------------|
+| `AddChild(child)`             | `Void(Object)`           | Add a child widget                       |
+| `ClearTooltip()`              | `Void()`                 | Remove tooltip from widget               |
+| `GetDropData()`               | `String()`               | Get the dropped data payload             |
+| `GetDropType()`               | `String()`               | Get the type of the dropped data         |
+| `IsBeingDragged()`            | `Integer()`              | 1 if widget is being dragged             |
+| `IsDragOver()`                | `Integer()`              | 1 if a drag is hovering over widget      |
+| `IsFocused()`                 | `Integer()`              | 1 if widget has keyboard focus           |
+| `IsHovered()`                 | `Integer()`              | 1 if mouse is over widget                |
+| `IsPressed()`                 | `Integer()`              | 1 if widget is pressed                   |
+| `SetAcceptedDropTypes(types)` | `Void(String)`           | Set accepted drop type(s)                |
+| `SetDragData(type, data)`     | `Void(String, String)`   | Set drag data type and payload           |
+| `SetDraggable(enabled)`       | `Void(Integer)`          | Enable/disable drag source               |
+| `SetDropTarget(enabled)`      | `Void(Integer)`          | Enable/disable drop target               |
+| `SetEnabled(enabled)`         | `Void(Integer)`          | Set enabled state (1=enabled, 0=disabled)|
+| `SetFlex(flex)`               | `Void(Double)`           | Set flex factor for layout               |
+| `SetPosition(x, y)`          | `Void(Integer, Integer)` | Set position in pixels                   |
+| `SetSize(width, height)`      | `Void(Integer, Integer)` | Set fixed size in pixels                 |
+| `SetTooltip(text)`            | `Void(String)`           | Set tooltip text for this widget         |
+| `SetTooltipRich(title, body)` | `Void(String, String)`   | Set rich tooltip with title and body     |
+| `SetVisible(visible)`         | `Void(Integer)`          | Set visibility (1=visible, 0=hidden)     |
+| `WasClicked()`                | `Integer()`              | 1 if widget was clicked this frame       |
+| `WasDropped()`                | `Integer()`              | 1 if something was dropped this frame    |
 
 ### Example
 
@@ -443,11 +443,11 @@ Toggle checkbox with label.
 
 **Constructor:** `NEW Viper.GUI.Checkbox(parent, text)`
 
-| Method                   | Signature          | Description              |
-|--------------------------|--------------------|--------------------------|
-| `SetChecked(checked)`    | `Void(Integer)`    | Set checked state        |
-| `IsChecked()`            | `Boolean()`        | Get checked state        |
-| `SetText(text)`          | `Void(String)`     | Set label text           |
+| Method                | Signature       | Description              |
+|-----------------------|-----------------|--------------------------|
+| `IsChecked()`         | `Boolean()`     | Get checked state        |
+| `SetChecked(checked)` | `Void(Integer)` | Set checked state        |
+| `SetText(text)`       | `Void(String)`  | Set label text           |
 
 ```basic
 DIM rememberMe AS Viper.GUI.Checkbox
@@ -628,13 +628,13 @@ Dropdown selection list.
 | `Selected`     | Integer | Read   | Selected item index (-1=none) |
 | `SelectedText` | String  | Read   | Selected item text            |
 
-| Method                     | Signature          | Description                     |
-|----------------------------|--------------------|---------------------------------|
-| `AddItem(text)`            | `Integer(String)`  | Add item, returns index         |
-| `RemoveItem(index)`        | `Void(Integer)`    | Remove item by index            |
-| `Clear()`                  | `Void()`           | Remove all items                |
-| `SetSelected(index)`       | `Void(Integer)`    | Set selected index              |
-| `SetPlaceholder(text)`     | `Void(String)`     | Set placeholder text            |
+| Method                 | Signature          | Description                     |
+|------------------------|--------------------|---------------------------------|
+| `AddItem(text)`        | `Integer(String)`  | Add item, returns index         |
+| `Clear()`              | `Void()`           | Remove all items                |
+| `RemoveItem(index)`    | `Void(Integer)`    | Remove item by index            |
+| `SetPlaceholder(text)` | `Void(String)`     | Set placeholder text            |
+| `SetSelected(index)`   | `Void(Integer)`    | Set selected index              |
 
 ```zia
 // Zia example
@@ -679,19 +679,19 @@ Scrollable list of selectable items with enhanced item management.
 
 ### Methods
 
-| Method                          | Signature               | Description                     |
-|---------------------------------|-------------------------|---------------------------------|
-| `AddItem(text)`                 | `Object(String)`        | Add item, returns item handle   |
-| `RemoveItem(item)`              | `Void(Object)`          | Remove item                     |
-| `Clear()`                       | `Void()`                | Remove all items                |
-| `Select(item)`                  | `Void(Object)`          | Select item (NULL to deselect)  |
-| `SelectIndex(index)`            | `Void(Integer)`         | Select item by index            |
-| `WasSelectionChanged()`         | `Integer()`             | 1 if selection changed this frame |
-| `ItemGetText(item)`             | `String(Object)`        | Get item display text           |
-| `ItemSetText(item, text)`       | `Void(Object, String)`  | Set item display text           |
-| `ItemGetData(item)`             | `String(Object)`        | Get item user data              |
-| `ItemSetData(item, data)`       | `Void(Object, String)`  | Set item user data              |
-| `SetFont(font, size)`           | `Void(Font, Double)`    | Set font for list items         |
+| Method                    | Signature              | Description                       |
+|---------------------------|------------------------|-----------------------------------|
+| `AddItem(text)`           | `Object(String)`       | Add item, returns item handle     |
+| `Clear()`                 | `Void()`               | Remove all items                  |
+| `ItemGetData(item)`       | `String(Object)`       | Get item user data                |
+| `ItemGetText(item)`       | `String(Object)`       | Get item display text             |
+| `ItemSetData(item, data)` | `Void(Object, String)` | Set item user data                |
+| `ItemSetText(item, text)` | `Void(Object, String)` | Set item display text             |
+| `RemoveItem(item)`        | `Void(Object)`         | Remove item                       |
+| `Select(item)`            | `Void(Object)`         | Select item (NULL to deselect)    |
+| `SelectIndex(index)`      | `Void(Integer)`        | Select item by index              |
+| `SetFont(font, size)`     | `Void(Font, Double)`   | Set font for list items           |
+| `WasSelectionChanged()`   | `Integer()`            | 1 if selection changed this frame |
 
 ### Example
 
@@ -897,18 +897,18 @@ Tab strip for switching between views.
 
 ### Methods
 
-| Method                         | Signature                      | Description                              |
-|--------------------------------|--------------------------------|------------------------------------------|
-| `AddTab(title, closable)`      | `Object(String, Integer)`      | Add tab, returns tab handle              |
-| `RemoveTab(tab)`               | `Void(Object)`                 | Remove a tab                             |
-| `SetActive(tab)`               | `Void(Object)`                 | Set active tab                           |
-| `GetActive()`                  | `Object()`                     | Get active tab handle                    |
-| `GetActiveIndex()`             | `Integer()`                    | Get active tab index                     |
-| `WasChanged()`                 | `Integer()`                    | 1 if active tab changed this frame       |
-| `WasCloseClicked()`            | `Integer()`                    | 1 if a close button was clicked          |
-| `GetCloseClickedIndex()`       | `Integer()`                    | Index of tab whose close was clicked     |
-| `GetTabAt(index)`              | `Object(Integer)`              | Get tab handle by index                  |
-| `SetAutoClose(enabled)`        | `Void(Integer)`                | Enable/disable auto-close on close click |
+| Method                   | Signature                 | Description                              |
+|--------------------------|---------------------------|------------------------------------------|
+| `AddTab(title, closable)` | `Object(String, Integer)` | Add tab, returns tab handle             |
+| `GetActive()`            | `Object()`                | Get active tab handle                    |
+| `GetActiveIndex()`       | `Integer()`               | Get active tab index                     |
+| `GetCloseClickedIndex()` | `Integer()`               | Index of tab whose close was clicked     |
+| `GetTabAt(index)`        | `Object(Integer)`         | Get tab handle by index                  |
+| `RemoveTab(tab)`         | `Void(Object)`            | Remove a tab                             |
+| `SetActive(tab)`         | `Void(Object)`            | Set active tab                           |
+| `SetAutoClose(enabled)`  | `Void(Integer)`           | Enable/disable auto-close on close click |
+| `WasChanged()`           | `Integer()`               | 1 if active tab changed this frame       |
+| `WasCloseClicked()`      | `Integer()`               | 1 if a close button was clicked          |
 
 ### Tab Methods
 
@@ -966,17 +966,17 @@ Hierarchical tree view with expandable nodes.
 
 ### Methods
 
-| Method                         | Signature                          | Description                    |
-|--------------------------------|------------------------------------|--------------------------------|
-| `AddNode(parent, text)`        | `Object(Object, String)`           | Add node, returns handle       |
-| `RemoveNode(node)`             | `Void(Object)`                     | Remove node and children       |
-| `Clear()`                      | `Void()`                           | Remove all nodes               |
-| `Expand(node)`                 | `Void(Object)`                     | Expand a node                  |
-| `Collapse(node)`               | `Void(Object)`                     | Collapse a node                |
-| `Select(node)`                 | `Void(Object)`                     | Select a node                  |
-| `GetSelected()`                | `Object()`                         | Get selected node handle       |
-| `WasSelectionChanged()`        | `Integer()`                        | 1 if selection changed this frame |
-| `SetFont(font, size)`          | `Void(Font, Double)`               | Set font                       |
+| Method                  | Signature                | Description                       |
+|-------------------------|--------------------------|-----------------------------------|
+| `AddNode(parent, text)` | `Object(Object, String)` | Add node, returns handle          |
+| `Clear()`               | `Void()`                 | Remove all nodes                  |
+| `Collapse(node)`        | `Void(Object)`           | Collapse a node                   |
+| `Expand(node)`          | `Void(Object)`           | Expand a node                     |
+| `GetSelected()`         | `Object()`               | Get selected node handle          |
+| `RemoveNode(node)`      | `Void(Object)`           | Remove node and children          |
+| `Select(node)`          | `Void(Object)`           | Select a node                     |
+| `SetFont(font, size)`   | `Void(Font, Double)`     | Set font                          |
+| `WasSelectionChanged()` | `Integer()`              | 1 if selection changed this frame |
 
 ### Node Methods
 
@@ -1038,37 +1038,37 @@ Full-featured code editor with syntax highlighting.
 | `CursorLine` | Integer | Read   | Current cursor line            |
 | `CursorCol`  | Integer | Read   | Current cursor column          |
 
-| Method                                    | Signature                          | Description                              |
-|-------------------------------------------|------------------------------------|------------------------------------------|
-| `SetText(text)`                           | `Void(String)`                     | Set editor content                       |
-| `SetCursor(line, col)`                    | `Void(Integer, Integer)`           | Set cursor position                      |
-| `ScrollToLine(line)`                      | `Void(Integer)`                    | Scroll to line                           |
-| `IsModified()`                            | `Boolean()`                        | Check if modified                        |
-| `ClearModified()`                         | `Void()`                           | Clear modified flag                      |
-| `SetFont(font, size)`                     | `Void(Font, Double)`               | Set monospace font                       |
-| `SetLanguage(name)`                       | `Void(String)`                     | Set syntax highlighting language         |
-| `SetTokenColor(tokenType, color)`         | `Void(Integer, Integer)`           | Set color for a token type               |
-| `AddHighlight(line, col, endLine, endCol)`| `Void(Int, Int, Int, Int)`         | Add text highlight region                |
-| `ClearHighlights()`                       | `Void()`                           | Remove all highlights                    |
-| `SetShowLineNumbers(show)`                | `Void(Integer)`                    | Show/hide line numbers                   |
-| `SetGutterIcon(line, icon, type)`         | `Void(Integer, Object, Integer)`   | Set gutter icon on a line                |
-| `ClearGutterIcons(type)`                  | `Void(Integer)`                    | Clear gutter icons of given type         |
-| `WasGutterClicked()`                      | `Integer()`                        | 1 if gutter was clicked                  |
-| `GetGutterClickLine()`                    | `Integer()`                        | Get line of gutter click                 |
-| `AddFoldRegion(startLine, endLine)`       | `Void(Integer, Integer)`           | Add a foldable region                    |
-| `Fold(line)`                              | `Void(Integer)`                    | Fold region at line                      |
-| `Unfold(line)`                            | `Void(Integer)`                    | Unfold region at line                    |
-| `IsFolded(line)`                          | `Integer(Integer)`                 | Check if line is folded                  |
-| `GetCursorCount()`                        | `Integer()`                        | Get number of cursors (multi-cursor)     |
-| `AddCursor(line, col)`                    | `Void(Integer, Integer)`           | Add an additional cursor                 |
-| `ClearCursors()`                          | `Void()`                           | Remove extra cursors (keep primary)      |
-| `CursorHasSelection(cursorIdx)`           | `Integer(Integer)`                 | Check if cursor has selection            |
-| `Undo()`                                  | `Void()`                           | Undo last edit                           |
-| `Redo()`                                  | `Void()`                           | Redo last undone edit                    |
-| `Copy()`                                  | `Integer()`                        | Copy selection to clipboard              |
-| `Cut()`                                   | `Integer()`                        | Cut selection to clipboard               |
-| `Paste()`                                 | `Integer()`                        | Paste from clipboard                     |
-| `SelectAll()`                             | `Void()`                           | Select all text                          |
+| Method                                     | Signature                        | Description                              |
+|--------------------------------------------|----------------------------------|------------------------------------------|
+| `AddCursor(line, col)`                     | `Void(Integer, Integer)`         | Add an additional cursor                 |
+| `AddFoldRegion(startLine, endLine)`        | `Void(Integer, Integer)`         | Add a foldable region                    |
+| `AddHighlight(line, col, endLine, endCol)` | `Void(Int, Int, Int, Int)`       | Add text highlight region                |
+| `ClearCursors()`                           | `Void()`                         | Remove extra cursors (keep primary)      |
+| `ClearGutterIcons(type)`                   | `Void(Integer)`                  | Clear gutter icons of given type         |
+| `ClearHighlights()`                        | `Void()`                         | Remove all highlights                    |
+| `ClearModified()`                          | `Void()`                         | Clear modified flag                      |
+| `Copy()`                                   | `Integer()`                      | Copy selection to clipboard              |
+| `CursorHasSelection(cursorIdx)`            | `Integer(Integer)`               | Check if cursor has selection            |
+| `Cut()`                                    | `Integer()`                      | Cut selection to clipboard               |
+| `Fold(line)`                               | `Void(Integer)`                  | Fold region at line                      |
+| `GetCursorCount()`                         | `Integer()`                      | Get number of cursors (multi-cursor)     |
+| `GetGutterClickLine()`                     | `Integer()`                      | Get line of gutter click                 |
+| `IsFolded(line)`                           | `Integer(Integer)`               | Check if line is folded                  |
+| `IsModified()`                             | `Boolean()`                      | Check if modified                        |
+| `Paste()`                                  | `Integer()`                      | Paste from clipboard                     |
+| `Redo()`                                   | `Void()`                         | Redo last undone edit                    |
+| `ScrollToLine(line)`                       | `Void(Integer)`                  | Scroll to line                           |
+| `SelectAll()`                              | `Void()`                         | Select all text                          |
+| `SetCursor(line, col)`                     | `Void(Integer, Integer)`         | Set cursor position                      |
+| `SetFont(font, size)`                      | `Void(Font, Double)`             | Set monospace font                       |
+| `SetGutterIcon(line, icon, type)`          | `Void(Integer, Object, Integer)` | Set gutter icon on a line                |
+| `SetLanguage(name)`                        | `Void(String)`                   | Set syntax highlighting language         |
+| `SetShowLineNumbers(show)`                 | `Void(Integer)`                  | Show/hide line numbers                   |
+| `SetText(text)`                            | `Void(String)`                   | Set editor content                       |
+| `SetTokenColor(tokenType, color)`          | `Void(Integer, Integer)`         | Set color for a token type               |
+| `Unfold(line)`                             | `Void(Integer)`                  | Unfold region at line                    |
+| `Undo()`                                   | `Void()`                         | Undo last edit                           |
+| `WasGutterClicked()`                       | `Integer()`                      | 1 if gutter was clicked                  |
 
 ```basic
 DIM editor AS Viper.GUI.CodeEditor
@@ -1130,15 +1130,15 @@ Dropdown menu (returned by `MenuBar.AddMenu()`).
 
 Menu item (returned by `Menu.AddItem()`).
 
-| Method                    | Signature          | Description                    |
-|---------------------------|--------------------|--------------------------------|
-| `SetText(text)`           | `Void(String)`     | Set item text                  |
-| `SetEnabled(enabled)`     | `Void(Integer)`    | Enable/disable item            |
-| `IsEnabled()`             | `Integer()`        | Check if enabled               |
-| `SetChecked(checked)`     | `Void(Integer)`    | Set check mark                 |
-| `IsChecked()`             | `Boolean()`        | Check if checked               |
-| `SetShortcut(shortcut)`   | `Void(String)`     | Set keyboard shortcut display  |
-| `WasClicked()`            | `Integer()`        | 1 if item was clicked          |
+| Method                  | Signature       | Description                    |
+|-------------------------|-----------------|--------------------------------|
+| `IsChecked()`           | `Boolean()`     | Check if checked               |
+| `IsEnabled()`           | `Integer()`     | Check if enabled               |
+| `SetChecked(checked)`   | `Void(Integer)` | Set check mark                 |
+| `SetEnabled(enabled)`   | `Void(Integer)` | Enable/disable item            |
+| `SetShortcut(shortcut)` | `Void(String)`  | Set keyboard shortcut display  |
+| `SetText(text)`         | `Void(String)`  | Set item text                  |
+| `WasClicked()`          | `Integer()`     | 1 if item was clicked          |
 
 ### Example
 
@@ -1164,26 +1164,26 @@ Application toolbar widget.
 
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 
-| Method                              | Signature                    | Description                              |
-|-------------------------------------|------------------------------|------------------------------------------|
-| `AddButton(id, icon)`              | `Object(String, String)`     | Add icon button, returns item handle     |
-| `AddButtonWithText(id, icon, text)` | `Object(String,String,String)` | Add button with text and icon          |
-| `AddSeparator()`                    | `Object()`                   | Add separator                            |
-| `SetIconSize(size)`                 | `Void(Integer)`              | Set icon size in pixels                  |
-| `SetStyle(style)`                   | `Void(Integer)`              | Set toolbar style                        |
-| `SetVisible(visible)`               | `Void(Integer)`              | Show/hide toolbar                        |
+| Method                              | Signature                      | Description                              |
+|-------------------------------------|--------------------------------|------------------------------------------|
+| `AddButton(id, icon)`               | `Object(String, String)`       | Add icon button, returns item handle     |
+| `AddButtonWithText(id, icon, text)` | `Object(String,String,String)` | Add button with text and icon            |
+| `AddSeparator()`                    | `Object()`                     | Add separator                            |
+| `SetIconSize(size)`                 | `Void(Integer)`                | Set icon size in pixels                  |
+| `SetStyle(style)`                   | `Void(Integer)`                | Set toolbar style                        |
+| `SetVisible(visible)`               | `Void(Integer)`                | Show/hide toolbar                        |
 
 ### ToolbarItem
 
 Toolbar button (returned by `Toolbar.AddButton()`).
 
-| Method                    | Signature          | Description                    |
-|---------------------------|--------------------|--------------------------------|
-| `SetEnabled(enabled)`     | `Void(Integer)`    | Enable/disable button          |
-| `IsEnabled()`             | `Integer()`        | Check if enabled               |
-| `SetTooltip(text)`        | `Void(String)`     | Set tooltip text               |
-| `SetIcon(icon)`           | `Void(String)`     | Change icon                    |
-| `WasClicked()`            | `Integer()`        | 1 if button was clicked        |
+| Method                | Signature       | Description                    |
+|-----------------------|-----------------|--------------------------------|
+| `IsEnabled()`         | `Integer()`     | Check if enabled               |
+| `SetEnabled(enabled)` | `Void(Integer)` | Enable/disable button          |
+| `SetIcon(icon)`       | `Void(String)`  | Change icon                    |
+| `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
+| `WasClicked()`        | `Integer()`     | 1 if button was clicked        |
 
 ### Example
 
@@ -1207,24 +1207,24 @@ Application status bar widget.
 
 **Constructor:** `NEW Viper.GUI.StatusBar(parent)`
 
-| Method                       | Signature                  | Description                              |
-|------------------------------|----------------------------|------------------------------------------|
-| `SetLeftText(text)`          | `Void(String)`             | Set left-aligned text                    |
-| `SetCenterText(text)`        | `Void(String)`             | Set center-aligned text                  |
-| `SetRightText(text)`         | `Void(String)`             | Set right-aligned text                   |
-| `AddText(text, alignment)`   | `Object(String, Integer)`  | Add text item, returns item handle       |
-| `SetVisible(visible)`        | `Void(Integer)`            | Show/hide status bar                     |
+| Method                     | Signature                 | Description                              |
+|----------------------------|---------------------------|------------------------------------------|
+| `AddText(text, alignment)` | `Object(String, Integer)` | Add text item, returns item handle       |
+| `SetCenterText(text)`      | `Void(String)`            | Set center-aligned text                  |
+| `SetLeftText(text)`        | `Void(String)`            | Set left-aligned text                    |
+| `SetRightText(text)`       | `Void(String)`            | Set right-aligned text                   |
+| `SetVisible(visible)`      | `Void(Integer)`           | Show/hide status bar                     |
 
 ### StatusBarItem
 
 Status bar item (returned by `StatusBar.AddText()`).
 
-| Method                    | Signature          | Description                    |
-|---------------------------|--------------------|--------------------------------|
-| `SetText(text)`           | `Void(String)`     | Set item text                  |
-| `SetTooltip(text)`        | `Void(String)`     | Set tooltip text               |
-| `SetVisible(visible)`     | `Void(Integer)`    | Show/hide item                 |
-| `WasClicked()`            | `Integer()`        | 1 if item was clicked          |
+| Method                | Signature       | Description                    |
+|-----------------------|-----------------|--------------------------------|
+| `SetText(text)`       | `Void(String)`  | Set item text                  |
+| `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
+| `SetVisible(visible)` | `Void(Integer)` | Show/hide item                 |
+| `WasClicked()`        | `Integer()`     | 1 if item was clicked          |
 
 ### Example
 
@@ -1246,15 +1246,15 @@ Right-click context menu.
 
 **Constructor:** `NEW Viper.GUI.ContextMenu()`
 
-| Method                              | Signature                  | Description                              |
-|-------------------------------------|----------------------------|------------------------------------------|
-| `AddItem(text)`                     | `Object(String)`           | Add menu item                            |
+| Method                                | Signature                | Description                              |
+|---------------------------------------|--------------------------|------------------------------------------|
+| `AddItem(text)`                       | `Object(String)`         | Add menu item                            |
 | `AddItemWithShortcut(text, shortcut)` | `Object(String, String)` | Add item with shortcut display           |
-| `AddSeparator()`                    | `Object()`                 | Add separator                            |
-| `Show(x, y)`                        | `Void(Integer, Integer)`   | Show context menu at position            |
-| `Hide()`                            | `Void()`                   | Hide the menu                            |
-| `IsVisible()`                       | `Integer()`                | 1 if menu is visible                     |
-| `Clear()`                           | `Void()`                   | Remove all items                         |
+| `AddSeparator()`                      | `Object()`               | Add separator                            |
+| `Clear()`                             | `Void()`                 | Remove all items                         |
+| `Hide()`                              | `Void()`                 | Hide the menu                            |
+| `IsVisible()`                         | `Integer()`              | 1 if menu is visible                     |
+| `Show(x, y)`                          | `Void(Integer, Integer)` | Show context menu at position            |
 
 ### Example
 
@@ -1279,29 +1279,29 @@ Find and replace bar for text searching.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
-| Method                        | Signature          | Description                              |
-|-------------------------------|--------------------|------------------------------------------|
-| `SetFindText(text)`           | `Void(String)`     | Set search text                          |
-| `GetFindText()`               | `String()`         | Get search text                          |
-| `SetReplaceText(text)`        | `Void(String)`     | Set replacement text                     |
-| `GetReplaceText()`            | `String()`         | Get replacement text                     |
-| `SetCaseSensitive(enabled)`   | `Void(Integer)`    | Enable/disable case sensitivity          |
-| `IsCaseSensitive()`           | `Integer()`        | Check if case sensitive                  |
-| `SetWholeWord(enabled)`       | `Void(Integer)`    | Enable/disable whole word matching       |
-| `IsWholeWord()`               | `Integer()`        | Check if whole word mode                 |
-| `SetRegex(enabled)`           | `Void(Integer)`    | Enable/disable regex matching            |
-| `IsRegex()`                   | `Integer()`        | Check if regex mode                      |
-| `SetReplaceMode(enabled)`     | `Void(Integer)`    | Enable/disable replace mode              |
-| `IsReplaceMode()`             | `Integer()`        | Check if replace mode                    |
-| `SetVisible(visible)`         | `Void(Integer)`    | Show/hide find bar                       |
-| `IsVisible()`                 | `Integer()`        | Check if visible                         |
-| `FindNext()`                  | `Integer()`        | Find next match; returns 1 if found      |
-| `FindPrev()`                  | `Integer()`        | Find previous match; returns 1 if found  |
-| `Replace()`                   | `Integer()`        | Replace current match                    |
-| `ReplaceAll()`                | `Integer()`        | Replace all matches; returns count       |
-| `GetMatchCount()`             | `Integer()`        | Get total match count                    |
-| `GetCurrentMatch()`           | `Integer()`        | Get current match index                  |
-| `Focus()`                     | `Void()`           | Focus the find input                     |
+| Method                      | Signature       | Description                              |
+|-----------------------------|-----------------|------------------------------------------|
+| `FindNext()`                | `Integer()`     | Find next match; returns 1 if found      |
+| `FindPrev()`                | `Integer()`     | Find previous match; returns 1 if found  |
+| `Focus()`                   | `Void()`        | Focus the find input                     |
+| `GetCurrentMatch()`         | `Integer()`     | Get current match index                  |
+| `GetFindText()`             | `String()`      | Get search text                          |
+| `GetMatchCount()`           | `Integer()`     | Get total match count                    |
+| `GetReplaceText()`          | `String()`      | Get replacement text                     |
+| `IsCaseSensitive()`         | `Integer()`     | Check if case sensitive                  |
+| `IsRegex()`                 | `Integer()`     | Check if regex mode                      |
+| `IsReplaceMode()`           | `Integer()`     | Check if replace mode                    |
+| `IsVisible()`               | `Integer()`     | Check if visible                         |
+| `IsWholeWord()`             | `Integer()`     | Check if whole word mode                 |
+| `Replace()`                 | `Integer()`     | Replace current match                    |
+| `ReplaceAll()`              | `Integer()`     | Replace all matches; returns count       |
+| `SetCaseSensitive(enabled)` | `Void(Integer)` | Enable/disable case sensitivity          |
+| `SetFindText(text)`         | `Void(String)`  | Set search text                          |
+| `SetRegex(enabled)`         | `Void(Integer)` | Enable/disable regex matching            |
+| `SetReplaceMode(enabled)`   | `Void(Integer)` | Enable/disable replace mode              |
+| `SetReplaceText(text)`      | `Void(String)`  | Set replacement text                     |
+| `SetVisible(visible)`       | `Void(Integer)` | Show/hide find bar                       |
+| `SetWholeWord(enabled)`     | `Void(Integer)` | Enable/disable whole word matching       |
 
 ### Example
 
@@ -1326,18 +1326,18 @@ Command palette for searchable command execution.
 
 **Constructor:** `NEW Viper.GUI.CommandPalette(parent)`
 
-| Method                               | Signature                    | Description                              |
-|--------------------------------------|------------------------------|------------------------------------------|
-| `AddCommand(id, title, category)`    | `Void(String,String,String)` | Register a command                       |
-| `AddCommandWithShortcut(id,title,cat,shortcut)` | `Void(Str,Str,Str,Str)` | Register command with shortcut       |
-| `RemoveCommand(id)`                  | `Void(String)`               | Remove a command                         |
-| `Clear()`                            | `Void()`                     | Remove all commands                      |
-| `Show()`                             | `Void()`                     | Show the palette                         |
-| `Hide()`                             | `Void()`                     | Hide the palette                         |
-| `IsVisible()`                        | `Integer()`                  | 1 if palette is visible                  |
-| `SetPlaceholder(text)`               | `Void(String)`               | Set search placeholder text              |
-| `GetSelected()`                      | `String()`                   | Get selected command ID                  |
-| `WasSelected()`                      | `Integer()`                  | 1 if a command was selected              |
+| Method                                          | Signature                    | Description                              |
+|-------------------------------------------------|------------------------------|------------------------------------------|
+| `AddCommand(id, title, category)`               | `Void(String,String,String)` | Register a command                       |
+| `AddCommandWithShortcut(id,title,cat,shortcut)` | `Void(Str,Str,Str,Str)`      | Register command with shortcut           |
+| `Clear()`                                       | `Void()`                     | Remove all commands                      |
+| `GetSelected()`                                 | `String()`                   | Get selected command ID                  |
+| `Hide()`                                        | `Void()`                     | Hide the palette                         |
+| `IsVisible()`                                   | `Integer()`                  | 1 if palette is visible                  |
+| `RemoveCommand(id)`                             | `Void(String)`               | Remove a command                         |
+| `SetPlaceholder(text)`                          | `Void(String)`               | Set search placeholder text              |
+| `Show()`                                        | `Void()`                     | Show the palette                         |
+| `WasSelected()`                                 | `Integer()`                  | 1 if a command was selected              |
 
 ### Example
 
@@ -1363,17 +1363,17 @@ Breadcrumb navigation widget.
 
 **Constructor:** `NEW Viper.GUI.Breadcrumb(parent)`
 
-| Method                       | Signature                  | Description                              |
-|------------------------------|----------------------------|------------------------------------------|
-| `SetPath(path, separator)`   | `Void(String, String)`     | Set path with separator (e.g. "/")       |
-| `SetItems(items)`            | `Void(String)`             | Set items from delimited string          |
-| `AddItem(text, data)`        | `Void(String, String)`     | Add breadcrumb item with data            |
-| `Clear()`                    | `Void()`                   | Remove all items                         |
-| `WasItemClicked()`           | `Integer()`                | 1 if an item was clicked                 |
-| `GetClickedIndex()`          | `Integer()`                | Index of clicked item                    |
-| `GetClickedData()`           | `String()`                 | Data of clicked item                     |
-| `SetSeparator(sep)`          | `Void(String)`             | Set separator character                  |
-| `SetMaxItems(max)`           | `Void(Integer)`            | Set max visible items                    |
+| Method                     | Signature              | Description                              |
+|----------------------------|------------------------|------------------------------------------|
+| `AddItem(text, data)`      | `Void(String, String)` | Add breadcrumb item with data            |
+| `Clear()`                  | `Void()`               | Remove all items                         |
+| `GetClickedData()`         | `String()`             | Data of clicked item                     |
+| `GetClickedIndex()`        | `Integer()`            | Index of clicked item                    |
+| `SetItems(items)`          | `Void(String)`         | Set items from delimited string          |
+| `SetMaxItems(max)`         | `Void(Integer)`        | Set max visible items                    |
+| `SetPath(path, separator)` | `Void(String, String)` | Set path with separator (e.g. "/")       |
+| `SetSeparator(sep)`        | `Void(String)`         | Set separator character                  |
+| `WasItemClicked()`         | `Integer()`            | 1 if an item was clicked                 |
 
 ### Example
 
@@ -1397,17 +1397,17 @@ Code minimap widget (pairs with CodeEditor).
 
 **Constructor:** `NEW Viper.GUI.Minimap(parent)`
 
-| Method                         | Signature              | Description                              |
-|--------------------------------|------------------------|------------------------------------------|
-| `BindEditor(editor)`           | `Void(Object)`         | Bind to a CodeEditor                     |
-| `UnbindEditor()`               | `Void()`               | Unbind from editor                       |
-| `SetWidth(width)`              | `Void(Integer)`        | Set minimap width                        |
-| `GetWidth()`                   | `Integer()`            | Get minimap width                        |
-| `SetScale(scale)`              | `Void(Double)`         | Set minimap scale                        |
-| `SetShowSlider(show)`          | `Void(Integer)`        | Show/hide scroll slider                  |
-| `AddMarker(line, color, type)` | `Void(Int,Int,Int)`    | Add line marker                          |
-| `RemoveMarkers(type)`          | `Void(Integer)`        | Remove markers by type                   |
-| `ClearMarkers()`               | `Void()`               | Remove all markers                       |
+| Method                         | Signature           | Description                              |
+|--------------------------------|---------------------|------------------------------------------|
+| `AddMarker(line, color, type)` | `Void(Int,Int,Int)` | Add line marker                          |
+| `BindEditor(editor)`           | `Void(Object)`      | Bind to a CodeEditor                     |
+| `ClearMarkers()`               | `Void()`            | Remove all markers                       |
+| `GetWidth()`                   | `Integer()`         | Get minimap width                        |
+| `RemoveMarkers(type)`          | `Void(Integer)`     | Remove markers by type                   |
+| `SetScale(scale)`              | `Void(Double)`      | Set minimap scale                        |
+| `SetShowSlider(show)`          | `Void(Integer)`     | Show/hide scroll slider                  |
+| `SetWidth(width)`              | `Void(Integer)`     | Set minimap width                        |
+| `UnbindEditor()`               | `Void()`            | Unbind from editor                       |
 
 ### Example
 
@@ -1429,13 +1429,13 @@ minimap.AddMarker(10, 0xFFFF0000, 1);  // Error marker
 
 System message dialog boxes (static methods).
 
-| Method                            | Signature                  | Description                              |
-|-----------------------------------|----------------------------|------------------------------------------|
-| `Viper.GUI.MessageBox.Info(title, text)`     | `Void(String, String)`    | Show info dialog              |
-| `Viper.GUI.MessageBox.Warning(title, text)`  | `Void(String, String)`    | Show warning dialog           |
-| `Viper.GUI.MessageBox.Error(title, text)`    | `Void(String, String)`    | Show error dialog             |
-| `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question dialog   |
+| Method                                       | Signature                 | Description                   |
+|----------------------------------------------|---------------------------|-------------------------------|
 | `Viper.GUI.MessageBox.Confirm(title, text)`  | `Integer(String, String)` | Show confirmation dialog      |
+| `Viper.GUI.MessageBox.Error(title, text)`    | `Void(String, String)`    | Show error dialog             |
+| `Viper.GUI.MessageBox.Info(title, text)`     | `Void(String, String)`    | Show info dialog              |
+| `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question dialog   |
+| `Viper.GUI.MessageBox.Warning(title, text)`  | `Void(String, String)`    | Show warning dialog           |
 
 ### Example
 
@@ -1481,25 +1481,25 @@ var folder = FileDialog.SelectFolder("Choose Folder", "/home");
 
 Toast notification system.
 
-| Method                                    | Signature                    | Description                              |
-|-------------------------------------------|------------------------------|------------------------------------------|
-| `Viper.GUI.Toast.Info(text)`              | `Void(String)`               | Show info toast                          |
-| `Viper.GUI.Toast.Success(text)`           | `Void(String)`               | Show success toast                       |
-| `Viper.GUI.Toast.Warning(text)`           | `Void(String)`               | Show warning toast                       |
-| `Viper.GUI.Toast.Error(text)`             | `Void(String)`               | Show error toast                         |
-| `Viper.GUI.Toast.New(text, type, dur)`    | `Object(String, Int, Int)`   | Create custom toast; returns handle      |
-| `Viper.GUI.Toast.SetPosition(position)`   | `Void(Integer)`              | Set toast position                       |
-| `Viper.GUI.Toast.SetMaxVisible(count)`    | `Void(Integer)`              | Set max visible toasts                   |
-| `Viper.GUI.Toast.DismissAll()`            | `Void()`                     | Dismiss all toasts                       |
+| Method                                  | Signature                  | Description                              |
+|-----------------------------------------|----------------------------|------------------------------------------|
+| `Viper.GUI.Toast.DismissAll()`          | `Void()`                   | Dismiss all toasts                       |
+| `Viper.GUI.Toast.Error(text)`           | `Void(String)`             | Show error toast                         |
+| `Viper.GUI.Toast.Info(text)`            | `Void(String)`             | Show info toast                          |
+| `Viper.GUI.Toast.New(text, type, dur)`  | `Object(String, Int, Int)` | Create custom toast; returns handle      |
+| `Viper.GUI.Toast.SetMaxVisible(count)`  | `Void(Integer)`            | Set max visible toasts                   |
+| `Viper.GUI.Toast.SetPosition(position)` | `Void(Integer)`            | Set toast position                       |
+| `Viper.GUI.Toast.Success(text)`         | `Void(String)`             | Show success toast                       |
+| `Viper.GUI.Toast.Warning(text)`         | `Void(String)`             | Show warning toast                       |
 
 Toast handle methods:
 
-| Method                     | Signature          | Description                    |
-|----------------------------|--------------------|--------------------------------|
-| `toast.SetAction(text)`    | `Void(String)`     | Add action button              |
-| `toast.WasActionClicked()` | `Integer()`        | 1 if action was clicked        |
-| `toast.WasDismissed()`     | `Integer()`        | 1 if toast was dismissed       |
-| `toast.Dismiss()`          | `Void()`           | Dismiss this toast             |
+| Method                     | Signature       | Description                    |
+|----------------------------|-----------------|--------------------------------|
+| `toast.Dismiss()`          | `Void()`        | Dismiss this toast             |
+| `toast.SetAction(text)`    | `Void(String)`  | Add action button              |
+| `toast.WasActionClicked()` | `Integer()`     | 1 if action was clicked        |
+| `toast.WasDismissed()`     | `Integer()`     | 1 if toast was dismissed       |
 
 ### Example
 
@@ -1524,12 +1524,12 @@ if t.WasActionClicked() == 1 { /* undo action */ }
 
 Tooltip display system (static methods).
 
-| Method                                      | Signature                    | Description                    |
-|---------------------------------------------|------------------------------|--------------------------------|
-| `Viper.GUI.Tooltip.Show(text, x, y)`       | `Void(String, Int, Int)`     | Show tooltip at position       |
+| Method                                          | Signature                | Description                    |
+|-------------------------------------------------|--------------------------|--------------------------------|
+| `Viper.GUI.Tooltip.Hide()`                      | `Void()`                 | Hide tooltip                   |
+| `Viper.GUI.Tooltip.SetDelay(ms)`               | `Void(Integer)`          | Set show delay in ms           |
+| `Viper.GUI.Tooltip.Show(text, x, y)`           | `Void(String, Int, Int)` | Show tooltip at position       |
 | `Viper.GUI.Tooltip.ShowRich(title, body, x, y)` | `Void(Str,Str,Int,Int)` | Show rich tooltip              |
-| `Viper.GUI.Tooltip.Hide()`                 | `Void()`                     | Hide tooltip                   |
-| `Viper.GUI.Tooltip.SetDelay(ms)`           | `Void(Integer)`              | Set show delay in ms           |
 
 ### Example
 
@@ -1549,12 +1549,12 @@ Tooltip.Hide();
 
 System clipboard access (static methods).
 
-| Method                              | Signature        | Description                    |
-|-------------------------------------|------------------|--------------------------------|
-| `Viper.GUI.Clipboard.SetText(text)` | `Void(String)`   | Copy text to clipboard         |
-| `Viper.GUI.Clipboard.GetText()`     | `String()`       | Get text from clipboard        |
-| `Viper.GUI.Clipboard.HasText()`     | `Integer()`      | 1 if clipboard has text        |
-| `Viper.GUI.Clipboard.Clear()`       | `Void()`         | Clear clipboard                |
+| Method                              | Signature      | Description                    |
+|-------------------------------------|----------------|--------------------------------|
+| `Viper.GUI.Clipboard.Clear()`       | `Void()`       | Clear clipboard                |
+| `Viper.GUI.Clipboard.GetText()`     | `String()`     | Get text from clipboard        |
+| `Viper.GUI.Clipboard.HasText()`     | `Integer()`    | 1 if clipboard has text        |
+| `Viper.GUI.Clipboard.SetText(text)` | `Void(String)` | Copy text to clipboard         |
 
 ### Example
 
@@ -1574,17 +1574,17 @@ Clipboard.Clear();
 
 Keyboard shortcut registration system (static methods).
 
-| Method                                           | Signature                    | Description                              |
-|--------------------------------------------------|------------------------------|------------------------------------------|
-| `Viper.GUI.Shortcuts.Register(id, keys, desc)`  | `Void(Str, Str, Str)`       | Register a shortcut                      |
-| `Viper.GUI.Shortcuts.Unregister(id)`             | `Void(String)`               | Unregister a shortcut                    |
-| `Viper.GUI.Shortcuts.Clear()`                    | `Void()`                     | Remove all shortcuts                     |
-| `Viper.GUI.Shortcuts.IsEnabled(id)`              | `Integer(String)`            | Check if shortcut is enabled             |
-| `Viper.GUI.Shortcuts.SetEnabled(id, enabled)`    | `Void(String, Integer)`      | Enable/disable shortcut                  |
-| `Viper.GUI.Shortcuts.GetGlobalEnabled()`         | `Integer()`                  | Check if shortcuts globally enabled      |
-| `Viper.GUI.Shortcuts.SetGlobalEnabled(enabled)`  | `Void(Integer)`              | Enable/disable all shortcuts             |
-| `Viper.GUI.Shortcuts.WasTriggered(id)`           | `Integer(String)`            | 1 if shortcut was triggered this frame   |
-| `Viper.GUI.Shortcuts.GetTriggered()`             | `String()`                   | Get ID of triggered shortcut             |
+| Method                                          | Signature               | Description                              |
+|-------------------------------------------------|-------------------------|------------------------------------------|
+| `Viper.GUI.Shortcuts.Clear()`                   | `Void()`                | Remove all shortcuts                     |
+| `Viper.GUI.Shortcuts.GetGlobalEnabled()`        | `Integer()`             | Check if shortcuts globally enabled      |
+| `Viper.GUI.Shortcuts.GetTriggered()`            | `String()`              | Get ID of triggered shortcut             |
+| `Viper.GUI.Shortcuts.IsEnabled(id)`             | `Integer(String)`       | Check if shortcut is enabled             |
+| `Viper.GUI.Shortcuts.Register(id, keys, desc)`  | `Void(Str, Str, Str)`  | Register a shortcut                      |
+| `Viper.GUI.Shortcuts.SetEnabled(id, enabled)`   | `Void(String, Integer)` | Enable/disable shortcut                  |
+| `Viper.GUI.Shortcuts.SetGlobalEnabled(enabled)` | `Void(Integer)`         | Enable/disable all shortcuts             |
+| `Viper.GUI.Shortcuts.Unregister(id)`            | `Void(String)`          | Unregister a shortcut                    |
+| `Viper.GUI.Shortcuts.WasTriggered(id)`          | `Integer(String)`       | 1 if shortcut was triggered this frame   |
 
 ### Example
 

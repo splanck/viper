@@ -966,12 +966,12 @@ func start() {
     var state = Game.create();
 
     // Track time for delta calculations
-    var lastTime = millis();
+    var lastTime = Time.Clock.Ticks();
 
     // The game loop
     while canvas.isOpen() {
         // Calculate how much time passed since last frame
-        var now = millis();
+        var now = Time.Clock.Ticks();
         var dt = (now - lastTime) / 1000.0;  // Convert to seconds
         lastTime = now;
 
@@ -1011,7 +1011,7 @@ func start() {
 
         // === TIMING ===
         // Sleep to target approximately 60 FPS
-        sleep(16);  // 16ms ≈ 60 frames per second
+        Time.Clock.Sleep(16);  // 16ms ≈ 60 frames per second
     }
 }
 ```

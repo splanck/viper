@@ -409,7 +409,7 @@ func start() {
         }
 
         canvas.show();
-        sleep(16);
+        Time.Clock.Sleep(16);
     }
 }
 ```
@@ -689,7 +689,7 @@ func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
                 return;
             }
         }
-        sleep(16);
+        Time.Clock.Sleep(16);
     }
 }
 ```
@@ -865,11 +865,11 @@ func start() {
         onGround: true
     };
 
-    var lastTime = millis();
+    var lastTime = Time.Clock.Ticks();
 
     while canvas.isOpen() {
         // Calculate delta time
-        var now = millis();
+        var now = Time.Clock.Ticks();
         var dt = (now - lastTime) / 1000.0;
         lastTime = now;
 
@@ -933,7 +933,7 @@ func start() {
         canvas.drawText(10, 75, "On ground: " + player.onGround);
 
         canvas.show();
-        sleep(16);
+        Time.Clock.Sleep(16);
     }
 }
 ```
@@ -1088,7 +1088,7 @@ while canvas.isOpen() {
     if !canvas.hasFocus() {
         // Window not focused, skip input processing
         // Maybe also pause the game
-        sleep(100);  // Don't burn CPU while unfocused
+        Time.Clock.Sleep(100);  // Don't burn CPU while unfocused
         continue;
     }
 
@@ -1181,11 +1181,11 @@ bind Viper.Terminal;
 bind Viper.Time;
 
 if Input.wasKeyPressed(Key.SPACE) {
-    Say("Jump pressed at time: " + millis());
+    Say("Jump pressed at time: " + Time.Clock.Ticks());
 }
 
 if player.onGround {
-    Say("On ground at time: " + millis());
+    Say("On ground at time: " + Time.Clock.Ticks());
     if inputBuffer.consumeJump() {
         Say("Jump executed!");
     }

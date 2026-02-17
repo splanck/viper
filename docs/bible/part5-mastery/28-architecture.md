@@ -1384,7 +1384,7 @@ func main() {
             );
             db.execute(
                 "INSERT INTO loans (isbn, borrower, date) VALUES (?, ?, ?)",
-                [isbn, borrower, DateTime.now().toString()]
+                [isbn, borrower, Time.DateTime.ToISO(Time.DateTime.Now())]
             );
             print("Book borrowed!");
 
@@ -1605,7 +1605,7 @@ entity LibraryService {
             id: 0,  // Will be assigned by database
             isbn: isbn,
             borrowerName: borrowerName,
-            borrowDate: DateTime.now()
+            borrowDate: Time.DateTime.Now()
         );
         self.loanRepo.save(loan);
 
@@ -2218,7 +2218,7 @@ func processPayment(userId: String, amount: Number) {
 
     // Log
     var logFile = File.open("transactions.log", "a");
-    logFile.write(DateTime.now() + ": " + userId + " paid " + amount);
+    logFile.write(Time.DateTime.Now() + ": " + userId + " paid " + amount);
     logFile.close();
 
     // Notify

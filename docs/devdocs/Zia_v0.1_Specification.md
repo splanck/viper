@@ -206,7 +206,7 @@ List[String] parts = text.split(",");
 ```viper
 Byte b = 255;
 Byte ascii = 0x41;         // 'A'
-Byte overflow = 256;       // ERROR: value out of range
+Byte overflow = 256;       // Overflow wraps (no compile-time range check in v0.1)
 ```
 
 ---
@@ -1394,7 +1394,7 @@ weak node = someNode;     // ERROR: weak is a field modifier, not a variable mod
 program         = module_decl? bind_decl* declaration* ;
 module_decl     = "module" qualified_name ";" ;
 bind_decl       = "bind" qualified_name ("as" IDENT)? ";"
-                | "bind" qualified_name ".{" IDENT ("," IDENT)* "}" ";"
+                | "bind" qualified_name "{" IDENT ("," IDENT)* "}" ";"
                 | "bind" STRING_LITERAL ("as" IDENT)? ";" ;
 
 (* Declarations *)
@@ -1462,10 +1462,10 @@ expr            = literal | IDENT | "self" | "super" "." IDENT
                 ;
 
 (* Operators *)
-binop           = "+" | "-" | "*" | "/" | "%" 
+binop           = "+" | "-" | "*" | "/" | "%"
                 | "==" | "!=" | "<" | "<=" | ">" | ">="
-                | "&&" | "||" | ".." | "..=" ;
-unop            = "-" | "!" ;
+                | "&&" | "and" | "||" | "or" | ".." | "..=" ;
+unop            = "-" | "!" | "not" ;
 
 (* Arguments *)
 args            = arg ("," arg)* ;
@@ -1489,40 +1489,44 @@ visibility      = "expose" | "hide" ;
 
 ## Keywords
 
-### Reserved Keywords (29)
+### Reserved Keywords (34)
 
 | Keyword | Usage |
 |---------|-------|
-| `module` | Module declaration |
-| `bind` | Bind declaration (namespace or file import) |
+| `and` | Logical AND (alternative to `&&`) |
 | `as` | Import alias, type cast |
-| `value` | Value type declaration |
-| `entity` | Entity type declaration |
-| `interface` | Interface declaration |
-| `implements` | Interface implementation |
-| `extends` | Entity inheritance |
-| `func` | Function/method declaration |
-| `return` | Return statement |
-| `var` | Type inference |
-| `final` | Immutable variable/field |
-| `new` | Entity creation |
-| `if` | Conditional |
-| `else` | Conditional branch |
-| `let` | Optional binding in if/while/guard |
-| `match` | Pattern matching |
-| `while` | While loop |
-| `for` | For loop |
-| `in` | Loop iteration |
-| `is` | Type check |
+| `bind` | Bind declaration (namespace or file import) |
 | `break` | Loop exit |
 | `continue` | Loop continue |
-| `guard` | Guard statement |
-| `override` | Method override |
-| `weak` | Weak reference |
+| `else` | Conditional branch |
+| `entity` | Entity type declaration |
 | `expose` | Public visibility |
+| `extends` | Entity inheritance |
+| `final` | Immutable variable/field |
+| `for` | For loop |
+| `func` | Function/method declaration |
+| `guard` | Guard statement |
 | `hide` | Hide inherited member |
+| `if` | Conditional |
+| `implements` | Interface implementation |
+| `in` | Loop iteration |
+| `interface` | Interface declaration |
+| `is` | Type check |
+| `let` | Optional binding in if/while/guard |
+| `match` | Pattern matching |
+| `module` | Module declaration |
+| `namespace` | Namespace declaration |
+| `new` | Entity creation |
+| `not` | Logical NOT (alternative to `!`) |
+| `or` | Logical OR (alternative to `\|\|`) |
+| `override` | Method override |
+| `return` | Return statement |
 | `self` | Current instance |
 | `super` | Parent class |
+| `value` | Value type declaration |
+| `var` | Type inference |
+| `weak` | Weak reference |
+| `while` | While loop |
 
 ### v0.2 Keywords (+3)
 
@@ -1532,13 +1536,15 @@ visibility      = "expose" | "hide" ;
 | `await` | Await expression |
 | `spawn` | Spawn task |
 
-### Contextual Keywords
+**Note:** `and`, `not`, and `or` are keyword synonyms for `&&`, `!`, and `||` respectively.
+
+### Literal Keywords
 
 | Keyword | Usage |
 |---------|-------|
-| `true` | Boolean true |
 | `false` | Boolean false |
 | `null` | No value |
+| `true` | Boolean true |
 
 ---
 
@@ -1550,15 +1556,15 @@ visibility      = "expose" | "hide" ;
 |------------|-----------|---------------|-------------|
 | 11 | `.` `?.` `[]` `?[]` `()` | Left | Access/call |
 | 10 | `?` (postfix) | Postfix | Error propagation |
-| 9 | `!` `-` (unary) | Right | Unary |
+| 9 | `!` `not` `-` (unary) | Right | Unary |
 | 8 | `*` `/` `%` | Left | Multiplication |
 | 7 | `+` `-` | Left | Addition |
 | 6 | `..` `..=` | None | Range |
 | 5 | `is` `as` | Left | Type check/cast |
 | 4 | `<` `>` `<=` `>=` | Left | Comparison |
 | 3 | `==` `!=` | Left | Equality |
-| 2 | `&&` | Left | Logical AND |
-| 1 | `||` | Left | Logical OR |
+| 2 | `&&` `and` | Left | Logical AND |
+| 1 | `\|\|` `or` | Left | Logical OR |
 | 0 | `??` | Right | Null coalescing |
 
 ### Operator Summary
@@ -1567,7 +1573,8 @@ visibility      = "expose" | "hide" ;
 |----------|-------------|---------|
 | `+` `-` `*` `/` `%` | Arithmetic | `a + b` |
 | `==` `!=` `<` `>` `<=` `>=` | Comparison | `a < b` |
-| `&&` `\|\|` `!` | Logical | `a && b` |
+| `&&` `\|\|` `!` | Logical (operator form) | `a && b` |
+| `and` `or` `not` | Logical (keyword form) | `a and b` |
 | `?.` | Optional chaining | `user?.name` |
 | `??` | Null coalescing | `name ?? "default"` |
 | `?` | Error propagation | `getValue()?` |

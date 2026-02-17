@@ -78,7 +78,7 @@ var x = 10 / 0;  // Division by zero — mathematically undefined
 var arr = [1, 2, 3];
 var y = arr[10];  // Index 10 doesn't exist
 
-var text: string = null;
+var text: String = null;
 var len = text.length;  // Can't access properties of null
 
 bind Viper.Convert;
@@ -662,7 +662,7 @@ The simplest and most widely used technique: add print statements to see what's 
 ```rust
 bind Viper.Terminal;
 
-func mysteriouslyWrongResult(data: [i64]) -> i64 {
+func mysteriouslyWrongResult(data: [Integer]) -> Integer {
     Say("DEBUG: Input data = " + data.toString());
 
     var sum = 0;
@@ -932,15 +932,16 @@ Let's put it all together with a program that demonstrates comprehensive error h
 ```rust
 module DataProcessor;
 
-bind Viper.File;
+bind Viper.IO.File;
 bind Viper.Terminal;
 bind Viper.Time;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 final LOG_FILE = "processor.log";
 
 func log(message: String) {
-    var timestamp = now().toString();
+    var ts = Time.DateTime.Now();
+    var timestamp = Convert.ToString_Int(ts);
     var entry = "[" + timestamp + "] " + message + "\n";
 
     try {

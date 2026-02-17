@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2025-11-25
+last-verified: 2026-02-17
 ---
 
 # Contributor Guide
@@ -60,10 +60,10 @@ Public classes, functions, and members use Doxygen comments with triple
 slashes. Common tags:
 
 - `@brief` – one line summary.
+- `@invariant` – conditions that always hold.
+- `@note` – extra context or links.
 - `@param` – describe each parameter.
 - `@return` – state what the function yields.
-- `@note` – extra context or links.
-- `@invariant` – conditions that always hold.
 
 Keep comments under ~100 characters per line.
 
@@ -82,8 +82,7 @@ Avoid repeating type information or restating obvious details.
 
 - Be direct and neutral; avoid marketing phrases.
 - Link to related docs or ADRs with Markdown links when relevant.
-- Prefer verbs for functions, nouns for classes, and short
-  `snake_case` names for variables.
+- Prefer verbs for functions, nouns for classes, and short `snake_case` names for variables.
 
 ### Spacing and indentation
 

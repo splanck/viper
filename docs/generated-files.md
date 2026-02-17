@@ -29,14 +29,14 @@ Located in `src/vm/ops/generated/`:
 
 | File                     | Purpose                                                      |
 |--------------------------|--------------------------------------------------------------|
-| `OpSchema.hpp`           | Compile-time opcode metadata (mnemonic, arity, types, flags) |
 | `HandlerTable.hpp`       | Function table mapping opcodes to handlers                   |
 | `InlineHandlersDecl.inc` | Forward declarations for inline handlers                     |
 | `InlineHandlersImpl.inc` | Inline handler implementations                               |
+| `OpSchema.hpp`           | Compile-time opcode metadata (mnemonic, arity, types, flags) |
 | `SwitchDispatchDecl.inc` | Switch-based dispatch declaration                            |
 | `SwitchDispatchImpl.inc` | Switch-based dispatch implementation                         |
-| `ThreadedLabels.inc`     | Computed-goto label address table                            |
 | `ThreadedCases.inc`      | Computed-goto case labels and handler bodies                 |
+| `ThreadedLabels.inc`     | Computed-goto label address table                            |
 
 ### Regeneration
 
@@ -64,20 +64,22 @@ These files are **manually maintained** but must stay synchronized with `Opcode.
 
 | File                                             | Purpose                                      |
 |--------------------------------------------------|----------------------------------------------|
+| `include/viper/runtime/rt.h`                     | Public C runtime umbrella header             |
+| `include/viper/runtime/rt_oop.h`                 | Public OOP dispatch header                   |
 | `src/il/runtime/runtime.def`                     | Canonical runtime function registry          |
 | `src/il/runtime/RuntimeSigs.def`                 | Runtime signature enum + spec declarations   |
 | `src/il/runtime/RuntimeSignaturesData.hpp`       | Signature metadata table                     |
 | `src/runtime/*.c`                                | C runtime implementations                    |
-| `include/viper/runtime/*.h`                      | Public C runtime API headers                 |
+| `src/runtime/*.h`                                | C runtime API headers (per-module)           |
 
 ### Generated Files
 
 | File                                                 | Purpose                                         |
 |------------------------------------------------------|-------------------------------------------------|
-| `build/generated/il/runtime/RuntimeSignatures.inc`   | DescriptorRow entries for runtime functions     |
 | `build/generated/il/runtime/RuntimeClasses.inc`      | Class/method/property catalog for OOP dispatch  |
 | `build/generated/il/runtime/RuntimeNameMap.inc`      | Maps canonical names to C symbols               |
 | `build/generated/il/runtime/RuntimeNames.hpp`        | Runtime name constants                          |
+| `build/generated/il/runtime/RuntimeSignatures.inc`   | DescriptorRow entries for runtime functions     |
 | `build/generated/il/runtime/ZiaRuntimeExterns.inc`   | Extern declarations for the Zia frontend        |
 
 ### Regeneration
@@ -139,15 +141,15 @@ ctest --test-dir build -R runtime
 
 | Directory                        | Files                                 |
 |----------------------------------|---------------------------------------|
-| `src/codegen/x86_64/generated/`  | `EncodingTable.inc`, `OpFmtTable.inc` |
 | `src/codegen/aarch64/generated/` | `OpcodeDispatch.inc`                  |
+| `src/codegen/x86_64/generated/`  | `EncodingTable.inc`, `OpFmtTable.inc` |
 
 ### Generators
 
 | Script                           | Output                  |
 |----------------------------------|-------------------------|
-| `cmake/GenX86Encodings.cmake`    | x86-64 encoding tables  |
 | `cmake/GenAArch64Dispatch.cmake` | AArch64 dispatch switch |
+| `cmake/GenX86Encodings.cmake`    | x86-64 encoding tables  |
 
 ### Regeneration
 

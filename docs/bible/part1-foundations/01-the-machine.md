@@ -202,26 +202,22 @@ This is a subtle but crucial distinction. A chef doesn't cook by giving instruct
 
 ### A Concrete Example
 
-Let's trace through a simple process to see this mental model in action. Suppose you want a program that asks for your name and then greets you. Here's what the program might look like in Zia:
+Let's trace through a simple process to see this mental model in action. Suppose you want a program that asks for your name and then greets you. Here's the basic idea in pseudocode (simplified — real Zia syntax is taught in the next chapters):
 
-```rust
-print("What is your name? ");
-var name = input();
-print("Hello, ");
-print(name);
-print("!");
+```
+print("What is your name? ")
+name = input()
+print("Hello, " + name + "!")
 ```
 
 Now let's trace through what happens when someone runs this program:
 
-1. **The computer reads the first instruction**: `print("What is your name? ");`
+1. **The computer reads the first instruction**: `print("What is your name? ")`
 2. **It does what the instruction says**: displays "What is your name? " on the screen
-3. **It moves to the next instruction**: `var name = input();`
+3. **It moves to the next instruction**: `name = input()`
 4. **It does what the instruction says**: waits for the user to type something and press Enter, then stores what they typed in a memory location called "name"
-5. **Next instruction**: `print("Hello, ");` — displays "Hello, "
-6. **Next instruction**: `print(name);` — looks up what's in "name" and displays it
-7. **Next instruction**: `print("!");` — displays "!"
-8. **No more instructions**: program ends
+5. **Next instruction**: `print("Hello, " + name + "!")` — looks up what's in "name" and displays the greeting
+6. **No more instructions**: program ends
 
 If the user typed "Alice", the screen would show:
 ```
@@ -244,7 +240,7 @@ If you find yourself confused about when things happen, you're in good company. 
 - **Writing code** (describing the process)
 - **Running code** (the computer following the process)
 
-When you write `var name = input();`, you're not getting input right now. You're writing an instruction that means "when someone runs this program, pause here and wait for input." The instruction is like a note in a recipe that says "wait for the water to boil." The waiting happens when someone cooks the recipe, not when someone writes it.
+When you write `name = input()`, you're not getting input right now. You're writing an instruction that means "when someone runs this program, pause here and wait for input." The instruction is like a note in a recipe that says "wait for the water to boil." The waiting happens when someone cooks the recipe, not when someone writes it.
 
 If this feels confusing, don't worry! It becomes natural with practice. Every programmer went through this adjustment period.
 

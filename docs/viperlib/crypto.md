@@ -6,12 +6,36 @@
 
 ## Contents
 
+- [Viper.Crypto.Aes](#vipercryptoaes)
 - [Viper.Crypto.Cipher](#vipercryptocipher)
 - [Viper.Crypto.Hash](#vipercryptohash)
 - [Viper.Crypto.KeyDerive](#vipercryptokeyderive)
 - [Viper.Crypto.Password](#vipercryptopassword)
 - [Viper.Crypto.Rand](#vipercryptorand)
 - [Viper.Crypto.Tls](#vipercryptotls)
+
+---
+
+## Viper.Crypto.Aes
+
+AES-128/256 symmetric encryption with CBC mode and PKCS7 padding.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                           | Signature                      | Description                                           |
+|----------------------------------|--------------------------------|-------------------------------------------------------|
+| `Encrypt(data, key, iv)`        | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt data with AES key and initialization vector  |
+| `Decrypt(data, key, iv)`        | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt data with AES key and initialization vector  |
+| `EncryptStr(plaintext, password)` | `Bytes(String, String)`      | Encrypt a string with a password (key derived via SHA-256; output: 16-byte IV + ciphertext) |
+| `DecryptStr(ciphertext, password)` | `String(Bytes, String)`     | Decrypt ciphertext to a string using a password (expects 16-byte IV prefix) |
+
+### Notes
+
+- `Encrypt`/`Decrypt` require a raw key (16 or 32 bytes) and IV (16 bytes)
+- `EncryptStr`/`DecryptStr` derive the AES-256 key from the password using SHA-256 and prepend a 16-byte IV to the output
+- For higher-level authenticated encryption with automatic key management, use `Viper.Crypto.Cipher` instead
 
 ---
 
@@ -742,10 +766,11 @@ This format stores everything needed for verification: the algorithm identifier,
 
 - Uses PBKDF2-HMAC-SHA256 as the underlying key derivation function
 - Default iteration count is 100,000 (suitable for most applications)
+- Minimum allowed iteration count for `HashIters` is 10,000
 - A random 16-byte salt is generated automatically for each hash
 - The salt and iteration count are embedded in the output string, so no separate storage is needed
 - `Verify` parses the stored hash string to extract parameters before re-deriving
-- Use `HashIters` to increase iterations for higher security or decrease for testing
+- Use `HashIters` to increase iterations for higher security
 
 ### Zia Example
 

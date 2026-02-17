@@ -5,8 +5,8 @@
 - `AnalysisManager` caches module/function analyses and drops entries after each pass based on `PreservedAnalyses`.
   Module passes must mark any preserved function analyses; otherwise function caches are cleared alongside module
   caches.
-- Convenience helpers exist for common function analyses: `preserveCFG()`, `preserveDominators()`, `preserveLoopInfo()`,
-  `preserveLiveness()`, and `preserveBasicAA()`.
+- Convenience helpers exist for common function analyses: `preserveBasicAA()`, `preserveCFG()`, `preserveDominators()`,
+  `preserveLiveness()`, and `preserveLoopInfo()`.
 - Enable per-pass statistics with `PassManager::setReportPassStatistics(true)` plus `setInstrumentationStream(...)` to
   receive lines like `[pass licm] bb 6 -> 6, inst 42 -> 40, analyses M:0 F:2, time 1500us`.
 - Statistics track IR size (basic blocks and instructions), analysis recomputations, and wall-clock duration per pass to
@@ -14,8 +14,8 @@
 
 ## BasicAA (Alias/ModRef)
 
-- Classifies pointers by base object: allocas vs parameters (including `noalias`), globals/addr_of/gaddr, const strings,
-  and null.
+- Classifies pointers by base object: allocas vs parameters (including `noalias`), globals (via `AddrOf`/`GAddr`
+  opcodes), const strings, and null.
 - Follows constant-offset `gep` chains to build base+offset summaries; compares offsets with access sizes to prove
   disjoint struct/array fields when both sides have known widths.
 - Distinguishes address spaces: stack vs global vs noalias param are `NoAlias`; different globals are `NoAlias`; null
@@ -34,11 +34,11 @@
 
 The **SimplifyCFG** pass tidies the control-flow graph before and after SSA promotion:
 
-- Folds trivial `cbr` instructions when their condition is constant or both edges converge.
+- Canonicalizes block parameters and the arguments supplied by branches.
 - Eliminates empty forwarding blocks that merely branch to their successor.
+- Folds trivial `cbr` instructions when their condition is constant or both edges converge.
 - Merges blocks that have a single predecessor with their unique successor when it preserves semantics.
 - Prunes blocks that have become unreachable.
-- Canonicalizes block parameters and the arguments supplied by branches.
 
 ### Safety Notes
 
@@ -56,9 +56,9 @@ up any new opportunities introduced by SSA promotion.
   - Base instruction/block budgets (configurable thresholds, default <=32 instructions, <=4 blocks)
   - Constant argument bonus: each constant arg reduces effective cost, enabling more inlining when optimization
     opportunities exist
+  - Nested call penalty: functions with many internal calls incur code growth penalty
   - Single-use function bonus: functions called only once get priority (can be DCE'd after)
   - Tiny function bonus: very small functions (<=8 instructions) inline more aggressively
-  - Nested call penalty: functions with many internal calls incur code growth penalty
   - Total code growth tracking: limits module-wide instruction expansion
 - Inline depth capped at 2 to prevent excessive nesting; skips EH-sensitive opcodes and recursive calls.
 - Rewrites calls by cloning the callee CFG, threading branch arguments for block parameters, and branching returns to a
@@ -95,17 +95,19 @@ up any new opportunities introduced by SSA promotion.
 
 The peephole pass applies 57 pattern-based algebraic simplifications:
 
-- **Integer arithmetic identities**: `x + 0 = x`, `x * 1 = x`, `x - 0 = x`, `x * 0 = 0`, `x - x = 0`
 - **Bitwise identities**: `x & -1 = x`, `x | 0 = x`, `x ^ 0 = x`, `x & 0 = 0`, `x ^ x = 0`, `x | x = x`
-- **Shift identities**: `x << 0 = x`, `x >> 0 = x`, `0 << y = 0`, `0 >> y = 0`
-- **Division identities**: `x / 1 = x`, `x % 1 = 0`, `0 / x = 0`, `0 % x = 0`
+- **Division identities** (on div-by-zero–checked variants `SDivChk0`, `UDivChk0`, `SRemChk0`, `URemChk0`):
+  `x / 1 = x`, `x % 1 = 0`, `0 / x = 0`, `0 % x = 0`
+- **Float arithmetic identities**: `x * 1.0 = x`, `x / 1.0 = x`, `x + 0.0 = x`, `x - 0.0 = x`
+- **Integer arithmetic identities** (on overflow-checked variants `IAddOvf`, `ISubOvf`, `IMulOvf`): `x + 0 = x`,
+  `x * 1 = x`, `x - 0 = x`, `x * 0 = 0`, `x - x = 0`
 - **Reflexive comparisons**: `x == x = true`, `x < x = false`, etc. for signed, unsigned, and float comparisons
   (ICmpEq/Ne, SCmpLT/LE/GT/GE, UCmpLT/LE/GT/GE, FCmpEQ/NE/LT/LE/GT/GE)
-- **Float arithmetic**: `x * 1.0 = x`, `x / 1.0 = x`, `x + 0.0 = x`, `x - 0.0 = x`
+- **Shift identities**: `x << 0 = x`, `x >> 0 = x`, `0 << y = 0`, `0 >> y = 0`
 
 The pass also simplifies CBr terminators when the branch condition is a comparison of two constants:
-- Integer constant comparisons (signed and unsigned) fold the branch to an unconditional jump
 - Float constant comparisons fold the branch to an unconditional jump
+- Integer constant comparisons (signed and unsigned) fold the branch to an unconditional jump
 
 The pass is table-driven, making it easy to add new rules without modifying core logic.
 
@@ -113,10 +115,10 @@ The pass is table-driven, making it easy to add new rules without modifying core
 
 Constant folding evaluates pure operations at compile time:
 
-- **Arithmetic**: add, sub, mul, div, rem (signed and unsigned)
-- **Bitwise**: and, or, xor, shifts
+- **Arithmetic**: add, div, mul, rem, sub (signed and unsigned)
+- **Bitwise**: and, or, shifts, xor
 - **Comparisons**: all signed, unsigned, and float comparison opcodes
-- **Intrinsics**: `sin`, `cos`, `tan`, `sqrt`, `pow`, `floor`, `ceil`, `abs`, `log`, `exp`, `min`, `max`, `clamp`, `sgn`
+- **Intrinsics**: `abs`, `ceil`, `clamp`, `cos`, `exp`, `floor`, `log`, `max`, `min`, `pow`, `sgn`, `sin`, `sqrt`, `tan`
 - **Type conversions**: int/float casts with constant operands
 
 ## SCCP (Sparse Conditional Constant Propagation)
@@ -212,9 +214,9 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | Test File | Tests | Coverage |
 |-----------|-------|---------|
 | `test_opt_review_basicaa.cpp` | 7 | Priority cascade, ModRef classification, alias queries |
-| `test_opt_review_sccp.cpp` | 4 | FDiv by zero → infinity/NaN, normal FDiv folding |
-| `test_opt_review_peephole.cpp` | 20 | UCmp/FCmp constant folding in CBr, reflexive comparisons |
-| `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
-| `test_opt_review_valuekey.cpp` | 8 | Commutative normalization, safe opcode classification |
-| `test_opt_review_dse.cpp` | 4 | Dead store elimination, load-intervened stores, different allocas |
 | `test_opt_review_calleffects.cpp` | 5 | Pure/readonly/conservative classification, by-name lookup |
+| `test_opt_review_dse.cpp` | 4 | Dead store elimination, load-intervened stores, different allocas |
+| `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
+| `test_opt_review_peephole.cpp` | 20 | UCmp/FCmp constant folding in CBr, reflexive comparisons |
+| `test_opt_review_sccp.cpp` | 4 | FDiv by zero → infinity/NaN, normal FDiv folding |
+| `test_opt_review_valuekey.cpp` | 8 | Commutative normalization, safe opcode classification |

@@ -113,19 +113,19 @@ The correct method is `Viper.Time.GetTickCount()`, not `TickCount()`.
 
 List methods are:
 
-- `Count` (property, not `Count()`)
-- `get_Item(i)` (not `Get(i)`)
-- `set_Item(i, val)` (not `Set(i, val)`)
 - `Add(item)` works
 - `Clear()` works
+- `Count` (property, not `Count()`)
+- `get_Item(i)` (not `Get(i)`)
 - `RemoveAt(i)` works
+- `set_Item(i, val)` (not `Set(i, val)`)
 
 **Root cause:** This is a documentation/API naming issue. The List implementation uses .NET-style property accessors (
 `get_Item`, `set_Item`) rather than VB-style method names.
 
 ### BUG-CARDS-009: I32 type for class fields causes IL error
 
-**Status:** RESOLVED (use INTEGER instead of I32)
+**Status:** Workaround (use INTEGER instead of I32)
 **Severity:** High
 
 Using `PUBLIC suit AS I32` in class fields causes IL verification errors:
@@ -222,7 +222,7 @@ regular SUB/FUNCTION procedures still had the incorrect behavior.
 | BUG-CARDS-006 | Expected   | Medium   | SLEEP is reserved, use SleepMs                  |
 | BUG-CARDS-007 | Docs       | Low      | API naming: GetTickCount()                      |
 | BUG-CARDS-008 | Docs       | Medium   | API naming: get_Item/set_Item                   |
-| BUG-CARDS-009 | Workaround | High     | I32 field type handling                         |
+| BUG-CARDS-009 | Workaround | High     | I32 field type: use INTEGER instead             |
 | BUG-CARDS-010 | **FIXED**  | Critical | Lower_OOP_Expr.cpp - return type lookup         |
 | BUG-CARDS-011 | **FIXED**  | Medium   | LowerExpr.cpp - NOTHING as null ptr             |
 | BUG-CARDS-012 | **FIXED**  | Critical | Lowerer_Procedure_Emit.cpp - param ownership    |

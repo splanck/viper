@@ -762,7 +762,7 @@ src/vm/
 │   ├── Op_BranchSwitch.cpp     # Branch/switch implementation
 │   ├── Op_TrapEh.cpp           # Trap/exception handling
 │   ├── common/Branching.*      # Branch target resolution helpers
-│   ├── schema/                 # Opcode schema definitions
+│   ├── schema/ops.yaml         # Opcode schema definitions
 │   └── generated/              # Generated dispatch tables and handlers
 │       ├── HandlerTable.hpp    # Static handler function table
 │       ├── InlineHandlers*.inc # Inline handler implementations
@@ -1057,13 +1057,12 @@ If `VIPER_SWITCH_MODE` is set to `dense|sorted|hashed|linear|auto`, it overrides
 Use the helper script to compare dispatch performance across modes:
 
 - Script: `scripts/vm_benchmark.sh`
-- Output: appends to `bugs/vm_benchmarks.md`
 
 Environment variables:
 
-- `RUNS_PER_CASE` (default `3`): number of runs per (mode, program) pair.
-- `IL_GLOB` (default `examples/il/*.il`): glob for IL programs to benchmark (relative to repo root).
+- `IL_DIR` (default `examples/il/benchmarks`): directory of IL programs to benchmark (relative to repo root).
 - `ILC_BIN`: optional path to `viper`; otherwise auto-detected under `build/`.
+- `RUNS_PER_CASE` (default `5`): number of runs per (mode, program) pair.
 
 Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings,
 the actual dispatch kind, and instruction counts extracted from `--count` and `--time` summaries.
@@ -1071,7 +1070,7 @@ the actual dispatch kind, and instruction counts extracted from `--count` and `-
 Example:
 
 ```
-RUNS_PER_CASE=5 IL_GLOB='src/tests/il/e2e/*.il' scripts/vm_benchmark.sh
+RUNS_PER_CASE=5 IL_DIR='src/tests/il/e2e' scripts/vm_benchmark.sh
 ```
 
 The script sets `VIPER_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `VIPER_ENABLE_OPCOUNTS=1` to capture

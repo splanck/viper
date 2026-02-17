@@ -1,7 +1,7 @@
 ---
 status: draft
 audience: internal
-last-verified: 2025-09-24
+last-verified: 2026-02-17
 ---
 
 # Numeric Semantics
@@ -66,13 +66,13 @@ All conversions that round from floating point use round-to-nearest, ties-to-eve
 
 | Function   | Description                                                                                                                                                |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `INT(x)`   | Floor: greatest integral value ≤ `x`.  Works on any numeric rank.                                                                                          |
-| `FIX(x)`   | Truncate toward zero.  Works on any numeric rank.                                                                                                          |
-| `ROUND(x)` | Round-to-nearest-even.  Result rank follows argument rank.                                                                                                 |
+| `CDBL(x)`  | Convert to `DOUBLE` (`f64`).  Always succeeds for finite inputs.                                                                                           |
 | `CINT(x)`  | Round-to-nearest-even then convert to `INTEGER` (`i16`).  Trap if the rounded value is outside −32,768…32,767.  Example: `CINT(2.5) = 2`, `CINT(3.5) = 4`. |
 | `CLNG(x)`  | Round-to-nearest-even then convert to `LONG` (`i32`).  Trap if the rounded value is outside −2,147,483,648…2,147,483,647.                                  |
 | `CSNG(x)`  | Convert to `SINGLE` (`f32`).  Trap if the rounded `f32` result would be non-finite (overflow to ±∞).                                                       |
-| `CDBL(x)`  | Convert to `DOUBLE` (`f64`).  Always succeeds for finite inputs.                                                                                           |
+| `FIX(x)`   | Truncate toward zero.  Works on any numeric rank.                                                                                                          |
+| `INT(x)`   | Floor: greatest integral value ≤ `x`.  Works on any numeric rank.                                                                                          |
+| `ROUND(x)` | Round-to-nearest-even.  Result rank follows argument rank.                                                                                                 |
 
 Additional examples:
 
@@ -130,12 +130,15 @@ indicated condition.
 
 | IL op                   | Description                                            | Trap                                                      |
 |-------------------------|--------------------------------------------------------|-----------------------------------------------------------|
-| `add.ovf`               | Signed integer addition with overflow detection.       | `Overflow`                                                |
-| `sub.ovf`               | Signed integer subtraction with overflow detection.    | `Overflow`                                                |
-| `mul.ovf`               | Signed integer multiplication with overflow detection. | `Overflow`                                                |
+| `cast.fp_to_si.rte.chk` | Float-to-signed-integer cast (round to even).          | `Overflow` on NaN or out-of-range.                        |
+| `cast.fp_to_ui.rte.chk` | Float-to-unsigned-integer cast (round to even).        | `Overflow` on NaN or out-of-range.                        |
+| `cast.si_narrow.chk`    | Signed narrowing cast.                                 | `Overflow` when the result is out of range.               |
+| `cast.ui_narrow.chk`    | Unsigned narrowing cast.                               | `Overflow` when the result is out of range.               |
+| `iadd.ovf`              | Signed integer addition with overflow detection.       | `Overflow`                                                |
+| `imul.ovf`              | Signed integer multiplication with overflow detection. | `Overflow`                                                |
+| `isub.ovf`              | Signed integer subtraction with overflow detection.    | `Overflow`                                                |
 | `sdiv.chk0`             | Signed integer division.                               | `DivideByZero` on zero divisor; `Overflow` on `MIN / -1`. |
 | `srem.chk0`             | Signed remainder.                                      | `DivideByZero` on zero divisor.                           |
-| `cast.{src}->{dst}.chk` | Narrowing or sign-changing cast.                       | `Overflow` when the result is out of range.               |
 
 Front ends may use the unchecked versions (`add`, `sub`, …) only when the result
 is statically proven to be in range.
@@ -144,21 +147,21 @@ is statically proven to be in range.
 
 | BASIC construct                          | Operand ranks                | IL lowering                                                                                                                   |
 |------------------------------------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| `a + b`, `a - b`, `a * b` (both integer) | promote to `LONG` as needed  | `add.ovf`, `sub.ovf`, `mul.ovf` on promoted integer width; apply `cast.*.chk` to narrow back to `INTEGER` when required.      |
-| `a + b`, `a - b`, `a * b` (any floating) | promote to `SINGLE`/`DOUBLE` | `fadd`, `fsub`, `fmul` after widening to `f64`; emit `cast.double_to_single.chk` when targeting `SINGLE`.                     |
-| `a / b`                                  | integer or float             | `fdiv` in `f64`, followed by optional `cast.double_to_single.chk` when the result rank is `SINGLE`.                           |
-| `a \ b`                                  | integer ranks                | `sdiv.chk0` on promoted integer width; narrow with `cast.*.chk` as needed.                                                    |
-| `a MOD b`                                | integer ranks                | `srem.chk0` on promoted integer width; narrow with `cast.*.chk` as needed.                                                    |
+| `a + b`, `a - b`, `a * b` (both integer) | promote to `LONG` as needed  | `iadd.ovf`, `isub.ovf`, `imul.ovf` on promoted integer width; apply `cast.si_narrow.chk` to narrow back to `INTEGER` when required. |
+| `a + b`, `a - b`, `a * b` (any floating) | promote to `SINGLE`/`DOUBLE` | `fadd`, `fsub`, `fmul` after widening to `f64`.                                                                                |
+| `a / b`                                  | integer or float             | `fdiv` in `f64`.                                                                                                               |
+| `a \ b`                                  | integer ranks                | `sdiv.chk0` on promoted integer width; narrow with `cast.si_narrow.chk` as needed.                                                    |
 | `a ^ b`                                  | any numeric                  | Call runtime helper `@rt_pow_f64_chkdom(a', b')` where inputs are widened to `f64`; helper enforces `DomainError`/`Overflow`. |
-| `INT(x)`                                 | any numeric                  | For integers: no-op. For floats: runtime call `@rt_int(x')` returning the original rank.                                      |
-| `FIX(x)`                                 | any numeric                  | Runtime call `@rt_fix(x')` implementing truncate-toward-zero.                                                                 |
-| `ROUND(x)`                               | any numeric                  | Runtime call `@rt_round_ties_even(x')`.                                                                                       |
+| `a MOD b`                                | integer ranks                | `srem.chk0` on promoted integer width; narrow with `cast.si_narrow.chk` as needed.                                                    |
+| `CDBL(x)`                                | any numeric                  | Runtime call `@rt_cdbl(x')` returning `DOUBLE`.                                                                               |
 | `CINT(x)`                                | any numeric                  | Runtime call `@rt_cint_chk(x')` returning `INTEGER` or trapping.                                                              |
 | `CLNG(x)`                                | any numeric                  | Runtime call `@rt_clng_chk(x')` returning `LONG` or trapping.                                                                 |
 | `CSNG(x)`                                | any numeric                  | Runtime call `@rt_csng_chk(x')` returning `SINGLE`.                                                                           |
-| `CDBL(x)`                                | any numeric                  | Runtime call `@rt_cdbl(x')` returning `DOUBLE`.                                                                               |
-| `VAL(s$)`                                | string                       | Runtime call `@rt_val(s$)` returning `DOUBLE` or trapping on overflow.                                                        |
+| `FIX(x)`                                 | any numeric                  | Runtime call `@rt_fix(x')` implementing truncate-toward-zero.                                                                 |
+| `INT(x)`                                 | any numeric                  | For integers: no-op. For floats: runtime call `@rt_int(x')` returning the original rank.                                      |
+| `ROUND(x)`                               | any numeric                  | Runtime call `@rt_round_ties_even(x')`.                                                                                       |
 | `STR$(x)`                                | any numeric                  | Runtime call `@rt_str$(x)` producing a `str`.                                                                                 |
+| `VAL(s$)`                                | string                       | Runtime call `@rt_val(s$)` returning `DOUBLE` or trapping on overflow.                                                        |
 
 Helper names are illustrative; the ABI must ensure traps propagate as described
 and that the round-to-nearest-even rule is observed for every conversion.

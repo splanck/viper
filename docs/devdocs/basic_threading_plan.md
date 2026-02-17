@@ -1,7 +1,6 @@
 # BASIC Threading Implementation Plan
 
 **Status**: Draft
-**Author**: Claude
 **Date**: 2025-01-21
 
 ---
@@ -138,7 +137,7 @@ DIM old AS Long = counter.CompareExchange(expected, newValue)
 | `src/frontends/basic/Lexer.cpp` | Tokenize `ADDRESSOF` |
 | `src/frontends/basic/AST.hpp` | Add `AddressOfExpr` node |
 | `src/frontends/basic/Parser_Expr.cpp` | Parse `ADDRESSOF identifier` |
-| `src/frontends/basic/ASTDumper.cpp` | Dump `AddressOfExpr` for debugging |
+| `src/frontends/basic/AstPrinter.cpp` | Dump `AddressOfExpr` for debugging |
 
 **New AST Node**:
 ```cpp
@@ -191,8 +190,8 @@ std::unique_ptr<Expr> Parser::parseAddressOfExpr() {
 
 | File | Changes |
 |------|---------|
-| `src/frontends/basic/runtime/ThreadingClasses.hpp` | New: Class descriptors |
-| `src/frontends/basic/runtime/ThreadingClasses.cpp` | New: Registration logic |
+| `src/frontends/basic/RuntimeNames.hpp` | New: Threading class name constants |
+| `src/frontends/basic/LowerRuntime.cpp` | New: Threading class registration logic |
 | `src/frontends/basic/OopIndex.cpp` | Register threading classes |
 | `src/frontends/basic/BuiltinRegistry.cpp` | Add threading builtins |
 | `src/frontends/basic/builtin_registry.inc` | Threading builtin entries |

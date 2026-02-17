@@ -247,24 +247,23 @@ Bugs #13-17 resolved. All 56 demos now compile and link on ARM64.
 
 ## Classes Without Zia Examples (Infeasible)
 
-### Requires function pointers (not supported in Zia)
-- `Viper.Threads.Thread`, `Monitor`, `Parallel`
-
-### Requires network infrastructure
-- `Viper.Network.Http`, `Tcp`, `TcpServer`, `Udp`, `WebSocket`
-- `Viper.Crypto.Tls`
-
 ### Abstract / interface only
 - `Viper.IO.Stream`
 
 ### Not yet constructible from Zia
-- Deque, LazySeq, Set, SortedSet, WeakMap, CompiledPattern
-- Countdown, Stopwatch, Promise, Future, CancelToken
-- Debouncer, Throttler, Scheduler, RetryPolicy, RateLimiter
+- CancelToken, CompiledPattern, Countdown, Debouncer, Deque, Future, LazySeq
 - Object (base class)
-- SceneNode, Scene, SpriteBatch (graphics)
-- RestClient (network)
+- Promise, RateLimiter, RestClient (network), RetryPolicy, RwLock
+- SceneNode, Scene, Scheduler, Set, SortedSet, SpriteBatch (graphics), Stopwatch
+- Throttler, WeakMap
 - GUI individual widgets (except via App demo)
+
+### Requires function pointers (not supported in Zia)
+- `Viper.Threads.Monitor`, `Parallel`, `Thread`
+
+### Requires network infrastructure
+- `Viper.Crypto.Tls`
+- `Viper.Network.Http`, `Tcp`, `TcpServer`, `Udp`, `WebSocket`
 
 ---
 

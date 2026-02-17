@@ -1406,9 +1406,9 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 
 | Method                        | Signature                  | Description                                                              |
 |-------------------------------|----------------------------|--------------------------------------------------------------------------|
-| `Set(key, value)`             | `Void(Integer, Ptr)`       | Add or update a key-value pair                                           |
-| `Get(key)`                    | `Ptr(Integer)`             | Get value for key (returns NULL if not found)                            |
-| `GetOr(key, default)`         | `Ptr(Integer, Ptr)`        | Get value for key, or return `default` if missing (does not insert)      |
+| `Set(key, value)`             | `Void(Integer, Object)`    | Add or update a key-value pair                                           |
+| `Get(key)`                    | `Object(Integer)`          | Get value for key (returns NULL if not found)                            |
+| `GetOr(key, default)`         | `Object(Integer, Object)`  | Get value for key, or return `default` if missing (does not insert)      |
 | `Has(key)`                    | `Boolean(Integer)`         | Check if key exists                                                      |
 | `Remove(key)`                 | `Boolean(Integer)`         | Remove key-value pair; returns true if found                             |
 | `Clear()`                     | `Void()`                   | Remove all entries                                                       |
@@ -1777,7 +1777,8 @@ Dynamic array that grows automatically. Stores object references.
 
 | Property | Type    | Description                 |
 |----------|---------|-----------------------------|
-| `Len`    | Integer | Number of items in the list |
+| `Len`     | Integer | Number of items in the list            |
+| `IsEmpty` | Boolean | True if the list contains no items     |
 
 > **Note:** `Count` is available as an alias for `Len` for backward compatibility.
 
@@ -1800,6 +1801,7 @@ Dynamic array that grows automatically. Stores object references.
 | `Last()`                 | `Object()`              | Returns the last element in the list                                                  |
 | `Sort()`                 | `Void()`                | Sorts the list in ascending order (strings lexicographic, otherwise by pointer value) |
 | `SortDesc()`             | `Void()`                | Sorts the list in descending order                                                    |
+| `Pop()`                  | `Object()`              | Removes and returns the last element (traps if empty)                                 |
 
 ### Zia Example
 
@@ -2051,13 +2053,13 @@ Convenience methods for storing and retrieving typed values without manual boxin
 | Method                          | Signature                    | Description                                                       |
 |---------------------------------|------------------------------|-------------------------------------------------------------------|
 | `SetInt(key, value)`            | `Void(String, Integer)`      | Store an integer value                                            |
-| `GetInt(key)`                   | `Integer(String)`            | Get an integer value (traps if key not found)                     |
+| `GetInt(key)`                   | `Integer(String)`            | Get an integer value (returns 0 if key not found)                 |
 | `GetIntOr(key, default)`        | `Integer(String, Integer)`   | Get an integer value, or return `default` if missing              |
 | `SetFloat(key, value)`          | `Void(String, Number)`       | Store a floating-point value                                      |
-| `GetFloat(key)`                 | `Number(String)`             | Get a floating-point value (traps if key not found)               |
+| `GetFloat(key)`                 | `Number(String)`             | Get a floating-point value (returns 0.0 if key not found)         |
 | `GetFloatOr(key, default)`      | `Number(String, Number)`     | Get a floating-point value, or return `default` if missing        |
 | `SetStr(key, value)`            | `Void(String, String)`       | Store a string value                                              |
-| `GetStr(key)`                   | `String(String)`             | Get a string value (traps if key not found)                       |
+| `GetStr(key)`                   | `String(String)`             | Get a string value (returns empty string if key not found)        |
 
 ### Zia Example
 
@@ -2522,7 +2524,9 @@ elements.
 
 **Type:** Instance class
 
-**Constructor:** `NEW Viper.Collections.Ring(capacity)`
+**Constructors:**
+- `NEW Viper.Collections.Ring(capacity)` — fixed capacity ring buffer
+- `Viper.Collections.Ring.NewDefault()` — ring buffer with default capacity (implementation-defined)
 
 ### Properties
 
@@ -3054,7 +3058,7 @@ PRINT words.At(1)        ' Output: "banana" (second in sorted order)
 PRINT words.IndexOf("cherry")  ' Output: 2
 
 ' Range queries
-PRINT words.Floor("cat")       ' Output: "cherry" (largest <= "cat" - actually "banana")
+PRINT words.Floor("cat")       ' Output: "banana" (largest <= "cat")
 PRINT words.Ceil("cat")        ' Output: "cherry" (smallest >= "cat")
 PRINT words.Lower("cherry")    ' Output: "banana" (largest < "cherry")
 PRINT words.Higher("cherry")   ' Output: "date" (smallest > "cherry")
@@ -3369,8 +3373,8 @@ Supports range queries via Floor/Ceil operations.
 | `Values()`        | `Seq()`                | Get all values as a Seq in key-sorted order                     |
 | `First()`         | `String()`             | Get the smallest (first) key; returns empty string if empty     |
 | `Last()`          | `String()`             | Get the largest (last) key; returns empty string if empty       |
-| `Floor(key)`      | `String()`             | Get the largest key <= given key; returns empty string if none  |
-| `Ceil(key)`       | `String()`             | Get the smallest key >= given key; returns empty string if none |
+| `Floor(key)`      | `String(String)`       | Get the largest key <= given key; returns empty string if none  |
+| `Ceil(key)`       | `String(String)`       | Get the smallest key >= given key; returns empty string if none |
 
 ### Zia Example
 

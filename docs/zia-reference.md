@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-01-17
+last-updated: 2026-02-17
 ---
 
 # Zia — Reference
@@ -156,10 +156,11 @@ null    // Used with optional types
 
 | Type | Description | Default Value |
 |------|-------------|---------------|
+| `Boolean` | True or false | `false` |
 | `Integer` | 64-bit signed integer | `0` |
 | `Number` | 64-bit floating-point | `0.0` |
+| `Ptr` | Raw pointer / opaque handle (for interop) | `null` |
 | `String` | UTF-8 string | `""` |
-| `Boolean` | True or false | `false` |
 
 ### Optional Types
 
@@ -874,26 +875,46 @@ Zia programs have access to the full Viper Runtime through the `Viper.*` namespa
 ```viper
 bind Viper.Terminal;
 
-Say(str);            // Print with newline
-Print(str);          // Print without newline
+// Output with newline
+Say(str);            // Print string with newline
+SayBool(b);          // Print boolean with newline
 SayInt(i);           // Print integer with newline
+SayNum(f);           // Print float with newline
+
+// Output without newline
+Print(str);          // Print string without newline
 PrintInt(i);         // Print integer without newline
-GetKey();            // Read single key
-GetKeyTimeout(ms);   // Read key with timeout
+PrintNum(f);         // Print float without newline
+PrintF64(f);         // Print f64 (low-level)
+PrintI64(i);         // Print i64 (low-level)
+PrintStr(str);       // Print string (low-level)
+
+// Input
+ReadLine();          // Read a line (returns String?)
+GetKey();            // Block until key press, return key string
+GetKeyTimeout(ms);   // Read key with timeout in ms (returns "" on timeout)
+InKey();             // Non-blocking key check (returns "" if no key)
+
+// Terminal control
+Bell();              // Emit bell character
 Clear();             // Clear screen
-SetPosition(r, c);   // Move cursor
+SetAltScreen(e);     // Enable/disable alternate screen buffer
 SetColor(fg, bg);    // Set foreground/background color (0-15)
 SetCursorVisible(v); // Show/hide cursor
+SetPosition(r, c);   // Move cursor to row/col (1-based)
+
+// Buffered output
 BeginBatch();        // Start batch output
-EndBatch();          // End batch output
+EndBatch();          // End batch output and flush
+Flush();             // Flush output buffer
 ```
 
 #### Time
 
 ```viper
-bind Viper.Time;
-
-SleepMs(ms);             // Sleep for milliseconds
+// SleepMs is available under Viper.Time (RT_ALIAS from ClockSleep)
+Viper.Time.SleepMs(ms);         // Sleep for milliseconds
+Viper.Time.GetTickCount();       // Milliseconds since epoch
 ```
 
 #### Math
@@ -901,19 +922,24 @@ SleepMs(ms);             // Sleep for milliseconds
 ```viper
 bind Viper.Math;
 
-Abs(x);                  // Absolute value
+Abs(x);                  // Absolute value (f64)
+AbsInt(x);               // Absolute value (i64)
 Sqrt(x);                 // Square root
 Sin(x);                  // Sine
 Cos(x);                  // Cosine
-// ... and many more
+Atan2(y, x);             // Two-argument arctangent
+Clamp(x, lo, hi);        // Clamp f64 to range
+ClampInt(x, lo, hi);     // Clamp i64 to range
+Floor(x);                // Floor
+Ceil(x);                 // Ceiling
+// ... and many more (see Viper.Math.* in runtime.def)
 ```
 
 #### Random
 
 ```viper
-bind Viper.Random;
-
-NextInt(max);          // Random integer [0, max)
+// Use the fully qualified name, or bind Viper.Math and use Viper.Math.Random.NextInt
+Viper.Math.Random.NextInt(max);   // Random integer [0, max)
 ```
 
 #### Collections
@@ -976,8 +1002,8 @@ The following words are reserved and cannot be used as identifiers:
 ### Keywords
 
 ```
-and         as          break       continue    else
-bind        entity      expose      extends     false
+and         as          bind        break       continue
+else        entity      expose      extends     false
 final       for         func        guard       hide
 if          implements  in          interface   is
 let         match       module      namespace   new
@@ -990,7 +1016,7 @@ weak        while
 
 ```
 Boolean     Integer     List        Map         Number
-String
+Ptr         String
 ```
 
 ---

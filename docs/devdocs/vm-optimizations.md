@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2025-09-23
+last-verified: 2026-02-17
 ---
 
 # VM Dispatch Optimizations
@@ -16,15 +16,15 @@ values.
 Viper ships three interpreter dispatch loops. They trade off portability and
 peak performance and can be toggled without recompiling the VM runtime.
 
+- **Direct-threaded dispatch** – uses GCC/Clang's labels-as-values extension to
+  compute the next instruction address without a branch. This yields the best
+  branch prediction behaviour but requires enabling the extension explicitly.
 - **Function-pointer table** – maximally portable because it only depends on
   standard C++. The VM keeps an array of opcode handlers and performs an
   indirect call for every instruction retirement.
 - **`switch` dispatch** – compiles each opcode handler into a `switch`
   statement. Modern compilers lower this to jump tables for dense opcode
   ranges and fall back to binary searches otherwise.
-- **Direct-threaded dispatch** – uses GCC/Clang’s labels-as-values extension to
-  compute the next instruction address without a branch. This yields the best
-  branch prediction behaviour but requires enabling the extension explicitly.
 
 The interpreter chooses the dispatch loop at process start. Set the
 `VIPER_DISPATCH` environment variable to override the default:
@@ -32,8 +32,8 @@ The interpreter chooses the dispatch loop at process start. Set the
 | Value      | Selected loop                                | Notes                                                                               |
 |------------|----------------------------------------------|-------------------------------------------------------------------------------------|
 | _unset_    | `switch` (or direct-threaded when available) | Default at startup.                                                                 |
-| `table`    | Function-pointer table                       | Always available.                                                                   |
 | `switch`   | `switch` dispatch                            | Portable and optimisation-friendly.                                                 |
+| `table`    | Function-pointer table                       | Always available.                                                                   |
 | `threaded` | Direct-threaded dispatch                     | Requires building with threaded dispatch support; otherwise falls back to `switch`. |
 
 Direct-threaded dispatch is gated by the `VIPER_VM_THREADED` CMake option. Pass
@@ -55,8 +55,8 @@ The heuristic chooses among three backends:
 | Backend          | When selected                              | Notes                                                          |
 |------------------|--------------------------------------------|----------------------------------------------------------------|
 | Dense jump table | `range ≤ 4096` **and** `density ≥ 0.60`    | Materialises a contiguous table indexed by `scrutinee - base`. |
-| Sorted cases     | default                                    | Keeps cases sorted and uses binary search.                     |
 | Hashed cases     | `case_count ≥ 64` **and** `density < 0.15` | Builds an `unordered_map` keyed by case value.                 |
+| Sorted cases     | default                                    | Keeps cases sorted and uses binary search.                     |
 
 Each entry records the default branch index to fall back on when no case
 matches. Duplicate case values are ignored while building metadata so the cache
@@ -81,9 +81,9 @@ override the heuristic. Accepted values (case-insensitive) are:
 
 - `auto` (default): run the heuristic described above.
 - `dense`: always build dense jump tables.
-- `sorted`: always build sorted case vectors.
 - `hashed`: always build hash maps.
 - `linear`: disable caching and perform a linear scan every time.
+- `sorted`: always build sorted case vectors.
 
 The chosen mode is global for the process and applies to all VM instances
 created afterwards.

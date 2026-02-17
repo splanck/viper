@@ -417,8 +417,8 @@ while !file.isEOF() {
 // Polling with timeout
 var attempts = 0;
 while !isReady() && attempts < 100 {
-    Time.sleep(100);
-    attempts += 1;
+    Time.Clock.Sleep(100);
+    attempts = attempts + 1;
 }
 ```
 
@@ -1993,82 +1993,82 @@ Reserved words that cannot be used as identifiers.
 
 | Keyword | Purpose |
 |---------|---------|
-| `var` | Declare mutable variable |
+| `entity` | Declare entity (class) |
+| `enum` | Declare enumeration |
 | `final` | Declare immutable variable |
 | `func` | Declare function |
-| `entity` | Declare entity (class) |
-| `value` | Declare value type (struct) |
 | `interface` | Declare interface |
-| `enum` | Declare enumeration |
 | `module` | Declare module |
 | `type` | Declare type alias |
+| `value` | Declare value type (struct) |
+| `var` | Declare mutable variable |
 
 ### Control Flow Keywords
 
 | Keyword | Purpose |
 |---------|---------|
-| `if` | Conditional branch |
-| `else` | Alternative branch |
-| `match` | Pattern matching |
-| `for` | For loop |
-| `while` | While loop |
 | `break` | Exit loop |
 | `continue` | Skip to next iteration |
+| `else` | Alternative branch |
+| `for` | For loop |
+| `if` | Conditional branch |
+| `match` | Pattern matching |
 | `return` | Return from function |
+| `while` | While loop |
 
 ### Object-Oriented Keywords
 
 | Keyword | Purpose |
 |---------|---------|
-| `self` | Current instance |
-| `super` | Parent entity |
+| `abstract` | Declare abstract method |
 | `extends` | Inherit from entity |
 | `implements` | Implement interface |
 | `override` | Override parent method |
-| `abstract` | Declare abstract method |
+| `self` | Current instance |
 | `static` | Static member |
+| `super` | Parent entity |
 
 ### Visibility Keywords
 
 | Keyword | Purpose |
 |---------|---------|
+| `bind` | Bind another module |
+| `export` | Export from module |
 | `expose` | Public access |
 | `hide` | Private access |
-| `protected` | Protected access |
 | `internal` | Module-internal access |
-| `export` | Export from module |
-| `bind` | Bind another module |
+| `protected` | Protected access |
 
 ### Value Keywords
 
 | Keyword | Purpose |
 |---------|---------|
-| `true` | Boolean true |
 | `false` | Boolean false |
 | `null` | Null value |
+| `true` | Boolean true |
 
 ### Other Keywords
 
 | Keyword | Purpose |
 |---------|---------|
-| `in` | Iteration, range membership |
-| `is` | Type checking |
+| `and` | Logical and (alternative to &&) |
 | `as` | Type casting, aliasing |
-| `new` | Object creation (alternative syntax) |
-| `throw` | Throw error |
-| `try` | Begin error handling block |
 | `catch` | Handle specific error |
 | `finally` | Always-execute block |
-| `let` | Pattern binding in match |
-| `and` | Logical and (alternative to &&) |
-| `or` | Logical or (alternative to ||) |
-| `not` | Logical not (alternative to !) |
-| `weak` | Weak reference |
 | `guard` | Guard statement |
+| `in` | Iteration, range membership |
+| `is` | Type checking |
+| `let` | Pattern binding in match |
 | `namespace` | Namespace declaration |
-| `test` | Test declaration |
+| `new` | Object creation (alternative syntax) |
+| `not` | Logical not (alternative to !) |
+| `or` | Logical or (alternative to ||) |
 | `setup` | Test setup |
 | `teardown` | Test teardown |
+| `test` | Test declaration |
+| `throw` | Throw error |
+| `try` | Begin error handling block |
+| `weak` | Weak reference |
 
 **Note:** `let` is used for pattern binding in match expressions, not for general variable declarations. Use `var` for mutable variables and `final` for immutable variables.
 

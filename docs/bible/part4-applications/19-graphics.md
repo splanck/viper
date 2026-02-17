@@ -630,7 +630,7 @@ func start() {
         canvas.show();
 
         // === WAIT ===
-        sleep(16);  // ~60 FPS (1000ms / 60 = ~16ms)
+        Time.Clock.Sleep(16);  // ~60 FPS (1000ms / 60 = ~16ms)
     }
 }
 ```
@@ -716,11 +716,11 @@ Instead of moving a fixed amount per frame, we move based on how much time has p
 ```rust
 bind Viper.Time;
 
-var lastTime = millis();
+var lastTime = Time.Clock.Ticks();
 
 while canvas.isOpen() {
     // Calculate delta time
-    var now = millis();
+    var now = Time.Clock.Ticks();
     var dt = (now - lastTime) / 1000.0;  // Convert to seconds
     lastTime = now;
 
@@ -758,10 +758,10 @@ var y = 300.0;
 var speedX = 200.0;  // 200 pixels per second
 var speedY = 150.0;  // 150 pixels per second
 
-var lastTime = millis();
+var lastTime = Time.Clock.Ticks();
 
 while canvas.isOpen() {
-    var now = millis();
+    var now = Time.Clock.Ticks();
     var dt = (now - lastTime) / 1000.0;
     lastTime = now;
 
@@ -778,7 +778,7 @@ while canvas.isOpen() {
     canvas.fillCircle(x, y, 20);
     canvas.show();
 
-    sleep(16);
+    Time.Clock.Sleep(16);
 }
 ```
 
@@ -939,7 +939,7 @@ entity Game {
         self.canvas.setTitle(title);
         self.objects = [];
         self.running = true;
-        self.lastTime = millis();
+        self.lastTime = Time.Clock.Ticks();
     }
 
     func add(obj: GameObject) {
@@ -949,7 +949,7 @@ entity Game {
     func run() {
         while self.running && self.canvas.isOpen() {
             // Calculate delta time
-            var now = millis();
+            var now = Time.Clock.Ticks();
             var dt = (now - self.lastTime) / 1000.0;
             self.lastTime = now;
 
@@ -958,7 +958,7 @@ entity Game {
             self.update(dt);
             self.render();
 
-            sleep(16);
+            Time.Clock.Sleep(16);
         }
     }
 
@@ -1184,7 +1184,7 @@ Make things move slowly so you can watch:
 ```rust
 bind Viper.Time;
 
-sleep(500);  // Half second between frames
+Time.Clock.Sleep(500);  // Half second between frames
 ```
 
 Or reduce velocities temporarily:
@@ -1287,7 +1287,7 @@ The concepts are identical across both languages — only the syntax differs. A 
 
 **Exercise 19.7 (Bar Chart)**: Write a program that draws a bar chart from an array of numbers. Given `[30, 85, 45, 60, 90, 25, 70]`, draw seven vertical bars with heights proportional to the values. Add labels and axes.
 
-**Exercise 19.8 (Clock)**: Draw an analog clock face with hour and minute hands. Make it update in real-time (use `Viper.Time.now()` to get the current time). The hands should rotate smoothly around the center.
+**Exercise 19.8 (Clock)**: Draw an analog clock face with hour and minute hands. Make it update in real-time (use `Time.DateTime.Now()` to get the current time). The hands should rotate smoothly around the center.
 
 **Exercise 19.9 (Screensaver)**: Create a "DVD logo" style screensaver: a colored rectangle bounces around the screen, changing color each time it hits a wall.
 

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-02-02
+last-verified: 2026-02-17
 ---
 
 # Viper Architecture Overview
@@ -83,15 +83,16 @@ When the native backend is enabled, the same IL feeds the code generator instead
 
 ## Source layout (where things live)
 
-- **Front ends:** `src/frontends/zia/`, `src/frontends/basic/`.
-- **IL core:** `src/il/core/`, `src/il/io/`, `src/il/build/`, `src/il/verify/`.
-- **Passes:** `src/il/transform/`.
-- **VM:** `src/vm/`, `src/runtime/`.
-- **Code generation:** `src/codegen/` (x86_64, aarch64, common).
-- **Support utilities:** `src/support/`.
-- **Tools:** `src/tools/viper/` (driver and subcommands), `src/tools/`.
-- **Docs & examples:** `docs/`, `examples/`, `tests/` (`unit/`, `golden/`, `e2e/`).
 - **Build system:** top-level `CMakeLists.txt`, `cmake/` helpers, `scripts/` for dev automation.
+- **Code generation:** `src/codegen/` (aarch64, common, x86_64).
+- **Docs & examples:** `docs/`, `examples/`.
+- **Front ends:** `src/frontends/basic/`, `src/frontends/common/`, `src/frontends/zia/`.
+- **IL core:** `src/il/analysis/`, `src/il/api/`, `src/il/build/`, `src/il/core/`, `src/il/internal/`, `src/il/io/`, `src/il/runtime/`, `src/il/utils/`, `src/il/verify/`.
+- **Passes:** `src/il/transform/`.
+- **Support utilities:** `src/support/`, `src/common/`.
+- **Tests:** `src/tests/` (`unit/`, `golden/`, `e2e/`, `smoke/`, `perf/`).
+- **Tools:** `src/tools/viper/` (driver and subcommands), `src/tools/`.
+- **VM:** `src/vm/`, `src/runtime/`.
 
 ## Components & responsibilities
 
@@ -155,11 +156,24 @@ Key design points:
 
 ### Pass pipeline
 
-`src/il/transform/PassManager` orchestrates the optimization pipeline. Passes run in a fixed order:
+`src/il/transform/PassManager` orchestrates the optimization pipeline. Available passes include:
 
-1. **ConstFold** – folds constant expressions.
-2. **Peephole** – rewrites short instruction sequences.
-3. **DCE** – removes unreachable code and unused values.
+- **CheckOpt** – validates optimizer-specific invariants.
+- **ConstFold** – folds constant expressions.
+- **DCE** – removes unreachable code and unused values.
+- **DSE** – dead store elimination.
+- **EarlyCSE** – early common subexpression elimination.
+- **GVN** – global value numbering.
+- **IndVarSimplify** – induction variable simplification.
+- **Inline** – function inlining.
+- **LateCleanup** – post-optimization cleanup pass.
+- **LICM** – loop-invariant code motion.
+- **LoopSimplify** – loop normalization.
+- **LoopUnroll** – loop unrolling.
+- **Mem2Reg** – memory-to-register promotion.
+- **Peephole** – rewrites short instruction sequences.
+- **SCCP** – sparse conditional constant propagation.
+- **SimplifyCFG** – control flow graph simplification.
 
 The verifier runs after passes to enforce correctness before execution or code generation.
 
@@ -170,10 +184,10 @@ numeric values are 64-bit.
 
 Initial runtime surface (all prefixed `rt_`):
 
-- Console: `rt_print_str`, `rt_print_i64`, `rt_print_f64`, `rt_input_line`.
-- Strings: `rt_str_len`, `rt_str_concat`, `rt_str_substr`, `rt_to_int`, `rt_int_to_str`, `rt_f64_to_str`.
-- Memory: `rt_alloc`, `rt_free`.
-- Optional math helpers: `rt_sin`, `rt_cos`, `rt_pow_f64_chkdom`, etc.
+- Console: `rt_input_line`, `rt_print_f64`, `rt_print_i64`, `rt_print_str`.
+- Math helpers: `rt_cos`, `rt_pow_f64_chkdom`, `rt_sin`, etc.
+- Memory: `rt_alloc` (reference-counted allocation; memory is freed automatically via retain/release).
+- Strings: `rt_f64_to_str`, `rt_int_to_str`, `rt_str_concat`, `rt_str_len`, `rt_str_substr`, `rt_to_int`.
 
 #### Runtime memory model
 
@@ -202,9 +216,9 @@ versioned and may evolve; breaking changes require coordinated updates.
 
 ### VM interpreter
 
-The VM is a stack machine that dispatches opcodes in a `switch` loop. Each call creates a frame holding registers, an
-evaluation stack, and block state. Values are stored in a tagged `Slot` that represents integers, floats, pointers, and
-strings.
+The VM is a register-file interpreter that dispatches opcodes using a pluggable strategy (function-table, switch, or
+threaded/computed-goto). Each call creates a frame holding registers, an evaluation stack, and block state. Values are
+stored in a tagged `Slot` that represents integers, floats, pointers, and strings.
 
 Execution model and state:
 
@@ -294,17 +308,17 @@ tests from drifting and make builds reproducible, so the IR builder interns symb
 ### Performance notes
 
 Interpreter hot spots include opcode dispatch and string routines. Constant folding and dead code elimination have the
-largest impact on throughput. Future improvements:
+largest impact on throughput. Current optimizations and future improvements:
 
-- Switch-based dispatch can evolve into direct-threaded dispatch (computed gotos).
-- Intern frequent strings and cache constants.
-- In the backend, add peephole rewrites, constant folding during IL build, and linear-scan register allocation with
-  live-interval splitting.
+- Threaded/computed-goto dispatch is already implemented and selected by default when supported.
+- String literals are pre-cached during VM construction to eliminate repeated allocation.
+- Frame buffers (register file and operand stack) are pooled across function calls.
+- Future: further peephole rewrites, constant folding during IL build, and profile-guided dispatch selection.
 
 ### Compatibility & versioning
 
-Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI is versioned; breaking changes require bumping
-the IL version and updating consumers.
+Modules declare an IL version (current: `il 0.2.0`) at the top. The runtime ABI is versioned; breaking changes require
+bumping the IL version and updating consumers.
 
 ### Glossary
 
@@ -335,19 +349,23 @@ the IL version and updating consumers.
 /CMakeLists.txt
 /cmake/              # compiler flags, toolchain helpers
 /docs/               # IL spec, developer docs, ADRs
-/src/runtime/        # C runtime (librt.a): rt_*.c, rt.hpp
-/src/
-  support/           # shared utilities
-  il/                # core types, IR, builder, verifier, I/O
-  vm/                # interpreter
-  codegen/           # Native backends (x86_64, aarch64, common)
-  frontends/basic/   # BASIC lexer, parser, AST, lowering
-  tools/viper/         # CLI driver and subcommands
-/tests/
-  unit/              # dependency-free unit tests (internal harness)
-  golden/            # text-based golden tests
-  e2e/               # compile & run comparisons
 /scripts/            # dev scripts (format, lint, build, test)
+/src/
+  buildmeta/         # version files (IL_VERSION, VERSION)
+  bytecode/          # bytecode compiler, module format, VM
+  codegen/           # native backends (aarch64, common, x86_64)
+  common/            # cross-cutting utilities (mangling, integer helpers, process runner)
+  frontends/         # language front ends (basic/, common/, zia/)
+  il/                # core types, IR, builder, verifier, analysis, transforms
+  lib/graphics/      # ViperGFX 2D graphics library
+  parse/             # cursor utilities
+  pass/              # generic pass manager facade
+  runtime/           # C runtime (libviper_runtime.a): rt_*.c, rt.h
+  support/           # shared utilities (diagnostics, arena, source manager)
+  tests/             # unit/, golden/, e2e/, smoke/, perf/ and more
+  tools/             # CLI tools (viper/, vbasic/, ilrun/, zia/, etc.)
+  tui/               # terminal UI library
+  vm/                # interpreter
 ```
 
 Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_codegen_aarch64`, `frontend_basic`,
@@ -405,22 +423,22 @@ The runtime provides a comprehensive C ABI with the following components:
 
 **Core modules:**
 
-- **I/O**: `rt_io.c` - console printing and line input
-- **Strings**: `rt_string.h`, `rt_string_ops.c`, `rt_string_builder.c`, `rt_string_encode.c`, `rt_string_format.c` -
-  string operations, conversion, formatting
-- **Memory**: `rt_memory.c`, `rt_heap.h`, `rt_heap.c` - allocation, reference counting, heap management
 - **Arrays**: `rt_array.h`, `rt_array.c` - dynamic arrays with copy-on-resize semantics
-- **Math**: `rt_math.c`, `rt_fp.c` - mathematical functions, floating-point utilities
+- **Errors**: `rt_error.h`, `rt_error.c`, `rt_trap.h`, `rt_trap.c` - trap and error handling
 - **Files**: `rt_file.h`, `rt_file.c`, `rt_file_io.c` - file operations (open, read, write, seek)
-- **Terminal**: `rt_term.c` - ANSI terminal control (CLS, COLOR, LOCATE, cursor visibility)
-- **Time/Random**: `rt_time.c`, `rt_random.h`, `rt_random.c` - TIMER, RNG with seeding
-- **Errors**: `rt_trap.h`, `rt_trap.c`, `rt_error.h`, `rt_error.c` - trap and error handling
+- **I/O**: `rt_io.c` - console printing and line input
+- **Math**: `rt_fp.c`, `rt_math.c` - mathematical functions, floating-point utilities
+- **Memory**: `rt_heap.h`, `rt_heap.c`, `rt_memory.c` - allocation, reference counting, heap management
+- **Numerics**: `rt_format.c`, `rt_int_format.c`, `rt_numeric.c` - deterministic numeric conversions
 - **OOP**: `rt_oop.h`, `rt_oop_dispatch.c`, `rt_type_registry.c` - object system (vtables, method dispatch)
-- **Numerics**: `rt_numeric.c`, `rt_int_format.c`, `rt_format.c` - deterministic numeric conversions
+- **Strings**: `rt_string.h`, `rt_string_builder.c`, `rt_string_encode.c`, `rt_string_format.c`, `rt_string_ops.c` -
+  string operations, conversion, formatting
+- **Terminal**: `rt_term.c` - ANSI terminal control (CLS, COLOR, LOCATE, cursor visibility)
+- **Time/Random**: `rt_random.h`, `rt_random.c`, `rt_time.c` - TIMER, RNG with seeding
 
 **Headers**: `rt.hpp` (VM bridge) and individual `.h` files declare the C ABI.
 **String representation**: ref-counted heap blocks (magic tag + refcount + length + capacity + UTF-8 bytes).
-**Build**: Compiles to static library `librt.a`, linked by both VM host and native codegen outputs.
+**Build**: Compiles to static library `libviper_runtime.a`, linked by both VM host and native codegen outputs.
 
 ### Interpreter (`il::vm`)
 
@@ -428,7 +446,7 @@ The runtime provides a comprehensive C ABI with the following components:
 
 - Types: `Slot` (tagged union of `uint64_t`, `double`, pointers), `Frame` (function reference, register array, stack for
   `alloca`, instruction cursor), and `VM` (module pointer, host function table, call stack).
-- Dispatch uses a classic `switch` with optional evolution to computed gotos.
+- Dispatch uses a pluggable strategy: function-table (default portable), switch (inline handlers), or threaded/computed-goto (GCC/Clang, fastest).
 - `alloca` implemented as a bump pointer in the frame-local stack; memory ops rely on `memcpy` with runtime checks.
 - Calls push new frames for IL functions or marshal arguments to C externs.
 
@@ -581,27 +599,28 @@ higher tiers can be tested without a real terminal.
 
 #### Term
 
-Low-level terminal handling lives under `tui/term/`. `TermIO` abstracts writes to the terminal while `TerminalSession`
-configures raw mode and manages alt-screen state. Clipboard support uses OSC 52 sequences but can be disabled for tests.
+Low-level terminal handling lives under `src/tui/src/term/`. `TermIO` abstracts writes to the terminal while
+`TerminalSession` configures raw mode and manages alt-screen state. Clipboard support uses OSC 52 sequences but can be
+disabled for tests.
 
 #### Render
 
-`tui/render/` converts a widget tree into escape sequences. It maintains an in-memory surface and computes minimal diffs
-before emitting to `TermIO`.
+`src/tui/src/render/` converts a widget tree into escape sequences. It maintains an in-memory surface and computes
+minimal diffs before emitting to `TermIO`.
 
 #### UI
 
-`tui/ui/` holds the widget tree and focus management. It delivers input events, invokes widget callbacks, and triggers
-re-renders when state changes.
+`src/tui/src/ui/` holds the widget tree and focus management. It delivers input events, invokes widget callbacks, and
+triggers re-renders when state changes.
 
 #### Widgets
 
-Reusable components such as lists, containers, and modals live in `tui/widgets/`. Widgets compose other widgets and
-render through the UI and render layers.
+Reusable components such as lists, containers, and modals live in `src/tui/src/widgets/`. Widgets compose other widgets
+and render through the UI and render layers.
 
 #### Text
 
-`tui/text/` provides buffer management and search utilities used by widgets that edit or display text.
+`src/tui/src/text/` provides buffer management and search utilities used by widgets that edit or display text.
 
 #### Tests
 

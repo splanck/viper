@@ -668,7 +668,7 @@ entity ChatServer {
             }
 
             // Small sleep to avoid consuming 100% CPU
-            Time.sleep(10);
+            Time.Clock.Sleep(10);
         }
     }
 
@@ -818,7 +818,7 @@ entity ChatClient {
             }
 
             // Small sleep to avoid consuming CPU
-            Time.sleep(10);
+            Time.Clock.Sleep(10);
         }
     }
 }
@@ -905,6 +905,7 @@ Games often need to send player state many times per second. Lost packets don't 
 ```rust
 bind Viper.Network;
 bind Viper.Time;
+bind Viper.Convert as Convert;
 
 // Player state that we'll send frequently
 value PlayerState {
@@ -946,7 +947,7 @@ entity GameNetwork {
             var state = unpackPlayerState(packet.data);
 
             // Only use recent states - discard old ones
-            var now = Time.millis();
+            var now = Time.Clock.Ticks();
             if now - state.timestamp < 1000 {  // Less than 1 second old
                 states.push(state);
             }
@@ -965,14 +966,14 @@ func packPlayerState(state: PlayerState) -> String {
 
 // Convert received data back to state
 func unpackPlayerState(data: String) -> PlayerState {
-    var parts = data.split(",");
+    var parts = data.Split(",");
     return PlayerState {
-        id: parts[0].toInt(),
-        x: parts[1].toFloat(),
-        y: parts[2].toFloat(),
-        rotation: parts[3].toFloat(),
-        health: parts[4].toInt(),
-        timestamp: parts[5].toInt()
+        id: Convert.ToInt64(parts.Get(0)),
+        x: Convert.ToDouble(parts.Get(1)),
+        y: Convert.ToDouble(parts.Get(2)),
+        rotation: Convert.ToDouble(parts.Get(3)),
+        health: Convert.ToInt64(parts.Get(4)),
+        timestamp: Convert.ToInt64(parts.Get(5))
     };
 }
 ```
@@ -1135,7 +1136,7 @@ func robustFetch(url: String, maxRetries: Integer) -> String? {
                 // Exponential backoff: wait longer each retry
                 // 1st retry: 1 second, 2nd: 2 seconds, 3rd: 4 seconds
                 var waitTime = 1000 * (1 << retries);  // 2^retries * 1000ms
-                Time.sleep(waitTime);
+                Time.Clock.Sleep(waitTime);
                 continue;
             }
 
@@ -1149,7 +1150,7 @@ func robustFetch(url: String, maxRetries: Integer) -> String? {
             Terminal.Say("Network error: " + e.message +
                          ", retrying... (" + retries + "/" + maxRetries + ")");
             var waitTime = 1000 * (1 << retries);
-            Time.sleep(waitTime);
+            Time.Clock.Sleep(waitTime);
         }
     }
 
@@ -1383,7 +1384,7 @@ func reliableConnection(host: String, port: Integer) {
 
             if socket == null {
                 Terminal.Say("Connection failed, retrying in 5 seconds");
-                Time.sleep(5000);
+                Time.Clock.Sleep(5000);
                 continue;
             }
 
@@ -1490,13 +1491,13 @@ entity RateLimitedServer {
 
     expose func init() {
         self.requestCounts = Map.new();
-        self.lastReset = Time.millis();
+        self.lastReset = Time.Clock.Ticks();
         self.maxRequestsPerMinute = 100;
     }
 
     func handleRequest(client: TcpSocket) {
         var ip = client.remoteAddress();
-        var now = Time.millis();
+        var now = Time.Clock.Ticks();
 
         // Reset counts every minute
         if now - self.lastReset > 60000 {
@@ -1701,7 +1702,7 @@ entity WeatherService {
         // Check cache first
         if self.cache.has(city) {
             var cached = self.cache.get(city);
-            var age = Time.millis() - cached.lastUpdated;
+            var age = Time.Clock.Ticks() - cached.lastUpdated;
 
             if age < self.cacheTimeout {
                 Terminal.Say("(Using cached data for " + city + ")");
@@ -1736,7 +1737,7 @@ entity WeatherService {
                 conditions: data["weather"][0]["description"].asString(),
                 humidity: data["main"]["humidity"].asFloat(),
                 windSpeed: data["wind"]["speed"].asFloat(),
-                lastUpdated: Time.millis()
+                lastUpdated: Time.Clock.Ticks()
             };
 
             // Update cache

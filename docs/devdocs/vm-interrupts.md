@@ -2,7 +2,7 @@
 title: VM Periodic Interrupts (Polling)
 status: active
 audience: public
-last-verified: 2025-11-10
+last-verified: 2026-02-17
 ---
 
 # Periodic Interrupts and Host Polling

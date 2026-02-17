@@ -1,5 +1,7 @@
 # Viper VM C++ Code Review
 
+> **Historical snapshot (November 2025), updated February 2026.** Several issues in this review have since been fixed, including iterator invalidation in `prepareTrap()` (now uses index-based iteration), `Slot` union `memcmp` (replaced by `bitwiseEquals()`), magic number constants (`kDebugPauseSentinel`, `kDebugBreakpointSentinel`), and `SmallVector` optimizations. See source code for current state. Resolved issues are marked inline.
+
 **Review Date:** November 2025
 **Reviewer:** Automated Analysis
 **Scope:** Core VM execution, operation handlers, memory management
@@ -26,20 +28,24 @@ refactoring.
 
 #### Issue 1.1: Potential iterator invalidation in trap handler (Lines 615-716)
 
+**Status:** RESOLVED — `prepareTrap()` now uses index-based iteration with a cached stack size to avoid iterator invalidation.
+
 **Location:** `prepareTrap()` function
-**Problem:** Reverse iteration over `execStack` accesses `ExecState` pointers that could be invalidated if the stack is
-modified during trap handling.
+**Original problem:** Reverse iteration over `execStack` accessed `ExecState` pointers that could be invalidated if the stack was modified during trap handling.
 
 ```cpp
+// Old (fixed): range-based reverse iteration
 for (auto it = execStack.rbegin(); it != execStack.rend(); ++it)
 {
     ExecState *st = *it;
-    // ... extensive state mutation ...
+}
+// Current: index-based iteration with cached size
+const size_t stackSize = execStack.size();
+for (size_t i = 0; i < stackSize; ++i)
+{
+    ExecState *st = execStack[stackSize - 1 - i];
 }
 ```
-
-**Risk:** Iterator invalidation if exception handler manipulation causes stack changes
-**Recommendation:** Cache the stack size and use index-based iteration, or take a snapshot of the stack before iteration
 
 #### Issue 1.2: Missing null check in selectInstruction (Line 328)
 
@@ -96,8 +102,10 @@ if (!blockLabel.empty())
 
 #### Issue 1.7: Magic number (Line 385)
 
-**Code:** `s.i64 = 1;`
-**Recommendation:** Define named constant like `kPauseSentinel = 1`
+**Status:** RESOLVED — Named constants defined in `VMConstants.hpp`: `kDebugPauseSentinel = 1` (generic pause) and `kDebugBreakpointSentinel = 10` (breakpoint hit).
+
+**Original code:** `s.i64 = 1;`
+**Fix applied:** `s.i64 = kDebugPauseSentinel;`
 
 ---
 
@@ -151,15 +159,18 @@ if (width != 0 && binding.stackPtr >= stackBegin &&
 
 #### Issue 3.2: memcmp for Slot comparison (Line 182)
 
-**Location:** Detecting argument mutation
-**Problem:** Slot is a union; memcmp on unions with padding bytes is undefined behavior
+**Status:** RESOLVED — `Slot` now has a `bitwiseEquals()` method that compares via the `i64` member (avoids union UB). Call sites in `Op_CallRet.cpp` updated to use `args[index].bitwiseEquals(originalArgs[index])`.
+
+**Original problem:** Slot is a union; `std::memcmp` on unions with padding bytes is undefined behavior.
 
 ```cpp
+// Old (fixed):
 if (std::memcmp(&args[index], &originalArgs[index], sizeof(Slot)) == 0)
     continue;
+// Current:
+if (args[index].bitwiseEquals(originalArgs[index]))
+    continue;
 ```
-
-**Recommendation:** Implement proper equality operator for Slot or compare active union member explicitly
 
 ### MEDIUM PRIORITY - Performance
 
@@ -346,8 +357,10 @@ else
 
 #### Issue 7.2: String map hash collisions (Lines 219-229)
 
-**Problem:** Default hash may cause collisions with generated IL names
-**Recommendation:** Consider faster hash like FNV-1a or XXHash
+**Status:** PARTIALLY ADDRESSED — `VM` now uses custom `TransparentHashSV` / `TransparentEqualSV` functors that support heterogeneous lookup via `std::string_view` keys, eliminating key-copy allocations on the hot path. Hash quality uses the standard library `std::hash<std::string_view>`. A faster hash (FNV-1a / XXHash) could still reduce collision rates for large modules with many generated labels, but has not been measured as a bottleneck.
+
+**Original problem:** Default hash may cause collisions with generated IL names.
+**Remaining recommendation:** Profile with large modules before changing hash implementation.
 
 ---
 
@@ -355,53 +368,52 @@ else
 
 ### Performance Optimizations
 
-**P1: Hot path allocations**
+**P1: Cache efficiency**
 
-- Multiple `std::string` allocations in error paths
-- Vector allocations in `handleCall` for every invocation
-- **Impact:** High, especially for call-intensive code
-- **Fix:** Use string_view, stack buffers, or pooling
+- Consider layout of `VM` class members for cache locality.
+- Group hot fields (`instrCount`, `currentContext`) vs. cold (`debug`, `script`).
+- **Impact:** Medium, measurable in tight loops.
+- **Fix:** Reorder members, use `alignas`.
 
-**P2: Cache efficiency**
+**P2: Hot path allocations**
 
-- Consider layout of `VM` class members for cache locality
-- Group hot fields (instrCount, currentContext) vs. cold (debug, script)
-- **Impact:** Medium, measurable in tight loops
-- **Fix:** Reorder members, use `alignas`
+- Multiple `std::string` allocations in error paths.
+- `SmallVector<Slot, 8>` added in `Op_CallRet.cpp` reduces heap allocations for calls with up to 8 arguments.
+- **Impact:** High, especially for call-intensive code.
+- **Fix:** Use `string_view`, stack buffers, or pooling for remaining paths.
 
 **P3: Unnecessary string copies**
 
-- Several places copy `bb->label` when `string_view` would suffice
-- **Impact:** Low-Medium
-- **Fix:** Use `string_view` consistently
+- Several places copy `bb->label` when `string_view` would suffice.
+- `TransparentHashSV` already avoids key-copy allocations in map lookups.
+- **Impact:** Low-Medium.
+- **Fix:** Use `string_view` consistently in remaining diagnostic paths.
 
 ### Memory Safety
 
 **M1: Union handling**
 
-- `Slot` union is used extensively; ensure correct member access
-- `memcmp` on unions is technically UB
+- **Status:** RESOLVED — `Slot` now provides `bitwiseEquals()` comparing via the `i64` member. All union comparison call sites updated to use this method.
+- `Slot` union is used extensively; active member is determined by type context.
 - **Impact:** High (correctness)
-- **Fix:** Add discriminator or use `std::variant`
 
 **M2: Iterator invalidation**
 
-- `execStack` manipulation during iteration in `prepareTrap`
+- **Status:** RESOLVED — `prepareTrap()` now uses index-based iteration with a cached stack size.
 - **Impact:** High (potential crash)
-- **Fix:** Use index-based iteration
 
 ### Code Quality
 
 **Q1: Magic numbers**
 
-- Several unnamed constants (1, 0, 10, etc.)
-- **Fix:** Named constants
+- **Status:** RESOLVED — Named constants `kDebugPauseSentinel = 1` and `kDebugBreakpointSentinel = 10` defined in `VMConstants.hpp` and used throughout.
+- **Fix applied:** Named constants replace inline literals.
 
 **Q2: Complex functions**
 
-- `prepareTrap` is 100+ lines with multiple concerns
-- `handleCall` is 270+ lines
-- **Fix:** Extract helper functions
+- `prepareTrap` remains substantial but is well-documented with section comments.
+- `handleCall` (now in `Op_CallRet.cpp`) has been partially refactored.
+- **Remaining work:** Further extraction of helper functions could improve readability.
 
 ---
 
@@ -418,25 +430,29 @@ else
 
 ## Recommended Action Items (Prioritized)
 
-1. **Fix Slot union memcmp** (High, 1 day) - Add proper comparison or use variant
-2. **Fix iterator invalidation in prepareTrap** (High, 2 hours) - Use index iteration
-3. **Add overflow checks to GEP** (High, 4 hours) - Validate pointer arithmetic
-4. **Fix stack pointer overflow in Op_CallRet** (High, 2 hours) - Use safe arithmetic
-5. **Optimize call argument handling** (Medium, 1 day) - Small vector optimization
-6. **Pre-compute register counts** (Medium, 4 hours) - Initialize all at VM startup
-7. **Review alignment handling** (Medium, 4 hours) - Use power-of-2 bitwise ops
-8. **Add named constants** (Low, 2 hours) - Replace magic numbers
-9. **Extract complex nested functions** (Low, 1 day) - Improve readability
-10. **Consider making stack size configurable** (Low, 2 hours) - Better flexibility
+Items marked **RESOLVED** have been addressed in the codebase since the November 2025 review.
+
+1. ~~**Fix Slot union memcmp**~~ **RESOLVED** — `bitwiseEquals()` method added to `Slot`; all call sites updated.
+2. ~~**Fix iterator invalidation in prepareTrap**~~ **RESOLVED** — Index-based iteration with cached stack size.
+3. **Add overflow checks to GEP** (High, 4 hours) - Validate pointer arithmetic bounds.
+4. **Fix stack pointer overflow in Op_CallRet** (High, 2 hours) - Use safe arithmetic for bounds check.
+5. **Optimize call argument handling** (Medium, 1 day) - `SmallVector<Slot, 8>` already added in `Op_CallRet.cpp`; review remaining allocations.
+6. **Pre-compute register counts** (Medium, 4 hours) - `regCountCache_` exists in VM; verify all paths use it.
+7. **Review alignment handling** (Medium, 4 hours) - Use power-of-2 bitwise ops in `mem_ops.cpp`.
+8. ~~**Add named constants**~~ **RESOLVED** — `kDebugPauseSentinel` and `kDebugBreakpointSentinel` defined in `VMConstants.hpp`.
+9. **Extract complex nested functions** (Low, 1 day) - Improve readability of remaining large functions.
+10. **Stack size configuration** (Low, 2 hours) - `stackBytes` parameter already added to `VM` constructor; verify all paths respect it.
 
 ---
 
 ## Files Requiring Most Attention
 
-1. **Op_CallRet.cpp** - 4 issues (argument handling complexity, memory safety)
-2. **VM.cpp** - 7 issues (trap handling, hot path optimization)
-3. **mem_ops.cpp** - 3 issues (alignment, overflow checking)
-4. **int_ops_arith.cpp** - 3 issues (shift overflow, template overhead)
+All files are located in `src/vm/`.
+
+1. **VM.cpp** - Several issues remain (hot path optimization, complex functions). Two high-priority issues resolved (iterator invalidation, magic numbers).
+2. **Op_CallRet.cpp** - `bitwiseEquals()` fix applied (Issue 3.2 resolved). Buffer overflow check (Issue 3.1) still open.
+3. **mem_ops.cpp** - 3 issues (alignment calculation, GEP overflow, alloca zeroing).
+4. **int_ops_arith.cpp** - 3 issues (shift overflow edge case, division template overhead, bounds check branching).
 
 ---
 
@@ -453,4 +469,4 @@ edge cases or performance degradation under load.
 
 ---
 
-*Review completed: November 2025*
+*Review completed: November 2025. Updated February 2026 to reflect resolved issues and current source state.*

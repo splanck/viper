@@ -255,6 +255,7 @@ The other form of polymorphism happens at compile time: *method overloading*.
 
 ```rust
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
 entity Printer {
     func print(text: String) {
@@ -262,11 +263,11 @@ entity Printer {
     }
 
     func print(number: Integer) {
-        Say(number.toString());
+        Say(Fmt.Int(number));
     }
 
     func print(number: Number) {
-        Say(number.toString());
+        Say(Fmt.Num(number));
     }
 
     func print(items: [String]) {

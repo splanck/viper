@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-11-12
+last-updated: 2026-02-17
 ---
 
 # Viper BASIC Namespaces — Reference
@@ -15,10 +15,10 @@ see [grammar.md](grammar.md).
 Namespaces organize types (classes and interfaces) into hierarchical groups, preventing name collisions and improving
 code clarity. The namespace system includes:
 
-- **NAMESPACE declarations**: Define nested namespace hierarchies
-- **USING directives**: Import namespaces for unqualified type references
 - **Namespace aliases**: Create shorthand names for long namespace paths
+- **NAMESPACE declarations**: Define nested namespace hierarchies
 - **Type resolution**: Automatic search through namespace hierarchy and imports
+- **USING directives**: Import namespaces for unqualified type references
 
 ## Track A Implementation — Complete
 
@@ -121,12 +121,12 @@ Both calls succeed. Without the USING directive, only the qualified call (`Lib.P
 
 Current implementation has the following limitations:
 
-- **Qualified names in DIM AS**: Parser does not yet support dotted paths like `DIM p AS Graphics.Point`. Use USING
-  directives to enable unqualified type references.
 - **Case-sensitive qualified procedure calls**: Lowercase qualified calls like `a.b.f()` fail when the procedure is
   defined as `A.B.F()`. This is a bug; all lookups should be case-insensitive per the specification.
 - **File-scoped USING only**: USING directives are not inherited across compilation units; each file must declare its
   own imports.
+- **Qualified names in DIM AS**: Parser does not yet support dotted paths like `DIM p AS Graphics.Point`. Use USING
+  directives to enable unqualified type references.
 
 ## NAMESPACE Declaration
 
@@ -739,50 +739,53 @@ Console I/O operations:
 
 String manipulation:
 
-- `Viper.String.get_Length(str)->i64` — String length
-- `Viper.String.Mid(str,i64,i64)->str` — Substring
 - `Viper.String.Concat(str,str)->str` — Concatenate strings
-- `Viper.String.SplitFields(str,ptr str,i64)->i64` — Split into fields
 - `Viper.String.FromI16(i16)->str` — Convert int16 to string
 - `Viper.String.FromI32(i32)->str` — Convert int32 to string
-- `Viper.String.FromSingle(f32)->str` — Convert float to string
-- `Viper.String.Builder.New()->ptr` — Create StringBuilder
+- `Viper.String.FromSingle(f64)->str` — Convert float to string (formats with single precision)
+- `Viper.String.get_Length(str)->i64` — String length
+- `Viper.String.Mid(str,i64)->str` — Substring from position to end
+- `Viper.String.MidLen(str,i64,i64)->str` — Substring with start and length
+- `Viper.String.SplitFields(str,ptr,i64)->i64` — Split into fields
+- `Viper.Text.StringBuilder.New()->obj` — Create StringBuilder
 
-#### Viper.Convert
+#### Viper.Core.Convert
 
 Type conversion:
 
-- `Viper.Convert.ToInt64(str)->i64` — String to int (throws on error)
-- `Viper.Convert.ToDouble(str)->f64` — String to double (throws on error)
-- `Viper.Convert.ToString_Int(i64)->str` — Convert int64 to string
-- `Viper.Convert.ToString_Double(f64)->str` — Convert double to string
+- `Viper.Core.Convert.ToDouble(str)->f64` — String to double (throws on error)
+- `Viper.Core.Convert.ToInt64(str)->i64` — String to int (throws on error)
+- `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to string
+- `Viper.Core.Convert.ToString_Int(i64)->str` — Convert int64 to string
 
-#### Viper.Parse
+#### Viper.Core.Parse
 
 Type parsing with explicit error codes:
 
-- `Viper.Parse.Int64(cstr,ptr i64)->i32` — Parse int64
-- `Viper.Parse.Double(cstr,ptr f64)->i32` — Parse double
+- `Viper.Core.Parse.Double(ptr,ptr)->i64` — Parse double
+- `Viper.Core.Parse.Int64(ptr,ptr)->i64` — Parse int64
 
-#### Viper.Diagnostics
+#### Viper.Core.Diagnostics
 
 Error and diagnostic utilities:
 
-- `Viper.Diagnostics.Trap(str)->void` — Trigger runtime trap
+- `Viper.Core.Diagnostics.Trap(str)->void` — Trigger runtime trap
 
 ### Runtime Classes (Viper.*)
 
 Canonical runtime classes are exposed under the `Viper.*` root and are used directly by the BASIC frontend. These are
 first‑class and tested:
 
-#### Viper
+#### Viper.Core
 
-- `Viper.Object` — Base class for all objects
+- `Viper.Core.Object` — Base class for all objects
     - Methods:
-        - `ToString() -> STRING` — default returns the class qualified name
         - `Equals(OBJECT other) -> BOOL` — reference equality by default
-        - `GetHashCode() -> I64` — process‑consistent hash derived from the object pointer
-        - `ReferenceEquals(OBJECT a, OBJECT b) -> BOOL` — static; reference equality
+        - `HashCode() -> I64` — process‑consistent hash derived from the object pointer
+        - `IsNull() -> BOOL` — returns true if the object reference is null
+        - `ToString() -> STRING` — default returns the class qualified name
+        - `TypeId() -> I64` — returns the compile-time type identifier
+        - `TypeName() -> STRING` — returns the fully-qualified class name
 - `Viper.String` — Managed string type (BASIC `STRING` is an alias)
     - Properties: `Length -> I64`, `IsEmpty -> BOOL`
     - Methods:
@@ -818,8 +821,8 @@ first‑class and tested:
 #### Viper.Collections
 
 - `Viper.Collections.List` — Dynamic list of object references (non‑generic)
-    - Ctor: `NEW()`; Property: `Count -> I64`
-    - Methods: `Add(OBJECT)`, `Clear()`, `RemoveAt(I64)`, `get_Item(I64)->OBJECT`, `set_Item(I64,OBJECT)`
+    - Ctor: `NEW()`; Properties: `Len -> I64`, `IsEmpty -> BOOL`
+    - Methods: `Clear()`, `Find(OBJECT)->I64`, `First()->OBJECT`, `Flip()`, `Get(I64)->OBJECT`, `Has(OBJECT)->BOOL`, `Insert(I64,OBJECT)`, `Last()->OBJECT`, `Pop()->OBJECT`, `Push(OBJECT)`, `Remove(OBJECT)->BOOL`, `RemoveAt(I64)`, `Set(I64,OBJECT)`, `Slice(I64,I64)->List`, `Sort()`, `SortDesc()`
 
 #### Viper.Math
 
@@ -844,17 +847,13 @@ first‑class and tested:
         - `MinInt(I64, I64) -> I64` — Minimum of two integers
         - `MaxInt(I64, I64) -> I64` — Maximum of two integers
 
-#### Viper.Terminal
+#### Viper.Math.Random
 
-- `Viper.Terminal` — Console I/O (static utility)
-    - Methods (static): `WriteLine(STRING)->VOID`, `ReadLine()->STRING`
-
-#### Viper.Random
-
-- `Viper.Random` — Random number generation (static utility)
-    - Methods (static):
-        - `Seed(I64) -> VOID` — Seed the random number generator
+- `Viper.Math.Random` — Random number generation class (constructor seeds the RNG)
+    - Methods:
         - `Next() -> F64` — Return next random number in [0, 1)
+        - `NextInt(I64 n) -> I64` — Return next random integer in [0, n)
+        - `Seed(I64) -> VOID` — Seed the random number generator
 
 #### Viper.Environment
 
@@ -868,22 +867,22 @@ first‑class and tested:
 
 - `Viper.Time` — Time and timing utilities (static utility)
     - Methods (static):
-        - `GetTickCount() -> I64` — Milliseconds since program start
-        - `Sleep(I32 ms) -> VOID` — Pause execution for milliseconds
+        - `GetTickCount() -> I64` — Milliseconds since program start (alias for `Viper.Time.Clock.Ticks`)
+        - `SleepMs(I64 ms) -> VOID` — Pause execution for milliseconds (alias for `Viper.Time.Clock.Sleep`)
 
 #### Viper.Terminal
 
 - `Viper.Terminal` — Terminal/console control (static utility)
     - Methods (static):
-        - `Clear() -> VOID` — Clear the screen
-        - `SetColor(I32 fg, I32 bg) -> VOID` — Set foreground/background colors
-        - `SetPosition(I32 row, I32 col) -> VOID` — Move cursor position
-        - `SetCursorVisible(I32 visible) -> VOID` — Show/hide cursor (0=hide, 1=show)
-        - `SetAltScreen(I32 enable) -> VOID` — Switch to/from alternate screen buffer
         - `Bell() -> VOID` — Sound terminal bell
+        - `Clear() -> VOID` — Clear the screen
         - `GetKey() -> STRING` — Wait for and return keypress
-        - `GetKeyTimeout(I32 ms) -> STRING` — Wait with timeout (empty if timeout)
+        - `GetKeyTimeout(I64 ms) -> STRING` — Wait with timeout (empty if timeout)
         - `InKey() -> STRING` — Non-blocking key check (empty if no key)
+        - `SetAltScreen(I64 enable) -> VOID` — Switch to/from alternate screen buffer
+        - `SetColor(I64 fg, I64 bg) -> VOID` — Set foreground/background colors
+        - `SetCursorVisible(I64 visible) -> VOID` — Show/hide cursor (0=hide, 1=show)
+        - `SetPosition(I64 row, I64 col) -> VOID` — Move cursor position
 
 **Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
 
@@ -961,10 +960,10 @@ In‑memory collections with List:
 ```basic
 DIM list AS Viper.Collections.List
 list = NEW Viper.Collections.List()
-list.Add(NEW App.C())
-PRINT list.Count
-PRINT list.get_Item(0).ToString()
-list.set_Item(0, list)
+list.Push(NEW App.C())
+PRINT list.Len
+PRINT list.Get(0).ToString()
+list.Set(0, list)
 list.RemoveAt(0)
 list.Clear()
 ```
@@ -981,13 +980,15 @@ PRINT Math.Min(5.0, 3.0)     ' 3
 PRINT Math.MaxInt(10, 20)    ' 20
 ```
 
-Random numbers with Viper.Random:
+Random numbers with Viper.Math.Random:
 
 ```basic
-USING Viper
-Random.Seed(12345)           ' Seed for reproducibility
+USING Viper.Math
+DIM rng AS Random
+rng = NEW Random()           ' Constructor seeds the RNG
+rng.Seed(12345)              ' Re-seed for reproducibility
 DIM r AS DOUBLE
-r = Random.Next()            ' Returns value in [0, 1)
+r = rng.Next()               ' Returns value in [0, 1)
 PRINT r
 ```
 
@@ -1010,7 +1011,7 @@ USING Viper
 DIM start AS LONG
 start = Time.GetTickCount()
 ' ... do work ...
-Time.Sleep(100)              ' Pause 100ms
+Time.SleepMs(100)            ' Pause 100ms
 PRINT "Elapsed: "; Time.GetTickCount() - start; "ms"
 ```
 
@@ -1204,9 +1205,9 @@ END
 
 The following features are planned for future releases:
 
+- **Namespace forwarding**: Re-export types from other namespaces
 - **Namespace-level visibility**: Control which types are exported from a namespace
 - **Nested namespace imports**: `USING Graphics.Rendering.*` to import all types
-- **Namespace forwarding**: Re-export types from other namespaces
 
 These features are not yet implemented in Track A.
 
@@ -1216,10 +1217,10 @@ These features are not yet implemented in Track A.
 
 Viper BASIC namespaces provide:
 
-- **Organization**: Group related types hierarchically
+- **Clarity**: Fully-qualified names show exactly where types come from
 - **Collision avoidance**: Multiple libraries can define the same type names
 - **Convenience**: USING directives reduce verbosity
-- **Clarity**: Fully-qualified names show exactly where types come from
+- **Organization**: Group related types hierarchically
 
 The system is designed to be simple, predictable, and compatible with BASIC's case-insensitive semantics.
 

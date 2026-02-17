@@ -1,8 +1,10 @@
 # Bugs Found During Adventure Game Stress Test
 
+> **Historical snapshot (2025-11-15).** All bugs listed below (BUG-057 through BUG-061) have since been resolved. See `basic_bugs.md` for current status.
+
 ## BUG-057: BOOLEAN return type in class methods causes type mismatch
 
-**Status**: 🐛 NEW BUG
+**Status**: RESOLVED
 **Discovered**: 2025-11-15 during adventure game stress test
 **Severity**: MODERATE
 
@@ -34,7 +36,7 @@ error: PLAYER.ISALIVE:entry_PLAYER.ISALIVE: ret %t7: ret value type mismatch: ex
 
 ## BUG-058: String array fields in classes don't retain values
 
-**Status**: 🐛 NEW BUG
+**Status**: RESOLVED
 **Discovered**: 2025-11-15 during adventure game stress test
 **Severity**: HIGH
 
@@ -77,7 +79,7 @@ string array set/get might not be working for class fields.
 
 ## BUG-059: Cannot access array fields within class methods
 
-**Status**: 🐛 NEW BUG - CRITICAL
+**Status**: RESOLVED
 **Discovered**: 2025-11-15 during adventure game stress test
 **Severity**: CRITICAL
 
@@ -113,7 +115,7 @@ structures.
 
 ## BUG-060: Cannot call methods on class objects passed as SUB/FUNCTION parameters
 
-**Status**: 🐛 NEW BUG - CRITICAL
+**Status**: RESOLVED
 **Discovered**: 2025-11-15 during adventure game stress test
 **Severity**: CRITICAL
 
@@ -156,7 +158,7 @@ organization and OOP design patterns.
 
 ## BUG-061: Cannot assign class field value to local variable
 
-**Status**: 🐛 NEW BUG - CRITICAL REGRESSION
+**Status**: RESOLVED
 **Discovered**: 2025-11-15 during adventure game stress test
 **Severity**: CRITICAL
 

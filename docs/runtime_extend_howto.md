@@ -934,21 +934,21 @@ RT_CLASS_END()
 
 ### Related Documentation
 
-- **[IL Guide](il-guide.md)** - IL type system and instruction reference
-- **[Frontend How-To](frontend-howto.md)** - Building language frontends
 - **[Architecture](architecture.md)** - System architecture overview
 - **[Codemap](codemap.md)** - Codebase navigation
+- **[Frontend How-To](frontend-howto.md)** - Building language frontends
+- **[IL Guide](il-guide.md)** - IL type system and instruction reference
 
 ### Key Source Files
 
 | File | Purpose |
 |------|---------|
+| `src/il/runtime/classes/RuntimeClasses.hpp` | C++ wrapper for class metadata |
 | `src/il/runtime/runtime.def` | Single source of truth for runtime metadata |
-| `src/tools/rtgen/rtgen.cpp` | Code generator implementation |
 | `src/runtime/CMakeLists.txt` | Runtime build configuration |
 | `src/runtime/rt_internal.h` | Internal runtime utilities |
 | `src/runtime/rt_object.h` | Object allocation (GC integration) |
-| `src/il/runtime/classes/RuntimeClasses.hpp` | C++ wrapper for class metadata |
+| `src/tools/rtgen/rtgen.cpp` | Code generator implementation |
 
 ### Example Implementations
 
@@ -956,10 +956,10 @@ Study these existing implementations as references:
 
 | Class | Location | Complexity |
 |-------|----------|------------|
-| `Viper.Text.Guid` | `src/runtime/rt_guid.c` | Simple (static utility) |
-| `Viper.Diagnostics.Stopwatch` | `src/runtime/rt_stopwatch.c` | Medium (instance class) |
 | `Viper.Collections.Map` | `src/runtime/rt_map.c` | Complex (data structure) |
 | `Viper.IO.File` | `src/runtime/rt_file.c` | Complex (OS integration) |
+| `Viper.Text.Uuid` | `src/runtime/rt_guid.c` | Simple (static utility) |
+| `Viper.Time.Stopwatch` | `src/runtime/rt_stopwatch.c` | Medium (instance class) |
 
 ---
 

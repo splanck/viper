@@ -32,36 +32,36 @@ Keyboard state is updated automatically when you call `Canvas.Poll()`.
 
 | Method        | Signature           | Description                                                |
 |---------------|---------------------|------------------------------------------------------------|
-| `IsDown(key)` | `Boolean(Integer)`  | Returns true if the specified key is currently held down   |
-| `IsUp(key)`   | `Boolean(Integer)`  | Returns true if the specified key is currently released    |
 | `AnyDown()`   | `Boolean()`         | Returns true if any key is currently pressed               |
 | `GetDown()`   | `Integer()`         | Returns the key code of the first pressed key, or 0        |
+| `IsDown(key)` | `Boolean(Integer)`  | Returns true if the specified key is currently held down   |
+| `IsUp(key)`   | `Boolean(Integer)`  | Returns true if the specified key is currently released    |
 
 ### Event Methods (Since Last Poll)
 
-| Method          | Signature          | Description                                          |
-|-----------------|--------------------|------------------------------------------------------|
-| `WasPressed(key)` | `Boolean(Integer)` | Returns true if the key was pressed this frame     |
-| `WasReleased(key)` | `Boolean(Integer)` | Returns true if the key was released this frame   |
-| `GetPressed()`  | `Seq()`            | Returns a Seq of all key codes pressed this frame   |
-| `GetReleased()` | `Seq()`            | Returns a Seq of all key codes released this frame  |
+| Method              | Signature          | Description                                          |
+|---------------------|--------------------|------------------------------------------------------|
+| `GetPressed()`      | `Seq()`            | Returns a Seq of all key codes pressed this frame    |
+| `GetReleased()`     | `Seq()`            | Returns a Seq of all key codes released this frame   |
+| `WasPressed(key)`   | `Boolean(Integer)` | Returns true if the key was pressed this frame       |
+| `WasReleased(key)`  | `Boolean(Integer)` | Returns true if the key was released this frame      |
 
 ### Text Input Methods
 
-| Method              | Signature  | Description                                     |
-|---------------------|------------|-------------------------------------------------|
-| `GetText()`         | `String()` | Returns text typed since last poll              |
-| `EnableTextInput()` | `Void()`   | Enable text input mode (for text fields)        |
-| `DisableTextInput()` | `Void()`  | Disable text input mode                         |
+| Method               | Signature  | Description                                     |
+|----------------------|------------|-------------------------------------------------|
+| `DisableTextInput()` | `Void()`   | Disable text input mode                         |
+| `EnableTextInput()`  | `Void()`   | Enable text input mode (for text fields)        |
+| `GetText()`          | `String()` | Returns text typed since last poll              |
 
 ### Modifier State Methods
 
-| Method      | Signature   | Description                              |
-|-------------|-------------|------------------------------------------|
-| `Shift()`   | `Boolean()` | Returns true if Shift is held            |
-| `Ctrl()`    | `Boolean()` | Returns true if Ctrl is held             |
-| `Alt()`     | `Boolean()` | Returns true if Alt is held              |
-| `CapsLock()` | `Boolean()` | Returns true if Caps Lock is on         |
+| Method       | Signature   | Description                              |
+|--------------|-------------|------------------------------------------|
+| `Alt()`      | `Boolean()` | Returns true if Alt is held              |
+| `CapsLock()` | `Boolean()` | Returns true if Caps Lock is on          |
+| `Ctrl()`     | `Boolean()` | Returns true if Ctrl is held             |
+| `Shift()`    | `Boolean()` | Returns true if Shift is held            |
 
 ### Helper Methods
 
@@ -349,14 +349,14 @@ configurable timing windows.
 
 | Method                             | Signature                          | Description                                           |
 |------------------------------------|------------------------------------|-------------------------------------------------------|
+| `Active(name)`                      | `Boolean(String)`                  | Check if a chord is currently active (all keys held)  |
+| `Clear()`                           | `Void()`                           | Remove all registered chords and combos               |
 | `Define(name, keys)`                | `Void(String, Seq)`                | Register a named chord (simultaneous key combination) |
 | `DefineCombo(name, keys, frames)`   | `Void(String, Seq, Integer)`       | Register a named combo (sequential, with frame window)|
-| `Update()`                          | `Void()`                           | Update detection state (call once per frame)          |
-| `Active(name)`                      | `Boolean(String)`                  | Check if a chord is currently active (all keys held)  |
-| `Triggered(name)`                   | `Boolean(String)`                  | Check if a chord/combo was triggered this frame       |
 | `Progress(name)`                    | `Integer(String)`                  | Get combo progress (number of keys matched so far)    |
 | `Remove(name)`                      | `Boolean(String)`                  | Remove a named chord or combo; returns true if found  |
-| `Clear()`                           | `Void()`                           | Remove all registered chords and combos               |
+| `Triggered(name)`                   | `Boolean(String)`                  | Check if a chord/combo was triggered this frame       |
+| `Update()`                          | `Void()`                           | Update detection state (call once per frame)          |
 
 ### Notes
 
@@ -474,10 +474,10 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 
 | Method     | Signature   | Description                                            |
 |------------|-------------|--------------------------------------------------------|
-| `X()`      | `Integer()` | Current X position relative to the canvas              |
-| `Y()`      | `Integer()` | Current Y position relative to the canvas              |
 | `DeltaX()` | `Integer()` | Horizontal movement since last frame                   |
 | `DeltaY()` | `Integer()` | Vertical movement since last frame                     |
+| `X()`      | `Integer()` | Current X position relative to the canvas              |
+| `Y()`      | `Integer()` | Current Y position relative to the canvas              |
 
 ### Button State Methods (Polling)
 
@@ -486,17 +486,17 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 | `IsDown(button)`  | `Boolean(Integer)` | Returns true if the button is currently held down  |
 | `IsUp(button)`    | `Boolean(Integer)` | Returns true if the button is currently released   |
 | `Left()`          | `Boolean()`        | Returns true if the left button is held            |
-| `Right()`         | `Boolean()`        | Returns true if the right button is held           |
 | `Middle()`        | `Boolean()`        | Returns true if the middle button is held          |
+| `Right()`         | `Boolean()`        | Returns true if the right button is held           |
 
 ### Button Event Methods (Since Last Poll)
 
 | Method                     | Signature          | Description                                           |
 |----------------------------|--------------------|-------------------------------------------------------|
-| `WasPressed(button)`       | `Boolean(Integer)` | Returns true if the button was pressed this frame     |
-| `WasReleased(button)`      | `Boolean(Integer)` | Returns true if the button was released this frame    |
 | `WasClicked(button)`       | `Boolean(Integer)` | Returns true if a quick press-release occurred        |
 | `WasDoubleClicked(button)` | `Boolean(Integer)` | Returns true if a double-click was detected           |
+| `WasPressed(button)`       | `Boolean(Integer)` | Returns true if the button was pressed this frame     |
+| `WasReleased(button)`      | `Boolean(Integer)` | Returns true if the button was released this frame    |
 
 ### Scroll Wheel Methods
 
@@ -509,21 +509,21 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 
 | Method           | Signature                 | Description                                    |
 |------------------|---------------------------|------------------------------------------------|
-| `Show()`         | `Void()`                  | Show the cursor                                |
-| `Hide()`         | `Void()`                  | Hide the cursor                                |
-| `IsHidden()`     | `Boolean()`               | Returns true if the cursor is hidden           |
 | `Capture()`      | `Void()`                  | Lock the cursor to the window (for FPS games)  |
-| `Release()`      | `Void()`                  | Release the cursor lock                        |
+| `Hide()`         | `Void()`                  | Hide the cursor                                |
 | `IsCaptured()`   | `Boolean()`               | Returns true if the cursor is captured         |
+| `IsHidden()`     | `Boolean()`               | Returns true if the cursor is hidden           |
+| `Release()`      | `Void()`                  | Release the cursor lock                        |
 | `SetPos(x, y)`   | `Void(Integer, Integer)`  | Move the cursor to a specific position         |
+| `Show()`         | `Void()`                  | Show the cursor                                |
 
 ### Button Constants
 
 | Property        | Value | Description              |
 |-----------------|-------|--------------------------|
 | `BUTTON_LEFT`   | 0     | Left mouse button        |
-| `BUTTON_RIGHT`  | 1     | Right mouse button       |
 | `BUTTON_MIDDLE` | 2     | Middle mouse button      |
+| `BUTTON_RIGHT`  | 1     | Right mouse button       |
 | `BUTTON_X1`     | 3     | Extra button 1 (back)    |
 | `BUTTON_X2`     | 4     | Extra button 2 (forward) |
 
@@ -774,18 +774,18 @@ Gamepad state is updated automatically when you call `Canvas.Poll()`.
 
 ### Controller Enumeration Methods
 
-| Method              | Signature          | Description                                     |
-|---------------------|--------------------|-------------------------------------------------|
-| `Count()`           | `Integer()`        | Number of connected controllers (0-4)           |
-| `IsConnected(index)`| `Boolean(Integer)` | Returns true if controller is connected         |
-| `Name(index)`       | `String(Integer)`  | Controller name/description (empty if invalid)  |
+| Method               | Signature          | Description                                     |
+|----------------------|--------------------|------------------------------------------------------|
+| `Count()`            | `Integer()`        | Number of connected controllers (0-4)           |
+| `IsConnected(index)` | `Boolean(Integer)` | Returns true if controller is connected         |
+| `Name(index)`        | `String(Integer)`  | Controller name/description (empty if invalid)  |
 
 ### Button State Methods (Polling)
 
-| Method                 | Signature                   | Description                                        |
-|------------------------|-----------------------------|---------------------------------------------------|
-| `IsDown(index, button)`| `Boolean(Integer, Integer)` | Returns true if the button is currently held down  |
-| `IsUp(index, button)`  | `Boolean(Integer, Integer)` | Returns true if the button is currently released   |
+| Method                  | Signature                   | Description                                        |
+|-------------------------|-----------------------------|-----------------------------------------------------|
+| `IsDown(index, button)` | `Boolean(Integer, Integer)` | Returns true if the button is currently held down  |
+| `IsUp(index, button)`   | `Boolean(Integer, Integer)` | Returns true if the button is currently released   |
 
 ### Button Event Methods (Since Last Poll)
 
@@ -796,28 +796,28 @@ Gamepad state is updated automatically when you call `Canvas.Poll()`.
 
 ### Analog Input Methods
 
-| Method               | Signature         | Description                                            |
-|----------------------|-------------------|--------------------------------------------------------|
-| `LeftX(index)`       | `Double(Integer)` | Left stick X axis (-1.0 to 1.0, left to right)         |
-| `LeftY(index)`       | `Double(Integer)` | Left stick Y axis (-1.0 to 1.0, up to down)            |
-| `RightX(index)`      | `Double(Integer)` | Right stick X axis (-1.0 to 1.0, left to right)        |
-| `RightY(index)`      | `Double(Integer)` | Right stick Y axis (-1.0 to 1.0, up to down)           |
-| `LeftTrigger(index)` | `Double(Integer)` | Left trigger (0.0 to 1.0, released to fully pressed)   |
-| `RightTrigger(index)`| `Double(Integer)` | Right trigger (0.0 to 1.0, released to fully pressed)  |
+| Method                | Signature         | Description                                            |
+|-----------------------|-------------------|--------------------------------------------------------|
+| `LeftTrigger(index)`  | `Double(Integer)` | Left trigger (0.0 to 1.0, released to fully pressed)   |
+| `LeftX(index)`        | `Double(Integer)` | Left stick X axis (-1.0 to 1.0, left to right)         |
+| `LeftY(index)`        | `Double(Integer)` | Left stick Y axis (-1.0 to 1.0, up to down)            |
+| `RightTrigger(index)` | `Double(Integer)` | Right trigger (0.0 to 1.0, released to fully pressed)  |
+| `RightX(index)`       | `Double(Integer)` | Right stick X axis (-1.0 to 1.0, left to right)        |
+| `RightY(index)`       | `Double(Integer)` | Right stick Y axis (-1.0 to 1.0, up to down)           |
 
 ### Deadzone Methods
 
 | Method                | Signature       | Description                                      |
 |-----------------------|-----------------|--------------------------------------------------|
-| `SetDeadzone(radius)` | `Void(Double)`  | Set stick deadzone radius (0.0 to 1.0)           |
 | `GetDeadzone()`       | `Double()`      | Get current deadzone radius (default 0.1)        |
+| `SetDeadzone(radius)` | `Void(Double)`  | Set stick deadzone radius (0.0 to 1.0)           |
 
 ### Vibration Methods
 
-| Method                             | Signature                      | Description                              |
-|------------------------------------|--------------------------------|------------------------------------------|
-| `Vibrate(index, left, right)`      | `Void(Integer, Double, Double)`| Set motor intensities (0.0 to 1.0)       |
-| `StopVibration(index)`             | `Void(Integer)`                | Stop vibration on controller             |
+| Method                        | Signature                       | Description                              |
+|-------------------------------|---------------------------------|------------------------------------------|
+| `StopVibration(index)`        | `Void(Integer)`                 | Stop vibration on controller             |
+| `Vibrate(index, left, right)` | `Void(Integer, Double, Double)` | Set motor intensities (0.0 to 1.0)       |
 
 ### Button Constants
 
@@ -1096,50 +1096,50 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 
 ### Action Definition Methods
 
-| Method                | Signature          | Description                                                |
-|-----------------------|--------------------|------------------------------------------------------------|
-| `Define(name)`        | `Boolean(String)`  | Define a new button action; returns false if already exists|
-| `DefineAxis(name)`    | `Boolean(String)`  | Define a new axis action; returns false if already exists  |
-| `Exists(name)`        | `Boolean(String)`  | Check if an action is defined                              |
-| `IsAxis(name)`        | `Boolean(String)`  | Check if an action is an axis action                       |
-| `Remove(name)`        | `Boolean(String)`  | Remove an action and all its bindings                      |
+| Method             | Signature          | Description                                                |
+|--------------------|--------------------|------------------------------------------------------------|
+| `Define(name)`     | `Boolean(String)`  | Define a new button action; returns false if already exists|
+| `DefineAxis(name)` | `Boolean(String)`  | Define a new axis action; returns false if already exists  |
+| `Exists(name)`     | `Boolean(String)`  | Check if an action is defined                              |
+| `IsAxis(name)`     | `Boolean(String)`  | Check if an action is an axis action                       |
+| `Remove(name)`     | `Boolean(String)`  | Remove an action and all its bindings                      |
 
 ### Keyboard Binding Methods
 
-| Method                          | Signature                      | Description                                      |
-|---------------------------------|--------------------------------|--------------------------------------------------|
-| `BindKey(action, key)`          | `Boolean(String, Integer)`     | Bind a key to a button action                    |
-| `BindKeyAxis(action, key, value)` | `Boolean(String, Integer, Double)` | Bind a key to an axis action with value     |
-| `UnbindKey(action, key)`        | `Boolean(String, Integer)`     | Remove a key binding from an action              |
+| Method                              | Signature                          | Description                                      |
+|-------------------------------------|------------------------------------|--------------------------------------------------|
+| `BindKey(action, key)`              | `Boolean(String, Integer)`         | Bind a key to a button action                    |
+| `BindKeyAxis(action, key, value)`   | `Boolean(String, Integer, Double)` | Bind a key to an axis action with value          |
+| `UnbindKey(action, key)`            | `Boolean(String, Integer)`         | Remove a key binding from an action              |
 
 ### Key Chord Binding Methods
 
-| Method                          | Signature                      | Description                                      |
-|---------------------------------|--------------------------------|--------------------------------------------------|
-| `BindChord(action, keys)`       | `Boolean(String, Seq)`         | Bind a key chord (multi-key combo) to a button action |
-| `UnbindChord(action, keys)`     | `Boolean(String, Seq)`         | Remove a key chord binding from an action        |
-| `ChordCount(action)`            | `Integer(String)`              | Get the number of chord bindings for an action   |
+| Method                        | Signature                 | Description                                           |
+|-------------------------------|---------------------------|-------------------------------------------------------|
+| `BindChord(action, keys)`     | `Boolean(String, Seq)`    | Bind a key chord (multi-key combo) to a button action |
+| `ChordCount(action)`          | `Integer(String)`         | Get the number of chord bindings for an action        |
+| `UnbindChord(action, keys)`   | `Boolean(String, Seq)`    | Remove a key chord binding from an action             |
 
 ### Mouse Binding Methods
 
-| Method                             | Signature                      | Description                                      |
-|------------------------------------|--------------------------------|--------------------------------------------------|
-| `BindMouse(action, button)`        | `Boolean(String, Integer)`     | Bind a mouse button to a button action           |
-| `UnbindMouse(action, button)`      | `Boolean(String, Integer)`     | Remove a mouse button binding                    |
-| `BindMouseX(action, sensitivity)`  | `Boolean(String, Double)`      | Bind mouse X delta to an axis action             |
-| `BindMouseY(action, sensitivity)`  | `Boolean(String, Double)`      | Bind mouse Y delta to an axis action             |
-| `BindScrollX(action, sensitivity)` | `Boolean(String, Double)`      | Bind scroll wheel X to an axis action            |
-| `BindScrollY(action, sensitivity)` | `Boolean(String, Double)`      | Bind scroll wheel Y to an axis action            |
+| Method                             | Signature                 | Description                                      |
+|------------------------------------|---------------------------|--------------------------------------------------|
+| `BindMouse(action, button)`        | `Boolean(String, Integer)` | Bind a mouse button to a button action          |
+| `BindMouseX(action, sensitivity)`  | `Boolean(String, Double)`  | Bind mouse X delta to an axis action            |
+| `BindMouseY(action, sensitivity)`  | `Boolean(String, Double)`  | Bind mouse Y delta to an axis action            |
+| `BindScrollX(action, sensitivity)` | `Boolean(String, Double)`  | Bind scroll wheel X to an axis action           |
+| `BindScrollY(action, sensitivity)` | `Boolean(String, Double)`  | Bind scroll wheel Y to an axis action           |
+| `UnbindMouse(action, button)`      | `Boolean(String, Integer)` | Remove a mouse button binding                   |
 
 ### Gamepad Binding Methods
 
-| Method                                         | Signature                               | Description                                      |
-|------------------------------------------------|-----------------------------------------|--------------------------------------------------|
-| `BindPadButton(action, pad, button)`           | `Boolean(String, Integer, Integer)`     | Bind a gamepad button to a button action         |
-| `UnbindPadButton(action, pad, button)`         | `Boolean(String, Integer, Integer)`     | Remove a gamepad button binding                  |
-| `BindPadAxis(action, pad, axis, scale)`        | `Boolean(String, Integer, Integer, Double)` | Bind a gamepad axis to an axis action        |
-| `UnbindPadAxis(action, pad, axis)`             | `Boolean(String, Integer, Integer)`     | Remove a gamepad axis binding                    |
-| `BindPadButtonAxis(action, pad, button, value)`| `Boolean(String, Integer, Integer, Double)` | Bind a gamepad button to an axis action      |
+| Method                                          | Signature                                   | Description                                      |
+|-------------------------------------------------|---------------------------------------------|--------------------------------------------------|
+| `BindPadAxis(action, pad, axis, scale)`         | `Boolean(String, Integer, Integer, Double)` | Bind a gamepad axis to an axis action            |
+| `BindPadButton(action, pad, button)`            | `Boolean(String, Integer, Integer)`         | Bind a gamepad button to a button action         |
+| `BindPadButtonAxis(action, pad, button, value)` | `Boolean(String, Integer, Integer, Double)` | Bind a gamepad button to an axis action          |
+| `UnbindPadAxis(action, pad, axis)`              | `Boolean(String, Integer, Integer)`         | Remove a gamepad axis binding                    |
+| `UnbindPadButton(action, pad, button)`          | `Boolean(String, Integer, Integer)`         | Remove a gamepad button binding                  |
 
 **Note:** Use pad index `-1` to match any connected controller.
 
@@ -1147,9 +1147,9 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 
 | Method             | Signature          | Description                                                  |
 |--------------------|--------------------|------------------------------------------------------------- |
+| `Held(action)`     | `Boolean(String)`  | Returns true if any bound input is currently held            |
 | `Pressed(action)`  | `Boolean(String)`  | Returns true if any bound input was pressed this frame       |
 | `Released(action)` | `Boolean(String)`  | Returns true if any bound input was released this frame      |
-| `Held(action)`     | `Boolean(String)`  | Returns true if any bound input is currently held            |
 | `Strength(action)` | `Double(String)`   | Returns 1.0 if held, 0.0 otherwise                           |
 
 ### Axis Action Query Methods
@@ -1163,24 +1163,24 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 
 | Method                  | Signature          | Description                                              |
 |-------------------------|--------------------|---------------------------------------------------------|
-| `List()`                | `Seq()`            | Returns a Seq of all defined action names                |
-| `BindingsStr(action)`   | `String(String)`   | Returns human-readable description of bindings           |
 | `BindingCount(action)`  | `Integer(String)`  | Returns the number of bindings for an action             |
+| `BindingsStr(action)`   | `String(String)`   | Returns human-readable description of bindings           |
+| `List()`                | `Seq()`            | Returns a Seq of all defined action names                |
 
 ### Conflict Detection Methods
 
-| Method                              | Signature                      | Description                                    |
-|-------------------------------------|--------------------------------|------------------------------------------------|
-| `KeyBoundTo(key)`                   | `String(Integer)`              | Returns action name if key is bound, else ""   |
-| `MouseBoundTo(button)`              | `String(Integer)`              | Returns action name if button is bound, else ""|
-| `PadButtonBoundTo(pad, button)`     | `String(Integer, Integer)`     | Returns action name if bound, else ""          |
+| Method                          | Signature                  | Description                                    |
+|---------------------------------|----------------------------|------------------------------------------------|
+| `KeyBoundTo(key)`               | `String(Integer)`          | Returns action name if key is bound, else ""   |
+| `MouseBoundTo(button)`          | `String(Integer)`          | Returns action name if button is bound, else ""|
+| `PadButtonBoundTo(pad, button)` | `String(Integer, Integer)` | Returns action name if bound, else ""          |
 
 ### Persistence Methods
 
-| Method        | Signature          | Description                                                |
-|---------------|--------------------|------------------------------------------------------------|
-| `Save()`      | `String()`         | Serialize all actions and bindings to a JSON string        |
+| Method        | Signature          | Description                                                           |
+|---------------|--------------------|-----------------------------------------------------------------------|
 | `Load(json)`  | `Boolean(String)`  | Load actions and bindings from a JSON string; returns true on success |
+| `Save()`      | `String()`         | Serialize all actions and bindings to a JSON string                   |
 
 ### Axis Constants
 
@@ -1434,20 +1434,20 @@ These properties check ALL input sources (keyboard, D-pad, analog sticks) and re
 
 ### Keyboard Methods
 
-| Method                    | Signature           | Description                                          |
-|---------------------------|---------------------|------------------------------------------------------|
-| `KeyPressed(key)`         | `Boolean(Integer)`  | True if key was pressed this frame (edge detection)  |
-| `KeyReleased(key)`        | `Boolean(Integer)`  | True if key was released this frame                  |
-| `KeyHeld(key)`            | `Boolean(Integer)`  | True if key is currently held down                   |
-| `KeyPressedDebounced(key)`| `Boolean(Integer)`  | True if pressed with debouncing (for menus)          |
+| Method                     | Signature           | Description                                          |
+|----------------------------|---------------------|------------------------------------------------------|
+| `KeyHeld(key)`             | `Boolean(Integer)`  | True if key is currently held down                   |
+| `KeyPressed(key)`          | `Boolean(Integer)`  | True if key was pressed this frame (edge detection)  |
+| `KeyPressedDebounced(key)` | `Boolean(Integer)`  | True if pressed with debouncing (for menus)          |
+| `KeyReleased(key)`         | `Boolean(Integer)`  | True if key was released this frame                  |
 
 ### Mouse Methods
 
-| Method                 | Signature           | Description                                     |
-|------------------------|---------------------|-------------------------------------------------|
-| `MousePressed(button)` | `Boolean(Integer)`  | True if button was pressed this frame           |
-| `MouseReleased(button)`| `Boolean(Integer)`  | True if button was released this frame          |
-| `MouseHeld(button)`    | `Boolean(Integer)`  | True if button is currently held                |
+| Method                  | Signature           | Description                                     |
+|-------------------------|---------------------|-------------------------------------------------|
+| `MouseHeld(button)`     | `Boolean(Integer)`  | True if button is currently held                |
+| `MousePressed(button)`  | `Boolean(Integer)`  | True if button was pressed this frame           |
+| `MouseReleased(button)` | `Boolean(Integer)`  | True if button was released this frame          |
 
 ### Mouse Properties
 
@@ -1462,17 +1462,17 @@ These properties check ALL input sources (keyboard, D-pad, analog sticks) and re
 
 ### Gamepad Methods
 
-| Method                        | Signature                   | Description                           |
-|-------------------------------|-----------------------------|---------------------------------------|
-| `PadPressed(pad, button)`     | `Boolean(Integer, Integer)` | True if button was pressed this frame |
-| `PadReleased(pad, button)`    | `Boolean(Integer, Integer)` | True if button was released this frame|
-| `PadHeld(pad, button)`        | `Boolean(Integer, Integer)` | True if button is currently held      |
-| `PadLeftX(pad)`               | `Double(Integer)`           | Left stick X (-1.0 to 1.0)            |
-| `PadLeftY(pad)`               | `Double(Integer)`           | Left stick Y (-1.0 to 1.0)            |
-| `PadRightX(pad)`              | `Double(Integer)`           | Right stick X (-1.0 to 1.0)           |
-| `PadRightY(pad)`              | `Double(Integer)`           | Right stick Y (-1.0 to 1.0)           |
-| `PadLeftTrigger(pad)`         | `Double(Integer)`           | Left trigger (0.0 to 1.0)             |
-| `PadRightTrigger(pad)`        | `Double(Integer)`           | Right trigger (0.0 to 1.0)            |
+| Method                     | Signature                   | Description                           |
+|----------------------------|-----------------------------|---------------------------------------|
+| `PadHeld(pad, button)`     | `Boolean(Integer, Integer)` | True if button is currently held      |
+| `PadLeftTrigger(pad)`      | `Double(Integer)`           | Left trigger (0.0 to 1.0)             |
+| `PadLeftX(pad)`            | `Double(Integer)`           | Left stick X (-1.0 to 1.0)            |
+| `PadLeftY(pad)`            | `Double(Integer)`           | Left stick Y (-1.0 to 1.0)            |
+| `PadPressed(pad, button)`  | `Boolean(Integer, Integer)` | True if button was pressed this frame |
+| `PadReleased(pad, button)` | `Boolean(Integer, Integer)` | True if button was released this frame|
+| `PadRightTrigger(pad)`     | `Double(Integer)`           | Right trigger (0.0 to 1.0)            |
+| `PadRightX(pad)`           | `Double(Integer)`           | Right stick X (-1.0 to 1.0)           |
+| `PadRightY(pad)`           | `Double(Integer)`           | Right stick Y (-1.0 to 1.0)           |
 
 **Note:** Use pad index `-1` to check any connected controller.
 

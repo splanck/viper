@@ -6,9 +6,9 @@
 
 ## Contents
 
-- [Viper.Object](#viperobject)
 - [Viper.Core.Box](#vipercorebox)
 - [Viper.Core.MessageBus](#vipercoremessagebus)
+- [Viper.Object](#viperobject)
 - [Viper.String](#viperstring)
 
 ---

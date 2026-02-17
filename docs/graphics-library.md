@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-02
+last-updated: 2026-02-17
 ---
 
 # ViperGFX Graphics Library
@@ -40,8 +40,8 @@ management, pixel operations, drawing primitives, and input handling through a s
 | Platform    | Backend      | Status                  |
 |-------------|--------------|-------------------------|
 | **macOS**   | Cocoa/AppKit | ✅ **Fully Implemented** |
-| **Linux**   | X11          | ✅ **Fully Implemented** |
-| **Windows** | Win32 GDI    | ✅ **Fully Implemented** |
+| **Linux**   | X11          | ⚠️ Stub (not yet fully implemented) |
+| **Windows** | Win32 GDI    | ⚠️ Stub (not yet fully implemented) |
 | **Testing** | Mock backend | ✅ Fully Implemented     |
 
 ---
@@ -83,14 +83,15 @@ int main(void) {
     }
 
     // Main loop
-    while (!vgfx_should_close(win)) {
+    while (!vgfx_close_requested(win)) {
         // Clear screen
         vgfx_cls(win, VGFX_BLACK);
 
         // Draw primitives
         vgfx_pset(win, 100, 100, VGFX_WHITE);
         vgfx_line(win, 50, 50, 200, 150, VGFX_RED);
-        vgfx_rect(win, 300, 300, 400, 400, VGFX_GREEN);
+        // vgfx_rect uses top-left x,y and width,height (not two corners)
+        vgfx_rect(win, 300, 300, 100, 100, VGFX_GREEN);
         vgfx_circle(win, 500, 300, 50, VGFX_BLUE);
 
         // Handle events
@@ -124,13 +125,18 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params);
 void vgfx_destroy_window(vgfx_window_t window);
 
 // Window state
-int vgfx_should_close(vgfx_window_t window);
+int32_t vgfx_close_requested(vgfx_window_t window);  // Non-zero if close was requested
 int vgfx_update(vgfx_window_t window);  // Present + process events + FPS limit
 
 // Query window properties
-int32_t vgfx_width(vgfx_window_t window);
-int32_t vgfx_height(vgfx_window_t window);
-uint8_t* vgfx_get_framebuffer(vgfx_window_t window);
+int vgfx_get_size(vgfx_window_t window, int32_t* out_width, int32_t* out_height);
+int vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t* out_fb);
+
+// Additional window control
+void vgfx_set_fps(vgfx_window_t window, int32_t fps);
+void vgfx_set_title(vgfx_window_t window, const char* title);
+void vgfx_set_fullscreen(vgfx_window_t window, int fullscreen);
+int vgfx_is_fullscreen(vgfx_window_t window);
 ```
 
 ### Drawing Primitives
@@ -142,28 +148,36 @@ int vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out_col
 void vgfx_cls(vgfx_window_t window, vgfx_color_t color);
 
 // Lines and shapes
-void vgfx_line(vgfx_window_t window, int32_t x0, int32_t y0,
-               int32_t x1, int32_t y1, vgfx_color_t color);
-void vgfx_rect(vgfx_window_t window, int32_t x0, int32_t y0,
-               int32_t x1, int32_t y1, vgfx_color_t color);
-void vgfx_rect_fill(vgfx_window_t window, int32_t x0, int32_t y0,
-                    int32_t x1, int32_t y1, vgfx_color_t color);
+// Note: line uses start/end points; rect/fill_rect use top-left + width/height
+void vgfx_line(vgfx_window_t window, int32_t x1, int32_t y1,
+               int32_t x2, int32_t y2, vgfx_color_t color);
+void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y,
+               int32_t w, int32_t h, vgfx_color_t color);
+void vgfx_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
+                    int32_t w, int32_t h, vgfx_color_t color);
 void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy,
                  int32_t radius, vgfx_color_t color);
-void vgfx_circle_fill(vgfx_window_t window, int32_t cx, int32_t cy,
+void vgfx_fill_circle(vgfx_window_t window, int32_t cx, int32_t cy,
                       int32_t radius, vgfx_color_t color);
+
+// Clipping
+void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h);
+void vgfx_clear_clip(vgfx_window_t window);
 ```
 
 ### Input Handling
 
 ```c
 // Event polling
-int vgfx_poll_event(vgfx_window_t window, vgfx_event_t* event);
+int vgfx_poll_event(vgfx_window_t window, vgfx_event_t* out_event);
+int vgfx_peek_event(vgfx_window_t window, vgfx_event_t* out_event);
+void vgfx_clear_events(vgfx_window_t window);
+int32_t vgfx_event_overflow_count(vgfx_window_t window);
 
 // State queries
 int vgfx_key_down(vgfx_window_t window, vgfx_key_t key);
-void vgfx_get_mouse(vgfx_window_t window, int32_t* x, int32_t* y);
-int vgfx_mouse_button_down(vgfx_window_t window, vgfx_mouse_button_t button);
+int vgfx_mouse_pos(vgfx_window_t window, int32_t* out_x, int32_t* out_y);
+int vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
 ```
 
 ### Colors
@@ -178,9 +192,11 @@ int vgfx_mouse_button_down(vgfx_window_t window, vgfx_mouse_button_t button);
 #define VGFX_YELLOW      0xFFFF00
 #define VGFX_CYAN        0x00FFFF
 #define VGFX_MAGENTA     0xFF00FF
+#define VGFX_GRAY        0x808080
 
 // Color construction
 vgfx_color_t vgfx_rgb(uint8_t r, uint8_t g, uint8_t b);
+void vgfx_color_to_rgb(vgfx_color_t color, uint8_t* r, uint8_t* g, uint8_t* b);
 ```
 
 ### Events
@@ -282,15 +298,15 @@ This will lower to calls to the ViperGFX runtime functions.
 ```
 src/lib/graphics/
 ├── include/
-│   ├── vgfx.h           # Public API
+│   ├── vgfx.h           # Public API (window, drawing, input, color, clipboard)
 │   └── vgfx_config.h    # Configuration macros
 ├── src/
 │   ├── vgfx.c           # Core implementation
 │   ├── vgfx_draw.c      # Drawing algorithms
 │   ├── vgfx_internal.h  # Internal structures
-│   ├── vgfx_platform_macos.m    # macOS backend
-│   ├── vgfx_platform_linux.c    # Linux X11 backend
-│   ├── vgfx_platform_win32.c    # Windows Win32 backend
+│   ├── vgfx_platform_macos.m    # macOS Cocoa/AppKit backend (fully implemented)
+│   ├── vgfx_platform_linux.c    # Linux X11 backend (stub)
+│   ├── vgfx_platform_win32.c    # Windows Win32 backend (stub)
 │   └── vgfx_platform_mock.c     # Mock backend for tests
 ├── tests/               # Unit tests
 └── examples/            # Example programs
@@ -426,6 +442,6 @@ ViperGFX provides a simple, deterministic, cross-platform 2D graphics solution f
 ✅ **Integrated** — Builds as part of Viper
 ✅ **Tested** — 20/20 tests passing (100%)
 ✅ **Documented** — Complete API reference and examples
-✅ **Cross-Platform** — Fully implemented backends for macOS (Cocoa), Linux (X11), and Windows (Win32)
+✅ **Cross-Platform** — Fully implemented macOS (Cocoa) backend; Linux (X11) and Windows (Win32) backends are stubs
 
 For questions or contributions, see the [main Viper documentation](README.md).

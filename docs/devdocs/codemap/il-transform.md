@@ -2,7 +2,7 @@
 
 Optimization passes (`src/il/transform/`) for IL programs.
 
-Last updated: 2026-02-05
+Last updated: 2026-02-17
 
 ## Overview
 
@@ -27,7 +27,7 @@ Last updated: 2026-02-05
 | File             | Purpose                                                        |
 |------------------|----------------------------------------------------------------|
 | `ConstFold.cpp`  | Constant folding implementation                                |
-| `ConstFold.hpp`  | Constant folding for arithmetic, comparisons, trig/math        |
+| `ConstFold.hpp`  | Constant folding for arithmetic, bitwise ops, comparisons, and selected math intrinsics |
 | `DCE.cpp`        | Dead code elimination implementation                           |
 | `DCE.hpp`        | Dead code elimination                                          |
 | `DSE.cpp`        | Dead store elimination implementation                          |

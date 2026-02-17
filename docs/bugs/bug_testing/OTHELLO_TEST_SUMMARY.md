@@ -37,26 +37,23 @@
 
 ## Bugs Discovered
 
-### BUG-053: Cannot access global arrays in SUB/FUNCTION - CRITICAL COMPILER CRASH
+### BUG-053: Cannot access global arrays in SUB/FUNCTION - RESOLVED (2025-11-15)
 
-**Severity**: CRITICAL
+**Severity**: CRITICAL (historical)
 **Test**: othello_04_array_crash.bas
-**Error**: `Assertion failed: (info && info->slotId), function lowerArrayAccess, file Emit_Expr.cpp, line 98`
+**Error (historical)**: `Assertion failed: (info && info->slotId), function lowerArrayAccess, file Emit_Expr.cpp, line 98`
 
-Attempting to access a global array from within a SUB or FUNCTION causes the compiler to crash with an assertion
-failure. This is a fundamental limitation that prevents modular programming with arrays.
+Global arrays can now be accessed from within SUB and FUNCTION procedures.
 
-**Example**:
+**Example (now works)**:
 
 ```basic
 DIM globalArray(10) AS INTEGER
 
 FUNCTION AccessArray(index AS INTEGER) AS INTEGER
-    RETURN globalArray(index)  ' CRASH!
+    RETURN globalArray(index)  ' Now works
 END FUNCTION
 ```
-
-**Impact**: Cannot use arrays in functions, forcing all array logic to be at module level.
 
 ---
 
@@ -64,17 +61,9 @@ END FUNCTION
 
 **Severity**: MINOR
 **Test**: othello_game.bas (original)
+**Status**: Open — STEP remains a reserved keyword
 
 Cannot use `step` as a variable name because it's reserved for `FOR...TO...STEP`.
-
-**Example**:
-
-```basic
-DIM step AS INTEGER  ' ERROR!
-FOR step = 1 TO 10
-    PRINT step
-NEXT step
-```
 
 **Workaround**: Use `stepNum`, `stepIndex`, `flipNum`, etc.
 
@@ -84,39 +73,26 @@ NEXT step
 
 **Severity**: MODERATE
 **Test**: othello_game.bas (original)
-
-Cannot assign to loop counter inside FOR loop, even to break early.
-
-**Example**:
-
-```basic
-FOR i = 1 TO 100
-    IF someCondition THEN
-        i = 999  ' ERROR: cannot assign to loop variable
-    END IF
-NEXT i
-```
+**Status**: Open — by design; assigning to a loop counter inside a FOR loop is not supported
 
 **Workaround**: Use flag variables to control loop flow.
 
 ---
 
-### BUG-056: Arrays not allowed as class fields
+### BUG-056: Arrays not allowed as class fields - RESOLVED (2025-11-15)
 
-**Severity**: MAJOR
+**Severity**: MAJOR (historical)
 **Test**: othello_02_classes.bas
 
-Cannot declare arrays inside CLASS definitions.
+Arrays can now be declared inside CLASS definitions.
 
-**Example**:
+**Example (now works)**:
 
 ```basic
 CLASS Board
-    DIM cells(64) AS INTEGER  ' ERROR!
+    DIM cells(64) AS INTEGER  ' Now works
 END CLASS
 ```
-
-**Workaround**: Use global arrays separate from classes.
 
 ---
 
@@ -196,25 +172,17 @@ Score: Black = 4, White = 1
 
 ## What Doesn't Work
 
-### Cannot Build Full Game
-
-Due to BUG-053 (array access in functions), cannot implement:
-
-- Move validation functions
-- Automated move selection
-- Direction checking algorithms
-- Piece flipping in loops
-
-All array logic must be at module level, making the code extremely long and repetitive.
+BUG-053 (array access in functions) has been resolved. The Othello game can now be implemented with full modular design
+using SUB/FUNCTION procedures that access global arrays.
 
 ---
 
-## Workarounds Used
+## Workarounds Used (at time of test)
 
-1. **No arrays in classes** (BUG-056) - Used global board array + GameState class for metadata
-2. **No global array access in functions** (BUG-053) - Kept all array logic at module level
-3. **No STEP variable** (BUG-054) - Used `flipNum` instead
-4. **No loop variable assignment** (BUG-055) - Removed early exit attempts
+1. **No arrays in classes** (BUG-056) — RESOLVED; workaround used global board array + GameState class for metadata
+2. **No global array access in functions** (BUG-053) — RESOLVED; workaround kept all array logic at module level
+3. **No STEP variable** (BUG-054) — still reserved; workaround: use `flipNum` instead
+4. **No loop variable assignment** (BUG-055) — still restricted; workaround: use flag variables
 
 ---
 
@@ -259,53 +227,46 @@ Cannot combine arrays with OOP effectively:
 | Feature              | Ideal Implementation       | Viper BASIC            | Status        |
 |----------------------|----------------------------|------------------------|---------------|
 | Board representation | 2D array or 1D array       | 1D array (global)      | ✅ Works       |
-| OOP game state       | Class with board array     | Class without array    | ⚠️ Workaround |
-| Move validation      | Function with array access | Inline at module level | ❌ BUG-053     |
-| Direction checking   | Reusable function          | Copy-paste code        | ❌ BUG-053     |
-| Piece flipping       | Loop in SUB                | Manual inline          | ❌ BUG-053     |
-| Score counting       | SUB with array             | Inline FOR loop        | ❌ BUG-053     |
+| OOP game state       | Class with board array     | Class with array       | ✅ BUG-056 fixed |
+| Move validation      | Function with array access | Function works         | ✅ BUG-053 fixed |
+| Direction checking   | Reusable function          | Reusable function      | ✅ BUG-053 fixed |
+| Piece flipping       | Loop in SUB                | Loop in SUB            | ✅ BUG-053 fixed |
+| Score counting       | SUB with array             | SUB with array         | ✅ BUG-053 fixed |
 
 ---
 
 ## Recommendations
 
-1. **Fix BUG-053 (CRITICAL)** - Enable global array access in SUB/FUNCTION
-    - This is the #1 priority for enabling real programs
-    - Without this, cannot write modular array-based code
-
-2. **Fix BUG-056 (MAJOR)** - Allow arrays as class fields
-    - Enables proper OOP encapsulation
-    - Makes classes useful for complex data structures
-
-3. **Fix BUG-054 (MINOR)** - Allow STEP as variable in non-FOR contexts
-    - Low priority but common use case
-
-4. **BUG-055 is acceptable** - Preventing loop variable modification is good design
+1. **BUG-053** — RESOLVED. Global array access in SUB/FUNCTION now works.
+2. **BUG-056** — RESOLVED. Arrays as class fields now supported.
+3. **BUG-054** — Open (minor). STEP remains reserved; use alternate names.
+4. **BUG-055** — Open (by design). Loop variable modification is intentionally restricted.
 
 ---
 
 ## Conclusion
 
-Othello demonstrates that Viper BASIC has good fundamentals (arrays, classes, loops) but **BUG-053 is a critical blocker
-** for writing real programs. The inability to access global arrays in functions forces all code to be at module level,
-making it nearly impossible to build maintainable array-based applications.
+Othello demonstrates that Viper BASIC has good fundamentals (arrays, classes, loops). The critical blocker identified
+during this test (BUG-053: global array access in functions) has since been resolved, enabling fully modular
+array-based game logic.
 
-**Overall Assessment**: Viper BASIC can represent game boards and state, but cannot implement game logic in a modular
-way due to array access limitations.
+**Overall Assessment**: Viper BASIC can represent game boards, state, and implement game logic in a modular way.
+The remaining limitations (BUG-054: STEP keyword reserved, BUG-055: loop variable assignment restricted) have viable
+workarounds.
 
 ---
 
 **Files to Review**:
 
-- `/bugs/bug_testing/othello_simple.bas` - Working demo (208 lines)
-- `/bugs/bug_testing/othello_04_array_crash.bas` - Minimal crash reproduction
-- `/bugs/bug_testing/othello_game.bas` - What SHOULD work but doesn't
+- `docs/bugs/bug_testing/othello_04_array_crash.bas` - Minimal crash reproduction (historical)
+- `docs/bugs/bug_testing/othello_game.bas` - Full game (BUG-053 blocking workarounds no longer needed)
+- `docs/bugs/bug_testing/othello_simple.bas` - Working demo (208 lines)
 
 **Test Command**:
 
 ```bash
-cd /Users/stephen/git/viper
-./build/src/tools/viper/viper front basic -run bugs/bug_testing/othello_simple.bas 2>&1 | grep -v "rt_heap"
+# From viper repo root:
+./build/src/tools/viper/viper front basic -run docs/bugs/bug_testing/othello_simple.bas
 ```
 
 ---

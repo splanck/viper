@@ -33,8 +33,8 @@ executed in both the VM and the native backend.
     - A class must provide a method for each interface slot with a compatible signature. Duplicate interface method
       names are rejected.
     - Errors:
-        - E_IFACE_DUP_METHOD: “interface '{I}' declares duplicate method '{M}'.”
-        - E_CLASS_MISSES_IFACE_METHOD: “class '{C}' does not implement '{I}.{M}'.”
+        - E_CLASS_MISSES_IFACE_METHOD: "class '{C}' does not implement '{I}.{M}'."
+        - E_IFACE_DUP_METHOD: "interface '{I}' declares duplicate method '{M}'."
 
 ## Dispatch Model
 
@@ -83,9 +83,9 @@ Two equivalent views are useful for understanding interface calls (intrinsic hel
 
 ## Runtime Surface (selected)
 
-- `int rt_typeid_of(void *obj)`
-- `int rt_type_is_a(int type_id, int test_type_id)`
-- `int rt_type_implements(int type_id, int iface_id)`
 - `void *rt_cast_as(void *obj, int target_type_id)`
 - `void *rt_cast_as_iface(void *obj, int iface_id)`
 - `void **rt_itable_lookup(void *obj, int iface_id)`
+- `int rt_type_implements(int type_id, int iface_id)`
+- `int rt_type_is_a(int type_id, int test_type_id)`
+- `int rt_typeid_of(void *obj)`

@@ -1609,7 +1609,8 @@ if exists("output.txt") {
 }
 
 // Solution 3: Generate unique name
-var filename = "output_" + now().toString() + ".txt";
+// Generate unique name using a tick counter
+var filename = "output_" + Convert.ToString_Int(Time.Clock.Ticks()) + ".txt";
 writeText(filename, data);
 ```
 

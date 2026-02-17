@@ -1328,7 +1328,7 @@ func showInventory(items: [String], quantities: [i64]) {
     Say("Slots used: " + items.length);
 }
 
-func pickupItem(items: [String], quantities: [Integer], name: String, qty: Integer, maxSlots: Integer) {
+func pickupItem(items: [String], quantities: [i64], name: String, qty: i64, maxSlots: i64) {
     var existing = findItem(items, name);
 
     if existing >= 0 {
@@ -1347,7 +1347,7 @@ func pickupItem(items: [String], quantities: [Integer], name: String, qty: Integ
     }
 }
 
-func dropItem(items: [String], quantities: [Integer], name: String, qty: Integer) {
+func dropItem(items: [String], quantities: [i64], name: String, qty: i64) {
     var idx = findItem(items, name);
 
     if idx < 0 {

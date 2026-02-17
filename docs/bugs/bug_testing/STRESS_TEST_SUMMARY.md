@@ -376,8 +376,8 @@ END SELECT
 
 ### Known Limitations Found:
 
-⚠️ Array parameters not supported (BUG-086)
-⚠️ Nested IF in SELECT CASE broken (BUG-087)
+⚠️ Array parameters not supported (BUG-086) — documented, workaround available
+⚠️ Nested IF in SELECT CASE broken (BUG-087) — documented, workaround available
 ⚠️ INPUT only works with INTEGER (BUG-080, previously known)
 
 ---
@@ -414,5 +414,5 @@ END SELECT
 *Bugs found: 3 critical (fixed) + 2 medium (documented)*
 *Bugs fixed: 3 critical (BUG-083, BUG-084, BUG-085) - **ALL FIXED!**
 *Bugs remaining: 2 medium with workarounds (BUG-086, BUG-087)*
-*Test files preserved in: /bugs/bug_testing/*
+*Test files preserved in: docs/bugs/bug_testing/*
 *Overall success: Excellent - OOP fully functional with workarounds for minor limitations*

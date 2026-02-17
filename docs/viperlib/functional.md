@@ -40,6 +40,13 @@ Lazy evaluation wrapper that defers computation until the value is first accesse
 |---------------|-----------------------|-------------------------------------------------|
 | `IsEvaluated` | `Boolean` (read-only) | True if the lazy value has been evaluated        |
 
+### Transformation Methods
+
+| Method              | Signature          | Description                                                       |
+|---------------------|--------------------|-------------------------------------------------------------------|
+| `FlatMap(lazy, fn)` | `Object(Object, Object)` | Chain Lazy operations — fn receives the value and returns a new Lazy; the result is unwrapped |
+| `Map(lazy, fn)`     | `Object(Object, Object)` | Create a new Lazy by applying fn to the value when accessed       |
+
 ### Methods
 
 | Method        | Signature      | Description                                           |

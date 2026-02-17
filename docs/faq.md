@@ -47,7 +47,7 @@ You can also run an entire project directory:
 
 ```bash
 viper run demos/zia/frogger/
-viper run demos/basic/chess/
+viper run demos/basic/vtris/
 ```
 
 The standalone tools `vbasic`, `zia`, and `ilrun` are also available:
@@ -61,8 +61,10 @@ ilrun program.il
 ### 6. Where can I find example programs?
 
 - `/demos/zia/frogger/` - Full Frogger game in Zia demonstrating modules and game architecture
-- `/demos/zia/ladders/` - Donkey Kong-style platformer with multiple entities
+- `/demos/zia/centipede/` - Centipede game in Zia
+- `/demos/zia/pacman/` - Pac-Man game in Zia
 - `/demos/basic/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
+- `/demos/basic/chess/` - Chess game in BASIC
 - `/examples/basic/` - BASIC example programs
 - `/src/tests/golden/zia/` - Zia test programs showing specific language features
 - `/src/tests/golden/basic/` - BASIC test programs showing specific language features
@@ -183,7 +185,7 @@ Key limitations to be aware of:
 - **No SET/CALL keywords** (direct assignment only)
 - **Type suffixes required** for string functions (use `Str$`, `Chr$`, not `Str`, `Chr`)
 
-See `/bugs/basic_bugs.md` for documented issues and workarounds.
+See `/docs/bugs/viper_bugs.md` for documented issues and workarounds.
 
 ### 15. How do I use the AddFile keyword for modular programs?
 
@@ -272,7 +274,7 @@ Both frontends (Zia, BASIC) share the same runtime library. Built-in functions i
 - **Graphics**: `Color`, `Locate`, `Cls`
 - **Conversion**: `ToString_Int`/`Str$`, `ToInt`/`Val`
 
-See the respective builtin registries in `/src/frontends/zia/` and `/src/frontends/basic/`
+See the respective builtin registries in `/src/frontends/zia/` and `/src/frontends/basic/builtins/`
 for language-specific function lists.
 
 ---
@@ -290,7 +292,7 @@ See `/docs/frontend-howto.md` for detailed guidance.
 
 ### 26. How do I report bugs or request features?
 
-- **Bugs**: Add to `/bugs/basic_bugs.md` (BASIC) or open an issue
+- **Bugs**: Add to `/docs/bugs/viper_bugs.md` or open an issue
 - **Features**: Open a discussion or create an issue describing the use case
 - **Contributing**: Follow the Conventional Commits format for commit messages
 

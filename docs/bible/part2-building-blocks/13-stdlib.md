@@ -39,23 +39,23 @@ Viper's standard library is organized into modules under the `Viper` namespace. 
 
 | Module | Purpose | You'll Use It For |
 |--------|---------|-------------------|
-| `Viper.Terminal` | Console input/output | User interaction, debugging |
-| `Viper.File` | File operations | Reading/writing data |
-| `Viper.Dir` | Directory operations | Navigating the filesystem |
-| `Viper.Path` | Path manipulation | Building file paths safely |
-| `Viper.Convert` | String-to-number conversion | Processing user input |
-| `Viper.Fmt` | String formatting | Creating output messages |
-| `Viper.Math` | Mathematical functions | Calculations, geometry |
-| `Viper.Random` | Random number generation | Games, simulations, testing |
-| `Viper.Time` | Date and time | Timestamps, scheduling |
-| `Viper.Environment` | System information | Config, command-line args |
-| `Viper.Text` | Advanced string operations | Text processing |
 | `Viper.Collections` | Data structures | Lists, maps, sets |
-| `Viper.Network` | TCP/UDP networking | Web clients, servers |
-| `Viper.Threads` | Concurrency | Parallel processing |
+| `Viper.Convert` | String-to-number conversion | Processing user input |
 | `Viper.Crypto` | Hashing and encoding | Security, verification |
+| `Viper.Environment` | System information | Config, command-line args |
+| `Viper.Fmt` | String formatting | Creating output messages |
 | `Viper.Graphics` | Low-level drawing | Games, visualizations |
 | `Viper.GUI` | Widget-based UI | Desktop applications |
+| `Viper.IO.Dir` | Directory operations | Navigating the filesystem |
+| `Viper.IO.File` | File operations | Reading/writing data |
+| `Viper.IO.Path` | Path manipulation | Building file paths safely |
+| `Viper.Math` | Mathematical functions | Calculations, geometry |
+| `Viper.Network` | TCP/UDP networking | Web clients, servers |
+| `Viper.Math.Random` | Random number generation | Games, simulations, testing |
+| `Viper.String` | Advanced string operations | Text processing |
+| `Viper.Terminal` | Console input/output | User interaction, debugging |
+| `Viper.Threads` | Concurrency | Parallel processing |
+| `Viper.Time` | Date and time | Timestamps, scheduling |
 
 Let's explore each one in depth.
 
@@ -105,7 +105,7 @@ These are essential for building text-based games, progress bars, or any program
 bind Viper.Terminal;
 bind Viper.Convert;
 
-func showMenu() -> i64 {
+func showMenu() -> Integer {
     Clear();
     Say("=== Main Menu ===");
     Say("1. New Game");
@@ -128,55 +128,56 @@ Math operations beyond basic arithmetic live in `Viper.Math`. These functions ha
 ### Basic Functions
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
-abs(-5);          // 5 (absolute value)
-min(3, 7);        // 3 (smaller of two)
-max(3, 7);        // 7 (larger of two)
-clamp(15, 0, 10); // 10 (constrain to range 0-10)
+Math.Abs(-5.0);          // 5.0 (absolute value)
+Math.AbsInt(-5);         // 5   (integer absolute value)
+Math.MinInt(3, 7);       // 3 (smaller of two integers)
+Math.MaxInt(3, 7);       // 7 (larger of two integers)
+Math.ClampInt(15, 0, 10); // 10 (constrain to range 0-10)
 ```
 
 ### Rounding
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
-floor(3.7);       // 3.0 (round down)
-ceil(3.2);        // 4.0 (round up)
-round(3.5);       // 4.0 (round to nearest)
-round(3.4);       // 3.0
+Math.Floor(3.7);       // 3.0 (round down)
+Math.Ceil(3.2);        // 4.0 (round up)
+Math.Round(3.5);       // 4.0 (round to nearest)
+Math.Round(3.4);       // 3.0
 ```
 
 ### Powers and Roots
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
-sqrt(16.0);       // 4.0 (square root)
-pow(2.0, 8.0);    // 256.0 (2 to the 8th power)
-log(2.718);       // ~1.0 (natural logarithm)
-log10(100.0);     // 2.0 (base-10 logarithm)
-exp(1.0);         // ~2.718 (e^x)
+Math.Sqrt(16.0);       // 4.0 (square root)
+Math.Pow(2.0, 8.0);    // 256.0 (2 to the 8th power)
+Math.Log(2.718);       // ~1.0 (natural logarithm)
+Math.Log10(100.0);     // 2.0 (base-10 logarithm)
+Math.Exp(1.0);         // ~2.718 (e^x)
 ```
 
 ### Trigonometry
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
-sin(0.0);         // 0.0
-cos(0.0);         // 1.0
-tan(0.0);         // 0.0
-atan2(y, x);      // Angle from coordinates
+Math.Sin(0.0);         // 0.0
+Math.Cos(0.0);         // 1.0
+Math.Tan(0.0);         // 0.0
+Math.Atan2(y, x);      // Angle from coordinates
 ```
 
 ### Constants
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
-PI;               // 3.14159265358979...
-E;                // 2.71828182845904...
+Math.Pi;               // 3.14159265358979...
+Math.E;                // 2.71828182845904...
 ```
 
 ### When Would You Use This?
@@ -184,36 +185,36 @@ E;                // 2.71828182845904...
 **Game development:** Calculate distances, angles, movement vectors.
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Distance between two points
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
-    return sqrt(dx * dx + dy * dy);
+    return Math.Sqrt(dx * dx + dy * dy);
 }
 ```
 
 **Scientific calculations:** Statistics, physics simulations, financial modeling.
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Compound interest
 func compoundInterest(principal: Number, rate: Number, years: Integer) -> Number {
-    return principal * pow(1.0 + rate, years.toFloat());
+    return principal * Math.Pow(1.0 + rate, years * 1.0);
 }
 ```
 
 **Graphics:** Smooth animations, circular motion, wave patterns.
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Move in a circle
 var angle = time * speed;
-var x = centerX + radius * cos(angle);
-var y = centerY + radius * sin(angle);
+var x = centerX + radius * Math.Cos(angle);
+var y = centerY + radius * Math.Sin(angle);
 ```
 
 ### You Don't Want to Write This Yourself
@@ -228,30 +229,33 @@ The standard library handles all of this. Use it.
 
 ---
 
-## Viper.Random: Randomness
+## Viper.Math.Random: Randomness
 
-Games need dice rolls. Simulations need random data. Testing needs random inputs. `Viper.Random` provides it all.
+Games need dice rolls. Simulations need random data. Testing needs random inputs. `Viper.Math.Random` (aliased as `Random` below) provides it all.
 
 ### Basic Random Values
 
 ```rust
-bind Viper.Random;
+bind Viper.Math.Random as Random;
 
-int(1, 100);       // Random integer from 1 to 100 (inclusive)
-float();           // Random float from 0.0 to 1.0
-bool();            // Random true or false
+Random.Range(1, 100);  // Random integer from 1 to 100 (inclusive)
+Random.Next();         // Random float from 0.0 to 1.0
+Random.Dice(2);        // 1 or 2 — simulates a coin flip
 ```
 
 ### Working with Collections
 
 ```rust
-bind Viper.Random;
+bind Viper.Math.Random as Random;
+bind Viper.Collections;
 
-var options = ["rock", "paper", "scissors"];
-var choice = choice(options);  // Random element
-
-var deck = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-shuffle(deck);                 // Shuffle in place
+var deck = new List[Integer]();
+var i = 1;
+while i <= 10 {
+    deck.Push(i);
+    i = i + 1;
+}
+Random.Shuffle(deck);  // Shuffle in place
 ```
 
 ### Reproducible Randomness
@@ -259,9 +263,9 @@ shuffle(deck);                 // Shuffle in place
 For testing or game replays, you can *seed* the random number generator:
 
 ```rust
-bind Viper.Random;
+bind Viper.Math.Random as Random;
 
-seed(12345);  // Same seed = same sequence of "random" numbers
+Random.Seed(12345);  // Same seed = same sequence of "random" numbers
 ```
 
 This is crucial for debugging. If a bug only appears sometimes, set a seed to reproduce it reliably.
@@ -270,19 +274,19 @@ This is crucial for debugging. If a bug only appears sometimes, set a seed to re
 
 **Dice roll:**
 ```rust
-bind Viper.Random;
+bind Viper.Math.Random as Random;
 bind Viper.Terminal;
 
-var die = int(1, 6);
+var die = Random.Dice(6);
 Say("You rolled: " + die);
 ```
 
 **Coin flip:**
 ```rust
-bind Viper.Random;
+bind Viper.Math.Random as Random;
 bind Viper.Terminal;
 
-if bool() {
+if Random.Chance(0.5) == 1 {
     Say("Heads!");
 } else {
     Say("Tails!");
@@ -291,13 +295,10 @@ if bool() {
 
 **Random enemy spawn:**
 ```rust
-bind Viper.Random;
-
-var enemies = ["goblin", "orc", "troll", "dragon"];
-var weights = [50, 30, 15, 5];  // More common to less common
+bind Viper.Math.Random as Random;
 
 // Simple weighted random (for illustration)
-var roll = int(1, 100);
+var roll = Random.Range(1, 100);
 if roll <= 50 {
     spawn("goblin");
 } else if roll <= 80 {
@@ -311,15 +312,17 @@ if roll <= 50 {
 
 **Password generator:**
 ```rust
-bind Viper.Random;
+bind Viper.Math.Random as Random;
 
 func generatePassword(length: Integer) -> String {
     var chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
     var password = "";
 
-    for i in 0..length {
-        var index = int(0, chars.length - 1);
-        password += chars[index];
+    var i = 0;
+    while i < length {
+        var index = Random.Range(0, chars.length - 1);
+        password = password + chars[index];
+        i = i + 1;
     }
 
     return password;
@@ -337,15 +340,16 @@ Time is surprisingly complex. Leap years, time zones, daylight saving, calendar 
 ```rust
 bind Viper.Time;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-var now = now();
+var dt = Time.DateTime.Now();
 
-Say("Year: " + now.year);
-Say("Month: " + now.month);
-Say("Day: " + now.day);
-Say("Hour: " + now.hour);
-Say("Minute: " + now.minute);
-Say("Second: " + now.second);
+Say("Year: "   + Fmt.Int(Time.DateTime.Year(dt)));
+Say("Month: "  + Fmt.Int(Time.DateTime.Month(dt)));
+Say("Day: "    + Fmt.Int(Time.DateTime.Day(dt)));
+Say("Hour: "   + Fmt.Int(Time.DateTime.Hour(dt)));
+Say("Minute: " + Fmt.Int(Time.DateTime.Minute(dt)));
+Say("Second: " + Fmt.Int(Time.DateTime.Second(dt)));
 ```
 
 ### Formatting Dates
@@ -354,32 +358,26 @@ Dates need to be displayed in different formats depending on context:
 
 ```rust
 bind Viper.Time;
+bind Viper.Fmt as Fmt;
 bind Viper.Terminal;
 
-var now = now();
+var dt = Time.DateTime.Now();
+var y  = Time.DateTime.Year(dt);
+var mo = Time.DateTime.Month(dt);
+var d  = Time.DateTime.Day(dt);
+var h  = Time.DateTime.Hour(dt);
+var mi = Time.DateTime.Minute(dt);
+var s  = Time.DateTime.Second(dt);
 
 // ISO format (international standard)
-Say(now.format("YYYY-MM-DD"));        // 2024-03-15
+Say(Fmt.IntPad(y, 4, "0") + "-" + Fmt.IntPad(mo, 2, "0") + "-" + Fmt.IntPad(d, 2, "0"));
+// 2024-03-15
 
 // With time
-Say(now.format("YYYY-MM-DD HH:mm:ss")); // 2024-03-15 14:30:45
-
-// Human-friendly
-Say(now.format("MMMM D, YYYY"));      // March 15, 2024
-
-// Time only
-Say(now.format("h:mm A"));            // 2:30 PM
+Say(Fmt.IntPad(y, 4, "0") + "-" + Fmt.IntPad(mo, 2, "0") + "-" + Fmt.IntPad(d, 2, "0") +
+    " " + Fmt.IntPad(h, 2, "0") + ":" + Fmt.IntPad(mi, 2, "0") + ":" + Fmt.IntPad(s, 2, "0"));
+// 2024-03-15 14:30:45
 ```
-
-Common format codes:
-- `YYYY` - 4-digit year
-- `MM` - 2-digit month (01-12)
-- `DD` - 2-digit day (01-31)
-- `HH` - 24-hour hours (00-23)
-- `hh` - 12-hour hours (01-12)
-- `mm` - Minutes (00-59)
-- `ss` - Seconds (00-59)
-- `A` - AM/PM
 
 ### Measuring Elapsed Time
 
@@ -388,14 +386,15 @@ For performance measurement or timing games:
 ```rust
 bind Viper.Time;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-var start = millis();
+var start = Time.Clock.Ticks();
 
 // Do some work...
 processData();
 
-var elapsed = millis() - start;
-Say("Processing took " + elapsed + " ms");
+var elapsed = Time.Clock.Ticks() - start;
+Say("Processing took " + Fmt.Int(elapsed) + " ms");
 ```
 
 ### Delays and Pauses
@@ -405,7 +404,7 @@ bind Viper.Terminal;
 bind Viper.Time;
 
 Say("Loading...");
-sleep(2000);  // Pause for 2000 milliseconds (2 seconds)
+Time.Clock.Sleep(2000);  // Pause for 2000 milliseconds (2 seconds)
 Say("Done!");
 ```
 
@@ -414,20 +413,20 @@ Say("Done!");
 ```rust
 bind Viper.Terminal;
 bind Viper.Time;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func stopwatch() {
     Say("Press Enter to start...");
     ReadLine();
 
-    var start = millis();
+    var start = Time.Clock.Ticks();
     Say("Stopwatch running. Press Enter to stop.");
     ReadLine();
 
-    var elapsed = millis() - start;
-    var seconds = elapsed / 1000.0;
+    var elapsed = Time.Clock.Ticks() - start;
+    var seconds = elapsed * 1.0 / 1000.0;
 
-    Say(format("Elapsed: {:.2} seconds", seconds));
+    Say("Elapsed: " + Fmt.NumFixed(seconds, 2) + " seconds");
 }
 ```
 
@@ -462,13 +461,12 @@ You can access those arguments:
 bind Viper.Environment;
 bind Viper.Terminal;
 
-var args = args();
+var count = GetArgumentCount();
 
-for arg in args {
-    Say("Argument: " + arg);
+for i in 0..count {
+    Say("Argument: " + GetArgument(i));
 }
 // Output:
-// Argument: myprogram.zia
 // Argument: input.txt
 // Argument: --verbose
 ```
@@ -480,12 +478,12 @@ Operating systems have configuration through environment variables:
 ```rust
 bind Viper.Environment;
 
-var home = get("HOME");       // /Users/alice
-var path = get("PATH");       // System PATH
-var editor = get("EDITOR");   // Preferred text editor
+var home = GetVariable("HOME");       // /Users/alice
+var path = GetVariable("PATH");       // System PATH
+var editor = GetVariable("EDITOR");   // Preferred text editor
 
 // Check if a variable exists
-if has("DEBUG") {
+if HasVariable("DEBUG") {
     // Debug mode is enabled
     enableVerboseLogging();
 }
@@ -495,21 +493,21 @@ if has("DEBUG") {
 
 ```rust
 bind Viper.Environment;
+bind Viper.Machine;
 
-var os = os();             // "windows", "macos", or "linux"
-var home = homeDir();      // User's home directory
-var cwd = currentDir();    // Current working directory
+var osName = GetOS();         // "windows", "macos", or "linux"
+var home = GetVariable("HOME");  // User's home directory
 ```
 
 ### Practical Example: Cross-Platform Configuration
 
 ```rust
 bind Viper.Environment;
-bind Viper.Path;
+bind Viper.IO.Path;
 
-func getConfigPath() -> string {
-    var osName = os();
-    var home = homeDir();
+func getConfigPath() -> String {
+    var osName = GetVariable("OS");
+    var home = GetVariable("HOME");
 
     if osName == "windows" {
         return join(home, "AppData", "Local", "MyApp", "config.json");
@@ -525,140 +523,121 @@ func getConfigPath() -> string {
 
 ## Viper.Fmt: String Formatting
 
-Concatenating strings with `+` gets messy for complex output. `Viper.Fmt` makes it cleaner.
+Concatenating strings with `+` gets messy when mixing numbers and text. `Viper.Fmt` makes formatting cleaner.
 
 ### Basic Formatting
 
 ```rust
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
+bind Viper.Terminal;
 
 var name = "Alice";
 var score = 95;
 
-// Instead of:
-var msg = "Player " + name + " scored " + score + " points!";
-
-// Use:
-var msg = format("Player {} scored {} points!", name, score);
+// Format values to strings
+Say("Player " + name + " scored " + Fmt.Int(score) + " points!");
 // "Player Alice scored 95 points!"
-```
 
-The `{}` placeholders are replaced by arguments in order.
+// Fixed decimal places
+Say(Fmt.NumFixed(3.14159, 2));   // "3.14"
+Say(Fmt.NumFixed(3.14159, 4));   // "3.1416"
+```
 
 ### Number Formatting
 
 ```rust
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 // Decimal places
-format("{:.2}", 3.14159);    // "3.14"
-format("{:.4}", 3.14159);    // "3.1416"
+Fmt.NumFixed(3.14159, 2);    // "3.14"
+Fmt.NumFixed(3.14159, 4);    // "3.1416"
 
 // Zero padding
-format("{:05}", 42);         // "00042"
-format("{:08}", 1234);       // "00001234"
+Fmt.IntPad(42, 5, "0");      // "00042"
+Fmt.IntPad(1234, 8, "0");    // "00001234"
 
-// Alignment
-format("{:>10}", "hi");      // "        hi" (right-align)
-format("{:<10}", "hi");      // "hi        " (left-align)
-format("{:^10}", "hi");      // "    hi    " (center)
+// Hex, binary, octal
+Fmt.Hex(255);                // "ff"
+Fmt.Bin(10);                 // "1010"
+Fmt.Oct(8);                  // "10"
 ```
 
 ### Practical Example: Formatted Table
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func printScoreboard(players: [Player]) {
-    Say(format("{:<15} {:>10}", "Name", "Score"));
-    Say("-".repeat(26));
+    Say("Name            Score");
+    Say("--------------------------");
 
-    for player in players {
-        Say(format("{:<15} {:>10}", player.name, player.score));
+    var i = 0;
+    while i < players.length {
+        var p = players[i];
+        Say(p.name + "  " + Fmt.Int(p.score));
+        i = i + 1;
     }
 }
 
 // Output:
-// Name                 Score
+// Name            Score
 // --------------------------
-// Alice                  950
-// Bob                    875
-// Charlie               1200
+// Alice  950
+// Bob  875
+// Charlie  1200
 ```
 
 ---
 
-## Viper.Text: String Utilities
+## Viper.String: String Utilities
 
-Beyond basic string methods, `Viper.Text` provides advanced text operations.
+Beyond basic concatenation, `Viper.String` provides advanced text operations as instance methods on strings.
 
 ### Padding and Alignment
 
 ```rust
-bind Viper.Text;
-
-padLeft("42", 5, '0');     // "00042"
-padRight("hi", 5, ' ');    // "hi   "
-padCenter("hi", 8, '-');   // "---hi---"
+// PadLeft, PadRight, and Repeat are instance methods on String values
+var padded = "42".PadLeft(5, "0");    // "00042"
+var rpad   = "hi".PadRight(5, " ");   // "hi   "
 ```
 
 ### Repetition and Reversal
 
 ```rust
-bind Viper.Text;
-
-repeat("ab", 3);           // "ababab"
-repeat("-", 40);           // A line of dashes
-reverse("hello");          // "olleh"
+var dashes = "-".Repeat(40);          // A line of dashes
+var rev    = "hello".Flip();          // "olleh"
 ```
 
-### Character Classification
+### Text Searching and Splitting
 
 ```rust
-bind Viper.Text;
+// String methods for searching
+var s = "Hello, World!";
+var idx  = s.IndexOf("World");       // 7
+var has  = s.Has("Hello");           // true
+var up   = s.ToUpper();              // "HELLO, WORLD!"
+var low  = s.ToLower();              // "hello, world!"
+var trim = "  hi  ".Trim();          // "hi"
 
-isDigit('5');              // true
-isDigit('a');              // false
-isLetter('A');             // true
-isWhitespace(' ');         // true
-isWhitespace('\t');        // true
-isAlphanumeric('a');       // true
-isAlphanumeric('5');       // true
-isAlphanumeric('!');       // false
-```
-
-### Text Splitting
-
-```rust
-bind Viper.Text;
-
-lines("a\nb\nc");          // ["a", "b", "c"]
-words("hello world");      // ["hello", "world"]
+// Split into parts
+var parts = "a,b,c".Split(",");      // Seq of ["a", "b", "c"]
 ```
 
 ### Practical Example: Validating User Input
 
 ```rust
-bind Viper.Text;
-
 func isValidUsername(username: String) -> Boolean {
     // Must be 3-20 characters
-    if username.length < 3 || username.length > 20 {
+    if username.Length < 3 || username.Length > 20 {
         return false;
     }
 
-    // Must start with a letter
-    if !isLetter(username[0]) {
+    // Must start with a letter (A-Z or a-z)
+    var first = username.Substring(0, 1);
+    if first.ToLower() == first.ToUpper() {
+        // Not a letter — both cases are same for non-alpha chars
         return false;
-    }
-
-    // All characters must be alphanumeric or underscore
-    for i in 0..username.length {
-        var c = username[i];
-        if !isAlphanumeric(c) && c != '_' {
-            return false;
-        }
     }
 
     return true;
@@ -678,19 +657,20 @@ Unlike fixed arrays, lists grow automatically:
 ```rust
 bind Viper.Collections;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-var list = List.new();
+var list = new List[String]();
 
-list.add("first");
-list.add("second");
-list.add("third");
+list.Push("first");
+list.Push("second");
+list.Push("third");
 
-Say(list.get(0));      // "first"
-Say(list.size());      // 3
+Say(list.Get(0));             // "first"
+Say(Fmt.Int(list.Len));       // 3
 
-list.remove(0);                        // Remove first element
-list.insert(1, "inserted");            // Insert at position 1
-list.clear();                          // Remove all elements
+list.RemoveAt(0);             // Remove first element
+list.Insert(1, "inserted");   // Insert at position 1
+list.Clear();                 // Remove all elements
 ```
 
 **When to use:** When you don't know how many elements you'll have, or when you need to add/remove frequently.
@@ -702,50 +682,56 @@ Maps store associations between keys and values:
 ```rust
 bind Viper.Collections;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-var scores = Map.new();
+var scores = new Map[String, Integer]();
 
-scores.set("Alice", "950");
-scores.set("Bob", "875");
-scores.set("Charlie", "1200");
+scores.SetInt("Alice", 950);
+scores.SetInt("Bob", 875);
+scores.SetInt("Charlie", 1200);
 
-Say(scores.get("Alice"));   // "950"
-Say(scores.size());         // 3
+Say(Fmt.Int(scores.GetInt("Alice")));  // 950
+Say(Fmt.Int(scores.Len));              // 3
 
-if scores.has("David") {
+if scores.Has("David") {
     Say("David is in the game");
 } else {
     Say("David hasn't played yet");
 }
 
 // Iterate over all entries
-for key in scores.keys() {
-    Say(key + ": " + scores.get(key));
+var keys = scores.Keys();
+var i = 0;
+while i < keys.Len {
+    var key = keys.Get(i);
+    Say(key + ": " + Fmt.Int(scores.GetInt(key)));
+    i = i + 1;
 }
 
-scores.remove("Bob");
+scores.Remove("Bob");
 ```
 
 **When to use:** When you need to look things up by name, ID, or any other key. Faster than searching an array.
 
 ### Set: Unique Values
 
-Sets store unique values with no duplicates:
+Sets store unique string values with no duplicates. Use `Viper.Collections.Bag` for string sets:
 
 ```rust
 bind Viper.Collections;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-var tags = Set.new();
+var tags = new Bag();
 
-tags.add("important");
-tags.add("urgent");
-tags.add("important");  // Ignored - already exists
+tags.Put("important");
+tags.Put("urgent");
+tags.Put("important");  // Ignored - already exists
 
-Say(tags.size());      // 2
-Say(tags.has("urgent")); // true
+Say(Fmt.Int(tags.Len));       // 2
+Say(Fmt.Bool(tags.Has("urgent")));  // true
 
-tags.remove("urgent");
+tags.Drop("urgent");
 ```
 
 **When to use:** When you need to track unique items, check membership quickly, or remove duplicates.
@@ -754,25 +740,26 @@ tags.remove("urgent");
 
 ```rust
 bind Viper.Collections;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
 func countWords(text: String) -> Map {
-    var frequency = Map.new();
-    var words = text.lower().split(" ");
+    var frequency = new Map[String, Integer]();
+    var words = text.ToLower().Split(" ");
 
-    for word in words {
-        word = word.trim();
-        if word.length == 0 {
-            continue;
+    var i = 0;
+    while i < words.Len {
+        var word = words.Get(i).Trim();
+        if word.Length > 0 {
+            if frequency.Has(word) {
+                var count = frequency.GetInt(word);
+                frequency.SetInt(word, count + 1);
+            } else {
+                frequency.SetInt(word, 1);
+            }
         }
-
-        if frequency.has(word) {
-            var count = ToInt(frequency.get(word));
-            frequency.set(word, (count + 1).toString());
-        } else {
-            frequency.set(word, "1");
-        }
+        i = i + 1;
     }
 
     return frequency;
@@ -782,8 +769,12 @@ func countWords(text: String) -> Map {
 var text = "the quick brown fox jumps over the lazy dog the fox";
 var counts = countWords(text);
 
-for word in counts.keys() {
-    Say(word + ": " + counts.get(word));
+var keys = counts.Keys();
+var i = 0;
+while i < keys.Len {
+    var word = keys.Get(i);
+    Say(word + ": " + Fmt.Int(counts.GetInt(word)));
+    i = i + 1;
 }
 // Output:
 // the: 3
@@ -795,19 +786,19 @@ for word in counts.keys() {
 
 ---
 
-## Viper.Parse: Parsing Values
+## Viper.Convert: Parsing Values
 
 Converting strings to other types is so common it gets its own module.
 
 ### Basic Parsing
 
 ```rust
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
-ToInt("42");             // 42
-ToDouble("3.14");        // 3.14
-ToBool("true");          // true
-ToBool("false");         // false
+Convert.ToInt64("42");        // 42
+Convert.ToDouble("3.14");     // 3.14
+Convert.ToString_Int(42);     // "42"
+Convert.ToString_Double(3.14); // "3.14"
 ```
 
 ### Error Handling
@@ -815,11 +806,11 @@ ToBool("false");         // false
 Parsing can fail. Handle it gracefully:
 
 ```rust
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 bind Viper.Terminal;
 
 try {
-    var num = ToInt("not a number");
+    var num = Convert.ToInt64("not a number");
 } catch e {
     Say("Invalid input - please enter a number");
 }
@@ -829,15 +820,15 @@ try {
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 func getNumber(prompt: String) -> Integer {
     while true {
         Print(prompt);
-        var input = ReadLine().trim();
+        var input = ReadLine().Trim();
 
         try {
-            return ToInt(input);
+            return Convert.ToInt64(input);
         } catch e {
             Say("Please enter a valid number.");
         }
@@ -850,14 +841,14 @@ var age = getNumber("Enter your age: ");
 
 ---
 
-## Viper.File / Viper.Dir / Viper.Path
+## Viper.IO.File / Viper.IO.Dir / Viper.IO.Path
 
 We covered file operations in Chapter 9, but let's review the key patterns.
 
 ### File Operations
 
 ```rust
-bind Viper.File;
+bind Viper.IO.File;
 
 // Reading
 var content = readText("data.txt");
@@ -881,7 +872,7 @@ delete("temp.txt");
 ### Directory Operations
 
 ```rust
-bind Viper.Dir;
+bind Viper.IO.Dir;
 
 create("output");
 createAll("output/reports/2024");  // Creates all intermediate dirs
@@ -901,7 +892,7 @@ delete("temp");
 The **critical** module for working with file paths:
 
 ```rust
-bind Viper.Path;
+bind Viper.IO.Path;
 
 // Join paths safely (handles OS-specific separators)
 var path = join("users", "alice", "documents", "file.txt");
@@ -927,7 +918,7 @@ isAbsolute("relative/path");        // false
 Never concatenate paths with `+`:
 
 ```rust
-bind Viper.Path;
+bind Viper.IO.Path;
 
 // BAD - breaks on different operating systems
 var path = dir + "/" + filename;
@@ -949,10 +940,10 @@ For hashing, encoding, and unique identifiers.
 Hashing converts data into a fixed-size fingerprint. The same input always produces the same hash, but you can't reverse a hash back to the original.
 
 ```rust
-bind Viper.Crypto;
+bind Viper.Crypto.Hash as Hash;
 
-var hash = md5("hello");      // 32-character hex string
-var sha = sha256("hello");    // 64-character hex string
+var hash = Hash.MD5("hello");      // 32-character hex string
+var sha = Hash.SHA256("hello");    // 64-character hex string
 ```
 
 **When to use:**
@@ -963,15 +954,15 @@ var sha = sha256("hello");    // 64-character hex string
 
 ### Encoding
 
-Base64 encoding converts binary data to text:
+Base64 encoding converts binary data to text. This lives in `Viper.Codec`:
 
 ```rust
-bind Viper.Crypto;
+bind Viper.Codec;
 
-var encoded = base64Encode("Hello, World!");
+var encoded = Base64Encode("Hello, World!");
 // "SGVsbG8sIFdvcmxkIQ=="
 
-var decoded = base64Decode(encoded);
+var decoded = Base64Decode(encoded);
 // "Hello, World!"
 ```
 
@@ -985,9 +976,9 @@ var decoded = base64Decode(encoded);
 GUIDs (Globally Unique Identifiers) are guaranteed-unique strings:
 
 ```rust
-bind Viper.Crypto;
+bind Viper.Guid;
 
-var id = guid();
+var id = New();
 // "550e8400-e29b-41d4-a716-446655440000"
 ```
 
@@ -1002,13 +993,14 @@ var id = guid();
 **Never store passwords in plain text.** Hash them:
 
 ```rust
-bind Viper.Crypto;
+bind Viper.Crypto.Hash as Hash;
+bind Viper.Guid;
 bind Viper.Terminal;
 
 func hashPassword(password: String, salt: String) -> String {
     // Combine password with salt to prevent rainbow table attacks
     var salted = password + salt;
-    return sha256(salted);
+    return Hash.SHA256(salted);
 }
 
 func checkPassword(input: String, salt: String, storedHash: String) -> Boolean {
@@ -1017,7 +1009,7 @@ func checkPassword(input: String, salt: String, storedHash: String) -> Boolean {
 }
 
 // Registration:
-var salt = guid();  // Random salt for this user
+var salt = New();  // Random salt for this user
 var hash = hashPassword(userPassword, salt);
 // Store both hash and salt in database
 
@@ -1039,11 +1031,11 @@ module StdlibDemo;
 bind Viper.Terminal;
 bind Viper.Environment;
 bind Viper.Time;
-bind Viper.Math;
-bind Viper.Fmt;
-bind Viper.Random;
+bind Viper.Math as Math;
+bind Viper.Fmt as Fmt;
+bind Viper.Math.Random as Random;
 bind Viper.Collections;
-bind Viper.Crypto;
+bind Viper.Crypto.Hash as Hash;
 
 func start() {
     Say("=== Viper Standard Library Demo ===");
@@ -1051,40 +1043,46 @@ func start() {
 
     // Environment
     Say("System Information:");
-    Say("  OS: " + os());
-    Say("  Home: " + homeDir());
+    Say("  Home: " + GetVariable("HOME"));
     Say("");
 
     // Time
-    var now = now();
+    var dt = Time.DateTime.Now();
     Say("Current Time:");
-    Say("  " + now.format("MMMM D, YYYY h:mm A"));
+    Say("  Year: " + Fmt.Int(Time.DateTime.Year(dt)));
+    Say("  Month: " + Fmt.Int(Time.DateTime.Month(dt)));
     Say("");
 
     // Math
     Say("Math Demo:");
-    var angle = PI / 4.0;
-    Say(format("  sin(45 deg) = {:.4}", sin(angle)));
-    Say(format("  sqrt(2) = {:.4}", sqrt(2.0)));
+    var angle = Math.Pi / 4.0;
+    Say("  sin(45 deg) = " + Fmt.NumFixed(Math.Sin(angle), 4));
+    Say("  sqrt(2) = " + Fmt.NumFixed(Math.Sqrt(2.0), 4));
     Say("");
 
     // Random
     Say("Random Numbers:");
-    for i in 0..5 {
-        var roll = int(1, 6);
-        Say("  Dice roll: " + roll);
+    var i = 0;
+    while i < 5 {
+        var roll = Random.Dice(6);
+        Say("  Dice roll: " + Fmt.Int(roll));
+        i = i + 1;
     }
     Say("");
 
     // Collections
-    var scores = Map.new();
-    scores.set("Alice", "950");
-    scores.set("Bob", "875");
-    scores.set("Charlie", "1200");
+    var scores = new Map[String, Integer]();
+    scores.SetInt("Alice", 950);
+    scores.SetInt("Bob", 875);
+    scores.SetInt("Charlie", 1200);
 
     Say("Leaderboard:");
-    for name in scores.keys() {
-        Say(format("  {:<10} {:>6} points", name, scores.get(name)));
+    var keys = scores.Keys();
+    var j = 0;
+    while j < keys.Len {
+        var name = keys.Get(j);
+        Say("  " + name + ": " + Fmt.Int(scores.GetInt(name)) + " points");
+        j = j + 1;
     }
     Say("");
 
@@ -1092,21 +1090,22 @@ func start() {
     var message = "Hello, Viper!";
     Say("Crypto Demo:");
     Say("  Message: " + message);
-    Say("  SHA256: " + sha256(message).substring(0, 16) + "...");
-    Say("  Base64: " + base64Encode(message));
+    Say("  SHA256: " + Hash.SHA256(message).Substring(0, 16) + "...");
     Say("");
 
     // Performance measurement
     Say("Performance Test:");
-    var start = millis();
+    var startMs = Time.Clock.Ticks();
 
     var sum = 0.0;
-    for i in 0..100000 {
-        sum += sqrt(i.toFloat());
+    var k = 0;
+    while k < 100000 {
+        sum = sum + Math.Sqrt(k * 1.0);
+        k = k + 1;
     }
 
-    var elapsed = millis() - start;
-    Say(format("  100,000 square roots in {} ms", elapsed));
+    var elapsed = Time.Clock.Ticks() - startMs;
+    Say("  100,000 square roots in " + Fmt.Int(elapsed) + " ms");
 
     Say("");
     Say("Demo complete!");
@@ -1127,8 +1126,10 @@ A naive approach:
 // DON'T DO THIS - slow and possibly inaccurate
 func naiveSqrt(n: Number) -> Number {
     var guess = n / 2.0;
-    for i in 0..100 {
+    var i = 0;
+    while i < 100 {
         guess = (guess + n / guess) / 2.0;
+        i = i + 1;
     }
     return guess;
 }
@@ -1165,7 +1166,7 @@ Cryptography is easy to get wrong. Use the standard library.
 
 ```rust
 // DON'T DO THIS - not actually random
-func badRandom() -> i64 {
+func badRandom() -> Integer {
     // Most simple approaches produce predictable sequences
     // or have statistical biases.
 }
@@ -1216,7 +1217,7 @@ When you encounter a new standard library module:
 Don't try to learn every function. Start with the most common operations:
 
 ```rust
-bind Viper.File;
+bind Viper.IO.File;
 
 // For File, start with:
 readText()
@@ -1237,16 +1238,18 @@ Create a `test.zia` file and try things:
 ```rust
 module Test;
 
-bind Viper.Math;
+bind Viper.Math as Math;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
 func start() {
     // Experiment here
-    var x = sqrt(2.0);
-    Say(x);
+    var x = Math.Sqrt(2.0);
+    Say(Fmt.NumFixed(x, 4));
 
     // What happens if...
-    var y = sqrt(-1.0);  // Error? NaN?
+    var y = Math.Sqrt(-1.0);  // Error? NaN?
+    Say(Fmt.NumFixed(y, 4));
 }
 ```
 
@@ -1293,9 +1296,11 @@ func getInt(prompt: String) -> Integer {
 bind Viper.Environment;
 
 func getConfig(key: String, defaultValue: String) -> String {
-    var envValue = get(key);
-    if envValue != null && envValue.length > 0 {
-        return envValue;
+    if HasVariable(key) {
+        var envValue = GetVariable(key);
+        if envValue.length > 0 {
+            return envValue;
+        }
     }
     return defaultValue;
 }
@@ -1304,7 +1309,7 @@ func getConfig(key: String, defaultValue: String) -> String {
 ### Pattern: Safe File Read
 
 ```rust
-bind Viper.File;
+bind Viper.IO.File;
 bind Viper.Terminal;
 
 func readFileSafe(path: String) -> String {
@@ -1326,12 +1331,13 @@ func readFileSafe(path: String) -> String {
 ```rust
 bind Viper.Time;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
 func timed(name: String, operation: func()) {
-    var start = millis();
+    var start = Time.Clock.Ticks();
     operation();
-    var elapsed = millis() - start;
-    Say(name + " took " + elapsed + " ms");
+    var elapsed = Time.Clock.Ticks() - start;
+    Say(name + " took " + Fmt.Int(elapsed) + " ms");
 }
 
 // Usage:
@@ -1343,15 +1349,21 @@ timed("Sort", func() {
 ### Pattern: Build a Path
 
 ```rust
-bind Viper.Path;
+bind Viper.IO.Path;
 bind Viper.Environment;
 bind Viper.Time;
+bind Viper.Fmt as Fmt;
+
+var dt = Time.DateTime.Now();
+var dateStr = Fmt.IntPad(Time.DateTime.Year(dt), 4, "0") + "-" +
+              Fmt.IntPad(Time.DateTime.Month(dt), 2, "0") + "-" +
+              Fmt.IntPad(Time.DateTime.Day(dt), 2, "0");
 
 var logFile = join(
-    homeDir(),
+    GetVariable("HOME"),
     ".myapp",
     "logs",
-    now().format("YYYY-MM-DD") + ".log"
+    dateStr + ".log"
 );
 ```
 
@@ -1363,13 +1375,13 @@ The Viper standard library provides:
 
 | Category | Modules | Key Functions |
 |----------|---------|---------------|
-| I/O | Terminal, File, Dir, Path | Say, ReadLine, readText, join |
-| Numbers | Math, Random, Parse | sqrt, sin, int, Int/Float |
-| Text | Text, Fmt | format, padLeft, isDigit |
-| Time | Time | now, format, millis, sleep |
-| Data | Collections | List, Map, Set |
-| System | Environment | args, get, os |
-| Security | Crypto | sha256, base64Encode, guid |
+| I/O | Terminal, IO.File, IO.Dir, IO.Path | Say, ReadLine, readText, join |
+| Numbers | Math, Math.Random, Convert | Math.Sqrt, Math.Sin, Random.Range, Convert.ToInt64 |
+| Text | String, Fmt | String.Trim, String.Split, Fmt.Int, Fmt.NumFixed |
+| Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
+| Data | Collections | List.Push, Map.SetInt, Bag.Put |
+| System | Environment | GetArgument, GetVariable, GetOS |
+| Security | Crypto.Hash, Codec, Guid | Hash.SHA256, Hash.MD5, New |
 
 The standard library is your first resort when you need functionality. It's tested, optimized, and familiar to other programmers. Learning it is as important as learning the language syntax.
 

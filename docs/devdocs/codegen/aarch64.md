@@ -1,310 +1,197 @@
 # AArch64 (arm64) Backend — Status and Plan
 
-**Last Updated:** November 2025
+**Last Updated:** February 2026
 
 This document captures the current state of the AArch64 backend, recent bug fixes, missing features needed for real
-programs, and the development roadmap. It is kept developer‑focused with concrete source references and test cases.
+programs, and the development roadmap. It is kept developer-focused with concrete source references and test cases.
 
 ## Executive Summary
 
-### Current Status (November 2025)
+### Current Status (February 2026)
 
-- ✅ **End‑to‑end path validated on Apple Silicon**: IL → AArch64 assembly → native binary → runs (Frogger demo)
-- ✅ **Platform fixes**: macOS section directives, runtime function prefixes, label sanitization
-- ✅ **Core operations execute**: Arithmetic, control flow, calls, memory, and strings sufficient for demos
-- 🚧 **Remaining work**: Broader opcode coverage, float/FPR ops, more address modes, EH, performance
+- **End-to-end path validated on Apple Silicon**: IL → AArch64 assembly → native binary → runs (Frogger demo)
+- **Core operations execute**: Arithmetic, control flow, calls, memory, strings, floating-point, and OOP sufficient
+  for non-trivial programs
+- **Full pipeline implemented**: MIR layer, instruction selection, register allocation, frame lowering, peephole
+  optimization, linker integration
+- **Remaining work**: Broader opcode coverage, more address modes, EH polish, performance tuning
 
 ### Test Case: Frogger Demo
 
-The frogger demo (`demos/basic/frogger/frogger.bas`) serves as our benchmark for backend completeness:
+The frogger demo (`demos/basic/frogger/frogger.bas`) serves as a benchmark for backend completeness:
 
 - **Compiles and links successfully**: 12,771 lines of IL → 56KB assembly → 121KB native binary
-- **Runs successfully**: Verified end‑to‑end on Apple Silicon
+- **Runs successfully**: Verified end-to-end on Apple Silicon
 
-## Overview
+## Source File Map
 
-We have scaffolded a native AArch64 (arm64) backend for macOS and implemented a minimal, test‑driven path that can emit
-assembly text from a very small subset of IL. The current strategy is incremental: land a correct, tiny emitter and CLI
-integration, then grow pattern coverage and ergonomics before introducing a full lowering pipeline and register
-allocation similar to x86‑64.
+### Target description and ABI
 
-## Implemented So Far
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/TargetAArch64.hpp`/`.cpp` | `PhysReg` enum (X0–X30, SP, V0–V31), `TargetInfo` struct, `darwinTarget()` singleton, `isGPR()`, `isFPR()`, `regName()` |
 
-### Target description (registers/ABI)
+`TargetInfo` contents:
 
-- Files:
-    - `src/codegen/aarch64/TargetAArch64.hpp`
-    - `src/codegen/aarch64/TargetAArch64.cpp`
-- Contents:
-    - `enum class PhysReg` enumerates GPRs `x0..x30`, `sp` and SIMD `v0..v31` (modeled as D‑regs for now).
-    - ABI helpers:
-        - `darwinTarget()` returns a singleton with:
-            - Caller/callee‑saved sets (Darwin/AAPCS64), arg register orders (x0..x7, v0..v7), return regs (x0, v0), and
-              stack alignment (16).
-        - `isGPR`, `isFPR` classify physical registers.
-        - `regName` renders canonical string names (e.g. "x0", "v15").
+- `darwinTarget()` returns a `const TargetInfo &` singleton with:
+    - Caller/callee-saved sets (AAPCS64), arg register orders (X0–X7, V0–V7), return regs (X0, V0), stack alignment (16)
+- `isGPR`, `isFPR` classify physical registers
+- `regName` renders canonical string names (e.g., `"x0"`, `"v15"`)
 
-### Minimal AArch64 assembly emitter
+### Machine IR
 
-- Files:
-    - `src/codegen/aarch64/AsmEmitter.hpp`
-    - `src/codegen/aarch64/AsmEmitter.cpp`
-- Capabilities:
-    - Function prologue/epilogue:
-        - Prologue: `stp x29, x30, [sp, #-16]!; mov x29, sp`
-        - Epilogue: `ldp x29, x30, [sp], #16; ret`
-    - Function header directives: `.text; .align 2; .globl <name>; <name>:`
-    - Integer ops:
-        - Reg/reg: `mov`, `add`, `sub`, `mul`, `and`, `orr`, `eor`
-        - Reg/imm: `mov #imm`, `add #imm`, `sub #imm`, shifts `lsl/lsr/asr #imm`
-    - Notes: This emitter is intentionally small and stateless; it serves both tests and the early CLI lowering path.
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/MachineIR.hpp`/`.cpp` | `MOpcode` enum, `MReg`, `MOperand`, `MInstr`, `MBasicBlock`, `MFunction` |
+| `src/codegen/aarch64/MachineIR.hpp`/`.cpp` | `MFunction::savedGPRs` — callee-saved GPR list for prologue/epilogue |
+| `src/codegen/aarch64/generated/OpcodeDispatch.inc` | Generated opcode dispatch table |
 
-### CLI driver integration (text emission only)
+MIR opcode categories:
 
-- Files:
-    - `src/tools/viper/cmd_codegen_arm64.hpp`
-    - `src/tools/viper/cmd_codegen_arm64.cpp`
-    - `src/tools/viper/main.cpp`
-    - `src/CMakeLists.txt` (adds `viper_cmd_arm64` static library and links it into `viper`)
-- Usage:
-    - `viper codegen arm64 <input.il> -S <out.s>`
-    - The command:
-        - Loads an IL module from disk.
-        - Iterates functions and emits textual assembly using the AArch64 emitter.
-        - Today: generates headers, prologue/epilogue, and optionally a small body based on simple patterns (described
-          next).
+- Integer arithmetic: `AddRRR`, `AddRI`, `SubRRR`, `SubRI`, `MulRRR`, `SDivRRR`, `UDivRRR`, `MSubRRRR`, `MAddRRRR`
+- Integer bitwise: `AndRRR`, `EorRRR`, `OrrRRR`, `TstRR`
+- Integer shift: `AsrRI`, `AsrvRRR`, `LslRI`, `LslvRRR`, `LsrRI`, `LsrvRRR`
+- Integer compare/select: `CmpRI`, `CmpRR`, `Csel`, `Cset`
+- Moves: `MovRI`, `MovRR`
+- Branches: `BCond`, `Bl`, `Blr`, `Br`, `Cbz`, `Cbnz`, `Ret`
+- Address computation: `AddPageOff`, `AdrPage`
+- Floating-point: `FAddRRR`, `FCmpRR`, `FCvtZS`, `FCvtZU`, `FDivRRR`, `FMovGR`, `FMovRI`, `FMovRR`,
+  `FMulRRR`, `FRintN`, `FSubRRR`, `SCvtF`, `UCvtF`
+- Memory (FP-relative): `AddFpImm`, `LdrFprFpImm`, `LdrRegFpImm`, `LdpFprFpImm`, `LdpRegFpImm`,
+  `StpFprFpImm`, `StpRegFpImm`, `StrFprFpImm`, `StrRegFpImm`
+- Memory (base+offset): `LdrFprBaseImm`, `LdrRegBaseImm`, `StrFprBaseImm`, `StrRegBaseImm`
+- Stack pointer: `AddSpImm`, `StrFprSpImm`, `StrRegSpImm`, `SubSpImm`
 
-### Minimal pattern‑based lowering (single‑block, i64 return)
+### Assembly emitter
 
-- Location: `cmd_codegen_arm64.cpp`
-- Patterns recognized (all must feed the function’s terminal `ret`):
-    - Return constant (i64): `ret <const-int>` → `mov x0, #imm`.
-    - Return parameter:
-        - `ret %param0` → no body emission (arg already in `x0`).
-        - `ret %param1` → `mov x0, x1`.
-        - Generic: `ret %paramN` (N∈[0,7]) → `mov x0, <ArgRegN>` using ABI order.
-    - Binary arithmetic on entry parameters (penultimate instruction, any arg index 0..7):
-        - `add` / `iadd.ovf` → `add x0, x0, x1`
-        - `sub` / `isub.ovf` → `sub x0, x0, x1`
-        - `mul` / `imul.ovf` → `mul x0, x0, x1`
-        - Bitwise: `and`/`or`/`xor` → `and/orr/eor x0, x0, x1`
-        - Permutation: operands may be `%param0`/`%param1` in either order.
-    - Binary arithmetic with immediates (entry param ± const; any arg index 0..7):
-        - `%param0 + imm` → `add x0, x0, #imm`
-        - `%param0 - imm` → `sub x0, x0, #imm`
-        - `%param1 + imm` → `mov x0, x1; add x0, x0, #imm`
-        - `%param1 - imm` → `mov x0, x1; sub x0, x0, #imm`
-    - Shifts by immediate (entry param <<|>> const; any arg index 0..7):
-        - Move `%paramK` to `x0` based on ABI order; then emit `lsl/lsr/asr x0, x0, #imm`.
-    - Integer compares feeding ret (i1 widened to i64):
-        - Detect `icmp_eq/ne`, `scmp_lt/le/gt/ge`, `ucmp_lt/le/gt/ge` on entry params.
-        - Normalize operands into `(x0, x1)`, emit `cmp x0, x1`, then `cset x0, <cond>` mapping IL predicate to AArch64
-          condition codes (`eq/ne/lt/le/gt/ge/lo/ls/hi/hs`).
-    - Limitations:
-        - Only i64 functions.
-        - Only single‑block functions for the param‑based patterns (ret const works across blocks).
-        - No handling yet for `imm - %paramX` (non‑commutative reverse).
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/AsmEmitter.hpp`/`.cpp` | AT&T-compatible AArch64 text emitter |
+| `src/codegen/aarch64/RodataPool.hpp`/`.cpp` | String literal pool (deduplication, unique labels) |
 
-### Tests
+`AsmEmitter` capabilities:
 
-- Files:
-    - `src/tests/unit/codegen/test_target_aarch64.cpp` — name/ABI sanity.
-    - `src/tests/unit/codegen/test_emit_aarch64_minimal.cpp` — emitter sequencing (header, prologue, add, epilogue).
-    - `src/tests/unit/codegen/test_codegen_arm64_cli.cpp` — `ret 0` → `mov x0, #0`.
-    - `src/tests/unit/codegen/test_codegen_arm64_add_params.cpp` — add two params → `add x0, x0, x1`.
-    - `src/tests/unit/codegen/test_codegen_arm64_ret_param.cpp` — ret `%param0` no‑op; ret `%param1` `mov x0, x1`.
-    - `src/tests/unit/codegen/test_codegen_arm64_add_imm.cpp` — add/sub immediate forms on params.
-    - `src/tests/unit/codegen/test_codegen_arm64_bitwise.cpp` — and/or/xor rr forms on params.
-    - `src/tests/unit/codegen/test_codegen_arm64_params_wide.cpp` — rr/ri forms using params beyond x1 (e.g. x2/x3) and
-      scratch‐based normalization.
-- Test artifacts:
-    - All arm64 CLI tests write transient `.il` and `.s` files under `build/test-out/arm64/` to avoid polluting the
-      repository root. The directory is created on demand by the tests.
-- CMake wiring present in `src/tests/CMakeLists.txt`.
+- `emitFunction(os, fn)` — full MIR function to assembly (header, prologue, blocks, epilogue)
+- `emitBlock(os, bb)` — single basic block with label
+- `emitInstruction(os, mi)` — individual MIR instruction
+- `emitFunctionHeader(os, name)` — `.globl` + `name:` directives
+- `emitPrologue(os)` / `emitEpilogue(os)` — default `stp x29, x30, [sp, #-16]!; mov x29, sp` / `ldp x29, x30, [sp], #16; ret`
+- `emitPrologue(os, plan)` / `emitEpilogue(os, plan)` — callee-saved GPR save/restore via `FramePlan`
+- Integer ops: `emitMovRR`, `emitMovRI`, `emitAddRRR`, `emitSubRRR`, `emitMulRRR`, `emitAddRI`, `emitSubRI`,
+  `emitAndRRR`, `emitOrrRRR`, `emitEorRRR`, `emitLslRI`, `emitLsrRI`, `emitAsrRI`
+- Chunk-safe SP adjustment: `emitSubSp` / `emitAddSp` use 4080-byte chunks (largest 16-byte-aligned 12-bit value)
+- Internal `mangleSymbol()` static function in `AsmEmitter.cpp` provides platform-correct symbol mangling (`_` prefix on Darwin)
+
+### IL to MIR lowering
+
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/LowerILToMIR.hpp`/`.cpp` | `LowerILToMIR::lowerFunction()` — top-level IL → MIR entry point |
+| `src/codegen/aarch64/InstrLowering.hpp`/`.cpp` | Per-opcode lowering handlers (`materializeValueToVReg`, arithmetic, FP, OOP) |
+| `src/codegen/aarch64/TerminatorLowering.hpp`/`.cpp` | Branch/return lowering; CBr entry-block restriction (correctness guard) |
+| `src/codegen/aarch64/LoweringContext.hpp` | Per-function mutable state threaded through all lowering handlers |
+| `src/codegen/aarch64/OpcodeMappings.hpp` | IL opcode → MIR opcode tables |
+| `src/codegen/aarch64/OpcodeDispatch.hpp`/`.cpp` | Dispatch infrastructure for per-opcode lowering |
+
+### Fast paths
+
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/FastPaths.hpp`/`.cpp` | Fast-path dispatcher for common single-block patterns |
+| `src/codegen/aarch64/fastpaths/FastPaths_Arithmetic.cpp` | Arithmetic fast paths (register-register and register-immediate; shifts excluded from commutative swap) |
+| `src/codegen/aarch64/fastpaths/FastPaths_Call.cpp` | Call fast paths (argument marshalling, stack args); returns `std::nullopt` on failure to fall through to generic path |
+| `src/codegen/aarch64/fastpaths/FastPaths_Cast.cpp` | Cast fast paths (narrowing overflow checks) |
+| `src/codegen/aarch64/fastpaths/FastPaths_Memory.cpp` | Memory operation fast paths |
+| `src/codegen/aarch64/fastpaths/FastPaths_Return.cpp` | Return fast paths |
+| `src/codegen/aarch64/fastpaths/FastPathsInternal.hpp` | Shared internal helpers for all fast-path files |
+
+### Register allocation and liveness
+
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/RegAllocLinear.hpp`/`.cpp` | `allocate(fn, ti)` — linear-scan register allocator |
+| `src/codegen/aarch64/LivenessAnalysis.hpp`/`.cpp` | Live variable analysis used by register allocator |
+
+### Frame layout
+
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/FramePlan.hpp` | `FramePlan` struct: callee-saved GPR list, frame size |
+| `src/codegen/aarch64/FrameBuilder.hpp`/`.cpp` | `FrameBuilder`: stack slot allocation, aligned slot assignment |
+
+### Peephole optimization
+
+| File | Purpose |
+|------|---------|
+| `src/codegen/aarch64/Peephole.hpp`/`.cpp` | Post-RA peephole passes (CBZ/CBNZ fusion, MADD fusion, LDP/STP merging, branch inversion, immediate folding) |
+
+### CLI driver integration
+
+| File | Purpose |
+|------|---------|
+| `src/tools/viper/cmd_codegen_arm64.hpp`/`.cpp` | `cmd_codegen_arm64(argc, argv)` — CLI entry for `viper codegen arm64` |
+
+Usage: `viper codegen arm64 <input.il> -S <out.s>`
+
+### Common library (`src/codegen/common/`)
+
+| File | Purpose |
+|------|---------|
+| `src/codegen/common/Diagnostics.hpp`/`.cpp` | Diagnostic sink |
+| `src/codegen/common/LabelUtil.hpp` | Assembler-safe label sanitization (hyphens → underscores) |
+| `src/codegen/common/LinkerSupport.hpp`/`.cpp` | Shared linker invocation, runtime archive selection |
+| `src/codegen/common/ParallelCopyResolver.hpp` | Target-independent parallel-copy resolution |
+| `src/codegen/common/PassManager.hpp` | Generic `Pass<M>` / `PassManager<M>` templates |
+| `src/codegen/common/RuntimeComponents.hpp` | Runtime component classification for selective linking |
+| `src/codegen/common/TargetInfoBase.hpp` | Shared base for `TargetInfo` structs |
+
+Note: `ArgNormalize.hpp`, `MachineIRBuilder.hpp`, and `MachineIRFormat.hpp` were removed as dead code during the
+codegen review.
 
 ### Build integration
 
-- `src/codegen/aarch64/CMakeLists.txt` builds `il_codegen_aarch64` (target + emitter).
-- `src/CMakeLists.txt` exposes `viper_cmd_arm64` as a static lib; `viper` links `viper_cmd_arm64` and `il_codegen_aarch64`.
+- `src/codegen/aarch64/CMakeLists.txt` builds `il_codegen_aarch64` (target, emitter, lowering, RA, peephole).
+- `src/CMakeLists.txt` exposes `viper_cmd_arm64` as a static lib; `viper` links `viper_cmd_arm64` and
+  `il_codegen_aarch64`.
 
-## Current Implementation Details
+## Backend Pipeline
 
-### Control flow and calling convention
+The AArch64 backend uses a monolithic function in `cmd_codegen_arm64.cpp` rather than a formal PassManager. The
+pipeline stages are:
 
-- We model a leaf‑like prologue/epilogue per function (save/restore FP/LR) and return with `ret`.
-- Arguments: currently only leverage x0/x1 (first two integer args) in patterns. Return in x0.
-- No callee‑saved spills/restores beyond the FP/LR pair today; no varargs support.
+1. **IL loading** — load module from disk
+2. **Rodata pool construction** (`RodataPool`) — scan globals, deduplicate string literals
+3. **IL to MIR lowering** (`LowerILToMIR::lowerFunction`) — instruction selection via `InstrLowering` + `TerminatorLowering` + fast paths
+4. **Register allocation** (`RegAllocLinear::allocate`) — linear scan, spill/reload insertion
+5. **Frame finalization** (`FrameBuilder`) — stack slot layout, frame size computation
+6. **Peephole optimization** (`Peephole`) — post-RA pattern rewrites
+7. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
+8. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
+9. **Assembly + linking** (`LinkerSupport`) — invoke assembler, link with runtime archives
 
-### Lowering mechanics
+## Calling Convention (AAPCS64 / Darwin)
 
-- The arm64 CLI path uses direct IL inspection (no MIR) with deliberately conservative pattern matches:
-    - Checks function kind (i64 return), block count, instruction ordering, and that the terminal `ret` consumes the
-      immediately preceding arithmetic.
-    - Checks entry block parameters (`bb.params`) and matches SSA temp uses/defs by id, avoiding string/label lookups.
-      For parameter index → physical reg mapping, we use `darwinTarget().intArgOrder`.
-    - For rr ops, we normalize arbitrary parameter registers to `(x0, x1)` using `x9` as a scratch register:
-        - `mov x9, <rhs_reg>`; `mov x0, <lhs_reg>`; `mov x1, x9`; then emit the rr op.
-    - For ri ops, we normalize by moving the source param register into `x0` and then emit the immediate op.
-    - Emits body ops via `AsmEmitter` on success; otherwise falls back to prologue/epilogue only.
-- This keeps the surface small and safe while we build confidence with unit tests.
+- **Integer arguments**: X0–X7 (independent sequence from FP args)
+- **Floating-point arguments**: V0–V7 (D-register aliases; independent from integer arg sequence)
+- **Integer return**: X0
+- **Float return**: V0 (D-register)
+- **Stack alignment**: 16 bytes at all call sites
+- **Callee-saved GPRs**: X19–X28, X29 (FP), X30 (LR)
+- **Callee-saved FPRs**: Lower 64 bits of V8–V15 (D8–D15); upper bits are caller-saved
+- **Caller-saved GPRs**: X0–X15
+- **Caller-saved FPRs**: V0–V7, V16–V31
 
-### Parity with x86‑64 backend (docs/backend.md)
+## MIR Debug Dump Flags
 
-- Similar end goals: MIR layer, instruction selection, RA, frame lowering, emitter.
-- For early patterns, x86‑64 also normalizes operands into conventional registers before emission (see
-  Lowering.EmitCommon helpers); we mirror this with explicit moves into x0/x1.
-- IL shift semantics note: IL defines x86‑like shift masking modulo 64. AArch64 immediate shifts do not mask; we rely on
-  the IL verifier to ensure immediate ranges are valid for these patterns. Variable‑count shifts will require mapping to
-  `and` the count and `lsl/lsr/asr` with register form later.
+The AArch64 CLI supports flags to dump Machine IR for debugging:
 
-### Shared utilities (proposed)
+| Flag | Description |
+|------|-------------|
+| `--dump-mir-before-ra` | Print MIR to stderr before register allocation |
+| `--dump-mir-after-ra` | Print MIR to stderr after register allocation |
+| `--dump-mir-full` | Print MIR both before and after register allocation |
 
-- Create a `codegen/common/` mini‑library with utilities usable by multiple backends:
-    - `ArgNormalizer`: map IL param indices to canonical working registers (e.g. `(dst0, dst1)`) with a scratch policy.
-    - `ImmMaterializer`: target‑aware helpers to materialize large immediates (`movz/movk` sequences on AArch64;
-      `movabs` on x86‑64), including peephole fold for small immediates.
-    - `CondCode` and compare helpers: map IL predicates to target condition codes; provide `cmp` + `cset/csel` helpers (
-      AArch64) and `setcc` (x86‑64) abstractions.
-    - `FramePlan`: tiny struct to describe save/restore sets and stack alignment, share prologue/epilogue shape logic.
-    - `TargetTraits`: capability flags per target (red zone, callee‑saved sets, arg orders), abstracted from the
-      concrete Target files.
-    - `CLI glue`: thin helpers to parse `-S/-o/--run-native` consistently across backends.
-    - Goal: reduce duplication when AArch64 adds a proper MIR and pass pipeline.
-
-Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it from the arm64 CLI to normalize rr operands
-into `(x0, x1)` with a scratch. The header is header‑only and requires a target emitter API accepting
-`(ostream&, dst, src)`.
-
-### Emitter capabilities and constraints
-
-- Emitter prints textual assembly; no assembling/linking in this step.
-- Immediate forms (`mov/add/sub #imm`) assume small immediates. Large immediates will require `movz/movk` sequences
-  later.
-- SIMD/FPR registers are defined in the target description but are not yet used by the emitter logic.
-
-## Short‑Term Plan (next 1–3 steps)
-
-1) Verify and extend coverage with focused tests — DONE
-    - Added dedicated shift‑imm tests (shl/lshr/ashr) for param0/param1 in `test_codegen_arm64_shift_imm.cpp`.
-    - Added explicit `iadd.ovf`/`isub.ovf`/`imul.ovf` rr tests in `test_codegen_arm64_ovf.cpp`.
-
-2) Cleanly factor the pattern‑lowerer — DONE
-    - Extracted the pattern code into a small internal `Arm64PatternLowerer` helper inside
-      `src/tools/viper/cmd_codegen_arm64.cpp`, keeping the CLI tidy and making opcode→sequence mappings centralized.
-    - Future: consider a table‑driven mapping from IL opcodes to emitter lambdas for rr/ri forms.
-
-3) Expand parameter coverage to x2..x7 for 3+ argument functions (still single‑block patterns)
-    - DONE for rr/ri patterns via normalization to x0/x1 using `x9` scratch.
-    - DONE: generalized `ret %paramN` beyond the first two by moving `ArgRegN → x0`.
-
-4) Simple compares feeding ret (i1 → i64)
-    - Equality/relational compares producing i1 → set x0 to 0/1 using `cmp` + `cset` when the value is returned
-      immediately.
-
-## Medium‑Term Plan (next 2–6 weeks)
-
-4) Minimal MIR layer for AArch64 (Phase A) — DONE (Step A)
-    - Implemented a compact MIR for arm64 under `src/codegen/aarch64/MachineIR.hpp` with a tiny opcode set (mov rr/ri,
-      add/sub/mul rrr/ri, shift‑imm, cmp rr/ri, cset) and containers (`MFunction`, `MBasicBlock`, `MInstr`).
-    - Extended `AsmEmitter` with `emitFunction(MFunction)`, `emitBlock`, and `emitInstruction` to print MIR → asm using
-      existing helpers.
-    - Added unit test `src/tests/unit/codegen/test_emit_aarch64_mir_minimal.cpp` to validate prologue/add/epilogue
-      emission via MIR.
-    - Added a minimal IL→MIR lowering shim used by the CLI: `src/codegen/aarch64/LowerILToMIR.{hpp,cpp}` lowers the
-      existing CLI patterns (ret const/param, rr/ri ops incl. bitwise, shift‑imm, compares) into MIR. The CLI now calls
-      IL→MIR then MIR→asm.
-    - Extended MIR opcode coverage to include bitwise rr (`AndRRR`/`OrrRRR`/`EorRRR`) and added a focused MIR unit
-      test (`test_emit_aarch64_mir_bitwise.cpp`).
-    - Added basic block label emission and branches in MIR (`Br`, `BCond`) with a unit test (
-      `test_emit_aarch64_mir_branches.cpp`). IL→MIR now lowers trivial `br`/`cbr` (const folds and simple i1 via cmp x0,
-      #0) as a starting point; fuller CF lowering remains next.
-
-5) Frame and prologue/epilogue refinement
-    - DONE (GPR saves): Introduced `FramePlan` (header-only) and extended `AsmEmitter` with
-      `emitPrologue/Epilogue(FramePlan)` to save/restore requested callee‑saved GPRs (pairs + single). Added unit test
-      `test_emit_aarch64_frameplan.cpp` covering odd/even saves. Next: incorporate FramePlan into MIR/CLI path when
-      non‑volatile usage arises; add FPR saves later.
-    - NEXT: Implement basic stack object placement for spills and outgoing call frames (kept out of scope for this
-      step).
-
-6) Register allocation (linear scan)
-    - Adapt or re‑implement the x86 linear scan allocator for arm64 MIR.
-    - Add spill code paths and tests.
-
-7) Calls and ABI interop
-
-- Implement call lowering: argument assignment (x0..x7 / v0..v7), stack spills for extras, return value handling.
-- Add minimal runtime call smoke tests.
-
-8) Assembler + link integration (optional gating on host/toolchain)
-    - Add `-assemble`/`--run-native` modes for arm64 akin to x64 pipeline, gated behind host/toolchain checks.
-    - Large immediates: MIR `movri` now materializes wide constants with `movz/movk` in the emitter. Addressing
-      sequences (`adrp+add`) remain future work.
-
-## Long‑Term Plan
-
-9) Full codegen pipeline parity with x86‑64
-    - Pass structure mirroring `codegen/x86_64` (LowerILToMIR, ISel, Peephole, RegAlloc passes, FrameLowering, Emit
-      pass).
-    - Robust instruction selection and legality checks (integer and floating‑point).
-    - Comprehensive emitter coverage (loads/stores addressing modes, branches, calls, traps, constants materialization).
-
-10) Performance, robustness, and CI integration
-- Benchmarks comparing VM vs native on arm64 targets.
-- Golden asm tests for representative functions.
-- CI jobs building/assembling arm64 on appropriate runners.
-
-## Next Concrete Items (actionable checklist)
-
-- Bitwise rr lowering (and/or/xor) with tests — DONE
-    - Implemented via IL→MIR in `LowerILToMIR.cpp` and emitted by `AsmEmitter`.
-    - Tests: `test_codegen_arm64_bitwise.cpp`, `test_emit_aarch64_mir_bitwise.cpp`.
-
-- Shift‑by‑imm lowering (shl/lsr/asr) with tests — DONE
-    - Implemented in IL→MIR (LslRI/LsrRI/AsrRI) and emitted by `AsmEmitter`.
-    - Tests: `test_codegen_arm64_shift_imm.cpp`.
-
-- Factor a small `Arm64PatternLowerer` helper — DONE
-    - Functionality moved into `LowerILToMIR` keeping the CLI thin.
-
-- Conditional branches on compares (rr and ri) — DONE
-    - IL→MIR lowers `cbr (icmp/scmp/ucmp ...) , T, F` to `cmp` + `b.<cond>` sequences, with param normalization and
-      immediate handling.
-    - Tests: `test_emit_aarch64_mir_branches.cpp`, `test_codegen_arm64_cbr.cpp`, `test_codegen_arm64_icmp.cpp`,
-      `test_codegen_arm64_icmp_imm.cpp`.
-
-## Quick Start Testing
-
-### Verify Backend Works
-
-```bash
-# Simple test that should return exit code 15
-cat > /tmp/test.il << 'EOF'
-il 0.1.2
-func @main() -> i64 {
-entry:
-  ret 15
-}
-EOF
-
-./build/src/tools/viper/viper codegen arm64 /tmp/test.il -S /tmp/test.s
-as /tmp/test.s -o /tmp/test.o
-clang++ /tmp/test.o -o /tmp/test_native
-/tmp/test_native
-echo "Exit code: $?"  # Should print 15
-```
-
-### Debug MIR Dump Flags
-
-The AArch64 backend supports CLI flags to dump Machine IR (MIR) for debugging and inspection:
-
-| Flag                   | Description                                         |
-|------------------------|-----------------------------------------------------|
-| `--dump-mir-before-ra` | Print MIR to stderr before register allocation      |
-| `--dump-mir-after-ra`  | Print MIR to stderr after register allocation       |
-| `--dump-mir-full`      | Print MIR both before and after register allocation |
-
-**Example usage:**
+**Example:**
 
 ```bash
 ./build/src/tools/viper/viper codegen arm64 /tmp/test.il -S /tmp/test.s --dump-mir-after-ra
@@ -321,13 +208,84 @@ MFunction: test_func
     Ret
 ```
 
-The MIR dump shows:
+Virtual registers (`%v0:gpr`) appear before RA; physical registers (`@x0:gpr`) appear after RA.
 
-- **Virtual registers** (`%v0:gpr`) before RA — temporaries awaiting allocation
-- **Physical registers** (`@x0:gpr`) after RA — hardware registers assigned
-- **MIR opcodes** (`AddRRR`, `MulRRR`, `Ret`) — target-specific operations
+## Tests
 
-Note: Fast-path lowering may produce physical registers directly even before RA for simple patterns.
+65 AArch64-specific test files live in `src/tests/unit/codegen/`. Selected coverage:
+
+| Test file | Coverage |
+|-----------|---------|
+| `test_target_aarch64.cpp` | Register name / ABI sanity |
+| `test_emit_aarch64_minimal.cpp` | Emitter sequencing (header, prologue, add, epilogue) |
+| `test_emit_aarch64_mir_minimal.cpp` | MIR → asm: prologue, add, epilogue |
+| `test_emit_aarch64_mir_bitwise.cpp` | MIR AND/ORR/EOR emission |
+| `test_emit_aarch64_mir_branches.cpp` | MIR conditional branch emission |
+| `test_emit_aarch64_frameplan.cpp` | FramePlan odd/even callee-save pairs |
+| `test_emit_aarch64_mir_frameplan.cpp` | MIR `savedGPRs` prologue/epilogue |
+| `test_codegen_arm64_cli.cpp` | `ret 0` → `mov x0, #0` |
+| `test_codegen_arm64_add_params.cpp` | Add two params → `add x0, x0, x1` |
+| `test_codegen_arm64_add_imm.cpp` | Add/sub immediate forms |
+| `test_codegen_arm64_bitwise.cpp` | AND/OR/XOR register-register |
+| `test_codegen_arm64_bitwise.cpp` | AND/OR/XOR register-register |
+| `test_codegen_arm64_call.cpp` | Simple extern call → `bl h` |
+| `test_codegen_arm64_call_args.cpp` | Argument marshalling with permutations and cycles |
+| `test_codegen_arm64_call_temp_args.cpp` | Non-param temporaries as call args |
+| `test_codegen_arm64_callee_saved.cpp` | Callee-saved register preservation across calls |
+| `test_codegen_arm64_callee_stack_params.cpp` | Reading stack-passed parameters |
+| `test_codegen_arm64_casts.cpp` | Integer cast operations |
+| `test_codegen_arm64_cbr.cpp` | Conditional branch patterns |
+| `test_codegen_arm64_cbr_cbnz.cpp` | CBZ/CBNZ fusion peephole |
+| `test_codegen_arm64_cf_if_else_phi.cpp` | If/else with phi nodes |
+| `test_codegen_arm64_cf_loop_phi.cpp` | Loop with phi nodes |
+| `test_codegen_arm64_division.cpp` | Signed/unsigned div/rem with zero-check traps |
+| `test_codegen_arm64_exception_handling.cpp` | Exception handling paths |
+| `test_codegen_arm64_fp.cpp` | Floating-point arithmetic |
+| `test_codegen_arm64_fp_basic.cpp` | Basic FP operations (add/sub/mul/div) |
+| `test_codegen_arm64_fp_cmp_all.cpp` | All FP comparison predicates including NaN |
+| `test_codegen_arm64_gep_load_store.cpp` | GEP, load, store lowering |
+| `test_codegen_arm64_icmp.cpp` | Integer compare predicates |
+| `test_codegen_arm64_icmp_imm.cpp` | Integer compare with immediates |
+| `test_codegen_arm64_indirect_call.cpp` | Indirect call via register (`blr`) |
+| `test_codegen_arm64_large_imm.cpp` | Large immediate materialization (`movz/movk`) |
+| `test_codegen_arm64_ovf.cpp` | Overflow-checked arithmetic |
+| `test_codegen_arm64_params_wide.cpp` | Params beyond x1 (x2/x3 normalization) |
+| `test_codegen_arm64_peephole.cpp` | Peephole optimization correctness |
+| `test_codegen_arm64_peephole_comprehensive.cpp` | All five peephole patterns |
+| `test_codegen_arm64_ra_many_temps.cpp` | Register allocation under high pressure |
+| `test_codegen_arm64_ret_param.cpp` | `ret %param0` no-op; `ret %param1` `mov x0, x1` |
+| `test_codegen_arm64_rodata_literals.cpp` | String literal pool deduplication |
+| `test_codegen_arm64_run_native.cpp` | Full assemble + link + execute on Apple Silicon |
+| `test_codegen_arm64_select.cpp` | Select (conditional value) lowering |
+| `test_codegen_arm64_shift_imm.cpp` | `lsl`/`lsr`/`asr` by immediate |
+| `test_codegen_arm64_shift_reg.cpp` | Shift by register (`lslv`/`lsrv`/`asrv`) |
+| `test_codegen_arm64_spill_fpr.cpp` | FPR spill/reload under register pressure |
+| `test_codegen_arm64_stack_locals.cpp` | Stack local allocation and access |
+| `test_codegen_arm64_switch.cpp` | Switch statement lowering |
+| `test_codegen_arm64_unsigned_cmp.cpp` | Unsigned comparison predicates |
+
+All test artifacts are written under `build/test-out/arm64/` (created on demand). CMake wiring is in
+`src/tests/CMakeLists.txt`.
+
+## Quick Start Testing
+
+### Verify Backend Works
+
+```bash
+cat > /tmp/test.il << 'EOF'
+il 0.1.2
+func @main() -> i64 {
+entry:
+  ret 15
+}
+EOF
+
+./build/src/tools/viper/viper codegen arm64 /tmp/test.il -S /tmp/test.s
+as /tmp/test.s -o /tmp/test.o
+clang++ /tmp/test.o -o /tmp/test_native
+/tmp/test_native
+echo "Exit code: $?"  # Should print 15
+```
 
 ### Test Frogger Compilation
 
@@ -336,241 +294,100 @@ Note: Fast-path lowering may produce physical registers directly even before RA 
 ./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s -o /tmp/frogger.o
 clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
-./_run_if_arm64 /tmp/frogger_native   # helper or manual run on Apple Silicon host
+/tmp/frogger_native  # Run on Apple Silicon
 ```
 
-## Critical Bugs Fixed (November 2025)
+## Critical Bugs Fixed
 
-During earlier native compilation attempts of the frogger demo (`demos/basic/frogger/frogger.bas`), three critical bugs
-were identified in the ARM64 backend that prevented successful assembly on macOS. These have since been resolved:
+### BUG 1: Incorrect Section Directive for macOS (FIXED)
 
-### BUG 1: Incorrect Section Directive for macOS
+- **Was**: Always emitted `.section .rodata` (ELF/Linux syntax)
+- **Fix**: `AsmEmitter` now emits `.section __TEXT,__const` on macOS (detected via `#ifdef __APPLE__`)
 
-- **Location**: `src/tools/viper/cmd_codegen_arm64.cpp:136`
-- **Issue**: The backend emits `.section .rodata` which is ELF/Linux syntax
-- **Error**: `error: unexpected token in '.section' directive`
-- **Root Cause**: Hardcoded Linux-style section directive without platform detection
-- **Fix Required**: Use `__TEXT,__const` for macOS (Mach-O format) instead of `.section .rodata`
-- **Code**:
-  ```cpp
-  os << ".section .rodata\n";  // Current (incorrect for macOS)
-  // Should be: os << "__TEXT,__const\n";  // For macOS
-  ```
+### BUG 2: Invalid Label Generation with Negative Numbers (FIXED)
 
-### BUG 2: Invalid Label Generation with Negative Numbers
+- **Was**: Labels like `L-1000000000_POSITION.INIT` generated from uninitialized IDs
+- **Fix**: Label sanitization in `LabelUtil.hpp` replaces hyphens with underscores; all IDs are initialized before use
 
-- **Location**: Label generation in IL→assembly lowering, likely in `cmd_codegen_arm64.cpp` or `LowerILToMIR.cpp`
-- **Issue**: Labels like `L-1000000000_POSITION.INIT` are generated with negative numbers
-- **Error**: `error: unexpected token in argument list` when assembler encounters labels starting with `L-`
-- **Root Cause**: Uninitialized or placeholder ID values (-1000000000) being used in label generation
-- **Examples from frogger.s**:
-  ```asm
-  L-1000000000_POSITION.INIT:      # Invalid
-  L-1000000000_VEHICLE.MOVERIGHT:  # Invalid
-  L-1000000000_FROG.INIT:          # Invalid
-  ```
-- **Fix Required**: Ensure all label IDs are properly initialized with valid positive values before label generation
+### BUG 3: Missing Rodata Pool (FIXED)
 
-### BUG 3: Missing Rodata Pool Implementation
+- **Was**: No deduplication of string literals, causing duplicate symbol definitions
+- **Fix**: `RodataPool` class in `src/codegen/aarch64/RodataPool.hpp`/`.cpp` deduplicates via hash tracking
 
-- **Location**: `src/codegen/aarch64/AsmEmitter.cpp` (compared to `src/codegen/x86_64/AsmEmitter.cpp`)
-- **Issue**: No rodata pool for deduplicating string literals and constants
-- **Impact**: Duplicate symbol definitions for string literals (e.g., multiple `L0:` labels)
-- **Root Cause**: The AArch64 backend lacks the rodata pool mechanism present in the x86_64 backend
-- **x86_64 Implementation** (for reference):
-    - Has `RodataPool` class in `AsmEmitter.cpp:25-54`
-    - Deduplicates literals via hash tracking
-    - Emits unique labels for each distinct literal
-- **Fix Required**: Implement similar rodata pool mechanism for AArch64 to prevent duplicate symbols
+### BUG 4: V8–V15 in callerSavedFPR (FIXED)
 
-### Impact Analysis (Historical)
+- **Was**: V8–V15 listed in both caller-saved and callee-saved FPR sets; register allocator saved and also treated as clobbered across calls
+- **Fix**: Removed V8–V15 from `callerSavedFPR` in `TargetAArch64.cpp`
 
-Before the fixes, these bugs prevented native ARM64 assembly on macOS for non‑trivial programs. With the fixes in place,
-assembly and linking succeed; see the Frogger test above for end‑to‑end validation.
+### BUG 5: Shift commutativity in fast paths (FIXED)
 
-### Test Case
+- **Was**: `FastPaths_Arithmetic.cpp` and `FastPaths_Call.cpp::computeTempTo` treated shifts as commutative, swapping operands for `shl`/`lshr`/`ashr`
+- **Fix**: Shifts excluded from the commutative operand swap path in both files
 
-To reproduce these bugs:
+### BUG 6: X19 fallback without occupancy check (FIXED)
 
-```bash
-cd /Users/stephen/git/viper
-./build/src/tools/viper/viper front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
-./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
-as /tmp/frogger.s  # Fails with multiple errors
-```
+- **Was**: `RegAllocLinear::takeGPR()` silently returned X19 when all allocatable registers were occupied, without checking if X19 was already in use
+- **Fix**: Replaced silent fallback with `assert` to catch register conflicts
 
-### Resolution (November 2025)
+### BUG 7: emplace_back invalidates block references (FIXED)
 
-All three bugs have been fixed:
+- **Was**: `InstrLowering.cpp` called `emplace_back` on the blocks vector while holding references to earlier blocks (use-after-reallocation UB in 5 functions: `lowerSRemChk0`, `lowerSDivChk0`, `lowerUDivChk0`, `lowerURemChk0`, `lowerBoundsCheck`)
+- **Fix**: Moved trap block creation to after all uses of the `out` reference
 
-- **BUG 1**: Already had platform detection implemented
-- **BUG 2**: Label sanitization was already dropping negative signs
-- **BUG 3**: RodataPoolAArch64 was already implemented
-- **Additional fix**: Added runtime function underscore prefixing for macOS
+### BUG 8: Shared GPR/FPR parameter index (FIXED)
+
+- **Was**: `materializeValueToVReg` used the overall parameter position to index both GPR and FPR arg arrays; for `f(i64, f64, i64)` the second i64 loaded from X2 instead of X1
+- **Fix**: Count same-class parameters preceding the target to compute the correct register index
+
+### BUG 9: Hardcoded `_rt_*` symbol mangling (FIXED)
+
+- **Was**: Runtime symbols emitted with hardcoded `_rt_` prefix; incorrect on macOS where C symbols need `__rt_`
+- **Fix**: `AsmEmitter.cpp` uses an internal `mangleSymbol()` static function for platform-correct symbol name generation
+
+### BUG 10: SP chunk size 4095 not 16-byte aligned (FIXED)
+
+- **Was**: `emitSubSp`/`emitAddSp` used 4095-byte chunks; AArch64 hardware requires SP 16-byte aligned at all times
+- **Fix**: Changed chunk size to 4080 (largest multiple of 16 fitting in 12-bit immediate)
+
+### BUG 11: `emitFMovRI` ostream format flags not restored (FIXED)
+
+- **Was**: `std::fixed` applied to ostream but never restored, corrupting all subsequent FP emission
+- **Fix**: Save and restore `std::ostream` format flags around FP immediate materialization
+
+## Peephole Optimizations Implemented
+
+| Pattern | Description |
+|---------|-------------|
+| CBZ/CBNZ fusion | `cmp xN, #0; b.eq label` → `cbz xN, label` (and `b.ne` → `cbnz`). Also handles `tst xN, xN` pattern. |
+| MADD fusion | `mul tmp, a, b; add dst, tmp, c` → `madd dst, a, b, c` when mul destination is dead after add. |
+| LDP/STP merging | Adjacent `ldr`/`str` with consecutive FP offsets (diff 8) → `ldp`/`stp` pairs. Supports GPR and FPR. |
+| Branch inversion | `b.cond .Lnext; b .Lother` (fall-through) → `b.!cond .Lother`. Supports all AArch64 condition codes. |
+| Immediate folding | `AddRRR`/`SubRRR` → `AddRI`/`SubRI` when one operand is a known constant in 12-bit range (0–4095). |
+
+New MIR opcodes added to support these patterns: `Cbnz`, `MAddRRRR`, `Csel`, `LdpRegFpImm`, `StpRegFpImm`,
+`LdpFprFpImm`, `StpFprFpImm`. (`Cbz` was already present in the original opcode set.)
 
 ## Remaining Work
 
-Note: The analysis below predates several fixes that enabled the Frogger demo to
-run natively on Apple Silicon. Many items have been implemented; treat the lists
-as general areas for continued expansion and robustness rather than current
-blockers.
+### Unimplemented Peephole Patterns
 
-### IL Instruction Coverage (expansion areas)
+- **Address mode folding**: Base+offset computations could fold into addressing modes
+- **AND-immediate optimization**: AND with bitmask constants could use logical immediate encoding
+- **Conditional select (CSEL) pattern matching**: `Csel` opcode exists; pattern matching not yet wired
+- **Compare elimination**: Comparisons whose flags are set by a preceding arithmetic instruction
+- **Shift-add fusion**: Shift followed by add → shifted-register form of ADD
+- **Zero-extension elimination**: Redundant explicit zero-extensions after 32-bit operations
 
-Analysis of frogger.il reveals heavy usage of unsupported instructions:
+### Architectural Gaps
 
-| Instruction | Count | Status    | Required For                   |
-|-------------|-------|-----------|--------------------------------|
-| call        | 1294  | ❌ Partial | Method dispatch, runtime calls |
-| load        | 866   | ❌ Missing | All variable access            |
-| store       | 393   | ❌ Missing | All variable assignment        |
-| alloca      | 266   | ❌ Missing | Local variables                |
-| gep         | 139   | ❌ Missing | Array/struct access            |
-| cast        | 36    | ❌ Missing | Type conversions               |
-| phi         | N/A   | ❌ Missing | Control flow joins             |
-| select      | 1     | ❌ Missing | Conditional values             |
-
-### Runtime Function Support
-
-Top runtime functions called by frogger (unsupported):
-
-| Function                | Calls | Purpose            |
-|-------------------------|-------|--------------------|
-| @Viper.Terminal.PrintStr | 251   | String output      |
-| @rt_modvar_addr_*       | 252   | Global variables   |
-| @rt_str_*               | 184   | String operations  |
-| @rt_arr_obj_*           | 138   | Array operations   |
-| @rt_obj_new_*           | 29    | Object allocation  |
-| OOP methods             | ~100  | Class method calls |
-
-### Memory Operations
-
-The backend currently cannot:
-
-- Allocate stack space (`alloca`)
-- Load from memory (`load`)
-- Store to memory (`store`)
-- Calculate addresses (`gep`)
-- Access globals (no global variable support)
-
-### Control Flow Limitations
-
-- No phi nodes for SSA form
-- No switch statements (frogger uses several)
-- Limited branch patterns (only simple cbr)
-- No exception handling
-
-### Type System Gaps
-
-- No string type support
-- No array operations
-- No object/class support
-- No floating-point operations
-- Limited integer sizes (only i64)
-
-### Calling Convention Issues
-
-- Cannot marshal >2 arguments properly
-- No stack argument passing
-- No struct return values
-- No varargs support
-
-## Development Priority for Real Program Support
-
-Based on frogger's requirements, the critical path to a working game is:
-
-### Phase 1: Core Memory (Required First)
-
-1. **Stack frame layout** - Allocate space for locals
-2. **alloca/load/store** - Basic memory access
-3. **Global variables** - At least read-only strings
-
-### Phase 2: Full Calling Convention
-
-1. **Register allocation** - Proper argument marshalling
-2. **Stack arguments** - Support >8 parameters
-3. **Callee-save registers** - Preserve across calls
-
-### Phase 3: Essential Runtime
-
-1. **String operations** - PrintStr, concatenation
-2. **Basic arrays** - Integer and object arrays
-3. **Memory allocation** - rt_malloc/free bridge
-
-### Phase 4: Control Flow
-
-1. **Phi nodes** - SSA form for branches
-2. **Switch statements** - Jump tables
-3. **Loop optimizations** - Basic patterns
-
-### Phase 5: OOP Support
-
-1. **Method dispatch** - Virtual calls
-2. **Object layout** - Fields and vtables
-3. **Constructor/destructor** - Lifecycle management
-
-## New Work Completed
-
-- Minimal call lowering (rr args, ret-forward) — DONE
-    - MIR: Added `Bl` opcode for `bl <callee>`.
-    - Emitter: Prints `bl <name>` from MIR.
-    - Lowering: IL→MIR recognizes single-block pattern `%t = call @callee(%paramK...)` feeding `ret %t` and emits
-      `Bl callee`. Assumes args already in x0..x7 as per ABI (no marshalling yet).
-    - Tests: `test_codegen_arm64_call.cpp` validates CLI emits `bl h` for a simple extern call.
-
-- Argument marshalling for simple calls (params + immediates) — DONE
-    - IL→MIR now marshals integer arguments into `x0..x7` for call sites when operands are entry parameters or constant
-      i64 values.
-    - Handles register permutations and cycles using `x9` scratch; immediates are materialized with `mov`/`movz+movk` by
-      the emitter.
-    - Tests: `test_codegen_arm64_call_args.cpp` covers `%a, 5` (RI), swapped params `%b, %a` (RR with cycle), and a
-      three-arg case `%b, 7, %a`.
-
-- FramePlan integration in MIR emission — DONE
-    - `MFunction` now carries an optional list of callee‑saved GPRs (`savedGPRs`).
-    - `AsmEmitter::emitFunction` saves/restores those via `emitPrologue/Epilogue(FramePlan)`.
-    - Test: `test_emit_aarch64_mir_frameplan.cpp` verifies `stp/str` saves and matching restores are emitted around
-      blocks.
-
-- One non-entry temp as call arg — DONE
-    - Lowerer can compute a limited expression into a scratch (X9/X10) and marshal it to the arg reg: rr
-      arithmetic/bitwise, ri add/sub/shift-imm, and compares (rr/ri) over entry params only.
-    - Uses `cmp + cset` for compares; reuses existing param-indexing and condition mapping.
-    - Tests: `test_codegen_arm64_call_temp_args.cpp` covers rr (`add`), ri (`add` with imm), shift-imm, compare, and
-      two-temp cases (`x9` and `x10`).
-
-- Outgoing stack-argument scaffolding — PARTIAL
-    - MIR: Added opcodes for stack pointer adjust and stores to outgoing arg area: `SubSpImm`, `AddSpImm`,
-      `StrRegSpImm`.
-    - Emitter: Emits `sub sp, sp, #N`, `add sp, sp, #N`, and `str xN, [sp, #off]` for these MIR ops.
-    - Lowering: Extended IL→MIR call marshalling to allocate an outgoing stack area (16-byte aligned), materialize extra
-      integer args (>8) into scratch regs, and store them at `[sp, #offset]` before `bl`, then deallocate the area after
-      the call.
-    - Notes: CLI enablement for stack args is conservative; existing tests remain green. A focused test will be enabled
-      once additional edge cases (e.g., reading this-function’s stack params) are covered.
-
-## What’s Next
-
-- Calls: Lift remaining temp restrictions (multiple temps beyond two; non-entry temps built from non-param operands);
-  enable and harden >8 integer args path now that MIR/emitter scaffolding exists; add FPR args (v0..v7).
-- Control Flow: Broaden IL→MIR CF lowering for non-trivial diamonds (beyond simple cbr), as needed by future patterns.
-- Frame: Drive `savedGPRs` from lowering when callee-saved usage is detected (MIR/emitter support is ready); add FPR
-  saves when FP usage lands.
-
-- Generalize parameter coverage to x2..x7 for `ret %paramN` and rr ops feeding ret; add tests for 3‑arg functions. —
-  DONE
-    - rr/ri ops normalize any arg index 0..7 using scratch; `ret %paramN` moves ArgRegN → x0 as needed.
-
-## Current Limitations
-
-- **Architecture**: Single-function, single-block focus for pattern matching
-- **Memory**: No stack frames, loads/stores, or global access
-- **Types**: Only i64 integers; no strings, arrays, objects, or floats
-- **Control Flow**: Limited to simple branches; no phi nodes or switch statements
-- **Calling Convention**: Maximum 2-3 arguments; no stack passing
-- **Runtime**: Only rt_trap supported; missing all string/array/OOP runtime functions
+- **AArch64 PassManager**: Pipeline is a monolithic function; no formal pass manager with per-pass error checking
+- **Darwin symbol fixup**: Uses string search-and-replace on full assembly output (fragile); needs redesign
+- **Debug information**: No DWARF support; compiled programs cannot be debugged with LLDB/GDB
+- **Instruction scheduling**: No scheduling pass; instructions emitted in lowering order
+- **MIR verification**: No inter-pass MIR invariant checker
+- **Stack size configuration**: No `--stack-size` flag equivalent to x86-64 backend
 
 ## References
 
 - AArch64 Procedure Call Standard (AAPCS64)
-- Apple/Darwin ABI conventions for arm64 (callee‑saved v8..v15, etc.)
+- Apple/Darwin ABI conventions for arm64 (callee-saved V8–V15 lower 64 bits, etc.)

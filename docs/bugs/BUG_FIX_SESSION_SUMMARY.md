@@ -205,14 +205,14 @@ Both tests validate fixes completely.
 
 VIPER BASIC now has complete support for:
 
-- ✅ Mathematical/scientific computing (full math function library)
-- ✅ Type-safe constants with all numeric types
-- ✅ Control flow with negative values (SELECT CASE)
-- ✅ Variable swapping (SWAP statement)
-- ✅ String manipulation (concatenation, functions)
-- ✅ File I/O (complete OPEN/CLOSE/PRINT/INPUT support)
 - ✅ Arrays and dynamic resizing (DIM, REDIM PRESERVE)
+- ✅ Control flow with negative values (SELECT CASE)
 - ✅ Error handling (ON ERROR GOTO, ERR(), RESUME)
+- ✅ File I/O (complete OPEN/CLOSE/PRINT/INPUT support)
+- ✅ Mathematical/scientific computing (full math function library)
+- ✅ String manipulation (concatenation, functions)
+- ✅ Type-safe constants with all numeric types
+- ✅ Variable swapping (SWAP statement)
 
 **Status**: Experimental. Suitable for exploratory mathematical and scientific demos within the current test suite. Not
 ready for production use.

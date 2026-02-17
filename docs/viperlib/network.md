@@ -36,36 +36,36 @@ TCP client connection for sending and receiving data over a network.
 
 | Property    | Type    | Description                                  |
 |-------------|---------|----------------------------------------------|
-| `Host`      | String  | Remote host name or IP address (read-only)   |
-| `Port`      | Integer | Remote port number (read-only)               |
-| `LocalPort` | Integer | Local port number (read-only)                |
-| `IsOpen`    | Boolean | True if connection is open (read-only)       |
 | `Available` | Integer | Bytes available to read without blocking     |
+| `Host`      | String  | Remote host name or IP address (read-only)   |
+| `IsOpen`    | Boolean | True if connection is open (read-only)       |
+| `LocalPort` | Integer | Local port number (read-only)                |
+| `Port`      | Integer | Remote port number (read-only)               |
 
 ### Send Methods
 
 | Method                | Returns | Description                                    |
 |-----------------------|---------|------------------------------------------------|
 | `Send(data)`          | Integer | Send Bytes, return number of bytes sent        |
-| `SendStr(text)`       | Integer | Send string as UTF-8 bytes, return bytes sent  |
 | `SendAll(data)`       | void    | Send all bytes, block until complete           |
+| `SendStr(text)`       | Integer | Send string as UTF-8 bytes, return bytes sent  |
 
 ### Receive Methods
 
 | Method             | Returns | Description                                          |
 |--------------------|---------|------------------------------------------------------|
 | `Recv(maxBytes)`   | Bytes   | Receive up to maxBytes (may return fewer)            |
-| `RecvStr(maxBytes)`| String  | Receive up to maxBytes as UTF-8 string               |
 | `RecvExact(count)` | Bytes   | Receive exactly count bytes, block until complete    |
 | `RecvLine()`       | String  | Receive until newline (LF or CRLF), strip newline    |
+| `RecvStr(maxBytes)`| String  | Receive up to maxBytes as UTF-8 string               |
 
 ### Timeout and Close Methods
 
 | Method                  | Returns | Description                               |
 |-------------------------|---------|-------------------------------------------|
+| `Close()`               | void    | Close the connection                      |
 | `SetRecvTimeout(ms)`    | void    | Set receive timeout (0 = no timeout)      |
 | `SetSendTimeout(ms)`    | void    | Set send timeout (0 = no timeout)         |
-| `Close()`               | void    | Close the connection                      |
 
 ### Connection Options
 
@@ -204,9 +204,9 @@ TCP server for accepting incoming client connections.
 
 | Property      | Type    | Description                              |
 |---------------|---------|------------------------------------------|
-| `Port`        | Integer | Listening port number (read-only)        |
 | `Address`     | String  | Bound address (read-only)                |
 | `IsListening` | Boolean | True if actively listening (read-only)   |
+| `Port`        | Integer | Listening port number (read-only)        |
 
 ### Methods
 
@@ -378,9 +378,9 @@ UDP datagram socket for connectionless communication.
 
 | Property  | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
-| `Port`    | Integer | Bound port number (0 if unbound)        |
 | `Address` | String  | Bound address (empty if unbound)        |
 | `IsBound` | Boolean | True if socket is bound (read-only)     |
+| `Port`    | Integer | Bound port number (0 if unbound)        |
 
 ### Send Methods
 
@@ -394,8 +394,8 @@ UDP datagram socket for connectionless communication.
 | Method                     | Returns | Description                                     |
 |----------------------------|---------|-------------------------------------------------|
 | `Recv(maxBytes)`           | Bytes   | Receive packet (blocks)                         |
-| `RecvFrom(maxBytes)`       | Bytes   | Receive and store sender info                   |
 | `RecvFor(maxBytes, ms)`    | Bytes   | Receive with timeout, null on timeout           |
+| `RecvFrom(maxBytes)`       | Bytes   | Receive and store sender info                   |
 | `SenderHost()`             | String  | Host of last received packet (from RecvFrom)    |
 | `SenderPort()`             | Integer | Port of last received packet (from RecvFrom)    |
 
@@ -403,11 +403,11 @@ UDP datagram socket for connectionless communication.
 
 | Method                  | Returns | Description                                  |
 |-------------------------|---------|----------------------------------------------|
-| `SetBroadcast(enable)`  | void    | Enable/disable broadcast                     |
+| `Close()`               | void    | Close the socket                             |
 | `JoinGroup(addr)`       | void    | Join multicast group (224.0.0.0-239.255.255.255) |
 | `LeaveGroup(addr)`      | void    | Leave multicast group                        |
+| `SetBroadcast(enable)`  | void    | Enable/disable broadcast                     |
 | `SetRecvTimeout(ms)`    | void    | Set receive timeout (0 = no timeout)         |
-| `Close()`               | void    | Close the socket                             |
 
 ### Zia Example
 
@@ -538,18 +538,18 @@ Static utility class for DNS resolution and IP address validation.
 | Method                  | Returns | Description                                  |
 |-------------------------|---------|----------------------------------------------|
 | `Resolve(hostname)`     | String  | Resolve to first IPv4 address                |
-| `ResolveAll(hostname)`  | Seq     | Resolve to all addresses (IPv4 and IPv6)     |
 | `Resolve4(hostname)`    | String  | Resolve to first IPv4 address only           |
 | `Resolve6(hostname)`    | String  | Resolve to first IPv6 address only           |
+| `ResolveAll(hostname)`  | Seq     | Resolve to all addresses (IPv4 and IPv6)     |
 | `Reverse(ipAddress)`    | String  | Reverse DNS lookup, return hostname          |
 
 ### Validation Methods
 
 | Method              | Returns | Description                                  |
 |---------------------|---------|----------------------------------------------|
+| `IsIP(address)`     | Boolean | Check if valid IPv4 or IPv6 address          |
 | `IsIPv4(address)`   | Boolean | Check if string is valid IPv4 address        |
 | `IsIPv6(address)`   | Boolean | Check if string is valid IPv6 address        |
-| `IsIP(address)`     | Boolean | Check if valid IPv4 or IPv6 address          |
 
 ### Local Info Methods
 
@@ -677,12 +677,12 @@ Static HTTP client utilities for simple HTTP requests.
 
 | Method                         | Returns | Description                                  |
 |--------------------------------|---------|----------------------------------------------|
+| `Download(url, destPath)`      | Boolean | Download file to destination path            |
 | `Get(url)`                     | String  | GET request, return response body as string  |
 | `GetBytes(url)`                | Bytes   | GET request, return response body as bytes   |
+| `Head(url)`                    | Map     | HEAD request, return headers as Map          |
 | `Post(url, body)`              | String  | POST request with string body                |
 | `PostBytes(url, body)`         | Bytes   | POST request with Bytes body                 |
-| `Download(url, destPath)`      | Boolean | Download file to destination path            |
-| `Head(url)`                    | Map     | HEAD request, return headers as Map          |
 
 ### Zia Example
 
@@ -772,11 +772,11 @@ HTTP request builder for advanced requests with custom headers and options.
 
 | Method                    | Returns | Description                                  |
 |---------------------------|---------|----------------------------------------------|
-| `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
+| `Send()`                  | HttpRes | Execute the request and return response      |
 | `SetBody(data)`           | HttpReq | Set request body as Bytes (chainable)        |
 | `SetBodyStr(text)`        | HttpReq | Set request body as string (chainable)       |
+| `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
-| `Send()`                  | HttpRes | Execute the request and return response      |
 
 ### Zia Example
 
@@ -919,14 +919,14 @@ All properties are read/write.
 
 | Property   | Type    | Description                                      |
 |------------|---------|--------------------------------------------------|
+| `Fragment` | String  | Fragment (without leading #)                     |
+| `Host`     | String  | Hostname or IP address                           |
+| `Pass`     | String  | Password (optional)                              |
+| `Path`     | String  | Path component (with leading /)                  |
+| `Port`     | Integer | Port number (0 = not specified)                  |
+| `Query`    | String  | Query string (without leading ?)                 |
 | `Scheme`   | String  | URL scheme (http, https, ftp, etc.)              |
 | `User`     | String  | Username (optional)                              |
-| `Pass`     | String  | Password (optional)                              |
-| `Host`     | String  | Hostname or IP address                           |
-| `Port`     | Integer | Port number (0 = not specified)                  |
-| `Path`     | String  | Path component (with leading /)                  |
-| `Query`    | String  | Query string (without leading ?)                 |
-| `Fragment` | String  | Fragment (without leading #)                     |
 
 ### Computed Properties (Read-Only)
 
@@ -940,27 +940,27 @@ All properties are read/write.
 
 | Method                           | Returns | Description                        |
 |----------------------------------|---------|------------------------------------|
-| `SetQueryParam(name, value)`     | Url     | Set or update query parameter      |
+| `DelQueryParam(name)`            | Url     | Remove query parameter             |
 | `GetQueryParam(name)`            | String  | Get query parameter value          |
 | `HasQueryParam(name)`            | Boolean | Check if parameter exists          |
-| `DelQueryParam(name)`            | Url     | Remove query parameter             |
 | `QueryMap()`                     | Map     | Get all parameters as Map          |
+| `SetQueryParam(name, value)`     | Url     | Set or update query parameter      |
 
 ### Other Methods
 
 | Method              | Returns | Description                                  |
 |---------------------|---------|----------------------------------------------|
-| `Resolve(relative)` | Url     | Resolve relative URL against this base       |
 | `Clone()`           | Url     | Create a copy of this URL                    |
+| `Resolve(relative)` | Url     | Resolve relative URL against this base       |
 
 ### Static Utility Methods
 
 | Method                | Returns | Description                              |
 |-----------------------|---------|------------------------------------------|
-| `Encode(text)`        | String  | Percent-encode text for URL              |
 | `Decode(text)`        | String  | Decode percent-encoded text              |
-| `EncodeQuery(map)`    | String  | Encode Map as query string               |
 | `DecodeQuery(query)`  | Map     | Parse query string to Map                |
+| `Encode(text)`        | String  | Percent-encode text for URL              |
+| `EncodeQuery(map)`    | String  | Encode Map as query string               |
 | `IsValid(urlString)`  | Boolean | Check if URL string is valid             |
 
 ### Default Ports
@@ -1134,27 +1134,27 @@ binary messages following RFC 6455.
 
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
-| `Url`         | String  | WebSocket URL (ws:// or wss://) (read-only)        |
-| `IsOpen`      | Boolean | True if connection is open (read-only)             |
 | `CloseCode`   | Integer | Close status code (0 if not closed) (read-only)    |
 | `CloseReason` | String  | Close reason message (empty if not closed)         |
+| `IsOpen`      | Boolean | True if connection is open (read-only)             |
+| `Url`         | String  | WebSocket URL (ws:// or wss://) (read-only)        |
 
 ### Send Methods
 
 | Method            | Returns | Description                                  |
 |-------------------|---------|----------------------------------------------|
+| `Ping()`          | void    | Send ping frame (server responds with pong)  |
 | `Send(text)`      | void    | Send text message (UTF-8)                    |
 | `SendBytes(data)` | void    | Send binary message (Bytes)                  |
-| `Ping()`          | void    | Send ping frame (server responds with pong)  |
 
 ### Receive Methods
 
 | Method               | Returns | Description                                          |
 |----------------------|---------|------------------------------------------------------|
 | `Recv()`             | String  | Receive text message (blocks)                        |
-| `RecvFor(ms)`        | String  | Receive text with timeout (empty string on timeout)  |
 | `RecvBytes()`        | Bytes   | Receive binary message (blocks)                      |
 | `RecvBytesFor(ms)`   | Bytes   | Receive binary with timeout (null on timeout)        |
+| `RecvFor(ms)`        | String  | Receive text with timeout (empty string on timeout)  |
 
 ### Close Methods
 
@@ -1287,11 +1287,11 @@ and base URL configuration across multiple requests.
 
 | Method                         | Returns | Description                                    |
 |--------------------------------|---------|------------------------------------------------|
-| `SetHeader(name, value)`       | void    | Set a default header for all requests          |
-| `DelHeader(name)`              | void    | Remove a default header                        |
-| `SetAuthBearer(token)`         | void    | Set Bearer token authentication                |
-| `SetAuthBasic(username, pass)` | void    | Set HTTP Basic authentication                  |
 | `ClearAuth()`                  | void    | Remove authentication header                   |
+| `DelHeader(name)`              | void    | Remove a default header                        |
+| `SetAuthBasic(username, pass)` | void    | Set HTTP Basic authentication                  |
+| `SetAuthBearer(token)`         | void    | Set Bearer token authentication                |
+| `SetHeader(name, value)`       | void    | Set a default header for all requests          |
 | `SetTimeout(ms)`               | void    | Set request timeout in milliseconds            |
 
 ### Raw HTTP Methods
@@ -1300,12 +1300,12 @@ Returns `HttpRes` response object for manual handling.
 
 | Method                    | Returns | Description                                    |
 |---------------------------|---------|------------------------------------------------|
+| `Delete(path)`            | HttpRes | DELETE request                                 |
 | `Get(path)`               | HttpRes | GET request to path                            |
+| `Head(path)`              | HttpRes | HEAD request (headers only)                    |
+| `Patch(path, body)`       | HttpRes | PATCH request with string body                 |
 | `Post(path, body)`        | HttpRes | POST request with string body                  |
 | `Put(path, body)`         | HttpRes | PUT request with string body                   |
-| `Patch(path, body)`       | HttpRes | PATCH request with string body                 |
-| `Delete(path)`            | HttpRes | DELETE request                                 |
-| `Head(path)`              | HttpRes | HEAD request (headers only)                    |
 
 ### JSON Convenience Methods
 
@@ -1313,19 +1313,19 @@ Automatically sets `Content-Type` and `Accept` headers for JSON, parses response
 
 | Method                     | Returns | Description                                          |
 |----------------------------|---------|------------------------------------------------------|
+| `DeleteJson(path)`         | Object  | DELETE, return parsed JSON response or null          |
 | `GetJson(path)`            | Object  | GET, return parsed JSON (Map/Seq) or null on error   |
+| `PatchJson(path, json)`    | Object  | PATCH JSON body, return parsed response or null      |
 | `PostJson(path, json)`     | Object  | POST JSON body, return parsed response or null       |
 | `PutJson(path, json)`      | Object  | PUT JSON body, return parsed response or null        |
-| `PatchJson(path, json)`    | Object  | PATCH JSON body, return parsed response or null      |
-| `DeleteJson(path)`         | Object  | DELETE, return parsed JSON response or null          |
 
 ### Error Handling Methods
 
 | Method           | Returns | Description                                          |
 |------------------|---------|------------------------------------------------------|
-| `LastStatus()`   | Integer | HTTP status code of last request (0 if none)         |
-| `LastResponse()` | HttpRes | Last response object (null if none)                  |
 | `LastOk()`       | Boolean | True if last status was 200-299                      |
+| `LastResponse()` | HttpRes | Last response object (null if none)                  |
+| `LastStatus()`   | Integer | HTTP status code of last request (0 if none)         |
 
 ### Zia Example
 
@@ -1517,9 +1517,9 @@ Configurable retry policy with backoff strategies for handling transient failure
 |-----------------|---------|----------------------------------------------|
 | `Attempt`       | Integer | Current attempt number (0-based)             |
 | `CanRetry`      | Boolean | True if another retry is allowed (read-only) |
+| `IsExhausted`   | Boolean | True if all retries have been used           |
 | `MaxRetries`    | Integer | Maximum number of retries configured         |
 | `TotalAttempts` | Integer | Total number of attempts made                |
-| `IsExhausted`   | Boolean | True if all retries have been used           |
 
 ### Methods
 

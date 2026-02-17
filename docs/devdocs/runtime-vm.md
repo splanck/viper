@@ -53,7 +53,7 @@ This document describes the C ABI provided by the runtime library (documented; e
 | `@rt_str_mid`           | `str, i64 -> str`      | Return substring from start (1-based) to end                                             |
 | `@rt_str_mid_len`       | `str, i64, i64 -> str` | Return substring from start (1-based) with length                                        |
 | `@rt_str_index_of`      | `str, str -> i64`      | Find needle in haystack starting at position 1; returns 1-based index or 0               |
-| `@rt_str_index_of_from` | `i64, str, str -> i64` | Find needle in haystack starting at given position (1-based); returns 1-based index or 0 |
+| `@rt_instr3`            | `i64, str, str -> i64` | Find needle in haystack starting at given position (1-based); returns 1-based index or 0. IL extern name is `rt_instr3(start, haystack, needle)`. |
 | `@rt_str_ltrim`         | `str -> str`           | Remove leading whitespace (spaces and tabs)                                              |
 | `@rt_str_rtrim`         | `str -> str`           | Remove trailing whitespace (spaces and tabs)                                             |
 | `@rt_str_trim`          | `str -> str`           | Remove leading and trailing whitespace                                                   |

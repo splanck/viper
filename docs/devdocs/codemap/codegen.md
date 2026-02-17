@@ -1,6 +1,6 @@
 # CODEMAP: Codegen
 
-Last updated: 2026-01-15
+Last updated: 2026-02-17
 
 ## Status
 
@@ -11,15 +11,15 @@ Native code generation backends for x86_64 and AArch64.
 
 ## Common Utilities (`src/codegen/common/`)
 
-| File                        | Purpose                                                 |
-|-----------------------------|---------------------------------------------------------|
-| `Diagnostics.hpp/cpp`       | Codegen-specific diagnostic reporting                   |
-| `LabelUtil.hpp`             | Deterministic label generation for blocks and jumps     |
-| `LinkerSupport.hpp/cpp`     | Platform linker invocation and object file support      |
-| `ParallelCopyResolver.hpp`  | Parallel copy resolution for SSA deconstruction         |
-| `PassManager.hpp`           | Codegen pass manager interface                          |
-| `RuntimeComponents.hpp`     | Runtime component descriptors for codegen               |
-| `TargetInfoBase.hpp`        | Base class for target-specific information              |
+| File                       | Purpose                                             |
+|----------------------------|-----------------------------------------------------|
+| `Diagnostics.hpp/cpp`      | Codegen-specific diagnostic reporting               |
+| `LabelUtil.hpp`            | Deterministic label generation for blocks and jumps |
+| `LinkerSupport.hpp/cpp`    | Platform linker invocation and object file support  |
+| `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA deconstruction     |
+| `PassManager.hpp`          | Codegen pass manager interface                      |
+| `RuntimeComponents.hpp`    | Runtime component descriptors for codegen           |
+| `TargetInfoBase.hpp`       | Base class for target-specific information          |
 
 ## AArch64 Backend (`src/codegen/aarch64/`)
 
@@ -27,31 +27,31 @@ Targeting AAPCS64 (Apple Silicon, Linux ARM64).
 
 ### Core Infrastructure
 
-| File                       | Purpose                                  |
-|----------------------------|------------------------------------------|
-| `TargetAArch64.hpp/cpp`    | Target description and ABI information   |
-| `FramePlan.hpp`            | Stack frame layout planning              |
-| `FrameBuilder.hpp/cpp`     | Stack frame construction                 |
-| `MachineIR.hpp/cpp`        | Machine IR data structures               |
-| `OpcodeMappings.hpp`       | IL opcode to MIR opcode mapping          |
-| `LoweringContext.hpp`      | Lowering pass context and state          |
+| File                    | Purpose                                |
+|-------------------------|----------------------------------------|
+| `FrameBuilder.hpp/cpp`  | Stack frame construction               |
+| `FramePlan.hpp`         | Stack frame layout planning            |
+| `LoweringContext.hpp`   | Lowering pass context and state        |
+| `MachineIR.hpp/cpp`     | Machine IR data structures             |
+| `OpcodeMappings.hpp`    | IL opcode to MIR opcode mapping        |
+| `TargetAArch64.hpp/cpp` | Target description and ABI information |
 
 ### Lowering
 
-| File                        | Purpose                                 |
-|-----------------------------|-----------------------------------------|
-| `LowerILToMIR.hpp/cpp`      | Main IL to MIR lowering driver          |
-| `InstrLowering.hpp/cpp`     | Per-instruction lowering rules          |
-| `OpcodeDispatch.hpp/cpp`    | Opcode-based dispatch for lowering      |
-| `TerminatorLowering.hpp/cpp`| Block terminator lowering               |
+| File                        | Purpose                            |
+|-----------------------------|------------------------------------|
+| `InstrLowering.hpp/cpp`     | Per-instruction lowering rules     |
+| `LowerILToMIR.hpp/cpp`      | Main IL to MIR lowering driver     |
+| `OpcodeDispatch.hpp/cpp`    | Opcode-based dispatch for lowering |
+| `TerminatorLowering.hpp/cpp`| Block terminator lowering          |
 
 ### Optimization & Register Allocation
 
-| File                        | Purpose                                 |
-|-----------------------------|-----------------------------------------|
-| `Peephole.hpp/cpp`          | Peephole optimizations                  |
-| `LivenessAnalysis.hpp/cpp`  | Liveness analysis for register alloc    |
-| `RegAllocLinear.hpp/cpp`    | Linear scan register allocator          |
+| File                      | Purpose                              |
+|---------------------------|--------------------------------------|
+| `LivenessAnalysis.hpp/cpp`| Liveness analysis for register alloc |
+| `Peephole.hpp/cpp`        | Peephole optimizations               |
+| `RegAllocLinear.hpp/cpp`  | Linear scan register allocator       |
 
 ### Emission
 
@@ -62,15 +62,15 @@ Targeting AAPCS64 (Apple Silicon, Linux ARM64).
 
 ### Fast Paths (`fastpaths/`)
 
-| File                        | Purpose                                 |
-|-----------------------------|-----------------------------------------|
-| `FastPaths.hpp/cpp`         | Fast path dispatch                      |
-| `FastPathsInternal.hpp`     | Internal fast path utilities            |
-| `FastPaths_Arithmetic.cpp`  | Arithmetic operation fast paths         |
-| `FastPaths_Call.cpp`        | Call lowering fast paths                |
-| `FastPaths_Cast.cpp`        | Type cast fast paths                    |
-| `FastPaths_Memory.cpp`      | Memory operation fast paths             |
-| `FastPaths_Return.cpp`      | Return instruction fast paths           |
+| File                       | Purpose                        |
+|----------------------------|--------------------------------|
+| `FastPaths.hpp/cpp`        | Fast path dispatch             |
+| `FastPaths_Arithmetic.cpp` | Arithmetic operation fast paths|
+| `FastPaths_Call.cpp`       | Call lowering fast paths       |
+| `FastPaths_Cast.cpp`       | Type cast fast paths           |
+| `FastPaths_Memory.cpp`     | Memory operation fast paths    |
+| `FastPaths_Return.cpp`     | Return instruction fast paths  |
+| `FastPathsInternal.hpp`    | Internal fast path utilities   |
 
 ## x86_64 Backend (`src/codegen/x86_64/`)
 
@@ -85,11 +85,11 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 
 ### Target & ABI
 
-| File                    | Purpose                                     |
-|-------------------------|---------------------------------------------|
-| `TargetX64.hpp/cpp`     | Target description, SysV and Win64 ABIs     |
-| `FrameLowering.hpp/cpp` | Stack frame layout and prologue/epilogue    |
-| `CallLowering.hpp/cpp`  | Calling convention implementation           |
+| File                    | Purpose                                   |
+|-------------------------|-------------------------------------------|
+| `CallLowering.hpp/cpp`  | Calling convention implementation         |
+| `FrameLowering.hpp/cpp` | Stack frame layout and prologue/epilogue  |
+| `TargetX64.hpp/cpp`     | Target description, SysV and Win64 ABIs   |
 
 ### Machine IR
 
@@ -99,46 +99,46 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 
 ### IL Lowering
 
-| File                        | Purpose                                 |
-|-----------------------------|-----------------------------------------|
-| `LowerILToMIR.hpp/cpp`      | Main IL to MIR lowering adapter         |
-| `LoweringRules.hpp/cpp`     | Rule-based lowering infrastructure      |
-| `LoweringRuleTable.hpp/cpp` | Lowering rule table and dispatch        |
-| `Lowering.Arith.cpp`        | Arithmetic operation lowering           |
-| `Lowering.Bitwise.cpp`      | Bitwise operation lowering              |
-| `Lowering.CF.cpp`           | Control flow lowering                   |
-| `Lowering.EH.cpp`           | Exception handling lowering             |
-| `Lowering.Mem.cpp`          | Memory operation lowering               |
-| `Lowering.EmitCommon.hpp/cpp`| Shared lowering emission helpers       |
-| `LowerDiv.cpp`              | Division/modulo lowering                |
+| File                         | Purpose                              |
+|------------------------------|--------------------------------------|
+| `LowerDiv.cpp`               | Division/modulo lowering             |
+| `LowerILToMIR.hpp/cpp`       | Main IL to MIR lowering adapter      |
+| `LoweringRuleTable.hpp/cpp`  | Lowering rule table and dispatch     |
+| `LoweringRules.hpp/cpp`      | Rule-based lowering infrastructure   |
+| `Lowering.Arith.cpp`         | Arithmetic operation lowering        |
+| `Lowering.Bitwise.cpp`       | Bitwise operation lowering           |
+| `Lowering.CF.cpp`            | Control flow lowering                |
+| `Lowering.EH.cpp`            | Exception handling lowering          |
+| `Lowering.EmitCommon.hpp/cpp`| Shared lowering emission helpers     |
+| `Lowering.Mem.cpp`           | Memory operation lowering            |
 
 ### Instruction Selection & Optimization
 
-| File                       | Purpose                                  |
-|----------------------------|------------------------------------------|
-| `ISel.hpp/cpp`             | Instruction selection and legalization   |
-| `Peephole.hpp/cpp`         | Peephole optimizations                   |
-| `OperandUtils.hpp`         | Operand manipulation utilities           |
-| `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA         |
+| File                       | Purpose                              |
+|----------------------------|--------------------------------------|
+| `ISel.hpp/cpp`             | Instruction selection and legalization|
+| `OperandUtils.hpp`         | Operand manipulation utilities       |
+| `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA     |
+| `Peephole.hpp/cpp`         | Peephole optimizations               |
 
 ### Pipeline Passes (`passes/`)
 
-| File                    | Purpose                                      |
-|-------------------------|----------------------------------------------|
-| `PassManager.hpp/cpp`   | Pass orchestration and sequencing            |
-| `LoweringPass.hpp/cpp`  | IL to MIR lowering pass                      |
-| `LegalizePass.hpp/cpp`  | Instruction selection/legalization pass      |
-| `RegAllocPass.hpp/cpp`  | Register allocation pass                     |
-| `EmitPass.hpp/cpp`      | Assembly emission pass                       |
+| File                   | Purpose                                 |
+|------------------------|-----------------------------------------|
+| `EmitPass.hpp/cpp`     | Assembly emission pass                  |
+| `LegalizePass.hpp/cpp` | Instruction selection/legalization pass |
+| `LoweringPass.hpp/cpp` | IL to MIR lowering pass                 |
+| `PassManager.hpp/cpp`  | Pass orchestration and sequencing       |
+| `RegAllocPass.hpp/cpp` | Register allocation pass                |
 
 ### Register Allocation (`ra/`)
 
-| File                     | Purpose                                     |
-|--------------------------|---------------------------------------------|
-| `Allocator.hpp/cpp`      | Linear scan register allocator              |
-| `LiveIntervals.hpp/cpp`  | Live interval computation                   |
-| `Spiller.hpp/cpp`        | Spill code insertion                        |
-| `Coalescer.hpp/cpp`      | Copy coalescing                             |
+| File                    | Purpose                        |
+|-------------------------|--------------------------------|
+| `Allocator.hpp/cpp`     | Linear scan register allocator |
+| `Coalescer.hpp/cpp`     | Copy coalescing                |
+| `LiveIntervals.hpp/cpp` | Live interval computation      |
+| `Spiller.hpp/cpp`       | Spill code insertion           |
 
 ### Legacy Register Allocation
 

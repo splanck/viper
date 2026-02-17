@@ -391,7 +391,7 @@ entity User {
 
 **Types:** `value` `entity` `interface`
 **Modifiers:** `final` `expose` `hide` `override` `weak`
-**Declarations:** `module` `import` `func` `var` `new`
+**Declarations:** `module` `bind` `func` `var` `new`
 **Control:** `if` `else` `let` `match` `while` `for` `in` `is` `guard` `break` `continue` `return`
 **Inheritance:** `extends` `implements` `self` `super` `as`
 **Literals:** `true` `false` `null`

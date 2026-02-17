@@ -224,14 +224,14 @@ To: "28 resolved, 8 outstanding" (after moving BUG-017)
 
 ---
 
-## Test Files Created
+## Test Files Created (Ephemeral — not checked in)
 
-1. `/devdocs/basic/test_bug010_static.bas` - STATIC keyword test
-2. `/devdocs/basic/test_bug012_boolean.bas` - BOOLEAN type test
-3. `/devdocs/basic/test_bug017_global_string_method.bas` - Global string in method test
-4. `/devdocs/basic/test_bug019_const_float.bas` - CONST float truncation test
+1. `test_bug010_static.bas` - STATIC keyword test
+2. `test_bug012_boolean.bas` - BOOLEAN type test
+3. `test_bug017_global_string_method.bas` - Global string in method test
+4. `test_bug019_const_float.bas` - CONST float truncation test
 
-All test files included in investigation.
+These were temporary test files created during investigation and are not checked into the repository.
 
 ---
 

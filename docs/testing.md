@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-01-09
+last-verified: 2026-02-17
 ---
 
 # Testing Guide
@@ -192,7 +192,7 @@ For new differential tests, extend the pattern in `test_diff_vm_native_property.
 
 - **VM**: All platforms
 - **AArch64 Native**: macOS on Apple Silicon (tested)
-- **x86_64 Native**: Implemented but experimental
+- **x86_64 Native**: Validated on Windows with full codegen test suite passing
 
 Differential tests automatically skip native execution on unsupported platforms.
 

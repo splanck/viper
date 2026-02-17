@@ -502,7 +502,7 @@ large.area();  // Inside: self is large, returns 5000.0
 Without methods, you'd write standalone functions:
 
 ```rust
-func rectangleArea(rect: Rectangle) -> f64 {
+func rectangleArea(rect: Rectangle) -> Number {
     return rect.width * rect.height;
 }
 

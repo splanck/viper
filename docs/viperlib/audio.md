@@ -41,10 +41,10 @@ After playing a sound, you receive a voice ID that can be used with `Viper.Sound
 
 | Method                              | Description                                    |
 |-------------------------------------|------------------------------------------------|
-| `Viper.Sound.Voice.Stop(id)`        | Stop a playing voice                           |
-| `Viper.Sound.Voice.SetVolume(id, vol)` | Set voice volume (0-100)                    |
-| `Viper.Sound.Voice.SetPan(id, pan)` | Set voice pan (-100 left, 0 center, 100 right) |
 | `Viper.Sound.Voice.IsPlaying(id)`   | Returns 1 if voice is still playing            |
+| `Viper.Sound.Voice.SetPan(id, pan)` | Set voice pan (-100 left, 0 center, 100 right) |
+| `Viper.Sound.Voice.SetVolume(id, vol)` | Set voice volume (0-100)                    |
+| `Viper.Sound.Voice.Stop(id)`        | Stop a playing voice                           |
 
 ### Zia Example
 
@@ -130,20 +130,20 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 
 | Property   | Type    | Access | Description                        |
 |------------|---------|--------|------------------------------------|
-| `Volume`   | Integer | R/W    | Playback volume (0-100)            |
-| `Position` | Integer | Read   | Current position in milliseconds   |
 | `Duration` | Integer | Read   | Total duration in milliseconds     |
+| `Position` | Integer | Read   | Current position in milliseconds   |
+| `Volume`   | Integer | R/W    | Playback volume (0-100)            |
 
 ### Methods
 
 | Method         | Signature           | Description                              |
 |----------------|---------------------|------------------------------------------|
-| `Play(loop)`   | `Void(Integer)`     | Start playback (1 = loop, 0 = one-shot)  |
-| `Stop()`       | `Void()`            | Stop playback                            |
-| `Pause()`      | `Void()`            | Pause playback                           |
-| `Resume()`     | `Void()`            | Resume paused playback                   |
 | `IsPlaying()`  | `Integer()`         | Returns 1 if currently playing, 0 if not |
+| `Pause()`      | `Void()`            | Pause playback                           |
+| `Play(loop)`   | `Void(Integer)`     | Start playback (1 = loop, 0 = one-shot)  |
+| `Resume()`     | `Void()`            | Resume paused playback                   |
 | `Seek(ms)`     | `Void(Integer)`     | Seek to position in milliseconds         |
+| `Stop()`       | `Void()`            | Stop playback                            |
 
 ### Zia Example
 
@@ -233,10 +233,10 @@ Static class for controlling individual playing voices (sound instances).
 
 | Method                     | Signature                      | Description                                    |
 |----------------------------|--------------------------------|------------------------------------------------|
-| `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                           |
-| `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0-100)                 |
-| `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Set pan for a voice (-100 to 100)              |
 | `IsPlaying(id)`            | `Integer(Integer)`             | Check if voice is playing (returns 1 or 0)     |
+| `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Set pan for a voice (-100 to 100)              |
+| `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0-100)                 |
+| `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                           |
 
 ### Zia Example
 
@@ -282,12 +282,12 @@ Global audio system control functions.
 
 | Method                          | Signature                      | Description                                    |
 |---------------------------------|--------------------------------|------------------------------------------------|
-| `Init()`                        | `Integer()`                    | Initialize the audio system. Returns 1 on success |
-| `Shutdown()`                    | `Void()`                       | Shut down the audio system                     |
-| `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0-100)        |
 | `GetMasterVolume()`             | `Integer()`                    | Get current master volume                      |
+| `Init()`                        | `Integer()`                    | Initialize the audio system. Returns 1 on success |
 | `PauseAll()`                    | `Void()`                       | Pause all audio playback                       |
 | `ResumeAll()`                   | `Void()`                       | Resume all audio playback                      |
+| `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0-100)        |
+| `Shutdown()`                    | `Void()`                       | Shut down the audio system                     |
 | `StopAllSounds()`               | `Void()`                       | Stop all playing sounds (not music)            |
 
 ### Zia Example
@@ -357,34 +357,34 @@ Music playlist with queue management for sequential track playback.
 | Method              | Signature              | Description                                       |
 |---------------------|------------------------|---------------------------------------------------|
 | `Add(path)`         | `Void(String)`         | Add a music file to the end of the playlist       |
-| `Insert(index, path)` | `Void(Integer, String)` | Insert a music file at a specific position      |
-| `Remove(index)`     | `Void(Integer)`        | Remove a track by index                           |
 | `Clear()`           | `Void()`               | Remove all tracks from the playlist               |
 | `Get(index)`        | `String(Integer)`      | Get the file path of a track at the given index   |
+| `Insert(index, path)` | `Void(Integer, String)` | Insert a music file at a specific position      |
+| `Remove(index)`     | `Void(Integer)`        | Remove a track by index                           |
 
 ### Playback Control Methods
 
 | Method       | Signature       | Description                                        |
 |--------------|-----------------|----------------------------------------------------|
-| `Play()`     | `Void()`        | Start playing from the beginning or resume         |
-| `Pause()`    | `Void()`        | Pause playback                                     |
-| `Stop()`     | `Void()`        | Stop playback and reset to beginning               |
-| `Next()`     | `Void()`        | Skip to the next track                             |
-| `Prev()`     | `Void()`        | Go back to the previous track                      |
 | `Jump(index)`| `Void(Integer)` | Jump to a specific track by index                  |
+| `Next()`     | `Void()`        | Skip to the next track                             |
+| `Pause()`    | `Void()`        | Pause playback                                     |
+| `Play()`     | `Void()`        | Start playing from the beginning or resume         |
+| `Prev()`     | `Void()`        | Go back to the previous track                      |
+| `Stop()`     | `Void()`        | Stop playback and reset to beginning               |
 | `Update()`   | `Void()`        | Update playlist state (call each frame for auto-advance) |
 
 ### Properties
 
 | Property    | Type    | Access | Description                                         |
 |-------------|---------|--------|-----------------------------------------------------|
-| `Len`       | Integer | Read   | Number of tracks in the playlist                    |
 | `Current`   | Integer | Read   | Current track index (-1 if empty)                   |
-| `IsPlaying` | Boolean | Read   | True if the playlist is currently playing           |
 | `IsPaused`  | Boolean | Read   | True if the playlist is paused                      |
-| `Volume`    | Integer | R/W    | Playback volume (0-100)                             |
-| `Shuffle`   | Boolean | R/W    | Enable/disable shuffle mode                         |
+| `IsPlaying` | Boolean | Read   | True if the playlist is currently playing           |
+| `Len`       | Integer | Read   | Number of tracks in the playlist                    |
 | `Repeat`    | Integer | R/W    | Repeat mode: 0 = none, 1 = repeat all, 2 = repeat one |
+| `Shuffle`   | Boolean | R/W    | Enable/disable shuffle mode                         |
+| `Volume`    | Integer | R/W    | Playback volume (0-100)                             |
 
 ### Zia Example
 

@@ -726,43 +726,43 @@ __attribute__((packed, aligned(8)))
 
 | Macro | Compiler |
 |-------|----------|
-| `__GNUC__` | GCC major version |
-| `__GNUC_MINOR__` | GCC minor version |
-| `__GNUC_PATCHLEVEL__` | GCC patch level |
 | `__clang__` | Clang |
 | `__clang_major__` | Clang major version |
 | `__clang_minor__` | Clang minor version |
+| `__GNUC__` | GCC major version |
+| `__GNUC_MINOR__` | GCC minor version |
+| `__GNUC_PATCHLEVEL__` | GCC patch level |
 | `_MSC_VER` | MSVC version |
 
 ### 9.6 Platform Detection Macros
 
 | Macro | Platform |
 |-------|----------|
+| `__ANDROID__` | Android |
+| `__APPLE__` | macOS/iOS |
+| `__FreeBSD__` | FreeBSD |
+| `__linux__` | Linux |
+| `__MACH__` | macOS |
+| `__unix__` | Unix-like |
+| `__viperdos__` | Viper OS |
 | `_WIN32` | Windows (32 or 64-bit) |
 | `_WIN64` | Windows 64-bit |
-| `__APPLE__` | macOS/iOS |
-| `__MACH__` | macOS |
-| `__linux__` | Linux |
-| `__unix__` | Unix-like |
-| `__ANDROID__` | Android |
-| `__FreeBSD__` | FreeBSD |
-| `__viperdos__` | Viper OS |
 
 ### 9.7 Architecture Detection Macros
 
 | Macro | Architecture |
 |-------|--------------|
-| `__x86_64__` | x86-64 (GCC/Clang) |
-| `_M_X64` | x86-64 (MSVC) |
-| `__i386__` | x86 32-bit (GCC/Clang) |
-| `_M_IX86` | x86 32-bit (MSVC) |
 | `__aarch64__` | ARM64 (GCC/Clang) |
-| `_M_ARM64` | ARM64 (MSVC) |
 | `__arm__` | ARM 32-bit (GCC/Clang) |
-| `_M_ARM` | ARM 32-bit (MSVC) |
-| `__riscv` | RISC-V |
-| `__powerpc__` | PowerPC |
+| `__i386__` | x86 32-bit (GCC/Clang) |
 | `__mips__` | MIPS |
+| `__powerpc__` | PowerPC |
+| `__riscv` | RISC-V |
+| `__x86_64__` | x86-64 (GCC/Clang) |
+| `_M_ARM` | ARM 32-bit (MSVC) |
+| `_M_ARM64` | ARM64 (MSVC) |
+| `_M_IX86` | x86 32-bit (MSVC) |
+| `_M_X64` | x86-64 (MSVC) |
 
 ### 9.8 Pragma Directives
 

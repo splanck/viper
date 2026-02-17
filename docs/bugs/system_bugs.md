@@ -1,12 +1,12 @@
 # VIPER System Bugs and Issues
 
-Last Updated: 2025-11-15
+Last Updated: 2026-02-17
 
 Scope: Tooling/driver/infra issues (viper/vm/runtime/registry), not language semantics.
 
 ---
 
-## NEW: SYS-001 — ARG$/COMMAND$ cause segfault and bogus arity diagnostics
+## RESOLVED: SYS-001 — ARG$/COMMAND$ cause segfault and bogus arity diagnostics
 
 Status: Fixed (signature arity derived from registry; unit test added)
 Category: Frontend (Semantics)/Tooling
@@ -95,7 +95,7 @@ Notes:
 
 ---
 
-## NEW: CRIT-1 — Refcount Overflow Vulnerability
+## RESOLVED: CRIT-1 — Refcount Overflow Vulnerability
 
 Status: Fixed (runtime patch applied)
 Severity: Critical (memory safety)
@@ -126,9 +126,9 @@ Verification Plan:
 
 ---
 
-## NEW: CRIT-2 — Double-free risk in string literal release (not reproduced)
+## RESOLVED: CRIT-2 — Double-free risk in string literal release (not reproduced)
 
-Status: Needs Triage
+Status: Not Reproducible — current code guards against underflow atomically
 Severity: Critical (claimed) → Not reproduced
 Source: CODE_QUALITY_DEEP_DIVE.md (CRIT-2)
 
@@ -153,7 +153,7 @@ Recommendation:
 
 ---
 
-## NEW: CRIT-3 — realloc error handling loses original pointer
+## RESOLVED: CRIT-3 — realloc error handling loses original pointer
 
 Status: Fixed (runtime patch applied)
 Severity: Critical (leak + crash)
@@ -183,7 +183,7 @@ Verification Plan:
 
 ---
 
-## NEW: CRIT-4 — Null dereference after guard in DELETE lowering (not reproduced)
+## RESOLVED: CRIT-4 — Null dereference after guard in DELETE lowering (not reproduced)
 
 Status: Not Reproducible
 Severity: Critical (claimed) → Appears safe as implemented
@@ -206,7 +206,7 @@ Recommendation:
 
 ---
 
-## NEW: HIGH-2 — Use-after-move in array expression parsing
+## RESOLVED: HIGH-2 — Use-after-move in array expression parsing
 
 Status: Fixed (parser patch + unit test)
 Severity: High (memory safety)
@@ -235,7 +235,7 @@ Verification Plan:
 
 ---
 
-## NEW: HIGH-3 — Heap corruption risk after realloc in array resize
+## RESOLVED: HIGH-3 — Heap corruption risk after realloc in array resize
 
 Status: Fixed (runtime patch applied)
 Severity: High (memory safety)

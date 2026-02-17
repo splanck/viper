@@ -1,12 +1,16 @@
 ---
-status: active
+status: draft
 audience: public
-last-updated: 2025-11-20
+last-updated: 2026-02-17
 ---
 
 # Example: Deterministic Disposal Pattern
 
-This example demonstrates a simple RAII‑like pattern in Viper BASIC using `DISPOSE` to ensure cleanup.
+> **Note:** The standalone `DISPOSE` statement shown below is not yet implemented as a lexed keyword
+> in the BASIC frontend. The pattern is aspirational. For deterministic cleanup today, use `DESTRUCTOR`
+> methods and let the runtime call them when the object is freed, or explicitly set the variable to null.
+
+This example demonstrates a RAII‑like pattern in Viper BASIC using `DISPOSE` to ensure cleanup.
 
 ```basic
 CLASS Handle

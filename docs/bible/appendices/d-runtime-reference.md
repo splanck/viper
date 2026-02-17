@@ -9,7 +9,7 @@ This reference documents the Viper Runtime Library, the standard modules availab
 ## Quick Navigation
 
 - [Viper.Terminal](#viperterminal) - Console I/O
-- [Viper.File](#viperfile) - File system operations
+- [Viper.IO.File](#viperio-file) - File system operations
 - [Viper.Math](#vipermath) - Mathematical functions
 - [Viper.Time](#vipertime) - Time and date operations
 - [Viper.Collections](#vipercollections) - Data structures
@@ -59,10 +59,10 @@ Terminal.Say(3.14159);  // Prints "3.14159"
 
 ---
 
-#### Write
+#### Print
 
 ```rust
-func Write(message: string) -> void
+func Print(message: string) -> void
 ```
 
 Prints a message without a trailing newline. Subsequent output continues on the same line.
@@ -72,15 +72,15 @@ Prints a message without a trailing newline. Subsequent output continues on the 
 
 **Example:**
 ```rust
-Terminal.Write("Loading");
+Terminal.Print("Loading");
 for i in 0..5 {
-    Time.sleep(500);
-    Terminal.Write(".");
+    Time.Clock.Sleep(500);
+    Terminal.Print(".");
 }
 Terminal.Say(" done!");  // Output: Loading..... done!
 ```
 
-**When to use:** Use `Write` for progress indicators, inline prompts, or when building output piece by piece.
+**When to use:** Use `Print` for progress indicators, inline prompts, or when building output piece by piece.
 
 ---
 
@@ -90,6 +90,8 @@ Terminal.Say(" done!");  // Output: Loading..... done!
 func SayError(message: string) -> void
 ```
 
+> **Note:** `SayError` is planned but not yet available in all runtime configurations. For error output today, use `Terminal.Say` with an error prefix.
+
 Prints a message to standard error (stderr) with a newline. Error messages go to a separate stream that can be redirected independently from normal output.
 
 **Parameters:**
@@ -97,15 +99,16 @@ Prints a message to standard error (stderr) with a newline. Error messages go to
 
 **Example:**
 ```rust
-if !Viper.File.exists(filename) {
-    Terminal.SayError("Error: File not found: " + filename);
+bind Viper.IO;
+bind Viper.Terminal;
+
+if IO.File.Exists(filename) == false {
+    Terminal.Say("Error: File not found: " + filename);
     Viper.Environment.exit(1);
 }
 ```
 
-**When to use:** Use `SayError` for error messages, warnings, and diagnostic output that should not be mixed with normal program output.
-
-**Edge case:** On some terminals, stderr output may appear in a different color or be interleaved differently with stdout.
+**When to use:** Use for error messages, warnings, and diagnostic output.
 
 ---
 
@@ -114,7 +117,7 @@ if !Viper.File.exists(filename) {
 #### Ask
 
 ```rust
-func Ask(prompt: string) -> string
+func Ask(prompt: string) -> string?
 ```
 
 Displays a prompt and waits for the user to type a line of input. Returns when the user presses Enter.
@@ -122,13 +125,16 @@ Displays a prompt and waits for the user to type a line of input. Returns when t
 **Parameters:**
 - `prompt` - Text to display before waiting for input
 
-**Returns:** The user's input as a string (without the trailing newline)
+**Returns:** The user's input as a nullable string (without the trailing newline), or `null` if EOF is reached
 
 **Example:**
 ```rust
+bind Viper.Terminal;
+bind Viper.Convert;
+
 var name = Terminal.Ask("What is your name? ");
 var ageStr = Terminal.Ask("How old are you? ");
-var age = ageStr.toInt();
+var age = ToInt(ageStr);
 
 Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 ```
@@ -137,7 +143,40 @@ Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 
 **Edge cases:**
 - Returns an empty string if the user presses Enter without typing anything
-- If input is redirected from a file and EOF is reached, returns an empty string
+- If input is redirected from a file and EOF is reached, returns `null`
+
+---
+
+#### ReadLine
+
+```rust
+func ReadLine() -> string?
+```
+
+Reads a line of input from the user without displaying a prompt. Returns when the user presses Enter.
+
+**Returns:** The user's input as a nullable string (without the trailing newline), or `null` if EOF is reached
+
+**Example:**
+```rust
+bind Viper.Terminal;
+bind Viper.Convert;
+
+Terminal.Print("Enter your name: ");
+var name = Terminal.ReadLine();
+
+Terminal.Print("Enter your age: ");
+var ageStr = Terminal.ReadLine();
+var age = ToInt(ageStr);
+
+Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
+```
+
+**When to use:** Use `ReadLine` when you want to display the prompt yourself using `Print` before reading input. Use `Ask` when you want to display the prompt and read input in a single call.
+
+**Edge cases:**
+- Returns an empty string if the user presses Enter without typing anything
+- If input is redirected from a file and EOF is reached, returns `null`
 
 ---
 
@@ -276,19 +315,19 @@ Terminal.Clear();
 
 // Top border
 Terminal.SetPosition(1, 1);
-Terminal.Write("+------------------------+");
+Terminal.Print("+------------------------+");
 
 // Side borders
 for row in 2..10 {
     Terminal.SetPosition(1, row);
-    Terminal.Write("|");
+    Terminal.Print("|");
     Terminal.SetPosition(26, row);
-    Terminal.Write("|");
+    Terminal.Print("|");
 }
 
 // Bottom border
 Terminal.SetPosition(1, 10);
-Terminal.Write("+------------------------+");
+Terminal.Print("+------------------------+");
 ```
 
 **When to use:** Use cursor positioning for TUI (text user interface) applications, games, or formatted displays.
@@ -313,8 +352,8 @@ Terminal.SetCursorVisible(0);  // Hide cursor
 // Animate a spinner
 var frames = ["|", "/", "-", "\\"];
 for i in 0..20 {
-    Terminal.Write("\r" + frames[i % 4] + " Loading...");
-    Time.sleep(100);
+    Terminal.Print("\r" + frames[i % 4] + " Loading...");
+    Time.Clock.Sleep(100);
 }
 
 Terminal.SetCursorVisible(1);  // Show cursor again
@@ -334,21 +373,21 @@ func showProgress(current: Integer, total: Integer) {
     var percent = (current * 100) / total;
     var bars = percent / 5;  // 20 characters wide
 
-    Terminal.Write("\r[");
+    Terminal.Print("\r[");
     for i in 0..20 {
         if i < bars {
-            Terminal.Write("=");
+            Terminal.Print("=");
         } else {
-            Terminal.Write(" ");
+            Terminal.Print(" ");
         }
     }
-    Terminal.Write("] " + percent + "%");
+    Terminal.Print("] " + percent + "%");
 }
 
 // Usage
 for i in 0..100 {
     showProgress(i, 100);
-    Time.sleep(50);
+    Time.Clock.Sleep(50);
 }
 Terminal.Say("");  // Newline when done
 ```
@@ -356,21 +395,26 @@ Terminal.Say("");  // Newline when done
 #### Simple Menu System
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Convert;
+
 func showMenu(options: [String]) -> Integer {
     loop {
         Terminal.Clear();
         Terminal.Say("Select an option:");
         Terminal.Say("");
 
-        for i, option in options.enumerate() {
+        var i = 0;
+        for option in options {
             Terminal.Say("  " + (i + 1) + ". " + option);
+            i = i + 1;
         }
 
         Terminal.Say("");
-        var choice = Terminal.Ask("Enter choice (1-" + options.len() + "): ");
-        var num = choice.toInt();
+        var choice = Terminal.Ask("Enter choice: ");
+        var num = ToInt(choice);
 
-        if num >= 1 and num <= options.len() {
+        if num >= 1 and num <= options.length {
             return num - 1;  // Return 0-based index
         }
 
@@ -382,9 +426,13 @@ func showMenu(options: [String]) -> Integer {
 
 ---
 
-## Viper.File
+## Viper.IO.File
 
-File system operations for reading, writing, and managing files and directories.
+File system operations for reading, writing, and managing files and directories. Bind as `Viper.IO` and use the `IO.File.*` prefix.
+
+```rust
+bind Viper.IO;
+```
 
 > **See also:** [Chapter 9: Files and Persistence](../part2-building-blocks/09-files.md) for comprehensive coverage of file operations.
 
@@ -392,10 +440,10 @@ File system operations for reading, writing, and managing files and directories.
 
 ### Reading Files
 
-#### readText
+#### ReadAllText
 
 ```rust
-func readText(path: string) -> string
+func ReadAllText(path: string) -> string
 ```
 
 Reads the entire contents of a text file as a string.
@@ -407,11 +455,14 @@ Reads the entire contents of a text file as a string.
 
 **Example:**
 ```rust
-var content = Viper.File.readText("config.txt");
+bind Viper.IO;
+bind Viper.Terminal;
+
+var content = IO.File.ReadAllText("config.txt");
 Terminal.Say("File contents: " + content);
 ```
 
-**When to use:** Use for small to medium text files (configuration files, data files, source code). For large files, consider `readLines` to process line by line.
+**When to use:** Use for small to medium text files (configuration files, data files, source code). For large files, consider `ReadAllLines` to process line by line.
 
 **Edge cases:**
 - Throws an error if the file does not exist
@@ -420,10 +471,10 @@ Terminal.Say("File contents: " + content);
 
 ---
 
-#### readBytes
+#### ReadAllBytes
 
 ```rust
-func readBytes(path: string) -> [u8]
+func ReadAllBytes(path: string) -> [Byte]
 ```
 
 Reads the entire contents of a file as raw bytes.
@@ -431,27 +482,25 @@ Reads the entire contents of a file as raw bytes.
 **Parameters:**
 - `path` - Path to the file
 
-**Returns:** Array of bytes (unsigned 8-bit integers)
+**Returns:** Array of bytes
 
 **Example:**
 ```rust
-var bytes = Viper.File.readBytes("image.png");
-Terminal.Say("File size: " + bytes.len() + " bytes");
+bind Viper.IO;
+bind Viper.Terminal;
 
-// Check PNG magic number
-if bytes[0] == 0x89 and bytes[1] == 0x50 {
-    Terminal.Say("Valid PNG file");
-}
+var bytes = IO.File.ReadAllBytes("image.png");
+Terminal.Say("File size: " + bytes.length + " bytes");
 ```
 
 **When to use:** Use for binary files (images, archives, executables) or when you need precise byte-level access.
 
 ---
 
-#### readLines
+#### ReadAllLines
 
 ```rust
-func readLines(path: string) -> [string]
+func ReadAllLines(path: string) -> [String]
 ```
 
 Reads a text file and returns an array where each element is one line.
@@ -463,10 +512,13 @@ Reads a text file and returns an array where each element is one line.
 
 **Example:**
 ```rust
-var lines = Viper.File.readLines("names.txt");
+bind Viper.IO;
+bind Viper.Terminal;
 
-for i, line in lines.enumerate() {
-    Terminal.Say("Line " + (i + 1) + ": " + line);
+var lines = IO.File.ReadAllLines("names.txt");
+
+for line in lines {
+    Terminal.Say(line);
 }
 ```
 
@@ -476,10 +528,10 @@ for i, line in lines.enumerate() {
 
 ### Writing Files
 
-#### writeText
+#### WriteAllText
 
 ```rust
-func writeText(path: string, content: string) -> void
+func WriteAllText(path: string, content: string) -> void
 ```
 
 Writes a string to a file, creating the file if it does not exist or overwriting it if it does.
@@ -490,23 +542,24 @@ Writes a string to a file, creating the file if it does not exist or overwriting
 
 **Example:**
 ```rust
+bind Viper.IO;
+
 var data = "Name: Alice\nAge: 30\nCity: Boston";
-Viper.File.writeText("person.txt", data);
+IO.File.WriteAllText("person.txt", data);
 ```
 
 **When to use:** Use to save text data, create configuration files, or export data.
 
 **Edge cases:**
-- Creates parent directories if they do not exist
-- Overwrites existing content completely (use `appendText` to add to existing)
+- Overwrites existing content completely (use `Append` to add to existing)
 - Throws error if path is invalid or write permission denied
 
 ---
 
-#### writeBytes
+#### WriteAllBytes
 
 ```rust
-func writeBytes(path: string, data: [u8]) -> void
+func WriteAllBytes(path: string, data: [Byte]) -> void
 ```
 
 Writes raw bytes to a file.
@@ -517,22 +570,24 @@ Writes raw bytes to a file.
 
 **Example:**
 ```rust
-// Create a simple BMP file header
-var header: [u8] = [0x42, 0x4D, ...];  // BMP magic number
-Viper.File.writeBytes("output.bmp", header);
+bind Viper.IO;
+
+var data = IO.File.ReadAllBytes("source.bin");
+IO.File.WriteAllBytes("copy.bin", data);
 ```
 
 **When to use:** Use for binary file formats or when you have computed byte data to save.
 
 ---
 
-#### appendText
+#### Append / AppendLine
 
 ```rust
-func appendText(path: string, content: string) -> void
+func Append(path: string, content: string) -> void
+func AppendLine(path: string, content: string) -> void
 ```
 
-Adds text to the end of an existing file, or creates the file if it does not exist.
+Adds text to the end of an existing file, or creates the file if it does not exist. `Append` writes the text as-is; `AppendLine` appends a newline after the content.
 
 **Parameters:**
 - `path` - Path to the file
@@ -540,10 +595,11 @@ Adds text to the end of an existing file, or creates the file if it does not exi
 
 **Example:**
 ```rust
+bind Viper.IO;
+
 // Simple logging
 func log(message: String) {
-    var timestamp = DateTime.now().format("YYYY-MM-DD HH:mm:ss");
-    Viper.File.appendText("app.log", "[" + timestamp + "] " + message + "\n");
+    IO.File.AppendLine("app.log", message);
 }
 
 log("Application started");
@@ -557,10 +613,10 @@ log("Application finished");
 
 ### File Operations
 
-#### exists
+#### Exists
 
 ```rust
-func exists(path: string) -> bool
+func Exists(path: string) -> Boolean
 ```
 
 Checks whether a file or directory exists at the given path.
@@ -569,14 +625,16 @@ Checks whether a file or directory exists at the given path.
 
 **Example:**
 ```rust
+bind Viper.IO;
+
 var configPath = "settings.json";
 
-if Viper.File.exists(configPath) {
-    var config = Viper.File.readText(configPath);
+if IO.File.Exists(configPath) {
+    var config = IO.File.ReadAllText(configPath);
     // Use existing config
 } else {
     // Create default config
-    Viper.File.writeText(configPath, "{}");
+    IO.File.WriteAllText(configPath, "{}");
 }
 ```
 
@@ -584,10 +642,10 @@ if Viper.File.exists(configPath) {
 
 ---
 
-#### delete
+#### Delete
 
 ```rust
-func delete(path: string) -> void
+func Delete(path: string) -> void
 ```
 
 Deletes a file.
@@ -597,23 +655,25 @@ Deletes a file.
 
 **Example:**
 ```rust
-if Viper.File.exists("temp.txt") {
-    Viper.File.delete("temp.txt");
+bind Viper.IO;
+bind Viper.Terminal;
+
+if IO.File.Exists("temp.txt") {
+    IO.File.Delete("temp.txt");
     Terminal.Say("Temporary file cleaned up");
 }
 ```
 
 **Edge cases:**
 - Throws error if the file does not exist
-- Throws error if it is a directory (use `deleteDir` instead)
 - Throws error if the file is locked or permission denied
 
 ---
 
-#### rename
+#### Move
 
 ```rust
-func rename(oldPath: string, newPath: string) -> void
+func Move(oldPath: string, newPath: string) -> void
 ```
 
 Renames or moves a file.
@@ -624,11 +684,13 @@ Renames or moves a file.
 
 **Example:**
 ```rust
+bind Viper.IO;
+
 // Rename a file
-Viper.File.rename("draft.txt", "final.txt");
+IO.File.Move("draft.txt", "final.txt");
 
 // Move to different directory
-Viper.File.rename("temp/data.csv", "archive/data.csv");
+IO.File.Move("temp/data.csv", "archive/data.csv");
 ```
 
 **When to use:** Use for renaming files or moving them within the same filesystem.
@@ -637,10 +699,10 @@ Viper.File.rename("temp/data.csv", "archive/data.csv");
 
 ---
 
-#### copy
+#### Copy
 
 ```rust
-func copy(sourcePath: string, destPath: string) -> void
+func Copy(sourcePath: string, destPath: string) -> void
 ```
 
 Creates a copy of a file.
@@ -651,8 +713,10 @@ Creates a copy of a file.
 
 **Example:**
 ```rust
+bind Viper.IO;
+
 // Create backup before modifying
-Viper.File.copy("config.json", "config.json.backup");
+IO.File.Copy("config.json", "config.json.backup");
 
 // Now safe to modify config.json
 ```
@@ -661,69 +725,72 @@ Viper.File.copy("config.json", "config.json.backup");
 
 ---
 
-#### size
+#### Size
 
 ```rust
-func size(path: string) -> i64
+func Size(path: string) -> Integer
 ```
 
 Returns the size of a file in bytes.
 
-**Returns:** File size as a 64-bit integer
+**Returns:** File size as an integer
 
 **Example:**
 ```rust
-var bytes = Viper.File.size("video.mp4");
+bind Viper.IO;
+bind Viper.Terminal;
+
+var bytes = IO.File.Size("video.mp4");
 var megabytes = bytes / (1024 * 1024);
 Terminal.Say("File size: " + megabytes + " MB");
 ```
 
 ---
 
-#### modifiedTime
+#### Modified
 
 ```rust
-func modifiedTime(path: string) -> DateTime
+func Modified(path: string) -> Integer
 ```
 
-Returns when the file was last modified.
+Returns when the file was last modified as a Unix timestamp (seconds since epoch).
 
-**Returns:** A `DateTime` object
+**Returns:** Unix timestamp as an integer
 
 **Example:**
 ```rust
-var modified = Viper.File.modifiedTime("document.txt");
-var now = DateTime.now();
+bind Viper.IO;
+bind Viper.Terminal;
 
-if now.diffDays(modified) > 30 {
-    Terminal.Say("Warning: File is over 30 days old");
-}
+var modTime = IO.File.Modified("document.txt");
+Terminal.Say("Last modified: " + modTime);
 ```
 
 ---
 
 ### Directory Operations
 
-#### listDir
+Directory operations use the `IO.Dir` prefix (part of `bind Viper.IO`).
+
+#### IO.Dir.List
 
 ```rust
-func listDir(path: string) -> [string]
+func List(path: string) -> [String]
 ```
 
 Lists all files and subdirectories in a directory.
 
-**Returns:** Array of names (not full paths)
+**Returns:** Array of entry names (not full paths)
 
 **Example:**
 ```rust
-var entries = Viper.File.listDir(".");
+bind Viper.IO;
+bind Viper.Terminal;
+
+var entries = IO.Dir.List(".");
 
 for entry in entries {
-    if Viper.File.isDir(entry) {
-        Terminal.Say("[DIR]  " + entry);
-    } else {
-        Terminal.Say("[FILE] " + entry);
-    }
+    Terminal.Say(entry);
 }
 ```
 
@@ -731,152 +798,115 @@ for entry in entries {
 
 ---
 
-#### createDir
+#### IO.Dir.Make
 
 ```rust
-func createDir(path: string) -> void
+func Make(path: string) -> void
 ```
 
 Creates a directory. Creates parent directories as needed.
 
 **Example:**
 ```rust
-Viper.File.createDir("output/reports/2024");
+bind Viper.IO;
+
+IO.Dir.Make("output/reports/2024");
 // Creates output/, output/reports/, and output/reports/2024/
-```
-
----
-
-#### deleteDir
-
-```rust
-func deleteDir(path: string) -> void
-```
-
-Deletes a directory and all its contents recursively.
-
-**Example:**
-```rust
-if Viper.File.exists("temp_output") {
-    Viper.File.deleteDir("temp_output");
-}
-```
-
-**Warning:** This permanently deletes all files and subdirectories. Use with caution.
-
----
-
-#### isDir / isFile
-
-```rust
-func isDir(path: string) -> bool
-func isFile(path: string) -> bool
-```
-
-Checks whether a path points to a directory or a regular file.
-
-**Example:**
-```rust
-if Viper.File.isDir(path) {
-    // Process all files in directory
-    for file in Viper.File.listDir(path) {
-        processFile(Viper.File.join(path, file));
-    }
-} else if Viper.File.isFile(path) {
-    processFile(path);
-}
 ```
 
 ---
 
 ### Path Operations
 
-#### join
+Path operations use the `IO.Path` prefix (part of `bind Viper.IO`).
+
+#### IO.Path.Join
 
 ```rust
-func join(parts: ...string) -> string
+func Join(left: string, right: string) -> string
 ```
 
-Combines path components using the correct separator for the operating system.
+Combines two path components using the correct separator for the operating system.
 
 **Example:**
 ```rust
-var path = Viper.File.join("home", "alice", "documents", "report.txt");
-// On Unix: "home/alice/documents/report.txt"
-// On Windows: "home\alice\documents\report.txt"
+bind Viper.IO;
+
+var path = IO.Path.Join("home/alice", "report.txt");
+// Returns: "home/alice/report.txt"
 ```
 
-**When to use:** Always use `join` instead of string concatenation with "/" or "\\". This ensures your code works on all operating systems.
+**When to use:** Use `IO.Path.Join` instead of string concatenation with "/" or "\\". This ensures your code works on all operating systems.
 
 ---
 
-#### basename
+#### IO.Path.Name
 
 ```rust
-func basename(path: string) -> string
+func Name(path: string) -> string
 ```
 
 Returns just the filename portion of a path.
 
 **Example:**
 ```rust
-var filename = Viper.File.basename("/home/alice/report.txt");
+bind Viper.IO;
+
+var filename = IO.Path.Name("/home/alice/report.txt");
 // Returns: "report.txt"
 ```
 
 ---
 
-#### dirname
+#### IO.Path.Dir
 
 ```rust
-func dirname(path: string) -> string
+func Dir(path: string) -> string
 ```
 
 Returns the directory portion of a path.
 
 **Example:**
 ```rust
-var dir = Viper.File.dirname("/home/alice/report.txt");
+bind Viper.IO;
+
+var dir = IO.Path.Dir("/home/alice/report.txt");
 // Returns: "/home/alice"
 ```
 
 ---
 
-#### extension
+#### IO.Path.Ext
 
 ```rust
-func extension(path: string) -> string
+func Ext(path: string) -> string
 ```
 
 Returns the file extension including the dot.
 
 **Example:**
 ```rust
-var ext = Viper.File.extension("photo.jpg");
-// Returns: ".jpg"
+bind Viper.IO;
 
-// Common pattern: handling files by type
-match Viper.File.extension(filename).toLower() {
-    ".txt", ".md" -> handleTextFile(filename),
-    ".jpg", ".png" -> handleImageFile(filename),
-    ".json" -> handleJsonFile(filename),
-    _ -> Terminal.Say("Unknown file type")
-}
+var ext = IO.Path.Ext("photo.jpg");
+// Returns: ".jpg"
 ```
 
 ---
 
-#### absolutePath
+#### IO.Path.Abs
 
 ```rust
-func absolutePath(relativePath: string) -> string
+func Abs(path: string) -> string
 ```
 
 Converts a relative path to an absolute path.
 
 **Example:**
 ```rust
-var abs = Viper.File.absolutePath("../data/input.txt");
+bind Viper.IO;
+
+var abs = IO.Path.Abs("../data/input.txt");
 // Returns something like: "/home/alice/project/data/input.txt"
 ```
 
@@ -887,9 +917,11 @@ var abs = Viper.File.absolutePath("../data/input.txt");
 #### Safe File Reading
 
 ```rust
+bind Viper.IO;
+
 func readFileSafe(path: String, defaultValue: String) -> String {
-    if Viper.File.exists(path) {
-        return Viper.File.readText(path);
+    if IO.File.Exists(path) {
+        return IO.File.ReadAllText(path);
     }
     return defaultValue;
 }
@@ -900,11 +932,13 @@ var config = readFileSafe("config.txt", "default settings");
 #### Processing All Files in Directory
 
 ```rust
-func processDirectory(dirPath: String, ext: String) {
-    for filename in Viper.File.listDir(dirPath) {
-        var fullPath = Viper.File.join(dirPath, filename);
+bind Viper.IO;
 
-        if Viper.File.isFile(fullPath) and Viper.File.extension(filename) == ext {
+func processDirectory(dirPath: String, ext: String) {
+    for filename in IO.Dir.List(dirPath) {
+        var fullPath = IO.Path.Join(dirPath, filename);
+
+        if IO.Path.Ext(filename) == ext {
             processFile(fullPath);
         }
     }
@@ -940,175 +974,174 @@ var area = Math.PI * radius * radius;
 
 ### Basic Functions
 
-#### abs
+#### Abs / AbsInt
 
 ```rust
-func abs(x: Number) -> Number
+func Abs(x: Number) -> Number
+func AbsInt(x: Integer) -> Integer
 ```
 
-Returns the absolute (non-negative) value.
+Returns the absolute (non-negative) value. Use `Abs` for floating-point numbers, `AbsInt` for integers.
 
 **Example:**
 ```rust
-Math.abs(-5)      // Returns: 5
-Math.abs(5)       // Returns: 5
-Math.abs(-3.14)   // Returns: 3.14
+bind Viper.Math;
+
+Math.Abs(-3.14)     // Returns: 3.14
+Math.AbsInt(-5)     // Returns: 5
 ```
 
 ---
 
-#### sign
+#### Min / Max / MinInt / MaxInt
 
 ```rust
-func sign(x: Number) -> i64
-```
-
-Returns -1 for negative numbers, 0 for zero, 1 for positive numbers.
-
-**Example:**
-```rust
-Math.sign(-42)    // Returns: -1
-Math.sign(0)      // Returns: 0
-Math.sign(42)     // Returns: 1
-
-// Useful for direction
-var direction = Math.sign(targetX - currentX);
-currentX += direction * speed;
-```
-
----
-
-#### min / max
-
-```rust
-func min(a: Number, b: Number) -> Number
-func max(a: Number, b: Number) -> Number
+func Min(a: Number, b: Number) -> Number
+func Max(a: Number, b: Number) -> Number
+func MinInt(a: Integer, b: Integer) -> Integer
+func MaxInt(a: Integer, b: Integer) -> Integer
 ```
 
 Returns the smaller or larger of two values.
 
 **Example:**
 ```rust
-Math.min(3, 7)    // Returns: 3
-Math.max(3, 7)    // Returns: 7
+bind Viper.Math;
+
+Math.Min(3.0, 7.0)    // Returns: 3.0
+Math.Max(3.0, 7.0)    // Returns: 7.0
+Math.MinInt(3, 7)     // Returns: 3
 
 // Keep value in bounds
-var health = Math.max(0, health - damage);  // Never below 0
-var health = Math.min(100, health + healing);  // Never above 100
+var health = Math.MaxInt(0, health - damage);  // Never below 0
+health = Math.MinInt(100, health + healing);   // Never above 100
 ```
 
 ---
 
-#### clamp
+#### Clamp / ClampInt
 
 ```rust
-func clamp(value: Number, min: Number, max: Number) -> Number
+func Clamp(value: Number, min: Number, max: Number) -> Number
+func ClampInt(value: Integer, min: Integer, max: Integer) -> Integer
 ```
 
-Constrains a value to a range. Equivalent to `max(min, min(max, value))`.
+Constrains a value to a range. Equivalent to `Max(min, Min(max, value))`.
 
 **Example:**
 ```rust
-Math.clamp(150, 0, 100)   // Returns: 100
-Math.clamp(-50, 0, 100)   // Returns: 0
-Math.clamp(50, 0, 100)    // Returns: 50
+bind Viper.Math;
+
+Math.Clamp(150.0, 0.0, 100.0)   // Returns: 100.0
+Math.Clamp(-50.0, 0.0, 100.0)   // Returns: 0.0
+Math.Clamp(50.0, 0.0, 100.0)    // Returns: 50.0
 
 // Common use: keep game entities on screen
-playerX = Math.clamp(playerX, 0, screenWidth);
-playerY = Math.clamp(playerY, 0, screenHeight);
+playerX = Math.ClampInt(playerX, 0, screenWidth);
+playerY = Math.ClampInt(playerY, 0, screenHeight);
 ```
 
 ---
 
 ### Rounding Functions
 
-#### floor
+#### Floor
 
 ```rust
-func floor(x: f64) -> f64
+func Floor(x: Number) -> Number
 ```
 
 Rounds down to the nearest integer (toward negative infinity).
 
 **Example:**
 ```rust
-Math.floor(3.7)   // Returns: 3.0
-Math.floor(3.2)   // Returns: 3.0
-Math.floor(-3.2)  // Returns: -4.0 (toward negative infinity)
+bind Viper.Math;
+
+Math.Floor(3.7)   // Returns: 3.0
+Math.Floor(3.2)   // Returns: 3.0
+Math.Floor(-3.2)  // Returns: -4.0 (toward negative infinity)
 ```
 
 ---
 
-#### ceil
+#### Ceil
 
 ```rust
-func ceil(x: f64) -> f64
+func Ceil(x: Number) -> Number
 ```
 
 Rounds up to the nearest integer (toward positive infinity).
 
 **Example:**
 ```rust
-Math.ceil(3.2)    // Returns: 4.0
-Math.ceil(3.0)    // Returns: 3.0
-Math.ceil(-3.7)   // Returns: -3.0 (toward positive infinity)
+bind Viper.Math;
+
+Math.Ceil(3.2)    // Returns: 4.0
+Math.Ceil(3.0)    // Returns: 3.0
+Math.Ceil(-3.7)   // Returns: -3.0 (toward positive infinity)
 ```
 
 ---
 
-#### round
+#### Round
 
 ```rust
-func round(x: f64) -> f64
+func Round(x: Number) -> Number
 ```
 
 Rounds to the nearest integer. Halfway cases round away from zero.
 
 **Example:**
 ```rust
-Math.round(3.4)   // Returns: 3.0
-Math.round(3.5)   // Returns: 4.0
-Math.round(-3.5)  // Returns: -4.0
+bind Viper.Math;
+
+Math.Round(3.4)   // Returns: 3.0
+Math.Round(3.5)   // Returns: 4.0
+Math.Round(-3.5)  // Returns: -4.0
 ```
 
 ---
 
-#### trunc
+#### Trunc
 
 ```rust
-func trunc(x: f64) -> f64
+func Trunc(x: Number) -> Number
 ```
 
 Truncates toward zero (removes the fractional part).
 
 **Example:**
 ```rust
-Math.trunc(3.7)   // Returns: 3.0
-Math.trunc(-3.7)  // Returns: -3.0 (toward zero, not down)
+bind Viper.Math;
+
+Math.Trunc(3.7)   // Returns: 3.0
+Math.Trunc(-3.7)  // Returns: -3.0 (toward zero, not down)
 ```
 
 ---
 
 ### Powers and Roots
 
-#### sqrt
+#### Sqrt
 
 ```rust
-func sqrt(x: f64) -> f64
+func Sqrt(x: Number) -> Number
 ```
 
 Returns the square root.
 
 **Example:**
 ```rust
-Math.sqrt(16.0)   // Returns: 4.0
-Math.sqrt(2.0)    // Returns: 1.41421356...
+bind Viper.Math;
+
+Math.Sqrt(16.0)   // Returns: 4.0
+Math.Sqrt(2.0)    // Returns: 1.41421356...
 
 // Distance between two points
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
-    return Math.sqrt(dx*dx + dy*dy);
+    return Math.Sqrt(dx*dx + dy*dy);
 }
 ```
 
@@ -1116,78 +1149,58 @@ func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
 
 ---
 
-#### cbrt
+#### Pow
 
 ```rust
-func cbrt(x: f64) -> f64
-```
-
-Returns the cube root. Unlike `sqrt`, works with negative numbers.
-
-**Example:**
-```rust
-Math.cbrt(27.0)   // Returns: 3.0
-Math.cbrt(-27.0)  // Returns: -3.0
-```
-
----
-
-#### pow
-
-```rust
-func pow(base: f64, exponent: f64) -> f64
+func Pow(base: Number, exponent: Number) -> Number
 ```
 
 Returns base raised to the power of exponent.
 
 **Example:**
 ```rust
-Math.pow(2.0, 10.0)   // Returns: 1024.0
-Math.pow(10.0, 3.0)   // Returns: 1000.0
-Math.pow(4.0, 0.5)    // Returns: 2.0 (same as sqrt)
+bind Viper.Math;
 
-// Compound interest
-func futureValue(principal: Number, rate: Number, years: Integer) -> Number {
-    return principal * Math.pow(1.0 + rate, years.toF64());
-}
+Math.Pow(2.0, 10.0)   // Returns: 1024.0
+Math.Pow(10.0, 3.0)   // Returns: 1000.0
+Math.Pow(4.0, 0.5)    // Returns: 2.0 (same as Sqrt)
 ```
 
 ---
 
-#### exp
+#### Exp
 
 ```rust
-func exp(x: f64) -> f64
+func Exp(x: Number) -> Number
 ```
 
 Returns e raised to the power x.
 
 **Example:**
 ```rust
-Math.exp(1.0)     // Returns: 2.71828... (e)
-Math.exp(0.0)     // Returns: 1.0
+bind Viper.Math;
+
+Math.Exp(1.0)     // Returns: 2.71828... (e)
+Math.Exp(0.0)     // Returns: 1.0
 ```
 
 ---
 
-#### log / log10 / log2
+#### Log / Log10 / Log2
 
 ```rust
-func log(x: f64) -> f64      // Natural logarithm (base e)
-func log10(x: f64) -> f64    // Base-10 logarithm
-func log2(x: f64) -> f64     // Base-2 logarithm
+func Log(x: Number) -> Number      // Natural logarithm (base e)
+func Log10(x: Number) -> Number    // Base-10 logarithm
+func Log2(x: Number) -> Number     // Base-2 logarithm
 ```
 
 **Example:**
 ```rust
-Math.log(Math.E)   // Returns: 1.0
-Math.log10(1000.0)       // Returns: 3.0
-Math.log2(1024.0)        // Returns: 10.0
+bind Viper.Math;
 
-// Number of bits needed to represent a number
-func bitsNeeded(n: Integer) -> Integer {
-    return Math.ceil(Math.log2(n.toF64() + 1.0)).toInt();
-}
+Math.Log(Math.E)      // Returns: 1.0
+Math.Log10(1000.0)    // Returns: 3.0
+Math.Log2(1024.0)     // Returns: 10.0
 ```
 
 **Edge case:** Returns negative infinity for 0, `NaN` for negative inputs.
@@ -1198,60 +1211,57 @@ func bitsNeeded(n: Integer) -> Integer {
 
 All trigonometric functions use radians (not degrees).
 
-#### sin / cos / tan
+#### Sin / Cos / Tan
 
 ```rust
-func sin(x: f64) -> f64    // Sine
-func cos(x: f64) -> f64    // Cosine
-func tan(x: f64) -> f64    // Tangent
+func Sin(x: Number) -> Number    // Sine
+func Cos(x: Number) -> Number    // Cosine
+func Tan(x: Number) -> Number    // Tangent
 ```
 
 **Example:**
 ```rust
-Math.sin(0.0)                   // Returns: 0.0
-Math.sin(Math.PI / 2.0)   // Returns: 1.0
-Math.cos(0.0)                   // Returns: 1.0
-Math.cos(Math.PI)         // Returns: -1.0
+bind Viper.Math;
 
-// Circular motion
-func circularPosition(angle: Number, radius: Number) -> (Number, Number) {
-    var x = Math.cos(angle) * radius;
-    var y = Math.sin(angle) * radius;
-    return (x, y);
-}
+Math.Sin(0.0)              // Returns: 0.0
+Math.Sin(Math.PI / 2.0)   // Returns: 1.0
+Math.Cos(0.0)              // Returns: 1.0
+Math.Cos(Math.PI)          // Returns: -1.0
 ```
 
 ---
 
-#### asin / acos / atan / atan2
+#### Asin / Acos / Atan / Atan2
 
 ```rust
-func asin(x: f64) -> f64               // Arc sine (inverse)
-func acos(x: f64) -> f64               // Arc cosine (inverse)
-func atan(x: f64) -> f64               // Arc tangent (inverse)
-func atan2(y: f64, x: f64) -> f64      // Arc tangent of y/x (handles quadrants)
+func Asin(x: Number) -> Number               // Arc sine (inverse)
+func Acos(x: Number) -> Number               // Arc cosine (inverse)
+func Atan(x: Number) -> Number               // Arc tangent (inverse)
+func Atan2(y: Number, x: Number) -> Number   // Arc tangent of y/x (handles quadrants)
 ```
 
 **Example:**
 ```rust
-// atan2 is usually what you want for angles between points
+bind Viper.Math;
+
+// Atan2 is usually what you want for angles between points
 func angleTo(fromX: Number, fromY: Number, toX: Number, toY: Number) -> Number {
-    return Math.atan2(toY - fromY, toX - fromX);
+    return Math.Atan2(toY - fromY, toX - fromX);
 }
 
 var angle = angleTo(0.0, 0.0, 1.0, 1.0);  // 45 degrees = PI/4 radians
 ```
 
-**Note:** `atan2(y, x)` correctly handles all four quadrants, unlike `atan(y/x)`.
+**Note:** `Atan2(y, x)` correctly handles all four quadrants, unlike `Atan(y/x)`.
 
 ---
 
 #### Hyperbolic Functions
 
 ```rust
-func sinh(x: f64) -> f64    // Hyperbolic sine
-func cosh(x: f64) -> f64    // Hyperbolic cosine
-func tanh(x: f64) -> f64    // Hyperbolic tangent
+func Sinh(x: Number) -> Number    // Hyperbolic sine
+func Cosh(x: Number) -> Number    // Hyperbolic cosine
+func Tanh(x: Number) -> Number    // Hyperbolic tangent
 ```
 
 ---
@@ -1277,71 +1287,60 @@ var x = Math.cos(Math.toRadians(userAngle));
 
 ### Random Numbers
 
-#### random
+Random functions are under `Viper.Math.Random`. Bind as `bind Viper.Math;` and use the `Math.Random.*` prefix.
+
+#### Math.Random.Next
 
 ```rust
-func random() -> f64
+func Next() -> Number
 ```
 
 Returns a random floating-point number from 0.0 (inclusive) to 1.0 (exclusive).
 
 **Example:**
 ```rust
-var r = Math.random();  // e.g., 0.7231498...
+bind Viper.Math;
 
-// Random number in range [min, max)
-func randomRange(min: Number, max: Number) -> Number {
-    return min + Math.random() * (max - min);
-}
-
-var temperature = randomRange(-10.0, 40.0);
+var r = Math.Random.Next();  // e.g., 0.7231498...
 ```
 
 ---
 
-#### randomInt
+#### Math.Random.Range
 
 ```rust
-func randomInt(min: i64, max: i64) -> i64
+func Range(min: Integer, max: Integer) -> Integer
 ```
 
 Returns a random integer in the range [min, max] (inclusive on both ends).
 
 **Example:**
 ```rust
-var diceRoll = Math.randomInt(1, 6);
-var coinFlip = Math.randomInt(0, 1);  // 0 or 1
+bind Viper.Math;
 
-// Random array element
-func randomChoice<T>(arr: [T]) -> T {
-    var index = Math.randomInt(0, arr.len() - 1);
-    return arr[index];
-}
-
-var colors = ["red", "green", "blue"];
-var picked = randomChoice(colors);
+var diceRoll = Math.Random.Range(1, 6);
+var coinFlip = Math.Random.Range(0, 1);  // 0 or 1
 ```
 
 ---
 
-#### randomSeed
+#### Math.Random.Seed
 
 ```rust
-func randomSeed(seed: i64) -> void
+func Seed(seed: Integer) -> void
 ```
 
-Sets the random number generator seed. Same seed produces same sequence.
+Sets the random number generator seed. Same seed produces the same sequence.
 
 **Example:**
 ```rust
-// Reproducible random sequence
-Math.randomSeed(12345);
-var a = Math.randomInt(1, 100);  // Always same value
-var b = Math.randomInt(1, 100);  // Always same value
+bind Viper.Math;
 
-// Reset to get same sequence again
-Math.randomSeed(12345);
-var c = Math.randomInt(1, 100);  // c == a
+// Reproducible random sequence
+Math.Random.Seed(12345);
+var a = Math.Random.Range(1, 100);  // Always same value
+Math.Random.Seed(12345);
+var b = Math.Random.Range(1, 100);  // b == a
 ```
 
 **When to use:** Use for testing, reproducible simulations, or games with "daily challenges."
@@ -1356,212 +1355,181 @@ Time and date operations for timing, delays, and date manipulation.
 
 ### Current Time
 
-#### millis / nanos
+#### Time.DateTime.Now / Time.DateTime.NowMs
 
 ```rust
-func millis() -> i64    // Milliseconds since epoch (Jan 1, 1970)
-func nanos() -> i64     // Nanoseconds since epoch
+func Now() -> Integer       // Unix timestamp in seconds
+func NowMs() -> Integer     // Unix timestamp in milliseconds
 ```
+
+Returns the current time as a Unix timestamp.
 
 **Example:**
 ```rust
+bind Viper.Time;
+bind Viper.Terminal;
+
 // Measure execution time
-var start = Time.millis();
+var start = Time.DateTime.NowMs();
 
 // ... do some work ...
 
-var elapsed = Time.millis() - start;
+var elapsed = Time.DateTime.NowMs() - start;
 Terminal.Say("Operation took " + elapsed + " ms");
-```
-
----
-
-#### now
-
-```rust
-func now() -> DateTime
-```
-
-Returns the current date and time.
-
-**Example:**
-```rust
-var now = Time.now();
-Terminal.Say("Current time: " + now.format("YYYY-MM-DD HH:mm:ss"));
 ```
 
 ---
 
 ### Delays
 
-#### sleep
+#### Time.SleepMs
 
 ```rust
-func sleep(milliseconds: i64) -> void
+func SleepMs(milliseconds: Integer) -> void
 ```
 
-Pauses execution for the specified duration.
+Pauses execution for the specified duration in milliseconds.
 
 **Example:**
 ```rust
+bind Viper.Time;
+bind Viper.Terminal;
+
 Terminal.Say("Starting in 3...");
-Time.sleep(1000);
+Time.SleepMs(1000);
 Terminal.Say("2...");
-Time.sleep(1000);
+Time.SleepMs(1000);
 Terminal.Say("1...");
-Time.sleep(1000);
+Time.SleepMs(1000);
 Terminal.Say("Go!");
-
-// Animation frame timing
-var frameTime = 1000 / 60;  // ~16ms for 60 FPS
-loop {
-    var frameStart = Time.millis();
-
-    updateGame();
-    renderGame();
-
-    var elapsed = Time.millis() - frameStart;
-    if elapsed < frameTime {
-        Time.sleep(frameTime - elapsed);
-    }
-}
 ```
 
 ---
 
-### DateTime Type
+### Time.DateTime Functions
 
-The `DateTime` type represents a specific moment in time.
+`DateTime` values are Unix timestamps stored as integers. All functions are under `Time.DateTime.*`.
 
-#### Properties
+#### Time.DateTime.Now / Time.DateTime.NowMs
 
 ```rust
-var dt = DateTime.now();
-
-dt.year         // -> i64 (e.g., 2024)
-dt.month        // -> i64 (1-12)
-dt.day          // -> i64 (1-31)
-dt.hour         // -> i64 (0-23)
-dt.minute       // -> i64 (0-59)
-dt.second       // -> i64 (0-59)
-dt.dayOfWeek    // -> i64 (0=Sunday, 1=Monday, ..., 6=Saturday)
-dt.dayOfYear    // -> i64 (1-366)
+func Now() -> Integer       // Seconds since Unix epoch
+func NowMs() -> Integer     // Milliseconds since Unix epoch
 ```
 
 **Example:**
 ```rust
-var dt = DateTime.now();
+bind Viper.Time;
 
-var dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday",
-                "Thursday", "Friday", "Saturday"];
-Terminal.Say("Today is " + dayNames[dt.dayOfWeek]);
-
-if dt.month == 12 and dt.day == 25 {
-    Terminal.Say("Merry Christmas!");
-}
+var ts = Time.DateTime.Now();
 ```
 
 ---
 
-#### parse
+#### Time.DateTime.Year / Month / Day / Hour / Minute / Second
 
 ```rust
-func DateTime.parse(str: string) -> DateTime
+func Year(ts: Integer) -> Integer
+func Month(ts: Integer) -> Integer
+func Day(ts: Integer) -> Integer
+func Hour(ts: Integer) -> Integer
+func Minute(ts: Integer) -> Integer
+func Second(ts: Integer) -> Integer
+func DayOfWeek(ts: Integer) -> Integer    // 0=Sunday ... 6=Saturday
 ```
-
-Parses a date/time string in ISO format.
 
 **Example:**
 ```rust
-var birthday = DateTime.parse("1990-05-15");
-var meeting = DateTime.parse("2024-03-20T14:30:00");
-```
+bind Viper.Time;
+bind Viper.Terminal;
 
-**Supported formats:**
-- `"YYYY-MM-DD"` - date only
-- `"YYYY-MM-DDTHH:mm:ss"` - full ISO datetime
-- `"YYYY-MM-DD HH:mm:ss"` - space separator also works
-
----
-
-#### format
-
-```rust
-func format(pattern: string) -> string
-```
-
-Formats a DateTime as a string using a pattern.
-
-**Pattern tokens:**
-- `YYYY` - 4-digit year
-- `MM` - 2-digit month (01-12)
-- `DD` - 2-digit day (01-31)
-- `HH` - 2-digit hour (00-23)
-- `mm` - 2-digit minute (00-59)
-- `ss` - 2-digit second (00-59)
-
-**Example:**
-```rust
-var dt = DateTime.now();
-
-dt.format("YYYY-MM-DD")           // "2024-03-15"
-dt.format("MM/DD/YYYY")           // "03/15/2024"
-dt.format("HH:mm")                // "14:30"
-dt.format("YYYY-MM-DD HH:mm:ss")  // "2024-03-15 14:30:45"
+var ts = Time.DateTime.Now();
+Terminal.Say("Year: " + Time.DateTime.Year(ts));
+Terminal.Say("Month: " + Time.DateTime.Month(ts));
+Terminal.Say("Day: " + Time.DateTime.Day(ts));
 ```
 
 ---
 
-#### Arithmetic
+#### Time.DateTime.Format
 
 ```rust
-func addDays(n: i64) -> DateTime
-func addHours(n: i64) -> DateTime
-func addMinutes(n: i64) -> DateTime
-func addSeconds(n: i64) -> DateTime
+func Format(ts: Integer, pattern: string) -> string
 ```
 
-Returns a new DateTime with the specified amount added. Use negative values to subtract.
+Formats a timestamp as a human-readable string using a pattern.
 
 **Example:**
 ```rust
-var now = DateTime.now();
-var tomorrow = now.addDays(1);
-var lastWeek = now.addDays(-7);
-var inTwoHours = now.addHours(2);
+bind Viper.Time;
 
-// Due date reminder
-var dueDate = DateTime.parse("2024-04-01");
-var reminderDate = dueDate.addDays(-3);  // 3 days before
+var ts = Time.DateTime.Now();
+var formatted = Time.DateTime.Format(ts, "YYYY-MM-DD HH:mm:ss");
 ```
 
 ---
 
-#### diffDays
+#### Time.DateTime.ParseISO
 
 ```rust
-func diffDays(other: DateTime) -> f64
+func ParseISO(str: string) -> Integer
 ```
 
-Returns the difference between two DateTimes in days (can be fractional).
+Parses an ISO 8601 date/time string into a Unix timestamp.
 
 **Example:**
 ```rust
-var start = DateTime.parse("2024-01-01");
-var end = DateTime.parse("2024-12-31");
-var days = end.diffDays(start);  // 365.0
+bind Viper.Time;
 
-// Days until deadline
-var deadline = DateTime.parse("2024-06-15");
-var daysLeft = deadline.diffDays(DateTime.now());
-Terminal.Say("Days remaining: " + Math.ceil(daysLeft).toInt());
+var ts = Time.DateTime.ParseISO("2024-03-20T14:30:00");
+```
+
+---
+
+#### Time.DateTime.AddDays / AddSeconds
+
+```rust
+func AddDays(ts: Integer, n: Integer) -> Integer
+func AddSeconds(ts: Integer, n: Integer) -> Integer
+```
+
+Returns a new timestamp with the specified amount added.
+
+**Example:**
+```rust
+bind Viper.Time;
+
+var now = Time.DateTime.Now();
+var tomorrow = Time.DateTime.AddDays(now, 1);
+var lastWeek = Time.DateTime.AddDays(now, -7);
+```
+
+---
+
+#### Time.DateTime.Diff
+
+```rust
+func Diff(ts1: Integer, ts2: Integer) -> Integer
+```
+
+Returns the difference between two timestamps in seconds.
+
+**Example:**
+```rust
+bind Viper.Time;
+
+var start = Time.DateTime.Now();
+// ... do work ...
+var elapsed = Time.DateTime.Diff(Time.DateTime.Now(), start);
 ```
 
 ---
 
 ## Viper.Collections
 
-Data structures beyond basic arrays for organizing and managing data.
+Data structures beyond basic arrays for organizing and managing data. Bind as `bind Viper.Collections;` and use the `Collections.*` prefix.
+
+> **Note on API style:** The Collections runtime API is function-based, not object-oriented. Rather than `map.get(key)`, use `Collections.Map.Get(map, key)`. The function signatures shown below describe the conceptual interface; prefix all calls with `Collections.Map.*`, `Collections.List.*`, `Collections.Set.*`, etc.
 
 > **See also:** [Chapter 6: Collections](../part1-foundations/06-collections.md) for array fundamentals.
 
@@ -1808,52 +1776,35 @@ Networking operations for HTTP requests, TCP connections, and UDP communication.
 
 ### HTTP
 
-Simple HTTP client for web requests.
+Simple HTTP client for web requests. Bind as `bind Viper.Network;` and use `Network.Http.*`.
 
-#### Request Methods
+#### Network.Http.Get / Post
 
 ```rust
-func Http.get(url: string) -> Response
-func Http.post(url: string, options: RequestOptions) -> Response
-func Http.put(url: string, options: RequestOptions) -> Response
-func Http.delete(url: string) -> Response
+func Get(url: string) -> string    // Returns response body as text
+func Post(url: string, body: string) -> string
+func GetBytes(url: string) -> [Byte]
+func PostBytes(url: string, body: [Byte]) -> [Byte]
+func Download(url: string, destPath: string) -> Boolean
 ```
-
-**RequestOptions fields:**
-- `body` - Request body (string or object for JSON)
-- `headers` - Map of header names to values
-
-**Response fields:**
-- `ok` - `bool` (true if status 200-299)
-- `statusCode` - `i64`
-- `body` - `string`
-- `headers` - `Map<string, string>`
 
 **Example:**
 ```rust
+bind Viper.Network;
+bind Viper.Terminal;
+
 // Simple GET request
-var response = Http.get("https://api.example.com/users");
+var body = Network.Http.Get("https://api.example.com/data");
+Terminal.Say(body);
 
-if response.ok {
-    var data = JSON.parse(response.body);
-    for user in data.asArray() {
-        Terminal.Say(user["name"].asString());
-    }
-} else {
-    Terminal.SayError("Request failed: " + response.statusCode);
-}
-
-// POST with JSON body
-var response = Http.post("https://api.example.com/users", {
-    body: { name: "Alice", email: "alice@example.com" },
-    headers: { "Content-Type": "application/json" }
-});
+// POST with a body
+var result = Network.Http.Post("https://api.example.com/users", "name=Alice");
+Terminal.Say(result);
 ```
 
 **Edge cases:**
-- Network errors throw exceptions
-- Timeouts default to 30 seconds
-- Redirects are followed automatically (up to 10)
+- Returns the response body as a string
+- Network errors may throw or return an empty string
 
 ---
 
@@ -2238,7 +2189,7 @@ var channel = Channel<string>.create();
 var producer = Thread.spawn(func() {
     for i in 0..5 {
         channel.send("Message " + i);
-        Time.sleep(100);
+        Time.Clock.Sleep(100);
     }
     channel.close();
 });
@@ -2334,7 +2285,7 @@ while canvas.isOpen() {
     // Draw frame...
 
     canvas.show();
-    Time.sleep(16);  // ~60 FPS
+    Time.Clock.Sleep(16);  // ~60 FPS
 }
 ```
 
@@ -3154,22 +3105,19 @@ System information and environment variables.
 ### Environment Variables
 
 ```rust
-func Viper.Environment.get(name: string) -> string?
-func Viper.Environment.get(name: string, default: string) -> string
-func Viper.Environment.set(name: string, value: string) -> void
-func Viper.Environment.getAll() -> Map<string, string>
+func Viper.Environment.GetVariable(name: string) -> string
+func Viper.Environment.HasVariable(name: string) -> Boolean
+func Viper.Environment.SetVariable(name: string, value: string) -> void
 ```
 
 **Example:**
 ```rust
-// Get with default
-var dbHost = Viper.Environment.get("DATABASE_HOST", "localhost");
-var dbPort = Viper.Environment.get("DATABASE_PORT", "5432");
+bind Viper.Environment;
+bind Viper.Terminal;
 
-// Check if running in production
-var env = Viper.Environment.get("NODE_ENV", "development");
-if env == "production" {
-    // Enable production settings
+if Environment.HasVariable("DATABASE_HOST") {
+    var dbHost = Environment.GetVariable("DATABASE_HOST");
+    Terminal.Say("Connecting to: " + dbHost);
 }
 ```
 
@@ -3192,8 +3140,8 @@ Terminal.Say("OS: " + Viper.Environment.os);
 Terminal.Say("Architecture: " + Viper.Environment.arch);
 Terminal.Say("CPU cores: " + Viper.Environment.cpuCount);
 
-// Platform-specific paths
-var configPath = Viper.File.join(Viper.Environment.homeDir, ".myapp", "config.json");
+// Platform-specific paths (use IO.Path.Join for path construction)
+// var configPath = IO.Path.Join(homeDir, "config.json");
 ```
 
 ---
@@ -3201,23 +3149,27 @@ var configPath = Viper.File.join(Viper.Environment.homeDir, ".myapp", "config.js
 ### Process Control
 
 ```rust
-Viper.Environment.args         // [string] - command line arguments
-func Viper.Environment.exit(code: i64) -> void
+func Viper.Environment.GetArgumentCount() -> Integer
+func Viper.Environment.GetArgument(index: Integer) -> string
+func Viper.Environment.GetCommandLine() -> string
+func Viper.Environment.EndProgram(code: Integer) -> void
 ```
 
 **Example:**
 ```rust
-// Command line argument handling
-var args = Viper.Environment.args;
+bind Viper.Environment;
+bind Viper.Terminal;
 
-if args.len() < 2 {
+var count = Environment.GetArgumentCount();
+
+if count < 2 {
     Terminal.Say("Usage: program <filename>");
-    Viper.Environment.exit(1);
+    Environment.EndProgram(1);
 }
 
-var filename = args[1];
+var filename = Environment.GetArgument(1);
 processFile(filename);
-Viper.Environment.exit(0);  // Success
+Environment.EndProgram(0);  // Success
 ```
 
 ---

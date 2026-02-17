@@ -17,6 +17,8 @@
 - BUG-022: Float literal type inference ✅ (Fixed 2025-11-12)
 - BUG-023: DIM with initializer ✅ (Fixed 2025-11-12)
 - BUG-024: CONST with type suffix assertion ✅ (Fixed 2025-11-12)
+- BUG-027: MOD operator with INTEGER type ✅ (Fixed 2025-11-12)
+- BUG-028: Integer division (\) with INTEGER type ✅ (Fixed 2025-11-12)
 
 ## BUG FIXES (Straightforward fixes)
 

@@ -87,25 +87,22 @@
 
 ## Bugs Discovered
 
-### BUG-052: ON ERROR GOTO not implemented
+### BUG-052: ON ERROR GOTO not implemented — RESOLVED (2025-11-15)
 
 **Test**: grep_10_on_error.bas
-**Error**: `error: main:UL999999995: empty block`
+**Error (historical)**: `error: main:UL999999995: empty block`
 
-Cannot use ON ERROR GOTO for error handling. All runtime errors (file not found, division by zero, etc.) cause immediate
-program termination with Trap message.
-
-**Impact**: Moderate - Cannot build robust programs that handle errors gracefully.
+ON ERROR GOTO is now implemented. Runtime errors can be caught and handled gracefully.
 
 ---
 
-## Known Limitations Worked Around
+## Known Limitations Worked Around (at time of test)
 
-1. **No STRING arrays** (BUG-045) - Used separate variables (file1, file2, file3)
-2. **No IF in methods** (BUG-047) - All logic at module level
-3. **No module SUB calls from methods** (BUG-048) - Avoided complex object passing
-4. **No CHR()** (BUG-044) - Used brackets [[ ]] for highlighting
-5. **No ON ERROR** (BUG-052) - Let errors trap
+1. **No STRING arrays** (BUG-045) — RESOLVED; workaround used separate variables (file1, file2, file3)
+2. **No IF in methods** (BUG-047) — RESOLVED; workaround kept all logic at module level
+3. **No module SUB calls from methods** (BUG-048) — RESOLVED; workaround avoided complex object passing
+4. **No CHR()** (BUG-044) — RESOLVED; workaround used brackets [[ ]] for highlighting
+5. **No ON ERROR** (BUG-052) — RESOLVED; workaround let errors trap
 
 ---
 
@@ -199,10 +196,10 @@ Created in /tmp:
 
 ### What's Missing
 
-1. **ON ERROR GOTO** - No way to handle errors gracefully
+1. **ON ERROR GOTO** - Now available (BUG-052 resolved)
 2. **COMMAND$** - Not available (use ARGS instead)
-3. **CHR()** - Cannot generate special characters
-4. **STRING arrays** - Would simplify multiple file handling
+3. **CHR()** - Now available (BUG-044 resolved)
+4. **STRING arrays** - Now available (BUG-045 resolved)
 5. **Regular expressions** - Only literal string matching
 
 ---
@@ -219,7 +216,7 @@ Created in /tmp:
 | Count only       | ✅ -c flag  | ✅ Possible  | Works      |
 | Invert match     | ✅ -v flag  | ✅ Possible  | Works      |
 | Color output     | ✅ ANSI     | ⚠️ Brackets | Workaround |
-| Error handling   | ✅ Graceful | ❌ Crashes   | BUG-052    |
+| Error handling   | ✅ Graceful | ✅ Graceful  | BUG-052 fixed |
 | Stdin            | ✅ Pipe     | ❌ No        | -          |
 
 ---
@@ -246,15 +243,15 @@ must be done by ensuring all operations succeed (defensive programming).
 
 **Files to Review**:
 
-- `/bugs/bug_testing/vipergrep_simple.bas` - Best working example
-- `/bugs/bug_testing/vipergrep_multi.bas` - Modular design
-- `/bugs/bug_testing/grep_03_file_read.bas` - File I/O basics
+- `docs/bugs/bug_testing/grep_03_file_read.bas` - File I/O basics
+- `docs/bugs/bug_testing/vipergrep_multi.bas` - Modular design
+- `docs/bugs/bug_testing/vipergrep_simple.bas` - Best working example
 
 **Test Command**:
 
 ```bash
-cd /Users/stephen/git/viper
-./build/src/tools/viper/viper front basic -run bugs/bug_testing/vipergrep_simple.bas 2>&1 | grep -v "rt_heap"
+# From viper repo root:
+./build/src/tools/viper/viper front basic -run docs/bugs/bug_testing/vipergrep_simple.bas
 ```
 
 ---

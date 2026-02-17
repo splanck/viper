@@ -1271,7 +1271,7 @@ bind Viper.Terminal;
 var i = 0;
 while i < 5 {
     Say(i);
-    i += 1;
+    i = i + 1;
 }
 
 // for loop

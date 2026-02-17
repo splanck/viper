@@ -2,11 +2,11 @@
 
 ## Static Members
 
+- The static constructor (`STATIC SUB NEW()`) is parameterless and runs once per class during module initialization
+  before user code.
 - Static fields are class-wide storage. They lower to module-scope globals; reads/writes are independent of any
   instance.
 - Static methods do not receive `ME`; referencing `ME` in a static method is a semantic error.
-- The static constructor (`STATIC SUB NEW()`) is parameterless and runs once per class during module initialization
-  before user code.
 
 ## Properties
 
@@ -37,11 +37,11 @@ Access control applies at the accessor, not the head, when the accessor has a st
 
 ### Destructor semantics
 
-- One instance destructor per class; no parameters or return value.
-- Virtual by default: disposing a derived instance invokes the most‑derived destructor body.
 - Chaining order is deterministic: Derived body runs first, then base, continuing up the chain.
-- `STATIC DESTRUCTOR` is allowed once per class and runs at program shutdown.
 - Destructors are not permitted in interfaces.
+- One instance destructor per class; no parameters or return value.
+- `STATIC DESTRUCTOR` is allowed once per class and runs at program shutdown.
+- Virtual by default: disposing a derived instance invokes the most‑derived destructor body.
 
 ### Static destructors (shutdown)
 
@@ -49,9 +49,9 @@ Access control applies at the accessor, not the head, when the accessor has a st
 
 ### DISPOSE
 
+- Disposing `NULL` is a no‑op.
 - `DISPOSE expr` performs deterministic cleanup of an object: invokes the derived→base destructor chain and releases
   storage when the retain count drops to zero.
-- Disposing `NULL` is a no‑op.
 - Double dispose: debug builds mark objects as disposed at destructor entry and trap when a disposed object is disposed
   again.
 - Recursion guard: disposing `ME` in a destructor body is diagnosed to prevent infinite recursion.
@@ -94,26 +94,26 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
 
 The following built‑in classes are available under the `Viper.*` namespace:
 
-- `Viper.Object` — Base class for all objects
-    - Methods: `ToString()`, `Equals(obj)`, `HashCode()`, `RefEquals(obj,obj)`
-- `Viper.String` — Managed string type
-    - Properties: `Length`, `IsEmpty`
-    - Methods: `Substring(i64,i64)`, `Concat(str)`
-- `Viper.Text.StringBuilder` — Mutable string builder
-    - Properties: `Length`, `Capacity`
-    - Methods: `Append(str)`, `ToString()`, `Clear()`
-- `Viper.IO.File` — File operations (static utility class)
-    - Methods: `Exists(str)`, `ReadAllText(str)`, `WriteAllText(str,str)`, `Delete(str)`
 - `Viper.Collections.List` — Dynamic list of object references
-    - Properties: `Count`
-    - Methods: `Add(obj)`, `Clear()`, `RemoveAt(i64)`, `get_Item(i64)`, `set_Item(i64,obj)`
+    - Properties: `IsEmpty`, `Len`
+    - Methods: `Clear()`, `Find(obj)`, `First()`, `Flip()`, `Get(i64)`, `Has(obj)`, `Insert(i64,obj)`, `Last()`, `Pop()`, `Push(obj)`, `Remove(obj)`, `RemoveAt(i64)`, `Set(i64,obj)`, `Slice(i64,i64)`, `Sort()`, `SortDesc()`
+- `Viper.IO.File` — File operations (static utility class)
+    - Methods: `Delete(str)`, `Exists(str)`, `ReadAllText(str)`, `WriteAllText(str,str)`
 - `Viper.Math` — Mathematical functions (static utility class)
-    - Methods: `Abs(f64)`, `Sqrt(f64)`, `Sin(f64)`, `Cos(f64)`, `Tan(f64)`, `Floor(f64)`, `Ceil(f64)`, `Pow(f64,f64)`,
-      `Log(f64)`, `Exp(f64)`
+    - Methods: `Abs(f64)`, `Ceil(f64)`, `Cos(f64)`, `Exp(f64)`, `Floor(f64)`, `Log(f64)`, `Pow(f64,f64)`,
+      `Sin(f64)`, `Sqrt(f64)`, `Tan(f64)`
+- `Viper.Core.Object` — Base class for all objects
+    - Methods: `Equals(obj)`, `HashCode()`, `IsNull()`, `ToString()`, `TypeId()`, `TypeName()`
+- `Viper.String` — Managed string type
+    - Properties: `IsEmpty`, `Length`
+    - Methods: `Concat(str)`, `Substring(i64,i64)`
 - `Viper.Terminal` — Console I/O (static utility class)
-    - Methods: `WriteLine(str)`, `ReadLine()`
+    - Methods: `ReadLine()`, `Say(str)` (print with newline)
+- `Viper.Text.StringBuilder` — Mutable string builder
+    - Properties: `Capacity`, `Length`
+    - Methods: `Append(str)`, `Clear()`, `ToString()`
 
-**Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
+**Note:** Legacy `Viper.System.*` aliases have been removed. Note that some classes are under `Viper.Core.*` (e.g., `Viper.Core.Object`, `Viper.Core.Convert`, `Viper.Core.Diagnostics`).
 
 ### Backward‑Compatible Procedural Surface
 

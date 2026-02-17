@@ -557,7 +557,7 @@ Compile to native:
 
 ```bash
 # Tetris game
-./vbasic examples/vTris/vtris_simple.bas -o tetris
+./vbasic demos/basic/vtris/vtris.bas -o tetris
 ./tetris
 
 # Frogger game

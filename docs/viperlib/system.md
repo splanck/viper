@@ -374,15 +374,6 @@ Viper.Terminal.Say("Hello, " + name + "!")
 For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Terminal` when you need
 explicit control or are working at the IL level.
 
-### Backward Compatibility
-
-`Viper.Terminal.*` names are retained as aliases for backward compatibility. New code should use `Viper.Terminal.*`.
-
-### Legacy Buffered Output Names
-
-`Viper.Terminal.PrintStr`, `PrintI64`, and `PrintF64` (and their `Viper.Terminal.*` aliases) are low-level buffered
-output helpers used by some frontends. They do not flush automatically; call `Flush()` when you need immediate output.
-
 ---
 
 ## See Also

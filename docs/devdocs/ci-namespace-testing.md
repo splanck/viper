@@ -15,7 +15,7 @@ The namespace feature includes comprehensive testing at multiple levels to preve
 UX:
 
 - **11 unit tests** - Parser, semantic analysis, lowering, diagnostics
-- **11 golden tests** - Positive flows (4) and error cases (7)
+- **15 golden tests** - Positive flows (5) and error cases (10)
 - **1 e2e test** - Multi-file compilation (currently disabled)
 - **1 example program** - Runnable demonstration
 - **Policy enforcement** - Reserved namespace checks
@@ -33,7 +33,7 @@ This runs:
 
 1. Reserved namespace policy check
 2. All 11 unit tests
-3. All 11 golden tests
+3. All 15 golden tests
 4. E2E test (if enabled)
 5. Example compilation
 
@@ -62,7 +62,7 @@ Ensures user-facing code (tests/golden/basic, examples/basic) does not use the r
 
 ### Unit Tests (11 total)
 
-Located in `tests/unit/`:
+Located in `src/tests/unit/`:
 
 | Test                        | Purpose                                      |
 |-----------------------------|----------------------------------------------|
@@ -84,26 +84,30 @@ Run individually:
 ctest -R test_namespace_registry --output-on-failure
 ```
 
-### Golden Tests (11 total)
+### Golden Tests (15 total)
 
-Located in `tests/golden/basic/` and `tests/golden/basic_errors/`:
+Located in `src/src/tests/golden/basic/` and `src/src/tests/golden/basic_errors/`:
 
-**Positive flows (4):**
+**Positive flows (5):**
 
+- namespace_case_insensitive.bas - Case-insensitive namespace lookups
+- namespace_inheritance.bas - Cross-namespace inheritance
 - namespace_simple.bas - Basic namespace declaration
 - namespace_using.bas - USING directive examples
-- namespace_inheritance.bas - Cross-namespace inheritance
 - viper_root_example.bas - Illustrative Track B example
 
-**Error cases (7):**
+**Error cases (10):**
 
-- namespace_notfound.bas → E_NS_001
+- ambiguous_using_call.bas → E_NS_003 (ambiguous USING call)
 - namespace_ambiguous.bas → E_NS_003
+- namespace_case_insensitive_duplicate.bas → E_NS_004 (case-insensitive duplicate)
 - namespace_duplicate_alias.bas → E_NS_004 (via E_NS_001)
-- using_in_namespace.bas → E_NS_008
-- using_after_decl.bas → E_NS_005
+- namespace_notfound.bas → E_NS_001
+- reserved_root_decl.bas → E_NS_009
 - reserved_root_user_decl.bas → E_NS_009
 - reserved_root_user_using.bas → E_NS_009
+- using_after_decl.bas → E_NS_005
+- using_in_namespace.bas → E_NS_008
 
 Run individually:
 
@@ -113,7 +117,7 @@ ctest -R golden_basic_namespace_simple --output-on-failure
 
 ### E2E Test (1, disabled)
 
-Located in `tests/e2e/test_namespace_e2e.cpp`:
+Located in `src/tests/e2e/test_namespace_e2e.cpp`:
 
 Tests multi-file compilation with:
 
@@ -126,7 +130,7 @@ Tests multi-file compilation with:
 
 ### Example Program
 
-Located in `examples/basic/namespace_demo.bas`:
+Located in `examples/basic/namespace_demo.bas` (if present):
 
 Demonstrates:
 
@@ -196,22 +200,22 @@ The script `check_reserved_namespaces.sh` prevents drift from the reserved names
 
 **Checked directories**:
 
-- tests/golden/basic/
+- src/tests/golden/basic/
 - tests/e2e/
 - examples/basic/
 
 **Allowed exceptions** (documented in script):
 
-- tests/golden/basic/viper_root_example.bas - Track B illustration
-- tests/golden/basic_errors/reserved_root_user_decl.bas - E_NS_009 test
-- tests/golden/basic_errors/reserved_root_user_using.bas - E_NS_009 test
+- src/tests/golden/basic/viper_root_example.bas - Track B illustration
+- src/tests/golden/basic_errors/reserved_root_user_decl.bas - E_NS_009 test
+- src/tests/golden/basic_errors/reserved_root_user_using.bas - E_NS_009 test
 
 To add an exception:
 
 ```bash
 # Edit scripts/check_reserved_namespaces.sh
 ALLOWED_FILES=(
-  "tests/golden/basic/viper_root_example.bas"
+  "src/tests/golden/basic/viper_root_example.bas"
   "path/to/your/new/exception.bas"
 )
 ```
@@ -277,7 +281,7 @@ BUILD_DIR=build_ubsan ./scripts/ci_namespace_tests.sh
 ctest -R test_namespace_diagnostics --output-on-failure -V
 
 # Or run the test binary directly
-./build/tests/unit/test_namespace_diagnostics
+./build/src/tests/unit/test_namespace_diagnostics
 ```
 
 ### Golden test failure
@@ -287,8 +291,8 @@ ctest -R test_namespace_diagnostics --output-on-failure -V
 ctest -R golden_basic_namespace_simple --output-on-failure -V
 
 # Check actual vs expected output
-cat build/tests/golden/basic_namespace_simple.bas.out
-cat tests/golden/basic/namespace_simple.stdout
+cat build/src/tests/golden/basic_namespace_simple.bas.out
+cat src/tests/golden/basic/namespace_simple.stdout
 ```
 
 ### Policy check failure
@@ -315,10 +319,10 @@ The namespace tests are designed to run quickly:
 
 | Test Category | Count | Typical Time |
 |---------------|-------|--------------|
-| Unit tests    | 11    | ~0.1 sec     |
-| Golden tests  | 11    | ~0.2 sec     |
 | E2E test      | 1     | ~0.01 sec    |
-| Total         | 23    | ~0.3 sec     |
+| Golden tests  | 15    | ~0.3 sec     |
+| Unit tests    | 11    | ~0.1 sec     |
+| Total         | 27    | ~0.4 sec     |
 
 **With sanitizers**: ~1.0 sec (ASan) + ~1.0 sec (UBSan)
 
@@ -356,7 +360,7 @@ The namespace test suite covers:
 
 ### Updating golden tests
 
-1. Modify test file in `tests/golden/basic/` or `tests/golden/basic_errors/`
+1. Modify test file in `src/tests/golden/basic/` or `src/tests/golden/basic_errors/`
 2. Update corresponding `.stdout` or `.stderr` file if needed
 3. Re-run: `ctest -R golden_basic_<testname> --output-on-failure`
 
@@ -396,7 +400,7 @@ threshold or investigate why USING is generating code.
 
 The namespace CI infrastructure provides:
 
-✅ **Comprehensive coverage** - 23 tests across 4 categories
+✅ **Comprehensive coverage** - 27 tests across 4 categories
 ✅ **Policy enforcement** - Reserved namespace checks
 ✅ **Deterministic UX** - Golden tests lock error messages
 ✅ **Memory safety** - ASan/UBSan validation

@@ -98,11 +98,11 @@ bind Viper.Time;
 bind Viper.Terminal;
 
 func start() {
-    var startTime = Time.millis();
+    var startTime = Time.Clock.Ticks();
 
     doExpensiveWork();
 
-    var elapsed = Time.millis() - startTime;
+    var elapsed = Time.Clock.Ticks() - startTime;
     Terminal.Say("Took " + elapsed + " ms");
 }
 ```
@@ -118,26 +118,26 @@ bind Viper.Time;
 bind Viper.Terminal;
 
 func processData(data: [Record]) {
-    var t0 = Time.millis();
+    var t0 = Time.Clock.Ticks();
 
     var parsed = parseRecords(data);
 
-    var t1 = Time.millis();
+    var t1 = Time.Clock.Ticks();
     Terminal.Say("Parsing: " + (t1 - t0) + " ms");
 
     var validated = validateRecords(parsed);
 
-    var t2 = Time.millis();
+    var t2 = Time.Clock.Ticks();
     Terminal.Say("Validation: " + (t2 - t1) + " ms");
 
     var results = computeResults(validated);
 
-    var t3 = Time.millis();
+    var t3 = Time.Clock.Ticks();
     Terminal.Say("Computation: " + (t3 - t2) + " ms");
 
     writeResults(results);
 
-    var t4 = Time.millis();
+    var t4 = Time.Clock.Ticks();
     Terminal.Say("Writing: " + (t4 - t3) + " ms");
 }
 ```
@@ -504,17 +504,17 @@ func start() {
 
         Terminal.Say("\n--- Size: " + size + " ---");
 
-        var t0 = Time.millis();
+        var t0 = Time.Clock.Ticks();
         hasDuplicates_slow(data);
-        Terminal.Say("O(n²):      " + (Time.millis() - t0) + " ms");
+        Terminal.Say("O(n²):      " + (Time.Clock.Ticks() - t0) + " ms");
 
-        var t1 = Time.millis();
+        var t1 = Time.Clock.Ticks();
         hasDuplicates_medium(data);
-        Terminal.Say("O(n log n): " + (Time.millis() - t1) + " ms");
+        Terminal.Say("O(n log n): " + (Time.Clock.Ticks() - t1) + " ms");
 
-        var t2 = Time.millis();
+        var t2 = Time.Clock.Ticks();
         hasDuplicates_fast(data);
-        Terminal.Say("O(n):       " + (Time.millis() - t2) + " ms");
+        Terminal.Say("O(n):       " + (Time.Clock.Ticks() - t2) + " ms");
     }
 }
 ```
@@ -643,13 +643,13 @@ Each `+=` creates a new string, copies all existing content, adds the new part. 
 
 **Fast:**
 ```rust
-var builder = StringBuilder.create();
+var builder = new Viper.Text.StringBuilder();
 for i in 0..10000 {
-    builder.append("item ");
-    builder.append(i);
-    builder.append("\n");
+    builder.Append("item ");
+    builder.Append(i);
+    builder.Append("\n");
 }
-var result = builder.toString();  // One final string
+var result = builder.ToString();  // One final string
 ```
 
 StringBuilder accumulates efficiently, creating only one final string.
@@ -1016,7 +1016,7 @@ Result: **1650 ms** (30% faster). No more giant array allocation.
 ```rust
 func countWords_v3(text: String) -> Map<String, Integer> {
     var counts: Map<String, Integer> = Map.new();
-    var builder = StringBuilder.create();
+    var builder = new Viper.Text.StringBuilder();
 
     for i in 0..text.length {
         var c = text[i];
@@ -1024,7 +1024,7 @@ func countWords_v3(text: String) -> Map<String, Integer> {
 
         if isSpace {
             if builder.length > 0 {
-                var word = builder.toString();
+                var word = builder.ToString();
                 counts.set(word, counts.getOrDefault(word, 0) + 1);
                 builder.clear();
             }
@@ -1042,7 +1042,7 @@ func countWords_v3(text: String) -> Map<String, Integer> {
 
     // Handle last word
     if builder.length > 0 {
-        var word = builder.toString();
+        var word = builder.ToString();
         counts.set(word, counts.getOrDefault(word, 0) + 1);
     }
 
@@ -1211,9 +1211,9 @@ func benchmark(name: String, iterations: Integer, work: func()) {
 **Bad benchmark:**
 ```rust
 func badBenchmark() {
-    var start = Time.millis();
+    var start = Time.Clock.Ticks();
     compute(data);  // Compiler might optimize this away!
-    var end = Time.millis();
+    var end = Time.Clock.Ticks();
     Terminal.Say("Took " + (end - start));
 }
 ```
@@ -1222,11 +1222,11 @@ func badBenchmark() {
 ```rust
 func goodBenchmark() {
     var result = 0;
-    var start = Time.millis();
+    var start = Time.Clock.Ticks();
     for i in 0..1000 {
         result += compute(data);  // Result is used, can't be optimized away
     }
-    var end = Time.millis();
+    var end = Time.Clock.Ticks();
     Terminal.Say("Took " + ((end - start) / 1000.0) + " ms/iter");
     Terminal.Say("Checksum: " + result);  // Actually use the result
 }
@@ -1248,9 +1248,9 @@ bind Viper.Terminal;
 func reproduceSlowness() {
     var testData = loadTestData("large_dataset.json");
 
-    var start = Time.millis();
+    var start = Time.Clock.Ticks();
     processData(testData);
-    var elapsed = Time.millis() - start;
+    var elapsed = Time.Clock.Ticks() - start;
 
     Terminal.Say("Processing took: " + elapsed + " ms");
     // Run multiple times, should see consistent results
@@ -1273,18 +1273,18 @@ If the profiler points to a large function, add internal timing:
 bind Viper.Terminal;
 
 func processData(data: [Record]) {
-    var t0 = Time.millis();
+    var t0 = Time.Clock.Ticks();
 
     // Section A
     ...
 
-    var t1 = Time.millis();
+    var t1 = Time.Clock.Ticks();
     Terminal.Say("Section A: " + (t1 - t0) + " ms");
 
     // Section B
     ...
 
-    var t2 = Time.millis();
+    var t2 = Time.Clock.Ticks();
     Terminal.Say("Section B: " + (t2 - t1) + " ms");
 
     // etc.
@@ -1354,11 +1354,11 @@ bind Viper.Time;
 bind Viper.Terminal;
 
 func benchmark(name: String, work: func()) {
-    var start = Time.millis();
+    var start = Time.Clock.Ticks();
     for i in 0..1000 {
         work();
     }
-    var elapsed = Time.millis() - start;
+    var elapsed = Time.Clock.Ticks() - start;
     Terminal.Say(name + ": " + elapsed + " ms total");
 }
 ```
@@ -1497,7 +1497,7 @@ Measure the speedup with 10 URLs that each take ~100ms to fetch.
 ```rust
 func expensiveComputation(x: Integer, y: Integer) -> Integer {
     // Simulate expensive work
-    Thread.sleep(100);
+    Time.Clock.Sleep(100);
     return x * y + x + y;
 }
 ```

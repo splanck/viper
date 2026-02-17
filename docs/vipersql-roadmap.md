@@ -8,24 +8,31 @@ Transform the Zia SQL database demo into **ViperSQL**, a fully-featured, product
 
 ## Current State Assessment
 
-### What We Have (v1.0 - Demo)
-- **14,123 lines** of Zia code across 20 modules
-- Single in-memory database
+### What We Have (as of 2026-02)
+- **30,000+ lines** of Zia code across 29+ modules
+- Multi-session server (`server.zia`, `session.zia`) with PostgreSQL wire protocol support
+- System views (`system_views.zia`) and procedures (`procedures.zia`)
+- Window functions (`sql_window.zia`) and set operations (`setops.zia`)
 - Full SQL parser with DDL/DML support
 - JOINs (all types), subqueries, aggregates, 25+ functions
 - Hash-based indexes
 - REPL with meta-commands
 - SQL dump persistence (human-readable)
+- Query optimizer (`optimizer/`)
+- Binary storage engine (`storage/`)
+- Triggers, sequences, JSON support
+
+### Original v1.0 Baseline (Demo)
+- **14,123 lines** of Zia code across 20 modules
+- Single in-memory database
 - **162 passing tests**
 
-### Critical Limitations
+### Remaining Limitations
 | Area | Limitation | Impact |
 |------|-----------|--------|
-| **Storage** | In-memory only | Data loss on restart |
-| **Scalability** | O(n) table scans | Unusable beyond ~100K rows |
-| **Concurrency** | Single-threaded | No multi-user support |
-| **Durability** | No transactions | No crash recovery |
-| **Network** | Local library only | No remote access |
+| **Durability** | No WAL/crash recovery | Data loss on hard failure |
+| **Scalability** | Limited B-tree support | Large table performance |
+| **Transactions** | No full ACID guarantees | Concurrent write safety |
 
 ---
 
@@ -88,17 +95,17 @@ Transform the Zia SQL database demo into **ViperSQL**, a fully-featured, product
 
 ## Development Phases
 
-### Phase 1: Multi-Database Foundation (v1.1)
+### Phase 1: Multi-Database Foundation (v1.1) — IMPLEMENTED
 **Goal**: Support multiple databases in a single server instance
 
 **Estimated Effort**: 1-2 weeks | ~500 lines
 
 #### Features
-- [ ] `CREATE DATABASE name` / `DROP DATABASE name`
-- [ ] `USE database_name` to switch context
-- [ ] `SHOW DATABASES` to list all databases
-- [ ] Database isolation (tables scoped to current database)
-- [ ] Default database (`main` or `default`)
+- [x] `CREATE DATABASE name` / `DROP DATABASE name`
+- [x] `USE database_name` to switch context
+- [x] `SHOW DATABASES` to list all databases
+- [x] Database isolation (tables scoped to current database)
+- [x] Default database (`main` or `default`)
 
 #### Architecture Changes
 ```
@@ -659,11 +666,11 @@ SELECT * FROM subordinates;
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Zia networking APIs limited | Medium | High | Fall back to Unix pipes; contribute networking to Viper |
-| Performance bottlenecks in Zia | Medium | Medium | Profile early; optimize hot paths; consider native extensions |
 | B-tree complexity | High | Medium | Start with simple B-tree; defer balancing optimizations |
 | Concurrency bugs | High | High | Extensive testing; formal verification of lock protocols |
+| Performance bottlenecks in Zia | Medium | Medium | Profile early; optimize hot paths; consider native extensions |
 | Scope creep | High | Medium | Strict phase gates; MVP for each phase |
+| Zia networking APIs limited | Low | Low | Networking is implemented via `Viper.Network.*`; risk mitigated |
 
 ---
 
@@ -704,6 +711,6 @@ The modular architecture allows parallel development:
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2026-01-21*
+*Document Version: 1.1*
+*Last Updated: 2026-02-17*
 *Author: Development Team*

@@ -95,7 +95,7 @@ arrays (which require compile-time known sizes).
 
 ## BUG-BASIC-002: Viper.Random.Next() MOD operator type mismatch
 
-**Status**: OPEN
+**Status**: RESOLVED (implicit INT() conversion for MOD and IDiv operators -- see BUG-BASIC-002 fix in Check_Expr_Binary.cpp)
 **Severity**: Medium (workaround available)
 **Component**: Type System / Runtime
 

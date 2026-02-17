@@ -1,6 +1,6 @@
 ---
 status: draft
-last-verified: 2025-09-23
+last-verified: 2026-02-17
 audience: public
 ---
 
@@ -14,28 +14,30 @@ and any future languages that target the IL trap mechanism.
 ## Trap Kinds
 
 The VM recognizes the following trap kinds. They are defined and shared between
-checked IL operations, the runtime C ABI, and BASIC surface semantics.
+checked IL operations, the runtime C ABI, and BASIC surface semantics. Numeric
+values match the `TrapKind` enum in `src/vm/Trap.hpp`.
 
-| Kind               | Description                                                      |
-|--------------------|------------------------------------------------------------------|
-| `DivideByZero`     | Integer divide/remainder with a zero divisor.                    |
-| `Overflow`         | Checked arithmetic overflow (e.g., `INT64_MIN / -1`, `i64` abs). |
-| `InvalidCast`      | Invalid numeric or pointer cast.                                 |
-| `DomainError`      | Invalid mathematical domain (e.g., sqrt of negative).            |
-| `Bounds`           | Bounds check failure (arrays, strings).                          |
-| `FileNotFound`     | File system open on a path that does not exist.                  |
-| `EOF`              | End-of-file reached while input still expected.                  |
-| `IOError`          | Other I/O failure (permissions, device errors).                  |
-| `InvalidOperation` | Operation outside the allowed state machine.                     |
-| `RuntimeError`     | Catch-all for unexpected runtime failures.                       |
+| Kind               | Value | Description                                                      |
+|--------------------|-------|------------------------------------------------------------------|
+| `Bounds`           | 4     | Bounds check failure (arrays, strings).                          |
+| `DivideByZero`     | 0     | Integer divide/remainder with a zero divisor.                    |
+| `DomainError`      | 3     | Invalid mathematical domain (e.g., sqrt of negative).            |
+| `EOF`              | 6     | End-of-file reached while input still expected.                  |
+| `FileNotFound`     | 5     | File system open on a path that does not exist.                  |
+| `InvalidCast`      | 2     | Invalid numeric or pointer cast.                                 |
+| `InvalidOperation` | 8     | Operation outside the allowed state machine.                     |
+| `IOError`          | 7     | Other I/O failure (permissions, device errors).                  |
+| `Overflow`         | 1     | Checked arithmetic overflow (e.g., `INT64_MIN / -1`, `i64` abs). |
+| `RuntimeError`     | 9     | Catch-all for unexpected runtime failures.                       |
 
 ## IL Error-Handling Primitives
 
 The IL exposes structured primitives for raising and handling traps:
 
-- `trap.kind <Kind>` raises a trap with the given kind and default error
-  metadata.
-- `trap.err %err` raises with a fully populated `Error` record.
+- `trap` raises a trap (plain raise).
+- `trap.from_err <type>, <code>` raises a trap with the given type and code.
+- `trap.kind` reads the current trap kind (produces a value, does not raise).
+- `trap.err` constructs an Error record from the current trap state (produces a value, does not raise).
 - `eh.push ^handler` activates the handler block referenced by label.
 - `eh.pop` removes the most recently pushed handler.
 - `resume.same %tok`, `resume.next %tok`, and `resume.label %tok, ^L` resume
@@ -121,35 +123,36 @@ simply fall off the end (which behaves like re-raising the same trap).
 
 ### Checked IL Instruction → Trap Kind
 
-| Instruction           | Condition                              | Trap Kind          |
-|-----------------------|----------------------------------------|--------------------|
-| `sdiv.chk0`           | Divisor is `0`                         | `DivideByZero`     |
-| `sdiv.chk_ov`         | Dividend `INT64_MIN` with divisor `-1` | `Overflow`         |
-| `srem.chk0`           | Divisor is `0`                         | `DivideByZero`     |
-| `srem.chk_ov`         | Dividend `INT64_MIN` with divisor `-1` | `Overflow`         |
-| `udiv.chk0`           | Divisor is `0`                         | `DivideByZero`     |
-| `urem.chk0`           | Divisor is `0`                         | `DivideByZero`     |
-| `cast.si_to_i64.chk`  | Source outside `i64` range             | `Overflow`         |
-| `cast.f64_to_i64.chk` | NaN or value outside `i64`             | `InvalidCast`      |
-| `cast.ptr_to_i64.chk` | Pointer cannot be represented          | `InvalidCast`      |
-| `idx.chk`             | Index outside `[0, length)`            | `Bounds`           |
-| `load.chk`            | Null/misaligned pointer                | `InvalidOperation` |
-| `store.chk`           | Null/misaligned pointer                | `InvalidOperation` |
-| `pow.chkdom`          | Invalid exponent domain                | `DomainError`      |
+| Instruction              | Condition                                              | Trap Kind                    |
+|--------------------------|--------------------------------------------------------|------------------------------|
+| `cast.fp_to_si.rte.chk`  | NaN or value outside signed integer range              | `Overflow`                   |
+| `cast.fp_to_ui.rte.chk`  | NaN or value outside unsigned integer range            | `Overflow`                   |
+| `cast.si_narrow.chk`     | Value outside target signed range                      | `Overflow`                   |
+| `cast.ui_narrow.chk`     | Value outside target unsigned range                    | `Overflow`                   |
+| `iadd.ovf`               | Signed addition overflows                              | `Overflow`                   |
+| `idx.chk`                | Index outside `[lo, hi)` range                         | `Bounds`                     |
+| `imul.ovf`               | Signed multiplication overflows                        | `Overflow`                   |
+| `isub.ovf`               | Signed subtraction overflows                           | `Overflow`                   |
+| `sdiv.chk0`              | Divisor is `0`, or `INT64_MIN / -1`                    | `DivideByZero` or `Overflow` |
+| `srem.chk0`              | Divisor is `0`                                         | `DivideByZero`               |
+| `udiv.chk0`              | Divisor is `0`                                         | `DivideByZero`               |
+| `urem.chk0`              | Divisor is `0`                                         | `DivideByZero`               |
 
 ### Runtime `Err` Code → Trap Kind
 
-| Runtime `Err`                       | Trap Kind          |
-|-------------------------------------|--------------------|
-| `FileNotFound`                      | `FileNotFound`     |
-| `EOF`                               | `EOF`              |
-| `IOError`                           | `IOError`          |
-| `Overflow`                          | `Overflow`         |
-| `InvalidCast`                       | `InvalidCast`      |
-| `DomainError`                       | `DomainError`      |
-| `Bounds`                            | `Bounds`           |
-| `InvalidOperation`                  | `InvalidOperation` |
-| `RuntimeError` (any other non-zero) | `RuntimeError`     |
+The `Err` enum is defined in `src/runtime/rt_error.h`. Numeric values are listed for reference.
+
+| Runtime `Err`                         | Value | Trap Kind          |
+|---------------------------------------|-------|--------------------|
+| `Err_Bounds`                          | 7     | `Bounds`           |
+| `Err_DomainError`                     | 6     | `DomainError`      |
+| `Err_EOF`                             | 2     | `EOF`              |
+| `Err_FileNotFound`                    | 1     | `FileNotFound`     |
+| `Err_InvalidCast`                     | 5     | `InvalidCast`      |
+| `Err_InvalidOperation`                | 8     | `InvalidOperation` |
+| `Err_IOError`                         | 3     | `IOError`          |
+| `Err_Overflow`                        | 4     | `Overflow`         |
+| `Err_RuntimeError` (any other non-zero) | 9   | `RuntimeError`     |
 
 The C runtime reports success or failure and fills an `Err` out-parameter. VM
 glue converts that code into the listed trap kind and raises `trap.err` with the

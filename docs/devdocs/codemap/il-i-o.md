@@ -2,12 +2,11 @@
 
 Text parsing and serialization (`src/il/io/`) for IL modules.
 
-Last updated: 2026-01-15
+Last updated: 2026-02-17
 
 ## Overview
 
-- **Total source files**: 29 (.hpp/.cpp)
-- **Subdirectories**: ../internal/io/ (internal headers)
+- **Total source files**: 29 (.hpp/.cpp) across `src/il/io/` (21 files) and `src/il/internal/io/` (8 internal headers)
 
 ## Parser Core
 
@@ -22,43 +21,45 @@ Last updated: 2026-01-15
 
 ## Function Parsing
 
-| File                          | Purpose                                      |
-|-------------------------------|----------------------------------------------|
-| `FunctionParser.cpp`          | Function body parsing: headers, blocks       |
-| `FunctionParser_Body.cpp`     | Function body block and instruction parsing  |
-| `FunctionParser_Prototype.cpp`| Function prototype/signature parsing         |
-| `InstrParser.cpp`             | Individual instruction line parsing          |
+| File                           | Purpose                                      |
+|--------------------------------|----------------------------------------------|
+| `FunctionParser.cpp`           | Function body parsing: headers, blocks       |
+| `FunctionParser_Body.cpp`      | Function body block and instruction parsing  |
+| `FunctionParser_Prototype.cpp` | Function prototype/signature parsing         |
+| `InstrParser.cpp`              | Individual instruction line parsing          |
 
 ## Operand Parsing
 
-| File                         | Purpose                          |
-|------------------------------|----------------------------------|
-| `OperandParser.cpp`          | Legacy monolithic operand parser |
-| `OperandParse_Value.cpp`     | Value operand parsing dispatcher |
-| `OperandParse_ValueDetail.cpp`| Token-to-Value decoding         |
-| `OperandParse_Label.cpp`     | Branch label operand parsing     |
-| `OperandParse_Type.cpp`      | Type literal operand parsing     |
-| `OperandParse_Const.cpp`     | Constant literal operand parsing |
+| File                          | Purpose                                          |
+|-------------------------------|--------------------------------------------------|
+| `OperandParse_Const.cpp`      | Constant literal operand parsing                 |
+| `OperandParse_Label.cpp`      | Branch label operand parsing                     |
+| `OperandParse_Type.cpp`       | Type literal operand parsing                     |
+| `OperandParse_Value.cpp`      | Value operand parsing dispatcher                 |
+| `OperandParse_ValueDetail.cpp`| Token-to-Value decoding                          |
+| `OperandParser.cpp`           | Legacy monolithic operand parser                 |
 
 ## Serializer
 
 | File              | Purpose                                         |
 |-------------------|-------------------------------------------------|
+| `FormatUtils.cpp` | Locale-independent integer/float formatting     |
 | `Serializer.cpp`  | Module to text emission implementation          |
 | `Serializer.hpp`  | Module to text emission with canonical ordering |
-| `FormatUtils.cpp` | Locale-independent integer/float formatting     |
 | `StringEscape.cpp`| String escape/unescape implementation           |
 | `StringEscape.hpp`| String escape/unescape for IL literals          |
 
 ## Internal Headers (`src/il/internal/io/`)
 
+These headers are consumed by the `src/il/io/` translation units and are not part of the public API.
+
 | File                                      | Purpose                                                     |
 |-------------------------------------------|-------------------------------------------------------------|
-| `internal/io/FunctionParser.hpp`          | Function parser declarations                                |
-| `internal/io/FunctionParser_Internal.hpp` | Internal function parser helpers                            |
-| `internal/io/InstrParser.hpp`             | Instruction parser declarations                             |
-| `internal/io/ModuleParser.hpp`            | Module parser declarations                                  |
-| `internal/io/OperandParser.hpp`           | Operand parser declarations                                 |
-| `internal/io/ParserState.hpp`             | Parser state: module, function, block refs, SSA bookkeeping |
-| `internal/io/ParserUtil.hpp`              | Lexical helper declarations                                 |
-| `internal/io/TypeParser.hpp`              | Type parser declarations                                    |
+| `FunctionParser.hpp`                      | Function parser declarations                                |
+| `FunctionParser_Internal.hpp`             | Internal function parser helpers                            |
+| `InstrParser.hpp`                         | Instruction parser declarations                             |
+| `ModuleParser.hpp`                        | Module parser declarations                                  |
+| `OperandParser.hpp`                       | Operand parser declarations                                 |
+| `ParserState.hpp`                         | Parser state: module, function, block refs, SSA bookkeeping |
+| `ParserUtil.hpp`                          | Lexical helper declarations                                 |
+| `TypeParser.hpp`                          | Type parser declarations                                    |

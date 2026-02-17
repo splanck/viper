@@ -18,13 +18,16 @@
 Type conversion utilities.
 
 **Type:** Static utility class
+**Runtime namespace:** `Viper.Core.Convert` (accessible as `Viper.Convert` via bind)
 
 ### Methods
 
 | Method                   | Signature         | Description                                      |
 |--------------------------|-------------------|--------------------------------------------------|
+| `ToInt(text)`            | `Integer(String)` | Parses a string as a 64-bit integer (alias for ToInt64) |
 | `ToInt64(text)`          | `Integer(String)` | Parses a string as a 64-bit integer              |
 | `ToDouble(text)`         | `Double(String)`  | Parses a string as a double-precision float      |
+| `NumToInt(value)`        | `Integer(Double)` | Converts a floating-point value to integer (truncates) |
 | `ToString_Int(value)`    | `String(Integer)` | Converts an integer to its string representation |
 | `ToString_Double(value)` | `String(Double)`  | Converts a double to its string representation   |
 
@@ -254,6 +257,7 @@ Safe parsing utilities with error handling. Unlike `Viper.Convert` which traps o
 graceful error handling.
 
 **Type:** Static utility class
+**Runtime namespace:** `Viper.Core.Parse` (accessible as `Viper.Parse` via bind)
 
 ### Methods
 

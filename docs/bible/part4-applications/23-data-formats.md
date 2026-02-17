@@ -62,8 +62,8 @@ Think of serialization as translation between languages. Your program thinks in 
 
 To save your player to JSON, you must translate from Zia to JSON:
 - A `value` becomes a JSON object
-- A `string` becomes a JSON string
-- An `i64` becomes a JSON number
+- A `String` becomes a JSON string
+- An `Integer` becomes a JSON number
 - An array becomes a JSON array
 
 To load a player from JSON, you translate back:

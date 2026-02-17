@@ -117,7 +117,7 @@ Notice Windows uses backslashes (`\`), but since backslash is also the escape ch
 **Good news:** Viper handles this automatically. You can use forward slashes everywhere, and Viper will convert them appropriately for the operating system:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // This works on ALL operating systems
 var path = "C:/Users/Alice/Documents/report.txt";
@@ -163,7 +163,7 @@ If your program is running from `/home/alice/myprogram/`, then:
 The `Path` module helps work with paths safely:
 
 ```rust
-bind Path from Viper;
+bind Viper.IO.Path;
 
 var path = "/home/alice/documents/report.txt";
 
@@ -181,7 +181,7 @@ var full = join(dir, file);  // "/home/alice/documents/report.txt"
 Always use `Path.join` instead of string concatenation:
 
 ```rust
-bind Path from Viper;
+bind Viper.IO.Path;
 
 // Bad: might produce "/home/alice//documents" or wrong separators
 var path = directory + "/" + filename;
@@ -206,7 +206,7 @@ If you're writing software that might run on different operating systems, keep t
 To get standard locations portably:
 
 ```rust
-bind Environment from Viper;
+bind Viper.Environment;
 
 var home = homeDir();           // User's home directory
 var temp = tempDir();           // Temporary file directory
@@ -276,7 +276,7 @@ When you open a file, you specify what you intend to do with it. This is called 
 Read mode opens an existing file for reading. The file must already exist — if it doesn't, you'll get an error.
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 var content = readText("data.txt");
 ```
@@ -288,7 +288,7 @@ The file is opened, read from beginning to end, and then closed automatically. Y
 Write mode creates a new file or overwrites an existing one. This is destructive — if the file exists, its contents are erased and replaced.
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 writeText("output.txt", "Hello, World!");
 ```
@@ -300,7 +300,7 @@ writeText("output.txt", "Hello, World!");
 Append mode adds data to the end of an existing file, or creates a new file if it doesn't exist. Existing content is preserved.
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 appendText("log.txt", "New entry\n");
 ```
@@ -328,8 +328,8 @@ Let's explore file reading in detail, from simple to advanced techniques.
 The simplest approach loads the entire file into memory:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 var content = readText("message.txt");
 Say(content);
@@ -351,8 +351,8 @@ Say(content);
 Often you want to process a file line by line. `readLines` returns an array of strings:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 var lines = readLines("data.txt");
 
@@ -375,8 +375,8 @@ This is still loading everything at once, but having lines as separate strings i
 For large files, read one line at a time:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 var reader = openRead("huge.txt");
 
@@ -402,7 +402,7 @@ reader.close();  // Don't forget!
 Sometimes you need to jump to a specific location:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 var reader = openRead("data.bin");
 
@@ -426,8 +426,8 @@ Writing is where things can go wrong in ways that lose data. Let's understand ho
 ### Simple Writing
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 var content = "Hello, File!\nThis is line two.\nAnd line three.";
 writeText("output.txt", content);
@@ -446,7 +446,7 @@ The `\n` creates line breaks. Without them, everything would be on one line.
 ### Appending Data
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 appendText("log.txt", "Event 1 occurred\n");
 appendText("log.txt", "Event 2 occurred\n");
@@ -467,7 +467,7 @@ Append is safer than write because you can't accidentally erase data.
 For large amounts of data, or when building output over time:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 var writer = openWrite("output.txt");
 
@@ -490,7 +490,7 @@ writer.close();  // CRUCIAL: flushes buffered data to disk
 Because of buffering, calling `writeLine` doesn't guarantee the data is on disk. To force data to disk:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 var writer = openWrite("critical.txt");
 
@@ -540,7 +540,7 @@ If you open a binary file in Notepad, you see gibberish — because the bytes ar
 A simple example — storing numbers efficiently:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // Store the number 1000000 as text: needs 7 bytes ("1000000")
 // Store the number 1000000 as binary: needs 4 bytes (the actual bits)
@@ -570,8 +570,8 @@ var bytes = readBytes("number.bin");
 ### Working with Binary Files
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 // Writing binary data
 var data: [byte] = [0x89, 0x50, 0x4E, 0x47];  // PNG header bytes
@@ -596,8 +596,8 @@ Binary file handling is more complex and usually requires understanding the spec
 Before reading, you might want to check if a file exists:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 if exists("config.txt") {
     var config = readText("config.txt");
@@ -612,7 +612,7 @@ if exists("config.txt") {
 There's a subtle issue with check-then-read:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 if exists("data.txt") {
     // Another program could delete the file RIGHT HERE
@@ -625,8 +625,8 @@ Between checking and reading, another program (or user) could delete the file. T
 For critical code, consider using try-catch instead:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 try {
     var content = readText("data.txt");
@@ -649,8 +649,8 @@ Files are organized in directories. Viper provides tools to work with them.
 ### Checking and Creating Directories
 
 ```rust
-bind Dir from Viper;
-bind Terminal from Viper;
+bind Viper.IO.Dir;
+bind Viper.Terminal;
 
 // Check if directory exists
 if exists("saves") {
@@ -667,8 +667,8 @@ createAll("output/data/processed");
 ### Listing Directory Contents
 
 ```rust
-bind Dir from Viper;
-bind Terminal from Viper;
+bind Viper.IO.Dir;
+bind Viper.Terminal;
 
 // List all files in a directory
 var files = listFiles("data");
@@ -689,9 +689,9 @@ var all = list("documents");
 ### Practical Example: Finding All Text Files
 
 ```rust
-bind Dir from Viper;
-bind Path from Viper;
-bind Terminal from Viper;
+bind Viper.IO.Dir;
+bind Viper.IO.Path;
+bind Viper.Terminal;
 
 func findTextFiles(directory: String) {
     var entries = list(directory);
@@ -721,7 +721,7 @@ Files are a major source of errors. The file might not exist. You might not have
 
 **File not found:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // The file doesn't exist
 var content = readText("nonexistent.txt");
@@ -730,7 +730,7 @@ var content = readText("nonexistent.txt");
 
 **Permission denied:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // You don't have permission to read/write this file
 var content = readText("/etc/shadow");
@@ -739,7 +739,7 @@ var content = readText("/etc/shadow");
 
 **Disk full:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // No space left on the storage device
 writeText("huge.txt", massiveData);
@@ -748,7 +748,7 @@ writeText("huge.txt", massiveData);
 
 **Path is a directory:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // Trying to read a directory as a file
 var content = readText("my_folder");
@@ -757,7 +757,7 @@ var content = readText("my_folder");
 
 **Invalid path:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // Path contains invalid characters or is malformed
 var content = readText("file\0name.txt");
@@ -769,8 +769,8 @@ var content = readText("file\0name.txt");
 Never let file errors crash your program unexpectedly. Handle them:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 func loadConfig() -> String {
     try {
@@ -796,8 +796,8 @@ func loadConfig() -> String {
 Don't show raw error messages to users. Translate them:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 func openUserFile(path: String) -> String {
     try {
@@ -827,7 +827,7 @@ Writing files is risky. If something goes wrong mid-write, you might end up with
 ### The Danger of Direct Overwriting
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // Dangerous: if this fails mid-write, data.txt is corrupted
 writeText("data.txt", newData);
@@ -840,7 +840,7 @@ If power fails, or your program crashes, or the disk has an error during the wri
 The professional approach:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 func safeWrite(filename: String, content: String) {
     var tempFile = filename + ".tmp";
@@ -868,7 +868,7 @@ Why is this safer?
 For critical data, keep a backup:
 
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 func writeWithBackup(filename: String, content: String) {
     // Create backup of existing file
@@ -888,8 +888,8 @@ If something goes wrong, the user still has their `.backup` file.
 
 **Confirm before overwriting:**
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 func saveFile(filename: String, content: String) {
     if exists(filename) {
@@ -907,7 +907,7 @@ func saveFile(filename: String, content: String) {
 
 **Generate unique names:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 func uniqueFilename(base: String, ext: String) -> String {
     var filename = base + ext;
@@ -938,9 +938,9 @@ Programs often store settings in configuration files:
 ```rust
 module Config;
 
-bind File from Viper;
-bind Convert from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Convert;
+bind Viper.Terminal;
 
 final CONFIG_FILE = "settings.cfg";
 
@@ -1021,13 +1021,14 @@ Recording events for debugging and auditing:
 ```rust
 module Logger;
 
-bind Time from Viper;
-bind File from Viper;
+bind Viper.Time;
+bind Viper.IO.File;
 
 final LOG_FILE = "application.log";
 
 func log(level: String, message: String) {
-    var timestamp = now().format("YYYY-MM-DD HH:mm:ss");
+    var ts = Time.DateTime.Now();
+    var timestamp = Time.DateTime.Format(ts, "YYYY-MM-DD HH:mm:ss");
     var entry = "[" + timestamp + "] [" + level + "] " + message + "\n";
     appendText(LOG_FILE, entry);
 }
@@ -1074,11 +1075,11 @@ Games need to persist player progress:
 ```rust
 module GameSave;
 
-bind Dir from Viper;
-bind Path from Viper;
-bind File from Viper;
-bind Terminal from Viper;
-bind Convert from Viper;
+bind Viper.IO.Dir;
+bind Viper.IO.Path;
+bind Viper.IO.File;
+bind Viper.Terminal;
+bind Viper.Convert;
 
 final SAVE_DIR = "saves";
 
@@ -1088,7 +1089,8 @@ struct SaveData {
     score: Integer,
     health: Integer,
     inventory: [String],
-    position: (Number, Number)
+    posX: Number,
+    posY: Number
 }
 
 func save(data: SaveData, slot: Integer) {
@@ -1105,7 +1107,7 @@ func save(data: SaveData, slot: Integer) {
     lines.push("score=" + data.score);
     lines.push("health=" + data.health);
     lines.push("inventory=" + data.inventory.join(","));
-    lines.push("position=" + data.position.0 + "," + data.position.1);
+    lines.push("position=" + data.posX + "," + data.posY);
 
     writeText(filename, lines.join("\n"));
     Say("Game saved to slot " + slot);
@@ -1114,7 +1116,7 @@ func save(data: SaveData, slot: Integer) {
 func load(slot: Integer) -> SaveData? {
     var filename = join(SAVE_DIR, "save_" + slot + ".dat");
 
-    if !fileExists(filename) {
+    if !exists(filename) {
         Say("No save found in slot " + slot);
         return null;
     }
@@ -1136,7 +1138,8 @@ func load(slot: Integer) -> SaveData? {
         else if key == "inventory" { data.inventory = value.split(","); }
         else if key == "position" {
             var coords = value.split(",");
-            data.position = (ToDouble(coords[0]), ToDouble(coords[1]));
+            data.posX = ToDouble(coords[0]);
+            data.posY = ToDouble(coords[1]);
         }
     }
 
@@ -1168,8 +1171,8 @@ func listSaves() -> [Integer] {
 Exporting data for spreadsheets or other programs:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
     var lines: [String] = [];
@@ -1210,8 +1213,8 @@ exportToCSV("people.csv", headers, data);
 Reading data from CSV files:
 
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 func importFromCSV(filename: String) -> [[String]] {
     var rows: [[String]] = [];
@@ -1245,8 +1248,8 @@ Let's build a full application that demonstrates proper file handling:
 ```rust
 module NoteKeeper;
 
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 final NOTES_FILE = "notes.txt";
 final BACKUP_FILE = "notes.txt.backup";
@@ -1492,7 +1495,7 @@ This program demonstrates:
 
 **Zia**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 // Read
 var content = readText("file.txt");
@@ -1549,8 +1552,8 @@ BASIC uses file numbers (#1, #2, etc.) and requires explicit OPEN/CLOSE. The FOR
 
 **Forgetting the file might not exist:**
 ```rust
-bind File from Viper;
-bind Terminal from Viper;
+bind Viper.IO.File;
+bind Viper.Terminal;
 
 // Crashes if file doesn't exist
 var content = readText("maybe.txt");
@@ -1570,7 +1573,7 @@ try {
 
 **Overwriting when you meant to append:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 writeText("log.txt", "Entry 1\n");
 writeText("log.txt", "Entry 2\n");  // Oops! Entry 1 is gone
@@ -1582,8 +1585,8 @@ appendText("log.txt", "Entry 2\n");  // Both entries preserved
 
 **Hardcoding paths:**
 ```rust
-bind Environment from Viper;
-bind Path from Viper;
+bind Viper.Environment;
+bind Viper.IO.Path;
 
 // Bad: only works on your machine
 var file = "C:\\Users\\Alice\\Documents\\data.txt";
@@ -1598,7 +1601,7 @@ var file = join(home, "Documents", "data.txt");
 
 **Not closing files:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 var reader = openRead("file.txt");
 // ... use reader ...
@@ -1615,7 +1618,7 @@ try {
 
 **Assuming writes are immediate:**
 ```rust
-bind File from Viper;
+bind Viper.IO.File;
 
 var writer = openWrite("important.txt");
 writer.writeLine("Critical data");
@@ -1629,7 +1632,7 @@ writer.flush();  // Force to disk
 
 **Not handling paths cross-platform:**
 ```rust
-bind Path from Viper;
+bind Viper.IO.Path;
 
 // Bad: backslash doesn't work on Mac/Linux
 var path = "data\\files\\scores.txt";

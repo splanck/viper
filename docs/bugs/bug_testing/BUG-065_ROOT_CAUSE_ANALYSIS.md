@@ -1,11 +1,14 @@
 # BUG-065: Array Field Assignments Silently Dropped - Deep Dive Root Cause Analysis
 
+> **Status: RESOLVED (2025-11-15).** The fix was to add `isArray` to `ClassLayout::Field` and propagate it through
+> the OOP scan and field scope initialization. See `bugs/basic_resolved.md` for details.
+
 ## Executive Summary
 
-Array field assignments like `arr(idx) = val` inside class methods are **silently dropped** by the compiler with no
-error or warning. The assignment statement is correctly parsed but completely disappears during IL code generation.
+Array field assignments like `arr(idx) = val` inside class methods were **silently dropped** by the compiler with no
+error or warning. The assignment statement was correctly parsed but completely disappeared during IL code generation.
 
-**Root Cause**: Missing `isArray` field in `ClassLayout::Field` struct causes array metadata to be lost during OOP
+**Root Cause**: Missing `isArray` field in `ClassLayout::Field` struct caused array metadata to be lost during OOP
 scanning, leading to incorrect symbol table initialization in field scopes.
 
 ## Symptom
@@ -60,7 +63,7 @@ For our test case, the field has `isArray = true` and `arrayExtents = {5}`.
 
 ### 2. OOP Scan Stage ⚠️ **INFORMATION LOSS**
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/Lower_OOP_Scan.cpp:150-165`
+**File**: `src/frontends/basic/Lower_OOP_Scan.cpp:150-165`
 
 When building `ClassLayout` from AST `ClassDecl`:
 
@@ -105,7 +108,7 @@ The array metadata is **used to compute size** but **not preserved** for later u
 
 ### 3. Field Scope Setup ❌ **INCORRECT METADATA**
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/Lowerer.Procedure.cpp:430-449`
+**File**: `src/frontends/basic/Lowerer.Procedure.cpp:430-449`
 
 When entering a method, `pushFieldScope(className)` creates `SymbolInfo` entries for all fields:
 
@@ -144,7 +147,7 @@ void Lowerer::pushFieldScope(const std::string &className)
 
 ### 4. Assignment Lowering ⚠️ **ATTEMPTED RECOVERY**
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/LowerStmt_Runtime.cpp:286-368`
+**File**: `src/frontends/basic/LowerStmt_Runtime.cpp:286-368`
 
 When lowering `arr(idx) = val`:
 
@@ -219,7 +222,7 @@ But the IL output shows NO call to `rt_arr_str_put`, meaning this recovery code 
 
 ### 5. The Critical Check: `isFieldInScope`
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/Lowerer.Procedure.cpp:465-476`
+**File**: `src/frontends/basic/Lowerer.Procedure.cpp:465-476`
 
 ```cpp
 bool Lowerer::isFieldInScope(std::string_view name) const
@@ -251,7 +254,7 @@ point in the recovery code.
 
 ### 6. Fallback Path ❌ **SILENT DROP**
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/LowerStmt_Runtime.cpp:519`
+**File**: `src/frontends/basic/LowerStmt_Runtime.cpp:519`
 
 If the implicit field array check fails, control would flow to:
 
@@ -306,11 +309,11 @@ Line 360-367: Integer array fallback - still uses `access.base` which may be inv
 
 ---
 
-## Proposed Fixes
+## Applied Fix
 
-### Option 1: Add isArray to ClassLayout::Field (Recommended)
+### Option 1: Add isArray to ClassLayout::Field (Applied)
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/Lowerer.hpp:803-809`
+**File**: `src/frontends/basic/Lowerer.hpp:803-809`
 
 ```cpp
 struct Field
@@ -323,13 +326,13 @@ struct Field
 };
 ```
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/Lower_OOP_Scan.cpp:158`
+**File**: `src/frontends/basic/Lower_OOP_Scan.cpp:158`
 
 ```cpp
 info.isArray = field.isArray;  // ← ADD THIS after line 158
 ```
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/Lowerer.Procedure.cpp:441`
+**File**: `src/frontends/basic/Lowerer.Procedure.cpp:441`
 
 ```cpp
 info.isArray = field.isArray;  // ← CHANGE from hardcoded false
@@ -337,7 +340,7 @@ info.isArray = field.isArray;  // ← CHANGE from hardcoded false
 
 ### Option 2: Fix resolveVariableStorage to preserve array info
 
-**File**: `/Users/stephen/git/viper/src/frontends/basic/Lowerer.Procedure.cpp:687`
+**File**: `src/frontends/basic/Lowerer.Procedure.cpp:687`
 
 Instead of hardcoding `slotInfo.isArray = false`, detect array fields from ClassLayout.
 
@@ -349,12 +352,12 @@ Ensure `isFieldInScope` uses case-insensitive lookup (similar to the `findField`
 
 ## Testing
 
-**Test Case**: `/Users/stephen/git/viper/bugs/bug_testing/debug_parse_test.bas`
+**Test Case**: `docs/bugs/bug_testing/debug_parse_test.bas`
 
 **Verify Fix**:
 
 ```bash
-./build/src/tools/viper/viper front basic -emit-il bugs/bug_testing/debug_parse_test.bas | grep -A 20 "TEST.SETITEM"
+./build/src/tools/viper/viper front basic -emit-il docs/bugs/bug_testing/debug_parse_test.bas | grep -A 20 "TEST.SETITEM"
 ```
 
 Should see:
@@ -367,9 +370,10 @@ call @rt_arr_str_put(%base, %index, %tmp)
 
 ## Impact Assessment
 
-- **Severity**: CRITICAL - Silently wrong code generation
+- **Severity**: CRITICAL (historical) - Silently wrong code generation
 - **Scope**: All array field assignments in class methods
-- **Workaround**: Use explicit `ME.arr(idx)` syntax instead of implicit `arr(idx)`
+- **Status**: RESOLVED (2025-11-15)
+- **Fix**: Added `isArray` to `ClassLayout::Field`, propagated through OOP scan and field scope initialization
 
 ---
 

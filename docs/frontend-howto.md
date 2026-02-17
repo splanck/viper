@@ -481,7 +481,7 @@ cmake --build build
 **Output (IL text format):**
 
 ```
-il 0.2
+il 0.2.0
 
 extern @rt_print_i64(i64) -> void
 
@@ -494,7 +494,7 @@ entry:
 
 **Understanding the IL output:**
 
-- `il 0.2` — IL version header (required by spec)
+- `il 0.2.0` — IL version header (required by spec)
 - `extern @rt_print_i64(i64) -> void` — External function declaration (implemented in C runtime)
 - `func @main() -> i64 { ... }` — Function definition with signature
 - `entry:` — Basic block label
@@ -716,8 +716,8 @@ glue code that:
 ```cpp
 #include "yourfrontend/Compiler.hpp"   // Your frontend's main API
 #include "il/io/Serializer.hpp"        // IL text serialization
-#include "il/verify/Verifier.hpp"      // IL structural validation
-#include "il/vm/Runner.hpp"            // VM execution
+#include "viper/il/Verify.hpp"         // IL structural validation
+#include "viper/vm/VM.hpp"             // VM execution
 #include <fstream>
 #include <iostream>
 
@@ -2365,7 +2365,8 @@ public:
     Extern &addExtern(const std::string &name, Type ret,
                      const std::vector<Type> &params);
 
-    // === Global String Constants ===
+    // === Global Variables and String Constants ===
+    Global &addGlobal(const std::string &name, Type type, const std::string &init = "");
     Global &addGlobalStr(const std::string &name, const std::string &value);
 
     // === Function Creation ===
@@ -2375,7 +2376,8 @@ public:
     // === Block Management ===
     BasicBlock &addBlock(Function &fn, const std::string &label);
     BasicBlock &createBlock(Function &fn, const std::string &label,
-                           const std::vector<Param> &params);  // With parameters
+                           const std::vector<Param> &params = {});  // With parameters
+    BasicBlock &insertBlock(Function &fn, size_t idx, const std::string &label);
 
     void setInsertPoint(BasicBlock &bb);
 
@@ -2384,7 +2386,6 @@ public:
     void cbr(Value cond, BasicBlock &trueBlock, const std::vector<Value> &trueArgs,
              BasicBlock &falseBlock, const std::vector<Value> &falseArgs);
     void emitRet(const std::optional<Value> &value, il::support::SourceLoc loc);
-    void emitTrap(il::support::SourceLoc loc);
 
     // === Instructions ===
     void emitCall(const std::string &callee, const std::vector<Value> &args,
@@ -2395,11 +2396,10 @@ public:
     unsigned reserveTempId();
     Value blockParam(BasicBlock &bb, unsigned idx);
 
-    // === Error Handling ===
-    void emitEhPush(BasicBlock &handler, il::support::SourceLoc loc);
-    void emitEhPop(il::support::SourceLoc loc);
+    // === Resume (Exception Handling) ===
     void emitResumeSame(Value token, il::support::SourceLoc loc);
     void emitResumeNext(Value token, il::support::SourceLoc loc);
+    void emitResumeLabel(Value token, BasicBlock &target, il::support::SourceLoc loc);
 };
 
 } // namespace il::build
@@ -2474,25 +2474,31 @@ Value emitAlloca(BasicBlock &bb, int64_t bytes) {
 ```cpp
 // Arithmetic
 Opcode::Add, Sub, Mul
-Opcode::Sdiv, Udiv        // Signed/unsigned division
-Opcode::Srem, Urem        // Signed/unsigned remainder
+Opcode::SDiv, UDiv        // Signed/unsigned division
+Opcode::SRem, URem        // Signed/unsigned remainder
+
+// Bitwise
+Opcode::And, Or, Xor
+Opcode::Shl, LShr, AShr
 
 // Checked variants (trap on overflow)
-Opcode::IaddOvf, IsubOvf, ImulOvf
-Opcode::SdivChk0, UdivChk0, SremChk0, UremChk0
+Opcode::IAddOvf, ISubOvf, IMulOvf
+Opcode::SDivChk0, UDivChk0, SRemChk0, URemChk0
 
 // Floating-point
-Opcode::Fadd, Fsub, Fmul, Fdiv
+Opcode::FAdd, FSub, FMul, FDiv
 
-// Comparisons
-Opcode::IcmpEq, IcmpNe
-Opcode::ScmpLt, ScmpLe, ScmpGt, ScmpGe  // Signed
-Opcode::UcmpLt, UcmpLe, UcmpGt, UcmpGe  // Unsigned
-Opcode::FcmpLt, FcmpLe, FcmpGt, FcmpGe, FcmpEq, FcmpNe
+// Comparisons (integer)
+Opcode::ICmpEq, ICmpNe
+Opcode::SCmpLT, SCmpLE, SCmpGT, SCmpGE  // Signed
+Opcode::UCmpLT, UCmpLE, UCmpGT, UCmpGE  // Unsigned
+
+// Comparisons (floating-point)
+Opcode::FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT, FCmpGE
 
 // Conversions
 Opcode::Sitofp           // Signed int → float
-Opcode::Fptosi           // Float → signed int (trap on overflow)
+Opcode::Fptosi           // Float → signed int
 Opcode::Zext1            // i1 → i64 (zero-extend)
 Opcode::Trunc1           // i64 → i1 (truncate)
 
@@ -2500,11 +2506,11 @@ Opcode::Trunc1           // i64 → i1 (truncate)
 Opcode::Alloca           // Stack allocation
 Opcode::Load             // Load from memory
 Opcode::Store            // Store to memory
-Opcode::Gep              // Get element pointer (offset)
+Opcode::GEP              // Get element pointer (offset)
 
 // Control flow
 Opcode::Br               // Unconditional branch
-Opcode::Cbr              // Conditional branch
+Opcode::CBr              // Conditional branch
 Opcode::Ret              // Return
 Opcode::Call             // Function call
 Opcode::Trap             // Abort execution
@@ -3089,7 +3095,7 @@ Key pieces in the BASIC frontend:
 
 - Constructor initialization: If an array field declares extents (e.g., `DIM data(8) AS INTEGER`), the constructor
   allocates the array and stores the handle into the field.
-    - File: `src/frontends/basic/Lower_OOP_Emit.cpp`
+    - File: `src/frontends/basic/lower/oop/Lower_OOP_Emit.cpp`
     - Function: `Lowerer::emitClassConstructor`
     - Mapping:
         - Integer arrays → `rt_arr_i32_new(len)`
@@ -3097,8 +3103,8 @@ Key pieces in the BASIC frontend:
 - Loads: `obj.field(i)` lowers to a load of the array handle from the field followed by `rt_arr_*_get(obj.field, i)`.
     - Files:
         - `src/frontends/basic/lower/Emit_Expr.cpp` (dotted array names in `lowerArrayAccess`)
-        - `src/frontends/basic/lower/Lowerer_Expr.cpp` (treat `MethodCallExpr` on field name as array get only when the
-          field is declared as an array; guard with `fld->isArray`)
+        - `src/frontends/basic/lower/Lowerer_Expr.cpp` (treat `MethodCallExpr` on field name as array get
+          only when the field is declared as an array; guard with `fld->isArray`)
     - Helpers: `rt_arr_i32_get`, `rt_arr_str_get`, `rt_arr_obj_get` (for object-element arrays), with `rt_arr_*_len` for
       bounds checks when emitted.
 - Stores: `obj.field(i) = value` lowers to a store into the array referenced by the field.
@@ -3110,7 +3116,7 @@ Key pieces in the BASIC frontend:
       `rt_arr_*_len` + `rt_arr_oob_panic`.
 - Layout: Array fields occupy pointer-sized storage so subsequent field offsets are consistent.
     - Files:
-        - `src/frontends/basic/Lower_OOP_Scan.cpp` (class layout builder)
+        - `src/frontends/basic/lower/oop/Lower_OOP_Scan.cpp` (class layout builder)
         - `src/frontends/basic/Lowerer.hpp` (`ClassLayout` metadata)
 
 Example lowering flow for `obj.field(i) = 42` (integer array field):
@@ -3635,14 +3641,11 @@ builder_.emitCall("rt_string_unref", {str}, std::nullopt, loc);
 **Enable IL Verification:**
 
 ```cpp
-#include "il/verify/Verifier.hpp"
+#include "viper/il/Verify.hpp"
 
 auto result = il::verify::Verifier::verify(module);
 if (!result) {
-    std::cerr << "Verification failed:\n";
-    for (const auto &error : result.errors()) {
-        std::cerr << "  " << error << "\n";
-    }
+    std::cerr << "Verification failed: " << result.error().message() << "\n";
 }
 ```
 
@@ -3683,7 +3686,7 @@ Study the BASIC frontend for patterns:
 5. **src/frontends/basic/ast/ExprNodes.hpp** — AST design
 6. **src/frontends/basic/SemanticAnalyzer.hpp** — Type checking
 7. **src/frontends/basic/Lowerer.cpp** — IL lowering
-8. **src/frontends/basic/Lowerer.Procedure.cpp** — Function lowering
+8. **src/frontends/basic/Lowerer_Procedure.cpp** — Function lowering
 9. **src/frontends/basic/LowerExpr.cpp** — Expression lowering
 
 ### IL System Files

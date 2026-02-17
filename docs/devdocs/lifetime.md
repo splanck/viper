@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-11-20
+last-updated: 2026-02-17
 ---
 
 # Lifetime Model
@@ -17,16 +17,16 @@ model and best practices.
 
 ## Explicit Disposal
 
-- Use `DISPOSE obj` to deterministically destroy an instance when it goes out of scope or when you finish with it
-  earlier.
 - Disposing `NULL` is a no-op.
 - Multiple disposals of the same object are a programming error; debug builds trap to aid diagnosis.
+- Use `DISPOSE obj` to deterministically destroy an instance when it goes out of scope or when you finish with it
+  earlier.
 
 ## Destructors
 
-- Each class may declare one destructor (`DESTRUCTOR ... END DESTRUCTOR`) that runs before storage is freed.
-- Destructors chain from most-derived to base, automatically.
 - Avoid side effects that rely on object fields after disposal; fields may be released before the destructor returns.
+- Destructors chain from most-derived to base, automatically.
+- Each class may declare one destructor (`DESTRUCTOR ... END DESTRUCTOR`) that runs before storage is freed.
 
 ## Static Destructors
 
@@ -100,9 +100,9 @@ Viper does not include automatic cycle detection. If you suspect a memory leak f
 
 ## Guidance
 
+- Be mindful of cyclic references; break them explicitly before objects go out of scope.
+- Do not dispose `ME` inside a destructor; this is diagnosed as an error to prevent recursion.
 - Prefer `DISPOSE` when you want timely cleanup of scarce resources (file handles, OS objects) and ordering relative to
   surrounding code matters.
 - Use static destructors for module-scoped resources that must outlive all user code in the module.
-- Do not dispose `ME` inside a destructor; this is diagnosed as an error to prevent recursion.
-- Be mindful of cyclic references; break them explicitly before objects go out of scope.
 

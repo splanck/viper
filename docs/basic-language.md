@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-01-15
+last-updated: 2026-02-17
 ---
 
 # Viper BASIC — Tutorial
@@ -74,11 +74,11 @@ Arrays **require** `DIM` and are zero-based:
 
 | Suffix | Type    |
 |--------|---------|
-| `$`    | String  |
-| `#`    | Float   |
 | `!`    | Float   |
-| `&`    | Integer |
+| `#`    | Float   |
+| `$`    | String  |
 | `%`    | Integer |
+| `&`    | Integer |
 
 ```basic
 10 LET S$ = "hello"

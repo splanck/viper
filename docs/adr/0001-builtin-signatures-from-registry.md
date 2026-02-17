@@ -54,8 +54,8 @@ the already-declared registry descriptors.
 Migration Plan
 
 1. (DONE) Derive arity from registry in SemanticAnalyzer; add fixed-result mapping; patch ARG*/COMMAND$.
-2. (NEXT) Extend builtin_registry.inc with per-argument type metadata; add accessor `getBuiltinSemanticSignature` to
-   expose a complete signature view.
+2. (DONE) Extend builtin_registry.inc with per-argument type metadata; add accessor `getBuiltinSemanticSignature` in
+   `src/frontends/basic/BuiltinRegistry.cpp` to expose a complete signature view.
 3. (NEXT) Remove the legacy static signature table once all builtins are covered.
 4. (NEXT) Expand unit tests for common builtins (STR$, VAL, numeric ops) to verify per-arg type checking end-to-end.
 

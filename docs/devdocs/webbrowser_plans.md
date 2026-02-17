@@ -18,10 +18,10 @@ This document outlines the implementation plan for a custom web rendering engine
 4. Full control over rendering pipeline for customization and learning
 
 **Non-Goals (Initially):**
-- JavaScript execution (Phase 4+)
 - Full HTML5/CSS3 compliance (progressive enhancement)
-- Network stack (use existing HTTP libraries)
+- JavaScript execution (Phase 4+)
 - Media playback (audio/video)
+- Network stack (use existing HTTP libraries)
 
 ---
 
@@ -1743,18 +1743,18 @@ Use subsets of web-platform-tests:
 ## 14. References
 
 ### Specifications
-- [HTML Living Standard](https://html.spec.whatwg.org/)
 - [CSS 2.2 Specification](https://www.w3.org/TR/CSS22/)
-- [CSS Selectors Level 4](https://www.w3.org/TR/selectors-4/)
 - [CSS Flexbox](https://www.w3.org/TR/css-flexbox-1/)
+- [CSS Selectors Level 4](https://www.w3.org/TR/selectors-4/)
 - [DOM Living Standard](https://dom.spec.whatwg.org/)
+- [HTML Living Standard](https://html.spec.whatwg.org/)
 
 ### Existing Implementations (for reference)
+- [Blink](https://www.chromium.org/blink/) - Chrome's engine
+- [litehtml](https://github.com/litehtml/litehtml) - Lightweight C++ HTML engine
+- [Robinson](https://limpet.net/mbrubeck/2014/08/08/toy-layout-engine-1.html) - Toy browser tutorial
 - [Servo](https://github.com/servo/servo) - Rust browser engine
 - [WebKit](https://webkit.org/) - Safari's engine
-- [Blink](https://www.chromium.org/blink/) - Chrome's engine
-- [litehtml](https://github.com/nickg/litehtml) - Lightweight C++ HTML engine
-- [Robinson](https://limpet.net/mbrubeck/2014/08/08/toy-layout-engine-1.html) - Toy browser tutorial
 
 ### Books
 - "Web Browser Engineering" by Pavel Panchekha & Chris Harrelson

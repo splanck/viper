@@ -53,17 +53,19 @@ Progressive tests of individual language features.
 From the viper root directory:
 
 ```bash
-# Run individual test
-./build/src/tools/viper/viper front basic -run bugs/bug_testing/test_01_base_class.bas
+# From viper repo root:
 
-# Run without heap debug output
-./build/src/tools/viper/viper front basic -run bugs/bug_testing/comprehensive_test.bas 2>&1 | grep -v "rt_heap"
+# Run individual test
+./build/src/tools/viper/viper front basic -run docs/bugs/bug_testing/test_01_base_class.bas
 
 # Run adventure game
-./build/src/tools/viper/viper front basic -run bugs/bug_testing/adventure_game_v2.bas 2>&1 | grep -v "rt_heap"
+./build/src/tools/viper/viper front basic -run docs/bugs/bug_testing/adventure_game_v2.bas
 
 # Run dungeon crawler
-./build/src/tools/viper/viper front basic -run bugs/bug_testing/dungeon_crawler.bas 2>&1 | grep -v "rt_heap"
+./build/src/tools/viper/viper front basic -run docs/bugs/bug_testing/dungeon_crawler.bas
+
+# Run comprehensive test
+./build/src/tools/viper/viper front basic -run docs/bugs/bug_testing/comprehensive_test.bas
 ```
 
 ## Key Findings
@@ -81,12 +83,12 @@ From the viper root directory:
 - CONST declarations
 - Boolean operations
 
-### Critical Issues ❌
+### Critical Issues (all resolved)
 
-- IF/THEN crashes inside class methods (BUG-047)
-- Cannot call module SUBs from class methods (BUG-048)
-- STRING arrays don't work (BUG-045)
-- Cannot call methods on array elements (BUG-046)
+- IF/THEN crashes inside class methods (BUG-047) — RESOLVED
+- Cannot call module SUBs from class methods (BUG-048) — RESOLVED
+- STRING arrays don't work (BUG-045) — RESOLVED
+- Cannot call methods on array elements (BUG-046) — RESOLVED
 
 ### Workarounds Used
 
@@ -95,7 +97,7 @@ See STRESS_TEST_SUMMARY.md for detailed workarounds.
 ## Files Overview
 
 ```
-bugs/bug_testing/
+docs/bugs/bug_testing/
 ├── README.md                      (this file)
 ├── STRESS_TEST_SUMMARY.md         (full report)
 ├── BUGS_QUICK_REFERENCE.md        (quick bug reference)
@@ -103,28 +105,28 @@ bugs/bug_testing/
 ├── test_01_base_class.bas         (empty class)
 ├── test_02_class_fields.bas       (class with fields)
 ├── test_03_class_methods.bas      (SUB and FUNCTION methods)
-├── test_04_ansi_color.bas         (CHR test - fails)
-├── test_04_ansi_color_v2.bas      (workaround)
+├── test_04_ansi_color.bas         (CHR test - historical; CHR now works)
+├── test_04_ansi_color_v2.bas      (workaround variant)
 ├── test_05_addfile.bas            (ADDFILE keyword)
-├── test_06_arrays.bas             (STRING arrays - fails)
-├── test_06_arrays_int.bas         (INTEGER arrays - works)
-├── test_07_object_arrays.bas      (method calls on array elements - fails)
-├── test_07_object_arrays_v2.bas   (workaround)
-├── test_08_room_class.bas         (IF in methods - crashes)
-├── test_08_room_class_v2.bas      (workaround)
-├── test_09_if_in_sub.bas          (IF crash test)
-├── test_09_if_single_line.bas     (single-line IF crash)
-├── test_10_if_basic.bas           (IF at module level - works)
+├── test_06_arrays.bas             (STRING arrays - historical; now works)
+├── test_06_arrays_int.bas         (INTEGER arrays)
+├── test_07_object_arrays.bas      (method calls on array elements - historical)
+├── test_07_object_arrays_v2.bas   (workaround variant)
+├── test_08_room_class.bas         (IF in methods - historical)
+├── test_08_room_class_v2.bas      (workaround variant)
+├── test_09_if_in_sub.bas          (IF crash test - historical)
+├── test_09_if_single_line.bas     (single-line IF - historical)
+├── test_10_if_basic.bas           (IF at module level)
 ├── test_11_while_loop.bas         (WHILE loop)
 ├── test_12_do_loop.bas            (DO loops)
 ├── test_13_select_case.bas        (SELECT CASE)
 ├── test_14_string_functions.bas   (string functions)
 ├── test_15_math.bas               (math functions)
-├── test_16_input.bas              (INPUT - not tested)
+├── test_16_input.bas              (INPUT)
 │
 ├── colors.bas                     (utility module)
 ├── game_utils.bas                 (utility module)
-├── adventure_game.bas             (first attempt - fails)
+├── adventure_game.bas             (first attempt)
 ├── adventure_game_v2.bas          (working version)
 ├── dungeon_crawler.bas            (complex game)
 └── comprehensive_test.bas         (all features)
@@ -139,14 +141,10 @@ bugs/bug_testing/
 - **Classes created**: 15+
 - **Test programs**: 3 complete games
 
-## Recommendations
+## Notes
 
-1. **Fix BUG-047** (IF in methods) - Highest priority
-2. **Fix BUG-048** (module calls) - Highest priority
-3. **Fix BUG-045** (STRING arrays) - High priority
-4. Fix remaining bugs in priority order
-
-These two critical bugs (047, 048) block all serious OOP development in Viper BASIC.
+All critical bugs discovered during this stress test (BUG-044 through BUG-051) have been resolved in subsequent
+sessions. No action required. See `bugs/basic_resolved.md` for current open issues.
 
 ---
 

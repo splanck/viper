@@ -2,7 +2,7 @@
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-02-10
+> **Last updated:** 2026-02-17
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -14,24 +14,24 @@ implemented in C and exposed through the IL runtime system.
 | Module                          | Description                                                               |
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
-| [Audio](audio.md)               | `Sound`, `Music`, `Voice`, `Audio` — audio playback for games and applications |
+| [Audio](audio.md)               | `Audio`, `Music`, `Sound`, `Voice` — audio playback for games and applications |
 | [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `WeakMap` |
-| [Core Types](core.md)           | `Object`, `Box`, `MessageBus`, `String` — foundational types               |
-| [Cryptography](crypto.md)       | `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`                  |
+| [Core Types](core.md)           | `Box`, `MessageBus`, `Object`, `String` — foundational types              |
+| [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
-| [Game Utilities](game.md)       | `Grid2D`, `Timer`, `StateMachine`, `Tween`, `ObjectPool`, `Quadtree`, `Physics2D`, `SpriteSheet`, `ParticleEmitter`, `SpriteAnimation`, `CollisionRect`, `Collision`, `ButtonGroup`, `SmoothValue`, `ScreenFX`, `PathFollower` |
-| [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`, `SceneNode`, `Scene`, `SpriteBatch` |
-| [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
+| [Game Utilities](game.md)       | `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `SpriteSheet`, `StateMachine`, `Timer`, `Tween` |
+| [Graphics](graphics.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `Tilemap` |
+| [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
-| [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `TempFile`, `Watcher` |
-| [Mathematics](math.md)          | `Bits`, `Math`, `Easing`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
+| [Input/Output](io.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
+| [Mathematics](math.md)          | `Bits`, `Easing`, `Math`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `Csv`, `Html`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `Pattern`, `Serialize`, `StringBuilder`, `Template`, `Toml`, `Uuid` |
-| [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `ConcurrentMap`, `Debouncer`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `Future`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
+| [Text Processing](text.md)      | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `NumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version` |
+| [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
-| [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`                                                   |
+| [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
 
 ---
 
@@ -39,56 +39,73 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper (Root)
 
-| Class                                       | Type     | Description                                   |
-|---------------------------------------------|----------|-----------------------------------------------|
-| [`Bits`](math.md#viperbits)                 | Static   | Bit manipulation (shifts, rotates, counting)  |
-| [`Box`](core.md#viperbox)                   | Static   | Boxing helpers for generic collections         |
-| [`Convert`](utilities.md#viperconvert)      | Static   | Type conversion utilities                     |
-| [`Environment`](system.md#viperenvironment) | Static   | Command-line args and environment             |
-| [`Easing`](math.md#vipermatheasing)         | Static   | Animation easing functions                    |
-| [`Exec`](system.md#viperexec)               | Static   | External command execution                    |
-| [`Fmt`](utilities.md#viperfmt)              | Static   | String formatting                             |
-| [`Lazy`](functional.md#viperlazy)           | Static   | Lazy evaluation wrapper                       |
-| [`Log`](utilities.md#viperlog)              | Static   | Logging utilities                             |
-| [`Machine`](system.md#vipermachine)         | Static   | System information queries                    |
-| [`Math`](math.md#vipermath)                 | Static   | Mathematical functions (trig, pow, abs, etc.) |
-| [`MessageBus`](core.md#vipercoremessagebus) | Instance | In-process publish/subscribe messaging        |
-| [`Object`](core.md#viperobject)             | Base     | Root type for all reference types             |
-| [`Option`](functional.md#viperoption)       | Static   | Optional value type (Some/None)               |
-| [`PerlinNoise`](math.md#vipermathperlinnoise)| Instance | Perlin noise for procedural generation       |
-| [`Random`](math.md#viperrandom)             | Static   | Random number generation                      |
-| [`Result`](functional.md#viperresult)       | Static   | Result type for error handling (Ok/Err)       |
-| [`String`](core.md#viperstring)             | Instance | Immutable string with manipulation methods    |
-| [`Terminal`](system.md#viperterminal)       | Static   | Terminal input/output                         |
-| [`Vec2`](math.md#vipervec2)                 | Instance | 2D vector math                                |
-| [`Vec3`](math.md#vipervec3)                 | Instance | 3D vector math                                |
-| [`Quaternion`](math.md#viperquaternion)     | Instance | Quaternion math for 3D rotations              |
-| [`Spline`](math.md#viperspline)            | Instance | Catmull-Rom spline interpolation              |
+| Class                                        | Type     | Description                                   |
+|----------------------------------------------|----------|-----------------------------------------------|
+| [`Bits`](math.md#vipermathbits)              | Static   | Bit manipulation (shifts, rotates, counting)  |
+| [`Box`](core.md#vipercorebox)                | Static   | Boxing helpers for generic collections        |
+| [`Convert`](utilities.md#viperconvert)       | Static   | Type conversion utilities                     |
+| [`Easing`](math.md#vipermatheasing)          | Static   | Animation easing functions                    |
+| [`Environment`](system.md#viperenvironment)  | Static   | Command-line args and environment             |
+| [`Exec`](system.md#viperexec)                | Static   | External command execution                    |
+| [`Fmt`](utilities.md#viperfmt)               | Static   | String formatting                             |
+| [`Lazy`](functional.md#viperlazy)            | Static   | Lazy evaluation wrapper                       |
+| [`Log`](utilities.md#viperlog)               | Static   | Logging utilities                             |
+| [`Machine`](system.md#vipermachine)          | Static   | System information queries                    |
+| [`Math`](math.md#vipermath)                  | Static   | Mathematical functions (trig, pow, abs, etc.) |
+| [`MessageBus`](core.md#vipercoremessagebus)  | Instance | In-process publish/subscribe messaging        |
+| [`Object`](core.md#viperobject)              | Base     | Root type for all reference types             |
+| [`Option`](functional.md#viperoption)        | Static   | Optional value type (Some/None)               |
+| [`PerlinNoise`](math.md#vipermathperlinnoise) | Instance | Perlin noise for procedural generation       |
+| [`Quaternion`](math.md#vipermathquaternion)  | Instance | Quaternion math for 3D rotations              |
+| [`Random`](math.md#vipermathrandom)          | Static/Instance | Random number generation                 |
+| [`Result`](functional.md#viperresult)        | Static   | Result type for error handling (Ok/Err)       |
+| [`Spline`](math.md#vipermathspline)          | Instance | Catmull-Rom spline interpolation              |
+| [`String`](core.md#viperstring)              | Instance | Immutable string with manipulation methods    |
+| [`Terminal`](system.md#viperterminal)        | Static   | Terminal input/output                         |
+| [`Vec2`](math.md#vipermathvec2)              | Instance | 2D vector math                                |
+| [`Vec3`](math.md#vipermathvec3)              | Instance | 3D vector math                                |
 
 ### Viper.Collections
 
-| Class                                               | Type     | Description                         |
-|-----------------------------------------------------|----------|-------------------------------------|
-| [`Bag`](collections.md#vipercollectionsbag)         | Instance | String set with set operations      |
-| [`Bytes`](collections.md#vipercollectionsbytes)     | Instance | Byte array for binary data          |
-| [`Deque`](collections.md#vipercollectionsdeque)     | Instance | Double-ended queue                  |
-| [`Heap`](collections.md#vipercollectionsheap)       | Instance | Priority queue (min/max heap)       |
-| [`LazySeq`](collections.md#viperlazyseq)            | Instance | Lazy on-demand sequence             |
-| [`List`](collections.md#vipercollectionslist)       | Instance | Dynamic array of objects            |
-| [`Map`](collections.md#vipercollectionsmap)         | Instance | String-keyed hash map               |
-| [`Queue`](collections.md#vipercollectionsqueue)     | Instance | FIFO collection                     |
-| [`Ring`](collections.md#vipercollectionsring)       | Instance | Fixed-size circular buffer          |
-| [`Seq`](collections.md#vipercollectionsseq)         | Instance | Growable array with stack/queue ops |
-| [`Set`](collections.md#vipercollectionsset)         | Instance | Generic object set with set ops     |
-| [`SortedSet`](collections.md#vipercollectionssortedset) | Instance | Sorted string set with range ops |
-| [`Stack`](collections.md#vipercollectionsstack)     | Instance | LIFO collection                     |
-| [`TreeMap`](collections.md#vipercollectionstreemap) | Instance | Sorted key-value map                |
-| [`WeakMap`](collections.md#vipercollectionsweakmap) | Instance | Weak-reference key-value map        |
+| Class                                                         | Type     | Description                                |
+|---------------------------------------------------------------|----------|--------------------------------------------|
+| [`Bag`](collections.md#vipercollectionsbag)                   | Instance | String set with set operations             |
+| [`BiMap`](collections.md#vipercollectionsbimap)               | Instance | Bidirectional key-value map                |
+| [`BitSet`](collections.md#vipercollectionsbitset)             | Instance | Compact fixed-size set of bits             |
+| [`BloomFilter`](collections.md#vipercollectionsbloomfilter)   | Instance | Probabilistic membership test              |
+| [`Bytes`](collections.md#vipercollectionsbytes)               | Instance | Byte array for binary data                 |
+| [`CountMap`](collections.md#vipercollectionscountmap)         | Instance | Frequency counter map                      |
+| [`DefaultMap`](collections.md#vipercollectionsdefaultmap)     | Instance | Map with auto-initialized default values   |
+| [`Deque`](collections.md#vipercollectionsdeque)               | Instance | Double-ended queue                         |
+| [`FrozenMap`](collections.md#vipercollectionsfrozenmap)       | Instance | Immutable key-value map                    |
+| [`FrozenSet`](collections.md#vipercollectionsfrozenset)       | Instance | Immutable string set                       |
+| [`Heap`](collections.md#vipercollectionsheap)                 | Instance | Priority queue (min/max heap)              |
+| [`IntMap`](collections.md#vipercollectionsintmap)             | Instance | Integer-keyed hash map                     |
+| [`Iterator`](collections.md#vipercollectionsiterator)         | Instance | Generic forward iterator                   |
+| [`LazySeq`](collections.md#viperlazyseq)                      | Instance | Lazy on-demand sequence (`Viper.LazySeq`)  |
+| [`List`](collections.md#vipercollectionslist)                 | Instance | Dynamic array of objects                   |
+| [`LruCache`](collections.md#vipercollectionslrucache)         | Instance | Least-recently-used cache                  |
+| [`Map`](collections.md#vipercollectionsmap)                   | Instance | String-keyed hash map                      |
+| [`MultiMap`](collections.md#vipercollectionsmultimap)         | Instance | Map allowing multiple values per key       |
+| [`OrderedMap`](collections.md#vipercollectionsorderedmap)     | Instance | Insertion-ordered key-value map            |
+| [`Queue`](collections.md#vipercollectionsqueue)               | Instance | FIFO collection                            |
+| [`Ring`](collections.md#vipercollectionsring)                 | Instance | Fixed-size circular buffer                 |
+| [`Seq`](collections.md#vipercollectionsseq)                   | Instance | Growable array with stack/queue ops        |
+| [`Set`](collections.md#vipercollectionsset)                   | Instance | Generic object set with set ops            |
+| [`SortedSet`](collections.md#vipercollectionssortedset)       | Instance | Sorted string set with range ops           |
+| [`SparseArray`](collections.md#vipercollectionssparsearray)   | Instance | Sparse integer-indexed array               |
+| [`Stack`](collections.md#vipercollectionsstack)               | Instance | LIFO collection                            |
+| [`TreeMap`](collections.md#vipercollectionstreemap)           | Instance | Sorted key-value map                       |
+| [`Trie`](collections.md#vipercollectionstrie)                 | Instance | Prefix-tree for string lookups             |
+| [`UnionFind`](collections.md#vipercollectionsunionfind)       | Instance | Disjoint-set union-find structure          |
+| [`WeakMap`](collections.md#vipercollectionsweakmap)           | Instance | Weak-reference key-value map               |
 
 ### Viper.Crypto
 
 | Class                                         | Type     | Description                              |
 |-----------------------------------------------|----------|------------------------------------------|
+| [`Aes`](crypto.md#vipercryptoaes)             | Static   | AES-128/256 CBC encryption               |
+| [`Cipher`](crypto.md#vipercryptocipher)       | Static   | ChaCha20-Poly1305 high-level encryption  |
 | [`Hash`](crypto.md#vipercryptohash)           | Static   | CRC32, MD5, SHA1, SHA256                 |
 | [`KeyDerive`](crypto.md#vipercryptokeyderive) | Static   | PBKDF2-SHA256 key derivation             |
 | [`Password`](crypto.md#vipercryptopassword)   | Static   | Password hashing and verification        |
@@ -181,20 +198,22 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper.IO
 
-| Class                                   | Type     | Description                    |
-|-----------------------------------------|----------|--------------------------------|
-| [`Archive`](io.md#viperioarchive)       | Instance | ZIP archive read/write         |
-| [`BinFile`](io.md#viperiobinfile)       | Instance | Binary file stream             |
-| [`Compress`](io.md#viperiocompress)     | Static   | DEFLATE/GZIP compression       |
-| [`Dir`](io.md#viperiodir)               | Static   | Directory operations           |
-| [`File`](io.md#viperiofile)             | Static   | File read/write/delete         |
-| [`Glob`](io.md#viperioglob)             | Static   | File globbing and matching     |
-| [`LineReader`](io.md#viperiolinereader) | Instance | Line-by-line text reading      |
-| [`LineWriter`](io.md#viperiolinewriter) | Instance | Buffered text writing          |
-| [`MemStream`](io.md#viperiomemstream)   | Instance | In-memory binary stream        |
-| [`Path`](io.md#viperiopath)             | Static   | Path manipulation              |
-| [`TempFile`](io.md#viperiotempfile)     | Static   | Temporary file/dir creation    |
-| [`Watcher`](io.md#viperiowatcher)       | Instance | File system event monitoring   |
+| Class                                           | Type     | Description                         |
+|-------------------------------------------------|----------|-------------------------------------|
+| [`Archive`](io.md#viperioarchive)               | Instance | ZIP archive read/write              |
+| [`BinaryBuffer`](io.md#viperiobinarybuffer)     | Instance | Positioned binary read/write buffer |
+| [`BinFile`](io.md#viperiobinfile)               | Instance | Binary file stream                  |
+| [`Compress`](io.md#viperiocompress)             | Static   | DEFLATE/GZIP compression            |
+| [`Dir`](io.md#viperiodir)                       | Static   | Directory operations                |
+| [`File`](io.md#viperiofile)                     | Static   | File read/write/delete              |
+| [`Glob`](io.md#viperioglob)                     | Static   | File globbing and matching          |
+| [`LineReader`](io.md#viperiolinereader)         | Instance | Line-by-line text reading           |
+| [`LineWriter`](io.md#viperiolinewriter)         | Instance | Buffered text writing               |
+| [`MemStream`](io.md#viperiomemstream)           | Instance | In-memory binary stream             |
+| [`Path`](io.md#viperiopath)                     | Static   | Path manipulation                   |
+| [`Stream`](io.md#viperiostream)                 | Instance | Unified stream interface            |
+| [`TempFile`](io.md#viperiotempfile)             | Static   | Temporary file/dir creation         |
+| [`Watcher`](io.md#viperiowatcher)               | Instance | File system event monitoring        |
 
 ### Viper.Network
 
@@ -215,21 +234,29 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper.Text
 
-| Class                                             | Type     | Description                |
-|---------------------------------------------------|----------|----------------------------|
-| [`Codec`](text.md#vipertextcodec)                 | Static   | Base64, Hex, URL encoding       |
-| [`Csv`](text.md#vipertextcsv)                     | Static   | CSV parsing and formatting      |
-| [`Html`](text.md#vipertexthtml)                   | Static   | HTML stripping and entity decode|
-| [`Json`](text.md#vipertextjson)                   | Static   | JSON parsing and formatting     |
-| [`JsonPath`](text.md#vipertextjsonpath)           | Static   | JSONPath query evaluation       |
-| [`JsonStream`](text.md#vipertextjsonstream)       | Instance | Streaming JSON reader/writer    |
-| [`Markdown`](text.md#vipertextmarkdown)           | Static   | Markdown to HTML/text conversion|
-| [`Pattern`](text.md#vipertextpattern)             | Static   | Regex pattern matching          |
-| [`Serialize`](text.md#vipertextserialize)         | Static   | Unified multi-format serializer |
-| [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder          |
-| [`Template`](text.md#vipertexttemplate)           | Static   | Template rendering              |
-| [`Toml`](text.md#vipertexttoml)                   | Static   | TOML parsing and formatting     |
-| [`Uuid`](text.md#vipertextuuid)                   | Static   | UUID v4 generation              |
+| Class                                                     | Type     | Description                        |
+|-----------------------------------------------------------|----------|------------------------------------|
+| [`Codec`](text.md#vipertextcodec)                         | Static   | Base64, Hex, URL encoding          |
+| [`CompiledPattern`](text.md#vipertextcompiledpattern)     | Instance | Pre-compiled regex pattern         |
+| [`Csv`](text.md#vipertextcsv)                             | Static   | CSV parsing and formatting         |
+| [`Diff`](text.md#vipertextdiff)                           | Static   | Text diff and patch                |
+| [`Html`](text.md#vipertexthtml)                           | Static   | HTML stripping and entity decode   |
+| [`Ini`](text.md#vipertextini)                             | Static   | INI file parsing and formatting    |
+| [`Json`](text.md#vipertextjson)                           | Static   | JSON parsing and formatting        |
+| [`JsonPath`](text.md#vipertextjsonpath)                   | Static   | JSONPath query evaluation          |
+| [`JsonStream`](text.md#vipertextjsonstream)               | Instance | Streaming JSON reader/writer       |
+| [`Markdown`](text.md#vipertextmarkdown)                   | Static   | Markdown to HTML/text conversion   |
+| [`NumberFormat`](text.md#vipertextnumberformat)           | Static   | Locale-aware number formatting     |
+| [`Pattern`](text.md#vipertextpattern)                     | Static   | Regex pattern matching             |
+| [`Pluralize`](text.md#vipertextpluralize)                 | Static   | English pluralization utilities    |
+| [`Scanner`](text.md#vipertextscanner)                     | Instance | Token-based string scanner         |
+| [`Serialize`](text.md#vipertextserialize)                 | Static   | Unified multi-format serializer    |
+| [`StringBuilder`](text.md#vipertextstringbuilder)         | Instance | Mutable string builder             |
+| [`Template`](text.md#vipertexttemplate)                   | Static   | Template rendering                 |
+| [`TextWrapper`](text.md#vipertexttextwrapper)             | Static   | Word-wrap and text formatting      |
+| [`Toml`](text.md#vipertexttoml)                           | Static   | TOML parsing and formatting        |
+| [`Uuid`](text.md#vipertextuuid)                           | Static   | UUID v4 generation                 |
+| [`Version`](text.md#vipertextversion)                     | Static   | Semantic version parsing/comparison|
 
 ### Viper.Threads
 

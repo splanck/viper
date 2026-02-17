@@ -132,25 +132,25 @@ Each tier is considered complete when it passes these validation criteria:
 
 | Header | Purpose |
 |--------|---------|
-| `<cstdint>` | Fixed-width integer types |
-| `<cstddef>` | `size_t`, `nullptr_t`, `ptrdiff_t` |
-| `<climits>` | Integer limits |
 | `<cfloat>` | Floating-point limits |
-| `<limits>` | `std::numeric_limits` |
-| `<type_traits>` | Type introspection |
-| `<initializer_list>` | `std::initializer_list` |
-| `<utility>` | `std::move`, `std::forward`, `std::pair` |
-| `<new>` | Placement new (no allocating `new`) |
+| `<climits>` | Integer limits |
 | `<cstdarg>` | Variadic argument macros |
+| `<cstddef>` | `size_t`, `nullptr_t`, `ptrdiff_t` |
+| `<cstdint>` | Fixed-width integer types |
+| `<initializer_list>` | `std::initializer_list` |
+| `<limits>` | `std::numeric_limits` |
+| `<new>` | Placement new (no allocating `new`) |
+| `<type_traits>` | Type introspection |
+| `<utility>` | `std::move`, `std::forward`, `std::pair` |
 
 ### 3.3 Required Builtins
 
 | Builtin | Purpose |
 |---------|---------|
-| `__builtin_va_*` | Variadic argument handling |
-| `__builtin_offsetof` | Structure member offset |
 | `__builtin_expect` | Branch prediction hints |
+| `__builtin_offsetof` | Structure member offset |
 | `__builtin_unreachable` | Unreachable code marker |
+| `__builtin_va_*` | Variadic argument handling |
 
 ### 3.4 NOT Required in Tier 1
 
@@ -230,22 +230,22 @@ std::void_t
 
 | Type Trait | Compiler Intrinsic Required |
 |------------|----------------------------|
+| `is_abstract<T>` | `__is_abstract(T)` |
+| `is_aggregate<T>` | `__is_aggregate(T)` |
+| `is_base_of<B, D>` | `__is_base_of(B, D)` |
+| `is_class<T>` | `__is_class(T)` |
+| `is_convertible<From, To>` | `__is_convertible_to(From, To)` |
+| `is_empty<T>` | `__is_empty(T)` |
+| `is_enum<T>` | `__is_enum(T)` |
+| `is_final<T>` | `__is_final(T)` |
+| `is_pod<T>` | `__is_pod(T)` |
+| `is_polymorphic<T>` | `__is_polymorphic(T)` |
+| `is_standard_layout<T>` | `__is_standard_layout(T)` |
+| `is_trivially_constructible<T>` | `__is_trivially_constructible(T, Args...)` |
 | `is_trivially_copyable<T>` | `__is_trivially_copyable(T)` |
 | `is_trivially_destructible<T>` | `__is_trivially_destructible(T)` |
-| `is_trivially_constructible<T>` | `__is_trivially_constructible(T, Args...)` |
-| `is_standard_layout<T>` | `__is_standard_layout(T)` |
-| `is_pod<T>` | `__is_pod(T)` |
-| `is_empty<T>` | `__is_empty(T)` |
-| `is_polymorphic<T>` | `__is_polymorphic(T)` |
-| `is_abstract<T>` | `__is_abstract(T)` |
-| `is_final<T>` | `__is_final(T)` |
-| `is_enum<T>` | `__is_enum(T)` |
 | `is_union<T>` | `__is_union(T)` |
-| `is_class<T>` | `__is_class(T)` |
-| `is_base_of<B, D>` | `__is_base_of(B, D)` |
-| `is_convertible<From, To>` | `__is_convertible_to(From, To)` |
 | `underlying_type<E>` | `__underlying_type(E)` |
-| `is_aggregate<T>` | `__is_aggregate(T)` |
 
 **Implementation Note:** vcpp compiles against custom libc++ headers. The compiler must provide these intrinsics; the library headers wrap them into standard type traits.
 
@@ -268,12 +268,12 @@ Tier 2 requires SFINAE (Substitution Failure Is Not An Error), which is one of t
 
 | Requirement | Specification |
 |-------------|---------------|
-| Name mangling | Itanium C++ ABI |
-| vtable layout | Itanium C++ ABI |
-| RTTI (minimal) | Type info for virtual classes |
-| `__cxa_pure_virtual` | Pure virtual call handler |
 | `__cxa_deleted_virtual` | Deleted virtual call handler |
+| `__cxa_pure_virtual` | Pure virtual call handler |
 | Guard variables | `__cxa_guard_*` for static init |
+| Name mangling | Itanium C++ ABI |
+| RTTI (minimal) | Type info for virtual classes |
+| vtable layout | Itanium C++ ABI |
 
 ---
 
@@ -302,13 +302,13 @@ Note: Userspace may use exceptions, but they are optional. Many Viper userspace 
 
 | Category | Headers |
 |----------|---------|
-| Containers | `<vector>`, `<array>`, `<string>`, `<map>`, `<set>`, `<unordered_map>`, `<unordered_set>` |
-| Utilities | `<optional>`, `<variant>`, `<tuple>`, `<functional>` |
-| Memory | `<memory>` (`unique_ptr`, `shared_ptr`) |
 | Algorithms | `<algorithm>`, `<numeric>` |
-| I/O | `<iostream>`, `<fstream>`, `<sstream>` |
-| Strings | `<string>`, `<string_view>`, `<charconv>` |
+| Containers | `<array>`, `<map>`, `<set>`, `<string>`, `<unordered_map>`, `<unordered_set>`, `<vector>` |
+| I/O | `<fstream>`, `<iostream>`, `<sstream>` |
+| Memory | `<memory>` (`unique_ptr`, `shared_ptr`) |
+| Strings | `<charconv>`, `<string>`, `<string_view>` |
 | Time | `<chrono>` |
+| Utilities | `<functional>`, `<optional>`, `<tuple>`, `<variant>` |
 
 ### 5.3 C++ Runtime Requirements
 
@@ -318,7 +318,7 @@ Note: Userspace may use exceptions, but they are optional. Many Viper userspace 
 | `__cxa_finalize` | Static destructor execution |
 | Global constructors | `.init_array` section handling |
 | Global destructors | `.fini_array` section handling |
-| Operator new/delete | Dynamic memory allocation |
+| `operator new`/`delete` | Dynamic memory allocation |
 
 ---
 
@@ -370,17 +370,17 @@ These features are **NOT required** for ViperDOS and may be omitted or implement
 |---------|--------|
 | Digraphs/Trigraphs | Legacy compatibility only |
 | `export` (C++98) | Never widely implemented, removed |
-| `register` keyword | Deprecated, hint only |
 | K&R function declarations | Legacy C compatibility |
+| `register` keyword | Deprecated, hint only |
 
 ### 7.2 Deferred Indefinitely
 
 | Feature | Reason |
 |---------|--------|
-| C++20 Modules | Complex implementation, not used in OS |
 | C++20 Coroutines | Can use stackful coroutines instead |
-| `std::regex` | Heavy, not used in kernel/core userspace |
+| C++20 Modules | Complex implementation, not used in OS |
 | `std::locale` | Minimal i18n in OS currently |
+| `std::regex` | Heavy, not used in kernel/core userspace |
 | Wide string literals | Not used in codebase |
 
 ---
@@ -418,10 +418,10 @@ These features are **NOT required** for ViperDOS and may be omitted or implement
 
 | Define | Value | Purpose |
 |--------|-------|---------|
-| `__viperdos__` | 1 | Viper OS target detection |
 | `__aarch64__` | 1 | AArch64 architecture |
 | `__LP64__` | 1 | LP64 data model |
 | `__STDC_HOSTED__` | 0 (kernel), 1 (user) | Freestanding/hosted |
+| `__viperdos__` | 1 | Viper OS target detection |
 
 ---
 

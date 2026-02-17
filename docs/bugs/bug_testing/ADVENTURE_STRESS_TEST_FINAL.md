@@ -21,58 +21,51 @@ Attempted to build a sophisticated OOP-based text adventure game with:
 
 ## Bugs Discovered
 
-### 🚨 BUG-061: CRITICAL REGRESSION - Cannot read class field values
+### BUG-061: CRITICAL REGRESSION - Cannot read class field values — RESOLVED
 
-**Severity**: BLOCKS ALL OOP
-**Error**: `call arg type mismatch`
-
-```basic
-x = obj.field  ' FAILS
-```
-
-**Root Cause**: Likely regression from BUG-056 array field fix
-**Impact**: Cannot use class data in any calculations
-
-### 🚨 BUG-059: CRITICAL - Cannot access array fields in methods
-
-**Severity**: CRITICAL
-**Error**: `unknown callee @arrayname`
+**Severity**: CRITICAL (historical)
+**Error (historical)**: `call arg type mismatch`
 
 ```basic
-result = exits(direction)  ' FAILS inside method
+x = obj.field  ' Now works correctly
 ```
 
-**Impact**: Array fields completely unusable
+### BUG-059: CRITICAL - Cannot access array fields in methods — RESOLVED
 
-### 🚨 BUG-060: CRITICAL - Cannot call methods on class parameters
+**Severity**: CRITICAL (historical)
+**Error (historical)**: `unknown callee @arrayname`
 
-**Severity**: CRITICAL
-**Error**: `unknown callee @METHODNAME`
+```basic
+result = exits(direction)  ' Now works inside methods
+```
+
+### BUG-060: CRITICAL - Cannot call methods on class parameters — RESOLVED
+
+**Severity**: CRITICAL (historical)
+**Error (historical)**: `unknown callee @METHODNAME`
 
 ```basic
 SUB Test(obj AS Foo)
-    obj.Method()  ' FAILS
+    obj.Method()  ' Now works
 END SUB
 ```
 
-**Impact**: Cannot pass objects to procedures
+### BUG-058: String array fields don't persist — RESOLVED
 
-### BUG-058: HIGH - String array fields don't persist
-
-**Severity**: HIGH
+**Severity**: HIGH (historical)
 
 ```basic
 inventory(0) = "Sword"
-PRINT inventory(0)  ' Empty string
+PRINT inventory(0)  ' Now correctly prints "Sword"
 ```
 
-### BUG-057: MODERATE - BOOLEAN return types fail
+### BUG-057: BOOLEAN return types fail — RESOLVED
 
-**Severity**: MODERATE
+**Severity**: MODERATE (historical)
 
 ```basic
 FUNCTION IsAlive() AS BOOLEAN
-    RETURN health > 0  ' Type mismatch error
+    RETURN health > 0  ' Now works
 END FUNCTION
 ```
 
@@ -85,23 +78,8 @@ END FUNCTION
 
 ## Recommendations
 
-### URGENT - Stop All OOP Work
-
-BUG-061 makes OOP completely unusable. Must fix before any OOP development.
-
-### Investigation Priority
-
-1. **BUG-061** - Check `Emit_Expr.cpp` and `Lowerer_Expr.cpp` changes from BUG-056 fix
-2. **BUG-059** - Array field method access
-3. **BUG-060** - Method calls on parameters
-
-### Root Cause Hypothesis
-
-The BUG-056 fix added special handling for array fields (`obj.field(idx)`), but may have:
-
-- Broken general field reads (`obj.field`)
-- Not properly handled array access within methods
-- Not set up proper symbol resolution for parameters
+All five bugs discovered during this test (BUG-057 through BUG-061) have been resolved.
+No further action required. See `bugs/basic_resolved.md` for current open issues.
 
 ## What Still Works
 
@@ -114,9 +92,7 @@ The BUG-056 fix added special handling for array fields (`obj.field(idx)`), but 
 
 ## Conclusion
 
-**OOP System Status**: 🚨 COMPLETELY BROKEN
+**OOP System Status**: FULLY FUNCTIONAL (as of November 2025)
 
-The stress test successfully identified critical regressions. The good news: the core compiler infrastructure is solid.
-The problem is localized to OOP field access, which is fixable.
-
-**Action Required**: Revert or fix BUG-056 changes before continuing OOP work.
+The stress test successfully identified critical regressions (BUG-057 through BUG-061), all of which were subsequently
+resolved. The core compiler infrastructure remains solid and OOP field access is working correctly.

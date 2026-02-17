@@ -14,9 +14,12 @@ that maintainers and integrators need to know.
 - Itable storage:
     - `rt_bind_interface(type_id, iface_id, void **itable_slots)` records the
       (class, interface) binding and takes ownership of a pointer to the caller-
-      managed slot array. The array’s lifetime must cover the class lifetime.
-    - Lookup uses `rt_itable_lookup(obj, iface_id)` to produce the itable, then
-      loads the slot to obtain a function pointer for dispatch.
+      managed slot array. The array's lifetime must cover the class lifetime.
+    - Lookup uses `rt_itable_lookup(obj, iface_id)` (declared in
+      `src/runtime/rt_oop.h`, internal ABI) to produce the itable, then loads
+      the slot to obtain a function pointer for dispatch. Note: `rt_itable_lookup`
+      is not part of the public API in `include/viper/runtime/rt_oop.h`; it is
+      called from IL via `call.extern` at the lowering stage.
 
 - Type and interface ids:
     - `type_id` and `iface_id` are process-local identifiers assigned at module
@@ -38,14 +41,14 @@ that maintainers and integrators need to know.
       returns NULL on failure. NULL is represented as a null pointer in IL/VM.
 
 - Diagnostics (new):
-    - `E_IFACE_DUP_METHOD`: duplicate method name in an interface declaration.
     - `E_CLASS_MISSES_IFACE_METHOD`: class does not implement a required method
       from an interface it claims to implement.
+    - `E_IFACE_DUP_METHOD`: duplicate method name in an interface declaration.
 
 - Public APIs:
     - Exposed under `include/viper/runtime/rt_oop.h`:
-      `rt_register_interface`, `rt_bind_interface`, `rt_typeid_of`,
-      `rt_type_is_a`, `rt_type_implements`, `rt_cast_as`.
+      `rt_bind_interface`, `rt_cast_as`, `rt_register_interface`,
+      `rt_type_implements`, `rt_type_is_a`, `rt_typeid_of`.
 
 See also: `docs/oop.md` for a higher‑level overview and `docs/grammar.md` for
 language syntax covering `INTERFACE …`, `IMPLEMENTS`, and `IS`/`AS`.

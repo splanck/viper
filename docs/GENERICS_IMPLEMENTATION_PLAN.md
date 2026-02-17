@@ -4,7 +4,7 @@
 
 This document outlines a comprehensive plan to implement full generics support in the Zia language. The implementation builds on existing infrastructure (generic parameter parsing, TypeParam kind, typeArgs storage) and fills the semantic analysis and lowering gaps required for user-defined generic types and functions.
 
-**Current State**: Parser supports generic syntax; semantic analysis partially handles built-in collections; user-defined generics are parsed but not instantiated.
+**Current State**: Parser supports generic syntax; semantic analysis partially handles built-in collections; `Sema_Generics.cpp` exists with initial generics infrastructure; user-defined generics are parsed but full monomorphization is not yet implemented.
 
 **Target State**: Full monomorphization-based generics with type inference, supporting user-defined generic types, functions, and methods.
 
@@ -957,24 +957,29 @@ if (box1.get() == 42 && box2.get() == "hello") {
 
 | File | Changes |
 |------|---------|
-| `src/frontends/zia/Sema.hpp` | Add type param stack, generic registries, instantiation methods |
-| `src/frontends/zia/Sema.cpp` | Implement substitution, instantiation, inference |
-| `src/frontends/zia/Sema_Decl.cpp` | Register generic types/functions, defer analysis |
-| `src/frontends/zia/Sema_Expr.cpp` | Generic call resolution, constructor inference |
-| `src/frontends/zia/Types.hpp` | Add utility methods for generic types |
-| `src/frontends/zia/Types.cpp` | Implement type substitution helpers |
 | `src/frontends/zia/Lowerer.hpp` | Add monomorphization tracking |
 | `src/frontends/zia/Lowerer.cpp` | Implement instantiation queue processing |
 | `src/frontends/zia/Lowerer_Decl.cpp` | Lower specialized type/function declarations |
 | `src/frontends/zia/Lowerer_Expr.cpp` | Trigger instantiation on use |
 | `src/frontends/zia/Lowerer_Expr_Call.cpp` | Handle generic function calls |
+| `src/frontends/zia/Sema.hpp` | Add type param stack, generic registries, instantiation methods |
+| `src/frontends/zia/Sema.cpp` | Implement substitution, instantiation, inference |
+| `src/frontends/zia/Sema_Decl.cpp` | Register generic types/functions, defer analysis |
+| `src/frontends/zia/Sema_Expr.cpp` | Generic call resolution, constructor inference |
+| `src/frontends/zia/Sema_Generics.cpp` | Generics infrastructure (file exists, partially implemented) |
+| `src/frontends/zia/Types.hpp` | Add utility methods for generic types |
+| `src/frontends/zia/Types.cpp` | Implement type substitution helpers |
 
 ### 8.2 New Files
 
-| File | Purpose |
-|------|---------|
-| `src/tests/zia/test_zia_generics.cpp` | Comprehensive generics test suite |
-| `tests/zia_audit/test_generics_*.zia` | Individual test files |
+| File | Purpose | Status |
+|------|---------|--------|
+| `src/tests/zia/test_zia_generics.cpp` | Comprehensive generics test suite | Not yet created |
+| `tests/zia_audit/test_generics_constraints.zia` | Constraint generics tests | Exists |
+| `tests/zia_audit/test_generics_entity_only.zia` | Entity generics tests | Exists |
+| `tests/zia_audit/test_generics_functions.zia` | Function generics tests | Exists |
+| `tests/zia_audit/test_generics_type_inference.zia` | Type inference tests | Exists |
+| `tests/zia_audit/test_generics_value_type.zia` | Value type generics tests | Exists |
 
 ### 8.3 Estimated Line Changes
 

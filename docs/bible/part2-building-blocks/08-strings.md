@@ -1224,25 +1224,29 @@ var result = builder.toString();
 ### Building Complex Output
 
 ```rust
-bind Viper.StringBuilder;
+bind Viper.Text.StringBuilder as SB;
 bind Viper.Time;
+bind Viper.Fmt as Fmt;
 
-func generateReport(data: array<Record>) -> string {
-    var sb = StringBuilder.new();
+func generateReport(data: [Record]) -> String {
+    var sb = new SB();
 
-    sb.append("=== Report ===\n");
-    sb.append("Generated: " + now() + "\n");
-    sb.append("\n");
+    sb.Append("=== Report ===\n");
+    var ts = Time.DateTime.Now();
+    sb.Append("Generated: " + Fmt.Int(Time.DateTime.Year(ts)) + "-" +
+              Fmt.IntPad(Time.DateTime.Month(ts), 2, "0") + "-" +
+              Fmt.IntPad(Time.DateTime.Day(ts), 2, "0") + "\n");
+    sb.Append("\n");
 
     for record in data {
-        sb.append("Name: " + record.name + "\n");
-        sb.append("Score: " + record.score + "\n");
-        sb.append("---\n");
+        sb.Append("Name: " + record.name + "\n");
+        sb.Append("Score: " + Fmt.Int(record.score) + "\n");
+        sb.Append("---\n");
     }
 
-    sb.append("\nTotal records: " + data.length);
+    sb.Append("\nTotal records: " + Fmt.Int(data.length));
 
-    return sb.toString();
+    return sb.ToString();
 }
 ```
 

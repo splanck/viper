@@ -870,19 +870,19 @@ After this line executes, `score` contains 15. The old value (10) is gone, repla
 
 Think of it like updating a scoreboard. The old score was 10. Something happened, and now the score is 15. The scoreboard now shows 15 -- the 10 is history.
 
-### Shorthand Operators
+### Updating Variables
 
-The pattern "variable = variable + something" is so common that there's a shortcut:
+The pattern "variable = variable + something" appears constantly in real programs:
 
 ```rust
-score += 5;   // same as: score = score + 5
-score -= 3;   // same as: score = score - 3
-score *= 2;   // same as: score = score * 2
-score /= 4;   // same as: score = score / 4
-score %= 10;  // same as: score = score % 10
+score = score + 5;   // Add 5 to score
+score = score - 3;   // Subtract 3 from score
+score = score * 2;   // Double the score
+score = score / 4;   // Quarter the score
+score = score % 10;  // Take remainder after dividing by 10
 ```
 
-These compound assignment operators do the same thing as the long form -- they're just more concise.
+This pattern is so common that most languages (including future versions of Zia) provide shorthand compound assignment operators like `+=`, `-=`, `*=`, `/=`, and `%=`. For now, always use the explicit long form shown above.
 
 ### Variable Lifetime
 

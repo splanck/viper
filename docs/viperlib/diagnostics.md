@@ -19,21 +19,21 @@ Runtime assertion helpers that terminate execution when a condition fails.
 
 ### Methods
 
-| Method        | Signature                          | Description                                                   |
-|---------------|------------------------------------|---------------------------------------------------------------|
-| `Assert`      | `Void(Boolean, String)`            | Trap when condition is false                                  |
-| `AssertEq`    | `Void(Integer, Integer, String)`   | Trap when integers are not equal                              |
-| `AssertNeq`   | `Void(Integer, Integer, String)`   | Trap when integers are equal                                  |
-| `AssertEqNum` | `Void(Double, Double, String)`     | Trap when numbers are not equal (relative epsilon)            |
-| `AssertEqStr` | `Void(String, String, String)`     | Trap when strings are not equal                               |
-| `AssertNull`  | `Void(Object, String)`             | Trap when object is not null                                  |
-| `AssertNotNull` | `Void(Object, String)`           | Trap when object is null                                      |
-| `AssertFail`  | `Void(String)`                     | Unconditionally trap with message                             |
-| `AssertGt`    | `Void(Integer, Integer, String)`   | Trap when `a` is not greater than `b`                         |
-| `AssertLt`    | `Void(Integer, Integer, String)`   | Trap when `a` is not less than `b`                            |
-| `AssertGte`   | `Void(Integer, Integer, String)`   | Trap when `a` is not greater than or equal to `b`             |
-| `AssertLte`   | `Void(Integer, Integer, String)`   | Trap when `a` is not less than or equal to `b`                |
-| `Trap`        | `Void(String)`                     | Unconditionally trap with message                             |
+| Method          | Signature                          | Description                                                   |
+|-----------------|------------------------------------|---------------------------------------------------------------|
+| `Assert`        | `Void(Boolean, String)`            | Trap when condition is false                                  |
+| `AssertEq`      | `Void(Integer, Integer, String)`   | Trap when integers are not equal                              |
+| `AssertEqNum`   | `Void(Double, Double, String)`     | Trap when numbers are not equal (relative epsilon)            |
+| `AssertEqStr`   | `Void(String, String, String)`     | Trap when strings are not equal                               |
+| `AssertFail`    | `Void(String)`                     | Unconditionally trap with message                             |
+| `AssertGt`      | `Void(Integer, Integer, String)`   | Trap when `a` is not greater than `b`                         |
+| `AssertGte`     | `Void(Integer, Integer, String)`   | Trap when `a` is not greater than or equal to `b`             |
+| `AssertLt`      | `Void(Integer, Integer, String)`   | Trap when `a` is not less than `b`                            |
+| `AssertLte`     | `Void(Integer, Integer, String)`   | Trap when `a` is not less than or equal to `b`                |
+| `AssertNeq`     | `Void(Integer, Integer, String)`   | Trap when integers are equal                                  |
+| `AssertNotNull` | `Void(Object, String)`             | Trap when object is null                                      |
+| `AssertNull`    | `Void(Object, String)`             | Trap when object is not null                                  |
+| `Trap`          | `Void(String)`                     | Unconditionally trap with message                             |
 
 ### Notes
 

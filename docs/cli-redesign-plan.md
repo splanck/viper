@@ -72,12 +72,12 @@ src/
 
 ### New User-Facing Commands
 
-| Tool     | Purpose                    | Example                      | Priority |
-|----------|----------------------------|------------------------------|----------|
-| `vbasic` | Run/compile BASIC programs | `vbasic game.bas`            | P0       |
-| `ilrun`  | Execute IL programs        | `ilrun program.il`           | P0       |
-| `ilc`    | Compile IL → native        | `viper program.il -o exe`      | P1       |
-| `ilopt`  | Optimize IL                | `ilopt program.il -o out.il` | P2       |
+| Tool     | Purpose                    | Example                        | Priority |
+|----------|----------------------------|--------------------------------|----------|
+| `vbasic` | Run/compile BASIC programs | `vbasic game.bas`              | P0       |
+| `ilrun`  | Execute IL programs        | `ilrun program.il`             | P0       |
+| `viper`  | Compile IL → native        | `viper program.il -o exe`      | P1       |
+| `ilopt`  | Optimize IL                | `ilopt program.il -o out.il`   | P2       |
 
 ### Developer Tools (Keep As-Is)
 
@@ -94,12 +94,12 @@ src/
 
 **Location**: `src/tools/vbasic/`
 
-**Files to Create**:
+**Files Created**:
 
 ```
 src/tools/vbasic/
-├── main.cpp          # New thin wrapper
-└── usage.cpp         # BASIC-specific help text
+├── main.cpp          # Thin wrapper
+└── cli_compat.cpp    # CLI compatibility and help text
 ```
 
 **Implementation Strategy**:
@@ -255,12 +255,12 @@ install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 **Location**: `src/tools/ilrun/`
 
-**Files to Create**:
+**Files Created**:
 
 ```
 src/tools/ilrun/
-├── main.cpp          # New thin wrapper
-└── usage.cpp         # IL runner help text
+├── main.cpp          # Thin wrapper
+└── cli_compat.cpp    # CLI compatibility and help text
 ```
 
 **ilrun Command Design**:
@@ -611,13 +611,13 @@ install(TARGETS ilopt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ```
 src/tools/
-├── vbasic/                     # NEW: User-friendly BASIC tool
+├── vbasic/                     # User-friendly BASIC tool (implemented)
 │   ├── main.cpp
-│   └── usage.cpp
-├── ilrun/                      # NEW: User-friendly IL runner
+│   └── cli_compat.cpp
+├── ilrun/                      # User-friendly IL runner (implemented)
 │   ├── main.cpp
-│   └── usage.cpp
-├── ilopt/                      # NEW (P2): IL optimizer
+│   └── cli_compat.cpp
+├── ilopt/                      # IL optimizer (P2: not yet created)
 │   └── main.cpp
 ├── viper/                      # Main CLI tool
 │   ├── main.cpp                # Main dispatcher
@@ -626,6 +626,9 @@ src/tools/
 │   ├── cmd_il_opt.cpp
 │   ├── cmd_codegen_x64.cpp
 │   └── cli.cpp
+├── zia/                        # Zia language tool (added in v0.2.0)
+│   ├── main.cpp
+│   └── usage.cpp
 ├── il-verify/                  # Keep as-is (good naming)
 ├── il-dis/                     # Keep as-is (good naming)
 ├── basic-ast-dump/             # Keep as-is (dev tool)
@@ -638,17 +641,17 @@ src/tools/
 
 ### Phase 1: Core Wrappers (Week 1)
 
-- [ ] Create `src/tools/vbasic/` directory
-- [ ] Implement `vbasic/main.cpp` with argument translation
-- [ ] Implement `vbasic/usage.cpp` with help text
-- [ ] Add CMake target for `vbasic`
-- [ ] Build and test `vbasic` with existing examples
-- [ ] Create `src/tools/ilrun/` directory
-- [ ] Implement `ilrun/main.cpp`
-- [ ] Implement `ilrun/usage.cpp`
-- [ ] Add CMake target for `ilrun`
-- [ ] Build and test `ilrun` with IL programs
-- [ ] Verify install targets work correctly
+- [x] Create `src/tools/vbasic/` directory
+- [x] Implement `vbasic/main.cpp` with argument translation
+- [x] Implement `vbasic/usage.cpp` with help text
+- [x] Add CMake target for `vbasic`
+- [x] Build and test `vbasic` with existing examples
+- [x] Create `src/tools/ilrun/` directory
+- [x] Implement `ilrun/main.cpp`
+- [x] Implement `ilrun/usage.cpp`
+- [x] Add CMake target for `ilrun`
+- [x] Build and test `ilrun` with IL programs
+- [x] Verify install targets work correctly
 
 ### Phase 2: Documentation & Testing (Week 2)
 
@@ -758,7 +761,8 @@ src/tools/
 ## References
 
 - Current viper implementation: `src/tools/viper/`
-- CMake build config: `src/CMakeLists.txt` (lines 251-272)
+- CMake build config: `src/CMakeLists.txt` (vbasic around line 380, ilrun around line 428)
 - Existing CLI helpers: `src/tools/viper/cli.hpp`, `cli.cpp`
 - BASIC frontend: `src/tools/viper/cmd_front_basic.cpp`
 - IL runner: `src/tools/viper/cmd_run_il.cpp`
+- Zia tool: `src/tools/zia/`

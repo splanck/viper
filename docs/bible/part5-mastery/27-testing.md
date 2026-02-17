@@ -1136,7 +1136,7 @@ Flaky tests pass sometimes and fail sometimes:
 // Bad: Depends on timing
 test "async operation completes" {
     startAsyncOperation();
-    Time.sleep(100);  // Hope 100ms is enough...
+    Time.Clock.Sleep(100);  // Hope 100ms is enough...
     assert isComplete();  // Sometimes passes, sometimes fails!
 }
 
@@ -1632,7 +1632,7 @@ func add(numbers: String) -> Integer {
         var message = "Negatives not allowed: ";
         for i, neg in negatives {
             if i > 0 { message += ", "; }
-            message += neg.toString();
+            message += Fmt.Int(neg);
         }
         throw Error(message);
     }
@@ -1669,7 +1669,7 @@ entity StringCalculator {
             var message = "Negatives not allowed: ";
             for i, neg in negatives {
                 if i > 0 { message += ", "; }
-                message += neg.toString();
+                message += Fmt.Int(neg);
             }
             throw Error(message);
         }
@@ -1727,7 +1727,7 @@ Tests should not share state or depend on execution order:
 
 ```rust
 // Bad: Tests share state
-var sharedList: [i64] = [];
+var sharedList: [Integer] = [];
 
 test "add to list" {
     sharedList.push(1);
@@ -1741,13 +1741,13 @@ test "list has item" {
 
 // Good: Each test creates its own state
 test "add to list" {
-    var list: [i64] = [];
+    var list: [Integer] = [];
     list.push(1);
     assertEqual(list.length, 1);
 }
 
 test "list contains added item" {
-    var list: [i64] = [];
+    var list: [Integer] = [];
     list.push(1);
     assertEqual(list[0], 1);
 }

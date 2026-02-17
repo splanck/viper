@@ -62,40 +62,40 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 
 | Class                         | Description                                                 |
 |-------------------------------|-------------------------------------------------------------|
-| `Viper.Object`                | Base class with Equals, HashCode, ToString               |
-| `Viper.String`                | String manipulation (Substring, Trim, Replace, etc.)        |
-| `Viper.String` (static)       | Static string utilities (Join, FromStr, Equals, etc.)       |
-| `Viper.Math`                  | Math functions (Sin, Cos, Sqrt, etc.) and constants (Pi, E) |
-| `Viper.Terminal`              | Terminal I/O (Say, Print, Ask, ReadLine)                    |
-| `Viper.Convert`               | Type conversion (ToInt, ToDouble)                           |
-| `Viper.Environment`           | Command-line args, environment variables, process exit      |
-| `Viper.Math.Random`           | Random number generation                                    |
+| `Viper.Collections.Bag`       | String set with union, intersection, difference             |
+| `Viper.Collections.Bytes`     | Efficient byte array                                        |
+| `Viper.Collections.List`      | Dynamic list of objects                                     |
+| `Viper.Collections.Map`       | String-keyed dictionary                                     |
+| `Viper.Collections.Queue`     | FIFO with Push, Pop, Peek                                   |
+| `Viper.Collections.Ring`      | Fixed-size circular buffer (overwrites oldest)              |
 | `Viper.Collections.Seq`       | Dynamic array with Push, Pop, Get, Set                      |
 | `Viper.Collections.Stack`     | LIFO with Push, Pop, Peek                                   |
-| `Viper.Collections.Queue`     | FIFO with Push, Pop, Peek                                   |
-| `Viper.Collections.Map`       | String-keyed dictionary                                     |
-| `Viper.Collections.Bytes`     | Efficient byte array                                        |
-| `Viper.Collections.Bag`       | String set with union, intersection, difference             |
-| `Viper.Collections.Ring`      | Fixed-size circular buffer (overwrites oldest)              |
-| `Viper.Collections.List`      | Dynamic list of objects                                     |
-| `Viper.IO.File`               | File read/write/copy/delete                                 |
-| `Viper.IO.Dir`                | Directory create/list/delete                                |
-| `Viper.IO.Path`               | Path join/split/normalize                                   |
-| `Viper.IO.BinFile`            | Binary file stream with random access                       |
-| `Viper.IO.LineReader`         | Line-by-line text file reading                              |
-| `Viper.IO.LineWriter`         | Buffered text file writing                                  |
-| `Viper.Text.StringBuilder`    | Efficient string concatenation                              |
-| `Viper.Text.Codec`            | Base64, Hex, URL encoding/decoding                          |
-| `Viper.Text.Uuid`             | UUID v4 generation                                          |
+| `Viper.Convert`               | Type conversion (ToInt, ToDouble)                           |
+| `Viper.Core.Box`              | Boxing primitives for generic collections                   |
+| `Viper.Core.Diagnostics`      | Runtime assertions and traps                                |
 | `Viper.Crypto.Hash`           | MD5, SHA1, SHA256, CRC32 hashing                            |
+| `Viper.Environment`           | Command-line args, environment variables, process exit      |
 | `Viper.Graphics.Canvas`       | Window and 2D drawing                                       |
 | `Viper.Graphics.Color`        | RGB/RGBA color creation                                     |
 | `Viper.Graphics.Pixels`       | Software image buffer for pixel manipulation                |
+| `Viper.IO.BinFile`            | Binary file stream with random access                       |
+| `Viper.IO.Dir`                | Directory create/list/delete                                |
+| `Viper.IO.File`               | File read/write/copy/delete                                 |
+| `Viper.IO.LineReader`         | Line-by-line text file reading                              |
+| `Viper.IO.LineWriter`         | Buffered text file writing                                  |
+| `Viper.IO.Path`               | Path join/split/normalize                                   |
+| `Viper.Math`                  | Math functions (Sin, Cos, Sqrt, etc.) and constants (Pi, E) |
+| `Viper.Math.Random`           | Random number generation                                    |
+| `Viper.Object`                | Base class with Equals, HashCode, ToString                  |
+| `Viper.String`                | String manipulation (Substring, Trim, Replace, etc.)        |
+| `Viper.String` (static)       | Static string utilities (Join, FromStr, Equals, etc.)       |
+| `Viper.Terminal`              | Terminal I/O (Say, Print, Ask, ReadLine)                    |
+| `Viper.Text.Codec`            | Base64, Hex, URL encoding/decoding                          |
+| `Viper.Text.StringBuilder`    | Efficient string concatenation                              |
+| `Viper.Text.Uuid`             | UUID v4 generation                                          |
 | `Viper.Time.Clock`            | Sleep and tick counting                                     |
 | `Viper.Time.DateTime`         | Date/time creation and formatting                           |
 | `Viper.Time.Stopwatch`        | Benchmarking timer                                          |
-| `Viper.Core.Diagnostics`      | Runtime assertions and traps                                |
-| `Viper.Core.Box`              | Boxing primitives for generic collections                   |
 
 ---
 

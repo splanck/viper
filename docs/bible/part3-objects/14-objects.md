@@ -1162,7 +1162,8 @@ entity BankAccount {
     expose func init(accountNumber: String, ownerName: String, initialDeposit: Number) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
-        self.dateOpened = now();
+        var _dt = Time.DateTime.Now();
+        self.dateOpened = Time.DateTime.Year(_dt) + "-" + Time.DateTime.Month(_dt) + "-" + Time.DateTime.Day(_dt);
         self.transactions = [];
 
         // Enforce non-negative initial balance
@@ -1179,7 +1180,8 @@ entity BankAccount {
     expose func init(accountNumber: String, ownerName: String) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
-        self.dateOpened = now();
+        var _dt = Time.DateTime.Now();
+        self.dateOpened = Time.DateTime.Year(_dt) + "-" + Time.DateTime.Month(_dt) + "-" + Time.DateTime.Day(_dt);
         self.balance = 0;
         self.transactions = [];
         self.addTransaction("Account opened with $0.00");
@@ -1249,7 +1251,8 @@ entity BankAccount {
     // ===== Private Helper Methods =====
 
     hide func addTransaction(description: String) {
-        var timestamp = now();
+        var _dt2 = Time.DateTime.Now();
+        var timestamp = Time.DateTime.Hour(_dt2) + ":" + Time.DateTime.Minute(_dt2) + ":" + Time.DateTime.Second(_dt2);
         self.transactions.push(timestamp + ": " + description);
     }
 }
@@ -1311,7 +1314,8 @@ entity TodoItem {
     expose func init(text: String) {
         self.text = text;
         self.done = false;
-        self.createdAt = now();
+        var _dtc = Time.DateTime.Now();
+        self.createdAt = Time.DateTime.Year(_dtc) + "-" + Time.DateTime.Month(_dtc) + "-" + Time.DateTime.Day(_dtc);
         self.completedAt = "";
     }
 
@@ -1326,7 +1330,8 @@ entity TodoItem {
     expose func markDone() {
         if !self.done {
             self.done = true;
-            self.completedAt = now();
+            var _dtx = Time.DateTime.Now();
+            self.completedAt = Time.DateTime.Year(_dtx) + "-" + Time.DateTime.Month(_dtx) + "-" + Time.DateTime.Day(_dtx);
         }
     }
 

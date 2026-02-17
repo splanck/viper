@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-10-24
+last-updated: 2026-02-17
 ---
 
 # OOP Semantics (Milestone B)
@@ -11,8 +11,8 @@ Milestone B.
 
 See also:
 
-- Grammar: `docs/grammar.md` (surface syntax and `BASE.M(...)`).
-- ABI: `docs/abi/object-layout.md` (object header, vtable, call lowering).
+- Grammar: `grammar.md` (surface syntax and `BASE.M(...)`).
+- ABI: `abi/object-layout.md` (object header, vtable, call lowering).
 
 ## Inheritance model
 
@@ -52,8 +52,8 @@ Constructors (`SUB NEW`) may not be marked `VIRTUAL`, `OVERRIDE`, `ABSTRACT`, or
 
 The implementation surfaces the following error conditions:
 
-- Unknown base class: `base class not found: '<Name>'`.
+- Cannot instantiate abstract class: `cannot instantiate abstract class '<Name>'`.
+- Cannot override final: `cannot override final '<Name>'`.
 - Cannot override non‑virtual: `cannot override non-virtual '<Name>'`.
 - Override signature mismatch: `override signature mismatch for '<Name>'`.
-- Cannot override final: `cannot override final '<Name>'`.
-- Cannot instantiate abstract class: `cannot instantiate abstract class '<Name>'`.
+- Unknown base class: `base class not found: '<Name>'`.

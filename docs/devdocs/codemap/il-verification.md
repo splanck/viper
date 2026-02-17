@@ -2,7 +2,7 @@
 
 IL verifier (`src/il/verify/`) enforcing spec compliance.
 
-Last updated: 2026-01-15
+Last updated: 2026-02-17
 
 ## Overview
 

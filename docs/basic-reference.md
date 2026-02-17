@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-01-15
+last-updated: 2026-02-17
 ---
 
 # Viper BASIC — Reference
@@ -231,13 +231,15 @@ instance) is passed as the first argument when lowering to the runtime.
 20 LET s = "hello"
 30 PRINT s.Length              ' prints 5
 40 PRINT s.Substring(1, 3)     ' zero-based start, length → "ell"
+45 PRINT s.Mid(1)              ' suffix from index 1 → "ello"
 50 LET s2 = NEW Viper.String("abc")  ' optional: requires ctor helper
 ```
 
 Lowering equivalence (receiver as first argument):
 
 - `s.Length` → `Viper.String.get_Length(s)`
-- `s.Substring(i, j)` → `Viper.String.Substring(s, i, j)`
+- `s.Substring(i, n)` → `Viper.String.Substring(s, i, n)`
+- `s.Mid(i)` → `Viper.String.Mid(s, i)` — suffix from position i (no length)
 - `NEW Viper.String(x)` → `Viper.String.FromStr(x)` (when available)
 
 Null and bounds:
@@ -263,7 +265,8 @@ Properties:
 Methods:
 
 - `Substring(i64 start, i64 length) -> string` → `Viper.String.Substring(string, i64, i64)`
-- `Concat(string other) -> string` → `Viper.String.ConcatSelf(string, string)`
+- `Mid(i64 start) -> string` → `Viper.String.Mid(string, i64)` — suffix from start (no length)
+- `Concat(string other) -> string` → `Viper.String.Concat(string, string)`
 
 Constructor helper (optional):
 
@@ -500,13 +503,21 @@ Resumes execution after an error; forms: RESUME, RESUME NEXT, RESUME 0.
 
 ### RETURN
 
-Returns from a FUNCTION to its caller.
+Returns from a FUNCTION to its caller, or from a GOSUB subroutine to its call site.
 
 ```basic
 10 FUNCTION F(N)
 20   IF N < 0 THEN RETURN -1
 30   RETURN N * 2
 40 END FUNCTION
+```
+
+```basic
+10 GOSUB 100
+20 PRINT "back"
+30 END
+100 PRINT "in subroutine"
+110 RETURN   ' RETURN with no value in GOSUB context
 ```
 
 ### SEEK
@@ -586,37 +597,44 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 
 | Name    | Args | Returns |
 |---------|------|---------|
-| ABS     | 1    | Depends |
+| ABS     | 1    | Numeric |
 | ASC     | 1    | Integer |
+| ATN     | 1    | Float   |
 | CDBL    | 1    | Float   |
-| CEIL    | 1    | Depends |
+| CEIL    | 1    | Numeric |
 | CHR$    | 1    | String  |
 | CINT    | 1    | Integer |
 | CLNG    | 1    | Integer |
-| COS     | 1    | Depends |
+| COS     | 1    | Float   |
 | CSNG    | 1    | Float   |
 | EOF     | 1    | Integer |
-| FIX     | 1    | Depends |
-| FLOOR   | 1    | Depends |
+| ERR     | 0    | Integer |
+| EXP     | 1    | Float   |
+| FIX     | 1    | Numeric |
+| FLOOR   | 1    | Numeric |
 | GETKEY$ | 0    | String  |
 | INKEY$  | 0    | String  |
 | INSTR   | 2–3  | Integer |
-| INT     | 1    | Depends |
+| INT     | 1    | Numeric |
 | LCASE$  | 1    | String  |
 | LEFT$   | 2    | String  |
 | LEN     | 1    | Integer |
 | LOC     | 1    | Integer |
 | LOF     | 1    | Integer |
+| LOG     | 1    | Float   |
 | LTRIM$  | 1    | String  |
 | MID$    | 2–3  | String  |
-| POW     | 2    | Depends |
+| POW     | 2    | Numeric |
 | RIGHT$  | 2    | String  |
-| RND     | 0    | Depends |
-| ROUND   | 1–2  | Depends |
+| RND     | 0    | Float   |
+| ROUND   | 1–2  | Numeric |
 | RTRIM$  | 1    | String  |
-| SIN     | 1    | Depends |
-| SQR     | 1    | Depends |
+| SGN     | 1    | Integer |
+| SIN     | 1    | Float   |
+| SQR     | 1    | Float   |
 | STR$    | 1    | String  |
+| TAN     | 1    | Float   |
+| TIMER   | 0    | Float   |
 | TRIM$   | 1    | String  |
 | UCASE$  | 1    | String  |
 | VAL     | 1    | Float   |
@@ -635,6 +653,14 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 70 PRINT CEIL(2.1)       ' 3
 80 PRINT POW(2, 10)      ' 1024
 90 PRINT SIN(0), COS(0)  ' 0  1
+100 PRINT TAN(0)          ' 0
+110 PRINT ATN(1) * 4      ' 3.14159... (pi)
+120 PRINT EXP(1)          ' 2.71828... (e)
+130 PRINT LOG(2.71828)    ' ~1  (natural log)
+140 PRINT SGN(-5)         ' -1
+150 PRINT SGN(0)          ' 0
+160 PRINT TIMER           ' seconds since midnight
+170 PRINT ERR()           ' current error code (0 = none)
 ```
 
 **String**
@@ -720,7 +746,7 @@ Console I/O operations:
 - `Viper.Terminal.PrintI64(i64)->void` — Print an integer to console
 - `Viper.Terminal.PrintF64(f64)->void` — Print a floating-point number to console
 - `Viper.Terminal.PrintStr(str)->void` — Print a string to console
-- `Viper.Terminal.ReadLine()->str` — Read a line from console input
+- `Viper.Terminal.ReadLine()->str?` — Read a line from console input (returns null on EOF)
 
 #### Viper.String
 
@@ -732,7 +758,7 @@ String manipulation:
 - `Viper.String.SplitFields(str, ptr str, i64)->i64` — Split string into fields
 - `Viper.String.FromI16(i16)->str` — Convert int16 to string
 - `Viper.String.FromI32(i32)->str` — Convert int32 to string
-- `Viper.String.FromSingle(f32)->str` — Convert float to string
+- `Viper.String.FromSingle(f64)->str` — Convert float to string (formats with single precision)
 - `Viper.Text.StringBuilder.New()->ptr` — Create a new StringBuilder instance
 
 #### Viper.Convert
@@ -1087,7 +1113,7 @@ Examples:
 10 DIM s AS STRING                 ' STRING is an alias of Viper.String
 20 LET s = "hello"
 30 Viper.Terminal.PrintI64(s.Length)
-40 Viper.Terminal.PrintStr(s.Substring(2, 3))  ' index base matches MID$: 0-based start
+40 Viper.Terminal.PrintStr(s.Substring(2, 3))  ' zero-based start, length 3
 
 100 DIM sb AS Viper.Text.StringBuilder
 110 LET sb = NEW Viper.Text.StringBuilder()
@@ -1102,7 +1128,8 @@ Conventions and semantics:
 
 - Properties and methods lower to canonical externs with the receiver as arg0.
     - Examples: s.Length → call @Viper.String.Len(s);
-      s.Substring(i,n) → call @Viper.String.Mid(s,i,n);
+      s.Substring(i,n) → call @Viper.String.Substring(s,i,n);
+      s.Mid(i) → call @Viper.String.Mid(s,i);
       sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
 - STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.
 - Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.

@@ -6,8 +6,8 @@
 
 ## Contents
 
-- [Viper.Math.Bits](#vipermathbits)
 - [Viper.Math](#vipermath)
+- [Viper.Math.Bits](#vipermathbits)
 - [Viper.Math.Easing](#vipermatheasing)
 - [Viper.Math.PerlinNoise](#vipermathperlinnoise)
 - [Viper.Math.Quaternion](#vipermathquaternion)
@@ -614,7 +614,7 @@ PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50,
 
 ## Viper.Math.Quaternion
 
-> **Note:** Quaternion is registered as `Quat` in the runtime. Use `Quat.Identity()`, `Quat.FromAxisAngle()`, etc.
+> **Note:** The runtime class name is `Viper.Math.Quat`. Use `Quat.Identity()`, `Quat.FromAxisAngle()`, etc. The name `Quaternion` is used in this documentation as an alias for readability.
 
 Quaternion math for 3D rotations, avoiding gimbal lock. Quaternions represent orientations in 3D space and support
 smooth interpolation via SLERP.
@@ -624,12 +624,12 @@ smooth interpolation via SLERP.
 
 ### Static Constructors
 
-| Method                  | Signature                   | Description                                              |
-|-------------------------|-----------------------------|----------------------------------------------------------|
-| `New(w, x, y, z)`      | `obj(f64, f64, f64, f64)`   | Create quaternion from components                        |
-| `Identity()`            | `obj()`                     | Create identity quaternion (1, 0, 0, 0)                  |
-| `FromAxisAngle(ax, ay, az, angle)` | `obj(f64, f64, f64, f64)` | Create from axis-angle (angle in radians)     |
-| `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`   | Create from Euler angles (radians)                       |
+| Method                        | Signature             | Description                                              |
+|-------------------------------|-----------------------|----------------------------------------------------------|
+| `New(w, x, y, z)`             | `obj(f64,f64,f64,f64)` | Create quaternion from components                       |
+| `Identity()`                  | `obj()`               | Create identity quaternion (1, 0, 0, 0)                 |
+| `FromAxisAngle(axis, angle)`  | `obj(obj, f64)`       | Create from a Vec3 axis and angle in radians            |
+| `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`  | Create from Euler angles in radians                     |
 
 ### Properties
 
@@ -642,18 +642,21 @@ smooth interpolation via SLERP.
 
 ### Methods
 
-| Method                  | Signature            | Description                                                |
-|-------------------------|----------------------|------------------------------------------------------------|
-| `Mul(other)`            | `obj(obj)`           | Multiply (compose) two quaternion rotations                |
-| `Conjugate()`           | `obj()`              | Return conjugate (inverse for unit quaternions)            |
-| `Norm()`                | `obj()`              | Normalize to unit length                                   |
-| `Len()`                 | `f64()`              | Magnitude of the quaternion                                |
-| `LenSq()`              | `f64()`              | Squared magnitude (avoids sqrt)                            |
-| `Dot(other)`            | `f64(obj)`           | Dot product with another quaternion                        |
-| `Slerp(other, t)`       | `obj(obj, f64)`      | Spherical linear interpolation (t=0 returns self)          |
-| `RotateVec3(v)`          | `Vec3(obj)`          | Rotate a Vec3 by this quaternion                           |
-| `ToEuler()`             | `Vec3()`             | Convert to Euler angles (pitch, yaw, roll) in radians      |
-| `ToAxisAngle()`          | `obj()`              | Convert to (ax, ay, az, angle) representation              |
+| Method            | Signature       | Description                                                    |
+|-------------------|-----------------|----------------------------------------------------------------|
+| `Angle()`         | `f64()`         | Return the rotation angle in radians                           |
+| `Axis()`          | `Vec3()`        | Return the normalized rotation axis as a Vec3                  |
+| `Conjugate()`     | `obj()`         | Return conjugate (inverse for unit quaternions)                |
+| `Dot(other)`      | `f64(obj)`      | Dot product with another quaternion                            |
+| `Inverse()`       | `obj()`         | Return the inverse quaternion                                  |
+| `Len()`           | `f64()`         | Magnitude of the quaternion                                    |
+| `LenSq()`         | `f64()`         | Squared magnitude (avoids sqrt)                                |
+| `Lerp(other, t)`  | `obj(obj, f64)` | Linear interpolation between two quaternions                   |
+| `Mul(other)`      | `obj(obj)`      | Multiply (compose) two quaternion rotations                    |
+| `Norm()`          | `obj()`         | Normalize to unit length                                       |
+| `RotateVec3(v)`   | `obj(obj)`      | Rotate a Vec3 by this quaternion, returns Vec3                 |
+| `Slerp(other, t)` | `obj(obj, f64)` | Spherical linear interpolation (t=0 returns self)              |
+| `ToMat4()`        | `obj()`         | Convert to a 4x4 rotation matrix                               |
 
 ### Notes
 
@@ -661,7 +664,7 @@ smooth interpolation via SLERP.
 - `Mul` composes rotations: `a.Mul(b)` applies rotation `b` then rotation `a`.
 - `Slerp` performs smooth interpolation along the shortest arc on the unit sphere.
 - `Norm()` returns identity for zero-length quaternions.
-- Use `FromAxisAngle` for intuitive rotation specification.
+- `FromAxisAngle` takes a `Vec3` axis object and a scalar angle in radians.
 
 ### Zia Example
 
@@ -707,7 +710,8 @@ func start() {
 
 ```basic
 ' Create quaternion from axis-angle (90 degrees around Y axis)
-DIM q AS OBJECT = Viper.Math.Quaternion.FromAxisAngle(0.0, 1.0, 0.0, Viper.Math.Rad(90.0))
+DIM axis AS OBJECT = Viper.Math.Vec3.New(0.0, 1.0, 0.0)
+DIM q AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis, Viper.Math.Rad(90.0))
 
 ' Rotate a vector
 DIM v AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
@@ -716,11 +720,12 @@ PRINT "Rotated: ("; rotated.X; ", "; rotated.Y; ", "; rotated.Z; ")"
 ' Approximately (0, 0, -1) for 90-degree Y rotation
 
 ' Compose rotations
-DIM q2 AS OBJECT = Viper.Math.Quaternion.FromAxisAngle(1.0, 0.0, 0.0, Viper.Math.Rad(45.0))
+DIM axis2 AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
+DIM q2 AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis2, Viper.Math.Rad(45.0))
 DIM combined AS OBJECT = q.Mul(q2)
 
 ' Smooth interpolation between orientations
-DIM halfway AS OBJECT = Viper.Math.Quaternion.Identity().Slerp(q, 0.5)
+DIM halfway AS OBJECT = Viper.Math.Quat.Identity().Slerp(q, 0.5)
 ```
 
 ---

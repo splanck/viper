@@ -1,5 +1,7 @@
 # Viper C++ Codebase - Deep Dive Bug & Code Quality Analysis
 
+> **Historical snapshot (2025-11-15).** All CRITICAL issues (CRIT-1 through CRIT-4) have since been resolved. See `system_bugs.md` for current status.
+
 **Analysis Date**: 2025-11-15
 **Scope**: Complete C++ codebase (BASIC frontend, IL core, runtime, VM)
 **Files Analyzed**: 35+ files across all subsystems
@@ -29,136 +31,105 @@ Conducted comprehensive code quality analysis covering:
 
 ## 🔴 CRITICAL ISSUES (4)
 
-### CRIT-1: Refcount Overflow Vulnerability
+### CRIT-1: Refcount Overflow Vulnerability — FIXED
 
-**File**: `src/runtime/rt_heap.c:136-137`
+**File**: `src/runtime/rt_heap.c`
 **Severity**: CRITICAL - Security & Memory Safety
+**Status**: FIXED — overflow guard added to `rt_heap_retain`
 
-**Issue**:
+**Issue (historical)**:
 
-```c
-void rt_heap_retain(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
-    hdr->refcnt++;  // ❌ NO OVERFLOW CHECK
-}
-```
+Reference count increment lacked overflow protection. If refcount reached `SIZE_MAX` and wrapped to 0, the object
+would be prematurely freed while still in use.
 
-Reference count increment lacks overflow protection. If refcount reaches `SIZE_MAX` and wraps to 0, the object will be
-prematurely freed while still in use.
-
-**Impact**: Use-after-free vulnerability leading to:
-
-- Memory corruption
-- Exploitable security condition
-- Silent data corruption
-
-**Exploit Scenario**: Attacker creates circular data structures forcing refcount wraparound.
-
-**Fix**:
+**Fix Applied**:
 
 ```c
 void rt_heap_retain(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
-    if (hdr->refcnt >= SIZE_MAX - 1) {
-        rt_trap("refcount overflow - possible attack or leak");
+    // ...
+    if (old >= SIZE_MAX - 1) {
+        rt_trap("refcount overflow");
         return;
     }
-    hdr->refcnt++;
+    __atomic_fetch_add(&hdr->refcnt, 1, __ATOMIC_RELAXED);
 }
 ```
 
-**Priority**: IMMEDIATE - Add overflow detection before next release
+The overflow guard now traps before the increment when the count is near `SIZE_MAX`.
 
 ---
 
-### CRIT-2: Double-Free Risk in String Release
+### CRIT-2: Double-Free Risk in String Release — NOT REPRODUCED
 
-**File**: `src/runtime/rt_string_ops.c:218-219`
-**Severity**: CRITICAL - Memory Safety
+**File**: `src/runtime/rt_string_ops.c`
+**Severity**: CRITICAL (claimed) — Not reproduced; current code is safe
+**Status**: Not reproducible — current implementation guards against underflow atomically
 
-**Issue**:
+**Issue (historical)**:
+
+Alleged decrement of `literal_refs` without underflow check could cause double-free.
+
+**Current Code**:
 
 ```c
-if (s->literal_refs > 0 && --s->literal_refs == 0)
+size_t old = __atomic_load_n(&s->literal_refs, __ATOMIC_RELAXED);
+if (old == 0 || old >= SIZE_MAX)
+    return;  // Guard: skip if already zero or immortal
+size_t prev = __atomic_fetch_sub(&s->literal_refs, 1, __ATOMIC_RELEASE);
+if (prev == 1)
     free(s);
 ```
 
-Decrementing `literal_refs` without checking for underflow. If called multiple times on a string with refcount 0, causes
-double-free.
-
-**Impact**: Heap corruption, crashes, potential security exploit
-
-**Fix**:
-
-```c
-if (s->literal_refs > 0) {
-    if (--s->literal_refs == 0)
-        free(s);
-} else {
-    // Already freed or corrupted
-    rt_trap("double-free attempt on string literal");
-}
-```
+The `old == 0` check prevents underflow and double-free. Current implementation is safe.
 
 ---
 
-### CRIT-3: Missing NULL Check After realloc Failure
+### CRIT-3: Missing NULL Check After realloc Failure — FIXED
 
-**File**: `src/runtime/rt_type_registry.c:50`
+**File**: `src/runtime/rt_type_registry.c`
 **Severity**: CRITICAL - Memory Leak + Crash
+**Status**: FIXED — realloc now assigned to temporary with NULL check before storing
 
-**Issue**:
+**Issue (historical)**:
 
-```c
-*buf = realloc(*buf, (*cap) * elem_size);  // ❌ UNCHECKED
-// If realloc returns NULL:
-// - Original *buf pointer is lost (memory leak)
-// - NULL is assigned to *buf
-// - Next access crashes
-```
+`realloc` result was assigned directly to `*buf` without a NULL check. On failure, the original pointer would be
+lost and subsequent accesses would crash.
 
-**Impact**:
-
-- Memory leak of original buffer
-- NULL pointer dereference on next access
-- Data loss
-
-**Fix**:
+**Fix Applied**:
 
 ```c
-void *new_buf = realloc(*buf, (*cap) * elem_size);
+void *new_buf = realloc(*buf, new_cap * elem_size);
 if (!new_buf) {
-    // Original *buf is still valid - don't lose it!
-    rt_trap("realloc failed - out of memory");
-    return RT_ERROR_NOMEM;
+    rt_trap("rt_type_registry: realloc failed");
+    return;
 }
 *buf = new_buf;
+*cap = new_cap;
 ```
+
+Also added a size overflow guard before the multiplication.
 
 ---
 
-### CRIT-4: Null Pointer Dereference After Guard
+### CRIT-4: Null Pointer Dereference After Guard — NOT REPRODUCED
 
 **File**: `src/frontends/basic/Lower_OOP_Stmt.cpp:71-76`
 **Severity**: CRITICAL - Logic Error
+**Status**: Not reproducible — guards and control flow verified correct in current code
 
-**Issue**:
+**Issue (historical)**:
 
 ```cpp
 Function *func = ctx.function();
 BasicBlock *origin = ctx.current();
 if (!func || !origin)
-    return;  // ❌ Returns but execution can continue in caller
+    return;  // Guards execution path; caller re-derives pointer safely
 
-// Line 76 (in caller):
+// Caller re-derives after potential vector growth - safe
 std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
 ```
 
-The guard returns early, but if execution somehow continues, `func` is used unconditionally causing undefined behavior.
-
-**Impact**: Crash, memory corruption
-
-**Fix**: Add assertion after guard or restructure control flow.
+Inspection confirmed that guards are respected and the pattern is safe as implemented. See `system_bugs.md` CRIT-4.
 
 ---
 
@@ -193,35 +164,33 @@ while (new_cap < new_size) {
 
 ---
 
-### HIGH-2: Use After Move in Array Expression Parsing
+### HIGH-2: Use After Move in Array Expression Parsing — FIXED
 
-**File**: `src/frontends/basic/Parser_Expr.cpp:340-346`
+**File**: `src/frontends/basic/Parser_Expr.cpp`
 **Severity**: HIGH - Memory Safety
+**Status**: FIXED — dual-ownership UB eliminated by exclusive population of either `index` or `indices`
 
-**Issue**:
+**Issue (historical)**:
 
-```cpp
-if (indexList.size() == 1)
-{
-    arr->index = std::move(indexList[0]);  // Moves from indexList[0]
-}
-arr->indices = std::move(indexList);  // ❌ indexList[0] is now moved-from!
-```
+When exactly one index was parsed, code moved `indexList[0]` into `arr->index` and then moved the entire
+`indexList` vector (containing the now moved-from element) into `arr->indices`, causing UB on later access.
 
-The `index` field receives a move, then the entire vector (containing moved-from pointer) is moved to `indices`.
-Accessing `indices[0]` later is undefined behavior.
-
-**Impact**: Null pointer dereference, corrupted AST
-
-**Fix**: Either copy before move or avoid dual ownership:
+**Fix Applied**:
 
 ```cpp
 if (indexList.size() == 1)
 {
-    arr->index = indexList[0];  // Copy, don't move
+    arr->index = std::move(indexList[0]);
+    arr->indices.clear();  // Do NOT also populate indices with a moved-from pointer
 }
-arr->indices = std::move(indexList);
+else
+{
+    arr->indices = std::move(indexList);
+}
 ```
+
+For single-dimensional arrays only `index` is populated; `indices` is left empty. For multi-dimensional arrays
+only `indices` is populated. The two fields are now mutually exclusive.
 
 ---
 
@@ -571,15 +540,12 @@ result.push_back(const_cast<BasicBlock *>(pred));
 
 ## Recommendations by Priority
 
-### IMMEDIATE (This Week)
+### IMMEDIATE (This Week) — All Completed
 
-1. **Fix refcount overflow** (CRIT-1) - Add overflow detection in `rt_heap_retain`
-2. **Fix double-free risk** (CRIT-2) - Add underflow check in string release
-3. **Fix realloc error handling** (CRIT-3) - Check NULL before assignment
-4. **Fix use-after-move** (HIGH-2) - Avoid moving from vector element
-
-**Estimated Effort**: 4-8 hours
-**Risk**: Critical security and memory safety bugs
+1. ~~**Fix refcount overflow** (CRIT-1)~~ — FIXED in `rt_heap_retain`
+2. ~~**Fix double-free risk** (CRIT-2)~~ — Not reproduced; current code is safe
+3. ~~**Fix realloc error handling** (CRIT-3)~~ — FIXED in `rt_type_registry.c`
+4. ~~**Fix use-after-move** (HIGH-2)~~ — FIXED in `Parser_Expr.cpp`
 
 ### SHORT-TERM (Next Sprint)
 
@@ -669,8 +635,8 @@ Enable:
 
 ## Summary
 
-The codebase shows **generally good defensive programming** with extensive validation and error handling. However,
-several **critical issues** need immediate attention:
+The codebase shows **generally good defensive programming** with extensive validation and error handling. All four
+CRITICAL issues from this analysis have been resolved. Remaining work is HIGH and MODERATE severity:
 
 ✅ **Strengths**:
 
@@ -678,18 +644,18 @@ several **critical issues** need immediate attention:
 - Good use of assertions for invariants
 - Clear separation of concerns
 
-❌ **Critical Weaknesses**:
+~~❌ **Critical Weaknesses** (all resolved)~~:
 
-- Reference counting lacks overflow protection
-- Memory allocation error handling incomplete
-- Production code relies on debug assertions
-- Integer overflow risks in size calculations
+- ~~Reference counting lacks overflow protection~~ — FIXED: `rt_heap_retain` now traps on overflow (CRIT-1)
+- ~~Memory allocation error handling incomplete~~ — FIXED: `realloc` result checked before assignment (CRIT-3)
+- Production code relies on debug assertions (HIGH-10, ongoing)
+- Integer overflow risks in size calculations (HIGH-1, MOD-1, ongoing)
 
-🎯 **Priority Actions**:
+🎯 **Remaining Priority Actions**:
 
-1. Fix 4 CRITICAL memory safety bugs (1-2 days)
-2. Replace 47+ production assertions (2-3 days)
-3. Add overflow detection to allocations (1 day)
+1. ~~Fix 4 CRITICAL memory safety bugs~~ — RESOLVED (CRIT-1 through CRIT-4)
+2. Replace 47+ production assertions (HIGH-10, 2-3 days)
+3. Add overflow detection to allocations (HIGH-1, MOD-1, 1 day)
 4. Implement proper error propagation (ongoing)
 
 **Overall Assessment**: The issues found are **fixable** and represent **technical debt** rather than fundamental design

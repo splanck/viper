@@ -168,6 +168,24 @@ Constraints:
       special receiver token; lowering substitutes the current instance (`ME`) as the first argument when emitting the
       direct call.
 
+## Structured Error Handling (TRY/CATCH)
+
+### TRY ... CATCH ... END TRY
+
+Lexed keywords: `TRY`, `CATCH`, `FINALLY`, `END`.
+
+```basic
+TRY
+  ' protected statements
+CATCH [errVar]
+  ' handler (errVar is optional i64 variable holding error code)
+END TRY
+```
+
+- `CATCH` without a variable is valid; use `ERR()` inside the block to retrieve the code.
+- `FINALLY` is a reserved keyword for future use; it is not yet parsed as part of TRY blocks.
+- TRY/CATCH composes with `ON ERROR GOTO`: a TRY installs a handler on top of any active `ON ERROR` handler and pops it at `END TRY`.
+
 ## Interfaces and conformance
 
 - Declaration:

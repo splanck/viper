@@ -432,11 +432,11 @@ Binary file stream for reading and writing raw bytes with random access capabili
 
 ### Properties
 
-| Property | Type    | Description                          |
-|----------|---------|--------------------------------------|
-| `Pos`    | Integer | Current file position (read-only)    |
-| `Size`   | Integer | Total file size in bytes (read-only) |
-| `Eof`    | Boolean | True if at end of file (read-only)   |
+| Property | Type    | Description                                   |
+|----------|---------|-----------------------------------------------|
+| `Pos`    | Integer | Current file position (read-only)             |
+| `Size`   | Integer | Total file size in bytes (read-only)          |
+| `Eof`    | Boolean | True if at end of file (read-only)            |
 
 ### Methods
 
@@ -1728,31 +1728,32 @@ Unified stream abstraction providing a common interface over file and memory str
 
 - `Viper.IO.Stream.OpenFile(path, mode)` - Opens a file stream (wraps BinFile)
 - `Viper.IO.Stream.OpenMemory()` - Opens a new in-memory stream (wraps MemStream)
-- `Viper.IO.Stream.WrapFile(binFile)` - Wraps an existing BinFile object
-- `Viper.IO.Stream.WrapMemory(memStream)` - Wraps an existing MemStream object
+- `Viper.IO.Stream.OpenBytes(bytes)` - Opens an in-memory stream initialized with data from a Bytes object
+- `Viper.IO.Stream.FromBinFile(binFile)` - Wraps an existing BinFile object
+- `Viper.IO.Stream.FromMemStream(memStream)` - Wraps an existing MemStream object
 
 ### Properties
 
-| Property | Type    | Description                                  |
-|----------|---------|----------------------------------------------|
-| `Pos`    | Integer | Current stream position (read/write)         |
-| `Len`    | Integer | Current data length in bytes (read-only)     |
-| `Eof`    | Boolean | True if at end of stream (read-only)         |
-| `IsFile` | Boolean | True if backed by a file (read-only)         |
-| `IsMem`  | Boolean | True if backed by memory (read-only)         |
+| Property | Type    | Description                                               |
+|----------|---------|-----------------------------------------------------------|
+| `Type`   | Integer | Stream backing type: 0 = file, 1 = memory (read-only)    |
+| `Pos`    | Integer | Current stream position (read/write)                      |
+| `Len`    | Integer | Current data length in bytes (read-only)                  |
+| `Eof`    | Boolean | True if at end of stream (read-only)                      |
 
 ### Methods
 
 | Method              | Returns | Description                                      |
 |---------------------|---------|--------------------------------------------------|
 | `Read(count)`       | Bytes   | Read up to count bytes                           |
+| `ReadAll()`         | Bytes   | Read all remaining bytes from current position   |
 | `Write(bytes)`      | void    | Write bytes to stream                            |
 | `ReadByte()`        | Integer | Read single byte (0-255) or -1 at EOF            |
 | `WriteByte(value)`  | void    | Write single byte (0-255)                        |
-| `Seek(offset)`      | void    | Seek to absolute position                        |
-| `Skip(count)`       | void    | Skip forward count bytes                         |
 | `Flush()`           | void    | Flush buffered writes                            |
 | `Close()`           | void    | Close the stream and release resources           |
+| `AsBinFile()`       | BinFile | Get the underlying BinFile (file streams only)   |
+| `AsMemStream()`     | MemStream | Get the underlying MemStream (memory streams only) |
 | `ToBytes()`         | Bytes   | Get all data as Bytes (memory streams only)      |
 
 ### Open Modes (for OpenFile)
@@ -1766,7 +1767,7 @@ Unified stream abstraction providing a common interface over file and memory str
 
 ### Zia Example
 
-> Stream is not yet fully accessible from Zia. `OpenFile`/`OpenMemory` return untyped pointers, and `FromMemStream`/`FromBinFile` have runtime issues. Use `BinFile` or `MemStream` directly instead.
+> Stream is not yet fully accessible from Zia. `OpenFile`/`OpenMemory`/`OpenBytes` return untyped pointers, and `FromBinFile`/`FromMemStream` have runtime issues. Use `BinFile` or `MemStream` directly instead.
 
 ### BASIC Example
 
@@ -1778,8 +1779,8 @@ DIM fs AS OBJECT = Viper.IO.Stream.OpenFile("data.bin", "rw")
 DIM data AS OBJECT = Viper.Collections.Bytes.FromString("Hello, Stream!")
 fs.Write(data)
 
-' Seek back and read
-fs.Seek(0)
+' Seek back and read (set Pos property to seek)
+fs.Pos = 0
 DIM readData AS OBJECT = fs.Read(14)
 PRINT readData.ToStr()  ' Output: Hello, Stream!
 
@@ -1822,7 +1823,7 @@ fileStream.Close()
 ' Use with memory (e.g., from network)
 DIM memStream AS OBJECT = Viper.IO.Stream.OpenMemory()
 memStream.Write(networkData)
-memStream.Seek(0)
+memStream.Pos = 0
 ProcessStream(memStream)
 memStream.Close()
 ```
@@ -1832,7 +1833,7 @@ memStream.Close()
 ```basic
 ' Wrap an existing BinFile
 DIM bf AS OBJECT = Viper.IO.BinFile.Open("data.bin", "r")
-DIM wrapped AS OBJECT = Viper.IO.Stream.WrapFile(bf)
+DIM wrapped AS OBJECT = Viper.IO.Stream.FromBinFile(bf)
 
 ' Use the unified interface
 DIM data AS OBJECT = wrapped.Read(100)
@@ -1847,7 +1848,7 @@ DIM ms AS OBJECT = Viper.IO.MemStream.New()
 ms.WriteStr("test data")
 ms.Seek(0)
 
-DIM wrappedMem AS OBJECT = Viper.IO.Stream.WrapMemory(ms)
+DIM wrappedMem AS OBJECT = Viper.IO.Stream.FromMemStream(ms)
 DIM str AS STRING = wrappedMem.Read(9).ToStr()
 ```
 
@@ -1860,14 +1861,14 @@ DIM str AS STRING = wrappedMem.Read(9).ToStr()
 
 ### Stream vs BinFile vs MemStream
 
-| Feature           | Stream                  | BinFile        | MemStream           |
-|-------------------|-------------------------|----------------|---------------------|
-| Unified interface | Yes                     | No             | No                  |
-| File backing      | Via OpenFile/WrapFile   | Yes            | No                  |
-| Memory backing    | Via OpenMemory/WrapMemory | No           | Yes                 |
-| Polymorphic use   | Yes                     | No             | No                  |
-| Ownership control | Yes (wrap vs open)      | Always owns    | Always owns         |
-| Best for          | Polymorphic I/O code    | Direct file I/O| In-memory buffering |
+| Feature           | Stream                         | BinFile        | MemStream           |
+|-------------------|--------------------------------|----------------|---------------------|
+| Unified interface | Yes                            | No             | No                  |
+| File backing      | Via OpenFile/FromBinFile       | Yes            | No                  |
+| Memory backing    | Via OpenMemory/OpenBytes/FromMemStream | No     | Yes                 |
+| Polymorphic use   | Yes                            | No             | No                  |
+| Ownership control | Yes (From* vs Open*)           | Always owns    | Always owns         |
+| Best for          | Polymorphic I/O code           | Direct file I/O| In-memory buffering |
 
 Use Stream when:
 - You need code that works with both files and memory

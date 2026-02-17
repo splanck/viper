@@ -17,7 +17,7 @@ Feature counts and examples are **descriptive snapshots**, not normative require
 
 ## Tracks
 
-Viper commit as of 2024-11-24.
+Viper commit as of 2025-02. Last reviewed 2026-02.
 
 ## Conformance Language
 

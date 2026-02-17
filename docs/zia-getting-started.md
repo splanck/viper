@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-01-15
+last-updated: 2026-02-17
 ---
 
 # Zia — Getting Started
@@ -76,10 +76,11 @@ final PI = 3.14159;      // Immutable constant
 
 | Type | Description | Example |
 |------|-------------|---------|
+| `Boolean` | True or false | `true`, `false` |
 | `Integer` | 64-bit signed integer | `42`, `-17`, `0xFF` |
 | `Number` | 64-bit floating-point | `3.14`, `1e-5` |
+| `Ptr` | Raw pointer / opaque handle (for interop) | — |
 | `String` | UTF-8 string | `"hello"`, `"line\n"` |
-| `Boolean` | True or false | `true`, `false` |
 
 ### String Interpolation
 
@@ -364,12 +365,11 @@ module Game;
 
 bind Viper.Terminal;     // Import terminal functions
 bind Viper.Graphics;     // Import graphics classes
-bind Viper.Time;         // Import time functions
 
 func start() {
     Say("Hello from Zia!");           // No need for Viper.Terminal.Say()
     var canvas = new Canvas("Game", 800, 600);
-    SleepMs(16);
+    Viper.Time.SleepMs(16);           // SleepMs is under Viper.Time
 }
 ```
 
@@ -398,8 +398,10 @@ SayInt(42);             // Print integer with newline
 PrintInt(42);           // Print integer without newline
 
 // Input
-var key = GetKey();             // Wait for key press
-var keyTimeout = GetKeyTimeout(100);  // With timeout (ms)
+var line = ReadLine();          // Read a line (returns String?, null on EOF)
+var key = GetKey();             // Wait for key press (blocking)
+var keyTimeout = GetKeyTimeout(100);  // With timeout (ms), "" on timeout
+var peek = InKey();             // Non-blocking key check, "" if no key
 
 // Terminal control
 Clear();                // Clear screen
@@ -427,20 +429,18 @@ SetCursorVisible(0);    // Hide cursor
 ### Time Functions
 
 ```viper
-bind Viper.Time;
-
-SleepMs(500);        // Sleep for 500 milliseconds
+// SleepMs is available as Viper.Time.SleepMs (use fully qualified name or bind)
+Viper.Time.SleepMs(500);        // Sleep for 500 milliseconds
 ```
 
 ### Math Functions
 
 ```viper
 bind Viper.Math;
-bind Viper.Random;
 
-var abs = AbsInt(-42);     // 42
-var sqrt = Sqrt(16.0);     // 4.0
-var rand = NextInt(100);   // Random 0-99
+var abs = AbsInt(-42);                       // 42
+var sqrt = Sqrt(16.0);                       // 4.0
+var rand = Viper.Math.Random.NextInt(100);   // Random 0-99
 ```
 
 ---
@@ -453,7 +453,6 @@ Here's a complete mini-game demonstrating Zia features:
 module GuessGame;
 
 bind Viper.Terminal;
-bind Viper.Random;
 
 var secretNumber = 0;
 var guessCount = 0;
@@ -464,7 +463,7 @@ func start() {
     Say("I'm thinking of a number between 1 and 100.");
 
     // Generate random number 1-100
-    secretNumber = NextInt(100) + 1;
+    secretNumber = Viper.Math.Random.NextInt(100) + 1;
     guessCount = 0;
     gameOver = 0;
 
@@ -496,7 +495,8 @@ func getNextGuess() -> Integer {
 
 For more complete examples, see the `demos/zia/` directory:
 - `frogger/main.zia` — Full Frogger game with entities and collision detection
-- `ladders/` — Donkey Kong-style platformer with multiple entities
+- `centipede/` — Centipede arcade game with entities and game loop
+- `pacman/` — Pac-Man game demonstrating movement and collision
 
 ---
 
@@ -510,7 +510,8 @@ For more complete examples, see the `demos/zia/` directory:
 **Examples:**
 
 - `demos/zia/frogger/` — Complete Frogger game example
-- `demos/zia/ladders/` — Donkey Kong-style platformer
+- `demos/zia/centipede/` — Centipede arcade game
+- `demos/zia/pacman/` — Pac-Man game
 
 **Related Guides:**
 

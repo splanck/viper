@@ -19,17 +19,17 @@ This document outlines the implementation plan for a custom web rendering engine
 5. Reusable as the basis for a ViperDOS web browser
 
 **Non-Goals (Initially):**
-- JavaScript execution (Phase 10+)
 - Full HTML5/CSS3 compliance (progressive enhancement)
+- JavaScript execution (Phase 10+)
 - Media playback (audio/video)
 - WebGL/Canvas 2D API
 
 **Design Principles:**
-- Zero external dependencies (except C standard library)
 - Arena-based memory management for predictable performance
-- Incremental layout/paint for interactive responsiveness
 - Clean separation between parsing, layout, and rendering
+- Incremental layout/paint for interactive responsiveness
 - Testable components with clear interfaces
+- Zero external dependencies (except C standard library)
 
 ---
 
@@ -1412,17 +1412,17 @@ src/runtime/
 ## 18. References
 
 ### Specifications
-- [HTML Living Standard](https://html.spec.whatwg.org/)
 - [CSS 2.2](https://www.w3.org/TR/CSS22/)
 - [CSS Flexbox](https://www.w3.org/TR/css-flexbox-1/)
 - [DOM Living Standard](https://dom.spec.whatwg.org/)
 - [Encoding Standard](https://encoding.spec.whatwg.org/)
+- [HTML Living Standard](https://html.spec.whatwg.org/)
 - [URL Standard](https://url.spec.whatwg.org/)
 
 ### Implementations
+- [Ladybird](https://github.com/LadybirdBrowser/ladybird)
+- [litehtml](https://github.com/litehtml/litehtml)
 - [Servo](https://github.com/servo/servo)
-- [litehtml](https://github.com/nickg/litehtml)
-- [Ladybird](https://github.com/SerenityOS/serenity)
 
 ### Books
 - "Web Browser Engineering" (browser.engineering)

@@ -530,7 +530,7 @@ PRINT arr(1)
 ### Test 030: REDIM PRESERVE
 
 **File**: `test030.bas`
-**Status**: ❌ DOES NOT WORK
+**Status**: ✅ WORKS (BUG-008 resolved)
 
 ```basic
 DIM arr(5)
@@ -539,8 +539,7 @@ arr(1) = 200
 REDIM PRESERVE arr(10)
 ```
 
-**Error**: `error[B0001]: expected (, got ident`
-**Notes**: REDIM PRESERVE syntax is NOT supported (see BUG-008), but REDIM alone preserves values
+**Notes**: REDIM PRESERVE is now supported. REDIM also preserves values by default.
 
 ### Test 031: Error Handling
 
@@ -601,15 +600,14 @@ PRINT "count = "; count
 ### Test 033: CONST Declarations
 
 **File**: `test033.bas`
-**Status**: ❌ DOES NOT WORK
+**Status**: ✅ WORKS (BUG-009 resolved)
 
 ```basic
 CONST PI = 3.14159
 CONST MSG$ = "Hello"
 ```
 
-**Error**: `error[B0001]: unknown statement 'CONST'`
-**Notes**: CONST keyword is NOT supported (see BUG-009)
+**Notes**: CONST keyword is now supported. See BUG-024 for type suffix handling.
 
 ### Test 034: STATIC Variables
 
@@ -630,7 +628,7 @@ END SUB
 ### Test 035: SWAP Statement
 
 **File**: `test035.bas`
-**Status**: ❌ DOES NOT WORK
+**Status**: ✅ WORKS (BUG-011 resolved)
 
 ```basic
 x = 10
@@ -638,8 +636,7 @@ y = 20
 SWAP x, y
 ```
 
-**Error**: `error[B0001]: unknown statement 'SWAP'`
-**Notes**: SWAP statement is NOT supported (see BUG-011)
+**Notes**: SWAP statement is now supported.
 
 ### Test 036: File I/O - Basic Operations
 

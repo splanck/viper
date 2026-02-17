@@ -1366,9 +1366,9 @@ Master interfaces, and you'll write code that adapts to change instead of fighti
 
 **Exercise 16.3**: Create a simple command pattern: `Command` interface with `execute()` and `undo()`. Create `AddCommand`, `DeleteCommand`, `MoveCommand` entities. Build a simple undo system.
 
-**Exercise 16.4**: Create a `Serializable` interface with `toJson() -> string` and `fromJson(s: string)`. Implement for a simple data entity. Think about how you'd test this.
+**Exercise 16.4**: Create a `Serializable` interface with `toJson() -> String` and `fromJson(s: String)`. Implement for a simple data entity. Think about how you'd test this.
 
-**Exercise 16.5**: Create a filter system: `Filter` interface with `matches(item) -> bool`. Create `AgeFilter`, `NameFilter`, `ActiveFilter`. Write code that applies multiple filters to a list of users.
+**Exercise 16.5**: Create a filter system: `Filter` interface with `matches(item) -> Boolean`. Create `AgeFilter`, `NameFilter`, `ActiveFilter`. Write code that applies multiple filters to a list of users.
 
 **Exercise 16.6**: Create a `Logger` interface. Implement `ConsoleLogger`, `FileLogger`, and `NullLogger` (does nothing). Use dependency injection in a service that logs.
 

@@ -1,6 +1,6 @@
 # Viper Bytecode VM - Comprehensive Technical Design
 
-**Status:** IMPLEMENTED
+**Status:** IMPLEMENTED (see `src/bytecode/`)
 **Date:** January 2026
 **Version:** 2.1
 
@@ -37,18 +37,18 @@ The current Viper VM interprets a rich, compiler-oriented IL format at **~174,00
 
 ### 1.2 Solution Overview
 
-Implement a bytecode VM that:
-1. Compiles IL to compact bytecode at module load time
-2. Interprets bytecode using a stack-based evaluation model
-3. Achieves **100-500x speedup** (target: 10-50x slower than Python)
+The implemented bytecode VM (see `src/bytecode/`):
+1. Compiles IL to compact bytecode at module load time via `BytecodeCompiler`
+2. Interprets bytecode using a stack-based evaluation model in `BytecodeVM`
+3. Targets a **100-500x speedup** over the IL tree-walking VM (10-50x slower than Python)
 
 ### 1.3 Key Design Principles
 
-1. **IL Compatibility:** All valid IL programs produce identical results
-2. **Feature Parity:** Support threading, exceptions, debugging, tracing
-3. **Zero-Copy Integration:** Reuse existing runtime library unchanged
+1. **Determinism:** VM and bytecode VM outputs must match for all defined programs
+2. **Feature Parity:** Support threading, exceptions, debugging, and tracing
+3. **IL Compatibility:** All valid IL programs produce identical results
 4. **Incremental Deployment:** Optional mode, then default, then exclusive
-5. **Determinism:** VM and bytecode VM outputs must match
+5. **Zero-Copy Integration:** Reuse existing runtime library unchanged
 
 ---
 
@@ -182,10 +182,13 @@ Implement a bytecode VM that:
 | EhEntry | `eh.entry` | Handler entry marker | Yes |
 | Trap | `trap` | Raise domain trap | Yes |
 
-### 2.2 Current Performance Analysis
+### 2.2 Performance Analysis (Baseline at Design Time)
 
-| Metric | Current VM | Target Bytecode VM |
-|--------|------------|-------------------|
+These figures were measured against the IL-tree-walking VM before bytecode VM implementation. The bytecode VM
+(`src/bytecode/`) targets the right-column performance envelope.
+
+| Metric | IL tree-walking VM (baseline) | Target Bytecode VM |
+|--------|-------------------------------|-------------------|
 | Cycles/instruction | ~174,000 | ~100-500 |
 | Instruction throughput | 17K/sec | 5-30M/sec |
 | fib(20) time | 7,050ms | 15-70ms |
@@ -248,15 +251,19 @@ Implement a bytecode VM that:
 
 ### 3.4 Slot Type
 
+Actual implementation from `src/bytecode/Bytecode.hpp`:
+
 ```cpp
 union BCSlot {
-    int64_t i64;      // Integers, booleans
-    double f64;       // Floating point
-    void* ptr;        // Pointers, objects
-    rt_string str;    // String handles
+    int64_t i64; ///< Integer representation (also booleans, unsigned values)
+    double f64;  ///< IEEE-754 double-precision floating point
+    void* ptr;   ///< Pointer representation (objects, strings, memory addresses)
 };
 static_assert(sizeof(BCSlot) == 8);
 ```
+
+Note: Unlike the IL VM's `Slot`, `BCSlot` does not have a separate `rt_string` field.
+String values are carried as `void*` (pointer to the runtime string object).
 
 ---
 
@@ -455,14 +462,16 @@ static_assert(sizeof(BCSlot) == 8);
 
 ### 5.1 BytecodeModule
 
+Actual implementation from `src/bytecode/BytecodeModule.hpp`:
+
 ```cpp
 struct BytecodeModule {
     // Header
-    uint32_t magic;              // "VBC\x01"
-    uint32_t version;            // Bytecode version
-    uint32_t flags;              // Feature flags
+    uint32_t magic;   // kBytecodeModuleMagic = 0x01434256 ("VBC\x01")
+    uint32_t version; // kBytecodeVersion = 1
+    uint32_t flags;   // Feature flags (reserved)
 
-    // Constant pools
+    // Constant pools (deduplicated: same value -> same index)
     std::vector<int64_t> i64Pool;
     std::vector<double> f64Pool;
     std::vector<std::string> stringPool;
@@ -471,89 +480,90 @@ struct BytecodeModule {
     std::vector<BytecodeFunction> functions;
     std::unordered_map<std::string, uint32_t> functionIndex;
 
-    // Globals
-    std::vector<GlobalInfo> globals;
-
     // Native function references
     std::vector<NativeFuncRef> nativeFuncs;
+    std::unordered_map<std::string, uint32_t> nativeFuncIndex;
 
-    // Debug info (optional)
-    std::vector<DebugInfo> debugInfo;
+    // Globals
+    std::vector<GlobalInfo> globals;
+    std::unordered_map<std::string, uint32_t> globalIndex;
 
-    // Source mapping
-    std::vector<SourceMapEntry> sourceMap;
+    // Debug info (optional): source file paths + per-function line tables
+    std::vector<SourceFileInfo> sourceFiles;
 };
 ```
 
 ### 5.2 BytecodeFunction
 
+Actual implementation from `src/bytecode/BytecodeModule.hpp`:
+
 ```cpp
 struct BytecodeFunction {
-    std::string name;
-    uint32_t numParams;
-    uint32_t numLocals;          // Total locals (params + temps)
-    uint32_t maxStack;           // Maximum operand stack depth
-    uint32_t allocaSize;         // Maximum alloca bytes
-    std::vector<uint32_t> code;  // Bytecode instructions
+    std::string name;     // Fully qualified function name
+    uint32_t numParams;   // Number of parameters (mapped to first N locals)
+    uint32_t numLocals;   // Total local slots (params + temporaries)
+    uint32_t maxStack;    // Maximum operand stack depth
+    uint32_t allocaSize;  // Maximum alloca bytes
+    bool hasReturn;       // True if function returns a value
 
-    // Exception handling
-    std::vector<ExceptionRange> exceptionRanges;
+    std::vector<uint32_t> code;              // Bytecode instruction stream (32-bit words)
+    std::vector<ExceptionRange> exceptionRanges; // Protected regions and handler PCs
+    std::vector<SwitchTable> switchTables;   // Tables referenced by SWITCH opcodes
 
-    // Debug
-    std::vector<LocalVarInfo> localVars;
-    uint32_t sourceFileId;
+    // Debug info (optional)
+    std::vector<LocalVarInfo> localVars;  // Variable name/slot/liveness info
+    uint32_t sourceFileIdx;               // Index into BytecodeModule::sourceFiles
+    std::vector<uint32_t> lineTable;      // PC-to-source-line mapping (indexed by PC)
 };
 
 struct ExceptionRange {
-    uint32_t startPc;            // Range start (inclusive)
-    uint32_t endPc;              // Range end (exclusive)
-    uint32_t handlerPc;          // Handler entry point
+    uint32_t startPc;   // Range start (inclusive)
+    uint32_t endPc;     // Range end (exclusive)
+    uint32_t handlerPc; // Handler entry point
 };
 ```
 
 ### 5.3 BytecodeVM State
 
+The actual implementation in `src/bytecode/BytecodeVM.hpp` uses the following structures:
+
 ```cpp
+/// Call frame for a single function invocation.
 struct BCFrame {
-    const BytecodeFunction* func;
-    uint32_t pc;                 // Program counter
-    BCSlot* locals;              // Pointer into locals array
-    BCSlot* stackBase;           // Pointer to this frame's stack start
-    uint8_t* allocaPtr;          // Current alloca position
-    uint32_t ehStackDepth;       // Exception handler stack depth at entry
-
-    // Debug
-    uint32_t callSitePc;         // PC in caller
-    uint32_t callSiteLine;       // Source line in caller
+    const BytecodeFunction* func; ///< Function being executed.
+    uint32_t pc;                  ///< Program counter (index into func->code).
+    BCSlot* locals;               ///< Pointer to the first local variable slot.
+    BCSlot* stackBase;            ///< Operand stack base for this frame.
+    uint32_t ehStackDepth;        ///< Exception handler stack depth at frame entry.
+    uint32_t callSitePc;          ///< PC at the call site (for stack traces).
+    size_t allocaBase;            ///< Alloca stack position at frame entry (for cleanup).
 };
 
-struct BytecodeVM {
-    // Execution state
-    std::vector<BCSlot> valueStack;   // Unified value stack
-    std::vector<BCFrame> callStack;   // Call frames
-    BCSlot* sp;                       // Stack pointer
-    BCFrame* fp;                      // Current frame pointer
-
-    // Module
-    const BytecodeModule* module;
-
-    // Exception handling
-    std::vector<ExceptionHandler> ehStack;
-    VmError activeError;
-    ResumeState resumeState;
-
-    // Runtime integration
-    RuntimeCallContext* rtContext;
-
-    // Debug state
-    DebugCtrl* debug;
-    TraceSink* tracer;
-    uint64_t instrCount;
+/// Exception handler entry on the handler stack.
+struct BCExceptionHandler {
+    uint32_t handlerPc;   ///< PC of the handler entry point.
+    uint32_t frameIndex;  ///< Call stack frame index when registered.
+    BCSlot* stackPointer; ///< Operand stack pointer when registered.
 };
 
-struct ExceptionHandler {
-    uint32_t handlerPc;          // Handler bytecode address
-    BCFrame* frame;              // Frame that registered handler
+/// Trap kinds for runtime error classification.
+enum class TrapKind : uint8_t {
+    None = 0, Overflow, InvalidCast, DivisionByZero,
+    IndexOutOfBounds, NullPointer, StackOverflow, InvalidOpcode, RuntimeError
+};
+
+class BytecodeVM {
+    // Key limits (from Bytecode.hpp):
+    //   kMaxCallDepth = 4096   (max call stack frames)
+    //   kMaxStackSize = 1024   (max BCSlot entries per frame operand stack)
+    // ...
+    VMState state_;          ///< Ready/Running/Halted/Trapped
+    TrapKind trapKind_;      ///< Kind of most recent trap
+    std::string trapMessage_;///< Human-readable trap description
+    uint64_t instrCount_;    ///< Cumulative instruction count
+    BCFrame* fp_;            ///< Current frame pointer
+    bool runtimeBridgeEnabled_;  ///< Whether native calls use RuntimeBridge
+    bool useThreadedDispatch_;   ///< Whether computed-goto dispatch is active
 };
 ```
 
@@ -1126,24 +1136,24 @@ BCSlot BytecodeVM::step() {
 
 ## 11. Memory Management
 
+> **Design note:** The pseudocode below uses `.str` on `BCSlot` for illustration. In the
+> actual implementation (`src/bytecode/BytecodeVM.cpp`), strings are represented as `void*`
+> in `BCSlot::ptr`. String reference counting is managed via the runtime API using
+> `static_cast<rt_string>(slot.ptr)`. The `localTypes` field is not present in
+> `BytecodeFunction`; the compiler emits explicit `STR_RETAIN`/`STR_RELEASE` opcodes instead.
+
 ### 11.1 String Reference Counting
 
-Strings are retained/released at bytecode boundaries:
+Strings are retained/released at bytecode boundaries. The compiler emits explicit
+`STR_RETAIN` and `STR_RELEASE` instructions rather than tracking types per-local-slot:
 
 ```cpp
 case BC_STORE_LOCAL: {
     uint8_t idx = (instr >> 8) & 0xFF;
     BCSlot newVal = *--sp;
-
-    // If storing to a string slot, release old string first
-    // This is tracked via type info from compilation
-    if (fp->func->localTypes[idx] == Type::Str) {
-        rt_str_release_maybe(fp->locals[idx].str);
-        rt_str_retain_maybe(newVal.str);
-    }
-
     fp->locals[idx] = newVal;
     break;
+    // Compiler emits STR_RELEASE/STR_RETAIN around stores to string-typed locals
 }
 ```
 
@@ -1151,32 +1161,22 @@ case BC_STORE_LOCAL: {
 
 ```cpp
 case BC_STR_RETAIN: {
-    rt_str_retain_maybe(sp[-1].str);
+    // sp[-1].ptr holds the rt_string (as void*)
+    rt_str_retain_maybe(static_cast<rt_string>(sp[-1].ptr));
     break;
 }
 
 case BC_STR_RELEASE: {
-    rt_str_release_maybe((*--sp).str);
+    rt_str_release_maybe(static_cast<rt_string>((*--sp).ptr));
     break;
 }
 ```
 
 ### 11.3 Frame Cleanup
 
-```cpp
-bool BytecodeVM::popFrame() {
-    // Release any string locals
-    for (uint32_t i = 0; i < fp->func->numLocals; i++) {
-        if (fp->func->localTypes[i] == Type::Str) {
-            rt_str_release_maybe(fp->locals[i].str);
-        }
-    }
-
-    // Pop frame
-    callStack.pop_back();
-    // ...
-}
-```
+Frame cleanup releases any string locals tracked by the compiler via explicit opcodes.
+The `BytecodeVM` does not scan `localTypes` (which doesn't exist); instead the compiled
+bytecode contains `STR_RELEASE` instructions at scope exit points.
 
 ---
 
@@ -1215,7 +1215,8 @@ case BC_CALL_NATIVE: {
 
 ### 12.2 Fast-Path Runtime Calls
 
-Frequently-called runtime functions can have specialized bytecode:
+Frequently-called runtime functions can have specialized bytecode. Note: `BCSlot` carries
+strings as `void*` (no separate `str` field); the pattern below uses `ptr`:
 
 ```cpp
 // BC_CALL_NATIVE with inline cache for hot functions
@@ -1227,7 +1228,7 @@ case BC_CALL_NATIVE_CACHED: {
         sp->i64 = rt_timer_ms();
         sp++;
     } else if (cachedHandler == &rt_inkey_str) {
-        sp->str = rt_inkey_str();
+        sp->ptr = rt_inkey_str();  // String returned as void*
         sp++;
     } else {
         // Fall back to generic call
@@ -1246,19 +1247,19 @@ case BC_CALL_NATIVE_CACHED: {
 Phase 1 establishes the core bytecode infrastructure with basic functionality:
 
 **In Scope:**
+- Basic function calls (IL functions only)
 - Bytecode instruction format and encoding
 - BytecodeModule and BytecodeFunction data structures
 - IL-to-bytecode compiler for arithmetic and control flow
-- Switch-based interpreter dispatch loop
-- Basic function calls (IL functions only)
 - Simple test programs (fib, factorial, etc.)
+- Switch-based interpreter dispatch loop
 
 **Out of Scope for Phase 1:**
-- Runtime/native function calls
-- Exception handling
 - Debugging support
-- Threading
+- Exception handling
+- Runtime/native function calls
 - String/memory management
+- Threading
 
 ### 13.2 Deliverables
 
@@ -1266,16 +1267,13 @@ Phase 1 establishes the core bytecode infrastructure with basic functionality:
 src/bytecode/
 ├── Bytecode.hpp           # Opcode definitions, instruction encoding
 ├── BytecodeModule.hpp     # Module and function data structures
-├── BytecodeModule.cpp
 ├── BytecodeCompiler.hpp   # IL-to-bytecode compiler
 ├── BytecodeCompiler.cpp
 ├── BytecodeVM.hpp         # Interpreter state and API
-├── BytecodeVM.cpp         # Main interpreter loop
-└── tests/
-    ├── test_bytecode_encoding.cpp
-    ├── test_bytecode_compiler.cpp
-    ├── test_bytecode_vm.cpp
-    └── test_bytecode_fib.cpp
+└── BytecodeVM.cpp         # Main interpreter loop
+
+src/tests/unit/
+└── test_bytecode_vm.cpp   # Bytecode VM unit tests
 ```
 
 ### 13.3 Milestone Criteria
@@ -1305,12 +1303,12 @@ src/bytecode/
 Phase 2 adds runtime integration and basic memory management:
 
 **In Scope:**
-- Native function calls via RuntimeBridge
-- String reference counting
-- Memory load/store operations
-- Global variable access
 - Computed goto dispatch (threaded interpreter)
+- Global variable access
+- Memory load/store operations
+- Native function calls via RuntimeBridge
 - Performance optimization
+- String reference counting
 
 **Deliverables:**
 ```
@@ -1340,14 +1338,14 @@ src/bytecode/
 Phase 3 adds exception handling and debugging:
 
 **In Scope:**
-- Exception handler registration (eh.push/eh.pop)
-- Trap propagation and handler dispatch
-- Resume operations (same/next/label)
-- Error value manipulation
-- Source line tracking
 - Breakpoint support
-- Variable watches
+- Error value manipulation
+- Exception handler registration (eh.push/eh.pop)
+- Resume operations (same/next/label)
 - Single-step execution
+- Source line tracking
+- Trap propagation and handler dispatch
+- Variable watches
 
 **Deliverables:**
 ```
@@ -1377,13 +1375,13 @@ src/bytecode/
 Phase 4 adds threading and CLI integration:
 
 **In Scope:**
-- Thread spawning and joining
-- Per-thread VM instances
-- Synchronization primitives (via runtime)
-- CLI flag `--bytecode` to select execution mode
 - Benchmark suite
+- CLI flag `--bytecode` to select execution mode
 - Documentation
 - Migration plan
+- Per-thread VM instances
+- Synchronization primitives (via runtime)
+- Thread spawning and joining
 
 **Deliverables:**
 ```
@@ -1477,19 +1475,20 @@ See Section 4 for complete opcode specification.
 
 ## Appendix B: File Structure
 
+The bytecode subsystem is fully implemented at `src/bytecode/`:
+
 ```
 src/bytecode/
-├── Bytecode.hpp              # Opcode enum and encoding
-├── Bytecode.cpp              # Opcode implementation
-├── BytecodeModule.hpp        # Module data structures
-├── BytecodeCompiler.hpp      # IL → bytecode
-├── BytecodeCompiler.cpp      # Compiler implementation
-├── BytecodeVM.hpp            # VM state and API
-└── BytecodeVM.cpp            # Interpreter loop with all opcodes
+├── Bytecode.hpp              # Opcode enum, BCSlot type, kMaxCallDepth, kMaxStackSize
+├── Bytecode.cpp              # opcodeName() and opcode table helpers
+├── BytecodeCompiler.hpp      # IL → bytecode compiler API
+├── BytecodeCompiler.cpp      # Compiler implementation (SSA→locals, linearizer, code gen)
+├── BytecodeModule.hpp        # BytecodeModule and BytecodeFunction data structures
+└── BytecodeVM.hpp / .cpp     # Interpreter loop, BCFrame, exception handling, debug support
 ```
 
-Note: The implementation is consolidated into fewer files than originally planned,
-with exception handling, threading, and runtime integration built directly into BytecodeVM.cpp.
+Exception handling, runtime integration (via RuntimeBridge), threaded dispatch, and debug
+support are all implemented directly in `BytecodeVM.cpp`.
 
 ## Appendix C: Migration Path
 

@@ -3,7 +3,7 @@
 ## Version 2.0 — Verified & Updated
 
 **Status:** Ready for Implementation
-**Last Updated:** December 2024
+**Last Updated:** February 2026
 **IL Version:** v0.1
 **Target:** Viper Compiler Toolchain
 
@@ -260,7 +260,7 @@ enum class Kind {
 
 **Critical Implications:**
 
-1. **NO i8 type** — `Byte` must lower to `i16` or `i32`
+1. **NO i8 type** — `Byte` is lowered to `i32` (IL has no i8 or i16 equivalent for this use)
 2. **NO struct types** — Values must use `ptr + offset` layout
 3. **NO aggregate returns** — Multi-value returns need heap allocation
 4. **switch.i32 only** — No switch.i64 for pattern matching
@@ -376,7 +376,7 @@ Before implementing Zia, these runtime components must be created.
 
 ### 0.1 Boxing Runtime
 
-**Status:** [ ] Not Started
+**Status:** [x] Complete — `src/runtime/rt_box.c` and `src/runtime/rt_box.h` implement boxing/unboxing.
 
 Generic collections require boxing primitives to `obj` (Ptr):
 
@@ -428,7 +428,7 @@ int64_t rt_list_find_str(void* list, rt_string needle);  // Compare via rt_str_e
 
 ### 0.3 Iterator Protocol Runtime
 
-**Status:** [ ] Not Started
+**Status:** [x] Complete — `src/runtime/rt_iter.c` provides `rt_iter_new`, `rt_iter_next`, and `rt_iter_drop`.
 
 For `for (item in collection)` loops:
 
@@ -466,7 +466,7 @@ void* rt_closure_fn(void* closure);
 
 ### 0.6 Safe Weak References (Zeroing + Load Retains)
 
-**Status:** [ ] Not Started
+**Status:** [x] Complete — `rt_weak_store` and `rt_weak_load` in `src/runtime/rt_object.c` provide safe zeroing weak references backed by `src/runtime/rt_weakmap.c`.
 
 Zia v0.1 requires **safe** weak references (no dangling pointers), even under threads.
 

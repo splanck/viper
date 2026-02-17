@@ -47,16 +47,16 @@ A 2D array container optimized for tile maps, game boards, and grid-based data.
 
 ### Methods
 
-| Method                | Signature                 | Description                                        |
-|-----------------------|---------------------------|----------------------------------------------------|
-| `Get(x, y)`           | `Integer(Int, Int)`       | Get value at coordinates                           |
-| `Set(x, y, value)`    | `Void(Int, Int, Int)`     | Set value at coordinates                           |
-| `Fill(value)`         | `Void(Integer)`           | Fill entire grid with value                        |
-| `Clear()`             | `Void()`                  | Clear grid (fill with 0)                           |
-| `InBounds(x, y)`      | `Boolean(Int, Int)`       | Check if coordinates are valid                     |
-| `CopyFrom(other)`     | `Boolean(Grid2D)`         | Copy data from another grid (must match dimensions)|
-| `Count(value)`        | `Integer(Integer)`        | Count cells with specified value                   |
-| `Replace(old, new)`   | `Integer(Int, Int)`       | Replace all occurrences; returns count replaced    |
+| Method              | Signature                 | Description                                        |
+|---------------------|---------------------------|----------------------------------------------------|
+| `Clear()`           | `Void()`                  | Clear grid (fill with 0)                           |
+| `CopyFrom(other)`   | `Boolean(Grid2D)`         | Copy data from another grid (must match dimensions)|
+| `Count(value)`      | `Integer(Integer)`        | Count cells with specified value                   |
+| `Fill(value)`       | `Void(Integer)`           | Fill entire grid with value                        |
+| `Get(x, y)`         | `Integer(Int, Int)`       | Get value at coordinates                           |
+| `InBounds(x, y)`    | `Boolean(Int, Int)`       | Check if coordinates are valid                     |
+| `Replace(old, new)` | `Integer(Int, Int)`       | Replace all occurrences; returns count replaced    |
+| `Set(x, y, value)`  | `Void(Int, Int, Int)`     | Set value at coordinates                           |
 
 ### Notes
 
@@ -201,10 +201,10 @@ in discrete frames, making it ideal for deterministic game logic.
 
 | Method                   | Signature       | Description                                               |
 |--------------------------|-----------------|-----------------------------------------------------------|
+| `Reset()`                | `Void()`        | Reset elapsed to 0 without stopping                       |
 | `Start(frames)`          | `Void(Integer)` | Start a one-shot countdown for specified frames           |
 | `StartRepeating(frames)` | `Void(Integer)` | Start a repeating timer that auto-restarts                |
 | `Stop()`                 | `Void()`        | Pause the timer, preserving elapsed time                  |
-| `Reset()`                | `Void()`        | Reset elapsed to 0 without stopping                       |
 | `Update()`               | `Boolean()`     | Advance timer by one frame; returns true if just expired  |
 
 ### Notes
@@ -366,15 +366,15 @@ A finite state machine for managing game/application states like menus, gameplay
 
 ### Methods
 
-| Method              | Signature          | Description                                    |
-|---------------------|--------------------|------------------------------------------------|
-| `AddState(id)`      | `Boolean(Integer)` | Register a state ID; returns false if exists   |
-| `SetInitial(id)`    | `Boolean(Integer)` | Set starting state before first update         |
-| `Transition(id)`    | `Boolean(Integer)` | Transition to a new state                      |
-| `IsState(id)`       | `Boolean(Integer)` | Check if currently in specified state          |
-| `HasState(id)`      | `Boolean(Integer)` | Check if state ID is registered                |
-| `Update()`          | `Void()`           | Increment frame counter (call once per frame)  |
-| `ClearFlags()`      | `Void()`           | Clear JustEntered/JustExited flags             |
+| Method           | Signature          | Description                                    |
+|------------------|--------------------|------------------------------------------------|
+| `AddState(id)`   | `Boolean(Integer)` | Register a state ID; returns false if exists   |
+| `ClearFlags()`   | `Void()`           | Clear JustEntered/JustExited flags             |
+| `HasState(id)`   | `Boolean(Integer)` | Check if state ID is registered                |
+| `IsState(id)`    | `Boolean(Integer)` | Check if currently in specified state          |
+| `SetInitial(id)` | `Boolean(Integer)` | Set starting state before first update         |
+| `Transition(id)` | `Boolean(Integer)` | Transition to a new state                      |
+| `Update()`       | `Void()`           | Increment frame counter (call once per frame)  |
 
 ### Notes
 
@@ -498,15 +498,15 @@ Frame-based tweening with easing functions for smooth animations. Interpolates b
 
 ### Methods
 
-| Method                            | Signature                       | Description                         |
-|-----------------------------------|---------------------------------|-------------------------------------|
-| `Start(from, to, dur, ease)`      | `Void(Double,Double,Int,Int)`   | Start tween with float values       |
-| `StartI64(from, to, dur, ease)`   | `Void(Int,Int,Int,Int)`         | Start tween with integer values     |
-| `Update()`                        | `Boolean()`                     | Advance one frame; true if finished |
-| `Stop()`                          | `Void()`                        | Stop the tween                      |
-| `Reset()`                         | `Void()`                        | Reset and restart from beginning    |
-| `Pause()`                         | `Void()`                        | Pause the tween                     |
-| `Resume()`                        | `Void()`                        | Resume a paused tween               |
+| Method                          | Signature                     | Description                         |
+|---------------------------------|-------------------------------|-------------------------------------|
+| `Pause()`                       | `Void()`                      | Pause the tween                     |
+| `Reset()`                       | `Void()`                      | Reset and restart from beginning    |
+| `Resume()`                      | `Void()`                      | Resume a paused tween               |
+| `Start(from, to, dur, ease)`    | `Void(Double,Double,Int,Int)` | Start tween with float values       |
+| `StartI64(from, to, dur, ease)` | `Void(Int,Int,Int,Int)`       | Start tween with integer values     |
+| `Stop()`                        | `Void()`                      | Stop the tween                      |
+| `Update()`                      | `Boolean()`                   | Advance one frame; true if finished |
 
 ### Static Methods
 
@@ -642,18 +642,18 @@ Manages mutually exclusive button selection, like radio buttons or tool palettes
 
 ### Methods
 
-| Method                | Signature           | Description                                    |
-|-----------------------|---------------------|------------------------------------------------|
-| `Add(id)`             | `Boolean(Integer)`  | Add button ID to group; false if exists        |
-| `Remove(id)`          | `Boolean(Integer)`  | Remove button from group                       |
-| `Has(id)`             | `Boolean(Integer)`  | Check if button ID is in group                 |
-| `Select(id)`          | `Boolean(Integer)`  | Select a button (deselects others)             |
-| `ClearSelection()`    | `Void()`            | Deselect all buttons                           |
-| `IsSelected(id)`      | `Boolean(Integer)`  | Check if specific button is selected           |
-| `ClearChangedFlag()`  | `Void()`            | Clear SelectionChanged flag                    |
-| `GetAt(index)`        | `Integer(Integer)`  | Get button ID at index (for iteration)         |
-| `SelectNext()`        | `Integer()`         | Select next button (wraps); returns new ID     |
-| `SelectPrev()`        | `Integer()`         | Select previous button (wraps); returns new ID |
+| Method               | Signature           | Description                                    |
+|----------------------|---------------------|------------------------------------------------|
+| `Add(id)`            | `Boolean(Integer)`  | Add button ID to group; false if exists        |
+| `ClearChangedFlag()` | `Void()`            | Clear SelectionChanged flag                    |
+| `ClearSelection()`   | `Void()`            | Deselect all buttons                           |
+| `GetAt(index)`       | `Integer(Integer)`  | Get button ID at index (for iteration)         |
+| `Has(id)`            | `Boolean(Integer)`  | Check if button ID is in group                 |
+| `IsSelected(id)`     | `Boolean(Integer)`  | Check if specific button is selected           |
+| `Remove(id)`         | `Boolean(Integer)`  | Remove button from group                       |
+| `Select(id)`         | `Boolean(Integer)`  | Select a button (deselects others)             |
+| `SelectNext()`       | `Integer()`         | Select next button (wraps); returns new ID     |
+| `SelectPrev()`       | `Integer()`         | Select previous button (wraps); returns new ID |
 
 ### Zia Example
 
@@ -787,9 +787,9 @@ Smooth value interpolation for camera follow, UI animations, and other cases whe
 
 | Method              | Signature      | Description                              |
 |---------------------|----------------|------------------------------------------|
+| `Impulse(amount)`   | `Void(Double)` | Add instant displacement to current value|
 | `SetImmediate(val)` | `Void(Double)` | Set value and target immediately         |
 | `Update()`          | `Void()`       | Advance interpolation (call each frame)  |
-| `Impulse(amount)`   | `Void(Double)` | Add instant displacement to current value|
 
 ### Notes
 
@@ -869,19 +869,19 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 
 ### Methods
 
-| Method                               | Signature                  | Description                          |
-|--------------------------------------|----------------------------|--------------------------------------|
-| `SetPosition(x, y)`                  | `Void(Double,Double)`      | Set emitter position                 |
-| `SetLifetime(min, max)`              | `Void(Int,Int)`            | Set particle lifetime range (frames) |
-| `SetVelocity(minSpd,maxSpd,minAng,maxAng)` | `Void(Dbl,Dbl,Dbl,Dbl)` | Set speed and angle ranges         |
-| `SetGravity(gx, gy)`                 | `Void(Double,Double)`      | Set gravity (per frame²)             |
-| `SetSize(min, max)`                  | `Void(Double,Double)`      | Set particle size range              |
-| `Start()`                            | `Void()`                   | Begin continuous emission            |
-| `Stop()`                             | `Void()`                   | Stop emission (particles continue)   |
-| `Burst(count)`                       | `Void(Integer)`            | Emit burst of particles instantly    |
-| `Update()`                           | `Void()`                   | Update all particles (call per frame)|
-| `Clear()`                            | `Void()`                   | Remove all particles                 |
-| `Get(index, xPtr, yPtr, sizePtr, alphaPtr)` | `Boolean(Int,Ptr,Ptr,Ptr,Ptr)` | Get particle data by index    |
+| Method                                      | Signature                      | Description                          |
+|---------------------------------------------|--------------------------------|--------------------------------------|
+| `Burst(count)`                              | `Void(Integer)`                | Emit burst of particles instantly    |
+| `Clear()`                                   | `Void()`                       | Remove all particles                 |
+| `Get(index, xPtr, yPtr, sizePtr, alphaPtr)` | `Boolean(Int,Ptr,Ptr,Ptr,Ptr)` | Get particle data by index           |
+| `SetGravity(gx, gy)`                        | `Void(Double,Double)`          | Set gravity (per frame²)             |
+| `SetLifetime(min, max)`                     | `Void(Int,Int)`                | Set particle lifetime range (frames) |
+| `SetPosition(x, y)`                         | `Void(Double,Double)`          | Set emitter position                 |
+| `SetSize(min, max)`                         | `Void(Double,Double)`          | Set particle size range              |
+| `SetVelocity(minSpd,maxSpd,minAng,maxAng)`  | `Void(Dbl,Dbl,Dbl,Dbl)`        | Set speed and angle ranges           |
+| `Start()`                                   | `Void()`                       | Begin continuous emission            |
+| `Stop()`                                    | `Void()`                       | Stop emission (particles continue)   |
+| `Update()`                                  | `Void()`                       | Update all particles (call per frame)|
 
 ### Zia Example
 
@@ -972,15 +972,15 @@ Frame-based sprite animation controller for animated characters, effects, and UI
 
 ### Methods
 
-| Method                         | Signature         | Description                         |
-|--------------------------------|-------------------|-------------------------------------|
-| `Setup(start, end, duration)`  | `Void(Int,Int,Int)` | Configure frame range and timing  |
-| `Play()`                       | `Void()`          | Start/restart from beginning        |
-| `Stop()`                       | `Void()`          | Stop at current frame               |
-| `Pause()`                      | `Void()`          | Pause (can resume)                  |
-| `Resume()`                     | `Void()`          | Resume paused animation             |
-| `Reset()`                      | `Void()`          | Reset to first frame                |
-| `Update()`                     | `Boolean()`       | Advance animation; true if finished |
+| Method                        | Signature           | Description                         |
+|-------------------------------|---------------------|-------------------------------------|
+| `Pause()`                     | `Void()`            | Pause (can resume)                  |
+| `Play()`                      | `Void()`            | Start/restart from beginning        |
+| `Reset()`                     | `Void()`            | Reset to first frame                |
+| `Resume()`                    | `Void()`            | Resume paused animation             |
+| `Setup(start, end, duration)` | `Void(Int,Int,Int)` | Configure frame range and timing    |
+| `Stop()`                      | `Void()`            | Stop at current frame               |
+| `Update()`                    | `Boolean()`         | Advance animation; true if finished |
 
 ### Zia Example
 
@@ -1076,20 +1076,20 @@ Axis-aligned bounding box (AABB) for collision detection between game objects.
 
 ### Methods
 
-| Method                          | Signature                   | Description                          |
-|---------------------------------|-----------------------------|--------------------------------------|
-| `SetPosition(x, y)`             | `Void(Double,Double)`       | Set top-left position                |
-| `SetSize(w, h)`                 | `Void(Double,Double)`       | Set dimensions                       |
-| `Set(x, y, w, h)`               | `Void(Dbl,Dbl,Dbl,Dbl)`     | Set position and size                |
-| `SetCenter(cx, cy)`             | `Void(Double,Double)`       | Position by center point             |
-| `Move(dx, dy)`                  | `Void(Double,Double)`       | Move by delta                        |
-| `ContainsPoint(px, py)`         | `Boolean(Double,Double)`    | Test if point is inside              |
-| `Overlaps(other)`               | `Boolean(CollisionRect)`    | Test overlap with another rect       |
-| `OverlapsRect(x, y, w, h)`      | `Boolean(Dbl,Dbl,Dbl,Dbl)`  | Test overlap with raw coordinates    |
-| `OverlapX(other)`               | `Double(CollisionRect)`     | Get X overlap depth                  |
-| `OverlapY(other)`               | `Double(CollisionRect)`     | Get Y overlap depth                  |
-| `Expand(margin)`                | `Void(Double)`              | Grow rect on all sides               |
-| `ContainsRect(other)`           | `Boolean(CollisionRect)`    | Test if fully contains another       |
+| Method                     | Signature                   | Description                          |
+|----------------------------|-----------------------------|--------------------------------------|
+| `ContainsPoint(px, py)`    | `Boolean(Double,Double)`    | Test if point is inside              |
+| `ContainsRect(other)`      | `Boolean(CollisionRect)`    | Test if fully contains another       |
+| `Expand(margin)`           | `Void(Double)`              | Grow rect on all sides               |
+| `Move(dx, dy)`             | `Void(Double,Double)`       | Move by delta                        |
+| `OverlapX(other)`          | `Double(CollisionRect)`     | Get X overlap depth                  |
+| `OverlapY(other)`          | `Double(CollisionRect)`     | Get Y overlap depth                  |
+| `Overlaps(other)`          | `Boolean(CollisionRect)`    | Test overlap with another rect       |
+| `OverlapsRect(x, y, w, h)` | `Boolean(Dbl,Dbl,Dbl,Dbl)`  | Test overlap with raw coordinates    |
+| `Set(x, y, w, h)`          | `Void(Dbl,Dbl,Dbl,Dbl)`     | Set position and size                |
+| `SetCenter(cx, cy)`        | `Void(Double,Double)`       | Position by center point             |
+| `SetPosition(x, y)`        | `Void(Double,Double)`       | Set top-left position                |
+| `SetSize(w, h)`            | `Void(Double,Double)`       | Set dimensions                       |
 
 ### Zia Example
 
@@ -1205,13 +1205,13 @@ Efficient object pool for reusing slot indices, avoiding allocation churn for fr
 | Method               | Signature           | Description                                    |
 |----------------------|---------------------|------------------------------------------------|
 | `Acquire()`          | `Integer()`         | Get a free slot index (-1 if full)             |
-| `Release(slot)`      | `Boolean(Integer)`  | Return slot to pool; false if invalid          |
-| `IsActive(slot)`     | `Boolean(Integer)`  | Check if slot is currently acquired            |
 | `Clear()`            | `Void()`            | Release all slots                              |
 | `FirstActive()`      | `Integer()`         | Get first active slot (-1 if none)             |
-| `NextActive(after)`  | `Integer(Integer)`  | Get next active slot after index               |
-| `SetData(slot,data)` | `Boolean(Int,Int)`  | Associate user data with slot                  |
 | `GetData(slot)`      | `Integer(Integer)`  | Get user data for slot                         |
+| `IsActive(slot)`     | `Boolean(Integer)`  | Check if slot is currently acquired            |
+| `NextActive(after)`  | `Integer(Integer)`  | Get next active slot after index               |
+| `Release(slot)`      | `Boolean(Integer)`  | Return slot to pool; false if invalid          |
+| `SetData(slot,data)` | `Boolean(Int,Int)`  | Associate user data with slot                  |
 
 ### Zia Example
 
@@ -1312,16 +1312,16 @@ Screen effects manager for camera shake, color flash, and fade effects.
 
 ### Methods
 
-| Method                        | Signature                | Description                              |
-|-------------------------------|--------------------------|------------------------------------------|
-| `Update(dt)`                  | `Void(Integer)`          | Update effects (dt in milliseconds)      |
-| `Shake(intensity, dur, decay)`| `Void(Int,Int,Int)`      | Start camera shake effect                |
-| `Flash(color, duration)`      | `Void(Integer,Integer)`  | Start color flash effect                 |
-| `FadeIn(color, duration)`     | `Void(Integer,Integer)`  | Fade from color to clear                 |
-| `FadeOut(color, duration)`    | `Void(Integer,Integer)`  | Fade from clear to color                 |
-| `CancelAll()`                 | `Void()`                 | Cancel all effects                       |
-| `CancelType(type)`            | `Void(Integer)`          | Cancel effects of specific type          |
-| `IsTypeActive(type)`          | `Boolean(Integer)`       | Check if effect type is active           |
+| Method                         | Signature               | Description                              |
+|--------------------------------|-------------------------|------------------------------------------|
+| `CancelAll()`                  | `Void()`                | Cancel all effects                       |
+| `CancelType(type)`             | `Void(Integer)`         | Cancel effects of specific type          |
+| `FadeIn(color, duration)`      | `Void(Integer,Integer)` | Fade from color to clear                 |
+| `FadeOut(color, duration)`     | `Void(Integer,Integer)` | Fade from clear to color                 |
+| `Flash(color, duration)`       | `Void(Integer,Integer)` | Start color flash effect                 |
+| `IsTypeActive(type)`           | `Boolean(Integer)`      | Check if effect type is active           |
+| `Shake(intensity, dur, decay)` | `Void(Int,Int,Int)`     | Start camera shake effect                |
+| `Update(dt)`                   | `Void(Integer)`         | Update effects (dt in milliseconds)      |
 
 ### Effect Types
 
@@ -1423,14 +1423,14 @@ Path following for moving objects along predefined waypoint paths.
 
 ### Methods
 
-| Method            | Signature           | Description                          |
-|-------------------|---------------------|--------------------------------------|
-| `Clear()`         | `Void()`            | Remove all waypoints                 |
-| `AddPoint(x, y)`  | `Boolean(Int,Int)`  | Add waypoint (fixed-point coords)    |
-| `Start()`         | `Void()`            | Begin following path                 |
-| `Pause()`         | `Void()`            | Pause movement                       |
-| `Stop()`          | `Void()`            | Stop and reset to start              |
-| `Update(dt)`      | `Void(Integer)`     | Update position (dt in milliseconds) |
+| Method           | Signature           | Description                          |
+|------------------|---------------------|--------------------------------------|
+| `AddPoint(x, y)` | `Boolean(Int,Int)`  | Add waypoint (fixed-point coords)    |
+| `Clear()`        | `Void()`            | Remove all waypoints                 |
+| `Pause()`        | `Void()`            | Pause movement                       |
+| `Start()`        | `Void()`            | Begin following path                 |
+| `Stop()`         | `Void()`            | Stop and reset to start              |
+| `Update(dt)`     | `Void(Integer)`     | Update position (dt in milliseconds) |
 
 ### Path Modes
 
@@ -1533,18 +1533,18 @@ Spatial partitioning data structure for efficient collision detection and spatia
 
 ### Methods
 
-| Method                           | Signature                   | Description                              |
-|----------------------------------|-----------------------------|------------------------------------------|
-| `Clear()`                        | `Void()`                    | Remove all items                         |
-| `Insert(id, x, y, w, h)`         | `Boolean(5×Int)`            | Add item with bounds                     |
-| `Remove(id)`                     | `Boolean(Integer)`          | Remove item by ID                        |
-| `Update(id, x, y, w, h)`         | `Boolean(5×Int)`            | Update item position/size                |
-| `QueryRect(x, y, w, h)`          | `Integer(4×Int)`            | Find items in rectangle; returns count   |
-| `QueryPoint(x, y, radius)`       | `Integer(3×Int)`            | Find items near point; returns count     |
-| `GetResult(index)`               | `Integer(Integer)`          | Get item ID from query results           |
-| `GetPairs()`                     | `Integer()`                 | Get potential collision pairs; returns count |
-| `PairFirst(index)`               | `Integer(Integer)`          | Get first ID of collision pair           |
-| `PairSecond(index)`              | `Integer(Integer)`          | Get second ID of collision pair          |
+| Method                     | Signature          | Description                                      |
+|----------------------------|--------------------|--------------------------------------------------|
+| `Clear()`                  | `Void()`           | Remove all items                                 |
+| `GetPairs()`               | `Integer()`        | Get potential collision pairs; returns count     |
+| `GetResult(index)`         | `Integer(Integer)` | Get item ID from query results                   |
+| `Insert(id, x, y, w, h)`  | `Boolean(5×Int)`   | Add item with bounds                             |
+| `PairFirst(index)`         | `Integer(Integer)` | Get first ID of collision pair                   |
+| `PairSecond(index)`        | `Integer(Integer)` | Get second ID of collision pair                  |
+| `QueryPoint(x, y, radius)` | `Integer(3×Int)`   | Find items near point; returns count             |
+| `QueryRect(x, y, w, h)`   | `Integer(4×Int)`   | Find items in rectangle; returns count           |
+| `Remove(id)`               | `Boolean(Integer)` | Remove item by ID                                |
+| `Update(id, x, y, w, h)`  | `Boolean(5×Int)`   | Update item position/size                        |
 
 ### Zia Example
 
@@ -1663,12 +1663,12 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 
 ### World Methods
 
-| Method               | Signature          | Description                             |
-|----------------------|--------------------|-----------------------------------------|
-| `Step(dt)`           | `Void(Double)`     | Advance simulation by dt seconds        |
-| `Add(body)`          | `Void(Body)`       | Add a body to the world                 |
-| `Remove(body)`       | `Void(Body)`       | Remove a body from the world            |
-| `SetGravity(gx, gy)` | `Void(Double,Double)` | Change gravity vector                |
+| Method               | Signature             | Description                             |
+|----------------------|-----------------------|-----------------------------------------|
+| `Add(body)`          | `Void(Body)`          | Add a body to the world                 |
+| `Remove(body)`       | `Void(Body)`          | Remove a body from the world            |
+| `SetGravity(gx, gy)` | `Void(Double,Double)` | Change gravity vector                   |
+| `Step(dt)`           | `Void(Double)`        | Advance simulation by dt seconds        |
 
 ### Body Constructor
 
@@ -1695,12 +1695,12 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 
 ### Body Methods
 
-| Method                     | Signature              | Description                         |
-|----------------------------|------------------------|-------------------------------------|
-| `SetPos(x, y)`            | `Void(Double,Double)`  | Set body position                   |
-| `SetVel(vx, vy)`          | `Void(Double,Double)`  | Set body velocity                   |
-| `ApplyForce(fx, fy)`      | `Void(Double,Double)`  | Apply force (accumulated until step)|
-| `ApplyImpulse(ix, iy)`    | `Void(Double,Double)`  | Apply instant velocity change       |
+| Method                  | Signature             | Description                         |
+|-------------------------|-----------------------|-------------------------------------|
+| `ApplyForce(fx, fy)`    | `Void(Double,Double)` | Apply force (accumulated until step)|
+| `ApplyImpulse(ix, iy)`  | `Void(Double,Double)` | Apply instant velocity change       |
+| `SetPos(x, y)`          | `Void(Double,Double)` | Set body position                   |
+| `SetVel(vx, vy)`        | `Void(Double,Double)` | Set body velocity                   |
 
 ### Notes
 
@@ -1814,13 +1814,13 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 
 ### Methods
 
-| Method                             | Signature                      | Description                                 |
-|------------------------------------|--------------------------------|---------------------------------------------|
-| `SetRegion(name, x, y, w, h)`     | `Void(String,Int,Int,Int,Int)` | Define a named region                       |
-| `GetRegion(name)`                  | `Pixels(String)`               | Extract region as new Pixels (NULL if missing)|
-| `HasRegion(name)`                  | `Boolean(String)`              | Check if region name exists                 |
-| `RemoveRegion(name)`               | `Boolean(String)`              | Remove a region; false if not found         |
-| `RegionNames()`                    | `Seq()`                        | Get all region names as a Seq               |
+| Method                         | Signature                      | Description                                   |
+|--------------------------------|--------------------------------|-----------------------------------------------|
+| `GetRegion(name)`              | `Pixels(String)`               | Extract region as new Pixels (NULL if missing) |
+| `HasRegion(name)`              | `Boolean(String)`              | Check if region name exists                   |
+| `RegionNames()`                | `Seq()`                        | Get all region names as a Seq                 |
+| `RemoveRegion(name)`           | `Boolean(String)`              | Remove a region; false if not found           |
+| `SetRegion(name, x, y, w, h)` | `Void(String,Int,Int,Int,Int)` | Define a named region                         |
 
 ### Notes
 

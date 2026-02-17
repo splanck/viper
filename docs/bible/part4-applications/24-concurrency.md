@@ -316,7 +316,7 @@ func start() {
 
     var thread = Thread.spawn(func() {
         Terminal.Say("Worker thread running");
-        Time.sleep(1000);
+        Time.Clock.Sleep(1000);
         Terminal.Say("Worker thread done");
     });
 
@@ -594,7 +594,7 @@ var accountMutex = Mutex.create();
 
 accountMutex.synchronized(func() {
     account.balance -= 100;
-    account.lastTransaction = Time.now();  // Must update together
+    account.lastTransaction = Time.DateTime.Now();  // Must update together
 });
 ```
 
@@ -650,7 +650,7 @@ func start() {
     var producer = Thread.spawn(func() {
         for i in 0..10 {
             channel.send("Message " + i);
-            Time.sleep(100);
+            Time.Clock.Sleep(100);
         }
         channel.close();
     });
@@ -859,7 +859,7 @@ var mutex2 = Mutex.create();
 
 var t1 = Thread.spawn(func() {
     mutex1.lock();           // T1 holds mutex1
-    Time.sleep(100);         // Small delay makes deadlock likely
+    Time.Clock.Sleep(100);         // Small delay makes deadlock likely
     mutex2.lock();           // T1 wants mutex2... but T2 has it!
     // Never reaches here
     mutex2.unlock();
@@ -868,7 +868,7 @@ var t1 = Thread.spawn(func() {
 
 var t2 = Thread.spawn(func() {
     mutex2.lock();           // T2 holds mutex2
-    Time.sleep(100);
+    Time.Clock.Sleep(100);
     mutex1.lock();           // T2 wants mutex1... but T1 has it!
     // Never reaches here
     mutex1.unlock();
@@ -1130,7 +1130,7 @@ bind Viper.Terminal;
 
 func logMessage(message: String) {
     var threadId = Thread.currentId();
-    var time = Time.millis();
+    var time = Time.Clock.Ticks();
     Terminal.Say("[" + time + "] Thread " + threadId + ": " + message);
 }
 ```
@@ -1229,7 +1229,7 @@ entity ParallelProcessor {
             var done = self.completedCount.get();
             var percent = (done * 100) / self.totalCount;
             Terminal.Say("Progress: " + percent + "% (" + done + "/" + self.totalCount + ")");
-            Time.sleep(500);
+            Time.Clock.Sleep(500);
         }
 
         // Collect results

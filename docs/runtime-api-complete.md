@@ -3,8 +3,8 @@
 This document provides comprehensive documentation for all Viper runtime namespaces. It supplements the main runtime reference in `bible/appendices/d-runtime-reference.md`.
 
 **Auto-generated from:** `src/il/runtime/runtime.def`
-**Total Functions:** 2,655
-**Total Classes:** 194
+**Total Functions:** 2,902
+**Total Classes:** 197
 
 > **Note:** This document covers a subset of the runtime API. Many newer namespaces and functions
 > are not yet documented here. See `src/il/runtime/runtime.def` for the complete list.
@@ -13,29 +13,32 @@ This document provides comprehensive documentation for all Viper runtime namespa
 
 ## Table of Contents
 
-- [Viper.Bits](#viperbits) - Bitwise operations
-- [Viper.Box](#viperbox) - Value boxing/unboxing
-- [Viper.Convert](#viperconvert) - Type conversions
-- [Viper.Time.DateTime](#vipertimedatetime) - Date and time operations
-- [Viper.Diagnostics](#viperdiagnostics) - Assertions and debugging
+- [Viper.Collections](#vipercollections) - Data structures (Bytes, Seq, List, Map, etc.)
+- [Viper.Core.Box](#vipercorebox) - Value boxing/unboxing
+- [Viper.Core.Convert](#vipercoreconvert) - Type conversions
+- [Viper.Core.Diagnostics](#vipercorediagnostics) - Assertions and debugging
+- [Viper.Core.Parse](#vipercoreparse) - String parsing
 - [Viper.Exec](#viperexec) - Process execution
 - [Viper.Fmt](#viperfmt) - Number formatting
 - [Viper.IO](#viperio) - File and directory operations
 - [Viper.Log](#viperlog) - Logging utilities
 - [Viper.Machine](#vipermachine) - System information
-- [Viper.Parse](#viperparse) - String parsing
-- [Viper.Random](#viperrandom) - Random number generation
+- [Viper.Math.Bits](#vipermathbits) - Bitwise operations
+- [Viper.Math.Random](#vipermathrandom) - Random number generation
+- [Viper.Math.Vec2](#vipermathvec2) - 2D vector math
+- [Viper.Math.Vec3](#vipermathvec3) - 3D vector math
 - [Viper.Sound](#vipersound) - Audio playback
 - [Viper.String](#viperstring) - String manipulation
-- [Viper.String (Additional)](#viperstring-additional-utilities) - String utilities
 - [Viper.Text](#vipertext) - Text processing utilities
-- [Viper.Vec2](#vipervec2) - 2D vector math
-- [Viper.Vec3](#vipervec3) - 3D vector math
-- [Viper.Collections](#vipercollections) - Data structures (Bytes, Seq, List, Map, etc.)
+- [Viper.Time.DateTime](#vipertimedatetime) - Date and time operations
+- [Viper.Time.Stopwatch](#vipertimestopwatch) - High-precision timing
+
+> **Note:** The table of contents lists sections alphabetically by namespace. Sections in the document
+> body appear in the original authoring order; use the links above to navigate.
 
 ---
 
-## Viper.Bits
+## Viper.Math.Bits
 
 Bitwise operations for low-level integer manipulation. All functions work with 64-bit integers.
 
@@ -44,44 +47,44 @@ Bitwise operations for low-level integer manipulation. All functions work with 6
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `And(a, b)` | `i64(i64, i64)` | Bitwise AND of two integers |
+| `Clear(x, pos)` | `i64(i64, i64)` | Clear bit at position to 0 |
+| `Count(x)` | `i64(i64)` | Count number of set bits (popcount) |
+| `Flip(x)` | `i64(i64)` | Flip all bits (bitwise complement) |
+| `Get(x, pos)` | `i1(i64, i64)` | Get bit at position (0-63) |
+| `LeadZ(x)` | `i64(i64)` | Count leading zero bits |
+| `Not(x)` | `i64(i64)` | Bitwise NOT (one's complement) |
 | `Or(a, b)` | `i64(i64, i64)` | Bitwise OR of two integers |
-| `Xor(a, b)` | `i64(i64, i64)` | Bitwise XOR of two integers |
-| `Not(x)` | `i64(i64)` | Bitwise NOT (complement) |
-| `Shl(x, n)` | `i64(i64, i64)` | Shift left by n bits |
-| `Shr(x, n)` | `i64(i64, i64)` | Arithmetic shift right by n bits |
-| `Ushr(x, n)` | `i64(i64, i64)` | Logical (unsigned) shift right |
 | `Rotl(x, n)` | `i64(i64, i64)` | Rotate left by n bits |
 | `Rotr(x, n)` | `i64(i64, i64)` | Rotate right by n bits |
-| `Get(x, pos)` | `bool(i64, i64)` | Get bit at position (0-63) |
 | `Set(x, pos)` | `i64(i64, i64)` | Set bit at position to 1 |
-| `Clear(x, pos)` | `i64(i64, i64)` | Clear bit at position to 0 |
-| `Toggle(x, pos)` | `i64(i64, i64)` | Toggle bit at position |
-| `Flip(x)` | `i64(i64)` | Flip all bits |
+| `Shl(x, n)` | `i64(i64, i64)` | Shift left by n bits |
+| `Shr(x, n)` | `i64(i64, i64)` | Arithmetic shift right by n bits |
 | `Swap(x)` | `i64(i64)` | Byte-swap (endian conversion) |
-| `Count(x)` | `i64(i64)` | Count number of set bits (popcount) |
-| `LeadZ(x)` | `i64(i64)` | Count leading zero bits |
+| `Toggle(x, pos)` | `i64(i64, i64)` | Toggle bit at position |
 | `TrailZ(x)` | `i64(i64)` | Count trailing zero bits |
+| `Ushr(x, n)` | `i64(i64, i64)` | Logical (unsigned) shift right |
+| `Xor(a, b)` | `i64(i64, i64)` | Bitwise XOR of two integers |
 
 ### Examples
 
 ```zia
 // Bitwise operations
-var flags = Viper.Bits.Or(0x01, 0x04);  // flags = 0x05
-var masked = Viper.Bits.And(flags, 0x0F);
+var flags = Viper.Math.Bits.Or(0x01, 0x04);  // flags = 0x05
+var masked = Viper.Math.Bits.And(flags, 0x0F);
 
 // Bit manipulation
 var value = 0;
-value = Viper.Bits.Set(value, 3);    // Set bit 3: value = 8
-var isSet = Viper.Bits.Get(value, 3); // true
+value = Viper.Math.Bits.Set(value, 3);    // Set bit 3: value = 8
+var isSet = Viper.Math.Bits.Get(value, 3); // true
 
 // Counting
-var ones = Viper.Bits.Count(0xFF);   // 8 set bits
-var leading = Viper.Bits.LeadZ(0x0F); // 60 leading zeros
+var ones = Viper.Math.Bits.Count(0xFF);   // 8 set bits
+var leading = Viper.Math.Bits.LeadZ(0x0F); // 60 leading zeros
 ```
 
 ---
 
-## Viper.Box
+## Viper.Core.Box
 
 Boxing and unboxing of primitive values to/from objects. Used for storing primitives in collections.
 
@@ -89,18 +92,19 @@ Boxing and unboxing of primitive values to/from objects. Used for storing primit
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `I64(value)` | `obj(i64)` | Box an integer |
+| `EqF64(box, val)` | `i1(obj, f64)` | Compare box with float |
+| `EqI64(box, val)` | `i1(obj, i64)` | Compare box with integer |
+| `EqStr(box, val)` | `i1(obj, str)` | Compare box with string |
 | `F64(value)` | `obj(f64)` | Box a float |
 | `I1(value)` | `obj(i64)` | Box a boolean (as integer) |
+| `I64(value)` | `obj(i64)` | Box an integer |
 | `Str(value)` | `obj(str)` | Box a string |
-| `ToI64(box)` | `i64(obj)` | Unbox to integer |
 | `ToF64(box)` | `f64(obj)` | Unbox to float |
 | `ToI1(box)` | `i64(obj)` | Unbox to boolean |
+| `ToI64(box)` | `i64(obj)` | Unbox to integer |
 | `ToStr(box)` | `str(obj)` | Unbox to string |
-| `Type(box)` | `i64(obj)` | Get boxed value type |
-| `EqI64(box, val)` | `bool(obj, i64)` | Compare box with integer |
-| `EqF64(box, val)` | `bool(obj, f64)` | Compare box with float |
-| `EqStr(box, val)` | `bool(obj, str)` | Compare box with string |
+| `Type(box)` | `i64(obj)` | Get boxed value type tag |
+| `ValueType(size)` | `obj(i64)` | Allocate heap memory for a value type |
 
 ### Type Constants
 
@@ -113,19 +117,19 @@ Boxing and unboxing of primitive values to/from objects. Used for storing primit
 
 ```zia
 // Boxing values for heterogeneous collections
-var boxedInt = Viper.Box.I64(42);
-var boxedStr = Viper.Box.Str("hello");
+var boxedInt = Viper.Core.Box.I64(42);
+var boxedStr = Viper.Core.Box.Str("hello");
 
 // Type checking
-var type = Viper.Box.Type(boxedInt);  // 0 (integer)
+var type = Viper.Core.Box.Type(boxedInt);  // 0 (integer)
 
 // Unboxing
-var value = Viper.Box.ToI64(boxedInt);  // 42
+var value = Viper.Core.Box.ToI64(boxedInt);  // 42
 ```
 
 ---
 
-## Viper.Convert
+## Viper.Core.Convert
 
 Type conversion functions between strings and numeric types.
 
@@ -133,19 +137,19 @@ Type conversion functions between strings and numeric types.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
+| `NumToInt(n)` | `i64(f64)` | Convert float to integer (truncate toward zero) |
+| `ToDouble(s)` | `f64(str)` | Parse string to float |
 | `ToInt(s)` | `i64(str)` | Parse string to integer |
 | `ToInt64(s)` | `i64(str)` | Parse string to 64-bit integer |
-| `ToDouble(s)` | `f64(str)` | Parse string to float |
-| `ToString_Int(n)` | `str(i64)` | Convert integer to string |
 | `ToString_Double(n)` | `str(f64)` | Convert float to string |
-| `NumToInt(n)` | `i64(f64)` | Convert float to integer (truncate) |
+| `ToString_Int(n)` | `str(i64)` | Convert integer to string |
 
 ### Examples
 
 ```zia
-var n = Viper.Convert.ToInt("42");        // 42
-var f = Viper.Convert.ToDouble("3.14");   // 3.14
-var s = Viper.Convert.ToString_Int(100);  // "100"
+var n = Viper.Core.Convert.ToInt("42");        // 42
+var f = Viper.Core.Convert.ToDouble("3.14");   // 3.14
+var s = Viper.Core.Convert.ToString_Int(100);  // "100"
 ```
 
 ---
@@ -154,27 +158,30 @@ var s = Viper.Convert.ToString_Int(100);  // "100"
 
 Date and time operations using Unix timestamps (seconds since epoch).
 
-> **Note:** The canonical namespace is `Viper.Time.DateTime`, not `Viper.DateTime`.
-
 ### Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `Now()` | `i64()` | Current Unix timestamp (seconds) |
-| `NowMs()` | `i64()` | Current Unix timestamp (milliseconds) |
-| `Create(y,m,d,h,min,s)` | `i64(...)` | Create timestamp from components |
-| `Year(ts)` | `i64(i64)` | Extract year |
-| `Month(ts)` | `i64(i64)` | Extract month (1-12) |
-| `Day(ts)` | `i64(i64)` | Extract day (1-31) |
-| `Hour(ts)` | `i64(i64)` | Extract hour (0-23) |
-| `Minute(ts)` | `i64(i64)` | Extract minute (0-59) |
-| `Second(ts)` | `i64(i64)` | Extract second (0-59) |
-| `DayOfWeek(ts)` | `i64(i64)` | Day of week (0=Sunday, 6=Saturday) |
 | `AddDays(ts, days)` | `i64(i64, i64)` | Add days to timestamp |
 | `AddSeconds(ts, secs)` | `i64(i64, i64)` | Add seconds to timestamp |
+| `Create(y,m,d,h,min,s)` | `i64(i64,i64,i64,i64,i64,i64)` | Create timestamp from components |
+| `Day(ts)` | `i64(i64)` | Extract day (1-31) |
+| `DayOfWeek(ts)` | `i64(i64)` | Day of week (0=Sunday, 6=Saturday) |
 | `Diff(ts1, ts2)` | `i64(i64, i64)` | Difference in seconds |
-| `Format(ts, fmt)` | `str(i64, str)` | Format timestamp |
+| `Format(ts, fmt)` | `str(i64, str)` | Format timestamp using strftime specifiers |
+| `Hour(ts)` | `i64(i64)` | Extract hour (0-23) |
+| `Minute(ts)` | `i64(i64)` | Extract minute (0-59) |
+| `Month(ts)` | `i64(i64)` | Extract month (1-12) |
+| `Now()` | `i64()` | Current Unix timestamp (seconds) |
+| `NowMs()` | `i64()` | Current Unix timestamp (milliseconds) |
+| `ParseDate(s)` | `i64(str)` | Parse date string to timestamp |
+| `ParseISO(s)` | `i64(str)` | Parse ISO 8601 string to timestamp |
+| `ParseTime(s)` | `i64(str)` | Parse time string to timestamp |
+| `Second(ts)` | `i64(i64)` | Extract second (0-59) |
 | `ToISO(ts)` | `str(i64)` | Convert to ISO 8601 string |
+| `ToLocal(ts)` | `str(i64)` | Convert to local time string |
+| `TryParse(s)` | `i64(str)` | Try parse date/time string, return timestamp or -1 |
+| `Year(ts)` | `i64(i64)` | Extract year |
 
 ### Format Specifiers
 
@@ -188,70 +195,49 @@ Date and time operations using Unix timestamps (seconds since epoch).
 ### Examples
 
 ```zia
-var now = Viper.DateTime.Now();
-var year = Viper.DateTime.Year(now);
-var formatted = Viper.DateTime.Format(now, "%Y-%m-%d %H:%M:%S");
-var iso = Viper.DateTime.ToISO(now);  // "2024-01-15T10:30:00Z"
+var now = Viper.Time.DateTime.Now();
+var year = Viper.Time.DateTime.Year(now);
+var formatted = Viper.Time.DateTime.Format(now, "%Y-%m-%d %H:%M:%S");
+var iso = Viper.Time.DateTime.ToISO(now);  // "2024-01-15T10:30:00Z"
 
-var tomorrow = Viper.DateTime.AddDays(now, 1);
-var future = Viper.DateTime.Create(2025, 6, 15, 12, 0, 0);
+var tomorrow = Viper.Time.DateTime.AddDays(now, 1);
+var future = Viper.Time.DateTime.Create(2025, 6, 15, 12, 0, 0);
 ```
 
 ---
 
-## Viper.Diagnostics
+## Viper.Core.Diagnostics
 
-Assertion functions and debugging utilities.
+Assertion functions and debugging utilities. Stopwatch (timing) is in `Viper.Time.Stopwatch`.
 
-### Assertion Functions
+### Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `Assert(cond, msg)` | `void(bool, str)` | Assert condition is true |
+| `Assert(cond, msg)` | `void(i1, str)` | Assert condition is true |
 | `AssertEq(a, b, msg)` | `void(i64, i64, str)` | Assert integers equal |
-| `AssertNeq(a, b, msg)` | `void(i64, i64, str)` | Assert integers not equal |
 | `AssertEqNum(a, b, msg)` | `void(f64, f64, str)` | Assert floats equal |
 | `AssertEqStr(a, b, msg)` | `void(str, str, str)` | Assert strings equal |
-| `AssertNull(obj, msg)` | `void(obj, str)` | Assert object is null |
-| `AssertNotNull(obj, msg)` | `void(obj, str)` | Assert object is not null |
-| `AssertGt(a, b, msg)` | `void(i64, i64, str)` | Assert a > b |
-| `AssertLt(a, b, msg)` | `void(i64, i64, str)` | Assert a < b |
-| `AssertGte(a, b, msg)` | `void(i64, i64, str)` | Assert a >= b |
-| `AssertLte(a, b, msg)` | `void(i64, i64, str)` | Assert a <= b |
 | `AssertFail(msg)` | `void(str)` | Always fail with message |
-| `Trap(msg)` | `void(str)` | Trigger runtime trap |
-
-### Stopwatch Class
-
-High-precision timing for performance measurement.
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `New()` | `obj()` | Create stopped stopwatch |
-| `StartNew()` | `obj()` | Create and start stopwatch |
-| `Start()` | `void(obj)` | Start timing |
-| `Stop()` | `void(obj)` | Stop timing |
-| `Reset()` | `void(obj)` | Reset to zero |
-| `Restart()` | `void(obj)` | Reset and start |
-| `get_ElapsedMs` | `i64(obj)` | Elapsed milliseconds |
-| `get_ElapsedUs` | `i64(obj)` | Elapsed microseconds |
-| `get_ElapsedNs` | `i64(obj)` | Elapsed nanoseconds |
-| `get_IsRunning` | `bool(obj)` | Check if running |
+| `AssertGt(a, b, msg)` | `void(i64, i64, str)` | Assert a > b |
+| `AssertGte(a, b, msg)` | `void(i64, i64, str)` | Assert a >= b |
+| `AssertLt(a, b, msg)` | `void(i64, i64, str)` | Assert a < b |
+| `AssertLte(a, b, msg)` | `void(i64, i64, str)` | Assert a <= b |
+| `AssertNeq(a, b, msg)` | `void(i64, i64, str)` | Assert integers not equal |
+| `AssertNotNull(obj, msg)` | `void(obj, str)` | Assert object is not null |
+| `AssertNull(obj, msg)` | `void(obj, str)` | Assert object is null |
+| `Trap(msg)` | `void(str)` | Trigger runtime trap with message |
 
 ### Examples
 
 ```zia
 // Assertions
-Viper.Diagnostics.Assert(x > 0, "x must be positive");
-Viper.Diagnostics.AssertEq(result, expected, "result mismatch");
-Viper.Diagnostics.AssertNotNull(obj, "object is null");
+Viper.Core.Diagnostics.Assert(x > 0, "x must be positive");
+Viper.Core.Diagnostics.AssertEq(result, expected, "result mismatch");
+Viper.Core.Diagnostics.AssertNotNull(obj, "object is null");
 
-// Stopwatch
-var sw = Viper.Diagnostics.Stopwatch.StartNew();
-// ... code to measure ...
-sw.Stop();
-var elapsed = sw.get_ElapsedMs;
-Viper.Terminal.Say("Took " + elapsed + " ms");
+// Trigger a fatal trap
+Viper.Core.Diagnostics.Trap("unreachable code reached");
 ```
 
 ---
@@ -301,19 +287,35 @@ Number formatting utilities.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `Int(n)` | `str(i64)` | Format integer |
+| `Bin(n)` | `str(i64)` | Format integer as binary string (no prefix) |
+| `Bool(v)` | `str(i1)` | Format boolean as "true" or "false" |
+| `BoolYN(v)` | `str(i1)` | Format boolean as "Yes" or "No" |
+| `Currency(n, decimals, symbol)` | `str(f64, i64, str)` | Format as currency (e.g., "$1,234.56") |
+| `Hex(n)` | `str(i64)` | Format integer as lowercase hex (no prefix) |
+| `HexPad(n, width)` | `str(i64, i64)` | Format as padded hex (e.g., "00ff") |
+| `Int(n)` | `str(i64)` | Format integer as decimal string |
+| `IntGrouped(n, sep)` | `str(i64, str)` | Format with thousands separator |
+| `IntPad(n, width, pad)` | `str(i64, i64, str)` | Format with left padding |
 | `IntRadix(n, radix)` | `str(i64, i64)` | Format in base 2-36 |
-| `IntPad(n, width, pad)` | `str(i64, i64, str)` | Format with padding |
-| `Num(n)` | `str(f64)` | Format float |
-| `NumFixed(n, decimals)` | `str(f64, i64)` | Format with fixed decimals |
+| `Num(n)` | `str(f64)` | Format float with default precision |
+| `NumFixed(n, decimals)` | `str(f64, i64)` | Format with fixed decimal places |
+| `NumPct(n, decimals)` | `str(f64, i64)` | Format as percentage (e.g., "50.00%") |
+| `NumSci(n, decimals)` | `str(f64, i64)` | Format in scientific notation |
+| `Oct(n)` | `str(i64)` | Format integer as octal string (no prefix) |
+| `Ordinal(n)` | `str(i64)` | Format as ordinal (e.g., "1st", "2nd") |
+| `Size(n)` | `str(i64)` | Format byte count as human-readable size |
+| `ToWords(n)` | `str(i64)` | Convert integer to English words |
 
 ### Examples
 
 ```zia
-var hex = Viper.Fmt.IntRadix(255, 16);     // "ff"
-var bin = Viper.Fmt.IntRadix(10, 2);       // "1010"
-var padded = Viper.Fmt.IntPad(42, 5, "0"); // "00042"
+var hex = Viper.Fmt.IntRadix(255, 16);      // "ff"
+var bin = Viper.Fmt.IntRadix(10, 2);        // "1010"
+var padded = Viper.Fmt.IntPad(42, 5, "0");  // "00042"
 var fixed = Viper.Fmt.NumFixed(3.14159, 2); // "3.14"
+var size = Viper.Fmt.Size(1536);            // "1.5 KB"
+var grp = Viper.Fmt.IntGrouped(1234567, ","); // "1,234,567"
+var words = Viper.Fmt.ToWords(42);          // "forty-two"
 ```
 
 ---
@@ -446,7 +448,7 @@ Logging utilities with configurable log levels.
 Viper.Log.set_Level(Viper.Log.get_DEBUG);
 
 // Log messages
-Viper.Log.Debug("Processing item " + Viper.Convert.ToString_Int(i));
+Viper.Log.Debug("Processing item " + Viper.Core.Convert.ToString_Int(i));
 Viper.Log.Info("Server started on port 8080");
 Viper.Log.Warn("Connection pool running low");
 Viper.Log.Error("Failed to connect to database");
@@ -477,13 +479,13 @@ System and hardware information.
 
 ```zia
 Viper.Terminal.Say("OS: " + Viper.Machine.get_OS);
-Viper.Terminal.Say("Cores: " + Viper.Convert.ToString_Int(Viper.Machine.get_Cores));
-Viper.Terminal.Say("Memory: " + Viper.Convert.ToString_Int(Viper.Machine.get_MemTotal / 1048576) + " MB");
+Viper.Terminal.Say("Cores: " + Viper.Core.Convert.ToString_Int(Viper.Machine.get_Cores));
+Viper.Terminal.Say("Memory: " + Viper.Core.Convert.ToString_Int(Viper.Machine.get_MemTotal / 1048576) + " MB");
 ```
 
 ---
 
-## Viper.Parse
+## Viper.Core.Parse
 
 Safe string parsing with error handling.
 
@@ -491,57 +493,66 @@ Safe string parsing with error handling.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `TryInt(s, out)` | `bool(str, ptr)` | Try parse integer |
-| `TryNum(s, out)` | `bool(str, ptr)` | Try parse float |
-| `TryBool(s, out)` | `bool(str, ptr)` | Try parse boolean |
-| `IntOr(s, default)` | `i64(str, i64)` | Parse or return default |
-| `NumOr(s, default)` | `f64(str, f64)` | Parse or return default |
-| `BoolOr(s, default)` | `bool(str, bool)` | Parse or return default |
-| `IsInt(s)` | `bool(str)` | Check if string is valid integer |
-| `IsNum(s)` | `bool(str)` | Check if string is valid number |
-| `IntRadix(s, radix, default)` | `i64(str, i64, i64)` | Parse in given base |
+| `BoolOr(s, default)` | `i1(str, i1)` | Parse boolean or return default |
+| `IntOr(s, default)` | `i64(str, i64)` | Parse integer or return default |
+| `IntRadix(s, radix, default)` | `i64(str, i64, i64)` | Parse integer in given base |
+| `IsInt(s)` | `i1(str)` | Check if string is a valid integer |
+| `IsNum(s)` | `i1(str)` | Check if string is a valid number |
+| `NumOr(s, default)` | `f64(str, f64)` | Parse float or return default |
+| `TryBool(s, out)` | `i1(str, ptr)` | Try parse boolean, write result to ptr |
+| `TryInt(s, out)` | `i1(str, ptr)` | Try parse integer, write result to ptr |
+| `TryNum(s, out)` | `i1(str, ptr)` | Try parse float, write result to ptr |
 
 ### Examples
 
 ```zia
 // Safe parsing with defaults
-var port = Viper.Parse.IntOr(portStr, 8080);
-var timeout = Viper.Parse.NumOr(timeoutStr, 30.0);
-var enabled = Viper.Parse.BoolOr(enabledStr, false);
+var port = Viper.Core.Parse.IntOr(portStr, 8080);
+var timeout = Viper.Core.Parse.NumOr(timeoutStr, 30.0);
+var enabled = Viper.Core.Parse.BoolOr(enabledStr, false);
 
 // Validation
-if (Viper.Parse.IsInt(input)) {
-    var value = Viper.Convert.ToInt(input);
+if (Viper.Core.Parse.IsInt(input)) {
+    var value = Viper.Core.Convert.ToInt(input);
 }
 
 // Parse hex
-var color = Viper.Parse.IntRadix("FF00FF", 16, 0);
+var color = Viper.Core.Parse.IntRadix("FF00FF", 16, 0);
 ```
 
 ---
 
-## Viper.Random
+## Viper.Math.Random
 
-Random number generation.
+Deterministic pseudo-random number generation using a 64-bit LCG (Knuth MMIX constants). Produces identical sequences across all platforms for a given seed.
 
 ### Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `Next()` | `f64()` | Random float [0.0, 1.0) |
-| `NextInt(max)` | `i64(i64)` | Random integer [0, max) |
-| `Seed(value)` | `void(i64)` | Seed the generator |
+| `Chance(p)` | `i64(f64)` | Return 1 with probability p (0.0-1.0), else 0 |
+| `Dice(sides)` | `i64(i64)` | Random integer in [1, sides] |
+| `Exponential(lambda)` | `f64(f64)` | Random value from exponential distribution |
+| `Gaussian(mean, stddev)` | `f64(f64, f64)` | Random value from normal distribution |
+| `New(seed)` | `obj(i64)` | Create a Random instance seeded with given value |
+| `Next()` | `f64()` | Random float in [0.0, 1.0) |
+| `NextInt(max)` | `i64(i64)` | Random integer in [0, max) |
+| `Range(min, max)` | `i64(i64, i64)` | Random integer in [min, max] (inclusive) |
+| `Seed(value)` | `void(i64)` | Seed the global generator |
+| `Shuffle(seq)` | `void(obj)` | Fisher-Yates shuffle a Seq in place |
 
 ### Examples
 
 ```zia
 // Seed for reproducibility
-Viper.Random.Seed(12345);
+Viper.Math.Random.Seed(12345);
 
 // Random values
-var roll = Viper.Random.NextInt(6) + 1;  // Dice roll 1-6
-var chance = Viper.Random.Next();         // 0.0 to 1.0
-var percent = Viper.Random.NextInt(100);  // 0 to 99
+var roll = Viper.Math.Random.Dice(6);           // Dice roll 1-6
+var chance = Viper.Math.Random.Next();           // 0.0 to 1.0
+var percent = Viper.Math.Random.NextInt(100);    // 0 to 99
+var range = Viper.Math.Random.Range(10, 20);     // 10 to 20
+var coin = Viper.Math.Random.Chance(0.5);        // 50% true
 ```
 
 ---
@@ -623,35 +634,35 @@ Core string manipulation functions.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get_Length(s)` | `i64(str)` | Get string length |
-| `get_IsEmpty(s)` | `bool(str)` | Check if empty |
-| `Concat(a, b)` | `str(str, str)` | Concatenate strings |
-| `Left(s, n)` | `str(str, i64)` | Get leftmost n characters |
-| `Right(s, n)` | `str(str, i64)` | Get rightmost n characters |
-| `Mid(s, start)` | `str(str, i64)` | Substring from position |
-| `MidLen(s, start, len)` | `str(str, i64, i64)` | Substring with length |
-| `Substring(s, start, end)` | `str(str, i64, i64)` | Substring by indices |
-| `IndexOf(s, sub)` | `i64(str, str)` | Find substring (-1 if not found) |
+| `Asc(s)` | `i64(str)` | Code point of first character |
+| `Chr(code)` | `str(i64)` | Character from Unicode code point |
+| `Cmp(a, b)` | `i64(str, str)` | Lexicographic compare (-1, 0, 1) |
+| `CmpNoCase(a, b)` | `i64(str, str)` | Case-insensitive compare (-1, 0, 1) |
+| `Concat(a, b)` | `str(str, str)` | Concatenate two strings |
+| `Count(s, sub)` | `i64(str, str)` | Count non-overlapping occurrences of sub |
+| `EndsWith(s, suffix)` | `i1(str, str)` | Check if string ends with suffix |
+| `Flip(s)` | `str(str)` | Reverse string |
+| `get_IsEmpty(s)` | `i1(str)` | Check if empty (length == 0) |
+| `get_Length(s)` | `i64(str)` | Get string length in characters |
+| `Has(s, sub)` | `i1(str, str)` | Check if string contains substring |
+| `IndexOf(s, sub)` | `i64(str, str)` | Find first occurrence (-1 if not found) |
 | `IndexOfFrom(s, start, sub)` | `i64(str, i64, str)` | Find from position |
-| `Has(s, sub)` | `bool(str, str)` | Check if contains |
-| `StartsWith(s, prefix)` | `bool(str, str)` | Check prefix |
-| `EndsWith(s, suffix)` | `bool(str, str)` | Check suffix |
-| `Count(s, sub)` | `i64(str, str)` | Count occurrences |
+| `Left(s, n)` | `str(str, i64)` | Get leftmost n characters |
+| `Mid(s, start)` | `str(str, i64)` | Substring from position to end |
+| `MidLen(s, start, len)` | `str(str, i64, i64)` | Substring with explicit length |
+| `PadLeft(s, width, pad)` | `str(str, i64, str)` | Left-pad to minimum width |
+| `PadRight(s, width, pad)` | `str(str, i64, str)` | Right-pad to minimum width |
+| `Repeat(s, n)` | `str(str, i64)` | Repeat string n times |
+| `Replace(s, old, new)` | `str(str, str, str)` | Replace all occurrences of old with new |
+| `Right(s, n)` | `str(str, i64)` | Get rightmost n characters |
+| `Split(s, delim)` | `obj(str, str)` | Split into Seq of strings |
+| `StartsWith(s, prefix)` | `i1(str, str)` | Check if string starts with prefix |
+| `Substring(s, start, end)` | `str(str, i64, i64)` | Substring by start/end indices |
 | `ToLower(s)` | `str(str)` | Convert to lowercase |
 | `ToUpper(s)` | `str(str)` | Convert to uppercase |
-| `Trim(s)` | `str(str)` | Trim whitespace both ends |
-| `TrimStart(s)` | `str(str)` | Trim leading whitespace |
+| `Trim(s)` | `str(str)` | Trim whitespace from both ends |
 | `TrimEnd(s)` | `str(str)` | Trim trailing whitespace |
-| `PadLeft(s, width, pad)` | `str(str, i64, str)` | Left-pad to width |
-| `PadRight(s, width, pad)` | `str(str, i64, str)` | Right-pad to width |
-| `Replace(s, old, new)` | `str(str, str, str)` | Replace all occurrences |
-| `Split(s, delim)` | `obj(str, str)` | Split into list |
-| `Repeat(s, n)` | `str(str, i64)` | Repeat string n times |
-| `Flip(s)` | `str(str)` | Reverse string |
-| `Chr(code)` | `str(i64)` | Character from code point |
-| `Asc(s)` | `i64(str)` | Code point of first char |
-| `Cmp(a, b)` | `i64(str, str)` | Compare (-1, 0, 1) |
-| `CmpNoCase(a, b)` | `i64(str, str)` | Case-insensitive compare |
+| `TrimStart(s)` | `str(str)` | Trim leading whitespace |
 
 ### Examples
 
@@ -671,23 +682,21 @@ var repeated = Viper.String.Repeat("-", 20);      // "--------------------"
 
 ## Viper.String (Additional Utilities)
 
-Additional string utilities (conversion focus).
-
-> **Note:** These functions are part of the `Viper.String` namespace, not a separate `Viper.Strings`.
+Additional string utilities and conversion functions. All are part of the `Viper.String` namespace.
 
 ### Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `FromSingle(n)` | `str(f64)` | Float (single precision format) |
-| `FromI16(n)` | `str(i16)` | 16-bit int to string |
-| `FromI32(n)` | `str(i32)` | 32-bit int to string |
-| `FromStr(s)` | `str(str)` | Copy string |
-| `Equals(a, b)` | `bool(str, str)` | String equality |
-| `Join(sep, list)` | `str(str, obj)` | Join list with separator |
-| `SplitFields(s, arr, max)` | `i64(str, ptr, i64)` | Split on whitespace |
+| `Equals(a, b)` | `i1(str, str)` | String equality check |
+| `FromI16(n)` | `str(i16)` | 16-bit integer to string |
+| `FromI32(n)` | `str(i32)` | 32-bit integer to string |
+| `FromSingle(n)` | `str(f64)` | Format float using single-precision display format |
+| `FromStr(s)` | `str(str)` | Clone/copy string |
+| `Join(sep, list)` | `str(str, obj)` | Join a Seq of strings with separator |
+| `SplitFields(s, arr, max)` | `i64(str, ptr, i64)` | Split on whitespace fields into raw array |
 
-> **Note**: For integer/double to string conversion, use `Viper.Convert.ToString_Int` and `Viper.Convert.ToString_Double`.
+> **Note**: For integer/double to string conversion, use `Viper.Core.Convert.ToString_Int` and `Viper.Core.Convert.ToString_Double`.
 
 ---
 
@@ -795,14 +804,14 @@ var cleaned = Viper.Text.Pattern.Replace(html, "<[^>]+>", "");
 // Templating
 var template = "Hello, {{name}}! You have {{count}} messages.";
 var vars = Viper.Collections.Map.New();
-Viper.Collections.Map.Put(vars, "name", "Alice");
-Viper.Collections.Map.Put(vars, "count", "5");
+Viper.Collections.Map.SetStr(vars, "name", "Alice");
+Viper.Collections.Map.SetStr(vars, "count", "5");
 var message = Viper.Text.Template.Render(template, vars);
 ```
 
 ---
 
-## Viper.Vec2
+## Viper.Math.Vec2
 
 2D vector mathematics for games and graphics.
 
@@ -810,50 +819,50 @@ var message = Viper.Text.Template.Render(template, vars);
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `New(x, y)` | `obj(f64, f64)` | Create vector |
-| `Zero()` | `obj()` | Zero vector (0, 0) |
-| `One()` | `obj()` | Unit vector (1, 1) |
+| `Add(a, b)` | `obj(obj, obj)` | Vector addition |
+| `Angle(v)` | `f64(obj)` | Angle in radians |
+| `Cross(a, b)` | `f64(obj, obj)` | Cross product (2D: scalar result) |
+| `Dist(a, b)` | `f64(obj, obj)` | Distance between vectors |
+| `Div(v, scalar)` | `obj(obj, f64)` | Scalar division |
+| `Dot(a, b)` | `f64(obj, obj)` | Dot product |
 | `get_X(v)` | `f64(obj)` | Get X component |
 | `get_Y(v)` | `f64(obj)` | Get Y component |
-| `Add(a, b)` | `obj(obj, obj)` | Vector addition |
-| `Sub(a, b)` | `obj(obj, obj)` | Vector subtraction |
-| `Mul(v, scalar)` | `obj(obj, f64)` | Scalar multiplication |
-| `Div(v, scalar)` | `obj(obj, f64)` | Scalar division |
-| `Neg(v)` | `obj(obj)` | Negate vector |
-| `Dot(a, b)` | `f64(obj, obj)` | Dot product |
-| `Cross(a, b)` | `f64(obj, obj)` | Cross product (2D: scalar) |
-| `Len(v)` | `f64(obj)` | Vector length |
+| `Len(v)` | `f64(obj)` | Vector length (magnitude) |
 | `LenSq(v)` | `f64(obj)` | Length squared |
-| `Norm(v)` | `obj(obj)` | Normalize to unit length |
-| `Dist(a, b)` | `f64(obj, obj)` | Distance between vectors |
 | `Lerp(a, b, t)` | `obj(obj, obj, f64)` | Linear interpolation |
-| `Angle(v)` | `f64(obj)` | Angle in radians |
+| `Mul(v, scalar)` | `obj(obj, f64)` | Scalar multiplication |
+| `Neg(v)` | `obj(obj)` | Negate vector |
+| `New(x, y)` | `obj(f64, f64)` | Create vector |
+| `Norm(v)` | `obj(obj)` | Normalize to unit length |
+| `One()` | `obj()` | Unit vector (1, 1) |
 | `Rotate(v, angle)` | `obj(obj, f64)` | Rotate by angle (radians) |
+| `Sub(a, b)` | `obj(obj, obj)` | Vector subtraction |
+| `Zero()` | `obj()` | Zero vector (0, 0) |
 
 ### Examples
 
 ```zia
-var pos = Viper.Vec2.New(100.0, 200.0);
-var vel = Viper.Vec2.New(5.0, -3.0);
+var pos = Viper.Math.Vec2.New(100.0, 200.0);
+var vel = Viper.Math.Vec2.New(5.0, -3.0);
 
 // Movement
-pos = Viper.Vec2.Add(pos, vel);
+pos = Viper.Math.Vec2.Add(pos, vel);
 
 // Distance calculation
-var target = Viper.Vec2.New(300.0, 400.0);
-var dist = Viper.Vec2.Dist(pos, target);
+var target = Viper.Math.Vec2.New(300.0, 400.0);
+var dist = Viper.Math.Vec2.Dist(pos, target);
 
 // Normalize velocity
-var dir = Viper.Vec2.Norm(vel);
-var speed = Viper.Vec2.Len(vel);
+var dir = Viper.Math.Vec2.Norm(vel);
+var speed = Viper.Math.Vec2.Len(vel);
 
 // Interpolation
-var midpoint = Viper.Vec2.Lerp(pos, target, 0.5);
+var midpoint = Viper.Math.Vec2.Lerp(pos, target, 0.5);
 ```
 
 ---
 
-## Viper.Vec3
+## Viper.Math.Vec3
 
 3D vector mathematics.
 
@@ -861,55 +870,59 @@ var midpoint = Viper.Vec2.Lerp(pos, target, 0.5);
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `New(x, y, z)` | `obj(f64, f64, f64)` | Create vector |
-| `Zero()` | `obj()` | Zero vector (0, 0, 0) |
-| `One()` | `obj()` | Unit vector (1, 1, 1) |
+| `Add(a, b)` | `obj(obj, obj)` | Vector addition |
+| `Cross(a, b)` | `obj(obj, obj)` | Cross product (3D: vector result) |
+| `Dist(a, b)` | `f64(obj, obj)` | Distance between vectors |
+| `Div(v, scalar)` | `obj(obj, f64)` | Scalar division |
+| `Dot(a, b)` | `f64(obj, obj)` | Dot product |
 | `get_X(v)` | `f64(obj)` | Get X component |
 | `get_Y(v)` | `f64(obj)` | Get Y component |
 | `get_Z(v)` | `f64(obj)` | Get Z component |
-| `Add(a, b)` | `obj(obj, obj)` | Vector addition |
-| `Sub(a, b)` | `obj(obj, obj)` | Vector subtraction |
-| `Mul(v, scalar)` | `obj(obj, f64)` | Scalar multiplication |
-| `Div(v, scalar)` | `obj(obj, f64)` | Scalar division |
-| `Neg(v)` | `obj(obj)` | Negate vector |
-| `Dot(a, b)` | `f64(obj, obj)` | Dot product |
-| `Cross(a, b)` | `obj(obj, obj)` | Cross product |
-| `Len(v)` | `f64(obj)` | Vector length |
+| `Len(v)` | `f64(obj)` | Vector length (magnitude) |
 | `LenSq(v)` | `f64(obj)` | Length squared |
-| `Norm(v)` | `obj(obj)` | Normalize to unit length |
-| `Dist(a, b)` | `f64(obj, obj)` | Distance between vectors |
 | `Lerp(a, b, t)` | `obj(obj, obj, f64)` | Linear interpolation |
+| `Mul(v, scalar)` | `obj(obj, f64)` | Scalar multiplication |
+| `Neg(v)` | `obj(obj)` | Negate vector |
+| `New(x, y, z)` | `obj(f64, f64, f64)` | Create vector |
+| `Norm(v)` | `obj(obj)` | Normalize to unit length |
+| `One()` | `obj()` | Unit vector (1, 1, 1) |
+| `Sub(a, b)` | `obj(obj, obj)` | Vector subtraction |
+| `Zero()` | `obj()` | Zero vector (0, 0, 0) |
 
 ### Examples
 
 ```zia
-var pos = Viper.Vec3.New(10.0, 20.0, 30.0);
-var forward = Viper.Vec3.New(0.0, 0.0, 1.0);
-var up = Viper.Vec3.New(0.0, 1.0, 0.0);
+var pos = Viper.Math.Vec3.New(10.0, 20.0, 30.0);
+var forward = Viper.Math.Vec3.New(0.0, 0.0, 1.0);
+var up = Viper.Math.Vec3.New(0.0, 1.0, 0.0);
 
 // Cross product for perpendicular vector
-var right = Viper.Vec3.Cross(forward, up);
+var right = Viper.Math.Vec3.Cross(forward, up);
 
 // Normalize
-var dir = Viper.Vec3.Norm(pos);
+var dir = Viper.Math.Vec3.Norm(pos);
 ```
 
 ---
 
 ## Appendix: Type Abbreviations
 
+These abbreviations appear in IL function signatures throughout this document.
+
+> **Note:** `f32` does not exist as a primitive in the IL type system (see `src/il/core/Type.hpp`).
+> BASIC `SINGLE` values are widened to `f64` during lowering. The `i8` type also does not appear
+> in the IL type enum; it is used only in C runtime return values for boolean-style results.
+
 | Abbreviation | Full Type | Description |
 |--------------|-----------|-------------|
-| `i1` | `bool` | Boolean |
-| `i8` | `byte` | 8-bit integer |
-| `i16` | `short` | 16-bit integer |
-| `i32` | `int` | 32-bit integer |
-| `i64` | `long` | 64-bit integer |
-| `f32` | `float` | 32-bit float |
-| `f64` | `double` | 64-bit float |
-| `str` | `string` | String |
-| `obj` | `object` | Object reference |
-| `ptr` | `pointer` | Raw pointer |
+| `f64` | `double` | 64-bit IEEE 754 float |
+| `i1` | `bool` | Boolean (1-bit integer) |
+| `i16` | `short` | 16-bit signed integer |
+| `i32` | `int` | 32-bit signed integer |
+| `i64` | `long` | 64-bit signed integer |
+| `obj` | `object` | Object reference (heap pointer with refcount) |
+| `ptr` | `pointer` | Raw unmanaged pointer |
+| `str` | `string` | Interned string value |
 | `void` | `unit` | No return value |
 
 ---
@@ -948,46 +961,56 @@ Dynamic sequence (array list) that can hold any object type.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `New()` | `obj()` | Create empty sequence |
-| `WithCapacity(cap)` | `obj(i64)` | Create with capacity |
-| `get_Len(seq)` | `i64(obj)` | Get length |
-| `get_Cap(seq)` | `i64(obj)` | Get capacity |
-| `get_IsEmpty(seq)` | `bool(obj)` | Check if empty |
-| `Get(seq, idx)` | `obj(obj, i64)` | Get item at index |
-| `Set(seq, idx, val)` | `void(obj, i64, obj)` | Set item at index |
-| `Push(seq, val)` | `void(obj, obj)` | Add to end |
-| `PushAll(seq, other)` | `void(obj, obj)` | Add all from other seq |
-| `Pop(seq)` | `obj(obj)` | Remove and return last |
-| `Peek(seq)` | `obj(obj)` | Get last without removing |
-| `First(seq)` | `obj(obj)` | Get first item |
-| `Last(seq)` | `obj(obj)` | Get last item |
-| `Insert(seq, idx, val)` | `void(obj, i64, obj)` | Insert at index |
-| `Remove(seq, idx)` | `obj(obj, i64)` | Remove at index |
 | `Clear(seq)` | `void(obj)` | Clear all items |
 | `Clone(seq)` | `obj(obj)` | Deep copy |
-| `Slice(seq, start, end)` | `obj(obj, i64, i64)` | Extract slice |
 | `Find(seq, val)` | `i64(obj, obj)` | Find index (-1 if not found) |
-| `Has(seq, val)` | `bool(obj, obj)` | Check if contains |
+| `First(seq)` | `obj(obj)` | Get first item |
+| `get_Cap(seq)` | `i64(obj)` | Get capacity |
+| `get_IsEmpty(seq)` | `i1(obj)` | Check if empty |
+| `get_Len(seq)` | `i64(obj)` | Get length |
+| `Get(seq, idx)` | `obj(obj, i64)` | Get item at index |
+| `Has(seq, val)` | `i1(obj, obj)` | Check if contains |
+| `Insert(seq, idx, val)` | `void(obj, i64, obj)` | Insert at index |
+| `Last(seq)` | `obj(obj)` | Get last item |
+| `New()` | `obj()` | Create empty sequence |
+| `Peek(seq)` | `obj(obj)` | Get last without removing |
+| `Pop(seq)` | `obj(obj)` | Remove and return last |
+| `Push(seq, val)` | `void(obj, obj)` | Add to end |
+| `PushAll(seq, other)` | `void(obj, obj)` | Add all from another sequence |
+| `Remove(seq, idx)` | `obj(obj, i64)` | Remove at index |
 | `Reverse(seq)` | `void(obj)` | Reverse in place |
-| `Shuffle(seq)` | `void(obj)` | Shuffle randomly |
+| `Set(seq, idx, val)` | `void(obj, i64, obj)` | Set item at index |
+| `Shuffle(seq)` | `void(obj)` | Shuffle randomly using global RNG |
+| `Slice(seq, start, end)` | `obj(obj, i64, i64)` | Extract slice as new sequence |
+| `Sort(seq)` | `void(obj)` | Sort ascending in place |
+| `SortDesc(seq)` | `void(obj)` | Sort descending in place |
+| `WithCapacity(cap)` | `obj(i64)` | Create with pre-allocated capacity |
 
 ### Viper.Collections.List
 
-Ordered list (similar to Seq but with different API).
+Ordered list with value-semantics API.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `New()` | `obj()` | Create empty list |
-| `get_Len(list)` | `i64(obj)` | Get count |
-| `Get(list, idx)` | `obj(obj, i64)` | Get item at index |
-| `Set(list, idx, val)` | `void(obj, i64, obj)` | Set item at index |
-| `Add(list, val)` | `void(obj, obj)` | Add to end |
-| `Insert(list, idx, val)` | `void(obj, i64, obj)` | Insert at index |
-| `Remove(list, val)` | `bool(obj, obj)` | Remove first occurrence |
-| `RemoveAt(list, idx)` | `void(obj, i64)` | Remove at index |
 | `Clear(list)` | `void(obj)` | Clear all items |
 | `Find(list, val)` | `i64(obj, obj)` | Find index (-1 if not found) |
-| `Has(list, val)` | `bool(obj, obj)` | Check if contains |
+| `First(list)` | `obj(obj)` | Get first item |
+| `Flip(list)` | `void(obj)` | Reverse list in place |
+| `get_IsEmpty(list)` | `i1(obj)` | Check if list is empty |
+| `get_Len(list)` | `i64(obj)` | Get item count |
+| `Get(list, idx)` | `obj(obj, i64)` | Get item at index |
+| `Has(list, val)` | `i1(obj, obj)` | Check if contains value |
+| `Insert(list, idx, val)` | `void(obj, i64, obj)` | Insert at index |
+| `Last(list)` | `obj(obj)` | Get last item |
+| `New()` | `obj()` | Create empty list |
+| `Pop(list)` | `obj(obj)` | Remove and return last item |
+| `Push(list, val)` | `void(obj, obj)` | Add to end |
+| `Remove(list, val)` | `i1(obj, obj)` | Remove first occurrence |
+| `RemoveAt(list, idx)` | `void(obj, i64)` | Remove at index |
+| `Set(list, idx, val)` | `void(obj, i64, obj)` | Set item at index |
+| `Slice(list, start, end)` | `obj(obj, i64, i64)` | Extract slice as new list |
+| `Sort(list)` | `void(obj)` | Sort ascending in place |
+| `SortDesc(list)` | `void(obj)` | Sort descending in place |
 
 ### Viper.Collections.Map
 
@@ -995,17 +1018,26 @@ Hash map with string keys.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `New()` | `obj()` | Create empty map |
-| `get_Len(map)` | `i64(obj)` | Get entry count |
-| `get_IsEmpty(map)` | `bool(obj)` | Check if empty |
-| `Get(map, key)` | `obj(obj, str)` | Get value (null if missing) |
-| `GetOr(map, key, default)` | `obj(obj, str, obj)` | Get or return default |
-| `Set(map, key, val)` | `void(obj, str, obj)` | Set key-value pair |
-| `SetIfMissing(map, key, val)` | `bool(obj, str, obj)` | Set only if key missing |
-| `Has(map, key)` | `bool(obj, str)` | Check if key exists |
-| `Remove(map, key)` | `bool(obj, str)` | Remove key |
 | `Clear(map)` | `void(obj)` | Clear all entries |
+| `Get(map, key)` | `obj(obj, str)` | Get value (null if missing) |
+| `GetFloat(map, key)` | `f64(obj, str)` | Get float value |
+| `GetFloatOr(map, key, default)` | `f64(obj, str, f64)` | Get float or default |
+| `GetInt(map, key)` | `i64(obj, str)` | Get integer value |
+| `GetIntOr(map, key, default)` | `i64(obj, str, i64)` | Get integer or default |
+| `GetOr(map, key, default)` | `obj(obj, str, obj)` | Get or return default |
+| `GetStr(map, key)` | `str(obj, str)` | Get string value |
+| `GetStrOr(map, key, default)` | `str(obj, str, str)` | Get string or default |
+| `get_IsEmpty(map)` | `i1(obj)` | Check if empty |
+| `get_Len(map)` | `i64(obj)` | Get entry count |
+| `Has(map, key)` | `i1(obj, str)` | Check if key exists |
 | `Keys(map)` | `obj(obj)` | Get all keys as Seq |
+| `New()` | `obj()` | Create empty map |
+| `Remove(map, key)` | `i1(obj, str)` | Remove key |
+| `Set(map, key, val)` | `void(obj, str, obj)` | Set key-value pair (boxed) |
+| `SetFloat(map, key, val)` | `void(obj, str, f64)` | Set float value |
+| `SetIfMissing(map, key, val)` | `i1(obj, str, obj)` | Set only if key absent |
+| `SetInt(map, key, val)` | `void(obj, str, i64)` | Set integer value |
+| `SetStr(map, key, val)` | `void(obj, str, str)` | Set string value |
 | `Values(map)` | `obj(obj)` | Get all values as Seq |
 
 ### Viper.Collections.Stack
@@ -1127,8 +1159,8 @@ var first = Viper.Collections.Seq.First(items);
 
 // List for simple collections
 var numbers = Viper.Collections.List.New();
-Viper.Collections.List.Push(numbers, 1);
-Viper.Collections.List.Push(numbers, 2);
+Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(1));
+Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(2));
 var count = Viper.Collections.List.get_Len(numbers);
 
 // Map for key-value storage
@@ -1160,6 +1192,49 @@ var sorted = Viper.Collections.TreeMap.New();
 Viper.Collections.TreeMap.Set(sorted, "zebra", "last");
 Viper.Collections.TreeMap.Set(sorted, "apple", "first");
 var smallest = Viper.Collections.TreeMap.First(sorted);  // "apple"
+```
+
+---
+
+## Viper.Time.Stopwatch
+
+High-precision timing for performance measurement. Stopwatch objects are heap-allocated.
+
+### Functions and Methods
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `get_ElapsedMs(sw)` | `i64(obj)` | Elapsed time in milliseconds |
+| `get_ElapsedNs(sw)` | `i64(obj)` | Elapsed time in nanoseconds |
+| `get_ElapsedUs(sw)` | `i64(obj)` | Elapsed time in microseconds |
+| `get_IsRunning(sw)` | `i1(obj)` | Check if the stopwatch is running |
+| `New()` | `obj()` | Create a new stopped stopwatch |
+| `Reset(sw)` | `void(obj)` | Reset accumulated time to zero (stops) |
+| `Restart(sw)` | `void(obj)` | Reset and immediately start |
+| `Start(sw)` | `void(obj)` | Start or resume timing |
+| `StartNew()` | `obj()` | Create and immediately start a stopwatch |
+| `Stop(sw)` | `void(obj)` | Stop (pause) timing |
+
+### Examples
+
+```zia
+// Measure execution time
+var sw = Viper.Time.Stopwatch.StartNew();
+// ... code to measure ...
+sw.Stop();
+var elapsed = sw.get_ElapsedMs;
+Viper.Terminal.Say("Took " + elapsed + " ms");
+
+// Reusable stopwatch
+var timer = Viper.Time.Stopwatch.New();
+timer.Start();
+// ... first section ...
+timer.Stop();
+var section1 = timer.get_ElapsedUs;
+timer.Restart();
+// ... second section ...
+timer.Stop();
+var section2 = timer.get_ElapsedUs;
 ```
 
 ---

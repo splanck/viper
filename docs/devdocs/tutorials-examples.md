@@ -59,16 +59,17 @@ All runnable examples live under the repository's [`examples/`](../../examples/)
 
 ### Language Examples
 
-- Zia programs: [`demos/zia/`](../../demos/zia/) — substantial demos including games, graphics, and applications.
 - BASIC programs: [`examples/basic/`](../../examples/basic/) — simple examples suitable for `viper front basic`.
 - IL modules: [`examples/il/`](../../examples/il/) — ready to run with `viper -run`.
+- Zia programs: [`demos/zia/`](../../demos/zia/) — substantial demos including games, graphics, and applications.
 
 ### Game Demos
 
-- [`demos/zia/frogger/`](../../demos/zia/frogger/) — Complete Frogger game in Zia demonstrating modules and game architecture.
-- [`demos/zia/ladders/`](../../demos/zia/ladders/) — Platform game demonstrating entities and collision detection.
-- [`demos/basic/vtris/`](../../demos/basic/vtris/) — Tetris game in BASIC demonstrating OOP and graphics.
 - [`demos/basic/frogger/`](../../demos/basic/frogger/) — Frogger game in BASIC.
+- [`demos/basic/vtris/`](../../demos/basic/vtris/) — Tetris game in BASIC demonstrating OOP and graphics.
+- [`demos/zia/frogger/`](../../demos/zia/frogger/) — Complete Frogger game in Zia demonstrating modules and game architecture.
+- [`demos/zia/pacman/`](../../demos/zia/pacman/) — Pac-Man game in Zia.
+- [`demos/zia/centipede/`](../../demos/zia/centipede/) — Centipede game in Zia.
 
 Use the CLI options in [Tools → viper](tools.md#viper) to run, trace, or debug these programs.
 
