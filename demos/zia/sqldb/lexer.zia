@@ -262,6 +262,15 @@ entity Lexer {
         if (word == "DESCRIBE") { return TK_DESCRIBE; }
         if (word == "EXPLAIN") { return TK_EXPLAIN; }
         if (word == "VACUUM") { return TK_VACUUM; }
+        if (word == "ANALYZE") { return TK_ANALYZE; }
+        if (word == "VERBOSE") { return TK_VERBOSE; }
+        if (word == "TRUNCATE") { return TK_TRUNCATE; }
+        if (word == "RETURNING") { return TK_RETURNING; }
+        if (word == "CONFLICT") { return TK_CONFLICT; }
+        if (word == "DO") { return TK_DO; }
+        if (word == "NOTHING") { return TK_NOTHING; }
+        if (word == "PREPARE") { return TK_PREPARE; }
+        if (word == "DEALLOCATE") { return TK_DEALLOCATE; }
         if (word == "SAVE") { return TK_SAVE; }
         if (word == "OPEN") { return TK_OPEN; }
         if (word == "EXPORT") { return TK_EXPORT; }
@@ -296,6 +305,68 @@ entity Lexer {
         if (word == "GRANT") { return TK_GRANT; }
         if (word == "REVOKE") { return TK_REVOKE; }
         if (word == "PRIVILEGES") { return TK_PRIVILEGES; }
+        if (word == "FOR") { return TK_FOR; }
+        if (word == "SHARE") { return TK_SHARE; }
+        if (word == "NOWAIT") { return TK_NOWAIT; }
+        if (word == "LOCKED") { return TK_LOCKED; }
+        if (word == "SKIP") { return TK_SKIP; }
+        if (word == "BEFORE") { return TK_BEFORE; }
+        if (word == "AFTER") { return TK_AFTER; }
+        if (word == "EACH") { return TK_EACH; }
+        if (word == "EXECUTE") { return TK_EXECUTE; }
+        if (word == "TRIGGER") { return TK_TRIGGER; }
+        if (word == "SEQUENCE") { return TK_SEQUENCE; }
+        if (word == "START") { return TK_START; }
+        if (word == "INCREMENT") { return TK_INCREMENT; }
+        if (word == "MINVALUE") { return TK_MINVALUE; }
+        if (word == "MAXVALUE") { return TK_MAXVALUE; }
+        if (word == "CYCLE") { return TK_CYCLE; }
+        if (word == "NO") { return TK_NO; }
+        if (word == "FUNCTION") { return TK_FUNCTION; }
+        if (word == "RETURNS") { return TK_RETURNS; }
+        if (word == "LANGUAGE") { return TK_LANGUAGE; }
+        if (word == "JSON") { return TK_JSON; }
+        if (word == "JSONB") { return TK_JSONB; }
+        if (word == "DECLARE") { return TK_DECLARE; }
+        if (word == "CURSOR") { return TK_CURSOR; }
+        if (word == "FETCH") { return TK_FETCH; }
+        if (word == "MOVE") { return TK_MOVE; }
+        if (word == "FORWARD") { return TK_FORWARD; }
+        if (word == "BACKWARD") { return TK_BACKWARD; }
+        if (word == "ABSOLUTE") { return TK_ABSOLUTE; }
+        if (word == "RELATIVE") { return TK_RELATIVE; }
+        if (word == "NEXT") { return TK_NEXT; }
+        if (word == "PRIOR") { return TK_PRIOR; }
+        if (word == "FIRST") { return TK_FIRST; }
+        if (word == "LAST") { return TK_LAST; }
+        if (word == "COPY") { return TK_COPY; }
+        if (word == "STDIN") { return TK_STDIN; }
+        if (word == "STDOUT") { return TK_STDOUT; }
+        if (word == "FORMAT") { return TK_FORMAT; }
+        if (word == "HEADER") { return TK_HEADER; }
+        if (word == "DELIMITER") { return TK_DELIMITER; }
+        if (word == "CALL") { return TK_CALL; }
+        if (word == "ARRAY") { return TK_ARRAY; }
+        if (word == "MATERIALIZED") { return TK_MATERIALIZED; }
+        if (word == "REFRESH") { return TK_REFRESH; }
+        if (word == "ILIKE") { return TK_ILIKE; }
+        if (word == "REPLACE") { return TK_REPLACE; }
+        if (word == "COMMENT") { return TK_COMMENT; }
+        if (word == "RESET") { return TK_RESET; }
+        if (word == "SIMILAR") { return TK_SIMILAR; }
+        if (word == "INHERITS") { return TK_INHERITS; }
+        if (word == "ONLY") { return TK_ONLY; }
+        if (word == "GENERATED") { return TK_GENERATED; }
+        if (word == "ALWAYS") { return TK_ALWAYS; }
+        if (word == "STORED") { return TK_STORED; }
+        if (word == "FILTER") { return TK_FILTER; }
+        if (word == "LATERAL") { return TK_LATERAL; }
+        if (word == "NATURAL") { return TK_NATURAL; }
+        if (word == "ROLLUP") { return TK_ROLLUP; }
+        if (word == "CUBE") { return TK_CUBE; }
+        if (word == "GROUPING") { return TK_GROUPING; }
+        if (word == "MERGE") { return TK_MERGE; }
+        if (word == "MATCHED") { return TK_MATCHED; }
         return TK_IDENTIFIER;
     }
 
@@ -326,6 +397,8 @@ entity Lexer {
         if (ch == "<" && peek() == ">") { advance(); return new Token(TK_NE, "<>", startLine, startCol); }
         if (ch == "!" && peek() == "=") { advance(); return new Token(TK_NE, "!=", startLine, startCol); }
         if (ch == "|" && peek() == "|") { advance(); return new Token(TK_CONCAT, "||", startLine, startCol); }
+        if (ch == "~" && peek() == "*") { advance(); return new Token(TK_TILDE_STAR, "~*", startLine, startCol); }
+        if (ch == "~") { return new Token(TK_TILDE, "~", startLine, startCol); }
 
         // Single-character operators
         if (ch == "+") { return new Token(TK_PLUS, "+", startLine, startCol); }
@@ -343,6 +416,8 @@ entity Lexer {
         if (ch == ",") { return new Token(TK_COMMA, ",", startLine, startCol); }
         if (ch == ";") { return new Token(TK_SEMICOLON, ";", startLine, startCol); }
         if (ch == ".") { return new Token(TK_DOT, ".", startLine, startCol); }
+        if (ch == "[") { return new Token(TK_LBRACKET, "[", startLine, startCol); }
+        if (ch == "]") { return new Token(TK_RBRACKET, "]", startLine, startCol); }
 
         return new Token(TK_ERROR, ch, startLine, startCol);
     }

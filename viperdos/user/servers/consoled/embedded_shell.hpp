@@ -13,12 +13,16 @@
 
 namespace consoled {
 
-/// Embedded shell that runs commands in-process, writing directly to
-/// the TextBuffer via AnsiParser. Eliminates the IPC pipeline that
-/// caused the shell prompt visibility bug.
+/// Embedded shell that runs commands in-process.
+/// Supports two modes:
+/// - Direct mode: writes to TextBuffer via AnsiParser (consoled)
+/// - PTY mode: writes to a channel via shell_print() (shell.prg)
 class EmbeddedShell {
   public:
     void init(TextBuffer *buffer, AnsiParser *parser);
+
+    /// Initialize in PTY mode (no TextBuffer/AnsiParser — output goes via shell_print).
+    void init_pty();
 
     /// Handle a printable character, Enter, Backspace, or control char.
     void handle_char(char c);

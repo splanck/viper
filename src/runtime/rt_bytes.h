@@ -111,6 +111,36 @@ extern "C"
     /// @return Pointer to new Bytes object with same contents.
     void *rt_bytes_clone(void *obj);
 
+    //=========================================================================
+    // Binary Integer Read/Write Operations
+    //=========================================================================
+
+    /// @brief Read a 16-bit little-endian integer at the given offset.
+    int64_t rt_bytes_read_i16le(void *obj, int64_t offset);
+    /// @brief Read a 16-bit big-endian integer at the given offset.
+    int64_t rt_bytes_read_i16be(void *obj, int64_t offset);
+    /// @brief Read a 32-bit little-endian integer at the given offset.
+    int64_t rt_bytes_read_i32le(void *obj, int64_t offset);
+    /// @brief Read a 32-bit big-endian integer at the given offset.
+    int64_t rt_bytes_read_i32be(void *obj, int64_t offset);
+    /// @brief Read a 64-bit little-endian integer at the given offset.
+    int64_t rt_bytes_read_i64le(void *obj, int64_t offset);
+    /// @brief Read a 64-bit big-endian integer at the given offset.
+    int64_t rt_bytes_read_i64be(void *obj, int64_t offset);
+
+    /// @brief Write a 16-bit little-endian integer at the given offset.
+    void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value);
+    /// @brief Write a 16-bit big-endian integer at the given offset.
+    void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value);
+    /// @brief Write a 32-bit little-endian integer at the given offset.
+    void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value);
+    /// @brief Write a 32-bit big-endian integer at the given offset.
+    void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value);
+    /// @brief Write a 64-bit little-endian integer at the given offset.
+    void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value);
+    /// @brief Write a 64-bit big-endian integer at the given offset.
+    void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value);
+
 #ifdef __cplusplus
 }
 #endif

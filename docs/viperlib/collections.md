@@ -17,6 +17,7 @@
 - [Viper.Collections.FrozenMap](#vipercollectionsfrozenmap)
 - [Viper.Collections.FrozenSet](#vipercollectionsfrozenset)
 - [Viper.Collections.Heap](#vipercollectionsheap)
+- [Viper.Collections.IntMap](#vipercollectionsintmap)
 - [Viper.Collections.Iterator](#vipercollectionsiterator)
 - [Viper.LazySeq](#viperlazyseq)
 - [Viper.Collections.List](#vipercollectionslist)
@@ -552,6 +553,18 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 | `Fill(value)`                            | `Void(Integer)`           | Set all bytes to value                                                |
 | `Find(value)`                            | `Integer(Integer)`        | Find first occurrence (-1 if not found)                               |
 | `Clone()`                                | `Bytes()`                 | Create independent copy                                               |
+| `ReadI16LE(offset)`                      | `Integer(Integer)`        | Read 16-bit signed integer at offset (little-endian)                  |
+| `ReadI16BE(offset)`                      | `Integer(Integer)`        | Read 16-bit signed integer at offset (big-endian)                     |
+| `ReadI32LE(offset)`                      | `Integer(Integer)`        | Read 32-bit signed integer at offset (little-endian)                  |
+| `ReadI32BE(offset)`                      | `Integer(Integer)`        | Read 32-bit signed integer at offset (big-endian)                     |
+| `ReadI64LE(offset)`                      | `Integer(Integer)`        | Read 64-bit signed integer at offset (little-endian)                  |
+| `ReadI64BE(offset)`                      | `Integer(Integer)`        | Read 64-bit signed integer at offset (big-endian)                     |
+| `WriteI16LE(offset, value)`              | `Void(Integer, Integer)`  | Write 16-bit integer at offset (little-endian)                        |
+| `WriteI16BE(offset, value)`              | `Void(Integer, Integer)`  | Write 16-bit integer at offset (big-endian)                           |
+| `WriteI32LE(offset, value)`              | `Void(Integer, Integer)`  | Write 32-bit integer at offset (little-endian)                        |
+| `WriteI32BE(offset, value)`              | `Void(Integer, Integer)`  | Write 32-bit integer at offset (big-endian)                           |
+| `WriteI64LE(offset, value)`              | `Void(Integer, Integer)`  | Write 64-bit integer at offset (little-endian)                        |
+| `WriteI64BE(offset, value)`              | `Void(Integer, Integer)`  | Write 64-bit integer at offset (big-endian)                           |
 
 ### Zia Example
 
@@ -1375,6 +1388,106 @@ PRINT maxHeap.Pop()  ' Output: "High" (priority 5 - highest)
 
 ---
 
+## Viper.Collections.IntMap
+
+An integer-keyed dictionary for efficient mapping of integer keys to object values. Uses a hash table with O(1) average-case operations.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Collections.IntMap.New()`
+
+### Properties
+
+| Property  | Type    | Description                            |
+|-----------|---------|----------------------------------------|
+| `Len`     | Integer | Number of key-value pairs in the map   |
+| `IsEmpty` | Boolean | True if the map has no entries         |
+
+### Methods
+
+| Method                        | Signature                  | Description                                                              |
+|-------------------------------|----------------------------|--------------------------------------------------------------------------|
+| `Set(key, value)`             | `Void(Integer, Ptr)`       | Add or update a key-value pair                                           |
+| `Get(key)`                    | `Ptr(Integer)`             | Get value for key (returns NULL if not found)                            |
+| `GetOr(key, default)`         | `Ptr(Integer, Ptr)`        | Get value for key, or return `default` if missing (does not insert)      |
+| `Has(key)`                    | `Boolean(Integer)`         | Check if key exists                                                      |
+| `Remove(key)`                 | `Boolean(Integer)`         | Remove key-value pair; returns true if found                             |
+| `Clear()`                     | `Void()`                   | Remove all entries                                                       |
+| `Keys()`                      | `Seq()`                    | Get sequence of all keys                                                 |
+| `Values()`                    | `Seq()`                    | Get sequence of all values                                               |
+
+### Zia Example
+
+```zia
+module IntMapDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var m = IntMap.New();
+
+    // Add entries with integer keys
+    m.Set(1, Box.Str("one"));
+    m.Set(2, Box.Str("two"));
+    m.Set(3, Box.Str("three"));
+
+    Say("Len: " + Fmt.Int(m.Len));                  // 3
+    Say("Has 2: " + Fmt.Bool(m.Has(2)));             // true
+    Say("Get 1: " + Box.ToStr(m.Get(1)));            // one
+
+    // Remove
+    m.Remove(2);
+    Say("Has 2: " + Fmt.Bool(m.Has(2)));             // false
+}
+```
+
+### BASIC Example
+
+```basic
+DIM m AS OBJECT = Viper.Collections.IntMap.New()
+
+' Add entries
+m.Set(100, "apple")
+m.Set(200, "banana")
+m.Set(300, "cherry")
+
+PRINT m.Len      ' Output: 3
+PRINT m.IsEmpty  ' Output: 0
+
+' Check existence and get value
+IF m.Has(100) THEN
+    PRINT m.Get(100)  ' Output: apple
+END IF
+
+' Get with default
+PRINT m.GetOr(999, "unknown")  ' Output: unknown
+
+' Remove
+IF m.Remove(200) THEN
+    PRINT "Removed 200"
+END IF
+
+' Iterate keys
+DIM keys AS OBJECT = m.Keys()
+FOR i = 0 TO keys.Len - 1
+    PRINT keys.Get(i)
+NEXT i
+
+' Clear all
+m.Clear()
+PRINT m.IsEmpty  ' Output: 1
+```
+
+### Use Cases
+
+- **Sparse arrays:** Map non-contiguous integer indices to values
+- **ID-based lookup:** Look up objects by numeric identifier
+- **Counting by ID:** Count occurrences keyed by integer values
+- **Graph adjacency:** Map node IDs to neighbor lists
+
+---
+
 ## Viper.Collections.Iterator
 
 A sequential cursor over a Seq that provides controlled, single-pass traversal with peek-ahead, skip, and reset
@@ -1685,6 +1798,8 @@ Dynamic array that grows automatically. Stores object references.
 | `Flip()`                 | `Void()`                | Reverses the elements of the list in place                                            |
 | `First()`                | `Object()`              | Returns the first element in the list                                                 |
 | `Last()`                 | `Object()`              | Returns the last element in the list                                                  |
+| `Sort()`                 | `Void()`                | Sorts the list in ascending order (strings lexicographic, otherwise by pointer value) |
+| `SortDesc()`             | `Void()`                | Sorts the list in descending order                                                    |
 
 ### Zia Example
 
@@ -1928,6 +2043,21 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 | `Clear()`                  | `Void()`                  | Remove all entries                                                       |
 | `Keys()`                   | `Seq()`                   | Get sequence of all keys                                                 |
 | `Values()`                 | `Seq()`                   | Get sequence of all values                                               |
+
+### Typed Accessors
+
+Convenience methods for storing and retrieving typed values without manual boxing/unboxing.
+
+| Method                          | Signature                    | Description                                                       |
+|---------------------------------|------------------------------|-------------------------------------------------------------------|
+| `SetInt(key, value)`            | `Void(String, Integer)`      | Store an integer value                                            |
+| `GetInt(key)`                   | `Integer(String)`            | Get an integer value (traps if key not found)                     |
+| `GetIntOr(key, default)`        | `Integer(String, Integer)`   | Get an integer value, or return `default` if missing              |
+| `SetFloat(key, value)`          | `Void(String, Number)`       | Store a floating-point value                                      |
+| `GetFloat(key)`                 | `Number(String)`             | Get a floating-point value (traps if key not found)               |
+| `GetFloatOr(key, default)`      | `Number(String, Number)`     | Get a floating-point value, or return `default` if missing        |
+| `SetStr(key, value)`            | `Void(String, String)`       | Store a string value                                              |
+| `GetStr(key)`                   | `String(String)`             | Get a string value (traps if key not found)                       |
 
 ### Zia Example
 

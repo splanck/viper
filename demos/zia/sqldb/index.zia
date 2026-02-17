@@ -17,6 +17,7 @@ bind Fmt = Viper.Fmt;
 bind "./types";
 bind "./schema";
 bind "./table";
+bind "./expr";
 
 //=============================================================================
 // INDEX ENTRY
@@ -54,6 +55,8 @@ entity SqlIndex {
     expose List[IndexEntry] entries;
     expose List[List[IndexEntry]] buckets;
     expose Integer bucketCount;
+    expose Expr? whereExpr;      // Phase 74: partial index predicate
+    expose Boolean isPartial;    // Phase 74: true if WHERE clause present
 
     expose func init() {
         name = "";
@@ -63,6 +66,8 @@ entity SqlIndex {
         entries = [];
         bucketCount = 64;
         buckets = [];
+        whereExpr = null;
+        isPartial = false;
         initBuckets();
     }
 
@@ -74,6 +79,8 @@ entity SqlIndex {
         entries = [];
         bucketCount = 64;
         buckets = [];
+        whereExpr = null;
+        isPartial = false;
         initBuckets();
     }
 
@@ -102,18 +109,11 @@ entity SqlIndex {
         return "";
     }
 
-    // Compute a simple hash for a string
+    // Compute a hash for a string (FNV-1a via runtime)
     expose func hashString(s: String) -> Integer {
-        var hash = 0;
-        var i = 0;
-        var len = String.Length(s);
-        while i < len {
-            var ch = String.Substring(s, i, 1);
-            var c = String.Asc(ch);
-            hash = (hash * 31 + c) % 32767;
-            i = i + 1;
-        }
-        return hash;
+        var h = Viper.Crypto.Hash.Fast(s);
+        if h < 0 { return 0 - h; }
+        return h;
     }
 
     // Build key string from row values for indexed columns
@@ -184,6 +184,71 @@ entity SqlIndex {
             }
             i = i + 1;
         }
+    }
+
+    // Lookup entries matching a composite key (multiple column values)
+    // Builds composite key string from values and looks up via hash bucket
+    expose func lookupComposite(keyValues: List[SqlValue]) -> List[Integer] {
+        var results: List[Integer] = [];
+        // Build composite key string using same separator as buildKeyString
+        var keyStr = "";
+        var i = 0;
+        while i < keyValues.count() {
+            if i > 0 {
+                keyStr = keyStr + "|";
+            }
+            keyStr = keyStr + keyValues.get(i).toString();
+            i = i + 1;
+        }
+        var hash = hashString(keyStr);
+        var bIdx = hash % bucketCount;
+        var bucket = buckets.get(bIdx);
+
+        i = 0;
+        while i < bucket.count() {
+            var entry = bucket.get(i);
+            if entry.keyHash == hash && entry.keyString == keyStr {
+                results.add(entry.rowIndex);
+            }
+            i = i + 1;
+        }
+        return results;
+    }
+
+    // Lookup entries matching a prefix of the composite key
+    // For an index on (a, b, c), you can search just by a, or by a+b
+    expose func lookupPrefix(keyValues: List[SqlValue]) -> List[Integer] {
+        var results: List[Integer] = [];
+        // Build prefix key string
+        var prefix = "";
+        var i = 0;
+        while i < keyValues.count() {
+            if i > 0 {
+                prefix = prefix + "|";
+            }
+            prefix = prefix + keyValues.get(i).toString();
+            i = i + 1;
+        }
+        var prefixLen = Viper.String.Length(prefix);
+
+        // Scan all entries for prefix match (can't use hash for prefix)
+        i = 0;
+        while i < entries.count() {
+            var entry = entries.get(i);
+            var ks = entry.keyString;
+            if Viper.String.Length(ks) >= prefixLen {
+                var sub = Viper.String.Substring(ks, 0, prefixLen);
+                if sub == prefix {
+                    // Verify it's a complete prefix match (not partial value)
+                    // Must end at string boundary or be followed by |
+                    if Viper.String.Length(ks) == prefixLen || Viper.String.Substring(ks, prefixLen, 1) == "|" {
+                        results.add(entry.rowIndex);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        return results;
     }
 
     // Lookup entries matching a single key value (bucket-accelerated)
@@ -267,11 +332,99 @@ entity SqlIndex {
                 // Workaround: copy to local var for deleted check
                 var r = row;
                 if r.deleted == false {
+                    // Phase 74: Skip rows that don't match partial index predicate
+                    if isPartial && matchesWhere(r, tbl) == false {
+                        i = i + 1;
+                        continue;
+                    }
                     addEntry(r, i, tbl);
                 }
             }
             i = i + 1;
         }
+    }
+
+    // Phase 74: Evaluate partial index WHERE predicate against a row.
+    // Handles common patterns: comparisons, IS NOT NULL, AND/OR, NOT.
+    expose func matchesWhere(row: Row, tbl: Table) -> Boolean {
+        if whereExpr == null { return true; }
+        var e = whereExpr;
+        return evalPartialExpr(e, row, tbl) != 0;
+    }
+
+    // Simple expression evaluator for partial index predicates.
+    // Returns integer: 0 = false, nonzero = true, for logical ops.
+    // For comparisons, returns the value itself (integer representation).
+    hide func evalPartialExpr(expr: Expr, row: Row, tbl: Table) -> Integer {
+        if expr.kind == EXPR_LITERAL {
+            if expr.literalValue.kind == SQL_NULL { return 0; }
+            return expr.literalValue.intValue;
+        }
+        if expr.kind == EXPR_COLUMN {
+            var colIdx = tbl.findColumnIndex(expr.columnName);
+            if colIdx < 0 { return 0; }
+            var val = row.getValue(colIdx);
+            if val.kind == SQL_NULL { return 0; }
+            return val.intValue;
+        }
+        if expr.kind == EXPR_UNARY {
+            if expr.op == OP_NOT {
+                var operand = evalPartialExpr(expr.args.get(0), row, tbl);
+                if operand == 0 { return 1; }
+                return 0;
+            }
+            if expr.op == OP_NEG {
+                return 0 - evalPartialExpr(expr.args.get(0), row, tbl);
+            }
+        }
+        if expr.kind == EXPR_BINARY {
+            // IS / IS NOT NULL
+            if expr.op == OP_IS {
+                var leftVal = getColumnValue(expr.args.get(0), row, tbl);
+                var rightExpr = expr.args.get(1);
+                // Check for IS NULL and IS NOT NULL patterns
+                if rightExpr.kind == EXPR_LITERAL && rightExpr.literalValue.kind == SQL_NULL {
+                    if leftVal.kind == SQL_NULL { return 1; }
+                    return 0;
+                }
+                // IS NOT NULL: parser encodes NOT IS NULL as UNARY NOT around IS
+                return 0;
+            }
+            // AND / OR
+            if expr.op == OP_AND {
+                var left = evalPartialExpr(expr.args.get(0), row, tbl);
+                if left == 0 { return 0; }
+                return evalPartialExpr(expr.args.get(1), row, tbl);
+            }
+            if expr.op == OP_OR {
+                var left = evalPartialExpr(expr.args.get(0), row, tbl);
+                if left != 0 { return 1; }
+                return evalPartialExpr(expr.args.get(1), row, tbl);
+            }
+            // Comparison operators
+            var leftVal = getColumnValue(expr.args.get(0), row, tbl);
+            var rightVal = getColumnValue(expr.args.get(1), row, tbl);
+            if leftVal.kind == SQL_NULL || rightVal.kind == SQL_NULL { return 0; }
+            var cmp = leftVal.compare(rightVal);
+            if cmp == 2 { return 0; } // incomparable
+            if expr.op == OP_EQ { if cmp == 0 { return 1; } return 0; }
+            if expr.op == OP_NE { if cmp != 0 { return 1; } return 0; }
+            if expr.op == OP_LT { if cmp < 0 { return 1; } return 0; }
+            if expr.op == OP_LE { if cmp <= 0 { return 1; } return 0; }
+            if expr.op == OP_GT { if cmp > 0 { return 1; } return 0; }
+            if expr.op == OP_GE { if cmp >= 0 { return 1; } return 0; }
+        }
+        return 0;
+    }
+
+    // Get SqlValue for an expression (literal or column reference)
+    hide func getColumnValue(expr: Expr, row: Row, tbl: Table) -> SqlValue {
+        if expr.kind == EXPR_LITERAL { return expr.literalValue; }
+        if expr.kind == EXPR_COLUMN {
+            var colIdx = tbl.findColumnIndex(expr.columnName);
+            if colIdx >= 0 { return row.getValue(colIdx); }
+        }
+        return sqlNull();
     }
 
     expose func entryCount() -> Integer {
@@ -293,6 +446,9 @@ entity SqlIndex {
             i = i + 1;
         }
         result = result + ") [" + Fmt.Int(entries.count()) + " entries]";
+        if isPartial {
+            result = result + " WHERE (partial)";
+        }
         return result;
     }
 }
@@ -331,12 +487,51 @@ entity IndexManager {
     }
 
     // Find an index for a specific table and column combination
+    // Matches single-column indexes or the leading column of composite indexes
     expose func findIndexForColumn(tblName: String, colName: String) -> SqlIndex? {
+        // First, prefer an exact single-column index
         var i = 0;
         while i < indexes.count() {
             var idx = indexes.get(i);
             if idx.tableName == tblName && idx.columnCount() == 1 {
                 if idx.columnNames.get(0) == colName {
+                    return idx;
+                }
+            }
+            i = i + 1;
+        }
+        // Fallback: leading column of a composite index
+        i = 0;
+        while i < indexes.count() {
+            var idx = indexes.get(i);
+            if idx.tableName == tblName && idx.columnCount() > 1 {
+                if idx.columnNames.get(0) == colName {
+                    return idx;
+                }
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Find a composite index matching a set of column names (order matters)
+    // The provided columns must match a prefix of the index columns
+    expose func findIndexForColumns(tblName: String, colNames: List[String]) -> SqlIndex? {
+        var i = 0;
+        while i < indexes.count() {
+            var idx = indexes.get(i);
+            if idx.tableName == tblName && idx.columnCount() >= colNames.count() {
+                // Check if colNames matches a prefix of idx.columnNames
+                var isMatch = true;
+                var j = 0;
+                while j < colNames.count() {
+                    if idx.columnNames.get(j) != colNames.get(j) {
+                        isMatch = false;
+                        j = colNames.count();  // break
+                    }
+                    j = j + 1;
+                }
+                if isMatch {
                     return idx;
                 }
             }
@@ -365,6 +560,20 @@ entity IndexManager {
             i = i + 1;
         }
         return false;
+    }
+
+    // Phase 66: list all indexes for a specific table
+    expose func listIndexesForTable(tableName: String) -> List[SqlIndex] {
+        var result: List[SqlIndex] = [];
+        var i = 0;
+        while i < indexes.count() {
+            var idx = indexes.get(i);
+            if idx.tableName == tableName {
+                result.add(idx);
+            }
+            i = i + 1;
+        }
+        return result;
     }
 
     expose func indexCount() -> Integer {

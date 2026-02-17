@@ -314,6 +314,8 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Scheduler,
     RTCLS_RateLimiter,
     RTCLS_Html,
+    RTCLS_IntMap,
+    RTCLS_BinaryBuffer,
 };
 
 /// @brief Describes a property on a runtime class.

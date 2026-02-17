@@ -198,6 +198,10 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `AddSeconds(timestamp, seconds)` | `Integer(Integer, Integer)` | Adds seconds to a timestamp                              |
 | `AddDays(timestamp, days)`       | `Integer(Integer, Integer)` | Adds days to a timestamp                                 |
 | `Diff(t1, t2)`                   | `Integer(Integer, Integer)` | Returns the difference in seconds between two timestamps |
+| `ParseISO(str)`                  | `Integer(String)`           | Parse an ISO 8601 datetime string to Unix timestamp      |
+| `ParseDate(str)`                 | `Integer(String)`           | Parse a "YYYY-MM-DD" string to Unix timestamp            |
+| `ParseTime(str)`                 | `Integer(String)`           | Parse a "HH:MM:SS" string to seconds since midnight      |
+| `TryParse(str)`                  | `Integer(String)`           | Auto-detect format and parse; returns 0 on failure       |
 
 ### Notes
 
@@ -207,6 +211,20 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 - `ToLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
 - `Format` uses the **local time zone** with strftime-style format strings
 - `Diff` returns absolute seconds regardless of time zones
+
+### Parsing Methods
+
+| Method       | Input Format                          | Returns                                |
+|--------------|---------------------------------------|----------------------------------------|
+| `ParseISO`   | `"2025-06-15T14:30:00Z"` or `"2025-06-15T14:30:00"` | Unix timestamp (seconds) |
+| `ParseDate`  | `"2025-06-15"`                        | Unix timestamp (seconds, midnight)     |
+| `ParseTime`  | `"14:30:00"`                          | Seconds since midnight (0-86399)       |
+| `TryParse`   | Any of the above formats              | Unix timestamp, or 0 on failure        |
+
+- `ParseISO` accepts ISO 8601 datetime strings with or without the `Z` suffix
+- `ParseDate` parses date-only strings and returns the timestamp at midnight
+- `ParseTime` returns seconds since midnight (not a Unix timestamp)
+- `TryParse` auto-detects the input format and returns 0 if the string cannot be parsed
 
 ### Zia Example
 

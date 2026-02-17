@@ -732,6 +732,7 @@ int64_t rt_datetime_add_days(int64_t timestamp, int64_t days)
 /// Returns the number of seconds between two timestamps (ts1 - ts2). A positive
 /// result means ts1 is later than ts2; negative means ts1 is earlier.
 ///
+///
 /// **Example:**
 /// ```
 /// Dim start = DateTime.Now()
@@ -770,4 +771,219 @@ int64_t rt_datetime_add_days(int64_t timestamp, int64_t days)
 int64_t rt_datetime_diff(int64_t ts1, int64_t ts2)
 {
     return ts1 - ts2;
+}
+
+//=============================================================================
+// Parsing Functions
+//=============================================================================
+
+/// @brief Helper to check if a character is a digit.
+static int dt_is_digit(char c) { return c >= '0' && c <= '9'; }
+
+/// @brief Helper to parse exactly N digits from a string.
+/// @return The parsed integer, or -1 if insufficient digits.
+static int dt_parse_digits(const char *s, int n, const char **end)
+{
+    int val = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        if (!dt_is_digit(s[i]))
+            return -1;
+        val = val * 10 + (s[i] - '0');
+    }
+    *end = s + n;
+    return val;
+}
+
+int64_t rt_datetime_parse_iso(rt_string s)
+{
+    const char *str = rt_string_cstr(s);
+    if (!str)
+        return 0;
+
+    const char *p = str;
+    const char *end;
+
+    // Parse YYYY-MM-DDTHH:MM:SS[Z]
+    int year = dt_parse_digits(p, 4, &end);
+    if (year < 0 || *end != '-')
+        return 0;
+    p = end + 1;
+
+    int month = dt_parse_digits(p, 2, &end);
+    if (month < 0 || *end != '-')
+        return 0;
+    p = end + 1;
+
+    int day = dt_parse_digits(p, 2, &end);
+    if (day < 0)
+        return 0;
+    p = end;
+
+    if (*p != 'T' && *p != 't' && *p != ' ')
+        return 0;
+    p++;
+
+    int hour = dt_parse_digits(p, 2, &end);
+    if (hour < 0 || *end != ':')
+        return 0;
+    p = end + 1;
+
+    int minute = dt_parse_digits(p, 2, &end);
+    if (minute < 0 || *end != ':')
+        return 0;
+    p = end + 1;
+
+    int second = dt_parse_digits(p, 2, &end);
+    if (second < 0)
+        return 0;
+    p = end;
+
+    // Check for Z suffix (UTC) or end of string
+    int is_utc = (*p == 'Z' || *p == 'z');
+
+    struct tm tm = {0};
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hour;
+    tm.tm_min = minute;
+    tm.tm_sec = second;
+
+    if (is_utc)
+    {
+        // Portable UTC mktime: use mktime (local), then adjust by the UTC offset.
+        // First, convert with mktime (local time interpretation)
+        struct tm utc_tm = tm;
+        utc_tm.tm_isdst = 0;
+        time_t local_t = mktime(&utc_tm);
+        if (local_t == (time_t)-1)
+            return 0;
+        // Find the UTC offset: gmtime(local_t) gives UTC representation
+        struct tm gm_buf;
+        struct tm *gm = rt_gmtime_r(&local_t, &gm_buf);
+        if (!gm)
+            return 0;
+        // Difference between local interpretation and actual UTC
+        struct tm local_buf;
+        struct tm *loc = rt_localtime_r(&local_t, &local_buf);
+        if (!loc)
+            return 0;
+        // UTC offset in seconds
+        int64_t utc_off = (int64_t)mktime(loc) - (int64_t)mktime(gm);
+        return (int64_t)local_t - utc_off;
+    }
+    else
+    {
+        tm.tm_isdst = -1;
+        time_t t = mktime(&tm);
+        return (int64_t)t;
+    }
+}
+
+int64_t rt_datetime_parse_date(rt_string s)
+{
+    const char *str = rt_string_cstr(s);
+    if (!str)
+        return 0;
+
+    const char *p = str;
+    const char *end;
+
+    // Parse YYYY-MM-DD
+    int year = dt_parse_digits(p, 4, &end);
+    if (year < 0 || *end != '-')
+        return 0;
+    p = end + 1;
+
+    int month = dt_parse_digits(p, 2, &end);
+    if (month < 0 || *end != '-')
+        return 0;
+    p = end + 1;
+
+    int day = dt_parse_digits(p, 2, &end);
+    if (day < 0)
+        return 0;
+
+    struct tm tm = {0};
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = 0;
+    tm.tm_min = 0;
+    tm.tm_sec = 0;
+    tm.tm_isdst = -1;
+
+    time_t t = mktime(&tm);
+    return (int64_t)t;
+}
+
+int64_t rt_datetime_parse_time(rt_string s)
+{
+    const char *str = rt_string_cstr(s);
+    if (!str)
+        return -1;
+
+    const char *p = str;
+    const char *end;
+
+    // Parse HH:MM[:SS]
+    int hour = dt_parse_digits(p, 2, &end);
+    if (hour < 0 || *end != ':')
+        return -1;
+    p = end + 1;
+
+    int minute = dt_parse_digits(p, 2, &end);
+    if (minute < 0)
+        return -1;
+    p = end;
+
+    int second = 0;
+    if (*p == ':')
+    {
+        p++;
+        second = dt_parse_digits(p, 2, &end);
+        if (second < 0)
+            return -1;
+    }
+
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59)
+        return -1;
+
+    return (int64_t)(hour * 3600 + minute * 60 + second);
+}
+
+int64_t rt_datetime_try_parse(rt_string s)
+{
+    const char *str = rt_string_cstr(s);
+    if (!str || *str == '\0')
+        return 0;
+
+    size_t len = strlen(str);
+
+    // Try ISO 8601 first (contains 'T' or space separator)
+    if (len >= 19)
+    {
+        int64_t result = rt_datetime_parse_iso(s);
+        if (result != 0)
+            return result;
+    }
+
+    // Try date-only (YYYY-MM-DD, length 10)
+    if (len == 10 && str[4] == '-' && str[7] == '-')
+    {
+        int64_t result = rt_datetime_parse_date(s);
+        if (result != 0)
+            return result;
+    }
+
+    // Try time-only (HH:MM or HH:MM:SS)
+    if ((len == 5 || len == 8) && str[2] == ':')
+    {
+        int64_t result = rt_datetime_parse_time(s);
+        if (result >= 0)
+            return result;
+    }
+
+    return 0;
 }

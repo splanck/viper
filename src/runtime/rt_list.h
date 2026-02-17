@@ -160,6 +160,14 @@ extern "C"
     /// @return The removed element, or traps if the list is empty.
     void *rt_list_pop(void *list);
 
+    /// @brief Sort the list in ascending order (default comparison).
+    /// @param list Opaque List object pointer.
+    void rt_list_sort(void *list);
+
+    /// @brief Sort the list in descending order.
+    /// @param list Opaque List object pointer.
+    void rt_list_sort_desc(void *list);
+
 #ifdef __cplusplus
 }
 #endif

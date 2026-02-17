@@ -27,8 +27,8 @@ extern "C" {
 /** Default text color - white */
 #define VIPER_COLOR_TEXT 0xFFFFFFFF
 
-/** Default console background - same as desktop */
-#define VIPER_COLOR_CONSOLE_BG 0xFF0055AA
+/** Default console background - dark navy, distinct from desktop */
+#define VIPER_COLOR_CONSOLE_BG 0xFF1A1A2E
 
 /* =============================================================================
  * Window Decoration Colors

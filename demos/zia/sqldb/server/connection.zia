@@ -806,6 +806,8 @@ func inferColumnOids(result: QueryResult) -> List[Integer] {
                         oids.add(PG_OID_DATE);
                     } else if val.kind == SQL_TIMESTAMP {
                         oids.add(PG_OID_TIMESTAMP);
+                    } else if val.kind == SQL_JSON {
+                        oids.add(PG_OID_JSON);
                     } else {
                         oids.add(PG_OID_TEXT);
                     }

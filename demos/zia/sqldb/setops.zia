@@ -172,3 +172,103 @@ func isRowInResult(result: QueryResult, row: Row) -> Boolean {
     }
     return false;
 }
+
+// Execute EXCEPT ALL - like EXCEPT but preserves duplicates
+// If a row appears N times in first and M times in second, result has max(N-M, 0) copies
+func executeExceptAll(first: QueryResult, second: QueryResult) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    var ci = 0;
+    while ci < first.columnNames.count() {
+        result.addColumnName(first.columnNames.get(ci));
+        ci = ci + 1;
+    }
+
+    // Track which rows in second have been "used" to cancel out first rows
+    var secondUsed = new List[Integer]();
+    var si = 0;
+    while si < second.rowCount() {
+        secondUsed.add(0);
+        si = si + 1;
+    }
+
+    // For each row in first, try to find an unused match in second
+    var ri = 0;
+    while ri < first.rowCount() {
+        var row = first.getRow(ri);
+        if row != null {
+            var r = row;
+            var consumed = false;
+            si = 0;
+            while si < second.rowCount() {
+                if secondUsed.get(si) == 0 {
+                    var secRow = second.getRow(si);
+                    if secRow != null {
+                        var sr = secRow;
+                        if rowsEqual(r, sr) {
+                            secondUsed.set(si, 1);
+                            consumed = true;
+                            si = second.rowCount();  // break
+                        }
+                    }
+                }
+                si = si + 1;
+            }
+            if consumed == false {
+                result.addRow(r);
+            }
+        }
+        ri = ri + 1;
+    }
+
+    return result;
+}
+
+// Execute INTERSECT ALL - like INTERSECT but preserves duplicates
+// If a row appears N times in first and M times in second, result has min(N, M) copies
+func executeIntersectAll(first: QueryResult, second: QueryResult) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    var ci = 0;
+    while ci < first.columnNames.count() {
+        result.addColumnName(first.columnNames.get(ci));
+        ci = ci + 1;
+    }
+
+    // Track which rows in second have been "used" for matching
+    var secondUsed = new List[Integer]();
+    var si = 0;
+    while si < second.rowCount() {
+        secondUsed.add(0);
+        si = si + 1;
+    }
+
+    // For each row in first, try to find an unused match in second
+    var ri = 0;
+    while ri < first.rowCount() {
+        var row = first.getRow(ri);
+        if row != null {
+            var r = row;
+            si = 0;
+            while si < second.rowCount() {
+                if secondUsed.get(si) == 0 {
+                    var secRow = second.getRow(si);
+                    if secRow != null {
+                        var sr = secRow;
+                        if rowsEqual(r, sr) {
+                            secondUsed.set(si, 1);
+                            result.addRow(r);
+                            si = second.rowCount();  // break
+                        }
+                    }
+                }
+                si = si + 1;
+            }
+        }
+        ri = ri + 1;
+    }
+
+    return result;
+}

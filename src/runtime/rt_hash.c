@@ -1175,3 +1175,44 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
 
     return rt_codec_hex_enc_bytes(digest, 32);
 }
+
+//=============================================================================
+// Fast Non-Cryptographic Hash (FNV-1a)
+//=============================================================================
+
+#include "rt_hash_util.h"
+
+/// @brief Compute fast FNV-1a hash of a string.
+/// @param str Input string.
+/// @return 64-bit hash value.
+int64_t rt_hash_fast(rt_string str)
+{
+    const char *cstr = rt_string_cstr(str);
+    if (!cstr)
+        return (int64_t)RT_FNV_OFFSET_BASIS;
+    return (int64_t)rt_fnv1a(cstr, strlen(cstr));
+}
+
+/// @brief Compute fast FNV-1a hash of a Bytes object.
+/// @param bytes Input Bytes object.
+/// @return 64-bit hash value.
+int64_t rt_hash_fast_bytes(void *bytes)
+{
+    if (!bytes)
+        return (int64_t)RT_FNV_OFFSET_BASIS;
+    size_t len;
+    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
+    if (!data || len == 0)
+        return (int64_t)RT_FNV_OFFSET_BASIS;
+    int64_t result = (int64_t)rt_fnv1a(data, len);
+    free(data);
+    return result;
+}
+
+/// @brief Compute fast FNV-1a hash of an integer value.
+/// @param value Input integer.
+/// @return 64-bit hash value.
+int64_t rt_hash_fast_int(int64_t value)
+{
+    return (int64_t)rt_fnv1a(&value, sizeof(value));
+}

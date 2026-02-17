@@ -6,31 +6,27 @@
 //===----------------------------------------------------------------------===//
 /**
  * @file main.cpp
- * @brief VShell — standalone GUI shell for ViperDOS.
+ * @brief VShell - Terminal emulator for ViperDOS (Unix PTY model).
  *
- * A brand-new .prg shell program that follows the proven VEdit pattern:
- * - extern "C" int main()  — full CRT initialization via crt0
- * - gui_present()           — synchronous present (guaranteed compositing)
- * - gui_poll_event() + yield — cooperative event loop
+ * Pure terminal emulator following the proven VEdit event loop pattern:
+ *   gui_poll_event -> process -> render -> gui_present -> yield
  *
- * Reuses consoled's proven components (TextBuffer, AnsiParser, EmbeddedShell,
- * keymap, shell_cmds, shell_io, RequestHandler) without duplicating them.
+ * Communicates with a separate shell process (shell.prg) via two channels:
+ *   input_send  - sends structured ShellInput messages (keys to shell)
+ *   output_recv - reads raw text/ANSI bytes (output from shell)
+ *
+ * The shell process handles all command logic. This process handles all
+ * GUI rendering. Clean separation, just like Unix terminals.
  */
 //===----------------------------------------------------------------------===//
 
 #include "../../include/viper_colors.h"
 #include "../../syscall.hpp"
 #include "ansi.hpp"
-#include "console_protocol.hpp"
-#include "embedded_shell.hpp"
 #include "keymap.hpp"
-#include "request.hpp"
-#include "shell_cmds.hpp"
-#include "shell_io.hpp"
 #include "text_buffer.hpp"
 #include <gui.h>
 
-using namespace console_protocol;
 using namespace consoled;
 
 //===----------------------------------------------------------------------===//
@@ -43,17 +39,30 @@ constexpr uint32_t DEFAULT_BG = VIPER_COLOR_CONSOLE_BG;
 } // namespace
 
 //===----------------------------------------------------------------------===//
-// ShellApp — VEdit-style GUI application
+// PTY Protocol (must match shell/main.cpp)
 //===----------------------------------------------------------------------===//
 
-class ShellApp {
+/// Input message from terminal emulator to shell.
+struct ShellInput {
+    uint8_t type;      // 0 = printable char, 1 = special key
+    char ch;           // For type 0: the ASCII character
+    uint16_t keycode;  // For type 1: raw keycode
+    uint8_t modifiers; // For type 1: modifier flags
+    uint8_t _pad[3];   // Pad to 8 bytes
+};
+
+//===----------------------------------------------------------------------===//
+// TerminalApp - VEdit-style GUI application
+//===----------------------------------------------------------------------===//
+
+class TerminalApp {
   public:
-    ShellApp()
-        : m_window(nullptr), m_winWidth(0), m_winHeight(0), m_serviceChannel(-1),
-          m_isPrimary(false), m_running(false) {}
+    TerminalApp()
+        : m_window(nullptr), m_winWidth(0), m_winHeight(0),
+          m_inputSend(-1), m_outputRecv(-1), m_running(false) {}
 
     bool init() {
-        sys::print("[vshell] Starting...\n");
+        sys::print("[vshell] Starting terminal emulator...\n");
 
         if (!waitForDisplayd()) {
             sys::print("[vshell] ERROR: displayd not found\n");
@@ -69,11 +78,18 @@ class ShellApp {
             return false;
         }
 
-        if (!initComponents()) {
+        if (!initTextBuffer()) {
             return false;
         }
 
-        registerService();
+        if (!spawnShell()) {
+            sys::print("[vshell] Failed to spawn shell process\n");
+            return false;
+        }
+
+        // Initial present - show window immediately
+        gui_present(m_window);
+
         sys::print("[vshell] Ready.\n");
         return true;
     }
@@ -82,37 +98,31 @@ class ShellApp {
         m_running = true;
 
         while (m_running) {
-            bool needsPresent = false;
-
-            // 1. Process GUI events (drain all pending)
+            // 1. Poll GUI events
             gui_event_t event;
             if (gui_poll_event(m_window, &event) == 0) {
-                needsPresent |= processEvent(event);
+                processGuiEvent(event);
             }
 
-            // 2. Drain IPC messages from child processes (non-blocking)
-            if (m_isPrimary && m_serviceChannel >= 0) {
-                needsPresent |= processIpc();
-            }
+            // 2. Read shell output (non-blocking)
+            drainShellOutput();
 
-            // 3. Check foreground process exit (non-blocking)
-            if (m_shell.is_foreground()) {
-                bool ended = m_shell.check_foreground();
-                needsPresent |= ended;
-            }
+            // 3. Always present — avoids timing windows where content
+            //    is rendered to SHM but never composited to screen
+            gui_present(m_window);
 
-            // 4. Present SYNCHRONOUSLY if anything changed — the key fix
-            if (needsPresent || m_textBuffer.needs_present()) {
-                gui_present(m_window);
-                m_textBuffer.clear_needs_present();
-            }
-
-            // 5. Yield CPU — identical to VEdit and all working GUI apps
-            __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
+            // 4. Sleep 5ms (~100Hz) — gives shell process CPU time
+            sys::sleep(5);
         }
     }
 
     void shutdown() {
+        // Close channel handles
+        if (m_inputSend >= 0)
+            sys::channel_close(m_inputSend);
+        if (m_outputRecv >= 0)
+            sys::channel_close(m_outputRecv);
+
         if (m_window) {
             gui_destroy_window(m_window);
             m_window = nullptr;
@@ -125,15 +135,14 @@ class ShellApp {
     uint32_t m_winWidth;
     uint32_t m_winHeight;
 
-    // Console components
+    // Console rendering
     TextBuffer m_textBuffer;
     AnsiParser m_ansiParser;
-    EmbeddedShell m_shell;
-    RequestHandler m_requestHandler;
 
-    // Service state
-    int32_t m_serviceChannel;
-    bool m_isPrimary;
+    // PTY channels
+    int32_t m_inputSend;   // Send keys to shell
+    int32_t m_outputRecv;  // Receive output from shell
+
     bool m_running;
 
     //=== Initialization helpers =============================================
@@ -161,45 +170,17 @@ class ShellApp {
         m_winWidth = (display.width * 70) / 100;
         m_winHeight = (display.height * 60) / 100;
 
-        // Check for existing consoled/vshell instance
-        uint32_t existingHandle = 0xFFFFFFFF;
-        bool shellExists =
-            (sys::assign_get("CONSOLED", &existingHandle) == 0 && existingHandle != 0xFFFFFFFF);
-        if (shellExists) {
-            sys::channel_close(static_cast<int32_t>(existingHandle));
-        }
-
-        // Build window title
-        char windowTitle[32] = "Shell";
-        if (shellExists) {
-            char *p = windowTitle + 5;
-            *p++ = ' ';
-            *p++ = '#';
-            uint32_t id = sys::uptime() % 1000;
-            char digits[4];
-            int di = 0;
-            do {
-                digits[di++] = '0' + (id % 10);
-                id /= 10;
-            } while (id > 0 && di < 4);
-            while (di > 0)
-                *p++ = digits[--di];
-            *p = '\0';
-        }
-
-        m_window = gui_create_window(windowTitle, m_winWidth, m_winHeight);
+        m_window = gui_create_window("Shell", m_winWidth, m_winHeight);
         if (!m_window) {
             sys::print("[vshell] Failed to create window\n");
             return false;
         }
 
-        int32_t winX = 20 + (shellExists ? 40 : 0);
-        int32_t winY = 20 + (shellExists ? 40 : 0);
-        gui_set_position(m_window, winX, winY);
+        gui_set_position(m_window, 20, 20);
         return true;
     }
 
-    bool initComponents() {
+    bool initTextBuffer() {
         uint32_t cols = (m_winWidth - 2 * PADDING) / FONT_WIDTH;
         uint32_t rows = (m_winHeight - 2 * PADDING) / FONT_HEIGHT;
 
@@ -209,110 +190,132 @@ class ShellApp {
         }
 
         m_ansiParser.init(&m_textBuffer, DEFAULT_FG, DEFAULT_BG);
-        m_requestHandler.init(&m_textBuffer, &m_ansiParser);
 
-        shell_io_init(&m_ansiParser, &m_textBuffer, m_window);
-        m_shell.init(&m_textBuffer, &m_ansiParser);
-        shell_set_instance(&m_shell);
-
-        // Fill background and draw initial content
+        // Fill background
         gui_fill_rect(m_window, 0, 0, m_winWidth, m_winHeight, DEFAULT_BG);
-
-        m_shell.print_banner();
-        m_shell.print_prompt();
-
         m_textBuffer.redraw_all();
-        gui_present(m_window);
-        gui_request_focus(m_window);
 
         return true;
     }
 
-    void registerService() {
-        auto chResult = sys::channel_create();
-        if (chResult.error != 0) {
-            return;
+    bool spawnShell() {
+        // Create input channel (terminal -> shell)
+        auto inputCh = sys::channel_create();
+        if (inputCh.error != 0)
+            return false;
+        m_inputSend = static_cast<int32_t>(inputCh.val0);  // Keep send end
+        uint32_t inputRecv = static_cast<uint32_t>(inputCh.val1);
+
+        // Create output channel (shell -> terminal)
+        auto outputCh = sys::channel_create();
+        if (outputCh.error != 0) {
+            sys::channel_close(m_inputSend);
+            sys::channel_close(static_cast<int32_t>(inputRecv));
+            m_inputSend = -1;
+            return false;
+        }
+        m_outputRecv = static_cast<int32_t>(outputCh.val1); // Keep recv end
+        uint32_t outputSend = static_cast<uint32_t>(outputCh.val0);
+
+        // Spawn shell process
+        uint32_t bootstrapSend = 0xFFFFFFFF;
+        int64_t err = sys::spawn("/c/shell.prg", "shell",
+                                  nullptr, nullptr, nullptr, &bootstrapSend);
+        if (err != 0) {
+            sys::print("[vshell] spawn failed: ");
+            // Clean up channels
+            sys::channel_close(m_inputSend);
+            sys::channel_close(static_cast<int32_t>(inputRecv));
+            sys::channel_close(m_outputRecv);
+            sys::channel_close(static_cast<int32_t>(outputSend));
+            m_inputSend = -1;
+            m_outputRecv = -1;
+            return false;
         }
 
-        int32_t sendCh = static_cast<int32_t>(chResult.val0);
-        int32_t recvCh = static_cast<int32_t>(chResult.val1);
-        m_serviceChannel = recvCh;
-
-        int64_t assignResult = sys::assign_set("CONSOLED", sendCh);
-
-        if (assignResult < 0) {
-            m_isPrimary = false;
-            sys::channel_close(sendCh);
-            sys::channel_close(recvCh);
-            m_serviceChannel = -1;
-        } else {
-            m_isPrimary = true;
+        // Send [input_recv, output_send] to shell via bootstrap channel
+        uint8_t dummy = 0;
+        uint32_t handles[2] = {inputRecv, outputSend};
+        int64_t send_err = sys::channel_send(
+            static_cast<int32_t>(bootstrapSend), &dummy, 1, handles, 2);
+        if (send_err != 0) {
+            sys::print("[vshell] ERROR: Bootstrap send failed\n");
         }
+        sys::channel_close(static_cast<int32_t>(bootstrapSend));
+
+        // Note: inputRecv and outputSend handles are now transferred to the
+        // shell process (channel_send transfers ownership). We only keep
+        // m_inputSend and m_outputRecv.
+
+        sys::print("[vshell] Shell process spawned\n");
+        return true;
     }
 
     //=== Event processing ===================================================
 
     /// Process a GUI event. Returns true if the screen needs to be presented.
-    bool processEvent(const gui_event_t &event) {
+    bool processGuiEvent(const gui_event_t &event) {
         if (event.type == GUI_EVENT_KEY && event.key.pressed) {
+            // Convert keypress to ShellInput and send to shell
+            ShellInput input = {};
             char c = keycode_to_ascii(event.key.keycode, event.key.modifiers);
 
-            if (m_shell.is_foreground()) {
-                if (c != 0) {
-                    m_shell.forward_to_foreground(c);
-                } else {
-                    m_shell.forward_special_key(event.key.keycode);
-                }
+            if (c != 0) {
+                input.type = 0;
+                input.ch = c;
             } else {
-                m_shell.handle_special_key(event.key.keycode, event.key.modifiers);
-                if (c != 0) {
-                    m_shell.handle_char(c);
-                }
+                input.type = 1;
+                input.keycode = event.key.keycode;
+                input.modifiers = event.key.modifiers;
             }
-            return true;
-        } else if (event.type == GUI_EVENT_CLOSE) {
+
+            sys::channel_send(m_inputSend, &input, sizeof(input),
+                              nullptr, 0);
+
+            // Don't present yet - wait for shell echo via output channel
+            return false;
+        }
+
+        if (event.type == GUI_EVENT_CLOSE) {
             m_running = false;
             return false;
         }
-        return false;
+
+        // Any other event (focus, resize, etc.) — present to refresh display
+        return true;
     }
 
-    /// Drain IPC messages. Returns true if any messages were processed.
-    bool processIpc() {
-        uint8_t msgBuf[MAX_PAYLOAD];
-        uint32_t handles[4];
+    /// Read output from shell process and render it. Returns true if any
+    /// output was received.
+    bool drainShellOutput() {
         bool didWork = false;
 
-        for (uint32_t i = 0; i < 64; i++) {
-            uint32_t handleCount = 4;
-            int64_t n = sys::channel_recv(
-                m_serviceChannel, msgBuf, sizeof(msgBuf), handles, &handleCount);
-
+        // Read up to 32 messages per loop iteration
+        for (int i = 0; i < 32; i++) {
+            uint8_t buf[4096];
+            uint32_t hcount = 0;
+            int64_t n = sys::channel_recv(m_outputRecv, buf, sizeof(buf),
+                                           nullptr, &hcount);
             if (n <= 0)
                 break;
 
             didWork = true;
 
-            int32_t clientCh = (handleCount > 0) ? static_cast<int32_t>(handles[0]) : -1;
-            m_requestHandler.handle(
-                clientCh, msgBuf, static_cast<size_t>(n), handles, handleCount);
-
-            for (uint32_t j = 0; j < handleCount; j++) {
-                if (handles[j] != 0xFFFFFFFF) {
-                    sys::channel_close(static_cast<int32_t>(handles[j]));
-                }
-            }
+            // Feed raw bytes to AnsiParser -> TextBuffer -> pixels
+            m_ansiParser.write(reinterpret_cast<const char *>(buf),
+                               static_cast<size_t>(n));
         }
+
         return didWork;
     }
 };
 
 //===----------------------------------------------------------------------===//
-// Entry Point — uses main() for full CRT initialization (like VEdit)
+// Entry Point - uses main() for full CRT initialization (like VEdit)
 //===----------------------------------------------------------------------===//
 
 extern "C" int main() {
-    ShellApp app;
+    TerminalApp app;
     if (!app.init()) {
         return 1;
     }

@@ -89,12 +89,14 @@ set(RT_COLLECTIONS_SOURCES
         rt_sparsearray.c
         rt_weakmap.c
         rt_map.c
+        rt_intmap.c
         rt_bimap.c
         rt_countmap.c
         rt_multimap.c
         rt_treemap.c
         rt_trie.c
         rt_bytes.c
+        rt_binbuf.c
         rt_grid2d.c
         rt_timer.c
         rt_statemachine.c
@@ -283,6 +285,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_quadtree.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_binbuf.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_parse.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_path.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h

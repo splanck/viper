@@ -367,6 +367,44 @@ These need to be fixed in the platform itself.
 
 ---
 
+## BUG-TOKEN-001: Duplicate token constants in ViperSQL lexer
+
+- **Status**: FIXED
+- **Severity**: Critical
+- **Component**: ViperSQL — `token.zia`
+- **Symptom**: SQL queries using `CLOSE` or `FILE` keywords are silently misparsed because their token constants collide with `EXCEPT` and `INTERSECT`. Any SQL using `CLOSE` would be parsed as `EXCEPT`, and `FILE` as `INTERSECT`.
+- **Root cause**: Token constant assignments had duplicates: `TK_EXCEPT = 137` and `TK_CLOSE = 137`; `TK_INTERSECT = 138` and `TK_FILE = 138`. The second definitions overwrote the first in practice, meaning `EXCEPT` and `INTERSECT` still worked (their constants were overwritten by `CLOSE`/`FILE`), but `CLOSE` and `FILE` would lex as `EXCEPT`/`INTERSECT`.
+- **Fix**: Reassigned `TK_CLOSE = 219` and `TK_FILE = 220` to unique values, eliminating the collision. Verified that `EXCEPT` and `INTERSECT` queries produce correct results.
+- **Verification**: All existing tests pass. New Phase 14 test suite includes specific token collision regression tests.
+- **Found**: 2026-02-16
+- **Fixed**: 2026-02-16
+
+---
+
+## BUG-IO-001: Binary data with null bytes corrupted by File.ReadAllText/WriteAllText
+
+- **Status**: OPEN (workaround available)
+- **Severity**: Medium
+- **Component**: Runtime (C) — `Viper.IO.File`
+- **Symptom**: Binary data containing null bytes (0x00) cannot survive a `WriteAllText` + `ReadAllText` round-trip. The data is silently truncated or corrupted at the first null byte. This prevents WAL files from being read back after writing, since the first serialized field (lsn.fileNumber) is often 0, producing null bytes at the start of the file.
+- **Root cause**: `File.ReadAllText` and `File.WriteAllText` operate on Zia `String` values, which are null-terminated C strings internally. Any null byte in the data acts as a premature string terminator, truncating the content. The `String.Chr(0)` function can create a string containing a null byte, but it cannot be safely stored/retrieved through the string-based file I/O API.
+- **Reproduction**:
+  ```zia
+  var buf = new BinaryBuffer();
+  buf.init();
+  buf.writeInt32(0);       // Writes 4 null bytes
+  buf.writeInt32(42);      // Writes 4 more bytes
+  var data = buf.toBytes().ToStr();
+  IO.File.WriteAllText("/tmp/test.bin", data);
+  var readBack = IO.File.ReadAllText("/tmp/test.bin");
+  // readBack is truncated at the first null byte — length 0 or 1
+  ```
+- **Workaround**: Use `Viper.Collections.Bytes` with `IO.File.WriteAllBytes`/`IO.File.ReadAllBytes` if available, or avoid binary file I/O through the string API. For WAL files, the in-memory serialization works correctly; only disk persistence is affected.
+- **Impact**: WAL crash recovery cannot re-read log files from disk. All WAL functionality works correctly in-memory.
+- **Found**: 2026-02-17
+
+---
+
 ## BUG-FE-010: Cross-class Ptr type inference loses property/method access
 
 - **Status**: FIXED
@@ -382,3 +420,25 @@ These need to be fixed in the platform itself.
 - **Regression test**: `test_zia_bugfixes.cpp` (BugFE010_CrossClassPtrMethodFallback)
 - **Found**: 2026-02-16
 - **Fixed**: 2026-02-16
+
+---
+
+## BUG-FE-011: Cross-module `final` constant equality comparison always false
+
+- **Status**: OPEN (workaround available)
+- **Severity**: Low
+- **Component**: Zia frontend — constant evaluation across module boundaries
+- **Symptom**: When a `final` constant is defined in module A and used in module B via `bind`, equality comparisons (`==`, `!=`) against the constant always evaluate to false. The constant's value appears correct when used in arithmetic or as a function argument, but `if (x == MY_CONSTANT)` fails even when x holds the expected value.
+- **Root cause**: Unknown. Possibly the cross-module constant binding creates a different representation that fails the equality comparison.
+- **Reproduction**:
+  ```zia
+  // module_a.zia
+  final MY_SENTINEL = 0 - 2147483647;
+
+  // module_b.zia
+  bind "./module_a";
+  var x = 0 - 2147483647;
+  if x == MY_SENTINEL { ... }  // Never enters
+  ```
+- **Workaround**: Use literal values or range comparisons (`x <= 0 - 2147483646`) instead of equality checks against imported constants.
+- **Found**: 2026-02-17

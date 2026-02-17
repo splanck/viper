@@ -7,6 +7,7 @@
 ## Contents
 
 - [Viper.IO.Archive](#viperioarchive)
+- [Viper.IO.BinaryBuffer](#viperiobinarybuffer)
 - [Viper.IO.BinFile](#viperiobinfile)
 - [Viper.IO.Compress](#viperiocompress)
 - [Viper.IO.Dir](#viperiodir)
@@ -232,6 +233,183 @@ Archive operations trap on errors:
 - **In-memory processing:** Work with ZIP data without disk I/O
 - **Extraction:** Unpack downloaded or received ZIP files
 - **Integration:** Read/write ZIP files for interoperability with other tools
+
+---
+
+## Viper.IO.BinaryBuffer
+
+Positioned binary read/write buffer for constructing and parsing binary data in memory. Maintains an internal cursor position that advances automatically with each read or write.
+
+**Type:** Instance class
+
+**Constructors:**
+
+- `Viper.IO.BinaryBuffer.New()` - Creates an empty buffer with default capacity
+- `Viper.IO.BinaryBuffer.NewCap(capacity)` - Creates an empty buffer with specified initial capacity
+- `Viper.IO.BinaryBuffer.FromBytes(data)` - Creates a buffer initialized with data from a Bytes object
+
+### Properties
+
+| Property | Type    | Access     | Description                   |
+|----------|---------|------------|-------------------------------|
+| `Pos`    | Integer | Read/Write | Current buffer position       |
+| `Len`    | Integer | Read-only  | Current data length in bytes  |
+
+### Write Methods
+
+| Method              | Returns | Description                                      |
+|---------------------|---------|--------------------------------------------------|
+| `WriteByte(v)`      | void    | Write a single byte (0-255) at current position  |
+| `WriteI16LE(v)`     | void    | Write 16-bit integer (little-endian)             |
+| `WriteI16BE(v)`     | void    | Write 16-bit integer (big-endian)                |
+| `WriteI32LE(v)`     | void    | Write 32-bit integer (little-endian)             |
+| `WriteI32BE(v)`     | void    | Write 32-bit integer (big-endian)                |
+| `WriteI64LE(v)`     | void    | Write 64-bit integer (little-endian)             |
+| `WriteI64BE(v)`     | void    | Write 64-bit integer (big-endian)                |
+| `WriteStr(s)`       | void    | Write string as UTF-8 bytes                      |
+| `WriteBytes(b)`     | void    | Write all bytes from a Bytes object              |
+
+### Read Methods
+
+| Method              | Returns | Description                                      |
+|---------------------|---------|--------------------------------------------------|
+| `ReadByte()`        | Integer | Read a single byte (0-255) at current position   |
+| `ReadI16LE()`       | Integer | Read 16-bit integer (little-endian)              |
+| `ReadI16BE()`       | Integer | Read 16-bit integer (big-endian)                 |
+| `ReadI32LE()`       | Integer | Read 32-bit integer (little-endian)              |
+| `ReadI32BE()`       | Integer | Read 32-bit integer (big-endian)                 |
+| `ReadI64LE()`       | Integer | Read 64-bit integer (little-endian)              |
+| `ReadI64BE()`       | Integer | Read 64-bit integer (big-endian)                 |
+| `ReadStr()`         | String  | Read a length-prefixed string                    |
+| `ReadBytes(count)`  | Bytes   | Read count bytes into a new Bytes object         |
+
+### Control Methods
+
+| Method       | Returns | Description                              |
+|--------------|---------|------------------------------------------|
+| `ToBytes()`  | Bytes   | Copy all data to a new Bytes object      |
+| `Reset()`    | void    | Reset buffer to empty state (Pos=0, Len=0) |
+
+### Zia Example
+
+```zia
+module BinaryBufferDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.BinaryBuffer as BB;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Create a new buffer
+    var buf = BB.New();
+
+    // Write various data types
+    buf.WriteByte(0xFF);
+    buf.WriteI32LE(12345);
+    buf.WriteI32BE(67890);
+    buf.WriteStr("Hello");
+
+    Say("Length: " + Fmt.Int(buf.get_Len()));
+
+    // Seek back to start and read
+    buf.set_Pos(0);
+    Say("Byte: " + Fmt.Int(buf.ReadByte()));        // 255
+    Say("I32LE: " + Fmt.Int(buf.ReadI32LE()));       // 12345
+    Say("I32BE: " + Fmt.Int(buf.ReadI32BE()));       // 67890
+
+    // Export to Bytes
+    var data = buf.ToBytes();
+    Say("Exported len: " + Fmt.Int(data.Len));
+}
+```
+
+> **Note:** BinaryBuffer properties (`Pos`, `Len`) use the get_/set_ pattern in Zia; access them as `buf.get_Len()`, `buf.get_Pos()`, `buf.set_Pos(n)`.
+
+### BASIC Example
+
+```basic
+' Create a new binary buffer
+DIM buf AS OBJECT = Viper.IO.BinaryBuffer.New()
+
+' Write various data types
+buf.WriteByte(&HCA)
+buf.WriteI16LE(1000)
+buf.WriteI32BE(123456)
+buf.WriteI64LE(9876543210)
+buf.WriteStr("Hello")
+buf.WriteBytes(Viper.Collections.Bytes.FromHex("deadbeef"))
+
+PRINT "Length:"; buf.Len
+
+' Seek back and read
+buf.Pos = 0
+PRINT "Byte:"; buf.ReadByte()       ' Output: 202
+PRINT "I16LE:"; buf.ReadI16LE()     ' Output: 1000
+PRINT "I32BE:"; buf.ReadI32BE()     ' Output: 123456
+PRINT "I64LE:"; buf.ReadI64LE()     ' Output: 9876543210
+
+' Export to Bytes
+DIM data AS OBJECT = buf.ToBytes()
+PRINT "Exported:"; data.Len
+
+' Reset and reuse
+buf.Reset()
+PRINT "After reset:"; buf.Len       ' Output: 0
+```
+
+### Preallocated Capacity Example
+
+```basic
+' Preallocate buffer for a known packet size
+DIM buf AS OBJECT = Viper.IO.BinaryBuffer.NewCap(256)
+
+' Build a binary protocol packet
+buf.WriteI16BE(&HCAFE)         ' Magic number
+buf.WriteI32BE(1)              ' Version
+buf.WriteStr("payload data")
+
+DIM packet AS OBJECT = buf.ToBytes()
+```
+
+### FromBytes Example
+
+```basic
+' Parse binary data received from network
+DIM rawData AS OBJECT = Viper.IO.File.ReadAllBytes("packet.bin")
+DIM buf AS OBJECT = Viper.IO.BinaryBuffer.FromBytes(rawData)
+
+' Parse the binary format
+DIM magic AS INTEGER = buf.ReadI16BE()
+DIM version AS INTEGER = buf.ReadI32BE()
+DIM payload AS STRING = buf.ReadStr()
+```
+
+### BinaryBuffer vs MemStream
+
+| Feature           | BinaryBuffer            | MemStream                    |
+|-------------------|-------------------------|------------------------------|
+| Endianness        | Both LE and BE methods  | Little-endian only           |
+| Float support     | No                      | Yes (F32, F64)               |
+| Auto-expand       | Yes                     | Yes                          |
+| Random access     | Yes (via Pos)           | Yes (via Pos/Seek)           |
+| Best for          | Network protocols, mixed-endian formats | Structured binary data, IEEE floats |
+
+Use BinaryBuffer when:
+- You need both big-endian and little-endian operations
+- Building network protocol packets (many protocols use big-endian)
+- Parsing binary formats with mixed byte orders
+
+Use MemStream when:
+- Working with floating-point data (F32, F64)
+- All data is little-endian
+- You need unsigned integer operations (U8, U16, U32)
+
+### Use Cases
+
+- **Network protocols:** Build and parse TCP/UDP packets with big-endian fields
+- **File format parsing:** Read binary headers with mixed byte orders
+- **Serialization:** Encode structured data for storage or transmission
+- **Database pages:** Read and write fixed-format binary records
 
 ---
 

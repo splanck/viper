@@ -239,6 +239,12 @@ entity ValueSerializer {
             return;
         }
 
+        if val.kind == SQL_JSON {
+            buf.writeByte(VAL_TYPE_JSON);
+            buf.writeString(val.textValue);
+            return;
+        }
+
         // Default: NULL
         buf.writeByte(VAL_TYPE_NULL);
     }
@@ -281,6 +287,11 @@ entity ValueSerializer {
             return sqlTimestamp(tsVal);
         }
 
+        if typeTag == VAL_TYPE_JSON {
+            var jsonVal = buf.readString();
+            return sqlJson(jsonVal);
+        }
+
         return sqlNull();
     }
 
@@ -312,6 +323,10 @@ entity ValueSerializer {
 
         if val.kind == SQL_TIMESTAMP {
             return 1 + 8;  // Tag + 8 bytes
+        }
+
+        if val.kind == SQL_JSON {
+            return 1 + 4 + String.Length(val.textValue);  // Tag + len + string
         }
 
         return 1;

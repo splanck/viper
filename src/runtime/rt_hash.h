@@ -110,6 +110,25 @@ extern "C"
     rt_string rt_hash_hmac_sha256_bytes(void *key, void *data);
 
     //=========================================================================
+    // Fast Non-Cryptographic Hash (FNV-1a)
+    //=========================================================================
+
+    /// @brief Compute fast FNV-1a hash of a string.
+    /// @param str Input string.
+    /// @return 64-bit hash value (as signed i64).
+    int64_t rt_hash_fast(rt_string str);
+
+    /// @brief Compute fast FNV-1a hash of a Bytes object.
+    /// @param bytes Input bytes.
+    /// @return 64-bit hash value (as signed i64).
+    int64_t rt_hash_fast_bytes(void *bytes);
+
+    /// @brief Compute fast FNV-1a hash of an integer.
+    /// @param value Input integer.
+    /// @return 64-bit hash value (as signed i64).
+    int64_t rt_hash_fast_int(int64_t value);
+
+    //=========================================================================
     // Internal HMAC functions (for PBKDF2)
     //=========================================================================
 

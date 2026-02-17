@@ -894,6 +894,147 @@ uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len)
     return data;
 }
 
+//=============================================================================
+// Binary Integer Read/Write Operations
+//=============================================================================
+
+/// @brief Validate offset and size for binary read/write.
+static inline void bytes_check_bounds(rt_bytes_impl *b, int64_t offset, int64_t size)
+{
+    if (!b)
+        rt_trap("Bytes: null object");
+    if (offset < 0 || offset + size > b->len)
+        rt_trap("Bytes: binary read/write out of bounds");
+}
+
+int64_t rt_bytes_read_i16le(void *obj, int64_t offset)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 2);
+    uint8_t *d = b->data + offset;
+    return (int64_t)((uint16_t)d[0] | ((uint16_t)d[1] << 8));
+}
+
+int64_t rt_bytes_read_i16be(void *obj, int64_t offset)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 2);
+    uint8_t *d = b->data + offset;
+    return (int64_t)(((uint16_t)d[0] << 8) | (uint16_t)d[1]);
+}
+
+int64_t rt_bytes_read_i32le(void *obj, int64_t offset)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 4);
+    uint8_t *d = b->data + offset;
+    return (int64_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) |
+                     ((uint32_t)d[2] << 16) | ((uint32_t)d[3] << 24));
+}
+
+int64_t rt_bytes_read_i32be(void *obj, int64_t offset)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 4);
+    uint8_t *d = b->data + offset;
+    return (int64_t)(((uint32_t)d[0] << 24) | ((uint32_t)d[1] << 16) |
+                     ((uint32_t)d[2] << 8) | (uint32_t)d[3]);
+}
+
+int64_t rt_bytes_read_i64le(void *obj, int64_t offset)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 8);
+    uint8_t *d = b->data + offset;
+    return (int64_t)((uint64_t)d[0] | ((uint64_t)d[1] << 8) | ((uint64_t)d[2] << 16) |
+                     ((uint64_t)d[3] << 24) | ((uint64_t)d[4] << 32) | ((uint64_t)d[5] << 40) |
+                     ((uint64_t)d[6] << 48) | ((uint64_t)d[7] << 56));
+}
+
+int64_t rt_bytes_read_i64be(void *obj, int64_t offset)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 8);
+    uint8_t *d = b->data + offset;
+    return (int64_t)(((uint64_t)d[0] << 56) | ((uint64_t)d[1] << 48) | ((uint64_t)d[2] << 40) |
+                     ((uint64_t)d[3] << 32) | ((uint64_t)d[4] << 24) | ((uint64_t)d[5] << 16) |
+                     ((uint64_t)d[6] << 8) | (uint64_t)d[7]);
+}
+
+void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 2);
+    uint8_t *d = b->data + offset;
+    d[0] = (uint8_t)(value & 0xFF);
+    d[1] = (uint8_t)((value >> 8) & 0xFF);
+}
+
+void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 2);
+    uint8_t *d = b->data + offset;
+    d[0] = (uint8_t)((value >> 8) & 0xFF);
+    d[1] = (uint8_t)(value & 0xFF);
+}
+
+void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 4);
+    uint8_t *d = b->data + offset;
+    d[0] = (uint8_t)(value & 0xFF);
+    d[1] = (uint8_t)((value >> 8) & 0xFF);
+    d[2] = (uint8_t)((value >> 16) & 0xFF);
+    d[3] = (uint8_t)((value >> 24) & 0xFF);
+}
+
+void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 4);
+    uint8_t *d = b->data + offset;
+    d[0] = (uint8_t)((value >> 24) & 0xFF);
+    d[1] = (uint8_t)((value >> 16) & 0xFF);
+    d[2] = (uint8_t)((value >> 8) & 0xFF);
+    d[3] = (uint8_t)(value & 0xFF);
+}
+
+void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 8);
+    uint8_t *d = b->data + offset;
+    d[0] = (uint8_t)(value & 0xFF);
+    d[1] = (uint8_t)((value >> 8) & 0xFF);
+    d[2] = (uint8_t)((value >> 16) & 0xFF);
+    d[3] = (uint8_t)((value >> 24) & 0xFF);
+    d[4] = (uint8_t)((value >> 32) & 0xFF);
+    d[5] = (uint8_t)((value >> 40) & 0xFF);
+    d[6] = (uint8_t)((value >> 48) & 0xFF);
+    d[7] = (uint8_t)((value >> 56) & 0xFF);
+}
+
+void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value)
+{
+    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    bytes_check_bounds(b, offset, 8);
+    uint8_t *d = b->data + offset;
+    d[0] = (uint8_t)((value >> 56) & 0xFF);
+    d[1] = (uint8_t)((value >> 48) & 0xFF);
+    d[2] = (uint8_t)((value >> 40) & 0xFF);
+    d[3] = (uint8_t)((value >> 32) & 0xFF);
+    d[4] = (uint8_t)((value >> 24) & 0xFF);
+    d[5] = (uint8_t)((value >> 16) & 0xFF);
+    d[6] = (uint8_t)((value >> 8) & 0xFF);
+    d[7] = (uint8_t)(value & 0xFF);
+}
+
+//=============================================================================
+// Internal Utilities (declared in rt_internal.h)
+//=============================================================================
+
 /// @brief Create a Bytes object from raw data.
 ///
 /// This utility function creates a new Bytes object and initializes it

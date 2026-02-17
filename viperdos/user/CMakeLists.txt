@@ -238,19 +238,30 @@ add_subdirectory(clock)
 # viewer - Image viewer
 add_subdirectory(viewer)
 
-# vshell - New standalone shell program (replaces consoled.sys for GUI use)
+# vshell - Terminal emulator (GUI rendering only, spawns shell.prg)
 set(_CONSOLED_DIR ${CMAKE_CURRENT_SOURCE_DIR}/servers/consoled)
 add_gui_program(vshell
         vshell/main.cpp
         ${_CONSOLED_DIR}/ansi.cpp
         ${_CONSOLED_DIR}/keymap.cpp
-        ${_CONSOLED_DIR}/request.cpp
         ${_CONSOLED_DIR}/text_buffer.cpp
-        ${_CONSOLED_DIR}/embedded_shell.cpp
-        ${_CONSOLED_DIR}/shell_io.cpp
-        ${_CONSOLED_DIR}/shell_cmds.cpp
 )
 target_include_directories(vshell.prg PRIVATE
         ${CMAKE_SOURCE_DIR}/user/servers/consoled
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+# shell - Standalone shell process (PTY-connected, no GUI)
+add_user_program(shell
+        shell/main.cpp
+        shell/shell_io_pty.cpp
+        shell/text_buffer_stub.cpp
+        ${_CONSOLED_DIR}/embedded_shell.cpp
+        ${_CONSOLED_DIR}/shell_cmds.cpp
+        ${_CONSOLED_DIR}/keymap.cpp
+)
+target_include_directories(shell.prg PRIVATE
+        ${CMAKE_SOURCE_DIR}/user/servers/consoled
+        ${CMAKE_SOURCE_DIR}/user/libgui/include
         ${CMAKE_SOURCE_DIR}/include
 )

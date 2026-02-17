@@ -10,6 +10,8 @@ bind Time = Viper.Time;
 bind "./page";
 bind "./wal";
 bind "./serializer";
+bind "./data_page";
+bind "./buffer";
 
 //=============================================================================
 // TABLE LOCK MANAGER (Multi-User Concurrency Control)
@@ -196,6 +198,202 @@ entity TableLockManager {
         lockModes.add(mode);
         Threads.Monitor.Exit(monitor);
         return true;
+    }
+}
+
+//=============================================================================
+// ROW LOCK MANAGER (Phase 14: Row-Level Locking)
+//=============================================================================
+
+// Row lock acquisition timeout (milliseconds)
+final ROW_LOCK_TIMEOUT_MS = 5000;
+final ROW_LOCK_RETRY_MS = 10;
+
+// Thread-safe row-level lock manager for concurrent access.
+// Uses parallel lists to track lock ownership (tableName + rowIndex → sessionId → mode).
+// Lock modes: LOCK_SHARED (1) for FOR SHARE, LOCK_EXCLUSIVE (2) for FOR UPDATE.
+// Compatibility: S+S = OK, S+X = conflict, X+X = conflict.
+entity RowLockManager {
+    hide List[String] lockTableNames;
+    hide List[Integer] lockRowIndices;
+    hide List[Integer] lockSessionIds;
+    hide List[Integer] lockModes;
+    hide List[Integer] monitor;
+
+    expose func init() {
+        lockTableNames = [];
+        lockRowIndices = [];
+        lockSessionIds = [];
+        lockModes = [];
+        monitor = [];
+    }
+
+    // Acquire a row lock (blocking with timeout).
+    // Returns true if acquired, false on timeout.
+    expose func acquireRowLock(sessionId: Integer, tableName: String, rowIndex: Integer, mode: Integer) -> Boolean {
+        var waited = 0;
+        while waited < ROW_LOCK_TIMEOUT_MS {
+            Threads.Monitor.Enter(monitor);
+
+            // Check if this session already holds an adequate lock on this row
+            var alreadyHeld = false;
+            var i = 0;
+            while i < lockTableNames.count() {
+                if lockSessionIds.get(i) == sessionId && lockTableNames.get(i) == tableName && lockRowIndices.get(i) == rowIndex {
+                    if lockModes.get(i) >= mode {
+                        alreadyHeld = true;
+                    }
+                }
+                i = i + 1;
+            }
+
+            if alreadyHeld {
+                Threads.Monitor.Exit(monitor);
+                return true;
+            }
+
+            // Check for conflicts with other sessions
+            var conflict = false;
+            i = 0;
+            while i < lockTableNames.count() {
+                if lockTableNames.get(i) == tableName && lockRowIndices.get(i) == rowIndex && lockSessionIds.get(i) != sessionId {
+                    if mode == LOCK_EXCLUSIVE || lockModes.get(i) == LOCK_EXCLUSIVE {
+                        conflict = true;
+                    }
+                }
+                i = i + 1;
+            }
+
+            if conflict == false {
+                // Grant the lock
+                lockTableNames.add(tableName);
+                lockRowIndices.add(rowIndex);
+                lockSessionIds.add(sessionId);
+                lockModes.add(mode);
+                Threads.Monitor.Exit(monitor);
+                return true;
+            }
+
+            Threads.Monitor.Exit(monitor);
+
+            // Wait and retry
+            Time.SleepMs(ROW_LOCK_RETRY_MS);
+            waited = waited + ROW_LOCK_RETRY_MS;
+        }
+
+        return false;  // Timeout
+    }
+
+    // Non-blocking lock attempt. Returns true if lock granted, false if conflict.
+    expose func tryAcquireRowLock(sessionId: Integer, tableName: String, rowIndex: Integer, mode: Integer) -> Boolean {
+        Threads.Monitor.Enter(monitor);
+
+        // Check if already held
+        var i = 0;
+        while i < lockTableNames.count() {
+            if lockSessionIds.get(i) == sessionId && lockTableNames.get(i) == tableName && lockRowIndices.get(i) == rowIndex {
+                if lockModes.get(i) >= mode {
+                    Threads.Monitor.Exit(monitor);
+                    return true;
+                }
+            }
+            i = i + 1;
+        }
+
+        // Check for conflicts
+        i = 0;
+        while i < lockTableNames.count() {
+            if lockTableNames.get(i) == tableName && lockRowIndices.get(i) == rowIndex && lockSessionIds.get(i) != sessionId {
+                if mode == LOCK_EXCLUSIVE || lockModes.get(i) == LOCK_EXCLUSIVE {
+                    Threads.Monitor.Exit(monitor);
+                    return false;  // Conflict
+                }
+            }
+            i = i + 1;
+        }
+
+        // Grant lock
+        lockTableNames.add(tableName);
+        lockRowIndices.add(rowIndex);
+        lockSessionIds.add(sessionId);
+        lockModes.add(mode);
+        Threads.Monitor.Exit(monitor);
+        return true;
+    }
+
+    // Release all row locks held by a session
+    expose func releaseAllRowLocks(sessionId: Integer) {
+        Threads.Monitor.Enter(monitor);
+        var newNames: List[String] = [];
+        var newRows: List[Integer] = [];
+        var newSessions: List[Integer] = [];
+        var newModes: List[Integer] = [];
+        var i = 0;
+        while i < lockTableNames.count() {
+            if lockSessionIds.get(i) != sessionId {
+                newNames.add(lockTableNames.get(i));
+                newRows.add(lockRowIndices.get(i));
+                newSessions.add(lockSessionIds.get(i));
+                newModes.add(lockModes.get(i));
+            }
+            i = i + 1;
+        }
+        lockTableNames = newNames;
+        lockRowIndices = newRows;
+        lockSessionIds = newSessions;
+        lockModes = newModes;
+        Threads.Monitor.Exit(monitor);
+    }
+
+    // Release all row locks on a specific table held by a session
+    expose func releaseTableRowLocks(sessionId: Integer, tableName: String) {
+        Threads.Monitor.Enter(monitor);
+        var newNames: List[String] = [];
+        var newRows: List[Integer] = [];
+        var newSessions: List[Integer] = [];
+        var newModes: List[Integer] = [];
+        var i = 0;
+        while i < lockTableNames.count() {
+            var skip = false;
+            if lockSessionIds.get(i) == sessionId && lockTableNames.get(i) == tableName {
+                skip = true;
+            }
+            if skip == false {
+                newNames.add(lockTableNames.get(i));
+                newRows.add(lockRowIndices.get(i));
+                newSessions.add(lockSessionIds.get(i));
+                newModes.add(lockModes.get(i));
+            }
+            i = i + 1;
+        }
+        lockTableNames = newNames;
+        lockRowIndices = newRows;
+        lockSessionIds = newSessions;
+        lockModes = newModes;
+        Threads.Monitor.Exit(monitor);
+    }
+
+    // Get total active row lock count (for diagnostics)
+    expose func rowLockCount() -> Integer {
+        Threads.Monitor.Enter(monitor);
+        var count = lockTableNames.count();
+        Threads.Monitor.Exit(monitor);
+        return count;
+    }
+
+    // Get row lock count for a specific session
+    expose func sessionRowLockCount(sessionId: Integer) -> Integer {
+        Threads.Monitor.Enter(monitor);
+        var count = 0;
+        var i = 0;
+        while i < lockTableNames.count() {
+            if lockSessionIds.get(i) == sessionId {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(monitor);
+        return count;
     }
 }
 
@@ -479,6 +677,12 @@ entity TransactionManager {
     expose WALManager wal;
     expose Boolean autoCommit;
 
+    // Storage references for undo support (optional, set via initWithStorage)
+    hide BufferPool undoPool;
+    hide DataPageManager undoDataMgr;
+    hide RowSerializer undoSerializer;
+    hide Boolean undoEnabled;
+
     expose func init() {
         nextTxnId = 1;
         timestampCounter = 1;
@@ -488,11 +692,27 @@ entity TransactionManager {
         wal = new WALManager();
         wal.init();
         autoCommit = true;  // Default SQL behavior
+        undoPool = new BufferPool();
+        undoPool.init();
+        undoDataMgr = new DataPageManager();
+        undoDataMgr.init();
+        undoSerializer = new RowSerializer();
+        undoSerializer.init();
+        undoEnabled = false;
     }
 
     expose func initWithWAL(walManager: WALManager) {
         init();
         wal = walManager;
+    }
+
+    // Initialize with storage references for undo on abort
+    expose func initWithStorage(walManager: WALManager, pool: BufferPool, dataMgr: DataPageManager) {
+        init();
+        wal = walManager;
+        undoPool = pool;
+        undoDataMgr = dataMgr;
+        undoEnabled = true;
     }
 
     //=========================================================================
@@ -541,12 +761,14 @@ entity TransactionManager {
             return false;
         }
 
+        // Undo changes by scanning WAL backwards for this transaction
+        if undoEnabled && wal.isEnabled() {
+            performUndo(txn.txnId);
+        }
+
         // Log ABORT
         txn.lastLSN = wal.logAbort(txn.txnId);
         txn.state = TXN_ABORTED;
-
-        // Undo changes (in a real system, we'd replay log backwards)
-        // For now, just mark as aborted
 
         // Release all locks
         lockMgr.releaseAllLocks(txn.txnId);
@@ -555,6 +777,65 @@ entity TransactionManager {
         removeFromActive(txn.txnId);
 
         return true;
+    }
+
+    // Perform undo for a single transaction by scanning WAL backwards
+    hide func performUndo(txnId: Integer) {
+        // Flush WAL buffer so we can read all records
+        wal.flush();
+        var allRecords = wal.readAllRecords();
+
+        // Scan backwards, undoing this transaction's data operations
+        var ri = allRecords.count() - 1;
+        while ri >= 0 {
+            var record = allRecords.get(ri);
+            if record.txnId == txnId {
+                if record.recordType == LOG_INSERT {
+                    // Undo INSERT = delete the inserted row
+                    if record.pageId != INVALID_PAGE_ID {
+                        var page = undoPool.fetchPage(record.pageId);
+                        if page != null {
+                            var p = page;
+                            var slotCount = undoDataMgr.getRowCount(p);
+                            if record.slotId < slotCount {
+                                undoDataMgr.deleteRow(p, record.slotId);
+                                undoPool.unpinPage(record.pageId, true);
+                                wal.logCLR(txnId, record.tableId, record.pageId, record.slotId, LOG_INSERT);
+                            } else {
+                                undoPool.unpinPage(record.pageId, false);
+                            }
+                        }
+                    }
+                } else if record.recordType == LOG_UPDATE {
+                    // Undo UPDATE = restore before-image
+                    if record.pageId != INVALID_PAGE_ID && record.beforeImage.size() > 0 {
+                        var page = undoPool.fetchPage(record.pageId);
+                        if page != null {
+                            var p = page;
+                            record.beforeImage.seek(0);
+                            var oldRow = undoSerializer.deserializeRow(record.beforeImage);
+                            undoDataMgr.updateRow(p, record.slotId, oldRow);
+                            undoPool.unpinPage(record.pageId, true);
+                            wal.logCLR(txnId, record.tableId, record.pageId, record.slotId, LOG_UPDATE);
+                        }
+                    }
+                } else if record.recordType == LOG_DELETE {
+                    // Undo DELETE = re-insert the before-image
+                    if record.pageId != INVALID_PAGE_ID && record.beforeImage.size() > 0 {
+                        var page = undoPool.fetchPage(record.pageId);
+                        if page != null {
+                            var p = page;
+                            record.beforeImage.seek(0);
+                            var oldRow = undoSerializer.deserializeRow(record.beforeImage);
+                            undoDataMgr.insertRow(p, oldRow);
+                            undoPool.unpinPage(record.pageId, true);
+                            wal.logCLR(txnId, record.tableId, record.pageId, record.slotId, LOG_DELETE);
+                        }
+                    }
+                }
+            }
+            ri = ri - 1;
+        }
     }
 
     // Helper to remove transaction from active list

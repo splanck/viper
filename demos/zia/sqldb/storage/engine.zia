@@ -249,31 +249,54 @@ entity StorageEngine {
             fileNum = fileNum + 1;
         }
 
-        // Phase 2: Redo — replay committed INSERT operations
+        // Phase 2: Redo — replay committed INSERT/UPDATE/DELETE operations
         var redoCount = 0;
         var ri = 0;
         while ri < allRecords.count() {
             var record = allRecords.get(ri);
-            if record.recordType == LOG_INSERT {
-                if wal.isTxnCommitted(committedTxns, record.txnId) {
-                    // Check if this insert needs to be redone
-                    // The row should be at (pageId, slotId) — verify it exists
-                    if record.pageId != INVALID_PAGE_ID {
-                        var page = pool.fetchPage(record.pageId);
-                        if page != null {
-                            var p = page;
-                            // The page exists — check if slot is occupied
-                            var slotCount = dataMgr.getRowCount(p);
-                            if record.slotId >= slotCount {
-                                // Slot doesn't exist yet — redo the insert
-                                record.afterImage.seek(0);
-                                var row = rowSerializer.deserializeRow(record.afterImage);
-                                dataMgr.insertRow(p, row);
-                                pool.unpinPage(record.pageId, true);
-                                redoCount = redoCount + 1;
-                            } else {
-                                pool.unpinPage(record.pageId, false);
-                            }
+            var isCommitted = wal.isTxnCommitted(committedTxns, record.txnId);
+
+            if record.recordType == LOG_INSERT && isCommitted {
+                if record.pageId != INVALID_PAGE_ID {
+                    var page = pool.fetchPage(record.pageId);
+                    if page != null {
+                        var p = page;
+                        var slotCount = dataMgr.getRowCount(p);
+                        if record.slotId >= slotCount {
+                            record.afterImage.seek(0);
+                            var row = rowSerializer.deserializeRow(record.afterImage);
+                            dataMgr.insertRow(p, row);
+                            pool.unpinPage(record.pageId, true);
+                            redoCount = redoCount + 1;
+                        } else {
+                            pool.unpinPage(record.pageId, false);
+                        }
+                    }
+                }
+            } else if record.recordType == LOG_UPDATE && isCommitted {
+                if record.pageId != INVALID_PAGE_ID && record.afterImage.size() > 0 {
+                    var page = pool.fetchPage(record.pageId);
+                    if page != null {
+                        var p = page;
+                        record.afterImage.seek(0);
+                        var newRow = rowSerializer.deserializeRow(record.afterImage);
+                        dataMgr.updateRow(p, record.slotId, newRow);
+                        pool.unpinPage(record.pageId, true);
+                        redoCount = redoCount + 1;
+                    }
+                }
+            } else if record.recordType == LOG_DELETE && isCommitted {
+                if record.pageId != INVALID_PAGE_ID {
+                    var page = pool.fetchPage(record.pageId);
+                    if page != null {
+                        var p = page;
+                        var slotCount = dataMgr.getRowCount(p);
+                        if record.slotId < slotCount {
+                            dataMgr.deleteRow(p, record.slotId);
+                            pool.unpinPage(record.pageId, true);
+                            redoCount = redoCount + 1;
+                        } else {
+                            pool.unpinPage(record.pageId, false);
                         }
                     }
                 }
@@ -281,8 +304,75 @@ entity StorageEngine {
             ri = ri + 1;
         }
 
-        // Phase 3: Flush recovered data and clean up WAL
-        if redoCount > 0 {
+        // Phase 3: Undo — roll back active (uncommitted) transactions
+        // Scan records backwards; for each active txn, reverse its operations
+        var undoCount = 0;
+        if activeTxns.count() > 0 {
+            ri = allRecords.count() - 1;
+            while ri >= 0 {
+                var record = allRecords.get(ri);
+                if isTxnInList(activeTxns, record.txnId) {
+                    if record.recordType == LOG_INSERT {
+                        // Undo INSERT = delete the inserted row
+                        if record.pageId != INVALID_PAGE_ID {
+                            var page = pool.fetchPage(record.pageId);
+                            if page != null {
+                                var p = page;
+                                var slotCount = dataMgr.getRowCount(p);
+                                if record.slotId < slotCount {
+                                    dataMgr.deleteRow(p, record.slotId);
+                                    pool.unpinPage(record.pageId, true);
+                                    wal.logCLR(record.txnId, record.tableId, record.pageId, record.slotId, LOG_INSERT);
+                                    undoCount = undoCount + 1;
+                                } else {
+                                    pool.unpinPage(record.pageId, false);
+                                }
+                            }
+                        }
+                    } else if record.recordType == LOG_UPDATE {
+                        // Undo UPDATE = restore before-image
+                        if record.pageId != INVALID_PAGE_ID && record.beforeImage.size() > 0 {
+                            var page = pool.fetchPage(record.pageId);
+                            if page != null {
+                                var p = page;
+                                record.beforeImage.seek(0);
+                                var oldRow = rowSerializer.deserializeRow(record.beforeImage);
+                                dataMgr.updateRow(p, record.slotId, oldRow);
+                                pool.unpinPage(record.pageId, true);
+                                wal.logCLR(record.txnId, record.tableId, record.pageId, record.slotId, LOG_UPDATE);
+                                undoCount = undoCount + 1;
+                            }
+                        }
+                    } else if record.recordType == LOG_DELETE {
+                        // Undo DELETE = re-insert the before-image
+                        if record.pageId != INVALID_PAGE_ID && record.beforeImage.size() > 0 {
+                            var page = pool.fetchPage(record.pageId);
+                            if page != null {
+                                var p = page;
+                                record.beforeImage.seek(0);
+                                var oldRow = rowSerializer.deserializeRow(record.beforeImage);
+                                dataMgr.insertRow(p, oldRow);
+                                pool.unpinPage(record.pageId, true);
+                                wal.logCLR(record.txnId, record.tableId, record.pageId, record.slotId, LOG_DELETE);
+                                undoCount = undoCount + 1;
+                            }
+                        }
+                    }
+                }
+                ri = ri - 1;
+            }
+
+            // Log ABORT for each active transaction we just undid
+            var ai = 0;
+            while ai < activeTxns.count() {
+                wal.logAbort(activeTxns.get(ai));
+                abortedTxns.add(activeTxns.get(ai));
+                ai = ai + 1;
+            }
+        }
+
+        // Phase 4: Flush recovered data and clean up WAL
+        if redoCount > 0 || undoCount > 0 {
             pool.flushAll();
         }
         wal.cleanupWalFiles();
@@ -296,7 +386,20 @@ entity StorageEngine {
         result.abortedTxns = abortedTxns;
         result.activeTxnsAtCrash = activeTxns;
         result.redoCount = redoCount;
+        result.undoCount = undoCount;
         return result;
+    }
+
+    // Check if a transaction ID is in a list
+    hide func isTxnInList(list: List[Integer], txnId: Integer) -> Boolean {
+        var i = 0;
+        while i < list.count() {
+            if list.get(i) == txnId {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
     }
 
     // Close the database, flushing all dirty pages and WAL
@@ -999,7 +1102,7 @@ entity StorageEngine {
             return false;
         }
 
-        // WAL: log the delete before modifying the page
+        // WAL: log the delete with actual before-image for undo support
         if walEnabled {
             var meta = findMeta(tableName);
             var tableId = 0;
@@ -1007,12 +1110,23 @@ entity StorageEngine {
                 var m = meta;
                 tableId = m.tableId;
             }
+            // Capture the row data before deletion (before-image)
+            var beforeBuf = new BinaryBuffer();
+            beforeBuf.init();
+            var prePage = pool.fetchPage(pageId);
+            if prePage != null {
+                var pp = prePage;
+                var existingRow = dataMgr.readRow(pp, slotIdx);
+                if existingRow != null {
+                    var er = existingRow;
+                    beforeBuf = serializeRow(er);
+                }
+                pool.unpinPage(pageId, false);
+            }
             var txnId = nextTxnId;
             nextTxnId = nextTxnId + 1;
             wal.logBegin(txnId);
-            var emptyBuf = new BinaryBuffer();
-            emptyBuf.init();
-            wal.logDelete(txnId, tableId, pageId, slotIdx, emptyBuf);
+            wal.logDelete(txnId, tableId, pageId, slotIdx, beforeBuf);
             wal.logCommit(txnId);
         }
 
@@ -1039,7 +1153,7 @@ entity StorageEngine {
             return false;
         }
 
-        // WAL: log the update before modifying the page
+        // WAL: log the update with actual before-image for undo support
         if walEnabled {
             var meta = findMeta(tableName);
             var tableId = 0;
@@ -1047,13 +1161,24 @@ entity StorageEngine {
                 var m = meta;
                 tableId = m.tableId;
             }
+            // Capture the row data before modification (before-image)
+            var beforeBuf = new BinaryBuffer();
+            beforeBuf.init();
+            var prePage = pool.fetchPage(pageId);
+            if prePage != null {
+                var pp = prePage;
+                var existingRow = dataMgr.readRow(pp, slotIdx);
+                if existingRow != null {
+                    var er = existingRow;
+                    beforeBuf = serializeRow(er);
+                }
+                pool.unpinPage(pageId, false);
+            }
+            var afterBuf = serializeRow(newRow);
             var txnId = nextTxnId;
             nextTxnId = nextTxnId + 1;
             wal.logBegin(txnId);
-            var afterBuf = serializeRow(newRow);
-            var emptyBuf = new BinaryBuffer();
-            emptyBuf.init();
-            wal.logUpdate(txnId, tableId, pageId, slotIdx, emptyBuf, afterBuf);
+            wal.logUpdate(txnId, tableId, pageId, slotIdx, beforeBuf, afterBuf);
             wal.logCommit(txnId);
         }
 

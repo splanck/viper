@@ -1,0 +1,133 @@
+module TestBytesBinary;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Collections.Bytes.WriteI16LE
+// COVER: Viper.Collections.Bytes.ReadI16LE
+// COVER: Viper.Collections.Bytes.WriteI16BE
+// COVER: Viper.Collections.Bytes.ReadI16BE
+// COVER: Viper.Collections.Bytes.WriteI32LE
+// COVER: Viper.Collections.Bytes.ReadI32LE
+// COVER: Viper.Collections.Bytes.WriteI32BE
+// COVER: Viper.Collections.Bytes.ReadI32BE
+// COVER: Viper.Collections.Bytes.WriteI64LE
+// COVER: Viper.Collections.Bytes.ReadI64LE
+// COVER: Viper.Collections.Bytes.WriteI64BE
+// COVER: Viper.Collections.Bytes.ReadI64BE
+
+func testI16LEWriteRead() {
+    setTest("I16LEWriteRead");
+
+    var b = Viper.Collections.Bytes.New(8);
+    Viper.Collections.Bytes.WriteI16LE(b, 0, 0x1234);
+
+    var v = Viper.Collections.Bytes.ReadI16LE(b, 0);
+    assertEqInt(v, 0x1234, "i16le roundtrip");
+
+    // Verify endianness: LE means low byte first
+    var lo = Viper.Collections.Bytes.Get(b, 0);
+    var hi = Viper.Collections.Bytes.Get(b, 1);
+    assertEqInt(lo, 0x34, "i16le low byte");
+    assertEqInt(hi, 0x12, "i16le high byte");
+}
+
+func testI16BEWriteRead() {
+    setTest("I16BEWriteRead");
+
+    var b = Viper.Collections.Bytes.New(8);
+    Viper.Collections.Bytes.WriteI16BE(b, 0, 0x1234);
+
+    var v = Viper.Collections.Bytes.ReadI16BE(b, 0);
+    assertEqInt(v, 0x1234, "i16be roundtrip");
+
+    // Verify endianness: BE means high byte first
+    var hi = Viper.Collections.Bytes.Get(b, 0);
+    var lo = Viper.Collections.Bytes.Get(b, 1);
+    assertEqInt(hi, 0x12, "i16be high byte first");
+    assertEqInt(lo, 0x34, "i16be low byte second");
+}
+
+func testI32LEWriteRead() {
+    setTest("I32LEWriteRead");
+
+    var b = Viper.Collections.Bytes.New(8);
+    Viper.Collections.Bytes.WriteI32LE(b, 0, 0x12345678);
+
+    var v = Viper.Collections.Bytes.ReadI32LE(b, 0);
+    assertEqInt(v, 0x12345678, "i32le roundtrip");
+
+    // Verify endianness: LE means lowest byte first
+    assertEqInt(Viper.Collections.Bytes.Get(b, 0), 0x78, "i32le byte 0");
+    assertEqInt(Viper.Collections.Bytes.Get(b, 1), 0x56, "i32le byte 1");
+    assertEqInt(Viper.Collections.Bytes.Get(b, 2), 0x34, "i32le byte 2");
+    assertEqInt(Viper.Collections.Bytes.Get(b, 3), 0x12, "i32le byte 3");
+}
+
+func testI32BEWriteRead() {
+    setTest("I32BEWriteRead");
+
+    var b = Viper.Collections.Bytes.New(8);
+    Viper.Collections.Bytes.WriteI32BE(b, 0, 0xDEADBEEF);
+
+    var v = Viper.Collections.Bytes.ReadI32BE(b, 0);
+    assertEqInt(v, 0xDEADBEEF, "i32be roundtrip");
+
+    // Verify endianness: BE means highest byte first
+    assertEqInt(Viper.Collections.Bytes.Get(b, 0), 0xDE, "i32be byte 0");
+    assertEqInt(Viper.Collections.Bytes.Get(b, 1), 0xAD, "i32be byte 1");
+    assertEqInt(Viper.Collections.Bytes.Get(b, 2), 0xBE, "i32be byte 2");
+    assertEqInt(Viper.Collections.Bytes.Get(b, 3), 0xEF, "i32be byte 3");
+}
+
+func testI64LEWriteRead() {
+    setTest("I64LEWriteRead");
+
+    var b = Viper.Collections.Bytes.New(16);
+    Viper.Collections.Bytes.WriteI64LE(b, 0, 1234567890123);
+
+    var v = Viper.Collections.Bytes.ReadI64LE(b, 0);
+    assertEqInt(v, 1234567890123, "i64le roundtrip");
+}
+
+func testI64BEWriteRead() {
+    setTest("I64BEWriteRead");
+
+    var b = Viper.Collections.Bytes.New(16);
+    Viper.Collections.Bytes.WriteI64BE(b, 0, 9876543210987);
+
+    var v = Viper.Collections.Bytes.ReadI64BE(b, 0);
+    assertEqInt(v, 9876543210987, "i64be roundtrip");
+}
+
+func testOffsetWrites() {
+    setTest("OffsetWrites");
+
+    var b = Viper.Collections.Bytes.New(16);
+
+    // Write i16le at offset 2
+    Viper.Collections.Bytes.WriteI16LE(b, 2, 0xABCD);
+    var v1 = Viper.Collections.Bytes.ReadI16LE(b, 2);
+    assertEqInt(v1, 0xABCD, "i16le at offset 2");
+
+    // Write i32be at offset 8
+    Viper.Collections.Bytes.WriteI32BE(b, 8, 0x11223344);
+    var v2 = Viper.Collections.Bytes.ReadI32BE(b, 8);
+    assertEqInt(v2, 0x11223344, "i32be at offset 8");
+
+    // Original i16 at offset 2 should be undisturbed
+    var v3 = Viper.Collections.Bytes.ReadI16LE(b, 2);
+    assertEqInt(v3, 0xABCD, "i16le at offset 2 still intact");
+}
+
+func start() {
+    testI16LEWriteRead();
+    testI16BEWriteRead();
+    testI32LEWriteRead();
+    testI32BEWriteRead();
+    testI64LEWriteRead();
+    testI64BEWriteRead();
+    testOffsetWrites();
+
+    report();
+}

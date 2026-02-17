@@ -26,3 +26,4 @@ viewer
 
 # Shell
 vshell
+shell

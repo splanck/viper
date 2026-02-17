@@ -746,6 +746,16 @@ void schedule() {
             u64 ticks_used = original_slice - current->time_slice;
             current->cpu_ticks += ticks_used;
 
+            // Advance vruntime on voluntary yield so yield isn't a no-op.
+            // Without this, a yielding task with the lowest vruntime gets
+            // immediately rescheduled, starving other tasks.
+            if (current->policy == task::SchedPolicy::SCHED_OTHER &&
+                !(current->flags & task::TASK_FLAG_IDLE) &&
+                ticks_used == 0) {
+                u64 gran_ns = static_cast<u64>(cfs::MIN_GRANULARITY_US) * 1000;
+                current->vruntime += cfs::calc_vruntime_delta(gran_ns, current->nice);
+            }
+
             current->state = task::TaskState::Ready;
             enqueue_percpu_locked(current, cpu_id);
         } else if (current->state == task::TaskState::Exited) {

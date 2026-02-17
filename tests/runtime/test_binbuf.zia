@@ -1,0 +1,236 @@
+module TestBinBuf;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.IO.BinaryBuffer.New
+// COVER: Viper.IO.BinaryBuffer.NewCap
+// COVER: Viper.IO.BinaryBuffer.FromBytes
+// COVER: Viper.IO.BinaryBuffer.WriteByte
+// COVER: Viper.IO.BinaryBuffer.ReadByte
+// COVER: Viper.IO.BinaryBuffer.WriteI16LE
+// COVER: Viper.IO.BinaryBuffer.ReadI16LE
+// COVER: Viper.IO.BinaryBuffer.WriteI16BE
+// COVER: Viper.IO.BinaryBuffer.ReadI16BE
+// COVER: Viper.IO.BinaryBuffer.WriteI32LE
+// COVER: Viper.IO.BinaryBuffer.ReadI32LE
+// COVER: Viper.IO.BinaryBuffer.WriteI32BE
+// COVER: Viper.IO.BinaryBuffer.ReadI32BE
+// COVER: Viper.IO.BinaryBuffer.WriteI64LE
+// COVER: Viper.IO.BinaryBuffer.ReadI64LE
+// COVER: Viper.IO.BinaryBuffer.WriteI64BE
+// COVER: Viper.IO.BinaryBuffer.ReadI64BE
+// COVER: Viper.IO.BinaryBuffer.WriteStr
+// COVER: Viper.IO.BinaryBuffer.ReadStr
+// COVER: Viper.IO.BinaryBuffer.get_Pos
+// COVER: Viper.IO.BinaryBuffer.set_Pos
+// COVER: Viper.IO.BinaryBuffer.get_Len
+// COVER: Viper.IO.BinaryBuffer.ToBytes
+// COVER: Viper.IO.BinaryBuffer.Reset
+
+func testNewBuffer() {
+    setTest("NewBuffer");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+    var pos = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos, 0, "new buffer pos is 0");
+
+    var len = Viper.IO.BinaryBuffer.get_Len(buf);
+    assertEqInt(len, 0, "new buffer len is 0");
+}
+
+func testWriteReadByte() {
+    setTest("WriteReadByte");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+    Viper.IO.BinaryBuffer.WriteByte(buf, 0x41);   // 'A'
+    Viper.IO.BinaryBuffer.WriteByte(buf, 0xFF);
+
+    var pos = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos, 2, "pos after writing 2 bytes");
+
+    // Reset position to read back
+    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+
+    var b1 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    assertEqInt(b1, 0x41, "read byte 1");
+
+    var b2 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    assertEqInt(b2, 0xFF, "read byte 2");
+}
+
+func testWriteReadI16() {
+    setTest("WriteReadI16");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+
+    // Write i16 little-endian
+    Viper.IO.BinaryBuffer.WriteI16LE(buf, 0x1234);
+    var pos1 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos1, 2, "pos after WriteI16LE");
+
+    // Write i16 big-endian
+    Viper.IO.BinaryBuffer.WriteI16BE(buf, 0x5678);
+    var pos2 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos2, 4, "pos after WriteI16BE");
+
+    // Read back
+    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+
+    var v1 = Viper.IO.BinaryBuffer.ReadI16LE(buf);
+    assertEqInt(v1, 0x1234, "read i16le");
+
+    var v2 = Viper.IO.BinaryBuffer.ReadI16BE(buf);
+    assertEqInt(v2, 0x5678, "read i16be");
+}
+
+func testWriteReadI32() {
+    setTest("WriteReadI32");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+
+    Viper.IO.BinaryBuffer.WriteI32LE(buf, 0x12345678);
+    var pos1 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos1, 4, "pos after WriteI32LE");
+
+    Viper.IO.BinaryBuffer.WriteI32BE(buf, 0xDEADBEEF);
+    var pos2 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos2, 8, "pos after WriteI32BE");
+
+    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+
+    var v1 = Viper.IO.BinaryBuffer.ReadI32LE(buf);
+    assertEqInt(v1, 0x12345678, "read i32le");
+
+    var v2 = Viper.IO.BinaryBuffer.ReadI32BE(buf);
+    assertEqInt(v2, 0xDEADBEEF, "read i32be");
+}
+
+func testWriteReadI64() {
+    setTest("WriteReadI64");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+
+    Viper.IO.BinaryBuffer.WriteI64LE(buf, 1234567890123);
+    var pos1 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos1, 8, "pos after WriteI64LE");
+
+    Viper.IO.BinaryBuffer.WriteI64BE(buf, 9876543210987);
+    var pos2 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    assertEqInt(pos2, 16, "pos after WriteI64BE");
+
+    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+
+    var v1 = Viper.IO.BinaryBuffer.ReadI64LE(buf);
+    assertEqInt(v1, 1234567890123, "read i64le");
+
+    var v2 = Viper.IO.BinaryBuffer.ReadI64BE(buf);
+    assertEqInt(v2, 9876543210987, "read i64be");
+}
+
+func testWriteReadStr() {
+    setTest("WriteReadStr");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+
+    Viper.IO.BinaryBuffer.WriteStr(buf, "Hello");
+    Viper.IO.BinaryBuffer.WriteStr(buf, "World");
+
+    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+
+    var s1 = Viper.IO.BinaryBuffer.ReadStr(buf);
+    assertEqStr(s1, "Hello", "read str 1");
+
+    var s2 = Viper.IO.BinaryBuffer.ReadStr(buf);
+    assertEqStr(s2, "World", "read str 2");
+}
+
+func testFromBytes() {
+    setTest("FromBytes");
+
+    // Create bytes with known content
+    var bytes = Viper.Collections.Bytes.New(4);
+    Viper.Collections.Bytes.Set(bytes, 0, 0x10);
+    Viper.Collections.Bytes.Set(bytes, 1, 0x20);
+    Viper.Collections.Bytes.Set(bytes, 2, 0x30);
+    Viper.Collections.Bytes.Set(bytes, 3, 0x40);
+
+    var buf = Viper.IO.BinaryBuffer.FromBytes(bytes);
+    var len = Viper.IO.BinaryBuffer.get_Len(buf);
+    assertEqInt(len, 4, "from bytes len");
+
+    var b1 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    assertEqInt(b1, 0x10, "from bytes byte 0");
+
+    var b2 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    assertEqInt(b2, 0x20, "from bytes byte 1");
+}
+
+func testToBytes() {
+    setTest("ToBytes");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+    Viper.IO.BinaryBuffer.WriteByte(buf, 72);  // H
+    Viper.IO.BinaryBuffer.WriteByte(buf, 105); // i
+
+    var bytes = Viper.IO.BinaryBuffer.ToBytes(buf);
+    var len = Viper.Collections.Bytes.get_Len(bytes);
+    assertEqInt(len, 2, "toBytes len");
+
+    assertEqInt(Viper.Collections.Bytes.Get(bytes, 0), 72, "toBytes byte 0");
+    assertEqInt(Viper.Collections.Bytes.Get(bytes, 1), 105, "toBytes byte 1");
+}
+
+func testReset() {
+    setTest("Reset");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+    Viper.IO.BinaryBuffer.WriteByte(buf, 1);
+    Viper.IO.BinaryBuffer.WriteByte(buf, 2);
+    Viper.IO.BinaryBuffer.WriteByte(buf, 3);
+
+    assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 3, "pos before reset");
+
+    Viper.IO.BinaryBuffer.Reset(buf);
+
+    assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 0, "pos after reset");
+    assertEqInt(Viper.IO.BinaryBuffer.get_Len(buf), 0, "len after reset");
+}
+
+func testPositionManagement() {
+    setTest("PositionManagement");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+    Viper.IO.BinaryBuffer.WriteI32LE(buf, 100);
+    Viper.IO.BinaryBuffer.WriteI32LE(buf, 200);
+    Viper.IO.BinaryBuffer.WriteI32LE(buf, 300);
+
+    // Position should be at 12
+    assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 12, "pos after 3 i32 writes");
+    assertEqInt(Viper.IO.BinaryBuffer.get_Len(buf), 12, "len is 12");
+
+    // Seek to second i32
+    Viper.IO.BinaryBuffer.set_Pos(buf, 4);
+    var v = Viper.IO.BinaryBuffer.ReadI32LE(buf);
+    assertEqInt(v, 200, "seek and read second i32");
+
+    // Seek back to start
+    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+    var v0 = Viper.IO.BinaryBuffer.ReadI32LE(buf);
+    assertEqInt(v0, 100, "seek to start and read first i32");
+}
+
+func start() {
+    testNewBuffer();
+    testWriteReadByte();
+    testWriteReadI16();
+    testWriteReadI32();
+    testWriteReadI64();
+    testWriteReadStr();
+    testFromBytes();
+    testToBytes();
+    testReset();
+    testPositionManagement();
+
+    report();
+}

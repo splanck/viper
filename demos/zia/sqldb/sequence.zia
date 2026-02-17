@@ -1,0 +1,190 @@
+// sequence.zia — SQL Sequence Management
+// Part of ViperSQL
+//
+// Implements PostgreSQL-style sequences: auto-incrementing named counters
+// used for generating unique IDs. Supports CREATE SEQUENCE with START,
+// INCREMENT, MINVALUE, MAXVALUE, CYCLE options. Provides NEXTVAL, CURRVAL,
+// and SETVAL functions for sequence manipulation.
+
+module sequence;
+
+bind Fmt = Viper.Fmt;
+
+//=============================================================================
+// SEQUENCE ENTITY
+//=============================================================================
+
+entity Sequence {
+    expose String name;
+    expose Integer currentValue;    // Current value (last returned by NEXTVAL)
+    expose Integer startValue;      // START WITH value
+    expose Integer incrementBy;     // INCREMENT BY value (can be negative)
+    expose Integer minValue;        // MINVALUE
+    expose Integer maxValue;        // MAXVALUE
+    expose Boolean cycle;           // CYCLE or NO CYCLE
+    expose Boolean called;          // True after first NEXTVAL call
+
+    expose func init() {
+        name = "";
+        currentValue = 1;
+        startValue = 1;
+        incrementBy = 1;
+        minValue = 1;
+        maxValue = 2147483647;  // ~2^31
+        cycle = false;
+        called = false;
+    }
+
+    expose func initWithName(seqName: String) {
+        name = seqName;
+        currentValue = 1;
+        startValue = 1;
+        incrementBy = 1;
+        minValue = 1;
+        maxValue = 2147483647;
+        cycle = false;
+        called = false;
+    }
+
+    expose func initFull(seqName: String, start: Integer, incr: Integer,
+                         minVal: Integer, maxVal: Integer, doCycle: Boolean) {
+        name = seqName;
+        startValue = start;
+        currentValue = start;
+        incrementBy = incr;
+        minValue = minVal;
+        maxValue = maxVal;
+        cycle = doCycle;
+        called = false;
+    }
+
+    // Get the next value in the sequence.
+    // Returns SEQ_ERROR_SENTINEL if sequence is exhausted and NO CYCLE.
+    expose func nextVal() -> Integer {
+        if called == false {
+            // First call: return currentValue (which is startValue unless setVal was used)
+            called = true;
+            return currentValue;
+        }
+
+        var nextV = currentValue + incrementBy;
+
+        if incrementBy > 0 {
+            // Ascending sequence
+            if nextV > maxValue {
+                if cycle {
+                    nextV = minValue;
+                } else {
+                    // Exhausted — return special sentinel
+                    return 0 - 2147483647;
+                }
+            }
+        } else {
+            // Descending sequence
+            if nextV < minValue {
+                if cycle {
+                    nextV = maxValue;
+                } else {
+                    return 0 - 2147483647;
+                }
+            }
+        }
+
+        currentValue = nextV;
+        return currentValue;
+    }
+
+    // Get the current value without advancing.
+    // Returns error sentinel if NEXTVAL hasn't been called yet.
+    expose func currVal() -> Integer {
+        if called == false {
+            return 0 - 2147483647;
+        }
+        return currentValue;
+    }
+
+    // Set the sequence to a specific value.
+    expose func setVal(newVal: Integer, isCalled: Boolean) {
+        currentValue = newVal;
+        called = isCalled;
+    }
+
+    expose func toString() -> String {
+        var result = "SEQUENCE " + name + " (current=" + Fmt.Int(currentValue);
+        result = result + ", start=" + Fmt.Int(startValue);
+        result = result + ", increment=" + Fmt.Int(incrementBy);
+        result = result + ", min=" + Fmt.Int(minValue);
+        result = result + ", max=" + Fmt.Int(maxValue);
+        if cycle {
+            result = result + ", CYCLE";
+        } else {
+            result = result + ", NO CYCLE";
+        }
+        result = result + ")";
+        return result;
+    }
+}
+
+//=============================================================================
+// SEQUENCE MANAGER
+//=============================================================================
+
+// Sentinel value for sequence errors (sequence exhausted, not yet called, etc.)
+final SEQ_ERROR_SENTINEL = 0 - 2147483647;
+
+entity SequenceManager {
+    expose List[Sequence] sequences;
+
+    expose func init() {
+        sequences = [];
+    }
+
+    // Add a sequence. Returns empty string on success, error message on failure.
+    expose func addSequence(seq: Sequence) -> String {
+        // Check for duplicate name
+        var i = 0;
+        while i < sequences.count() {
+            if sequences.get(i).name == seq.name {
+                return "Sequence '" + seq.name + "' already exists";
+            }
+            i = i + 1;
+        }
+        sequences.add(seq);
+        return "";
+    }
+
+    // Drop a sequence by name. Returns true if found and removed.
+    expose func dropSequence(name: String) -> Boolean {
+        var i = 0;
+        while i < sequences.count() {
+            if sequences.get(i).name == name {
+                sequences.removeAt(i);
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // Find a sequence by name.
+    expose func findSequence(name: String) -> Sequence? {
+        var i = 0;
+        while i < sequences.count() {
+            if sequences.get(i).name == name {
+                return sequences.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // List all sequences.
+    expose func listSequences() -> List[Sequence] {
+        return sequences;
+    }
+
+    // Count of sequences.
+    expose func count() -> Integer {
+        return sequences.count();
+    }
+}

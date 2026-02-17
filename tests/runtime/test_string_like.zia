@@ -1,0 +1,117 @@
+module TestStringLike;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.String.Like
+// COVER: Viper.String.LikeCI
+
+func testExactMatch() {
+    setTest("ExactMatch");
+
+    var r1 = Viper.String.Like("hello", "hello");
+    assertTrue(r1, "exact match hello");
+
+    var r2 = Viper.String.Like("", "");
+    assertTrue(r2, "exact match empty");
+
+    var r3 = Viper.String.Like("abc", "xyz");
+    assertFalse(r3, "no match different strings");
+}
+
+func testPercentWildcard() {
+    setTest("PercentWildcard");
+
+    // Prefix match
+    var r1 = Viper.String.Like("hello", "hell%");
+    assertTrue(r1, "prefix wildcard hell%");
+
+    // Suffix match
+    var r2 = Viper.String.Like("hello", "%llo");
+    assertTrue(r2, "suffix wildcard %llo");
+
+    // Contains match
+    var r3 = Viper.String.Like("hello", "%ell%");
+    assertTrue(r3, "contains wildcard %ell%");
+
+    // Match all
+    var r4 = Viper.String.Like("hello", "%");
+    assertTrue(r4, "percent matches everything");
+
+    // No match
+    var r5 = Viper.String.Like("hello", "world%");
+    assertFalse(r5, "world% does not match hello");
+}
+
+func testUnderscoreWildcard() {
+    setTest("UnderscoreWildcard");
+
+    // Single char wildcard
+    var r1 = Viper.String.Like("hello", "h_llo");
+    assertTrue(r1, "underscore matches single char");
+
+    var r2 = Viper.String.Like("hello", "_ello");
+    assertTrue(r2, "underscore at start");
+
+    var r3 = Viper.String.Like("hello", "hell_");
+    assertTrue(r3, "underscore at end");
+
+    // Wrong length with underscores
+    var r4 = Viper.String.Like("hello", "h__o");
+    assertFalse(r4, "too few underscores");
+}
+
+func testCaseSensitive() {
+    setTest("CaseSensitive");
+
+    var r1 = Viper.String.Like("Hello", "hello");
+    assertFalse(r1, "Like is case sensitive");
+
+    var r2 = Viper.String.Like("HELLO", "hello");
+    assertFalse(r2, "Like HELLO != hello");
+
+    var r3 = Viper.String.Like("Hello", "Hello");
+    assertTrue(r3, "Like exact case match");
+}
+
+func testLikeCI() {
+    setTest("LikeCI");
+
+    var r1 = Viper.String.LikeCI("Hello", "hello");
+    assertTrue(r1, "LikeCI case insensitive exact");
+
+    var r2 = Viper.String.LikeCI("HELLO WORLD", "%world");
+    assertTrue(r2, "LikeCI suffix case insensitive");
+
+    var r3 = Viper.String.LikeCI("Hello", "h_llo");
+    assertTrue(r3, "LikeCI underscore case insensitive");
+
+    var r4 = Viper.String.LikeCI("Hello", "HELL%");
+    assertTrue(r4, "LikeCI prefix case insensitive");
+}
+
+func testEdgeCases() {
+    setTest("EdgeCases");
+
+    // Empty pattern only matches empty string
+    var r1 = Viper.String.Like("", "");
+    assertTrue(r1, "empty matches empty");
+
+    var r2 = Viper.String.Like("hello", "");
+    assertFalse(r2, "non-empty does not match empty pattern");
+
+    // Multiple percent signs
+    var r3 = Viper.String.Like("hello world", "h%o%d");
+    assertTrue(r3, "multiple percent wildcards");
+}
+
+func start() {
+    testExactMatch();
+    testPercentWildcard();
+    testUnderscoreWildcard();
+    testCaseSensitive();
+    testLikeCI();
+    testEdgeCases();
+
+    report();
+}

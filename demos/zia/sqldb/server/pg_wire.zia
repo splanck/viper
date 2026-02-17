@@ -75,6 +75,8 @@ final PG_OID_VARCHAR = 1043;
 final PG_OID_DATE = 1082;
 final PG_OID_TIMESTAMP = 1114;
 final PG_OID_NUMERIC = 1700;
+final PG_OID_JSON = 114;
+final PG_OID_JSONB = 3802;
 
 //=============================================================================
 // BIG-ENDIAN ENCODING HELPERS

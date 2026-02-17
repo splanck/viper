@@ -145,8 +145,9 @@ final TK_DATABASES = 135;
 final TK_USE = 136;
 
 // Keywords - Persistent Storage (Phase 2)
-final TK_CLOSE = 137;
-final TK_FILE = 138;
+// NOTE: TK_CLOSE and TK_FILE were previously 137/138, colliding with TK_EXCEPT/TK_INTERSECT
+final TK_CLOSE = 219;
+final TK_FILE = 220;
 
 // Keywords - FK Actions (Phase 3)
 final TK_CASCADE = 139;
@@ -161,6 +162,122 @@ final TK_PASSWORD = 215;
 final TK_GRANT = 216;
 final TK_REVOKE = 217;
 final TK_PRIVILEGES = 218;
+
+// Keywords - Row Locking (Phase 14)
+final TK_FOR = 221;
+final TK_SHARE = 222;
+final TK_NOWAIT = 223;
+final TK_LOCKED = 224;
+final TK_SKIP = 225;
+
+// Keywords - Triggers (Phase 17)
+final TK_BEFORE = 226;
+final TK_AFTER = 227;
+final TK_EACH = 228;
+final TK_EXECUTE = 229;
+
+// Keywords - Sequences (Phase 18)
+final TK_SEQUENCE = 232;
+final TK_START = 233;
+final TK_INCREMENT = 234;
+final TK_MINVALUE = 235;
+final TK_MAXVALUE = 236;
+final TK_CYCLE = 237;
+final TK_NO = 238;
+
+// Keywords - Stored Functions (Phase 19)
+final TK_FUNCTION = 239;
+final TK_RETURNS = 240;
+final TK_LANGUAGE = 241;
+
+// Keywords - JSON types (Phase 25)
+final TK_JSON = 242;
+final TK_JSONB = 243;
+final TK_ANALYZE = 244;
+final TK_VERBOSE = 245;
+
+// Phase 29: Common SQL extensions
+final TK_TRUNCATE = 246;
+final TK_RETURNING = 247;
+final TK_CONFLICT = 248;
+final TK_DO = 249;
+final TK_NOTHING = 250;
+
+// Phase 30: Prepared statements
+final TK_PREPARE = 251;
+final TK_DEALLOCATE = 252;
+
+// Phase 32: Cursors
+final TK_DECLARE = 253;
+final TK_CURSOR = 254;
+final TK_FETCH = 255;
+final TK_MOVE = 256;
+final TK_FORWARD = 257;
+final TK_BACKWARD = 258;
+final TK_ABSOLUTE = 259;
+final TK_RELATIVE = 260;
+final TK_NEXT = 261;
+final TK_PRIOR = 262;
+final TK_FIRST = 263;
+final TK_LAST = 264;
+
+// Phase 34: COPY
+final TK_COPY = 265;
+final TK_STDIN = 266;
+final TK_STDOUT = 267;
+final TK_FORMAT = 268;
+final TK_HEADER = 269;
+final TK_DELIMITER = 270;
+final TK_CALL = 271;
+
+// Phase 36: Arrays
+final TK_ARRAY = 272;
+final TK_LBRACKET = 273;
+final TK_RBRACKET = 274;
+
+// Phase 37: Materialized Views
+final TK_MATERIALIZED = 275;
+final TK_REFRESH = 276;
+
+// Phase 38: SQL Expression Enhancements
+final TK_ILIKE = 277;
+final TK_REPLACE = 278;
+
+// Phase 43: COMMENT ON, SET/SHOW session variables
+final TK_COMMENT = 279;
+final TK_RESET = 280;
+
+// Phase 51: Regular Expressions
+final TK_SIMILAR = 281;
+final TK_TILDE = 282;       // ~
+final TK_TILDE_STAR = 283;  // ~*
+
+// Phase 52: Table Inheritance
+final TK_INHERITS = 284;
+final TK_ONLY = 285;
+
+// Phase 53: Generated Columns
+final TK_GENERATED = 286;
+final TK_ALWAYS = 287;
+final TK_STORED = 288;
+
+// Phase 54: FILTER clause
+final TK_FILTER = 289;
+
+// Phase 55: LATERAL joins
+final TK_LATERAL = 290;
+
+// Phase 56: NATURAL JOIN
+final TK_NATURAL = 291;
+
+// Phase 59: GROUPING SETS / ROLLUP / CUBE
+final TK_ROLLUP = 292;
+final TK_CUBE = 293;
+final TK_GROUPING = 294;
+
+// Phase 73: MERGE INTO
+final TK_MERGE = 295;
+final TK_MATCHED = 296;
 
 // Keywords - Phase 4: CTEs, Window Functions, Multi-table DML
 final TK_WITH = 200;
@@ -279,5 +396,18 @@ func tokenTypeName(kind: Integer) -> String {
     if (kind == TK_COMMA) { return "COMMA"; }
     if (kind == TK_SEMICOLON) { return "SEMICOLON"; }
     if (kind == TK_DOT) { return "DOT"; }
+    if (kind == TK_TRUNCATE) { return "TRUNCATE"; }
+    if (kind == TK_RETURNING) { return "RETURNING"; }
+    if (kind == TK_CONFLICT) { return "CONFLICT"; }
+    if (kind == TK_DO) { return "DO"; }
+    if (kind == TK_NOTHING) { return "NOTHING"; }
+    if (kind == TK_PREPARE) { return "PREPARE"; }
+    if (kind == TK_DEALLOCATE) { return "DEALLOCATE"; }
+    if (kind == TK_DECLARE) { return "DECLARE"; }
+    if (kind == TK_CURSOR) { return "CURSOR"; }
+    if (kind == TK_FETCH) { return "FETCH"; }
+    if (kind == TK_MOVE) { return "MOVE"; }
+    if (kind == TK_COPY) { return "COPY"; }
+    if (kind == TK_CALL) { return "CALL"; }
     return "UNKNOWN(" + Fmt.Int(kind) + ")";
 }

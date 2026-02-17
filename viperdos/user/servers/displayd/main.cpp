@@ -209,15 +209,9 @@ extern "C" void _start() {
         // ensures updates are never missed.
         composite();
 
-        // If idle, use poll_wait to sleep efficiently on the service channel.
-        // Wakes immediately when a client message arrives (e.g. PRESENT),
-        // or after 5ms timeout for input polling.
+        // If idle, sleep briefly to avoid busy-looping
         if (messages_processed == 0) {
-            sys::PollEvent pev;
-            pev.handle = 0;
-            pev.events = 0;
-            pev.triggered = 0;
-            sys::poll_wait(static_cast<uint32_t>(g_poll_set), &pev, 1, 5);
+            sys::sleep(5);
         }
     }
 

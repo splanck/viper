@@ -1,0 +1,104 @@
+module TestListSort;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Collections.List.Sort
+// COVER: Viper.Collections.List.SortDesc
+
+func testSortStrings() {
+    setTest("SortStrings");
+
+    var list = ["cherry", "apple", "banana"];
+
+    Viper.Collections.List.Sort(list);
+
+    assertEqStr(list[0], "apple", "sorted first");
+    assertEqStr(list[1], "banana", "sorted second");
+    assertEqStr(list[2], "cherry", "sorted third");
+}
+
+func testSortAlreadySorted() {
+    setTest("SortAlreadySorted");
+
+    var list = ["alpha", "beta", "gamma"];
+
+    Viper.Collections.List.Sort(list);
+
+    assertEqStr(list[0], "alpha", "already sorted first");
+    assertEqStr(list[1], "beta", "already sorted second");
+    assertEqStr(list[2], "gamma", "already sorted third");
+}
+
+func testSortDescStrings() {
+    setTest("SortDescStrings");
+
+    var list = ["cherry", "apple", "banana"];
+
+    Viper.Collections.List.SortDesc(list);
+
+    assertEqStr(list[0], "cherry", "desc first");
+    assertEqStr(list[1], "banana", "desc second");
+    assertEqStr(list[2], "apple", "desc third");
+}
+
+func testSortEmpty() {
+    setTest("SortEmpty");
+
+    var list = [];
+    Viper.Collections.List.Sort(list);
+
+    assertEqInt(list.count(), 0, "empty list after sort");
+    pass(); // no crash
+}
+
+func testSortSingle() {
+    setTest("SortSingle");
+
+    var list = ["only"];
+
+    Viper.Collections.List.Sort(list);
+
+    assertEqInt(list.count(), 1, "single element list len");
+    assertEqStr(list[0], "only", "single element unchanged");
+}
+
+func testSortIdempotent() {
+    setTest("SortIdempotent");
+
+    var list = ["zoo", "ant", "mid"];
+
+    // Sort twice
+    Viper.Collections.List.Sort(list);
+    Viper.Collections.List.Sort(list);
+
+    assertEqStr(list[0], "ant", "idempotent first");
+    assertEqStr(list[1], "mid", "idempotent second");
+    assertEqStr(list[2], "zoo", "idempotent third");
+}
+
+func testSortReversed() {
+    setTest("SortReversed");
+
+    var list = ["z", "y", "x", "w", "v"];
+
+    Viper.Collections.List.Sort(list);
+
+    assertEqStr(list[0], "v", "reversed sort 0");
+    assertEqStr(list[1], "w", "reversed sort 1");
+    assertEqStr(list[2], "x", "reversed sort 2");
+    assertEqStr(list[3], "y", "reversed sort 3");
+    assertEqStr(list[4], "z", "reversed sort 4");
+}
+
+func start() {
+    testSortStrings();
+    testSortAlreadySorted();
+    testSortDescStrings();
+    testSortEmpty();
+    testSortSingle();
+    testSortIdempotent();
+    testSortReversed();
+
+    report();
+}

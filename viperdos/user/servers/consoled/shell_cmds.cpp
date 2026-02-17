@@ -787,6 +787,9 @@ void cmd_clear() {
         buf->clear();
         buf->set_cursor(0, 0);
         buf->redraw_all();
+    } else {
+        // PTY mode: send ANSI clear screen sequence
+        shell_print("\033[2J\033[H");
     }
     s_last_rc = 0;
 }

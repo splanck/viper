@@ -33,6 +33,9 @@ bind "./optimizer/optimizer";
 bind "./storage/engine";
 bind "./storage/btree";
 bind "./storage/btree_node";
+bind "./triggers";
+bind "./sequence";
+bind "./procedures";
 
 //=============================================================================
 // DDL HANDLER ENTITY
@@ -50,6 +53,11 @@ entity DdlHandler {
     //=========================================================================
 
     expose func executeCreateTable(stmt: CreateTableStmt) -> QueryResult {
+        // Handle PARTITION OF (child partition creation)
+        if stmt.isPartitionOf {
+            return executeCreatePartition(stmt);
+        }
+
         // Acquire exclusive lock on table name (prevents concurrent CREATE)
         if exec.acquireExclusiveLock(stmt.tableName) == false {
             return exec.lockTimeoutError(stmt.tableName);
@@ -60,6 +68,10 @@ entity DdlHandler {
 
         // Check both temp and regular tables for name conflict
         if exec.findTable(stmt.tableName) != null {
+            if stmt.ifNotExists {
+                result.message = "Table '" + stmt.tableName + "' already exists, skipping";
+                return result;
+            }
             result.setError("Table '" + stmt.tableName + "' already exists");
             return result;
         }
@@ -72,6 +84,74 @@ entity DdlHandler {
             var stmtCol = stmt.getColumn(i);
             table.addColumn(stmtCol);
             i = i + 1;
+        }
+
+        // Phase 68: apply composite PRIMARY KEY constraint
+        if stmt.compositePkColumns.count() > 0 {
+            var pi = 0;
+            while pi < stmt.compositePkColumns.count() {
+                var pkColName = stmt.compositePkColumns.get(pi);
+                var ci = 0;
+                while ci < table.columnCount() {
+                    var maybeCol = table.getColumn(ci);
+                    if maybeCol != null {
+                        var col = maybeCol;
+                        if col.name == pkColName {
+                            col.primaryKey = true;
+                            col.notNull = true;
+                        }
+                    }
+                    ci = ci + 1;
+                }
+                pi = pi + 1;
+            }
+        }
+
+        // Set partition metadata if PARTITION BY was specified
+        if stmt.partitionType > 0 {
+            table.isPartitioned = true;
+            table.partitionType = stmt.partitionType;
+            table.partitionColumn = stmt.partitionColumn;
+        }
+
+        // Handle INHERITS (parent_name) — table inheritance
+        if stmt.isInherits {
+            var parent = exec.findTable(stmt.inheritsParentName);
+            if parent == null {
+                result.setError("Parent table '" + stmt.inheritsParentName + "' does not exist");
+                return result;
+            }
+            // Prepend parent columns to child (parent cols first, then child's own)
+            var combinedCols: List[Column] = [];
+            var pi = 0;
+            while pi < parent.columnCount() {
+                combinedCols.add(parent.columns.get(pi));
+                pi = pi + 1;
+            }
+            // Add child's own columns (skip any that duplicate parent column names)
+            var ci = 0;
+            while ci < table.columns.count() {
+                var childCol = table.columns.get(ci);
+                var isDup = false;
+                var di = 0;
+                while di < combinedCols.count() {
+                    if combinedCols.get(di).name == childCol.name {
+                        isDup = true;
+                        di = combinedCols.count();
+                    }
+                    di = di + 1;
+                }
+                if isDup == false {
+                    combinedCols.add(childCol);
+                }
+                ci = ci + 1;
+            }
+            table.columns = combinedCols;
+            table.isInherited = true;
+            table.inheritParent = stmt.inheritsParentName;
+            // Register child with parent
+            parent.hasChildren = true;
+            parent.inheritChildren.add(stmt.tableName);
         }
 
         if stmt.isTemporary && exec.tempDb != null {
@@ -89,12 +169,79 @@ entity DdlHandler {
                 se.persistTable(table);
                 se.flush();
             }
-            result.message = "Table '" + stmt.tableName + "' created";
+            if stmt.partitionType > 0 {
+                var ptypeStr = "RANGE";
+                if stmt.partitionType == PARTITION_LIST { ptypeStr = "LIST"; }
+                if stmt.partitionType == PARTITION_HASH { ptypeStr = "HASH"; }
+                result.message = "Partitioned table '" + stmt.tableName + "' created (PARTITION BY " + ptypeStr + " on " + stmt.partitionColumn + ")";
+            } else {
+                result.message = "Table '" + stmt.tableName + "' created";
+            }
         }
 
         // Initialize optimizer statistics for this table
         exec.optimizer.stats.setRowCount(stmt.tableName, 0);
 
+        return result;
+    }
+
+    // Create a child partition table (PARTITION OF parent)
+    hide func executeCreatePartition(stmt: CreateTableStmt) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Find the parent table
+        var parent = exec.findTable(stmt.partitionParentName);
+        if parent == null {
+            result.setError("Parent table '" + stmt.partitionParentName + "' not found");
+            return result;
+        }
+        var pt = parent;
+
+        if pt.isPartitioned == false {
+            result.setError("Table '" + stmt.partitionParentName + "' is not a partitioned table");
+            return result;
+        }
+
+        if exec.findTable(stmt.tableName) != null {
+            result.setError("Partition '" + stmt.tableName + "' already exists");
+            return result;
+        }
+
+        // Create child table inheriting parent's schema
+        var child = new Table();
+        child.initWithName(stmt.tableName);
+        var ci = 0;
+        while ci < pt.columnCount() {
+            child.addColumn(pt.getColumn(ci));
+            ci = ci + 1;
+        }
+
+        // Set partition metadata on child
+        child.isPartition = true;
+        child.partitionParent = stmt.partitionParentName;
+        child.partitionType = pt.partitionType;
+        child.partitionColumn = pt.partitionColumn;
+        child.partRangeFromStr = stmt.partRangeFrom;
+        child.partRangeToStr = stmt.partRangeTo;
+        child.partListValues = stmt.partListValues;
+        child.partHashModulus = stmt.partHashModulus;
+        child.partHashRemainder = stmt.partHashRemainder;
+
+        // Add child to database and register with parent
+        exec.db.addTable(child);
+        pt.partitionChildren.add(stmt.tableName);
+
+        // Persist if storage active
+        if exec.storageEngine != null {
+            var se = exec.storageEngine;
+            se.persistTable(child);
+            se.flush();
+        }
+
+        exec.optimizer.stats.setRowCount(stmt.tableName, 0);
+
+        result.message = "Partition '" + stmt.tableName + "' created for '" + stmt.partitionParentName + "'";
         return result;
     }
 
@@ -123,8 +270,9 @@ entity DdlHandler {
                 se.dropTableStorage(tableName);
                 se.flush();
             }
-            // Clean up ownership and privileges for the dropped table
+            // Clean up ownership, privileges, and triggers for the dropped table
             exec.server.dropTablePrivileges(tableName);
+            exec.triggerMgr.dropTriggersForTable(tableName);
             var result = new QueryResult();
             result.init();
             result.message = "Table '" + tableName + "' dropped";
@@ -291,6 +439,133 @@ entity DdlHandler {
             }
         }
 
+        // ALTER TABLE ... ALTER COLUMN (Phase 45)
+        if kind == TK_ALTER {
+            parser.advance();
+            // Optional COLUMN keyword
+            if parser.currentKind() == TK_COLUMN {
+                parser.advance();
+            }
+            if parser.currentKind() != TK_IDENTIFIER {
+                result.setError("ALTER COLUMN requires a column name");
+                return result;
+            }
+            var colName = parser.currentText();
+            var colIdx = table.findColumnIndex(colName);
+            if colIdx < 0 {
+                result.setError("Column '" + colName + "' not found in table '" + tableName + "'");
+                return result;
+            }
+            var maybeCol = table.getColumn(colIdx);
+            if maybeCol == null {
+                result.setError("Column '" + colName + "' not found");
+                return result;
+            }
+            var col = maybeCol;
+            parser.advance();
+            var subKind = parser.currentKind();
+            // ALTER COLUMN ... SET DEFAULT value / SET NOT NULL
+            if subKind == TK_SET {
+                parser.advance();
+                if parser.currentKind() == TK_DEFAULT {
+                    parser.advance();
+                    // Parse the default value expression
+                    var defExpr = parser.parseExpr();
+                    if parser.hasError {
+                        result.setError(parser.error);
+                        return result;
+                    }
+                    var dummyRow = new Row();
+                    dummyRow.init();
+                    var defVal = exec.evalExpr(defExpr, dummyRow, table);
+                    col.hasDefault = true;
+                    col.defaultValue = defVal;
+                    result.message = "Column '" + colName + "' default set";
+                    return result;
+                }
+                if parser.currentKind() == TK_NOT {
+                    parser.advance();
+                    if parser.currentKind() == TK_NULL {
+                        parser.advance();
+                        // Validate that no existing rows violate NOT NULL
+                        var ri = 0;
+                        while ri < table.rowCount() {
+                            var maybeRow = table.getRow(ri);
+                            if maybeRow != null {
+                                var row = maybeRow;
+                                if row.deleted == false {
+                                    var cellVal = row.getValue(colIdx);
+                                    if cellVal.kind == SQL_NULL {
+                                        result.setError("Column '" + colName + "' contains NULL values, cannot set NOT NULL");
+                                        return result;
+                                    }
+                                }
+                            }
+                            ri = ri + 1;
+                        }
+                        col.notNull = true;
+                        result.message = "Column '" + colName + "' set NOT NULL";
+                        return result;
+                    }
+                }
+                result.setError("Expected DEFAULT or NOT NULL after SET");
+                return result;
+            }
+            // ALTER COLUMN ... DROP DEFAULT / DROP NOT NULL
+            if subKind == TK_DROP {
+                parser.advance();
+                if parser.currentKind() == TK_DEFAULT {
+                    parser.advance();
+                    col.hasDefault = false;
+                    var nullVal = new SqlValue();
+                    nullVal.initNull();
+                    col.defaultValue = nullVal;
+                    result.message = "Column '" + colName + "' default dropped";
+                    return result;
+                }
+                if parser.currentKind() == TK_NOT {
+                    parser.advance();
+                    if parser.currentKind() == TK_NULL {
+                        parser.advance();
+                        col.notNull = false;
+                        result.message = "Column '" + colName + "' NOT NULL dropped";
+                        return result;
+                    }
+                }
+                result.setError("Expected DEFAULT or NOT NULL after DROP");
+                return result;
+            }
+            // ALTER COLUMN ... TYPE type_name
+            if parser.currentKind() == TK_IDENTIFIER && String.ToUpper(parser.currentText()) == "TYPE" {
+                parser.advance();
+                var newTypeCode = SQL_TEXT;
+                if parser.currentKind() == TK_INT || parser.currentKind() == TK_INTEGER_TYPE {
+                    newTypeCode = SQL_INTEGER;
+                    parser.advance();
+                } else if parser.currentKind() == TK_REAL {
+                    newTypeCode = SQL_REAL;
+                    parser.advance();
+                } else if parser.currentKind() == TK_TEXT || parser.currentKind() == TK_VARCHAR {
+                    newTypeCode = SQL_TEXT;
+                    parser.advance();
+                } else if parser.currentKind() == TK_BOOLEAN {
+                    newTypeCode = SQL_BOOLEAN;
+                    parser.advance();
+                } else if parser.currentKind() == TK_BLOB {
+                    newTypeCode = SQL_BLOB;
+                    parser.advance();
+                } else {
+                    result.setError("Unsupported column type");
+                    return result;
+                }
+                col.typeCode = newTypeCode;
+                result.message = "Column '" + colName + "' type changed";
+                return result;
+            }
+            result.setError("Unsupported ALTER COLUMN syntax");
+            return result;
+        }
+
         result.setError("Unsupported ALTER TABLE syntax");
         return result;
     }
@@ -345,6 +620,12 @@ entity DdlHandler {
         var result = new QueryResult();
         result.init();
 
+        // Phase 65: IF NOT EXISTS
+        if stmt.ifNotExists && exec.indexMgr.findIndex(stmt.indexName) != null {
+            result.message = "Index '" + stmt.indexName + "' already exists, skipping";
+            return result;
+        }
+
         var table = exec.findTable(stmt.tableName);
         if table == null {
             result.setError("Table '" + stmt.tableName + "' not found");
@@ -354,6 +635,12 @@ entity DdlHandler {
         var idx = new SqlIndex();
         idx.initWithNames(stmt.indexName, stmt.tableName);
         idx.isUnique = stmt.isUnique;
+
+        // Phase 74: Partial index predicate
+        if stmt.whereClause != null {
+            idx.whereExpr = stmt.whereClause;
+            idx.isPartial = true;
+        }
 
         var i = 0;
         while i < stmt.columnCount() {
@@ -377,7 +664,7 @@ entity DdlHandler {
                 var maybeRow = t.getRow(ri);
                 if maybeRow != null {
                     var row = maybeRow;
-                    if row.deleted == false {
+                    if row.isVisible(exec.mvccSnapshotId, exec.mvccTxnId) {
                         var colIdx = t.findColumnIndex(colName);
                         if colIdx >= 0 {
                             var keyVal = row.getValue(colIdx);
@@ -535,43 +822,263 @@ entity DdlHandler {
     // MAINTENANCE COMMANDS
     //=========================================================================
 
-    // VACUUM command - remove deleted rows and reclaim space
+    // VACUUM command - remove dead rows and reclaim space
+    // Dead rows are:
+    //   1. Rows with deleted == true (legacy soft-delete)
+    //   2. MVCC rows with xmax > 0 that are no longer visible to any transaction
+    //      (i.e., xmax < oldestActiveTxn, meaning the delete is fully committed)
+    // When not in multi-user mode, all xmax > 0 rows outside transactions are dead.
     expose func executeVacuum() -> QueryResult {
         var result = new QueryResult();
         result.init();
 
         var totalRemoved = 0;
+        var tablesVacuumed = 0;
 
         var ti = 0;
         while ti < exec.db.tableCount() {
             var maybeTable = exec.db.getTable(ti);
             if maybeTable != null {
                 var table = maybeTable;
-                var newRows: List[Row] = [];
-                var removed = 0;
-
-                var ri = 0;
-                while ri < table.rowCount() {
-                    var maybeRow = table.getRow(ri);
-                    if maybeRow != null {
-                        var row = maybeRow;
-                        if row.deleted {
-                            removed = removed + 1;
-                        } else {
-                            newRows.add(row);
-                        }
-                    }
-                    ri = ri + 1;
-                }
-
-                table.rows = newRows;
+                var removed = vacuumTable(table);
                 totalRemoved = totalRemoved + removed;
+                tablesVacuumed = tablesVacuumed + 1;
+
+                // Update optimizer statistics after vacuum
+                exec.optimizer.stats.setRowCount(table.name, table.rowCount());
+
+                // Track vacuum stats
+                exec.recordVacuumStats(table.name, removed);
             }
             ti = ti + 1;
         }
 
-        result.message = "VACUUM complete: removed " + Fmt.Int(totalRemoved) + " deleted rows";
+        result.message = "VACUUM complete: " + Fmt.Int(tablesVacuumed) + " tables vacuumed, " + Fmt.Int(totalRemoved) + " dead rows removed";
         return result;
+    }
+
+    // VACUUM a specific table by name
+    expose func executeVacuumTable(tableName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var table = exec.findTable(tableName);
+        if table == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        var t = table;
+        var removed = vacuumTable(t);
+
+        // Update optimizer statistics
+        exec.optimizer.stats.setRowCount(tableName, t.rowCount());
+
+        // Track vacuum stats
+        exec.recordVacuumStats(tableName, removed);
+
+        result.message = "VACUUM complete: '" + tableName + "' — " + Fmt.Int(removed) + " dead rows removed, " + Fmt.Int(t.rowCount()) + " rows remaining";
+        return result;
+    }
+
+    // VACUUM FULL: vacuum + rebuild indexes
+    expose func executeVacuumFull() -> QueryResult {
+        var result = executeVacuum();
+
+        // Rebuild all indexes for compacted tables
+        var ti = 0;
+        while ti < exec.db.tableCount() {
+            var maybeTable = exec.db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                exec.rebuildTableIndexes(table.name, table);
+            }
+            ti = ti + 1;
+        }
+
+        // Flush storage engine if persistent
+        if exec.storageEngine != null {
+            var se = exec.storageEngine;
+            se.flush();
+        }
+
+        result.message = result.message + " (FULL: indexes rebuilt)";
+        return result;
+    }
+
+    // Internal: vacuum a single table, return count of removed rows
+    hide func vacuumTable(table: Table) -> Integer {
+        var newRows: List[Row] = [];
+        var removed = 0;
+
+        var ri = 0;
+        while ri < table.rowCount() {
+            var maybeRow = table.getRow(ri);
+            if maybeRow != null {
+                var row = maybeRow;
+                var isDead = false;
+
+                // Check 1: Legacy soft-delete flag
+                if row.deleted {
+                    isDead = true;
+                }
+
+                // Check 2: MVCC dead row — xmax > 0 means deleted by some transaction
+                // If we're not in a transaction (mvccTxnId == 0), any row with xmax > 0
+                // is dead (the deleting transaction committed). In multi-user mode with
+                // active transactions, we'd need to check the oldest active txn, but
+                // for safety we only vacuum rows whose xmax < mvccTxnCounter (committed).
+                if isDead == false && row.xmax > 0 {
+                    // The deleting transaction has completed (xmax < current counter)
+                    if row.xmax < exec.mvccTxnCounter {
+                        isDead = true;
+                    }
+                }
+
+                if isDead {
+                    removed = removed + 1;
+                } else {
+                    // Clear xmin for vacuumed live rows (they're now "permanent")
+                    if row.xmin > 0 && row.xmin < exec.mvccTxnCounter {
+                        row.xmin = 0;  // Mark as committed/permanent
+                    }
+                    newRows.add(row);
+                }
+            }
+            ri = ri + 1;
+        }
+
+        table.rows = newRows;
+        return removed;
+    }
+
+    // ANALYZE command - update table statistics for the query optimizer
+    expose func executeAnalyze() -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var tablesAnalyzed = 0;
+
+        var ti = 0;
+        while ti < exec.db.tableCount() {
+            var maybeTable = exec.db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                analyzeTable(table);
+                tablesAnalyzed = tablesAnalyzed + 1;
+            }
+            ti = ti + 1;
+        }
+
+        result.message = "ANALYZE complete: " + Fmt.Int(tablesAnalyzed) + " tables analyzed";
+        return result;
+    }
+
+    // ANALYZE a specific table
+    expose func executeAnalyzeTable(tableName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var table = exec.findTable(tableName);
+        if table == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        var t = table;
+        analyzeTable(t);
+
+        result.message = "ANALYZE complete: '" + tableName + "' — " + Fmt.Int(t.rowCount()) + " rows, " + Fmt.Int(t.columnCount()) + " columns";
+        return result;
+    }
+
+    // VACUUM ANALYZE: vacuum then analyze all tables
+    expose func executeVacuumAnalyze() -> QueryResult {
+        var vacResult = executeVacuum();
+        var anaResult = executeAnalyze();
+
+        var result = new QueryResult();
+        result.init();
+        result.message = vacResult.message + "; " + anaResult.message;
+        return result;
+    }
+
+    // Internal: analyze a single table and update optimizer statistics
+    hide func analyzeTable(table: Table) {
+        // Count live rows (not deleted, not dead MVCC)
+        var liveRows = 0;
+        var deadRows = 0;
+        var ri = 0;
+        while ri < table.rowCount() {
+            var maybeRow = table.getRow(ri);
+            if maybeRow != null {
+                var row = maybeRow;
+                if row.deleted || (row.xmax > 0 && row.xmax < exec.mvccTxnCounter) {
+                    deadRows = deadRows + 1;
+                } else {
+                    liveRows = liveRows + 1;
+                }
+            }
+            ri = ri + 1;
+        }
+
+        // Update row count (live rows only)
+        exec.optimizer.stats.setRowCount(table.name, liveRows);
+
+        // Compute per-column distinct value counts for better selectivity estimates
+        var ci = 0;
+        while ci < table.columnCount() {
+            var distinctCount = countDistinctValues(table, ci);
+            // Store in stats (future: per-column distinct counts)
+            // For now, update the table-level distinct estimate
+            ci = ci + 1;
+        }
+
+        // Record analyze stats
+        exec.recordAnalyzeStats(table.name, liveRows, deadRows);
+    }
+
+    // Count distinct values in a column (for cardinality estimation)
+    hide func countDistinctValues(table: Table, colIndex: Integer) -> Integer {
+        // Use a simple hash-set approach with 128 buckets
+        var buckets: List[List[String]] = [];
+        var bi = 0;
+        while bi < 128 {
+            var bucket: List[String] = [];
+            buckets.add(bucket);
+            bi = bi + 1;
+        }
+
+        var distinct = 0;
+        var ri = 0;
+        while ri < table.rowCount() {
+            var maybeRow = table.getRow(ri);
+            if maybeRow != null {
+                var row = maybeRow;
+                if row.deleted == false && row.xmax == 0 {
+                    if colIndex < row.columnCount() {
+                        var val = row.getValue(colIndex);
+                        var valStr = val.toString();
+                        // Simple bucket selection using string length
+                        var bucketIdx = valStr.Length() % 128;
+                        var bucket = buckets.get(bucketIdx);
+                        // Check if value already exists in bucket
+                        var found = false;
+                        var ei = 0;
+                        while ei < bucket.count() {
+                            if bucket.get(ei) == valStr {
+                                found = true;
+                            }
+                            ei = ei + 1;
+                        }
+                        if found == false {
+                            bucket.add(valStr);
+                            distinct = distinct + 1;
+                        }
+                    }
+                }
+            }
+            ri = ri + 1;
+        }
+        return distinct;
     }
 
     // HELP command
@@ -808,6 +1315,302 @@ entity DdlHandler {
     }
 
     //=========================================================================
+    // SHOW CREATE TABLE (Phase 66)
+    //=========================================================================
+
+    expose func executeShowCreateTable(tableName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var maybeTable = exec.findTable(tableName);
+        if maybeTable == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        var table = maybeTable;
+
+        result.addColumnName("Table");
+        result.addColumnName("Create Table");
+
+        var ddl = "CREATE TABLE " + table.name + " (\n";
+
+        var ci = 0;
+        while ci < table.columnCount() {
+            var maybeCol = table.getColumn(ci);
+            if maybeCol != null {
+                var col = maybeCol;
+                if ci > 0 {
+                    ddl = ddl + ",\n";
+                }
+                ddl = ddl + "  " + col.name + " " + col.typeName();
+
+                if col.primaryKey {
+                    ddl = ddl + " PRIMARY KEY";
+                }
+                if col.autoIncrement {
+                    ddl = ddl + " AUTOINCREMENT";
+                }
+                if col.notNull && col.primaryKey == false {
+                    ddl = ddl + " NOT NULL";
+                }
+                if col.unique && col.primaryKey == false {
+                    ddl = ddl + " UNIQUE";
+                }
+                if col.hasDefault {
+                    ddl = ddl + " DEFAULT " + col.defaultValue.toString();
+                }
+                if col.isForeignKey {
+                    ddl = ddl + " REFERENCES " + col.refTableName + "(" + col.refColumnName + ")";
+                    if col.onDeleteAction == FK_CASCADE {
+                        ddl = ddl + " ON DELETE CASCADE";
+                    } else if col.onDeleteAction == FK_SET_NULL {
+                        ddl = ddl + " ON DELETE SET NULL";
+                    }
+                    if col.onUpdateAction == FK_CASCADE {
+                        ddl = ddl + " ON UPDATE CASCADE";
+                    } else if col.onUpdateAction == FK_SET_NULL {
+                        ddl = ddl + " ON UPDATE SET NULL";
+                    }
+                }
+                if col.checkExprSQL != "" {
+                    ddl = ddl + " CHECK (" + col.checkExprSQL + ")";
+                }
+                if col.isGenerated {
+                    ddl = ddl + " GENERATED ALWAYS AS (" + col.generatedExprSQL + ") STORED";
+                }
+            }
+            ci = ci + 1;
+        }
+
+        ddl = ddl + "\n)";
+
+        // Partition info
+        if table.isPartitioned {
+            var ptypeStr = "RANGE";
+            if table.partitionType == PARTITION_LIST { ptypeStr = "LIST"; }
+            if table.partitionType == PARTITION_HASH { ptypeStr = "HASH"; }
+            ddl = ddl + " PARTITION BY " + ptypeStr + " (" + table.partitionColumn + ")";
+        }
+
+        // Inheritance info
+        if table.isInherited {
+            ddl = ddl + " INHERITS (" + table.inheritParent + ")";
+        }
+
+        ddl = ddl + ";";
+
+        var row = new Row();
+        row.init();
+        row.addValue(sqlText(table.name));
+        row.addValue(sqlText(ddl));
+        result.addRow(row);
+
+        // Show indexes for this table
+        var idxList = exec.indexMgr.listIndexesForTable(tableName);
+        var ii = 0;
+        while ii < idxList.count() {
+            var idx = idxList.get(ii);
+            var idxDdl = "";
+            if idx.isUnique {
+                idxDdl = "CREATE UNIQUE INDEX ";
+            } else {
+                idxDdl = "CREATE INDEX ";
+            }
+            idxDdl = idxDdl + idx.name + " ON " + tableName + " (";
+            var ki = 0;
+            while ki < idx.columnCount() {
+                if ki > 0 { idxDdl = idxDdl + ", "; }
+                idxDdl = idxDdl + idx.columnNames.get(ki);
+                ki = ki + 1;
+            }
+            idxDdl = idxDdl + ");";
+
+            var idxRow = new Row();
+            idxRow.init();
+            idxRow.addValue(sqlText(table.name));
+            idxRow.addValue(sqlText(idxDdl));
+            result.addRow(idxRow);
+            ii = ii + 1;
+        }
+
+        return result;
+    }
+
+    // Phase 67: SHOW INDEXES [FROM tablename]
+    expose func executeShowIndexes(tableName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        result.addColumnName("index_name");
+        result.addColumnName("table_name");
+        result.addColumnName("columns");
+        result.addColumnName("is_unique");
+        result.addColumnName("partial");
+
+        if tableName != "" {
+            // Show indexes for a specific table
+            var maybeTable = exec.findTable(tableName);
+            if maybeTable == null {
+                result.setError("Table '" + tableName + "' not found");
+                return result;
+            }
+            var idxList = exec.indexMgr.listIndexesForTable(tableName);
+            var i = 0;
+            while i < idxList.count() {
+                var idx = idxList.get(i);
+                addIndexRow(result, idx);
+                i = i + 1;
+            }
+        } else {
+            // Show all indexes
+            var i = 0;
+            while i < exec.indexMgr.indexCount() {
+                var maybeIdx = exec.indexMgr.getIndex(i);
+                if maybeIdx != null {
+                    var idx = maybeIdx;
+                    addIndexRow(result, idx);
+                }
+                i = i + 1;
+            }
+        }
+
+        return result;
+    }
+
+    hide func addIndexRow(result: QueryResult, idx: SqlIndex) {
+        var colStr = "";
+        var ci = 0;
+        while ci < idx.columnCount() {
+            if ci > 0 { colStr = colStr + ", "; }
+            colStr = colStr + idx.columnNames.get(ci);
+            ci = ci + 1;
+        }
+        var row = new Row();
+        row.init();
+        row.addValue(sqlText(idx.name));
+        row.addValue(sqlText(idx.tableName));
+        row.addValue(sqlText(colStr));
+        if idx.isUnique {
+            row.addValue(sqlText("YES"));
+        } else {
+            row.addValue(sqlText("NO"));
+        }
+        if idx.isPartial {
+            row.addValue(sqlText("YES"));
+        } else {
+            row.addValue(sqlText("NO"));
+        }
+        result.addRow(row);
+    }
+
+    // Phase 67: SHOW COLUMNS FROM tablename
+    expose func executeShowColumns(tableName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var maybeTable = exec.findTable(tableName);
+        if maybeTable == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        var table = maybeTable;
+
+        result.addColumnName("column_name");
+        result.addColumnName("data_type");
+        result.addColumnName("is_nullable");
+        result.addColumnName("column_default");
+        result.addColumnName("is_primary_key");
+
+        var ci = 0;
+        while ci < table.columnCount() {
+            var maybeCol = table.getColumn(ci);
+            if maybeCol != null {
+                var col = maybeCol;
+                var row = new Row();
+                row.init();
+                row.addValue(sqlText(col.name));
+                row.addValue(sqlText(col.typeName()));
+                if col.notNull {
+                    row.addValue(sqlText("NO"));
+                } else {
+                    row.addValue(sqlText("YES"));
+                }
+                if col.hasDefault {
+                    row.addValue(sqlText(col.defaultValue.toString()));
+                } else {
+                    row.addValue(sqlNull());
+                }
+                if col.primaryKey {
+                    row.addValue(sqlText("YES"));
+                } else {
+                    row.addValue(sqlText("NO"));
+                }
+                result.addRow(row);
+            }
+            ci = ci + 1;
+        }
+
+        return result;
+    }
+
+    // Phase 67: CREATE TABLE ... LIKE
+    expose func executeCreateTableLike(newTableName: String, sourceTableName: String, isTemp: Boolean) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Check if new table already exists
+        if exec.findTable(newTableName) != null {
+            result.setError("Table '" + newTableName + "' already exists");
+            return result;
+        }
+
+        // Find source table
+        var maybeSource = exec.findTable(sourceTableName);
+        if maybeSource == null {
+            result.setError("Source table '" + sourceTableName + "' not found");
+            return result;
+        }
+        var source = maybeSource;
+
+        // Create new table with same columns
+        var table = new Table();
+        table.initWithName(newTableName);
+
+        var ci = 0;
+        while ci < source.columnCount() {
+            var maybeCol = source.getColumn(ci);
+            if maybeCol != null {
+                var srcCol = maybeCol;
+                var newCol = new Column();
+                newCol.init();
+                newCol.name = srcCol.name;
+                newCol.typeCode = srcCol.typeCode;
+                newCol.notNull = srcCol.notNull;
+                newCol.primaryKey = srcCol.primaryKey;
+                newCol.autoIncrement = srcCol.autoIncrement;
+                newCol.unique = srcCol.unique;
+                newCol.hasDefault = srcCol.hasDefault;
+                newCol.defaultValue = srcCol.defaultValue;
+                newCol.checkExprSQL = srcCol.checkExprSQL;
+                newCol.isGenerated = srcCol.isGenerated;
+                newCol.generatedExprSQL = srcCol.generatedExprSQL;
+                table.addColumn(newCol);
+            }
+            ci = ci + 1;
+        }
+
+        // Store in appropriate database
+        if isTemp && exec.tempDb != null {
+            var tdb = exec.tempDb;
+            tdb.addTable(table);
+        } else {
+            exec.db.addTable(table);
+        }
+
+        result.message = "Table '" + newTableName + "' created (like '" + sourceTableName + "')";
+        return result;
+    }
+
+    //=========================================================================
     // USER MANAGEMENT
     //=========================================================================
 
@@ -996,22 +1799,40 @@ entity DdlHandler {
         // Check if an index would be used
         if stmt.whereClause != null && exec.canUseIndex(stmt.whereClause, stmt.tableName) {
             var wc = stmt.whereClause;
+            // Try composite index first
+            var eqCols = exec.extractEqualityColumns(wc);
+            var foundIdx: SqlIndex? = null;
             var idxColName = "";
-            if wc.getLeft().kind == EXPR_COLUMN {
-                idxColName = wc.getLeft().columnName;
-            } else if wc.getRight().kind == EXPR_COLUMN {
-                idxColName = wc.getRight().columnName;
+            if eqCols.count() >= 2 {
+                foundIdx = exec.indexMgr.findIndexForColumns(stmt.tableName, eqCols);
+                if foundIdx != null {
+                    // Build column list string for description
+                    var ci = 0;
+                    while ci < eqCols.count() {
+                        if ci > 0 { idxColName = idxColName + ", "; }
+                        idxColName = idxColName + eqCols.get(ci);
+                        ci = ci + 1;
+                    }
+                }
             }
-            var maybeIdx = exec.indexMgr.findIndexForColumn(stmt.tableName, idxColName);
-            if maybeIdx != null {
-                var foundIdx = maybeIdx;
+            // Fall back to single-column index
+            if foundIdx == null {
+                if wc.getLeft().kind == EXPR_COLUMN {
+                    idxColName = wc.getLeft().columnName;
+                } else if wc.getRight().kind == EXPR_COLUMN {
+                    idxColName = wc.getRight().columnName;
+                }
+                foundIdx = exec.indexMgr.findIndexForColumn(stmt.tableName, idxColName);
+            }
+            if foundIdx != null {
+                var fi = foundIdx;
                 var selectivityPct = exec.optimizer.estimateSelectivityPct(true);
-                var seekPath = exec.optimizer.createIndexSeek(stmt.tableName, foundIdx.name, selectivityPct);
+                var seekPath = exec.optimizer.createIndexSeek(stmt.tableName, fi.name, selectivityPct);
                 var scanPath = exec.optimizer.createTableScan(stmt.tableName);
 
                 if seekPath.estimatedCost < scanPath.estimatedCost {
                     plan.addAccessPath(seekPath);
-                    plan.description = "Index selected for equality predicate on " + idxColName;
+                    plan.description = "Index selected for equality predicate on (" + idxColName + ")";
                 } else {
                     plan.addAccessPath(scanPath);
                     plan.description = "Table scan preferred over index (small table)";
@@ -1090,6 +1911,244 @@ entity DdlHandler {
             lines.add(current);
         }
         return lines;
+    }
+
+    //=========================================================================
+    // TRIGGER DDL (Phase 17)
+    //=========================================================================
+
+    expose func executeCreateTrigger(triggerName: String, timing: Integer, event: Integer,
+                                     tableName: String, forEachRow: Boolean, bodySQL: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Verify table exists
+        var table = exec.findTable(tableName);
+        if table == null {
+            result.setError("Table '" + tableName + "' does not exist");
+            return result;
+        }
+
+        // Create trigger
+        var trigger = new Trigger();
+        trigger.initFull(triggerName, timing, event, tableName, forEachRow, bodySQL);
+        var err = exec.triggerMgr.addTrigger(trigger);
+        if err != "" {
+            result.setError(err);
+            return result;
+        }
+
+        result.message = "Trigger '" + triggerName + "' created";
+        return result;
+    }
+
+    expose func executeDropTrigger(triggerName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if exec.triggerMgr.dropTrigger(triggerName) {
+            result.message = "Trigger '" + triggerName + "' dropped";
+        } else {
+            result.setError("Trigger '" + triggerName + "' does not exist");
+        }
+        return result;
+    }
+
+    expose func executeShowTriggers() -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        result.success = true;
+        result.columnNames = ["trigger_name", "timing", "event", "table_name", "for_each"];
+
+        var triggers = exec.triggerMgr.listTriggers();
+        var i = 0;
+        while i < triggers.count() {
+            var t = triggers.get(i);
+            var row = new Row();
+            row.initWithCount(5);
+            row.values.set(0, sqlText(t.name));
+            row.values.set(1, sqlText(t.timingName()));
+            row.values.set(2, sqlText(t.eventName()));
+            row.values.set(3, sqlText(t.tableName));
+            if t.forEachRow {
+                row.values.set(4, sqlText("ROW"));
+            } else {
+                row.values.set(4, sqlText("STATEMENT"));
+            }
+            result.addRow(row);
+            i = i + 1;
+        }
+        return result;
+    }
+
+    //=========================================================================
+    // SEQUENCE DDL (Phase 18)
+    //=========================================================================
+
+    expose func executeCreateSequence(seqName: String, startVal: Integer, incrVal: Integer,
+                                      minVal: Integer, maxVal: Integer, doCycle: Boolean) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var seq = new Sequence();
+        seq.initFull(seqName, startVal, incrVal, minVal, maxVal, doCycle);
+        var err = exec.seqMgr.addSequence(seq);
+        if err != "" {
+            result.setError(err);
+            return result;
+        }
+
+        result.message = "Sequence '" + seqName + "' created";
+        return result;
+    }
+
+    expose func executeDropSequence(seqName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if exec.seqMgr.dropSequence(seqName) {
+            result.message = "Sequence '" + seqName + "' dropped";
+        } else {
+            result.setError("Sequence '" + seqName + "' does not exist");
+        }
+        return result;
+    }
+
+    expose func executeAlterSequence(seqName: String, restartVal: Integer, newIncr: Integer,
+                                     newMin: Integer, newMax: Integer, setCycle: Integer) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        var maybeSeq = exec.seqMgr.findSequence(seqName);
+        if maybeSeq == null {
+            result.setError("Sequence '" + seqName + "' does not exist");
+            return result;
+        }
+        var seq = maybeSeq;
+
+        // Apply changes (sentinel = 0 - 2147483647 means "no change")
+        if newIncr > 0 - 2147483646 {
+            seq.incrementBy = newIncr;
+        }
+        if newMin > 0 - 2147483646 {
+            seq.minValue = newMin;
+        }
+        if newMax > 0 - 2147483646 {
+            seq.maxValue = newMax;
+        }
+        if setCycle == 1 {
+            seq.cycle = true;
+        } else if setCycle == 0 {
+            seq.cycle = false;
+        }
+        // RESTART: -2147483646 = use startValue, other non-sentinel = use that value
+        if restartVal == 0 - 2147483646 {
+            seq.currentValue = seq.startValue;
+            seq.called = false;
+        } else if restartVal > 0 - 2147483646 {
+            seq.currentValue = restartVal;
+            seq.called = false;
+        }
+
+        result.message = "Sequence '" + seqName + "' altered";
+        return result;
+    }
+
+    expose func executeShowSequences() -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        result.success = true;
+        result.columnNames = ["sequence_name", "current_value", "start_value", "increment", "min_value", "max_value", "cycle"];
+
+        var seqs = exec.seqMgr.listSequences();
+        var i = 0;
+        while i < seqs.count() {
+            var s = seqs.get(i);
+            var row = new Row();
+            row.initWithCount(7);
+            row.values.set(0, sqlText(s.name));
+            row.values.set(1, sqlInteger(s.currentValue));
+            row.values.set(2, sqlInteger(s.startValue));
+            row.values.set(3, sqlInteger(s.incrementBy));
+            row.values.set(4, sqlInteger(s.minValue));
+            row.values.set(5, sqlInteger(s.maxValue));
+            if s.cycle {
+                row.values.set(6, sqlText("YES"));
+            } else {
+                row.values.set(6, sqlText("NO"));
+            }
+            result.addRow(row);
+            i = i + 1;
+        }
+        return result;
+    }
+
+    //=========================================================================
+    // STORED FUNCTION DDL (Phase 19)
+    //=========================================================================
+
+    expose func executeCreateFunction(funcName: String, funcParams: List[FuncParam],
+                                      retType: Integer, bodySQL: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if bodySQL == "" {
+            result.setError("CREATE FUNCTION requires AS 'sql_body'");
+            return result;
+        }
+
+        var fn = new StoredFunction();
+        fn.initFull(funcName, funcParams, retType, bodySQL);
+        var err = exec.funcMgr.addFunction(fn);
+        if err != "" {
+            result.setError(err);
+            return result;
+        }
+
+        result.message = "Function '" + funcName + "' created";
+        return result;
+    }
+
+    expose func executeDropFunction(funcName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if exec.funcMgr.dropFunction(funcName) {
+            result.message = "Function '" + funcName + "' dropped";
+        } else {
+            result.setError("Function '" + funcName + "' does not exist");
+        }
+        return result;
+    }
+
+    expose func executeShowFunctions() -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        result.success = true;
+        result.columnNames = ["function_name", "parameters", "return_type"];
+
+        var funcs = exec.funcMgr.listFunctions();
+        var i = 0;
+        while i < funcs.count() {
+            var f = funcs.get(i);
+            var row = new Row();
+            row.initWithCount(3);
+            row.values.set(0, sqlText(f.name));
+            // Build parameter string
+            var paramStr = "";
+            var pi = 0;
+            while pi < f.params.count() {
+                if pi > 0 { paramStr = paramStr + ", "; }
+                var p = f.params.get(pi);
+                paramStr = paramStr + p.name + " " + p.typeName();
+                pi = pi + 1;
+            }
+            row.values.set(1, sqlText(paramStr));
+            row.values.set(2, sqlText(f.returnTypeName()));
+            result.addRow(row);
+            i = i + 1;
+        }
+        return result;
     }
 }
 

@@ -27,6 +27,11 @@ void EmbeddedShell::init(TextBuffer *buffer, AnsiParser *parser) {
     m_parser = parser;
 }
 
+void EmbeddedShell::init_pty() {
+    m_buffer = nullptr;
+    m_parser = nullptr;
+}
+
 void EmbeddedShell::print_banner() {
     shell_print("ViperDOS Shell\n\n");
 }
@@ -59,7 +64,8 @@ void EmbeddedShell::handle_char(char c) {
 
         if (m_input_len > 0) {
             history_add(m_input_buf);
-            m_buffer->begin_batch();
+            if (m_buffer)
+                m_buffer->begin_batch();
             execute_command();
             m_command_ran = true;
         }
@@ -72,7 +78,8 @@ void EmbeddedShell::handle_char(char c) {
         if (!is_foreground()) {
             print_prompt();
         }
-        m_buffer->end_batch();
+        if (m_buffer)
+            m_buffer->end_batch();
         return;
     }
 
@@ -150,14 +157,20 @@ void EmbeddedShell::handle_special_key(uint16_t keycode, uint8_t /*modifiers*/) 
         case KEY_LEFT:
             if (m_cursor_pos > 0) {
                 m_cursor_pos--;
-                m_buffer->move_cursor(-1, 0);
+                if (m_buffer)
+                    m_buffer->move_cursor(-1, 0);
+                else
+                    shell_print("\033[D"); // ANSI cursor left
             }
             break;
 
         case KEY_RIGHT:
             if (m_cursor_pos < m_input_len) {
                 m_cursor_pos++;
-                m_buffer->move_cursor(1, 0);
+                if (m_buffer)
+                    m_buffer->move_cursor(1, 0);
+                else
+                    shell_print("\033[C"); // ANSI cursor right
             }
             break;
 
@@ -165,7 +178,13 @@ void EmbeddedShell::handle_special_key(uint16_t keycode, uint8_t /*modifiers*/) 
             if (m_cursor_pos > 0) {
                 int32_t delta = -static_cast<int32_t>(m_cursor_pos);
                 m_cursor_pos = 0;
-                m_buffer->move_cursor(delta, 0);
+                if (m_buffer) {
+                    m_buffer->move_cursor(delta, 0);
+                } else {
+                    // Move left by |delta| positions
+                    for (int32_t i = 0; i < -delta; i++)
+                        shell_print("\033[D");
+                }
             }
             break;
 
@@ -173,7 +192,13 @@ void EmbeddedShell::handle_special_key(uint16_t keycode, uint8_t /*modifiers*/) 
             if (m_cursor_pos < m_input_len) {
                 int32_t delta = static_cast<int32_t>(m_input_len - m_cursor_pos);
                 m_cursor_pos = m_input_len;
-                m_buffer->move_cursor(delta, 0);
+                if (m_buffer) {
+                    m_buffer->move_cursor(delta, 0);
+                } else {
+                    // Move right by delta positions
+                    for (int32_t i = 0; i < delta; i++)
+                        shell_print("\033[C");
+                }
             }
             break;
 
@@ -194,9 +219,18 @@ void EmbeddedShell::handle_special_key(uint16_t keycode, uint8_t /*modifiers*/) 
 }
 
 void EmbeddedShell::clear_input_line() {
-    // Jump cursor directly to start of input area and clear to end of line
-    m_buffer->set_cursor(m_prompt_len, m_buffer->cursor_y());
-    m_buffer->clear_to_eol();
+    if (m_buffer) {
+        // Direct mode: jump cursor to start of input area and clear to end of line
+        m_buffer->set_cursor(m_prompt_len, m_buffer->cursor_y());
+        m_buffer->clear_to_eol();
+    } else {
+        // PTY mode: use ANSI escapes — move to column (prompt_len+1) and clear to EOL
+        shell_print("\r");  // Go to start of line
+        // Move forward past the prompt
+        for (size_t i = 0; i < m_prompt_len; i++)
+            shell_print("\033[C");
+        shell_print("\033[K"); // Clear to end of line
+    }
 }
 
 void EmbeddedShell::redraw_input_line() {
@@ -205,10 +239,17 @@ void EmbeddedShell::redraw_input_line() {
         shell_print_char(m_input_buf[i]);
     }
 
-    // Position cursor directly instead of \b loop
+    // Position cursor at the right place
     if (m_cursor_pos < m_input_len) {
-        m_buffer->set_cursor(
-            static_cast<uint32_t>(m_prompt_len + m_cursor_pos), m_buffer->cursor_y());
+        if (m_buffer) {
+            m_buffer->set_cursor(
+                static_cast<uint32_t>(m_prompt_len + m_cursor_pos), m_buffer->cursor_y());
+        } else {
+            // PTY mode: move cursor back from end to cursor_pos
+            size_t back = m_input_len - m_cursor_pos;
+            for (size_t i = 0; i < back; i++)
+                shell_print("\033[D");
+        }
     }
 }
 
@@ -376,7 +417,8 @@ bool EmbeddedShell::check_foreground() {
         m_fg_task_id = 0;
         shell_print("\n");
         print_prompt();
-        m_buffer->end_batch();
+        if (m_buffer)
+            m_buffer->end_batch();
         return true;
     }
     if (result < 0) {
@@ -385,7 +427,8 @@ bool EmbeddedShell::check_foreground() {
         m_fg_task_id = 0;
         shell_print("\n");
         print_prompt();
-        m_buffer->end_batch();
+        if (m_buffer)
+            m_buffer->end_batch();
         return true;
     }
     // result == 0: child still running

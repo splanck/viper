@@ -36,6 +36,11 @@ entity Column {
     expose Integer onDeleteAction;
     expose Integer onUpdateAction;
     expose String checkExprSQL;
+    // Generated columns (Phase 53)
+    expose Boolean isGenerated;       // GENERATED ALWAYS AS (expr) STORED
+    expose String generatedExprSQL;   // SQL expression text for generation
+    // Phase 68: named constraints
+    expose String constraintName;     // Optional name for column constraint
 
     expose func init() {
         name = "";
@@ -53,6 +58,9 @@ entity Column {
         onDeleteAction = FK_NO_ACTION;
         onUpdateAction = FK_NO_ACTION;
         checkExprSQL = "";
+        isGenerated = false;
+        generatedExprSQL = "";
+        constraintName = "";
     }
 
     expose func initWithName(n: String, t: Integer) {
@@ -71,6 +79,9 @@ entity Column {
         onDeleteAction = FK_NO_ACTION;
         onUpdateAction = FK_NO_ACTION;
         checkExprSQL = "";
+        isGenerated = false;
+        generatedExprSQL = "";
+        constraintName = "";
     }
 
     expose func typeName() -> String {
@@ -82,6 +93,7 @@ entity Column {
         if typeCode == SQL_BOOLEAN { return "BOOLEAN"; }
         if typeCode == SQL_DATE { return "DATE"; }
         if typeCode == SQL_TIMESTAMP { return "TIMESTAMP"; }
+        if typeCode == SQL_JSON { return "JSON"; }
         return "UNKNOWN";
     }
 
@@ -110,6 +122,9 @@ entity Column {
         if isForeignKey {
             result = result + " REFERENCES " + refTableName + "(" + refColumnName + ")";
         }
+        if isGenerated {
+            result = result + " GENERATED ALWAYS AS (" + generatedExprSQL + ") STORED";
+        }
         return result;
     }
 }
@@ -128,14 +143,22 @@ entity Row {
     expose List[SqlValue] values;
     expose Boolean deleted;
 
+    // MVCC version tracking (Phase 16)
+    expose Integer xmin;    // Transaction ID that created this row version
+    expose Integer xmax;    // Transaction ID that deleted/updated this row (0 = live)
+
     expose func init() {
         values = [];
         deleted = false;
+        xmin = 0;
+        xmax = 0;
     }
 
     expose func initWithCount(count: Integer) {
         values = [];
         deleted = false;
+        xmin = 0;
+        xmax = 0;
         var i = 0;
         while i < count {
             var v = new SqlValue();
@@ -143,6 +166,49 @@ entity Row {
             values.add(v);
             i = i + 1;
         }
+    }
+
+    // MVCC visibility check.
+    // A row is visible to a transaction with snapshotId if:
+    //   1. xmin is committed (xmin < snapshotId) or created by current txn (xmin == currentTxnId)
+    //   2. xmax is 0 (not deleted), or xmax is not yet committed (xmax >= snapshotId) and not current txn
+    // When MVCC is not active (snapshotId == 0), falls back to deleted flag.
+    expose func isVisible(snapshotId: Integer, currentTxnId: Integer) -> Boolean {
+        // Fallback: non-MVCC mode (snapshotId == 0 means no active snapshot)
+        if snapshotId == 0 {
+            return deleted == false;
+        }
+
+        // Row was soft-deleted (legacy path)
+        if deleted {
+            return false;
+        }
+
+        // Check xmin: row must have been created before or by current txn
+        if xmin > 0 {
+            var xminVisible = false;
+            if xmin == currentTxnId {
+                xminVisible = true;  // Created by current transaction
+            } else if xmin < snapshotId {
+                xminVisible = true;  // Created by a committed transaction before snapshot
+            }
+            if xminVisible == false {
+                return false;  // Created by a transaction not yet visible
+            }
+        }
+
+        // Check xmax: row must not have been deleted before snapshot
+        if xmax > 0 {
+            if xmax == currentTxnId {
+                return false;  // Deleted by current transaction
+            }
+            if xmax < snapshotId {
+                return false;  // Deleted by a committed transaction before snapshot
+            }
+            // xmax >= snapshotId means delete not yet visible (row still visible)
+        }
+
+        return true;
     }
 
     expose func columnCount() -> Integer {
@@ -183,6 +249,8 @@ entity Row {
             i = i + 1;
         }
         newRow.deleted = deleted;
+        newRow.xmin = xmin;
+        newRow.xmax = xmax;
         return newRow;
     }
 

@@ -207,6 +207,18 @@ RT_FUNC(BytesSlice,   rt_bytes_slice,    "Viper.Collections.Bytes.Slice",     "o
 RT_FUNC(BytesToBase64,   rt_bytes_to_base64,   "Viper.Collections.Bytes.ToBase64",   "str(obj)")
 RT_FUNC(BytesToHex,   rt_bytes_to_hex,   "Viper.Collections.Bytes.ToHex",     "str(obj)")
 RT_FUNC(BytesToStr,   rt_bytes_to_str,   "Viper.Collections.Bytes.ToStr",     "str(obj)")
+RT_FUNC(BytesReadI16LE,  rt_bytes_read_i16le,  "Viper.Collections.Bytes.ReadI16LE",  "i64(obj,i64)")
+RT_FUNC(BytesReadI16BE,  rt_bytes_read_i16be,  "Viper.Collections.Bytes.ReadI16BE",  "i64(obj,i64)")
+RT_FUNC(BytesReadI32LE,  rt_bytes_read_i32le,  "Viper.Collections.Bytes.ReadI32LE",  "i64(obj,i64)")
+RT_FUNC(BytesReadI32BE,  rt_bytes_read_i32be,  "Viper.Collections.Bytes.ReadI32BE",  "i64(obj,i64)")
+RT_FUNC(BytesReadI64LE,  rt_bytes_read_i64le,  "Viper.Collections.Bytes.ReadI64LE",  "i64(obj,i64)")
+RT_FUNC(BytesReadI64BE,  rt_bytes_read_i64be,  "Viper.Collections.Bytes.ReadI64BE",  "i64(obj,i64)")
+RT_FUNC(BytesWriteI16LE, rt_bytes_write_i16le, "Viper.Collections.Bytes.WriteI16LE", "void(obj,i64,i64)")
+RT_FUNC(BytesWriteI16BE, rt_bytes_write_i16be, "Viper.Collections.Bytes.WriteI16BE", "void(obj,i64,i64)")
+RT_FUNC(BytesWriteI32LE, rt_bytes_write_i32le, "Viper.Collections.Bytes.WriteI32LE", "void(obj,i64,i64)")
+RT_FUNC(BytesWriteI32BE, rt_bytes_write_i32be, "Viper.Collections.Bytes.WriteI32BE", "void(obj,i64,i64)")
+RT_FUNC(BytesWriteI64LE, rt_bytes_write_i64le, "Viper.Collections.Bytes.WriteI64LE", "void(obj,i64,i64)")
+RT_FUNC(BytesWriteI64BE, rt_bytes_write_i64be, "Viper.Collections.Bytes.WriteI64BE", "void(obj,i64,i64)")
 
 //=============================================================================
 // COLLECTIONS - FROZENSET
@@ -334,6 +346,8 @@ RT_FUNC(ListFirst,    rt_list_first,     "Viper.Collections.List.First",      "o
 RT_FUNC(ListLast,     rt_list_last,      "Viper.Collections.List.Last",       "obj(obj)")
 RT_FUNC(ListIsEmpty,  rt_list_is_empty,  "Viper.Collections.List.get_IsEmpty","i1(obj)")
 RT_FUNC(ListPop,      rt_list_pop,       "Viper.Collections.List.Pop",        "obj(obj)")
+RT_FUNC(ListSort,     rt_list_sort,      "Viper.Collections.List.Sort",       "void(obj)")
+RT_FUNC(ListSortDesc, rt_list_sort_desc, "Viper.Collections.List.SortDesc",   "void(obj)")
 
 // List aliases (backward compatibility)
 RT_ALIAS("Viper.Collections.List.get_Count", ListGetLen)
@@ -430,6 +444,30 @@ RT_FUNC(MapRemove,  rt_map_remove,   "Viper.Collections.Map.Remove",      "i1(ob
 RT_FUNC(MapSet,     rt_map_set,      "Viper.Collections.Map.Set",         "void(obj,str,obj)")
 RT_FUNC(MapSetIfMissing, rt_map_set_if_missing, "Viper.Collections.Map.SetIfMissing", "i1(obj,str,obj)")
 RT_FUNC(MapValues,  rt_map_values,   "Viper.Collections.Map.Values",      "obj(obj)")
+RT_FUNC(MapSetInt,     rt_map_set_int,      "Viper.Collections.Map.SetInt",      "void(obj,str,i64)")
+RT_FUNC(MapGetInt,     rt_map_get_int,      "Viper.Collections.Map.GetInt",      "i64(obj,str)")
+RT_FUNC(MapGetIntOr,   rt_map_get_int_or,   "Viper.Collections.Map.GetIntOr",    "i64(obj,str,i64)")
+RT_FUNC(MapSetFloat,   rt_map_set_float,    "Viper.Collections.Map.SetFloat",    "void(obj,str,f64)")
+RT_FUNC(MapGetFloat,   rt_map_get_float,    "Viper.Collections.Map.GetFloat",    "f64(obj,str)")
+RT_FUNC(MapGetFloatOr, rt_map_get_float_or, "Viper.Collections.Map.GetFloatOr",  "f64(obj,str,f64)")
+RT_FUNC(MapSetStr,     rt_map_set_str,      "Viper.Collections.Map.SetStr",      "void(obj,str,str)")
+RT_FUNC(MapGetStr,     rt_map_get_str,      "Viper.Collections.Map.GetStr",      "str(obj,str)")
+
+//=============================================================================
+// COLLECTIONS - INTMAP
+//=============================================================================
+
+RT_FUNC(IntMapNew,     rt_intmap_new,      "Viper.Collections.IntMap.New",         "obj()")
+RT_FUNC(IntMapLen,     rt_intmap_len,      "Viper.Collections.IntMap.get_Len",     "i64(obj)")
+RT_FUNC(IntMapIsEmpty, rt_intmap_is_empty, "Viper.Collections.IntMap.get_IsEmpty", "i1(obj)")
+RT_FUNC(IntMapSet,     rt_intmap_set,      "Viper.Collections.IntMap.Set",         "void(obj,i64,obj)")
+RT_FUNC(IntMapGet,     rt_intmap_get,      "Viper.Collections.IntMap.Get",         "obj(obj,i64)")
+RT_FUNC(IntMapGetOr,   rt_intmap_get_or,   "Viper.Collections.IntMap.GetOr",       "obj(obj,i64,obj)")
+RT_FUNC(IntMapHas,     rt_intmap_has,      "Viper.Collections.IntMap.Has",         "i1(obj,i64)")
+RT_FUNC(IntMapRemove,  rt_intmap_remove,   "Viper.Collections.IntMap.Remove",      "i1(obj,i64)")
+RT_FUNC(IntMapClear,   rt_intmap_clear,    "Viper.Collections.IntMap.Clear",       "void(obj)")
+RT_FUNC(IntMapKeys,    rt_intmap_keys,     "Viper.Collections.IntMap.Keys",        "obj(obj)")
+RT_FUNC(IntMapValues,  rt_intmap_values,   "Viper.Collections.IntMap.Values",      "obj(obj)")
 
 //=============================================================================
 // COLLECTIONS - QUEUE
@@ -617,6 +655,11 @@ RT_FUNC(HashHmacSHA1Bytes,  rt_hash_hmac_sha1_bytes,  "Viper.Crypto.Hash.HmacSHA
 RT_FUNC(HashHmacSHA256,     rt_hash_hmac_sha256,      "Viper.Crypto.Hash.HmacSHA256",     "str(str,str)")
 RT_FUNC(HashHmacSHA256Bytes,rt_hash_hmac_sha256_bytes,"Viper.Crypto.Hash.HmacSHA256Bytes","str(obj,obj)")
 
+// Fast hash (FNV-1a) functions
+RT_FUNC(HashFast,      rt_hash_fast,       "Viper.Crypto.Hash.Fast",      "i64(str)")
+RT_FUNC(HashFastBytes, rt_hash_fast_bytes, "Viper.Crypto.Hash.FastBytes", "i64(obj)")
+RT_FUNC(HashFastInt,   rt_hash_fast_int,   "Viper.Crypto.Hash.FastInt",   "i64(i64)")
+
 //=============================================================================
 // CRYPTO - KEY DERIVATION
 //=============================================================================
@@ -695,6 +738,10 @@ RT_FUNC(DateTimeSecond,     rt_datetime_second,      "Viper.Time.DateTime.Second
 RT_FUNC(DateTimeToISO,      rt_datetime_to_iso,      "Viper.Time.DateTime.ToISO",      "str(i64)")
 RT_FUNC(DateTimeToLocal,    rt_datetime_to_local,    "Viper.Time.DateTime.ToLocal",    "str(i64)")
 RT_FUNC(DateTimeYear,       rt_datetime_year,        "Viper.Time.DateTime.Year",       "i64(i64)")
+RT_FUNC(DateTimeParseISO,   rt_datetime_parse_iso,   "Viper.Time.DateTime.ParseISO",   "i64(str)")
+RT_FUNC(DateTimeParseDate,  rt_datetime_parse_date,  "Viper.Time.DateTime.ParseDate",  "i64(str)")
+RT_FUNC(DateTimeParseTime,  rt_datetime_parse_time,  "Viper.Time.DateTime.ParseTime",  "i64(str)")
+RT_FUNC(DateTimeTryParse,   rt_datetime_try_parse,   "Viper.Time.DateTime.TryParse",   "i64(str)")
 
 //=============================================================================
 // DURATION / TIMESPAN
@@ -1910,6 +1957,37 @@ RT_FUNC(MemStreamSeek,        rt_memstream_seek,         "Viper.IO.MemStream.See
 RT_FUNC(MemStreamSkip,        rt_memstream_skip,         "Viper.IO.MemStream.Skip",         "void(obj,i64)")
 
 //=============================================================================
+// IO - BINARYBUFFER
+//=============================================================================
+
+RT_FUNC(BinBufNew,        rt_binbuf_new,          "Viper.IO.BinaryBuffer.New",         "obj()")
+RT_FUNC(BinBufNewCap,     rt_binbuf_new_cap,      "Viper.IO.BinaryBuffer.NewCap",      "obj(i64)")
+RT_FUNC(BinBufFromBytes,  rt_binbuf_from_bytes,   "Viper.IO.BinaryBuffer.FromBytes",   "obj(obj)")
+RT_FUNC(BinBufWriteByte,  rt_binbuf_write_byte,   "Viper.IO.BinaryBuffer.WriteByte",   "void(obj,i64)")
+RT_FUNC(BinBufWriteI16LE, rt_binbuf_write_i16le,  "Viper.IO.BinaryBuffer.WriteI16LE",  "void(obj,i64)")
+RT_FUNC(BinBufWriteI16BE, rt_binbuf_write_i16be,  "Viper.IO.BinaryBuffer.WriteI16BE",  "void(obj,i64)")
+RT_FUNC(BinBufWriteI32LE, rt_binbuf_write_i32le,  "Viper.IO.BinaryBuffer.WriteI32LE",  "void(obj,i64)")
+RT_FUNC(BinBufWriteI32BE, rt_binbuf_write_i32be,  "Viper.IO.BinaryBuffer.WriteI32BE",  "void(obj,i64)")
+RT_FUNC(BinBufWriteI64LE, rt_binbuf_write_i64le,  "Viper.IO.BinaryBuffer.WriteI64LE",  "void(obj,i64)")
+RT_FUNC(BinBufWriteI64BE, rt_binbuf_write_i64be,  "Viper.IO.BinaryBuffer.WriteI64BE",  "void(obj,i64)")
+RT_FUNC(BinBufWriteStr,   rt_binbuf_write_str,    "Viper.IO.BinaryBuffer.WriteStr",    "void(obj,str)")
+RT_FUNC(BinBufWriteBytes, rt_binbuf_write_bytes,  "Viper.IO.BinaryBuffer.WriteBytes",  "void(obj,obj)")
+RT_FUNC(BinBufReadByte,   rt_binbuf_read_byte,    "Viper.IO.BinaryBuffer.ReadByte",    "i64(obj)")
+RT_FUNC(BinBufReadI16LE,  rt_binbuf_read_i16le,   "Viper.IO.BinaryBuffer.ReadI16LE",   "i64(obj)")
+RT_FUNC(BinBufReadI16BE,  rt_binbuf_read_i16be,   "Viper.IO.BinaryBuffer.ReadI16BE",   "i64(obj)")
+RT_FUNC(BinBufReadI32LE,  rt_binbuf_read_i32le,   "Viper.IO.BinaryBuffer.ReadI32LE",   "i64(obj)")
+RT_FUNC(BinBufReadI32BE,  rt_binbuf_read_i32be,   "Viper.IO.BinaryBuffer.ReadI32BE",   "i64(obj)")
+RT_FUNC(BinBufReadI64LE,  rt_binbuf_read_i64le,   "Viper.IO.BinaryBuffer.ReadI64LE",   "i64(obj)")
+RT_FUNC(BinBufReadI64BE,  rt_binbuf_read_i64be,   "Viper.IO.BinaryBuffer.ReadI64BE",   "i64(obj)")
+RT_FUNC(BinBufReadStr,    rt_binbuf_read_str,     "Viper.IO.BinaryBuffer.ReadStr",     "str(obj)")
+RT_FUNC(BinBufReadBytes,  rt_binbuf_read_bytes,   "Viper.IO.BinaryBuffer.ReadBytes",   "obj(obj,i64)")
+RT_FUNC(BinBufGetPos,     rt_binbuf_get_position, "Viper.IO.BinaryBuffer.get_Pos",     "i64(obj)")
+RT_FUNC(BinBufSetPos,     rt_binbuf_set_position, "Viper.IO.BinaryBuffer.set_Pos",     "void(obj,i64)")
+RT_FUNC(BinBufGetLen,     rt_binbuf_get_len,      "Viper.IO.BinaryBuffer.get_Len",     "i64(obj)")
+RT_FUNC(BinBufToBytes,    rt_binbuf_to_bytes,     "Viper.IO.BinaryBuffer.ToBytes",     "obj(obj)")
+RT_FUNC(BinBufReset,      rt_binbuf_reset,        "Viper.IO.BinaryBuffer.Reset",       "void(obj)")
+
+//=============================================================================
 // IO - STREAM (UNIFIED INTERFACE)
 //=============================================================================
 
@@ -2257,6 +2335,8 @@ RT_FUNC(StrTrimChar,          rt_str_trim_char,      "Viper.String.TrimChar",   
 RT_FUNC(StrSlug,              rt_str_slug,           "Viper.String.Slug",           "str(str)")
 RT_FUNC(StrLevenshtein,       rt_str_levenshtein,    "Viper.String.Levenshtein",    "i64(str,str)")
 RT_FUNC(StrJaro,              rt_str_jaro,           "Viper.String.Jaro",           "f64(str,str)")
+RT_FUNC(StrLike,              rt_string_like,        "Viper.String.Like",           "i1(str,str)")
+RT_FUNC(StrLikeCI,            rt_string_like_ci,     "Viper.String.LikeCI",         "i1(str,str)")
 RT_FUNC(StrJaroWinkler,       rt_str_jaro_winkler,   "Viper.String.JaroWinkler",    "f64(str,str)")
 RT_FUNC(StrHamming,           rt_str_hamming,        "Viper.String.Hamming",        "i64(str,str)")
 RT_FUNC(StrCamelCase,         rt_str_camel_case,     "Viper.String.CamelCase",      "str(str)")
@@ -3807,11 +3887,23 @@ RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj", BytesNew)
     RT_METHOD("Fill", "void(i64)", BytesFill)
     RT_METHOD("Find", "i64(i64)", BytesFind)
     RT_METHOD("Get", "i64(i64)", BytesGet)
+    RT_METHOD("ReadI16BE", "i64(i64)", BytesReadI16BE)
+    RT_METHOD("ReadI16LE", "i64(i64)", BytesReadI16LE)
+    RT_METHOD("ReadI32BE", "i64(i64)", BytesReadI32BE)
+    RT_METHOD("ReadI32LE", "i64(i64)", BytesReadI32LE)
+    RT_METHOD("ReadI64BE", "i64(i64)", BytesReadI64BE)
+    RT_METHOD("ReadI64LE", "i64(i64)", BytesReadI64LE)
     RT_METHOD("Set", "void(i64,i64)", BytesSet)
     RT_METHOD("Slice", "obj(i64,i64)", BytesSlice)
     RT_METHOD("ToBase64", "str()", BytesToBase64)
     RT_METHOD("ToHex", "str()", BytesToHex)
     RT_METHOD("ToStr", "str()", BytesToStr)
+    RT_METHOD("WriteI16BE", "void(i64,i64)", BytesWriteI16BE)
+    RT_METHOD("WriteI16LE", "void(i64,i64)", BytesWriteI16LE)
+    RT_METHOD("WriteI32BE", "void(i64,i64)", BytesWriteI32BE)
+    RT_METHOD("WriteI32LE", "void(i64,i64)", BytesWriteI32LE)
+    RT_METHOD("WriteI64BE", "void(i64,i64)", BytesWriteI64BE)
+    RT_METHOD("WriteI64LE", "void(i64,i64)", BytesWriteI64LE)
 RT_CLASS_END()
 
 // Viper.Collections.BiMap - bidirectional string-to-string map
@@ -4061,6 +4153,8 @@ RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
     RT_METHOD("Flip", "void()", ListFlip)
     RT_METHOD("First", "obj()", ListFirst)
     RT_METHOD("Last", "obj()", ListLast)
+    RT_METHOD("Sort", "void()", ListSort)
+    RT_METHOD("SortDesc", "void()", ListSortDesc)
 RT_CLASS_END()
 
 // Viper.Collections.LruCache - bounded key-value cache with LRU eviction
@@ -4092,6 +4186,28 @@ RT_CLASS_BEGIN("Viper.Collections.Map", Map, "obj", MapNew)
     RT_METHOD("Set", "void(str,obj)", MapSet)
     RT_METHOD("SetIfMissing", "i1(str,obj)", MapSetIfMissing)
     RT_METHOD("Values", "obj()", MapValues)
+    RT_METHOD("SetInt", "void(str,i64)", MapSetInt)
+    RT_METHOD("GetInt", "i64(str)", MapGetInt)
+    RT_METHOD("GetIntOr", "i64(str,i64)", MapGetIntOr)
+    RT_METHOD("SetFloat", "void(str,f64)", MapSetFloat)
+    RT_METHOD("GetFloat", "f64(str)", MapGetFloat)
+    RT_METHOD("GetFloatOr", "f64(str,f64)", MapGetFloatOr)
+    RT_METHOD("SetStr", "void(str,str)", MapSetStr)
+    RT_METHOD("GetStr", "str(str)", MapGetStr)
+RT_CLASS_END()
+
+// Viper.Collections.IntMap - integer-keyed dictionary
+RT_CLASS_BEGIN("Viper.Collections.IntMap", IntMap, "obj", IntMapNew)
+    RT_PROP("Len", "i64", IntMapLen, none)
+    RT_PROP("IsEmpty", "i1", IntMapIsEmpty, none)
+    RT_METHOD("Set", "void(i64,obj)", IntMapSet)
+    RT_METHOD("Get", "obj(i64)", IntMapGet)
+    RT_METHOD("GetOr", "obj(i64,obj)", IntMapGetOr)
+    RT_METHOD("Has", "i1(i64)", IntMapHas)
+    RT_METHOD("Remove", "i1(i64)", IntMapRemove)
+    RT_METHOD("Clear", "void()", IntMapClear)
+    RT_METHOD("Keys", "obj()", IntMapKeys)
+    RT_METHOD("Values", "obj()", IntMapValues)
 RT_CLASS_END()
 
 // Viper.Collections.MultiMap - one key to many values
@@ -4264,6 +4380,9 @@ RT_CLASS_BEGIN("Viper.Crypto.Hash", Hash, "obj", none)
     RT_METHOD("HmacSHA1Bytes", "str(obj,obj)", HashHmacSHA1Bytes)
     RT_METHOD("HmacSHA256", "str(str,str)", HashHmacSHA256)
     RT_METHOD("HmacSHA256Bytes", "str(obj,obj)", HashHmacSHA256Bytes)
+    RT_METHOD("Fast", "i64(str)", HashFast)
+    RT_METHOD("FastBytes", "i64(obj)", HashFastBytes)
+    RT_METHOD("FastInt", "i64(i64)", HashFastInt)
 RT_CLASS_END()
 
 // Viper.Crypto.KeyDerive - key derivation functions
@@ -4336,6 +4455,10 @@ RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("ToISO", "str(i64)", DateTimeToISO)
     RT_METHOD("ToLocal", "str(i64)", DateTimeToLocal)
     RT_METHOD("Year", "i64(i64)", DateTimeYear)
+    RT_METHOD("ParseISO", "i64(str)", DateTimeParseISO)
+    RT_METHOD("ParseDate", "i64(str)", DateTimeParseDate)
+    RT_METHOD("ParseTime", "i64(str)", DateTimeParseTime)
+    RT_METHOD("TryParse", "i64(str)", DateTimeTryParse)
 RT_CLASS_END()
 
 // Viper.Time.Duration - time interval/duration type
@@ -5819,6 +5942,34 @@ RT_CLASS_BEGIN("Viper.IO.MemStream", MemStream, "obj", MemStreamNew)
     RT_METHOD("Skip", "void(i64)", MemStreamSkip)
 RT_CLASS_END()
 
+// Viper.IO.BinaryBuffer - positioned binary read/write buffer
+RT_CLASS_BEGIN("Viper.IO.BinaryBuffer", BinaryBuffer, "obj", BinBufNew)
+    RT_PROP("Pos", "i64", BinBufGetPos, BinBufSetPos)
+    RT_PROP("Len", "i64", BinBufGetLen, none)
+    RT_METHOD("NewCap", "obj(i64)", BinBufNewCap)
+    RT_METHOD("FromBytes", "obj(obj)", BinBufFromBytes)
+    RT_METHOD("WriteByte", "void(i64)", BinBufWriteByte)
+    RT_METHOD("WriteI16LE", "void(i64)", BinBufWriteI16LE)
+    RT_METHOD("WriteI16BE", "void(i64)", BinBufWriteI16BE)
+    RT_METHOD("WriteI32LE", "void(i64)", BinBufWriteI32LE)
+    RT_METHOD("WriteI32BE", "void(i64)", BinBufWriteI32BE)
+    RT_METHOD("WriteI64LE", "void(i64)", BinBufWriteI64LE)
+    RT_METHOD("WriteI64BE", "void(i64)", BinBufWriteI64BE)
+    RT_METHOD("WriteStr", "void(str)", BinBufWriteStr)
+    RT_METHOD("WriteBytes", "void(obj)", BinBufWriteBytes)
+    RT_METHOD("ReadByte", "i64()", BinBufReadByte)
+    RT_METHOD("ReadI16LE", "i64()", BinBufReadI16LE)
+    RT_METHOD("ReadI16BE", "i64()", BinBufReadI16BE)
+    RT_METHOD("ReadI32LE", "i64()", BinBufReadI32LE)
+    RT_METHOD("ReadI32BE", "i64()", BinBufReadI32BE)
+    RT_METHOD("ReadI64LE", "i64()", BinBufReadI64LE)
+    RT_METHOD("ReadI64BE", "i64()", BinBufReadI64BE)
+    RT_METHOD("ReadStr", "str()", BinBufReadStr)
+    RT_METHOD("ReadBytes", "obj(i64)", BinBufReadBytes)
+    RT_METHOD("ToBytes", "obj()", BinBufToBytes)
+    RT_METHOD("Reset", "void()", BinBufReset)
+RT_CLASS_END()
+
 // Viper.IO.Stream - unified stream interface
 RT_CLASS_BEGIN("Viper.IO.Stream", Stream, "obj", none)
     // Static constructors
@@ -6093,6 +6244,8 @@ RT_CLASS_BEGIN("Viper.String", String, "opaque*", StrFromStr)
     RT_METHOD("Trim", "str()", Trim)
     RT_METHOD("TrimEnd", "str()", RTrim)
     RT_METHOD("TrimStart", "str()", LTrim)
+    RT_METHOD("Like", "i1(str)", StrLike)
+    RT_METHOD("LikeCI", "i1(str)", StrLikeCI)
 RT_CLASS_END()
 
 // Viper.Terminal - terminal I/O, cursor control, and keyboard input

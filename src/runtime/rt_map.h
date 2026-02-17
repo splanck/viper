@@ -92,6 +92,34 @@ extern "C"
     /// @return New Seq containing all values.
     void *rt_map_values(void *obj);
 
+    //=========================================================================
+    // Typed Accessors (box/unbox wrappers)
+    //=========================================================================
+
+    /// @brief Set an integer value (boxes automatically).
+    void rt_map_set_int(void *obj, rt_string key, int64_t value);
+
+    /// @brief Get an integer value (unboxes, returns 0 if missing).
+    int64_t rt_map_get_int(void *obj, rt_string key);
+
+    /// @brief Get an integer value with default (unboxes, returns def if missing).
+    int64_t rt_map_get_int_or(void *obj, rt_string key, int64_t def);
+
+    /// @brief Set a float value (boxes automatically).
+    void rt_map_set_float(void *obj, rt_string key, double value);
+
+    /// @brief Get a float value (unboxes, returns 0.0 if missing).
+    double rt_map_get_float(void *obj, rt_string key);
+
+    /// @brief Get a float value with default (unboxes, returns def if missing).
+    double rt_map_get_float_or(void *obj, rt_string key, double def);
+
+    /// @brief Set a string value (wraps as object).
+    void rt_map_set_str(void *obj, rt_string key, rt_string value);
+
+    /// @brief Get a string value (returns empty string if missing).
+    rt_string rt_map_get_str(void *obj, rt_string key);
+
 #ifdef __cplusplus
 }
 #endif

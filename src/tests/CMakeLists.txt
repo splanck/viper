@@ -150,6 +150,7 @@ if (NOT WIN32)
             test_codegen_arm64_abi_mixed_args
             test_codegen_arm64_rodata_literals
             test_codegen_arm64_callee_saved
+            test_codegen_arm64_mixed_call_f64
     )
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_test(${_test}
@@ -562,6 +563,14 @@ set(ZIA_RUNTIME_TESTS
         test_serialize_unified
         test_weakref_gc
         test_async_promise
+        test_intmap
+        test_binbuf
+        test_hash_fast
+        test_datetime_parse
+        test_string_like
+        test_bytes_binary
+        test_map_typed
+        test_list_sort
 )
 
 foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)

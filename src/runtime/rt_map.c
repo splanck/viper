@@ -817,3 +817,66 @@ void *rt_map_values(void *obj)
 
     return result;
 }
+
+//=============================================================================
+// Typed Accessors (box/unbox wrappers)
+//=============================================================================
+
+#include "rt_box.h"
+
+void rt_map_set_int(void *obj, rt_string key, int64_t value)
+{
+    void *boxed = rt_box_i64(value);
+    rt_map_set(obj, key, boxed);
+}
+
+int64_t rt_map_get_int(void *obj, rt_string key)
+{
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return 0;
+    return rt_unbox_i64(val);
+}
+
+int64_t rt_map_get_int_or(void *obj, rt_string key, int64_t def)
+{
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return def;
+    return rt_unbox_i64(val);
+}
+
+void rt_map_set_float(void *obj, rt_string key, double value)
+{
+    void *boxed = rt_box_f64(value);
+    rt_map_set(obj, key, boxed);
+}
+
+double rt_map_get_float(void *obj, rt_string key)
+{
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return 0.0;
+    return rt_unbox_f64(val);
+}
+
+double rt_map_get_float_or(void *obj, rt_string key, double def)
+{
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return def;
+    return rt_unbox_f64(val);
+}
+
+void rt_map_set_str(void *obj, rt_string key, rt_string value)
+{
+    rt_map_set(obj, key, (void *)value);
+}
+
+rt_string rt_map_get_str(void *obj, rt_string key)
+{
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return rt_string_from_bytes("", 0);
+    return (rt_string)val;
+}

@@ -12,6 +12,7 @@ bind Fmt = Viper.Fmt;
 bind "./types";
 bind "./schema";
 bind "./table";
+bind "./index";
 bind "./database";
 bind "./result";
 bind "./server";
@@ -32,6 +33,20 @@ func isSystemView(tableName: String) -> Boolean {
     if upper == "SYS.COLUMNS" { return true; }
     if upper == "SYS.STATS" { return true; }
     if upper == "SYS.USERS" { return true; }
+    if upper == "SYS.VACUUM_STATS" { return true; }
+    // pg_stat views (Phase 27)
+    if upper == "PG_STAT_ACTIVITY" || upper == "PG_CATALOG.PG_STAT_ACTIVITY" { return true; }
+    if upper == "PG_STAT_USER_TABLES" || upper == "PG_CATALOG.PG_STAT_USER_TABLES" { return true; }
+    if upper == "PG_STAT_USER_INDEXES" || upper == "PG_CATALOG.PG_STAT_USER_INDEXES" { return true; }
+    // pg_catalog views (Phase 21)
+    if upper == "PG_CATALOG.PG_CLASS" || upper == "PG_CLASS" { return true; }
+    if upper == "PG_CATALOG.PG_ATTRIBUTE" || upper == "PG_ATTRIBUTE" { return true; }
+    if upper == "PG_CATALOG.PG_TYPE" || upper == "PG_TYPE" { return true; }
+    if upper == "PG_CATALOG.PG_NAMESPACE" || upper == "PG_NAMESPACE" { return true; }
+    if upper == "PG_CATALOG.PG_INDEX" || upper == "PG_INDEX" { return true; }
+    if upper == "PG_CATALOG.PG_DATABASE" || upper == "PG_DATABASE" { return true; }
+    if upper == "PG_CATALOG.PG_PROC" || upper == "PG_PROC" { return true; }
+    if upper == "PG_CATALOG.PG_SETTINGS" || upper == "PG_SETTINGS" { return true; }
     return false;
 }
 
@@ -65,6 +80,31 @@ func executeSystemView(tableName: String, server: DatabaseServer, currentDbName:
     }
     if upper == "INFORMATION_SCHEMA.TABLE_PRIVILEGES" {
         return viewTablePrivileges(server);
+    }
+    // pg_catalog views (Phase 21)
+    if upper == "PG_CATALOG.PG_CLASS" || upper == "PG_CLASS" {
+        return viewPgClass(server, currentDbName);
+    }
+    if upper == "PG_CATALOG.PG_ATTRIBUTE" || upper == "PG_ATTRIBUTE" {
+        return viewPgAttribute(server, currentDbName);
+    }
+    if upper == "PG_CATALOG.PG_TYPE" || upper == "PG_TYPE" {
+        return viewPgType();
+    }
+    if upper == "PG_CATALOG.PG_NAMESPACE" || upper == "PG_NAMESPACE" {
+        return viewPgNamespace(server);
+    }
+    if upper == "PG_CATALOG.PG_INDEX" || upper == "PG_INDEX" {
+        return viewPgIndex(server, currentDbName);
+    }
+    if upper == "PG_CATALOG.PG_DATABASE" || upper == "PG_DATABASE" {
+        return viewPgDatabase(server);
+    }
+    if upper == "PG_CATALOG.PG_PROC" || upper == "PG_PROC" {
+        return viewPgProc(server);
+    }
+    if upper == "PG_CATALOG.PG_SETTINGS" || upper == "PG_SETTINGS" {
+        return viewPgSettings();
     }
 
     var result = new QueryResult();
@@ -490,5 +530,449 @@ func columnTypeName(dataType: Integer) -> String {
     if dataType == SQL_BOOLEAN { return "BOOLEAN"; }
     if dataType == SQL_DATE { return "DATE"; }
     if dataType == SQL_TIMESTAMP { return "TIMESTAMP"; }
+    if dataType == SQL_JSON { return "JSON"; }
     return "UNKNOWN";
+}
+
+//=============================================================================
+// OID GENERATION
+//=============================================================================
+
+// Simple OID generator: hash of object name for stable pseudo-OIDs
+func generateOid(name: String) -> Integer {
+    var h = Viper.Crypto.Hash.Fast(name);
+    if h < 0 { h = 0 - h; }
+    // Map to positive range (avoid collision with PG system OIDs < 16384)
+    return 16384 + (h % 100000);
+}
+
+// Map SQL type code to PostgreSQL type OID
+func sqlTypeToPgOid(typeCode: Integer) -> Integer {
+    if typeCode == SQL_INTEGER { return 23; }      // int4
+    if typeCode == SQL_REAL { return 701; }         // float8
+    if typeCode == SQL_TEXT { return 25; }           // text
+    if typeCode == SQL_BOOLEAN { return 16; }        // bool
+    if typeCode == SQL_DATE { return 1082; }         // date
+    if typeCode == SQL_TIMESTAMP { return 1114; }    // timestamp
+    if typeCode == SQL_BLOB { return 17; }           // bytea
+    if typeCode == SQL_JSON { return 114; }          // json
+    return 25; // default to text
+}
+
+// Map SQL type code to PostgreSQL type name
+func sqlTypeToPgName(typeCode: Integer) -> String {
+    if typeCode == SQL_INTEGER { return "int4"; }
+    if typeCode == SQL_REAL { return "float8"; }
+    if typeCode == SQL_TEXT { return "text"; }
+    if typeCode == SQL_BOOLEAN { return "bool"; }
+    if typeCode == SQL_DATE { return "date"; }
+    if typeCode == SQL_TIMESTAMP { return "timestamp"; }
+    if typeCode == SQL_BLOB { return "bytea"; }
+    if typeCode == SQL_JSON { return "json"; }
+    return "text";
+}
+
+//=============================================================================
+// PG_CATALOG.PG_CLASS  — tables, indexes, sequences, views
+//=============================================================================
+
+func viewPgClass(server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("oid");
+    result.addColumnName("relname");
+    result.addColumnName("relnamespace");
+    result.addColumnName("relkind");
+    result.addColumnName("reltuples");
+    result.addColumnName("relhasindex");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var db = server.dbList.get(di);
+        var nsOid = generateOid("ns_" + dbName);
+
+        // Tables (relkind = 'r')
+        var ti = 0;
+        while ti < db.tableCount() {
+            var maybeTable = db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                var oid = generateOid(dbName + "." + table.name);
+                var row = new Row();
+                row.init();
+                row.addValue(sqlInteger(oid));
+                row.addValue(sqlText(table.name));
+                row.addValue(sqlInteger(nsOid));
+                row.addValue(sqlText("r"));
+                row.addValue(sqlInteger(table.rowCount()));
+                // Check if table has any indexes
+                var hasIdx = false;
+                if di < server.indexManagers.count() {
+                    var im = server.indexManagers.get(di);
+                    var ii = 0;
+                    while ii < im.indexCount() {
+                        var maybeIdx = im.getIndex(ii);
+                        if maybeIdx != null {
+                            var idx = maybeIdx;
+                            if idx.tableName == table.name {
+                                hasIdx = true;
+                                ii = im.indexCount();  // break
+                            }
+                        }
+                        ii = ii + 1;
+                    }
+                }
+                if hasIdx {
+                    row.addValue(sqlText("t"));
+                } else {
+                    row.addValue(sqlText("f"));
+                }
+                result.addRow(row);
+            }
+            ti = ti + 1;
+        }
+
+        // Views (relkind = 'v')
+        var vi = 0;
+        while vi < db.viewNames.count() {
+            var viewName = db.viewNames.get(vi);
+            var oid = generateOid(dbName + "." + viewName);
+            var row = new Row();
+            row.init();
+            row.addValue(sqlInteger(oid));
+            row.addValue(sqlText(viewName));
+            row.addValue(sqlInteger(nsOid));
+            row.addValue(sqlText("v"));
+            row.addValue(sqlInteger(0));
+            row.addValue(sqlText("f"));
+            result.addRow(row);
+            vi = vi + 1;
+        }
+
+        // Indexes (relkind = 'i')
+        if di < server.indexManagers.count() {
+            var im = server.indexManagers.get(di);
+            var ii = 0;
+            while ii < im.indexCount() {
+                var maybeIdx = im.getIndex(ii);
+                if maybeIdx != null {
+                    var idx = maybeIdx;
+                    var oid = generateOid(dbName + ".idx." + idx.name);
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlInteger(oid));
+                    row.addValue(sqlText(idx.name));
+                    row.addValue(sqlInteger(nsOid));
+                    row.addValue(sqlText("i"));
+                    row.addValue(sqlInteger(idx.entryCount()));
+                    row.addValue(sqlText("f"));
+                    result.addRow(row);
+                }
+                ii = ii + 1;
+            }
+        }
+
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// PG_CATALOG.PG_ATTRIBUTE  — columns of all relations
+//=============================================================================
+
+func viewPgAttribute(server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("attrelid");
+    result.addColumnName("attname");
+    result.addColumnName("atttypid");
+    result.addColumnName("attnum");
+    result.addColumnName("attnotnull");
+    result.addColumnName("atthasdef");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var db = server.dbList.get(di);
+        var ti = 0;
+        while ti < db.tableCount() {
+            var maybeTable = db.getTable(ti);
+            if maybeTable != null {
+                var table = maybeTable;
+                var relOid = generateOid(dbName + "." + table.name);
+                var ci = 0;
+                while ci < table.columnCount() {
+                    var col = table.getColumn(ci);
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlInteger(relOid));
+                    row.addValue(sqlText(col.name));
+                    row.addValue(sqlInteger(sqlTypeToPgOid(col.typeCode)));
+                    row.addValue(sqlInteger(ci + 1));
+                    if col.notNull {
+                        row.addValue(sqlText("t"));
+                    } else {
+                        row.addValue(sqlText("f"));
+                    }
+                    if col.hasDefault {
+                        row.addValue(sqlText("t"));
+                    } else {
+                        row.addValue(sqlText("f"));
+                    }
+                    result.addRow(row);
+                    ci = ci + 1;
+                }
+            }
+            ti = ti + 1;
+        }
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// PG_CATALOG.PG_TYPE  — data types
+//=============================================================================
+
+func viewPgType() -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("oid");
+    result.addColumnName("typname");
+    result.addColumnName("typlen");
+    result.addColumnName("typtype");
+    result.addColumnName("typnamespace");
+
+    // Standard types supported by ViperSQL
+    addTypeRow(result, 16, "bool", 1, "b");
+    addTypeRow(result, 17, "bytea", -1, "b");
+    addTypeRow(result, 23, "int4", 4, "b");
+    addTypeRow(result, 25, "text", -1, "b");
+    addTypeRow(result, 701, "float8", 8, "b");
+    addTypeRow(result, 1082, "date", 4, "b");
+    addTypeRow(result, 1114, "timestamp", 8, "b");
+    addTypeRow(result, 1043, "varchar", -1, "b");
+    addTypeRow(result, 114, "json", -1, "b");
+    addTypeRow(result, 3802, "jsonb", -1, "b");
+
+    return result;
+}
+
+func addTypeRow(result: QueryResult, oid: Integer, name: String, len: Integer, typtype: String) {
+    var row = new Row();
+    row.init();
+    row.addValue(sqlInteger(oid));
+    row.addValue(sqlText(name));
+    row.addValue(sqlInteger(len));
+    row.addValue(sqlText(typtype));
+    row.addValue(sqlInteger(11));  // pg_catalog namespace OID
+    result.addRow(row);
+}
+
+//=============================================================================
+// PG_CATALOG.PG_NAMESPACE  — schemas
+//=============================================================================
+
+func viewPgNamespace(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("oid");
+    result.addColumnName("nspname");
+    result.addColumnName("nspowner");
+
+    // pg_catalog namespace
+    var row1 = new Row();
+    row1.init();
+    row1.addValue(sqlInteger(11));
+    row1.addValue(sqlText("pg_catalog"));
+    row1.addValue(sqlInteger(10));
+    result.addRow(row1);
+
+    // public namespace (one per database)
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var nsOid = generateOid("ns_" + dbName);
+        var row = new Row();
+        row.init();
+        row.addValue(sqlInteger(nsOid));
+        row.addValue(sqlText("public"));
+        row.addValue(sqlInteger(10));
+        result.addRow(row);
+        di = di + 1;
+    }
+
+    // information_schema namespace
+    var row2 = new Row();
+    row2.init();
+    row2.addValue(sqlInteger(12));
+    row2.addValue(sqlText("information_schema"));
+    row2.addValue(sqlInteger(10));
+    result.addRow(row2);
+
+    return result;
+}
+
+//=============================================================================
+// PG_CATALOG.PG_INDEX  — index metadata
+//=============================================================================
+
+func viewPgIndex(server: DatabaseServer, currentDbName: String) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("indexrelid");
+    result.addColumnName("indrelid");
+    result.addColumnName("indnatts");
+    result.addColumnName("indisunique");
+    result.addColumnName("indisprimary");
+    result.addColumnName("indkey");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var db = server.dbList.get(di);
+        if di < server.indexManagers.count() {
+            var im = server.indexManagers.get(di);
+            var ii = 0;
+            while ii < im.indexCount() {
+                var maybeIdx = im.getIndex(ii);
+                if maybeIdx != null {
+                    var idx = maybeIdx;
+                    var indexOid = generateOid(dbName + ".idx." + idx.name);
+                    var tableOid = generateOid(dbName + "." + idx.tableName);
+
+                    // Build indkey (column ordinal positions as space-separated string)
+                    var indkey = "";
+                    var table = db.findTable(idx.tableName);
+                    var ci = 0;
+                    while ci < idx.columnCount() {
+                        if ci > 0 { indkey = indkey + " "; }
+                        if table != null {
+                            var t = table;
+                            var colIdx = t.findColumnIndex(idx.getColumnName(ci));
+                            indkey = indkey + Fmt.Int(colIdx + 1);
+                        } else {
+                            indkey = indkey + Fmt.Int(ci + 1);
+                        }
+                        ci = ci + 1;
+                    }
+
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlInteger(indexOid));
+                    row.addValue(sqlInteger(tableOid));
+                    row.addValue(sqlInteger(idx.columnCount()));
+                    if idx.isUnique {
+                        row.addValue(sqlText("t"));
+                    } else {
+                        row.addValue(sqlText("f"));
+                    }
+                    row.addValue(sqlText("f"));  // indisprimary (no PK index tracking yet)
+                    row.addValue(sqlText(indkey));
+                    result.addRow(row);
+                }
+                ii = ii + 1;
+            }
+        }
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// PG_CATALOG.PG_DATABASE  — databases
+//=============================================================================
+
+func viewPgDatabase(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("oid");
+    result.addColumnName("datname");
+    result.addColumnName("datdba");
+    result.addColumnName("encoding");
+    result.addColumnName("datcollate");
+
+    var di = 0;
+    while di < server.dbNames.count() {
+        var dbName = server.dbNames.get(di);
+        var oid = generateOid("db_" + dbName);
+        var row = new Row();
+        row.init();
+        row.addValue(sqlInteger(oid));
+        row.addValue(sqlText(dbName));
+        row.addValue(sqlInteger(10));       // owner = superuser (OID 10)
+        row.addValue(sqlInteger(6));        // UTF-8 encoding
+        row.addValue(sqlText("en_US.UTF-8"));
+        result.addRow(row);
+        di = di + 1;
+    }
+
+    return result;
+}
+
+//=============================================================================
+// PG_CATALOG.PG_PROC  — functions/procedures
+//=============================================================================
+
+func viewPgProc(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("oid");
+    result.addColumnName("proname");
+    result.addColumnName("pronargs");
+    result.addColumnName("prorettype");
+    result.addColumnName("prolang");
+
+    // No access to FunctionManager from here (it's per-executor, not server-level)
+    // Return empty result for now — functions are session-scoped
+    return result;
+}
+
+//=============================================================================
+// PG_CATALOG.PG_SETTINGS  — server configuration
+//=============================================================================
+
+func viewPgSettings() -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("name");
+    result.addColumnName("setting");
+    result.addColumnName("unit");
+    result.addColumnName("category");
+    result.addColumnName("description");
+
+    addSettingRow(result, "server_version", "15.0", "", "Version", "ViperSQL (PostgreSQL-compatible)");
+    addSettingRow(result, "server_encoding", "UTF8", "", "Client", "Server character set encoding");
+    addSettingRow(result, "client_encoding", "UTF8", "", "Client", "Client character set encoding");
+    addSettingRow(result, "max_connections", "100", "", "Connections", "Maximum number of connections");
+    addSettingRow(result, "default_transaction_isolation", "read committed", "", "Transactions", "Default transaction isolation level");
+    addSettingRow(result, "search_path", "public", "", "Client", "Schema search path");
+    addSettingRow(result, "timezone", "UTC", "", "Client", "Time zone");
+    addSettingRow(result, "standard_conforming_strings", "on", "", "Client", "Standard conforming strings");
+
+    return result;
+}
+
+func addSettingRow(result: QueryResult, name: String, setting: String, unit: String, category: String, desc: String) {
+    var row = new Row();
+    row.init();
+    row.addValue(sqlText(name));
+    row.addValue(sqlText(setting));
+    row.addValue(sqlText(unit));
+    row.addValue(sqlText(category));
+    row.addValue(sqlText(desc));
+    result.addRow(row);
 }

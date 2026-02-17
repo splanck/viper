@@ -55,6 +55,64 @@ entity JoinEngine {
     }
 
     //=========================================================================
+    // LATERAL JOIN SUPPORT
+    //=========================================================================
+
+    // Convert a SqlValue to SQL literal text for substitution
+    hide func valueToSQLLiteral(val: SqlValue) -> String {
+        if val.kind == SQL_NULL { return "NULL"; }
+        if val.kind == SQL_INTEGER { return Fmt.Int(val.intValue); }
+        if val.kind == SQL_REAL { return val.toString(); }
+        if val.kind == SQL_TEXT {
+            // Escape single quotes in text values
+            var escaped = "";
+            var i = 0;
+            var len = String.Length(val.textValue);
+            while i < len {
+                var ch = String.Substring(val.textValue, i, 1);
+                if ch == "'" {
+                    escaped = escaped + "''";
+                } else {
+                    escaped = escaped + ch;
+                }
+                i = i + 1;
+            }
+            return "'" + escaped + "'";
+        }
+        if val.kind == SQL_BOOLEAN {
+            if val.intValue != 0 { return "TRUE"; }
+            return "FALSE";
+        }
+        return val.toString();
+    }
+
+    // Build LATERAL subquery SQL with outer column references replaced by values
+    hide func buildLateralSQL(sql: String, row: Row,
+                               tables: List[Table], aliases: List[String],
+                               colOffsets: List[Integer], upTo: Integer) -> String {
+        var result = sql;
+        var ti = 0;
+        while ti < upTo {
+            var tbl = tables.get(ti);
+            var alias = aliases.get(ti);
+            var offset = colOffsets.get(ti);
+            var ci = 0;
+            while ci < tbl.columnCount() {
+                var maybeCol = tbl.getColumn(ci);
+                if maybeCol != null {
+                    var col = maybeCol;
+                    var pattern = alias + "." + col.name;
+                    var replacement = valueToSQLLiteral(row.getValue(offset + ci));
+                    result = String.Replace(result, pattern, replacement);
+                }
+                ci = ci + 1;
+            }
+            ti = ti + 1;
+        }
+        return result;
+    }
+
+    //=========================================================================
     // HASH JOIN SUPPORT
     //=========================================================================
 
@@ -133,7 +191,7 @@ entity JoinEngine {
             var maybeRow = rightTable.getRow(ri);
             if maybeRow != null {
                 var row = maybeRow;
-                if row.deleted == false {
+                if row.isVisible(exec.mvccSnapshotId, exec.mvccTxnId) {
                     var keyVal = row.getValue(rightJoinCol);
                     var keyStr = keyVal.toString();
                     var rawHash = exec.computeKeyHash(keyStr);
@@ -468,14 +526,38 @@ entity JoinEngine {
         var result = new QueryResult();
         result.init();
 
-        // Load all tables
+        // Check for LATERAL tables
+        var hasLateral = false;
+        var latTi = 0;
+        while latTi < stmt.lateralSubquerySQL.count() {
+            if stmt.lateralSubquerySQL.get(latTi) != "" {
+                hasLateral = true;
+            }
+            latTi = latTi + 1;
+        }
+
+        // Load all tables (placeholder null for LATERAL tables)
         var tables = new List[Table]();
         var aliases = new List[String]();
         var colOffsets = new List[Integer]();
+        var lateralColCounts = new List[Integer]();  // column count for LATERAL tables (0 until resolved)
         var totalCols = 0;
 
         var ti = 0;
         while ti < stmt.tableNames.count() {
+            var isLateral = ti < stmt.lateralSubquerySQL.count() && stmt.lateralSubquerySQL.get(ti) != "";
+
+            if isLateral {
+                // LATERAL table: use a placeholder empty table
+                var placeholder = new Table();
+                placeholder.initWithName(stmt.tableNames.get(ti));
+                tables.add(placeholder);
+                var alias = stmt.tableAliases.get(ti);
+                if alias == "" { alias = stmt.tableNames.get(ti); }
+                aliases.add(alias);
+                colOffsets.add(totalCols);
+                lateralColCounts.add(0);  // will be resolved during execution
+            } else {
             var tblName = stmt.tableNames.get(ti);
             var maybeTable = exec.findTable(tblName);
             if maybeTable == null {
@@ -493,6 +575,8 @@ entity JoinEngine {
 
             colOffsets.add(totalCols);
             totalCols = totalCols + tbl.columnCount();
+            lateralColCounts.add(tbl.columnCount());
+            }
             ti = ti + 1;
         }
 
@@ -501,7 +585,7 @@ entity JoinEngine {
         // result sizes. Only applies when ALL joins are INNER (type 1).
         var reorderedConds = new List[Expr]();
         var didReorder = false;
-        if tables.count() >= 3 && stmt.joinTypes.count() >= 2 {
+        if tables.count() >= 3 && stmt.joinTypes.count() >= 2 && hasLateral == false {
             var allInner = true;
             var jt = 0;
             while jt < stmt.joinTypes.count() {
@@ -629,6 +713,191 @@ entity JoinEngine {
                     hasJoinCond = true;
                 }
             }
+
+            // Phase 56: Synthesize join condition for NATURAL JOIN or USING clause
+            var isNaturalJoin = ti - 1 < stmt.joinNatural.count() && stmt.joinNatural.get(ti - 1) == 1;
+            var usingColStr = "";
+            if ti - 1 < stmt.joinUsingCols.count() {
+                usingColStr = stmt.joinUsingCols.get(ti - 1);
+            }
+
+            if isNaturalJoin || usingColStr != "" {
+                // Build list of columns to equi-join on
+                var matchCols = new List[String]();
+
+                if isNaturalJoin {
+                    // Find common column names between left tables and right table
+                    var nci = 0;
+                    while nci < tbl.columnCount() {
+                        var maybeCol = tbl.getColumn(nci);
+                        if maybeCol != null {
+                            var col = maybeCol;
+                            var lti = 0;
+                            while lti < ti {
+                                var leftTbl = tables.get(lti);
+                                if leftTbl.findColumnIndex(col.name) >= 0 {
+                                    matchCols.add(col.name);
+                                    lti = ti;  // break
+                                }
+                                lti = lti + 1;
+                            }
+                        }
+                        nci = nci + 1;
+                    }
+                } else {
+                    // Parse USING columns from comma-separated string
+                    var ucCurrent = "";
+                    var uci = 0;
+                    var ucLen = String.Length(usingColStr);
+                    while uci < ucLen {
+                        var ch = String.Substring(usingColStr, uci, 1);
+                        if ch == "," {
+                            if ucCurrent != "" { matchCols.add(ucCurrent); }
+                            ucCurrent = "";
+                        } else {
+                            ucCurrent = ucCurrent + ch;
+                        }
+                        uci = uci + 1;
+                    }
+                    if ucCurrent != "" { matchCols.add(ucCurrent); }
+                }
+
+                // Synthesize equi-join condition: left.col = right.col AND ...
+                var synthCond: Expr? = null;
+                var mi = 0;
+                while mi < matchCols.count() {
+                    var colName = matchCols.get(mi);
+                    // Find left table alias for this column
+                    var leftAlias = "";
+                    var lti = 0;
+                    while lti < ti {
+                        var leftTbl = tables.get(lti);
+                        if leftTbl.findColumnIndex(colName) >= 0 {
+                            leftAlias = aliases.get(lti);
+                            lti = ti;  // break
+                        }
+                        lti = lti + 1;
+                    }
+                    var rightAlias = aliases.get(ti);
+
+                    var leftCol = new Expr();
+                    leftCol.init();
+                    leftCol.initColumn(leftAlias, colName);
+
+                    var rightCol = new Expr();
+                    rightCol.init();
+                    rightCol.initColumn(rightAlias, colName);
+
+                    var eqExpr = new Expr();
+                    eqExpr.init();
+                    eqExpr.initBinary(OP_EQ, leftCol, rightCol);
+
+                    if synthCond == null {
+                        synthCond = eqExpr;
+                    } else {
+                        var sc = synthCond;
+                        var andExpr = new Expr();
+                        andExpr.init();
+                        andExpr.initBinary(OP_AND, sc, eqExpr);
+                        synthCond = andExpr;
+                    }
+                    mi = mi + 1;
+                }
+
+                if synthCond != null {
+                    var sc = synthCond;
+                    joinCond = sc;
+                    hasJoinCond = true;
+                }
+            }
+
+            // Check if this is a LATERAL subquery
+            var isLateralTable = ti < stmt.lateralSubquerySQL.count() && stmt.lateralSubquerySQL.get(ti) != "";
+
+            if isLateralTable {
+                var lateralSQL = stmt.lateralSubquerySQL.get(ti);
+                var lateralCols = 0;
+
+                var ci = 0;
+                while ci < combinedRows.count() {
+                    var existing = combinedRows.get(ci);
+                    var subSQL = buildLateralSQL(lateralSQL, existing, tables, aliases, colOffsets, ti);
+                    var subResult = exec.executeSql(subSQL);
+
+                    if lateralCols == 0 && subResult.success && subResult.columnNames.count() > 0 {
+                        lateralCols = subResult.columnNames.count();
+                        // Update totalCols and colOffsets for this lateral table
+                        lateralColCounts.set(ti, lateralCols);
+                        totalCols = totalCols + lateralCols;
+                        // Update colOffsets for subsequent tables
+                        var uti = ti + 1;
+                        while uti < colOffsets.count() {
+                            colOffsets.set(uti, colOffsets.get(uti) + lateralCols);
+                            uti = uti + 1;
+                        }
+                        // Add column definitions to placeholder table for evalJoinExpr resolution
+                        var lateralTable = tables.get(ti);
+                        var lci = 0;
+                        while lci < subResult.columnNames.count() {
+                            var colName = subResult.columnNames.get(lci);
+                            var latCol = new Column();
+                            latCol.initWithName(colName, SQL_TEXT);
+                            lateralTable.addColumn(latCol);
+                            lci = lci + 1;
+                        }
+                    }
+
+                    if subResult.success && subResult.rows.count() > 0 {
+                        var sri = 0;
+                        while sri < subResult.rows.count() {
+                            var subRow = subResult.rows.get(sri);
+                            var newRow = new Row();
+                            newRow.init();
+                            var c = 0;
+                            var existingCols = existing.columnCount();
+                            while c < existingCols {
+                                newRow.addValue(exec.cloneValue(existing.getValue(c)));
+                                c = c + 1;
+                            }
+                            c = 0;
+                            while c < subRow.columnCount() {
+                                newRow.addValue(exec.cloneValue(subRow.getValue(c)));
+                                c = c + 1;
+                            }
+                            newCombined.add(newRow);
+                            sri = sri + 1;
+                        }
+                    } else if joinType == 2 {
+                        // LEFT JOIN LATERAL: add NULL row
+                        var newRow = new Row();
+                        newRow.init();
+                        var c = 0;
+                        while c < existing.columnCount() {
+                            newRow.addValue(exec.cloneValue(existing.getValue(c)));
+                            c = c + 1;
+                        }
+                        c = 0;
+                        while c < lateralCols {
+                            newRow.addValue(sqlNull());
+                            c = c + 1;
+                        }
+                        newCombined.add(newRow);
+                    }
+                    ci = ci + 1;
+                }
+
+                // If no combined rows or no subquery results, set lateralCols from a probe
+                if lateralCols == 0 {
+                    lateralCols = 1;  // fallback
+                    lateralColCounts.set(ti, lateralCols);
+                    totalCols = totalCols + lateralCols;
+                }
+
+                combinedRows = newCombined;
+                ti = ti + 1;
+            }
+
+            if isLateralTable == false {
 
             // Try hash join for INNER JOIN with equi-condition
             var usedHashJoin = false;
@@ -758,6 +1027,28 @@ entity JoinEngine {
             ti = ti + 1;
 
             } // end if usedHashJoin == false
+
+            } // end if isLateralTable == false
+        }
+
+        // Rebuild SELECT * column names if LATERAL tables were resolved
+        if hasLateral && stmt.selectAll {
+            result.columnNames = [];
+            ti = 0;
+            while ti < tables.count() {
+                var tbl = tables.get(ti);
+                var alias = aliases.get(ti);
+                var c = 0;
+                while c < tbl.columnCount() {
+                    var maybeCol = tbl.getColumn(c);
+                    if maybeCol != null {
+                        var col = maybeCol;
+                        result.addColumnName(alias + "." + col.name);
+                    }
+                    c = c + 1;
+                }
+                ti = ti + 1;
+            }
         }
 
         // Apply WHERE clause
@@ -824,6 +1115,11 @@ entity JoinEngine {
         // Apply ORDER BY on JOIN results
         if stmt.orderByExprs.count() > 0 {
             sortJoinResults(result, stmt);
+        }
+
+        // Apply DISTINCT ON (after ORDER BY, before LIMIT/OFFSET)
+        if stmt.distinctOnExprs.count() > 0 {
+            exec.queryHandler.applyDistinctOn(stmt, result);
         }
 
         // Apply LIMIT/OFFSET
@@ -1107,10 +1403,12 @@ entity JoinEngine {
 
     // Sort JOIN results using result column name resolution
     // Compare two join result rows. Returns -1, 0, or 1.
-    hide func compareJoinRows(r1: Row, r2: Row, orderExprs: List[Expr], orderDir: List[Integer], colMappings: List[Integer]) -> Integer {
+    hide func compareJoinRows(r1: Row, r2: Row, orderExprs: List[Expr], orderDir: List[Integer], orderNulls: List[Integer], colMappings: List[Integer]) -> Integer {
         var e = 0;
         while e < orderExprs.count() {
             var isDesc = orderDir.get(e);
+            var nullsMode = 0;
+            if e < orderNulls.count() { nullsMode = orderNulls.get(e); }
             var colIdx = colMappings.get(e);
             if colIdx >= 0 {
                 var val1 = r1.getValue(colIdx);
@@ -1118,13 +1416,16 @@ entity JoinEngine {
                 var cmp = val1.compare(val2);
                 if cmp == 2 {
                     if val1.kind == SQL_NULL && val2.kind != SQL_NULL {
+                        if nullsMode == 1 { return -1; }
+                        if nullsMode == 2 { return 1; }
                         if isDesc == 1 { return -1; } return 1;
                     } else if val1.kind != SQL_NULL && val2.kind == SQL_NULL {
+                        if nullsMode == 1 { return 1; }
+                        if nullsMode == 2 { return -1; }
                         if isDesc == 1 { return 1; } return -1;
                     }
-                    return 0;
-                }
-                if cmp != 0 {
+                    // Both NULL — equal for this column, continue to next
+                } else if cmp != 0 {
                     if isDesc == 1 { if cmp < 0 { return 1; } return -1; }
                     else { if cmp > 0 { return 1; } return -1; }
                 }
@@ -1170,13 +1471,13 @@ entity JoinEngine {
                 var rl = rowLo;
                 var rm = rowMid;
                 var rh = rowHi;
-                if compareJoinRows(rl, rm, stmt.orderByExprs, stmt.orderByDir, colMappings) > 0 {
+                if compareJoinRows(rl, rm, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
                     result.swapRows(lo, mid);
                 }
-                if compareJoinRows(rl, rh, stmt.orderByExprs, stmt.orderByDir, colMappings) > 0 {
+                if compareJoinRows(rl, rh, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
                     result.swapRows(lo, hi);
                 }
-                if compareJoinRows(rm, rh, stmt.orderByExprs, stmt.orderByDir, colMappings) > 0 {
+                if compareJoinRows(rm, rh, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
                     result.swapRows(mid, hi);
                 }
             }
@@ -1194,14 +1495,14 @@ entity JoinEngine {
                     var ri = result.getRow(i);
                     if ri == null { break; }
                     var rir = ri;
-                    if compareJoinRows(rir, pivot, stmt.orderByExprs, stmt.orderByDir, colMappings) >= 0 { break; }
+                    if compareJoinRows(rir, pivot, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) >= 0 { break; }
                     i = i + 1;
                 }
                 while j >= i {
                     var rj = result.getRow(j);
                     if rj == null { break; }
                     var rjr = rj;
-                    if compareJoinRows(rjr, pivot, stmt.orderByExprs, stmt.orderByDir, colMappings) <= 0 { break; }
+                    if compareJoinRows(rjr, pivot, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) <= 0 { break; }
                     j = j - 1;
                 }
                 if i >= j {

@@ -20,6 +20,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_string.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -736,4 +737,154 @@ void *rt_list_pop(void *list)
     rt_arr_obj_put(L->arr, len - 1, NULL);
     L->arr = rt_arr_obj_resize(L->arr, len - 1);
     return elem;
+}
+
+//=============================================================================
+// Sorting
+//=============================================================================
+
+/// @brief Extract a comparable string from a list element.
+/// @details List elements may be raw rt_string handles or boxed strings
+///          (RT_BOX_STR). This helper returns the underlying rt_string
+///          for either representation, or NULL if the element is not a string.
+static rt_string list_extract_str(void *p)
+{
+    if (rt_string_is_handle(p))
+        return (rt_string)p;
+    if (rt_box_type(p) == RT_BOX_STR)
+        return rt_unbox_str(p);
+    return NULL;
+}
+
+/// @brief Extract a comparable integer from a list element.
+/// @details Returns the unboxed i64 value if the element is a boxed integer,
+///          otherwise returns 0 and sets *ok to 0.
+static int64_t list_extract_i64(void *p, int *ok)
+{
+    if (rt_box_type(p) == RT_BOX_I64)
+    {
+        *ok = 1;
+        return rt_unbox_i64(p);
+    }
+    *ok = 0;
+    return 0;
+}
+
+/// @brief Default comparison for list elements.
+/// @details Handles boxed strings (RT_BOX_STR), raw string handles, and
+///          boxed integers (RT_BOX_I64). Falls back to pointer comparison
+///          for other element types.
+static int64_t list_default_compare(void *a, void *b)
+{
+    if (!a && !b)
+        return 0;
+    if (!a)
+        return -1;
+    if (!b)
+        return 1;
+
+    // Try string comparison (handles both raw and boxed strings)
+    rt_string sa = list_extract_str(a);
+    rt_string sb = list_extract_str(b);
+    if (sa && sb)
+        return rt_str_cmp(sa, sb);
+
+    // Try integer comparison (boxed i64)
+    int ok_a = 0, ok_b = 0;
+    int64_t ia = list_extract_i64(a, &ok_a);
+    int64_t ib = list_extract_i64(b, &ok_b);
+    if (ok_a && ok_b)
+    {
+        if (ia < ib)
+            return -1;
+        if (ia > ib)
+            return 1;
+        return 0;
+    }
+
+    // Fallback: pointer comparison
+    if (a < b)
+        return -1;
+    if (a > b)
+        return 1;
+    return 0;
+}
+
+/// @brief Merge two sorted halves of a temp array.
+static void list_merge(void **items, void **temp,
+                       size_t left, size_t mid, size_t right,
+                       int64_t (*cmp)(void *, void *))
+{
+    size_t i = left, j = mid + 1, k = left;
+
+    while (i <= mid && j <= right)
+    {
+        if (cmp(items[i], items[j]) <= 0)
+            temp[k++] = items[i++];
+        else
+            temp[k++] = items[j++];
+    }
+    while (i <= mid)
+        temp[k++] = items[i++];
+    while (j <= right)
+        temp[k++] = items[j++];
+
+    for (size_t x = left; x <= right; x++)
+        items[x] = temp[x];
+}
+
+/// @brief Recursive merge sort.
+static void list_merge_sort(void **items, void **temp,
+                            size_t left, size_t right,
+                            int64_t (*cmp)(void *, void *))
+{
+    if (left >= right)
+        return;
+    size_t mid = left + (right - left) / 2;
+    list_merge_sort(items, temp, left, mid, cmp);
+    list_merge_sort(items, temp, mid + 1, right, cmp);
+    list_merge(items, temp, left, mid, right, cmp);
+}
+
+/// @brief Sort a list in-place using a comparison function.
+/// @details Sorts the backing array directly (like Seq.Sort) to avoid ref
+///          counting side effects from rt_arr_obj_get/put during rearrangement.
+static void list_sort_impl(void *list, int64_t (*cmp)(void *, void *))
+{
+    if (!list)
+        return;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
+    if (len <= 1)
+        return;
+
+    // Allocate temporary buffer for merge sort
+    void **temp = (void **)malloc(len * sizeof(void *));
+    if (!temp)
+    {
+        rt_trap("List.Sort: memory allocation failed");
+        return;
+    }
+
+    // Sort the backing array in-place (same approach as Seq.Sort)
+    list_merge_sort(L->arr, temp, 0, len - 1, cmp);
+
+    free(temp);
+}
+
+void rt_list_sort(void *list)
+{
+    list_sort_impl(list, list_default_compare);
+}
+
+/// @brief Descending comparison wrapper.
+static int64_t list_compare_desc(void *a, void *b)
+{
+    return -list_default_compare(a, b);
+}
+
+void rt_list_sort_desc(void *list)
+{
+    list_sort_impl(list, list_compare_desc);
 }

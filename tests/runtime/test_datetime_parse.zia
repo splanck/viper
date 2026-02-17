@@ -1,0 +1,124 @@
+module TestDateTimeParse;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Time.DateTime.ParseISO
+// COVER: Viper.Time.DateTime.ParseDate
+// COVER: Viper.Time.DateTime.ParseTime
+// COVER: Viper.Time.DateTime.TryParse
+// COVER: Viper.Time.DateTime.Year
+// COVER: Viper.Time.DateTime.Month
+// COVER: Viper.Time.DateTime.Day
+
+func testParseISO() {
+    setTest("ParseISO");
+
+    var ts = Viper.Time.DateTime.ParseISO("2024-01-15T10:30:00Z");
+    assertNeqInt(ts, 0, "ParseISO returns non-zero timestamp");
+
+    var year = Viper.Time.DateTime.Year(ts);
+    assertEqInt(year, 2024, "parsed year");
+
+    var month = Viper.Time.DateTime.Month(ts);
+    assertEqInt(month, 1, "parsed month");
+
+    var day = Viper.Time.DateTime.Day(ts);
+    assertEqInt(day, 15, "parsed day");
+}
+
+func testParseISOComponents() {
+    setTest("ParseISOComponents");
+
+    var ts = Viper.Time.DateTime.ParseISO("2024-06-20T14:45:30Z");
+    var year = Viper.Time.DateTime.Year(ts);
+    assertEqInt(year, 2024, "ISO year");
+
+    var month = Viper.Time.DateTime.Month(ts);
+    assertEqInt(month, 6, "ISO month");
+
+    var day = Viper.Time.DateTime.Day(ts);
+    assertEqInt(day, 20, "ISO day");
+}
+
+func testParseDate() {
+    setTest("ParseDate");
+
+    var ts = Viper.Time.DateTime.ParseDate("2024-01-15");
+    assertNeqInt(ts, 0, "ParseDate returns non-zero");
+
+    var year = Viper.Time.DateTime.Year(ts);
+    assertEqInt(year, 2024, "date year");
+
+    var month = Viper.Time.DateTime.Month(ts);
+    assertEqInt(month, 1, "date month");
+
+    var day = Viper.Time.DateTime.Day(ts);
+    assertEqInt(day, 15, "date day");
+}
+
+func testParseTime() {
+    setTest("ParseTime");
+
+    // 10:30:00 = 10*3600 + 30*60 = 37800 seconds
+    var secs = Viper.Time.DateTime.ParseTime("10:30:00");
+    assertEqInt(secs, 37800, "ParseTime 10:30:00 = 37800s");
+
+    // 10:30 (no seconds) should also be 37800
+    var secs2 = Viper.Time.DateTime.ParseTime("10:30");
+    assertEqInt(secs2, 37800, "ParseTime 10:30 = 37800s");
+}
+
+func testParseTimeMidnight() {
+    setTest("ParseTimeMidnight");
+
+    var secs = Viper.Time.DateTime.ParseTime("00:00:00");
+    assertEqInt(secs, 0, "midnight = 0 seconds");
+
+    var secs2 = Viper.Time.DateTime.ParseTime("23:59:59");
+    // 23*3600 + 59*60 + 59 = 82800 + 3540 + 59 = 86399
+    assertEqInt(secs2, 86399, "23:59:59 = 86399 seconds");
+}
+
+func testTryParseISO() {
+    setTest("TryParseISO");
+
+    var ts = Viper.Time.DateTime.TryParse("2024-01-15T10:30:00Z");
+    assertNeqInt(ts, 0, "TryParse ISO string returns non-zero");
+
+    var year = Viper.Time.DateTime.Year(ts);
+    assertEqInt(year, 2024, "TryParse year");
+}
+
+func testTryParseDateOnly() {
+    setTest("TryParseDateOnly");
+
+    var ts = Viper.Time.DateTime.TryParse("2024-03-25");
+    assertNeqInt(ts, 0, "TryParse date-only returns non-zero");
+
+    var month = Viper.Time.DateTime.Month(ts);
+    assertEqInt(month, 3, "TryParse date-only month");
+}
+
+func testTryParseInvalid() {
+    setTest("TryParseInvalid");
+
+    var ts = Viper.Time.DateTime.TryParse("not-a-date");
+    assertEqInt(ts, 0, "TryParse invalid returns 0");
+
+    var ts2 = Viper.Time.DateTime.TryParse("");
+    assertEqInt(ts2, 0, "TryParse empty returns 0");
+}
+
+func start() {
+    testParseISO();
+    testParseISOComponents();
+    testParseDate();
+    testParseTime();
+    testParseTimeMidnight();
+    testTryParseISO();
+    testTryParseDateOnly();
+    testTryParseInvalid();
+
+    report();
+}

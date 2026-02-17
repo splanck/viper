@@ -1,0 +1,141 @@
+module TestMapTyped;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Collections.Map.SetInt
+// COVER: Viper.Collections.Map.GetInt
+// COVER: Viper.Collections.Map.GetIntOr
+// COVER: Viper.Collections.Map.SetFloat
+// COVER: Viper.Collections.Map.GetFloat
+// COVER: Viper.Collections.Map.GetFloatOr
+// COVER: Viper.Collections.Map.SetStr
+// COVER: Viper.Collections.Map.GetStr
+
+func testSetGetInt() {
+    setTest("SetGetInt");
+
+    var m = Viper.Collections.Map.New();
+    Viper.Collections.Map.SetInt(m, "age", 30);
+    Viper.Collections.Map.SetInt(m, "score", 100);
+    Viper.Collections.Map.SetInt(m, "count", 0);
+
+    var age = Viper.Collections.Map.GetInt(m, "age");
+    assertEqInt(age, 30, "GetInt age");
+
+    var score = Viper.Collections.Map.GetInt(m, "score");
+    assertEqInt(score, 100, "GetInt score");
+
+    var count = Viper.Collections.Map.GetInt(m, "count");
+    assertEqInt(count, 0, "GetInt zero value");
+}
+
+func testGetIntMissing() {
+    setTest("GetIntMissing");
+
+    var m = Viper.Collections.Map.New();
+    Viper.Collections.Map.SetInt(m, "exists", 42);
+
+    var missing = Viper.Collections.Map.GetInt(m, "missing");
+    assertEqInt(missing, 0, "GetInt missing returns 0");
+}
+
+func testGetIntOr() {
+    setTest("GetIntOr");
+
+    var m = Viper.Collections.Map.New();
+    Viper.Collections.Map.SetInt(m, "present", 99);
+
+    var v1 = Viper.Collections.Map.GetIntOr(m, "present", -1);
+    assertEqInt(v1, 99, "GetIntOr existing key");
+
+    var v2 = Viper.Collections.Map.GetIntOr(m, "absent", -1);
+    assertEqInt(v2, -1, "GetIntOr missing key returns default");
+
+    var v3 = Viper.Collections.Map.GetIntOr(m, "nope", 500);
+    assertEqInt(v3, 500, "GetIntOr with custom default");
+}
+
+func testSetGetFloat() {
+    setTest("SetGetFloat");
+
+    var m = Viper.Collections.Map.New();
+    Viper.Collections.Map.SetFloat(m, "pi", 3.14);
+    Viper.Collections.Map.SetFloat(m, "e", 2.718);
+
+    var pi = Viper.Collections.Map.GetFloat(m, "pi");
+    assertApprox(pi, 3.14, 0.001, "GetFloat pi");
+
+    var e = Viper.Collections.Map.GetFloat(m, "e");
+    assertApprox(e, 2.718, 0.001, "GetFloat e");
+}
+
+func testGetFloatMissing() {
+    setTest("GetFloatMissing");
+
+    var m = Viper.Collections.Map.New();
+    var missing = Viper.Collections.Map.GetFloat(m, "missing");
+    assertApprox(missing, 0.0, 0.001, "GetFloat missing returns 0.0");
+}
+
+func testGetFloatOr() {
+    setTest("GetFloatOr");
+
+    var m = Viper.Collections.Map.New();
+    Viper.Collections.Map.SetFloat(m, "rate", 0.05);
+
+    var v1 = Viper.Collections.Map.GetFloatOr(m, "rate", -1.0);
+    assertApprox(v1, 0.05, 0.001, "GetFloatOr existing key");
+
+    var v2 = Viper.Collections.Map.GetFloatOr(m, "absent", 9.99);
+    assertApprox(v2, 9.99, 0.001, "GetFloatOr missing key returns default");
+}
+
+func testSetGetStr() {
+    setTest("SetGetStr");
+
+    var m = Viper.Collections.Map.New();
+    Viper.Collections.Map.SetStr(m, "name", "Alice");
+    Viper.Collections.Map.SetStr(m, "city", "Boston");
+
+    var name = Viper.Collections.Map.GetStr(m, "name");
+    assertEqStr(name, "Alice", "GetStr name");
+
+    var city = Viper.Collections.Map.GetStr(m, "city");
+    assertEqStr(city, "Boston", "GetStr city");
+}
+
+func testGetStrMissing() {
+    setTest("GetStrMissing");
+
+    var m = Viper.Collections.Map.New();
+    var missing = Viper.Collections.Map.GetStr(m, "missing");
+    assertEqStr(missing, "", "GetStr missing returns empty string");
+}
+
+func testMixedTypes() {
+    setTest("MixedTypes");
+
+    var m = Viper.Collections.Map.New();
+    Viper.Collections.Map.SetInt(m, "count", 42);
+    Viper.Collections.Map.SetFloat(m, "ratio", 1.5);
+    Viper.Collections.Map.SetStr(m, "label", "test");
+
+    assertEqInt(Viper.Collections.Map.GetInt(m, "count"), 42, "mixed int");
+    assertApprox(Viper.Collections.Map.GetFloat(m, "ratio"), 1.5, 0.001, "mixed float");
+    assertEqStr(Viper.Collections.Map.GetStr(m, "label"), "test", "mixed str");
+}
+
+func start() {
+    testSetGetInt();
+    testGetIntMissing();
+    testGetIntOr();
+    testSetGetFloat();
+    testGetFloatMissing();
+    testGetFloatOr();
+    testSetGetStr();
+    testGetStrMissing();
+    testMixedTypes();
+
+    report();
+}

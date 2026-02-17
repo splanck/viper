@@ -1,0 +1,70 @@
+module TestHashFast;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Crypto.Hash.Fast
+// COVER: Viper.Crypto.Hash.FastInt
+
+func testFastStringConsistent() {
+    setTest("FastStringConsistent");
+
+    var h1 = Viper.Crypto.Hash.Fast("hello");
+    var h2 = Viper.Crypto.Hash.Fast("hello");
+    assertEqInt(h1, h2, "same string same hash");
+    assertNeqInt(h1, 0, "hash of hello is non-zero");
+}
+
+func testFastEmptyString() {
+    setTest("FastEmptyString");
+
+    // Empty string should produce a deterministic value (FNV offset basis)
+    var h = Viper.Crypto.Hash.Fast("");
+    var h2 = Viper.Crypto.Hash.Fast("");
+    assertEqInt(h, h2, "empty string hash is consistent");
+}
+
+func testFastDifferentStrings() {
+    setTest("FastDifferentStrings");
+
+    var h1 = Viper.Crypto.Hash.Fast("hello");
+    var h2 = Viper.Crypto.Hash.Fast("world");
+    var h3 = Viper.Crypto.Hash.Fast("foo");
+    var h4 = Viper.Crypto.Hash.Fast("bar");
+
+    assertNeqInt(h1, h2, "hello != world hash");
+    assertNeqInt(h1, h3, "hello != foo hash");
+    assertNeqInt(h2, h3, "world != foo hash");
+    assertNeqInt(h3, h4, "foo != bar hash");
+}
+
+func testFastIntConsistent() {
+    setTest("FastIntConsistent");
+
+    var h1 = Viper.Crypto.Hash.FastInt(42);
+    var h2 = Viper.Crypto.Hash.FastInt(42);
+    assertEqInt(h1, h2, "same int same hash");
+}
+
+func testFastIntDifferent() {
+    setTest("FastIntDifferent");
+
+    var h1 = Viper.Crypto.Hash.FastInt(0);
+    var h2 = Viper.Crypto.Hash.FastInt(1);
+    var h3 = Viper.Crypto.Hash.FastInt(42);
+    var h4 = Viper.Crypto.Hash.FastInt(1000000);
+
+    assertNeqInt(h1, h2, "0 != 1 hash");
+    assertNeqInt(h2, h3, "1 != 42 hash");
+    assertNeqInt(h3, h4, "42 != 1000000 hash");
+}
+
+func start() {
+    testFastStringConsistent();
+    testFastEmptyString();
+    testFastDifferentStrings();
+    testFastIntConsistent();
+    testFastIntDifferent();
+
+    report();
+}

@@ -1,0 +1,191 @@
+// triggers.zia — Trigger Manager (Phase 17)
+// Part of ViperSQL
+//
+// Stores and manages SQL triggers. Triggers fire BEFORE or AFTER
+// INSERT/UPDATE/DELETE operations on a table. Each trigger has a
+// name, timing (BEFORE/AFTER), event (INSERT/UPDATE/DELETE), table,
+// and a SQL body statement to execute.
+//
+// Triggers are stored per-TriggerManager using parallel lists.
+// The executor holds a TriggerManager and fires triggers during
+// DML operations. OLD and NEW row references are supported via
+// temporary tables (old_row, new_row) created at trigger fire time.
+//
+// Trigger ordering: triggers fire in alphabetical order by name
+// (per PostgreSQL convention). Max recursion depth prevents infinite
+// trigger chains.
+
+module triggers;
+
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+
+bind "./types";
+bind "./schema";
+bind "./stmt";
+
+// Maximum trigger recursion depth to prevent infinite loops
+final MAX_TRIGGER_DEPTH = 16;
+
+//=============================================================================
+// TRIGGER ENTITY
+//=============================================================================
+
+entity Trigger {
+    expose String name;
+    expose Integer timing;       // TRIGGER_BEFORE or TRIGGER_AFTER
+    expose Integer event;        // TRIGGER_INSERT, TRIGGER_UPDATE, TRIGGER_DELETE
+    expose String tableName;
+    expose Boolean forEachRow;
+    expose String bodySQL;
+
+    expose func init() {
+        name = "";
+        timing = TRIGGER_BEFORE;
+        event = TRIGGER_INSERT;
+        tableName = "";
+        forEachRow = true;
+        bodySQL = "";
+    }
+
+    expose func initFull(n: String, t: Integer, e: Integer, tbl: String, fer: Boolean, body: String) {
+        name = n;
+        timing = t;
+        event = e;
+        tableName = tbl;
+        forEachRow = fer;
+        bodySQL = body;
+    }
+
+    expose func timingName() -> String {
+        if timing == TRIGGER_BEFORE { return "BEFORE"; }
+        return "AFTER";
+    }
+
+    expose func eventName() -> String {
+        if event == TRIGGER_INSERT { return "INSERT"; }
+        if event == TRIGGER_UPDATE { return "UPDATE"; }
+        return "DELETE";
+    }
+
+    expose func toString() -> String {
+        var result = name + " " + timingName() + " " + eventName() + " ON " + tableName;
+        if forEachRow {
+            result = result + " FOR EACH ROW";
+        }
+        return result;
+    }
+}
+
+//=============================================================================
+// TRIGGER MANAGER
+//=============================================================================
+
+entity TriggerManager {
+    expose List[Trigger] triggers;
+
+    expose func init() {
+        triggers = [];
+    }
+
+    // Add a new trigger. Returns empty string on success, error message on failure.
+    expose func addTrigger(trigger: Trigger) -> String {
+        // Check for duplicate name
+        var i = 0;
+        while i < triggers.count() {
+            if triggers.get(i).name == trigger.name {
+                return "Trigger '" + trigger.name + "' already exists";
+            }
+            i = i + 1;
+        }
+        triggers.add(trigger);
+        return "";
+    }
+
+    // Drop a trigger by name. Returns true if found and removed.
+    expose func dropTrigger(name: String) -> Boolean {
+        var i = 0;
+        while i < triggers.count() {
+            if triggers.get(i).name == name {
+                triggers.removeAt(i);
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // Drop all triggers for a given table (used when DROP TABLE).
+    expose func dropTriggersForTable(tableName: String) {
+        var i = triggers.count() - 1;
+        while i >= 0 {
+            if triggers.get(i).tableName == tableName {
+                triggers.removeAt(i);
+            }
+            i = i - 1;
+        }
+    }
+
+    // Find a trigger by name.
+    expose func findTrigger(name: String) -> Trigger? {
+        var i = 0;
+        while i < triggers.count() {
+            if triggers.get(i).name == name {
+                return triggers.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Get all triggers for a table with a specific timing and event, sorted alphabetically.
+    // Returns triggers in alphabetical order by name (PG convention).
+    expose func getTriggersFor(tableName: String, timing: Integer, event: Integer) -> List[Trigger] {
+        var result: List[Trigger] = [];
+        var i = 0;
+        while i < triggers.count() {
+            var t = triggers.get(i);
+            if t.tableName == tableName && t.timing == timing && t.event == event {
+                result.add(t);
+            }
+            i = i + 1;
+        }
+        // Sort alphabetically by name (insertion sort, small lists)
+        sortTriggersByName(result);
+        return result;
+    }
+
+    // List all trigger names (for SHOW TRIGGERS).
+    expose func listTriggers() -> List[Trigger] {
+        return triggers;
+    }
+
+    // Count triggers for a table.
+    expose func countTriggersForTable(tableName: String) -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < triggers.count() {
+            if triggers.get(i).tableName == tableName {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+}
+
+// Sort triggers alphabetically by name (insertion sort).
+func sortTriggersByName(list: List[Trigger]) {
+    var n = list.count();
+    var i = 1;
+    while i < n {
+        var key = list.get(i);
+        var j = i - 1;
+        while j >= 0 && list.get(j).name > key.name {
+            list.set(j + 1, list.get(j));
+            j = j - 1;
+        }
+        list.set(j + 1, key);
+        i = i + 1;
+    }
+}

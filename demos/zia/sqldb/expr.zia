@@ -25,6 +25,8 @@ final EXPR_SUBQUERY = 7;     // Scalar subquery (SELECT ...)
 final EXPR_CASE = 8;         // CASE WHEN ... THEN ... ELSE ... END
 final EXPR_EXISTS = 9;       // EXISTS (SELECT ...)
 final EXPR_WINDOW = 10;      // Window function: func() OVER (...)
+final EXPR_QUANTIFIED = 11;  // Phase 71: col op ANY/ALL/SOME (subquery)
+final EXPR_ROW_VALUE = 12;   // Phase 76: (a, b) row value constructor
 
 //=============================================================================
 // BINARY OPERATOR CONSTANTS
@@ -47,6 +49,10 @@ final OP_LIKE = 22;
 final OP_IN = 23;
 final OP_IS = 24;
 final OP_CONCAT = 25;  // ||
+final OP_REGEX_MATCH = 26;  // ~ (regex match)
+final OP_SIMILAR_TO = 27;   // SIMILAR TO
+final OP_IS_DISTINCT = 28;      // IS DISTINCT FROM (NULL-safe <>)
+final OP_IS_NOT_DISTINCT = 29;  // IS NOT DISTINCT FROM (NULL-safe =)
 
 //=============================================================================
 // UNARY OPERATOR CONSTANTS
@@ -89,6 +95,23 @@ entity Expr {
     expose List[Expr] partitionBy;     // PARTITION BY expressions
     expose List[Expr] windowOrderBy;   // ORDER BY expressions for window
     expose List[Integer] windowOrderDir; // 0=ASC, 1=DESC for each ORDER BY
+    // Window frame specification (Phase 61)
+    // frameMode: 0=none, 1=ROWS, 2=RANGE
+    // frameBound kinds: 0=default, 1=UNBOUNDED PRECEDING, 2=N PRECEDING,
+    //                   3=CURRENT ROW, 4=N FOLLOWING, 5=UNBOUNDED FOLLOWING
+    expose Integer frameMode;
+    expose Integer frameStartKind;
+    expose Integer frameStartN;       // N for "N PRECEDING" or "N FOLLOWING"
+    expose Integer frameEndKind;
+    expose Integer frameEndN;
+    // Phase 72: EXCLUDE clause — 0=none, 1=EXCLUDE CURRENT ROW, 2=EXCLUDE GROUP, 3=EXCLUDE TIES
+    expose Integer frameExclude;
+
+    // For aggregate FILTER clause (Phase 54)
+    expose Expr? filterExpr;           // FILTER (WHERE expr) for aggregates
+
+    // Phase 75: Named window reference (OVER w)
+    expose String windowRefName;       // Name of referenced WINDOW definition
 
     expose func init() {
         kind = EXPR_LITERAL;
@@ -106,6 +129,14 @@ entity Expr {
         partitionBy = [];
         windowOrderBy = [];
         windowOrderDir = [];
+        frameMode = 0;
+        frameStartKind = 0;
+        frameStartN = 0;
+        frameEndKind = 0;
+        frameEndN = 0;
+        frameExclude = 0;
+        filterExpr = null;
+        windowRefName = "";
     }
 
     expose func initLiteral(val: SqlValue) {
@@ -161,6 +192,23 @@ entity Expr {
         partitionBy = [];
         windowOrderBy = [];
         windowOrderDir = [];
+        frameMode = 0;
+        frameStartKind = 0;
+        frameStartN = 0;
+        frameEndKind = 0;
+        frameEndN = 0;
+        frameExclude = 0;
+    }
+
+    // Phase 71: col op ANY/ALL/SOME (subquery)
+    // op = comparison operator, funcName = "ANY"/"ALL", subquerySQL = query, args[0] = left expr
+    expose func initQuantified(operator: Integer, quantifier: String, sql: String, leftExpr: Expr) {
+        kind = EXPR_QUANTIFIED;
+        op = operator;
+        funcName = quantifier;
+        subquerySQL = sql;
+        args = [];
+        args.add(leftExpr);
     }
 
     expose func initCase() {
@@ -273,6 +321,10 @@ func opToString(op: Integer) -> String {
     if op == OP_OR { return "OR"; }
     if op == OP_LIKE { return "LIKE"; }
     if op == OP_CONCAT { return "||"; }
+    if op == OP_REGEX_MATCH { return "~"; }
+    if op == OP_SIMILAR_TO { return "SIMILAR TO"; }
+    if op == OP_IS_DISTINCT { return "IS DISTINCT FROM"; }
+    if op == OP_IS_NOT_DISTINCT { return "IS NOT DISTINCT FROM"; }
     return "??";
 }
 
@@ -349,5 +401,13 @@ func exprSubquery(sql: String) -> Expr {
     var e = new Expr();
     e.init();
     e.initSubquery(sql);
+    return e;
+}
+
+// Phase 71: col op ANY/ALL (subquery)
+func exprQuantified(operator: Integer, quantifier: String, sql: String, leftExpr: Expr) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initQuantified(operator, quantifier, sql, leftExpr);
     return e;
 }

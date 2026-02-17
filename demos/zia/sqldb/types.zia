@@ -26,83 +26,32 @@ final SQL_BLOB = 4;
 final SQL_BOOLEAN = 5;
 final SQL_DATE = 6;       // intValue = days since Unix epoch (1970-01-01)
 final SQL_TIMESTAMP = 7;  // intValue = epoch seconds
+final SQL_JSON = 8;       // textValue = JSON string
+final SQL_ARRAY = 9;      // textValue = PG-format array "{1,2,3}"
+
+// Partition types (Phase 28)
+final PARTITION_NONE = 0;
+final PARTITION_RANGE = 1;
+final PARTITION_LIST = 2;
+final PARTITION_HASH = 3;
 
 //=============================================================================
 // HELPER FUNCTIONS
 //=============================================================================
 
-// Helper function to convert string to integer
+// Convert string to integer (delegates to runtime parser).
+// Handles "123", "-5", and "3.14" (truncates to 3).
 func stringToInt(text: String) -> Integer {
-    var result = 0;
-    var i = 0;
-    var len = String.Length(text);
-    var negative = false;
-
-    if len > 0 {
-        if String.Substring(text, 0, 1) == "-" {
-            negative = true;
-            i = 1;
-        }
-    }
-
-    while i < len {
-        var ch = String.Substring(text, i, 1);
-        if ch == "." {
-            break;  // Stop at decimal point for integer truncation
-        }
-        var code = String.Asc(ch);
-        if code >= 48 && code <= 57 {
-            result = result * 10 + (code - 48);
-        }
-        i = i + 1;
-    }
-
-    if negative == true {
-        return -result;
-    }
-    return result;
+    var n = Viper.Core.Parse.IntOr(text, 0);
+    if n != 0 { return n; }
+    // IntOr rejects "3.14" — fall back to float parse + truncate
+    var f = Viper.Core.Convert.ToDouble(text);
+    return Viper.Core.Convert.NumToInt(f);
 }
 
-// Helper function to convert string to number
+// Convert string to number (delegates to runtime parser).
 func stringToNumber(text: String) -> Float {
-    var result = 0.0;
-    var i = 0;
-    var len = String.Length(text);
-    var negative = false;
-    var foundDecimal = false;
-    var decimalPlace = 0.1;
-
-    if len > 0 {
-        if String.Substring(text, 0, 1) == "-" {
-            negative = true;
-            i = 1;
-        }
-    }
-
-    while i < len {
-        var ch = String.Substring(text, i, 1);
-        if ch == "." {
-            foundDecimal = true;
-            i = i + 1;
-            continue;
-        }
-        var code = String.Asc(ch);
-        if code >= 48 && code <= 57 {
-            var digit = code - 48;
-            if foundDecimal {
-                result = result + digit * decimalPlace;
-                decimalPlace = decimalPlace * 0.1;
-            } else {
-                result = result * 10.0 + digit;
-            }
-        }
-        i = i + 1;
-    }
-
-    if negative {
-        return -result;
-    }
-    return result;
+    return Viper.Core.Convert.ToDouble(text);
 }
 
 //=============================================================================
@@ -157,23 +106,7 @@ func parseDateText(text: String) -> Integer {
 
 // Parse "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS" to epoch seconds
 func parseDateTimeText(text: String) -> Integer {
-    var sLen = String.Length(text);
-    if sLen < 10 { return 0; }
-    var yr = stringToInt(String.Substring(text, 0, 4));
-    var mo = stringToInt(String.Substring(text, 5, 2));
-    var dy = stringToInt(String.Substring(text, 8, 2));
-    var hr = 0;
-    var mn = 0;
-    var sc = 0;
-    if sLen >= 19 {
-        var sep = String.Substring(text, 10, 1);
-        if sep == "T" || sep == " " {
-            hr = stringToInt(String.Substring(text, 11, 2));
-            mn = stringToInt(String.Substring(text, 14, 2));
-            sc = stringToInt(String.Substring(text, 17, 2));
-        }
-    }
-    return DateTime.Create(yr, mo, dy, hr, mn, sc);
+    return DateTime.TryParse(text);
 }
 
 //=============================================================================
@@ -249,6 +182,20 @@ entity SqlValue {
         textValue = "";
     }
 
+    expose func initJson(val: String) {
+        kind = SQL_JSON;
+        intValue = 0;
+        realValue = 0.0;
+        textValue = val;
+    }
+
+    expose func initArray(val: String) {
+        kind = SQL_ARRAY;
+        intValue = 0;
+        realValue = 0.0;
+        textValue = val;
+    }
+
     expose func isNull() -> Boolean { return kind == SQL_NULL; }
     expose func isInteger() -> Boolean { return kind == SQL_INTEGER; }
     expose func isReal() -> Boolean { return kind == SQL_REAL; }
@@ -257,6 +204,8 @@ entity SqlValue {
     expose func isBoolean() -> Boolean { return kind == SQL_BOOLEAN; }
     expose func isDate() -> Boolean { return kind == SQL_DATE; }
     expose func isTimestamp() -> Boolean { return kind == SQL_TIMESTAMP; }
+    expose func isJson() -> Boolean { return kind == SQL_JSON; }
+    expose func isArray() -> Boolean { return kind == SQL_ARRAY; }
 
     expose func typeName() -> String {
         if (kind == SQL_NULL) { return "NULL"; }
@@ -267,6 +216,8 @@ entity SqlValue {
         if (kind == SQL_BOOLEAN) { return "BOOLEAN"; }
         if (kind == SQL_DATE) { return "DATE"; }
         if (kind == SQL_TIMESTAMP) { return "TIMESTAMP"; }
+        if (kind == SQL_JSON) { return "JSON"; }
+        if (kind == SQL_ARRAY) { return "ARRAY"; }
         return "UNKNOWN";
     }
 
@@ -289,6 +240,8 @@ entity SqlValue {
         if (kind == SQL_TIMESTAMP) {
             return DateTime.ToLocal(intValue);
         }
+        if (kind == SQL_JSON) { return textValue; }
+        if (kind == SQL_ARRAY) { return textValue; }
         return "?";
     }
 
@@ -327,6 +280,22 @@ entity SqlValue {
         if (kind == SQL_TIMESTAMP) {
             var s = DateTime.ToLocal(intValue);
             return "'" + s + "'";
+        }
+        if (kind == SQL_JSON) {
+            // Escape single quotes by doubling them
+            var escaped = "";
+            var i = 0;
+            var len = String.Length(textValue);
+            while i < len {
+                var ch = String.Substring(textValue, i, 1);
+                if ch == "'" {
+                    escaped = escaped + "''";
+                } else {
+                    escaped = escaped + ch;
+                }
+                i = i + 1;
+            }
+            return "'" + escaped + "'";
         }
         return "?";
     }
@@ -498,6 +467,16 @@ entity SqlValue {
             if myEpoch < other.intValue { result = -1; }
             else if myEpoch > other.intValue { result = 1; }
             else { result = 0; }
+        // JSON comparisons (text-based)
+        } else if kind == SQL_JSON && other.kind == SQL_JSON {
+            if textValue == other.textValue { result = 0; }
+            else { result = -1; }  // JSON equality only; no ordering
+        } else if kind == SQL_JSON && other.kind == SQL_TEXT {
+            if textValue == other.textValue { result = 0; }
+            else { result = -1; }
+        } else if kind == SQL_TEXT && other.kind == SQL_JSON {
+            if textValue == other.textValue { result = 0; }
+            else { result = -1; }
         } else if kind < other.kind {
             result = -1;
         } else if kind > other.kind {
@@ -569,4 +548,79 @@ func sqlTimestamp(epochSeconds: Integer) -> SqlValue {
     var v = new SqlValue();
     v.initTimestamp(epochSeconds);
     return v;
+}
+
+func sqlJson(val: String) -> SqlValue {
+    var v = new SqlValue();
+    v.initJson(val);
+    return v;
+}
+
+func sqlArray(val: String) -> SqlValue {
+    var v = new SqlValue();
+    v.initArray(val);
+    return v;
+}
+
+//=============================================================================
+// ARRAY UTILITY FUNCTIONS
+//=============================================================================
+
+// Parse a PG-format array string "{1,2,3}" into a list of string elements
+func parseArrayElements(arrayText: String) -> List[String] {
+    var elements: List[String] = [];
+    var len = String.Length(arrayText);
+    if len < 2 { return elements; }
+
+    // Strip outer braces
+    var inner = String.Substring(arrayText, 1, len - 2);
+    var innerLen = String.Length(inner);
+    if innerLen == 0 { return elements; }
+
+    // Split by comma, respecting quoted elements
+    var current = "";
+    var inQuotes = false;
+    var i = 0;
+    while i < innerLen {
+        var ch = String.Substring(inner, i, 1);
+        if inQuotes {
+            if ch == "\"" {
+                if i + 1 < innerLen && String.Substring(inner, i + 1, 1) == "\"" {
+                    current = current + "\"";
+                    i = i + 2;
+                    continue;
+                }
+                inQuotes = false;
+            } else {
+                current = current + ch;
+            }
+        } else {
+            if ch == "\"" {
+                inQuotes = true;
+            } else if ch == "," {
+                elements.add(String.Trim(current));
+                current = "";
+            } else {
+                current = current + ch;
+            }
+        }
+        i = i + 1;
+    }
+    if String.Length(current) > 0 || innerLen > 0 {
+        elements.add(String.Trim(current));
+    }
+    return elements;
+}
+
+// Build a PG-format array string from a list of string elements
+func buildArrayString(elements: List[String]) -> String {
+    var result = "{";
+    var i = 0;
+    while i < elements.count() {
+        if i > 0 { result = result + ","; }
+        result = result + elements.get(i);
+        i = i + 1;
+    }
+    result = result + "}";
+    return result;
 }

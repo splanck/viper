@@ -51,6 +51,9 @@ entity DatabaseServer {
     // Shared table lock manager for concurrent access control
     expose TableLockManager tableLockMgr;
 
+    // Shared row lock manager for row-level locking (Phase 14)
+    expose RowLockManager rowLockMgr;
+
     // User management (Phase 10: Authentication)
     expose List[String] userNames;
     expose List[String] userPasswords;
@@ -87,6 +90,8 @@ entity DatabaseServer {
         ownedTableNames = [];
         tableLockMgr = new TableLockManager();
         tableLockMgr.init();
+        rowLockMgr = new RowLockManager();
+        rowLockMgr.init();
 
         // Create default database (use internal variants to avoid deadlock)
         createDatabaseInternal("main");

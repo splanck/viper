@@ -24,11 +24,45 @@ entity Table {
     expose List[Row] rows;
     expose Integer autoIncrementValue;
 
+    // Partition metadata (Phase 28)
+    expose Boolean isPartitioned;           // Parent table with child partitions
+    expose Integer partitionType;           // PARTITION_RANGE/LIST/HASH
+    expose String partitionColumn;          // Column used for partitioning
+    expose List[String] partitionChildren;  // Names of child partition tables
+    expose Boolean isPartition;             // This table is a child partition
+    expose String partitionParent;          // Parent table name
+    expose String partRangeFromStr;         // RANGE: lower bound (string repr)
+    expose String partRangeToStr;           // RANGE: upper bound (string repr)
+    expose List[String] partListValues;     // LIST: allowed values
+    expose Integer partHashModulus;         // HASH: total number of partitions
+    expose Integer partHashRemainder;       // HASH: this partition's remainder
+
+    // Inheritance metadata (Phase 52)
+    expose Boolean hasChildren;             // Parent has inheriting children
+    expose List[String] inheritChildren;    // Names of inheriting child tables
+    expose Boolean isInherited;             // This table inherits from another
+    expose String inheritParent;            // Parent table name
+
     expose func init() {
         name = "";
         columns = [];
         rows = [];
         autoIncrementValue = 1;
+        isPartitioned = false;
+        partitionType = 0;
+        partitionColumn = "";
+        partitionChildren = [];
+        isPartition = false;
+        partitionParent = "";
+        partRangeFromStr = "";
+        partRangeToStr = "";
+        partListValues = [];
+        partHashModulus = 0;
+        partHashRemainder = 0;
+        hasChildren = false;
+        inheritChildren = [];
+        isInherited = false;
+        inheritParent = "";
     }
 
     expose func initWithName(tableName: String) {
@@ -36,6 +70,21 @@ entity Table {
         columns = [];
         rows = [];
         autoIncrementValue = 1;
+        isPartitioned = false;
+        partitionType = 0;
+        partitionColumn = "";
+        partitionChildren = [];
+        isPartition = false;
+        partitionParent = "";
+        partRangeFromStr = "";
+        partRangeToStr = "";
+        partListValues = [];
+        partHashModulus = 0;
+        partHashRemainder = 0;
+        hasChildren = false;
+        inheritChildren = [];
+        isInherited = false;
+        inheritParent = "";
     }
 
     expose func columnCount() -> Integer {
@@ -94,6 +143,10 @@ entity Table {
         var row = rows.get(index);
         row.deleted = true;
         return true;
+    }
+
+    expose func clearAllRows() {
+        rows = [];
     }
 
     expose func nextAutoIncrement() -> Integer {

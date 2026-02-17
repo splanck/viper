@@ -433,6 +433,18 @@ extern "C"
     /// @return UPPER_SNAKE version (e.g., "helloWorld" -> "HELLO_WORLD").
     rt_string rt_str_screaming_snake(rt_string str);
 
+    /// @brief SQL LIKE pattern matching (case-sensitive).
+    /// @param text Text to match.
+    /// @param pattern Pattern (% = any chars, _ = one char, \ = escape).
+    /// @return 1 if matched, 0 otherwise.
+    int8_t rt_string_like(rt_string text, rt_string pattern);
+
+    /// @brief SQL ILIKE pattern matching (case-insensitive).
+    /// @param text Text to match.
+    /// @param pattern Pattern (% = any chars, _ = one char, \ = escape).
+    /// @return 1 if matched, 0 otherwise.
+    int8_t rt_string_like_ci(rt_string text, rt_string pattern);
+
 #ifdef __cplusplus
 }
 #endif

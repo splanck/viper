@@ -27,6 +27,7 @@
 - [Viper.Text.TextWrapper](#vipertexttextwrapper)
 - [Viper.Text.Version](#vipertextversion)
 - [Viper.Data.Serialize](#viperdataserialize)
+- [String.Like / String.LikeCI](#stringlike--stringlikeci)
 
 ---
 
@@ -2229,6 +2230,79 @@ END IF
 - **Release automation:** Bump version numbers programmatically
 - **Compatibility checks:** Verify version constraints before loading plugins
 - **Version display:** Parse and format version strings for user-facing output
+
+---
+
+## String.Like / String.LikeCI
+
+SQL-style LIKE pattern matching on strings. These are methods available on any String value, providing wildcard matching commonly used in database queries and filtering.
+
+**Type:** String instance methods
+
+### Methods
+
+| Method              | Signature            | Description                                        |
+|---------------------|----------------------|----------------------------------------------------|
+| `Like(pattern)`     | `Boolean(String)`    | Case-sensitive SQL LIKE pattern matching            |
+| `LikeCI(pattern)`   | `Boolean(String)`    | Case-insensitive SQL LIKE pattern matching          |
+
+### Pattern Syntax
+
+| Pattern | Description                                     | Example                          |
+|---------|-------------------------------------------------|----------------------------------|
+| `%`     | Matches any sequence of zero or more characters | `"hello".Like("%llo")` is true   |
+| `_`     | Matches exactly one character                   | `"hello".Like("h_llo")` is true  |
+| `\`     | Escape character for literal `%`, `_`, or `\`   | `"100%".Like("100\%")` is true   |
+
+### Zia Example
+
+```zia
+module LikeDemo;
+
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Wildcard matching
+    Say(Fmt.Bool("hello".Like("h%")));          // true
+    Say(Fmt.Bool("hello".Like("%llo")));         // true
+    Say(Fmt.Bool("hello".Like("h_llo")));        // true
+    Say(Fmt.Bool("hello".Like("world")));         // false
+
+    // Case-insensitive matching
+    Say(Fmt.Bool("Hello".LikeCI("hello")));      // true
+    Say(Fmt.Bool("Hello".LikeCI("HELLO")));      // true
+    Say(Fmt.Bool("Hello".LikeCI("h%")));         // true
+}
+```
+
+### BASIC Example
+
+```basic
+' Basic wildcard matching
+PRINT "hello".Like("h%")         ' Output: 1 (starts with h)
+PRINT "hello".Like("%llo")       ' Output: 1 (ends with llo)
+PRINT "hello".Like("%ell%")      ' Output: 1 (contains ell)
+PRINT "hello".Like("h_llo")      ' Output: 1 (_ matches e)
+PRINT "hello".Like("h__lo")      ' Output: 1 (__ matches el)
+PRINT "hello".Like("world")      ' Output: 0 (no match)
+
+' Case-insensitive matching
+PRINT "Hello World".LikeCI("hello%")  ' Output: 1
+PRINT "Hello World".LikeCI("HELLO%")  ' Output: 1
+PRINT "Hello World".LikeCI("%WORLD")  ' Output: 1
+
+' Escape special characters
+PRINT "100%".Like("100\%")       ' Output: 1 (literal %)
+PRINT "file_name".Like("file\_name")  ' Output: 1 (literal _)
+```
+
+### Use Cases
+
+- **SQL query emulation:** Implement WHERE column LIKE pattern filtering
+- **Filename matching:** Match files against user-specified patterns
+- **Search filters:** Provide wildcard search in user interfaces
+- **Data validation:** Check if strings match expected patterns
 
 ---
 

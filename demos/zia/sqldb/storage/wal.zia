@@ -2,13 +2,15 @@
 // Part of ViperSQL
 //
 // Implements ARIES-style write-ahead logging for crash recovery.
-// Currently supports two of the three ARIES phases:
+// Supports all three ARIES recovery phases:
 //   - Analysis phase: Scans the log to identify active transactions
 //     and dirty pages at the time of the crash.
 //   - Redo phase: Replays committed transactions' log records to
 //     restore the database to a consistent state.
-//   - Undo phase: NOT YET IMPLEMENTED (would rollback uncommitted
-//     transactions using before-images).
+//   - Undo phase: Rolls back uncommitted transactions using
+//     before-images stored in UPDATE/DELETE log records.
+//     Compensation Log Records (CLR) prevent undo loops during
+//     repeated crash recovery.
 //
 // Log Record Format (binary):
 //   [4 bytes] LSN (log sequence number)
@@ -45,6 +47,7 @@ final LOG_UPDATE = 5;      // Row update
 final LOG_DELETE = 6;      // Row delete
 final LOG_CHECKPOINT = 7;  // Checkpoint marker
 final LOG_PAGE_WRITE = 8;  // Full page write (for redo)
+final LOG_CLR = 9;         // Compensation Log Record (undo complete marker)
 
 // WAL configuration
 final WAL_BUFFER_SIZE = 65536;  // 64KB log buffer
@@ -170,6 +173,22 @@ entity LogRecord {
         beforeImage = rowData;
     }
 
+    // CLR: marks that the undo of a specific operation is complete.
+    // undoLSN points to the next record to undo (the record before the one we just undid).
+    // The afterImage carries the physical undo action (the data that was restored).
+    expose func initCLR(tid: Integer, tblId: Integer, pid: Integer, slot: Integer, undoneType: Integer) {
+        init();
+        recordType = LOG_CLR;
+        txnId = tid;
+        tableId = tblId;
+        pageId = pid;
+        slotId = slot;
+        // Store the type of record that was undone in afterImage for diagnostics
+        afterImage = new BinaryBuffer();
+        afterImage.init();
+        afterImage.writeInt32(undoneType);
+    }
+
     expose func initCheckpoint(activeTxns: List[Integer]) {
         init();
         recordType = LOG_CHECKPOINT;
@@ -193,6 +212,7 @@ entity LogRecord {
         if recordType == LOG_DELETE { return "DELETE"; }
         if recordType == LOG_CHECKPOINT { return "CHECKPOINT"; }
         if recordType == LOG_PAGE_WRITE { return "PAGE_WRITE"; }
+        if recordType == LOG_CLR { return "CLR"; }
         return "UNKNOWN";
     }
 
@@ -441,6 +461,16 @@ entity WALManager {
         return lsn;
     }
 
+    // Log a CLR record (compensation — marks undo completion)
+    expose func logCLR(txnId: Integer, tableId: Integer, pageId: Integer, slotId: Integer, undoneType: Integer) -> LSN {
+        Threads.Monitor.Enter(lock);
+        var record = new LogRecord();
+        record.initCLR(txnId, tableId, pageId, slotId, undoneType);
+        var lsn = appendRecordInternal(record);
+        Threads.Monitor.Exit(lock);
+        return lsn;
+    }
+
     // Write a checkpoint
     expose func checkpoint(activeTxns: List[Integer]) -> LSN {
         Threads.Monitor.Enter(lock);
@@ -588,6 +618,22 @@ entity WALManager {
         }
 
         return result;
+    }
+
+    // Read all log records across all WAL files (for undo scanning)
+    expose func readAllRecords() -> List[LogRecord] {
+        var all: List[LogRecord] = [];
+        var fileNum = 0;
+        while fileNum <= currentFile + 5 {
+            var records = readLogFile(fileNum);
+            var ri = 0;
+            while ri < records.count() {
+                all.add(records.get(ri));
+                ri = ri + 1;
+            }
+            fileNum = fileNum + 1;
+        }
+        return all;
     }
 
     // Check if any WAL files exist on disk

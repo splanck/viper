@@ -1,0 +1,243 @@
+// procedures.zia — Stored Procedures / Functions
+// Part of ViperSQL
+//
+// Implements PostgreSQL-style user-defined SQL functions.
+// Syntax: CREATE FUNCTION name(param1 type, ...) RETURNS type AS 'sql_body'
+// Functions can contain a single SQL statement (SELECT, INSERT, UPDATE, DELETE)
+// and can reference parameters by name ($1, $2, ... or named params).
+
+module procedures;
+
+bind Fmt = Viper.Fmt;
+bind String = Viper.String;
+
+bind "./types";
+
+//=============================================================================
+// PARAMETER ENTITY
+//=============================================================================
+
+entity FuncParam {
+    expose String name;
+    expose Integer typeCode;    // SQL_INTEGER, SQL_TEXT, SQL_REAL, etc.
+
+    expose func init() {
+        name = "";
+        typeCode = SQL_TEXT;
+    }
+
+    expose func initFull(paramName: String, paramType: Integer) {
+        name = paramName;
+        typeCode = paramType;
+    }
+
+    expose func typeName() -> String {
+        if typeCode == SQL_INTEGER { return "INTEGER"; }
+        if typeCode == SQL_REAL { return "REAL"; }
+        if typeCode == SQL_TEXT { return "TEXT"; }
+        if typeCode == SQL_BOOLEAN { return "BOOLEAN"; }
+        if typeCode == SQL_DATE { return "DATE"; }
+        if typeCode == SQL_TIMESTAMP { return "TIMESTAMP"; }
+        return "TEXT";
+    }
+}
+
+//=============================================================================
+// STORED FUNCTION ENTITY
+//=============================================================================
+
+entity StoredFunction {
+    expose String name;
+    expose List[FuncParam] params;
+    expose Integer returnType;     // SQL_INTEGER, SQL_TEXT, SQL_REAL, SQL_VOID, etc.
+    expose String bodySQL;         // SQL statement(s) to execute
+    expose Boolean returnsSet;     // True if RETURNS SETOF (table-valued function)
+
+    expose func init() {
+        name = "";
+        params = [];
+        returnType = SQL_TEXT;
+        bodySQL = "";
+        returnsSet = false;
+    }
+
+    expose func initFull(funcName: String, funcParams: List[FuncParam],
+                         retType: Integer, body: String) {
+        name = funcName;
+        params = funcParams;
+        returnType = retType;
+        bodySQL = body;
+        returnsSet = false;
+    }
+
+    expose func paramCount() -> Integer {
+        return params.count();
+    }
+
+    expose func getParam(idx: Integer) -> FuncParam {
+        return params.get(idx);
+    }
+
+    // Substitute parameters in the SQL body.
+    // Replaces $1, $2, ... with the corresponding argument values.
+    // Also replaces named params if they appear.
+    expose func substituteParams(args: List[SqlValue]) -> String {
+        var result = bodySQL;
+        var i = 0;
+        while i < params.count() && i < args.count() {
+            var paramIdx = i + 1;
+            var placeholder = "$" + Fmt.Int(paramIdx);
+            var argStr = formatArgForSQL(args.get(i));
+            result = replaceAll(result, placeholder, argStr);
+            // Also replace named params
+            var paramName = params.get(i).name;
+            if paramName != "" {
+                result = replaceAll(result, paramName, argStr);
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
+    expose func toString() -> String {
+        var result = "FUNCTION " + name + "(";
+        var i = 0;
+        while i < params.count() {
+            if i > 0 { result = result + ", "; }
+            var p = params.get(i);
+            result = result + p.name + " " + p.typeName();
+            i = i + 1;
+        }
+        result = result + ") RETURNS " + returnTypeName();
+        return result;
+    }
+
+    expose func returnTypeName() -> String {
+        if returnType == SQL_INTEGER { return "INTEGER"; }
+        if returnType == SQL_REAL { return "REAL"; }
+        if returnType == SQL_TEXT { return "TEXT"; }
+        if returnType == SQL_BOOLEAN { return "BOOLEAN"; }
+        if returnType == SQL_DATE { return "DATE"; }
+        if returnType == SQL_TIMESTAMP { return "TIMESTAMP"; }
+        if returnType == SQL_NULL { return "VOID"; }
+        return "TEXT";
+    }
+}
+
+//=============================================================================
+// HELPER FUNCTIONS
+//=============================================================================
+
+// Format a SqlValue for substitution into SQL text
+func formatArgForSQL(val: SqlValue) -> String {
+    if val.kind == SQL_NULL { return "NULL"; }
+    if val.kind == SQL_INTEGER { return Fmt.Int(val.intValue); }
+    if val.kind == SQL_REAL { return val.textValue; }
+    if val.kind == SQL_TEXT { return "'" + val.textValue + "'"; }
+    if val.kind == SQL_BOOLEAN {
+        if val.intValue != 0 { return "TRUE"; }
+        return "FALSE";
+    }
+    return "'" + val.toString() + "'";
+}
+
+// Replace all occurrences of 'from' with 'to' in a string
+func replaceAll(str: String, from: String, to: String) -> String {
+    var result = "";
+    var i = 0;
+    var fromLen = String.Length(from);
+    var strLen = String.Length(str);
+    while i < strLen {
+        if i + fromLen <= strLen && String.Substring(str, i, fromLen) == from {
+            result = result + to;
+            i = i + fromLen;
+        } else {
+            result = result + String.Substring(str, i, 1);
+            i = i + 1;
+        }
+    }
+    return result;
+}
+
+//=============================================================================
+// FUNCTION MANAGER
+//=============================================================================
+
+entity FunctionManager {
+    expose List[StoredFunction] functions;
+
+    expose func init() {
+        functions = [];
+    }
+
+    // Add a function. Returns empty string on success, error message on failure.
+    expose func addFunction(fn: StoredFunction) -> String {
+        // Check for duplicate name with same param count (simple overload check)
+        var i = 0;
+        while i < functions.count() {
+            var existing = functions.get(i);
+            if existing.name == fn.name && existing.paramCount() == fn.paramCount() {
+                return "Function '" + fn.name + "' with " + Fmt.Int(fn.paramCount()) + " parameters already exists";
+            }
+            i = i + 1;
+        }
+        functions.add(fn);
+        return "";
+    }
+
+    // Find a function by name and argument count.
+    expose func findFunction(name: String, argCount: Integer) -> StoredFunction? {
+        var i = 0;
+        while i < functions.count() {
+            var fn = functions.get(i);
+            if fn.name == name && fn.paramCount() == argCount {
+                return fn;
+            }
+            i = i + 1;
+        }
+        // Try finding by name only (for 0-arg calls to functions with defaults)
+        i = 0;
+        while i < functions.count() {
+            if functions.get(i).name == name {
+                return functions.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Find a function by name (any parameter count).
+    expose func findByName(name: String) -> StoredFunction? {
+        var i = 0;
+        while i < functions.count() {
+            if functions.get(i).name == name {
+                return functions.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Drop a function by name. Returns true if found and removed.
+    expose func dropFunction(name: String) -> Boolean {
+        var i = 0;
+        while i < functions.count() {
+            if functions.get(i).name == name {
+                functions.removeAt(i);
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // List all functions.
+    expose func listFunctions() -> List[StoredFunction] {
+        return functions;
+    }
+
+    // Count of functions.
+    expose func count() -> Integer {
+        return functions.count();
+    }
+}

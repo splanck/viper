@@ -17,6 +17,9 @@ namespace consoled {
 /// Initialize the shell I/O subsystem with parser, buffer, and window pointers.
 void shell_io_init(AnsiParser *parser, TextBuffer *buf, gui_window_t *window);
 
+/// Initialize the shell I/O subsystem in PTY mode (output via channel).
+void shell_io_init_pty(int32_t output_channel);
+
 /// Get the TextBuffer pointer (for clear/redraw operations).
 TextBuffer *shell_get_buffer();
 

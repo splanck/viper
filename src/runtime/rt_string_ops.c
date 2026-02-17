@@ -2214,3 +2214,114 @@ rt_string rt_str_screaming_snake(rt_string str)
     free(wbuf);
     return result;
 }
+
+//=============================================================================
+// SQL LIKE Pattern Matching
+//=============================================================================
+
+/// @brief Internal SQL LIKE pattern matching (case-sensitive).
+/// @param text Text string to match.
+/// @param tlen Text length.
+/// @param pat Pattern string (% = any chars, _ = one char, \ = escape).
+/// @param plen Pattern length.
+/// @return 1 if matched, 0 otherwise.
+static int8_t like_match(const char *text, size_t tlen,
+                         const char *pat, size_t plen,
+                         int case_insensitive)
+{
+    size_t ti = 0, pi = 0;
+    size_t star_pi = (size_t)-1, star_ti = 0;
+
+    while (ti < tlen)
+    {
+        if (pi < plen && pat[pi] == '%')
+        {
+            // Wildcard: remember this position for backtracking
+            star_pi = pi;
+            star_ti = ti;
+            pi++;
+            continue;
+        }
+
+        if (pi < plen && pat[pi] == '\\' && pi + 1 < plen)
+        {
+            // Escaped character — match literally
+            pi++;
+            char tc = text[ti];
+            char pc = pat[pi];
+            if (case_insensitive)
+            {
+                tc = (char)tolower((unsigned char)tc);
+                pc = (char)tolower((unsigned char)pc);
+            }
+            if (tc == pc)
+            {
+                ti++;
+                pi++;
+                continue;
+            }
+        }
+        else if (pi < plen && pat[pi] == '_')
+        {
+            // Single character wildcard
+            ti++;
+            pi++;
+            continue;
+        }
+        else if (pi < plen)
+        {
+            char tc = text[ti];
+            char pc = pat[pi];
+            if (case_insensitive)
+            {
+                tc = (char)tolower((unsigned char)tc);
+                pc = (char)tolower((unsigned char)pc);
+            }
+            if (tc == pc)
+            {
+                ti++;
+                pi++;
+                continue;
+            }
+        }
+
+        // No match — backtrack to last %
+        if (star_pi != (size_t)-1)
+        {
+            pi = star_pi + 1;
+            star_ti++;
+            ti = star_ti;
+            continue;
+        }
+
+        return 0;
+    }
+
+    // Consume trailing % in pattern
+    while (pi < plen && pat[pi] == '%')
+        pi++;
+
+    return pi == plen ? 1 : 0;
+}
+
+int8_t rt_string_like(rt_string text, rt_string pattern)
+{
+    const char *t = rt_string_cstr(text);
+    const char *p = rt_string_cstr(pattern);
+    if (!t)
+        t = "";
+    if (!p)
+        p = "";
+    return like_match(t, strlen(t), p, strlen(p), 0);
+}
+
+int8_t rt_string_like_ci(rt_string text, rt_string pattern)
+{
+    const char *t = rt_string_cstr(text);
+    const char *p = rt_string_cstr(pattern);
+    if (!t)
+        t = "";
+    if (!p)
+        p = "";
+    return like_match(t, strlen(t), p, strlen(p), 1);
+}

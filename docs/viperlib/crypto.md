@@ -207,6 +207,9 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 | `SHA1Bytes(bytes)`   | `String(Bytes)`   | Compute SHA1 hash of a Bytes object      |
 | `SHA256(str)`        | `String(String)`  | Compute SHA256 hash of a string          |
 | `SHA256Bytes(bytes)` | `String(Bytes)`   | Compute SHA256 hash of a Bytes object    |
+| `Fast(str)`          | `Integer(String)` | Compute FNV-1a hash of a string          |
+| `FastBytes(data)`    | `Integer(Bytes)`  | Compute FNV-1a hash of a Bytes object    |
+| `FastInt(value)`     | `Integer(Integer)`| Compute FNV-1a hash of an integer        |
 
 ### HMAC Methods
 
@@ -228,6 +231,39 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 | SHA1      | 160 bits      | 40-character hex string   |
 | SHA256    | 256 bits      | 64-character hex string   |
 | HMAC-*    | Same as hash  | Same as underlying hash   |
+| FNV-1a    | 64 bits       | Integer (i64)             |
+
+### Fast Hash Methods
+
+The `Fast`, `FastBytes`, and `FastInt` methods use the FNV-1a (Fowler-Noll-Vo) hash algorithm. These are **non-cryptographic** hashes designed for speed in hash tables, checksums, and data partitioning. They are NOT suitable for security purposes.
+
+```zia
+module FastHashDemo;
+
+bind Viper.Terminal;
+bind Viper.Crypto.Hash as Hash;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("Hash: " + Fmt.Int(Hash.Fast("hello")));
+    Say("Int hash: " + Fmt.Int(Hash.FastInt(42)));
+}
+```
+
+```basic
+' Fast non-cryptographic hashing
+DIM h AS INTEGER = Viper.Crypto.Hash.Fast("hello")
+PRINT "String hash:"; h
+
+' Hash binary data
+DIM data AS OBJECT = Viper.Collections.Bytes.FromStr("binary data")
+DIM h2 AS INTEGER = Viper.Crypto.Hash.FastBytes(data)
+PRINT "Bytes hash:"; h2
+
+' Hash an integer
+DIM h3 AS INTEGER = Viper.Crypto.Hash.FastInt(42)
+PRINT "Int hash:"; h3
+```
 
 ### Security Warnings
 
