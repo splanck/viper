@@ -643,9 +643,9 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 |-------------------------|----------------------------|--------|-----------------------------------------------------------------|
 | `cast.fp_to_si.rte.chk` | `cast.fp_to_si.rte.chk x` | `i64`  | float to signed int (round-to-even, trap on overflow)           |
 | `cast.fp_to_ui.rte.chk` | `cast.fp_to_ui.rte.chk x` | `i64`  | float to unsigned int (round-to-even, trap on overflow)         |
-| `cast.si_narrow.chk`    | `cast.si_narrow.chk x`    | `i64`  | narrow signed int, trap on overflow                             |
+| `cast.si_narrow.chk`    | `cast.si_narrow.chk x`    | `i32` or `i16` | narrow signed int (i64→i32 or i64→i16); result type declared on register; trap on overflow |
 | `cast.si_to_fp`         | `cast.si_to_fp x`          | `f64`  | signed int to float                                             |
-| `cast.ui_narrow.chk`    | `cast.ui_narrow.chk x`    | `i64`  | narrow unsigned int, trap on overflow                           |
+| `cast.ui_narrow.chk`    | `cast.ui_narrow.chk x`    | `i32` or `i16` | narrow unsigned int (i64→i32 or i64→i16); result type declared on register; trap on overflow |
 | `cast.ui_to_fp`         | `cast.ui_to_fp x`          | `f64`  | unsigned int to float                                           |
 | `fptosi`                | `fptosi x`                 | `i64`  | float to signed int (no check; undefined on NaN or overflow)    |
 | `sitofp`                | `sitofp x`                 | `f64`  | signed int to float                                             |
@@ -879,7 +879,7 @@ type_list   ::= type ("," type)*
 block       ::= LABEL ("(" blk_params? ")")? ":" instr* term
 blk_params  ::= blk_param ("," blk_param)*
 blk_param   ::= TEMP ":" type               (* block params always use "%name: type" form *)
-instr       ::= TEMP "=" op | op
+instr       ::= (TEMP (":" type)? "=")? op   (* type annotation on result: %name:i32 = op *)
 term        ::= "ret" value? | "br" label_ref | "cbr" value "," label_ref "," label_ref | "trap" | "trap.from_err" type value | "switch.i32" value "," label_ref ("," INT "->" label_ref)* | "resume.same" value | "resume.next" value | "resume.label" value "," label_ref
 label_ref   ::= ("^")? LABEL ("(" value_list? ")")?   (* "^" caret is optional; args passed to block params *)
 op          ::= "add" value "," value | "and" value "," value | "ashr" value "," value |
@@ -951,13 +951,13 @@ these names and folds literal calls at compile time.
 
 | BASIC        | IL runtime call              |
 |--------------|------------------------------|
-| `ABS(i)`     | `call @rt_abs_i64(i)`        |
-| `ABS(x#)`    | `call @rt_abs_f64(x)`        |
-| `CEIL(x)`    | `call @rt_ceil(x)`           |
+| `ABS(i)`     | `%r = call @rt_abs_i64(%i)`  |
+| `ABS(x#)`    | `%r = call @rt_abs_f64(%x)`  |
+| `CEIL(x)`    | `%r = call @rt_ceil(%x)`     |
 | `F(x)`       | `%r = call @F(%x)`           |
-| `FLOOR(x)`   | `call @rt_floor(%x)`         |
+| `FLOOR(x)`   | `%r = call @rt_floor(%x)`    |
 | `S(x$, a())` | `call @S(%x, %a)`            |
-| `SQR(x)`     | `call @rt_sqrt(x)`           |
+| `SQR(x)`     | `%r = call @rt_sqrt(%x)`     |
 
 Integer arguments to `SQR`, `FLOOR`, and `CEIL` are first widened to `f64`.
 

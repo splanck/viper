@@ -308,8 +308,8 @@ func createDrawable(type: String) -> Drawable {
 
 // In collections
 var items: [Drawable] = [];
-items.push(Circle { radius: 2.0 });
-items.push(Rectangle { width: 4.0, height: 3.0 });
+items.Push(Circle { radius: 2.0 });
+items.Push(Rectangle { width: 4.0, height: 3.0 });
 ```
 
 When you use the interface type, you can only call methods that the interface defines. You can't call Circle-specific methods on a Drawable variable, even if the actual object is a Circle:
@@ -786,7 +786,7 @@ entity FakeEmailSender implements EmailSender {
 
     func send(to: String, subject: String, body: String) {
         // Don't actually send. Just record that we would have.
-        self.sentEmails.push(Email { to: to, subject: subject, body: body });
+        self.sentEmails.Push(Email { to: to, subject: subject, body: body });
     }
 
     // Helper method for tests
@@ -816,7 +816,7 @@ func testOrderConfirmationEmail() {
 
     // Verify the right email was "sent"
     var emails = fakeEmail.getSentEmails();
-    assert(emails.length == 1);
+    assert(emails.Length == 1);
     assert(emails[0].to == "customer@example.com");
     assert(emails[0].subject == "Order Confirmed");
 }
@@ -847,7 +847,7 @@ func testHandlesPaymentFailure() {
     orderService.processOrder(someOrder);
 
     // Should not send confirmation email when payment fails
-    assert(fakeEmail.getSentEmails().length == 0);
+    assert(fakeEmail.getSentEmails().Length == 0);
 
     // Should log the error
     assert(fakeLogger.hasError("Payment failed"));
@@ -1031,7 +1031,7 @@ entity UppercasePlugin implements Plugin {
     }
 
     func execute(input: String) -> String {
-        return input.upper();
+        return input.ToUpper();
     }
 }
 
@@ -1070,7 +1070,7 @@ entity PluginManager {
     }
 
     func register(plugin: Plugin) {
-        self.plugins.push(plugin);
+        self.plugins.Push(plugin);
         Say("Registered: " + plugin.getName());
     }
 
@@ -1182,13 +1182,13 @@ entity BubbleSort implements SortStrategy {
 
 // Use any sorting strategy
 func processData(data: [Integer], strategy: SortStrategy) {
-    var sorted = strategy.sort(data);
+    var sorted = strategy.Sort(data);
     ...
 }
 
 // Choose strategy based on data size
 var data = getNumbers();
-if data.length < 10 {
+if data.Length < 10 {
     processData(data, BubbleSort());  // Simple for small data
 } else {
     processData(data, QuickSort());   // Fast for large data
@@ -1212,7 +1212,7 @@ entity Subject {
     }
 
     func subscribe(obs: Observer) {
-        self.observers.push(obs);
+        self.observers.Push(obs);
     }
 
     func unsubscribe(obs: Observer) {
@@ -1272,7 +1272,7 @@ entity InMemoryUserRepository implements UserRepository {
     }
 
     func findByEmail(email: String) -> User {
-        for user in self.users.values() {
+        for user in self.users.Values() {
             if user.email == email {
                 return user;
             }
@@ -1293,7 +1293,7 @@ entity InMemoryUserRepository implements UserRepository {
     }
 
     func findAll() -> [User] {
-        return self.users.values();
+        return self.users.Values();
     }
 }
 

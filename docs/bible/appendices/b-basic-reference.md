@@ -1044,8 +1044,8 @@ END FUNCTION
 ```rust
 var numbers = [1, 2, 3, 4, 5];
 var first = numbers[0];
-numbers.push(6);
-numbers.length;
+numbers.Push(6);
+numbers.Length;
 ```
 
 ---
@@ -1230,11 +1230,11 @@ END FUNCTION
 **Zia equivalent:**
 ```rust
 var s = "Hello, World!";
-s.toUpperCase();
-s.substring(0, 5);
-s.contains("World");
-s.replace("World", "Viper");
-s.split(",");
+s.ToUpper();
+s.Substring(0, 5);
+s.Contains("World");
+s.Replace("World", "Viper");
+s.Split(",");
 "Hello, ${name}!";  // String interpolation
 ```
 
@@ -1448,9 +1448,7 @@ CLOSE #2
 ```rust
 Viper.Terminal.Say("Hello");
 var input = Viper.Terminal.Ask("Name: ");
-var file = Viper.File.Open("data.txt");
-var content = file.readAll();
-file.close();
+var content = IO.File.ReadAllText("data.txt");
 ```
 
 ---
@@ -1618,7 +1616,7 @@ value Point {
     func distance(other: Point) -> Number {
         var dx = self.x - other.x;
         var dy = self.y - other.y;
-        return Viper.Math.sqrt(dx*dx + dy*dy);
+        return Viper.Math.Sqrt(dx*dx + dy*dy);
     }
 }
 ```
@@ -1825,7 +1823,7 @@ entity Counter {
     }
 
     func increment() {
-        self.count += 1;
+        self.count = self.count + 1;
     }
 }
 
@@ -2103,8 +2101,8 @@ END SUB
 **Zia equivalent:**
 ```rust
 try {
-    var file = Viper.File.Open("data.txt");
-    // ... use file ...
+    var content = IO.File.ReadAllText("data.txt");
+    // ... use content ...
 } catch FileNotFoundError {
     Viper.Terminal.Say("File not found");
 } finally {

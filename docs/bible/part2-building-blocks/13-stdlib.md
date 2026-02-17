@@ -27,7 +27,7 @@ Every mainstream programming language has a standard library. Python is famous f
 
 2. **Standard library code is tested.** Millions of programs use these functions. Bugs get found and fixed. Your hand-written version won't have that testing.
 
-3. **Other programmers know it.** When you use `Viper.Math.sqrt()`, any Viper programmer knows what it does. Your custom `mySquareRoot()` function? They'd have to read your code.
+3. **Other programmers know it.** When you use `Viper.Math.Sqrt()`, any Viper programmer knows what it does. Your custom `mySquareRoot()` function? They'd have to read your code.
 
 The standard library is a superpower. Learning it makes you a dramatically more productive programmer.
 
@@ -103,7 +103,7 @@ These are essential for building text-based games, progress bars, or any program
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 func showMenu() -> Integer {
     Clear();
@@ -114,8 +114,8 @@ func showMenu() -> Integer {
     Say("4. Quit");
     Print("Choose (1-4): ");
 
-    var choice = ReadLine().trim();
-    return ToInt(choice);
+    var choice = ReadLine().Trim();
+    return Convert.ToInt64(choice);
 }
 ```
 
@@ -320,7 +320,7 @@ func generatePassword(length: Integer) -> String {
 
     var i = 0;
     while i < length {
-        var index = Random.Range(0, chars.length - 1);
+        var index = Random.Range(0, chars.Length - 1);
         password = password + chars[index];
         i = i + 1;
     }
@@ -573,7 +573,7 @@ func printScoreboard(players: [Player]) {
     Say("--------------------------");
 
     var i = 0;
-    while i < players.length {
+    while i < players.Length {
         var p = players[i];
         Say(p.name + "  " + Fmt.Int(p.score));
         i = i + 1;
@@ -913,7 +913,7 @@ isAbsolute("/usr/bin");             // true
 isAbsolute("relative/path");        // false
 ```
 
-### Why Path.join() Matters
+### Why Path.Join() Matters
 
 Never concatenate paths with `+`:
 
@@ -927,7 +927,7 @@ var path = dir + "/" + filename;
 var path = join(dir, filename);
 ```
 
-Windows uses backslashes (`\`), Unix uses forward slashes (`/`). `Path.join()` handles this automatically.
+Windows uses backslashes (`\`), Unix uses forward slashes (`/`). `Path.Join()` handles this automatically.
 
 ---
 
@@ -1191,9 +1191,9 @@ The official Viper documentation covers every module. Keep it bookmarked. Append
 ### 3. Guess Intelligently
 
 Standard libraries follow conventions:
-- `something.length` or `something.size()` for size
-- `something.contains()` for membership
-- `something.toString()` for string conversion
+- `something.Len` or `something.Size()` for size
+- `something.Contains()` or `something.Has()` for membership
+- `Fmt.Int(n)` or `Fmt.Num(x)` for number-to-string conversion
 
 If a function exists, it probably has the name you'd expect.
 
@@ -1276,13 +1276,13 @@ Some standard library patterns appear constantly. Learn these by heart.
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 func getInt(prompt: String) -> Integer {
     while true {
         Print(prompt);
         try {
-            return ToInt(ReadLine().trim());
+            return Convert.ToInt64(ReadLine().Trim());
         } catch e {
             Say("Invalid input. Please enter a number.");
         }
@@ -1298,7 +1298,7 @@ bind Viper.Environment;
 func getConfig(key: String, defaultValue: String) -> String {
     if HasVariable(key) {
         var envValue = GetVariable(key);
-        if envValue.length > 0 {
+        if envValue.Length > 0 {
             return envValue;
         }
     }

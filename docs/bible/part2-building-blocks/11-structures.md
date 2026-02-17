@@ -78,12 +78,12 @@ Nothing enforces that points have exactly two coordinates, or that `pointX` and 
 Every function that works with a point needs two parameters:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
-    return sqrt(dx * dx + dy * dy);
+    return Math.Sqrt(dx * dx + dy * dy);
 }
 ```
 
@@ -530,7 +530,7 @@ Methods have advantages:
 Methods can have parameters in addition to the implicit `self`:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 bind Viper.Terminal;
 
 value Point {
@@ -540,7 +540,7 @@ value Point {
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return sqrt(dx * dx + dy * dy);
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     func midpoint(other: Point) -> Point {
@@ -590,7 +590,7 @@ c.increment();
 c.increment();
 Say(c.count);  // 3
 
-c.add(10);
+c.Add(10);
 Say(c.count);  // 13
 
 c.reset();
@@ -626,7 +626,7 @@ var v = Point { x: 1.0, y: 1.0 };
 
 bind Viper.Terminal;
 
-var moved = p.add(v);  // New point at (3.0, 4.0)
+var moved = p.Add(v);  // New point at (3.0, 4.0)
 var bigger = p.scale(2.0);  // New point at (4.0, 6.0)
 
 // Original p is unchanged!
@@ -700,7 +700,7 @@ Nesting provides several benefits:
 Let's model a game with nested structures:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 value Vec2 {
     x: Number;
@@ -713,7 +713,7 @@ value Vec2 {
     func distance(other: Vec2) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return sqrt(dx * dx + dy * dy);
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 }
 
@@ -755,7 +755,7 @@ value Player {
     }
 
     func move(direction: Vec2) {
-        self.position = self.position.add(direction);
+        self.position = self.position.Add(direction);
     }
 
     func takeDamage(amount: Integer) {
@@ -994,7 +994,7 @@ Let's see structures in action with several complete examples.
 ### Example: Playing Cards
 
 ```rust
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 bind Viper.Terminal;
 
 value Card {
@@ -1011,7 +1011,7 @@ value Card {
         } else if self.rank == "K" || self.rank == "Q" || self.rank == "J" {
             return 10;
         } else {
-            return ToInt(self.rank);
+            return Convert.ToInt64(self.rank);
         }
     }
 }
@@ -1023,7 +1023,7 @@ func createDeck() -> [Card] {
 
     for suit in suits {
         for rank in ranks {
-            deck.push(Card { suit: suit, rank: rank });
+            deck.Push(Card { suit: suit, rank: rank });
         }
     }
 
@@ -1032,7 +1032,7 @@ func createDeck() -> [Card] {
 
 func start() {
     var deck = createDeck();
-    Say("Deck has " + deck.length + " cards");  // 52
+    Say("Deck has " + deck.Length + " cards");  // 52
 
     // Show some cards
     Say(deck[0].display());   // "2 of Hearts"
@@ -1043,7 +1043,7 @@ func start() {
 ### Example: 2D Geometry
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 bind Viper.Terminal;
 
 value Point {
@@ -1057,7 +1057,7 @@ value Point {
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return sqrt(dx * dx + dy * dy);
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     func midpoint(other: Point) -> Point {
@@ -1114,7 +1114,7 @@ func start() {
     Say("Center: " + rect.center().toString());  // (60.0, 45.0)
 
     var testPoint = Point { x: 50.0, y: 40.0 };
-    if rect.contains(testPoint) {
+    if rect.Contains(testPoint) {
         Say("Point is inside rectangle");
     }
 }
@@ -1130,18 +1130,18 @@ value Student {
     grades: [Integer];
 
     func average() -> Number {
-        if self.grades.length == 0 {
+        if self.grades.Length == 0 {
             return 0.0;
         }
         var sum = 0;
         for grade in self.grades {
             sum = sum + grade;
         }
-        return sum / self.grades.length;
+        return sum / self.grades.Length;
     }
 
     func highest() -> Integer {
-        if self.grades.length == 0 {
+        if self.grades.Length == 0 {
             return 0;
         }
         var max = self.grades[0];
@@ -1154,7 +1154,7 @@ value Student {
     }
 
     func lowest() -> Integer {
-        if self.grades.length == 0 {
+        if self.grades.Length == 0 {
             return 0;
         }
         var min = self.grades[0];
@@ -1181,12 +1181,12 @@ value Student {
     }
 
     func addGrade(grade: Integer) {
-        self.grades.push(grade);
+        self.grades.Push(grade);
     }
 
     func report() {
         Say("Student: " + self.name);
-        Say("  Grades: " + self.grades.length);
+        Say("  Grades: " + self.grades.Length);
         Say("  Average: " + self.average());
         Say("  Highest: " + self.highest());
         Say("  Lowest: " + self.lowest());
@@ -1251,7 +1251,7 @@ value Inventory {
 
     func add(item: Item) -> Boolean {
         if self.canAdd(item) {
-            self.items.push(item);
+            self.items.Push(item);
             return true;
         }
         return false;
@@ -1259,7 +1259,7 @@ value Inventory {
 
     func display() {
         Say("=== Inventory ===");
-        if self.items.length == 0 {
+        if self.items.Length == 0 {
             Say("  (empty)");
         } else {
             for item in self.items {
@@ -1282,16 +1282,16 @@ func start() {
     var potion = Item { name: "Health Potion", weight: 0.5, value: 25 };
     var armor = Item { name: "Heavy Armor", weight: 40.0, value: 500 };
 
-    backpack.add(sword);
-    backpack.add(shield);
-    backpack.add(potion);
-    backpack.add(potion);
-    backpack.add(potion);
+    backpack.Add(sword);
+    backpack.Add(shield);
+    backpack.Add(potion);
+    backpack.Add(potion);
+    backpack.Add(potion);
 
     backpack.display();
 
     Say("");
-    if backpack.add(armor) {
+    if backpack.Add(armor) {
         Say("Added armor!");
     } else {
         Say("Can't add armor - too heavy!");
@@ -1308,7 +1308,7 @@ Let's put everything together in a more complex game example:
 ```rust
 module GameDemo;
 
-bind Viper.Math;
+bind Viper.Math as Math;
 bind Viper.Terminal;
 
 value Vec2 {
@@ -1328,11 +1328,11 @@ value Vec2 {
     }
 
     func length() -> Number {
-        return sqrt(self.x * self.x + self.y * self.y);
+        return Math.Sqrt(self.x * self.x + self.y * self.y);
     }
 
     func distance(other: Vec2) -> Number {
-        return self.subtract(other).length();
+        return self.subtract(other).Length();
     }
 
     func toString() -> String {
@@ -1382,7 +1382,7 @@ value Player {
     level: Integer;
 
     func move(direction: Vec2) {
-        self.position = self.position.add(direction);
+        self.position = self.position.Add(direction);
     }
 
     func attack(target: Enemy) -> Integer {
@@ -1522,7 +1522,7 @@ This example demonstrates:
 
 **Zia**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 bind Viper.Terminal;
 
 value Point {
@@ -1532,7 +1532,7 @@ value Point {
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return sqrt(dx * dx + dy * dy);
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 }
 
@@ -1580,7 +1580,7 @@ For now, structures handle most cases beautifully. They're simpler, safer, and s
 Create instances with validated or computed values:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 func createPoint(x: Number, y: Number) -> Point {
     return Point { x: x, y: y };
@@ -1588,8 +1588,8 @@ func createPoint(x: Number, y: Number) -> Point {
 
 func pointFromAngle(angle: Number, distance: Number) -> Point {
     return Point {
-        x: distance * cos(angle),
-        y: distance * sin(angle)
+        x: distance * Math.Cos(angle),
+        y: distance * Math.Sin(angle)
     };
 }
 ```

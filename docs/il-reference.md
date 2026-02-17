@@ -479,10 +479,10 @@ trap.from_err i32 6
 %t1 = cast.fp_to_ui.rte.chk %fp
 ```
 
-**`cast.si_narrow.chk`** — Narrow signed integer with overflow check (e.g., i64 to i32; traps on overflow).
+**`cast.si_narrow.chk`** — Narrow signed integer with overflow check (i64 to i32 or i16; traps on overflow). The result type must be declared on the register: `%name:i32 = cast.si_narrow.chk %val`.
 
 ```il
-%t2 = cast.si_narrow.chk %si
+%t2:i32 = cast.si_narrow.chk %si
 ```
 
 **`cast.si_to_fp`** — Cast signed integer to floating-point.
@@ -491,10 +491,10 @@ trap.from_err i32 6
 %t4 = cast.si_to_fp %si
 ```
 
-**`cast.ui_narrow.chk`** — Narrow unsigned integer with overflow check (e.g., i64 to i32; traps on overflow).
+**`cast.ui_narrow.chk`** — Narrow unsigned integer with overflow check (i64 to i32 or i16; traps on overflow). The result type must be declared on the register: `%name:i32 = cast.ui_narrow.chk %val`.
 
 ```il
-%t3 = cast.ui_narrow.chk %ui
+%t3:i32 = cast.ui_narrow.chk %ui
 ```
 
 **`cast.ui_to_fp`** — Cast unsigned integer to floating-point.

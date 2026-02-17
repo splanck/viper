@@ -433,7 +433,7 @@ entity GameCharacter {
 Some fields have values that depend on other fields. The initializer is where you establish these relationships:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 entity Circle {
     radius: Number;
@@ -451,7 +451,7 @@ entity Circle {
 However, this pattern can be dangerous -- if `radius` changes later, `diameter` and `circumference` will be out of sync. It's often better to compute derived values in methods:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 entity Circle {
     radius: Number;
@@ -767,7 +767,7 @@ entity Player {
 Methods define what objects can *do*. They're functions that belong to an entity and operate on its data through `self`.
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 entity Circle {
     radius: Number;
@@ -873,7 +873,7 @@ Sometimes you have a choice: should this be a method on an entity, or a standalo
 - You want to take advantage of encapsulation (accessing hidden fields)
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Good as a method - operates on the circle's own data
 entity Circle {
@@ -890,13 +890,13 @@ entity Circle {
 - The operation doesn't need access to hidden state
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Good as a function - works with two objects equally
 func distance(p1: Point, p2: Point) -> Number {
     var dx = p2.x - p1.x;
     var dy = p2.y - p1.y;
-    return sqrt(dx*dx + dy*dy);
+    return Math.Sqrt(dx*dx + dy*dy);
 }
 ```
 
@@ -1253,7 +1253,7 @@ entity BankAccount {
     hide func addTransaction(description: String) {
         var _dt2 = Time.DateTime.Now();
         var timestamp = Time.DateTime.Hour(_dt2) + ":" + Time.DateTime.Minute(_dt2) + ":" + Time.DateTime.Second(_dt2);
-        self.transactions.push(timestamp + ": " + description);
+        self.transactions.Push(timestamp + ": " + description);
     }
 }
 ```
@@ -1361,40 +1361,40 @@ entity TodoList {
     }
 
     expose func add(text: String) {
-        self.items.push(TodoItem(text));
+        self.items.Push(TodoItem(text));
     }
 
     expose func markDone(index: Integer) {
-        if index >= 0 && index < self.items.length {
+        if index >= 0 && index < self.items.Length {
             self.items[index].markDone();
         }
     }
 
     expose func markUndone(index: Integer) {
-        if index >= 0 && index < self.items.length {
+        if index >= 0 && index < self.items.Length {
             self.items[index].markUndone();
         }
     }
 
     expose func remove(index: Integer) {
-        if index >= 0 && index < self.items.length {
-            self.items.removeAt(index);
+        if index >= 0 && index < self.items.Length {
+            self.items.RemoveAt(index);
         }
     }
 
     expose func display() {
         Say("=== " + self.name + " ===");
-        if self.items.length == 0 {
+        if self.items.Length == 0 {
             Say("  (empty)");
             return;
         }
 
-        for i in 0..self.items.length {
+        for i in 0..self.items.Length {
             Say("  " + (i + 1) + ". " + self.items[i].toString());
         }
 
         Say("");
-        Say("  " + self.countCompleted() + "/" + self.items.length + " completed");
+        Say("  " + self.countCompleted() + "/" + self.items.Length + " completed");
     }
 
     expose func countRemaining() -> Integer {
@@ -1425,7 +1425,7 @@ entity TodoList {
         var remaining: [TodoItem] = [];
         for item in self.items {
             if !item.isDone() {
-                remaining.push(item);
+                remaining.Push(item);
             }
         }
         self.items = remaining;
@@ -1435,9 +1435,9 @@ entity TodoList {
 func start() {
     var todos = TodoList("My Tasks");
 
-    todos.add("Learn Zia");
-    todos.add("Build a project");
-    todos.add("Read the documentation");
+    todos.Add("Learn Zia");
+    todos.Add("Build a project");
+    todos.Add("Read the documentation");
 
     todos.display();
     // === My Tasks ===

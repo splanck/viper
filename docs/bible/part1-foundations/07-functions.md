@@ -88,7 +88,7 @@ Now imagine your requirements change. Instead of simple rectangles, you need to 
 
 ## What Is a Function?
 
-You've already used functions. `Viper.Terminal.Say()` is a function. `Viper.Convert.ToInt()` is a function. Someone else wrote the code that makes them work; you just use them by name.
+You've already used functions. `Viper.Terminal.Say()` is a function. `Viper.Convert.ToInt64()` is a function. Someone else wrote the code that makes them work; you just use them by name.
 
 A function is a named, reusable block of code. You define it once, then *call* it whenever you need that behavior. Think of a function like a recipe in a cookbook. The recipe has a name ("Chocolate Cake"), a list of ingredients you need to provide (flour, eggs, sugar), and a series of steps. When you want a chocolate cake, you don't invent the process from scratch --- you follow the recipe. You can make the cake multiple times, with slightly different ingredients (more sugar for a sweeter cake), and you always get a cake back.
 
@@ -230,7 +230,7 @@ These two terms are often confused, but they mean different things:
 
 - **Parameter**: The variable defined in the function declaration. It's a placeholder, a slot waiting to be filled. In `func greet(name: String)`, `name` is a parameter.
 
-- **Argument**: The actual value you provide when calling the function. In `greet("Alice")`, the string `"Alice"` is an argument.
+- **Argument**: The actual value you provide when calling the function. In `greet("Alice")`, the String `"Alice"` is an argument.
 
 Think of it this way: the **parameter** is the parking space, the **argument** is the car you park in it.
 
@@ -292,7 +292,7 @@ Alice is 30 years old.
 Bob is 25 years old.
 ```
 
-**Order matters!** The first argument goes to the first parameter, the second argument to the second parameter, and so on. `introduce("Alice", 30)` sets `name` to `"Alice"` and `age` to `30`. If you wrote `introduce(30, "Alice")`, you'd get an error because `30` is not a string and `"Alice"` is not a number.
+**Order matters!** The first argument goes to the first parameter, the second argument to the second parameter, and so on. `introduce("Alice", 30)` sets `name` to `"Alice"` and `age` to `30`. If you wrote `introduce(30, "Alice")`, you'd get an error because `30` is not a String and `"Alice"` is not a number.
 
 ### Parameters Are Copies
 
@@ -339,7 +339,7 @@ func start() {
 
 ### Understanding the Syntax
 
-- `-> i64` after the parentheses declares that this function returns an integer. The arrow `->` can be read as "produces" or "results in."
+- `-> Integer` after the parentheses declares that this function returns an integer. The arrow `->` can be read as "produces" or "results in."
 - `return a + b;` specifies what value to send back.
 
 ### What "Return" Really Means
@@ -738,8 +738,8 @@ func start() {
 
 The compiler looks at the arguments you provide and chooses the matching function:
 - `greet()` --- no arguments, calls the first version
-- `greet("Alice")` --- one string argument, calls the second version
-- `greet("Bob", 3)` --- string and integer, calls the third version
+- `greet("Alice")` --- one String argument, calls the second version
+- `greet("Bob", 3)` --- String and integer, calls the third version
 
 ### When to Use Overloading
 
@@ -913,7 +913,7 @@ module MessyStats;
 bind Viper.Terminal;
 
 func start() {
-    var numbers: [i64] = [4, 8, 15, 16, 23, 42];
+    var numbers: [Integer] = [4, 8, 15, 16, 23, 42];
 
     // Calculate sum
     var sum = 0;
@@ -927,7 +927,7 @@ func start() {
     for n in numbers {
         sum2 = sum2 + n;
     }
-    var avg = sum2 / numbers.length;
+    var avg = sum2 / numbers.Length;
     Say("Average: " + avg);
 
     // Find minimum
@@ -981,7 +981,7 @@ module CleanStats;
 bind Viper.Terminal;
 
 // Calculate the sum of an array of numbers
-func sum(numbers: [i64]) -> i64 {
+func sum(numbers: [Integer]) -> Integer {
     var total = 0;
     for n in numbers {
         total = total + n;
@@ -990,12 +990,12 @@ func sum(numbers: [i64]) -> i64 {
 }
 
 // Calculate the average of an array of numbers
-func average(numbers: [i64]) -> i64 {
-    return sum(numbers) / numbers.length;
+func average(numbers: [Integer]) -> Integer {
+    return sum(numbers) / numbers.Length;
 }
 
 // Find the minimum value in an array
-func minimum(numbers: [i64]) -> i64 {
+func minimum(numbers: [Integer]) -> Integer {
     var min = numbers[0];
     for n in numbers {
         if n < min {
@@ -1006,7 +1006,7 @@ func minimum(numbers: [i64]) -> i64 {
 }
 
 // Find the maximum value in an array
-func maximum(numbers: [i64]) -> i64 {
+func maximum(numbers: [Integer]) -> Integer {
     var max = numbers[0];
     for n in numbers {
         if n > max {
@@ -1017,12 +1017,12 @@ func maximum(numbers: [i64]) -> i64 {
 }
 
 // Calculate the range (max - min)
-func range(numbers: [i64]) -> i64 {
+func range(numbers: [Integer]) -> Integer {
     return maximum(numbers) - minimum(numbers);
 }
 
 // Print all statistics for an array
-func printStats(numbers: [i64]) {
+func printStats(numbers: [Integer]) {
     Say("Sum: " + sum(numbers));
     Say("Average: " + average(numbers));
     Say("Minimum: " + minimum(numbers));
@@ -1031,7 +1031,7 @@ func printStats(numbers: [i64]) {
 }
 
 func start() {
-    var numbers: [i64] = [4, 8, 15, 16, 23, 42];
+    var numbers: [Integer] = [4, 8, 15, 16, 23, 42];
     printStats(numbers);
 }
 ```
@@ -1072,21 +1072,22 @@ A function should have a single, clear purpose. If you find yourself using "and"
 
 ```rust
 bind Viper.Terminal;
+bind Viper.IO;
 
 // Bad: Does three things
-func processGrades(grades: [i64]) {
+func processGrades(grades: [Integer]) {
     var sum = 0;
     for g in grades { sum = sum + g; }
-    var avg = sum / grades.length;
+    var avg = sum / grades.Length;
     Say("Average: " + avg);
-    Viper.File.Write("grades.txt", "Average: " + avg);
+    IO.File.WriteAllText("grades.txt", "Average: " + avg);
 }
 
 // Good: Each function does one thing
-func calculateAverage(grades: [i64]) -> i64 {
+func calculateAverage(grades: [Integer]) -> Integer {
     var sum = 0;
     for g in grades { sum = sum + g; }
-    return sum / grades.length;
+    return sum / grades.Length;
 }
 
 func displayAverage(avg: Integer) {
@@ -1094,10 +1095,10 @@ func displayAverage(avg: Integer) {
 }
 
 func saveAverage(avg: Integer) {
-    Viper.File.Write("grades.txt", "Average: " + avg);
+    IO.File.WriteAllText("grades.txt", "Average: " + avg);
 }
 
-func processGrades(grades: [i64]) {
+func processGrades(grades: [Integer]) {
     var avg = calculateAverage(grades);
     displayAverage(avg);
     saveAverage(avg);
@@ -1126,10 +1127,10 @@ Bad names:
 - `x()` --- meaningless
 
 Good names:
-- `calculateTax(income: i64) -> i64`
-- `validateEmail(email: string) -> bool`
-- `formatCurrency(amount: i64) -> string`
-- `findUserByEmail(email: string) -> User`
+- `calculateTax(income: Integer) -> Integer`
+- `validateEmail(email: String) -> Boolean`
+- `formatCurrency(amount: Integer) -> String`
+- `findUserByEmail(email: String) -> User`
 
 A good test: can someone understand what the function does just from its name and parameters, without reading the code inside?
 
@@ -1194,10 +1195,10 @@ func processOrder(order: Order) {
     // High level
     validateOrder(order);
 
-    // Suddenly low-level string manipulation
+    // Suddenly low-level String manipulation
     var email = order.customerEmail;
-    var atPos = email.indexOf("@");
-    var domain = email.substring(atPos + 1);
+    var atPos = email.IndexOf("@");
+    var domain = email.Substring(atPos + 1);
     if domain == "spam.com" {
         return;
     }
@@ -1220,8 +1221,8 @@ func processOrder(order: Order) {
 }
 
 func isSpamEmail(email: String) -> Boolean {
-    var atPos = email.indexOf("@");
-    var domain = email.substring(atPos + 1);
+    var atPos = email.IndexOf("@");
+    var domain = email.Substring(atPos + 1);
     return domain == "spam.com";
 }
 ```
@@ -1244,9 +1245,9 @@ bind Viper.Terminal;
 
 // Prompt for and read a single grade from the user
 // Returns -1 if user wants to finish
-func readGrade() -> i64 {
+func readGrade() -> Integer {
     Print("Grade: ");
-    return Viper.Convert.ToInt(ReadLine());
+    return Viper.Convert.ToInt64(ReadLine());
 }
 
 // Check if a grade is within valid range
@@ -1255,8 +1256,8 @@ func isValidGrade(grade: Integer) -> Boolean {
 }
 
 // Read all grades from user until they enter -1
-func readAllGrades() -> [i64] {
-    var grades: [i64] = [];
+func readAllGrades() -> [Integer] {
+    var grades: [Integer] = [];
 
     Say("Enter grades (0-100). Enter -1 to finish.");
     Say("");
@@ -1269,7 +1270,7 @@ func readAllGrades() -> [i64] {
         }
 
         if isValidGrade(grade) {
-            grades.push(grade);
+            grades.Push(grade);
         } else {
             Say("Invalid grade. Please enter 0-100, or -1 to finish.");
         }
@@ -1283,7 +1284,7 @@ func readAllGrades() -> [i64] {
 // ============================================
 
 // Calculate the sum of all grades
-func sum(grades: [i64]) -> i64 {
+func sum(grades: [Integer]) -> Integer {
     var total = 0;
     for grade in grades {
         total = total + grade;
@@ -1292,15 +1293,15 @@ func sum(grades: [i64]) -> i64 {
 }
 
 // Calculate the average grade
-func average(grades: [i64]) -> i64 {
-    if grades.length == 0 {
+func average(grades: [Integer]) -> Integer {
+    if grades.Length == 0 {
         return 0;
     }
-    return sum(grades) / grades.length;
+    return sum(grades) / grades.Length;
 }
 
 // Find the lowest grade
-func minimum(grades: [i64]) -> i64 {
+func minimum(grades: [Integer]) -> Integer {
     var min = grades[0];
     for grade in grades {
         if grade < min {
@@ -1311,7 +1312,7 @@ func minimum(grades: [i64]) -> i64 {
 }
 
 // Find the highest grade
-func maximum(grades: [i64]) -> i64 {
+func maximum(grades: [Integer]) -> Integer {
     var max = grades[0];
     for grade in grades {
         if grade > max {
@@ -1331,8 +1332,8 @@ func letterGrade(grade: Integer) -> String {
 }
 
 // Count how many grades fall into each letter category
-func countLetterGrades(grades: [i64]) -> [i64] {
-    var counts: [i64] = [0, 0, 0, 0, 0];  // A, B, C, D, F
+func countLetterGrades(grades: [Integer]) -> [Integer] {
+    var counts: [Integer] = [0, 0, 0, 0, 0];  // A, B, C, D, F
 
     for grade in grades {
         var letter = letterGrade(grade);
@@ -1356,8 +1357,8 @@ func printSeparator() {
 }
 
 // Print the main statistics
-func printStatistics(grades: [i64]) {
-    Say("Number of grades: " + grades.length);
+func printStatistics(grades: [Integer]) {
+    Say("Number of grades: " + grades.Length);
     Say("Sum of grades:    " + sum(grades));
     Say("Average grade:    " + average(grades));
     Say("Lowest grade:     " + minimum(grades));
@@ -1366,7 +1367,7 @@ func printStatistics(grades: [i64]) {
 }
 
 // Print the grade distribution
-func printDistribution(grades: [i64]) {
+func printDistribution(grades: [Integer]) {
     var counts = countLetterGrades(grades);
     Say("");
     Say("Grade Distribution:");
@@ -1378,7 +1379,7 @@ func printDistribution(grades: [i64]) {
 }
 
 // Print the complete grade report
-func printReport(grades: [i64]) {
+func printReport(grades: [Integer]) {
     Say("");
     printSeparator();
     Say("       GRADE REPORT            ");
@@ -1397,7 +1398,7 @@ func printReport(grades: [i64]) {
 func start() {
     var grades = readAllGrades();
 
-    if grades.length == 0 {
+    if grades.Length == 0 {
         Say("No grades entered.");
         return;
     }
@@ -1513,7 +1514,7 @@ func start() {
 **Creating functions that do too much:**
 ```rust
 // Bad: One function doing everything
-func doEverything(numbers: [i64]) {
+func doEverything(numbers: [Integer]) {
     // 50 lines of reading input
     // 30 lines of validation
     // 40 lines of calculation
@@ -1522,10 +1523,10 @@ func doEverything(numbers: [i64]) {
 }  // Hard to test, hard to understand, hard to modify
 
 // Good: Small, focused functions
-func readNumbers() -> [i64] { ... }
-func validateNumbers(numbers: [i64]) -> bool { ... }
-func calculateStatistics(numbers: [i64]) -> Statistics { ... }
-func formatReport(stats: Statistics) -> string { ... }
+func readNumbers() -> [Integer] { ... }
+func validateNumbers(numbers: [Integer]) -> Boolean { ... }
+func calculateStatistics(numbers: [Integer]) -> Statistics { ... }
+func formatReport(stats: Statistics) -> String { ... }
 func printReport(report: String) { ... }
 ```
 
@@ -1550,23 +1551,23 @@ The ability to break a complex problem into simple functions is one of the most 
 
 ## Exercises
 
-**Exercise 7.1**: Write a function `double(n: i64) -> i64` that returns n x 2. Test it with several values.
+**Exercise 7.1**: Write a function `double(n: Integer) -> Integer` that returns n x 2. Test it with several values.
 
-**Exercise 7.2**: Write a function `isEven(n: i64) -> bool` that returns true if n is even. Then write `isOdd` in terms of `isEven`.
+**Exercise 7.2**: Write a function `isEven(n: Integer) -> Boolean` that returns true if n is even. Then write `isOdd` in terms of `isEven`.
 
-**Exercise 7.3**: Write a function `max3(a: i64, b: i64, c: i64) -> i64` that returns the largest of three numbers. Try doing it by calling a `max2` function that handles two numbers.
+**Exercise 7.3**: Write a function `max3(a: Integer, b: Integer, c: Integer) -> Integer` that returns the largest of three numbers. Try doing it by calling a `max2` function that handles two numbers.
 
-**Exercise 7.4**: Write a function `countVowels(text: string) -> i64` that returns how many vowels (a, e, i, o, u) are in the text. Consider both uppercase and lowercase.
+**Exercise 7.4**: Write a function `countVowels(text: String) -> Integer` that returns how many vowels (a, e, i, o, u) are in the text. Consider both uppercase and lowercase.
 
-**Exercise 7.5**: Write a function `isPrime(n: i64) -> bool` that returns true if n is prime. Use it to print all primes from 1 to 100.
+**Exercise 7.5**: Write a function `isPrime(n: Integer) -> Boolean` that returns true if n is prime. Use it to print all primes from 1 to 100.
 
-**Exercise 7.6**: Write overloaded `print` functions that handle different types: `print(n: i64)`, `print(s: string)`, `print(b: bool)`. Each should print with an appropriate label.
+**Exercise 7.6**: Write overloaded `print` functions that handle different types: `print(n: Integer)`, `print(s: String)`, `print(b: Boolean)`. Each should print with an appropriate label.
 
-**Exercise 7.7** (Challenge): Write a recursive function `power(base: i64, exp: i64) -> i64` that calculates base^exp. For example, `power(2, 3)` should return 8. What's the base case?
+**Exercise 7.7** (Challenge): Write a recursive function `power(base: Integer, exp: Integer) -> Integer` that calculates base^exp. For example, `power(2, 3)` should return 8. What's the base case?
 
-**Exercise 7.8** (Challenge): Write a recursive function `countDigits(n: i64) -> i64` that returns how many digits are in a number. For example, `countDigits(1234)` should return 4.
+**Exercise 7.8** (Challenge): Write a recursive function `countDigits(n: Integer) -> Integer` that returns how many digits are in a number. For example, `countDigits(1234)` should return 4.
 
-**Exercise 7.9** (Challenge): Write a recursive function to reverse a string. Hint: the reverse of "hello" is (reverse of "ello") + "h".
+**Exercise 7.9** (Challenge): Write a recursive function to reverse a String. Hint: the reverse of "hello" is (reverse of "ello") + "h".
 
 **Exercise 7.10** (Challenge): Take a messy program you wrote earlier in this book and refactor it using functions. Can you make `start()` fit in 10 lines or less?
 

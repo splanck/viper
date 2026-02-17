@@ -557,31 +557,31 @@ func setupLevel(state: GameState) -> GameState {
     // This creates variety and challenge
 
     // Row 8: slow cars going right (easiest to dodge)
-    s.vehicles.push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
-    s.vehicles.push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
+    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
+    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
 
     // Row 9: faster cars going left
-    s.vehicles.push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
-    s.vehicles.push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
+    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
+    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
 
     // Row 10: slow trucks going right (wide, hard to squeeze past)
-    s.vehicles.push(Vehicle.create(10, 50 * speedMod, 120, Color.YELLOW));
+    s.vehicles.Push(Vehicle.create(10, 50 * speedMod, 120, Color.YELLOW));
 
     // Row 11: fast cars going left (dangerous!)
-    s.vehicles.push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
-    s.vehicles.push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
-    s.vehicles.push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
 
     // Row 12: medium cars going right
-    s.vehicles.push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
-    s.vehicles.push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
+    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
+    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
 
     // Row 13: slow trucks going left (closest to starting area)
-    s.vehicles.push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
-    s.vehicles.push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
+    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
+    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
 
     // Spread vehicles out so they do not all start at the same place
-    for i in 0..s.vehicles.length {
+    for i in 0..s.vehicles.Length {
         s.vehicles[i].x = (i * 170) % Config.SCREEN_WIDTH;
     }
 
@@ -590,21 +590,21 @@ func setupLevel(state: GameState) -> GameState {
 
     // Row 1-6: alternating logs (brown) and turtles (green)
     // Logs are long and safe, turtles are short and may submerge (future feature)
-    s.platforms.push(Platform.create(1, 50 * speedMod, 120, Color(139, 69, 19)));
-    s.platforms.push(Platform.create(1, 50 * speedMod, 120, Color(139, 69, 19)));
-    s.platforms.push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
-    s.platforms.push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
-    s.platforms.push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
-    s.platforms.push(Platform.create(3, 60 * speedMod, 160, Color(139, 69, 19)));
-    s.platforms.push(Platform.create(4, -70 * speedMod, 100, Color(0, 100, 0)));
-    s.platforms.push(Platform.create(4, -70 * speedMod, 100, Color(0, 100, 0)));
-    s.platforms.push(Platform.create(5, 45 * speedMod, 140, Color(139, 69, 19)));
-    s.platforms.push(Platform.create(5, 45 * speedMod, 140, Color(139, 69, 19)));
-    s.platforms.push(Platform.create(6, -55 * speedMod, 90, Color(0, 100, 0)));
-    s.platforms.push(Platform.create(6, -55 * speedMod, 90, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(1, 50 * speedMod, 120, Color(139, 69, 19)));
+    s.platforms.Push(Platform.create(1, 50 * speedMod, 120, Color(139, 69, 19)));
+    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(3, 60 * speedMod, 160, Color(139, 69, 19)));
+    s.platforms.Push(Platform.create(4, -70 * speedMod, 100, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(4, -70 * speedMod, 100, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(5, 45 * speedMod, 140, Color(139, 69, 19)));
+    s.platforms.Push(Platform.create(5, 45 * speedMod, 140, Color(139, 69, 19)));
+    s.platforms.Push(Platform.create(6, -55 * speedMod, 90, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(6, -55 * speedMod, 90, Color(0, 100, 0)));
 
     // Spread platforms out
-    for i in 0..s.platforms.length {
+    for i in 0..s.platforms.Length {
         s.platforms[i].x = (i * 130) % Config.SCREEN_WIDTH;
     }
 
@@ -633,12 +633,12 @@ expose func update(state: GameState, dt: Number) -> GameState {
     s.frog = Frog.update(s.frog, dt);
 
     // Update all vehicles (movement and wrapping)
-    for i in 0..s.vehicles.length {
+    for i in 0..s.vehicles.Length {
         s.vehicles[i] = Vehicle.update(s.vehicles[i], dt);
     }
 
     // Update all platforms (movement and wrapping)
-    for i in 0..s.platforms.length {
+    for i in 0..s.platforms.Length {
         s.platforms[i] = Platform.update(s.platforms[i], dt);
     }
 
@@ -895,7 +895,7 @@ func drawBackground(canvas: Canvas) {
 The background creates the visual context. Blue water tells players "danger, stay on platforms." Gray road with yellow lines reads instantly as "traffic area." The safe zones (purple) provide visual breathing room.
 
 ```rust
-func drawHomes(canvas: Canvas, occupied: [bool]) {
+func drawHomes(canvas: Canvas, occupied: [Boolean]) {
     var positions = [2, 6, 10, 14, 18];
 
     for i in 0..5 {
@@ -1117,20 +1117,20 @@ for enemy in enemies {
 
 **Right:**
 ```rust
-enemies = enemies.filter(func(e) { return !e.dead; });
+enemies = enemies.Filter(func(e) { return !e.dead; });
 ```
 
 Or:
 ```rust
 var toRemove = [];
-for i in 0..enemies.length {
+for i in 0..enemies.Length {
     if enemies[i].dead {
-        toRemove.push(i);
+        toRemove.Push(i);
     }
 }
 // Remove in reverse order to preserve indices
-for i in (toRemove.length - 1)..0 step -1 {
-    enemies.removeAt(toRemove[i]);
+for i in (toRemove.Length - 1)..0 step -1 {
+    enemies.RemoveAt(toRemove[i]);
 }
 ```
 
@@ -1304,20 +1304,23 @@ canvas.drawImage(sprite, frog.x - 20, frog.y);
 Save the highest score to a file so players can compete with themselves:
 
 ```rust
+bind Viper.Convert as Convert;
+bind Viper.Fmt as Fmt;
+
 func loadHighScore() -> Integer {
     var file = File.open("highscore.txt", "r");
     if file == null {
         return 0;
     }
-    var score = file.readLine().toInt();
-    file.close();
+    var score = Convert.ToInt64(file.ReadLine());
+    file.Close();
     return score;
 }
 
 func saveHighScore(score: Integer) {
     var file = File.open("highscore.txt", "w");
-    file.writeLine(score.toString());
-    file.close();
+    file.WriteLine(Fmt.Int(score));
+    file.Close();
 }
 
 // At game over:
@@ -1349,7 +1352,7 @@ if s.timeRemaining <= 0 {
 
 // In rendering:
 canvas.drawText(500, Config.SCREEN_HEIGHT - 10,
-               "Time: " + Math.floor(state.timeRemaining));
+               "Time: " + Convert.NumToInt(Math.Floor(state.timeRemaining)));
 ```
 
 ### Submerging Turtles

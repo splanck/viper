@@ -288,11 +288,11 @@ Same method name, different parameter types. The compiler chooses the right vers
 
 ```rust
 var p = Printer();
-p.print("hello");           // Calls print(text: String)
-p.print(42);                // Calls print(number: Integer)
-p.print(3.14);              // Calls print(number: Number)
-p.print(["a", "b", "c"]);   // Calls print(items: [String])
-p.print("hi", 3);           // Calls print(item: String, times: Integer)
+p.Print("hello");           // Calls print(text: String)
+p.Print(42);                // Calls print(number: Integer)
+p.Print(3.14);              // Calls print(number: Number)
+p.Print(["a", "b", "c"]);   // Calls print(items: [String])
+p.Print("hi", 3);           // Calls print(item: String, times: Integer)
 ```
 
 This is *static polymorphism* or *early binding* — the decision is made at compile time based on the types of arguments you provide.
@@ -302,7 +302,7 @@ This is *static polymorphism* or *early binding* — the decision is made at com
 There's a third kind of polymorphism you'll encounter later: generics (parametric polymorphism). This lets you write code that works with any type:
 
 ```rust
-func first<T>(items: [T]) -> T {
+func first[T](items: [T]) -> T {
     return items[0];
 }
 
@@ -367,12 +367,12 @@ Now the game loop becomes beautifully simple:
 var entities: [Updatable] = [];
 
 // Add all kinds of things
-entities.push(Player());
-entities.push(Enemy());
-entities.push(Enemy());
-entities.push(Particle());
-entities.push(Projectile());
-entities.push(AnimatedDecoration());
+entities.Push(Player());
+entities.Push(Enemy());
+entities.Push(Enemy());
+entities.Push(Particle());
+entities.Push(Projectile());
+entities.Push(AnimatedDecoration());
 
 // The game loop - handles everything uniformly
 while running {
@@ -493,14 +493,14 @@ entity ExportMenu {
     }
 
     func addExporter(exporter: Exporter) {
-        self.exporters.push(exporter);
+        self.exporters.Push(exporter);
     }
 
     func showOptions() {
         Say("Export as:");
         var i = 1;
         for exporter in self.exporters {
-            Say(i + ". " + exporter.getExtension().upper());
+            Say(i + ". " + exporter.getExtension().ToUpper());
             i += 1;
         }
     }
@@ -549,7 +549,7 @@ entity PluginManager {
     plugins: [Plugin];
 
     func loadPlugin(plugin: Plugin) {
-        self.plugins.push(plugin);
+        self.plugins.Push(plugin);
         Say("Loaded: " + plugin.getName() + " v" + plugin.getVersion());
         plugin.initialize();
     }
@@ -714,7 +714,7 @@ entity InsertTextCommand implements Command {
     }
 
     func undo() {
-        self.document.deleteRange(self.position, self.position + self.text.length);
+        self.document.deleteRange(self.position, self.position + self.text.Length);
     }
 
     func getDescription() -> String {
@@ -747,24 +747,24 @@ entity CommandHistory {
 
     func execute(command: Command) {
         command.execute();
-        self.executed.push(command);
+        self.executed.Push(command);
         self.undone = [];  // Clear redo stack
     }
 
     func undo() {
-        if self.executed.length > 0 {
-            var command = self.executed.pop();
+        if self.executed.Length > 0 {
+            var command = self.executed.Pop();
             command.undo();
-            self.undone.push(command);
+            self.undone.Push(command);
             Say("Undid: " + command.getDescription());
         }
     }
 
     func redo() {
-        if self.undone.length > 0 {
-            var command = self.undone.pop();
+        if self.undone.Length > 0 {
+            var command = self.undone.Pop();
             command.execute();
-            self.executed.push(command);
+            self.executed.Push(command);
             Say("Redid: " + command.getDescription());
         }
     }
@@ -1043,7 +1043,7 @@ entity Text implements Drawable {
     }
 
     func getBounds() -> Rect {
-        var width = self.content.length * self.fontSize * 0.6;  // Approximate
+        var width = self.content.Length * self.fontSize * 0.6;  // Approximate
         return Rect { x: self.x, y: self.y, width: width, height: self.fontSize };
     }
 }
@@ -1059,7 +1059,7 @@ entity Group implements Drawable {
     }
 
     func add(item: Drawable) {
-        self.children.push(item);
+        self.children.Push(item);
     }
 
     func draw() {
@@ -1071,7 +1071,7 @@ entity Group implements Drawable {
     }
 
     func getBounds() -> Rect {
-        if self.children.length == 0 {
+        if self.children.Length == 0 {
             return Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 };
         }
 
@@ -1081,7 +1081,7 @@ entity Group implements Drawable {
         var maxX = first.x + first.width;
         var maxY = first.y + first.height;
 
-        for i in 1..self.children.length {
+        for i in 1..self.children.Length {
             var b = self.children[i].getBounds();
             if b.x < minX { minX = b.x; }
             if b.y < minY { minY = b.y; }
@@ -1096,7 +1096,7 @@ entity Group implements Drawable {
 // Function that works with any Drawable - demonstrates polymorphism
 func findItemAt(items: [Drawable], x: Number, y: Number) -> Drawable? {
     for item in items {
-        if item.getBounds().contains(x, y) {
+        if item.getBounds().Contains(x, y) {
             return item;
         }
     }
@@ -1111,16 +1111,16 @@ func start() {
 
     // Create a group (polymorphism: Group is also Drawable)
     var icons = Group("Icons");
-    icons.add(Circle(200.0, 100.0, 10.0, "green"));
-    icons.add(Circle(220.0, 100.0, 10.0, "yellow"));
-    icons.add(Rectangle(240.0, 95.0, 20.0, 10.0, "orange"));
+    icons.Add(Circle(200.0, 100.0, 10.0, "green"));
+    icons.Add(Circle(220.0, 100.0, 10.0, "yellow"));
+    icons.Add(Rectangle(240.0, 95.0, 20.0, 10.0, "orange"));
 
     // Create main scene - mixing individual items and groups
     var scene = Group("Main Scene");
-    scene.add(rect);
-    scene.add(circle);
-    scene.add(label);
-    scene.add(icons);  // Group inside group!
+    scene.Add(rect);
+    scene.Add(circle);
+    scene.Add(label);
+    scene.Add(icons);  // Group inside group!
 
     // Draw everything with one call
     Say("=== Drawing Scene ===");

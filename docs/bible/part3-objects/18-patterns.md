@@ -228,13 +228,13 @@ entity Config {
 // Usage anywhere in the program
 func updateUserPreferences() {
     var config = Config.getInstance();
-    config.set("theme", "light");
+    config.Set("theme", "light");
     config.saveToFile("settings.json");
 }
 
 func getVolumeLevel() -> String {
     var config = Config.getInstance();
-    return config.get("volume") ?? "50";
+    return config.Get("volume") ?? "50";
 }
 ```
 
@@ -285,7 +285,7 @@ How does your code create these enemies? The naive approach:
 ```rust
 func loadLevel(data: String) {
     // Parse data...
-    for line in data.split("\n") {
+    for line in data.Split("\n") {
         var parts = parseLine(line);
         var type = parts.type;
         var x = parts.x;
@@ -293,11 +293,11 @@ func loadLevel(data: String) {
 
         // Ugly: your level loader knows about every enemy type
         if type == "goblin" {
-            enemies.push(Goblin(x, y));
+            enemies.Push(Goblin(x, y));
         } else if type == "orc" {
-            enemies.push(Orc(x, y));
+            enemies.Push(Orc(x, y));
         } else if type == "dragon" {
-            enemies.push(Dragon(x, y));
+            enemies.Push(Dragon(x, y));
         }
     }
 }
@@ -321,7 +321,7 @@ The Factory pattern centralizes object creation:
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Math;
+bind Viper.Math as Math;
 
 interface Enemy {
     func attack();
@@ -437,7 +437,7 @@ entity EnemyFactory {
         for i in 0..count {
             var x = Math.random() * 800.0;
             var y = Math.random() * 600.0;
-            enemies.push(EnemyFactory.createForLevel(level, x, y));
+            enemies.Push(EnemyFactory.createForLevel(level, x, y));
         }
         return enemies;
     }
@@ -448,10 +448,10 @@ Now the level loader is clean:
 
 ```rust
 func loadLevel(data: String) {
-    for line in data.split("\n") {
+    for line in data.Split("\n") {
         var parts = parseLine(line);
         var enemy = EnemyFactory.create(parts.type, parts.x, parts.y);
-        enemies.push(enemy);
+        enemies.Push(enemy);
     }
 }
 
@@ -975,7 +975,7 @@ entity BubbleSort implements SortStrategy {
     func sort(items: [Integer]) -> [Integer] {
         // Bubble sort implementation
         var result = items.copy();
-        var n = result.length;
+        var n = result.Length;
         for i in 0..n {
             for j in 0..(n - i - 1) {
                 if result[j] > result[j + 1] {
@@ -994,7 +994,7 @@ entity BubbleSort implements SortStrategy {
 entity QuickSort implements SortStrategy {
     func sort(items: [Integer]) -> [Integer] {
         // Quick sort implementation (simplified)
-        if items.length <= 1 {
+        if items.Length <= 1 {
             return items;
         }
         // ... actual quicksort logic
@@ -1017,7 +1017,7 @@ entity DataProcessor {
 
     func processData(data: [Integer]) -> [Integer] {
         Say("Sorting with " + self.sortStrategy.getName());
-        return self.sortStrategy.sort(data);
+        return self.sortStrategy.Sort(data);
     }
 }
 ```
@@ -1070,7 +1070,7 @@ entity Subject {
     }
 
     func subscribe(observer: Observer) {
-        self.observers.push(observer);
+        self.observers.Push(observer);
     }
 
     func unsubscribe(observer: Observer) {
@@ -1078,7 +1078,7 @@ entity Subject {
         var newList: [Observer] = [];
         for obs in self.observers {
             if obs != observer {
-                newList.push(obs);
+                newList.Push(obs);
             }
         }
         self.observers = newList;
@@ -1096,7 +1096,7 @@ Now let's build a stock price monitoring system:
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Math;
+bind Viper.Math as Math;
 bind Viper.Time;
 
 // The subject: stock price
@@ -1160,7 +1160,7 @@ entity AlertSystem implements Observer {
 
     func onUpdate(event: String, data: any) {
         if event == "price_change" {
-            if abs(data.change) > self.threshold {
+            if Math.Abs(data.change) > self.threshold {
                 Say(
                     "ALERT: Large price movement in " + data.symbol +
                     " (change: " + data.change + ")"
@@ -1393,14 +1393,14 @@ entity TextEditor {
     }
 
     func insertAt(position: Integer, text: String) {
-        var before = self.content.substring(0, position);
-        var after = self.content.substring(position);
+        var before = self.content.Substring(0, position);
+        var after = self.content.Substring(position);
         self.content = before + text + after;
     }
 
     func deleteAt(position: Integer, length: Integer) {
-        var before = self.content.substring(0, position);
-        var after = self.content.substring(position + length);
+        var before = self.content.Substring(0, position);
+        var after = self.content.Substring(position + length);
         self.content = before + after;
     }
 
@@ -1426,7 +1426,7 @@ entity InsertCommand implements Command {
     }
 
     func undo() {
-        self.editor.deleteAt(self.position, self.text.length);
+        self.editor.deleteAt(self.position, self.text.Length);
     }
 
     func describe() -> String {
@@ -1444,11 +1444,11 @@ entity DeleteCommand implements Command {
         self.editor = editor;
         self.position = position;
         // Save the text we're about to delete
-        self.deletedText = editor.getText().substring(position, position + length);
+        self.deletedText = editor.getText().Substring(position, position + length);
     }
 
     func execute() {
-        self.editor.deleteAt(self.position, self.deletedText.length);
+        self.editor.deleteAt(self.position, self.deletedText.Length);
     }
 
     func undo() {
@@ -1470,17 +1470,17 @@ entity ReplaceCommand implements Command {
     expose func init(editor: TextEditor, position: Integer, length: Integer, newText: String) {
         self.editor = editor;
         self.position = position;
-        self.oldText = editor.getText().substring(position, position + length);
+        self.oldText = editor.getText().Substring(position, position + length);
         self.newText = newText;
     }
 
     func execute() {
-        self.editor.deleteAt(self.position, self.oldText.length);
+        self.editor.deleteAt(self.position, self.oldText.Length);
         self.editor.insertAt(self.position, self.newText);
     }
 
     func undo() {
-        self.editor.deleteAt(self.position, self.newText.length);
+        self.editor.deleteAt(self.position, self.newText.Length);
         self.editor.insertAt(self.position, self.oldText);
     }
 
@@ -1501,37 +1501,37 @@ entity CommandHistory {
 
     func execute(command: Command) {
         command.execute();
-        self.commands.push(command);
+        self.commands.Push(command);
         // Clear redo stack when new command is executed
         self.undoneCommands = [];
         Say("Executed: " + command.describe());
     }
 
     func undo() {
-        if self.commands.length == 0 {
+        if self.commands.Length == 0 {
             Say("Nothing to undo");
             return;
         }
-        var command = self.commands.pop();
+        var command = self.commands.Pop();
         command.undo();
-        self.undoneCommands.push(command);
+        self.undoneCommands.Push(command);
         Say("Undone: " + command.describe());
     }
 
     func redo() {
-        if self.undoneCommands.length == 0 {
+        if self.undoneCommands.Length == 0 {
             Say("Nothing to redo");
             return;
         }
-        var command = self.undoneCommands.pop();
+        var command = self.undoneCommands.Pop();
         command.execute();
-        self.commands.push(command);
+        self.commands.Push(command);
         Say("Redone: " + command.describe());
     }
 
     func showHistory() {
         Say("Command history:");
-        for i, cmd in self.commands.enumerate() {
+        for i, cmd in self.commands.Enumerate() {
             Say("  " + i + ": " + cmd.describe());
         }
     }
@@ -1594,7 +1594,7 @@ entity MacroCommand implements Command {
     }
 
     func add(command: Command) {
-        self.commands.push(command);
+        self.commands.Push(command);
     }
 
     func execute() {
@@ -1605,21 +1605,21 @@ entity MacroCommand implements Command {
 
     func undo() {
         // Undo in reverse order
-        for i in (self.commands.length - 1)..(-1) {
+        for i in (self.commands.Length - 1)..(-1) {
             self.commands[i].undo();
         }
     }
 
     func describe() -> String {
-        return "Macro: " + self.name + " (" + self.commands.length + " commands)";
+        return "Macro: " + self.name + " (" + self.commands.Length + " commands)";
     }
 }
 
 // Record a macro
 func recordMacro(editor: TextEditor) -> MacroCommand {
     var macro = MacroCommand("Add greeting");
-    macro.add(InsertCommand(editor, 0, "Dear Sir or Madam,\n\n"));
-    macro.add(InsertCommand(editor, editor.getText().length, "\n\nSincerely,\nYour Name"));
+    macro.Add(InsertCommand(editor, 0, "Dear Sir or Madam,\n\n"));
+    macro.Add(InsertCommand(editor, editor.getText().Length, "\n\nSincerely,\nYour Name"));
     return macro;
 }
 ```
@@ -1796,7 +1796,7 @@ entity DispensingState implements VendingState {
         }
 
         // Check if we should go to out-of-stock state
-        if machine.isEmpty() {
+        if machine.IsEmpty() {
             machine.setState(OutOfStockState());
         } else {
             machine.setState(IdleState());
@@ -2209,11 +2209,11 @@ entity EncryptionDecorator implements DataStream {
 
     func write(data: String) {
         var encrypted = self.encrypt(data);
-        self.stream.write(encrypted);
+        self.stream.Write(encrypted);
     }
 
     func read() -> String {
-        var encrypted = self.stream.read();
+        var encrypted = self.stream.Read();
         return self.decrypt(encrypted);
     }
 
@@ -2244,22 +2244,22 @@ entity CompressionDecorator implements DataStream {
 
     func write(data: String) {
         var compressed = self.compress(data);
-        self.stream.write(compressed);
+        self.stream.Write(compressed);
     }
 
     func read() -> String {
-        var compressed = self.stream.read();
+        var compressed = self.stream.Read();
         return self.decompress(compressed);
     }
 
     hide func compress(data: String) -> String {
         // Simplified run-length encoding
-        return "[compressed:" + data.length + "]" + data;
+        return "[compressed:" + data.Length + "]" + data;
     }
 
     hide func decompress(data: String) -> String {
         // Extract original from compressed format
-        return data.substring(data.indexOf("]") + 1);
+        return data.Substring(data.IndexOf("]") + 1);
     }
 }
 
@@ -2271,13 +2271,13 @@ entity LoggingDecorator implements DataStream {
     }
 
     func write(data: String) {
-        Say("Writing " + data.length + " bytes");
-        self.stream.write(data);
+        Say("Writing " + data.Length + " bytes");
+        self.stream.Write(data);
     }
 
     func read() -> String {
-        var data = self.stream.read();
-        Say("Read " + data.length + " bytes");
+        var data = self.stream.Read();
+        Say("Read " + data.Length + " bytes");
         return data;
     }
 }
@@ -2297,11 +2297,11 @@ func start() {
     stream = LoggingDecorator(stream);
 
     // Now writing goes through: logging -> compression -> encryption -> file
-    stream.write("Secret message");
+    stream.Write("Secret message");
     // Writing 14 bytes
 
     // Reading goes through: file -> decryption -> decompression -> logging
-    var message = stream.read();
+    var message = stream.Read();
     // Read 14 bytes
     Say(message);  // Secret message
 }
@@ -2332,7 +2332,7 @@ This example combines Factory, Strategy, Observer, and State:
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Observer for game events
 interface GameObserver {
@@ -2355,7 +2355,7 @@ entity GameEvents {
     }
 
     func subscribe(observer: GameObserver) {
-        self.observers.push(observer);
+        self.observers.Push(observer);
     }
 
     func emit(event: String, data: any) {
@@ -2486,7 +2486,7 @@ entity GameEntity {
     func distanceTo(other: GameEntity) -> Number {
         var dx = self.x - other.x;
         var dy = self.y - other.y;
-        return Math.sqrt(dx * dx + dy * dy);
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     func executeAction(action: String) {

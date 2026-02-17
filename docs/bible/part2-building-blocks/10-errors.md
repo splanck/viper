@@ -51,11 +51,11 @@ if (x > 5 {
 }
 
 // Misspelled keyword
-funktion add(a: i64, b: i64) -> i64 {
+funktion add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
-// Unclosed string
+// Unclosed String
 var message = "Hello, world!;
 ```
 
@@ -79,10 +79,10 @@ var arr = [1, 2, 3];
 var y = arr[10];  // Index 10 doesn't exist
 
 var text: String = null;
-var len = text.length;  // Can't access properties of null
+var len = text.Length;  // Can't access properties of null
 
-bind Viper.Convert;
-var num = ToInt("hello");  // "hello" is not a number
+bind Viper.Convert as Convert;
+var num = Convert.ToInt64("hello");  // "hello" is not a number
 ```
 
 Runtime errors occur because the code is syntactically correct but asks the computer to do something impossible. You can't divide by zero. You can't access an array element that doesn't exist. These operations make no sense.
@@ -255,12 +255,12 @@ A single try block might have multiple things that could go wrong:
 
 ```rust
 bind Viper.File;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 bind Viper.Terminal;
 
 try {
     var content = readText(filename);  // Could fail: file missing
-    var value = ToInt(content);        // Could fail: not a number
+    var value = Convert.ToInt64(content);        // Could fail: not a number
     var result = 1000 / value;         // Could fail: zero
     Say("Result: " + result);
 } catch e {
@@ -272,12 +272,12 @@ If *any* of these three operations fails, the catch block runs. But which one fa
 
 ```rust
 bind Viper.File;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 bind Viper.Terminal;
 
 try {
     var content = readText(filename);
-    var value = ToInt(content);
+    var value = Convert.ToInt64(content);
     var result = 1000 / value;
     Say("Result: " + result);
 } catch e: FileNotFound {
@@ -317,7 +317,7 @@ try {
 }
 
 // Better: check first
-if index >= 0 && index < arr.length {
+if index >= 0 && index < arr.Length {
     value = arr[index];
 } else {
     value = defaultValue;
@@ -362,7 +362,7 @@ func computeAverage(numbers: [Integer]) -> Integer {
     for n in numbers {
         sum += n;
     }
-    return divide(sum, numbers.length);  // BUG: empty array has length 0!
+    return divide(sum, numbers.Length);  // BUG: empty array has length 0!
 }
 
 func processScores(data: String) {
@@ -399,7 +399,7 @@ try {
 } catch e {
     Say("Database error: " + e.message);
 } finally {
-    connection.close();  // Always runs, error or not
+    connection.Close();  // Always runs, error or not
 }
 ```
 
@@ -504,7 +504,7 @@ Before performing dangerous operations, verify they'll succeed:
 var value = arr[index];  // Might crash
 
 // Do this:
-if index >= 0 && index < arr.length {
+if index >= 0 && index < arr.Length {
     var value = arr[index];
 } else {
     // Handle the out-of-bounds case
@@ -546,7 +546,7 @@ Handle error cases at the top of functions, then proceed with the main logic:
 func processFile(filename: String) {
     bind Viper.File;
     // Guard clauses handle all the edge cases
-    if filename.length == 0 {
+    if filename.Length == 0 {
         throw Error("Filename cannot be empty");
     }
 
@@ -554,7 +554,7 @@ func processFile(filename: String) {
         throw Error("File does not exist: " + filename);
     }
 
-    if !filename.endsWith(".txt") {
+    if !filename.EndsWith(".txt") {
         throw Error("Only .txt files are supported");
     }
 
@@ -663,16 +663,16 @@ The simplest and most widely used technique: add print statements to see what's 
 bind Viper.Terminal;
 
 func mysteriouslyWrongResult(data: [Integer]) -> Integer {
-    Say("DEBUG: Input data = " + data.toString());
+    Say("DEBUG: Input data, length = " + data.Length);
 
     var sum = 0;
-    for i in 0..data.length {
+    for i in 0..data.Length {
         Say("DEBUG: i = " + i + ", data[i] = " + data[i]);
         sum += data[i];
         Say("DEBUG: sum is now " + sum);
     }
 
-    var result = sum / data.length;
+    var result = sum / data.Length;
     Say("DEBUG: final result = " + result);
     return result;
 }
@@ -720,7 +720,7 @@ func complexProcessing(input: Data) -> Result {
     var c = stepThree(b);
 
     // CHECKPOINT: Is the data correct here?
-    Say("DEBUG mid-point: " + c.toString());
+    Say("DEBUG mid-point: " + c);  // Print value for inspection
 
     var d = stepFour(c);
     var e = stepFive(d);
@@ -767,7 +767,7 @@ func testSimple() {
     var accounts = [Account.new(100)];  // One account
     var transactions = [Transaction.new(50)];  // One transaction
     var report = processTransactions(accounts, transactions);
-    Say(report.toString());
+    Say(report);  // Report entity should override toString() for display
 }
 ```
 
@@ -793,11 +793,11 @@ func fetchUserData(userId: Integer) -> UserData {
 
     for attempt in 1..maxRetries+1 {
         try {
-            return HttpClient.get("https://api.example.com/users/" + userId);
+            return HttpClient.Get("https://api.example.com/users/" + userId);
         } catch e: NetworkError {
             if attempt < maxRetries {
                 Say("Network error, retrying in " + retryDelay + "ms...");
-                sleep(retryDelay);
+                Time.Clock.Sleep(retryDelay);
                 retryDelay *= 2;  // Exponential backoff
             } else {
                 throw Error("Failed to fetch user after " + maxRetries + " attempts");
@@ -819,16 +819,16 @@ Users will enter invalid data. Always. Count on it.
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 func getValidAge() -> Integer {
     while true {
         Print("Enter your age: ");
-        var input = ReadLine().trim();
+        var input = ReadLine().Trim();
 
         // Try to parse
         try {
-            var age = ToInt(input);
+            var age = Convert.ToInt64(input);
 
             // Validate range
             if age < 0 || age > 150 {
@@ -874,7 +874,7 @@ func processLargeFile(filename: String) {
             }
         }
     } finally {
-        reader.close();
+        reader.Close();
     }
 }
 ```
@@ -953,7 +953,7 @@ func log(message: String) {
 }
 
 func readDataFile(filename: String) -> [Integer] {
-    if filename.length == 0 {
+    if filename.Length == 0 {
         throw Error("Filename cannot be empty");
     }
 
@@ -967,22 +967,22 @@ func readDataFile(filename: String) -> [Integer] {
 
     for line in lines {
         lineNum += 1;
-        var trimmed = line.trim();
+        var trimmed = line.Trim();
 
         // Skip empty lines and comments
-        if trimmed.length == 0 || trimmed.startsWith("#") {
+        if trimmed.Length == 0 || trimmed.StartsWith("#") {
             continue;
         }
 
         try {
-            var num = ToInt(trimmed);
-            numbers.push(num);
+            var num = Convert.ToInt64(trimmed);
+            numbers.Push(num);
         } catch e: ParseError {
             log("Warning: skipping invalid number on line " + lineNum + ": " + trimmed);
         }
     }
 
-    if numbers.length == 0 {
+    if numbers.Length == 0 {
         throw Error("No valid numbers found in " + filename);
     }
 
@@ -990,7 +990,7 @@ func readDataFile(filename: String) -> [Integer] {
 }
 
 func calculateStats(numbers: [Integer]) -> Stats {
-    if numbers.length == 0 {
+    if numbers.Length == 0 {
         throw Error("Cannot calculate stats on empty array");
     }
 
@@ -1004,10 +1004,10 @@ func calculateStats(numbers: [Integer]) -> Stats {
         if n > max { max = n; }
     }
 
-    var average = sum / numbers.length;
+    var average = sum / numbers.Length;
 
     return Stats.new(
-        count: numbers.length,
+        count: numbers.Length,
         sum: sum,
         min: min,
         max: max,
@@ -1020,7 +1020,7 @@ func processFile(filename: String) {
 
     try {
         var numbers = readDataFile(filename);
-        log("Loaded " + numbers.length + " numbers");
+        log("Loaded " + numbers.Length + " numbers");
 
         var stats = calculateStats(numbers);
 
@@ -1056,9 +1056,9 @@ func start() {
 
     while true {
         Print("Enter filename (or 'quit' to exit): ");
-        var input = ReadLine().trim();
+        var input = ReadLine().Trim();
 
-        if input.lower() == "quit" {
+        if input.ToLower() == "quit" {
             Say("Goodbye!");
             break;
         }
@@ -1258,7 +1258,7 @@ Errors are not your enemy — they're your ally in building robust software. The
 
 **Exercise 10.4:** Write a function `safeGet(arr, index, default)` that returns `arr[index]` if valid, or `default` if the index is out of bounds. Do this *without* using try-catch (use conditional checks instead).
 
-**Exercise 10.5:** Write a program that parses a date string like "2024-03-15" into year, month, and day variables. Validate that each component is in a sensible range. Handle all possible errors with helpful messages.
+**Exercise 10.5:** Write a program that parses a date String like "2024-03-15" into year, month, and day variables. Validate that each component is in a sensible range. Handle all possible errors with helpful messages.
 
 **Exercise 10.6 (Challenge):** Create a configuration file parser that reads key=value pairs from a file. Handle: missing files (create default), invalid lines (skip with warning), duplicate keys (use last value), and missing required keys (error with specific message). Log all warnings and errors.
 

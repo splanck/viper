@@ -17,8 +17,8 @@ Consider a program that downloads 100 images:
 ```rust
 // Sequential: ~100 seconds (1 second per image)
 for url in imageUrls {
-    var image = Http.get(url);
-    images.push(image);
+    var image = Http.Get(url);
+    images.Push(image);
 }
 ```
 
@@ -30,12 +30,12 @@ Now imagine downloading them in parallel:
 // Parallel: ~1-2 seconds (all at once)
 var tasks = [];
 for url in imageUrls {
-    tasks.push(Thread.spawn(func() {
-        return Http.get(url);
+    tasks.Push(Thread.spawn(func() {
+        return Http.Get(url);
     }));
 }
 for task in tasks {
-    images.push(task.result());
+    images.Push(task.result());
 }
 ```
 
@@ -158,15 +158,15 @@ Some computations can be split across multiple cores. Sorting a million numbers 
 ```rust
 func parallelSum(numbers: [Integer]) -> Integer {
     var numCores = 4;
-    var chunkSize = numbers.length / numCores;
+    var chunkSize = numbers.Length / numCores;
     var threads: [Thread<Integer>] = [];
 
     // Launch parallel workers
     for i in 0..numCores {
         var start = i * chunkSize;
-        var end = if i == numCores - 1 { numbers.length } else { (i + 1) * chunkSize };
+        var end = if i == numCores - 1 { numbers.Length } else { (i + 1) * chunkSize };
 
-        threads.push(Thread.spawn(func() {
+        threads.Push(Thread.spawn(func() {
             var sum = 0;
             for j in start..end {
                 sum += numbers[j];
@@ -224,8 +224,8 @@ var t2 = Thread.spawn(func() {
     }
 });
 
-t1.join();
-t2.join();
+t1.Join();
+t2.Join();
 
 Terminal.Say("Counter: " + counter);
 // Expected: 200000
@@ -322,7 +322,7 @@ func start() {
 
     Terminal.Say("Main thread continues");
 
-    thread.join();  // Wait for worker to finish
+    thread.Join();  // Wait for worker to finish
 
     Terminal.Say("All done");
 }
@@ -330,7 +330,7 @@ func start() {
 
 `Thread.spawn` creates a new thread that runs the provided function. The main thread continues immediately — it doesn't wait for the worker.
 
-`thread.join()` blocks until the thread completes. Without it, the main thread might exit while the worker is still running.
+`thread.Join()` blocks until the thread completes. Without it, the main thread might exit while the worker is still running.
 
 ### Unpredictable Interleaving
 
@@ -393,15 +393,15 @@ func processChunk(data: [Integer], start: Integer, end: Integer) -> Integer {
 
 func parallelSum(data: [Integer]) -> Integer {
     var numThreads = 4;
-    var chunkSize = data.length / numThreads;
+    var chunkSize = data.Length / numThreads;
     var threads: [Thread<Integer>] = [];
 
     // Launch threads
     for i in 0..numThreads {
         var start = i * chunkSize;
-        var end = if i == numThreads - 1 { data.length } else { (i + 1) * chunkSize };
+        var end = if i == numThreads - 1 { data.Length } else { (i + 1) * chunkSize };
 
-        threads.push(Thread.spawn(func() {
+        threads.Push(Thread.spawn(func() {
             return processChunk(data, start, end);
         }));
     }
@@ -450,8 +450,8 @@ var t2 = Thread.spawn(func() {
     }
 });
 
-t1.join();
-t2.join();
+t1.Join();
+t2.Join();
 
 Terminal.Say("Counter: " + counter);  // Always 200000
 ```
@@ -545,7 +545,7 @@ An atomic operation completes as an indivisible unit. No thread can see it "half
 ```rust
 bind Viper.Threading;
 
-var counter = Atomic<Integer>.create(0);
+var counter = new Atomic[Integer](0);
 
 var t1 = Thread.spawn(func() {
     for i in 0..100000 {
@@ -559,10 +559,10 @@ var t2 = Thread.spawn(func() {
     }
 });
 
-t1.join();
-t2.join();
+t1.Join();
+t2.Join();
 
-Terminal.Say("Counter: " + counter.get());  // Always 200000
+Terminal.Say("Counter: " + counter.Get());  // Always 200000
 ```
 
 Atomic operations available:
@@ -585,7 +585,7 @@ Use mutexes for:
 
 ```rust
 // Atomic is perfect for a simple counter
-var visitCount = Atomic<Integer>.create(0);
+var visitCount = new Atomic[Integer](0);
 visitCount.increment();
 
 // Mutex needed for complex update
@@ -607,15 +607,15 @@ Viper provides collections that handle synchronization internally:
 ```rust
 bind Viper.Threading;
 
-var safeList = ConcurrentList<String>.create();
+var safeList = new ConcurrentList[String]();
 
 // Multiple threads can safely add items
 Thread.spawn(func() {
-    safeList.add("item1");
+    safeList.Add("item1");
 });
 
 Thread.spawn(func() {
-    safeList.add("item2");
+    safeList.Add("item2");
 });
 ```
 
@@ -623,8 +623,8 @@ These collections use internal locking or lock-free algorithms. They're convenie
 
 ```rust
 // STILL A RACE CONDITION despite thread-safe collection
-if !safeList.contains("item") {
-    safeList.add("item");  // Another thread might add between check and add!
+if !safeList.Contains("item") {
+    safeList.Add("item");  // Another thread might add between check and add!
 }
 ```
 
@@ -644,7 +644,7 @@ bind Viper.Terminal;
 bind Viper.Time;
 
 func start() {
-    var channel = Channel<String>.create();
+    var channel = new Channel[String]();
 
     // Producer thread
     var producer = Thread.spawn(func() {
@@ -652,7 +652,7 @@ func start() {
             channel.send("Message " + i);
             Time.Clock.Sleep(100);
         }
-        channel.close();
+        channel.Close();
     });
 
     // Consumer thread
@@ -666,8 +666,8 @@ func start() {
         }
     });
 
-    producer.join();
-    consumer.join();
+    producer.Join();
+    consumer.Join();
 }
 ```
 
@@ -677,16 +677,16 @@ A channel is like a pipe. One end sends data, the other receives. The channel ha
 
 - `channel.send(value)` puts a value into the channel
 - `channel.receive()` takes a value out (waits if empty)
-- `channel.close()` signals no more data is coming
+- `channel.Close()` signals no more data is coming
 
 ### Buffered vs. Unbuffered Channels
 
 ```rust
 // Unbuffered: send blocks until receive
-var channel = Channel<Integer>.create();
+var channel = new Channel[Integer]();
 
 // Buffered: can hold 10 items before blocking
-var buffered = Channel<Integer>.create(10);
+var buffered = new Channel[Integer](10);
 ```
 
 An unbuffered channel synchronizes sender and receiver — the sender blocks until someone receives. This is *rendezvous* style communication.
@@ -698,8 +698,8 @@ A buffered channel allows the sender to continue (up to the buffer size) without
 Sometimes you need to receive from whichever channel has data first:
 
 ```rust
-var chan1 = Channel<String>.create();
-var chan2 = Channel<String>.create();
+var chan1 = new Channel[String]();
+var chan2 = new Channel[String]();
 
 // In another thread: sending to chan1
 // In another thread: sending to chan2
@@ -732,7 +732,7 @@ func queryDatabase(query: String) -> Result {
     try {
         var connection = Database.connect();
         var result = connection.execute(query);
-        connection.close();
+        connection.Close();
         return result;
     } finally {
         dbSemaphore.release();  // Return the "permit"
@@ -788,17 +788,17 @@ for i in 0..10 {
     var future = pool.submitWithResult(func() -> Integer {
         return expensiveCalculation(i);
     });
-    futures.push(future);
+    futures.Push(future);
 }
 
 // Collect results
 for future in futures {
-    var result = future.get();  // Blocks until ready
+    var result = future.Get();  // Blocks until ready
     Terminal.Say("Result: " + result);
 }
 ```
 
-A `Future` represents a value that will be available later. `future.get()` blocks until the computation completes, then returns the result.
+A `Future` represents a value that will be available later. `future.Get()` blocks until the computation completes, then returns the result.
 
 ---
 
@@ -818,14 +818,14 @@ async func processUrls(urls: [String]) {
     // Fetch all in parallel
     var tasks = [];
     for url in urls {
-        tasks.push(fetchData(url));
+        tasks.Push(fetchData(url));
     }
 
     // Wait for all to complete
-    var results = await Async.all(tasks);
+    var results = await Async.All(tasks);
 
     for result in results {
-        Terminal.Say("Got: " + result.length + " bytes");
+        Terminal.Say("Got: " + result.Length + " bytes");
     }
 }
 
@@ -875,8 +875,8 @@ var t2 = Thread.spawn(func() {
     mutex2.unlock();
 });
 
-t1.join();  // Waits forever
-t2.join();
+t1.Join();  // Waits forever
+t2.Join();
 ```
 
 ### Visualizing Deadlock
@@ -1000,7 +1000,7 @@ func start() {
     var t = Thread.spawn(func() {
         doImportantWork();
     });
-    t.join();
+    t.Join();
 }
 ```
 
@@ -1009,19 +1009,19 @@ func start() {
 ```rust
 // Bad: Race condition
 var data = [];
-Thread.spawn(func() { data.push("A"); });
-Thread.spawn(func() { data.push("B"); });
+Thread.spawn(func() { data.Push("A"); });
+Thread.spawn(func() { data.Push("B"); });
 
 // Good: Use thread-safe collection
-var data = ConcurrentList<String>.create();
-Thread.spawn(func() { data.add("A"); });
-Thread.spawn(func() { data.add("B"); });
+var data = new ConcurrentList[String]();
+Thread.spawn(func() { data.Add("A"); });
+Thread.spawn(func() { data.Add("B"); });
 
 // Or use mutex
 var data = [];
 var mutex = Mutex.create();
 Thread.spawn(func() {
-    mutex.synchronized(func() { data.push("A"); });
+    mutex.synchronized(func() { data.Push("A"); });
 });
 ```
 
@@ -1030,14 +1030,14 @@ Thread.spawn(func() {
 ```rust
 // Bad: Holds lock during slow I/O
 mutex.lock();
-var data = Http.get(slowUrl);  // Blocks other threads for seconds!
+var data = Http.Get(slowUrl);  // Blocks other threads for seconds!
 process(data);
 mutex.unlock();
 
 // Good: Only lock for shared data access
-var data = Http.get(slowUrl);  // No lock needed here
+var data = Http.Get(slowUrl);  // No lock needed here
 mutex.lock();
-sharedResults.push(data);      // Only lock for shared access
+sharedResults.Push(data);      // Only lock for shared access
 mutex.unlock();
 ```
 
@@ -1074,9 +1074,9 @@ mutex.synchronized(func() {
 
 ```rust
 // Bad: Gap between check and action
-if !cache.contains(key) {
+if !cache.Contains(key) {
     // Another thread might add key here!
-    cache.set(key, computeValue());
+    cache.Set(key, computeValue());
 }
 
 // Good: Atomic check-and-set
@@ -1100,13 +1100,13 @@ func stressTest() {
     for trial in 0..1000 {
         var threads: [Thread<void>] = [];
         for i in 0..100 {
-            threads.push(Thread.spawn(func() {
+            threads.Push(Thread.spawn(func() {
                 // Run the suspicious code
                 suspiciousOperation();
             }));
         }
         for t in threads {
-            t.join();
+            t.Join();
         }
         // Verify invariants
         if !checkInvariants() {
@@ -1204,7 +1204,7 @@ value ImageTask {
 
 entity ParallelProcessor {
     hide pool: ThreadPool;
-    hide completedCount: Atomic<Integer>;
+    hide completedCount: Atomic[Integer];
     hide totalCount: Integer;
 
     expose func init(numWorkers: Integer) {
@@ -1214,19 +1214,19 @@ entity ParallelProcessor {
     }
 
     func process(tasks: [ImageTask]) {
-        self.totalCount = tasks.length;
+        self.totalCount = tasks.Length;
         var futures: [Future<Boolean>] = [];
 
         for task in tasks {
             var future = self.pool.submitWithResult(func() -> Boolean {
                 return self.processImage(task);
             });
-            futures.push(future);
+            futures.Push(future);
         }
 
         // Progress reporting in main thread
-        while self.completedCount.get() < self.totalCount {
-            var done = self.completedCount.get();
+        while self.completedCount.Get() < self.totalCount {
+            var done = self.completedCount.Get();
             var percent = (done * 100) / self.totalCount;
             Terminal.Say("Progress: " + percent + "% (" + done + "/" + self.totalCount + ")");
             Time.Clock.Sleep(500);
@@ -1235,7 +1235,7 @@ entity ParallelProcessor {
         // Collect results
         var successCount = 0;
         for future in futures {
-            if future.get() {
+            if future.Get() {
                 successCount += 1;
             }
         }
@@ -1288,15 +1288,15 @@ func start() {
     var tasks: [ImageTask] = [];
 
     for file in files {
-        if file.endsWith(".jpg") || file.endsWith(".png") {
-            tasks.push(ImageTask {
+        if file.EndsWith(".jpg") || file.EndsWith(".png") {
+            tasks.Push(ImageTask {
                 inputPath: "input_images/" + file,
                 outputPath: "output_images/" + file
             });
         }
     }
 
-    Terminal.Say("Processing " + tasks.length + " images...");
+    Terminal.Say("Processing " + tasks.Length + " images...");
 
     var processor = ParallelProcessor(4);  // 4 worker threads
     processor.process(tasks);
@@ -1334,7 +1334,7 @@ bind Viper.Terminal;
 var thread = Thread.spawn(func() {
     Terminal.Say("In thread");
 });
-thread.join();
+thread.Join();
 
 var mutex = Mutex.create();
 mutex.lock();

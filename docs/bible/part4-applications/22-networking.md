@@ -257,7 +257,7 @@ Step 6: Connection Close
 +---------+                            +-----------+
 ```
 
-All of this happens in milliseconds. The complexity is hidden behind simple functions like `Http.get()`.
+All of this happens in milliseconds. The complexity is hidden behind simple functions like `Http.Get()`.
 
 ---
 
@@ -287,7 +287,7 @@ bind Viper.Terminal;
 
 func start() {
     // Fetch a web page
-    var response = Http.get("https://api.example.com/data");
+    var response = Http.Get("https://api.example.com/data");
 
     if response.ok {
         Terminal.Say("Got response:");
@@ -300,7 +300,7 @@ func start() {
 
 Let's trace through what this code actually does:
 
-1. `Http.get()` is called with a URL
+1. `Http.Get()` is called with a URL
 2. Internally, it parses the URL to extract the host (`api.example.com`) and path (`/data`)
 3. It performs a DNS lookup to get the IP address
 4. It opens a TCP connection to that IP on port 443 (HTTPS)
@@ -319,7 +319,7 @@ HTTP defines several methods (also called verbs) for different purposes. Each me
 
 ```rust
 // GET - retrieve data
-var users = Http.get("https://api.example.com/users");
+var users = Http.Get("https://api.example.com/users");
 ```
 
 **POST**: Create new data. "Here's something new." This typically modifies the server, adding new resources.
@@ -346,7 +346,7 @@ var updated = Http.put("https://api.example.com/users/123", {
 
 ```rust
 // DELETE - remove data
-var deleted = Http.delete("https://api.example.com/users/123");
+var deleted = Http.Delete("https://api.example.com/users/123");
 ```
 
 These methods map to CRUD operations (Create, Read, Update, Delete) that are fundamental to most applications:
@@ -378,7 +378,7 @@ func fetchWeather(city: String) -> Weather? {
     var url = "https://api.weather.example.com/current?city=" + city;
 
     // Make the request
-    var response = Http.get(url);
+    var response = Http.Get(url);
 
     // Check if the request succeeded
     if !response.ok {
@@ -389,7 +389,7 @@ func fetchWeather(city: String) -> Weather? {
     // Parse the JSON response
     // The response body might look like:
     // {"temp": 72.5, "conditions": "Sunny", "humidity": 45.0}
-    var data = JSON.parse(response.body);
+    var data = JSON.Parse(response.body);
 
     // Extract the fields we need
     return Weather {
@@ -418,7 +418,7 @@ Let's trace through the JSON parsing:
 Server Response (text):
 {"temp": 72.5, "conditions": "Sunny", "humidity": 45.0}
 
-After JSON.parse():
+After JSON.Parse():
 data is now a JSON object where:
   data["temp"] is a JSON number containing 72.5
   data["conditions"] is a JSON string containing "Sunny"
@@ -461,16 +461,16 @@ func start() {
 
     // Send data (write to the socket)
     // This is like talking into the phone
-    socket.write("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
+    socket.Write("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 
     // Receive response (read from the socket)
     // This is like listening to the other person
     var response = socket.readAll();
-    Terminal.Say("Received " + response.length + " bytes");
+    Terminal.Say("Received " + response.Length + " bytes");
     Terminal.Say(response);
 
     // Close the connection (hang up the phone)
-    socket.close();
+    socket.Close();
 }
 ```
 
@@ -483,7 +483,7 @@ Step 1: TcpSocket.connect("example.com", 80)
    - TCP three-way handshake with 93.184.216.34:80
    - Return the connected socket
 
-Step 2: socket.write("GET / HTTP/1.1\r\n...")
+Step 2: socket.Write("GET / HTTP/1.1\r\n...")
    - Convert string to bytes
    - Pass bytes to OS network stack
    - OS sends TCP packet(s) to server
@@ -495,7 +495,7 @@ Step 3: socket.readAll()
    - Reassemble into continuous byte stream
    - Return as string when connection closes or all data received
 
-Step 4: socket.close()
+Step 4: socket.Close()
    - Send TCP FIN packet
    - Wait for server's FIN
    - Release OS resources
@@ -526,15 +526,15 @@ func start() {
         Terminal.Say("Client connected from " + client.remoteAddress());
 
         // Read what the client sent
-        var message = client.readLine();
+        var message = client.ReadLine();
         Terminal.Say("Client said: " + message);
 
         // Send a response
-        client.write("Hello, client! You said: " + message + "\n");
+        client.Write("Hello, client! You said: " + message + "\n");
 
         // Close this client connection
         // The server keeps running, ready for more clients
-        client.close();
+        client.Close();
         Terminal.Say("Client disconnected");
     }
 }
@@ -635,26 +635,26 @@ entity ChatServer {
 
             if newClient != null {
                 // A new client connected!
-                self.clients.push(newClient);
+                self.clients.Push(newClient);
                 self.broadcast("*** A new user has joined ***");
-                Terminal.Say("New client connected. Total clients: " + self.clients.length);
+                Terminal.Say("New client connected. Total clients: " + self.clients.Length);
             }
 
             // Step 2: Check each client for incoming messages
             var i = 0;
-            while i < self.clients.length {
+            while i < self.clients.Length {
                 var client = self.clients[i];
 
                 // hasData() checks if the client sent anything without blocking
                 if client.hasData() {
-                    var message = client.readLine();
+                    var message = client.ReadLine();
 
                     if message == null || message == "/quit" {
                         // Client disconnected or wants to leave
                         self.clients.remove(i);
                         self.broadcast("*** A user has left ***");
-                        client.close();
-                        Terminal.Say("Client disconnected. Total clients: " + self.clients.length);
+                        client.Close();
+                        Terminal.Say("Client disconnected. Total clients: " + self.clients.Length);
                         // Don't increment i; the next client shifted into this position
                         continue;
                     }
@@ -675,7 +675,7 @@ entity ChatServer {
     // Send a message to all connected clients
     func broadcast(message: String) {
         for client in self.clients {
-            client.write(message + "\n");
+            client.Write(message + "\n");
         }
     }
 
@@ -685,12 +685,12 @@ entity ChatServer {
 
         // Close all client connections
         for client in self.clients {
-            client.write("*** Server shutting down ***\n");
-            client.close();
+            client.Write("*** Server shutting down ***\n");
+            client.Close();
         }
 
         // Close the server socket
-        self.server.close();
+        self.server.Close();
         Terminal.Say("Server stopped");
     }
 }
@@ -785,17 +785,17 @@ entity ChatClient {
 
             if input == "/quit" {
                 self.running = false;
-                self.socket.write("/quit\n");
+                self.socket.Write("/quit\n");
                 break;
             }
 
             // Send the message (prefixed with username)
-            self.socket.write(self.username + ": " + input + "\n");
+            self.socket.Write(self.username + ": " + input + "\n");
         }
 
         // Wait for the receiver thread to finish
-        receiver.join();
-        self.socket.close();
+        receiver.Join();
+        self.socket.Close();
         Terminal.Say("Disconnected from server.");
     }
 
@@ -804,7 +804,7 @@ entity ChatClient {
         while self.running {
             // Check if server sent anything
             if self.socket.hasData() {
-                var message = self.socket.readLine();
+                var message = self.socket.ReadLine();
 
                 if message == null {
                     // Server closed connection
@@ -839,13 +839,13 @@ The client uses two threads --- one for sending and one for receiving. This is n
 Main Thread                     Receiver Thread
     |                               |
     |   Terminal.Ask()              |   socket.hasData()?
-    |   (waiting for input...)      |   socket.readLine()
+    |   (waiting for input...)      |   socket.ReadLine()
     |                               |   Terminal.Say()
     |                               |
     v                               v
 User types "Hello"              Server sends "Bob: Hi"
     |                               |
-    |   socket.write()              |   Terminal.Say("Bob: Hi")
+    |   socket.Write()              |   Terminal.Say("Bob: Hi")
     |                               |
 ```
 
@@ -873,7 +873,7 @@ func sendUdpMessage() {
     // Can send to different destinations with same socket
     socket.send("Hi there!", "192.168.1.101", 5000);
 
-    socket.close();
+    socket.Close();
 }
 
 // UDP receiver
@@ -949,7 +949,7 @@ entity GameNetwork {
             // Only use recent states - discard old ones
             var now = Time.Clock.Ticks();
             if now - state.timestamp < 1000 {  // Less than 1 second old
-                states.push(state);
+                states.Push(state);
             }
         }
 
@@ -1036,7 +1036,7 @@ entity WebSocketClient {
     }
 
     func close() {
-        self.ws.close();
+        self.ws.Close();
     }
 }
 
@@ -1048,7 +1048,7 @@ func start() {
     while true {
         var input = Terminal.Ask("");
         if input == "/quit" {
-            client.close();
+            client.Close();
             break;
         }
         client.send(input);
@@ -1085,7 +1085,7 @@ func demonstrateFailures() {
 
     // Failure 2: Connection drops mid-conversation
     // WiFi cuts out, server crashes, network cable unplugged
-    var response = socket.readLine();
+    var response = socket.ReadLine();
     if response == null {
         Terminal.Say("Connection lost while reading");
     }
@@ -1096,7 +1096,7 @@ func demonstrateFailures() {
 
     // Failure 4: Server returns error
     // We connected and communicated, but server said "no"
-    var httpResponse = Http.get("https://api.example.com/resource");
+    var httpResponse = Http.Get("https://api.example.com/resource");
     if httpResponse.statusCode == 404 {
         Terminal.Say("Resource not found");
     } else if httpResponse.statusCode == 500 {
@@ -1120,7 +1120,7 @@ func robustFetch(url: String, maxRetries: Integer) -> String? {
     while retries < maxRetries {
         try {
             // Set a timeout so we don't wait forever
-            var response = Http.get(url, { timeout: 5000 });
+            var response = Http.Get(url, { timeout: 5000 });
 
             if response.ok {
                 return response.body;  // Success!
@@ -1189,10 +1189,10 @@ Always set timeouts:
 
 ```rust
 // Without timeout - could hang forever if server doesn't respond
-var response = Http.get(url);  // Dangerous!
+var response = Http.Get(url);  // Dangerous!
 
 // With timeout - give up after 5 seconds
-var response = Http.get(url, { timeout: 5000 });
+var response = Http.Get(url, { timeout: 5000 });
 
 // For sockets, set timeouts explicitly
 var socket = TcpSocket.connect(host, port, { timeout: 3000 });
@@ -1228,7 +1228,7 @@ func fetchData(host: String, port: Integer) -> String {
 func fetchData(host: String, port: Integer) -> String {
     var socket = TcpSocket.connect(host, port);
     var data = socket.readAll();
-    socket.close();  // Clean up!
+    socket.Close();  // Clean up!
     return data;
 }
 
@@ -1245,7 +1245,7 @@ func fetchData(host: String, port: Integer) -> String? {
         return data;
     } finally {
         // 'finally' runs whether try succeeded or failed
-        socket.close();
+        socket.Close();
     }
 }
 ```
@@ -1257,14 +1257,14 @@ Network operations can take seconds. If your main thread waits for network respo
 ```rust
 // BAD: Freezes entire program during fetch
 func onButtonClick() {
-    var data = Http.get(slowUrl);  // User can't click anything for 10 seconds!
+    var data = Http.Get(slowUrl);  // User can't click anything for 10 seconds!
     updateDisplay(data);
 }
 
 // GOOD: Use a separate thread
 func onButtonClick() {
     Thread.spawn(func() {
-        var data = Http.get(slowUrl);
+        var data = Http.Get(slowUrl);
 
         // Update UI from main thread
         runOnMainThread(func() {
@@ -1283,14 +1283,14 @@ When you read from a socket, you might not get all the data at once. Networks de
 
 ```rust
 // BAD: Assumes all data comes at once
-var message = socket.read(1024);  // Might get less than 1024 bytes!
+var message = socket.Read(1024);  // Might get less than 1024 bytes!
 
 // GOOD: Read until you have what you need
 func readExactly(socket: TcpSocket, count: Integer) -> String {
     var result = "";
 
-    while result.length < count {
-        var chunk = socket.read(count - result.length);
+    while result.Length < count {
+        var chunk = socket.Read(count - result.Length);
         if chunk == null {
             // Connection closed before we got all data
             return null;
@@ -1309,20 +1309,20 @@ Data from the network is untrusted. It might be malformed, malicious, or just wr
 ```rust
 // BAD: Trusts network data blindly
 var packet = socket.receive();
-var index = packet.data.toInt();
+var index = Convert.ToInt64(packet.data);
 myArray[index] = value;  // What if index is negative? Or huge?
 
 // GOOD: Validate everything
 var packet = socket.receive();
 
-if packet.data.length > 100 {
+if packet.data.Length > 100 {
     Terminal.Say("Packet too large, ignoring");
     return;
 }
 
-var index = packet.data.toInt();
+var index = Convert.ToInt64(packet.data);
 
-if index < 0 || index >= myArray.length {
+if index < 0 || index >= myArray.Length {
     Terminal.Say("Invalid index received, ignoring");
     return;
 }
@@ -1336,25 +1336,25 @@ Both sides need to agree on message format. Without a clear protocol, you get gi
 
 ```rust
 // BAD: No clear message format
-socket.write("Alice");
-socket.write("25");
-socket.write("Hello");
+socket.Write("Alice");
+socket.Write("25");
+socket.Write("Hello");
 // Receiver gets "Alice25Hello" - how to separate?
 
 // GOOD: Define a clear protocol
 // Option 1: Newline-delimited
-socket.write("Alice\n");
-socket.write("25\n");
-socket.write("Hello\n");
+socket.Write("Alice\n");
+socket.Write("25\n");
+socket.Write("Hello\n");
 
 // Option 2: Length-prefixed
 func sendMessage(socket: TcpSocket, message: String) {
-    var length = message.length;
-    socket.write(length + ":" + message);  // "5:Hello"
+    var length = message.Length;
+    socket.Write(length + ":" + message);  // "5:Hello"
 }
 
 // Option 3: Use a standard format like JSON
-socket.write('{"name":"Alice","age":25,"message":"Hello"}\n');
+socket.Write('{"name":"Alice","age":25,"message":"Hello"}\n');
 ```
 
 ### Mistake 6: Not Handling Connection Resets
@@ -1364,7 +1364,7 @@ Servers restart. Connections break. Your code needs to detect this and recover.
 ```rust
 // BAD: Assumes connection lasts forever
 while true {
-    var message = socket.readLine();
+    var message = socket.ReadLine();
     process(message);
 }
 // If socket breaks, readLine returns null, and process(null) crashes
@@ -1392,12 +1392,12 @@ func reliableConnection(host: String, port: Integer) {
         }
 
         // Try to read
-        var message = socket.readLine();
+        var message = socket.ReadLine();
 
         if message == null {
             // Connection broke
             Terminal.Say("Disconnected!");
-            socket.close();
+            socket.Close();
             socket = null;
             continue;  // Loop will reconnect
         }
@@ -1439,11 +1439,11 @@ HTTPS uses certificates to prove the server is who it claims to be. Don't disabl
 
 ```rust
 // DANGEROUS: Disables security
-Http.get(url, { verifyCertificate: false });
+Http.Get(url, { verifyCertificate: false });
 // You might be talking to an attacker pretending to be the server
 
 // SAFE: Always verify (this is the default)
-Http.get(url);  // Certificate verified automatically
+Http.Get(url);  // Certificate verified automatically
 ```
 
 ### Don't Trust Network Input
@@ -1452,28 +1452,28 @@ Anything received from the network should be treated as potentially malicious.
 
 ```rust
 // User sends a filename they want to download
-var filename = socket.readLine();
+var filename = socket.ReadLine();
 
 // BAD: Might download any file!
-var contents = File.read("/data/" + filename);
+var contents = File.Read("/data/" + filename);
 // If filename is "../../../etc/passwd", you're exposing system files
 
 // GOOD: Validate and sanitize
-var filename = socket.readLine();
+var filename = socket.ReadLine();
 
 // Check for path traversal attacks
-if filename.contains("..") || filename.contains("/") || filename.contains("\\") {
-    socket.write("Invalid filename\n");
+if filename.Contains("..") || filename.Contains("/") || filename.Contains("\\") {
+    socket.Write("Invalid filename\n");
     return;
 }
 
 // Only allow certain file extensions
-if !filename.endsWith(".txt") && !filename.endsWith(".json") {
-    socket.write("Invalid file type\n");
+if !filename.EndsWith(".txt") && !filename.EndsWith(".json") {
+    socket.Write("Invalid file type\n");
     return;
 }
 
-var contents = File.read("/data/" + filename);
+var contents = File.Read("/data/" + filename);
 ```
 
 ### Rate Limiting
@@ -1485,12 +1485,12 @@ bind Viper.Time;
 
 entity RateLimitedServer {
     // Track requests per IP address
-    hide requestCounts: Map<String, Integer>;
+    hide requestCounts: Map[String, Integer];
     hide lastReset: Integer;
     hide maxRequestsPerMinute: Integer;
 
     expose func init() {
-        self.requestCounts = Map.new();
+        self.requestCounts = new Map();
         self.lastReset = Time.Clock.Ticks();
         self.maxRequestsPerMinute = 100;
     }
@@ -1501,21 +1501,21 @@ entity RateLimitedServer {
 
         // Reset counts every minute
         if now - self.lastReset > 60000 {
-            self.requestCounts = Map.new();
+            self.requestCounts = new Map();
             self.lastReset = now;
         }
 
         // Check rate limit
-        var count = self.requestCounts.get(ip, 0);
+        var count = self.requestCounts.Get(ip, 0);
 
         if count >= self.maxRequestsPerMinute {
-            client.write("Rate limit exceeded. Please slow down.\n");
-            client.close();
+            client.Write("Rate limit exceeded. Please slow down.\n");
+            client.Close();
             return;
         }
 
         // Record this request
-        self.requestCounts.set(ip, count + 1);
+        self.requestCounts.Set(ip, count + 1);
 
         // Process normally
         processRequest(client);
@@ -1529,12 +1529,12 @@ Never embed passwords, API keys, or tokens in your source code.
 
 ```rust
 // BAD: API key in source code
-var response = Http.get("https://api.example.com/data?key=sk_live_abc123xyz");
+var response = Http.Get("https://api.example.com/data?key=sk_live_abc123xyz");
 // If someone sees your code, they have your key
 
 // GOOD: Load from environment or config
-var apiKey = Viper.Environment.get("API_KEY");
-var response = Http.get("https://api.example.com/data?key=" + apiKey);
+var apiKey = Viper.Environment.Get("API_KEY");
+var response = Http.Get("https://api.example.com/data?key=" + apiKey);
 ```
 
 ---
@@ -1555,13 +1555,13 @@ func debugFetch(url: String) -> String? {
 
     try {
         Terminal.Say("[DEBUG] Making HTTP request...");
-        var response = Http.get(url, { timeout: 5000 });
+        var response = Http.Get(url, { timeout: 5000 });
 
         Terminal.Say("[DEBUG] Response status: " + response.statusCode);
         Terminal.Say("[DEBUG] Response headers: " + response.headers);
-        Terminal.Say("[DEBUG] Response body length: " + response.body.length);
+        Terminal.Say("[DEBUG] Response body length: " + response.body.Length);
         Terminal.Say("[DEBUG] Response body (first 200 chars): " +
-                     response.body.substring(0, 200));
+                     response.body.Substring(0, 200));
 
         if response.ok {
             Terminal.Say("[DEBUG] Success!");
@@ -1599,7 +1599,7 @@ if socket == null {
 ```rust
 bind Viper.Terminal;
 
-socket.write("test\n");
+socket.Write("test\n");
 Terminal.Say("Data sent successfully");
 // If this fails, connection might have dropped
 ```
@@ -1608,7 +1608,7 @@ Terminal.Say("Data sent successfully");
 ```rust
 bind Viper.Terminal;
 
-var response = socket.readLine();
+var response = socket.ReadLine();
 if response == null {
     Terminal.Say("No response from server");
     Terminal.Say("Check: Is server expecting different input format?");
@@ -1620,7 +1620,7 @@ if response == null {
 Before debugging your code, verify the server works with known-good tools:
 
 ```rust
-// If Http.get("https://api.example.com") fails...
+// If Http.Get("https://api.example.com") fails...
 
 // Step 1: Can you reach the server at all?
 // Use ping or a web browser
@@ -1687,21 +1687,21 @@ value CityWeather {
 entity WeatherService {
     hide apiKey: String;
     hide baseUrl: String;
-    hide cache: Map<String, CityWeather>;
+    hide cache: Map[String, CityWeather];
     hide cacheTimeout: Integer;
 
     expose func init(apiKey: String) {
         self.apiKey = apiKey;
         self.baseUrl = "https://api.weather.example.com/v1";
-        self.cache = Map.new();
+        self.cache = new Map();
         self.cacheTimeout = 300000;  // 5 minutes
     }
 
     // Fetch weather for a city, using cache when possible
     func getWeather(city: String) -> CityWeather? {
         // Check cache first
-        if self.cache.has(city) {
-            var cached = self.cache.get(city);
+        if self.cache.Has(city) {
+            var cached = self.cache.Get(city);
             var age = Time.Clock.Ticks() - cached.lastUpdated;
 
             if age < self.cacheTimeout {
@@ -1715,21 +1715,21 @@ entity WeatherService {
                   Network.urlEncode(city) + "&key=" + self.apiKey;
 
         try {
-            var response = Http.get(url, { timeout: 10000 });
+            var response = Http.Get(url, { timeout: 10000 });
 
             if !response.ok {
                 Terminal.Say("API error for " + city + ": " + response.statusCode);
 
                 // If we have stale cache data, use it rather than nothing
-                if self.cache.has(city) {
+                if self.cache.Has(city) {
                     Terminal.Say("(Using stale cached data)");
-                    return self.cache.get(city);
+                    return self.cache.Get(city);
                 }
 
                 return null;
             }
 
-            var data = JSON.parse(response.body);
+            var data = JSON.Parse(response.body);
 
             var weather = CityWeather {
                 city: city,
@@ -1741,7 +1741,7 @@ entity WeatherService {
             };
 
             // Update cache
-            self.cache.set(city, weather);
+            self.cache.Set(city, weather);
 
             return weather;
 
@@ -1749,9 +1749,9 @@ entity WeatherService {
             Terminal.Say("Network error for " + city + ": " + e.message);
 
             // Return stale cache if available
-            if self.cache.has(city) {
+            if self.cache.Has(city) {
                 Terminal.Say("(Using stale cached data)");
-                return self.cache.get(city);
+                return self.cache.Get(city);
             }
 
             return null;
@@ -1777,7 +1777,7 @@ func displayWeather(weather: CityWeather) {
 }
 
 func padRight(s: String, width: Integer) -> String {
-    while s.length < width {
+    while s.Length < width {
         s = s + " ";
     }
     return s;
@@ -1833,21 +1833,21 @@ bind Viper.Network;
 bind Viper.Terminal;
 
 // HTTP request
-var response = Http.get("https://api.example.com/data");
+var response = Http.Get("https://api.example.com/data");
 if response.ok {
     Terminal.Say(response.body);
 }
 
 // TCP client
 var socket = TcpSocket.connect("example.com", 80);
-socket.write("Hello\n");
-var reply = socket.readLine();
-socket.close();
+socket.Write("Hello\n");
+var reply = socket.ReadLine();
+socket.Close();
 
 // UDP
 var udp = UdpSocket.create();
 udp.send("Hello", "192.168.1.100", 5000);
-udp.close();
+udp.Close();
 ```
 
 **BASIC**

@@ -819,7 +819,7 @@ The swap is nearly instantaneous, so the monitor never sees a half-finished draw
 var canvas = Canvas(800, 600, { doubleBuffered: true });
 
 while running {
-    canvas.clear();       // Clear the back buffer
+    canvas.Clear();       // Clear the back buffer
     drawEverything();     // Draw to back buffer
     canvas.flip();        // Swap buffers - back becomes front
 }
@@ -943,7 +943,7 @@ entity Game {
     }
 
     func add(obj: GameObject) {
-        self.objects.push(obj);
+        self.objects.Push(obj);
     }
 
     func run() {
@@ -990,8 +990,8 @@ entity Game {
 func start() {
     var game = Game(800, 600, "My Game");
 
-    game.add(GameObject(100, 100, 50, 50, Color.RED));
-    game.add(GameObject(300, 200, 30, 30, Color.BLUE));
+    game.Add(GameObject(100, 100, 50, 50, Color.RED));
+    game.Add(GameObject(300, 200, 30, 30, Color.BLUE));
 
     game.run();
 }

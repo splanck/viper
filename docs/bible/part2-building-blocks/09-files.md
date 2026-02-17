@@ -356,7 +356,7 @@ bind Viper.Terminal;
 
 var lines = readLines("data.txt");
 
-Say("File has " + lines.length + " lines");
+Say("File has " + lines.Length + " lines");
 
 for line in lines {
     Say("Line: " + line);
@@ -381,12 +381,12 @@ bind Viper.Terminal;
 var reader = openRead("huge.txt");
 
 while reader.hasMore() {
-    var line = reader.readLine();
+    var line = reader.ReadLine();
     // Process this one line
     Say(line);
 }
 
-reader.close();  // Don't forget!
+reader.Close();  // Don't forget!
 ```
 
 **What happens:**
@@ -412,7 +412,7 @@ reader.seek(100);
 // Read 50 bytes from that position
 var data = reader.readBytes(50);
 
-reader.close();
+reader.Close();
 ```
 
 This is more common with binary files (like reading specific parts of an image or database file).
@@ -471,13 +471,13 @@ bind Viper.IO.File;
 
 var writer = openWrite("output.txt");
 
-writer.writeLine("Header line");
+writer.WriteLine("Header line");
 
 for i in 0..1000 {
-    writer.writeLine("Data line " + i);
+    writer.WriteLine("Data line " + i);
 }
 
-writer.close();  // CRUCIAL: flushes buffered data to disk
+writer.Close();  // CRUCIAL: flushes buffered data to disk
 ```
 
 **Why streaming matters:**
@@ -494,11 +494,11 @@ bind Viper.IO.File;
 
 var writer = openWrite("critical.txt");
 
-writer.writeLine("Important data");
-writer.flush();  // Force buffered data to disk now
+writer.WriteLine("Important data");
+writer.Flush();  // Force buffered data to disk now
 
-writer.writeLine("More data");
-writer.close();  // Also flushes before closing
+writer.WriteLine("More data");
+writer.Close();  // Also flushes before closing
 ```
 
 Use `flush()` when you absolutely need data persisted immediately (like before a risky operation). But don't overuse it — flushing after every line is slow.
@@ -579,7 +579,7 @@ writeBytes("header.bin", data);
 
 // Reading binary data
 var bytes = readBytes("image.png");
-Say("File size: " + bytes.length + " bytes");
+Say("File size: " + bytes.Length + " bytes");
 
 // Check for PNG signature
 if bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 {
@@ -702,7 +702,7 @@ func findTextFiles(directory: String) {
         if exists(path) {
             // It's a directory, recurse into it
             findTextFiles(path);
-        } else if entry.endsWith(".txt") {
+        } else if entry.EndsWith(".txt") {
             Say("Found: " + path);
         }
     }
@@ -894,7 +894,7 @@ bind Viper.Terminal;
 func saveFile(filename: String, content: String) {
     if exists(filename) {
         Print("File exists. Overwrite? (y/n): ");
-        var response = ReadLine().trim().lower();
+        var response = ReadLine().Trim().ToLower();
         if response != "y" {
             Say("Save cancelled.");
             return;
@@ -939,14 +939,14 @@ Programs often store settings in configuration files:
 module Config;
 
 bind Viper.IO.File;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 bind Viper.Terminal;
 
 final CONFIG_FILE = "settings.cfg";
 
 // Simple key=value format
-func loadConfig() -> Map<String, String> {
-    var config = Map<String, String>();
+func loadConfig() -> Map[String, String] {
+    var config = new Map[String, String]();
 
     if !exists(CONFIG_FILE) {
         return config;  // Empty config if file doesn't exist
@@ -955,17 +955,17 @@ func loadConfig() -> Map<String, String> {
     var lines = readLines(CONFIG_FILE);
 
     for line in lines {
-        line = line.trim();
+        line = line.Trim();
 
         // Skip empty lines and comments
-        if line.length == 0 || line.startsWith("#") {
+        if line.Length == 0 || line.StartsWith("#") {
             continue;
         }
 
-        var parts = line.split("=");
-        if parts.length == 2 {
-            var key = parts[0].trim();
-            var value = parts[1].trim();
+        var parts = line.Split("=");
+        if parts.Length == 2 {
+            var key = parts[0].Trim();
+            var value = parts[1].Trim();
             config[key] = value;
         }
     }
@@ -973,17 +973,17 @@ func loadConfig() -> Map<String, String> {
     return config;
 }
 
-func saveConfig(config: Map<String, String>) {
+func saveConfig(config: Map[String, String]) {
     var lines: [String] = [];
-    lines.push("# Application settings");
-    lines.push("# Edit with care!");
-    lines.push("");
+    lines.Push("# Application settings");
+    lines.Push("# Edit with care!");
+    lines.Push("");
 
-    for key in config.keys() {
-        lines.push(key + "=" + config[key]);
+    for key in config.Keys() {
+        lines.Push(key + "=" + config[key]);
     }
 
-    var content = lines.join("\n");
+    var content = lines.Join("\n");
     writeText(CONFIG_FILE, content);
 }
 
@@ -992,8 +992,8 @@ func start() {
     var config = loadConfig();
 
     // Get setting with default
-    var theme = config.getOrDefault("theme", "light");
-    var volume = ToInt(config.getOrDefault("volume", "50"));
+    var theme = config.GetOrDefault("theme", "light");
+    var volume = Convert.ToInt64(config.GetOrDefault("volume", "50"));
 
     Say("Theme: " + theme);
     Say("Volume: " + volume);
@@ -1028,7 +1028,7 @@ final LOG_FILE = "application.log";
 
 func log(level: String, message: String) {
     var ts = Time.DateTime.Now();
-    var timestamp = Time.DateTime.Format(ts, "YYYY-MM-DD HH:mm:ss");
+    var timestamp = Time.DateTime.Format(ts, "%Y-%m-%d %H:%M:%S");
     var entry = "[" + timestamp + "] [" + level + "] " + message + "\n";
     appendText(LOG_FILE, entry);
 }
@@ -1079,7 +1079,7 @@ bind Viper.IO.Dir;
 bind Viper.IO.Path;
 bind Viper.IO.File;
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 final SAVE_DIR = "saves";
 
@@ -1102,14 +1102,14 @@ func save(data: SaveData, slot: Integer) {
     var filename = join(SAVE_DIR, "save_" + slot + ".dat");
 
     var lines: [String] = [];
-    lines.push("name=" + data.playerName);
-    lines.push("level=" + data.level);
-    lines.push("score=" + data.score);
-    lines.push("health=" + data.health);
-    lines.push("inventory=" + data.inventory.join(","));
-    lines.push("position=" + data.posX + "," + data.posY);
+    lines.Push("name=" + data.playerName);
+    lines.Push("level=" + data.level);
+    lines.Push("score=" + data.score);
+    lines.Push("health=" + data.health);
+    lines.Push("inventory=" + data.inventory.Join(","));
+    lines.Push("position=" + data.posX + "," + data.posY);
 
-    writeText(filename, lines.join("\n"));
+    writeText(filename, lines.Join("\n"));
     Say("Game saved to slot " + slot);
 }
 
@@ -1125,21 +1125,21 @@ func load(slot: Integer) -> SaveData? {
     var data = SaveData();
 
     for line in lines {
-        var parts = line.split("=");
-        if parts.length != 2 { continue; }
+        var parts = line.Split("=");
+        if parts.Length != 2 { continue; }
 
         var key = parts[0];
         var value = parts[1];
 
         if key == "name" { data.playerName = value; }
-        else if key == "level" { data.level = ToInt(value); }
-        else if key == "score" { data.score = ToInt(value); }
-        else if key == "health" { data.health = ToInt(value); }
-        else if key == "inventory" { data.inventory = value.split(","); }
+        else if key == "level" { data.level = Convert.ToInt64(value); }
+        else if key == "score" { data.score = Convert.ToInt64(value); }
+        else if key == "health" { data.health = Convert.ToInt64(value); }
+        else if key == "inventory" { data.inventory = value.Split(","); }
         else if key == "position" {
-            var coords = value.split(",");
-            data.posX = ToDouble(coords[0]);
-            data.posY = ToDouble(coords[1]);
+            var coords = value.Split(",");
+            data.posX = Convert.ToDouble(coords[0]);
+            data.posY = Convert.ToDouble(coords[1]);
         }
     }
 
@@ -1156,9 +1156,9 @@ func listSaves() -> [Integer] {
 
     var files = listFiles(SAVE_DIR);
     for file in files {
-        if file.startsWith("save_") && file.endsWith(".dat") {
-            var numStr = file.substring(5, file.length - 9);
-            saves.push(ToInt(numStr));
+        if file.StartsWith("save_") && file.EndsWith(".dat") {
+            var numStr = file.Substring(5, file.Length - 9);
+            saves.Push(Convert.ToInt64(numStr));
         }
     }
 
@@ -1178,23 +1178,23 @@ func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
     var lines: [String] = [];
 
     // Header row
-    lines.push(headers.join(","));
+    lines.Push(headers.Join(","));
 
     // Data rows
     for row in rows {
         // Escape commas and quotes in values
         var escapedRow: [String] = [];
         for value in row {
-            if value.contains(",") || value.contains("\"") {
-                value = "\"" + value.replace("\"", "\"\"") + "\"";
+            if value.Contains(",") || value.Contains("\"") {
+                value = "\"" + value.Replace("\"", "\"\"") + "\"";
             }
-            escapedRow.push(value);
+            escapedRow.Push(value);
         }
-        lines.push(escapedRow.join(","));
+        lines.Push(escapedRow.Join(","));
     }
 
-    writeText(filename, lines.join("\n"));
-    Say("Exported " + rows.length + " rows to " + filename);
+    writeText(filename, lines.Join("\n"));
+    Say("Exported " + rows.Length + " rows to " + filename);
 }
 
 // Usage
@@ -1221,11 +1221,11 @@ func importFromCSV(filename: String) -> [[String]] {
     var lines = readLines(filename);
 
     for line in lines {
-        if line.trim().length == 0 { continue; }
+        if line.Trim().Length == 0 { continue; }
 
         // Simple split (doesn't handle quoted commas)
-        var values = line.split(",");
-        rows.push(values);
+        var values = line.Split(",");
+        rows.Push(values);
     }
 
     return rows;
@@ -1235,8 +1235,8 @@ func importFromCSV(filename: String) -> [[String]] {
 var data = importFromCSV("people.csv");
 var headers = data[0];
 
-Say("Columns: " + headers.join(", "));
-Say("Data rows: " + (data.length - 1));
+Say("Columns: " + headers.Join(", "));
+Say("Data rows: " + (data.Length - 1));
 ```
 
 ---
@@ -1265,8 +1265,8 @@ func loadNotes() -> [String] {
         // Filter out empty lines
         var notes: [String] = [];
         for line in lines {
-            if line.trim().length > 0 {
-                notes.push(line);
+            if line.Trim().Length > 0 {
+                notes.Push(line);
             }
         }
         return notes;
@@ -1301,7 +1301,7 @@ func saveNotes(notes: [String]) -> Boolean {
     // Write to temporary file first
     var tempFile = NOTES_FILE + ".tmp";
     try {
-        var content = notes.join("\n");
+        var content = notes.Join("\n");
         writeText(tempFile, content);
 
         // Delete old file and rename temp to real
@@ -1325,7 +1325,7 @@ func saveNotes(notes: [String]) -> Boolean {
 
 // Display all notes
 func displayNotes(notes: [String]) {
-    if notes.length == 0 {
+    if notes.Length == 0 {
         Say("No notes yet.");
         Say("Use 'add' to create your first note!");
         return;
@@ -1333,7 +1333,7 @@ func displayNotes(notes: [String]) {
 
     Say("");
     Say("=== Your Notes ===");
-    for i in 0..notes.length {
+    for i in 0..notes.Length {
         Say((i + 1) + ". " + notes[i]);
     }
     Say("==================");
@@ -1362,13 +1362,13 @@ func start() {
     Say("Type 'help' for commands");
     Say("");
 
-    if notes.length > 0 {
-        Say("Loaded " + notes.length + " existing notes.");
+    if notes.Length > 0 {
+        Say("Loaded " + notes.Length + " existing notes.");
     }
 
     while true {
         Print("> ");
-        var command = ReadLine().trim().lower();
+        var command = ReadLine().Trim().ToLower();
 
         if command == "quit" || command == "exit" {
             Say("Goodbye!");
@@ -1382,37 +1382,37 @@ func start() {
 
         } else if command == "add" {
             Print("Enter note: ");
-            var note = ReadLine().trim();
+            var note = ReadLine().Trim();
 
-            if note.length == 0 {
+            if note.Length == 0 {
                 Say("Note cannot be empty.");
             } else {
-                notes.push(note);
+                notes.Push(note);
                 if saveNotes(notes) {
                     Say("Note added!");
                 }
             }
 
         } else if command == "delete" {
-            if notes.length == 0 {
+            if notes.Length == 0 {
                 Say("No notes to delete.");
             } else {
                 displayNotes(notes);
                 Print("Delete which number? (0 to cancel): ");
-                var input = ReadLine().trim();
+                var input = ReadLine().Trim();
 
                 try {
-                    var num = ToInt(input);
+                    var num = Convert.ToInt64(input);
                     if num == 0 {
                         Say("Cancelled.");
-                    } else if num >= 1 && num <= notes.length {
+                    } else if num >= 1 && num <= notes.Length {
                         var deleted = notes[num - 1];
-                        notes.removeAt(num - 1);
+                        notes.RemoveAt(num - 1);
                         if saveNotes(notes) {
                             Say("Deleted: " + deleted);
                         }
                     } else {
-                        Say("Invalid number. Enter 1-" + notes.length);
+                        Say("Invalid number. Enter 1-" + notes.Length);
                     }
                 } catch e {
                     Say("Please enter a number.");
@@ -1420,23 +1420,23 @@ func start() {
             }
 
         } else if command == "edit" {
-            if notes.length == 0 {
+            if notes.Length == 0 {
                 Say("No notes to edit.");
             } else {
                 displayNotes(notes);
                 Print("Edit which number? (0 to cancel): ");
-                var input = ReadLine().trim();
+                var input = ReadLine().Trim();
 
                 try {
-                    var num = ToInt(input);
+                    var num = Convert.ToInt64(input);
                     if num == 0 {
                         Say("Cancelled.");
-                    } else if num >= 1 && num <= notes.length {
+                    } else if num >= 1 && num <= notes.Length {
                         Say("Current: " + notes[num - 1]);
                         Print("New text: ");
-                        var newNote = ReadLine().trim();
+                        var newNote = ReadLine().Trim();
 
-                        if newNote.length == 0 {
+                        if newNote.Length == 0 {
                             Say("Note cannot be empty. Use 'delete' to remove.");
                         } else {
                             notes[num - 1] = newNote;
@@ -1445,7 +1445,7 @@ func start() {
                             }
                         }
                     } else {
-                        Say("Invalid number. Enter 1-" + notes.length);
+                        Say("Invalid number. Enter 1-" + notes.Length);
                     }
                 } catch e {
                     Say("Please enter a number.");
@@ -1453,11 +1453,11 @@ func start() {
             }
 
         } else if command == "clear" {
-            if notes.length == 0 {
+            if notes.Length == 0 {
                 Say("Already empty.");
             } else {
-                Print("Delete ALL " + notes.length + " notes? (yes/no): ");
-                var confirm = ReadLine().trim().lower();
+                Print("Delete ALL " + notes.Length + " notes? (yes/no): ");
+                var confirm = ReadLine().Trim().ToLower();
 
                 if confirm == "yes" {
                     notes = [];
@@ -1469,7 +1469,7 @@ func start() {
                 }
             }
 
-        } else if command.length == 0 {
+        } else if command.Length == 0 {
             // Empty input, just show prompt again
             continue;
 
@@ -1515,9 +1515,9 @@ var lines = readLines("file.txt");
 // Stream reading
 var reader = openRead("file.txt");
 while reader.hasMore() {
-    var line = reader.readLine();
+    var line = reader.ReadLine();
 }
-reader.close();
+reader.Close();
 ```
 
 **BASIC**
@@ -1605,14 +1605,14 @@ bind Viper.IO.File;
 
 var reader = openRead("file.txt");
 // ... use reader ...
-// Forgot reader.close()!  File stays locked, resources leak
+// Forgot reader.Close()!  File stays locked, resources leak
 
 // Always close, even if errors occur:
 var reader = openRead("file.txt");
 try {
     // ... use reader ...
 } finally {
-    reader.close();
+    reader.Close();
 }
 ```
 
@@ -1621,13 +1621,13 @@ try {
 bind Viper.IO.File;
 
 var writer = openWrite("important.txt");
-writer.writeLine("Critical data");
+writer.WriteLine("Critical data");
 // Power fails here - data might be lost!
 
 // Better: flush critical data
 var writer = openWrite("important.txt");
-writer.writeLine("Critical data");
-writer.flush();  // Force to disk
+writer.WriteLine("Critical data");
+writer.Flush();  // Force to disk
 ```
 
 **Not handling paths cross-platform:**

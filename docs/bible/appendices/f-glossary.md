@@ -38,7 +38,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **=>**: Arrow syntax used in lambda expressions. Example: `(x) => x * 2` defines a function that doubles its input. See also *Lambda*.
 
-**[ ]** (square brackets): Used to access array elements by index, or to define array types. Example: `numbers[0]` accesses the first element; `[i64]` is an array of integers. See also *Array*, *Index*.
+**[ ]** (square brackets): Used to access array elements by index, or to define array types. Example: `numbers[0]` accesses the first element; `[Integer]` is an array of integers. See also *Array*, *Index*.
 
 **{ }** (curly braces): Define code blocks, entity bodies, or object literals. Everything between `{` and `}` is grouped together. See also *Block*.
 
@@ -148,7 +148,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Concurrency** (kon-KUR-en-see): Multiple tasks making progress over time, possibly interleaved on a single processor or running simultaneously on multiple processors. Like juggling - handling multiple things without necessarily doing them at the exact same instant. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Parallelism*, *Thread*, *Asynchronous*.
 
-**Condition**: An expression that evaluates to `true` or `false`, used to make decisions. The test in an `if` statement or `while` loop. Example: `age >= 18`, `items.length > 0`. See [Chapter 4](../part1-foundations/04-decisions.md). See also *Boolean*, *Conditional*.
+**Condition**: An expression that evaluates to `true` or `false`, used to make decisions. The test in an `if` statement or `while` loop. Example: `age >= 18`, `items.Length > 0`. See [Chapter 4](../part1-foundations/04-decisions.md). See also *Boolean*, *Conditional*.
 
 **Conditional**: A statement that executes code based on whether a condition is true. `if`, `else if`, and `else` are conditional statements. Example: `if (age >= 18) { ... }`. See [Chapter 4](../part1-foundations/04-decisions.md). See also *Condition*, *If statement*.
 
@@ -284,7 +284,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Garbage collection** (GAR-bij kuh-LEK-shun): Automatic memory management that identifies and reclaims memory no longer being used. The programmer doesn't need to manually free memory. Like a cleaning service that removes items you're no longer using. See also *Memory*, *Heap*.
 
-**Generic** (jeh-NAIR-ik): Code that works with multiple types, specified as type parameters. Write once, use with many types. Example: `func identity<T>(value: T) -> T` works with any type T. See [Appendix A](a-zia-reference.md). See also *Type parameter*, *Polymorphism*.
+**Generic** (jeh-NAIR-ik): Code that works with multiple types, specified as type parameters. Write once, use with many types. Example: `func identity[T](value: T) -> T` works with any type T. See [Appendix A](a-zia-reference.md). See also *Type parameter*, *Polymorphism*.
 
 **Getter**: See *Accessor*.
 
@@ -328,7 +328,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Implements**: **[Zia]** Keyword indicating that an entity provides implementations for an interface's methods. Example: `entity Circle implements Drawable`. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Entity*.
 
-**Implicit**: Not explicitly stated; inferred or assumed. Type inference is implicit - the compiler figures out the type without you stating it. Opposite of explicit. Example: `var x = 5` implicitly has type `i64`. See also *Explicit*, *Type inference*.
+**Implicit**: Not explicitly stated; inferred or assumed. Type inference is implicit - the compiler figures out the type without you stating it. Opposite of explicit. Example: `var x = 5` implicitly has type `Integer`. See also *Explicit*, *Type inference*.
 
 **Import**: To bring code from another module into the current file. Makes external functions, entities, and values available for use. Example: `import Viper.Math`. See [Chapter 12](../part2-building-blocks/12-modules.md). See also *Export*, *Module*.
 
@@ -380,7 +380,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## J
 
-**Join**: (1) To wait for a thread to complete: `thread.join()`. (2) To combine strings or array elements: `["a", "b", "c"].join(",")` produces `"a,b,c"`. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Thread*, *String*.
+**Join**: (1) To wait for a thread to complete: `thread.Join()`. (2) To combine strings with a separator: `Str.Join(",", items)` produces `"a,b,c"` from a list of strings. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Thread*, *String*.
 
 **JSON** (JavaScript Object Notation) (JAY-son): A text format for structured data, widely used for configuration files and data exchange. Human-readable. Example: `{"name": "Alice", "age": 30}`. See [Chapter 23](../part4-applications/23-data-formats.md). See also *Serialization*, *XML*.
 
@@ -452,7 +452,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## N
 
-**Namespace**: A container that groups related code and prevents naming conflicts. Two functions can have the same name if they're in different namespaces. Example: `Viper.Math.sqrt()` is in the `Viper.Math` namespace. See also *Module*, *Scope*.
+**Namespace**: A container that groups related code and prevents naming conflicts. Two functions can have the same name if they're in different namespaces. Example: `Viper.Math.Sqrt()` is in the `Viper.Math` namespace. See also *Module*, *Scope*.
 
 **Native code**: Machine code that runs directly on the CPU, without interpretation. Compiled programs produce native code. Fastest execution but platform-specific. See also *Compiler*, *IL*.
 
@@ -702,11 +702,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Type**: A classification defining what values a variable can hold and what operations are valid. Every value and expression has a type. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Data type*, *Static typing*, *Type inference*.
 
-**Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Convert.ToInt("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
+**Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Convert.ToInt64("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
 
 **Type inference**: The compiler automatically determining types from context, so you don't have to write them explicitly. `var x = 5` infers that x is an integer. See [Appendix A](a-zia-reference.md). See also *Implicit*, *Static typing*.
 
-**Type parameter**: In generics, a placeholder for a type that will be specified later. In `func identity<T>(value: T) -> T`, `T` is a type parameter. See also *Generic*.
+**Type parameter**: In generics, a placeholder for a type that will be specified later. In `func identity[T](value: T) -> T`, `T` is a type parameter. See also *Generic*.
 
 ---
 
@@ -736,7 +736,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Variable**: A named storage location for data. Has a name, a type, and a value. The value can change over time (if mutable). Example: `var score = 100`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Constant*, *Type*, *Assignment*.
 
-**Variadic** (vair-ee-AD-ik): A function that accepts a variable number of arguments. In Zia, use `...` before the type: `func sum(numbers: ...i64)`. See [Appendix A](a-zia-reference.md). See also *Parameter*.
+**Variadic** (vair-ee-AD-ik): A function that accepts a variable number of arguments. In Zia, use `...` before the type: `func sum(numbers: ...Integer)`. See [Appendix A](a-zia-reference.md). See also *Parameter*.
 
 **Version control**: A system for tracking changes to code over time. Allows reverting to previous versions, branching, and collaboration. Git is the most popular. See also *Git*, *Repository*.
 

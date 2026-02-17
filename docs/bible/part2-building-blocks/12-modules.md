@@ -129,8 +129,8 @@ bind Math;
 bind List;
 bind Database;
 
-Math.add(5, 3);           // Adds numbers
-List.add(myList, 10);     // Adds to list
+Math.Add(5, 3);           // Adds numbers
+List.Add(myList, 10);     // Adds to list
 Database.addUser(alice);  // Adds to database
 ```
 
@@ -246,9 +246,9 @@ Here's a practical guide:
 Real-world example:
 
 ```rust
-// Good: Full bind when using many functions
-bind Viper.Math;
-var x = sqrt(a) + sin(b) + cos(c);
+// Good: Bind with alias when using many functions
+bind Viper.Math as Math;
+var x = Math.Sqrt(a) + Math.Sin(b) + Math.Cos(c);
 
 // Good: Specific bind for frequently used items
 bind Viper.Terminal { Say, ReadLine };
@@ -301,7 +301,7 @@ bind Viper.Terminal;
 func start() {
     Counter.increment();
     Counter.increment();
-    Say(Counter.get());  // 2
+    Say(Counter.Get());  // 2
 
     // Counter.count = 100;  // Error: count is private
     // Counter.reset();      // Error: reset is private
@@ -341,7 +341,7 @@ module EmailValidator;
 
 // Public: This is what the module is for
 export func isValid(email: String) -> Boolean {
-    if email.length == 0 {
+    if email.Length == 0 {
         return false;
     }
     if !containsAt(email) {
@@ -355,15 +355,15 @@ export func isValid(email: String) -> Boolean {
 
 // Private helpers: Users don't need these
 func containsAt(email: String) -> Boolean {
-    return email.contains("@");
+    return email.Contains("@");
 }
 
 func hasValidDomain(email: String) -> Boolean {
-    var parts = email.split("@");
-    if parts.length != 2 {
+    var parts = email.Split("@");
+    if parts.Length != 2 {
         return false;
     }
-    return parts[1].contains(".");
+    return parts[1].Contains(".");
 }
 ```
 
@@ -699,7 +699,7 @@ export func set(key: String, value: String);
 export func clear();
 
 // Implementation (hidden, can change)
-var data: Map<String, CacheEntry>;  // Could change to use Redis
+var data: Map[String, CacheEntry];  // Could change to use Redis
 var maxSize = 1000;                 // Could become configurable
 
 func evictOldest() { ... }          // Internal helper
@@ -740,10 +740,10 @@ export func scale(v: Vec2, factor: Number) -> Vec2 {
 }
 
 export func distance(a: Vec2, b: Vec2) -> Number {
-    bind Viper.Math;
+    bind Viper.Math as Math;
     var dx = b.x - a.x;
     var dy = b.y - a.y;
-    return sqrt(dx * dx + dy * dy);
+    return Math.Sqrt(dx * dx + dy * dy);
 }
 
 export func zero() -> Vec2 {
@@ -751,8 +751,8 @@ export func zero() -> Vec2 {
 }
 
 export func magnitude(v: Vec2) -> Number {
-    bind Viper.Math;
-    return sqrt(v.x * v.x + v.y * v.y);
+    bind Viper.Math as Math;
+    return Math.Sqrt(v.x * v.x + v.y * v.y);
 }
 
 export func normalize(v: Vec2) -> Vec2 {
@@ -795,7 +795,7 @@ export func isAlive(player: Player) -> Boolean {
 export func move(player: Player, direction: Vec2.Vec2) -> Player {
     return Player {
         name: player.name,
-        position: Vec2.add(player.position, direction),
+        position: Vec2.Add(player.position, direction),
         health: player.health,
         maxHealth: player.maxHealth,
         score: player.score
@@ -867,7 +867,7 @@ export func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
     var movement = Vec2.scale(normalized, enemy.speed);
 
     return Enemy {
-        position: Vec2.add(enemy.position, movement),
+        position: Vec2.Add(enemy.position, movement),
         damage: enemy.damage,
         speed: enemy.speed
     };
@@ -1054,7 +1054,7 @@ bind Viper.Test;
 test "add combines vectors" {
     var a = Vec2.create(1.0, 2.0);
     var b = Vec2.create(3.0, 4.0);
-    var result = Vec2.add(a, b);
+    var result = Vec2.Add(a, b);
 
     assert result.x == 4.0;
     assert result.y == 6.0;
@@ -1077,7 +1077,7 @@ var userService = UserService.create(mockDatabase);
 
 // The UserService doesn't know (or care) that it's using a mock
 userService.createUser("alice");
-assert mockDatabase.contains("alice");
+assert mockDatabase.Contains("alice");
 ```
 
 **Focused tests.** Each module has a clear responsibility, so tests are focused. `Player` tests check player behavior. `Enemy` tests check enemy behavior. You know where to look for tests and what they cover.
@@ -1105,7 +1105,7 @@ export func test_containsAt(email: String) -> Boolean {
 module EmailValidator;
 
 func containsAt(email: String) -> Boolean {
-    return email.contains("@");
+    return email.Contains("@");
 }
 
 export func isValid(email: String) -> Boolean {
@@ -1239,9 +1239,9 @@ bind MathUtils;
 bind StringUtils;
 bind FileUtils;
 
-var x = MathUtils.sqrt(2);
-var s = StringUtils.format("{}", x);
-FileUtils.write("out.txt", s);
+var x = MathUtils.Math.Sqrt(2);
+var s = StringUtils.Format("{}", x);
+FileUtils.Write("out.txt", s);
 ```
 
 ### Wrong Abstraction Level

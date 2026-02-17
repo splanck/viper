@@ -59,7 +59,7 @@ var x = 42;  // Comments can follow code
 /// Calculates the area of a circle.
 /// @param radius The radius of the circle
 /// @return The area as a floating-point number
-bind Viper.Math;
+bind Viper.Math as Math;
 
 func circleArea(radius: Number) -> Number {
     return Math.PI * radius * radius;
@@ -130,7 +130,7 @@ final EULER = 2.718281828459045;
 
 **Edge cases and gotchas:**
 - Variables must be initialized when declared
-- Type inference uses the initial value -- `var x = 5` creates an `i64`, not `f64`
+- Type inference uses the initial value -- `var x = 5` creates an `Integer`, not `Number`
 - `final` prevents reassignment of the variable, but if the value is a collection, the collection's contents can still be modified
 
 **Cross-reference:** [Chapter 3: Values and Names](../part1-foundations/03-values-and-names.md)
@@ -155,10 +155,10 @@ Zia provides built-in types for common data.
 | `u64` | 64 bits | Very large positive | File sizes, timestamps |
 
 ```rust
-var count: i64 = 42;       // Default choice for integers
+var count: Integer = 42;       // Default choice for integers
 var age: i32 = 25;         // When memory matters
 var byte: u8 = 255;        // Unsigned byte
-var bigNum: i64 = 9223372036854775807;
+var bigNum: Integer = 9223372036854775807;
 
 // Literals
 var decimal = 42;
@@ -175,8 +175,8 @@ var withUnderscores = 1_000_000;  // Underscores for readability
 | `f64` | 64 bits | ~15 digits | Default for decimals |
 
 ```rust
-var price: f64 = 19.99;
-var temperature = -273.15;        // Type inferred as f64
+var price: Number = 19.99;
+var temperature = -273.15;        // Type inferred as Number
 var scientific = 6.022e23;        // Scientific notation
 var small: f32 = 0.001;           // Single precision
 
@@ -187,7 +187,7 @@ var result = 0.1 + 0.2;           // May not be exactly 0.3
 ### Boolean Type
 
 ```rust
-var isActive: bool = true;
+var isActive: Boolean = true;
 var isEmpty = false;              // Type inferred
 
 // Boolean expressions
@@ -206,7 +206,7 @@ var newline: char = '\n';         // Escape characters work
 ### String Type
 
 ```rust
-var greeting: string = "Hello, World!";
+var greeting: String = "Hello, World!";
 var empty = "";                   // Empty string
 var multiline = """
     This is a
@@ -215,7 +215,7 @@ var multiline = """
 ```
 
 **When to use which numeric type:**
-- Default to `i64` for integers, `f64` for decimals
+- Default to `Integer` for integers, `Number` for decimals
 - Use smaller types when memory is constrained or interfacing with external systems
 - Use unsigned types only when negative values are impossible and you need the extra range
 
@@ -291,7 +291,7 @@ if obj != null && obj.isValid() {
 // Common patterns
 var inRange = x >= 0 && x <= 100;
 var isWeekend = day == "Saturday" || day == "Sunday";
-var isNotEmpty = !list.isEmpty();
+var isNotEmpty = !list.IsEmpty();
 ```
 
 ### Bitwise Operators
@@ -410,7 +410,7 @@ while true {
 ```rust
 // Read until condition
 while !file.isEOF() {
-    var line = file.readLine();
+    var line = file.ReadLine();
     process(line);
 }
 
@@ -451,7 +451,7 @@ for item in items {
 }
 
 // With index using enumerate
-for i, item in items.enumerate() {
+for i, item in items.Enumerate() {
     Terminal.Say("Item " + i + ": " + item);
 }
 
@@ -465,14 +465,14 @@ for key, value in map {
 
 ```rust
 // Process pairs
-for i in 0..items.length step 2 {
+for i in 0..items.Length step 2 {
     var first = items[i];
     var second = items[i + 1];
 }
 
 // Find first match
 var found = -1;
-for i, item in items.enumerate() {
+for i, item in items.Enumerate() {
     if item.matches(criteria) {
         found = i;
         break;
@@ -572,7 +572,7 @@ func sayHello() {
 ```rust
 bind Viper.Terminal;
 
-func greet(name: string, greeting: string = "Hello") {
+func greet(name: String, greeting: String = "Hello") {
     Terminal.Say(greeting + ", " + name + "!");
 }
 
@@ -580,7 +580,7 @@ greet("Alice");              // "Hello, Alice!"
 greet("Bob", "Hi");          // "Hi, Bob!"
 
 // Multiple defaults
-func createRect(width: f64 = 100.0, height: f64 = 100.0) -> Rectangle {
+func createRect(width: Number = 100.0, height: Number = 100.0) -> Rectangle {
     return Rectangle { width: width, height: height };
 }
 
@@ -611,7 +611,7 @@ createUser("Alice", 30, admin: false, active: true);
 ### Variadic Functions
 
 ```rust
-func sum(numbers: ...i64) -> i64 {
+func sum(numbers: ...Integer) -> Integer {
     var total = 0;
     for n in numbers {
         total += n;
@@ -622,7 +622,7 @@ func sum(numbers: ...i64) -> i64 {
 sum(1, 2, 3);           // 6
 sum(1, 2, 3, 4, 5);     // 15
 
-func log(level: string, messages: ...string) {
+func log(level: String, messages: ...String) {
     for msg in messages {
         Terminal.Say("[" + level + "] " + msg);
     }
@@ -635,17 +635,17 @@ log("INFO", "Starting", "Processing", "Done");
 
 ```rust
 // Full lambda syntax
-var add = func(a: i64, b: i64) -> i64 { return a + b; };
+var add = func(a: Integer, b: Integer) -> Integer { return a + b; };
 
 // Single-expression lambda
-var square = func(x: i64) -> i64 = x * x;
+var square = func(x: Integer) -> Integer = x * x;
 
 // Arrow syntax (short form)
 var double = (x) => x * 2;
 var add = (a, b) => a + b;
 
 // With explicit types
-var toUpper = (s: string) => s.toUpperCase();
+var toUpper = (s: String) => s.ToUpper();
 
 // Closures capture variables from enclosing scope
 var multiplier = 3;
@@ -654,15 +654,15 @@ triple(5);  // 15
 
 // Passing functions as arguments
 var numbers = [1, 2, 3, 4, 5];
-var squared = numbers.map((x) => x * x);     // [1, 4, 9, 16, 25]
-var evens = numbers.filter((x) => x % 2 == 0);  // [2, 4]
+var squared = numbers.Map((x) => x * x);     // [1, 4, 9, 16, 25]
+var evens = numbers.Filter((x) => x % 2 == 0);  // [2, 4]
 ```
 
 **Common patterns:**
 
 ```rust
 // Callback pattern
-func fetchData(url: string, onComplete: func(Data)) {
+func fetchData(url: String, onComplete: func(Data)) {
     var data = // ... fetch data ...
     onComplete(data);
 }
@@ -672,13 +672,13 @@ fetchData("api/users", (data) => {
 });
 
 // Sorting with custom comparator
-items.sort((a, b) => a.name.compareTo(b.name));
+items.Sort((a, b) => a.name.CompareTo(b.name));
 
 // Chaining operations
 var result = numbers
-    .filter((x) => x > 0)
-    .map((x) => x * 2)
-    .reduce(0, (acc, x) => acc + x);
+    .Filter((x) => x > 0)
+    .Map((x) => x * 2)
+    .Reduce(0, (acc, x) => acc + x);
 ```
 
 **Cross-reference:** [Chapter 7: Breaking It Down](../part1-foundations/07-functions.md)
@@ -694,49 +694,49 @@ Dynamic arrays that grow as needed.
 ```rust
 // Creation
 var numbers = [1, 2, 3, 4, 5];
-var empty: [i64] = [];
-var sized = [i64](100);           // Array of 100 zeros
-var filled = [i64](100, 42);      // Array of 100 forty-twos
+var empty: [Integer] = [];
+var sized = [Integer](100);       // Array of 100 zeros
+var filled = [Integer](100, 42);  // Array of 100 forty-twos
 
 // Access
 var first = numbers[0];           // First element (0-indexed)
-var last = numbers[numbers.length - 1];
+var last = numbers[numbers.Length - 1];
 numbers[0] = 10;                  // Modify element
 
 // Properties
-numbers.length                    // Number of elements
+numbers.Length                    // Number of elements
 
 // Methods
-numbers.push(6);                  // Add to end
-var popped = numbers.pop();       // Remove and return last
-numbers.insert(0, 99);            // Insert at index
-numbers.removeAt(2);              // Remove at index
+numbers.Push(6);                  // Add to end
+var popped = numbers.Pop();       // Remove and return last
+numbers.Insert(0, 99);            // Insert at index
+numbers.RemoveAt(2);              // Remove at index
 
-numbers.contains(3);              // true if element exists
-numbers.indexOf(3);               // Index of element, or -1
-numbers.lastIndexOf(3);           // Last index of element
+numbers.Contains(3);              // true if element exists
+numbers.IndexOf(3);               // Index of element, or -1
+numbers.LastIndexOf(3);           // Last index of element
 
-var slice = numbers.slice(1, 3);  // Elements from index 1 to 2
-numbers.reverse();                // Reverse in place
-numbers.sort();                   // Sort in place
-numbers.shuffle();                // Randomize order
+var slice = numbers.Slice(1, 3);  // Elements from index 1 to 2
+numbers.Reverse();                // Reverse in place
+numbers.Sort();                   // Sort in place
+numbers.Shuffle();                // Randomize order
 
 // Iteration
 for num in numbers {
     Terminal.Say(num);
 }
 
-for i, num in numbers.enumerate() {
+for i, num in numbers.Enumerate() {
     Terminal.Say("Index " + i + ": " + num);
 }
 
 // Functional methods
-var doubled = numbers.map((x) => x * 2);
-var evens = numbers.filter((x) => x % 2 == 0);
-var sum = numbers.reduce(0, (acc, x) => acc + x);
-var any = numbers.any((x) => x > 10);
-var all = numbers.all((x) => x > 0);
-var first = numbers.find((x) => x > 5);
+var doubled = numbers.Map((x) => x * 2);
+var evens = numbers.Filter((x) => x % 2 == 0);
+var sum = numbers.Reduce(0, (acc, x) => acc + x);
+var any = numbers.Any((x) => x > 10);
+var all = numbers.All((x) => x > 0);
+var first = numbers.Find((x) => x > 5);
 ```
 
 **Edge cases:**
@@ -750,42 +750,42 @@ Key-value collections for fast lookup.
 
 ```rust
 // Creation
-var ages = Map<string, i64>.new();
+var ages = new Map[String, Integer]();
 
 // Operations
-ages.set("Alice", 30);
-ages.set("Bob", 25);
+ages.Set("Alice", 30);
+ages.Set("Bob", 25);
 
-var age = ages.get("Alice");      // 30
-var exists = ages.has("Charlie"); // false
+var age = ages.Get("Alice");      // 30
+var exists = ages.Has("Charlie"); // false
 
-ages.delete("Bob");
+ages.Delete("Bob");
 
 // Default values
-var age = ages.getOrDefault("Unknown", 0);  // 0 if not found
+var age = ages.GetOrDefault("Unknown", 0);  // 0 if not found
 
 // Properties
 ages.size                         // Number of entries
-ages.isEmpty()                    // true if empty
+ages.IsEmpty()                    // true if empty
 
 // Iteration
 for key, value in ages {
     Terminal.Say(key + " is " + value);
 }
 
-for key in ages.keys() {
+for key in ages.Keys() {
     Terminal.Say(key);
 }
 
-for value in ages.values() {
+for value in ages.Values() {
     Terminal.Say(value);
 }
 
 // Common pattern: counting occurrences
-var counts = Map<string, i64>.new();
+var counts = new Map[String, Integer]();
 for word in words {
-    var current = counts.getOrDefault(word, 0);
-    counts.set(word, current + 1);
+    var current = counts.GetOrDefault(word, 0);
+    counts.Set(word, current + 1);
 }
 ```
 
@@ -795,24 +795,24 @@ Collections of unique values.
 
 ```rust
 // Creation
-var seen = Set<string>.new();
+var seen = new Set[String]();
 var fromArray = Set.from(["apple", "banana", "cherry"]);
 
 // Operations
-seen.add("apple");
-seen.add("apple");                // No effect - already present
-var exists = seen.contains("apple");  // true
-seen.remove("apple");
+seen.Add("apple");
+seen.Add("apple");                // No effect - already present
+var exists = seen.Contains("apple");  // true
+seen.Remove("apple");
 
 // Properties
 seen.size
-seen.isEmpty()
+seen.IsEmpty()
 
 // Set operations
 var other = Set.from(["banana", "cherry", "date"]);
-var union = seen.union(other);           // All elements from both
-var intersection = seen.intersection(other);  // Elements in both
-var difference = seen.difference(other);  // Elements in seen but not other
+var union = seen.Union(other);           // All elements from both
+var intersection = seen.Intersection(other);  // Elements in both
+var difference = seen.Difference(other);  // Elements in seen but not other
 
 // Iteration
 for item in seen {
@@ -820,7 +820,7 @@ for item in seen {
 }
 
 // Common pattern: removing duplicates
-var unique = Set.from(arrayWithDupes).toArray();
+var unique = Set.from(arrayWithDupes).ToArray();
 ```
 
 **Cross-reference:** [Chapter 6: Collections](../part1-foundations/06-collections.md)
@@ -837,43 +837,43 @@ Strings are immutable sequences of characters.
 var s = "Hello, World!";
 
 // Properties
-s.length                          // 13
+s.Length                          // 13
 
 // Case conversion
-s.toUpperCase()                   // "HELLO, WORLD!"
-s.toLowerCase()                   // "hello, world!"
+s.ToUpper()                   // "HELLO, WORLD!"
+s.ToLower()                   // "hello, world!"
 
 // Trimming whitespace
-"  hello  ".trim()                // "hello"
-"  hello  ".trimStart()           // "hello  "
-"  hello  ".trimEnd()             // "  hello"
+"  hello  ".Trim()                // "hello"
+"  hello  ".TrimStart()           // "hello  "
+"  hello  ".TrimEnd()             // "  hello"
 
 // Searching
-s.contains("World")               // true
-s.startsWith("Hello")             // true
-s.endsWith("!")                   // true
-s.indexOf("o")                    // 4 (first occurrence)
-s.lastIndexOf("o")                // 8 (last occurrence)
+s.Contains("World")               // true
+s.StartsWith("Hello")             // true
+s.EndsWith("!")                   // true
+s.IndexOf("o")                    // 4 (first occurrence)
+s.LastIndexOf("o")                // 8 (last occurrence)
 
 // Extraction
-s.substring(0, 5)                 // "Hello"
-s.charAt(0)                       // 'H'
+s.Substring(0, 5)                 // "Hello"
+s.CharAt(0)                       // 'H'
 s[0]                              // 'H' (character at index)
 
 // Splitting and joining
-"a,b,c".split(",")                // ["a", "b", "c"]
-["a", "b", "c"].join(",")         // "a,b,c"
+"a,b,c".Split(",")                // ["a", "b", "c"]
+["a", "b", "c"].Join(",")         // "a,b,c"
 
 // Replacement
-s.replace("World", "Viper")       // "Hello, Viper!"
-s.replaceAll("l", "L")            // "HeLLo, WorLd!"
+s.Replace("World", "Viper")       // "Hello, Viper!"
+s.Replace("l", "L")               // "HeLLo, WorLd!"
 
 // Padding
-"42".padStart(5, '0')             // "00042"
-"hi".padEnd(5, '!')               // "hi!!!"
+"42".PadLeft(5, "0")              // "00042"
+"hi".PadRight(5, "!")             // "hi!!!"
 
 // Repeating
-"ab".repeat(3)                    // "ababab"
+"ab".Repeat(3)                    // "ababab"
 ```
 
 ### String Interpolation
@@ -887,7 +887,7 @@ var message = "Hello, ${name}! You are ${age} years old.";
 
 // Expressions in interpolation
 var message = "In 10 years: ${age + 10}";
-var message = "Name length: ${name.length}";
+var message = "Name length: ${name.Length}";
 ```
 
 ### Multi-Line Strings
@@ -931,14 +931,14 @@ Values group related data together. They have value semantics -- assignment crea
 
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 }
 
 value Person {
-    name: string;
-    age: i64;
-    email: string;
+    name: String;
+    age: Integer;
+    email: String;
 }
 ```
 
@@ -969,15 +969,15 @@ person.age = 31;
 
 ```rust
 value Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 
     // Instance method - uses self
-    func area() -> f64 {
+    func area() -> Number {
         return self.width * self.height;
     }
 
-    func perimeter() -> f64 {
+    func perimeter() -> Number {
         return 2 * (self.width + self.height);
     }
 
@@ -1030,7 +1030,7 @@ Entities combine data and behavior with reference semantics and support for inhe
 
 ```rust
 entity Counter {
-    hide count: i64;        // Hidden field (private)
+    hide count: Integer;        // Hidden field (private)
 
     // Initializer - called when creating instances
     expose func init() {
@@ -1053,7 +1053,7 @@ entity Counter {
         }
     }
 
-    expose func getCount() -> i64 {
+    expose func getCount() -> Integer {
         return self.count;
     }
 }
@@ -1075,8 +1075,8 @@ Inside methods, `self` refers to the current instance:
 
 ```rust
 entity Player {
-    name: string;
-    score: i64;
+    name: String;
+    score: Integer;
 
     expose func init(name: String) {
         self.name = name;     // self.name is the field
@@ -1131,10 +1131,10 @@ Control access to fields and methods.
 
 ```rust
 entity BankAccount {
-    hide balance: f64;              // Only this entity can access directly
-    protected accountType: string;   // This entity and subentities
-    internal bankCode: string;       // Anywhere in this module
-    expose ownerName: string;        // Anywhere
+    hide balance: Number;              // Only this entity can access directly
+    protected accountType: String;   // This entity and subentities
+    internal bankCode: String;       // Anywhere in this module
+    expose ownerName: String;        // Anywhere
 
     expose func init(owner: String, initial: Number) {
         self.ownerName = owner;
@@ -1142,7 +1142,7 @@ entity BankAccount {
     }
 
     // Public method provides controlled access
-    expose func getBalance() -> f64 {
+    expose func getBalance() -> Number {
         return self.balance;
     }
 
@@ -1184,7 +1184,7 @@ Entities can extend other entities to inherit and specialize behavior.
 
 ```rust
 entity Animal {
-    protected name: string;
+    protected name: String;
 
     expose func init(name: String) {
         self.name = name;
@@ -1194,13 +1194,13 @@ entity Animal {
         Terminal.Say(self.name + " makes a sound");
     }
 
-    expose func getName() -> string {
+    expose func getName() -> String {
         return self.name;
     }
 }
 
 entity Dog extends Animal {
-    hide breed: string;
+    hide breed: String;
 
     expose func init(name: String, breed: String) {
         super(name);          // Call parent initializer
@@ -1250,8 +1250,8 @@ cat.speak();
 ```rust
 entity Shape {
     // Abstract method - must be overridden
-    abstract func area() -> f64;
-    abstract func perimeter() -> f64;
+    abstract func area() -> Number;
+    abstract func perimeter() -> Number;
 
     // Concrete method using abstract methods
     expose func describe() {
@@ -1261,17 +1261,17 @@ entity Shape {
 }
 
 entity Circle extends Shape {
-    hide radius: f64;
+    hide radius: Number;
 
     expose func init(radius: Number) {
         self.radius = radius;
     }
 
-    override expose func area() -> f64 {
+    override expose func area() -> Number {
         return Math.PI * self.radius * self.radius;
     }
 
-    override expose func perimeter() -> f64 {
+    override expose func perimeter() -> Number {
         return 2 * Math.PI * self.radius;
     }
 }
@@ -1303,11 +1303,11 @@ interface Clickable {
 
 ```rust
 entity Button implements Drawable, Clickable {
-    hide x: i64;
-    hide y: i64;
-    hide width: i64;
-    hide height: i64;
-    hide label: string;
+    hide x: Integer;
+    hide y: Integer;
+    hide width: Integer;
+    hide height: Integer;
+    hide label: String;
 
     expose func init(x: Integer, y: Integer, w: Integer, h: Integer, label: String) {
         self.x = x;
@@ -1362,7 +1362,7 @@ for item in drawables {
 
 ```rust
 interface Printable {
-    func toString() -> string;
+    func toString() -> String;
 
     // Default implementation
     func print() {
@@ -1371,9 +1371,9 @@ interface Printable {
 }
 
 entity User implements Printable {
-    expose name: string;
+    expose name: String;
 
-    expose func toString() -> string {
+    expose func toString() -> String {
         return "User: " + self.name;
     }
 
@@ -1423,25 +1423,25 @@ var code = status.value;          // 200
 ### Enums with Associated Data
 
 ```rust
-enum Result<T, E> {
+enum Result[T, E] {
     Ok(T),
     Err(E)
 }
 
-var success: Result<i64, string> = Result.Ok(42);
-var failure: Result<i64, string> = Result.Err("Not found");
+var success: Result[Integer] = Result.Ok(42);
+var failure: Result[Integer] = Result.Err("Not found");
 
 match success {
     Result.Ok(value) => Terminal.Say("Got: " + value),
     Result.Err(msg) => Terminal.Say("Error: " + msg)
 }
 
-enum Option<T> {
+enum Option[T] {
     Some(T),
     None
 }
 
-func findUser(id: Integer) -> Option<User> {
+func findUser(id: Integer) -> Option[User] {
     if id == 1 {
         return Option.Some(User("Alice"));
     }
@@ -1467,7 +1467,7 @@ enum Direction {
         }
     }
 
-    func isVertical() -> bool {
+    func isVertical() -> Boolean {
         return self == Direction.NORTH || self == Direction.SOUTH;
     }
 }
@@ -1488,25 +1488,25 @@ Write code that works with multiple types.
 
 ```rust
 // Single type parameter
-func identity<T>(value: T) -> T {
+func identity[T](value: T) -> T {
     return value;
 }
 
-var num = identity(42);           // T inferred as i64
-var str = identity("hello");      // T inferred as string
+var num = identity(42);           // T inferred as Integer
+var str = identity("hello");      // T inferred as String
 
 // Multiple type parameters
-func pair<A, B>(first: A, second: B) -> (A, B) {
+func pair[A, B](first: A, second: B) -> (A, B) {
     return (first, second);
 }
 
-var p = pair(1, "one");           // (i64, string)
+var p = pair(1, "one");           // (Integer, String)
 ```
 
 ### Generic Entities
 
 ```rust
-entity Box<T> {
+entity Box[T] {
     hide value: T;
 
     expose func init(value: T) {
@@ -1522,33 +1522,30 @@ entity Box<T> {
     }
 }
 
-var intBox = Box<i64>(42);
-var strBox = Box<string>("hello");
+var intBox = Box[Integer](42);
+var strBox = Box[String]("hello");
 
-Terminal.Say(intBox.get());  // 42
+Terminal.Say(intBox.Get());  // 42
 ```
 
 ### Generic Constraints
 
 ```rust
 // T must implement Comparable
-func max<T: Comparable>(a: T, b: T) -> T {
-    if a.compareTo(b) > 0 {
+func max[T: Comparable](a: T, b: T) -> T {
+    if a.CompareTo(b) > 0 {
         return a;
     }
     return b;
 }
 
-// Multiple constraints
-func process<T: Printable + Serializable>(item: T) {
-    item.print();
-    var data = item.serialize();
+// Single constraint (one interface per type parameter)
+func process[T: Printable](item: T) {
+    item.Print();
 }
 
-// Constraint with where clause
-func combine<T, U>(items: [T], transform: func(T) -> U) -> [U]
-    where U: Hashable
-{
+// Multiple type parameters, each with optional constraint
+func combine[T, U](items: [T], transform: func(T) -> U) -> [U] {
     // ...
 }
 ```
@@ -1556,13 +1553,13 @@ func combine<T, U>(items: [T], transform: func(T) -> U) -> [U]
 ### Generic Interfaces
 
 ```rust
-interface Container<T> {
+interface Container[T] {
     func add(item: T);
     func remove() -> T?;
-    func contains(item: T) -> bool;
+    func contains(item: T) -> Boolean;
 }
 
-entity Stack<T> implements Container<T> {
+entity Stack[T] implements Container[T] {
     hide items: [T];
 
     expose func init() {
@@ -1570,15 +1567,15 @@ entity Stack<T> implements Container<T> {
     }
 
     expose func add(item: T) {
-        self.items.push(item);
+        self.items.Push(item);
     }
 
     expose func remove() -> T? {
-        return self.items.pop();
+        return self.items.Pop();
     }
 
-    expose func contains(item: T) -> bool {
-        return self.items.contains(item);
+    expose func contains(item: T) -> Boolean {
+        return self.items.Contains(item);
     }
 }
 ```
@@ -1632,14 +1629,14 @@ try {
 
 ```rust
 entity ValidationError extends Error {
-    hide field: string;
+    hide field: String;
 
     expose func init(message: String, field: String) {
         super(message);
         self.field = field;
     }
 
-    expose func getField() -> string {
+    expose func getField() -> String {
         return self.field;
     }
 }
@@ -1651,11 +1648,11 @@ throw ValidationError("Invalid email format", "email");
 
 ```rust
 // Optional chaining - returns null if any part is null
-var length = user?.profile?.bio?.length;
+var length = user?.profile?.bio?.Length;
 
 // Null coalescing - provide default if null
 var name = user.name ?? "Anonymous";
-var count = map.get("key") ?? 0;
+var count = map.Get("key") ?? 0;
 
 // Combined
 var displayName = user?.profile?.displayName ?? user?.name ?? "Unknown";
@@ -1740,10 +1737,10 @@ Explicitly handle the absence of values.
 ### Declaring Nullable Types
 
 ```rust
-var x: i64? = null;           // Nullable integer
-var y: i64? = 42;             // Has value
+var x: Integer? = null;           // Nullable integer
+var y: Integer? = 42;         // Has value
 
-var name: string? = null;
+var name: String? = null;
 var user: User? = findUser(id);
 ```
 
@@ -1775,10 +1772,10 @@ var name = user?.name ?? "Anonymous";
 ```rust
 // Returns null if any part is null
 var city = user?.address?.city;
-var length = text?.length;
+var length = text?.Length;
 
 // Chain method calls
-var upper = text?.trim()?.toUpperCase();
+var upper = text?.Trim()?.ToUpper();
 ```
 
 ### Force Unwrap (Use Carefully!)
@@ -1805,19 +1802,19 @@ Create alternative names for types.
 
 ```rust
 // Simple alias
-type UserId = string;
-type Timestamp = i64;
+type UserId = String;
+type Timestamp = Integer;
 
 // Function type alias
-type Callback = func(i64) -> bool;
+type Callback = func(Integer) -> Boolean;
 type EventHandler = func(Event) -> void;
 
 // Collection aliases
-type StringList = [string];
-type UserMap = Map<string, User>;
+type StringList = [String];
+type UserMap = Map[String, User];
 
 // Generic alias
-type Result<T> = Result<T, Error>;
+type ApiResult[T] = Result[T];
 
 // Usage
 func processUser(id: UserId) {
@@ -1892,10 +1889,10 @@ func legacyFunction() {
 @serializable
 entity User {
     @jsonName("user_name")
-    expose name: string;
+    expose name: String;
 
     @jsonIgnore
-    hide password: string;
+    hide password: String;
 }
 ```
 
@@ -1946,7 +1943,7 @@ assertThrows<SpecificError>(func() { ... });// Must throw specific error type
 ### Setup and Teardown
 
 ```rust
-var testData: [string];
+var testData: [String];
 
 setup {
     // Runs before each test
@@ -1959,7 +1956,7 @@ teardown {
 }
 
 test "uses setup data" {
-    assertEqual(testData.length, 3);
+    assertEqual(testData.Length, 3);
 }
 ```
 
@@ -2176,7 +2173,7 @@ if obj is Type { }
 
 // Collection iteration
 for item in collection { }
-for i, item in collection.enumerate() { }
+for i, item in collection.Enumerate() { }
 ```
 
 ---

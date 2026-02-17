@@ -136,13 +136,13 @@ Consider this problematic code:
 entity UserManager {
     func registerUser(email: String, password: String) {
         // Validate email format
-        if !email.contains("@") || !email.contains(".") {
+        if !email.Contains("@") || !email.Contains(".") {
             showError("Invalid email");
             return;
         }
 
         // Check password strength
-        if password.length < 8 {
+        if password.Length < 8 {
             showError("Password too short");
             return;
         }
@@ -157,7 +157,7 @@ entity UserManager {
         var db = Database.connect("localhost:5432");
         db.query("INSERT INTO users (email, password_hash) VALUES (?, ?)",
                  [email, hash]);
-        db.close();
+        db.Close();
 
         // Send welcome email
         var smtp = SMTP.connect("mail.server.com");
@@ -166,7 +166,7 @@ entity UserManager {
             subject: "Welcome!",
             body: "Thanks for registering..."
         );
-        smtp.close();
+        smtp.Close();
 
         // Update UI
         userList.refresh();
@@ -183,10 +183,10 @@ Now consider the separated version:
 // Good: Separate concerns
 entity EmailValidator {
     func validate(email: String) -> ValidationResult {
-        if !email.contains("@") {
+        if !email.Contains("@") {
             return ValidationResult.invalid("Missing @ symbol");
         }
-        if !email.contains(".") {
+        if !email.Contains(".") {
             return ValidationResult.invalid("Missing domain");
         }
         return ValidationResult.valid();
@@ -195,7 +195,7 @@ entity EmailValidator {
 
 entity PasswordValidator {
     func validate(password: String) -> ValidationResult {
-        if password.length < 8 {
+        if password.Length < 8 {
             return ValidationResult.invalid("Must be at least 8 characters");
         }
         return ValidationResult.valid();
@@ -583,6 +583,9 @@ MVC separates user interface applications into three components:
 **Controller** handles user input and coordinates between model and view. It translates user actions into model updates and triggers view refreshes.
 
 ```rust
+bind Viper.Convert as Convert;
+bind Viper.Fmt as Fmt;
+
 // Model: Business logic and data
 entity TodoList {
     hide items: [TodoItem];
@@ -596,7 +599,7 @@ entity TodoList {
     func addItem(text: String) -> TodoItem {
         var item = TodoItem(id: self.nextId, text: text, done: false);
         self.nextId = self.nextId + 1;
-        self.items.push(item);
+        self.items.Push(item);
         return item;
     }
 
@@ -610,7 +613,7 @@ entity TodoList {
     }
 
     func removeItem(id: Integer) {
-        self.items = self.items.filter(item => item.id != id);
+        self.items = self.items.Filter(item => item.id != id);
     }
 
     func getItems() -> [TodoItem] {
@@ -618,7 +621,7 @@ entity TodoList {
     }
 
     func getActiveCount() -> Integer {
-        return self.items.filter(item => !item.done).length;
+        return self.items.Filter(item => !item.done).Length;
     }
 }
 
@@ -629,7 +632,7 @@ entity TodoView {
     hide countElement: HTMLElement;
 
     func render(items: [TodoItem], activeCount: Integer) {
-        self.listElement.clear();
+        self.listElement.Clear();
 
         for item in items {
             var li = HTML.createElement("li");
@@ -637,26 +640,26 @@ entity TodoView {
             if item.done {
                 li.addClass("completed");
             }
-            li.setAttribute("data-id", item.id.toString());
+            li.setAttribute("data-id", Fmt.Int(item.id));
             self.listElement.appendChild(li);
         }
 
-        self.countElement.setText(activeCount.toString() + " items left");
+        self.countElement.setText(Fmt.Int(activeCount) + " items left");
     }
 
     func bindAddItem(handler: func(String)) {
         self.inputElement.onEnter(func() {
             var text = self.inputElement.getValue();
-            if text.length > 0 {
+            if text.Length > 0 {
                 handler(text);
-                self.inputElement.clear();
+                self.inputElement.Clear();
             }
         });
     }
 
     func bindToggleItem(handler: func(Integer)) {
         self.listElement.onClick(func(event: Event) {
-            var id = event.target.getAttribute("data-id").toInt();
+            var id = Convert.ToInt64(event.target.getAttribute("data-id"));
             handler(id);
         });
     }
@@ -785,7 +788,7 @@ entity SqlProductRepository implements IProductRepository {
             "SELECT * FROM products WHERE category = ?",
             [category]
         );
-        return rows.map(row => self.mapRowToProduct(row));
+        return rows.Map(row => self.mapRowToProduct(row));
     }
 
     func save(product: Product) {
@@ -817,27 +820,27 @@ entity SqlProductRepository implements IProductRepository {
 
 // In-memory implementation for testing
 entity InMemoryProductRepository implements IProductRepository {
-    hide products: Map<string, Product>;
+    hide products: Map[String, Product];
 
     expose func init() {
         self.products = Map();
     }
 
     func findById(id: String) -> Product? {
-        return self.products.get(id);
+        return self.products.Get(id);
     }
 
     func findByCategory(category: String) -> [Product] {
-        return self.products.values()
-            .filter(p => p.category == category);
+        return self.products.Values()
+            .Filter(p => p.category == category);
     }
 
     func findAll() -> [Product] {
-        return self.products.values();
+        return self.products.Values();
     }
 
     func save(product: Product) {
-        self.products.set(product.id, product);
+        self.products.Set(product.id, product);
     }
 
     func delete(id: String) {
@@ -900,7 +903,7 @@ entity OrderService {
                 return OrderResult.failure("Insufficient stock: " + product.name);
             }
 
-            total = total + (product.price * item.quantity.toFloat());
+            total = total + (product.price * Convert.ToDouble(item.quantity));
         }
 
         // Process payment
@@ -1065,7 +1068,7 @@ func processShipment(shipment: Shipment) {
 }
 
 // Now you have enough examples to abstract well
-func withLogging<T>(name: String, id: String, operation: func() -> T) -> T {
+func withLogging[T](name: String, id: String, operation: func() -> T) -> T {
     log("Processing " + name + " " + id);
     var result = operation();
     log(name + " processed " + id);
@@ -1150,33 +1153,33 @@ Components publish events without knowing who listens. Other components subscrib
 
 ```rust
 entity EventBus {
-    hide subscribers: Map<string, [func(Event)]>;
+    hide subscribers: Map[String, [func(Event)]];
 
     expose func init() {
         self.subscribers = Map();
     }
 
     func subscribe(eventType: String, handler: func(Event)) {
-        if !self.subscribers.has(eventType) {
-            self.subscribers.set(eventType, []);
+        if !self.subscribers.Has(eventType) {
+            self.subscribers.Set(eventType, []);
         }
-        self.subscribers.get(eventType).push(handler);
+        self.subscribers.Get(eventType).Push(handler);
     }
 
     func unsubscribe(eventType: String, handler: func(Event)) {
-        if self.subscribers.has(eventType) {
-            var handlers = self.subscribers.get(eventType);
-            self.subscribers.set(
+        if self.subscribers.Has(eventType) {
+            var handlers = self.subscribers.Get(eventType);
+            self.subscribers.Set(
                 eventType,
-                handlers.filter(h => h != handler)
+                handlers.Filter(h => h != handler)
             );
         }
     }
 
     func publish(event: Event) {
         var eventType = event.type;
-        if self.subscribers.has(eventType) {
-            for handler in self.subscribers.get(eventType) {
+        if self.subscribers.Has(eventType) {
+            for handler in self.subscribers.Get(eventType) {
                 handler(event);
             }
         }
@@ -1250,29 +1253,29 @@ For large systems, manually wiring dependencies becomes tedious. Dependency inje
 
 ```rust
 entity Container {
-    hide registrations: Map<string, func() -> any>;
-    hide singletons: Map<string, any>;
+    hide registrations: Map[String, func() -> any];
+    hide singletons: Map[String, any];
 
     expose func init() {
-        self.registrations = Map();
-        self.singletons = Map();
+        self.registrations = new Map();
+        self.singletons = new Map();
     }
 
-    func register<T>(name: String, factory: func() -> T) {
-        self.registrations.set(name, factory);
+    func register[T](name: String, factory: func() -> T) {
+        self.registrations.Set(name, factory);
     }
 
-    func registerSingleton<T>(name: String, factory: func() -> T) {
-        self.registrations.set(name, func() -> T {
-            if !self.singletons.has(name) {
-                self.singletons.set(name, factory());
+    func registerSingleton[T](name: String, factory: func() -> T) {
+        self.registrations.Set(name, func() -> T {
+            if !self.singletons.Has(name) {
+                self.singletons.Set(name, factory());
             }
-            return self.singletons.get(name) as T;
+            return self.singletons.Get(name) as T;
         });
     }
 
-    func resolve<T>(name: String) -> T {
-        var factory = self.registrations.get(name);
+    func resolve[T](name: String) -> T {
+        var factory = self.registrations.Get(name);
         if factory == null {
             throw Error("No registration for: " + name);
         }
@@ -1315,7 +1318,7 @@ func configureContainer() -> Container {
 
 // Usage
 var container = configureContainer();
-var orderService = container.resolve<OrderService>("orderService");
+var orderService = container.resolve[OrderService]("orderService");
 ```
 
 The container manages object creation and lifetime. Changes to wiring happen in one place.
@@ -1341,17 +1344,17 @@ func main() {
         print("4. List books");
         print("5. Exit");
 
-        var choice = Input.readLine();
+        var choice = Input.ReadLine();
 
         if choice == "1" {
             print("Enter title: ");
-            var title = Input.readLine();
+            var title = Input.ReadLine();
             print("Enter author: ");
-            var author = Input.readLine();
+            var author = Input.ReadLine();
             print("Enter ISBN: ");
-            var isbn = Input.readLine();
+            var isbn = Input.ReadLine();
 
-            if title.length == 0 || author.length == 0 || isbn.length == 0 {
+            if title.Length == 0 || author.Length == 0 || isbn.Length == 0 {
                 print("All fields required!");
                 continue;
             }
@@ -1364,9 +1367,9 @@ func main() {
 
         } else if choice == "2" {
             print("Enter ISBN: ");
-            var isbn = Input.readLine();
+            var isbn = Input.ReadLine();
             print("Enter borrower name: ");
-            var borrower = Input.readLine();
+            var borrower = Input.ReadLine();
 
             var book = db.queryOne("SELECT * FROM books WHERE isbn = ?", [isbn]);
             if book == null {
@@ -1390,7 +1393,7 @@ func main() {
 
         } else if choice == "3" {
             print("Enter ISBN: ");
-            var isbn = Input.readLine();
+            var isbn = Input.ReadLine();
 
             var loan = db.queryOne(
                 "SELECT * FROM loans WHERE isbn = ? ORDER BY date DESC LIMIT 1",
@@ -1481,7 +1484,7 @@ entity BookRepository {
 
     func findAll() -> [Book] {
         var rows = self.db.query("SELECT * FROM books");
-        return rows.map(row => Book(
+        return rows.Map(row => Book(
             isbn: row.getString("isbn"),
             title: row.getString("title"),
             author: row.getString("author"),
@@ -1525,7 +1528,7 @@ entity LoanRepository {
             id: row.getInt("id"),
             isbn: row.getString("isbn"),
             borrowerName: row.getString("borrower"),
-            borrowDate: DateTime.parse(row.getString("date"))
+            borrowDate: DateTime.Parse(row.getString("date"))
         );
     }
 
@@ -1557,15 +1560,15 @@ entity LibraryService {
         self.loanRepo = loanRepo;
     }
 
-    func addBook(title: String, author: String, isbn: String) -> Result<Book, String> {
+    func addBook(title: String, author: String, isbn: String) -> Result[Book] {
         // Validation
-        if title.trim().length == 0 {
+        if title.Trim().Length == 0 {
             return Result.error("Title is required");
         }
-        if author.trim().length == 0 {
+        if author.Trim().Length == 0 {
             return Result.error("Author is required");
         }
-        if isbn.trim().length == 0 {
+        if isbn.Trim().Length == 0 {
             return Result.error("ISBN is required");
         }
 
@@ -1585,9 +1588,9 @@ entity LibraryService {
         return Result.success(book);
     }
 
-    func borrowBook(isbn: String, borrowerName: String) -> Result<Loan, String> {
+    func borrowBook(isbn: String, borrowerName: String) -> Result[Loan] {
         // Validation
-        if borrowerName.trim().length == 0 {
+        if borrowerName.Trim().Length == 0 {
             return Result.error("Borrower name is required");
         }
 
@@ -1621,7 +1624,7 @@ entity LibraryService {
         return Result.success(loan);
     }
 
-    func returnBook(isbn: String) -> Result<Boolean, String> {
+    func returnBook(isbn: String) -> Result[Boolean] {
         // Find active loan
         var loan = self.loanRepo.findActiveByIsbn(isbn);
         if loan == null {
@@ -1635,7 +1638,7 @@ entity LibraryService {
         }
 
         // Delete loan and update book
-        self.loanRepo.delete(loan.id);
+        self.loanRepo.Delete(loan.id);
         var updatedBook = Book(
             isbn: book.isbn,
             title: book.title,
@@ -1676,7 +1679,7 @@ func main() {
         print("5. Exit");
         print("\nChoice: ");
 
-        var choice = Input.readLine();
+        var choice = Input.ReadLine();
 
         if choice == "1" {
             handleAddBook(library);
@@ -1697,11 +1700,11 @@ func main() {
 
 func handleAddBook(library: LibraryService) {
     print("Enter title: ");
-    var title = Input.readLine();
+    var title = Input.ReadLine();
     print("Enter author: ");
-    var author = Input.readLine();
+    var author = Input.ReadLine();
     print("Enter ISBN: ");
-    var isbn = Input.readLine();
+    var isbn = Input.ReadLine();
 
     var result = library.addBook(title, author, isbn);
     if result.isError {
@@ -1713,9 +1716,9 @@ func handleAddBook(library: LibraryService) {
 
 func handleBorrowBook(library: LibraryService) {
     print("Enter ISBN: ");
-    var isbn = Input.readLine();
+    var isbn = Input.ReadLine();
     print("Enter borrower name: ");
-    var borrower = Input.readLine();
+    var borrower = Input.ReadLine();
 
     var result = library.borrowBook(isbn, borrower);
     if result.isError {
@@ -1727,7 +1730,7 @@ func handleBorrowBook(library: LibraryService) {
 
 func handleReturnBook(library: LibraryService) {
     print("Enter ISBN: ");
-    var isbn = Input.readLine();
+    var isbn = Input.ReadLine();
 
     var result = library.returnBook(isbn);
     if result.isError {
@@ -1739,7 +1742,7 @@ func handleReturnBook(library: LibraryService) {
 
 func handleListBooks(library: LibraryService) {
     var books = library.listBooks();
-    if books.length == 0 {
+    if books.Length == 0 {
         print("No books in library");
         return;
     }
@@ -1789,22 +1792,22 @@ Now we can create in-memory implementations for testing:
 ```rust
 // tests/InMemoryBookRepository.zia
 entity InMemoryBookRepository implements IBookRepository {
-    hide books: Map<string, Book>;
+    hide books: Map[String, Book];
 
     expose func init() {
         self.books = Map();
     }
 
     func findByIsbn(isbn: String) -> Book? {
-        return self.books.get(isbn);
+        return self.books.Get(isbn);
     }
 
     func findAll() -> [Book] {
-        return self.books.values();
+        return self.books.Values();
     }
 
     func save(book: Book) {
-        self.books.set(book.isbn, book);
+        self.books.Set(book.isbn, book);
     }
 }
 
@@ -1987,7 +1990,7 @@ entity UserEventStore {
     events: [UserEvent];
 
     func apply(event: UserEvent) {
-        self.events.push(event);
+        self.events.Push(event);
     }
 
     func getCurrentState() -> User {
@@ -2075,7 +2078,7 @@ entity App {
     hide orderService: OrderService;
 
     func handleRequest(request: Request) -> Response {
-        if request.path.startsWith("/users") {
+        if request.path.StartsWith("/users") {
             return self.handleUsers(request);
         }
         // ...
@@ -2124,15 +2127,15 @@ Architecture concepts are language-independent. Here is how they appear in Viper
 ```rust
 module Application;
 
-interface IRepository<T> {
+interface IRepository[T] {
     func findById(id: String) -> T?;
     func save(item: T);
 }
 
 entity UserService {
-    hide repo: IRepository<User>;
+    hide repo: IRepository[User];
 
-    expose func init(repo: IRepository<User>) {
+    expose func init(repo: IRepository[User]) {
         self.repo = repo;
     }
 
@@ -2218,8 +2221,8 @@ func processPayment(userId: String, amount: Number) {
 
     // Log
     var logFile = File.open("transactions.log", "a");
-    logFile.write(Time.DateTime.Now() + ": " + userId + " paid " + amount);
-    logFile.close();
+    logFile.Write(Time.DateTime.Now() + ": " + userId + " paid " + amount);
+    logFile.Close();
 
     // Notify
     var smtp = SMTP.connect("mail.server.com");
@@ -2260,18 +2263,20 @@ Write tests for your implementation.
 **Exercise 28.8 (Refactoring Journey)**: Take this starter code and refactor it step by step:
 
 ```rust
+bind Viper.Convert as Convert;
+
 func main() {
     var items = [];
     while true {
         print("1. Add item  2. Remove item  3. Total  4. Exit: ");
-        var choice = Input.readLine();
+        var choice = Input.ReadLine();
         if choice == "1" {
-            print("Name: "); var name = Input.readLine();
-            print("Price: "); var price = Input.readLine().toFloat();
-            items.push({ name: name, price: price });
+            print("Name: "); var name = Input.ReadLine();
+            print("Price: "); var price = Convert.ToDouble(Input.ReadLine());
+            items.Push({ name: name, price: price });
         } else if choice == "2" {
-            print("Index: "); var idx = Input.readLine().toInt();
-            items.removeAt(idx);
+            print("Index: "); var idx = Convert.ToInt64(Input.ReadLine());
+            items.RemoveAt(idx);
         } else if choice == "3" {
             var total = 0.0;
             for item in items { total = total + item.price; }

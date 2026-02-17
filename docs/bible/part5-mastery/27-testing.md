@@ -204,28 +204,28 @@ test "complete user journey: registration to purchase" {
 
     // User visits homepage
     browser.navigate(app.url);
-    assert browser.currentPage().contains("Welcome");
+    assert browser.currentPage().Contains("Welcome");
 
     // User registers
     browser.click("Register");
     browser.fill("email", "alice@example.com");
     browser.fill("password", "securepassword123");
     browser.click("Submit");
-    assert browser.currentPage().contains("Registration successful");
+    assert browser.currentPage().Contains("Registration successful");
 
     // User browses products
     browser.click("Products");
-    assert browser.currentPage().contains("Widget");
+    assert browser.currentPage().Contains("Widget");
 
     // User adds item to cart
     browser.click("Add to Cart");
-    assert browser.currentPage().contains("Cart (1)");
+    assert browser.currentPage().Contains("Cart (1)");
 
     // User completes purchase
     browser.click("Checkout");
     browser.fill("cardNumber", "4111111111111111");
     browser.click("Complete Purchase");
-    assert browser.currentPage().contains("Thank you for your order");
+    assert browser.currentPage().Contains("Thank you for your order");
 
     app.shutdown();
 }
@@ -437,9 +437,9 @@ Consider a test without clear structure:
 ```rust
 test "confusing test" {
     var cart = ShoppingCart();
-    cart.add(Item("Book", 15.00));
+    cart.Add(Item("Book", 15.00));
     assert cart.itemCount() == 1;
-    cart.add(Item("Pen", 2.00));
+    cart.Add(Item("Pen", 2.00));
     assert cart.itemCount() == 2;
     assert cart.total() == 17.00;
     cart.remove("Book");
@@ -456,10 +456,10 @@ Compare with structured tests:
 test "adding item increases count" {
     // Arrange
     var cart = ShoppingCart();
-    cart.add(Item("Book", 15.00));
+    cart.Add(Item("Book", 15.00));
 
     // Act
-    cart.add(Item("Pen", 2.00));
+    cart.Add(Item("Pen", 2.00));
 
     // Assert
     assertEqual(cart.itemCount(), 2);
@@ -468,8 +468,8 @@ test "adding item increases count" {
 test "total reflects all item prices" {
     // Arrange
     var cart = ShoppingCart();
-    cart.add(Item("Book", 15.00));
-    cart.add(Item("Pen", 2.00));
+    cart.Add(Item("Book", 15.00));
+    cart.Add(Item("Pen", 2.00));
 
     // Act
     var total = cart.total();
@@ -481,8 +481,8 @@ test "total reflects all item prices" {
 test "removing item decreases count and total" {
     // Arrange
     var cart = ShoppingCart();
-    cart.add(Item("Book", 15.00));
-    cart.add(Item("Pen", 2.00));
+    cart.Add(Item("Book", 15.00));
+    cart.Add(Item("Pen", 2.00));
 
     // Act
     cart.remove("Book");
@@ -569,7 +569,7 @@ A helpful mnemonic for remembering what to test:
 Let's apply ZOMBIES to testing a stack:
 
 ```rust
-entity Stack<T> {
+entity Stack[T] {
     hide items: [T];
 
     expose func init() {
@@ -577,77 +577,77 @@ entity Stack<T> {
     }
 
     func push(item: T) {
-        self.items.push(item);
+        self.items.Push(item);
     }
 
     func pop() -> T? {
-        if self.items.length == 0 {
+        if self.items.Length == 0 {
             return null;
         }
-        return self.items.pop();
+        return self.items.Pop();
     }
 
     func isEmpty() -> Boolean {
-        return self.items.length == 0;
+        return self.items.Length == 0;
     }
 
     func size() -> Integer {
-        return self.items.length;
+        return self.items.Length;
     }
 }
 
 // Zero: Empty stack behavior
 test "new stack is empty" {
-    var stack = Stack<Integer>();
-    assert stack.isEmpty();
+    var stack = new Stack[Integer]();
+    assert stack.IsEmpty();
     assertEqual(stack.size(), 0);
 }
 
 test "pop on empty stack returns null" {
-    var stack = Stack<Integer>();
-    assert stack.pop() == null;
+    var stack = new Stack[Integer]();
+    assert stack.Pop() == null;
 }
 
 // One: Single element behavior
 test "stack with one element is not empty" {
-    var stack = Stack<Integer>();
-    stack.push(42);
-    assert !stack.isEmpty();
+    var stack = new Stack[Integer]();
+    stack.Push(42);
+    assert !stack.IsEmpty();
     assertEqual(stack.size(), 1);
 }
 
 test "pop returns the single element" {
-    var stack = Stack<Integer>();
-    stack.push(42);
-    assertEqual(stack.pop(), 42);
-    assert stack.isEmpty();
+    var stack = new Stack[Integer]();
+    stack.Push(42);
+    assertEqual(stack.Pop(), 42);
+    assert stack.IsEmpty();
 }
 
 // Many: Multiple elements behavior
 test "stack maintains LIFO order" {
-    var stack = Stack<Integer>();
-    stack.push(1);
-    stack.push(2);
-    stack.push(3);
+    var stack = new Stack[Integer]();
+    stack.Push(1);
+    stack.Push(2);
+    stack.Push(3);
 
-    assertEqual(stack.pop(), 3);
-    assertEqual(stack.pop(), 2);
-    assertEqual(stack.pop(), 1);
+    assertEqual(stack.Pop(), 3);
+    assertEqual(stack.Pop(), 2);
+    assertEqual(stack.Pop(), 1);
 }
 
 // Boundary: Edge behavior
 test "push then pop returns to empty" {
-    var stack = Stack<Integer>();
-    stack.push(1);
-    stack.pop();
-    assert stack.isEmpty();
+    var stack = new Stack[Integer]();
+    stack.Push(1);
+    stack.Pop();
+    assert stack.IsEmpty();
 }
 
 // Exception/Error: Error behavior
 test "multiple pops on empty stack all return null" {
-    var stack = Stack<Integer>();
-    assert stack.pop() == null;
-    assert stack.pop() == null;
+    var stack = new Stack[Integer]();
+    assert stack.Pop() == null;
+    assert stack.Pop() == null;
 }
 ```
 
@@ -715,7 +715,7 @@ setup {
     testDatabase = Database.createTemporary();
     testDatabase.migrate();
     testUser = User("testuser", "test@example.com");
-    testDatabase.insert(testUser);
+    testDatabase.Insert(testUser);
 }
 
 // Teardown runs after each test
@@ -737,7 +737,7 @@ test "can delete user" {
 
 test "deleting user doesn't affect other users" {
     var other = User("other", "other@example.com");
-    testDatabase.insert(other);
+    testDatabase.Insert(other);
 
     testDatabase.deleteUser(testUser);
 
@@ -774,7 +774,7 @@ A stub returns predetermined values, ignoring its inputs:
 // Real implementation
 entity WeatherService {
     func getTemperature(city: String) -> Number {
-        var response = Http.get("https://api.weather.com/" + city);
+        var response = Http.Get("https://api.weather.com/" + city);
         return parseTemperature(response);
     }
 }
@@ -829,7 +829,7 @@ entity MockEmailService implements IEmailService {
     }
 
     func send(email: Email) {
-        self.sentEmails.push(email);
+        self.sentEmails.Push(email);
     }
 
     func wasSent(to: String, subject: String) -> Boolean {
@@ -842,7 +842,7 @@ entity MockEmailService implements IEmailService {
     }
 
     func sendCount() -> Integer {
-        return self.sentEmails.length;
+        return self.sentEmails.Length;
     }
 }
 
@@ -882,18 +882,18 @@ entity ProductionDatabase implements IDatabase {
 
 // Fake database: uses in-memory storage
 entity FakeDatabase implements IDatabase {
-    hide data: Map<String, User>;
+    hide data: Map[String, User];
 
     expose func init() {
         self.data = Map();
     }
 
     func save(user: User) {
-        self.data.set(user.id, user);
+        self.data.Set(user.id, user);
     }
 
     func findById(id: String) -> User? {
-        return self.data.get(id);
+        return self.data.Get(id);
     }
 
     func delete(id: String) {
@@ -1053,14 +1053,15 @@ All tests pass.
 The algorithm works but is slow. Let's optimize:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
+bind Viper.Convert as Convert;
 
 func isPrime(n: Integer) -> Boolean {
     if n < 2 { return false; }
     if n == 2 { return true; }
     if n % 2 == 0 { return false; }
 
-    var limit = Math.sqrt(n).toInt() + 1;
+    var limit = Convert.NumToInt(Math.Sqrt(n)) + 1;
     for i in 3..limit step 2 {
         if n % i == 0 {
             return false;
@@ -1109,7 +1110,7 @@ Learning to test well means learning what not to do. Here are common mistakes an
 ```rust
 // Bad: Tests internal details
 entity Cache {
-    hide storage: Map<string, string>;
+    hide storage: Map[String, String];
     // ...
 }
 
@@ -1121,8 +1122,8 @@ test "cache uses hashmap internally" {
 // Good: Tests observable behavior
 test "cache returns stored value" {
     var cache = Cache();
-    cache.set("key", "value");
-    assertEqual(cache.get("key"), "value");
+    cache.Set("key", "value");
+    assertEqual(cache.Get("key"), "value");
 }
 ```
 
@@ -1186,7 +1187,7 @@ test "everything about user" {
     assert user.isActive;
     assert user.createdAt != null;
     assertEqual(user.role, "member");
-    assert user.permissions.length > 0;
+    assert user.permissions.Length > 0;
     // 15 more assertions...
 }
 
@@ -1395,7 +1396,7 @@ test "password hashing works" {
 test "database insert works" {
     var db = TestDatabase.create();
     var user = User("alice@example.com");
-    db.insert(user);  // FAILS - Found it!
+    db.Insert(user);  // FAILS - Found it!
 }
 ```
 
@@ -1413,7 +1414,7 @@ bind Viper.Test;
 test "reversing twice returns original" {
     for i in 0..100 {
         var original = generateRandomString();
-        var result = original.reverse().reverse();
+        var result = original.Reverse().Reverse();
         assertEqual(result, original);
     }
 }
@@ -1432,7 +1433,7 @@ test "sorted list is ordered" {
         var list = generateRandomIntList();
         var sorted = sort(list);
 
-        for j in 0..(sorted.length - 1) {
+        for j in 0..(sorted.Length - 1) {
             assert sorted[j] <= sorted[j + 1];
         }
     }
@@ -1443,7 +1444,7 @@ test "sorted list has same elements" {
         var list = generateRandomIntList();
         var sorted = sort(list);
 
-        assertEqual(sorted.length, list.length);
+        assertEqual(sorted.Length, list.Length);
         for item in list {
             assertContains(sorted, item);
         }
@@ -1473,7 +1474,7 @@ Create a calculator that:
 ```rust
 test "empty string returns 0" {
     var calc = StringCalculator();
-    assertEqual(calc.add(""), 0);
+    assertEqual(calc.Add(""), 0);
 }
 ```
 
@@ -1497,8 +1498,8 @@ entity StringCalculator {
 ```rust
 test "single number returns that number" {
     var calc = StringCalculator();
-    assertEqual(calc.add("5"), 5);
-    assertEqual(calc.add("42"), 42);
+    assertEqual(calc.Add("5"), 5);
+    assertEqual(calc.Add("42"), 42);
 }
 ```
 
@@ -1509,7 +1510,7 @@ func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
     }
-    return Convert.ToInt(numbers);
+    return Convert.ToInt64(numbers);
 }
 ```
 
@@ -1518,8 +1519,8 @@ func add(numbers: String) -> Integer {
 ```rust
 test "two numbers returns sum" {
     var calc = StringCalculator();
-    assertEqual(calc.add("1,2"), 3);
-    assertEqual(calc.add("10,20"), 30);
+    assertEqual(calc.Add("1,2"), 3);
+    assertEqual(calc.Add("10,20"), 30);
 }
 ```
 
@@ -1531,10 +1532,10 @@ func add(numbers: String) -> Integer {
         return 0;
     }
 
-    var parts = numbers.split(",");
+    var parts = numbers.Split(",");
     var sum = 0;
     for part in parts {
-        sum += Convert.ToInt(part);
+        sum += Convert.ToInt64(part);
     }
     return sum;
 }
@@ -1545,8 +1546,8 @@ func add(numbers: String) -> Integer {
 ```rust
 test "multiple numbers returns sum" {
     var calc = StringCalculator();
-    assertEqual(calc.add("1,2,3"), 6);
-    assertEqual(calc.add("1,2,3,4,5"), 15);
+    assertEqual(calc.Add("1,2,3"), 6);
+    assertEqual(calc.Add("1,2,3,4,5"), 15);
 }
 ```
 
@@ -1557,8 +1558,8 @@ The implementation already handles this! The test passes.
 ```rust
 test "newlines work as separators" {
     var calc = StringCalculator();
-    assertEqual(calc.add("1\n2,3"), 6);
-    assertEqual(calc.add("1\n2\n3"), 6);
+    assertEqual(calc.Add("1\n2,3"), 6);
+    assertEqual(calc.Add("1\n2\n3"), 6);
 }
 ```
 
@@ -1571,11 +1572,11 @@ func add(numbers: String) -> Integer {
     }
 
     // Replace newlines with commas
-    var normalized = numbers.replace("\n", ",");
-    var parts = normalized.split(",");
+    var normalized = numbers.Replace("\n", ",");
+    var parts = normalized.Split(",");
     var sum = 0;
     for part in parts {
-        sum += Convert.ToInt(part);
+        sum += Convert.ToInt64(part);
     }
     return sum;
 }
@@ -1588,7 +1589,7 @@ test "negative numbers throw exception" {
     var calc = StringCalculator();
 
     assertThrows(func() {
-        calc.add("-1,2");
+        calc.Add("-1,2");
     });
 }
 
@@ -1597,7 +1598,7 @@ test "exception message includes negative number" {
 
     var caught = false;
     try {
-        calc.add("-1,2,-3");
+        calc.Add("-1,2,-3");
     } catch e {
         caught = true;
         assertContains(e.message, "-1");
@@ -1615,20 +1616,20 @@ func add(numbers: String) -> Integer {
         return 0;
     }
 
-    var normalized = numbers.replace("\n", ",");
-    var parts = normalized.split(",");
+    var normalized = numbers.Replace("\n", ",");
+    var parts = normalized.Split(",");
     var negatives: [Integer] = [];
     var sum = 0;
 
     for part in parts {
-        var n = Convert.ToInt(part);
+        var n = Convert.ToInt64(part);
         if n < 0 {
-            negatives.push(n);
+            negatives.Push(n);
         }
         sum += n;
     }
 
-    if negatives.length > 0 {
+    if negatives.Length > 0 {
         var message = "Negatives not allowed: ";
         for i, neg in negatives {
             if i > 0 { message += ", "; }
@@ -1652,20 +1653,20 @@ entity StringCalculator {
             return 0;
         }
 
-        var normalized = numbers.replace("\n", ",");
-        var parts = normalized.split(",");
+        var normalized = numbers.Replace("\n", ",");
+        var parts = normalized.Split(",");
         var negatives: [Integer] = [];
         var sum = 0;
 
         for part in parts {
-            var n = Convert.ToInt(part.trim());
+            var n = Convert.ToInt64(part.Trim());
             if n < 0 {
-                negatives.push(n);
+                negatives.Push(n);
             }
             sum += n;
         }
 
-        if negatives.length > 0 {
+        if negatives.Length > 0 {
             var message = "Negatives not allowed: ";
             for i, neg in negatives {
                 if i > 0 { message += ", "; }
@@ -1730,8 +1731,8 @@ Tests should not share state or depend on execution order:
 var sharedList: [Integer] = [];
 
 test "add to list" {
-    sharedList.push(1);
-    assertEqual(sharedList.length, 1);
+    sharedList.Push(1);
+    assertEqual(sharedList.Length, 1);
 }
 
 test "list has item" {
@@ -1742,13 +1743,13 @@ test "list has item" {
 // Good: Each test creates its own state
 test "add to list" {
     var list: [Integer] = [];
-    list.push(1);
-    assertEqual(list.length, 1);
+    list.Push(1);
+    assertEqual(list.Length, 1);
 }
 
 test "list contains added item" {
     var list: [Integer] = [];
-    list.push(1);
+    list.Push(1);
     assertEqual(list[0], 1);
 }
 ```
@@ -1766,7 +1767,7 @@ test "sort puts elements in ascending order" {
     var list = [3, 1, 4, 1, 5, 9, 2, 6];
     var sorted = sort(list);
 
-    for i in 0..(sorted.length - 1) {
+    for i in 0..(sorted.Length - 1) {
         assert sorted[i] <= sorted[i + 1];
     }
 }

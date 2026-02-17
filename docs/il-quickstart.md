@@ -173,7 +173,7 @@ entry:
 ```il
 func @classify(i64 %n) -> i64 {
 entry:
-  %n32 = cast.si_narrow.chk %n
+  %n32:i32 = cast.si_narrow.chk %n
   switch.i32 %n32, ^default, 0 -> ^zero, 1 -> ^one, 2 -> ^two
 
 default:

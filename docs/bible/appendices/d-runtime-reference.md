@@ -40,7 +40,7 @@ Console input and output operations for text-based programs. This is the most fu
 #### Say
 
 ```rust
-func Say(message: string) -> void
+func Say(message: String) -> void
 ```
 
 Prints a message to standard output followed by a newline. This is your primary output function for displaying text to users.
@@ -62,7 +62,7 @@ Terminal.Say(3.14159);  // Prints "3.14159"
 #### Print
 
 ```rust
-func Print(message: string) -> void
+func Print(message: String) -> void
 ```
 
 Prints a message without a trailing newline. Subsequent output continues on the same line.
@@ -87,7 +87,7 @@ Terminal.Say(" done!");  // Output: Loading..... done!
 #### SayError
 
 ```rust
-func SayError(message: string) -> void
+func SayError(message: String) -> void
 ```
 
 > **Note:** `SayError` is planned but not yet available in all runtime configurations. For error output today, use `Terminal.Say` with an error prefix.
@@ -104,7 +104,7 @@ bind Viper.Terminal;
 
 if IO.File.Exists(filename) == false {
     Terminal.Say("Error: File not found: " + filename);
-    Viper.Environment.exit(1);
+    Viper.Environment.EndProgram(1);
 }
 ```
 
@@ -117,7 +117,7 @@ if IO.File.Exists(filename) == false {
 #### Ask
 
 ```rust
-func Ask(prompt: string) -> string?
+func Ask(prompt: String) -> String?
 ```
 
 Displays a prompt and waits for the user to type a line of input. Returns when the user presses Enter.
@@ -125,16 +125,16 @@ Displays a prompt and waits for the user to type a line of input. Returns when t
 **Parameters:**
 - `prompt` - Text to display before waiting for input
 
-**Returns:** The user's input as a nullable string (without the trailing newline), or `null` if EOF is reached
+**Returns:** The user's input as a nullable String (without the trailing newline), or `null` if EOF is reached
 
 **Example:**
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 var name = Terminal.Ask("What is your name? ");
 var ageStr = Terminal.Ask("How old are you? ");
-var age = ToInt(ageStr);
+var age = Convert.ToInt64(ageStr);
 
 Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 ```
@@ -142,7 +142,7 @@ Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 **When to use:** Use `Ask` for any situation where you need user input, from simple prompts to form-style data entry.
 
 **Edge cases:**
-- Returns an empty string if the user presses Enter without typing anything
+- Returns an empty String if the user presses Enter without typing anything
 - If input is redirected from a file and EOF is reached, returns `null`
 
 ---
@@ -150,24 +150,24 @@ Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 #### ReadLine
 
 ```rust
-func ReadLine() -> string?
+func ReadLine() -> String?
 ```
 
 Reads a line of input from the user without displaying a prompt. Returns when the user presses Enter.
 
-**Returns:** The user's input as a nullable string (without the trailing newline), or `null` if EOF is reached
+**Returns:** The user's input as a nullable String (without the trailing newline), or `null` if EOF is reached
 
 **Example:**
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 Terminal.Print("Enter your name: ");
 var name = Terminal.ReadLine();
 
 Terminal.Print("Enter your age: ");
 var ageStr = Terminal.ReadLine();
-var age = ToInt(ageStr);
+var age = Convert.ToInt64(ageStr);
 
 Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 ```
@@ -175,7 +175,7 @@ Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 **When to use:** Use `ReadLine` when you want to display the prompt yourself using `Print` before reading input. Use `Ask` when you want to display the prompt and read input in a single call.
 
 **Edge cases:**
-- Returns an empty string if the user presses Enter without typing anything
+- Returns an empty String if the user presses Enter without typing anything
 - If input is redirected from a file and EOF is reached, returns `null`
 
 ---
@@ -183,12 +183,12 @@ Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 #### InKey
 
 ```rust
-func InKey() -> string
+func InKey() -> String
 ```
 
 Reads a single character from input without waiting for Enter. Useful for immediate keyboard response.
 
-**Returns:** A single-character string
+**Returns:** A single-character String
 
 **Example:**
 ```rust
@@ -211,12 +211,12 @@ if response == "y" or response == "Y" {
 #### GetKey
 
 ```rust
-func GetKey() -> string
+func GetKey() -> String
 ```
 
-Reads a single keypress and returns it as a string. Can detect special keys like arrows and function keys, which are returned as named strings (e.g., `"UP"`, `"DOWN"`, `"LEFT"`, `"RIGHT"`).
+Reads a single keypress and returns it as a String. Can detect special keys like arrows and function keys, which are returned as named strings (e.g., `"UP"`, `"DOWN"`, `"LEFT"`, `"RIGHT"`).
 
-**Returns:** A string representing the key pressed
+**Returns:** A String representing the key pressed
 
 **Example:**
 ```rust
@@ -243,7 +243,7 @@ loop {
 
 **When to use:** Use `GetKey` for games, TUI applications, or any program that needs to respond to arrow keys, function keys, or key combinations.
 
-**Related:** `GetKeyTimeout(ms: i64) -> string` — Same as `GetKey` but returns an empty string if no key is pressed within the specified timeout in milliseconds.
+**Related:** `GetKeyTimeout(ms: Integer) -> String` — Same as `GetKey` but returns an empty String if no key is pressed within the specified timeout in milliseconds.
 
 ---
 
@@ -275,7 +275,7 @@ func displayMenu() {
 #### SetColor
 
 ```rust
-func SetColor(foreground: i64, background: i64) -> void
+func SetColor(foreground: Integer, background: Integer) -> void
 ```
 
 Sets the foreground and background text color for subsequent output using integer color codes.
@@ -299,7 +299,7 @@ Terminal.Say("Colored text");
 #### SetPosition
 
 ```rust
-func SetPosition(x: i64, y: i64) -> void
+func SetPosition(x: Integer, y: Integer) -> void
 ```
 
 Positions the cursor at the specified column and row.
@@ -337,7 +337,7 @@ Terminal.Print("+------------------------+");
 #### SetCursorVisible
 
 ```rust
-func SetCursorVisible(visible: i64) -> void
+func SetCursorVisible(visible: Integer) -> void
 ```
 
 Controls cursor visibility. Hiding the cursor (passing 0) creates a cleaner appearance for animations and games. Pass 1 to show the cursor again.
@@ -396,7 +396,7 @@ Terminal.Say("");  // Newline when done
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
 func showMenu(options: [String]) -> Integer {
     loop {
@@ -412,9 +412,9 @@ func showMenu(options: [String]) -> Integer {
 
         Terminal.Say("");
         var choice = Terminal.Ask("Enter choice: ");
-        var num = ToInt(choice);
+        var num = Convert.ToInt64(choice);
 
-        if num >= 1 and num <= options.length {
+        if num >= 1 and num <= options.Length {
             return num - 1;  // Return 0-based index
         }
 
@@ -443,15 +443,15 @@ bind Viper.IO;
 #### ReadAllText
 
 ```rust
-func ReadAllText(path: string) -> string
+func ReadAllText(path: String) -> String
 ```
 
-Reads the entire contents of a text file as a string.
+Reads the entire contents of a text file as a String.
 
 **Parameters:**
 - `path` - Path to the file (relative or absolute)
 
-**Returns:** The file contents as a string
+**Returns:** The file contents as a String
 
 **Example:**
 ```rust
@@ -474,7 +474,7 @@ Terminal.Say("File contents: " + content);
 #### ReadAllBytes
 
 ```rust
-func ReadAllBytes(path: string) -> [Byte]
+func ReadAllBytes(path: String) -> [Byte]
 ```
 
 Reads the entire contents of a file as raw bytes.
@@ -490,7 +490,7 @@ bind Viper.IO;
 bind Viper.Terminal;
 
 var bytes = IO.File.ReadAllBytes("image.png");
-Terminal.Say("File size: " + bytes.length + " bytes");
+Terminal.Say("File size: " + bytes.Length + " bytes");
 ```
 
 **When to use:** Use for binary files (images, archives, executables) or when you need precise byte-level access.
@@ -500,7 +500,7 @@ Terminal.Say("File size: " + bytes.length + " bytes");
 #### ReadAllLines
 
 ```rust
-func ReadAllLines(path: string) -> [String]
+func ReadAllLines(path: String) -> [String]
 ```
 
 Reads a text file and returns an array where each element is one line.
@@ -531,10 +531,10 @@ for line in lines {
 #### WriteAllText
 
 ```rust
-func WriteAllText(path: string, content: string) -> void
+func WriteAllText(path: String, content: String) -> void
 ```
 
-Writes a string to a file, creating the file if it does not exist or overwriting it if it does.
+Writes a String to a file, creating the file if it does not exist or overwriting it if it does.
 
 **Parameters:**
 - `path` - Path to the file
@@ -559,7 +559,7 @@ IO.File.WriteAllText("person.txt", data);
 #### WriteAllBytes
 
 ```rust
-func WriteAllBytes(path: string, data: [Byte]) -> void
+func WriteAllBytes(path: String, data: [Byte]) -> void
 ```
 
 Writes raw bytes to a file.
@@ -583,8 +583,8 @@ IO.File.WriteAllBytes("copy.bin", data);
 #### Append / AppendLine
 
 ```rust
-func Append(path: string, content: string) -> void
-func AppendLine(path: string, content: string) -> void
+func Append(path: String, content: String) -> void
+func AppendLine(path: String, content: String) -> void
 ```
 
 Adds text to the end of an existing file, or creates the file if it does not exist. `Append` writes the text as-is; `AppendLine` appends a newline after the content.
@@ -616,7 +616,7 @@ log("Application finished");
 #### Exists
 
 ```rust
-func Exists(path: string) -> Boolean
+func Exists(path: String) -> Boolean
 ```
 
 Checks whether a file or directory exists at the given path.
@@ -645,7 +645,7 @@ if IO.File.Exists(configPath) {
 #### Delete
 
 ```rust
-func Delete(path: string) -> void
+func Delete(path: String) -> void
 ```
 
 Deletes a file.
@@ -673,7 +673,7 @@ if IO.File.Exists("temp.txt") {
 #### Move
 
 ```rust
-func Move(oldPath: string, newPath: string) -> void
+func Move(oldPath: String, newPath: String) -> void
 ```
 
 Renames or moves a file.
@@ -702,7 +702,7 @@ IO.File.Move("temp/data.csv", "archive/data.csv");
 #### Copy
 
 ```rust
-func Copy(sourcePath: string, destPath: string) -> void
+func Copy(sourcePath: String, destPath: String) -> void
 ```
 
 Creates a copy of a file.
@@ -728,7 +728,7 @@ IO.File.Copy("config.json", "config.json.backup");
 #### Size
 
 ```rust
-func Size(path: string) -> Integer
+func Size(path: String) -> Integer
 ```
 
 Returns the size of a file in bytes.
@@ -750,7 +750,7 @@ Terminal.Say("File size: " + megabytes + " MB");
 #### Modified
 
 ```rust
-func Modified(path: string) -> Integer
+func Modified(path: String) -> Integer
 ```
 
 Returns when the file was last modified as a Unix timestamp (seconds since epoch).
@@ -775,7 +775,7 @@ Directory operations use the `IO.Dir` prefix (part of `bind Viper.IO`).
 #### IO.Dir.List
 
 ```rust
-func List(path: string) -> [String]
+func List(path: String) -> [String]
 ```
 
 Lists all files and subdirectories in a directory.
@@ -801,7 +801,7 @@ for entry in entries {
 #### IO.Dir.Make
 
 ```rust
-func Make(path: string) -> void
+func Make(path: String) -> void
 ```
 
 Creates a directory. Creates parent directories as needed.
@@ -823,7 +823,7 @@ Path operations use the `IO.Path` prefix (part of `bind Viper.IO`).
 #### IO.Path.Join
 
 ```rust
-func Join(left: string, right: string) -> string
+func Join(left: String, right: String) -> String
 ```
 
 Combines two path components using the correct separator for the operating system.
@@ -836,14 +836,14 @@ var path = IO.Path.Join("home/alice", "report.txt");
 // Returns: "home/alice/report.txt"
 ```
 
-**When to use:** Use `IO.Path.Join` instead of string concatenation with "/" or "\\". This ensures your code works on all operating systems.
+**When to use:** Use `IO.Path.Join` instead of String concatenation with "/" or "\\". This ensures your code works on all operating systems.
 
 ---
 
 #### IO.Path.Name
 
 ```rust
-func Name(path: string) -> string
+func Name(path: String) -> String
 ```
 
 Returns just the filename portion of a path.
@@ -861,7 +861,7 @@ var filename = IO.Path.Name("/home/alice/report.txt");
 #### IO.Path.Dir
 
 ```rust
-func Dir(path: string) -> string
+func Dir(path: String) -> String
 ```
 
 Returns the directory portion of a path.
@@ -879,7 +879,7 @@ var dir = IO.Path.Dir("/home/alice/report.txt");
 #### IO.Path.Ext
 
 ```rust
-func Ext(path: string) -> string
+func Ext(path: String) -> String
 ```
 
 Returns the file extension including the dot.
@@ -897,7 +897,7 @@ var ext = IO.Path.Ext("photo.jpg");
 #### IO.Path.Abs
 
 ```rust
-func Abs(path: string) -> string
+func Abs(path: String) -> String
 ```
 
 Converts a relative path to an absolute path.
@@ -958,16 +958,18 @@ Mathematical functions and constants for numeric computation.
 ### Constants
 
 ```rust
-Math.PI      // 3.14159265358979323846 - ratio of circle circumference to diameter
+Math.Pi      // 3.14159265358979323846 - ratio of circle circumference to diameter
 Math.E       // 2.71828182845904523536 - base of natural logarithm
-Math.TAU     // 6.28318530717958647692 - 2*PI, full circle in radians
+Math.Tau     // 6.28318530717958647692 - 2*Pi, full circle in radians
 ```
 
 **Example:**
 ```rust
+bind Viper.Math as Math;
+
 var radius = 5.0;
-var circumference = 2.0 * Math.PI * radius;  // or TAU * radius
-var area = Math.PI * radius * radius;
+var circumference = 2.0 * Math.Pi * radius;  // or Math.Tau * radius
+var area = Math.Pi * radius * radius;
 ```
 
 ---
@@ -985,7 +987,7 @@ Returns the absolute (non-negative) value. Use `Abs` for floating-point numbers,
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Abs(-3.14)     // Returns: 3.14
 Math.AbsInt(-5)     // Returns: 5
@@ -1006,7 +1008,7 @@ Returns the smaller or larger of two values.
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Min(3.0, 7.0)    // Returns: 3.0
 Math.Max(3.0, 7.0)    // Returns: 7.0
@@ -1030,7 +1032,7 @@ Constrains a value to a range. Equivalent to `Max(min, Min(max, value))`.
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Clamp(150.0, 0.0, 100.0)   // Returns: 100.0
 Math.Clamp(-50.0, 0.0, 100.0)   // Returns: 0.0
@@ -1055,7 +1057,7 @@ Rounds down to the nearest integer (toward negative infinity).
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Floor(3.7)   // Returns: 3.0
 Math.Floor(3.2)   // Returns: 3.0
@@ -1074,7 +1076,7 @@ Rounds up to the nearest integer (toward positive infinity).
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Ceil(3.2)    // Returns: 4.0
 Math.Ceil(3.0)    // Returns: 3.0
@@ -1093,7 +1095,7 @@ Rounds to the nearest integer. Halfway cases round away from zero.
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Round(3.4)   // Returns: 3.0
 Math.Round(3.5)   // Returns: 4.0
@@ -1112,7 +1114,7 @@ Truncates toward zero (removes the fractional part).
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Trunc(3.7)   // Returns: 3.0
 Math.Trunc(-3.7)  // Returns: -3.0 (toward zero, not down)
@@ -1132,7 +1134,7 @@ Returns the square root.
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Sqrt(16.0)   // Returns: 4.0
 Math.Sqrt(2.0)    // Returns: 1.41421356...
@@ -1159,7 +1161,7 @@ Returns base raised to the power of exponent.
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Pow(2.0, 10.0)   // Returns: 1024.0
 Math.Pow(10.0, 3.0)   // Returns: 1000.0
@@ -1178,7 +1180,7 @@ Returns e raised to the power x.
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Exp(1.0)     // Returns: 2.71828... (e)
 Math.Exp(0.0)     // Returns: 1.0
@@ -1196,7 +1198,7 @@ func Log2(x: Number) -> Number     // Base-2 logarithm
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Log(Math.E)      // Returns: 1.0
 Math.Log10(1000.0)    // Returns: 3.0
@@ -1221,12 +1223,12 @@ func Tan(x: Number) -> Number    // Tangent
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 Math.Sin(0.0)              // Returns: 0.0
-Math.Sin(Math.PI / 2.0)   // Returns: 1.0
+Math.Sin(Math.Pi / 2.0)   // Returns: 1.0
 Math.Cos(0.0)              // Returns: 1.0
-Math.Cos(Math.PI)          // Returns: -1.0
+Math.Cos(Math.Pi)          // Returns: -1.0
 ```
 
 ---
@@ -1242,7 +1244,7 @@ func Atan2(y: Number, x: Number) -> Number   // Arc tangent of y/x (handles quad
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Atan2 is usually what you want for angles between points
 func angleTo(fromX: Number, fromY: Number, toX: Number, toY: Number) -> Number {
@@ -1268,26 +1270,28 @@ func Tanh(x: Number) -> Number    // Hyperbolic tangent
 
 #### Angle Conversion
 
-```rust
-func toRadians(degrees: f64) -> f64
-func toDegrees(radians: f64) -> f64
-```
+Zia does not have built-in `toRadians`/`toDegrees` functions. Convert manually using `Math.Pi`:
 
-**Example:**
 ```rust
-var rad = Math.toRadians(90.0);   // Returns: PI/2
-var deg = Math.toDegrees(Math.PI);  // Returns: 180.0
+bind Viper.Math as Math;
 
-// If you have user input in degrees
-var userAngle = 45.0;  // degrees
-var x = Math.cos(Math.toRadians(userAngle));
+// degrees to radians
+var rad = degrees * Math.Pi / 180.0;
+
+// radians to degrees
+var deg = radians * 180.0 / Math.Pi;
+
+// Example: cosine of 45 degrees
+var userAngle = 45.0;
+var radians = userAngle * Math.Pi / 180.0;
+var x = Math.Cos(radians);
 ```
 
 ---
 
 ### Random Numbers
 
-Random functions are under `Viper.Math.Random`. Bind as `bind Viper.Math;` and use the `Math.Random.*` prefix.
+Random functions are under `Viper.Math.Random`. Bind as `bind Viper.Math as Math;` and use the `Math.Random.*` prefix.
 
 #### Math.Random.Next
 
@@ -1299,7 +1303,7 @@ Returns a random floating-point number from 0.0 (inclusive) to 1.0 (exclusive).
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 var r = Math.Random.Next();  // e.g., 0.7231498...
 ```
@@ -1316,7 +1320,7 @@ Returns a random integer in the range [min, max] (inclusive on both ends).
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 var diceRoll = Math.Random.Range(1, 6);
 var coinFlip = Math.Random.Range(0, 1);  // 0 or 1
@@ -1334,7 +1338,7 @@ Sets the random number generator seed. Same seed produces the same sequence.
 
 **Example:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Reproducible random sequence
 Math.Random.Seed(12345);
@@ -1454,17 +1458,17 @@ Terminal.Say("Day: " + Time.DateTime.Day(ts));
 #### Time.DateTime.Format
 
 ```rust
-func Format(ts: Integer, pattern: string) -> string
+func Format(ts: Integer, pattern: String) -> String
 ```
 
-Formats a timestamp as a human-readable string using a pattern.
+Formats a timestamp as a human-readable String using a pattern.
 
 **Example:**
 ```rust
 bind Viper.Time;
 
 var ts = Time.DateTime.Now();
-var formatted = Time.DateTime.Format(ts, "YYYY-MM-DD HH:mm:ss");
+var formatted = Time.DateTime.Format(ts, "%Y-%m-%d %H:%M:%S");
 ```
 
 ---
@@ -1472,10 +1476,10 @@ var formatted = Time.DateTime.Format(ts, "YYYY-MM-DD HH:mm:ss");
 #### Time.DateTime.ParseISO
 
 ```rust
-func ParseISO(str: string) -> Integer
+func ParseISO(str: String) -> Integer
 ```
 
-Parses an ISO 8601 date/time string into a Unix timestamp.
+Parses an ISO 8601 date/time String into a Unix timestamp.
 
 **Example:**
 ```rust
@@ -1529,7 +1533,7 @@ var elapsed = Time.DateTime.Diff(Time.DateTime.Now(), start);
 
 Data structures beyond basic arrays for organizing and managing data. Bind as `bind Viper.Collections;` and use the `Collections.*` prefix.
 
-> **Note on API style:** The Collections runtime API is function-based, not object-oriented. Rather than `map.get(key)`, use `Collections.Map.Get(map, key)`. The function signatures shown below describe the conceptual interface; prefix all calls with `Collections.Map.*`, `Collections.List.*`, `Collections.Set.*`, etc.
+> **Note on API style:** The Collections runtime API is function-based, not object-oriented. Rather than `map.Get(key)`, use `Collections.Map.Get(map, key)`. The function signatures shown below describe the conceptual interface; prefix all calls with `Collections.Map.*`, `Collections.List.*`, `Collections.Set.*`, etc.
 
 > **See also:** [Chapter 6: Collections](../part1-foundations/06-collections.md) for array fundamentals.
 
@@ -1540,34 +1544,34 @@ Data structures beyond basic arrays for organizing and managing data. Bind as `b
 A key-value store with fast lookup. Also known as a dictionary or hash map.
 
 ```rust
-var map = Map<string, i64>.new();
+var map = new Map[String, Integer]();
 ```
 
 #### Methods
 
 ```rust
-map.set(key, value)     // Add or update a key-value pair
-map.get(key)            // -> value? (nil if not found)
-map.has(key)            // -> bool
-map.delete(key)         // Remove a key
-map.clear()             // Remove all entries
-map.size                // -> i64 (number of entries)
-map.keys()              // -> [KeyType]
-map.values()            // -> [ValueType]
+map.Set(key, value)     // Add or update a key-value pair
+map.Get(key)            // -> value? (nil if not found)
+map.Has(key)            // -> Boolean
+map.Delete(key)         // Remove a key
+map.Clear()             // Remove all entries
+map.size                // -> Integer (number of entries)
+map.Keys()              // -> [KeyType]
+map.Values()            // -> [ValueType]
 ```
 
 **Example:**
 ```rust
 // Word frequency counter
-func countWords(text: String) -> Map<String, Integer> {
-    var counts = Map<String, Integer>.new();
+func countWords(text: String) -> Map[String, Integer] {
+    var counts = new Map[String, Integer]();
 
-    for word in text.split(" ") {
-        var lower = word.toLower();
-        if counts.has(lower) {
-            counts.set(lower, counts.get(lower) + 1);
+    for word in text.Split(" ") {
+        var lower = word.ToLower();
+        if counts.Has(lower) {
+            counts.Set(lower, counts.Get(lower) + 1);
         } else {
-            counts.set(lower, 1);
+            counts.Set(lower, 1);
         }
     }
 
@@ -1591,17 +1595,17 @@ for word, count in freq {
 An unordered collection of unique values.
 
 ```rust
-var set = Set<string>.new();
+var set = new Set[String]();
 ```
 
 #### Methods
 
 ```rust
-set.add(item)           // Add an item
-set.contains(item)      // -> bool
+set.Add(item)           // Add an item
+set.Contains(item)      // -> Boolean
 set.remove(item)        // Remove an item
-set.clear()             // Remove all items
-set.size                // -> i64
+set.Clear()             // Remove all items
+set.size                // -> Integer
 
 // Set operations
 set.union(other)        // -> Set (items in either)
@@ -1612,18 +1616,18 @@ set.difference(other)   // -> Set (items in this but not other)
 **Example:**
 ```rust
 // Find unique visitors
-var visitors = Set<string>.new();
+var visitors = new Set[String]();
 
-visitors.add("alice");
-visitors.add("bob");
-visitors.add("alice");  // Duplicate ignored
+visitors.Add("alice");
+visitors.Add("bob");
+visitors.Add("alice");  // Duplicate ignored
 
 Terminal.Say("Unique visitors: " + visitors.size);  // 2
 
 // Set operations
-var admins = Set<string>.new();
-admins.add("alice");
-admins.add("charlie");
+var admins = new Set[String]();
+admins.Add("alice");
+admins.Add("charlie");
 
 var adminVisitors = visitors.intersection(admins);  // {"alice"}
 var nonAdminVisitors = visitors.difference(admins); // {"bob"}
@@ -1638,7 +1642,7 @@ var nonAdminVisitors = visitors.difference(admins); // {"bob"}
 First-in, first-out (FIFO) collection.
 
 ```rust
-var queue = Queue<string>.new();
+var queue = new Queue[String]();
 ```
 
 #### Methods
@@ -1647,20 +1651,20 @@ var queue = Queue<string>.new();
 queue.enqueue(item)     // Add to back
 queue.dequeue()         // -> item? (remove from front, nil if empty)
 queue.peek()            // -> item? (see front without removing)
-queue.isEmpty()         // -> bool
-queue.size              // -> i64
+queue.IsEmpty()         // -> Boolean
+queue.size              // -> Integer
 ```
 
 **Example:**
 ```rust
 // Task queue
-var tasks = Queue<string>.new();
+var tasks = new Queue[String]();
 
 tasks.enqueue("Send email");
 tasks.enqueue("Update database");
 tasks.enqueue("Generate report");
 
-while !tasks.isEmpty() {
+while !tasks.IsEmpty() {
     var task = tasks.dequeue();
     Terminal.Say("Processing: " + task);
     // Process task...
@@ -1676,32 +1680,32 @@ while !tasks.isEmpty() {
 Last-in, first-out (LIFO) collection.
 
 ```rust
-var stack = Stack<string>.new();
+var stack = new Stack[String]();
 ```
 
 #### Methods
 
 ```rust
-stack.push(item)        // Add to top
-stack.pop()             // -> item? (remove from top, nil if empty)
+stack.Push(item)        // Add to top
+stack.Pop()             // -> item? (remove from top, nil if empty)
 stack.peek()            // -> item? (see top without removing)
-stack.isEmpty()         // -> bool
-stack.size              // -> i64
+stack.IsEmpty()         // -> Boolean
+stack.size              // -> Integer
 ```
 
 **Example:**
 ```rust
 // Undo system
-var undoStack = Stack<string>.new();
+var undoStack = new Stack[String]();
 
 func doAction(action: String) {
-    undoStack.push(action);
+    undoStack.Push(action);
     Terminal.Say("Did: " + action);
 }
 
 func undo() {
-    if !undoStack.isEmpty() {
-        var action = undoStack.pop();
+    if !undoStack.IsEmpty() {
+        var action = undoStack.Pop();
         Terminal.Say("Undoing: " + action);
     } else {
         Terminal.Say("Nothing to undo");
@@ -1722,7 +1726,7 @@ undo();  // Undoing: Type ' World'
 A queue where items are dequeued by priority, not arrival order.
 
 ```rust
-var pq = PriorityQueue<Task>.new(compareFn);
+var pq = new PriorityQueue[Task](compareFn);
 ```
 
 #### Methods
@@ -1731,8 +1735,8 @@ var pq = PriorityQueue<Task>.new(compareFn);
 pq.enqueue(item)        // Add item (sorted by priority)
 pq.dequeue()            // -> item? (highest priority)
 pq.peek()               // -> item? (see highest priority)
-pq.isEmpty()            // -> bool
-pq.size                 // -> i64
+pq.IsEmpty()            // -> Boolean
+pq.size                 // -> Integer
 ```
 
 **Example:**
@@ -1746,13 +1750,13 @@ func compareTasks(a: Task, b: Task) -> Integer {
     return a.priority - b.priority;
 }
 
-var taskQueue = PriorityQueue<Task>.new(compareTasks);
+var taskQueue = new PriorityQueue[Task](compareTasks);
 
 taskQueue.enqueue(Task { name: "Low priority task", priority: 10 });
 taskQueue.enqueue(Task { name: "Critical bug fix", priority: 1 });
 taskQueue.enqueue(Task { name: "Medium task", priority: 5 });
 
-while !taskQueue.isEmpty() {
+while !taskQueue.IsEmpty() {
     var task = taskQueue.dequeue();
     Terminal.Say("Processing: " + task.name);
 }
@@ -1781,11 +1785,11 @@ Simple HTTP client for web requests. Bind as `bind Viper.Network;` and use `Netw
 #### Network.Http.Get / Post
 
 ```rust
-func Get(url: string) -> string    // Returns response body as text
-func Post(url: string, body: string) -> string
-func GetBytes(url: string) -> [Byte]
-func PostBytes(url: string, body: [Byte]) -> [Byte]
-func Download(url: string, destPath: string) -> Boolean
+func Get(url: String) -> String    // Returns response body as text
+func Post(url: String, body: String) -> String
+func GetBytes(url: String) -> [Byte]
+func PostBytes(url: String, body: [Byte]) -> [Byte]
+func Download(url: String, destPath: String) -> Boolean
 ```
 
 **Example:**
@@ -1803,8 +1807,8 @@ Terminal.Say(result);
 ```
 
 **Edge cases:**
-- Returns the response body as a string
-- Network errors may throw or return an empty string
+- Returns the response body as a String
+- Network errors may throw or return an empty String
 
 ---
 
@@ -1815,12 +1819,12 @@ Stream-based network connections.
 #### Client
 
 ```rust
-var socket = TcpSocket.connect(host: string, port: i64) -> TcpSocket
+var socket = TcpSocket.connect(host: String, port: Integer) -> TcpSocket
 
-socket.write(data: string) -> void
-socket.read(bufferSize: i64) -> string
-socket.readLine() -> string
-socket.close() -> void
+socket.Write(data: String) -> void
+socket.Read(bufferSize: Integer) -> String
+socket.ReadLine() -> String
+socket.Close() -> void
 ```
 
 **Example:**
@@ -1828,23 +1832,23 @@ socket.close() -> void
 // Simple HTTP client (low-level)
 var socket = TcpSocket.connect("example.com", 80);
 
-socket.write("GET / HTTP/1.1\r\n");
-socket.write("Host: example.com\r\n");
-socket.write("\r\n");
+socket.Write("GET / HTTP/1.1\r\n");
+socket.Write("Host: example.com\r\n");
+socket.Write("\r\n");
 
-var response = socket.read(4096);
+var response = socket.Read(4096);
 Terminal.Say(response);
 
-socket.close();
+socket.Close();
 ```
 
 #### Server
 
 ```rust
-var server = TcpServer.listen(port: i64) -> TcpServer
+var server = TcpServer.listen(port: Integer) -> TcpServer
 
 server.accept() -> TcpSocket     // Blocks until client connects
-server.close() -> void
+server.Close() -> void
 ```
 
 **Example:**
@@ -1857,9 +1861,9 @@ while true {
     var client = server.accept();
     Terminal.Say("Client connected");
 
-    var data = client.readLine();
-    client.write("Echo: " + data + "\n");
-    client.close();
+    var data = client.ReadLine();
+    client.Write("Echo: " + data + "\n");
+    client.Close();
 }
 ```
 
@@ -1872,10 +1876,10 @@ Connectionless datagram communication.
 ```rust
 var socket = UdpSocket.create() -> UdpSocket
 
-socket.send(data: string, address: string, port: i64) -> void
-socket.receive() -> { data: string, address: string, port: i64 }
-socket.bind(port: i64) -> void     // For receiving
-socket.close() -> void
+socket.send(data: String, address: String, port: Integer) -> void
+socket.receive() -> { data: String, address: String, port: Integer }
+socket.bind(port: Integer) -> void     // For receiving
+socket.Close() -> void
 ```
 
 **Example:**
@@ -1883,7 +1887,7 @@ socket.close() -> void
 // UDP sender
 var sender = UdpSocket.create();
 sender.send("Hello!", "127.0.0.1", 9000);
-sender.close();
+sender.Close();
 
 // UDP receiver
 var receiver = UdpSocket.create();
@@ -1891,12 +1895,14 @@ receiver.bind(9000);
 
 var packet = receiver.receive();
 Terminal.Say("Received: " + packet.data + " from " + packet.address);
-receiver.close();
+receiver.Close();
 ```
 
 ---
 
 ## Viper.JSON
+
+> **Note:** This section documents a simplified pedagogical JSON API used in Chapter 23. The production API is `Viper.Text.Json` — use `bind Viper.Text.Json as Json;` and call `Json.Parse()`, `Json.Format()`, `Json.FormatPretty()`, with `Viper.Unbox.Str()` / `Viper.Unbox.I64()` / `Viper.Unbox.F64()` for value extraction.
 
 JSON parsing and generation for data interchange.
 
@@ -1907,19 +1913,19 @@ JSON parsing and generation for data interchange.
 ### Parsing
 
 ```rust
-func JSON.parse(jsonString: string) -> JsonValue
+func JSON.Parse(jsonString: String) -> JsonValue
 ```
 
-Parses a JSON string into a `JsonValue` object.
+Parses a JSON String into a `JsonValue` object.
 
 **JsonValue methods:**
 ```rust
-value.asString() -> string
-value.asInt() -> i64
-value.asFloat() -> f64
-value.asBool() -> bool
+value.asString() -> String
+value.asInt() -> Integer
+value.asFloat() -> Number
+value.asBool() -> Boolean
 value.asArray() -> [JsonValue]
-value.asObject() -> Map<string, JsonValue>
+value.asObject() -> Map[String, JsonValue]
 value[key] -> JsonValue           // Object property access
 value[index] -> JsonValue         // Array index access
 ```
@@ -1936,7 +1942,7 @@ var json = `{
     }
 }`;
 
-var data = JSON.parse(json);
+var data = JSON.Parse(json);
 
 var name = data["name"].asString();           // "Alice"
 var age = data["age"].asInt();                // 30
@@ -1947,7 +1953,7 @@ var city = data["address"]["city"].asString();   // "Boston"
 **Edge cases:**
 - Throws error on invalid JSON
 - Accessing missing keys returns `nil`
-- Type mismatches (e.g., `asInt()` on a string) throw errors
+- Type mismatches (e.g., `asInt()` on a String) throw errors
 
 ---
 
@@ -1960,29 +1966,29 @@ func JSON.array() -> JsonArray
 
 **JsonObject methods:**
 ```rust
-obj.set(key: string, value: any) -> void
-obj.toString() -> string          // Compact JSON
-obj.toPrettyString() -> string    // Formatted with indentation
+obj.Set(key: String, value: any) -> void
+obj.toString() -> String          // Compact JSON
+obj.toPrettyString() -> String    // Formatted with indentation
 ```
 
 **JsonArray methods:**
 ```rust
-arr.add(value: any) -> void
-arr.toString() -> string
-arr.toPrettyString() -> string
+arr.Add(value: any) -> void
+arr.toString() -> String
+arr.toPrettyString() -> String
 ```
 
 **Example:**
 ```rust
 // Building JSON programmatically
 var user = JSON.object();
-user.set("name", "Bob");
-user.set("age", 25);
+user.Set("name", "Bob");
+user.Set("age", 25);
 
 var hobbies = JSON.array();
-hobbies.add("sports");
-hobbies.add("music");
-user.set("hobbies", hobbies);
+hobbies.Add("sports");
+hobbies.Add("music");
+user.Set("hobbies", hobbies);
 
 var json = user.toPrettyString();
 // {
@@ -2014,15 +2020,15 @@ var name = getStringOr(data, "nickname", "Anonymous");
 
 ```rust
 func loadConfig(path: String) -> JsonValue {
-    if Viper.File.exists(path) {
-        var content = Viper.File.readText(path);
-        return JSON.parse(content);
+    if IO.File.Exists(path) {
+        var content = IO.File.ReadAllText(path);
+        return JSON.Parse(content);
     }
 
     // Return default config
     var defaults = JSON.object();
-    defaults.set("theme", "light");
-    defaults.set("volume", 80);
+    defaults.Set("theme", "light");
+    defaults.Set("volume", 80);
     return defaults;
 }
 ```
@@ -2049,7 +2055,7 @@ Creates and starts a new thread running the given function.
 
 **Thread methods:**
 ```rust
-thread.join() -> void      // Wait for thread to complete
+thread.Join() -> void      // Wait for thread to complete
 thread.result() -> T       // Wait and get return value
 ```
 
@@ -2059,10 +2065,10 @@ thread.result() -> T       // Wait and get return value
 var thread = Thread.spawn(func() {
     Terminal.Say("Hello from thread!");
 });
-thread.join();
+thread.Join();
 
 // Thread with return value
-var thread = Thread.spawn(func() -> i64 {
+var thread = Thread.spawn(func() -> Integer {
     var sum = 0;
     for i in 0..1000000 {
         sum += i;
@@ -2098,7 +2104,7 @@ var mutex = Mutex.create();
 // WRONG: Race condition
 var threads = [];
 for i in 0..10 {
-    threads.push(Thread.spawn(func() {
+    threads.Push(Thread.spawn(func() {
         for j in 0..1000 {
             counter += 1;  // Not thread-safe!
         }
@@ -2108,7 +2114,7 @@ for i in 0..10 {
 // CORRECT: With mutex
 var threads = [];
 for i in 0..10 {
-    threads.push(Thread.spawn(func() {
+    threads.Push(Thread.spawn(func() {
         for j in 0..1000 {
             mutex.lock();
             counter += 1;
@@ -2133,24 +2139,24 @@ mutex.synchronized(func() {
 Lock-free atomic operations for simple counters and flags.
 
 ```rust
-var atomic = Atomic<i64>.create(initialValue: i64) -> Atomic<i64>
+var atomic = new Atomic[Integer](initialValue: Integer) -> Atomic[Integer]
 
-atomic.get() -> i64
-atomic.set(value: i64) -> void
-atomic.increment() -> i64          // Returns old value
-atomic.decrement() -> i64          // Returns old value
-atomic.add(n: i64) -> i64          // Returns old value
-atomic.compareAndSwap(expected: i64, new: i64) -> bool
+atomic.Get() -> Integer
+atomic.Set(value: Integer) -> void
+atomic.increment() -> Integer          // Returns old value
+atomic.decrement() -> Integer          // Returns old value
+atomic.Add(n: Integer) -> Integer          // Returns old value
+atomic.compareAndSwap(expected: Integer, new: Integer) -> Boolean
 ```
 
 **Example:**
 ```rust
-var counter = Atomic<i64>.create(0);
+var counter = new Atomic[Integer](0);
 
 // Safe to call from multiple threads
 var threads = [];
 for i in 0..10 {
-    threads.push(Thread.spawn(func() {
+    threads.Push(Thread.spawn(func() {
         for j in 0..1000 {
             counter.increment();
         }
@@ -2158,10 +2164,10 @@ for i in 0..10 {
 }
 
 for thread in threads {
-    thread.join();
+    thread.Join();
 }
 
-Terminal.Say("Count: " + counter.get());  // Always 10000
+Terminal.Say("Count: " + counter.Get());  // Always 10000
 ```
 
 **When to use:** Use Atomics for simple counters or flags. Use Mutex for more complex shared state.
@@ -2173,17 +2179,17 @@ Terminal.Say("Count: " + counter.get());  // Always 10000
 Type-safe communication between threads.
 
 ```rust
-var channel = Channel<T>.create() -> Channel<T>
+var channel = new Channel[T]() -> Channel[T]
 
 channel.send(value: T) -> void     // Blocks if buffer full
 channel.receive() -> T             // Blocks until value available
 channel.tryReceive() -> T?         // Returns nil if empty
-channel.close() -> void
+channel.Close() -> void
 ```
 
 **Example:**
 ```rust
-var channel = Channel<string>.create();
+var channel = new Channel[String]();
 
 // Producer thread
 var producer = Thread.spawn(func() {
@@ -2191,7 +2197,7 @@ var producer = Thread.spawn(func() {
         channel.send("Message " + i);
         Time.Clock.Sleep(100);
     }
-    channel.close();
+    channel.Close();
 });
 
 // Consumer (main thread)
@@ -2203,7 +2209,7 @@ loop {
     Terminal.Say("Received: " + msg);
 }
 
-producer.join();
+producer.Join();
 ```
 
 **When to use:** Use Channels for producer-consumer patterns, work distribution, or coordinating between threads.
@@ -2215,7 +2221,7 @@ producer.join();
 Manages a pool of worker threads for efficient task execution.
 
 ```rust
-var pool = ThreadPool.create(numWorkers: i64) -> ThreadPool
+var pool = ThreadPool.create(numWorkers: Integer) -> ThreadPool
 
 pool.submit(fn: func()) -> void
 pool.submitWithResult(fn: func() -> T) -> Future<T>
@@ -2225,8 +2231,8 @@ pool.shutdown() -> void
 
 **Future methods:**
 ```rust
-future.get() -> T                  // Blocks until result ready
-future.isReady() -> bool
+future.Get() -> T                  // Blocks until result ready
+future.isReady() -> Boolean
 ```
 
 **Example:**
@@ -2236,14 +2242,14 @@ var pool = ThreadPool.create(4);  // 4 worker threads
 // Submit many tasks
 var futures = [];
 for url in imageUrls {
-    futures.push(pool.submitWithResult(func() {
-        return Http.get(url);
+    futures.Push(pool.submitWithResult(func() {
+        return Http.Get(url);
     }));
 }
 
 // Collect results
 for future in futures {
-    var response = future.get();
+    var response = future.Get();
     processImage(response.body);
 }
 
@@ -2265,13 +2271,13 @@ Drawing and window management for visual applications.
 The drawing surface and window.
 
 ```rust
-var canvas = Canvas(width: i64, height: i64) -> Canvas
+var canvas = Canvas(width: Integer, height: Integer) -> Canvas
 
-canvas.setTitle(title: string) -> void
-canvas.isOpen() -> bool
+canvas.setTitle(title: String) -> void
+canvas.isOpen() -> Boolean
 canvas.show() -> void              // Display buffer contents
 canvas.waitForClose() -> void      // Block until window closed
-canvas.clear() -> void             // Clear with current color
+canvas.Clear() -> void             // Clear with current color
 ```
 
 **Example:**
@@ -2280,7 +2286,7 @@ var canvas = Canvas(800, 600);
 canvas.setTitle("My Application");
 
 while canvas.isOpen() {
-    canvas.clear();
+    canvas.Clear();
 
     // Draw frame...
 
@@ -2297,8 +2303,8 @@ while canvas.isOpen() {
 canvas.setColor(color: Color) -> void
 
 // Color constructors
-Color(r: i64, g: i64, b: i64)          // RGB (0-255 each)
-Color(r: i64, g: i64, b: i64, a: i64)  // RGBA with alpha
+Color(r: Integer, g: Integer, b: Integer)          // RGB (0-255 each)
+Color(r: Integer, g: Integer, b: Integer, a: Integer)  // RGBA with alpha
 
 // Predefined colors
 Color.RED, Color.GREEN, Color.BLUE
@@ -2312,23 +2318,23 @@ Color.YELLOW, Color.CYAN, Color.MAGENTA
 
 ```rust
 // Rectangles
-canvas.fillRect(x: f64, y: f64, width: f64, height: f64) -> void
-canvas.drawRect(x: f64, y: f64, width: f64, height: f64) -> void
+canvas.fillRect(x: Number, y: Number, width: Number, height: Number) -> void
+canvas.drawRect(x: Number, y: Number, width: Number, height: Number) -> void
 
 // Circles
-canvas.fillCircle(centerX: f64, centerY: f64, radius: f64) -> void
-canvas.drawCircle(centerX: f64, centerY: f64, radius: f64) -> void
+canvas.fillCircle(centerX: Number, centerY: Number, radius: Number) -> void
+canvas.drawCircle(centerX: Number, centerY: Number, radius: Number) -> void
 
 // Ellipses
-canvas.fillEllipse(x: f64, y: f64, width: f64, height: f64) -> void
+canvas.fillEllipse(x: Number, y: Number, width: Number, height: Number) -> void
 
 // Lines and polygons
-canvas.drawLine(x1: f64, y1: f64, x2: f64, y2: f64) -> void
-canvas.drawPolygon(points: [(f64, f64)]) -> void
-canvas.fillPolygon(points: [(f64, f64)]) -> void
+canvas.drawLine(x1: Number, y1: Number, x2: Number, y2: Number) -> void
+canvas.drawPolygon(points: [(Number, Number)]) -> void
+canvas.fillPolygon(points: [(Number, Number)]) -> void
 
 // Pixels
-canvas.setPixel(x: i64, y: i64) -> void
+canvas.setPixel(x: Integer, y: Integer) -> void
 ```
 
 **Example:**
@@ -2357,8 +2363,8 @@ canvas.fillPolygon([
 ### Text
 
 ```rust
-canvas.setFont(name: string, size: i64) -> void
-canvas.drawText(x: f64, y: f64, text: string) -> void
+canvas.setFont(name: String, size: Integer) -> void
+canvas.drawText(x: Number, y: Number, text: String) -> void
 ```
 
 **Example:**
@@ -2373,10 +2379,10 @@ canvas.drawText(10, 30, "Score: " + score);
 ### Images
 
 ```rust
-var image = Image.load(path: string) -> Image
+var image = Image.load(path: String) -> Image
 
-canvas.drawImage(image: Image, x: f64, y: f64) -> void
-canvas.drawImageScaled(image: Image, x: f64, y: f64, width: f64, height: f64) -> void
+canvas.drawImage(image: Image, x: Number, y: Number) -> void
+canvas.drawImageScaled(image: Image, x: Number, y: Number, width: Number, height: Number) -> void
 ```
 
 **Example:**
@@ -2405,13 +2411,13 @@ Widget-based user interface library for building desktop applications with butto
 The GUI application framework that manages a window, widget tree, and event loop.
 
 ```rust
-var app = new App(title: string, width: i64, height: i64) -> App
+var app = new App(title: String, width: Integer, height: Integer) -> App
 
-app.ShouldClose -> bool         // Read-only: true when window should close
+app.ShouldClose -> Boolean         // Read-only: true when window should close
 app.Root -> Widget              // Read-only: root container for adding widgets
 app.Poll() -> void              // Process events and update widget states
 app.Render() -> void            // Clear, draw all widgets, flip buffer
-app.SetFont(font: Font, size: f64) -> void  // Set default font
+app.SetFont(font: Font, size: Number) -> void  // Set default font
 app.Destroy() -> void           // Clean up resources
 ```
 
@@ -2442,7 +2448,7 @@ app.Destroy()
 Font loading for text rendering in widgets.
 
 ```rust
-var font = Font.Load(path: string) -> Font
+var font = Font.Load(path: String) -> Font
 
 font.Destroy() -> void
 ```
@@ -2461,17 +2467,17 @@ Common functionality for all widgets.
 
 ```rust
 widget.Destroy() -> void
-widget.SetVisible(visible: bool) -> void
-widget.SetEnabled(enabled: bool) -> void
-widget.SetSize(width: i64, height: i64) -> void
-widget.SetPosition(x: i64, y: i64) -> void
+widget.SetVisible(visible: Boolean) -> void
+widget.SetEnabled(enabled: Boolean) -> void
+widget.SetSize(width: Integer, height: Integer) -> void
+widget.SetPosition(x: Integer, y: Integer) -> void
 widget.AddChild(child: Widget) -> void
 
 // State queries (polling-based events)
-widget.IsHovered() -> bool
-widget.IsPressed() -> bool
-widget.IsFocused() -> bool
-widget.WasClicked() -> bool    // True if clicked this frame
+widget.IsHovered() -> Boolean
+widget.IsPressed() -> Boolean
+widget.IsFocused() -> Boolean
+widget.WasClicked() -> Boolean    // True if clicked this frame
 ```
 
 ---
@@ -2481,11 +2487,11 @@ widget.WasClicked() -> bool    // True if clicked this frame
 Text display widget.
 
 ```rust
-var label = new Label(parent: Widget, text: string) -> Label
+var label = new Label(parent: Widget, text: String) -> Label
 
-label.SetText(text: string) -> void
-label.SetFont(font: Font, size: f64) -> void
-label.SetColor(color: i64) -> void  // ARGB format: 0xAARRGGBB
+label.SetText(text: String) -> void
+label.SetFont(font: Font, size: Number) -> void
+label.SetColor(color: Integer) -> void  // ARGB format: 0xAARRGGBB
 ```
 
 **Example:**
@@ -2501,14 +2507,14 @@ label.SetColor(0xFFFFFFFF)  // White text
 Clickable button widget.
 
 ```rust
-var button = new Button(parent: Widget, text: string) -> Button
+var button = new Button(parent: Widget, text: String) -> Button
 
-button.SetText(text: string) -> void
-button.SetFont(font: Font, size: f64) -> void
-button.SetStyle(style: i64) -> void  // 0=default, 1=primary, 2=secondary, 3=danger, 4=text
-button.WasClicked() -> bool
-button.IsHovered() -> bool
-button.IsPressed() -> bool
+button.SetText(text: String) -> void
+button.SetFont(font: Font, size: Number) -> void
+button.SetStyle(style: Integer) -> void  // 0=default, 1=primary, 2=secondary, 3=danger, 4=text
+button.WasClicked() -> Boolean
+button.IsHovered() -> Boolean
+button.IsPressed() -> Boolean
 ```
 
 **Example:**
@@ -2531,11 +2537,11 @@ Single-line text input field.
 ```rust
 var input = new TextInput(parent: Widget) -> TextInput
 
-input.Text -> string              // Read-only: current text content
-input.SetText(text: string) -> void
-input.SetPlaceholder(text: string) -> void
-input.SetFont(font: Font, size: f64) -> void
-input.IsFocused() -> bool
+input.Text -> String              // Read-only: current text content
+input.SetText(text: String) -> void
+input.SetPlaceholder(text: String) -> void
+input.SetFont(font: Font, size: Number) -> void
+input.IsFocused() -> Boolean
 ```
 
 **Example:**
@@ -2555,11 +2561,11 @@ var name = nameInput.Text
 Toggleable checkbox with label.
 
 ```rust
-var checkbox = new Checkbox(parent: Widget, text: string) -> Checkbox
+var checkbox = new Checkbox(parent: Widget, text: String) -> Checkbox
 
-checkbox.SetChecked(checked: bool) -> void
-checkbox.IsChecked() -> bool
-checkbox.SetText(text: string) -> void
+checkbox.SetChecked(checked: Boolean) -> void
+checkbox.IsChecked() -> Boolean
+checkbox.SetText(text: String) -> void
 ```
 
 **Example:**
@@ -2580,13 +2586,13 @@ Dropdown selection widget.
 ```rust
 var dropdown = new Dropdown(parent: Widget) -> Dropdown
 
-dropdown.Selected -> i64          // Read-only: selected index (-1 if none)
-dropdown.SelectedText -> string   // Read-only: selected item text
-dropdown.AddItem(text: string) -> i64  // Returns index
-dropdown.RemoveItem(index: i64) -> void
+dropdown.Selected -> Integer          // Read-only: selected index (-1 if none)
+dropdown.SelectedText -> String   // Read-only: selected item text
+dropdown.AddItem(text: String) -> Integer  // Returns index
+dropdown.RemoveItem(index: Integer) -> void
 dropdown.Clear() -> void
-dropdown.SetSelected(index: i64) -> void
-dropdown.SetPlaceholder(text: string) -> void
+dropdown.SetSelected(index: Integer) -> void
+dropdown.SetPlaceholder(text: String) -> void
 ```
 
 **Example:**
@@ -2607,12 +2613,12 @@ var selected = colorPicker.SelectedText  // "Red", "Green", "Blue", or ""
 Horizontal or vertical slider for numeric values.
 
 ```rust
-var slider = new Slider(parent: Widget, horizontal: bool) -> Slider
+var slider = new Slider(parent: Widget, horizontal: Boolean) -> Slider
 
-slider.Value -> f64               // Read-only: current value
-slider.SetValue(value: f64) -> void
-slider.SetRange(min: f64, max: f64) -> void
-slider.SetStep(step: f64) -> void  // 0 for continuous
+slider.Value -> Number               // Read-only: current value
+slider.SetValue(value: Number) -> void
+slider.SetRange(min: Number, max: Number) -> void
+slider.SetStep(step: Number) -> void  // 0 for continuous
 ```
 
 **Example:**
@@ -2634,8 +2640,8 @@ Progress indicator widget.
 ```rust
 var progress = new ProgressBar(parent: Widget) -> ProgressBar
 
-progress.Value -> f64             // Read-only: current value (0.0 to 1.0)
-progress.SetValue(value: f64) -> void
+progress.Value -> Number             // Read-only: current value (0.0 to 1.0)
+progress.SetValue(value: Number) -> void
 ```
 
 **Example:**
@@ -2655,7 +2661,7 @@ Scrollable list of selectable items.
 var list = new ListBox(parent: Widget) -> ListBox
 
 list.Selected -> object           // Read-only: selected item handle
-list.AddItem(text: string) -> object  // Returns item handle
+list.AddItem(text: String) -> object  // Returns item handle
 list.RemoveItem(item: object) -> void
 list.Clear() -> void
 list.Select(item: object) -> void
@@ -2681,10 +2687,10 @@ Mutually exclusive selection buttons.
 
 ```rust
 var group = new RadioGroup() -> RadioGroup
-var radio = new RadioButton(parent: Widget, text: string, group: RadioGroup) -> RadioButton
+var radio = new RadioButton(parent: Widget, text: String, group: RadioGroup) -> RadioButton
 
-radio.IsSelected() -> bool
-radio.SetSelected(selected: bool) -> void
+radio.IsSelected() -> Boolean
+radio.SetSelected(selected: Boolean) -> void
 group.Destroy() -> void
 ```
 
@@ -2711,11 +2717,11 @@ Numeric input with increment/decrement buttons.
 ```rust
 var spinner = new Spinner(parent: Widget) -> Spinner
 
-spinner.Value -> f64              // Read-only: current value
-spinner.SetValue(value: f64) -> void
-spinner.SetRange(min: f64, max: f64) -> void
-spinner.SetStep(step: f64) -> void
-spinner.SetDecimals(decimals: i64) -> void
+spinner.Value -> Number              // Read-only: current value
+spinner.SetValue(value: Number) -> void
+spinner.SetRange(min: Number, max: Number) -> void
+spinner.SetStep(step: Number) -> void
+spinner.SetDecimals(decimals: Integer) -> void
 ```
 
 **Example:**
@@ -2736,10 +2742,10 @@ Image display widget.
 ```rust
 var image = new Image(parent: Widget) -> Image
 
-image.SetPixels(pixels: Pixels, width: i64, height: i64) -> void
+image.SetPixels(pixels: Pixels, width: Integer, height: Integer) -> void
 image.Clear() -> void
-image.SetScaleMode(mode: i64) -> void  // 0=none, 1=fit, 2=fill, 3=stretch
-image.SetOpacity(opacity: f64) -> void  // 0.0 to 1.0
+image.SetScaleMode(mode: Integer) -> void  // 0=none, 1=fit, 2=fill, 3=stretch
+image.SetOpacity(opacity: Number) -> void  // 0.0 to 1.0
 ```
 
 ---
@@ -2751,14 +2757,14 @@ Containers for organizing widgets.
 ```rust
 // Vertical layout (top to bottom)
 var vbox = new VBox() -> VBox
-vbox.SetSpacing(spacing: f64) -> void
-vbox.SetPadding(padding: f64) -> void
+vbox.SetSpacing(spacing: Number) -> void
+vbox.SetPadding(padding: Number) -> void
 vbox.AddChild(widget: Widget) -> void
 
 // Horizontal layout (left to right)
 var hbox = new HBox() -> HBox
-hbox.SetSpacing(spacing: f64) -> void
-hbox.SetPadding(padding: f64) -> void
+hbox.SetSpacing(spacing: Number) -> void
+hbox.SetPadding(padding: Number) -> void
 hbox.AddChild(widget: Widget) -> void
 ```
 
@@ -2783,8 +2789,8 @@ Scrollable container for large content.
 ```rust
 var scroll = new ScrollView(parent: Widget) -> ScrollView
 
-scroll.SetScroll(x: f64, y: f64) -> void
-scroll.SetContentSize(width: f64, height: f64) -> void
+scroll.SetScroll(x: Number, y: Number) -> void
+scroll.SetContentSize(width: Number, height: Number) -> void
 scroll.AddChild(widget: Widget) -> void
 ```
 
@@ -2795,11 +2801,11 @@ scroll.AddChild(widget: Widget) -> void
 Resizable split container.
 
 ```rust
-var split = new SplitPane(parent: Widget, horizontal: bool) -> SplitPane
+var split = new SplitPane(parent: Widget, horizontal: Boolean) -> SplitPane
 
 split.First -> Widget             // Read-only: first pane
 split.Second -> Widget            // Read-only: second pane
-split.SetPosition(position: f64) -> void  // 0.0 to 1.0
+split.SetPosition(position: Number) -> void  // 0.0 to 1.0
 ```
 
 **Example:**
@@ -2823,13 +2829,13 @@ Hierarchical tree display.
 ```rust
 var tree = new TreeView(parent: Widget) -> TreeView
 
-tree.AddNode(parent: object, text: string) -> object  // parent=null for root
+tree.AddNode(parent: object, text: String) -> object  // parent=null for root
 tree.RemoveNode(node: object) -> void
 tree.Clear() -> void
 tree.Expand(node: object) -> void
 tree.Collapse(node: object) -> void
 tree.Select(node: object) -> void
-tree.SetFont(font: Font, size: f64) -> void
+tree.SetFont(font: Font, size: Number) -> void
 ```
 
 **Example:**
@@ -2854,15 +2860,15 @@ Tabbed interface container.
 ```rust
 var tabs = new TabBar(parent: Widget) -> TabBar
 
-tabs.AddTab(title: string, closable: bool) -> Tab
+tabs.AddTab(title: String, closable: Boolean) -> Tab
 tabs.RemoveTab(tab: Tab) -> void
 tabs.SetActive(tab: Tab) -> void
 ```
 
 ```rust
 // Tab object
-tab.SetTitle(title: string) -> void
-tab.SetModified(modified: bool) -> void  // Shows indicator
+tab.SetTitle(title: String) -> void
+tab.SetModified(modified: Boolean) -> void  // Shows indicator
 ```
 
 ---
@@ -2874,14 +2880,14 @@ Multi-line code editor with syntax highlighting support.
 ```rust
 var editor = new CodeEditor(parent: Widget) -> CodeEditor
 
-editor.Text -> string             // Read-only: current content
-editor.LineCount -> i64           // Read-only: number of lines
-editor.SetText(text: string) -> void
-editor.SetCursor(line: i64, col: i64) -> void
-editor.ScrollToLine(line: i64) -> void
-editor.IsModified() -> bool
+editor.Text -> String             // Read-only: current content
+editor.LineCount -> Integer           // Read-only: number of lines
+editor.SetText(text: String) -> void
+editor.SetCursor(line: Integer, col: Integer) -> void
+editor.ScrollToLine(line: Integer) -> void
+editor.IsModified() -> Boolean
 editor.ClearModified() -> void
-editor.SetFont(font: Font, size: f64) -> void
+editor.SetFont(font: Font, size: Number) -> void
 ```
 
 ---
@@ -2917,9 +2923,9 @@ Input handling for interactive and game applications.
 ### Keyboard
 
 ```rust
-Input.isKeyDown(key: Key) -> bool           // Currently held
-Input.wasKeyPressed(key: Key) -> bool       // Just pressed this frame
-Input.wasKeyReleased(key: Key) -> bool      // Just released this frame
+Input.isKeyDown(key: Key) -> Boolean           // Currently held
+Input.wasKeyPressed(key: Key) -> Boolean       // Just pressed this frame
+Input.wasKeyReleased(key: Key) -> Boolean      // Just released this frame
 ```
 
 **Key constants:**
@@ -2962,12 +2968,12 @@ while canvas.isOpen() {
 ### Mouse
 
 ```rust
-Input.mouseX() -> f64
-Input.mouseY() -> f64
-Input.isMouseDown(button: MouseButton) -> bool
-Input.wasMousePressed(button: MouseButton) -> bool
-Input.wasMouseReleased(button: MouseButton) -> bool
-Input.mouseScroll() -> f64                  // Wheel delta
+Input.mouseX() -> Number
+Input.mouseY() -> Number
+Input.isMouseDown(button: MouseButton) -> Boolean
+Input.wasMousePressed(button: MouseButton) -> Boolean
+Input.wasMouseReleased(button: MouseButton) -> Boolean
+Input.mouseScroll() -> Number                  // Wheel delta
 ```
 
 **MouseButton constants:** `MouseButton.LEFT`, `MouseButton.RIGHT`, `MouseButton.MIDDLE`
@@ -2976,13 +2982,13 @@ Input.mouseScroll() -> f64                  // Wheel delta
 ```rust
 // Drawing application
 if Input.isMouseDown(MouseButton.LEFT) {
-    canvas.setPixel(Input.mouseX().toInt(), Input.mouseY().toInt());
+    canvas.setPixel(Input.mouseX(), Input.mouseY());
 }
 
 // Zoom with scroll wheel
 var zoom = 1.0;
-zoom += Input.mouseScroll() * 0.1;
-zoom = Math.clamp(zoom, 0.1, 5.0);
+zoom = zoom + Input.mouseScroll() * 0.1;
+zoom = Math.Clamp(zoom, 0.1, 5.0);
 ```
 
 ---
@@ -2990,9 +2996,9 @@ zoom = Math.clamp(zoom, 0.1, 5.0);
 ### Game Controller
 
 ```rust
-Input.isControllerConnected(index: i64) -> bool
-Input.controllerAxis(index: i64, axis: Axis) -> f64       // -1.0 to 1.0
-Input.isControllerButtonDown(index: i64, button: ControllerButton) -> bool
+Input.isControllerConnected(index: Integer) -> Boolean
+Input.controllerAxis(index: Integer, axis: Axis) -> Number       // -1.0 to 1.0
+Input.isControllerButtonDown(index: Integer, button: ControllerButton) -> Boolean
 ```
 
 **Axis constants:** `Axis.LEFT_X`, `Axis.LEFT_Y`, `Axis.RIGHT_X`, `Axis.RIGHT_Y`, `Axis.LEFT_TRIGGER`, `Axis.RIGHT_TRIGGER`
@@ -3006,8 +3012,8 @@ if Input.isControllerConnected(0) {
     var moveY = Input.controllerAxis(0, Axis.LEFT_Y);
 
     // Dead zone handling
-    if Math.abs(moveX) < 0.15 { moveX = 0.0; }
-    if Math.abs(moveY) < 0.15 { moveY = 0.0; }
+    if Math.Abs(moveX) < 0.15 { moveX = 0.0; }
+    if Math.Abs(moveY) < 0.15 { moveY = 0.0; }
 
     playerX += moveX * speed;
     playerY += moveY * speed;
@@ -3028,70 +3034,72 @@ Cryptographic hashing and encoding functions.
 
 ### Hashing
 
+Bind as `bind Viper.Crypto;` and use `Crypto.Hash.*`.
+
 ```rust
-func Viper.Crypto.md5(data: string) -> string      // 32-char hex string
-func Viper.Crypto.sha1(data: string) -> string     // 40-char hex string
-func Viper.Crypto.sha256(data: string) -> string   // 64-char hex string
-func Viper.Crypto.sha512(data: string) -> string   // 128-char hex string
+func Crypto.Hash.MD5(data: String) -> String      // 32-char hex String
+func Crypto.Hash.SHA1(data: String) -> String     // 40-char hex String
+func Crypto.Hash.SHA256(data: String) -> String   // 64-char hex String
+func Crypto.Hash.CRC32(data: String) -> Integer
 ```
 
 **Example:**
 ```rust
-var password = "secretpassword";
-var hash = Viper.Crypto.sha256(password);
-Terminal.Say("Hash: " + hash);
-// Hash: 2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b
+bind Viper.Crypto;
+bind Viper.Terminal;
 
-// File integrity check
-var content = Viper.File.readText("important.dat");
-var checksum = Viper.Crypto.sha256(content);
+var password = "secretpassword";
+var hash = Crypto.Hash.SHA256(password);
+Terminal.Say("Hash: " + hash);
 ```
 
-**Note:** MD5 and SHA1 are considered weak for security purposes. Use SHA256 or SHA512 for security-sensitive applications.
+**Note:** MD5 and SHA1 are considered weak for security purposes. Use SHA256 for security-sensitive applications.
 
 ---
 
 ### Random Bytes
 
 ```rust
-func Viper.Crypto.randomBytes(length: i64) -> [u8]
-func Viper.Crypto.randomHex(length: i64) -> string
+func Crypto.Rand.Bytes(length: Integer) -> [Byte]
+func Crypto.Rand.Int(min: Integer, max: Integer) -> Integer
 ```
 
 **Example:**
 ```rust
-// Generate secure token
-var token = Viper.Crypto.randomHex(32);  // 64-character hex string
+bind Viper.Crypto;
 
-// Generate random key
-var keyBytes = Viper.Crypto.randomBytes(16);  // 16 random bytes
+// Generate random bytes
+var keyBytes = Crypto.Rand.Bytes(16);  // 16 random bytes
+var randomInt = Crypto.Rand.Int(0, 255);
 ```
 
 ---
 
 ### Encoding
 
+Base64 and Hex encoding are under `Viper.Text.Codec`. Bind as `bind Viper.Text;` and use `Text.Codec.*`.
+
 ```rust
-// Base64
-func Viper.Crypto.base64Encode(data: [u8]) -> string
-func Viper.Crypto.base64Decode(encoded: string) -> [u8]
+// Base64 (operates on strings)
+func Text.Codec.Base64Enc(data: String) -> String
+func Text.Codec.Base64Dec(encoded: String) -> String
 
 // Hexadecimal
-func Viper.Crypto.hexEncode(data: [u8]) -> string
-func Viper.Crypto.hexDecode(hex: string) -> [u8]
+func Text.Codec.HexEnc(data: String) -> String
+func Text.Codec.HexDec(hex: String) -> String
 ```
 
 **Example:**
 ```rust
-var original = "Hello, World!";
-var bytes = original.toBytes();
+bind Viper.Text;
+bind Viper.Terminal;
 
-// Base64
-var encoded = Viper.Crypto.base64Encode(bytes);
+var original = "Hello, World!";
+var encoded = Text.Codec.Base64Enc(original);
 Terminal.Say(encoded);  // "SGVsbG8sIFdvcmxkIQ=="
 
-var decoded = Viper.Crypto.base64Decode(encoded);
-var text = String.fromBytes(decoded);  // "Hello, World!"
+var decoded = Text.Codec.Base64Dec(encoded);
+Terminal.Say(decoded);  // "Hello, World!"
 ```
 
 ---
@@ -3105,9 +3113,9 @@ System information and environment variables.
 ### Environment Variables
 
 ```rust
-func Viper.Environment.GetVariable(name: string) -> string
-func Viper.Environment.HasVariable(name: string) -> Boolean
-func Viper.Environment.SetVariable(name: string, value: string) -> void
+func Viper.Environment.GetVariable(name: String) -> String
+func Viper.Environment.HasVariable(name: String) -> Boolean
+func Viper.Environment.SetVariable(name: String, value: String) -> void
 ```
 
 **Example:**
@@ -3150,8 +3158,8 @@ Terminal.Say("CPU cores: " + Viper.Environment.cpuCount);
 
 ```rust
 func Viper.Environment.GetArgumentCount() -> Integer
-func Viper.Environment.GetArgument(index: Integer) -> string
-func Viper.Environment.GetCommandLine() -> string
+func Viper.Environment.GetArgument(index: Integer) -> String
+func Viper.Environment.GetCommandLine() -> String
 func Viper.Environment.EndProgram(code: Integer) -> void
 ```
 
@@ -3183,7 +3191,7 @@ Regular expressions for pattern matching and text manipulation.
 ### Creating Patterns
 
 ```rust
-func Regex.compile(pattern: string) -> Regex
+func Regex.compile(pattern: String) -> Regex
 ```
 
 **Example:**
@@ -3199,17 +3207,17 @@ var phonePattern = Regex.compile("\\d{3}-\\d{3}-\\d{4}");
 ### Matching
 
 ```rust
-regex.matches(text: string) -> bool
-regex.find(text: string) -> Match?        // First match
-regex.findAll(text: string) -> [Match]    // All matches
+regex.matches(text: String) -> Boolean
+regex.Find(text: String) -> Match?        // First match
+regex.findAll(text: String) -> [Match]    // All matches
 ```
 
 **Match properties:**
 ```rust
 match.value      // The matched text
-match.start      // Start index in original string
+match.start      // Start index in original String
 match.end        // End index
-match.groups     // [string] - capture groups
+match.groups     // [String] - capture groups
 ```
 
 **Example:**
@@ -3217,7 +3225,7 @@ match.groups     // [string] - capture groups
 var pattern = Regex.compile("(\\d{4})-(\\d{2})-(\\d{2})");
 
 if pattern.matches("2024-03-15") {
-    var match = pattern.find("2024-03-15");
+    var match = pattern.Find("2024-03-15");
     Terminal.Say("Year: " + match.groups[1]);   // "2024"
     Terminal.Say("Month: " + match.groups[2]);  // "03"
     Terminal.Say("Day: " + match.groups[3]);    // "15"
@@ -3229,21 +3237,21 @@ if pattern.matches("2024-03-15") {
 ### Replacing
 
 ```rust
-regex.replace(text: string, replacement: string) -> string      // First match
-regex.replaceAll(text: string, replacement: string) -> string   // All matches
+// Replace all matches using Viper.Text.Pattern static API:
+Pattern.Replace(pattern: String, text: String, replacement: String) -> String
+Pattern.ReplaceFirst(pattern: String, text: String, replacement: String) -> String
 ```
 
 **Example:**
 ```rust
-var pattern = Regex.compile("\\s+");  // One or more whitespace
+bind Viper.Text.Pattern as Pattern;
 
 var text = "Hello    World   !";
-var normalized = pattern.replaceAll(text, " ");
+var normalized = Pattern.Replace("\\s+", text, " ");
 // "Hello World !"
 
 // Censoring words
-var censor = Regex.compile("bad|ugly|wrong");
-var cleaned = censor.replaceAll(input, "****");
+var cleaned = Pattern.Replace("bad|ugly|wrong", input, "****");
 ```
 
 ---
@@ -3251,14 +3259,14 @@ var cleaned = censor.replaceAll(input, "****");
 ### Splitting
 
 ```rust
-regex.split(text: string) -> [string]
+regex.Split(text: String) -> [String]
 ```
 
 **Example:**
 ```rust
 var pattern = Regex.compile("[,;\\s]+");  // Comma, semicolon, or whitespace
 
-var items = pattern.split("apple, banana; cherry  orange");
+var items = pattern.Split("apple, banana; cherry  orange");
 // ["apple", "banana", "cherry", "orange"]
 ```
 
@@ -3297,23 +3305,23 @@ Running and controlling external processes.
 ### Simple Execution
 
 ```rust
-func Process.run(command: string, args: [string]) -> ProcessResult
-func Process.run(command: string, args: [string], options: ProcessOptions) -> ProcessResult
+func Process.run(command: String, args: [String]) -> ProcessResult
+func Process.run(command: String, args: [String], options: ProcessOptions) -> ProcessResult
 ```
 
 **ProcessResult fields:**
 ```rust
-result.exitCode   // i64 - process exit code (0 usually means success)
-result.stdout     // string - standard output
-result.stderr     // string - standard error
+result.exitCode   // Integer - process exit code (0 usually means success)
+result.stdout     // String - standard output
+result.stderr     // String - standard error
 ```
 
 **ProcessOptions fields:**
 ```rust
 {
-    cwd: string,              // Working directory
-    env: Map<string, string>, // Environment variables
-    timeout: i64              // Timeout in milliseconds
+    cwd: String,              // Working directory
+    env: Map[String, String], // Environment variables
+    timeout: Integer              // Timeout in milliseconds
 }
 ```
 
@@ -3324,7 +3332,7 @@ var result = Process.run("ls", ["-la"]);
 Terminal.Say(result.stdout);
 
 if result.exitCode != 0 {
-    Terminal.SayError("Command failed: " + result.stderr);
+    Terminal.Say("Error: Command failed: " + result.stderr);
 }
 
 // With options
@@ -3339,13 +3347,13 @@ var result = Process.run("npm", ["install"], {
 ### Background Processes
 
 ```rust
-func Process.spawn(command: string, args: [string]) -> Process
+func Process.spawn(command: String, args: [String]) -> Process
 
-process.write(input: string) -> void
-process.read() -> string
-process.readLine() -> string
+process.Write(input: String) -> void
+process.Read() -> String
+process.ReadLine() -> String
 process.kill() -> void
-process.wait() -> i64        // Returns exit code
+process.wait() -> Integer        // Returns exit code
 ```
 
 **Example:**
@@ -3353,11 +3361,11 @@ process.wait() -> i64        // Returns exit code
 // Interactive process
 var process = Process.spawn("python3", []);
 
-process.write("print(2 + 2)\n");
-var output = process.readLine();
+process.Write("print(2 + 2)\n");
+var output = process.ReadLine();
 Terminal.Say("Result: " + output);  // "4"
 
-process.write("exit()\n");
+process.Write("exit()\n");
 process.wait();
 
 // Long-running background process
@@ -3410,7 +3418,7 @@ assertNull(findUser("nonexistent"));
 assertNotNull(findUser("alice"));
 
 // Floating point comparison
-assertClose(Math.PI, 3.14159, 0.00001);
+assertClose(Math.Pi, 3.14159, 0.00001);
 
 // Exception testing
 assertThrows(func() {
@@ -3458,9 +3466,9 @@ teardown {
 }
 
 test "addition returns correct sum" {
-    assertEqual(calc.add(2, 3), 5);
-    assertEqual(calc.add(-1, 1), 0);
-    assertEqual(calc.add(0, 0), 0);
+    assertEqual(calc.Add(2, 3), 5);
+    assertEqual(calc.Add(-1, 1), 0);
+    assertEqual(calc.Add(0, 0), 0);
 }
 
 test "division by zero throws error" {
@@ -3470,7 +3478,7 @@ test "division by zero throws error" {
 }
 
 test "memory stores last result" {
-    calc.add(5, 3);
+    calc.Add(5, 3);
     assertEqual(calc.memory, 8);
 }
 ```
@@ -3491,47 +3499,44 @@ viper test --verbose          # Show detailed output
 
 ## Quick Reference Cards
 
-### String Methods (Built-in)
+### String Functions (Viper.String)
+
+Bind with `bind Viper.String;` and call as `String.FunctionName(str, ...)`.
 
 ```rust
-str.len()                     // -> i64
-str.charAt(index)             // -> string (single char)
-str.substring(start, end)     // -> string
-str.toLower()                 // -> string
-str.toUpper()                 // -> string
-str.trim()                    // -> string
-str.split(delimiter)          // -> [string]
-str.contains(substring)       // -> bool
-str.startsWith(prefix)        // -> bool
-str.endsWith(suffix)          // -> bool
-str.replace(old, new)         // -> string
-str.indexOf(substring)        // -> i64 (-1 if not found)
-str.toInt()                   // -> i64
-str.toFloat()                 // -> f64
-str.toBytes()                 // -> [u8]
+str.Length                        // Property -> Integer (built-in, no bind needed)
+String.ToLower(str)               // -> String
+String.ToUpper(str)               // -> String
+String.Trim(str)                  // -> String
+String.TrimStart(str)             // -> String
+String.TrimEnd(str)               // -> String
+String.Split(str, delimiter)      // -> [String]
+String.Has(str, substring)        // -> Boolean
+String.StartsWith(str, prefix)    // -> Boolean
+String.EndsWith(str, suffix)      // -> Boolean
+String.Replace(str, old, new)     // -> String
+String.IndexOf(str, substring)    // -> Integer (-1 if not found)
+String.Left(str, n)               // -> String (first n chars)
+String.Right(str, n)              // -> String (last n chars)
+String.Mid(str, start)            // -> String (from start)
+String.Substring(str, start, len) // -> String
+String.Repeat(str, n)             // -> String
+String.PadLeft(str, width, ch)    // -> String
+String.PadRight(str, width, ch)   // -> String
+String.Length(str)                // -> Integer (same as .Length)
 ```
 
-### Array Methods (Built-in)
+For numeric conversion: `bind Viper.Convert as Convert;` then `Convert.ToInt64(str)` / `ToDouble(str)`.
+
+### Array Properties (Built-in)
 
 ```rust
-arr.len()                     // -> i64
-arr.push(item)                // Add to end
-arr.pop()                     // -> item? (remove from end)
-arr.first()                   // -> item?
-arr.last()                    // -> item?
-arr.contains(item)            // -> bool
-arr.indexOf(item)             // -> i64 (-1 if not found)
-arr.slice(start, end)         // -> [T]
-arr.reverse()                 // -> [T]
-arr.sort()                    // -> [T]
-arr.sort(compareFn)           // -> [T]
-arr.map(fn)                   // -> [U]
-arr.filter(fn)                // -> [T]
-arr.reduce(fn, initial)       // -> U
-arr.forEach(fn)               // -> void
-arr.enumerate()               // -> [(i64, T)]
-arr.join(separator)           // -> string
+arr.Length                    // Property -> Integer (no bind needed)
+arr.Has(item)                 // -> Boolean (built-in method)
+arr.Contains(item)            // -> Boolean (alias for .has)
 ```
+
+For advanced array operations, use `bind Viper.Collections;` and `Collections.List.*`.
 
 ---
 

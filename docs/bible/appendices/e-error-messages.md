@@ -218,7 +218,7 @@ var message = "Hello";
 // Problem: Invalid symbol
 var email = user@domain.com;  // @ isn't valid here
 
-// Solution: Make it a string
+// Solution: Make it a String
 var email = "user@domain.com";
 ```
 
@@ -226,19 +226,19 @@ var email = "user@domain.com";
 
 ---
 
-### "Unterminated string literal"
+### "Unterminated String literal"
 
 ```
 Error: SyntaxError at main.zia:7:20
-  Unterminated string literal
+  Unterminated String literal
 ```
 
-**What it means:** A string was opened with `"` but never closed.
+**What it means:** A String was opened with `"` but never closed.
 
 **Common causes:**
 - Forgetting the closing quote
-- Having an unescaped quote inside the string
-- Multi-line string without proper continuation
+- Having an unescaped quote inside the String
+- Multi-line String without proper continuation
 
 **Fix examples:**
 
@@ -251,8 +251,8 @@ var message = "Hello, world!";
 ```
 
 ```rust
-// Problem: Quote inside string
-var quote = "She said "Hello"";  // Inner quotes end the string early
+// Problem: Quote inside String
+var quote = "She said "Hello"";  // Inner quotes end the String early
 
 // Solution: Escape inner quotes
 var quote = "She said \"Hello\"";
@@ -331,7 +331,7 @@ Type errors occur when you use a value in a way that doesn't match its type.
 
 ```
 Error: TypeError at main.zia:7:14
-  Type mismatch: expected 'i64', got 'string'
+  Type mismatch: expected 'Integer', got 'String'
 ```
 
 **What it means:** You used a value of one type where a different type was required.
@@ -345,17 +345,17 @@ Error: TypeError at main.zia:7:14
 
 ```rust
 // Problem: Wrong type assignment
-var count: i64 = "hello";  // Can't put string in i64 variable
+var count: Integer = "hello";  // Can't put String in Integer variable
 
 // Solution 1: Use correct type
-var count: i64 = 42;
+var count: Integer = 42;
 
 // Solution 2: Change variable type
-var count: string = "hello";
+var count: String = "hello";
 
 // Solution 3: Convert the value (if appropriate)
-bind Viper.Convert;
-var count: i64 = ToInt("42");
+bind Viper.Convert as Convert;
+var count: Integer = Convert.ToInt64("42");
 ```
 
 ```rust
@@ -366,21 +366,21 @@ func greet(name: String) {
     Say("Hello, " + name);
 }
 
-greet(42);  // Error: expected string, got i64
+greet(42);  // Error: expected String, got Integer
 
 // Solution: Pass correct type
 greet("Alice");
-greet(42.toString());  // Convert if needed
+// Convert if needed: bind Viper.Fmt as Fmt; greet(Fmt.Int(42));
 ```
 
 ```rust
 // Problem: Wrong return type
-func getAge() -> i64 {
-    return "twenty-five";  // Error: expected i64
+func getAge() -> Integer {
+    return "twenty-five";  // Error: expected Integer
 }
 
 // Solution: Return correct type
-func getAge() -> i64 {
+func getAge() -> Integer {
     return 25;
 }
 ```
@@ -421,11 +421,11 @@ var currentMax = MAX_SCORE + 100;  // OK: new variable
 ```rust
 // Problem: Should be var, not final
 final counter = 0;
-counter += 1;  // Error
+counter = counter + 1;  // Error: counter is final
 
 // Solution: Use var for values that change
 var counter = 0;
-counter += 1;  // OK
+counter = counter + 1;  // OK
 ```
 
 **Prevention:** Use `final` only for true constants (values that should never change). Use `var` for variables that will be modified.
@@ -438,7 +438,7 @@ counter += 1;  // OK
 
 ```
 Error: TypeError at main.zia:8:20
-  Cannot apply '+' to 'string' and 'i64'
+  Cannot apply '+' to 'String' and 'Integer'
 ```
 
 **What it means:** You tried to use an operator with types that don't support that operation together.
@@ -451,13 +451,14 @@ Error: TypeError at main.zia:8:20
 **Fix examples:**
 
 ```rust
-// Problem: Adding string and number
+// Problem: Adding String and number
 var result = "Value: " + 42;  // May error depending on context
 
-// Solution 1: Convert number to string explicitly
-var result = "Value: " + 42.toString();
+// Solution 1: Convert number to String explicitly
+bind Viper.Fmt as Fmt;
+var result = "Value: " + Fmt.Int(42);
 
-// Solution 2: Use string interpolation
+// Solution 2: Use String interpolation
 var result = "Value: ${42}";
 ```
 
@@ -465,12 +466,12 @@ var result = "Value: ${42}";
 // Problem: Comparing incompatible types
 var name = "Alice";
 var age = 30;
-if name > age {  // Error: can't compare string to number
+if name > age {  // Error: can't compare String to number
     // ...
 }
 
 // Solution: Compare same types
-if name.length > age {  // Compare two numbers
+if name.Length > age {  // Compare two numbers
     // ...
 }
 ```
@@ -482,9 +483,9 @@ var b = "3";
 var sum = a + b;  // Results in "53", not 8!
 
 // Solution: Convert to numbers first
-bind Viper.Convert;
-var a = ToInt("5");
-var b = ToInt("3");
+bind Viper.Convert as Convert;
+var a = Convert.ToInt64("5");
+var b = Convert.ToInt64("3");
 var sum = a + b;  // 8
 ```
 
@@ -496,13 +497,13 @@ var sum = a + b;  // 8
 
 ```
 Error: TypeError at main.zia:15:12
-  Cannot convert 'string' to 'i64': invalid format
+  Cannot convert 'String' to 'Integer': invalid format
 ```
 
 **What it means:** A type conversion was attempted but failed because the value couldn't be converted.
 
 **Common causes:**
-- Parsing non-numeric string as number
+- Parsing non-numeric String as number
 - Invalid format for date/time parsing
 - Casting between incompatible entity types
 
@@ -510,20 +511,20 @@ Error: TypeError at main.zia:15:12
 
 ```rust
 // Problem: Parsing non-number
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 bind Viper.Terminal;
 
-var num = ToInt("hello");  // Error: "hello" is not a number
+var num = Convert.ToInt64("hello");  // Error: "hello" is not a number
 
 // Solution 1: Validate before parsing
 var input = "hello";
 if input.isNumeric() {
-    var num = ToInt(input);
+    var num = Convert.ToInt64(input);
 }
 
 // Solution 2: Use try-catch
 try {
-    var num = ToInt(input);
+    var num = Convert.ToInt64(input);
 } catch e: ParseError {
     Say("Please enter a valid number");
 }
@@ -531,14 +532,14 @@ try {
 
 ```rust
 // Problem: Trailing characters
-bind Viper.Convert;
+bind Viper.Convert as Convert;
 
-var num = ToInt("42abc");  // Error or unexpected result
+var num = Convert.ToInt64("42abc");  // Error or unexpected result
 
 // Solution: Clean input first
 var input = "42abc";
-var cleaned = input.trim().replaceAll("[^0-9]", "");
-var num = ToInt(cleaned);
+var cleaned = input.Trim().Replace("abc", "");  // Remove non-numeric chars
+var num = Convert.ToInt64(cleaned);
 ```
 
 **Prevention:** Always validate user input before parsing. Use try-catch when conversion might fail.
@@ -703,19 +704,19 @@ var result = calculate(5, 3);
 
 ```rust
 // Problem: Missing import
-var data = Json.parse(text);  // Error: Json not defined
+var data = Json.Parse(text);  // Error: Json not defined
 
 // Solution: Import the module
 bind Viper.Json;
-var data = Json.parse(text);
+var data = Json.Parse(text);
 ```
 
 ```rust
-// Problem: Calling method as function
-var length = length(myString);  // Error
+// Problem: Using undefined function name
+var length = length(myString);  // Error: 'length' is not a function
 
-// Solution: Call as method
-var length = myString.length();
+// Solution: Use the .Length property (no parentheses)
+var length = myString.Length;
 ```
 
 **Prevention:** Use IDE autocomplete. When a function isn't found, check: (1) spelling, (2) imports, (3) whether it's a method.
@@ -830,7 +831,7 @@ for i in 0..10 {
 var totalCount = 0;
 for i in 0..10 {
     var currentCount = i;
-    totalCount += currentCount;
+    totalCount = totalCount + currentCount;
 }
 ```
 
@@ -878,10 +879,10 @@ var result = add(1, 0);  // OK
 
 ```rust
 // If you need variable arguments, use an array
-func sum(numbers: [i64]) -> i64 {
+func sum(numbers: [Integer]) -> Integer {
     var total = 0;
     for n in numbers {
-        total += n;
+        total = total + n;
     }
     return total;
 }
@@ -897,7 +898,7 @@ var result = sum([1, 2, 3, 4, 5]);  // Pass array
 
 ```
 Error: TypeError at main.zia:25:1
-  Function 'getValue' must return a value of type 'i64'
+  Function 'getValue' must return a value of type 'Integer'
 ```
 
 **What it means:** A function declares a return type but doesn't always return a value.
@@ -906,13 +907,13 @@ Error: TypeError at main.zia:25:1
 
 ```rust
 // Problem: No return statement
-func getValue() -> i64 {
+func getValue() -> Integer {
     var x = 42;
     // Function ends without returning!
 }
 
 // Solution: Add return
-func getValue() -> i64 {
+func getValue() -> Integer {
     var x = 42;
     return x;
 }
@@ -973,7 +974,7 @@ func printMessage(msg: String) {
 // Solution 2: Add return type if needed
 func printMessage(msg: String) -> String {
     Say(msg);
-    return msg;  // OK: function returns string
+    return msg;  // OK: function returns String
 }
 ```
 
@@ -983,7 +984,7 @@ func printMessage(msg: String) -> String {
 
 ```
 Error: TypeError at main.zia:15:12
-  Argument 1: expected 'string', got 'i64'
+  Argument 1: expected 'String', got 'Integer'
 ```
 
 **What it means:** A function was called with an argument of the wrong type.
@@ -998,11 +999,11 @@ func greet(name: String) {
 }
 
 // Problem: Wrong argument type
-greet(42);  // Error: expected string, got i64
+greet(42);  // Error: expected String, got Integer
 
 // Solution: Pass correct type
 greet("Alice");  // OK
-greet(42.toString());  // OK: convert if needed
+// bind Viper.Fmt as Fmt; greet(Fmt.Int(42));  // convert Integer to String if needed
 ```
 
 ---
@@ -1029,14 +1030,14 @@ Error: TypeError at main.zia:20:8
 ```rust
 interface Drawable {
     func draw();
-    func getColor() -> string;
+    func getColor() -> String;
 }
 
 // Problem: Missing method
 bind Viper.Terminal;
 
 entity Circle implements Drawable {
-    radius: f64;
+    radius: Number;
 
     func draw() {
         Say("Drawing circle");
@@ -1046,14 +1047,14 @@ entity Circle implements Drawable {
 
 // Solution: Implement all methods
 entity Circle implements Drawable {
-    radius: f64;
-    color: string;
+    radius: Number;
+    color: String;
 
     func draw() {
         Say("Drawing circle with radius " + self.radius);
     }
 
-    func getColor() -> string {
+    func getColor() -> String {
         return self.color;
     }
 }
@@ -1076,9 +1077,9 @@ Error: AccessError at main.zia:30:15
 
 ```rust
 entity BankAccount {
-    hide balance: f64;  // Hidden field
+    hide balance: Number;  // Hidden field
 
-    expose func getBalance() -> f64 {
+    expose func getBalance() -> Number {
         return self.balance;
     }
 }
@@ -1112,14 +1113,14 @@ Error: TypeError at main.zia:25:5
 
 ```rust
 entity Animal {
-    func speak() -> string {
+    func speak() -> String {
         return "...";
     }
 }
 
 // Problem: Different return type
 entity Dog extends Animal {
-    func speak() -> i64 {  // Error: parent returns string
+    func speak() -> Integer {  // Error: parent returns String
         return 1;
     }
 }
@@ -1133,7 +1134,7 @@ entity Dog extends Animal {
 
 // Solution: Match signature exactly
 entity Dog extends Animal {
-    func speak() -> string {
+    func speak() -> String {
         return "Woof!";
     }
 }
@@ -1154,8 +1155,8 @@ Error: TypeError at main.zia:15:12
 
 ```rust
 entity Player {
-    name: string;
-    health: i64;
+    name: String;
+    health: Integer;
 
     expose func init(name: String, health: Integer) {
         self.name = name;
@@ -1187,7 +1188,7 @@ Error: ContextError at main.zia:12:16
 bind Viper.Terminal;
 
 entity Counter {
-    count: i64;
+    count: Integer;
 
     // Problem: Using self in static function
     static func printCount() {
@@ -1197,7 +1198,7 @@ entity Counter {
 
 // Solution 1: Make it a regular method
 entity Counter {
-    count: i64;
+    count: Integer;
 
     func printCount() {
         Say(self.count);  // OK: self exists in methods
@@ -1206,7 +1207,7 @@ entity Counter {
 
 // Solution 2: Pass instance as parameter
 entity Counter {
-    count: i64;
+    count: Integer;
 
     static func printCount(counter: Counter) {
         Say(counter.count);  // Access via parameter
@@ -1255,12 +1256,12 @@ var x = items[4];  // OK: last valid index
 bind Viper.Terminal;
 
 var items = ["a", "b", "c"];
-for i in 0..items.length + 1 {  // Goes to 3, but max index is 2
+for i in 0..items.Length + 1 {  // Goes to 3, but max index is 2
     Say(items[i]);  // Error on last iteration
 }
 
 // Solution: Correct loop bounds
-for i in 0..items.length {  // 0 to 2 (exclusive)
+for i in 0..items.Length {  // 0 to 2 (exclusive)
     Say(items[i]);  // OK
 }
 
@@ -1272,11 +1273,11 @@ for item in items {
 
 ```rust
 // Problem: Not checking for empty array
-var scores: [i64] = [];
+var scores: [Integer] = [];
 var first = scores[0];  // Error: array is empty
 
 // Solution: Check length first
-if scores.length > 0 {
+if scores.Length > 0 {
     var first = scores[0];  // OK
 }
 ```
@@ -1339,7 +1340,7 @@ var average = safeDivide(total, count, 0);
 
 ```
 Error: OverflowError at main.zia:8:12
-  Integer overflow: result exceeds i64 range
+  Integer overflow: result exceeds Integer range
 ```
 
 **What it means:** A calculation produced a number too large (or too small) to fit in the integer type.
@@ -1348,18 +1349,18 @@ Error: OverflowError at main.zia:8:12
 
 ```rust
 // Problem: Result too large
-var big = 9223372036854775807;  // Max i64
+var big = 9223372036854775807;  // Max Integer
 var bigger = big + 1;  // Error: overflow
 
 // Solution 1: Use checked arithmetic
-var result = big.checkedAdd(1);  // Returns null on overflow
+var result = big.CheckedAdd(1);  // Returns null on overflow
 
 // Solution 2: Use larger type or arbitrary precision
 var big = BigInt("9223372036854775807");
 var bigger = big + 1;  // OK with BigInt
 
 // Solution 3: Validate before operation
-if big < i64.MAX {
+if big < Integer.MAX {
     var bigger = big + 1;  // Safe
 }
 ```
@@ -1510,31 +1511,31 @@ Error: FileError at main.zia:5:20
 
 ```rust
 // Problem: File doesn't exist
-bind Viper.File;
+bind Viper.IO;
 bind Viper.Terminal;
 
-var content = readText("data.txt");  // Error if missing
+var content = IO.File.ReadAllText("data.txt");  // Error if missing
 
 // Solution 1: Check existence first
-if exists("data.txt") {
-    var content = readText("data.txt");
+if IO.File.Exists("data.txt") {
+    var content = IO.File.ReadAllText("data.txt");
 } else {
     Say("File not found");
 }
 
 // Solution 2: Use try-catch
 try {
-    var content = readText("data.txt");
+    var content = IO.File.ReadAllText("data.txt");
 } catch e: FileNotFound {
     Say("File not found, creating default...");
-    writeText("data.txt", "default content");
+    IO.File.WriteAllText("data.txt", "default content");
 }
 
 // Solution 3: Provide path at runtime
-Print("Enter filename: ");
-var filename = ReadLine();
-if exists(filename) {
-    var content = readText(filename);
+Terminal.Print("Enter filename: ");
+var filename = Terminal.ReadLine();
+if IO.File.Exists(filename) {
+    var content = IO.File.ReadAllText(filename);
 }
 ```
 
@@ -1697,10 +1698,10 @@ var content = readText("huge_file.txt");  // Out of memory
 // Solution: Read line by line
 var reader = openReader("huge_file.txt");
 while reader.hasNextLine() {
-    var line = reader.readLine();
+    var line = reader.ReadLine();
     processLine(line);
 }
-reader.close();
+reader.Close();
 ```
 
 **Prevention:**
@@ -1787,13 +1788,13 @@ var counter = 0;
 
 var t1 = Thread.spawn(func() {
     for i in 0..1000 {
-        counter += 1;  // Race condition!
+        counter = counter + 1;  // Race condition!
     }
 });
 
 var t2 = Thread.spawn(func() {
     for i in 0..1000 {
-        counter += 1;  // Race condition!
+        counter = counter + 1;  // Race condition!
     }
 });
 
@@ -1804,7 +1805,7 @@ var mutex = Mutex.create();
 var t1 = Thread.spawn(func() {
     for i in 0..1000 {
         mutex.lock();
-        counter += 1;
+        counter = counter + 1;
         mutex.unlock();
     }
 });

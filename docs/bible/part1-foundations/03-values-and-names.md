@@ -643,7 +643,7 @@ To do math with user input, you must convert it first:
 
 ```rust
 var userInput = "25";
-var age = Viper.Convert.ToInt(userInput);  // Convert to number
+var age = Viper.Convert.ToInt64(userInput);  // Convert to number
 var nextYear = age + 1;  // Now this is 26
 ```
 
@@ -968,14 +968,14 @@ bind Viper.Terminal;
 func start() {
     Print("How old are you? ");
     var ageText = ReadLine();   // This is a string
-    var age = Viper.Convert.ToInt(ageText);         // Convert to integer
+    var age = Viper.Convert.ToInt64(ageText);        // Convert to integer
 
     var nextYear = age + 1;
     Say("Next year you'll be " + nextYear);
 }
 ```
 
-`Viper.Convert.ToInt()` converts a string like `"25"` into the number `25`.
+`Viper.Convert.ToInt64()` converts a string like `"25"` into the number `25`.
 `Viper.Convert.ToDouble()` converts a string like `"3.14"` into the float `3.14`.
 
 **What if the user types something that isn't a number?**
@@ -1090,7 +1090,7 @@ bind Viper.Terminal;
 var age = ReadLine();  // This is a string "25"
 var nextYear = age + 1;  // Concatenates to "251", doesn't add!
 ```
-`ReadLine()` always returns a string. Use `Convert.ToInt()` or `Convert.ToDouble()` to convert.
+`ReadLine()` always returns a string. Use `Convert.ToInt64()` or `Convert.ToDouble()` to convert.
 
 ### 7. Using var twice for the same variable
 ```rust
@@ -1198,7 +1198,7 @@ Every one of these chapters builds on what you've learned here. Values, types, v
 
 - Variables can change (that's why they're called variables). Use `=` to assign new values.
 
-- Use `ReadLine()` to get text input from users. Use `Convert.ToInt()` or `Convert.ToDouble()` to convert text to numbers.
+- Use `ReadLine()` to get text input from users. Use `Convert.ToInt64()` or `Convert.ToDouble()` to convert text to numbers.
 
 - Choose descriptive variable names to make your code readable.
 

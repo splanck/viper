@@ -160,10 +160,10 @@ Let's make timing reusable:
 bind Viper.Time;
 bind Viper.Terminal;
 
-func timed<T>(name: String, work: func() -> T) -> T {
-    var start = Time.nanos();
+func timed[T](name: String, work: func() -> T) -> T {
+    var start = Time.Clock.TicksUs();
     var result = work();
-    var elapsed = (Time.nanos() - start) / 1_000_000.0;
+    var elapsed = (Time.Clock.TicksUs() - start) / 1000.0;
     Terminal.Say(name + ": " + elapsed + " ms");
     return result;
 }
@@ -251,10 +251,10 @@ Output shows allocations:
 ```
 Type                Allocations    Total Size    % Memory
 ─────────────────────────────────────────────────────────
-string              50000          4.5 MB        45%
-[i64]               25000          3.2 MB        32%
+String              50000          4.5 MB        45%
+[Integer]               25000          3.2 MB        32%
 Image               1000           1.5 MB        15%
-Map<string, i64>    500            0.8 MB        8%
+Map[String, Integer]    500            0.8 MB        8%
 ```
 
 High allocation counts often indicate unnecessary object creation inside loops.
@@ -273,7 +273,7 @@ Consider searching for a name in a list:
 
 ```rust
 func findPerson(people: [String], name: String) -> Integer {
-    for i in 0..people.length {
+    for i in 0..people.Length {
         if people[i] == name {
             return i;
         }
@@ -334,7 +334,7 @@ Each step eliminates half the remaining work. Binary search is O(log n):
 ```rust
 func binarySearch(sorted: [Integer], target: Integer) -> Integer {
     var low = 0;
-    var high = sorted.length - 1;
+    var high = sorted.Length - 1;
 
     while low <= high {
         var mid = (low + high) / 2;
@@ -384,8 +384,8 @@ func findClosestPair(points: [Point]) -> (Point, Point) {
     var closest = (points[0], points[1]);
     var minDist = distance(closest.0, closest.1);
 
-    for i in 0..points.length {
-        for j in (i+1)..points.length {  // Nested loop!
+    for i in 0..points.Length {
+        for j in (i+1)..points.Length {  // Nested loop!
             var dist = distance(points[i], points[j]);
             if dist < minDist {
                 minDist = dist;
@@ -411,9 +411,9 @@ To determine Big O, count loops:
 But watch for hidden loops:
 
 ```rust
-func sneakyQuadratic(items: [string]) {
+func sneakyQuadratic(items: [String]) {
     for item in items {
-        if items.contains(item.reversed()) {  // contains() is O(n)!
+        if items.Contains(item.reversed()) {  // contains() is O(n)!
             Terminal.Say("Found palindrome pair");
         }
     }
@@ -431,8 +431,8 @@ Let's see Big O in action with a real problem: checking if a list has any duplic
 
 ```rust
 func hasDuplicates_slow(items: [Integer]) -> Boolean {
-    for i in 0..items.length {
-        for j in (i+1)..items.length {
+    for i in 0..items.Length {
+        for j in (i+1)..items.Length {
             if items[i] == items[j] {
                 return true;
             }
@@ -453,7 +453,7 @@ With 1,000,000 items: ~500,000,000,000 comparisons (could take minutes)
 func hasDuplicates_medium(items: [Integer]) -> Boolean {
     var sorted = items.sorted();  // O(n log n)
 
-    for i in 0..(sorted.length - 1) {  // O(n)
+    for i in 0..(sorted.Length - 1) {  // O(n)
         if sorted[i] == sorted[i + 1] {
             return true;
         }
@@ -471,13 +471,13 @@ With 1,000,000 items: ~20,000,000 comparisons (milliseconds)
 
 ```rust
 func hasDuplicates_fast(items: [Integer]) -> Boolean {
-    var seen = Set<Integer>.create();
+    var seen = new Set[Integer]();
 
     for item in items {
-        if seen.contains(item) {  // O(1) average
+        if seen.Contains(item) {  // O(1) average
             return true;
         }
-        seen.add(item);  // O(1) average
+        seen.Add(item);  // O(1) average
     }
     return false;
 }
@@ -591,10 +591,10 @@ func findUser(id: Integer) -> User? {
 
 **Fast: Using a Map**
 ```rust
-var users: Map<Integer, User> = Map.new();
+var users: Map[Integer, User] = new Map();
 
 func findUser(id: Integer) -> User? {
-    return users.get(id);        // O(1) - direct lookup
+    return users.Get(id);        // O(1) - direct lookup
 }
 ```
 
@@ -604,15 +604,15 @@ Similarly for membership testing:
 ```rust
 var seen: [String] = [];
 if !contains(seen, item) {       // O(n) each time
-    seen.push(item);
+    seen.Push(item);
 }
 ```
 
 **Fast:**
 ```rust
-var seen: Set<String> = Set.new();
-if !seen.contains(item) {        // O(1) each time
-    seen.add(item);
+var seen: Set[String] = new Set();
+if !seen.Contains(item) {        // O(1) each time
+    seen.Add(item);
 }
 ```
 
@@ -629,7 +629,7 @@ if !seen.contains(item) {        // O(1) each time
 
 ### Pattern 3: String Concatenation in Loops
 
-Strings are immutable in Viper. Each concatenation creates a new string:
+Strings are immutable in Viper. Each concatenation creates a new String:
 
 **Slow:**
 ```rust
@@ -639,7 +639,7 @@ for i in 0..10000 {
 }
 ```
 
-Each `+=` creates a new string, copies all existing content, adds the new part. This is O(n²) in total!
+Each `+=` creates a new String, copies all existing content, adds the new part. This is O(n²) in total!
 
 **Fast:**
 ```rust
@@ -649,10 +649,10 @@ for i in 0..10000 {
     builder.Append(i);
     builder.Append("\n");
 }
-var result = builder.ToString();  // One final string
+var result = builder.ToString();  // One final String
 ```
 
-StringBuilder accumulates efficiently, creating only one final string.
+StringBuilder accumulates efficiently, creating only one final String.
 
 ### Pattern 4: Repeated Calculations
 
@@ -687,16 +687,16 @@ For functions called repeatedly with the same arguments, remember results:
 
 ```rust
 entity FibonacciCalculator {
-    hide cache: Map<Integer, Integer>;
+    hide cache: Map[Integer, Integer];
 
     expose func init() {
-        self.cache = Map.new();
+        self.cache = new Map();
     }
 
     expose func calculate(n: Integer) -> Integer {
         // Check cache first
-        if self.cache.has(n) {
-            return self.cache.get(n);
+        if self.cache.Has(n) {
+            return self.cache.Get(n);
         }
 
         // Compute if not cached
@@ -708,7 +708,7 @@ entity FibonacciCalculator {
         }
 
         // Store for next time
-        self.cache.set(n, result);
+        self.cache.Set(n, result);
         return result;
     }
 }
@@ -764,7 +764,7 @@ Copying large data structures is expensive:
 ```rust
 func processData(data: [Integer]) -> [Integer] {
     var result = data.clone();  // Copies entire array!
-    for i in 0..result.length {
+    for i in 0..result.Length {
         result[i] *= 2;
     }
     return result;
@@ -776,7 +776,7 @@ If the caller doesn't need the original, modify in place:
 **Fast:**
 ```rust
 func processData(data: [Integer]) {
-    for i in 0..data.length {
+    for i in 0..data.Length {
         data[i] *= 2;
     }
     // Modifies data directly, no copy
@@ -790,14 +790,14 @@ Sometimes you can trade memory for speed, or vice versa.
 **Trade Memory for Speed (Caching):**
 ```rust
 entity ImageProcessor {
-    hide thumbnailCache: Map<String, Image>;
+    hide thumbnailCache: Map[String, Image];
 
     expose func getThumbnail(path: String) -> Image {
-        if self.thumbnailCache.has(path) {
-            return self.thumbnailCache.get(path);  // Fast: from cache
+        if self.thumbnailCache.Has(path) {
+            return self.thumbnailCache.Get(path);  // Fast: from cache
         }
         var thumb = self.generateThumbnail(path);  // Slow: compute
-        self.thumbnailCache.set(path, thumb);      // Store for later
+        self.thumbnailCache.Set(path, thumb);      // Store for later
         return thumb;
     }
 }
@@ -836,10 +836,10 @@ func processFile_memory(path: String) {
 func processFile_streaming(path: String) {
     var reader = BufferedReader(File.open(path, "r"));
     while !reader.eof() {
-        var line = reader.readLine();  // One line at a time
+        var line = reader.ReadLine();  // One line at a time
         process(line);
     }
-    reader.close();
+    reader.Close();
 }
 ```
 
@@ -870,7 +870,7 @@ Reading one character at a time makes thousands of system calls for a typical fi
 ```rust
 var file = BufferedReader(File.open("data.txt", "r"));
 while !file.eof() {
-    var line = file.readLine();  // Reads chunks internally
+    var line = file.ReadLine();  // Reads chunks internally
     process(line);
 }
 ```
@@ -884,7 +884,7 @@ Network round-trips are expensive:
 **Slow:**
 ```rust
 for item in items {
-    database.insert(item);  // 1000 network round-trips!
+    database.Insert(item);  // 1000 network round-trips!
 }
 ```
 
@@ -901,18 +901,18 @@ When waiting for I/O, your CPU is idle. Do multiple operations concurrently:
 
 **Slow: Sequential**
 ```rust
-var data1 = Http.get(url1);  // Wait 200ms
-var data2 = Http.get(url2);  // Wait 200ms
-var data3 = Http.get(url3);  // Wait 200ms
+var data1 = Http.Get(url1);  // Wait 200ms
+var data2 = Http.Get(url2);  // Wait 200ms
+var data3 = Http.Get(url3);  // Wait 200ms
 // Total: 600ms
 ```
 
 **Fast: Parallel**
 ```rust
 var tasks = [
-    Thread.spawn(func() { return Http.get(url1); }),
-    Thread.spawn(func() { return Http.get(url2); }),
-    Thread.spawn(func() { return Http.get(url3); })
+    Thread.spawn(func() { return Http.Get(url1); }),
+    Thread.spawn(func() { return Http.Get(url2); }),
+    Thread.spawn(func() { return Http.Get(url3); })
 ];
 
 var data1 = tasks[0].result();
@@ -932,21 +932,21 @@ Let's walk through optimizing a real program step by step: counting word frequen
 ### Step 1: The Naive Implementation
 
 ```rust
-func countWords_v1(text: String) -> Map<String, Integer> {
-    var counts: Map<String, Integer> = Map.new();
+func countWords_v1(text: String) -> Map[String, Integer] {
+    var counts: Map[String, Integer] = new Map();
 
     // Split by spaces
-    var words = text.split(" ");
+    var words = text.Split(" ");
 
     for word in words {
         // Normalize
-        var normalized = word.toLowerCase().trim();
+        var normalized = word.ToLower().Trim();
 
-        if normalized.length > 0 {
-            if counts.has(normalized) {
-                counts.set(normalized, counts.get(normalized) + 1);
+        if normalized.Length > 0 {
+            if counts.Has(normalized) {
+                counts.Set(normalized, counts.Get(normalized) + 1);
             } else {
-                counts.set(normalized, 1);
+                counts.Set(normalized, 1);
             }
         }
     }
@@ -959,8 +959,8 @@ Let's profile it on a 10MB text file:
 ```
 countWords_v1: 2340 ms
   - split: 450 ms (creates huge array of strings)
-  - toLowerCase: 380 ms (creates new string each time)
-  - trim: 290 ms (creates new string each time)
+  - toLowerCase: 380 ms (creates new String each time)
+  - trim: 290 ms (creates new String each time)
   - Map operations: 320 ms
   - Memory allocations: 1,200,000 objects
 ```
@@ -977,18 +977,18 @@ countWords_v1: 2340 ms
 **Version 2: Eliminate intermediate array from split**
 
 ```rust
-func countWords_v2(text: String) -> Map<String, Integer> {
-    var counts: Map<String, Integer> = Map.new();
+func countWords_v2(text: String) -> Map[String, Integer] {
+    var counts: Map[String, Integer] = new Map();
     var wordStart = -1;
 
-    for i in 0..text.length {
+    for i in 0..text.Length {
         var isSpace = text[i] == ' ' || text[i] == '\n' || text[i] == '\t';
 
         if isSpace {
             if wordStart >= 0 {
-                var word = text.substring(wordStart, i).toLowerCase().trim();
-                if word.length > 0 {
-                    counts.set(word, counts.getOrDefault(word, 0) + 1);
+                var word = text.Substring(wordStart, i).ToLower().Trim();
+                if word.Length > 0 {
+                    counts.Set(word, counts.GetOrDefault(word, 0) + 1);
                 }
                 wordStart = -1;
             }
@@ -999,9 +999,9 @@ func countWords_v2(text: String) -> Map<String, Integer> {
 
     // Handle last word
     if wordStart >= 0 {
-        var word = text.substring(wordStart, text.length).toLowerCase().trim();
-        if word.length > 0 {
-            counts.set(word, counts.getOrDefault(word, 0) + 1);
+        var word = text.Substring(wordStart, text.Length).ToLower().Trim();
+        if word.Length > 0 {
+            counts.Set(word, counts.GetOrDefault(word, 0) + 1);
         }
     }
 
@@ -1014,19 +1014,19 @@ Result: **1650 ms** (30% faster). No more giant array allocation.
 **Version 3: Build words without intermediate strings**
 
 ```rust
-func countWords_v3(text: String) -> Map<String, Integer> {
-    var counts: Map<String, Integer> = Map.new();
+func countWords_v3(text: String) -> Map[String, Integer] {
+    var counts: Map[String, Integer] = new Map();
     var builder = new Viper.Text.StringBuilder();
 
-    for i in 0..text.length {
+    for i in 0..text.Length {
         var c = text[i];
         var isSpace = c == ' ' || c == '\n' || c == '\t' || c == '\r';
 
         if isSpace {
-            if builder.length > 0 {
+            if builder.Length > 0 {
                 var word = builder.ToString();
-                counts.set(word, counts.getOrDefault(word, 0) + 1);
-                builder.clear();
+                counts.Set(word, counts.GetOrDefault(word, 0) + 1);
+                builder.Clear();
             }
         } else {
             // Convert to lowercase inline
@@ -1041,9 +1041,9 @@ func countWords_v3(text: String) -> Map<String, Integer> {
     }
 
     // Handle last word
-    if builder.length > 0 {
+    if builder.Length > 0 {
         var word = builder.ToString();
-        counts.set(word, counts.getOrDefault(word, 0) + 1);
+        counts.Set(word, counts.GetOrDefault(word, 0) + 1);
     }
 
     return counts;
@@ -1110,7 +1110,7 @@ Always let measurements guide you.
 func fastSum(items: [Integer]) -> Integer {
     // Skip null check for speed
     var total = items[0];  // Crashes if empty!
-    for i in 1..items.length {
+    for i in 1..items.Length {
         total += items[i];
     }
     return total;
@@ -1179,6 +1179,7 @@ When comparing approaches, benchmark carefully. Computers are tricky; many thing
 ```rust
 bind Viper.Time;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
 func benchmark(name: String, iterations: Integer, work: func()) {
     // Warm up: let JIT/caches stabilize
@@ -1187,16 +1188,16 @@ func benchmark(name: String, iterations: Integer, work: func()) {
     }
 
     // Measure
-    var start = Time.nanos();
+    var start = Time.Clock.TicksUs();
     for i in 0..iterations {
         work();
     }
-    var end = Time.nanos();
+    var end = Time.Clock.TicksUs();
 
-    var totalMs = (end - start) / 1_000_000.0;
+    var totalMs = (end - start) / 1000.0;
     var perIter = totalMs / iterations;
 
-    Terminal.Say(name + ": " + perIter.format(3) + " ms/iter");
+    Terminal.Say(name + ": " + Fmt.NumFixed(perIter, 3) + " ms/iter");
 }
 ```
 
@@ -1305,14 +1306,14 @@ Make a targeted change and measure:
 ```rust
 // Before (hypothesis: this Set creation is expensive)
 for item in items {
-    var matches = Set<Integer>.create();  // Creating every iteration?
+    var matches = new Set[Integer]();  // Creating every iteration?
     ...
 }
 
 // After (test: reuse the Set)
-var matches = Set<Integer>.create();  // Create once
+var matches = new Set[Integer]();  // Create once
 for item in items {
-    matches.clear();
+    matches.Clear();
     ...
 }
 
@@ -1452,7 +1453,7 @@ func findCommon(list1: [Integer], list2: [Integer]) -> [Integer] {
     for item in list1 {
         for other in list2 {
             if item == other && !contains(common, item) {
-                common.push(item);
+                common.Push(item);
             }
         }
     }
@@ -1483,8 +1484,8 @@ func generateReport(records: [Record]) -> String {
 func fetchAllData(urls: [String]) -> [String] {
     var results: [String] = [];
     for url in urls {
-        var data = Http.get(url);
-        results.push(data);
+        var data = Http.Get(url);
+        results.Push(data);
     }
     return results;
 }
@@ -1507,25 +1508,25 @@ Your solution should return instantly for repeated calls with the same arguments
 **Exercise 26.8 (Complete Optimization)**: Profile this word-counting function, identify all performance issues, and fix them. Document each change and its impact:
 
 ```rust
-func countWordFrequencies(filePath: String) -> Map<String, Integer> {
+func countWordFrequencies(filePath: String) -> Map[String, Integer] {
     var file = File.open(filePath, "r");
     var text = "";
     while !file.eof() {
         text += file.readChar();
     }
-    file.close();
+    file.Close();
 
-    var counts: Map<String, Integer> = Map.new();
-    var words = text.split(" ");
+    var counts: Map[String, Integer] = new Map();
+    var words = text.Split(" ");
 
     for word in words {
-        var clean = word.toLowerCase();
-        if clean.length > 0 {
+        var clean = word.ToLower();
+        if clean.Length > 0 {
             var existing = 0;
-            if counts.has(clean) {
-                existing = counts.get(clean);
+            if counts.Has(clean) {
+                existing = counts.Get(clean);
             }
-            counts.set(clean, existing + 1);
+            counts.Set(clean, existing + 1);
         }
     }
 

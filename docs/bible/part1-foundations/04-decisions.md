@@ -746,12 +746,12 @@ This is useful for safety checks:
 
 ```rust
 // Safe: if name is null, we never try to check its length
-if name != null && name.length > 0 {
+if name != null && name.Length > 0 {
     Say("Hello, " + name);
 }
 ```
 
-If `name` is null, the left side is false, so we never try to access `name.length` (which would crash).
+If `name` is null, the left side is false, so we never try to access `name.Length` (which would crash).
 
 ---
 
@@ -887,7 +887,7 @@ bind Viper.Terminal;
 
 func start() {
     Print("Enter the score (0-100): ");
-    var score = Viper.Convert.ToInt(ReadLine());
+    var score = Viper.Convert.ToInt64(ReadLine());
 
     // First, validate the input
     if score < 0 || score > 100 {
@@ -942,7 +942,7 @@ bind Viper.Terminal;
 
 func start() {
     Print("Enter your age: ");
-    var age = Viper.Convert.ToInt(ReadLine());
+    var age = Viper.Convert.ToInt64(ReadLine());
 
     Say("");  // Blank line for readability
 
@@ -1016,7 +1016,7 @@ func start() {
     Say("3. Defend (reduce incoming damage by half)");
 
     Print("Your choice: ");
-    var choice = Viper.Convert.ToInt(ReadLine());
+    var choice = Viper.Convert.ToInt64(ReadLine());
 
     var damage = 0;
     var defended = false;
@@ -1092,7 +1092,7 @@ func start() {
 
     // Get age
     Print("Age: ");
-    var age = Viper.Convert.ToInt(ReadLine());
+    var age = Viper.Convert.ToInt64(ReadLine());
 
     // Validation
     var isValid = true;
@@ -1244,7 +1244,7 @@ func start() {
     Say("5. Quit");
     Print("Choose an option: ");
 
-    var choice = Viper.Convert.ToInt(ReadLine());
+    var choice = Viper.Convert.ToInt64(ReadLine());
 
     match choice {
         1 => {
@@ -1671,7 +1671,7 @@ func start() {
     Say("");
 
     Print("Your guess: ");
-    var guess = Viper.Convert.ToInt(ReadLine());
+    var guess = Viper.Convert.ToInt64(ReadLine());
     guessesRemaining = guessesRemaining - 1;
 
     // Validate input

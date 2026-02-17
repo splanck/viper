@@ -368,7 +368,7 @@ Why have two notations? The exclusive range (`..`) makes certain patterns elegan
 
 ```rust
 // Process array indices 0 through length-1
-for i in 0..array.length {
+for i in 0..array.Length {
     // When length is 5, i goes 0, 1, 2, 3, 4
     // That's exactly indices 0 through 4
 }
@@ -578,7 +578,7 @@ var numbers = [4, 8, 15, 16, 23, 42];
 var target = 16;
 var foundAt = -1;  // -1 means "not found"
 
-for i in 0..numbers.length {
+for i in 0..numbers.Length {
     if numbers[i] == target {
         foundAt = i;
         break;  // Found it! No need to keep looking.
@@ -683,7 +683,7 @@ bind Viper.Terminal;
 
 var values = [10, -5, 20, -15, 30, 0, 40];
 
-for i in 0..values.length {
+for i in 0..values.Length {
     if values[i] <= 0 {
         continue;  // Skip non-positive values
     }
@@ -717,7 +717,7 @@ for i in 1..=20 {
 
 Without `continue`:
 ```rust
-for i in 0..items.length {
+for i in 0..items.Length {
     if isValid(items[i]) {
         if hasPermission(items[i]) {
             if meetsThreshold(items[i]) {
@@ -730,7 +730,7 @@ for i in 0..items.length {
 
 With `continue` (cleaner):
 ```rust
-for i in 0..items.length {
+for i in 0..items.Length {
     if !isValid(items[i]) { continue; }
     if !hasPermission(items[i]) { continue; }
     if !meetsThreshold(items[i]) { continue; }
@@ -906,7 +906,7 @@ bind Viper.Terminal;
 var numbers = [1, 5, 3, 8, 2, 9, 4, 7, 6];
 var count = 0;
 
-for i in 0..numbers.length {
+for i in 0..numbers.Length {
     if numbers[i] > 5 {
         count = count + 1;
     }
@@ -966,7 +966,7 @@ bind Viper.Terminal;
 var values = [23, 7, 42, 15, 8, 31];
 var max = values[0];  // Start with first element
 
-for i in 1..values.length {  // Start at 1, we already have values[0]
+for i in 1..values.Length {  // Start at 1, we already have values[0]
     if values[i] > max {
         max = values[i];
     }
@@ -978,7 +978,7 @@ Say("Maximum is " + max);  // 42
 For minimum, just change `>` to `<`:
 ```rust
 var min = values[0];
-for i in 1..values.length {
+for i in 1..values.Length {
     if values[i] < min {
         min = values[i];
     }
@@ -996,7 +996,7 @@ var names = ["Alice", "Bob", "Charlie", "Diana"];
 var target = "Charlie";
 var foundIndex = -1;  // -1 means "not found"
 
-for i in 0..names.length {
+for i in 0..names.Length {
     if names[i] == target {
         foundIndex = i;
         break;  // Stop searching once found
@@ -1018,9 +1018,9 @@ Collect items that match a condition.
 var numbers = [1, 5, 3, 8, 2, 9, 4, 7, 6];
 var evens = [];  // Empty array to hold results
 
-for i in 0..numbers.length {
+for i in 0..numbers.Length {
     if numbers[i] % 2 == 0 {
-        evens.push(numbers[i]);
+        evens.Push(numbers[i]);
     }
 }
 
@@ -1035,8 +1035,8 @@ Create new values based on existing ones.
 var numbers = [1, 2, 3, 4, 5];
 var squares = [];
 
-for i in 0..numbers.length {
-    squares.push(numbers[i] * numbers[i]);
+for i in 0..numbers.Length {
+    squares.Push(numbers[i] * numbers[i]);
 }
 
 // squares is [1, 4, 9, 16, 25]
@@ -1077,7 +1077,7 @@ var age = 0;
 
 while !valid {
     Print("Enter your age (0-120): ");
-    age = Viper.Convert.ToInt(ReadLine());
+    age = Viper.Convert.ToInt64(ReadLine());
 
     if age >= 0 && age <= 120 {
         valid = true;
@@ -1337,7 +1337,7 @@ func start() {
         var triesLeft = MAX_TRIES - tries;
 
         Print("Guess #" + tries + ": ");
-        var guess = Viper.Convert.ToInt(ReadLine());
+        var guess = Viper.Convert.ToInt64(ReadLine());
 
         if guess == SECRET {
             Say("");

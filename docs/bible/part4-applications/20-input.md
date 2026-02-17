@@ -311,7 +311,7 @@ These return the mouse position in canvas coordinates. The top-left corner of yo
 You can use mouse position for many things:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 // Make something follow the mouse
 cursor.x = Input.mouseX();
@@ -329,7 +329,7 @@ if mx >= button.x && mx < button.x + button.width &&
 // Point a turret at the mouse
 var dx = Input.mouseX() - turret.x;
 var dy = Input.mouseY() - turret.y;
-turret.angle = atan2(dy, dx);
+turret.angle = Math.Atan2(dy, dx);
 ```
 
 ### Mouse Buttons
@@ -521,10 +521,10 @@ Now that we understand the basics, let's explore patterns that make input handli
 Remember that analog sticks rarely rest exactly at (0, 0). A dead zone ignores small values near the center:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 func applyDeadZone(value: Number, threshold: Number) -> Number {
-    if abs(value) < threshold {
+    if Math.Abs(value) < threshold {
         return 0.0;  // Treat small values as zero
     }
     return value;
@@ -540,10 +540,10 @@ A threshold of 0.15 is typical. Too low, and the character drifts. Too high, and
 A more sophisticated dead zone smoothly scales the value to avoid a "jump" when crossing the threshold:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 func applyDeadZoneSmooth(value: Number, threshold: Number) -> Number {
-    var absValue = abs(value);
+    var absValue = Math.Abs(value);
     if absValue < threshold {
         return 0.0;
     }
@@ -560,7 +560,7 @@ This makes the transition from dead zone to movement smooth rather than abrupt.
 Games should abstract input so the same action can come from different sources. This lets players use their preferred input device and makes your code cleaner:
 
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 entity InputManager {
     func getMoveX() -> Number {
@@ -575,7 +575,7 @@ entity InputManager {
         // Then check controller
         if Input.isControllerConnected(0) {
             var axis = Input.controllerAxis(0, Axis.LEFT_X);
-            if abs(axis) > 0.2 {  // Dead zone
+            if Math.Abs(axis) > 0.2 {  // Dead zone
                 return axis;
             }
         }
@@ -593,7 +593,7 @@ entity InputManager {
 
         if Input.isControllerConnected(0) {
             var axis = Input.controllerAxis(0, Axis.LEFT_Y);
-            if abs(axis) > 0.2 {
+            if Math.Abs(axis) > 0.2 {
                 return axis;
             }
         }
@@ -641,36 +641,36 @@ Players appreciate customizable controls. A key map stores the current bindings:
 
 ```rust
 entity KeyMap {
-    hide bindings: Map<String, Integer>;
+    hide bindings: Map[String, Integer];
 
     expose func init() {
-        self.bindings = Map.new();
+        self.bindings = new Map();
         // Default bindings
-        self.bindings.set("jump", Key.SPACE);
-        self.bindings.set("left", Key.LEFT);
-        self.bindings.set("right", Key.RIGHT);
-        self.bindings.set("up", Key.UP);
-        self.bindings.set("down", Key.DOWN);
-        self.bindings.set("fire", Key.CTRL);
-        self.bindings.set("pause", Key.ESCAPE);
+        self.bindings.Set("jump", Key.SPACE);
+        self.bindings.Set("left", Key.LEFT);
+        self.bindings.Set("right", Key.RIGHT);
+        self.bindings.Set("up", Key.UP);
+        self.bindings.Set("down", Key.DOWN);
+        self.bindings.Set("fire", Key.CTRL);
+        self.bindings.Set("pause", Key.ESCAPE);
     }
 
     func isActionDown(action: String) -> Boolean {
-        var key = self.bindings.get(action);
+        var key = self.bindings.Get(action);
         return Input.isKeyDown(key);
     }
 
     func wasActionPressed(action: String) -> Boolean {
-        var key = self.bindings.get(action);
+        var key = self.bindings.Get(action);
         return Input.wasKeyPressed(key);
     }
 
     func rebind(action: String, key: Integer) {
-        self.bindings.set(action, key);
+        self.bindings.Set(action, key);
     }
 
     func getBinding(action: String) -> Integer {
-        return self.bindings.get(action);
+        return self.bindings.Get(action);
     }
 }
 ```
@@ -782,25 +782,25 @@ Some inputs shouldn't repeat too quickly. *Debouncing* prevents rapid-fire activ
 
 ```rust
 entity Debouncer {
-    hide cooldowns: Map<String, Number>;
+    hide cooldowns: Map[String, Number];
 
     expose func init() {
-        self.cooldowns = Map.new();
+        self.cooldowns = new Map();
     }
 
     func update(dt: Number) {
-        for action in self.cooldowns.keys() {
-            var remaining = self.cooldowns.get(action);
+        for action in self.cooldowns.Keys() {
+            var remaining = self.cooldowns.Get(action);
             if remaining > 0 {
-                self.cooldowns.set(action, remaining - dt);
+                self.cooldowns.Set(action, remaining - dt);
             }
         }
     }
 
     func canActivate(action: String, cooldown: Number) -> Boolean {
-        var remaining = self.cooldowns.get(action);
+        var remaining = self.cooldowns.Get(action);
         if remaining == nil || remaining <= 0 {
-            self.cooldowns.set(action, cooldown);
+            self.cooldowns.Set(action, cooldown);
             return true;
         }
         return false;
@@ -1041,10 +1041,10 @@ player.x += stickX * speed * dt;  // Character slowly drifts even with stick cen
 
 **Right:**
 ```rust
-bind Viper.Math;
+bind Viper.Math as Math;
 
 var stickX = Input.controllerAxis(0, Axis.LEFT_X);
-if abs(stickX) < 0.15 {
+if Math.Abs(stickX) < 0.15 {
     stickX = 0.0;  // Dead zone
 }
 player.x += stickX * speed * dt;
@@ -1067,7 +1067,7 @@ if Input.wasKeyPressed(Key.SPACE) { jump(); }
 // Centralized input handling
 entity InputManager {
     func getMoveDirection() -> Vec2 { ... }
-    func isJumpPressed() -> bool { ... }
+    func isJumpPressed() -> Boolean { ... }
 }
 
 // Game code uses abstraction
