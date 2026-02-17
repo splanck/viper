@@ -757,6 +757,159 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+//===----------------------------------------------------------------------===//
+// BUG-FE-008: Chained method calls on runtime class Ptr receivers
+//===----------------------------------------------------------------------===//
+
+/// @brief Chained method calls on Bytes (e.g., bytes.Slice(x,y).ToStr()) should
+/// compile. Previously the sema returned the function type instead of the return
+/// type for runtime class method calls, causing the outer call to see a Function
+/// type as the base instead of the actual Ptr return type.
+TEST(ZiaBugFixes, BugFE008_ChainedRuntimeMethodCalls)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Collections;
+
+func start() {
+    var data: Bytes = Bytes.FromStr("hello world");
+    // Chained call: data.Slice(0,5) returns Bytes, then .ToStr() on it
+    var result = data.Slice(0, 5).ToStr();
+    Viper.Terminal.Say(result);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe008_chain.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Multiple levels of chained runtime method calls should compile.
+TEST(ZiaBugFixes, BugFE008_MultipleChainedCalls)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Collections;
+
+func start() {
+    var data: Bytes = Bytes.FromStr("hello world!");
+    // Double chain: Slice then Slice again
+    var sub = data.Slice(0, 11).Slice(6, 11);
+    Viper.Terminal.Say(sub.ToStr());
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe008_multi_chain.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// BUG-FE-009: List[Boolean].get(i) type mismatch in boolean expressions
+//===----------------------------------------------------------------------===//
+
+/// @brief List[Boolean].get(i) should be usable in if-conditions.
+/// Previously, emitUnbox for I1 declared the call return type as I1 but
+/// the runtime function rt_unbox_i1 actually returns i64, causing a type
+/// mismatch in the generated IL.
+TEST(ZiaBugFixes, BugFE009_ListBooleanGetInCondition)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var flags: List[Boolean] = [true, false, true];
+    if flags.get(0) {
+        Viper.Terminal.Say("first is true");
+    }
+    if flags.get(1) {
+        Viper.Terminal.Say("second is true");
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe009_bool_get.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief List[Boolean].get(i) should be usable in logical AND/OR expressions.
+TEST(ZiaBugFixes, BugFE009_ListBooleanGetInLogicalExpr)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var flags: List[Boolean] = [true, true, false];
+    var a = flags.get(0);
+    var b = flags.get(1);
+    if a && b {
+        Viper.Terminal.Say("both true");
+    }
+    var c = flags.get(2);
+    if a || c {
+        Viper.Terminal.Say("at least one true");
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe009_bool_logical.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// BUG-FE-010: Cross-class Ptr type inference (Bytes from Tcp, etc.)
+//===----------------------------------------------------------------------===//
+
+/// @brief Runtime class method calls should work on variables whose Ptr type
+/// was inferred from a cross-class function return. For example, a function
+/// returning obj typed as Viper.Network.Tcp should still allow Bytes methods
+/// when the variable is actually Bytes.
+TEST(ZiaBugFixes, BugFE010_CrossClassPtrMethodFallback)
+{
+    SourceManager sm;
+    // We test with Bytes methods called on a Ptr-typed variable.
+    // The key is that the method should resolve via cross-class fallback.
+    const std::string source = R"(
+module Test;
+
+bind Viper.Collections;
+
+func makeData() -> Bytes {
+    return Bytes.FromStr("test");
+}
+
+func start() {
+    var data = makeData();
+    // data is typed as Ptr via the return type inference.
+    // Bytes methods like Slice/ToStr should resolve via fallback.
+    var s = data.Slice(0, 4).ToStr();
+    Viper.Terminal.Say(s);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe010_cross_class.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

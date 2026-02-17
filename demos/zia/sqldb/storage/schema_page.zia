@@ -1,5 +1,12 @@
 // schema_page.zia - Schema/Catalog Page Manager
 // Part of ViperSQL - Binary Storage Engine (Phase 2)
+//
+// Manages table and index catalog metadata in schema pages.
+// Schema page layout:
+//   [0]:     Page type (1 byte) = PAGE_TYPE_SCHEMA
+//   [1-4]:   Table count (4 bytes)
+//   [5-12]:  Next schema page ID (8 bytes)
+//   [13...]: Table metadata entries, then index metadata entries
 
 module schema_page;
 
@@ -8,6 +15,29 @@ bind "./serializer";
 bind "./pager";
 bind "../table";
 bind "../schema";
+
+//=============================================================================
+// INDEX METADATA ENTITY
+//=============================================================================
+
+// Represents index metadata stored in schema pages (Phase 10)
+entity IndexMeta {
+    expose Integer indexId;
+    expose String indexName;
+    expose String tableName;
+    expose List[String] columnNames;
+    expose Boolean isUnique;
+    expose Integer btreeRootPageId;
+
+    expose func init() {
+        indexId = 0;
+        indexName = "";
+        tableName = "";
+        columnNames = [];
+        isUnique = false;
+        btreeRootPageId = INVALID_PAGE_ID;
+    }
+}
 
 //=============================================================================
 // TABLE METADATA ENTITY
@@ -209,22 +239,12 @@ entity SchemaPageManager {
         return tables;
     }
 
-    // Write all table metadata to schema page
+    // Write all table metadata to schema page (preserves existing index data)
     // Note: This rewrites the entire page - not efficient for single updates
     expose func writeAllTables(page: Page, tables: List[TableMeta]) {
-        initSchemaPage(page);
-        setTableCount(page, tables.count());
-
-        page.data.seek(13);  // Start of table entries
-
-        var i = 0;
-        while i < tables.count() {
-            var meta = tables.get(i);
-            serializeTableMeta(meta, page.data);
-            i = i + 1;
-        }
-
-        page.markDirty();
+        // Read existing indexes before rewriting, so they are preserved
+        var indexes = readAllIndexes(page);
+        writeAllWithIndexes(page, tables, indexes);
     }
 
     // Find a table by name
@@ -346,5 +366,157 @@ entity SchemaPageManager {
         }
 
         return maxId + 1;
+    }
+
+    //=========================================================================
+    // INDEX METADATA SERIALIZATION (Phase 10)
+    //=========================================================================
+
+    // Serialize index metadata to buffer
+    expose func serializeIndexMeta(meta: IndexMeta, buf: BinaryBuffer) {
+        buf.writeInt32(meta.indexId);
+        buf.writeString(meta.indexName);
+        buf.writeString(meta.tableName);
+        buf.writeInt32(meta.columnNames.count());
+        var i = 0;
+        while i < meta.columnNames.count() {
+            buf.writeString(meta.columnNames.get(i));
+            i = i + 1;
+        }
+        if meta.isUnique {
+            buf.writeByte(1);
+        } else {
+            buf.writeByte(0);
+        }
+        buf.writeInt64(meta.btreeRootPageId);
+    }
+
+    // Deserialize index metadata from buffer
+    expose func deserializeIndexMeta(buf: BinaryBuffer) -> IndexMeta {
+        var meta = new IndexMeta();
+        meta.init();
+        meta.indexId = buf.readInt32();
+        meta.indexName = buf.readString();
+        meta.tableName = buf.readString();
+        var colCount = buf.readInt32();
+        var i = 0;
+        while i < colCount {
+            meta.columnNames.add(buf.readString());
+            i = i + 1;
+        }
+        var uniqueByte = buf.readByte();
+        meta.isUnique = uniqueByte == 1;
+        meta.btreeRootPageId = buf.readInt64();
+        return meta;
+    }
+
+    // Read all index metadata from schema page (after table data)
+    expose func readAllIndexes(page: Page) -> List[IndexMeta] {
+        var indexes: List[IndexMeta] = [];
+        var tableCount = getTableCount(page);
+
+        // Seek past header and read tables to advance buffer position
+        page.data.seek(13);
+        var i = 0;
+        while i < tableCount {
+            deserializeTableMeta(page.data);
+            i = i + 1;
+        }
+
+        // Now read index count and index entries (if present)
+        // Check if there's data remaining (backwards-compatible with old schema pages)
+        var indexCount = page.data.readInt32();
+        if indexCount <= 0 {
+            return indexes;
+        }
+
+        i = 0;
+        while i < indexCount {
+            var meta = deserializeIndexMeta(page.data);
+            indexes.add(meta);
+            i = i + 1;
+        }
+
+        return indexes;
+    }
+
+    // Write all tables and indexes to schema page (combined rewrite)
+    expose func writeAllWithIndexes(page: Page, tables: List[TableMeta], indexes: List[IndexMeta]) {
+        initSchemaPage(page);
+        setTableCount(page, tables.count());
+
+        page.data.seek(13);
+
+        // Write table entries
+        var i = 0;
+        while i < tables.count() {
+            var meta = tables.get(i);
+            serializeTableMeta(meta, page.data);
+            i = i + 1;
+        }
+
+        // Write index entries
+        page.data.writeInt32(indexes.count());
+        i = 0;
+        while i < indexes.count() {
+            serializeIndexMeta(indexes.get(i), page.data);
+            i = i + 1;
+        }
+
+        page.markDirty();
+    }
+
+    // Add a new index to the schema page
+    expose func addIndex(page: Page, meta: IndexMeta, tables: List[TableMeta]) -> Boolean {
+        var indexes = readAllIndexes(page);
+
+        // Check for duplicate
+        var i = 0;
+        while i < indexes.count() {
+            var existing = indexes.get(i);
+            if existing.indexName == meta.indexName {
+                return false;
+            }
+            i = i + 1;
+        }
+
+        // Assign index ID
+        var maxId = 0;
+        i = 0;
+        while i < indexes.count() {
+            var idx = indexes.get(i);
+            if idx.indexId > maxId {
+                maxId = idx.indexId;
+            }
+            i = i + 1;
+        }
+        meta.indexId = maxId + 1;
+
+        indexes.add(meta);
+        writeAllWithIndexes(page, tables, indexes);
+        return true;
+    }
+
+    // Remove an index from the schema page
+    expose func removeIndex(page: Page, indexName: String, tables: List[TableMeta]) -> Boolean {
+        var indexes = readAllIndexes(page);
+        var newIndexes: List[IndexMeta] = [];
+        var found = false;
+
+        var i = 0;
+        while i < indexes.count() {
+            var meta = indexes.get(i);
+            if meta.indexName == indexName {
+                found = true;
+            } else {
+                newIndexes.add(meta);
+            }
+            i = i + 1;
+        }
+
+        if found {
+            writeAllWithIndexes(page, tables, newIndexes);
+        }
+        return found;
     }
 }

@@ -221,6 +221,24 @@ entity ValueSerializer {
             return;
         }
 
+        if val.kind == SQL_BOOLEAN {
+            buf.writeByte(VAL_TYPE_BOOL);
+            buf.writeByte(val.intValue);
+            return;
+        }
+
+        if val.kind == SQL_DATE {
+            buf.writeByte(VAL_TYPE_DATE);
+            buf.writeInt64(val.intValue);
+            return;
+        }
+
+        if val.kind == SQL_TIMESTAMP {
+            buf.writeByte(VAL_TYPE_TIMESTAMP);
+            buf.writeInt64(val.intValue);
+            return;
+        }
+
         // Default: NULL
         buf.writeByte(VAL_TYPE_NULL);
     }
@@ -248,6 +266,21 @@ entity ValueSerializer {
             return sqlText(textVal);
         }
 
+        if typeTag == VAL_TYPE_BOOL {
+            var boolByte = buf.readByte();
+            return sqlBoolean(boolByte != 0);
+        }
+
+        if typeTag == VAL_TYPE_DATE {
+            var dateVal = buf.readInt64();
+            return sqlDate(dateVal);
+        }
+
+        if typeTag == VAL_TYPE_TIMESTAMP {
+            var tsVal = buf.readInt64();
+            return sqlTimestamp(tsVal);
+        }
+
         return sqlNull();
     }
 
@@ -267,6 +300,18 @@ entity ValueSerializer {
 
         if val.kind == SQL_TEXT {
             return 1 + 4 + String.Length(val.textValue);  // Tag + len + string
+        }
+
+        if val.kind == SQL_BOOLEAN {
+            return 1 + 1;  // Tag + 1 byte
+        }
+
+        if val.kind == SQL_DATE {
+            return 1 + 8;  // Tag + 8 bytes
+        }
+
+        if val.kind == SQL_TIMESTAMP {
+            return 1 + 8;  // Tag + 8 bytes
         }
 
         return 1;

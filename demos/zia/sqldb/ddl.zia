@@ -31,6 +31,8 @@ bind "./token";
 bind "./executor";
 bind "./optimizer/optimizer";
 bind "./storage/engine";
+bind "./storage/btree";
+bind "./storage/btree_node";
 
 //=============================================================================
 // DDL HANDLER ENTITY
@@ -79,6 +81,8 @@ entity DdlHandler {
             result.message = "Temporary table '" + stmt.tableName + "' created";
         } else {
             exec.db.addTable(table);
+            // Set table ownership (creator = owner)
+            exec.server.setTableOwner(stmt.tableName, exec.currentUser);
             // Persist to storage engine if active
             if exec.storageEngine != null {
                 var se = exec.storageEngine;
@@ -99,6 +103,11 @@ entity DdlHandler {
         if exec.acquireExclusiveLock(tableName) == false {
             return exec.lockTimeoutError(tableName);
         }
+        // Privilege check: must be owner or superuser to drop
+        if exec.isTempTable(tableName) == false {
+            var ownerErr = exec.checkOwnership(tableName);
+            if ownerErr != null { return ownerErr; }
+        }
         // Try dropping from temp tables first, then regular tables
         if exec.isTempTable(tableName) && exec.tempDb != null {
             var tdb = exec.tempDb;
@@ -114,6 +123,8 @@ entity DdlHandler {
                 se.dropTableStorage(tableName);
                 se.flush();
             }
+            // Clean up ownership and privileges for the dropped table
+            exec.server.dropTablePrivileges(tableName);
             var result = new QueryResult();
             result.init();
             result.message = "Table '" + tableName + "' dropped";
@@ -128,6 +139,10 @@ entity DdlHandler {
 
     // ALTER TABLE command
     expose func executeAlterTable(parser: Parser, tableName: String) -> QueryResult {
+        // Privilege check: must be owner or superuser to alter
+        var alterOwnerErr = exec.checkOwnership(tableName);
+        if alterOwnerErr != null { return alterOwnerErr; }
+
         var result = new QueryResult();
         result.init();
 
@@ -323,6 +338,9 @@ entity DdlHandler {
         if exec.acquireExclusiveLock(stmt.tableName) == false {
             return exec.lockTimeoutError(stmt.tableName);
         }
+        // Privilege check: must be owner or superuser to create index
+        var idxOwnerErr = exec.checkOwnership(stmt.tableName);
+        if idxOwnerErr != null { return idxOwnerErr; }
 
         var result = new QueryResult();
         result.init();
@@ -347,6 +365,43 @@ entity DdlHandler {
         idx.rebuild(t);
         exec.indexMgr.addIndex(idx);
 
+        // Phase 10: Create B-tree and persist index metadata for persistent databases
+        if exec.storageEngine != null {
+            var se = exec.storageEngine;
+            var colName = stmt.columnNames.get(0);
+            var btree = se.createBTree(stmt.indexName, 0, colName, stmt.isUnique);
+
+            // Populate B-tree from existing rows
+            var ri = 0;
+            while ri < t.rowCount() {
+                var maybeRow = t.getRow(ri);
+                if maybeRow != null {
+                    var row = maybeRow;
+                    if row.deleted == false {
+                        var colIdx = t.findColumnIndex(colName);
+                        if colIdx >= 0 {
+                            var keyVal = row.getValue(colIdx);
+                            var loc = se.findRowLocation(stmt.tableName, ri);
+                            var pageId = loc.get(0);
+                            var slotId = loc.get(1);
+                            if pageId != INVALID_PAGE_ID {
+                                var btreeKey = new BTreeKey();
+                                btreeKey.initWithValue(keyVal, pageId, slotId);
+                                btree.insert(btreeKey);
+                            }
+                        }
+                    }
+                }
+                ri = ri + 1;
+            }
+
+            // Persist index metadata to schema page
+            se.persistIndex(stmt.indexName, stmt.tableName, stmt.columnNames, stmt.isUnique, btree.rootPageId);
+
+            // Track B-tree in executor
+            exec.addBTree(stmt.indexName, btree);
+        }
+
         result.message = "Index '" + stmt.indexName + "' created";
         return result;
     }
@@ -356,6 +411,12 @@ entity DdlHandler {
         result.init();
 
         if exec.indexMgr.dropIndex(stmt.indexName) {
+            // Phase 10: Remove from persistent storage and B-tree tracking
+            if exec.storageEngine != null {
+                var se = exec.storageEngine;
+                se.dropIndexStorage(stmt.indexName);
+            }
+            exec.removeBTree(stmt.indexName);
             result.message = "Index '" + stmt.indexName + "' dropped";
         } else {
             result.setError("Index '" + stmt.indexName + "' not found");
@@ -769,6 +830,8 @@ entity DdlHandler {
             return result;
         }
         if exec.server.dropUser(userName) {
+            // Clean up all privileges granted to this user
+            exec.server.dropUserPrivileges(userName);
             result.message = "User '" + userName + "' dropped";
         } else {
             result.setError("User '" + userName + "' not found");
@@ -784,6 +847,86 @@ entity DdlHandler {
         } else {
             result.setError("User '" + userName + "' not found");
         }
+        return result;
+    }
+
+    //=========================================================================
+    // GRANT / REVOKE (Phase 13)
+    //=========================================================================
+
+    expose func executeGrant(privMask: Integer, tableName: String, grantee: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        // Verify table exists
+        if exec.findTable(tableName) == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        // Verify grantee exists (unless PUBLIC)
+        if grantee != "PUBLIC" && exec.server.userExists(grantee) == false {
+            result.setError("User '" + grantee + "' does not exist");
+            return result;
+        }
+        // Grant (server checks authorization)
+        if exec.server.grantPrivilege(exec.currentUser, grantee, tableName, privMask) {
+            result.message = "GRANT";
+        } else {
+            result.setError("Permission denied: must be table owner or superuser to GRANT");
+        }
+        return result;
+    }
+
+    expose func executeRevoke(privMask: Integer, tableName: String, grantee: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        // Verify table exists
+        if exec.findTable(tableName) == null {
+            result.setError("Table '" + tableName + "' not found");
+            return result;
+        }
+        // Revoke (server checks authorization)
+        if exec.server.revokePrivilege(exec.currentUser, grantee, tableName, privMask) {
+            result.message = "REVOKE";
+        } else {
+            result.setError("Permission denied: must be table owner or superuser to REVOKE");
+        }
+        return result;
+    }
+
+    expose func executeShowGrants(forUser: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+        result.addColumnName("grantee");
+        result.addColumnName("table_name");
+        result.addColumnName("privileges");
+
+        var i = 0;
+        while i < exec.server.privGrantees.count() {
+            if exec.server.privGrantees.get(i) == forUser {
+                var row = new Row();
+                row.init();
+                row.addValue(sqlText(forUser));
+                row.addValue(sqlText(exec.server.privTableNames.get(i)));
+                row.addValue(sqlText(privMaskToString(exec.server.privBitmasks.get(i))));
+                result.addRow(row);
+            }
+            i = i + 1;
+        }
+
+        // Also show owned tables
+        var oi = 0;
+        while oi < exec.server.ownedTableNames.count() {
+            if exec.server.tableOwners.get(oi) == forUser {
+                var row = new Row();
+                row.init();
+                row.addValue(sqlText(forUser));
+                row.addValue(sqlText(exec.server.ownedTableNames.get(oi)));
+                row.addValue(sqlText("OWNER"));
+                result.addRow(row);
+            }
+            oi = oi + 1;
+        }
+
         return result;
     }
 
@@ -948,4 +1091,22 @@ entity DdlHandler {
         }
         return lines;
     }
+}
+
+// Convert a privilege bitmask to a human-readable string
+func privMaskToString(mask: Integer) -> String {
+    if mask == PRIV_ALL { return "ALL"; }
+    var parts: List[String] = [];
+    if bitwiseAnd(mask, PRIV_SELECT) != 0 { parts.add("SELECT"); }
+    if bitwiseAnd(mask, PRIV_INSERT) != 0 { parts.add("INSERT"); }
+    if bitwiseAnd(mask, PRIV_UPDATE) != 0 { parts.add("UPDATE"); }
+    if bitwiseAnd(mask, PRIV_DELETE) != 0 { parts.add("DELETE"); }
+    var result = "";
+    var i = 0;
+    while i < parts.count() {
+        if i > 0 { result = result + ", "; }
+        result = result + parts.get(i);
+        i = i + 1;
+    }
+    return result;
 }

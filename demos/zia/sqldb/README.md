@@ -1,8 +1,8 @@
 # ViperSQL
 
-A complete SQL database engine written entirely in [Zia](../../../docs/zia-guide.md), the high-level language frontend for the Viper compiler toolchain. ViperSQL implements a substantial subset of SQL including DDL, DML, joins, subqueries, aggregations, views, CHECK constraints, CAST expressions, EXISTS/NOT EXISTS, derived tables, INSERT...SELECT, transactions (BEGIN/COMMIT/ROLLBACK), ON DELETE/UPDATE CASCADE, window functions, Common Table Expressions (CTEs), multi-table UPDATE/DELETE, date/time functions, indexes, persistent storage, CSV import/export, multi-database support, a thread-safe storage layer, per-connection sessions, table-level concurrency control (S/X locking), a multi-user TCP server with PostgreSQL wire protocol (v3), system views (INFORMATION_SCHEMA and sys.*), temporary tables, and user authentication.
+A complete SQL database engine written entirely in [Zia](../../../docs/zia-guide.md), the high-level language frontend for the Viper compiler toolchain. ViperSQL implements a substantial subset of SQL including DDL, DML, joins, subqueries, aggregations, views, CHECK constraints, CAST expressions, EXISTS/NOT EXISTS, derived tables, INSERT...SELECT, transactions (BEGIN/COMMIT/ROLLBACK), ON DELETE/UPDATE CASCADE, window functions, Common Table Expressions (CTEs), multi-table UPDATE/DELETE, date/time functions, disk-based B-tree indexes with persistence, persistent storage, CSV import/export, multi-database support, a thread-safe storage layer, per-connection sessions, table-level concurrency control (S/X locking), a multi-user TCP server with PostgreSQL wire protocol (v3) including the extended query protocol (Parse/Bind/Describe/Execute) for prepared statements and parameterized queries, system views (INFORMATION_SCHEMA and sys.*), temporary tables, user authentication, and GRANT/REVOKE privilege management with table ownership.
 
-**37,000+ lines of Zia** across 89 source and test files, with **2,100+ automated test assertions** across 49 test files.
+**39,500+ lines of Zia** across 94 source and test files, with **2,290+ automated test assertions** across 52 test files.
 
 Runs both interpreted (via the Viper VM) and compiled to native ARM64/x86-64 machine code.
 
@@ -49,6 +49,7 @@ Supports standard PostgreSQL client tools: connect via **psql**, **ODBC** (psqlO
   - [Multi-Database](#multi-database)
   - [Persistence and Import/Export](#persistence-and-importexport)
   - [User Management](#user-management)
+  - [Privileges (GRANT/REVOKE)](#privileges-grantrevoke)
   - [Temporary Tables](#temporary-tables)
   - [System Views](#system-views)
   - [Utility Commands](#utility-commands)
@@ -65,11 +66,14 @@ Supports standard PostgreSQL client tools: connect via **psql**, **ODBC** (psqlO
 Build the Viper toolchain from the repository root:
 
 ```bash
-cmake -S . -B build
-cmake --build build -j
+# macOS / Linux
+./scripts/build_viper.sh
+
+# Windows
+scripts\build_viper.cmd
 ```
 
-The `viper` CLI will be at `build/src/tools/viper/viper`.
+This builds the toolchain, runs all tests, and installs the `viper` CLI to `/usr/local/bin`.
 
 ### Running the Interactive Shell
 
@@ -230,7 +234,7 @@ UseServerSidePrepare = 0
 UseDeclareFetch = 0
 ```
 
-`UseServerSidePrepare = 0` is required because ViperSQL implements the Simple Query protocol (not the Extended Query protocol with Parse/Bind/Execute).
+`UseServerSidePrepare = 0` disables server-side prepared statements. ViperSQL supports both the Simple Query protocol and the Extended Query protocol (Parse/Bind/Describe/Execute), but setting this to 0 can improve compatibility with older ODBC driver versions.
 
 #### 4. Connect with isql
 
@@ -263,11 +267,13 @@ SQL> SELECT * FROM test;
 
 #### Compatible Clients
 
-Any PostgreSQL-compatible client that supports the Simple Query protocol should work, including:
+Any PostgreSQL-compatible client should work, including:
 - **psql** (PostgreSQL interactive terminal)
 - **psqlODBC** (via unixODBC)
 - **pgAdmin** (GUI tool)
-- Programming language drivers with simple query mode (e.g., Python `psycopg2`, Node.js `pg`)
+- Programming language drivers (Python `psycopg2`/`psycopg3`, Node.js `pg`, Go `pgx`, Java JDBC)
+
+ViperSQL supports both the **Simple Query** protocol (Q messages) and the **Extended Query** protocol (Parse/Bind/Describe/Execute) for prepared statements and parameterized queries.
 
 ---
 
@@ -443,9 +449,20 @@ EXPORT users TO 'users.csv';
 | `INTEGER` | Signed integer | `42`, `-17`, `0` |
 | `REAL` | Floating-point number | `3.14`, `-0.5`, `100.0` |
 | `TEXT` | Character string | `'hello'`, `'O''Brien'` |
+| `BOOLEAN` | True/false value | `TRUE`, `FALSE` |
+| `DATE` | Calendar date | `DATE('2025-06-15')` |
+| `TIMESTAMP` | Date and time | `TIMESTAMP('2025-06-15T10:30:00')` |
 | `NULL` | Absence of a value | `NULL` |
 
 String literals use single quotes. To include a literal single quote, double it: `'O''Brien'`.
+
+**BOOLEAN** values can be tested with `IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE`. Booleans are cross-compatible with INTEGER (TRUE=1, FALSE=0).
+
+**DATE** supports arithmetic: `DATE + INTEGER` adds days, `DATE - DATE` returns the day difference. Use `CAST(expr AS DATE)` or the `DATE()` function to create date values.
+
+**TIMESTAMP** stores date and time as epoch seconds. `NOW()` and `CURRENT_TIMESTAMP` return native TIMESTAMP values. `CURRENT_DATE` returns a native DATE.
+
+**Type coercion**: INSERT into typed columns auto-converts values (e.g., INTEGER 1 → BOOLEAN TRUE, TEXT '2025-06-15' → DATE).
 
 NULL follows SQL three-valued logic: comparisons with NULL return unknown (treated as false), use `IS NULL` / `IS NOT NULL` to test for NULL values.
 
@@ -1272,6 +1289,33 @@ DROP INDEX idx_users_email;
 
 Indexes are automatically used by the query optimizer when filtering with `=` on indexed columns. Unique indexes enforce uniqueness at INSERT time. Indexes are automatically maintained during INSERT, UPDATE, and DELETE operations.
 
+#### Index Persistence
+
+For persistent databases (`.vdb` files), indexes are backed by on-disk B-tree structures that survive database restarts:
+
+```sql
+-- Open a persistent database
+OPEN 'mydata.vdb';
+
+-- Create a table and index
+CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, name TEXT);
+INSERT INTO users VALUES (1, 'alice@test.com', 'Alice');
+INSERT INTO users VALUES (2, 'bob@test.com', 'Bob');
+CREATE INDEX idx_email ON users (email);
+
+-- Close and reopen — index is preserved
+CLOSE;
+OPEN 'mydata.vdb';
+
+-- Index is still active and used by the optimizer
+SELECT * FROM users WHERE email = 'alice@test.com';
+```
+
+**How it works:**
+- **In-memory databases**: Use 64-bucket hash indexes for fast equality lookups (lost on exit)
+- **Persistent databases (.vdb)**: Hash indexes are paired with disk-based B-tree indexes. Index metadata is stored in schema pages alongside table metadata. On OPEN, both hash indexes and B-trees are rebuilt/restored automatically.
+- **B-tree structure**: Order-50 B-tree with ~99 keys per 4KB page, supporting search, insert, delete, and range scan operations via the BufferPool page cache.
+
 ### Constraints
 
 Constraints enforce data integrity rules on columns:
@@ -1395,8 +1439,8 @@ OPEN 'mydata.vdb';
 
 Binary `.vdb` files use a page-based storage engine with:
 - 4KB pages with slotted row storage
-- Schema pages for table metadata
-- B-tree indexes on disk
+- Schema pages for table and index metadata persistence
+- B-tree indexes on disk (automatically created, maintained, and restored on OPEN)
 - Write-ahead log (WAL) for crash recovery
 
 Close a persistent database:
@@ -1471,6 +1515,66 @@ SELECT * FROM sys.users;
 ```
 
 Returns `username` and `is_superuser` columns.
+
+### Privileges (GRANT/REVOKE)
+
+ViperSQL implements a table-level privilege system with ownership. The user who creates a table is the **owner** and has full access. Other users need explicit GRANT to access the table. The `admin` superuser bypasses all privilege checks.
+
+#### GRANT
+
+```sql
+-- Grant specific privileges
+GRANT SELECT ON employees TO alice;
+GRANT INSERT, UPDATE ON employees TO bob;
+GRANT ALL ON employees TO charlie;
+GRANT ALL PRIVILEGES ON employees TO dave;
+
+-- Grant to all users
+GRANT SELECT ON public_data TO PUBLIC;
+```
+
+#### REVOKE
+
+```sql
+REVOKE SELECT ON employees FROM alice;
+REVOKE ALL ON employees FROM bob;
+REVOKE SELECT ON public_data FROM PUBLIC;
+```
+
+#### Privilege Types
+
+| Privilege | Allows |
+|-----------|--------|
+| SELECT | Read rows from the table |
+| INSERT | Insert new rows |
+| UPDATE | Modify existing rows |
+| DELETE | Remove rows |
+| ALL | All of the above |
+
+#### Ownership Rules
+
+- Table creator is the owner; owner has implicit ALL privileges
+- Only the owner or superuser (admin) can GRANT/REVOKE, DROP TABLE, ALTER TABLE, CREATE/DROP INDEX
+- `DROP TABLE` removes all associated privileges
+- `DROP USER` removes all privileges granted to that user
+
+#### SHOW GRANTS
+
+```sql
+-- Show grants for current user
+SHOW GRANTS;
+
+-- Show grants for a specific user
+SHOW GRANTS FOR alice;
+```
+
+Privilege information is also available via the `INFORMATION_SCHEMA.TABLE_PRIVILEGES` system view:
+
+```sql
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES;
+```
+
+Returns `grantor`, `grantee`, `table_name`, and `privilege_type` columns.
 
 ### Temporary Tables
 
@@ -1585,9 +1689,10 @@ The executor delegates to specialized helper entities for complex operations:
 ```
 Executor
 ├── JoinEngine          -- cross joins, multi-table joins, join GROUP BY, sorting
-├── PersistenceManager  -- SAVE, OPEN, CLOSE commands
+├── PersistenceManager  -- SAVE, OPEN, CLOSE commands (index restore on OPEN)
 ├── CsvHandler          -- EXPORT, IMPORT commands
 ├── IndexManager        -- bucket-accelerated hash index lookups
+├── BTree[]             -- disk-based B-tree indexes for persistent databases
 ├── SqlFunctions        -- 56+ built-in SQL functions
 ├── SqlWindow           -- window function evaluation
 └── SystemViews         -- INFORMATION_SCHEMA and sys.* virtual views
@@ -1612,9 +1717,9 @@ Persistent storage uses a page-based architecture inspired by traditional RDBMS 
 StorageEngine
 ├── Pager            -- 4KB page I/O (read/write/allocate)
 ├── BufferPool       -- in-memory page cache with dirty tracking
-├── SchemaPage       -- table metadata serialization
+├── SchemaPage       -- table and index metadata serialization (IndexMeta persistence)
 ├── DataPage         -- slotted row storage with delete/compact
-├── BTree            -- B-tree indexes on disk
+├── BTree            -- disk-based B-tree indexes (integrated with CREATE INDEX / OPEN)
 ├── WALManager       -- write-ahead log for crash recovery
 └── TxnManager       -- transaction lifecycle (BEGIN/COMMIT/ROLLBACK)
 ```
@@ -1650,6 +1755,8 @@ ViperSQL supports per-connection isolation through the Session entity:
 Session (per connection)
 ├── sessionId, clientHost, username   -- connection metadata
 ├── authenticated                     -- authentication state
+├── preparedStmts[]                   -- named/unnamed prepared statements
+├── portals[]                         -- bound portals (extended query protocol)
 └── Executor (per session)
     ├── currentDbName, currentDbIndex -- per-session database context
     ├── inTransaction, journal        -- per-session transaction state
@@ -1664,7 +1771,7 @@ Each connection gets its own `Session` with its own `Executor` instance. Multipl
 The `server/` module implements a multi-user TCP server using a thread-per-connection model (like PostgreSQL):
 
 - **Thread-per-connection**: Each accepted TCP connection spawns a dedicated thread via `Thread.StartSafe` for error isolation
-- **PostgreSQL wire protocol (v3)**: Binary protocol on port 5432 for standard client compatibility (psql, ODBC, pgAdmin)
+- **PostgreSQL wire protocol (v3)**: Binary protocol on port 5432 for standard client compatibility (psql, ODBC, pgAdmin). Supports both Simple Query (Q) and Extended Query (Parse/Bind/Describe/Execute) protocols with prepared statements, parameterized queries, and portal suspension.
 - **Simple text protocol**: SQL terminated by newline, response terminated by double-newline on port 5433
 - **Authentication**: Cleartext password authentication via the PG wire protocol handshake (AuthenticationCleartextPassword / PasswordMessage)
 - **Connection handler**: Per-connection Session with recv/execute/send loop, idle timeout (5 min), graceful disconnect
@@ -1682,9 +1789,22 @@ The `server/` module implements a multi-user TCP server using a thread-per-conne
 | BackendKeyData | Server -> Client | Process ID and secret key |
 | ReadyForQuery | Server -> Client | Ready status (I=idle, T=in-txn, E=error) |
 | Query (Q) | Client -> Server | Simple query text |
+| Parse (P) | Client -> Server | Prepare a named/unnamed statement |
+| Bind (B) | Client -> Server | Bind parameters to create a portal |
+| Describe (D) | Client -> Server | Describe a statement or portal |
+| Execute (E) | Client -> Server | Execute a portal (with optional row limit) |
+| Sync (S) | Client -> Server | End extended query pipeline, sync state |
+| Close (C) | Client -> Server | Close a statement or portal |
+| Flush (H) | Client -> Server | Flush output buffer |
 | RowDescription (T) | Server -> Client | Column names and types |
 | DataRow (D) | Server -> Client | Row values |
 | CommandComplete (C) | Server -> Client | Completion tag (e.g., "SELECT 3") |
+| ParseComplete (1) | Server -> Client | Parse succeeded |
+| BindComplete (2) | Server -> Client | Bind succeeded |
+| CloseComplete (3) | Server -> Client | Close succeeded |
+| ParameterDescription (t) | Server -> Client | Parameter type OIDs |
+| NoData (n) | Server -> Client | Statement produces no rows |
+| PortalSuspended (s) | Server -> Client | Execute hit row limit |
 | ErrorResponse (E) | Server -> Client | Error with severity, code, message |
 | Terminate (X) | Client -> Server | Close connection |
 
@@ -1705,6 +1825,7 @@ ViperSQL includes several algorithmic optimizations for efficient query processi
 - **Hash-based GROUP BY** — Group key deduplication uses 128-bucket hash tables for O(n) amortized grouping instead of O(n*g) linear scan
 - **Hash-based DISTINCT** — Duplicate elimination uses hash buckets for O(n) amortized deduplication
 - **Bucket-based index lookup** — Hash indexes use 64-bucket acceleration structures, reducing lookup from O(n) to O(n/b) per query
+- **Disk-based B-tree indexes** — Persistent databases use order-50 B-trees (~99 keys per 4KB page) for O(log n) lookups, integrated with the BufferPool page cache
 - **Short-circuit AND/OR** — Boolean expressions short-circuit: `FALSE AND ...` returns immediately without evaluating the right side, and `TRUE OR ...` returns immediately
 
 ---
@@ -1763,6 +1884,7 @@ viper run demos/zia/sqldb/tests/test_system_views.zia
 viper run demos/zia/sqldb/tests/test_tempdb.zia
 viper run demos/zia/sqldb/tests/test_auth.zia
 viper run demos/zia/sqldb/tests/test_pg_wire.zia
+viper run demos/zia/sqldb/tests/test_extended_query.zia
 
 # Documentation examples (verifies all README examples)
 viper run demos/zia/sqldb/tests/test_readme_examples.zia
@@ -1822,6 +1944,7 @@ viper build demos/zia/sqldb/tests/test_native_torture.zia -o /tmp/test_torture &
 | `test_tempdb.zia` | CREATE TEMP TABLE, session isolation, table shadowing | Temporary tables |
 | `test_auth.zia` | CREATE/DROP/ALTER USER, SHOW USERS, password verification | Authentication |
 | `test_pg_wire.zia` | PG wire protocol binary messages, auth handshake | Wire protocol |
+| `test_extended_query.zia` | Extended query protocol (Parse/Bind/Describe/Execute) | Extended protocol |
 | `test_pg_net_minimal.zia` | End-to-end PG network connectivity | Network integration |
 | `test_readme_examples.zia` | All README documentation examples (129 assertions) | Documentation |
 
@@ -1842,6 +1965,9 @@ sqldb/
 ├── schema.zia            Column and Row definitions
 ├── table.zia             Table entity (row storage, column metadata)
 ├── database.zia          Database entity (table registry)
+├── ddl.zia               DDL handler (CREATE/DROP/ALTER TABLE, INDEX, VIEW, DATABASE)
+├── dml.zia               DML handler (INSERT, UPDATE, DELETE with constraints)
+├── query.zia             Query handler (SELECT, GROUP BY, sorting, subqueries)
 ├── index.zia             Index manager (hash-based lookups, 64 buckets)
 ├── result.zia            QueryResult entity (returned from all queries)
 ├── join.zia              JoinEngine -- cross join, hash join, join GROUP BY, sorting
@@ -1872,13 +1998,13 @@ sqldb/
 │   ├── serializer.zia    Row/value binary serialization
 │   ├── page.zia          Page type definitions and constants
 │   ├── data_page.zia     Slotted data page (row storage)
-│   ├── schema_page.zia   Schema page (table metadata persistence)
+│   ├── schema_page.zia   Schema page (table + index metadata persistence)
 │   ├── btree.zia         B-tree index implementation
 │   ├── btree_node.zia    B-tree node operations
 │   ├── wal.zia           Write-ahead log manager (ARIES-style)
 │   └── txn.zia           TransactionManager, TableLockManager (S/X locking)
 │
-└── tests/                49 test files with 2,100+ assertions
+└── tests/                50 test files with 2,140+ assertions
     ├── test_common.zia   Shared test harness (assert, check, assertTrue, etc.)
     ├── test.zia          Core SQL tests
     ├── test_advanced.zia Set operations and CASE

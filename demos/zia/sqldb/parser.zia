@@ -106,6 +106,16 @@ entity Parser {
             return exprNull();
         }
 
+        // Boolean literals
+        if kind == TK_TRUE {
+            advance();
+            return exprLiteral(sqlBoolean(true));
+        }
+        if kind == TK_FALSE {
+            advance();
+            return exprLiteral(sqlBoolean(false));
+        }
+
         // CASE expression
         if kind == TK_CASE {
             advance();
@@ -142,7 +152,7 @@ entity Parser {
         }
 
         // Keywords that can be used as function names: LEFT(), RIGHT(), CURRENT_DATE, etc.
-        if (kind == TK_LEFT || kind == TK_RIGHT || kind == TK_CURRENT || kind == TK_ROW) && currentToken.kind != TK_EOF {
+        if (kind == TK_LEFT || kind == TK_RIGHT || kind == TK_CURRENT || kind == TK_ROW || kind == TK_DATE_TYPE || kind == TK_TIMESTAMP_TYPE) && currentToken.kind != TK_EOF {
             var kwName = String.ToUpper(currentToken.text);
             advance();
             // If followed by '(', parse as function call
@@ -440,7 +450,7 @@ entity Parser {
             return exprBinary(OP_LIKE, left, pattern);
         }
 
-        // IS NULL / IS NOT NULL
+        // IS NULL / IS NOT NULL / IS TRUE / IS FALSE / IS NOT TRUE / IS NOT FALSE
         if kind == TK_IS {
             advance();
             if currentToken.kind == TK_NOT {
@@ -449,14 +459,30 @@ entity Parser {
                     advance();
                     return exprBinary(OP_IS, left, exprInt(1));
                 }
-                setError("Expected NULL after IS NOT");
+                if currentToken.kind == TK_TRUE {
+                    advance();
+                    return exprBinary(OP_IS, left, exprInt(3));
+                }
+                if currentToken.kind == TK_FALSE {
+                    advance();
+                    return exprBinary(OP_IS, left, exprInt(4));
+                }
+                setError("Expected NULL, TRUE, or FALSE after IS NOT");
                 return left;
             }
             if currentToken.kind == TK_NULL {
                 advance();
                 return exprBinary(OP_IS, left, exprNull());
             }
-            setError("Expected NULL after IS");
+            if currentToken.kind == TK_TRUE {
+                advance();
+                return exprBinary(OP_IS, left, exprInt(5));
+            }
+            if currentToken.kind == TK_FALSE {
+                advance();
+                return exprBinary(OP_IS, left, exprInt(6));
+            }
+            setError("Expected NULL, TRUE, or FALSE after IS");
             return left;
         }
 
@@ -732,11 +758,29 @@ entity Parser {
         if currentToken.kind == TK_INTEGER_TYPE {
             col.typeCode = SQL_INTEGER;
             advance();
+        } else if currentToken.kind == TK_INT {
+            col.typeCode = SQL_INTEGER;
+            advance();
         } else if currentToken.kind == TK_TEXT {
+            col.typeCode = SQL_TEXT;
+            advance();
+        } else if currentToken.kind == TK_VARCHAR {
             col.typeCode = SQL_TEXT;
             advance();
         } else if currentToken.kind == TK_REAL {
             col.typeCode = SQL_REAL;
+            advance();
+        } else if currentToken.kind == TK_BLOB {
+            col.typeCode = SQL_BLOB;
+            advance();
+        } else if currentToken.kind == TK_BOOLEAN {
+            col.typeCode = SQL_BOOLEAN;
+            advance();
+        } else if currentToken.kind == TK_DATE_TYPE {
+            col.typeCode = SQL_DATE;
+            advance();
+        } else if currentToken.kind == TK_TIMESTAMP_TYPE {
+            col.typeCode = SQL_TIMESTAMP;
             advance();
         } else {
             setError("Expected data type");
@@ -786,6 +830,16 @@ entity Parser {
                 } else if currentToken.kind == TK_NULL {
                     var defVal = new SqlValue();
                     defVal.initNull();
+                    col.setDefault(defVal);
+                    advance();
+                } else if currentToken.kind == TK_TRUE {
+                    var defVal = new SqlValue();
+                    defVal.initBoolean(true);
+                    col.setDefault(defVal);
+                    advance();
+                } else if currentToken.kind == TK_FALSE {
+                    var defVal = new SqlValue();
+                    defVal.initBoolean(false);
                     col.setDefault(defVal);
                     advance();
                 } else {

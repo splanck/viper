@@ -99,6 +99,8 @@ final TK_TEXT = 93;
 final TK_BLOB = 94;
 final TK_BOOLEAN = 95;
 final TK_VARCHAR = 96;
+final TK_DATE_TYPE = 97;
+final TK_TIMESTAMP_TYPE = 98;
 
 // Keywords - Transactions
 final TK_BEGIN = 100;
@@ -154,6 +156,11 @@ final TK_ACTION = 171;
 // Keywords - User Management (Phase 10)
 final TK_USER = 213;
 final TK_PASSWORD = 215;
+
+// Keywords - Privileges (Phase 13)
+final TK_GRANT = 216;
+final TK_REVOKE = 217;
+final TK_PRIVILEGES = 218;
 
 // Keywords - Phase 4: CTEs, Window Functions, Multi-table DML
 final TK_WITH = 200;

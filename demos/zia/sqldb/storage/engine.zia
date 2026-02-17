@@ -22,6 +22,8 @@ bind "./pager";
 bind "./buffer";
 bind "./schema_page";
 bind "./data_page";
+bind "./btree";
+bind "./btree_node";
 bind "./wal";
 bind "../types";
 bind "../table";
@@ -54,6 +56,10 @@ entity StorageEngine {
     expose Integer lastInsertPageId;
     expose Integer lastInsertSlotIdx;
 
+    // Index metadata cache (Phase 10)
+    expose List[IndexMeta] indexMetas;
+    hide Integer nextIndexId;
+
     // Monitor object for thread safety
     hide List[Integer] lock;
 
@@ -79,6 +85,8 @@ entity StorageEngine {
         rowPageIds = [];
         rowSlotIdxs = [];
         rowTableNames = [];
+        indexMetas = [];
+        nextIndexId = 1;
         lock = [];
     }
 
@@ -119,6 +127,8 @@ entity StorageEngine {
         isPersistent = true;
         tableMetas = [];
         nextTableId = 1;
+        indexMetas = [];
+        nextIndexId = 1;
 
         return true;
     }
@@ -148,9 +158,11 @@ entity StorageEngine {
         if schemaPage != null {
             var sp = schemaPage;
             tableMetas = schemaMgr.readAllTables(sp);
+            indexMetas = schemaMgr.readAllIndexes(sp);
             pool.unpinPage(1, false);
         } else {
             tableMetas = [];
+            indexMetas = [];
         }
 
         // Compute next table ID
@@ -160,6 +172,17 @@ entity StorageEngine {
             var m = tableMetas.get(i);
             if m.tableId >= nextTableId {
                 nextTableId = m.tableId + 1;
+            }
+            i = i + 1;
+        }
+
+        // Compute next index ID
+        nextIndexId = 1;
+        i = 0;
+        while i < indexMetas.count() {
+            var im = indexMetas.get(i);
+            if im.indexId >= nextIndexId {
+                nextIndexId = im.indexId + 1;
             }
             i = i + 1;
         }
@@ -768,6 +791,121 @@ entity StorageEngine {
         wal = new WALManager();
         wal.initWithDir(walDir);
         walEnabled = true;
+    }
+
+    //=========================================================================
+    // INDEX PERSISTENCE (Phase 10)
+    //=========================================================================
+
+    // Persist a new index to the schema page, returning the assigned indexId
+    expose func persistIndex(indexName: String, tableName: String, columnNames: List[String], isUnique: Boolean, btreeRootPageId: Integer) -> Integer {
+        Threads.Monitor.Enter(lock);
+        var result = persistIndexInternal(indexName, tableName, columnNames, isUnique, btreeRootPageId);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func persistIndexInternal(indexName: String, tableName: String, columnNames: List[String], isUnique: Boolean, btreeRootPageId: Integer) -> Integer {
+        if isPersistent == false {
+            return -1;
+        }
+
+        var meta = new IndexMeta();
+        meta.init();
+        meta.indexName = indexName;
+        meta.tableName = tableName;
+        meta.columnNames = columnNames;
+        meta.isUnique = isUnique;
+        meta.btreeRootPageId = btreeRootPageId;
+
+        var schemaPage = pool.fetchPage(1);
+        if schemaPage != null {
+            var sp = schemaPage;
+            schemaMgr.addIndex(sp, meta, tableMetas);
+            pool.unpinPage(1, true);
+        }
+
+        indexMetas.add(meta);
+        pool.flushAll();
+        return meta.indexId;
+    }
+
+    // Remove an index from the schema page
+    expose func dropIndexStorage(indexName: String) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        var result = dropIndexStorageInternal(indexName);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func dropIndexStorageInternal(indexName: String) -> Boolean {
+        if isPersistent == false {
+            return false;
+        }
+
+        var schemaPage = pool.fetchPage(1);
+        if schemaPage != null {
+            var sp = schemaPage;
+            schemaMgr.removeIndex(sp, indexName, tableMetas);
+            pool.unpinPage(1, true);
+        }
+
+        // Remove from cached metadata
+        var newMetas: List[IndexMeta] = [];
+        var i = 0;
+        while i < indexMetas.count() {
+            var im = indexMetas.get(i);
+            if im.indexName != indexName {
+                newMetas.add(im);
+            }
+            i = i + 1;
+        }
+        indexMetas = newMetas;
+
+        pool.flushAll();
+        return true;
+    }
+
+    // Load all index metadata from schema page
+    expose func loadAllIndexMetas() -> List[IndexMeta] {
+        Threads.Monitor.Enter(lock);
+        var result = loadAllIndexMetasInternal();
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func loadAllIndexMetasInternal() -> List[IndexMeta] {
+        return indexMetas;
+    }
+
+    // Create a new B-tree index using the engine's BufferPool
+    expose func createBTree(indexName: String, tableId: Integer, columnName: String, isUnique: Boolean) -> BTree {
+        Threads.Monitor.Enter(lock);
+        var result = createBTreeInternal(indexName, tableId, columnName, isUnique);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func createBTreeInternal(indexName: String, tableId: Integer, columnName: String, isUnique: Boolean) -> BTree {
+        var btree = new BTree();
+        btree.initWithPool(pool);
+        btree.create(indexName, tableId, columnName, isUnique);
+        return btree;
+    }
+
+    // Open an existing B-tree by its root page ID
+    expose func openBTree(rootPageId: Integer) -> BTree {
+        Threads.Monitor.Enter(lock);
+        var result = openBTreeInternal(rootPageId);
+        Threads.Monitor.Exit(lock);
+        return result;
+    }
+
+    hide func openBTreeInternal(rootPageId: Integer) -> BTree {
+        var btree = new BTree();
+        btree.initWithPool(pool);
+        btree.rootPageId = rootPageId;
+        return btree;
     }
 
     //=========================================================================

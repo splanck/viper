@@ -29,6 +29,8 @@ bind "./storage/buffer";
 bind "./storage/schema_page";
 bind "./storage/data_page";
 bind "./storage/engine";
+bind "./storage/btree";
+bind "./storage/btree_node";
 bind "./executor";
 
 //=============================================================================
@@ -268,7 +270,46 @@ entity PersistenceManager {
                 exec.db.addTable(tables.get(i));
                 i = i + 1;
             }
-            result.message = "Opened persistent database '" + filename + "': " + Fmt.Int(tables.count()) + " table(s) loaded";
+
+            // Phase 10: Load index metadata and rebuild in-memory hash indexes + B-trees
+            var indexMetas = se.loadAllIndexMetas();
+            var ii = 0;
+            while ii < indexMetas.count() {
+                var im = indexMetas.get(ii);
+
+                // Recreate in-memory hash index
+                var idx = new SqlIndex();
+                idx.initWithNames(im.indexName, im.tableName);
+                idx.isUnique = im.isUnique;
+                var ci = 0;
+                while ci < im.columnNames.count() {
+                    idx.addColumn(im.columnNames.get(ci));
+                    ci = ci + 1;
+                }
+
+                // Rebuild hash index entries from table data
+                var tbl = exec.findTable(im.tableName);
+                if tbl != null {
+                    var t = tbl;
+                    idx.rebuild(t);
+                }
+                exec.indexMgr.addIndex(idx);
+
+                // Open the B-tree from its persisted root page
+                if im.btreeRootPageId != INVALID_PAGE_ID {
+                    var btree = se.openBTree(im.btreeRootPageId);
+                    exec.addBTree(im.indexName, btree);
+                }
+
+                ii = ii + 1;
+            }
+
+            var idxCount = indexMetas.count();
+            if idxCount > 0 {
+                result.message = "Opened persistent database '" + filename + "': " + Fmt.Int(tables.count()) + " table(s), " + Fmt.Int(idxCount) + " index(es) loaded";
+            } else {
+                result.message = "Opened persistent database '" + filename + "': " + Fmt.Int(tables.count()) + " table(s) loaded";
+            }
         } else {
             result.message = "Created persistent database '" + filename + "'";
         }

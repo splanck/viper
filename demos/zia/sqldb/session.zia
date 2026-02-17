@@ -4,13 +4,58 @@
 // Each client connection gets a Session with its own Executor.
 // The Session tracks connection metadata while the Executor
 // handles SQL execution with per-connection state.
+// Phase 11: Added PreparedStatement and Portal entities for
+// the PostgreSQL extended query protocol.
 
 module session;
 
 bind Fmt = Viper.Fmt;
+bind String = Viper.String;
 
 bind "./executor";
 bind "./server";
+bind "./result";
+
+//=============================================================================
+// PREPARED STATEMENT ENTITY (Phase 11 — Extended Query Protocol)
+//=============================================================================
+
+entity PreparedStatement {
+    expose String name;             // "" = unnamed statement
+    expose String query;            // Original SQL with $1, $2, etc.
+    expose Integer paramCount;      // Number of $N placeholders found
+    expose List[Integer] paramOids; // Client-specified type OIDs (0 = unspecified)
+
+    expose func init() {
+        name = "";
+        query = "";
+        paramCount = 0;
+        paramOids = [];
+    }
+}
+
+//=============================================================================
+// PORTAL ENTITY (Phase 11 — Extended Query Protocol)
+//=============================================================================
+
+entity Portal {
+    expose String name;             // "" = unnamed portal
+    expose String stmtName;         // Name of the prepared statement
+    expose String boundQuery;       // SQL with params substituted
+    expose QueryResult result;      // Cached execution result (null until executed)
+    expose Boolean executed;        // Has this portal been executed?
+    expose Integer rowsSent;        // Rows sent so far (for portal suspension)
+    expose Boolean descSent;        // Has RowDescription been sent?
+
+    expose func init() {
+        name = "";
+        stmtName = "";
+        boundQuery = "";
+        executed = false;
+        rowsSent = 0;
+        descSent = false;
+    }
+}
 
 //=============================================================================
 // SESSION ENTITY
@@ -26,12 +71,18 @@ entity Session {
     // Per-session SQL executor (owns transaction state, subquery context, etc.)
     expose Executor executor;
 
+    // Extended query protocol state (Phase 11)
+    expose List[PreparedStatement] preparedStmts;
+    expose List[Portal] portals;
+
     expose func init() {
         sessionId = 0;
         clientHost = "";
         username = "";
         authenticated = false;
         queryCount = 0;
+        preparedStmts = [];
+        portals = [];
     }
 
     // Initialize a session with a shared DatabaseServer
@@ -44,6 +95,8 @@ entity Session {
         queryCount = 0;
         executor = new Executor();
         executor.initWithServer(server, sessionId);
+        preparedStmts = [];
+        portals = [];
     }
 
     expose func toString() -> String {
@@ -60,5 +113,72 @@ entity Session {
     // Drops all temporary tables created during this session.
     expose func disconnect() {
         executor.cleanupTempTables();
+    }
+
+    //=========================================================================
+    // PREPARED STATEMENT MANAGEMENT (Phase 11)
+    //=========================================================================
+
+    expose func findPreparedStmt(name: String) -> PreparedStatement? {
+        var i = 0;
+        while i < preparedStmts.count() {
+            var stmt = preparedStmts.get(i);
+            if stmt.name == name {
+                return stmt;
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    expose func addPreparedStmt(stmt: PreparedStatement) {
+        preparedStmts.add(stmt);
+    }
+
+    expose func removePreparedStmt(name: String) {
+        var i = 0;
+        while i < preparedStmts.count() {
+            if preparedStmts.get(i).name == name {
+                preparedStmts.removeAt(i);
+                return;
+            }
+            i = i + 1;
+        }
+    }
+
+    //=========================================================================
+    // PORTAL MANAGEMENT (Phase 11)
+    //=========================================================================
+
+    expose func findPortal(name: String) -> Portal? {
+        var i = 0;
+        while i < portals.count() {
+            var portal = portals.get(i);
+            if portal.name == name {
+                return portal;
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    expose func addPortal(portal: Portal) {
+        portals.add(portal);
+    }
+
+    expose func removePortal(name: String) {
+        var i = 0;
+        while i < portals.count() {
+            if portals.get(i).name == name {
+                portals.removeAt(i);
+                return;
+            }
+            i = i + 1;
+        }
+    }
+
+    // Clear all portals (called on transaction end)
+    expose func clearPortals() {
+        portals = [];
     }
 }

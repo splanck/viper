@@ -44,6 +44,8 @@ bind "./storage/buffer";
 bind "./storage/schema_page";
 bind "./storage/data_page";
 bind "./storage/engine";
+bind "./storage/btree";
+bind "./storage/btree_node";
 bind "./setops";
 bind "./join";
 bind "./persistence";
@@ -150,6 +152,10 @@ entity Executor {
     expose Integer sessionId;
     expose TableLockManager? tableLockMgr;
 
+    // Current authenticated user (Phase 13: privilege checking)
+    // Defaults to "admin" for backward compatibility in standalone mode.
+    expose String currentUser;
+
     // Per-session temporary tables (CREATE TEMP TABLE goes here)
     expose Database? tempDb;
 
@@ -163,6 +169,11 @@ entity Executor {
     hide List[SqlValue] subqueryCacheScalars;
     hide List[List[SqlValue]] subqueryCacheLists;
 
+    // B-tree index tracking for persistent databases (Phase 10)
+    // Parallel lists mapping index names to B-tree instances
+    expose List[BTree] btrees;
+    expose List[String] btreeIndexNames;
+
     expose func init() {
         server = new DatabaseServer();
         server.init();
@@ -175,6 +186,7 @@ entity Executor {
         currentDbIndex = 0;
         sessionId = 0;
         tableLockMgr = null;
+        currentUser = "admin";
         inTransaction = false;
         journal = [];
         txnDirtyTables = [];
@@ -190,6 +202,8 @@ entity Executor {
         subqueryCacheKeys = [];
         subqueryCacheScalars = [];
         subqueryCacheLists = [];
+        btrees = [];
+        btreeIndexNames = [];
         joinEngine = new JoinEngine(self);
         persistence = new PersistenceManager(self);
         csvHandler = new CsvHandler(self);
@@ -212,6 +226,7 @@ entity Executor {
         currentDbIndex = 0;
         sessionId = sessId;
         tableLockMgr = server.tableLockMgr;
+        currentUser = "admin";
         inTransaction = false;
         journal = [];
         txnDirtyTables = [];
@@ -227,6 +242,8 @@ entity Executor {
         subqueryCacheKeys = [];
         subqueryCacheScalars = [];
         subqueryCacheLists = [];
+        btrees = [];
+        btreeIndexNames = [];
         joinEngine = new JoinEngine(self);
         persistence = new PersistenceManager(self);
         csvHandler = new CsvHandler(self);
@@ -235,6 +252,16 @@ entity Executor {
         ddlHandler = new DdlHandler(self);
         dmlHandler = new DmlHandler(self);
         queryHandler = new QueryHandler(self);
+    }
+
+    // Set the current user for privilege checking (called after authentication)
+    expose func setCurrentUser(user: String) {
+        currentUser = user;
+    }
+
+    // Check if current user is a superuser (admin bypasses all privilege checks)
+    expose func isSuperuser() -> Boolean {
+        return currentUser == "admin";
     }
 
     // Refresh db and indexMgr references from per-executor current database
@@ -677,6 +704,13 @@ entity Executor {
             if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
                 return sqlInteger(left.intValue + right.intValue);
             }
+            // DATE + INTEGER = DATE (add days)
+            if left.kind == SQL_DATE && right.kind == SQL_INTEGER {
+                return sqlDate(DateTime.AddDays(left.intValue, right.intValue));
+            }
+            if left.kind == SQL_INTEGER && right.kind == SQL_DATE {
+                return sqlDate(DateTime.AddDays(right.intValue, left.intValue));
+            }
             if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
                 var lv = left.realValue;
                 if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
@@ -688,6 +722,22 @@ entity Executor {
         }
         if op == OP_SUB {
             if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                return sqlInteger(left.intValue - right.intValue);
+            }
+            // DATE - INTEGER = DATE (subtract days)
+            if left.kind == SQL_DATE && right.kind == SQL_INTEGER {
+                return sqlDate(DateTime.AddDays(left.intValue, 0 - right.intValue));
+            }
+            // DATE - DATE = INTEGER (difference in days)
+            if left.kind == SQL_DATE && right.kind == SQL_DATE {
+                var diffSecs = DateTime.Diff(left.intValue, right.intValue);
+                if diffSecs >= 0 {
+                    return sqlInteger((diffSecs + 43200) / 86400);
+                }
+                return sqlInteger((diffSecs - 43200) / 86400);
+            }
+            // TIMESTAMP - TIMESTAMP = INTEGER (difference in seconds)
+            if left.kind == SQL_TIMESTAMP && right.kind == SQL_TIMESTAMP {
                 return sqlInteger(left.intValue - right.intValue);
             }
             if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
@@ -769,15 +819,35 @@ entity Executor {
             return sqlInteger(0);
         }
 
-        // IS NULL / IS NOT NULL
+        // IS NULL / IS NOT NULL / IS TRUE / IS FALSE / IS NOT TRUE / IS NOT FALSE
         if op == OP_IS {
             if right.kind == SQL_NULL {
                 // IS NULL
                 if left.kind == SQL_NULL { return sqlInteger(1); }
                 return sqlInteger(0);
-            } else {
-                // IS NOT NULL (right is int 1 as marker)
+            } else if right.intValue == 1 {
+                // IS NOT NULL
                 if left.kind != SQL_NULL { return sqlInteger(1); }
+                return sqlInteger(0);
+            } else if right.intValue == 5 {
+                // IS TRUE
+                if left.kind == SQL_NULL { return sqlInteger(0); }
+                if left.intValue != 0 { return sqlInteger(1); }
+                return sqlInteger(0);
+            } else if right.intValue == 6 {
+                // IS FALSE
+                if left.kind == SQL_NULL { return sqlInteger(0); }
+                if left.intValue == 0 { return sqlInteger(1); }
+                return sqlInteger(0);
+            } else if right.intValue == 3 {
+                // IS NOT TRUE (true when NULL, false, or 0)
+                if left.kind == SQL_NULL { return sqlInteger(1); }
+                if left.intValue == 0 { return sqlInteger(1); }
+                return sqlInteger(0);
+            } else if right.intValue == 4 {
+                // IS NOT FALSE (true when NULL, true, or non-zero)
+                if left.kind == SQL_NULL { return sqlInteger(1); }
+                if left.intValue != 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
         }
@@ -827,18 +897,10 @@ entity Executor {
 
         // String concatenation
         if op == OP_CONCAT {
-            var leftStr = "";
-            var rightStr = "";
-            if left.kind == SQL_TEXT {
-                leftStr = left.textValue;
-            } else if left.kind == SQL_INTEGER {
-                leftStr = Fmt.Int(left.intValue);
-            }
-            if right.kind == SQL_TEXT {
-                rightStr = right.textValue;
-            } else if right.kind == SQL_INTEGER {
-                rightStr = Fmt.Int(right.intValue);
-            }
+            var leftStr = left.toString();
+            var rightStr = right.toString();
+            if left.kind == SQL_NULL { leftStr = ""; }
+            if right.kind == SQL_NULL { rightStr = ""; }
             return sqlText(leftStr + rightStr);
         }
 
@@ -1249,6 +1311,110 @@ entity Executor {
             }
             i = i + 1;
         }
+        // Also rebuild B-tree indexes for persistent databases
+        if storageEngine != null {
+            rebuildBTreeIndexes(tableName, table);
+        }
+    }
+
+    //=========================================================================
+    // B-TREE INDEX MANAGEMENT (Phase 10)
+    //=========================================================================
+
+    // Find a B-tree by index name
+    expose func findBTreeForIndex(indexName: String) -> BTree? {
+        var i = 0;
+        while i < btreeIndexNames.count() {
+            if btreeIndexNames.get(i) == indexName {
+                return btrees.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Register a B-tree for an index
+    expose func addBTree(indexName: String, btree: BTree) {
+        btreeIndexNames.add(indexName);
+        btrees.add(btree);
+    }
+
+    // Remove a B-tree for an index
+    expose func removeBTree(indexName: String) {
+        var newNames: List[String] = [];
+        var newTrees: List[BTree] = [];
+        var i = 0;
+        while i < btreeIndexNames.count() {
+            if btreeIndexNames.get(i) != indexName {
+                newNames.add(btreeIndexNames.get(i));
+                newTrees.add(btrees.get(i));
+            }
+            i = i + 1;
+        }
+        btreeIndexNames = newNames;
+        btrees = newTrees;
+    }
+
+    // Rebuild B-tree indexes for a table from current row data
+    expose func rebuildBTreeIndexes(tableName: String, table: Table) {
+        if storageEngine == null {
+            return;
+        }
+        var se = storageEngine;
+
+        var i = 0;
+        while i < btreeIndexNames.count() {
+            var idxName = btreeIndexNames.get(i);
+            // Find the matching index in indexMgr to get column info
+            var maybeIdx = indexMgr.findIndex(idxName);
+            if maybeIdx != null {
+                var sqlIdx = maybeIdx;
+                if sqlIdx.tableName == tableName {
+                    // Drop old B-tree, create new one
+                    var oldBtree = btrees.get(i);
+                    var colName = sqlIdx.getColumnName(0);
+                    var newBtree = se.createBTree(idxName, 0, colName, sqlIdx.isUnique);
+
+                    // Populate from current rows
+                    var ri = 0;
+                    while ri < table.rowCount() {
+                        var maybeRow = table.getRow(ri);
+                        if maybeRow != null {
+                            var row = maybeRow;
+                            if row.deleted == false {
+                                var colIdx = table.findColumnIndex(colName);
+                                if colIdx >= 0 {
+                                    var keyVal = row.getValue(colIdx);
+                                    // Get disk location for this row
+                                    var loc = se.findRowLocation(tableName, ri);
+                                    var pageId = loc.get(0);
+                                    var slotId = loc.get(1);
+                                    if pageId != INVALID_PAGE_ID {
+                                        var btreeKey = new BTreeKey();
+                                        btreeKey.initWithValue(keyVal, pageId, slotId);
+                                        newBtree.insert(btreeKey);
+                                    }
+                                }
+                            }
+                        }
+                        ri = ri + 1;
+                    }
+
+                    btrees.set(i, newBtree);
+
+                    // Update the root page in index metadata
+                    var si = 0;
+                    while si < se.indexMetas.count() {
+                        var im = se.indexMetas.get(si);
+                        if im.indexName == idxName {
+                            im.btreeRootPageId = newBtree.rootPageId;
+                        }
+                        si = si + 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
     }
 
     expose func executeSql(sql: String) -> QueryResult {
@@ -1597,6 +1763,21 @@ entity Executor {
             if parser.currentKind() == TK_IDENTIFIER && String.ToUpper(parser.currentText()) == "USERS" {
                 return ddlHandler.executeShowUsers();
             }
+            if parser.currentKind() == TK_GRANT || (parser.currentKind() == TK_IDENTIFIER && String.ToUpper(parser.currentText()) == "GRANTS") {
+                // SHOW GRANTS [FOR username]
+                parser.advance();
+                var forUser = currentUser;
+                if parser.currentKind() == TK_IDENTIFIER {
+                    var maybeFor = String.ToUpper(parser.currentText());
+                    if maybeFor == "FOR" {
+                        parser.advance();
+                        if parser.currentKind() == TK_IDENTIFIER {
+                            forUser = parser.currentText();
+                        }
+                    }
+                }
+                return ddlHandler.executeShowGrants(forUser);
+            }
             return ddlHandler.executeShowTables();
         }
 
@@ -1777,6 +1958,94 @@ entity Executor {
             return result;
         }
 
+        // GRANT privileges ON table TO user
+        if kind == TK_GRANT {
+            parser.advance();
+            var privMask = parsePrivilegeList(parser);
+            if privMask < 0 {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Invalid privilege name. Use SELECT, INSERT, UPDATE, DELETE, or ALL");
+                return result;
+            }
+            if parser.currentKind() != TK_ON {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected ON after privilege list: GRANT ... ON tablename TO user");
+                return result;
+            }
+            parser.advance();
+            if parser.currentKind() != TK_IDENTIFIER {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected table name after ON");
+                return result;
+            }
+            var tableName = parser.currentText();
+            parser.advance();
+            if parser.currentKind() != TK_TO {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected TO after table name: GRANT ... ON tablename TO user");
+                return result;
+            }
+            parser.advance();
+            var grantee = "";
+            if parser.currentKind() == TK_IDENTIFIER {
+                grantee = parser.currentText();
+            } else {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected username or PUBLIC after TO");
+                return result;
+            }
+            return ddlHandler.executeGrant(privMask, tableName, grantee);
+        }
+
+        // REVOKE privileges ON table FROM user
+        if kind == TK_REVOKE {
+            parser.advance();
+            var privMask = parsePrivilegeList(parser);
+            if privMask < 0 {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Invalid privilege name. Use SELECT, INSERT, UPDATE, DELETE, or ALL");
+                return result;
+            }
+            if parser.currentKind() != TK_ON {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected ON after privilege list: REVOKE ... ON tablename FROM user");
+                return result;
+            }
+            parser.advance();
+            if parser.currentKind() != TK_IDENTIFIER {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected table name after ON");
+                return result;
+            }
+            var tableName = parser.currentText();
+            parser.advance();
+            if parser.currentKind() != TK_FROM {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected FROM after table name: REVOKE ... ON tablename FROM user");
+                return result;
+            }
+            parser.advance();
+            var grantee = "";
+            if parser.currentKind() == TK_IDENTIFIER {
+                grantee = parser.currentText();
+            } else {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Expected username or PUBLIC after FROM");
+                return result;
+            }
+            return ddlHandler.executeRevoke(privMask, tableName, grantee);
+        }
+
         // Transaction commands
         if kind == TK_BEGIN {
             return executeBegin();
@@ -1793,6 +2062,89 @@ entity Executor {
         result.setError("Unknown SQL statement");
         return result;
     }
+    //=========================================================================
+    // PRIVILEGE HELPERS (Phase 13)
+    //=========================================================================
+
+    // Parse a comma-separated list of privilege names into a bitmask.
+    // Returns -1 on error.
+    hide func parsePrivilegeList(parser: Parser) -> Integer {
+        var mask = 0;
+        var first = true;
+        while true {
+            if first == false {
+                if parser.currentKind() == TK_COMMA {
+                    parser.advance();
+                } else {
+                    return mask;
+                }
+            }
+            first = false;
+            var text = String.ToUpper(parser.currentText());
+            if text == "ALL" {
+                parser.advance();
+                // Optional PRIVILEGES keyword
+                if parser.currentKind() == TK_PRIVILEGES {
+                    parser.advance();
+                }
+                mask = PRIV_ALL;
+                return mask;
+            }
+            if parser.currentKind() == TK_SELECT {
+                mask = mask + PRIV_SELECT;
+                parser.advance();
+            } else if parser.currentKind() == TK_INSERT {
+                mask = mask + PRIV_INSERT;
+                parser.advance();
+            } else if parser.currentKind() == TK_UPDATE {
+                mask = mask + PRIV_UPDATE;
+                parser.advance();
+            } else if parser.currentKind() == TK_DELETE {
+                mask = mask + PRIV_DELETE;
+                parser.advance();
+            } else {
+                if mask == 0 { return -1; }
+                return mask;
+            }
+        }
+        return mask;
+    }
+
+    // Check if the current user has a privilege on a table.
+    // Returns null if allowed, or an error QueryResult if denied.
+    expose func checkPrivilege(tableName: String, privMask: Integer) -> QueryResult? {
+        // Skip for temp tables and system views
+        if isTempTable(tableName) { return null; }
+        if isSystemView(tableName) { return null; }
+        // Superuser bypasses all checks
+        if isSuperuser() { return null; }
+        // Check privilege via server
+        if server.hasPrivilege(currentUser, tableName, privMask) {
+            return null;
+        }
+        var result = new QueryResult();
+        result.init();
+        var privName = "access";
+        if privMask == PRIV_SELECT { privName = "SELECT"; }
+        if privMask == PRIV_INSERT { privName = "INSERT"; }
+        if privMask == PRIV_UPDATE { privName = "UPDATE"; }
+        if privMask == PRIV_DELETE { privName = "DELETE"; }
+        result.setError("Permission denied: " + privName + " on '" + tableName + "' for user '" + currentUser + "'");
+        return result;
+    }
+
+    // Check if the current user is the owner of a table (or superuser).
+    // Returns null if allowed, or an error QueryResult if denied.
+    expose func checkOwnership(tableName: String) -> QueryResult? {
+        if isSuperuser() { return null; }
+        var owner = server.getTableOwner(tableName);
+        if owner == currentUser { return null; }
+        var result = new QueryResult();
+        result.init();
+        result.setError("Permission denied: must be owner of table '" + tableName + "'");
+        return result;
+    }
+
     //=========================================================================
     // CONCURRENCY CONTROL HELPERS
     //=========================================================================

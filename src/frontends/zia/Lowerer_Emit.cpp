@@ -317,8 +317,10 @@ LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
         }
         case Type::Kind::I1:
         {
-            Value unboxed = emitCallRet(Type(Type::Kind::I1), kUnboxI1, {boxed});
-            return {unboxed, Type(Type::Kind::I1)};
+            // The runtime function rt_unbox_i1 returns i64 (0 or 1), not i1.
+            // Use I64 as the IL return type to match the runtime signature "i64(obj)".
+            Value unboxed = emitCallRet(Type(Type::Kind::I64), kUnboxI1, {boxed});
+            return {unboxed, Type(Type::Kind::I64)};
         }
         case Type::Kind::Str:
         {

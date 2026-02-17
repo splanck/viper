@@ -462,9 +462,14 @@ static bool send_request_recv_reply(const void *req,
     int32_t send_ch = static_cast<int32_t>(ch_result.val0); // CAP_WRITE - for sending
     int32_t recv_ch = static_cast<int32_t>(ch_result.val1); // CAP_READ - for receiving
 
-    // Send request with the SEND endpoint so displayd can write the reply back
+    // Send request with the SEND endpoint so displayd can write the reply back.
+    // Retry on WOULD_BLOCK (channel full from multiple apps contending).
     uint32_t send_handles[1] = {static_cast<uint32_t>(send_ch)};
     int64_t err = sys::channel_send(g_display_channel, req, req_len, send_handles, 1);
+    for (int retry = 0; err == VERR_WOULD_BLOCK && retry < 4; retry++) {
+        sys::sleep(1);
+        err = sys::channel_send(g_display_channel, req, req_len, send_handles, 1);
+    }
     if (err != 0) {
         sys::channel_close(send_ch);
         sys::channel_close(recv_ch);
@@ -2056,6 +2061,7 @@ extern "C" int gui_wait_event(gui_window_t *win, gui_event_t *event) {
         sys::yield();
     }
 }
+
 
 //===----------------------------------------------------------------------===//
 // Drawing Helpers

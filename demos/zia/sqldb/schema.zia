@@ -79,6 +79,9 @@ entity Column {
         if typeCode == SQL_REAL { return "REAL"; }
         if typeCode == SQL_TEXT { return "TEXT"; }
         if typeCode == SQL_BLOB { return "BLOB"; }
+        if typeCode == SQL_BOOLEAN { return "BOOLEAN"; }
+        if typeCode == SQL_DATE { return "DATE"; }
+        if typeCode == SQL_TIMESTAMP { return "TIMESTAMP"; }
         return "UNKNOWN";
     }
 

@@ -48,6 +48,16 @@ final PG_BIND = 66;                 // 'B' — Bind (extended query)
 final PG_DESCRIBE = 68;             // 'D' — Describe (extended query)
 final PG_EXECUTE = 69;              // 'E' — Execute (extended query)
 final PG_SYNC = 83;                 // 'S' — Sync (extended query)
+final PG_CLOSE_MSG = 67;            // 'C' — Close statement/portal
+final PG_FLUSH = 72;                // 'H' — Flush
+
+// Backend message types for extended query responses
+final PG_PARSE_COMPLETE = 49;       // '1' — ParseComplete
+final PG_BIND_COMPLETE = 50;        // '2' — BindComplete
+final PG_CLOSE_COMPLETE = 51;       // '3' — CloseComplete
+final PG_PARAM_DESC = 116;          // 't' — ParameterDescription
+final PG_NO_DATA = 110;             // 'n' — NoData
+final PG_PORTAL_SUSPENDED = 115;    // 's' — PortalSuspended
 
 // Transaction status indicators for ReadyForQuery
 final PG_TXN_IDLE = 73;             // 'I' — Idle (not in transaction)
@@ -62,6 +72,8 @@ final PG_OID_INT4 = 23;
 final PG_OID_TEXT = 25;
 final PG_OID_FLOAT8 = 701;
 final PG_OID_VARCHAR = 1043;
+final PG_OID_DATE = 1082;
+final PG_OID_TIMESTAMP = 1114;
 final PG_OID_NUMERIC = 1700;
 
 //=============================================================================
@@ -520,6 +532,284 @@ func pgSendNotice(client: Ptr, message: String) {
     body.writeByte(0);
 
     pgSendMsg(client, PG_NOTICE_RESP, body);
+}
+
+//=============================================================================
+// EXTENDED QUERY PROTOCOL — RESPONSE BUILDERS
+//=============================================================================
+
+// ParseComplete: '1' + int32(4) — no body
+func pgSendParseComplete(client: Ptr) {
+    var msg = Bytes.New(5);
+    msg.Set(0, PG_PARSE_COMPLETE);
+    writeInt32BE(msg, 1, 4);
+    Network.Tcp.SendAll(client, msg);
+}
+
+// BindComplete: '2' + int32(4) — no body
+func pgSendBindComplete(client: Ptr) {
+    var msg = Bytes.New(5);
+    msg.Set(0, PG_BIND_COMPLETE);
+    writeInt32BE(msg, 1, 4);
+    Network.Tcp.SendAll(client, msg);
+}
+
+// CloseComplete: '3' + int32(4) — no body
+func pgSendCloseComplete(client: Ptr) {
+    var msg = Bytes.New(5);
+    msg.Set(0, PG_CLOSE_COMPLETE);
+    writeInt32BE(msg, 1, 4);
+    Network.Tcp.SendAll(client, msg);
+}
+
+// NoData: 'n' + int32(4) — no body (portal returns no rows)
+func pgSendNoData(client: Ptr) {
+    var msg = Bytes.New(5);
+    msg.Set(0, PG_NO_DATA);
+    writeInt32BE(msg, 1, 4);
+    Network.Tcp.SendAll(client, msg);
+}
+
+// PortalSuspended: 's' + int32(4) — Execute hit row limit
+func pgSendPortalSuspended(client: Ptr) {
+    var msg = Bytes.New(5);
+    msg.Set(0, PG_PORTAL_SUSPENDED);
+    writeInt32BE(msg, 1, 4);
+    Network.Tcp.SendAll(client, msg);
+}
+
+// ParameterDescription: 't' + int32(len) + int16(nParams) + int32[](oids)
+func pgSendParameterDescription(client: Ptr, paramOids: List[Integer]) {
+    var body = new PgMsg(64);
+    body.writeInt16(paramOids.count());
+    var i = 0;
+    while i < paramOids.count() {
+        body.writeInt32(paramOids.get(i));
+        i = i + 1;
+    }
+    pgSendMsg(client, PG_PARAM_DESC, body);
+}
+
+// RowDescription with explicit type OIDs per column
+func pgSendRowDescriptionTyped(client: Ptr, columnNames: List[String], columnOids: List[Integer]) {
+    var body = new PgMsg(256);
+    body.writeInt16(columnNames.count());
+    var i = 0;
+    while i < columnNames.count() {
+        body.writeCString(columnNames.get(i));
+        body.writeInt32(0);                     // table OID
+        body.writeInt16(0);                     // column attribute number
+        var oid = PG_OID_TEXT;
+        if i < columnOids.count() {
+            oid = columnOids.get(i);
+        }
+        body.writeInt32(oid);                   // type OID
+        body.writeInt16(-1);                    // type size (-1 = variable)
+        body.writeInt32(-1);                    // type modifier
+        body.writeInt16(0);                     // format code (0 = text)
+        i = i + 1;
+    }
+    pgSendMsg(client, PG_ROW_DESC, body);
+}
+
+//=============================================================================
+// EXTENDED QUERY PROTOCOL — MESSAGE PARSING
+//=============================================================================
+
+// Parsed Parse message fields
+entity PgParseMsg {
+    expose String stmtName;
+    expose String query;
+    expose List[Integer] paramOids;
+
+    expose func init() {
+        stmtName = "";
+        query = "";
+        paramOids = [];
+    }
+}
+
+// Parse a Parse ('P') message body
+// Format: stmtName\0 + query\0 + int16(nParamTypes) + int32[](paramOIDs)
+func pgParseParse(body: Bytes) -> PgParseMsg {
+    var msg = new PgParseMsg();
+    msg.init();
+    var bodyLen = body.Len;
+    var pos = 0;
+
+    // Read statement name (null-terminated)
+    msg.stmtName = readCStringAt(body, pos, bodyLen);
+    pos = findNullTerminator(body, pos, bodyLen) + 1;
+
+    // Read query string (null-terminated)
+    msg.query = readCStringAt(body, pos, bodyLen);
+    pos = findNullTerminator(body, pos, bodyLen) + 1;
+
+    // Read parameter type OIDs
+    if pos + 2 <= bodyLen {
+        var nParams = readInt16BE(body, pos);
+        pos = pos + 2;
+        var i = 0;
+        while i < nParams && pos + 4 <= bodyLen {
+            msg.paramOids.add(readInt32BE(body, pos));
+            pos = pos + 4;
+            i = i + 1;
+        }
+    }
+
+    return msg;
+}
+
+// Parsed Bind message fields
+entity PgBindMsg {
+    expose String portalName;
+    expose String stmtName;
+    expose List[String] paramValues;
+    expose List[Integer] paramNulls;   // 1 = NULL, 0 = has value
+
+    expose func init() {
+        portalName = "";
+        stmtName = "";
+        paramValues = [];
+        paramNulls = [];
+    }
+}
+
+// Parse a Bind ('B') message body
+// Format: portalName\0 + stmtName\0 + int16(nFormats) + int16[](formats)
+//         + int16(nParams) + [int32(len) + bytes]* + int16(nResultFormats) + int16[](resultFormats)
+func pgParseBind(body: Bytes) -> PgBindMsg {
+    var msg = new PgBindMsg();
+    msg.init();
+    var bodyLen = body.Len;
+    var pos = 0;
+
+    // Read portal name
+    msg.portalName = readCStringAt(body, pos, bodyLen);
+    pos = findNullTerminator(body, pos, bodyLen) + 1;
+
+    // Read statement name
+    msg.stmtName = readCStringAt(body, pos, bodyLen);
+    pos = findNullTerminator(body, pos, bodyLen) + 1;
+
+    // Read parameter format codes (skip — we always use text format)
+    if pos + 2 <= bodyLen {
+        var nFormats = readInt16BE(body, pos);
+        pos = pos + 2;
+        // Skip format codes
+        pos = pos + nFormats * 2;
+    }
+
+    // Read parameter values
+    if pos + 2 <= bodyLen {
+        var nParams = readInt16BE(body, pos);
+        pos = pos + 2;
+        var i = 0;
+        while i < nParams && pos + 4 <= bodyLen {
+            var paramLen = readInt32BE(body, pos);
+            pos = pos + 4;
+
+            // Check for signed -1 (NULL): 0xFFFFFFFF = 4294967295
+            if paramLen >= 4294967295 {
+                // NULL parameter
+                msg.paramValues.add("");
+                msg.paramNulls.add(1);
+            } else {
+                // Read paramLen bytes of value
+                if pos + paramLen <= bodyLen {
+                    var valSlice: Bytes = body.Slice(pos, pos + paramLen);
+                    msg.paramValues.add(valSlice.ToStr());
+                    msg.paramNulls.add(0);
+                    pos = pos + paramLen;
+                } else {
+                    msg.paramValues.add("");
+                    msg.paramNulls.add(1);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // Skip result format codes (we always return text format)
+    return msg;
+}
+
+// Parsed Describe message fields
+entity PgDescribeMsg {
+    expose Integer describeType;   // 83 = 'S' (Statement), 80 = 'P' (Portal)
+    expose String name;
+
+    expose func init() {
+        describeType = 0;
+        name = "";
+    }
+}
+
+// Parse a Describe ('D') message body
+// Format: byte('S'|'P') + name\0
+func pgParseDescribe(body: Bytes) -> PgDescribeMsg {
+    var msg = new PgDescribeMsg();
+    msg.init();
+    if body.Len >= 1 {
+        msg.describeType = body.Get(0);
+        if body.Len > 1 {
+            msg.name = readCStringAt(body, 1, body.Len);
+        }
+    }
+    return msg;
+}
+
+// Parsed Execute message fields
+entity PgExecuteMsg {
+    expose String portalName;
+    expose Integer maxRows;
+
+    expose func init() {
+        portalName = "";
+        maxRows = 0;
+    }
+}
+
+// Parse an Execute ('E') message body
+// Format: portalName\0 + int32(maxRows)
+func pgParseExecute(body: Bytes) -> PgExecuteMsg {
+    var msg = new PgExecuteMsg();
+    msg.init();
+    var bodyLen = body.Len;
+
+    msg.portalName = readCStringAt(body, 0, bodyLen);
+    var pos = findNullTerminator(body, 0, bodyLen) + 1;
+
+    if pos + 4 <= bodyLen {
+        msg.maxRows = readInt32BE(body, pos);
+    }
+
+    return msg;
+}
+
+// Parsed Close message fields
+entity PgCloseMsg {
+    expose Integer closeType;     // 83 = 'S' (Statement), 80 = 'P' (Portal)
+    expose String name;
+
+    expose func init() {
+        closeType = 0;
+        name = "";
+    }
+}
+
+// Parse a Close ('C') message body
+// Format: byte('S'|'P') + name\0
+func pgParseClose(body: Bytes) -> PgCloseMsg {
+    var msg = new PgCloseMsg();
+    msg.init();
+    if body.Len >= 1 {
+        msg.closeType = body.Get(0);
+        if body.Len > 1 {
+            msg.name = readCStringAt(body, 1, body.Len);
+        }
+    }
+    return msg;
 }
 
 //=============================================================================

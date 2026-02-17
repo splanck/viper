@@ -169,9 +169,7 @@ extern "C" void _start() {
 
     // Process messages in batches to avoid starving input polling
     constexpr uint32_t MAX_MESSAGES_PER_BATCH = 16;
-    constexpr uint64_t COMPOSITE_INTERVAL_MS = 16; // ~60Hz
 
-    uint64_t last_composite = sys::uptime();
     while (true) {
         uint32_t messages_processed = 0;
 
@@ -205,17 +203,21 @@ extern "C" void _start() {
         poll_mouse();
         poll_keyboard();
 
-        // Periodic composite to ensure screen updates even if present
-        // requests are missed (workaround for poll_wait issues)
-        uint64_t now = sys::uptime();
-        if (now - last_composite >= COMPOSITE_INTERVAL_MS) {
-            composite();
-            last_composite = now;
-        }
+        // Always composite — guarantees screen reflects latest SHM pixel
+        // data from all client apps. Individual DISP_PRESENT handlers also
+        // composite, but this unconditional call is the safety net that
+        // ensures updates are never missed.
+        composite();
 
-        // If idle, sleep briefly to avoid busy-looping
+        // If idle, use poll_wait to sleep efficiently on the service channel.
+        // Wakes immediately when a client message arrives (e.g. PRESENT),
+        // or after 5ms timeout for input polling.
         if (messages_processed == 0) {
-            sys::sleep(5);
+            sys::PollEvent pev;
+            pev.handle = 0;
+            pev.events = 0;
+            pev.triggered = 0;
+            sys::poll_wait(static_cast<uint32_t>(g_poll_set), &pev, 1, 5);
         }
     }
 

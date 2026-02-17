@@ -141,6 +141,7 @@ func handlePgClient(client: Ptr) {
     session.initWithServer(sessionId, clientHost, shared_server);
     session.username = info.user;
     session.authenticated = true;
+    session.executor.setCurrentUser(info.user);
 
     // Switch to requested database if specified
     if info.database != "" && info.database != "main" {
@@ -155,6 +156,7 @@ func handlePgClient(client: Ptr) {
 
     // Main query loop — read messages and respond
     var running = true;
+    var inErrorRecovery = false;
     while running {
         var msg = pgReadMessage(client);
 
@@ -163,18 +165,43 @@ func handlePgClient(client: Ptr) {
             running = false;
         } else if msg.msgType == PG_QUERY {
             // Simple Query protocol
+            inErrorRecovery = false;
             var query = pgExtractQuery(msg.body);
             handlePgQuery(client, session, query);
         } else if msg.msgType == PG_TERMINATE {
             // Client wants to disconnect
             running = false;
-        } else if msg.msgType == PG_PARSE || msg.msgType == PG_BIND || msg.msgType == PG_EXECUTE || msg.msgType == PG_DESCRIBE {
-            // Extended query protocol — not yet supported
-            // Send error and ReadyForQuery
-            pgSendErrorResponse(client, "0A000", "Extended query protocol not supported. Use simple query mode.");
-            pgSendReadyForQuery(client, getTxnStatus(session));
+
+        // Extended query protocol (Phase 11)
+        } else if msg.msgType == PG_PARSE {
+            if inErrorRecovery == false {
+                var ok = handlePgParse(client, session, msg.body);
+                if ok == false { inErrorRecovery = true; }
+            }
+        } else if msg.msgType == PG_BIND {
+            if inErrorRecovery == false {
+                var ok = handlePgBind(client, session, msg.body);
+                if ok == false { inErrorRecovery = true; }
+            }
+        } else if msg.msgType == PG_DESCRIBE {
+            if inErrorRecovery == false {
+                var ok = handlePgDescribe(client, session, msg.body);
+                if ok == false { inErrorRecovery = true; }
+            }
+        } else if msg.msgType == PG_EXECUTE {
+            if inErrorRecovery == false {
+                var ok = handlePgExecute(client, session, msg.body);
+                if ok == false { inErrorRecovery = true; }
+            }
+        } else if msg.msgType == PG_CLOSE_MSG {
+            if inErrorRecovery == false {
+                handlePgClose(client, session, msg.body);
+            }
+        } else if msg.msgType == PG_FLUSH {
+            // Flush — no-op (we send responses immediately)
         } else if msg.msgType == PG_SYNC {
-            // Sync message — just send ReadyForQuery
+            // Sync — end of extended query batch
+            inErrorRecovery = false;
             pgSendReadyForQuery(client, getTxnStatus(session));
         } else {
             // Unknown message type — ignore silently
@@ -324,6 +351,481 @@ func isPgCatalogQuery(upper: String) -> Boolean {
     if upper == "SELECT VERSION()" { return true; }
     return false;
 }
+
+//=============================================================================
+// EXTENDED QUERY PROTOCOL HANDLERS (Phase 11)
+//=============================================================================
+
+// Handle Parse message — create a prepared statement
+// Returns true on success, false if error was sent
+func handlePgParse(client: Ptr, session: Session, body: Bytes) -> Boolean {
+    var parsed = pgParseParse(body);
+
+    // If unnamed statement, replace any existing one
+    if parsed.stmtName == "" {
+        session.removePreparedStmt("");
+    } else {
+        // Named statement — check for duplicate
+        var existing = session.findPreparedStmt(parsed.stmtName);
+        if existing != null {
+            pgSendErrorResponse(client, "42P05", "prepared statement \"" + parsed.stmtName + "\" already exists");
+            return false;
+        }
+    }
+
+    var stmt = new PreparedStatement();
+    stmt.init();
+    stmt.name = parsed.stmtName;
+    stmt.query = parsed.query;
+    stmt.paramCount = countParams(parsed.query);
+    stmt.paramOids = parsed.paramOids;
+
+    session.addPreparedStmt(stmt);
+    pgSendParseComplete(client);
+    return true;
+}
+
+// Handle Bind message — bind parameters to create a portal
+// Returns true on success, false if error was sent
+func handlePgBind(client: Ptr, session: Session, body: Bytes) -> Boolean {
+    var parsed = pgParseBind(body);
+
+    // Find the prepared statement
+    var maybeStmt = session.findPreparedStmt(parsed.stmtName);
+    if maybeStmt == null {
+        pgSendErrorResponse(client, "26000", "prepared statement \"" + parsed.stmtName + "\" does not exist");
+        return false;
+    }
+    var stmt = maybeStmt;
+
+    // Substitute parameters into the query
+    var boundQuery = substituteParams(stmt.query, parsed.paramValues, parsed.paramNulls);
+
+    // If unnamed portal, replace any existing one
+    if parsed.portalName == "" {
+        session.removePortal("");
+    } else {
+        var existing = session.findPortal(parsed.portalName);
+        if existing != null {
+            pgSendErrorResponse(client, "42P03", "cursor \"" + parsed.portalName + "\" already exists");
+            return false;
+        }
+    }
+
+    var portal = new Portal();
+    portal.init();
+    portal.name = parsed.portalName;
+    portal.stmtName = parsed.stmtName;
+    portal.boundQuery = boundQuery;
+
+    session.addPortal(portal);
+    pgSendBindComplete(client);
+    return true;
+}
+
+// Handle Describe message — describe a statement or portal
+// Returns true on success, false if error was sent
+func handlePgDescribe(client: Ptr, session: Session, body: Bytes) -> Boolean {
+    var parsed = pgParseDescribe(body);
+
+    if parsed.describeType == 83 {
+        // 'S' — Describe Statement
+        var maybeStmt = session.findPreparedStmt(parsed.name);
+        if maybeStmt == null {
+            pgSendErrorResponse(client, "26000", "prepared statement \"" + parsed.name + "\" does not exist");
+            return false;
+        }
+        var stmt = maybeStmt;
+
+        // Send ParameterDescription
+        var paramOids: List[Integer] = [];
+        var pi = 0;
+        while pi < stmt.paramCount {
+            if pi < stmt.paramOids.count() && stmt.paramOids.get(pi) != 0 {
+                paramOids.add(stmt.paramOids.get(pi));
+            } else {
+                paramOids.add(PG_OID_TEXT);
+            }
+            pi = pi + 1;
+        }
+        pgSendParameterDescription(client, paramOids);
+
+        // Try to determine result columns by executing with NULLs substituted
+        var queryForDesc = substituteAllNull(stmt.query, stmt.paramCount);
+        var upperQ = String.ToUpper(String.Trim(queryForDesc));
+        if stringStartsWithConn(upperQ, "SELECT") || stringStartsWithConn(upperQ, "SHOW") || stringStartsWithConn(upperQ, "WITH") {
+            // Execute to get column info
+            var result = session.executeSql(queryForDesc);
+            if result.success && result.columnNames.count() > 0 {
+                var oids = inferColumnOids(result);
+                pgSendRowDescriptionTyped(client, result.columnNames, oids);
+            } else {
+                pgSendNoData(client);
+            }
+        } else {
+            pgSendNoData(client);
+        }
+        return true;
+
+    } else if parsed.describeType == 80 {
+        // 'P' — Describe Portal
+        var maybePortal = session.findPortal(parsed.name);
+        if maybePortal == null {
+            pgSendErrorResponse(client, "34000", "cursor \"" + parsed.name + "\" does not exist");
+            return false;
+        }
+        var portal = maybePortal;
+
+        // Execute the portal if not already done to get column info
+        if portal.executed == false {
+            var result = session.executeSql(portal.boundQuery);
+            portal.result = result;
+            portal.executed = true;
+        }
+
+        if portal.result.success && portal.result.columnNames.count() > 0 {
+            var oids = inferColumnOids(portal.result);
+            pgSendRowDescriptionTyped(client, portal.result.columnNames, oids);
+            portal.descSent = true;
+        } else {
+            pgSendNoData(client);
+        }
+        return true;
+    }
+
+    pgSendErrorResponse(client, "08P01", "invalid Describe message type");
+    return false;
+}
+
+// Handle Execute message — execute a portal and send results
+// Returns true on success, false if error was sent
+func handlePgExecute(client: Ptr, session: Session, body: Bytes) -> Boolean {
+    var parsed = pgParseExecute(body);
+
+    var maybePortal = session.findPortal(parsed.portalName);
+    if maybePortal == null {
+        pgSendErrorResponse(client, "34000", "cursor \"" + parsed.portalName + "\" does not exist");
+        return false;
+    }
+    var portal = maybePortal;
+
+    // Execute the portal query if not yet done
+    if portal.executed == false {
+        queryExecuted();
+
+        // Intercept PG-specific SET commands
+        var upper = String.ToUpper(portal.boundQuery);
+        if isPgSetCommand(upper) {
+            portal.executed = true;
+            var setResult = new QueryResult();
+            setResult.init();
+            setResult.message = "SET";
+            portal.result = setResult;
+            pgSendCommandComplete(client, "SET");
+            return true;
+        }
+
+        // Intercept pg_catalog queries
+        if isPgCatalogQuery(upper) {
+            portal.executed = true;
+            var catResult = new QueryResult();
+            catResult.init();
+            portal.result = catResult;
+            sendEmptySelectResult(client, portal.boundQuery);
+            return true;
+        }
+
+        var result = session.executeSql(portal.boundQuery);
+        portal.result = result;
+        portal.executed = true;
+    }
+
+    // Check for execution error
+    if portal.result.success == false {
+        pgSendErrorResponse(client, "42000", portal.result.message);
+        return false;
+    }
+
+    // Send results
+    if portal.result.columnNames.count() > 0 {
+        // SELECT-like: send DataRows
+        var totalRows = portal.result.rows.count();
+        var startRow = portal.rowsSent;
+
+        // Determine end row
+        var endRow = totalRows;
+        if parsed.maxRows > 0 && startRow + parsed.maxRows < totalRows {
+            endRow = startRow + parsed.maxRows;
+        }
+
+        // Send DataRows
+        var ri = startRow;
+        while ri < endRow {
+            var row = portal.result.rows.get(ri);
+            var values: List[String] = [];
+            var nullFlags: List[Integer] = [];
+
+            var ci = 0;
+            while ci < row.columnCount() {
+                var val = row.getValue(ci);
+                if val.isNull() {
+                    values.add("");
+                    nullFlags.add(1);
+                } else {
+                    values.add(val.toString());
+                    nullFlags.add(0);
+                }
+                ci = ci + 1;
+            }
+
+            pgSendDataRow(client, values, nullFlags);
+            ri = ri + 1;
+        }
+
+        portal.rowsSent = endRow;
+
+        // Check if more rows remain (portal suspension)
+        if endRow < totalRows {
+            pgSendPortalSuspended(client);
+        } else {
+            var tag = pgCommandTag(portal.boundQuery, portal.result.rowsAffected, totalRows);
+            pgSendCommandComplete(client, tag);
+        }
+    } else {
+        // DML/DDL: just CommandComplete
+        var tag = pgCommandTag(portal.boundQuery, portal.result.rowsAffected, 0);
+        pgSendCommandComplete(client, tag);
+    }
+
+    return true;
+}
+
+// Handle Close message — close a statement or portal
+func handlePgClose(client: Ptr, session: Session, body: Bytes) {
+    var parsed = pgParseClose(body);
+
+    if parsed.closeType == 83 {
+        // 'S' — Close Statement
+        session.removePreparedStmt(parsed.name);
+    } else if parsed.closeType == 80 {
+        // 'P' — Close Portal
+        session.removePortal(parsed.name);
+    }
+
+    pgSendCloseComplete(client);
+}
+
+//=============================================================================
+// PARAMETER SUBSTITUTION (Phase 11)
+//=============================================================================
+
+// Count the highest $N parameter placeholder in a query
+func countParams(query: String) -> Integer {
+    var maxParam = 0;
+    var len = String.Length(query);
+    var inQuote = false;
+    var i = 0;
+
+    while i < len {
+        var ch = String.Substring(query, i, 1);
+        if ch == "'" {
+            inQuote = !inQuote;
+            i = i + 1;
+        } else if ch == "$" && inQuote == false {
+            // Read digits after $
+            var numStr = "";
+            var j = i + 1;
+            while j < len {
+                var digit = String.Substring(query, j, 1);
+                var code = String.Asc(digit);
+                if code >= 48 && code <= 57 {
+                    numStr = numStr + digit;
+                    j = j + 1;
+                } else {
+                    break;
+                }
+            }
+            if String.Length(numStr) > 0 {
+                var paramNum = stringToInt(numStr);
+                if paramNum > maxParam {
+                    maxParam = paramNum;
+                }
+            }
+            i = j;
+        } else {
+            i = i + 1;
+        }
+    }
+
+    return maxParam;
+}
+
+// Substitute $1, $2, ... in a query with actual parameter values
+func substituteParams(query: String, paramValues: List[String], paramNulls: List[Integer]) -> String {
+    var result = "";
+    var len = String.Length(query);
+    var inQuote = false;
+    var i = 0;
+
+    while i < len {
+        var ch = String.Substring(query, i, 1);
+
+        if ch == "'" {
+            inQuote = !inQuote;
+            result = result + ch;
+            i = i + 1;
+        } else if ch == "$" && inQuote == false {
+            // Read digits after $
+            var numStr = "";
+            var j = i + 1;
+            while j < len {
+                var digit = String.Substring(query, j, 1);
+                var code = String.Asc(digit);
+                if code >= 48 && code <= 57 {
+                    numStr = numStr + digit;
+                    j = j + 1;
+                } else {
+                    break;
+                }
+            }
+
+            if String.Length(numStr) > 0 {
+                var paramIdx = stringToInt(numStr) - 1;
+                if paramIdx >= 0 && paramIdx < paramValues.count() {
+                    if paramNulls.get(paramIdx) == 1 {
+                        result = result + "NULL";
+                    } else {
+                        var val = paramValues.get(paramIdx);
+                        if isNumericParam(val) {
+                            result = result + val;
+                        } else {
+                            result = result + "'" + escapeParamString(val) + "'";
+                        }
+                    }
+                } else {
+                    // Parameter index out of range — leave as-is
+                    result = result + "$" + numStr;
+                }
+                i = j;
+            } else {
+                result = result + ch;
+                i = i + 1;
+            }
+        } else {
+            result = result + ch;
+            i = i + 1;
+        }
+    }
+
+    return result;
+}
+
+// Replace all $N with NULL for Describe on unbound statements
+func substituteAllNull(query: String, paramCount: Integer) -> String {
+    var nullValues: List[String] = [];
+    var nullFlags: List[Integer] = [];
+    var i = 0;
+    while i < paramCount {
+        nullValues.add("");
+        nullFlags.add(1);
+        i = i + 1;
+    }
+    return substituteParams(query, nullValues, nullFlags);
+}
+
+// Check if a string looks like a numeric value
+func isNumericParam(val: String) -> Boolean {
+    var len = String.Length(val);
+    if len == 0 { return false; }
+
+    var start = 0;
+    var firstCh = String.Substring(val, 0, 1);
+    if firstCh == "-" || firstCh == "+" {
+        start = 1;
+        if len == 1 { return false; }
+    }
+
+    var hasDot = false;
+    var i = start;
+    while i < len {
+        var ch = String.Substring(val, i, 1);
+        var code = String.Asc(ch);
+        if code >= 48 && code <= 57 {
+            // digit — ok
+        } else if ch == "." && hasDot == false {
+            hasDot = true;
+        } else {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+// Escape single quotes in a parameter value (double them)
+func escapeParamString(val: String) -> String {
+    var result = "";
+    var len = String.Length(val);
+    var i = 0;
+    while i < len {
+        var ch = String.Substring(val, i, 1);
+        if ch == "'" {
+            result = result + "''";
+        } else {
+            result = result + ch;
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+//=============================================================================
+// TYPE OID INFERENCE (Phase 11)
+//=============================================================================
+
+// Infer PostgreSQL type OIDs from the first row's SqlValue kinds
+func inferColumnOids(result: QueryResult) -> List[Integer] {
+    var oids: List[Integer] = [];
+    var ci = 0;
+    while ci < result.columnNames.count() {
+        if result.rowCount() > 0 {
+            var maybeRow = result.getRow(0);
+            if maybeRow != null {
+                var row = maybeRow;
+                if ci < row.columnCount() {
+                    var val = row.getValue(ci);
+                    if val.kind == SQL_INTEGER {
+                        oids.add(PG_OID_INT4);
+                    } else if val.kind == SQL_REAL {
+                        oids.add(PG_OID_FLOAT8);
+                    } else if val.kind == SQL_BLOB {
+                        oids.add(PG_OID_BYTEA);
+                    } else if val.kind == SQL_BOOLEAN {
+                        oids.add(PG_OID_BOOL);
+                    } else if val.kind == SQL_DATE {
+                        oids.add(PG_OID_DATE);
+                    } else if val.kind == SQL_TIMESTAMP {
+                        oids.add(PG_OID_TIMESTAMP);
+                    } else {
+                        oids.add(PG_OID_TEXT);
+                    }
+                } else {
+                    oids.add(PG_OID_TEXT);
+                }
+            } else {
+                oids.add(PG_OID_TEXT);
+            }
+        } else {
+            oids.add(PG_OID_TEXT);
+        }
+        ci = ci + 1;
+    }
+    return oids;
+}
+
+//=============================================================================
+// PG_CATALOG QUERY HANDLING
+//=============================================================================
 
 // Send an empty SELECT result (0 rows) for pg_catalog queries
 func sendEmptySelectResult(client: Ptr, query: String) {

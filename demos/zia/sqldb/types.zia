@@ -12,6 +12,7 @@ module types;
 
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
+bind DateTime = Viper.Time.DateTime;
 
 //=============================================================================
 // SQL TYPE CONSTANTS
@@ -22,6 +23,9 @@ final SQL_INTEGER = 1;
 final SQL_REAL = 2;
 final SQL_TEXT = 3;
 final SQL_BLOB = 4;
+final SQL_BOOLEAN = 5;
+final SQL_DATE = 6;       // intValue = days since Unix epoch (1970-01-01)
+final SQL_TIMESTAMP = 7;  // intValue = epoch seconds
 
 //=============================================================================
 // HELPER FUNCTIONS
@@ -102,6 +106,77 @@ func stringToNumber(text: String) -> Float {
 }
 
 //=============================================================================
+// DATE/TIME HELPERS
+//=============================================================================
+
+func fmtDateParts(y: Integer, m: Integer, d: Integer) -> String {
+    var result = Fmt.Int(y) + "-";
+    if m < 10 { result = result + "0"; }
+    result = result + Fmt.Int(m) + "-";
+    if d < 10 { result = result + "0"; }
+    result = result + Fmt.Int(d);
+    return result;
+}
+
+func fmtTimeParts(h: Integer, m: Integer, s: Integer) -> String {
+    var result = "";
+    if h < 10 { result = result + "0"; }
+    result = result + Fmt.Int(h) + ":";
+    if m < 10 { result = result + "0"; }
+    result = result + Fmt.Int(m) + ":";
+    if s < 10 { result = result + "0"; }
+    result = result + Fmt.Int(s);
+    return result;
+}
+
+// Convert DATE epoch (noon local) to TIMESTAMP epoch (midnight local for same date)
+func dateToTimestamp(dateEpoch: Integer) -> Integer {
+    var y = DateTime.Year(dateEpoch);
+    var m = DateTime.Month(dateEpoch);
+    var d = DateTime.Day(dateEpoch);
+    return DateTime.Create(y, m, d, 0, 0, 0);
+}
+
+// Convert TIMESTAMP epoch to DATE epoch (noon local for that date)
+func timestampToDate(tsEpoch: Integer) -> Integer {
+    var y = DateTime.Year(tsEpoch);
+    var m = DateTime.Month(tsEpoch);
+    var d = DateTime.Day(tsEpoch);
+    return DateTime.Create(y, m, d, 12, 0, 0);
+}
+
+// Parse "YYYY-MM-DD" text to DATE epoch (noon local)
+func parseDateText(text: String) -> Integer {
+    var sLen = String.Length(text);
+    if sLen < 10 { return 0; }
+    var yr = stringToInt(String.Substring(text, 0, 4));
+    var mo = stringToInt(String.Substring(text, 5, 2));
+    var dy = stringToInt(String.Substring(text, 8, 2));
+    return DateTime.Create(yr, mo, dy, 12, 0, 0);
+}
+
+// Parse "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS" to epoch seconds
+func parseDateTimeText(text: String) -> Integer {
+    var sLen = String.Length(text);
+    if sLen < 10 { return 0; }
+    var yr = stringToInt(String.Substring(text, 0, 4));
+    var mo = stringToInt(String.Substring(text, 5, 2));
+    var dy = stringToInt(String.Substring(text, 8, 2));
+    var hr = 0;
+    var mn = 0;
+    var sc = 0;
+    if sLen >= 19 {
+        var sep = String.Substring(text, 10, 1);
+        if sep == "T" || sep == " " {
+            hr = stringToInt(String.Substring(text, 11, 2));
+            mn = stringToInt(String.Substring(text, 14, 2));
+            sc = stringToInt(String.Substring(text, 17, 2));
+        }
+    }
+    return DateTime.Create(yr, mo, dy, hr, mn, sc);
+}
+
+//=============================================================================
 // SQL VALUE ENTITY
 //=============================================================================
 
@@ -153,11 +228,35 @@ entity SqlValue {
         textValue = val;
     }
 
+    expose func initBoolean(val: Boolean) {
+        kind = SQL_BOOLEAN;
+        if val { intValue = 1; } else { intValue = 0; }
+        realValue = 0.0;
+        textValue = "";
+    }
+
+    expose func initDate(daysSinceEpoch: Integer) {
+        kind = SQL_DATE;
+        intValue = daysSinceEpoch;
+        realValue = 0.0;
+        textValue = "";
+    }
+
+    expose func initTimestamp(epochSeconds: Integer) {
+        kind = SQL_TIMESTAMP;
+        intValue = epochSeconds;
+        realValue = 0.0;
+        textValue = "";
+    }
+
     expose func isNull() -> Boolean { return kind == SQL_NULL; }
     expose func isInteger() -> Boolean { return kind == SQL_INTEGER; }
     expose func isReal() -> Boolean { return kind == SQL_REAL; }
     expose func isText() -> Boolean { return kind == SQL_TEXT; }
     expose func isBlob() -> Boolean { return kind == SQL_BLOB; }
+    expose func isBoolean() -> Boolean { return kind == SQL_BOOLEAN; }
+    expose func isDate() -> Boolean { return kind == SQL_DATE; }
+    expose func isTimestamp() -> Boolean { return kind == SQL_TIMESTAMP; }
 
     expose func typeName() -> String {
         if (kind == SQL_NULL) { return "NULL"; }
@@ -165,6 +264,9 @@ entity SqlValue {
         if (kind == SQL_REAL) { return "REAL"; }
         if (kind == SQL_TEXT) { return "TEXT"; }
         if (kind == SQL_BLOB) { return "BLOB"; }
+        if (kind == SQL_BOOLEAN) { return "BOOLEAN"; }
+        if (kind == SQL_DATE) { return "DATE"; }
+        if (kind == SQL_TIMESTAMP) { return "TIMESTAMP"; }
         return "UNKNOWN";
     }
 
@@ -174,6 +276,19 @@ entity SqlValue {
         if (kind == SQL_REAL) { return textValue; }
         if (kind == SQL_TEXT) { return textValue; }
         if (kind == SQL_BLOB) { return textValue; }
+        if (kind == SQL_BOOLEAN) {
+            if intValue != 0 { return "true"; }
+            return "false";
+        }
+        if (kind == SQL_DATE) {
+            var y = DateTime.Year(intValue);
+            var m = DateTime.Month(intValue);
+            var d = DateTime.Day(intValue);
+            return fmtDateParts(y, m, d);
+        }
+        if (kind == SQL_TIMESTAMP) {
+            return DateTime.ToLocal(intValue);
+        }
         return "?";
     }
 
@@ -199,6 +314,20 @@ entity SqlValue {
             return "'" + escaped + "'";
         }
         if (kind == SQL_BLOB) { return "X'" + textValue + "'"; }
+        if (kind == SQL_BOOLEAN) {
+            if intValue != 0 { return "TRUE"; }
+            return "FALSE";
+        }
+        if (kind == SQL_DATE) {
+            var y = DateTime.Year(intValue);
+            var m = DateTime.Month(intValue);
+            var d = DateTime.Day(intValue);
+            return "'" + fmtDateParts(y, m, d) + "'";
+        }
+        if (kind == SQL_TIMESTAMP) {
+            var s = DateTime.ToLocal(intValue);
+            return "'" + s + "'";
+        }
         return "?";
     }
 
@@ -315,6 +444,60 @@ entity SqlValue {
             } else {
                 result = 0;
             }
+        // BOOLEAN comparisons
+        } else if kind == SQL_BOOLEAN && other.kind == SQL_BOOLEAN {
+            if intValue < other.intValue { result = -1; }
+            else if intValue > other.intValue { result = 1; }
+            else { result = 0; }
+        } else if kind == SQL_BOOLEAN && other.kind == SQL_INTEGER {
+            if intValue < other.intValue { result = -1; }
+            else if intValue > other.intValue { result = 1; }
+            else { result = 0; }
+        } else if kind == SQL_INTEGER && other.kind == SQL_BOOLEAN {
+            if intValue < other.intValue { result = -1; }
+            else if intValue > other.intValue { result = 1; }
+            else { result = 0; }
+        // DATE comparisons
+        } else if kind == SQL_DATE && other.kind == SQL_DATE {
+            if intValue < other.intValue { result = -1; }
+            else if intValue > other.intValue { result = 1; }
+            else { result = 0; }
+        // TIMESTAMP comparisons
+        } else if kind == SQL_TIMESTAMP && other.kind == SQL_TIMESTAMP {
+            if intValue < other.intValue { result = -1; }
+            else if intValue > other.intValue { result = 1; }
+            else { result = 0; }
+        // DATE vs TIMESTAMP cross-type (both store epoch seconds)
+        } else if kind == SQL_DATE && other.kind == SQL_TIMESTAMP {
+            if intValue < other.intValue { result = -1; }
+            else if intValue > other.intValue { result = 1; }
+            else { result = 0; }
+        } else if kind == SQL_TIMESTAMP && other.kind == SQL_DATE {
+            if intValue < other.intValue { result = -1; }
+            else if intValue > other.intValue { result = 1; }
+            else { result = 0; }
+        // DATE vs TEXT cross-type
+        } else if kind == SQL_DATE && other.kind == SQL_TEXT {
+            var otherDays = parseDateText(other.textValue);
+            if intValue < otherDays { result = -1; }
+            else if intValue > otherDays { result = 1; }
+            else { result = 0; }
+        } else if kind == SQL_TEXT && other.kind == SQL_DATE {
+            var myDays = parseDateText(textValue);
+            if myDays < other.intValue { result = -1; }
+            else if myDays > other.intValue { result = 1; }
+            else { result = 0; }
+        // TIMESTAMP vs TEXT cross-type
+        } else if kind == SQL_TIMESTAMP && other.kind == SQL_TEXT {
+            var otherEpoch = parseDateTimeText(other.textValue);
+            if intValue < otherEpoch { result = -1; }
+            else if intValue > otherEpoch { result = 1; }
+            else { result = 0; }
+        } else if kind == SQL_TEXT && other.kind == SQL_TIMESTAMP {
+            var myEpoch = parseDateTimeText(textValue);
+            if myEpoch < other.intValue { result = -1; }
+            else if myEpoch > other.intValue { result = 1; }
+            else { result = 0; }
         } else if kind < other.kind {
             result = -1;
         } else if kind > other.kind {
@@ -367,5 +550,23 @@ func sqlText(val: String) -> SqlValue {
 func sqlBlob(val: String) -> SqlValue {
     var v = new SqlValue();
     v.initBlob(val);
+    return v;
+}
+
+func sqlBoolean(val: Boolean) -> SqlValue {
+    var v = new SqlValue();
+    v.initBoolean(val);
+    return v;
+}
+
+func sqlDate(daysSinceEpoch: Integer) -> SqlValue {
+    var v = new SqlValue();
+    v.initDate(daysSinceEpoch);
+    return v;
+}
+
+func sqlTimestamp(epochSeconds: Integer) -> SqlValue {
+    var v = new SqlValue();
+    v.initTimestamp(epochSeconds);
     return v;
 }

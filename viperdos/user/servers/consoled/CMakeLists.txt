@@ -6,7 +6,6 @@ add_executable(consoled.sys
         ansi.cpp
         keymap.cpp
         request.cpp
-        shell.cpp
         text_buffer.cpp
         embedded_shell.cpp
         shell_io.cpp

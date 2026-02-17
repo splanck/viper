@@ -37,10 +37,11 @@ void queue_mouse_event(Surface *surf,
 
     // If client has event channel, send directly (preferred path)
     if (surf->event_channel >= 0) {
-        debug_print("[evt] send mouse to ch ");
-        debug_print_dec(surf->event_channel);
-        debug_print("\n");
-        sys::channel_send(surf->event_channel, &ev.mouse, sizeof(ev.mouse), nullptr, 0);
+        int64_t r =
+            sys::channel_send(surf->event_channel, &ev.mouse, sizeof(ev.mouse), nullptr, 0);
+        // Mouse events are lossy — silently drop on full channel to avoid
+        // starving key events (channel buffer is only 16 slots).
+        (void)r;
     } else {
         debug_print("[evt] queue mouse (no channel)\n");
         // Fall back to queue for legacy poll-based clients
@@ -114,6 +115,14 @@ void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, bool pr
     // If client has event channel, send directly
     if (surf->event_channel >= 0) {
         int64_t r = sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
+        // Channel full (likely flooded by mouse events). Sleep briefly to let
+        // the client wake and drain its queue, then retry — key events are critical.
+        // Note: yield() is insufficient here because consoled uses sleep(5),
+        // and yield only gives CPU to already-runnable tasks.
+        for (int retry = 0; r == -300 /* VERR_WOULD_BLOCK */ && retry < 4; retry++) {
+            sys::sleep(2);
+            r = sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
+        }
         if (r != 0) {
             debug_print("[evt] key send failed ch=");
             debug_print_dec(static_cast<uint64_t>(surf->event_channel));

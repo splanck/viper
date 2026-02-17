@@ -663,6 +663,34 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 }
             }
 
+            // Cross-class fallback: when a runtime function returns obj typed as a
+            // different class (e.g., Network.Tcp.RecvExact returns Bytes, not Tcp),
+            // the variable's Ptr name may not match the actual class. Search all
+            // runtime classes for the method as a fallback.
+            if (!sym)
+            {
+                const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
+                for (const auto &cls : catalog)
+                {
+                    if (!cls.qname || cls.qname == baseType->name)
+                        continue;
+                    for (const auto &m : cls.methods)
+                    {
+                        if (m.name && std::string_view(m.name) == fieldExpr->field && m.target)
+                        {
+                            sym = lookupSymbol(m.target);
+                            if (sym && sym->kind == Symbol::Kind::Function)
+                            {
+                                fullMethodName = m.target;
+                                break;
+                            }
+                        }
+                    }
+                    if (sym)
+                        break;
+                }
+            }
+
             if (sym && sym->kind == Symbol::Kind::Function)
             {
                 // Analyze arguments
@@ -675,6 +703,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 {
                     runtimeCallees_[expr] = fullMethodName;
                 }
+                // Return the function's return type, not the function type itself.
+                // This is critical for chained method calls (e.g., bytes.Slice(x,y).ToStr())
+                // where the caller needs the return type to resolve the next method.
+                if (sym->type && sym->type->kind == TypeKindSem::Function)
+                    return sym->type->returnType();
                 return sym->type;
             }
         }

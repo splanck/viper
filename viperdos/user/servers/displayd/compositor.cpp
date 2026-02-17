@@ -137,15 +137,14 @@ void composite() {
     draw_menu_bar();
     draw_pulldown_menu();
 
-    // Copy back buffer to front buffer in one operation
+    // Draw cursor to back buffer (included in the atomic flip, eliminates flicker)
+    draw_cursor();
+
+    // Copy back buffer (with cursor) to front buffer in one operation
     flip_buffers();
 
-    // Switch to front buffer for cursor operations
+    // Restore draw target to front buffer for any direct operations
     g_draw_target = g_fb;
-
-    // Save background under cursor, then draw cursor (on front buffer)
-    save_cursor_background();
-    draw_cursor();
 }
 
 } // namespace displayd

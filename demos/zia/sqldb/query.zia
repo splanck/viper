@@ -496,6 +496,23 @@ entity QueryHandler {
             }
         }
 
+        // Privilege check: SELECT requires PRIV_SELECT on all tables
+        if stmt.tableNames.count() > 0 {
+            var pi = 0;
+            while pi < stmt.tableNames.count() {
+                var privErr = exec.checkPrivilege(stmt.tableNames.get(pi), PRIV_SELECT);
+                if privErr != null {
+                    return privErr;
+                }
+                pi = pi + 1;
+            }
+        } else if stmt.tableName != "" {
+            var privErr = exec.checkPrivilege(stmt.tableName, PRIV_SELECT);
+            if privErr != null {
+                return privErr;
+            }
+        }
+
         // Handle SELECT without FROM (e.g., SELECT 1+1, SELECT EXISTS(...))
         if stmt.tableName == "" && stmt.tableNames.count() == 0 {
             return executeExpressionSelect(stmt);

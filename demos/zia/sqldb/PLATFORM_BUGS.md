@@ -334,3 +334,51 @@ These need to be fixed in the platform itself.
 - **Regression test**: `test_codegen_arm64_callee_stack_params.cpp` (CalleeStackParamsSum10, CalleeStackParamsSurviveCall, CalleeStackParams13Wide)
 - **Found**: 2026-02-15
 - **Fixed**: 2026-02-15
+
+---
+
+## BUG-FE-008: Chained method calls on runtime class Ptr receivers fail
+
+- **Status**: FIXED
+- **Severity**: High
+- **Component**: Zia frontend — `Sema_Expr_Call.cpp`
+- **Symptom**: Chaining method calls on runtime class objects (e.g., `bytes.Slice(x,y).ToStr()`) fails to compile. The outer method call cannot resolve because the base expression is typed as a Function type instead of the actual return type. Users must break chained calls into separate statements as a workaround.
+- **Root cause**: In `Sema_Expr_Call.cpp`, the runtime class method call handler (lines 622–680) returned `sym->type` directly. For extern functions with parameters, `defineExternFunction()` stores a `Function(params...) -> ReturnType` type. Returning this Function type meant the outer chained call saw its base as `TypeKindSem::Function` — no dispatch handler matches Function-typed bases, so method resolution failed silently.
+- **Fix**: Added return type extraction: when `sym->type->kind == TypeKindSem::Function`, return `sym->type->returnType()` instead of the raw Function type. This ensures chained calls see the actual return type (e.g., `Ptr("Viper.Collections.Bytes")`) and can resolve subsequent methods correctly.
+- **Verification**: All 1151 tests pass. Chained calls like `data.Slice(0,5).ToStr()` and double-chains like `data.Slice(0,11).Slice(6,11)` compile and run correctly.
+- **Regression test**: `test_zia_bugfixes.cpp` (BugFE008_ChainedRuntimeMethodCalls, BugFE008_MultipleChainedCalls)
+- **Found**: 2026-02-16
+- **Fixed**: 2026-02-16
+
+---
+
+## BUG-FE-009: List[Boolean].get(i) causes IL type mismatch in boolean expressions
+
+- **Status**: FIXED
+- **Severity**: Medium
+- **Component**: Zia frontend — `Lowerer_Emit.cpp`
+- **Symptom**: Using `List[Boolean].get(i)` in boolean contexts (`if`, `&&`, `||`) causes an IL type mismatch. Users must use `List[Integer]` with 0/1 values as a workaround.
+- **Root cause**: In `Lowerer_Emit.cpp`, the `emitUnbox()` handler for `Type::Kind::I1` emitted `emitCallRet(Type(Type::Kind::I1), kUnboxI1, ...)`, declaring the call result as `i1`. However, the runtime function `rt_unbox_i1` has signature `"i64(obj)"` in `runtime.def` — it returns `int64_t` (always 0 or 1), not a 1-bit boolean. The IL verifier caught the mismatch between the declared `i1` return type and the actual `i64` runtime return type.
+- **Fix**: Changed the I1 unboxing case to use `Type(Type::Kind::I64)` for both the call result type and the returned LowerResult type, matching the actual runtime function signature. Boolean values from unboxing now travel as `i64` (0 or 1), which is universally compatible with all IL consumers (CBr conditions, And/Or operators, etc.).
+- **Verification**: All 1151 tests pass. `List[Boolean].get(i)` works correctly in if-conditions and logical AND/OR expressions.
+- **Regression test**: `test_zia_bugfixes.cpp` (BugFE009_ListBooleanGetInCondition, BugFE009_ListBooleanGetInLogicalExpr)
+- **Found**: 2026-02-16
+- **Fixed**: 2026-02-16
+
+---
+
+## BUG-FE-010: Cross-class Ptr type inference loses property/method access
+
+- **Status**: FIXED
+- **Severity**: High
+- **Component**: Zia frontend — `Sema_Expr_Advanced.cpp`, `Sema_Expr_Call.cpp`
+- **Symptom**: When a runtime function returns `obj` but the actual object belongs to a different class than the function's owning class (e.g., `Network.Tcp.RecvExact` returns a `Bytes` object, not a `Tcp` object), property access (`.Len`, `.Get()`) and method calls (`.Slice()`, `.ToStr()`) silently compile to 0/null or fail to resolve. Users must add explicit type annotations (e.g., `var x: Bytes = ...`) as a workaround.
+- **Root cause**: Three-stage type information loss:
+  1. **Registration** (`Sema_Runtime.cpp:169-170`): When a class method returns `obj`, the heuristic infers the return type as the method's owning class. `Network.Tcp.RecvExact` gets typed as returning `Ptr("Viper.Network.Tcp")` instead of `Ptr("Viper.Collections.Bytes")`.
+  2. **Property resolution** (`Sema_Expr_Advanced.cpp:280-298`): Property access constructs `Viper.Network.Tcp.get_Len` and looks it up — not found, since `Len` is a Bytes property. Falls through to return `types::unknown()`.
+  3. **Method resolution** (`Sema_Expr_Call.cpp:622-680`): Same pattern — constructs `Viper.Network.Tcp.Slice` which doesn't exist.
+- **Fix**: Added cross-class fallback search in both property access (`Sema_Expr_Advanced.cpp`) and method call resolution (`Sema_Expr_Call.cpp`). When the primary class lookup fails, the sema searches the full `RuntimeRegistry` catalog across all runtime classes for a matching property getter or method. The fallback only triggers when the primary lookup fails, preserving existing behavior for correctly-typed objects.
+- **Verification**: All 1151 tests pass. Variables with cross-class Ptr types can access properties and call methods that belong to the actual runtime class.
+- **Regression test**: `test_zia_bugfixes.cpp` (BugFE010_CrossClassPtrMethodFallback)
+- **Found**: 2026-02-16
+- **Fixed**: 2026-02-16

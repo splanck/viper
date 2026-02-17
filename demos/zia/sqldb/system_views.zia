@@ -26,6 +26,7 @@ func isSystemView(tableName: String) -> Boolean {
     if upper == "INFORMATION_SCHEMA.TABLES" { return true; }
     if upper == "INFORMATION_SCHEMA.COLUMNS" { return true; }
     if upper == "INFORMATION_SCHEMA.SCHEMATA" { return true; }
+    if upper == "INFORMATION_SCHEMA.TABLE_PRIVILEGES" { return true; }
     if upper == "SYS.DATABASES" { return true; }
     if upper == "SYS.TABLES" { return true; }
     if upper == "SYS.COLUMNS" { return true; }
@@ -61,6 +62,9 @@ func executeSystemView(tableName: String, server: DatabaseServer, currentDbName:
     }
     if upper == "SYS.USERS" {
         return viewSysUsers(server);
+    }
+    if upper == "INFORMATION_SCHEMA.TABLE_PRIVILEGES" {
+        return viewTablePrivileges(server);
     }
 
     var result = new QueryResult();
@@ -414,10 +418,77 @@ func viewSysUsers(server: DatabaseServer) -> QueryResult {
 // HELPERS
 //=============================================================================
 
+// Convert a privilege bitmask to individual privilege name strings
+func expandPrivileges(mask: Integer) -> List[String] {
+    var privs: List[String] = [];
+    // Use integer division to extract bits (Zia has no bitwise operators)
+    var selectBit = (mask / 1) - ((mask / 2) * 2);
+    var insertBit = (mask / 2) - ((mask / 4) * 2);
+    var updateBit = (mask / 4) - ((mask / 8) * 2);
+    var deleteBit = (mask / 8) - ((mask / 16) * 2);
+    if selectBit != 0 { privs.add("SELECT"); }
+    if insertBit != 0 { privs.add("INSERT"); }
+    if updateBit != 0 { privs.add("UPDATE"); }
+    if deleteBit != 0 { privs.add("DELETE"); }
+    return privs;
+}
+
+//=============================================================================
+// INFORMATION_SCHEMA.TABLE_PRIVILEGES
+//=============================================================================
+
+func viewTablePrivileges(server: DatabaseServer) -> QueryResult {
+    var result = new QueryResult();
+    result.init();
+
+    result.addColumnName("grantor");
+    result.addColumnName("grantee");
+    result.addColumnName("table_name");
+    result.addColumnName("privilege_type");
+
+    var i = 0;
+    while i < server.privGrantees.count() {
+        var grantee = server.privGrantees.get(i);
+        var tableName = server.privTableNames.get(i);
+        var mask = server.privBitmasks.get(i);
+
+        // Find the table owner as grantor
+        var grantor = "";
+        var oi = 0;
+        while oi < server.ownedTableNames.count() {
+            if server.ownedTableNames.get(oi) == tableName {
+                grantor = server.tableOwners.get(oi);
+                oi = server.ownedTableNames.count();
+            }
+            oi = oi + 1;
+        }
+
+        // Expand bitmask into individual privilege rows
+        var privNames = expandPrivileges(mask);
+        var pi = 0;
+        while pi < privNames.count() {
+            var row = new Row();
+            row.init();
+            row.addValue(sqlText(grantor));
+            row.addValue(sqlText(grantee));
+            row.addValue(sqlText(tableName));
+            row.addValue(sqlText(privNames.get(pi)));
+            result.addRow(row);
+            pi = pi + 1;
+        }
+        i = i + 1;
+    }
+
+    return result;
+}
+
 func columnTypeName(dataType: Integer) -> String {
     if dataType == SQL_INTEGER { return "INTEGER"; }
     if dataType == SQL_REAL { return "REAL"; }
     if dataType == SQL_TEXT { return "TEXT"; }
     if dataType == SQL_BLOB { return "BLOB"; }
+    if dataType == SQL_BOOLEAN { return "BOOLEAN"; }
+    if dataType == SQL_DATE { return "DATE"; }
+    if dataType == SQL_TIMESTAMP { return "TIMESTAMP"; }
     return "UNKNOWN";
 }

@@ -55,6 +55,17 @@ entity DatabaseServer {
     expose List[String] userNames;
     expose List[String] userPasswords;
 
+    // Privilege management (Phase 13: GRANT/REVOKE)
+    // Privilege bitmask constants
+    // PRIV_SELECT=1, PRIV_INSERT=2, PRIV_UPDATE=4, PRIV_DELETE=8, PRIV_ALL=15
+    expose List[String] privGrantees;     // username or "PUBLIC"
+    expose List[String] privTableNames;   // table name
+    expose List[Integer] privBitmasks;    // bitmask of granted privileges
+
+    // Table ownership (table creator = owner)
+    expose List[String] tableOwners;      // owner username
+    expose List[String] ownedTableNames;  // table name
+
     // Monitor object for thread safety
     hide List[Integer] lock;
 
@@ -69,6 +80,11 @@ entity DatabaseServer {
         lock = [];
         userNames = [];
         userPasswords = [];
+        privGrantees = [];
+        privTableNames = [];
+        privBitmasks = [];
+        tableOwners = [];
+        ownedTableNames = [];
         tableLockMgr = new TableLockManager();
         tableLockMgr.init();
 
@@ -614,6 +630,263 @@ entity DatabaseServer {
         }
         Threads.Monitor.Exit(lock);
     }
+
+    //=========================================================================
+    // PRIVILEGE MANAGEMENT (Phase 13)
+    //=========================================================================
+
+    // Set table ownership (called from CREATE TABLE)
+    expose func setTableOwner(tableName: String, owner: String) {
+        Threads.Monitor.Enter(lock);
+        // Check if already tracked (shouldn't happen, but safe)
+        var i = 0;
+        while i < ownedTableNames.count() {
+            if ownedTableNames.get(i) == tableName {
+                tableOwners.set(i, owner);
+                Threads.Monitor.Exit(lock);
+                return;
+            }
+            i = i + 1;
+        }
+        ownedTableNames.add(tableName);
+        tableOwners.add(owner);
+        Threads.Monitor.Exit(lock);
+    }
+
+    // Get table owner (returns "" if not tracked)
+    expose func getTableOwner(tableName: String) -> String {
+        Threads.Monitor.Enter(lock);
+        var i = 0;
+        while i < ownedTableNames.count() {
+            if ownedTableNames.get(i) == tableName {
+                var owner = tableOwners.get(i);
+                Threads.Monitor.Exit(lock);
+                return owner;
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(lock);
+        return "";
+    }
+
+    // Grant privilege to a user on a table.
+    // Grantor must be table owner or superuser (admin).
+    // Returns false if not authorized.
+    expose func grantPrivilege(grantor: String, grantee: String, tableName: String, privMask: Integer) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        // Check authorization: grantor must be admin or table owner
+        if grantor != "admin" {
+            var isOwner = false;
+            var oi = 0;
+            while oi < ownedTableNames.count() {
+                if ownedTableNames.get(oi) == tableName && tableOwners.get(oi) == grantor {
+                    isOwner = true;
+                    oi = ownedTableNames.count();
+                }
+                oi = oi + 1;
+            }
+            if isOwner == false {
+                Threads.Monitor.Exit(lock);
+                return false;
+            }
+        }
+        // Check if an existing grant entry exists for this grantee+table
+        var i = 0;
+        while i < privGrantees.count() {
+            if privGrantees.get(i) == grantee && privTableNames.get(i) == tableName {
+                // Merge privileges using bitwise OR
+                var existing = privBitmasks.get(i);
+                privBitmasks.set(i, bitwiseOr(existing, privMask));
+                Threads.Monitor.Exit(lock);
+                return true;
+            }
+            i = i + 1;
+        }
+        // Create new grant entry
+        privGrantees.add(grantee);
+        privTableNames.add(tableName);
+        privBitmasks.add(privMask);
+        Threads.Monitor.Exit(lock);
+        return true;
+    }
+
+    // Revoke privilege from a user on a table.
+    // Revoker must be table owner or superuser (admin).
+    expose func revokePrivilege(revoker: String, grantee: String, tableName: String, privMask: Integer) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        // Check authorization
+        if revoker != "admin" {
+            var isOwner = false;
+            var oi = 0;
+            while oi < ownedTableNames.count() {
+                if ownedTableNames.get(oi) == tableName && tableOwners.get(oi) == revoker {
+                    isOwner = true;
+                    oi = ownedTableNames.count();
+                }
+                oi = oi + 1;
+            }
+            if isOwner == false {
+                Threads.Monitor.Exit(lock);
+                return false;
+            }
+        }
+        // Find and update grant entry
+        var i = 0;
+        while i < privGrantees.count() {
+            if privGrantees.get(i) == grantee && privTableNames.get(i) == tableName {
+                var existing = privBitmasks.get(i);
+                var newMask = bitwiseAndNot(existing, privMask);
+                if newMask == 0 {
+                    // Remove entry entirely
+                    privGrantees.removeAt(i);
+                    privTableNames.removeAt(i);
+                    privBitmasks.removeAt(i);
+                } else {
+                    privBitmasks.set(i, newMask);
+                }
+                Threads.Monitor.Exit(lock);
+                return true;
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(lock);
+        return true;  // No-op revoke is not an error
+    }
+
+    // Check if a user has a specific privilege on a table.
+    // Returns true if: superuser, owner, explicit grant, or PUBLIC grant.
+    expose func hasPrivilege(username: String, tableName: String, privMask: Integer) -> Boolean {
+        Threads.Monitor.Enter(lock);
+        // Superuser bypasses all checks
+        if username == "admin" {
+            Threads.Monitor.Exit(lock);
+            return true;
+        }
+        // Owner has all privileges
+        var oi = 0;
+        while oi < ownedTableNames.count() {
+            if ownedTableNames.get(oi) == tableName && tableOwners.get(oi) == username {
+                Threads.Monitor.Exit(lock);
+                return true;
+            }
+            oi = oi + 1;
+        }
+        // Check explicit grants (user-specific and PUBLIC)
+        var i = 0;
+        while i < privGrantees.count() {
+            if privTableNames.get(i) == tableName {
+                if privGrantees.get(i) == username || privGrantees.get(i) == "PUBLIC" {
+                    if bitwiseAnd(privBitmasks.get(i), privMask) != 0 {
+                        Threads.Monitor.Exit(lock);
+                        return true;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        Threads.Monitor.Exit(lock);
+        return false;
+    }
+
+    // Remove all privileges for a table (called from DROP TABLE)
+    expose func dropTablePrivileges(tableName: String) {
+        Threads.Monitor.Enter(lock);
+        // Remove from ownership
+        var oi = 0;
+        while oi < ownedTableNames.count() {
+            if ownedTableNames.get(oi) == tableName {
+                ownedTableNames.removeAt(oi);
+                tableOwners.removeAt(oi);
+            } else {
+                oi = oi + 1;
+            }
+        }
+        // Remove from privilege grants
+        var i = 0;
+        while i < privTableNames.count() {
+            if privTableNames.get(i) == tableName {
+                privGrantees.removeAt(i);
+                privTableNames.removeAt(i);
+                privBitmasks.removeAt(i);
+            } else {
+                i = i + 1;
+            }
+        }
+        Threads.Monitor.Exit(lock);
+    }
+
+    // Remove all privileges for a user (called from DROP USER)
+    expose func dropUserPrivileges(userName: String) {
+        Threads.Monitor.Enter(lock);
+        var i = 0;
+        while i < privGrantees.count() {
+            if privGrantees.get(i) == userName {
+                privGrantees.removeAt(i);
+                privTableNames.removeAt(i);
+                privBitmasks.removeAt(i);
+            } else {
+                i = i + 1;
+            }
+        }
+        Threads.Monitor.Exit(lock);
+    }
+}
+
+//=============================================================================
+// PRIVILEGE BITMASK CONSTANTS
+//=============================================================================
+
+final PRIV_SELECT = 1;
+final PRIV_INSERT = 2;
+final PRIV_UPDATE = 4;
+final PRIV_DELETE = 8;
+final PRIV_ALL = 15;
+
+//=============================================================================
+// BITWISE HELPERS (Zia has no bitwise operators, emulate with integer math)
+//=============================================================================
+
+func bitwiseOr(a: Integer, b: Integer) -> Integer {
+    var result = 0;
+    var bit = 1;
+    while bit <= 8 {
+        var aBit = (a / bit) - ((a / (bit * 2)) * 2);
+        var bBit = (b / bit) - ((b / (bit * 2)) * 2);
+        if aBit != 0 || bBit != 0 {
+            result = result + bit;
+        }
+        bit = bit * 2;
+    }
+    return result;
+}
+
+func bitwiseAnd(a: Integer, b: Integer) -> Integer {
+    var result = 0;
+    var bit = 1;
+    while bit <= 8 {
+        var aBit = (a / bit) - ((a / (bit * 2)) * 2);
+        var bBit = (b / bit) - ((b / (bit * 2)) * 2);
+        if aBit != 0 && bBit != 0 {
+            result = result + bit;
+        }
+        bit = bit * 2;
+    }
+    return result;
+}
+
+func bitwiseAndNot(a: Integer, b: Integer) -> Integer {
+    // a AND NOT b — remove bits in b from a
+    var result = 0;
+    var bit = 1;
+    while bit <= 8 {
+        var aBit = (a / bit) - ((a / (bit * 2)) * 2);
+        var bBit = (b / bit) - ((b / (bit * 2)) * 2);
+        if aBit != 0 && bBit == 0 {
+            result = result + bit;
+        }
+        bit = bit * 2;
+    }
+    return result;
 }
 
 // Factory function

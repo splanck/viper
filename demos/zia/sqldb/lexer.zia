@@ -239,6 +239,8 @@ entity Lexer {
         if (word == "BLOB") { return TK_BLOB; }
         if (word == "BOOLEAN") { return TK_BOOLEAN; }
         if (word == "VARCHAR") { return TK_VARCHAR; }
+        if (word == "DATE") { return TK_DATE_TYPE; }
+        if (word == "TIMESTAMP") { return TK_TIMESTAMP_TYPE; }
         if (word == "BEGIN") { return TK_BEGIN; }
         if (word == "COMMIT") { return TK_COMMIT; }
         if (word == "ROLLBACK") { return TK_ROLLBACK; }
@@ -291,6 +293,9 @@ entity Lexer {
         if (word == "TEMP") { return TK_TEMPORARY; }
         if (word == "USER") { return TK_USER; }
         if (word == "PASSWORD") { return TK_PASSWORD; }
+        if (word == "GRANT") { return TK_GRANT; }
+        if (word == "REVOKE") { return TK_REVOKE; }
+        if (word == "PRIVILEGES") { return TK_PRIVILEGES; }
         return TK_IDENTIFIER;
     }
 

@@ -41,6 +41,12 @@ func sqlToInt(val: SqlValue) -> Integer {
 
 // Parse a SQL value (text ISO string or integer epoch) into an i64 timestamp
 func parseDateTimeArg(val: SqlValue) -> Integer {
+    if val.kind == SQL_TIMESTAMP {
+        return val.intValue;
+    }
+    if val.kind == SQL_DATE {
+        return dateToTimestamp(val.intValue);
+    }
     if val.kind == SQL_INTEGER {
         return val.intValue;
     }
@@ -71,27 +77,7 @@ func parseDateTimeArg(val: SqlValue) -> Integer {
     return DateTime.Create(yr, mo, dy, hr, mn, sc);
 }
 
-// Format year, month, day into YYYY-MM-DD string
-func fmtDateParts(y: Integer, m: Integer, d: Integer) -> String {
-    var result = Fmt.Int(y) + "-";
-    if m < 10 { result = result + "0"; }
-    result = result + Fmt.Int(m) + "-";
-    if d < 10 { result = result + "0"; }
-    result = result + Fmt.Int(d);
-    return result;
-}
-
-// Format hour, minute, second into HH:MM:SS string
-func fmtTimeParts(h: Integer, m: Integer, s: Integer) -> String {
-    var result = "";
-    if h < 10 { result = result + "0"; }
-    result = result + Fmt.Int(h) + ":";
-    if m < 10 { result = result + "0"; }
-    result = result + Fmt.Int(m) + ":";
-    if s < 10 { result = result + "0"; }
-    result = result + Fmt.Int(s);
-    return result;
-}
+// fmtDateParts and fmtTimeParts are defined in types.zia
 
 //=============================================================================
 // STRING FUNCTIONS
@@ -594,6 +580,9 @@ func evalConditionalFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if arg.kind == SQL_TEXT { return sqlText("text"); }
         if arg.kind == SQL_REAL { return sqlText("real"); }
         if arg.kind == SQL_BLOB { return sqlText("blob"); }
+        if arg.kind == SQL_BOOLEAN { return sqlText("boolean"); }
+        if arg.kind == SQL_DATE { return sqlText("date"); }
+        if arg.kind == SQL_TIMESTAMP { return sqlText("timestamp"); }
         return sqlText("unknown");
     }
 
@@ -601,6 +590,9 @@ func evalConditionalFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if args.count() > 0 {
             var arg = args.get(0);
             if arg.kind == SQL_INTEGER { return arg; }
+            if arg.kind == SQL_BOOLEAN { return sqlInteger(arg.intValue); }
+            if arg.kind == SQL_DATE { return sqlInteger(arg.intValue); }
+            if arg.kind == SQL_TIMESTAMP { return sqlInteger(arg.intValue); }
             if arg.kind == SQL_REAL { return sqlInteger(stringToInt(arg.textValue)); }
             if arg.kind == SQL_TEXT { return sqlInteger(stringToInt(arg.textValue)); }
             if arg.kind == SQL_NULL { return sqlNull(); }
@@ -627,6 +619,51 @@ func evalConditionalFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if args.count() > 0 {
             var arg = args.get(0);
             return sqlText(arg.toString());
+        }
+    }
+
+    if name == "CAST_BOOLEAN" || name == "CAST_BOOL" {
+        if args.count() > 0 {
+            var arg = args.get(0);
+            if arg.kind == SQL_NULL { return sqlNull(); }
+            if arg.kind == SQL_BOOLEAN { return arg; }
+            if arg.kind == SQL_INTEGER { return sqlBoolean(arg.intValue != 0); }
+            if arg.kind == SQL_TEXT {
+                var upper = String.ToUpper(arg.textValue);
+                if upper == "TRUE" || upper == "T" || upper == "1" || upper == "YES" || upper == "ON" {
+                    return sqlBoolean(true);
+                }
+                return sqlBoolean(false);
+            }
+            return sqlBoolean(false);
+        }
+    }
+
+    if name == "CAST_DATE" {
+        if args.count() > 0 {
+            var arg = args.get(0);
+            if arg.kind == SQL_NULL { return sqlNull(); }
+            if arg.kind == SQL_DATE { return arg; }
+            if arg.kind == SQL_TIMESTAMP { return sqlDate(timestampToDate(arg.intValue)); }
+            if arg.kind == SQL_INTEGER { return sqlDate(arg.intValue); }
+            if arg.kind == SQL_TEXT {
+                return sqlDate(parseDateText(arg.textValue));
+            }
+            return sqlNull();
+        }
+    }
+
+    if name == "CAST_TIMESTAMP" {
+        if args.count() > 0 {
+            var arg = args.get(0);
+            if arg.kind == SQL_NULL { return sqlNull(); }
+            if arg.kind == SQL_TIMESTAMP { return arg; }
+            if arg.kind == SQL_DATE { return sqlTimestamp(dateToTimestamp(arg.intValue)); }
+            if arg.kind == SQL_INTEGER { return sqlTimestamp(arg.intValue); }
+            if arg.kind == SQL_TEXT {
+                return sqlTimestamp(parseDateTimeArg(arg));
+            }
+            return sqlNull();
         }
     }
 
@@ -685,15 +722,12 @@ func evalConditionalFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "NOW" || name == "CURRENT_TIMESTAMP" {
         var ts = DateTime.Now();
-        return sqlText(DateTime.ToLocal(ts));
+        return sqlTimestamp(ts);
     }
 
     if name == "CURRENT_DATE" {
         var ts = DateTime.Now();
-        var y = DateTime.Year(ts);
-        var m = DateTime.Month(ts);
-        var d = DateTime.Day(ts);
-        return sqlText(fmtDateParts(y, m, d));
+        return sqlDate(timestampToDate(ts));
     }
 
     if name == "CURRENT_TIME" {
@@ -724,11 +758,19 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "DATE" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        var s = arg.toString();
-        if String.Length(s) >= 10 {
-            return sqlText(String.Substring(s, 0, 10));
-        }
-        return sqlText(s);
+        if arg.kind == SQL_DATE { return arg; }
+        if arg.kind == SQL_TIMESTAMP { return sqlDate(timestampToDate(arg.intValue)); }
+        // Parse text or integer as date
+        var ts = parseDateTimeArg(arg);
+        return sqlDate(timestampToDate(ts));
+    }
+
+    if name == "TIMESTAMP" && args.count() > 0 {
+        var arg = args.get(0);
+        if arg.kind == SQL_NULL { return sqlNull(); }
+        if arg.kind == SQL_TIMESTAMP { return arg; }
+        if arg.kind == SQL_DATE { return sqlTimestamp(dateToTimestamp(arg.intValue)); }
+        return sqlTimestamp(parseDateTimeArg(arg));
     }
 
     if name == "TIME" && args.count() > 0 {
@@ -792,7 +834,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var ts = parseDateTimeArg(arg);
         var days = sqlToInt(daysArg);
         var result = DateTime.AddDays(ts, days);
-        return sqlText(DateTime.ToLocal(result));
+        return sqlTimestamp(result);
     }
 
     if name == "DATE_SUB" && args.count() >= 2 {
@@ -802,7 +844,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var ts = parseDateTimeArg(arg);
         var days = sqlToInt(daysArg);
         var result = DateTime.AddDays(ts, 0 - days);
-        return sqlText(DateTime.ToLocal(result));
+        return sqlTimestamp(result);
     }
 
     if name == "DATEDIFF" && args.count() >= 2 {

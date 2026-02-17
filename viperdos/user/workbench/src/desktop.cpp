@@ -138,7 +138,7 @@ bool Desktop::init() {
 
     // Add system icons after volumes
     m_icons[m_iconCount++] = {
-        0, 0, "Shell", "/sys/consoled.sys", icons::shell_24, IconAction::LaunchProgram, false};
+        0, 0, "Shell", "/c/vshell.prg", icons::shell_24, IconAction::LaunchProgram, false};
     m_icons[m_iconCount++] = {
         0, 0, "Prefs", "/c/prefs.prg", icons::settings_24, IconAction::LaunchProgram, false};
     m_icons[m_iconCount++] = {
@@ -498,7 +498,7 @@ void Desktop::handleMenuAction(PulldownAction action) {
             // For now, just do nothing or show a message
             break;
         case PulldownAction::Shell:
-            spawnProgram("/sys/consoled.sys");
+            spawnProgram("/c/vshell.prg");
             break;
         case PulldownAction::Prefs:
             spawnProgram("/c/prefs.prg");

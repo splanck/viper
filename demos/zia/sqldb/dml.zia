@@ -24,9 +24,52 @@ bind "./database";
 bind "./index";
 bind "./parser";
 bind "./executor";
+bind "./sql_functions";
 bind "./storage/page";
 bind "./storage/engine";
+bind "./storage/btree";
+bind "./storage/btree_node";
 bind "./optimizer/optimizer";
+
+// Coerce a value to match a column's declared type.
+// Used on INSERT/UPDATE to auto-convert compatible values.
+func coerceToColumnType(val: SqlValue, targetType: Integer) -> SqlValue {
+    if val.kind == SQL_NULL { return val; }
+
+    // Already the right type
+    if val.kind == targetType { return val; }
+
+    // Coerce to BOOLEAN
+    if targetType == SQL_BOOLEAN {
+        if val.kind == SQL_INTEGER { return sqlBoolean(val.intValue != 0); }
+        if val.kind == SQL_TEXT {
+            var upper = String.ToUpper(val.textValue);
+            if upper == "TRUE" || upper == "T" || upper == "1" || upper == "YES" {
+                return sqlBoolean(true);
+            }
+            return sqlBoolean(false);
+        }
+        return val;
+    }
+
+    // Coerce to DATE
+    if targetType == SQL_DATE {
+        if val.kind == SQL_TEXT { return sqlDate(parseDateText(val.textValue)); }
+        if val.kind == SQL_TIMESTAMP { return sqlDate(timestampToDate(val.intValue)); }
+        if val.kind == SQL_INTEGER { return sqlDate(val.intValue); }
+        return val;
+    }
+
+    // Coerce to TIMESTAMP
+    if targetType == SQL_TIMESTAMP {
+        if val.kind == SQL_TEXT { return sqlTimestamp(parseDateTimeArg(val)); }
+        if val.kind == SQL_DATE { return sqlTimestamp(dateToTimestamp(val.intValue)); }
+        if val.kind == SQL_INTEGER { return sqlTimestamp(val.intValue); }
+        return val;
+    }
+
+    return val;
+}
 
 //=============================================================================
 // DML HANDLER ENTITY
@@ -44,6 +87,9 @@ entity DmlHandler {
         if exec.acquireExclusiveLock(stmt.tableName) == false {
             return exec.lockTimeoutError(stmt.tableName);
         }
+        // Privilege check: INSERT requires PRIV_INSERT
+        var insertPrivErr = exec.checkPrivilege(stmt.tableName, PRIV_INSERT);
+        if insertPrivErr != null { return insertPrivErr; }
 
         var result = new QueryResult();
         result.init();
@@ -119,6 +165,7 @@ entity DmlHandler {
                     if valIdx >= 0 {
                         var valExpr = valueExprs.get(valIdx);
                         var val = exec.evalExpr(valExpr, row, t);
+                        val = coerceToColumnType(val, column.typeCode);
                         row.setValue(c, val);
                     } else if column.hasDefault {
                         row.setValue(c, column.defaultValue);
@@ -247,7 +294,9 @@ entity DmlHandler {
                     }
 
                     if valIdx >= 0 {
-                        newRow.setValue(c, srcRow.getValue(valIdx));
+                        var srcVal = srcRow.getValue(valIdx);
+                        srcVal = coerceToColumnType(srcVal, column.typeCode);
+                        newRow.setValue(c, srcVal);
                     } else if column.hasDefault {
                         newRow.setValue(c, column.defaultValue);
                     } else {
@@ -444,6 +493,21 @@ entity DmlHandler {
                 var ok = idx.addEntry(row, rowIdx, table);
                 if ok == false {
                     return "UNIQUE constraint failed: duplicate value in index '" + idx.name + "'";
+                }
+                // Also insert into B-tree if persistent
+                if exec.storageEngine != null {
+                    var btree = exec.findBTreeForIndex(idx.name);
+                    if btree != null {
+                        var bt = btree;
+                        var se = exec.storageEngine;
+                        var colIdx = table.findColumnIndex(idx.getColumnName(0));
+                        if colIdx >= 0 {
+                            var keyVal = row.getValue(colIdx);
+                            var btreeKey = new BTreeKey();
+                            btreeKey.initWithValue(keyVal, se.lastInsertPageId, se.lastInsertSlotIdx);
+                            bt.insert(btreeKey);
+                        }
+                    }
                 }
             }
             i = i + 1;
@@ -815,6 +879,9 @@ entity DmlHandler {
                 return exec.lockTimeoutError(stmt.fromTableName);
             }
         }
+        // Privilege check: UPDATE requires PRIV_UPDATE
+        var updatePrivErr = exec.checkPrivilege(stmt.tableName, PRIV_UPDATE);
+        if updatePrivErr != null { return updatePrivErr; }
 
         // Route to multi-table UPDATE if FROM clause present
         if stmt.hasFrom {
@@ -861,6 +928,11 @@ entity DmlHandler {
                             var colIdx = t.findColumnIndex(colName);
                             if colIdx >= 0 {
                                 var val = exec.evalExpr(valExpr, rowData, t);
+                                var maybeCol = t.getColumn(colIdx);
+                                if maybeCol != null {
+                                    var uc = maybeCol;
+                                    val = coerceToColumnType(val, uc.typeCode);
+                                }
                                 updatedRow.setValue(colIdx, val);
                             }
                             i = i + 1;
@@ -966,6 +1038,9 @@ entity DmlHandler {
                 return exec.lockTimeoutError(stmt.usingTableName);
             }
         }
+        // Privilege check: DELETE requires PRIV_DELETE
+        var deletePrivErr = exec.checkPrivilege(stmt.tableName, PRIV_DELETE);
+        if deletePrivErr != null { return deletePrivErr; }
 
         // Route to multi-table DELETE if USING clause present
         if stmt.hasUsing {

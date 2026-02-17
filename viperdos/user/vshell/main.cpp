@@ -6,11 +6,15 @@
 //===----------------------------------------------------------------------===//
 /**
  * @file main.cpp
- * @brief Console shell application for ViperDOS.
+ * @brief VShell — standalone GUI shell for ViperDOS.
  *
- * Uses the same gui_poll_event + yield event loop pattern as VEdit and all
- * other working GUI applications. Embedded shell runs commands in-process,
- * writing directly to the TextBuffer via AnsiParser.
+ * A brand-new .prg shell program that follows the proven VEdit pattern:
+ * - extern "C" int main()  — full CRT initialization via crt0
+ * - gui_present()           — synchronous present (guaranteed compositing)
+ * - gui_poll_event() + yield — cooperative event loop
+ *
+ * Reuses consoled's proven components (TextBuffer, AnsiParser, EmbeddedShell,
+ * keymap, shell_cmds, shell_io, RequestHandler) without duplicating them.
  */
 //===----------------------------------------------------------------------===//
 
@@ -39,39 +43,25 @@ constexpr uint32_t DEFAULT_BG = VIPER_COLOR_CONSOLE_BG;
 } // namespace
 
 //===----------------------------------------------------------------------===//
-// BSS Initialization
+// ShellApp — VEdit-style GUI application
 //===----------------------------------------------------------------------===//
 
-extern "C" char __bss_start[];
-extern "C" char __bss_end[];
-
-static void clearBss() {
-    for (char *p = __bss_start; p < __bss_end; p++) {
-        *p = 0;
-    }
-}
-
-//===----------------------------------------------------------------------===//
-// ConsoleApp — VEdit-style GUI application
-//===----------------------------------------------------------------------===//
-
-class ConsoleApp {
+class ShellApp {
   public:
-    ConsoleApp()
+    ShellApp()
         : m_window(nullptr), m_winWidth(0), m_winHeight(0), m_serviceChannel(-1),
           m_isPrimary(false), m_running(false) {}
 
     bool init() {
-        sys::print("\033[0m");
-        sys::print("[consoled] Starting...\n");
+        sys::print("[vshell] Starting...\n");
 
         if (!waitForDisplayd()) {
-            sys::print("[consoled] ERROR: displayd not found\n");
+            sys::print("[vshell] ERROR: displayd not found\n");
             return false;
         }
 
         if (gui_init() != 0) {
-            sys::print("[consoled] Failed to init GUI\n");
+            sys::print("[vshell] Failed to init GUI\n");
             return false;
         }
 
@@ -84,33 +74,36 @@ class ConsoleApp {
         }
 
         registerService();
-        sys::print("[consoled] Ready.\n");
+        sys::print("[vshell] Ready.\n");
         return true;
     }
 
     void run() {
         m_running = true;
-        gui_event_t event;
 
         while (m_running) {
-            // 1. Process one GUI event (non-blocking)
+            bool needsPresent = false;
+
+            // 1. Process GUI events (drain all pending)
+            gui_event_t event;
             if (gui_poll_event(m_window, &event) == 0) {
-                processEvent(event);
+                needsPresent |= processEvent(event);
             }
 
             // 2. Drain IPC messages from child processes (non-blocking)
             if (m_isPrimary && m_serviceChannel >= 0) {
-                processIpc();
+                needsPresent |= processIpc();
             }
 
             // 3. Check foreground process exit (non-blocking)
             if (m_shell.is_foreground()) {
-                m_shell.check_foreground();
+                bool ended = m_shell.check_foreground();
+                needsPresent |= ended;
             }
 
-            // 4. Present if anything changed
-            if (m_textBuffer.needs_present()) {
-                gui_present_async(m_window);
+            // 4. Present SYNCHRONOUSLY if anything changed — the key fix
+            if (needsPresent || m_textBuffer.needs_present()) {
+                gui_present(m_window);
                 m_textBuffer.clear_needs_present();
             }
 
@@ -161,25 +154,25 @@ class ConsoleApp {
     bool createWindow() {
         gui_display_info_t display;
         if (gui_get_display_info(&display) != 0) {
-            sys::print("[consoled] Failed to get display info\n");
+            sys::print("[vshell] Failed to get display info\n");
             return false;
         }
 
         m_winWidth = (display.width * 70) / 100;
         m_winHeight = (display.height * 60) / 100;
 
-        // Check for existing consoled instance
+        // Check for existing consoled/vshell instance
         uint32_t existingHandle = 0xFFFFFFFF;
-        bool consoledExists =
+        bool shellExists =
             (sys::assign_get("CONSOLED", &existingHandle) == 0 && existingHandle != 0xFFFFFFFF);
-        if (consoledExists) {
+        if (shellExists) {
             sys::channel_close(static_cast<int32_t>(existingHandle));
         }
 
         // Build window title
-        char windowTitle[32] = "Console";
-        if (consoledExists) {
-            char *p = windowTitle + 7;
+        char windowTitle[32] = "Shell";
+        if (shellExists) {
+            char *p = windowTitle + 5;
             *p++ = ' ';
             *p++ = '#';
             uint32_t id = sys::uptime() % 1000;
@@ -196,12 +189,12 @@ class ConsoleApp {
 
         m_window = gui_create_window(windowTitle, m_winWidth, m_winHeight);
         if (!m_window) {
-            sys::print("[consoled] Failed to create window\n");
+            sys::print("[vshell] Failed to create window\n");
             return false;
         }
 
-        int32_t winX = 20 + (consoledExists ? 40 : 0);
-        int32_t winY = 20 + (consoledExists ? 40 : 0);
+        int32_t winX = 20 + (shellExists ? 40 : 0);
+        int32_t winY = 20 + (shellExists ? 40 : 0);
         gui_set_position(m_window, winX, winY);
         return true;
     }
@@ -211,7 +204,7 @@ class ConsoleApp {
         uint32_t rows = (m_winHeight - 2 * PADDING) / FONT_HEIGHT;
 
         if (!m_textBuffer.init(m_window, cols, rows, DEFAULT_FG, DEFAULT_BG)) {
-            sys::print("[consoled] Failed to allocate text buffer\n");
+            sys::print("[vshell] Failed to allocate text buffer\n");
             return false;
         }
 
@@ -259,7 +252,8 @@ class ConsoleApp {
 
     //=== Event processing ===================================================
 
-    void processEvent(const gui_event_t &event) {
+    /// Process a GUI event. Returns true if the screen needs to be presented.
+    bool processEvent(const gui_event_t &event) {
         if (event.type == GUI_EVENT_KEY && event.key.pressed) {
             char c = keycode_to_ascii(event.key.keycode, event.key.modifiers);
 
@@ -275,14 +269,19 @@ class ConsoleApp {
                     m_shell.handle_char(c);
                 }
             }
+            return true;
         } else if (event.type == GUI_EVENT_CLOSE) {
             m_running = false;
+            return false;
         }
+        return false;
     }
 
-    void processIpc() {
+    /// Drain IPC messages. Returns true if any messages were processed.
+    bool processIpc() {
         uint8_t msgBuf[MAX_PAYLOAD];
         uint32_t handles[4];
+        bool didWork = false;
 
         for (uint32_t i = 0; i < 64; i++) {
             uint32_t handleCount = 4;
@@ -291,6 +290,8 @@ class ConsoleApp {
 
             if (n <= 0)
                 break;
+
+            didWork = true;
 
             int32_t clientCh = (handleCount > 0) ? static_cast<int32_t>(handles[0]) : -1;
             m_requestHandler.handle(
@@ -302,22 +303,21 @@ class ConsoleApp {
                 }
             }
         }
+        return didWork;
     }
 };
 
 //===----------------------------------------------------------------------===//
-// Entry Point
+// Entry Point — uses main() for full CRT initialization (like VEdit)
 //===----------------------------------------------------------------------===//
 
-extern "C" void _start() {
-    clearBss();
-
-    ConsoleApp app;
+extern "C" int main() {
+    ShellApp app;
     if (!app.init()) {
-        sys::exit(1);
+        return 1;
     }
 
     app.run();
     app.shutdown();
-    sys::exit(0);
+    return 0;
 }

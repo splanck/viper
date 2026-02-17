@@ -11,7 +11,6 @@
 
 #include "input.hpp"
 #include "compositor.hpp"
-#include "cursor.hpp"
 #include "events.hpp"
 #include "menu.hpp"
 #include "state.hpp"
@@ -78,8 +77,6 @@ void poll_mouse() {
 
     // Update cursor position
     if (cursor_moved) {
-        if (g_cursor_visible)
-            restore_cursor_background();
         g_cursor_x = state.x;
         g_cursor_y = state.y;
         if (!g_cursor_visible)
@@ -202,23 +199,25 @@ void poll_mouse() {
                 }
             }
         } else {
-            // Queue mouse move event to focused surface if in client area
+            // Queue mouse move event to focused surface if in client area.
+            // Rate-limit to ~60Hz to avoid flooding the 16-slot event channel
+            // (which starves key events when consoled is sleeping).
+            static uint64_t last_move_event_time = 0;
+            uint64_t now = sys::uptime();
+
             Surface *focused = find_surface_by_id(g_focused_surface);
-            if (focused) {
+            if (focused && (now - last_move_event_time >= 16)) {
                 int32_t local_x = g_cursor_x - focused->x;
                 int32_t local_y = g_cursor_y - focused->y;
 
-                // Only send move events within client area
                 if (local_x >= 0 && local_x < static_cast<int32_t>(focused->width) &&
                     local_y >= 0 && local_y < static_cast<int32_t>(focused->height)) {
                     int32_t dx = g_cursor_x - g_last_mouse_x;
                     int32_t dy = g_cursor_y - g_last_mouse_y;
                     queue_mouse_event(focused, 0, local_x, local_y, dx, dy, state.buttons, 0);
+                    last_move_event_time = now;
                 }
             }
-
-            save_cursor_background();
-            draw_cursor();
         }
 
         g_last_mouse_x = state.x;

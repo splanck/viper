@@ -295,6 +295,31 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
             }
             return funcType;
         }
+
+        // Fallback: when a runtime function returns obj typed as a different class
+        // (e.g., Network.Tcp.RecvExact returns Bytes, not Tcp), the variable's Ptr
+        // name may not match the actual class. Search all runtime classes for the
+        // property getter as a cross-class fallback.
+        const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
+        for (const auto &cls : catalog)
+        {
+            if (!cls.qname || cls.qname == baseType->name)
+                continue;
+            for (const auto &p : cls.properties)
+            {
+                if (p.name && std::string_view(p.name) == expr->field && p.getter)
+                {
+                    Symbol *fallbackSym = lookupSymbol(p.getter);
+                    if (fallbackSym && fallbackSym->kind == Symbol::Kind::Function)
+                    {
+                        TypeRef funcType = fallbackSym->type;
+                        if (funcType && funcType->kind == TypeKindSem::Function)
+                            return funcType->returnType();
+                        return funcType;
+                    }
+                }
+            }
+        }
     }
 
     return types::unknown();

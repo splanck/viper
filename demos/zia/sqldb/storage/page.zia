@@ -45,6 +45,9 @@ final VAL_TYPE_INT = 1;
 final VAL_TYPE_REAL = 2;
 final VAL_TYPE_TEXT = 3;
 final VAL_TYPE_BLOB = 4;
+final VAL_TYPE_BOOL = 5;
+final VAL_TYPE_DATE = 6;
+final VAL_TYPE_TIMESTAMP = 7;
 
 // Maximum inline value size before overflow
 final MAX_INLINE_SIZE = 2000;
