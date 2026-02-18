@@ -499,7 +499,7 @@ static uint8_t *pkcs7_pad(const uint8_t *data, size_t len, size_t *out_len)
     return padded;
 }
 
-/// @brief Remove PKCS7 padding from data
+/// @brief Remove PKCS7 padding from data (S-05: constant-time implementation)
 /// @param data Padded data
 /// @param len Length of padded data
 /// @param out_len Output: length of unpadded data
@@ -513,12 +513,18 @@ static int pkcs7_unpad(const uint8_t *data, size_t len, size_t *out_len)
     if (pad_byte == 0 || pad_byte > AES_BLOCK_SIZE)
         return -1;
 
-    // Verify all padding bytes are correct
-    for (size_t i = 0; i < pad_byte; i++)
+    /* S-05: Constant-time padding check — accumulate mismatch bits without
+     * branching on individual byte values to prevent timing side-channels. */
+    uint8_t mismatch = 0;
+    for (size_t i = 0; i < (size_t)AES_BLOCK_SIZE; i++)
     {
-        if (data[len - 1 - i] != pad_byte)
-            return -1;
+        /* Only check bytes that fall within the padding region */
+        uint8_t in_range = (uint8_t)(i < (size_t)pad_byte ? 0xFF : 0x00);
+        mismatch |= in_range & (data[len - 1 - i] ^ pad_byte);
     }
+
+    if (mismatch != 0)
+        return -1;
 
     *out_len = len - pad_byte;
     return 0;
@@ -810,26 +816,38 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
     return result;
 }
 
-/// @brief Derive a 32-byte key from password using SHA-256.
-/// This is a simple key derivation - for better security use PBKDF2.
+/// @brief Derive a 32-byte key from password using iterated SHA-256 (S-06).
+///
+/// Uses 10 000 rounds of SHA-256 with a fixed application salt and a length
+/// prefix for domain separation. This is not PBKDF2 (no per-call salt), but
+/// significantly harder to brute-force than a single-pass SHA-256.
+/// For production-grade security, use PBKDF2-HMAC-SHA256 with a random salt.
+#define DERIVE_KEY_ROUNDS 10000
+
 static void derive_key(const char *password, uint8_t key[32])
 {
-    // Use SHA-256 of password as key (simple KDF)
-    // For production, should use PBKDF2 with salt
     size_t pass_len = password ? strlen(password) : 0;
 
-    // Double-hash for slightly better key derivation
-    uint8_t hash1[32];
+    /* Fixed application-level domain separator (S-06) */
+    static const uint8_t kSalt[16] = {
+        0x56, 0x49, 0x50, 0x45, 0x52, 0x5f, 0x41, 0x45,
+        0x53, 0x5f, 0x4b, 0x44, 0x46, 0x5f, 0x76, 0x31};
 
-    // First hash
-    local_sha256((const uint8_t *)password, pass_len, hash1);
+    /* Build initial block: salt || length_byte || password */
+    uint8_t block[16 + 1 + 256];
+    size_t capped = pass_len < 256 ? pass_len : 256;
+    memcpy(block, kSalt, 16);
+    block[16] = (uint8_t)capped;
+    memcpy(block + 17, password, capped);
 
-    // Second hash with length prefix for domain separation
-    uint8_t prefixed[33];
-    prefixed[0] = (uint8_t)pass_len;
-    memcpy(prefixed + 1, hash1, 32);
-    local_sha256(prefixed, 33, key);
+    local_sha256(block, 17 + capped, key);
+
+    /* Iterate to slow down brute-force attacks */
+    for (int r = 1; r < DERIVE_KEY_ROUNDS; r++)
+        local_sha256(key, 32, key);
 }
+
+#undef DERIVE_KEY_ROUNDS
 
 /// @brief Generate random IV using rt_crypto_rand_bytes
 static void generate_iv(uint8_t iv[16])

@@ -16,6 +16,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_physics2d.h"
 #include "rt_pixels.h"
 
 #include <stdlib.h>
@@ -449,25 +450,23 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
 
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
 
-    // Access body fields directly via the physics2d body struct layout.
-    // The body struct starts with vptr, then x, y, w, h, vx, vy.
-    typedef struct
-    {
-        void *vptr;
-        double x, y, w, h, vx, vy;
-    } body_header;
-
-    body_header *body = (body_header *)body_ptr;
-
     int64_t tw = tilemap->tile_width;
     int64_t th = tilemap->tile_height;
     int8_t collided = 0;
 
+    // Read body state via the public physics2d API (avoids fragile struct cast)
+    double bx = rt_physics2d_body_x(body_ptr);
+    double by = rt_physics2d_body_y(body_ptr);
+    double bw = rt_physics2d_body_w(body_ptr);
+    double bh = rt_physics2d_body_h(body_ptr);
+    double bvx = rt_physics2d_body_vx(body_ptr);
+    double bvy = rt_physics2d_body_vy(body_ptr);
+
     // Determine the range of tiles the body overlaps
-    int64_t left = (int64_t)body->x / tw;
-    int64_t right = (int64_t)(body->x + body->w - 1) / tw;
-    int64_t top = (int64_t)body->y / th;
-    int64_t bottom = (int64_t)(body->y + body->h - 1) / th;
+    int64_t left = (int64_t)bx / tw;
+    int64_t right = (int64_t)(bx + bw - 1) / tw;
+    int64_t top = (int64_t)by / th;
+    int64_t bottom = (int64_t)(by + bh - 1) / th;
 
     // Clamp to tilemap bounds
     if (left < 0)
@@ -498,8 +497,8 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
             double tile_y2 = tile_y1 + (double)th;
 
             // Body AABB
-            double bx1 = body->x, by1 = body->y;
-            double bx2 = body->x + body->w, by2 = body->y + body->h;
+            double bx1 = bx, by1 = by;
+            double bx2 = bx + bw, by2 = by + bh;
 
             // Check overlap
             if (bx2 <= tile_x1 || bx1 >= tile_x2 || by2 <= tile_y1 || by1 >= tile_y2)
@@ -508,9 +507,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
             // One-way platform: only collide if body is above tile and moving down
             if (ctype == TILE_COLLISION_ONE_WAY)
             {
-                // Only collide if body bottom was above tile top last frame
-                // Approximate: body velocity is downward and body center is above tile top
-                if (body->vy <= 0.0 || (by2 - body->vy * 0.017) > tile_y1 + 2.0)
+                if (bvy <= 0.0 || (by2 - bvy * 0.017) > tile_y1 + 2.0)
                     continue;
             }
 
@@ -522,23 +519,34 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
             if (ox < oy)
             {
                 // Horizontal resolution
-                if (bx1 + body->w * 0.5 < tile_x1 + (double)tw * 0.5)
-                    body->x = tile_x1 - body->w; // Push left
+                if (bx1 + bw * 0.5 < tile_x1 + (double)tw * 0.5)
+                    bx = tile_x1 - bw; // Push left
                 else
-                    body->x = tile_x2; // Push right
-                body->vx = 0.0;
+                    bx = tile_x2; // Push right
+                bvx = 0.0;
+                // Refresh derived coordinates for subsequent iterations
+                bx1 = bx;
+                bx2 = bx + bw;
             }
             else
             {
                 // Vertical resolution
-                if (by1 + body->h * 0.5 < tile_y1 + (double)th * 0.5)
-                    body->y = tile_y1 - body->h; // Push up (landing)
+                if (by1 + bh * 0.5 < tile_y1 + (double)th * 0.5)
+                    by = tile_y1 - bh; // Push up (landing)
                 else
-                    body->y = tile_y2; // Push down (hit ceiling)
-                body->vy = 0.0;
+                    by = tile_y2; // Push down (hit ceiling)
+                bvy = 0.0;
+                by1 = by;
+                by2 = by + bh;
             }
             collided = 1;
         }
+    }
+
+    if (collided)
+    {
+        rt_physics2d_body_set_pos(body_ptr, bx, by);
+        rt_physics2d_body_set_vel(body_ptr, bvx, bvy);
     }
 
     return collided;

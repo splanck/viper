@@ -12,8 +12,42 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+
+/* S-13: Check if a URL scheme is unsafe (javascript:, data:, vbscript:) */
+static bool url_scheme_is_blocked(const char *url, int64_t len)
+{
+    static const struct
+    {
+        const char *scheme;
+        int scheme_len;
+    } blocked[] = {{"javascript:", 11}, {"data:", 5}, {"vbscript:", 9}};
+
+    for (int s = 0; s < 3; s++)
+    {
+        int sl = blocked[s].scheme_len;
+        if (len >= sl)
+        {
+            bool match = true;
+            for (int i = 0; i < sl; i++)
+            {
+                char c = url[i];
+                if (c >= 'A' && c <= 'Z')
+                    c = (char)(c + 32);
+                if (c != blocked[s].scheme[i])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+                return true;
+        }
+    }
+    return false;
+}
 
 // --- Helper: append escaped HTML ---
 
@@ -110,7 +144,12 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
                 if (k < len)
                 {
                     rt_sb_append_cstr(sb, "<a href=\"");
-                    rt_sb_append_bytes(sb, line + url_start, k - url_start);
+                    /* S-13: Block unsafe URL schemes to prevent XSS */
+                    int64_t url_len = k - url_start;
+                    if (url_scheme_is_blocked(line + url_start, url_len))
+                        rt_sb_append_cstr(sb, "#");
+                    else
+                        rt_sb_append_bytes(sb, line + url_start, url_len);
                     rt_sb_append_cstr(sb, "\">");
                     for (int64_t m = text_start; m < j; m++)
                         append_escaped(sb, line[m]);

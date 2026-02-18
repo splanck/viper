@@ -107,7 +107,8 @@ static void free_entry(cm_entry *e)
     if (e)
     {
         free(e->key);
-        rt_obj_release_check0(e->value);
+        if (rt_obj_release_check0(e->value))
+            rt_obj_free(e->value);
         free(e);
     }
 }
@@ -243,7 +244,8 @@ void rt_concmap_set(void *obj, rt_string key, void *value)
     {
         /* Update existing entry. */
         rt_obj_retain_maybe(value);
-        rt_obj_release_check0(existing->value);
+        if (rt_obj_release_check0(existing->value))
+            rt_obj_free(existing->value);
         existing->value = value;
         CM_UNLOCK(cm);
         return;

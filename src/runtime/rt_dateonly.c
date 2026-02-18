@@ -450,6 +450,8 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt)
                     buf[buf_pos++] = spec;
                     break;
             }
+            if (buf_pos > 255)
+                buf_pos = 255;
         }
         else
         {

@@ -77,6 +77,9 @@ void rt_net_init_wsa(void);
 /// @brief Initial buffer size for reading responses.
 #define HTTP_BUFFER_SIZE 4096
 
+/// @brief Maximum response body size (256 MB) — prevents decompression/server DoS (S-09 fix).
+#define HTTP_MAX_BODY_SIZE (256u * 1024u * 1024u)
+
 /// @brief Parsed URL structure.
 typedef struct parsed_url
 {
@@ -396,9 +399,24 @@ static void rt_http_res_finalize(void *obj)
     res->status = 0;
 }
 
+/// @brief Return true if the string contains CR or LF (HTTP injection guard).
+static bool has_crlf(const char *s)
+{
+    for (; *s; s++)
+    {
+        if (*s == '\r' || *s == '\n')
+            return true;
+    }
+    return false;
+}
+
 /// @brief Add header to request.
 static void add_header(rt_http_req_t *req, const char *name, const char *value)
 {
+    /* Reject headers that contain CR or LF — they would split the HTTP stream (S-08 fix) */
+    if (!name || !value || has_crlf(name) || has_crlf(value))
+        return;
+
     http_header_t *h = (http_header_t *)malloc(sizeof(http_header_t));
     if (!h)
         return;
@@ -626,6 +644,13 @@ static uint8_t *read_body_content_length_conn(http_conn_t *conn,
                                               size_t content_length,
                                               size_t *out_len)
 {
+    /* Cap to protect against server-controlled malloc(HUGE) (S-09 fix) */
+    if (content_length > HTTP_MAX_BODY_SIZE)
+    {
+        *out_len = 0;
+        return NULL;
+    }
+
     uint8_t *body = (uint8_t *)malloc(content_length);
     if (!body)
         return NULL;
@@ -685,6 +710,14 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len)
             char *trailer = read_line_conn(conn);
             free(trailer);
             break;
+        }
+
+        /* Reject chunks that would push the total body past the limit (S-09 fix) */
+        if (body_len + chunk_size > HTTP_MAX_BODY_SIZE)
+        {
+            free(body);
+            *out_len = 0;
+            return NULL;
         }
 
         // Expand body buffer if needed
@@ -783,7 +816,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         rt_tls_config_t tls_config;
         rt_tls_config_init(&tls_config);
         tls_config.hostname = req->url.host;
-        tls_config.verify_cert = 0; // Skip cert verification for now
+        /* Do NOT override verify_cert — let the config default take effect (S-07 fix) */
         if (req->timeout_ms > 0)
             tls_config.timeout_ms = req->timeout_ms;
 

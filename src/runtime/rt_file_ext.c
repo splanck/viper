@@ -14,6 +14,18 @@
 
 #include "rt_bytes.h"
 #include "rt_file.h"
+
+/* O-02: Internal bytes layout for direct data access (avoids per-byte rt_bytes_get) */
+typedef struct
+{
+    int64_t len;
+    uint8_t *data;
+} file_bytes_impl;
+
+static inline uint8_t *file_bytes_data(void *obj)
+{
+    return obj ? ((file_bytes_impl *)obj)->data : NULL;
+}
 #include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
@@ -263,11 +275,11 @@ void *rt_io_file_read_all_bytes(rt_string path)
     }
     (void)close(fd);
 
+    /* O-02: Use memcpy into the raw bytes buffer instead of per-byte rt_bytes_set */
     void *bytes = rt_bytes_new((int64_t)off);
-    for (size_t i = 0; i < off; ++i)
-    {
-        rt_bytes_set(bytes, (int64_t)i, buf[i]);
-    }
+    uint8_t *dst = file_bytes_data(bytes);
+    if (dst)
+        memcpy(dst, buf, off);
 
     free(buf);
     return bytes;
@@ -561,11 +573,10 @@ void *rt_file_read_bytes(rt_string path)
     }
     close(fd);
 
-    // Copy into bytes object
-    for (size_t i = 0; i < off; i++)
-    {
-        rt_bytes_set(bytes, (int64_t)i, (uint8_t)buf[i]);
-    }
+    /* O-02: Use memcpy into the raw bytes buffer instead of per-byte rt_bytes_set */
+    uint8_t *dst2 = file_bytes_data(bytes);
+    if (dst2)
+        memcpy(dst2, buf, off);
 
     free(buf);
     return bytes;
@@ -573,7 +584,7 @@ void *rt_file_read_bytes(rt_string path)
 
 /// What: Write a Bytes object to a file.
 /// Why:  Support binary file writing.
-/// How:  Opens file, writes all bytes from Bytes object.
+/// How:  Opens file, writes all bytes from Bytes object using chunked writes.
 void rt_file_write_bytes(rt_string path, void *bytes)
 {
     const char *cpath = NULL;
@@ -587,15 +598,26 @@ void rt_file_write_bytes(rt_string path, void *bytes)
     if (fd < 0)
         return;
 
+    /* O-01: Use the raw data pointer and chunked writes instead of per-byte write() */
+    const uint8_t *src = file_bytes_data(bytes);
     int64_t len = rt_bytes_len(bytes);
-    for (int64_t i = 0; i < len; i++)
+
+    if (src && len > 0)
     {
-        uint8_t byte = (uint8_t)rt_bytes_get(bytes, i);
-        ssize_t n;
-        do
+        size_t written = 0;
+        while (written < (size_t)len)
         {
-            n = write(fd, &byte, 1);
-        } while (n < 0 && errno == EINTR);
+            ssize_t n = write(fd, src + written, (size_t)len - written);
+            if (n < 0)
+            {
+                if (errno == EINTR)
+                    continue;
+                break;
+            }
+            if (n == 0)
+                break;
+            written += (size_t)n;
+        }
     }
 
     close(fd);

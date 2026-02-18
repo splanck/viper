@@ -116,6 +116,9 @@ static void *parse_array(const char **p)
     return seq;
 }
 
+// --- Internal parse error flag (S-14) ---
+static int g_toml_had_error = 0;
+
 // --- Public API ---
 
 void *rt_toml_parse(rt_string src)
@@ -124,6 +127,7 @@ void *rt_toml_parse(rt_string src)
         return NULL;
 
     const char *p = rt_string_cstr(src);
+    g_toml_had_error = 0;
     void *root = rt_map_new();
     void *current_section = root;
 
@@ -214,6 +218,8 @@ void *rt_toml_parse(rt_string src)
 
         if (!key)
         {
+            /* S-14: flag malformed line that cannot be parsed as key=value */
+            g_toml_had_error = 1;
             skip_line(&p);
             continue;
         }
@@ -221,6 +227,8 @@ void *rt_toml_parse(rt_string src)
         skip_ws(&p);
         if (*p != '=')
         {
+            /* S-14: flag missing '=' separator */
+            g_toml_had_error = 1;
             skip_line(&p);
             continue;
         }
@@ -248,8 +256,11 @@ void *rt_toml_parse(rt_string src)
 
 int8_t rt_toml_is_valid(rt_string src)
 {
+    /* S-14: rt_toml_parse always returns a (partial) map; check error flag */
     void *result = rt_toml_parse(src);
-    return result != NULL ? 1 : 0;
+    if (!result || g_toml_had_error)
+        return 0;
+    return 1;
 }
 
 rt_string rt_toml_format(void *map)
@@ -319,7 +330,9 @@ void *rt_toml_get(void *root, rt_string key_path)
         return NULL;
 
     // Auto-parse: if root is a raw TOML string, parse it first
-    uint64_t magic = *(uint64_t *)root;
+    /* S-15: use memcpy to avoid type-punning UB */
+    uint64_t magic;
+    memcpy(&magic, root, sizeof(magic));
     if (magic == RT_STRING_MAGIC)
     {
         root = rt_toml_parse((rt_string)root);
@@ -372,11 +385,14 @@ rt_string rt_toml_get_str(void *root, rt_string key_path)
     if (!val)
         return rt_string_from_bytes("", 0);
     // Check if value is a raw string
-    uint64_t m = *(uint64_t *)val;
+    /* S-15: use memcpy to avoid type-punning UB */
+    uint64_t m;
+    memcpy(&m, val, sizeof(m));
     if (m == RT_STRING_MAGIC)
         return (rt_string)val;
     // Try as boxed string
-    int64_t tag = *(int64_t *)val;
+    int64_t tag;
+    memcpy(&tag, val, sizeof(tag));
     if (tag == RT_BOX_STR)
         return rt_unbox_str(val);
     return rt_string_from_bytes("", 0);

@@ -301,17 +301,81 @@ static rt_string exec_capture_spawn(const char *program, void *args)
 
 #else // _WIN32
 
+/* Windows argument quoting per CommandLineToArgvW rules (S-22 fix).
+   - N backslashes followed by '"': emit 2N backslashes + '\"'
+   - N backslashes at end of arg (before closing '"'): emit 2N backslashes
+   - N backslashes followed by non-'"': emit N backslashes unchanged      */
+static size_t cmdline_quoted_len(const char *s)
+{
+    size_t n = 2; /* outer quotes */
+    int bs = 0;
+    for (; *s; s++)
+    {
+        if (*s == '\\')
+        {
+            bs++;
+        }
+        else if (*s == '"')
+        {
+            n += (size_t)bs * 2 + 2; /* 2×bs + '\' + '"' */
+            bs = 0;
+        }
+        else
+        {
+            n += (size_t)bs + 1;
+            bs = 0;
+        }
+    }
+    n += (size_t)bs * 2; /* trailing backslashes before closing '"' */
+    return n;
+}
+
+static char *cmdline_append_quoted(char *p, const char *s)
+{
+    *p++ = '"';
+    int bs = 0;
+    for (; *s; s++)
+    {
+        if (*s == '\\')
+        {
+            bs++;
+        }
+        else if (*s == '"')
+        {
+            int i;
+            for (i = 0; i < bs * 2; i++)
+                *p++ = '\\';
+            *p++ = '\\';
+            *p++ = '"';
+            bs = 0;
+        }
+        else
+        {
+            int i;
+            for (i = 0; i < bs; i++)
+                *p++ = '\\';
+            *p++ = *s;
+            bs = 0;
+        }
+    }
+    int i;
+    for (i = 0; i < bs * 2; i++)
+        *p++ = '\\';
+    *p++ = '"';
+    return p;
+}
+
 /// @brief Build command line string for Windows CreateProcess.
 static char *build_cmdline(const char *program, void *args)
 {
     int64_t nargs = args ? rt_seq_len(args) : 0;
 
-    // Calculate required length
-    size_t len = strlen(program) + 3; // quotes + space
+    /* Calculate worst-case length using proper quoting rules */
+    size_t len = cmdline_quoted_len(program);
     for (int64_t i = 0; i < nargs; i++)
     {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
-        len += rt_str_len(arg_str) + 3; // quotes + space
+        len += 1 + cmdline_quoted_len(rt_string_cstr(arg_str)); /* space + quoted */
     }
 
     char *cmdline = (char *)malloc(len + 1);
@@ -319,26 +383,13 @@ static char *build_cmdline(const char *program, void *args)
         return NULL;
 
     char *p = cmdline;
+    p = cmdline_append_quoted(p, program);
 
-    // Add program (quoted)
-    *p++ = '"';
-    size_t plen = strlen(program);
-    memcpy(p, program, plen);
-    p += plen;
-    *p++ = '"';
-
-    // Add arguments
     for (int64_t i = 0; i < nargs; i++)
     {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
-        const char *arg = rt_string_cstr(arg_str);
-        int64_t alen = rt_str_len(arg_str);
-
         *p++ = ' ';
-        *p++ = '"';
-        memcpy(p, arg, (size_t)alen);
-        p += alen;
-        *p++ = '"';
+        p = cmdline_append_quoted(p, rt_string_cstr(arg_str));
     }
 
     *p = '\0';

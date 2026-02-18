@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_sortedset.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include <stdlib.h>
@@ -109,9 +110,24 @@ static void ensure_capacity(rt_sortedset set, int64_t needed)
 // Creation and Lifecycle
 //=============================================================================
 
+static void sortedset_finalizer(void *obj)
+{
+    rt_sortedset set = (rt_sortedset)obj;
+    if (!set)
+        return;
+    for (int64_t i = 0; i < set->len; i++)
+        rt_str_release_maybe(set->data[i]);
+    free(set->data);
+    set->data = NULL;
+    set->len = 0;
+    set->cap = 0;
+}
+
 void *rt_sortedset_new(void)
 {
     rt_sortedset set = (rt_sortedset)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_sortedset_impl));
+    if (set)
+        rt_obj_set_finalizer(set, sortedset_finalizer);
     return set;
 }
 

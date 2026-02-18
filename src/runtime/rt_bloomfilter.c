@@ -92,6 +92,11 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate)
 
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)rt_obj_new_i64(0, sizeof(rt_bloomfilter_impl));
     bf->bits = (uint8_t *)calloc((size_t)byte_count, 1);
+    if (!bf->bits)
+    {
+        rt_trap("BloomFilter: memory allocation failed");
+        return NULL;
+    }
     bf->bit_count = bit_count;
     bf->hash_count = hash_count;
     bf->item_count = 0;

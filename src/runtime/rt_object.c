@@ -466,6 +466,8 @@ int64_t rt_obj_is_null(void *self)
 /// @note Future versions may track weak references for automatic zeroing.
 void rt_weak_store(void **addr, void *value)
 {
+    if (!addr)
+        return;
     // Store without incrementing reference count
     *addr = value;
 }
@@ -493,6 +495,8 @@ void rt_weak_store(void **addr, void *value)
 /// @note Future versions may validate the object is still alive.
 void *rt_weak_load(void **addr)
 {
+    if (!addr)
+        return NULL;
     // For now, just return the value
     // Future: validate object still exists using zeroing weak refs
     return *addr;

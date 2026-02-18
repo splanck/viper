@@ -554,8 +554,18 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
 
     size_t pos = 34;
 
-    // Session ID
+    // Session ID — bounds-check before advancing (S-02 fix)
+    if (pos >= len)
+    {
+        session->error = "ServerHello: session_id length field missing";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     uint8_t session_id_len = data[pos++];
+    if (pos + session_id_len + 3 > len) /* +3 for cipher(2) + compression(1) */
+    {
+        session->error = "ServerHello: session_id overflows message";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     pos += session_id_len;
 
     // Cipher suite
@@ -762,12 +772,20 @@ int rt_tls_handshake(rt_tls_session_t *session)
                     break;
 
                 case TLS_HS_CERTIFICATE:
-                    // Skip certificate validation for now
+                    /* S-01: When cert verification is enabled, reject connections
+                     * where we cannot validate the certificate. A full implementation
+                     * would parse and verify the X.509 chain here. */
+                    if (session->verify_cert)
+                    {
+                        session->error =
+                            "TLS: certificate validation not implemented; "
+                            "set verify_cert=0 to disable (insecure)";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
                     session->state = TLS_STATE_WAIT_CERTIFICATE_VERIFY;
                     break;
 
                 case TLS_HS_CERTIFICATE_VERIFY:
-                    // Skip signature verification for now
                     session->state = TLS_STATE_WAIT_FINISHED;
                     break;
 

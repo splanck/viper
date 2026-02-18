@@ -609,11 +609,16 @@ extern "C"
         char buf[512];
         size_t pos = 0;
         int negative = 0;
+        uint64_t uvalue;
 
         if (value < 0)
         {
             negative = 1;
-            value = -value;
+            uvalue = (uint64_t)(-(uint64_t)value);
+        }
+        else
+        {
+            uvalue = (uint64_t)value;
         }
 
         if (negative)
@@ -623,10 +628,10 @@ extern "C"
         int64_t parts[5] = {0};
         int part_count = 0;
 
-        int64_t temp = value;
+        uint64_t temp = uvalue;
         while (temp > 0 && part_count < 5)
         {
-            parts[part_count++] = temp % 1000;
+            parts[part_count++] = (int64_t)(temp % 1000);
             temp /= 1000;
         }
 

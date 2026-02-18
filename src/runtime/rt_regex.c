@@ -30,6 +30,35 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* S-12: Pattern cache lock — protect concurrent access */
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+static CRITICAL_SECTION g_pattern_cache_cs;
+static INIT_ONCE g_pattern_cache_cs_once = INIT_ONCE_STATIC_INIT;
+static BOOL WINAPI init_pattern_cache_cs(PINIT_ONCE o, PVOID p, PVOID *ctx)
+{
+    (void)o;
+    (void)p;
+    (void)ctx;
+    InitializeCriticalSection(&g_pattern_cache_cs);
+    return TRUE;
+}
+static void pattern_cache_lock(void)
+{
+    InitOnceExecuteOnce(&g_pattern_cache_cs_once, init_pattern_cache_cs, NULL, NULL);
+    EnterCriticalSection(&g_pattern_cache_cs);
+}
+static void pattern_cache_unlock(void) { LeaveCriticalSection(&g_pattern_cache_cs); }
+#else
+#include <pthread.h>
+static pthread_mutex_t g_pattern_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static void pattern_cache_lock(void) { pthread_mutex_lock(&g_pattern_cache_mutex); }
+static void pattern_cache_unlock(void) { pthread_mutex_unlock(&g_pattern_cache_mutex); }
+#endif
+
 //=============================================================================
 // Regex AST Node Types
 //=============================================================================
@@ -680,11 +709,16 @@ int re_group_count(re_compiled_pattern *cp)
 // Pattern Matching Engine (Backtracking)
 //=============================================================================
 
+/* S-11: Maximum backtracking steps before aborting (ReDoS guard) */
+#define RE_MAX_STEPS 1000000
+
 typedef struct
 {
     const char *text;
     int text_len;
     int start_pos; // Start position for this match attempt
+    int steps;     // Backtracking step counter
+    int max_steps; // Step limit (0 = unlimited)
 } match_context;
 
 // Forward declarations
@@ -774,6 +808,13 @@ static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos)
 /// Try to match node at given position, return end position if successful
 static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos)
 {
+    /* S-11: ReDoS guard — abort if step limit exceeded */
+    if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps)
+    {
+        *end_pos = pos;
+        return false;
+    }
+
     if (!n)
     {
         *end_pos = pos;
@@ -930,7 +971,7 @@ static bool find_match(compiled_pattern *cp,
                        int *match_start,
                        int *match_end)
 {
-    match_context ctx = {text, text_len, 0};
+    match_context ctx = {text, text_len, 0, 0, RE_MAX_STEPS};
 
     for (int i = start_from; i <= text_len; i++)
     {
@@ -1228,6 +1269,9 @@ static unsigned long access_counter = 0;
 
 static compiled_pattern *get_cached_pattern(const char *pattern_str)
 {
+    /* S-12: Lock cache for concurrent access safety */
+    pattern_cache_lock();
+
     // Look for existing pattern
     for (int i = 0; i < PATTERN_CACHE_SIZE; i++)
     {
@@ -1235,11 +1279,13 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str)
             strcmp(pattern_cache[i].pattern->pattern_str, pattern_str) == 0)
         {
             pattern_cache[i].access_count = ++access_counter;
-            return pattern_cache[i].pattern;
+            compiled_pattern *found = pattern_cache[i].pattern;
+            pattern_cache_unlock();
+            return found;
         }
     }
 
-    // Compile new pattern
+    // Compile new pattern (outside lock would be better, but kept simple here)
     compiled_pattern *cp = compile_pattern(pattern_str);
 
     // Find slot (empty or LRU)
@@ -1250,6 +1296,7 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str)
         if (!pattern_cache[i].pattern)
         {
             slot = i;
+            min_access = 0;
             break;
         }
         if (pattern_cache[i].access_count < min_access)
@@ -1268,6 +1315,7 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str)
     pattern_cache[slot].pattern = cp;
     pattern_cache[slot].access_count = ++access_counter;
 
+    pattern_cache_unlock();
     return cp;
 }
 

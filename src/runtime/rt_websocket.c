@@ -498,6 +498,13 @@ static int ws_recv_frame(rt_ws_impl *ws, uint8_t *opcode_out, uint8_t **data_out
             return 0;
     }
 
+    /* Reject server-controlled allocation larger than 64 MB (S-10 fix).
+       This prevents a malicious server from causing malloc(huge). */
+#define WS_MAX_PAYLOAD (64u * 1024u * 1024u)
+    if (payload_len > WS_MAX_PAYLOAD)
+        return 0;
+#undef WS_MAX_PAYLOAD
+
     // Payload
     *data_out = NULL;
     *len_out = payload_len;

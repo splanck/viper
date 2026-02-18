@@ -24,7 +24,9 @@
 #ifdef _WIN32
 #include <process.h>
 #include <windows.h>
+#include <wincrypt.h>
 #else
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -33,26 +35,41 @@
 // Internal Helpers
 //=============================================================================
 
-static uint64_t g_temp_counter = 0;
-
-/// @brief Generate a unique identifier for temp files.
+/// @brief Generate a unique identifier using OS-provided entropy (S-21).
 static void generate_unique_id(char *buffer, size_t size)
 {
-    uint64_t counter = ++g_temp_counter;
-    uint64_t timestamp = (uint64_t)time(NULL);
+    uint64_t rnd = 0;
 
 #ifdef _WIN32
-    int pid = _getpid();
+    /* Use CryptGenRandom for unpredictable IDs */
+    HCRYPTPROV hProv;
+    if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
+    {
+        CryptGenRandom(hProv, sizeof(rnd), (BYTE *)&rnd);
+        CryptReleaseContext(hProv, 0);
+    }
+    else
+    {
+        /* Fallback: mix tick count with address entropy */
+        rnd = (uint64_t)GetTickCount64() ^ (uint64_t)(uintptr_t)buffer;
+    }
 #else
-    int pid = (int)getpid();
+    /* Read from /dev/urandom for unpredictable IDs */
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd >= 0)
+    {
+        ssize_t n = read(fd, &rnd, sizeof(rnd));
+        close(fd);
+        if (n != (ssize_t)sizeof(rnd))
+            rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid();
+    }
+    else
+    {
+        rnd = (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid();
+    }
 #endif
 
-    snprintf(buffer,
-             size,
-             "%d_%llx_%llx",
-             pid,
-             (unsigned long long)timestamp,
-             (unsigned long long)counter);
+    snprintf(buffer, size, "%016llx", (unsigned long long)rnd);
 }
 
 //=============================================================================
@@ -137,6 +154,34 @@ rt_string rt_tempfile_create(void)
 
 rt_string rt_tempfile_create_with_prefix(rt_string prefix)
 {
+#ifndef _WIN32
+    /* S-21: Use mkstemp for atomic, exclusive, unpredictable file creation on POSIX */
+    rt_string temp_dir = rt_tempfile_dir();
+    const char *prefix_cstr = rt_string_cstr(prefix);
+    const char *dir_cstr = rt_string_cstr(temp_dir);
+
+    size_t tmpl_len = strlen(dir_cstr) + 1 + strlen(prefix_cstr) + 6 + 1;
+    char *tmpl = (char *)malloc(tmpl_len);
+    if (!tmpl)
+    {
+        rt_string_unref(temp_dir);
+        return rt_tempfile_path_with_prefix(prefix);
+    }
+    snprintf(tmpl, tmpl_len, "%s/%sXXXXXX", dir_cstr, prefix_cstr);
+    rt_string_unref(temp_dir);
+
+    int fd = mkstemp(tmpl);
+    if (fd >= 0)
+    {
+        close(fd);
+        rt_string result = rt_string_from_bytes(tmpl, strlen(tmpl));
+        free(tmpl);
+        return result;
+    }
+    free(tmpl);
+    /* Fall through to path-based creation on mkstemp failure */
+#endif
+
     rt_string path = rt_tempfile_path_with_prefix(prefix);
 
     // Create empty file

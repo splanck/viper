@@ -219,10 +219,12 @@ extern "C"
     /// @return Truncated value as 64-bit signed integer.
     long long rt_f64_to_i64(double x)
     {
-        if (!isfinite(x))
-        {
+        if (isnan(x))
             return 0;
-        }
+        if (x >= (double)INT64_MAX)
+            return INT64_MAX;
+        if (x < (double)INT64_MIN)
+            return INT64_MIN;
         return (long long)trunc(x);
     }
 

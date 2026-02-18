@@ -1492,6 +1492,8 @@ int8_t rt_action_load(rt_string json)
                             }
                             /* tok should be ARRAY_END */
                         }
+                        /* For unknown fields with nested containers, drain before advancing */
+                        rt_json_stream_skip(parser);
                         tok = rt_json_stream_next(parser);
                     }
                     /* tok should be OBJECT_END for the binding */
@@ -1523,8 +1525,9 @@ int8_t rt_action_load(rt_string json)
             }
             else
             {
-                /* Skip unknown field */
+                /* Skip unknown field value — handles nested objects/arrays */
                 rt_json_stream_next(parser);
+                rt_json_stream_skip(parser);
             }
 
             tok = rt_json_stream_next(parser);

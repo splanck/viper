@@ -1276,4 +1276,36 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_object_introspect ${VIPER_TESTS_DIR}/runtime/RTObjectIntrospectTests.cpp)
     target_link_libraries(test_rt_object_introspect PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_object_introspect test_rt_object_introspect)
+
+    viper_add_test(test_rt_arithmetic_ub ${VIPER_TESTS_DIR}/runtime/RTArithmeticUBTests.c)
+    target_link_libraries(test_rt_arithmetic_ub PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_arithmetic_ub test_rt_arithmetic_ub)
+
+    viper_add_test(test_rt_buffer_overflow ${VIPER_TESTS_DIR}/runtime/RTBufferOverflowTests.c)
+    target_link_libraries(test_rt_buffer_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_buffer_overflow test_rt_buffer_overflow)
+
+    viper_add_test(test_rt_concurrency_bugs ${VIPER_TESTS_DIR}/runtime/RTConcurrencyTests.c)
+    target_link_libraries(test_rt_concurrency_bugs PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_concurrency_bugs test_rt_concurrency_bugs)
+
+    viper_add_test(test_rt_graphics_mem ${VIPER_TESTS_DIR}/runtime/RTGraphicsMemTests.c)
+    target_link_libraries(test_rt_graphics_mem PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_graphics_mem test_rt_graphics_mem)
+
+    viper_add_test(test_rt_null_checks ${VIPER_TESTS_DIR}/runtime/RTNullCheckTests.c)
+    target_link_libraries(test_rt_null_checks PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_null_checks test_rt_null_checks)
+
+    viper_add_test(test_rt_realloc_mem ${VIPER_TESTS_DIR}/runtime/RTReallocMemTests.c)
+    target_link_libraries(test_rt_realloc_mem PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_realloc_mem test_rt_realloc_mem)
+
+    viper_add_test(test_rt_security_fixes ${VIPER_TESTS_DIR}/runtime/RTSecurityFixesTests.c)
+    target_link_libraries(test_rt_security_fixes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_security_fixes test_rt_security_fixes)
+
+    viper_add_test(test_rt_optimization_fixes ${VIPER_TESTS_DIR}/runtime/RTOptimizationFixesTests.c)
+    target_link_libraries(test_rt_optimization_fixes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_optimization_fixes test_rt_optimization_fixes)
 endfunction()

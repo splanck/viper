@@ -70,7 +70,8 @@ static void cq_finalizer(void *obj)
     while (n)
     {
         cq_node *next = n->next;
-        rt_obj_release_check0(n->value);
+        if (rt_obj_release_check0(n->value))
+            rt_obj_free(n->value);
         free(n);
         n = next;
     }
@@ -130,6 +131,11 @@ void rt_concqueue_enqueue(void *obj, void *item)
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
     cq_node *node = (cq_node *)malloc(sizeof(cq_node));
+    if (!node)
+    {
+        rt_trap("ConcurrentQueue: memory allocation failed");
+        return;
+    }
     node->value = item;
     rt_obj_retain_maybe(item);
     node->next = NULL;
@@ -268,7 +274,8 @@ void rt_concqueue_clear(void *obj)
     while (n)
     {
         cq_node *next = n->next;
-        rt_obj_release_check0(n->value);
+        if (rt_obj_release_check0(n->value))
+            rt_obj_free(n->value);
         free(n);
         n = next;
     }

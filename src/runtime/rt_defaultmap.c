@@ -57,6 +57,8 @@ static void dm_resize(rt_defaultmap_impl *m)
 {
     int64_t new_cap = m->capacity * 2;
     rt_dm_entry **new_buckets = (rt_dm_entry **)calloc((size_t)new_cap, sizeof(rt_dm_entry *));
+    if (!new_buckets)
+        return;
 
     for (int64_t i = 0; i < m->capacity; i++)
     {
@@ -112,6 +114,11 @@ void *rt_defaultmap_new(void *default_value)
     m->capacity = 16;
     m->count = 0;
     m->buckets = (rt_dm_entry **)calloc(16, sizeof(rt_dm_entry *));
+    if (!m->buckets)
+    {
+        rt_trap("DefaultMap: memory allocation failed");
+        return NULL;
+    }
     m->default_value = default_value;
     if (default_value)
         rt_obj_retain_maybe(default_value);

@@ -115,6 +115,40 @@ typedef struct
 #endif
 } for_task;
 
+#ifndef _WIN32
+/* Heap-allocated synchronisation state shared across all tasks in one batch.
+   Using heap allocation (rather than stack) eliminates any risk of
+   use-after-stack-free if a future code path ever returns early. */
+typedef struct
+{
+    volatile int remaining;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} parallel_sync;
+
+static parallel_sync *parallel_sync_new(int initial)
+{
+    parallel_sync *s = (parallel_sync *)malloc(sizeof(parallel_sync));
+    if (!s)
+        return NULL;
+    s->remaining = initial;
+    pthread_mutex_init(&s->mutex, NULL);
+    pthread_cond_init(&s->cond, NULL);
+    return s;
+}
+
+static void parallel_sync_wait_and_free(parallel_sync *s)
+{
+    pthread_mutex_lock(&s->mutex);
+    while (s->remaining > 0)
+        pthread_cond_wait(&s->cond, &s->mutex);
+    pthread_mutex_unlock(&s->mutex);
+    pthread_mutex_destroy(&s->mutex);
+    pthread_cond_destroy(&s->cond);
+    free(s);
+}
+#endif
+
 //=============================================================================
 // Default Pool (singleton)
 //=============================================================================
@@ -304,9 +338,9 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
     volatile LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
-    volatile int remaining = (int)count;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    parallel_sync *sync = parallel_sync_new((int)count);
+    if (!sync)
+        rt_trap("Parallel.ForEach: memory allocation failed");
 #endif
 
     // Allocate task array
@@ -323,9 +357,9 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
         tasks[i].remaining = &remaining;
         tasks[i].event = event;
 #else
-        tasks[i].remaining = &remaining;
-        tasks[i].mutex = &mutex;
-        tasks[i].cond = &cond;
+        tasks[i].remaining = &sync->remaining;
+        tasks[i].mutex = &sync->mutex;
+        tasks[i].cond = &sync->cond;
 #endif
         rt_threadpool_submit(actual_pool, foreach_callback, &tasks[i]);
     }
@@ -335,14 +369,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
 #else
-    pthread_mutex_lock(&mutex);
-    while (remaining > 0)
-    {
-        pthread_cond_wait(&cond, &mutex);
-    }
-    pthread_mutex_unlock(&mutex);
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond);
+    parallel_sync_wait_and_free(sync);
 #endif
 
     free(tasks);
@@ -372,9 +399,9 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
     volatile LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
-    volatile int remaining = (int)count;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    parallel_sync *sync = parallel_sync_new((int)count);
+    if (!sync)
+        rt_trap("Parallel.Map: memory allocation failed");
 #endif
 
     // Allocate task array
@@ -393,9 +420,9 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
         tasks[i].remaining = &remaining;
         tasks[i].event = event;
 #else
-        tasks[i].remaining = &remaining;
-        tasks[i].mutex = &mutex;
-        tasks[i].cond = &cond;
+        tasks[i].remaining = &sync->remaining;
+        tasks[i].mutex = &sync->mutex;
+        tasks[i].cond = &sync->cond;
 #endif
         rt_threadpool_submit(actual_pool, map_callback, &tasks[i]);
     }
@@ -405,14 +432,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
 #else
-    pthread_mutex_lock(&mutex);
-    while (remaining > 0)
-    {
-        pthread_cond_wait(&cond, &mutex);
-    }
-    pthread_mutex_unlock(&mutex);
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond);
+    parallel_sync_wait_and_free(sync);
 #endif
 
     // Collect results in order
@@ -450,9 +470,9 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
     volatile LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
-    volatile int remaining = (int)count;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    parallel_sync *sync = parallel_sync_new((int)count);
+    if (!sync)
+        rt_trap("Parallel.Invoke: memory allocation failed");
 #endif
 
     // Allocate task array
@@ -468,9 +488,9 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
         tasks[i].remaining = &remaining;
         tasks[i].event = event;
 #else
-        tasks[i].remaining = &remaining;
-        tasks[i].mutex = &mutex;
-        tasks[i].cond = &cond;
+        tasks[i].remaining = &sync->remaining;
+        tasks[i].mutex = &sync->mutex;
+        tasks[i].cond = &sync->cond;
 #endif
         rt_threadpool_submit(actual_pool, invoke_callback, &tasks[i]);
     }
@@ -480,14 +500,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
 #else
-    pthread_mutex_lock(&mutex);
-    while (remaining > 0)
-    {
-        pthread_cond_wait(&cond, &mutex);
-    }
-    pthread_mutex_unlock(&mutex);
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond);
+    parallel_sync_wait_and_free(sync);
 #endif
 
     free(tasks);
@@ -541,9 +554,12 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     volatile LONG remaining = (LONG)nworkers;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
-    volatile int remaining = (int)nworkers;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    parallel_sync *sync = parallel_sync_new((int)nworkers);
+    if (!sync)
+    {
+        free(items);
+        rt_trap("Parallel.Reduce: memory allocation failed");
+    }
 #endif
 
     reduce_task *tasks = (reduce_task *)malloc((size_t)nworkers * sizeof(reduce_task));
@@ -570,9 +586,9 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         tasks[i].remaining = &remaining;
         tasks[i].event = event;
 #else
-        tasks[i].remaining = &remaining;
-        tasks[i].mutex = &mutex;
-        tasks[i].cond = &cond;
+        tasks[i].remaining = &sync->remaining;
+        tasks[i].mutex = &sync->mutex;
+        tasks[i].cond = &sync->cond;
 #endif
         rt_threadpool_submit(actual_pool, reduce_callback, &tasks[i]);
         offset += chunk_size;
@@ -583,14 +599,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
 #else
-    pthread_mutex_lock(&mutex);
-    while (remaining > 0)
-    {
-        pthread_cond_wait(&cond, &mutex);
-    }
-    pthread_mutex_unlock(&mutex);
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond);
+    parallel_sync_wait_and_free(sync);
 #endif
 
     /* Combine partial results on main thread. */
@@ -626,9 +635,9 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
     volatile LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
-    volatile int remaining = (int)count;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    parallel_sync *sync = parallel_sync_new((int)count);
+    if (!sync)
+        rt_trap("Parallel.For: memory allocation failed");
 #endif
 
     // Allocate task array
@@ -645,9 +654,9 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
         tasks[i].remaining = &remaining;
         tasks[i].event = event;
 #else
-        tasks[i].remaining = &remaining;
-        tasks[i].mutex = &mutex;
-        tasks[i].cond = &cond;
+        tasks[i].remaining = &sync->remaining;
+        tasks[i].mutex = &sync->mutex;
+        tasks[i].cond = &sync->cond;
 #endif
         rt_threadpool_submit(actual_pool, for_callback, &tasks[i]);
     }
@@ -657,14 +666,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
 #else
-    pthread_mutex_lock(&mutex);
-    while (remaining > 0)
-    {
-        pthread_cond_wait(&cond, &mutex);
-    }
-    pthread_mutex_unlock(&mutex);
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond);
+    parallel_sync_wait_and_free(sync);
 #endif
 
     free(tasks);

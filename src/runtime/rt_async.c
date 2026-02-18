@@ -179,8 +179,12 @@ static void async_any_entry(void *ctx_ptr)
 
     count = rt_seq_len(futures_seq);
 
-    /* Spin-poll until any future is done. Not ideal but portable
-       across platforms and avoids building a select-like mechanism. */
+    /* Spin-poll until any future is done or a 30-second timeout expires.
+       Not ideal but portable across platforms and avoids building a
+       select-like mechanism. The timeout prevents the thread from leaking
+       if all futures are abandoned. */
+#define ASYNC_ANY_TIMEOUT_MS 30000
+    int64_t elapsed_ms = 0;
     for (;;)
     {
         int64_t i;
@@ -202,7 +206,15 @@ static void async_any_entry(void *ctx_ptr)
             }
         }
         rt_thread_sleep(1); /* yield to avoid busy-wait */
+        elapsed_ms += 1;
+        if (elapsed_ms >= ASYNC_ANY_TIMEOUT_MS)
+        {
+            rt_promise_set_error(promise,
+                rt_string_from_bytes("Async.Any: timeout — no future resolved", 39));
+            return;
+        }
     }
+#undef ASYNC_ANY_TIMEOUT_MS
 }
 
 void *rt_async_any(void *futures)

@@ -51,6 +51,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_string_builder.h"
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -133,9 +134,19 @@ static void xml_node_finalizer(void *obj)
             rt_obj_free(node->attributes);
     }
 
-    // Release children seq
+    // Release children (parent owns each child — finalizer must release them)
     if (node->children)
     {
+        int64_t count = rt_seq_len(node->children);
+        for (int64_t i = 0; i < count; i++)
+        {
+            void *child = rt_seq_get(node->children, i);
+            if (child)
+            {
+                if (rt_obj_release_check0(child))
+                    rt_obj_free(child);
+            }
+        }
         if (rt_obj_release_check0(node->children))
             rt_obj_free(node->children);
     }
@@ -192,6 +203,9 @@ static void *xml_node_new(XmlNodeType type)
 // Parser State
 //=============================================================================
 
+/* S-17: Maximum element nesting depth */
+#define XML_MAX_DEPTH 200
+
 typedef struct
 {
     const char *input;
@@ -199,6 +213,7 @@ typedef struct
     size_t pos;
     int line;
     int col;
+    int depth; // Current element nesting depth
 } xml_parser;
 
 static void parser_init(xml_parser *p, const char *input, size_t len)
@@ -208,6 +223,7 @@ static void parser_init(xml_parser *p, const char *input, size_t len)
     p->pos = 0;
     p->line = 1;
     p->col = 1;
+    p->depth = 0;
 }
 
 static bool parser_eof(xml_parser *p)
@@ -629,13 +645,25 @@ static bool skip_doctype(xml_parser *p)
 /// @brief Parse an element: <tag attr="value">...</tag>
 static void *parse_element(xml_parser *p)
 {
-    if (!parser_match(p, "<"))
+    /* S-17: Reject excessively nested documents */
+    if (p->depth >= XML_MAX_DEPTH)
+    {
+        set_error("element nesting depth limit exceeded");
         return NULL;
+    }
+    p->depth++;
+
+    if (!parser_match(p, "<"))
+    {
+        p->depth--;
+        return NULL;
+    }
 
     // Parse tag name
     rt_string tag = parse_name(p);
     if (!tag)
     {
+        p->depth--;
         set_error("Expected element name");
         return NULL;
     }
@@ -643,6 +671,7 @@ static void *parse_element(xml_parser *p)
     void *node = xml_node_new(XML_NODE_ELEMENT);
     if (!node)
     {
+        p->depth--;
         if (rt_obj_release_check0((void *)tag))
             rt_obj_free((void *)tag);
         return NULL;
@@ -660,6 +689,7 @@ static void *parse_element(xml_parser *p)
         if (parser_lookahead(p, "/>"))
         {
             parser_match(p, "/>");
+            p->depth--;
             return node; // Self-closing
         }
         if (parser_lookahead(p, ">"))
@@ -672,6 +702,7 @@ static void *parse_element(xml_parser *p)
         rt_string attr_name = parse_name(p);
         if (!attr_name)
         {
+            p->depth--;
             set_error("Expected attribute name or tag end");
             if (rt_obj_release_check0(node))
                 rt_obj_free(node);
@@ -681,6 +712,7 @@ static void *parse_element(xml_parser *p)
         parser_skip_ws(p);
         if (!parser_match(p, "="))
         {
+            p->depth--;
             set_error("Expected '=' in attribute");
             if (rt_obj_release_check0((void *)attr_name))
                 rt_obj_free((void *)attr_name);
@@ -693,6 +725,7 @@ static void *parse_element(xml_parser *p)
         rt_string attr_value = parse_attr_value(p);
         if (!attr_value)
         {
+            p->depth--;
             set_error("Expected attribute value");
             if (rt_obj_release_check0((void *)attr_name))
                 rt_obj_free((void *)attr_name);
@@ -730,6 +763,7 @@ static void *parse_element(xml_parser *p)
                 snprintf(
                     err, sizeof(err), "Mismatched tags: <%s> vs </%s>", start_tag_str, end_tag_str);
                 set_error(err);
+                p->depth--;
                 if (rt_obj_release_check0((void *)end_tag))
                     rt_obj_free((void *)end_tag);
                 if (rt_obj_release_check0(node))
@@ -749,19 +783,19 @@ static void *parse_element(xml_parser *p)
             xml_node *child_node = (xml_node *)child;
             child_node->parent = elem;
             rt_seq_push(elem->children, child);
-            // Seq retains, so release our ref
-            if (rt_obj_release_check0(child))
-                rt_obj_free(child);
+            // Ownership transferred to elem; its finalizer will release child
         }
         else if (xml_last_error[0] != '\0')
         {
             // Parse error occurred
+            p->depth--;
             if (rt_obj_release_check0(node))
                 rt_obj_free(node);
             return NULL;
         }
     }
 
+    p->depth--;
     return node;
 }
 
@@ -864,8 +898,7 @@ static void *parse_document(const char *input, size_t len)
             xml_node *n = (xml_node *)node;
             n->parent = doc_node;
             rt_seq_push(doc_node->children, node);
-            if (rt_obj_release_check0(node))
-                rt_obj_free(node);
+            // Ownership transferred to doc; its finalizer will release node
         }
         else if (xml_last_error[0] != '\0')
         {
@@ -1006,6 +1039,40 @@ rt_string rt_xml_content(void *node)
     return n->content;
 }
 
+/* O-04: Helper that appends all text content to a builder, avoiding O(n²) concat */
+static void collect_text_content(void *node, rt_string_builder *sb)
+{
+    if (!node)
+        return;
+
+    xml_node *n = (xml_node *)node;
+
+    if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA)
+    {
+        if (n->content)
+        {
+            const char *cstr = rt_string_cstr(n->content);
+            if (cstr)
+                rt_sb_append_cstr(sb, cstr);
+        }
+        return;
+    }
+
+    if (n->type != XML_NODE_ELEMENT && n->type != XML_NODE_DOCUMENT)
+        return;
+
+    if (!n->children)
+        return;
+
+    int64_t count = rt_seq_len(n->children);
+    for (int64_t i = 0; i < count; i++)
+    {
+        void *child = rt_seq_get(n->children, i);
+        collect_text_content(child, sb);
+        // rt_seq_get returns a borrowed reference — do not release
+    }
+}
+
 rt_string rt_xml_text_content(void *node)
 {
     if (!node)
@@ -1024,38 +1091,18 @@ rt_string rt_xml_text_content(void *node)
         return rt_str_empty();
     }
 
-    // For elements/documents, concatenate all text content
+    // For elements/documents, gather all text content using a builder (O(n))
     if (n->type != XML_NODE_ELEMENT && n->type != XML_NODE_DOCUMENT)
         return rt_str_empty();
 
     if (!n->children)
         return rt_str_empty();
 
-    // Build up text content from children
-    rt_string result = rt_str_empty();
-    int64_t count = rt_seq_len(n->children);
-    for (int64_t i = 0; i < count; i++)
-    {
-        void *child = rt_seq_get(n->children, i);
-        rt_string child_text = rt_xml_text_content(child);
-        if (child_text && rt_str_len(child_text) > 0)
-        {
-            rt_string new_result = rt_str_concat(result, child_text);
-            if (rt_obj_release_check0((void *)result))
-                rt_obj_free((void *)result);
-            if (rt_obj_release_check0((void *)child_text))
-                rt_obj_free((void *)child_text);
-            result = new_result;
-        }
-        else if (child_text)
-        {
-            if (rt_obj_release_check0((void *)child_text))
-                rt_obj_free((void *)child_text);
-        }
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
-    }
-
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    collect_text_content(node, &sb);
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
     return result;
 }
 
@@ -1148,8 +1195,7 @@ void *rt_xml_children(void *node)
     {
         void *child = rt_seq_get(n->children, i);
         rt_seq_push(copy, child);
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
+        // Borrowed reference — parent owns child, do not release
     }
     return copy;
 }
@@ -1199,11 +1245,9 @@ void *rt_xml_child(void *node, rt_string tag)
         {
             const char *child_tag = rt_string_cstr(cn->tag);
             if (strcmp(child_tag, target) == 0)
-                return child; // Already retained by rt_seq_get
+                return child; // Borrowed reference — caller must not release
         }
-
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
+        // Do not release — children are owned by parent node
     }
 
     return NULL;
@@ -1235,9 +1279,7 @@ void *rt_xml_children_by_tag(void *node, rt_string tag)
                 rt_seq_push(result, child);
             }
         }
-
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
+        // Do not release — children are owned by parent node
     }
 
     return result;
@@ -1315,13 +1357,13 @@ void rt_xml_remove_at(void *node, int64_t index)
     {
         xml_node *cn = (xml_node *)child;
         cn->parent = NULL;
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
+        // Don't release here — ownership stays until seq_remove
     }
 
     void *removed = rt_seq_remove(n->children, index);
     if (removed)
     {
+        // Parent relinquishes ownership: release the child now
         if (rt_obj_release_check0(removed))
             rt_obj_free(removed);
     }
@@ -1359,8 +1401,7 @@ void rt_xml_set_text(void *node, rt_string text)
             xml_node *tn = (xml_node *)text_node;
             tn->parent = n;
             rt_seq_push(n->children, text_node);
-            if (rt_obj_release_check0(text_node))
-                rt_obj_free(text_node);
+            // Ownership transferred to n; its finalizer will release text_node
         }
     }
 }
@@ -1398,9 +1439,8 @@ void *rt_xml_root(void *doc)
         void *child = rt_seq_get(n->children, i);
         xml_node *cn = (xml_node *)child;
         if (cn->type == XML_NODE_ELEMENT)
-            return child; // Already retained
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
+            return child; // Borrowed reference — parent owns it
+        // Do not release — children are owned by parent node
     }
 
     return NULL;
@@ -1429,8 +1469,7 @@ static void find_all_recursive(void *node, const char *tag, void *result)
         {
             void *child = rt_seq_get(n->children, i);
             find_all_recursive(child, tag, result);
-            if (rt_obj_release_check0(child))
-                rt_obj_free(child);
+            // Borrowed reference — parent owns child, do not release
         }
     }
 }
@@ -1469,8 +1508,7 @@ static void *find_first_recursive(void *node, const char *tag)
         {
             void *child = rt_seq_get(n->children, i);
             void *found = find_first_recursive(child, tag);
-            if (rt_obj_release_check0(child))
-                rt_obj_free(child);
+            // Borrowed reference — parent owns child, do not release
             if (found)
                 return found;
         }
@@ -1627,8 +1665,7 @@ static void format_element(
         xml_node *cn = (xml_node *)child;
         if (cn->type != XML_NODE_TEXT && cn->type != XML_NODE_CDATA)
             text_only = false;
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
+        // Borrowed reference — parent owns child, do not release
         if (!text_only)
             break;
     }
@@ -1641,8 +1678,7 @@ static void format_element(
     {
         void *child = rt_seq_get(elem->children, i);
         format_node(child, text_only ? 0 : indent, level + 1, buf, cap, len);
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
+        // Borrowed reference — parent owns child, do not release
     }
 
     // Closing tag
@@ -1696,8 +1732,7 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
                 {
                     void *child = rt_seq_get(n->children, i);
                     format_node(child, indent, 0, buf, cap, len);
-                    if (rt_obj_release_check0(child))
-                        rt_obj_free(child);
+                    // Borrowed reference — parent owns child, do not release
                 }
             }
             break;

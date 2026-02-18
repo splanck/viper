@@ -97,8 +97,11 @@ static void bigint_ensure_capacity(bigint_t *bi, int64_t cap)
     if (new_cap < cap)
         new_cap = cap;
 
-    bi->digits = realloc(bi->digits, (size_t)new_cap * sizeof(uint32_t));
-    memset(bi->digits + bi->cap, 0, (size_t)(new_cap - bi->cap) * sizeof(uint32_t));
+    uint32_t *new_digits = realloc(bi->digits, (size_t)new_cap * sizeof(uint32_t));
+    if (!new_digits)
+        return;
+    memset(new_digits + bi->cap, 0, (size_t)(new_cap - bi->cap) * sizeof(uint32_t));
+    bi->digits = new_digits;
     bi->cap = new_cap;
 }
 
@@ -425,13 +428,8 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base)
     if (!tmp)
         return rt_str_empty();
 
-    // Estimate size: log_base(2^32) * num_digits + sign + null
-    int64_t max_chars = (bi->len * 32 * 10 /
-                         (base <= 2    ? 10
-                          : base <= 8  ? 33
-                          : base <= 16 ? 25
-                                       : 21)) +
-                        2;
+    // Estimate size: safe upper bound covering all bases (base 2 = 32 bits/limb)
+    int64_t max_chars = bi->len * 33 + 4;
     char *buf = malloc((size_t)max_chars);
     int64_t pos = max_chars - 1;
     buf[pos--] = '\0';
@@ -1177,8 +1175,8 @@ void *rt_bigint_and(void *a, void *b)
     // Negative numbers would need two's complement representation
     if (bi_a->sign || bi_b->sign)
     {
-        // Convert to two's complement, operate, convert back
-        // Simplified: just return zero for negative operands
+        if (rt_bigint_fits_i64(a) && rt_bigint_fits_i64(b))
+            return rt_bigint_from_i64(rt_bigint_to_i64(a) & rt_bigint_to_i64(b));
         return rt_bigint_zero();
     }
 
@@ -1209,7 +1207,11 @@ void *rt_bigint_or(void *a, void *b)
     bigint_t *bi_b = (bigint_t *)b;
 
     if (bi_a->sign || bi_b->sign)
+    {
+        if (rt_bigint_fits_i64(a) && rt_bigint_fits_i64(b))
+            return rt_bigint_from_i64(rt_bigint_to_i64(a) | rt_bigint_to_i64(b));
         return rt_bigint_zero();
+    }
 
     int64_t max_len = (bi_a->len > bi_b->len) ? bi_a->len : bi_b->len;
     bigint_t *result = bigint_alloc(max_len);
@@ -1240,7 +1242,11 @@ void *rt_bigint_xor(void *a, void *b)
     bigint_t *bi_b = (bigint_t *)b;
 
     if (bi_a->sign || bi_b->sign)
+    {
+        if (rt_bigint_fits_i64(a) && rt_bigint_fits_i64(b))
+            return rt_bigint_from_i64(rt_bigint_to_i64(a) ^ rt_bigint_to_i64(b));
         return rt_bigint_zero();
+    }
 
     int64_t max_len = (bi_a->len > bi_b->len) ? bi_a->len : bi_b->len;
     bigint_t *result = bigint_alloc(max_len);
@@ -1415,44 +1421,60 @@ void *rt_bigint_pow_mod(void *a, void *n, void *m)
     if (!a || rt_bigint_is_zero(a))
         return rt_bigint_zero();
 
-    // Binary exponentiation with modular reduction
-    void *result = rt_bigint_one();
-    void *base = rt_bigint_mod(a, m);
-    void *exp = bigint_clone((bigint_t *)n);
+    /* S-23: Montgomery ladder — always executes exactly 2 modular multiplications
+     * per exponent bit (MSB to LSB), preventing timing-based exponent recovery.
+     * Invariant: r1 - r0 = base^(2^k) at each step.
+     * if bit==1: r0 = r0*r1 mod m;  r1 = r1^2 mod m
+     * if bit==0: r1 = r0*r1 mod m;  r0 = r0^2 mod m */
+    int64_t nbits = rt_bigint_bit_length(n);
 
-    while (!rt_bigint_is_zero(exp))
+    void *r0 = rt_bigint_one();
+    void *r1 = rt_bigint_mod(a, m);
+
+    for (int64_t i = nbits - 1; i >= 0; i--)
     {
-        if (rt_bigint_test_bit(exp, 0))
+        int8_t bit = rt_bigint_test_bit(n, i);
+
+        void *cross = rt_bigint_mul(r0, r1);
+        void *cross_m = rt_bigint_mod(cross, m);
+        if (rt_obj_release_check0(cross))
+            rt_obj_free(cross);
+
+        void *sq0 = rt_bigint_mul(r0, r0);
+        void *sq0_m = rt_bigint_mod(sq0, m);
+        if (rt_obj_release_check0(sq0))
+            rt_obj_free(sq0);
+
+        void *sq1 = rt_bigint_mul(r1, r1);
+        void *sq1_m = rt_bigint_mod(sq1, m);
+        if (rt_obj_release_check0(sq1))
+            rt_obj_free(sq1);
+
+        if (rt_obj_release_check0(r0))
+            rt_obj_free(r0);
+        if (rt_obj_release_check0(r1))
+            rt_obj_free(r1);
+
+        if (bit)
         {
-            void *tmp = rt_bigint_mul(result, base);
-            void *mod = rt_bigint_mod(tmp, m);
-            if (rt_obj_release_check0(tmp))
-                rt_obj_free(tmp);
-            if (rt_obj_release_check0(result))
-                rt_obj_free(result);
-            result = mod;
+            r0 = cross_m;
+            r1 = sq1_m;
+            if (rt_obj_release_check0(sq0_m))
+                rt_obj_free(sq0_m);
         }
-
-        void *tmp = rt_bigint_shr(exp, 1);
-        if (rt_obj_release_check0(exp))
-            rt_obj_free(exp);
-        exp = tmp;
-
-        tmp = rt_bigint_mul(base, base);
-        void *mod = rt_bigint_mod(tmp, m);
-        if (rt_obj_release_check0(tmp))
-            rt_obj_free(tmp);
-        if (rt_obj_release_check0(base))
-            rt_obj_free(base);
-        base = mod;
+        else
+        {
+            r1 = cross_m;
+            r0 = sq0_m;
+            if (rt_obj_release_check0(sq1_m))
+                rt_obj_free(sq1_m);
+        }
     }
 
-    if (rt_obj_release_check0(base))
-        rt_obj_free(base);
-    if (rt_obj_release_check0(exp))
-        rt_obj_free(exp);
+    if (rt_obj_release_check0(r1))
+        rt_obj_free(r1);
 
-    return result;
+    return r0;
 }
 
 void *rt_bigint_gcd(void *a, void *b)

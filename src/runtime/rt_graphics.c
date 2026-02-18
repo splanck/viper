@@ -148,13 +148,12 @@ void rt_canvas_flip(void *canvas_ptr)
 
     vgfx_update(canvas->gfx_win);
 
-    /* Auto-handle window close — applications don't need to check */
+    /* Signal close to the application; caller checks canvas.should_close */
     if (vgfx_close_requested(canvas->gfx_win))
     {
         vgfx_destroy_window(canvas->gfx_win);
         canvas->gfx_win = NULL;
         canvas->should_close = 1;
-        exit(0);
     }
 }
 
@@ -911,11 +910,12 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     if (target_r == fill_r && target_g == fill_g && target_b == fill_b)
         return;
 
-    // Simple scanline flood fill using a stack
-    // Allocate stack on heap (worst case: every pixel)
-    int64_t max_stack = fb.width * fb.height;
-    int64_t *stack_x = (int64_t *)malloc((size_t)max_stack * sizeof(int64_t));
-    int64_t *stack_y = (int64_t *)malloc((size_t)max_stack * sizeof(int64_t));
+    /* O-03: Use a dynamically-growing stack starting at 4096 entries
+     * instead of pre-allocating the worst-case (width * height) upfront.
+     * This avoids O(r²) allocations for small fill regions. */
+    int64_t stack_cap = 4096;
+    int64_t *stack_x = (int64_t *)malloc((size_t)stack_cap * sizeof(int64_t));
+    int64_t *stack_y = (int64_t *)malloc((size_t)stack_cap * sizeof(int64_t));
     if (!stack_x || !stack_y)
     {
         free(stack_x);
@@ -950,22 +950,39 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
         pixel[2] = fill_b;
         pixel[3] = 255;
 
-        // Push neighbors (4-connected)
-        if (stack_top + 4 <= max_stack)
+        // Grow stack if needed before pushing 4 neighbors
+        if (stack_top + 4 > stack_cap)
         {
-            stack_x[stack_top] = x + 1;
-            stack_y[stack_top] = y;
-            stack_top++;
-            stack_x[stack_top] = x - 1;
-            stack_y[stack_top] = y;
-            stack_top++;
-            stack_x[stack_top] = x;
-            stack_y[stack_top] = y + 1;
-            stack_top++;
-            stack_x[stack_top] = x;
-            stack_y[stack_top] = y - 1;
-            stack_top++;
+            int64_t new_cap = stack_cap * 2;
+            int64_t max_cap = fb.width * fb.height + 4;
+            if (new_cap > max_cap)
+                new_cap = max_cap;
+            int64_t *nx = (int64_t *)realloc(stack_x, (size_t)new_cap * sizeof(int64_t));
+            int64_t *ny = (int64_t *)realloc(stack_y, (size_t)new_cap * sizeof(int64_t));
+            if (!nx || !ny)
+            {
+                free(nx ? nx : stack_x);
+                free(ny ? ny : stack_y);
+                return;
+            }
+            stack_x = nx;
+            stack_y = ny;
+            stack_cap = new_cap;
         }
+
+        // Push neighbors (4-connected)
+        stack_x[stack_top] = x + 1;
+        stack_y[stack_top] = y;
+        stack_top++;
+        stack_x[stack_top] = x - 1;
+        stack_y[stack_top] = y;
+        stack_top++;
+        stack_x[stack_top] = x;
+        stack_y[stack_top] = y + 1;
+        stack_top++;
+        stack_x[stack_top] = x;
+        stack_y[stack_top] = y - 1;
+        stack_top++;
     }
 
     free(stack_x);

@@ -307,7 +307,7 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
     if (max_len == 0)
         max_len = 1;
 
-    tree->table_bits = max_len > 9 ? 9 : max_len;
+    tree->table_bits = max_len; /* Support full 15-bit Huffman codes per RFC 1951 */
     tree->table_size = 1 << tree->table_bits;
     tree->max_code = num_codes;
 
@@ -457,13 +457,21 @@ static void out_init(output_buffer_t *out, size_t initial_cap)
     out->len = 0;
 }
 
+/* S-20: Maximum decompressed output size (256 MB) to prevent decompression bombs */
+#define INFLATE_MAX_OUTPUT (256u * 1024u * 1024u)
+
 static void out_ensure(output_buffer_t *out, size_t need)
 {
+    if (out->len + need > INFLATE_MAX_OUTPUT)
+        rt_trap("Inflate: decompressed output exceeds 256 MB limit");
+
     if (out->len + need > out->capacity)
     {
         size_t new_cap = out->capacity * 2;
         if (new_cap < out->len + need)
             new_cap = out->len + need + 256;
+        if (new_cap > INFLATE_MAX_OUTPUT)
+            new_cap = INFLATE_MAX_OUTPUT;
         uint8_t *new_data = (uint8_t *)realloc(out->data, new_cap);
         if (!new_data)
             rt_trap("Inflate: out of memory");

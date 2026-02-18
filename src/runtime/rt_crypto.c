@@ -292,6 +292,12 @@ void rt_hkdf_expand_label(const uint8_t secret[32],
     const char *prefix = "tls13 ";
     size_t prefix_len = 6;
     size_t label_len = strlen(label);
+
+    /* Bounds check: reject over-long labels or contexts that would overflow
+       the 512-byte hkdf_label buffer (S-04 fix) */
+    if (2 + 1 + prefix_len + label_len + 1 + context_len > sizeof(hkdf_label))
+        return; /* Silently ignore — TLS layer will detect the missing key */
+
     hkdf_label[pos++] = (uint8_t)(prefix_len + label_len);
     memcpy(hkdf_label + pos, prefix, prefix_len);
     pos += prefix_len;
@@ -1144,52 +1150,52 @@ void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t 
 #include <wincrypt.h>
 #include <windows.h>
 
+extern void rt_trap(const char *msg);
+
 void rt_crypto_random_bytes(uint8_t *buf, size_t len)
 {
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
     {
-        CryptGenRandom(hProv, (DWORD)len, buf);
+        if (CryptGenRandom(hProv, (DWORD)len, buf))
+        {
+            CryptReleaseContext(hProv, 0);
+            return;
+        }
         CryptReleaseContext(hProv, 0);
-        return;
     }
 
-    // Fallback PRNG (should not happen on Windows)
-    static uint64_t state = 0x123456789ABCDEF0ULL;
-    if (state == 0x123456789ABCDEF0ULL)
-        state ^= (uint64_t)(uintptr_t)buf ^ GetTickCount();
-
-    for (size_t i = 0; i < len; i++)
-    {
-        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
-        buf[i] = (state >> 32) & 0xFF;
-    }
+    /* S-03: No cryptographically secure entropy available — abort rather than
+     * use a predictable LCG fallback that would compromise key material. */
+    rt_trap("Crypto: failed to obtain OS entropy (CryptGenRandom)");
 }
 
 #else
 #include <fcntl.h>
 #include <unistd.h>
 
+extern void rt_trap(const char *msg);
+
 void rt_crypto_random_bytes(uint8_t *buf, size_t len)
 {
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0)
     {
-        ssize_t n = read(fd, buf, len);
+        size_t off = 0;
+        while (off < len)
+        {
+            ssize_t n = read(fd, buf + off, len - off);
+            if (n <= 0)
+                break;
+            off += (size_t)n;
+        }
         close(fd);
-        if ((size_t)n == len)
+        if (off == len)
             return;
     }
 
-    // Fallback PRNG
-    static uint64_t state = 0x123456789ABCDEF0ULL;
-    if (state == 0x123456789ABCDEF0ULL)
-        state ^= (uint64_t)(uintptr_t)buf;
-
-    for (size_t i = 0; i < len; i++)
-    {
-        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
-        buf[i] = (state >> 32) & 0xFF;
-    }
+    /* S-03: No cryptographically secure entropy available — abort rather than
+     * use a predictable LCG fallback that would compromise key material. */
+    rt_trap("Crypto: failed to read from /dev/urandom");
 }
 #endif

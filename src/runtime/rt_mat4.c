@@ -189,6 +189,9 @@ void *rt_mat4_rotate_axis(void *axis, double angle)
 
 void *rt_mat4_perspective(double fov, double aspect, double near, double far)
 {
+    if (fov <= 0.0 || aspect <= 0.0 || near >= far)
+        return rt_mat4_identity();
+
     double tanHalfFov = tan(fov / 2.0);
     double f = 1.0 / tanHalfFov;
     double nf = 1.0 / (near - far);
@@ -213,6 +216,9 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far)
 
 void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far)
 {
+    if (right == left || top == bottom || far == near)
+        return rt_mat4_identity();
+
     double rl = 1.0 / (right - left);
     double tb = 1.0 / (top - bottom);
     double fn = 1.0 / (far - near);

@@ -759,12 +759,20 @@ void rt_scene_draw(void *scene_ptr, void *canvas)
 
     int64_t count = rt_seq_len(nodes);
     if (count == 0)
+    {
+        if (rt_obj_release_check0(nodes))
+            rt_obj_free(nodes);
         return;
+    }
 
     // Sort by depth
     scene_node_impl **arr = (scene_node_impl **)malloc(count * sizeof(scene_node_impl *));
     if (!arr)
+    {
+        if (rt_obj_release_check0(nodes))
+            rt_obj_free(nodes);
         return;
+    }
 
     for (int64_t i = 0; i < count; i++)
     {
@@ -804,6 +812,8 @@ void rt_scene_draw(void *scene_ptr, void *canvas)
     }
 
     free(arr);
+    if (rt_obj_release_check0(nodes))
+        rt_obj_free(nodes);
 }
 
 void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera)
@@ -819,12 +829,20 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera)
 
     int64_t count = rt_seq_len(nodes);
     if (count == 0)
+    {
+        if (rt_obj_release_check0(nodes))
+            rt_obj_free(nodes);
         return;
+    }
 
     // Sort by depth
     scene_node_impl **arr = (scene_node_impl **)malloc(count * sizeof(scene_node_impl *));
     if (!arr)
+    {
+        if (rt_obj_release_check0(nodes))
+            rt_obj_free(nodes);
         return;
+    }
 
     for (int64_t i = 0; i < count; i++)
     {
@@ -878,6 +896,8 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera)
     }
 
     free(arr);
+    if (rt_obj_release_check0(nodes))
+        rt_obj_free(nodes);
 }
 
 void rt_scene_update(void *scene_ptr)
@@ -898,6 +918,8 @@ int64_t rt_scene_node_count(void *scene_ptr)
     void *nodes = rt_seq_new();
     collect_visible_nodes(scene->root, nodes);
     int64_t count = rt_seq_len(nodes);
+    if (rt_obj_release_check0(nodes))
+        rt_obj_free(nodes);
 
     // Add invisible nodes - just count children recursively
     // For simplicity, just return visible sprite count

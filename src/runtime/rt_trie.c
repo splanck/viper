@@ -67,21 +67,35 @@ static int has_children(rt_trie_node *node)
 }
 
 /// Collect all keys under a node into a Seq.
-static void collect_keys(rt_trie_node *node, char *buf, size_t depth, void *seq)
+/// buf/buf_cap are passed by pointer so the buffer can grow as needed.
+static void collect_keys(rt_trie_node *node, char **buf, size_t *buf_cap, size_t depth,
+                         void *seq)
 {
     if (!node)
         return;
     if (node->is_terminal)
     {
-        rt_string key = rt_string_from_bytes(buf, depth);
+        rt_string key = rt_string_from_bytes(*buf, depth);
         rt_seq_push(seq, (void *)key);
     }
     for (int i = 0; i < TRIE_ALPHABET_SIZE; ++i)
     {
         if (node->children[i])
         {
-            buf[depth] = (char)i;
-            collect_keys(node->children[i], buf, depth + 1, seq);
+            // Grow buffer if the next character would exceed capacity
+            if (depth + 1 > *buf_cap)
+            {
+                size_t new_cap = *buf_cap * 2;
+                if (new_cap < depth + 2)
+                    new_cap = depth + 2;
+                char *new_buf = (char *)realloc(*buf, new_cap);
+                if (!new_buf)
+                    continue; // Skip on allocation failure
+                *buf = new_buf;
+                *buf_cap = new_cap;
+            }
+            (*buf)[depth] = (char)i;
+            collect_keys(node->children[i], buf, buf_cap, depth + 1, seq);
         }
     }
 }
@@ -259,14 +273,14 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix)
         node = node->children[c];
     }
 
-    // Collect all keys under this node
-    // Max key length: 4096 should be more than sufficient
-    char *buf = (char *)malloc(4096);
+    // Collect all keys under this node; buffer grows as needed
+    size_t buf_cap = 4096;
+    char *buf = (char *)malloc(buf_cap);
     if (!buf)
         return result;
     if (plen > 0)
         memcpy(buf, cstr, plen);
-    collect_keys(node, buf, plen, result);
+    collect_keys(node, &buf, &buf_cap, plen, result);
     free(buf);
     return result;
 }
@@ -368,10 +382,11 @@ void *rt_trie_keys(void *obj)
     if (!trie->root)
         return result;
 
-    char *buf = (char *)malloc(4096);
+    size_t buf_cap = 4096;
+    char *buf = (char *)malloc(buf_cap);
     if (!buf)
         return result;
-    collect_keys(trie->root, buf, 0, result);
+    collect_keys(trie->root, &buf, &buf_cap, 0, result);
     free(buf);
     return result;
 }

@@ -70,6 +70,9 @@
 // Parser State
 //=============================================================================
 
+/* S-18: Maximum nesting depth before aborting */
+#define YAML_MAX_DEPTH 200
+
 typedef struct
 {
     const char *input;
@@ -77,6 +80,7 @@ typedef struct
     size_t pos;
     int line;
     int col;
+    int depth; // Current nesting depth
 } yaml_parser;
 
 /// @brief Last parse error message.
@@ -103,6 +107,7 @@ static void parser_init(yaml_parser *p, const char *input, size_t len)
     p->pos = 0;
     p->line = 1;
     p->col = 1;
+    p->depth = 0;
 }
 
 static bool parser_eof(yaml_parser *p)
@@ -383,9 +388,20 @@ static void *parse_value(yaml_parser *p, int base_indent);
 
 static void *parse_block_sequence(yaml_parser *p, int base_indent)
 {
+    /* S-18: Guard against deeply nested documents */
+    if (p->depth >= YAML_MAX_DEPTH)
+    {
+        set_error("sequence nesting depth limit exceeded", p->line);
+        return rt_seq_new();
+    }
+    p->depth++;
+
     void *seq = rt_seq_new();
     if (!seq)
+    {
+        p->depth--;
         return NULL;
+    }
 
     while (!parser_eof(p))
     {
@@ -426,14 +442,26 @@ static void *parse_block_sequence(yaml_parser *p, int base_indent)
         }
     }
 
+    p->depth--;
     return seq;
 }
 
 static void *parse_block_mapping(yaml_parser *p, int base_indent)
 {
+    /* S-18: Guard against deeply nested documents */
+    if (p->depth >= YAML_MAX_DEPTH)
+    {
+        set_error("mapping nesting depth limit exceeded", p->line);
+        return rt_map_new();
+    }
+    p->depth++;
+
     void *map = rt_map_new();
     if (!map)
+    {
+        p->depth--;
         return NULL;
+    }
 
     while (!parser_eof(p))
     {
@@ -498,6 +526,7 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent)
             rt_obj_free((void *)key);
     }
 
+    p->depth--;
     return map;
 }
 

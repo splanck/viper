@@ -160,17 +160,23 @@ typedef struct RtMonitorEntry
 #define RT_MONITOR_BUCKETS 4096u
 
 static CRITICAL_SECTION g_monitor_table_cs;
-static int g_monitor_table_cs_init = 0;
+static INIT_ONCE g_monitor_table_cs_once = INIT_ONCE_STATIC_INIT;
 static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
+
+static BOOL WINAPI init_table_cs_once(PINIT_ONCE once, PVOID param, PVOID *ctx)
+{
+    (void)once;
+    (void)param;
+    (void)ctx;
+    InitializeCriticalSection(&g_monitor_table_cs);
+    return TRUE;
+}
 
 static void ensure_table_cs_init(void)
 {
-    // Simple one-time init; ok for single-threaded startup
-    if (!g_monitor_table_cs_init)
-    {
-        InitializeCriticalSection(&g_monitor_table_cs);
-        g_monitor_table_cs_init = 1;
-    }
+    /* InitOnceExecuteOnce is thread-safe: exactly one thread runs the
+       callback and all concurrent callers block until it completes. */
+    InitOnceExecuteOnce(&g_monitor_table_cs_once, init_table_cs_once, NULL, NULL);
 }
 
 static size_t hash_ptr(void *p)

@@ -91,8 +91,10 @@ static void ensure_capacity(spritebatch_impl *batch, int64_t needed)
     batch_item *new_items =
         (batch_item *)realloc(batch->items, (size_t)new_capacity * sizeof(batch_item));
     if (!new_items)
+    {
         rt_trap("SpriteBatch: memory allocation failed");
-
+        return;
+    }
     batch->items = new_items;
     batch->capacity = new_capacity;
 }

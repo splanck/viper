@@ -271,9 +271,8 @@ void *rt_scheduler_poll(void *sched)
         {
             sched_entry *e = *pp;
             *pp = e->next;
-            // Push the name into the result seq (seq retains it)
+            // Transfer name ownership to the result seq
             rt_seq_push(result, (void *)e->name);
-            rt_string_unref(e->name);
             free(e);
             data->count--;
         }

@@ -1598,13 +1598,13 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
         int64_t src_y = src_y_256 >> 8;
         int64_t frac_y = src_y_256 & 0xFF;
 
+        if (src_y >= p->height)
+            src_y = p->height - 1;
+        if (src_y < 0)
+            src_y = 0;
+        int64_t sy1 = (src_y + 1 < p->height) ? src_y + 1 : src_y;
         if (src_y >= p->height - 1)
-        {
-            src_y = p->height - 2;
-            if (src_y < 0)
-                src_y = 0;
             frac_y = 255;
-        }
 
         for (int64_t x = 0; x < new_width; x++)
         {
@@ -1613,19 +1613,19 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
             int64_t src_x = src_x_256 >> 8;
             int64_t frac_x = src_x_256 & 0xFF;
 
+            if (src_x >= p->width)
+                src_x = p->width - 1;
+            if (src_x < 0)
+                src_x = 0;
+            int64_t sx1 = (src_x + 1 < p->width) ? src_x + 1 : src_x;
             if (src_x >= p->width - 1)
-            {
-                src_x = p->width - 2;
-                if (src_x < 0)
-                    src_x = 0;
                 frac_x = 255;
-            }
 
             // Get four neighboring pixels
             uint32_t p00 = p->data[src_y * p->width + src_x];
-            uint32_t p10 = p->data[src_y * p->width + src_x + 1];
-            uint32_t p01 = p->data[(src_y + 1) * p->width + src_x];
-            uint32_t p11 = p->data[(src_y + 1) * p->width + src_x + 1];
+            uint32_t p10 = p->data[src_y * p->width + sx1];
+            uint32_t p01 = p->data[sy1 * p->width + src_x];
+            uint32_t p11 = p->data[sy1 * p->width + sx1];
 
             // Extract components - format is 0xAARRGGBB
             int64_t a00 = (p00 >> 24) & 0xFF, r00 = (p00 >> 16) & 0xFF, g00 = (p00 >> 8) & 0xFF,

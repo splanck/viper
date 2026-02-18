@@ -75,11 +75,16 @@
 // Parser State
 //=============================================================================
 
+/* S-16: Maximum nesting depth before aborting (stack overflow / DoS guard) */
+#define JSON_MAX_DEPTH 200
+
 typedef struct
 {
     const char *input;
     size_t len;
     size_t pos;
+    int depth;          // Current nesting depth
+    int depth_exceeded; // S-16: set when depth limit hit (unwinds without trap)
 } json_parser;
 
 static void parser_init(json_parser *p, const char *input, size_t len)
@@ -87,6 +92,8 @@ static void parser_init(json_parser *p, const char *input, size_t len)
     p->input = input;
     p->len = len;
     p->pos = 0;
+    p->depth = 0;
+    p->depth_exceeded = 0;
 }
 
 static bool parser_eof(json_parser *p)
@@ -431,8 +438,17 @@ static void *parse_number(json_parser *p)
 
 static void *parse_array(json_parser *p)
 {
+    /* S-16: Reject deeply nested documents */
+    if (p->depth >= JSON_MAX_DEPTH)
+    {
+        p->depth_exceeded = 1;
+        return NULL;
+    }
+    p->depth++;
+
     if (parser_consume(p) != '[')
     {
+        p->depth--;
         parser_error(p, "expected array");
         return rt_seq_new();
     }
@@ -444,6 +460,7 @@ static void *parse_array(json_parser *p)
     if (parser_peek(p) == ']')
     {
         parser_consume(p);
+        p->depth--;
         return seq;
     }
 
@@ -452,6 +469,9 @@ static void *parse_array(json_parser *p)
     {
         parser_skip_whitespace(p);
         void *value = parse_value(p);
+        /* S-16: depth limit hit inside nested value — bail out cleanly */
+        if (p->depth_exceeded)
+            return seq;
         rt_seq_push(seq, value);
 
         parser_skip_whitespace(p);
@@ -469,10 +489,12 @@ static void *parse_array(json_parser *p)
         else
         {
             parser_error(p, "expected ',' or ']' in array");
+            p->depth--;
             return seq;
         }
     }
 
+    p->depth--;
     return seq;
 }
 
@@ -482,8 +504,17 @@ static void *parse_array(json_parser *p)
 
 static void *parse_object(json_parser *p)
 {
+    /* S-16: Reject deeply nested documents */
+    if (p->depth >= JSON_MAX_DEPTH)
+    {
+        p->depth_exceeded = 1;
+        return NULL;
+    }
+    p->depth++;
+
     if (parser_consume(p) != '{')
     {
+        p->depth--;
         parser_error(p, "expected object");
         return rt_map_new();
     }
@@ -521,6 +552,12 @@ static void *parse_object(json_parser *p)
 
         parser_skip_whitespace(p);
         void *value = parse_value(p);
+        /* S-16: depth limit hit inside nested value — bail out cleanly */
+        if (p->depth_exceeded)
+        {
+            rt_str_release_maybe(key);
+            return map;
+        }
 
         rt_map_set(map, key, value);
         rt_str_release_maybe(key);
@@ -540,10 +577,12 @@ static void *parse_object(json_parser *p)
         else
         {
             parser_error(p, "expected ',' or '}' in object");
+            p->depth--;
             return map;
         }
     }
 
+    p->depth--;
     return map;
 }
 
@@ -553,6 +592,10 @@ static void *parse_object(json_parser *p)
 
 static void *parse_value(json_parser *p)
 {
+    /* S-16: Propagate depth-exceeded without trapping */
+    if (p->depth_exceeded)
+        return NULL;
+
     parser_skip_whitespace(p);
 
     if (parser_eof(p))
@@ -987,6 +1030,10 @@ void *rt_json_parse(rt_string text)
     parser_init(&p, input, len);
 
     void *result = parse_value(&p);
+
+    /* S-16: If depth limit was hit, return NULL without inspecting trailing chars */
+    if (p.depth_exceeded)
+        return NULL;
 
     // Check for trailing content
     parser_skip_whitespace(&p);

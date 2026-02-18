@@ -83,13 +83,18 @@ static void ensure_cap(rt_spritesheet_impl *ss)
         return;
     int64_t new_cap = ss->capacity * 2;
     ss_region *new_regions = (ss_region *)realloc(ss->regions, (size_t)new_cap * sizeof(ss_region));
-    char **new_names = (char **)realloc(ss->names, (size_t)new_cap * sizeof(char *));
-    if (!new_regions || !new_names)
+    if (!new_regions)
     {
         rt_trap("SpriteSheet: memory allocation failed");
         return;
     }
     ss->regions = new_regions;
+    char **new_names = (char **)realloc(ss->names, (size_t)new_cap * sizeof(char *));
+    if (!new_names)
+    {
+        rt_trap("SpriteSheet: memory allocation failed");
+        return;
+    }
     ss->names = new_names;
     ss->capacity = new_cap;
 }

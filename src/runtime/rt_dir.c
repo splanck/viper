@@ -599,7 +599,10 @@ void rt_dir_remove_all(rt_string path)
         snprintf(full_path, PATH_MAX, "%s/%s", cpath, ent->d_name);
 
         struct stat st;
-        if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode))
+        /* Use lstat() so we do not follow symlinks into other trees.
+           A symlink pointing to a directory reports S_ISLNK, not S_ISDIR,
+           so delete_file() will call unlink() on the symlink itself. */
+        if (lstat(full_path, &st) == 0 && S_ISDIR(st.st_mode))
         {
             rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
             rt_dir_remove_all(sub);
