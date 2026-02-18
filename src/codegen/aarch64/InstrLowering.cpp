@@ -367,8 +367,20 @@ bool materializeValueToVReg(const il::core::Value &v,
         {
             if (prod.operands.size() == 2)
             {
-                if (binOp->supportsImmediate &&
-                    prod.operands[1].kind == il::core::Value::Kind::ConstInt)
+                const bool isImmCandidate =
+                    binOp->supportsImmediate &&
+                    prod.operands[1].kind == il::core::Value::Kind::ConstInt;
+                // For bitwise ops, validate that the constant is a logical immediate.
+                const bool isBitwiseImm =
+                    isImmCandidate &&
+                    (prod.op == il::core::Opcode::And || prod.op == il::core::Opcode::Or ||
+                     prod.op == il::core::Opcode::Xor) &&
+                    isLogicalImmediate(static_cast<uint64_t>(prod.operands[1].i64));
+                // Shift and add/sub immediates are valid if the opcode supports them.
+                const bool isOtherImm =
+                    isImmCandidate && prod.op != il::core::Opcode::And &&
+                    prod.op != il::core::Opcode::Or && prod.op != il::core::Opcode::Xor;
+                if (isBitwiseImm || isOtherImm)
                 {
                     if (emitRImm(binOp->immOp, prod.operands[0], prod.operands[1].i64))
                     {

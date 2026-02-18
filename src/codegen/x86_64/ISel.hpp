@@ -59,6 +59,16 @@ class ISel
     /// addressing mode (e.g., [base + index*scale + disp]).
     /// @param func The machine function to optimize.
     void foldSibAddressing(MFunction &func) const;
+
+    /// @brief Replace IMULrr-by-small-constant with LEA strength reduction.
+    /// @details Detects patterns where a MOVri loads a constant 3, 5, or 9
+    /// into a virtual register used exactly once as the second operand of an
+    /// IMULrr. Replaces the multiply with a LEA using SIB addressing:
+    ///   x*3 → lea [x + x*2], x*5 → lea [x + x*4], x*9 → lea [x + x*8].
+    /// The supplying MOVri is erased when the constant register becomes dead.
+    /// IMULOvfrr (overflow-checked) is intentionally left untouched.
+    /// @param func The machine function to optimize.
+    void lowerMulToLea(MFunction &func) const;
 };
 
 } // namespace viper::codegen::x64

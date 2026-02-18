@@ -416,6 +416,14 @@ if (NOT TARGET test_codegen_peephole_optimizations)
     viper_add_ctest(test_codegen_peephole_optimizations test_codegen_peephole_optimizations)
 endif ()
 
+if (NOT TARGET test_x86_isel_lea_mul)
+    viper_add_test(
+            test_x86_isel_lea_mul
+            ${VIPER_TESTS_DIR}/unit/codegen/test_x86_isel_lea_mul.cpp)
+    target_link_libraries(test_x86_isel_lea_mul PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_x86_isel_lea_mul test_x86_isel_lea_mul)
+endif ()
+
 # Bytecode VM tests
 if (NOT TARGET test_bytecode_vm)
     viper_add_test(test_bytecode_vm ${VIPER_TESTS_DIR}/unit/test_bytecode_vm.cpp)

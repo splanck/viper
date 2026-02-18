@@ -127,24 +127,24 @@ static std::string mapRuntimeSymbol(const std::string &name)
 /// @brief Mangle a symbol name for the target platform.
 /// On Darwin (macOS), C symbols require an underscore prefix.
 /// Local labels (starting with L or .) are not mangled.
-static std::string mangleSymbol(const std::string &name)
+/// On Linux ELF, no prefix is applied.
+static std::string mangleSymbolImpl(const std::string &name, bool isDarwin)
 {
-#if defined(__APPLE__)
-    // Don't mangle local labels (L* or .L*)
-    if (!name.empty() && (name[0] == 'L' || name[0] == '.'))
-        return name;
-    // Add underscore prefix for Darwin
-    return "_" + name;
-#else
+    if (isDarwin)
+    {
+        // Don't mangle local labels (L* or .L*)
+        if (!name.empty() && (name[0] == 'L' || name[0] == '.'))
+            return name;
+        return "_" + name;
+    }
     return name;
-#endif
 }
 
 /// @brief Mangle a call target symbol for emission.
 /// This first maps IL runtime names to C runtime names, then applies platform mangling.
-static std::string mangleCallTarget(const std::string &name)
+static std::string mangleCallTargetImpl(const std::string &name, bool isDarwin)
 {
-    return mangleSymbol(mapRuntimeSymbol(name));
+    return mangleSymbolImpl(mapRuntimeSymbol(name), isDarwin);
 }
 
 /// @brief Sanitize a label for assembly output.
@@ -159,21 +159,27 @@ static std::string sanitizeLabel(const std::string &name)
 
 void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const
 {
-    // Keep directives minimal and assembler-agnostic for testing.
+    const bool darwin = !target_->isLinux();
     os << ".text\n";
     os << ".align 2\n";
-    // Mangle symbol names for the target platform (e.g., add '_' prefix on Darwin).
-    // On Darwin, avoid emitting .globl for L*-prefixed names (reserved for local/temporary).
-    const std::string sym = mangleSymbol(name);
-#if defined(__APPLE__)
-    if (!(sym.size() >= 1 &&
-          (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L'))))
+
+    const std::string sym = mangleSymbolImpl(name, darwin);
+
+    // On Darwin, skip .globl for L*/_L*-prefixed local labels.
+    // On Linux, always emit .globl followed by .type for ELF function metadata.
+    if (darwin)
+    {
+        if (!(sym.size() >= 1 &&
+              (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L'))))
+        {
+            os << ".globl " << sym << "\n";
+        }
+    }
+    else
     {
         os << ".globl " << sym << "\n";
+        os << ".type " << sym << ", @function\n";
     }
-#else
-    os << ".globl " << sym << "\n";
-#endif
     os << sym << ":\n";
 }
 
@@ -363,6 +369,21 @@ void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg 
 void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
 {
     os << "  eor " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
+{
+    os << "  and " << rn(dst) << ", " << rn(src) << ", #" << imm << "\n";
+}
+
+void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
+{
+    os << "  orr " << rn(dst) << ", " << rn(src) << ", #" << imm << "\n";
+}
+
+void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
+{
+    os << "  eor " << rn(dst) << ", " << rn(src) << ", #" << imm << "\n";
 }
 
 void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
@@ -835,11 +856,12 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 
     // For the main function, initialize the runtime context before executing user code.
     // This is required because runtime functions expect an active RtContext.
+    const bool darwin = !target_->isLinux();
     if (fn.name == "main")
     {
         os << "  ; Initialize runtime context for native execution\n";
-        os << "  bl " << mangleSymbol("rt_legacy_context") << "\n";
-        os << "  bl " << mangleSymbol("rt_set_current_context") << "\n";
+        os << "  bl " << mangleCallTargetImpl("rt_legacy_context", darwin) << "\n";
+        os << "  bl " << mangleCallTargetImpl("rt_set_current_context", darwin) << "\n";
     }
 
     // Store the plan for use by Ret instructions
@@ -851,6 +873,14 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 
     currentPlan_ = nullptr;
     currentPlanValid_ = false;
+
+    // On Linux ELF, emit .size after the function body so the linker and
+    // profilers can determine the function's byte extent.
+    if (!darwin)
+    {
+        const std::string sym = mangleSymbolImpl(fn.name, /*isDarwin=*/false);
+        os << ".size " << sym << ", .-" << sym << "\n";
+    }
     // Note: epilogue is emitted by each Ret instruction, not here
 }
 
@@ -864,6 +894,19 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
 
 void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
 {
+    // Provide single-argument wrappers used by the generated OpcodeDispatch.inc,
+    // which was generated without knowledge of the isDarwin parameter.
+    // These lambdas shadow the free-function names within this scope.
+    const bool kDarwin_ = !target_->isLinux();
+    [[maybe_unused]] auto mangleSymbol = [kDarwin_](const std::string &n) -> std::string
+    {
+        return mangleSymbolImpl(n, kDarwin_);
+    };
+    [[maybe_unused]] auto mangleCallTarget = [kDarwin_](const std::string &n) -> std::string
+    {
+        return mangleCallTargetImpl(n, kDarwin_);
+    };
+
     // Handle Ret specially since it needs the epilogue
     if (mi.opc == MOpcode::Ret)
     {
@@ -914,7 +957,8 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             emitTstRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
             return;
         case MOpcode::Bl:
-            // Direct call to named symbol - apply runtime name mapping and mangling
+            // Direct call to named symbol - apply runtime name mapping and mangling.
+            // Uses the local mangleCallTarget lambda (captures kDarwin_).
             os << "  bl " << mangleCallTarget(mi.ops[0].label) << "\n";
             return;
         case MOpcode::Blr:

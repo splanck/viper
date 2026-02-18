@@ -174,9 +174,10 @@ void lowerTerminators(const il::core::Function &fn,
                                         sv = cvt;
                                         scls = RegClass::FPR;
                                     }
-                                    // Store FPR to spill slot
+                                    // Phi-edge FPR copy: clears dirty flag in RA to
+                                    // suppress redundant block-end spill of this vreg.
                                     outBB.instrs.push_back(
-                                        MInstr{MOpcode::StrFprFpImm,
+                                        MInstr{MOpcode::PhiStoreFPR,
                                                {MOperand::vregOp(RegClass::FPR, sv),
                                                 MOperand::immOp(offset)}});
                                 }
@@ -192,9 +193,10 @@ void lowerTerminators(const il::core::Function &fn,
                                         sv = cvt;
                                         scls = RegClass::GPR;
                                     }
-                                    // Store GPR to spill slot
+                                    // Phi-edge GPR copy: clears dirty flag in RA to
+                                    // suppress redundant block-end spill of this vreg.
                                     outBB.instrs.push_back(
-                                        MInstr{MOpcode::StrRegFpImm,
+                                        MInstr{MOpcode::PhiStoreGPR,
                                                {MOperand::vregOp(RegClass::GPR, sv),
                                                 MOperand::immOp(offset)}});
                                 }
@@ -311,8 +313,9 @@ void lowerTerminators(const il::core::Function &fn,
                                     sv = cvt;
                                     scls = RegClass::FPR;
                                 }
-                                // Store FPR to spill slot
-                                outBB.instrs.push_back(MInstr{MOpcode::StrFprFpImm,
+                                // Phi-edge FPR copy: clears dirty flag in RA to
+                                // suppress redundant block-end spill of this vreg.
+                                outBB.instrs.push_back(MInstr{MOpcode::PhiStoreFPR,
                                                               {MOperand::vregOp(RegClass::FPR, sv),
                                                                MOperand::immOp(offset)}});
                             }
@@ -328,8 +331,9 @@ void lowerTerminators(const il::core::Function &fn,
                                     sv = cvt;
                                     scls = RegClass::GPR;
                                 }
-                                // Store GPR to spill slot
-                                outBB.instrs.push_back(MInstr{MOpcode::StrRegFpImm,
+                                // Phi-edge GPR copy: clears dirty flag in RA to
+                                // suppress redundant block-end spill of this vreg.
+                                outBB.instrs.push_back(MInstr{MOpcode::PhiStoreGPR,
                                                               {MOperand::vregOp(RegClass::GPR, sv),
                                                                MOperand::immOp(offset)}});
                             }

@@ -212,6 +212,9 @@ static bool isUseDefImmLike(MOpcode opc)
         case MOpcode::LslRI:
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
             return true;
         default:
             return false;
@@ -541,27 +544,117 @@ class LinearAllocator
         }
     }
 
+    /// @brief Compute per-block liveOut sets via backward dataflow analysis.
+    ///
+    /// Replaces the previous conservative approximation (which added every vreg
+    /// referenced in any instruction of any successor, including def operands)
+    /// with a proper gen/kill backward dataflow:
+    ///
+    ///   gen[B]    = vregs used in B before any def of that vreg in B
+    ///   kill[B]   = vregs defined in B
+    ///   liveIn[B] = gen[B] ∪ (liveOut[B] \ kill[B])
+    ///   liveOut[B]= ∪_{S ∈ succs(B)} liveIn[S]
+    ///
+    /// For SSA-like MIR (each vreg defined at most once), every vreg defined
+    /// inside a loop block B is in kill[B].  The self-loop contribution
+    /// (liveOut[B] ∩ kill[B]) is always empty, so vregs defined in B never
+    /// appear in liveOut[B] due to the back-edge alone.  Only vregs that are
+    /// genuinely needed by a successor — i.e., in some successor's gen set —
+    /// propagate into liveOut[B].  This eliminates spurious block-end spills
+    /// for phi-loaded inputs, intermediate temporaries, and constant materialisers.
     void computeLiveOutSets()
     {
-        liveOutGPR_.assign(fn_.blocks.size(), {});
-        liveOutFPR_.assign(fn_.blocks.size(), {});
-        for (std::size_t i = 0; i < fn_.blocks.size(); ++i)
+        const std::size_t N = fn_.blocks.size();
+
+        // ---------------------------------------------------------------
+        // Step 1: Compute gen[B] and kill[B] for each block.
+        //
+        // gen[B]  = vregs first USED in B (before any def of that vreg).
+        // kill[B] = vregs DEFined in B.
+        //
+        // We scan instructions in forward order.  A vreg is added to gen[B]
+        // on its first USE appearance, provided it has not yet been added to
+        // kill[B].  A vreg is added to kill[B] on its first DEF appearance.
+        // ---------------------------------------------------------------
+        std::vector<std::unordered_set<uint16_t>> genGPR(N), killGPR(N);
+        std::vector<std::unordered_set<uint16_t>> genFPR(N), killFPR(N);
+
+        for (std::size_t i = 0; i < N; ++i)
         {
-            for (auto sidx : succs_[i])
+            for (const auto &mi : fn_.blocks[i].instrs)
             {
-                const auto &succ = fn_.blocks[sidx];
-                for (const auto &mi : succ.instrs)
+                for (std::size_t k = 0; k < mi.ops.size(); ++k)
                 {
-                    for (const auto &op : mi.ops)
-                    {
-                        if (op.kind == MOperand::Kind::Reg && !op.reg.isPhys)
-                        {
-                            if (op.reg.cls == RegClass::GPR)
-                                liveOutGPR_[i].insert(op.reg.idOrPhys);
-                            else
-                                liveOutFPR_[i].insert(op.reg.idOrPhys);
-                        }
-                    }
+                    const auto &op = mi.ops[k];
+                    if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
+                        continue;
+
+                    const uint16_t vid    = op.reg.idOrPhys;
+                    const bool     isFPR  = (op.reg.cls == RegClass::FPR);
+                    auto &genSet  = isFPR ? genFPR[i]  : genGPR[i];
+                    auto &killSet = isFPR ? killFPR[i] : killGPR[i];
+
+                    auto [isUse, isDef] = operandRoles(mi, k);
+
+                    // Add to gen if this is a USE and the vreg has not been
+                    // killed (defined) yet in this block.
+                    if (isUse && killSet.find(vid) == killSet.end())
+                        genSet.insert(vid);
+
+                    if (isDef)
+                        killSet.insert(vid);
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Step 2: Initialise liveOut and liveIn to empty.
+        // ---------------------------------------------------------------
+        liveOutGPR_.assign(N, {});
+        liveOutFPR_.assign(N, {});
+        std::vector<std::unordered_set<uint16_t>> liveInGPR(N), liveInFPR(N);
+
+        // ---------------------------------------------------------------
+        // Step 3: Iterate backward dataflow to fixed point.
+        //
+        // Processing blocks in reverse order improves convergence for
+        // straight-line and reducible CFGs (back-to-front propagation).
+        // For irreducible CFGs the algorithm still terminates because
+        // liveness sets are monotonically growing (never shrink).
+        // ---------------------------------------------------------------
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            for (std::size_t i = N; i-- > 0;)
+            {
+                // liveOut[i] = union of liveIn[succ] for each successor.
+                std::unordered_set<uint16_t> newOutGPR, newOutFPR;
+                for (auto sidx : succs_[i])
+                {
+                    newOutGPR.insert(liveInGPR[sidx].begin(), liveInGPR[sidx].end());
+                    newOutFPR.insert(liveInFPR[sidx].begin(), liveInFPR[sidx].end());
+                }
+
+                // liveIn[i] = gen[i] ∪ (liveOut[i] \ kill[i]).
+                std::unordered_set<uint16_t> newInGPR = genGPR[i];
+                for (auto vid : newOutGPR)
+                    if (killGPR[i].find(vid) == killGPR[i].end())
+                        newInGPR.insert(vid);
+
+                std::unordered_set<uint16_t> newInFPR = genFPR[i];
+                for (auto vid : newOutFPR)
+                    if (killFPR[i].find(vid) == killFPR[i].end())
+                        newInFPR.insert(vid);
+
+                if (newOutGPR != liveOutGPR_[i] || newInGPR != liveInGPR[i] ||
+                    newOutFPR != liveOutFPR_[i] || newInFPR != liveInFPR[i])
+                {
+                    changed        = true;
+                    liveOutGPR_[i] = std::move(newOutGPR);
+                    liveOutFPR_[i] = std::move(newOutFPR);
+                    liveInGPR[i]   = std::move(newInGPR);
+                    liveInFPR[i]   = std::move(newInFPR);
                 }
             }
         }
@@ -653,7 +746,18 @@ class LinearAllocator
         // Only emit the store if the register value is dirty (newer than spill slot)
         if (st.dirty)
         {
-            const int off = fb_.ensureSpill(id);
+            // Use reuse-aware allocation: pass the victim's TRUE last use (from
+            // the precomputed use-position table) so that the slot is not recycled
+            // while the vreg still has outstanding uses later in the block.
+            // Using st.lastUse (the last-seen use at spill time) is incorrect because
+            // the vreg may have further uses after the current instruction.
+            const auto &posMap =
+                (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
+            unsigned trueLastUse = st.lastUse; // conservative fallback
+            auto posIt = posMap.find(id);
+            if (posIt != posMap.end() && !posIt->second.empty())
+                trueLastUse = posIt->second.back(); // true last use in block
+            const int off = fb_.ensureSpillWithReuse(id, trueLastUse, currentInstrIdx_);
             if (cls == RegClass::GPR)
                 prefix.push_back(makeStrFp(st.phys, off));
             else
@@ -984,6 +1088,11 @@ class LinearAllocator
         if ((ins.opc == MOpcode::StrFprFpImm || ins.opc == MOpcode::StrFprSpImm) && idx == 0)
             return {true, false};
 
+        // Phi-edge copies: operand 0 is the source vreg (USE only).
+        // After RA they become StrRegFpImm / StrFprFpImm.
+        if ((ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR) && idx == 0)
+            return {true, false};
+
         // AdrPage: dst is def-only, label operand is not a register
         if (ins.opc == MOpcode::AdrPage)
             return {false, idx == 0};
@@ -1054,6 +1163,10 @@ class LinearAllocator
 
     void allocateBlock(MBasicBlock &bb)
     {
+        // Advance the frame builder's block epoch so that spill slots from
+        // previous blocks are never reused in this block.
+        fb_.beginNewBlock();
+
         // Compute next-use information for furthest-end-point spilling
         computeNextUses(bb);
         currentInstrIdx_ = 0;
@@ -1175,6 +1288,20 @@ class LinearAllocator
 
     void allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten)
     {
+        // Save phi-store source vreg info BEFORE the operand loop rewrites
+        // virtual registers to physical registers.  After materialization we
+        // need the original vreg ID to clear its dirty flag.
+        const bool isPhiStore =
+            (ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR);
+        uint16_t phiSrcVreg   = 0;
+        bool     phiSrcIsFPR  = false;
+        if (isPhiStore && !ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Reg &&
+            !ins.ops[0].reg.isPhys)
+        {
+            phiSrcVreg  = ins.ops[0].reg.idOrPhys;
+            phiSrcIsFPR = (ins.ops[0].reg.cls == RegClass::FPR);
+        }
+
         std::vector<MInstr> prefix;
         bool applyGetBarrier = false;
         uint16_t getBarrierDstVreg = 0;
@@ -1222,6 +1349,19 @@ class LinearAllocator
                 it->second.hasPhys = false;
                 it->second.spilled = true;
             }
+        }
+
+        // Phi-edge copy post-processing: clear the source vreg's dirty flag so
+        // the block-end spill loop skips a redundant second store to a separate
+        // regalloc slot.  The phi slot already holds the correct value.
+        // Also convert the pseudo-opcode to the real store opcode for emission.
+        if (isPhiStore)
+        {
+            auto &states = phiSrcIsFPR ? fprStates_ : gprStates_;
+            auto  it     = states.find(phiSrcVreg);
+            if (it != states.end())
+                it->second.dirty = false;
+            ins.opc = phiSrcIsFPR ? MOpcode::StrFprFpImm : MOpcode::StrRegFpImm;
         }
 
         // Emit

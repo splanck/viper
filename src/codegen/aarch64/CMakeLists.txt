@@ -16,12 +16,20 @@ add_library(il_codegen_aarch64 STATIC
         fastpaths/FastPaths_Memory.cpp
         fastpaths/FastPaths_Return.cpp
         RegAllocLinear.cpp
-        Peephole.cpp)
+        Peephole.cpp
+        # Modular PassManager passes (Priority 2F)
+        passes/LoweringPass.cpp
+        passes/RegAllocPass.cpp
+        passes/PeepholePass.cpp
+        passes/EmitPass.cpp
+        passes/SchedulerPass.cpp
+        passes/BlockLayoutPass.cpp)
 target_include_directories(il_codegen_aarch64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+target_link_libraries(il_codegen_aarch64 PUBLIC viper_codegen_common)
 set_target_properties(il_codegen_aarch64 PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- Generate OpcodeDispatch from JSON (no Python dependency) ---

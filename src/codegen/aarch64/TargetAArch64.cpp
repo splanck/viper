@@ -178,7 +178,18 @@ TargetInfo makeDarwinTarget()
     return info;
 }
 
+/// @brief Build the Linux AArch64 target.
+/// Same AAPCS64 register convention as Darwin; only the assembly output
+/// format differs (no underscore prefix, ELF .type/.size directives).
+static TargetInfo makeLinuxTarget()
+{
+    TargetInfo info = makeDarwinTarget();
+    info.abiFormat  = ABIFormat::Linux;
+    return info;
+}
+
 TargetInfo darwinTargetInstance = makeDarwinTarget();
+TargetInfo linuxTargetInstance  = makeLinuxTarget();
 
 } // namespace
 
@@ -187,6 +198,13 @@ TargetInfo darwinTargetInstance = makeDarwinTarget();
 const TargetInfo &darwinTarget() noexcept
 {
     return darwinTargetInstance;
+}
+
+/// @brief Get the singleton TargetInfo instance for Linux AArch64 (ELF).
+/// @return Reference to the pre-configured Linux target information.
+const TargetInfo &linuxTarget() noexcept
+{
+    return linuxTargetInstance;
 }
 
 /// @brief Check if a physical register is a general-purpose register (GPR).

@@ -107,9 +107,9 @@ constexpr BinaryOpMapping kBinaryIntOps[] = {
     {il::core::Opcode::ISubOvf, MOpcode::SubRRR, true, MOpcode::SubRI},
     {il::core::Opcode::Mul, MOpcode::MulRRR, false, MOpcode::MulRRR},
     {il::core::Opcode::IMulOvf, MOpcode::MulRRR, false, MOpcode::MulRRR},
-    {il::core::Opcode::And, MOpcode::AndRRR, false, MOpcode::AndRRR},
-    {il::core::Opcode::Or, MOpcode::OrrRRR, false, MOpcode::OrrRRR},
-    {il::core::Opcode::Xor, MOpcode::EorRRR, false, MOpcode::EorRRR},
+    {il::core::Opcode::And, MOpcode::AndRRR, true, MOpcode::AndRI},
+    {il::core::Opcode::Or, MOpcode::OrrRRR, true, MOpcode::OrrRI},
+    {il::core::Opcode::Xor, MOpcode::EorRRR, true, MOpcode::EorRI},
     {il::core::Opcode::Shl, MOpcode::LslRI, true, MOpcode::LslRI},
     {il::core::Opcode::LShr, MOpcode::LsrRI, true, MOpcode::LsrRI},
     {il::core::Opcode::AShr, MOpcode::AsrRI, true, MOpcode::AsrRI},
@@ -189,17 +189,17 @@ inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
         }
         case Opc::And:
         {
-            static constexpr BinaryOpMapping m{Opc::And, MOpcode::AndRRR, false, MOpcode::AndRRR};
+            static constexpr BinaryOpMapping m{Opc::And, MOpcode::AndRRR, true, MOpcode::AndRI};
             return &m;
         }
         case Opc::Or:
         {
-            static constexpr BinaryOpMapping m{Opc::Or, MOpcode::OrrRRR, false, MOpcode::OrrRRR};
+            static constexpr BinaryOpMapping m{Opc::Or, MOpcode::OrrRRR, true, MOpcode::OrrRI};
             return &m;
         }
         case Opc::Xor:
         {
-            static constexpr BinaryOpMapping m{Opc::Xor, MOpcode::EorRRR, false, MOpcode::EorRRR};
+            static constexpr BinaryOpMapping m{Opc::Xor, MOpcode::EorRRR, true, MOpcode::EorRI};
             return &m;
         }
         case Opc::Shl:

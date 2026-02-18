@@ -75,6 +75,11 @@ enum class MOpcode
     StrRegFpImm, // src, offset - str xN, [x29, #offset]
     LdrFprFpImm, // dst(FPR), offset - ldr dN, [x29, #offset]
     StrFprFpImm, // src(FPR), offset - str dN, [x29, #offset]
+    // Phi-edge copies: identical store encoding to Str*FpImm after register
+    // allocation, but the allocator clears the source vreg's dirty flag to
+    // prevent a redundant block-end spill of the same vreg to a separate slot.
+    PhiStoreGPR, // phi edge GPR copy (converted to StrRegFpImm during RA)
+    PhiStoreFPR, // phi edge FPR copy (converted to StrFprFpImm during RA)
     AddFpImm,    // dst, offset - add xN, x29, #offset (for alloca address computation)
     // Load/store from arbitrary base register (heap/global)
     LdrRegBaseImm, // dst, base, offset - ldr xN, [xM, #offset]
@@ -91,6 +96,9 @@ enum class MOpcode
     AndRRR,
     OrrRRR,
     EorRRR,
+    AndRI, // and dst, src, #logicalImm  (AArch64 logical immediate)
+    OrrRI, // orr dst, src, #logicalImm
+    EorRI, // eor dst, src, #logicalImm
     AddRI,
     SubRI,
     LslRI,

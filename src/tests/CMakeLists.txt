@@ -84,6 +84,8 @@ if (NOT WIN32)
             test_codegen_arm64_peephole
             test_aarch64_rodata_pool
             test_codegen_review_fixes
+            test_aarch64_frame_spill_reuse
+            test_aarch64_logical_imm
     )
     foreach (_test IN LISTS _AARCH64_CODEGEN_ONLY_TESTS)
         _aarch64_add_test(${_test}
@@ -151,6 +153,8 @@ if (NOT WIN32)
             test_codegen_arm64_rodata_literals
             test_codegen_arm64_callee_saved
             test_codegen_arm64_mixed_call_f64
+            test_aarch64_phi_coalescer
+            test_aarch64_global_liveness
     )
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_test(${_test}
@@ -171,6 +175,26 @@ if (NOT WIN32)
     #     "il_codegen_aarch64;viper_cmd_arm64")
 
     # ── Group 3: special link patterns ──────────────────────────────────
+
+    # AArch64 modular PassManager API (Priority 2F)
+    _aarch64_add_test_common(test_aarch64_pass_manager
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_pass_manager.cpp
+            "il_codegen_aarch64")
+
+    # AArch64 post-RA instruction scheduler (Priority 2G)
+    _aarch64_add_test_common(test_aarch64_scheduler
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_scheduler.cpp
+            "il_codegen_aarch64")
+
+    # AArch64 Linux ELF ABI output mode (Priority 3H)
+    _aarch64_add_test_common(test_aarch64_linux_abi
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_linux_abi.cpp
+            "il_codegen_aarch64")
+
+    # AArch64 block layout pass — greedy trace reordering (Priority 3J)
+    _aarch64_add_test_common(test_aarch64_block_layout
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_block_layout.cpp
+            "il_codegen_aarch64")
 
     # Environment.IsNative should distinguish VM vs native paths
     _aarch64_add_test_common(test_codegen_env_is_native

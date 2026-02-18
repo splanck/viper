@@ -700,11 +700,14 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                            ins.op == il::core::Opcode::IAddOvf ||
                                                            ins.op == il::core::Opcode::Sub ||
                                                            ins.op == il::core::Opcode::ISubOvf);
+                                    const bool isBitwise = (ins.op == il::core::Opcode::And ||
+                                                            ins.op == il::core::Opcode::Or ||
+                                                            ins.op == il::core::Opcode::Xor);
 
                                     // Use immediate form if:
                                     // 1. RHS is a constant AND
                                     // 2. Operation supports immediate AND
-                                    // 3. Value fits in immediate field
+                                    // 3. Value fits in the instruction's immediate field
                                     bool useImmediate = false;
                                     if (hasConstRHS && binOp->supportsImmediate)
                                     {
@@ -712,6 +715,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                         if (isShift && isValidShiftAmount(immVal))
                                             useImmediate = true;
                                         else if (isAddSub && isUImm12(immVal))
+                                            useImmediate = true;
+                                        else if (isBitwise &&
+                                                 isLogicalImmediate(
+                                                     static_cast<uint64_t>(immVal)))
                                             useImmediate = true;
                                     }
 

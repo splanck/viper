@@ -92,6 +92,27 @@ class FrameBuilder
     /// @return FP-relative offset of the spill slot.
     int ensureSpill(uint16_t vreg, int sizeBytes = kSlotSizeBytes, int alignBytes = kSlotSizeBytes);
 
+    /// @brief Ensure a spill slot for @p vreg, reusing a dead slot if available.
+    ///
+    /// @details A slot is dead when its previous occupant's last use occurred
+    ///          before @p currentInstrIdx.  If such a slot exists and has a
+    ///          compatible size, it is recycled for @p vreg without growing the
+    ///          frame.  Otherwise a fresh slot is allocated as normal.
+    ///
+    /// @param vreg           Virtual register to assign a slot to.
+    /// @param lastUseInstrIdx  Last instruction index that reads @p vreg
+    ///                         (used to record this slot's new lifetime end).
+    /// @param currentInstrIdx  Instruction index at the point of spill
+    ///                         (slots with lastUse < this value are dead).
+    /// @param sizeBytes      Slot size in bytes (default: 8).
+    /// @param alignBytes     Alignment in bytes (default: 8).
+    /// @return FP-relative offset of the (possibly reused) spill slot.
+    int ensureSpillWithReuse(uint16_t vreg,
+                             unsigned lastUseInstrIdx,
+                             unsigned currentInstrIdx,
+                             int sizeBytes  = kSlotSizeBytes,
+                             int alignBytes = kSlotSizeBytes);
+
     /// @brief Reserve space for outgoing arguments passed on the stack.
     /// @param bytes Maximum bytes needed for outgoing arguments.
     void setMaxOutgoingBytes(int bytes);
@@ -102,10 +123,38 @@ class FrameBuilder
     /// Assigns final offsets and ensures proper stack alignment.
     void finalize();
 
+    /// @brief Notify the frame builder that a new basic block is starting.
+    ///
+    /// Increments the block epoch so that spill slots from previous blocks are
+    /// never reused in the current block.  Must be called before processing
+    /// each basic block during register allocation.
+    void beginNewBlock() noexcept { ++blockEpoch_; }
+
   private:
+
+    /// @brief Lifetime record for a single spill slot.
+    ///
+    /// Tracks the FP-relative offset, the instruction index of the last use of
+    /// the most-recent vreg assigned to this slot, and the block epoch in which
+    /// that last use occurred.  Slots are only eligible for reuse within the
+    /// SAME block epoch — cross-block reuse is prohibited because
+    /// @p currentInstrIdx is a per-block counter that resets to 0 at each block
+    /// boundary, making cross-epoch comparisons meaningless.
+    struct SlotLifetime
+    {
+        int      offset;       ///< FP-relative offset (always negative).
+        int      sizeBytes;    ///< Slot size (for size-compatible reuse check).
+        unsigned lastUseIdx;   ///< Last instruction index reading the current vreg.
+        uint32_t epoch;        ///< Block epoch when lastUseIdx was recorded.
+    };
+
     MFunction *fn_{};
     int nextOffset_{-kSlotSizeBytes}; ///< Next available slot (first at [x29, #-8]).
     int minOffset_{0};                ///< Most negative offset assigned.
+    uint32_t blockEpoch_{0};         ///< Monotonically-increasing block counter.
+
+    /// Lifetime records for every slot allocated via ensureSpillWithReuse().
+    std::vector<SlotLifetime> slotLifetimes_;
 
     int assignAlignedSlot(int sizeBytes, int alignBytes);
 };

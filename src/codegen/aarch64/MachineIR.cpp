@@ -157,6 +157,10 @@ namespace viper::codegen::aarch64
             return "LdrFprFpImm";
         case MOpcode::StrFprFpImm:
             return "StrFprFpImm";
+        case MOpcode::PhiStoreGPR:
+            return "PhiStoreGPR";
+        case MOpcode::PhiStoreFPR:
+            return "PhiStoreFPR";
         case MOpcode::AddFpImm:
             return "AddFpImm";
         case MOpcode::LdrRegBaseImm:
@@ -187,6 +191,12 @@ namespace viper::codegen::aarch64
             return "OrrRRR";
         case MOpcode::EorRRR:
             return "EorRRR";
+        case MOpcode::AndRI:
+            return "AndRI";
+        case MOpcode::OrrRI:
+            return "OrrRI";
+        case MOpcode::EorRI:
+            return "EorRI";
         case MOpcode::AddRI:
             return "AddRI";
         case MOpcode::SubRI:

@@ -121,6 +121,44 @@ int FrameBuilder::ensureSpill(uint16_t vreg, int sizeBytes, int alignBytes)
     return off;
 }
 
+int FrameBuilder::ensureSpillWithReuse(uint16_t vreg,
+                                       unsigned lastUseInstrIdx,
+                                       unsigned currentInstrIdx,
+                                       int      sizeBytes,
+                                       int      alignBytes)
+{
+    // Fast path: this vreg was already assigned a slot (e.g., re-spill after reload).
+    for (const auto &S : fn_->frame.spills)
+        if (S.vreg == vreg)
+            return S.offset;
+
+    // Try to reuse a dead slot.  A slot is dead when:
+    //   (a) it was recorded in the SAME block epoch (same basic block), AND
+    //   (b) its previous occupant's last use index is before the current instruction.
+    //
+    // Cross-epoch (cross-block) reuse is prohibited because currentInstrIdx
+    // is a per-block counter that resets to 0 at each block boundary.
+    for (auto &L : slotLifetimes_)
+    {
+        if (L.sizeBytes == sizeBytes &&
+            L.epoch == blockEpoch_ &&
+            L.lastUseIdx < currentInstrIdx)
+        {
+            // Recycle: update the vreg→offset mapping and refresh the lifetime.
+            fn_->frame.spills.push_back(MFunction::SpillSlot{vreg, sizeBytes, alignBytes, L.offset});
+            L.lastUseIdx = lastUseInstrIdx;
+            // epoch stays the same (still the current block)
+            return L.offset;
+        }
+    }
+
+    // No dead slot available: allocate a fresh one and track its lifetime.
+    const int off = assignAlignedSlot(sizeBytes, alignBytes);
+    fn_->frame.spills.push_back(MFunction::SpillSlot{vreg, sizeBytes, alignBytes, off});
+    slotLifetimes_.push_back(SlotLifetime{off, sizeBytes, lastUseInstrIdx, blockEpoch_});
+    return off;
+}
+
 void FrameBuilder::setMaxOutgoingBytes(int bytes)
 {
     fn_->frame.maxOutgoingBytes = std::max(fn_->frame.maxOutgoingBytes, bytes);

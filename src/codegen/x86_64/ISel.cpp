@@ -465,6 +465,10 @@ void ISel::lowerArithmetic(MFunction &func) const
         }
     }
 
+    // Replace IMULrr-by-small-constant (3, 5, 9) with LEA strength reductions
+    // before folding LEA addresses into memory operands.
+    lowerMulToLea(func);
+
     // After normalising arithmetic, fold trivial address computations into
     // users to reduce register pressure and improve addressing modes.
     foldLeaIntoMem(func);
@@ -765,6 +769,166 @@ void ISel::foldSibAddressing(MFunction &func) const
         std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
         toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
         for (std::size_t eraseIdx : toErase)
+        {
+            if (eraseIdx < block.instructions.size())
+            {
+                block.instructions.erase(block.instructions.begin() +
+                                         static_cast<std::ptrdiff_t>(eraseIdx));
+            }
+        }
+    }
+}
+
+/// @brief Replace IMULrr-by-small-constant with LEA strength reduction.
+///
+/// @details For each block, scans for the pattern:
+///   MOVri  constReg, <factor>   (factor ∈ {3, 5, 9})
+///   IMULrr dstReg, constReg
+///
+/// and rewrites it to:
+///   LEA dstReg, [dstReg + dstReg * scale]
+///
+/// where scale = factor - 1 ∈ {2, 4, 8}.
+///
+/// The transformation avoids the higher latency of IMUL (3+ cycles) and
+/// the flag-clobbering side-effect.  Only unchecked IMULrr is eligible;
+/// IMULOvfrr carries an overflow trap and must remain as IMUL.  The
+/// supplying MOVri is erased when the constant virtual register has exactly
+/// one use (the IMUL itself).
+///
+/// @param func Machine function to transform.
+void ISel::lowerMulToLea(MFunction &func) const
+{
+    (void)target_;
+
+    // Map factor values {3, 5, 9} to the SIB scale {2, 4, 8}.
+    // scale = factor - 1; LEA [base + index*scale] = base*(1 + scale) = base*factor.
+    auto factorToScale = [](int64_t factor) -> uint8_t
+    {
+        if (factor == 3) return 2;
+        if (factor == 5) return 4;
+        if (factor == 9) return 8;
+        return 0; // not a LEA-eligible constant
+    };
+
+    for (auto &block : func.blocks)
+    {
+        // First pass: collect MOVri definitions of eligible constants
+        // and count all vreg uses so we can check single-use invariant.
+        struct MovRiDef
+        {
+            std::size_t defIdx{0};
+            int64_t factor{0};
+            uint8_t scale{0}; // precomputed LEA scale
+        };
+
+        std::unordered_map<uint16_t, MovRiDef> constDefs; // vreg id → MOVri info
+        std::unordered_map<uint16_t, int> useCount;       // vreg id → use count
+
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
+        {
+            const auto &instr = block.instructions[idx];
+
+            // Record single-constant MOVri definitions.
+            if (instr.opcode == MOpcode::MOVri && instr.operands.size() >= 2)
+            {
+                const auto *dst = asReg(instr.operands[0]);
+                const auto *imm = asImm(instr.operands[1]);
+                if (dst && !dst->isPhys && dst->cls == RegClass::GPR && imm)
+                {
+                    const uint8_t scale = factorToScale(imm->val);
+                    if (scale != 0)
+                    {
+                        MovRiDef def{};
+                        def.defIdx = idx;
+                        def.factor = imm->val;
+                        def.scale  = scale;
+                        constDefs[dst->idOrPhys] = def;
+                    }
+                }
+            }
+
+            // Count all vreg uses from all operands.
+            for (const auto &op : instr.operands)
+            {
+                if (const auto *r = asReg(op))
+                {
+                    if (!r->isPhys)
+                    {
+                        ++useCount[r->idOrPhys];
+                    }
+                }
+            }
+        }
+
+        // Second pass: find eligible IMULrr and rewrite.
+        std::vector<std::size_t> toErase;
+
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
+        {
+            auto &instr = block.instructions[idx];
+
+            if (instr.opcode != MOpcode::IMULrr || instr.operands.size() < 2)
+                continue;
+
+            // IMULrr layout: operands[0] = dst (also src0), operands[1] = src1
+            const auto *dst = asReg(instr.operands[0]);
+            const auto *src = asReg(instr.operands[1]);
+            if (!dst || !src)
+                continue;
+
+            // Both registers must be virtual GPRs for this transformation.
+            if (dst->isPhys || src->isPhys)
+                continue;
+            if (dst->cls != RegClass::GPR || src->cls != RegClass::GPR)
+                continue;
+
+            // The source register must have been defined by a MOVri with an
+            // eligible factor.
+            const uint16_t srcId = src->idOrPhys;
+            auto defIt = constDefs.find(srcId);
+            if (defIt == constDefs.end())
+                continue;
+
+            // The constant register must have exactly one read-use (this IMUL).
+            // useCount tracks all operand occurrences including the defining
+            // MOVri's destination slot, so a count of 2 means one definition
+            // occurrence plus one actual use — safe to erase the MOVri.
+            auto useIt = useCount.find(srcId);
+            if (useIt == useCount.end() || useIt->second != 2)
+                continue;
+
+            const MovRiDef &def = defIt->second;
+
+            // Build the replacement LEA: dst ← [dst + dst * scale]
+            // OpMem with base == index captures dst*(1+scale) = dst*factor.
+            const uint16_t dstId = dst->idOrPhys;
+            OpMem leaMem{};
+            leaMem.base.isPhys    = false;
+            leaMem.base.cls       = RegClass::GPR;
+            leaMem.base.idOrPhys  = dstId;
+            leaMem.index.isPhys   = false;
+            leaMem.index.cls      = RegClass::GPR;
+            leaMem.index.idOrPhys = dstId;
+            leaMem.scale          = def.scale;
+            leaMem.disp           = 0;
+            leaMem.hasIndex       = true;
+
+            instr.opcode = MOpcode::LEA;
+            instr.operands[0] = cloneOperand(instr.operands[0]); // dst unchanged
+            instr.operands[1] = Operand{leaMem};
+
+            // Trim any trailing operands (IMULrr has exactly 2, LEA has 2).
+            instr.operands.resize(2);
+
+            // Mark the supplying MOVri for removal.
+            toErase.push_back(def.defIdx);
+        }
+
+        // Erase marked instructions in reverse index order.
+        std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
+        toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
+        for (const std::size_t eraseIdx : toErase)
         {
             if (eraseIdx < block.instructions.size())
             {

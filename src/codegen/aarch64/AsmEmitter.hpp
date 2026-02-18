@@ -277,6 +277,15 @@ class AsmEmitter
     /// @param rhs Right-hand operand GPR.
     void emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
 
+    /// @brief Emit bitwise AND with logical immediate: `and dst, src, #imm`.
+    void emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const;
+
+    /// @brief Emit bitwise OR with logical immediate: `orr dst, src, #imm`.
+    void emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const;
+
+    /// @brief Emit bitwise XOR with logical immediate: `eor dst, src, #imm`.
+    void emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const;
+
     /// @brief Emit logical shift left: `lsl dst, lhs, #shift`.
     /// @param os Output stream to write assembly text.
     /// @param dst Destination GPR.

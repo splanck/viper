@@ -193,8 +193,23 @@ inline constexpr PhysReg kScratchFPR = PhysReg::V16;
 ///
 /// @see CallingConvention for a higher-level interface to calling convention rules
 /// @see darwinTarget() for the macOS/Darwin target instance
+/// @see linuxTarget()  for the Linux ELF target instance
+
+/// @brief Identifies the target OS ABI for assembly emission.
+/// Controls symbol mangling (underscore prefix) and ELF-specific directives
+/// (.type, .size) that are required on Linux but absent on Darwin Mach-O.
+enum class ABIFormat
+{
+    Darwin, ///< macOS/iOS; symbols prefixed with '_', no ELF directives.
+    Linux,  ///< Linux ELF; no symbol prefix, .type/.size required.
+};
+
 struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs>
 {
+    ABIFormat abiFormat = ABIFormat::Darwin;
+
+    /// @brief Returns true when emitting Linux ELF assembly.
+    [[nodiscard]] bool isLinux() const noexcept { return abiFormat == ABIFormat::Linux; }
 };
 
 // =============================================================================
@@ -305,6 +320,11 @@ class CallingConvention
 /// @return Reference to the Darwin target information singleton.
 [[nodiscard]] const TargetInfo &darwinTarget() noexcept;
 
+/// @brief Return the singleton TargetInfo for Linux AArch64 (ELF / AAPCS64).
+/// Same register convention as Darwin; differs only in assembly syntax
+/// (no underscore prefix, emits .type/.size ELF directives).
+[[nodiscard]] const TargetInfo &linuxTarget() noexcept;
+
 /// @brief Tests whether a physical register is a general-purpose register.
 /// @param reg The register to test.
 /// @return True if reg is X0-X30 or SP, false if it's a FPR.
@@ -387,6 +407,70 @@ class CallingConvention
 [[nodiscard]] constexpr bool needsWideImmSequence(long long imm) noexcept
 {
     return !isSimpleMovImm(imm);
+}
+
+/// @brief Check if a 64-bit immediate is encodable as an AArch64 logical immediate.
+///
+/// AArch64 logical immediates (AND/ORR/EOR) encode values that consist of a
+/// replicated bit-pattern across a 64-bit word.  A valid pattern is a run of
+/// 1-bits (possibly rotated) repeated to fill an element of size 2, 4, 8, 16,
+/// 32, or 64 bits.  Values of 0 and ~0 are excluded (not representable).
+///
+/// Algorithm (see ARM DDI 0487 §C5.1.3 DecodeBitMasks):
+///   1. For each element size (64, 32, 16, 8, 4, 2 bits) check whether the
+///      value is a consistent replication of an element-sized chunk.
+///   2. Within the element, check that the set bits form a contiguous run
+///      (possibly rotated — i.e. the bits wrap from MSB to LSB).
+///
+/// @param imm The immediate value to test (interpreted as unsigned 64-bit).
+/// @return true if @p imm can be used directly as a logical immediate operand.
+[[nodiscard]] inline bool isLogicalImmediate(uint64_t imm) noexcept
+{
+    // 0 and ~0 are never valid logical immediates.
+    if (imm == 0 || imm == ~uint64_t(0))
+        return false;
+
+    // Try each element size from 2 up to 64 bits.
+    // For each size N: check whether imm is a consistent replication of an
+    // N-bit chunk, and whether that chunk is a contiguous run of 1-bits
+    // (possibly rotated to wrap from MSB to LSB).
+    for (int N : {2, 4, 8, 16, 32, 64})
+    {
+        const uint64_t mask = (N == 64) ? ~uint64_t(0) : ((uint64_t(1) << N) - 1);
+        const uint64_t elem = imm & mask;
+
+        // Skip all-zero elements.
+        if (elem == 0)
+            continue;
+
+        // Verify all N-bit chunks of imm are identical to elem.
+        if (N < 64)
+        {
+            uint64_t replicated = elem;
+            for (int shift = N; shift < 64; shift += N)
+                replicated |= (elem << shift);
+            if (replicated != imm)
+                continue;
+        }
+
+        // elem is the representative N-bit pattern.
+        // Check that its bits form a single contiguous run (possibly rotated).
+        //
+        // Method: rotate elem left by 1 within N bits, XOR with original.
+        // A contiguous run has exactly 2 transitions (one 0→1, one 1→0)
+        // in the circular bit sequence, so popcount(elem XOR rotate(elem, 1)) == 2.
+        //
+        // Special case: if elem == mask (all ones in N bits), skip — it would
+        // replicate to ~0 which is excluded, but for safety skip anyway.
+        if (elem == mask)
+            continue;
+
+        const uint64_t rotLeft1 = ((elem << 1) | (elem >> (N - 1))) & mask;
+        const uint64_t transitions = elem ^ rotLeft1;
+        if (__builtin_popcountll(transitions) == 2)
+            return true;
+    }
+    return false;
 }
 
 } // namespace viper::codegen::aarch64
