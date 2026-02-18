@@ -12,6 +12,7 @@
 
 #include "rt_dateonly.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include <stdio.h>
@@ -107,7 +108,10 @@ void *rt_dateonly_create(int64_t year, int64_t month, int64_t day)
 void *rt_dateonly_today(void)
 {
     time_t now = time(NULL);
-    struct tm *tm = localtime(&now);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&now, &tm_buf);
+    if (!tm)
+        return NULL;
     return rt_dateonly_create(tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
 }
 
@@ -417,23 +421,29 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt)
                         snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)d->day);
                     break;
                 case 'B': // Full month name
-                    buf_pos +=
-                        snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_names[d->month]);
+                    if (d->month >= 1 && d->month <= 12)
+                        buf_pos += snprintf(
+                            buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_names[d->month]);
                     break;
                 case 'b': // Abbreviated month name
-                    buf_pos +=
-                        snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_abbr[d->month]);
+                    if (d->month >= 1 && d->month <= 12)
+                        buf_pos += snprintf(
+                            buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_abbr[d->month]);
                     break;
                 case 'A': // Full day name
                 {
                     int64_t dow = rt_dateonly_day_of_week(obj);
-                    buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_names[dow]);
+                    if (dow >= 0 && dow <= 6)
+                        buf_pos +=
+                            snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_names[dow]);
                     break;
                 }
                 case 'a': // Abbreviated day name
                 {
                     int64_t dow = rt_dateonly_day_of_week(obj);
-                    buf_pos += snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_abbr[dow]);
+                    if (dow >= 0 && dow <= 6)
+                        buf_pos +=
+                            snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_abbr[dow]);
                     break;
                 }
                 case 'j': // Day of year

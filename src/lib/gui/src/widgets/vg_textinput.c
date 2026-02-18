@@ -205,7 +205,21 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
         text_color = theme->colors.fg_disabled;
     }
 
-    // TODO: Draw background and border using vgfx primitives
+    // Draw background and border
+    uint32_t border_color = (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus
+                                                               : theme->colors.border_primary;
+    vgfx_fill_rect((vgfx_window_t)canvas,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
+                   input->bg_color);
+    vgfx_rect((vgfx_window_t)canvas,
+              (int32_t)widget->x,
+              (int32_t)widget->y,
+              (int32_t)widget->width,
+              (int32_t)widget->height,
+              border_color);
 
     // Calculate text area
     float padding = theme->input.padding_h;
@@ -244,18 +258,28 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
             vg_font_get_cursor_x(input->font, input->font_size, input->text, (int)sel_end);
 
         // Draw selection rectangle
-        // TODO: Use vgfx primitives
-        (void)start_x;
-        (void)end_x;
+        float padding = theme->input.padding_h;
+        float sel_abs_x = widget->x + padding + start_x - input->scroll_x;
+        float sel_w = end_x - start_x;
+        vgfx_fill_rect((vgfx_window_t)canvas,
+                       (int32_t)sel_abs_x,
+                       (int32_t)widget->y,
+                       (int32_t)sel_w,
+                       (int32_t)widget->height,
+                       input->selection_color);
     }
 
     // Draw text (with password masking if needed)
     if (input->password_mode && input->text_len > 0)
     {
-        // Draw dots instead of actual text
-        // TODO: Create masked string
+        // Mask text with asterisks
+        char masked[1024];
+        size_t n = input->text_len < sizeof(masked) - 1 ? input->text_len : sizeof(masked) - 1;
+        for (size_t m = 0; m < n; m++)
+            masked[m] = '*';
+        masked[n] = '\0';
         vg_font_draw_text(
-            canvas, input->font, input->font_size, text_x, text_y, display_text, display_color);
+            canvas, input->font, input->font_size, text_x, text_y, masked, display_color);
     }
     else
     {
@@ -270,8 +294,12 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
             text_x + vg_font_get_cursor_x(
                          input->font, input->font_size, input->text, (int)input->cursor_pos);
         // Draw cursor line
-        // TODO: Use vgfx primitives
-        (void)cursor_x;
+        vgfx_line((vgfx_window_t)canvas,
+                  (int32_t)cursor_x,
+                  (int32_t)widget->y + 2,
+                  (int32_t)cursor_x,
+                  (int32_t)(widget->y + widget->height - 2),
+                  text_color);
     }
 }
 

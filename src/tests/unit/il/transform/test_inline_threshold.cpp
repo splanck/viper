@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "il/transform/Inline.hpp"
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/Inline.hpp"
 #include "il/transform/PassRegistry.hpp"
 
 #include "il/core/BasicBlock.hpp"

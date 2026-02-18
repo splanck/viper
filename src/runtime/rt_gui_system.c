@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_platform.h"
 
 // Clipboard Functions (Phase 1)
 //=============================================================================
@@ -80,7 +81,8 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
     if (!copy)
         return 0;
 
-    char *token = strtok(copy, "+");
+    char *saveptr = NULL;
+    char *token = rt_strtok_r(copy, "+", &saveptr);
     while (token)
     {
         // Trim whitespace
@@ -120,7 +122,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
                 *key = 289 + fnum; // VGFX_KEY_F1 = 290 is approximated
             }
         }
-        token = strtok(NULL, "+");
+        token = rt_strtok_r(NULL, "+", &saveptr);
     }
 
     free(copy);

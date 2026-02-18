@@ -189,10 +189,9 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
                         bool isCollection = false;
                         for (const auto &cm : rtClass->methods)
                         {
-                            if (cm.name &&
-                                (std::string_view(cm.name) == "Push" ||
-                                 std::string_view(cm.name) == "Set" ||
-                                 std::string_view(cm.name) == "Enqueue"))
+                            if (cm.name && (std::string_view(cm.name) == "Push" ||
+                                            std::string_view(cm.name) == "Set" ||
+                                            std::string_view(cm.name) == "Enqueue"))
                             {
                                 isCollection = true;
                                 break;

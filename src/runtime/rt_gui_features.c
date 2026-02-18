@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_platform.h"
 
 //=============================================================================
 // Phase 6: CommandPalette
@@ -413,8 +414,7 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms)
 
     char *cmsg = rt_string_to_cstr(message);
 
-    rt_toast_data_t *data =
-        (rt_toast_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_toast_data_t));
+    rt_toast_data_t *data = (rt_toast_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_toast_data_t));
 
     data->id =
         vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, (uint32_t)duration_ms);
@@ -582,11 +582,14 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator)
     // Parse path and add items
     if (cpath && csep && csep[0])
     {
-        char *token = strtok(cpath, csep);
+        char *saveptr = NULL;
+        char *token = rt_strtok_r(cpath, csep, &saveptr);
         while (token)
         {
-            vg_breadcrumb_push(data->breadcrumb, token, strdup(token));
-            token = strtok(NULL, csep);
+            char *label = strdup(token);
+            if (label)
+                vg_breadcrumb_push(data->breadcrumb, token, label);
+            token = rt_strtok_r(NULL, csep, &saveptr);
         }
     }
 
@@ -610,7 +613,8 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items)
     // Parse comma-separated items
     if (citems)
     {
-        char *token = strtok(citems, ",");
+        char *saveptr = NULL;
+        char *token = rt_strtok_r(citems, ",", &saveptr);
         while (token)
         {
             // Trim whitespace
@@ -620,8 +624,10 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items)
             while (end > token && *end == ' ')
                 *end-- = '\0';
 
-            vg_breadcrumb_push(data->breadcrumb, token, strdup(token));
-            token = strtok(NULL, ",");
+            char *label = strdup(token);
+            if (label)
+                vg_breadcrumb_push(data->breadcrumb, token, label);
+            token = rt_strtok_r(NULL, ",", &saveptr);
         }
         free(citems);
     }

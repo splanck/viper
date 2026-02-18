@@ -38,8 +38,7 @@ namespace viper::codegen::common
 ///                 @p instrs.  An entry of @c true at index @p i causes
 ///                 @c instrs[i] to be dropped from the output.
 template <typename MInstr>
-inline void removeMarkedInstructions(std::vector<MInstr> &instrs,
-                                     const std::vector<bool> &toRemove)
+inline void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove)
 {
     std::size_t writeIdx = 0;
     for (std::size_t readIdx = 0; readIdx < instrs.size(); ++readIdx)

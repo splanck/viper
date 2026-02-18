@@ -234,10 +234,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 }
 
                 // Entity type found but method not in it or any parent — emit error
-                diag_.report({il::support::Severity::Error,
-                              "Entity type '" + typeName + "' has no method '" +
-                                  fieldExpr->field + "'",
-                              expr->loc, "V3100"});
+                diag_.report(
+                    {il::support::Severity::Error,
+                     "Entity type '" + typeName + "' has no method '" + fieldExpr->field + "'",
+                     expr->loc,
+                     "V3100"});
                 return {Value::constInt(0), Type(Type::Kind::Void)};
             }
 

@@ -170,8 +170,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 // Only authoritative sources (NEW, constructors) may override.
                 // DIM AS OBJECT is generic — always allow refinement.
                 Lowerer::SlotType existing = lowerer_.getSlotType(var->name);
-                bool isGenericObj = existing.isObject &&
-                                    string_utils::iequals(existing.objectClass, "object");
+                bool isGenericObj =
+                    existing.isObject && string_utils::iequals(existing.objectClass, "object");
                 if (authoritative || !existing.isObject || existing.objectClass.empty() ||
                     isGenericObj)
                 {

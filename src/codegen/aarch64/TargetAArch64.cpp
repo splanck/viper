@@ -184,12 +184,12 @@ TargetInfo makeDarwinTarget()
 static TargetInfo makeLinuxTarget()
 {
     TargetInfo info = makeDarwinTarget();
-    info.abiFormat  = ABIFormat::Linux;
+    info.abiFormat = ABIFormat::Linux;
     return info;
 }
 
 TargetInfo darwinTargetInstance = makeDarwinTarget();
-TargetInfo linuxTargetInstance  = makeLinuxTarget();
+TargetInfo linuxTargetInstance = makeLinuxTarget();
 
 } // namespace
 

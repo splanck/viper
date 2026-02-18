@@ -36,7 +36,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
     }
 
     const il::core::Module &ilMod = *module.ilMod;
-    const TargetInfo &ti          = *module.ti;
+    const TargetInfo &ti = *module.ti;
 
     // Build the rodata pool from all string globals in the module.
     module.rodataPool.buildFromModule(ilMod);
@@ -54,8 +54,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
         std::unordered_map<std::string, std::string> bbMap;
         bbMap.reserve(mir.blocks.size());
 
-        const std::string suffix =
-            uniquify ? (std::string("_") + fn.name) : std::string{};
+        const std::string suffix = uniquify ? (std::string("_") + fn.name) : std::string{};
 
         for (auto &bb : mir.blocks)
         {
@@ -80,13 +79,11 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
                 switch (mi.opc)
                 {
                     case MOpcode::Br:
-                        if (!mi.ops.empty() &&
-                            mi.ops[0].kind == MOperand::Kind::Label)
+                        if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
                             remapBB(mi.ops[0].label);
                         break;
                     case MOpcode::BCond:
-                        if (mi.ops.size() >= 2 &&
-                            mi.ops[1].kind == MOperand::Kind::Label)
+                        if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
                             remapBB(mi.ops[1].label);
                         break;
                     default:
@@ -97,8 +94,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
                 switch (mi.opc)
                 {
                     case MOpcode::AdrPage:
-                        if (mi.ops.size() >= 2 &&
-                            mi.ops[1].kind == MOperand::Kind::Label)
+                        if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
                         {
                             auto it = n2l.find(mi.ops[1].label);
                             if (it != n2l.end())
@@ -106,8 +102,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
                         }
                         break;
                     case MOpcode::AddPageOff:
-                        if (mi.ops.size() >= 3 &&
-                            mi.ops[2].kind == MOperand::Kind::Label)
+                        if (mi.ops.size() >= 3 && mi.ops[2].kind == MOperand::Kind::Label)
                         {
                             auto it = n2l.find(mi.ops[2].label);
                             if (it != n2l.end())

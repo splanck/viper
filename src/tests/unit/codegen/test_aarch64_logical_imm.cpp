@@ -39,18 +39,18 @@ using namespace viper::codegen::aarch64;
 TEST(LogicalImm, ValidImmediates)
 {
     // Simple contiguous runs from bit 0 upward (no rotation)
-    EXPECT_TRUE(isLogicalImmediate(0x1ULL));            // single bit
-    EXPECT_TRUE(isLogicalImmediate(0x3ULL));            // 2 bits
-    EXPECT_TRUE(isLogicalImmediate(0x7ULL));            // 3 bits
-    EXPECT_TRUE(isLogicalImmediate(0xFULL));            // 4 bits
-    EXPECT_TRUE(isLogicalImmediate(0xFFULL));           // 8 bits
-    EXPECT_TRUE(isLogicalImmediate(0xFFFFULL));         // 16 bits
-    EXPECT_TRUE(isLogicalImmediate(0xFFFFFFFFULL));     // 32 bits
+    EXPECT_TRUE(isLogicalImmediate(0x1ULL));        // single bit
+    EXPECT_TRUE(isLogicalImmediate(0x3ULL));        // 2 bits
+    EXPECT_TRUE(isLogicalImmediate(0x7ULL));        // 3 bits
+    EXPECT_TRUE(isLogicalImmediate(0xFULL));        // 4 bits
+    EXPECT_TRUE(isLogicalImmediate(0xFFULL));       // 8 bits
+    EXPECT_TRUE(isLogicalImmediate(0xFFFFULL));     // 16 bits
+    EXPECT_TRUE(isLogicalImmediate(0xFFFFFFFFULL)); // 32 bits
 
     // Contiguous runs NOT starting at bit 0 (no wrapping needed at element level)
-    EXPECT_TRUE(isLogicalImmediate(0x6ULL));            // bits 1-2 set
-    EXPECT_TRUE(isLogicalImmediate(0xEULL));            // bits 1-3 set
-    EXPECT_TRUE(isLogicalImmediate(0x0000FFFFULL));     // 16-bit run in bits 0-15
+    EXPECT_TRUE(isLogicalImmediate(0x6ULL));        // bits 1-2 set
+    EXPECT_TRUE(isLogicalImmediate(0xEULL));        // bits 1-3 set
+    EXPECT_TRUE(isLogicalImmediate(0x0000FFFFULL)); // 16-bit run in bits 0-15
 
     // Replicated 2-bit elements: 0b01 and 0b10 both represent single 1-bit runs
     EXPECT_TRUE(isLogicalImmediate(0x5555555555555555ULL)); // N=2, elem=0b01
@@ -116,12 +116,12 @@ TEST(LogicalImm, PowersOfTwo)
 // -------------------------------------------------------------------------
 TEST(LogicalImm, CommonMasks)
 {
-    EXPECT_TRUE(isLogicalImmediate(0xFFULL));            // byte mask (AND with 0xFF)
-    EXPECT_TRUE(isLogicalImmediate(0xFFFFULL));          // 16-bit mask
-    EXPECT_TRUE(isLogicalImmediate(0xFFFFFFFFULL));      // 32-bit mask (zext32)
+    EXPECT_TRUE(isLogicalImmediate(0xFFULL));               // byte mask (AND with 0xFF)
+    EXPECT_TRUE(isLogicalImmediate(0xFFFFULL));             // 16-bit mask
+    EXPECT_TRUE(isLogicalImmediate(0xFFFFFFFFULL));         // 32-bit mask (zext32)
     EXPECT_TRUE(isLogicalImmediate(0x7FFFFFFFFFFFFFFFULL)); // INT64_MAX
-    EXPECT_TRUE(isLogicalImmediate(0x7FFFFFFFULL));      // INT32_MAX as 64-bit
-    EXPECT_TRUE(isLogicalImmediate(0x1ULL));             // boolean (zext1)
+    EXPECT_TRUE(isLogicalImmediate(0x7FFFFFFFULL));         // INT32_MAX as 64-bit
+    EXPECT_TRUE(isLogicalImmediate(0x1ULL));                // boolean (zext1)
 }
 
 // -------------------------------------------------------------------------

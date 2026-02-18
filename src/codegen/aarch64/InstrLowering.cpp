@@ -187,9 +187,8 @@ bool materializeValueToVReg(const il::core::Value &v,
         outVReg = nextVRegId++;
         outCls = RegClass::GPR;
         const std::string &sym = v.str;
-        out.instrs.push_back(
-            MInstr{MOpcode::AdrPage,
-                   {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::labelOp(sym)}});
+        out.instrs.push_back(MInstr{
+            MOpcode::AdrPage, {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::labelOp(sym)}});
         out.instrs.push_back(MInstr{MOpcode::AddPageOff,
                                     {MOperand::vregOp(RegClass::GPR, outVReg),
                                      MOperand::vregOp(RegClass::GPR, outVReg),
@@ -259,9 +258,8 @@ bool materializeValueToVReg(const il::core::Value &v,
                 int fprCount = 0;
                 for (int i = 0; i < pIdx; ++i)
                 {
-                    const bool pIsFP =
-                        bb.params[static_cast<std::size_t>(i)].type.kind ==
-                        il::core::Type::Kind::F64;
+                    const bool pIsFP = bb.params[static_cast<std::size_t>(i)].type.kind ==
+                                       il::core::Type::Kind::F64;
                     if (pIsFP)
                     {
                         if (fprCount < static_cast<int>(ti.f64ArgOrder.size()))
@@ -284,15 +282,13 @@ bool materializeValueToVReg(const il::core::Value &v,
                 {
                     out.instrs.push_back(
                         MInstr{MOpcode::LdrFprFpImm,
-                               {MOperand::vregOp(cls, outVReg),
-                                MOperand::immOp(callerArgOffset)}});
+                               {MOperand::vregOp(cls, outVReg), MOperand::immOp(callerArgOffset)}});
                 }
                 else
                 {
                     out.instrs.push_back(
                         MInstr{MOpcode::LdrRegFpImm,
-                               {MOperand::vregOp(cls, outVReg),
-                                MOperand::immOp(callerArgOffset)}});
+                               {MOperand::vregOp(cls, outVReg), MOperand::immOp(callerArgOffset)}});
                 }
                 return true;
             }
@@ -377,9 +373,9 @@ bool materializeValueToVReg(const il::core::Value &v,
                      prod.op == il::core::Opcode::Xor) &&
                     isLogicalImmediate(static_cast<uint64_t>(prod.operands[1].i64));
                 // Shift and add/sub immediates are valid if the opcode supports them.
-                const bool isOtherImm =
-                    isImmCandidate && prod.op != il::core::Opcode::And &&
-                    prod.op != il::core::Opcode::Or && prod.op != il::core::Opcode::Xor;
+                const bool isOtherImm = isImmCandidate && prod.op != il::core::Opcode::And &&
+                                        prod.op != il::core::Opcode::Or &&
+                                        prod.op != il::core::Opcode::Xor;
                 if (isBitwiseImm || isOtherImm)
                 {
                     if (emitRImm(binOp->immOp, prod.operands[0], prod.operands[1].i64))

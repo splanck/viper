@@ -26,6 +26,7 @@ static inline uint8_t *file_bytes_data(void *obj)
 {
     return obj ? ((file_bytes_impl *)obj)->data : NULL;
 }
+
 #include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_seq.h"

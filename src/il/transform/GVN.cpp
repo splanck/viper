@@ -267,7 +267,8 @@ std::string_view GVN::id() const
 PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
 {
     // Query required analyses
-    (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG, function); // ensure available
+    (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG,
+                                                             function); // ensure available
     auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, function);
 

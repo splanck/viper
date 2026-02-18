@@ -252,8 +252,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     // Stack parameter: load from caller's outgoing arg area.
                     // After prologue (stp x29, x30, [sp, #-16]!; mov x29, sp),
                     // caller's stack args are at [FP + 16 + stackArgIdx * 8].
-                    const int callerArgOffset =
-                        16 + static_cast<int>(stackArgIdx) * 8;
+                    const int callerArgOffset = 16 + static_cast<int>(stackArgIdx) * 8;
                     ++stackArgIdx;
 
                     // Load from caller's stack arg area into spill slot via a temporary
@@ -264,26 +263,22 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     if (cls == RegClass::FPR)
                     {
                         const uint16_t tmpVid = nextVRegId++;
-                        bbOut().instrs.push_back(
-                            MInstr{MOpcode::LdrFprFpImm,
-                                   {MOperand::vregOp(RegClass::FPR, tmpVid),
-                                    MOperand::immOp(callerArgOffset)}});
-                        bbOut().instrs.push_back(
-                            MInstr{MOpcode::StrFprFpImm,
-                                   {MOperand::vregOp(RegClass::FPR, tmpVid),
-                                    MOperand::immOp(spillOffset)}});
+                        bbOut().instrs.push_back(MInstr{MOpcode::LdrFprFpImm,
+                                                        {MOperand::vregOp(RegClass::FPR, tmpVid),
+                                                         MOperand::immOp(callerArgOffset)}});
+                        bbOut().instrs.push_back(MInstr{MOpcode::StrFprFpImm,
+                                                        {MOperand::vregOp(RegClass::FPR, tmpVid),
+                                                         MOperand::immOp(spillOffset)}});
                     }
                     else
                     {
                         const uint16_t tmpVid = nextVRegId++;
-                        bbOut().instrs.push_back(
-                            MInstr{MOpcode::LdrRegFpImm,
-                                   {MOperand::vregOp(RegClass::GPR, tmpVid),
-                                    MOperand::immOp(callerArgOffset)}});
-                        bbOut().instrs.push_back(
-                            MInstr{MOpcode::StrRegFpImm,
-                                   {MOperand::vregOp(RegClass::GPR, tmpVid),
-                                    MOperand::immOp(spillOffset)}});
+                        bbOut().instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
+                                                        {MOperand::vregOp(RegClass::GPR, tmpVid),
+                                                         MOperand::immOp(callerArgOffset)}});
+                        bbOut().instrs.push_back(MInstr{MOpcode::StrRegFpImm,
+                                                        {MOperand::vregOp(RegClass::GPR, tmpVid),
+                                                         MOperand::immOp(spillOffset)}});
                     }
                 }
                 else
@@ -717,8 +712,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                         else if (isAddSub && isUImm12(immVal))
                                             useImmediate = true;
                                         else if (isBitwise &&
-                                                 isLogicalImmediate(
-                                                     static_cast<uint64_t>(immVal)))
+                                                 isLogicalImmediate(static_cast<uint64_t>(immVal)))
                                             useImmediate = true;
                                     }
 

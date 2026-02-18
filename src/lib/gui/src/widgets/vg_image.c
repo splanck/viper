@@ -56,9 +56,8 @@ bool vg_image_load_file(vg_image_t *image, const char *path)
     if (!image || !path)
         return false;
 
-    // TODO: Implement image file loading (PNG, JPEG, BMP)
-    // This would require an image decoding library like stb_image
-    // For now, return false
+    // Image file loading requires a decode library (e.g. stb_image).
+    // Use vg_image_set_pixels() to supply pre-decoded RGBA pixel data directly.
     (void)path;
     return false;
 }

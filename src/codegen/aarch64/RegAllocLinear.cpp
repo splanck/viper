@@ -122,6 +122,7 @@
 
 #include "FrameBuilder.hpp"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <deque>
 #include <unordered_map>
@@ -331,22 +332,26 @@ struct RegPools
 {
     std::deque<PhysReg> gprFree{};
     std::deque<PhysReg> fprFree{};
-    std::unordered_set<PhysReg> calleeUsed{};
-    std::unordered_set<PhysReg> calleeUsedFPR{};
 
-    /// Pre-computed set of callee-saved GPRs for O(1) lookup.
-    /// This avoids O(n) linear search in takeGPRPreferCalleeSaved().
-    std::unordered_set<PhysReg> calleeSavedGPRSet{};
+    /// Which callee-saved GPRs were actually used in this function.
+    /// Indexed by static_cast<std::size_t>(PhysReg); AArch64 has 64 PhysReg values.
+    std::array<bool, 64> calleeUsed{};
+    /// Which callee-saved FPRs were actually used in this function.
+    std::array<bool, 64> calleeUsedFPR{};
+
+    /// Pre-computed set of callee-saved GPRs for O(1) lookup in takeGPRPreferCalleeSaved().
+    /// Stored as a dense bool array (indexed by PhysReg ID) for cache efficiency.
+    std::array<bool, 64> calleeSavedGPRSet{};
 
     void build(const TargetInfo &ti)
     {
         gprFree.clear();
         fprFree.clear();
-        calleeSavedGPRSet.clear();
+        calleeSavedGPRSet = {};
 
         // Pre-compute callee-saved GPR set for O(1) lookup in takeGPRPreferCalleeSaved()
         for (auto r : ti.calleeSavedGPR)
-            calleeSavedGPRSet.insert(r);
+            calleeSavedGPRSet[static_cast<std::size_t>(r)] = true;
 
         // Prefer caller-saved first, exclude argument registers
         for (auto r : ti.callerSavedGPR)
@@ -395,10 +400,10 @@ struct RegPools
         assert(!gprFree.empty() &&
                "GPR pool exhausted — maybeSpillForPressure should have freed a register");
 
-        // Try to find a callee-saved register first using O(1) set lookup
+        // Try to find a callee-saved register first using O(1) array lookup
         for (auto it = gprFree.begin(); it != gprFree.end(); ++it)
         {
-            if (calleeSavedGPRSet.count(*it) != 0)
+            if (calleeSavedGPRSet[static_cast<std::size_t>(*it)])
             {
                 PhysReg r = *it;
                 gprFree.erase(it);
@@ -589,9 +594,9 @@ class LinearAllocator
                     if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
                         continue;
 
-                    const uint16_t vid    = op.reg.idOrPhys;
-                    const bool     isFPR  = (op.reg.cls == RegClass::FPR);
-                    auto &genSet  = isFPR ? genFPR[i]  : genGPR[i];
+                    const uint16_t vid = op.reg.idOrPhys;
+                    const bool isFPR = (op.reg.cls == RegClass::FPR);
+                    auto &genSet = isFPR ? genFPR[i] : genGPR[i];
                     auto &killSet = isFPR ? killFPR[i] : killGPR[i];
 
                     auto [isUse, isDef] = operandRoles(mi, k);
@@ -650,11 +655,11 @@ class LinearAllocator
                 if (newOutGPR != liveOutGPR_[i] || newInGPR != liveInGPR[i] ||
                     newOutFPR != liveOutFPR_[i] || newInFPR != liveInFPR[i])
                 {
-                    changed        = true;
+                    changed = true;
                     liveOutGPR_[i] = std::move(newOutGPR);
                     liveOutFPR_[i] = std::move(newOutFPR);
-                    liveInGPR[i]   = std::move(newInGPR);
-                    liveInFPR[i]   = std::move(newInFPR);
+                    liveInGPR[i] = std::move(newInGPR);
+                    liveInFPR[i] = std::move(newInFPR);
                 }
             }
         }
@@ -751,8 +756,7 @@ class LinearAllocator
             // while the vreg still has outstanding uses later in the block.
             // Using st.lastUse (the last-seen use at spill time) is incorrect because
             // the vreg may have further uses after the current instruction.
-            const auto &posMap =
-                (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
+            const auto &posMap = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
             unsigned trueLastUse = st.lastUse; // conservative fallback
             auto posIt = posMap.find(id);
             if (posIt != posMap.end() && !posIt->second.empty())
@@ -967,7 +971,7 @@ class LinearAllocator
             if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), phys) !=
                 ti_.calleeSavedGPR.end())
             {
-                pools_.calleeUsed.insert(phys);
+                pools_.calleeUsed[static_cast<std::size_t>(phys)] = true;
             }
         }
         else
@@ -975,7 +979,7 @@ class LinearAllocator
             if (std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), phys) !=
                 ti_.calleeSavedFPR.end())
             {
-                pools_.calleeUsedFPR.insert(phys);
+                pools_.calleeUsedFPR[static_cast<std::size_t>(phys)] = true;
             }
         }
     }
@@ -987,7 +991,7 @@ class LinearAllocator
             if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
                 ti_.calleeSavedGPR.end())
             {
-                pools_.calleeUsed.insert(pr);
+                pools_.calleeUsed[static_cast<std::size_t>(pr)] = true;
             }
         }
     }
@@ -1293,12 +1297,12 @@ class LinearAllocator
         // need the original vreg ID to clear its dirty flag.
         const bool isPhiStore =
             (ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR);
-        uint16_t phiSrcVreg   = 0;
-        bool     phiSrcIsFPR  = false;
+        uint16_t phiSrcVreg = 0;
+        bool phiSrcIsFPR = false;
         if (isPhiStore && !ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Reg &&
             !ins.ops[0].reg.isPhys)
         {
-            phiSrcVreg  = ins.ops[0].reg.idOrPhys;
+            phiSrcVreg = ins.ops[0].reg.idOrPhys;
             phiSrcIsFPR = (ins.ops[0].reg.cls == RegClass::FPR);
         }
 
@@ -1358,7 +1362,7 @@ class LinearAllocator
         if (isPhiStore)
         {
             auto &states = phiSrcIsFPR ? fprStates_ : gprStates_;
-            auto  it     = states.find(phiSrcVreg);
+            auto it = states.find(phiSrcVreg);
             if (it != states.end())
                 it->second.dirty = false;
             ins.opc = phiSrcIsFPR ? MOpcode::StrFprFpImm : MOpcode::StrRegFpImm;
@@ -1383,14 +1387,14 @@ class LinearAllocator
             {
                 if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
                     ti_.calleeSavedGPR.end())
-                    pools_.calleeUsed.insert(pr);
+                    pools_.calleeUsed[static_cast<std::size_t>(pr)] = true;
                 pools_.releaseGPR(pr, ti_);
             }
             else
             {
                 if (std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), pr) !=
                     ti_.calleeSavedFPR.end())
-                    pools_.calleeUsedFPR.insert(pr);
+                    pools_.calleeUsedFPR[static_cast<std::size_t>(pr)] = true;
                 pools_.releaseFPR(pr, ti_);
             }
         }
@@ -1418,21 +1422,15 @@ class LinearAllocator
 
     void recordCalleeSavedUsage()
     {
-        if (!pools_.calleeUsed.empty())
+        for (auto r : ti_.calleeSavedGPR)
         {
-            for (auto r : ti_.calleeSavedGPR)
-            {
-                if (pools_.calleeUsed.contains(r))
-                    fn_.savedGPRs.push_back(r);
-            }
+            if (pools_.calleeUsed[static_cast<std::size_t>(r)])
+                fn_.savedGPRs.push_back(r);
         }
-        if (!pools_.calleeUsedFPR.empty())
+        for (auto r : ti_.calleeSavedFPR)
         {
-            for (auto r : ti_.calleeSavedFPR)
-            {
-                if (pools_.calleeUsedFPR.contains(r))
-                    fn_.savedFPRs.push_back(r);
-            }
+            if (pools_.calleeUsedFPR[static_cast<std::size_t>(r)])
+                fn_.savedFPRs.push_back(r);
         }
     }
 

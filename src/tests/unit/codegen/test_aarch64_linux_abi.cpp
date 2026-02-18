@@ -69,7 +69,7 @@ static std::string compileToAsm(const std::string &il, const TargetInfo &ti)
         return {};
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<RegAllocPass>());
@@ -81,12 +81,11 @@ static std::string compileToAsm(const std::string &il, const TargetInfo &ti)
 }
 
 // A minimal function to compile for output inspection.
-const char *kSimpleIL =
-    "il 0.1\n"
-    "func @hello_linux() -> i64 {\n"
-    "entry:\n"
-    "  ret 42\n"
-    "}\n";
+const char *kSimpleIL = "il 0.1\n"
+                        "func @hello_linux() -> i64 {\n"
+                        "entry:\n"
+                        "  ret 42\n"
+                        "}\n";
 
 } // namespace
 
@@ -105,7 +104,8 @@ TEST(AArch64LinuxABI, LinuxSymbolNoUnderscore)
     if (asm_.find("_hello_linux") != std::string::npos)
     {
         std::cerr << "Assembly contains Darwin-style underscore prefix on Linux target.\n"
-                  << "Assembly:\n" << asm_ << "\n";
+                  << "Assembly:\n"
+                  << asm_ << "\n";
         EXPECT_TRUE(false);
     }
 }
@@ -123,7 +123,8 @@ TEST(AArch64LinuxABI, LinuxTypeDirective)
     if (!hasType)
     {
         std::cerr << "Missing '.type hello_linux, @function' directive.\n"
-                  << "Assembly:\n" << asm_ << "\n";
+                  << "Assembly:\n"
+                  << asm_ << "\n";
     }
     EXPECT_TRUE(hasType);
 }
@@ -141,7 +142,8 @@ TEST(AArch64LinuxABI, LinuxSizeDirective)
     if (!hasSize)
     {
         std::cerr << "Missing '.size hello_linux, .-hello_linux' directive.\n"
-                  << "Assembly:\n" << asm_ << "\n";
+                  << "Assembly:\n"
+                  << asm_ << "\n";
     }
     EXPECT_TRUE(hasSize);
 }
@@ -159,7 +161,8 @@ TEST(AArch64LinuxABI, DarwinRegressionPrefix)
     if (!hasPrefixed)
     {
         std::cerr << "Darwin assembly is missing '_hello_linux' prefix.\n"
-                  << "Assembly:\n" << asm_ << "\n";
+                  << "Assembly:\n"
+                  << asm_ << "\n";
     }
     EXPECT_TRUE(hasPrefixed);
 
@@ -177,17 +180,16 @@ TEST(AArch64LinuxABI, DarwinRegressionPrefix)
 //
 TEST(AArch64LinuxABI, LinuxCallSite)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @callee() -> i64 {\n"
-        "entry:\n"
-        "  ret 1\n"
-        "}\n"
-        "func @caller() -> i64 {\n"
-        "entry:\n"
-        "  %r = call @callee()\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @callee() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 1\n"
+                           "}\n"
+                           "func @caller() -> i64 {\n"
+                           "entry:\n"
+                           "  %r = call @callee()\n"
+                           "  ret %r\n"
+                           "}\n";
 
     const std::string asm_ = compileToAsm(il, linuxTarget());
     EXPECT_FALSE(asm_.empty());
@@ -197,7 +199,8 @@ TEST(AArch64LinuxABI, LinuxCallSite)
     if (!hasBlCallee)
     {
         std::cerr << "Expected 'bl callee' (no underscore) in Linux assembly.\n"
-                  << "Assembly:\n" << asm_ << "\n";
+                  << "Assembly:\n"
+                  << asm_ << "\n";
     }
     EXPECT_TRUE(hasBlCallee);
 

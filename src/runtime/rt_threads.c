@@ -1003,9 +1003,9 @@ typedef struct SafeThreadCtx
 {
     rt_safe_entry_fn entry;
     void *arg;
-    void *thread;         // The underlying thread handle from rt_thread_start
-    int8_t trapped;       // 1 if the thread exited due to a trap
-    char error[512];      // Captured trap error message
+    void *thread;    // The underlying thread handle from rt_thread_start
+    int8_t trapped;  // 1 if the thread exited due to a trap
+    char error[512]; // Captured trap error message
 } SafeThreadCtx;
 
 /// @brief Entry point wrapper that sets up trap recovery.

@@ -778,7 +778,10 @@ int64_t rt_datetime_diff(int64_t ts1, int64_t ts2)
 //=============================================================================
 
 /// @brief Helper to check if a character is a digit.
-static int dt_is_digit(char c) { return c >= '0' && c <= '9'; }
+static int dt_is_digit(char c)
+{
+    return c >= '0' && c <= '9';
+}
 
 /// @brief Helper to parse exactly N digits from a string.
 /// @return The parsed integer, or -1 if insufficient digits.

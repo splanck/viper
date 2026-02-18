@@ -320,8 +320,7 @@ void dce(Module &M)
             // The VM populates both slots on exception dispatch regardless of
             // whether user code references %err.  Never remove params from a
             // block that starts with eh.entry (the handler entry marker).
-            if (!B.instructions.empty() &&
-                B.instructions.front().op == il::core::Opcode::EhEntry)
+            if (!B.instructions.empty() && B.instructions.front().op == il::core::Opcode::EhEntry)
                 continue;
 
             // Identify which param indices to keep (those with non-zero use counts).

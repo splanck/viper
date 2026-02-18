@@ -25,8 +25,8 @@ extern void rt_trap(const char *msg);
 
 #ifdef _WIN32
 #include <process.h>
-#include <windows.h>
 #include <wincrypt.h>
+#include <windows.h>
 #else
 #include <fcntl.h>
 #include <sys/stat.h>

@@ -35,18 +35,17 @@ static void writeFile(const std::string &path, const std::string &text)
 TEST(Arm64MixedCallF64, ParseNumOrValidString)
 {
     const std::string in = outPath("arm64_numor_valid.il");
-    const std::string il =
-        "il 0.1\n"
-        "extern @rt_parse_num_or(str, f64) -> f64\n"
-        "global const str @.Lnum = \"3\"\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %s = const_str @.Lnum\n"
-        "  %def = sitofp 99\n"
-        "  %r = call @rt_parse_num_or(%s, %def)\n"
-        "  %i = fptosi %r\n"
-        "  ret %i\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @rt_parse_num_or(str, f64) -> f64\n"
+                           "global const str @.Lnum = \"3\"\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %s = const_str @.Lnum\n"
+                           "  %def = sitofp 99\n"
+                           "  %r = call @rt_parse_num_or(%s, %def)\n"
+                           "  %i = fptosi %r\n"
+                           "  ret %i\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
@@ -60,18 +59,17 @@ TEST(Arm64MixedCallF64, ParseNumOrValidString)
 TEST(Arm64MixedCallF64, ParseNumOrInvalidStringReturnsDefault)
 {
     const std::string in = outPath("arm64_numor_default.il");
-    const std::string il =
-        "il 0.1\n"
-        "extern @rt_parse_num_or(str, f64) -> f64\n"
-        "global const str @.Lfail = \"abc\"\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %s = const_str @.Lfail\n"
-        "  %def = sitofp 42\n"
-        "  %r = call @rt_parse_num_or(%s, %def)\n"
-        "  %i = fptosi %r\n"
-        "  ret %i\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @rt_parse_num_or(str, f64) -> f64\n"
+                           "global const str @.Lfail = \"abc\"\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %s = const_str @.Lfail\n"
+                           "  %def = sitofp 42\n"
+                           "  %r = call @rt_parse_num_or(%s, %def)\n"
+                           "  %i = fptosi %r\n"
+                           "  ret %i\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
@@ -84,18 +82,17 @@ TEST(Arm64MixedCallF64, ParseNumOrInvalidStringReturnsDefault)
 TEST(Arm64MixedCallF64, ParseNumOrEmptyStringReturnsDefault)
 {
     const std::string in = outPath("arm64_numor_empty.il");
-    const std::string il =
-        "il 0.1\n"
-        "extern @rt_parse_num_or(str, f64) -> f64\n"
-        "global const str @.Lempty = \"\"\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %s = const_str @.Lempty\n"
-        "  %def = sitofp 7\n"
-        "  %r = call @rt_parse_num_or(%s, %def)\n"
-        "  %i = fptosi %r\n"
-        "  ret %i\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @rt_parse_num_or(str, f64) -> f64\n"
+                           "global const str @.Lempty = \"\"\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %s = const_str @.Lempty\n"
+                           "  %def = sitofp 7\n"
+                           "  %r = call @rt_parse_num_or(%s, %def)\n"
+                           "  %i = fptosi %r\n"
+                           "  ret %i\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));

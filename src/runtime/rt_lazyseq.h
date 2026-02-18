@@ -213,9 +213,9 @@ extern "C"
     void *rt_lazyseq_w_repeat(void *value, int64_t count);
     void *rt_lazyseq_w_next(void *seq);
     void *rt_lazyseq_w_peek(void *seq);
-    void  rt_lazyseq_w_reset(void *seq);
+    void rt_lazyseq_w_reset(void *seq);
     int64_t rt_lazyseq_w_index(void *seq);
-    int8_t  rt_lazyseq_w_is_exhausted(void *seq);
+    int8_t rt_lazyseq_w_is_exhausted(void *seq);
     void *rt_lazyseq_w_take(void *seq, int64_t n);
     void *rt_lazyseq_w_drop(void *seq, int64_t n);
     void *rt_lazyseq_w_concat(void *first, void *second);

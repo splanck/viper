@@ -71,8 +71,14 @@ static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len)
 
 static void om_resize(rt_orderedmap_impl *m)
 {
+    // Guard against integer overflow before doubling.
+    if (m->capacity > INT64_MAX / 2)
+        rt_trap("OrderedMap: capacity overflow during resize");
+
     int64_t new_cap = m->capacity * 2;
     rt_om_entry **new_buckets = (rt_om_entry **)calloc((size_t)new_cap, sizeof(rt_om_entry *));
+    if (!new_buckets)
+        rt_trap("OrderedMap: memory allocation failed during resize");
 
     // Re-hash all entries via insertion-order list
     rt_om_entry *e = m->head;

@@ -98,15 +98,14 @@ static int countSubstr(const std::string &text, const std::string &needle)
 // ---------------------------------------------------------------------------
 TEST(AArch64BlockLayout, CorrectOutput)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @layout_simple() -> i64 {\n"
-        "entry:\n"
-        "  %a = add 1, 2\n"
-        "  %b = add 3, 4\n"
-        "  %c = add %a, %b\n"
-        "  ret %c\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @layout_simple() -> i64 {\n"
+                           "entry:\n"
+                           "  %a = add 1, 2\n"
+                           "  %b = add 3, 4\n"
+                           "  %c = add %a, %b\n"
+                           "  ret %c\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -114,7 +113,7 @@ TEST(AArch64BlockLayout, CorrectOutput)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     Diagnostics diags;
     EXPECT_TRUE(buildLayoutPipeline().run(m, diags));
@@ -133,18 +132,17 @@ TEST(AArch64BlockLayout, CorrectOutput)
 //
 TEST(AArch64BlockLayout, BlockCountStable)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @block_count() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0)\n"
-        "loop(%i:i64):\n"
-        "  %next = add %i, 1\n"
-        "  %done = icmp_eq %next, 10\n"
-        "  cbr %done, exit(%next), loop(%next)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @block_count() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0)\n"
+                           "loop(%i:i64):\n"
+                           "  %next = add %i, 1\n"
+                           "  %done = icmp_eq %next, 10\n"
+                           "  cbr %done, exit(%next), loop(%next)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     // Without BlockLayoutPass.
     PassManager withoutLayout;
@@ -160,27 +158,30 @@ TEST(AArch64BlockLayout, BlockCountStable)
 
     const TargetInfo &ti = darwinTarget();
     AArch64Module m1, m2;
-    m1.ilMod = &mod1; m1.ti = &ti;
-    m2.ilMod = &mod2; m2.ti = &ti;
+    m1.ilMod = &mod1;
+    m1.ti = &ti;
+    m2.ilMod = &mod2;
+    m2.ti = &ti;
 
     Diagnostics d1, d2;
     ASSERT_TRUE(withoutLayout.run(m1, d1));
     ASSERT_TRUE(buildLayoutPipeline().run(m2, d2));
 
     // Count block labels (non-prefixed labels ending with ':' not starting with '.').
-    auto countLabels = [](const std::string &asm_) {
+    auto countLabels = [](const std::string &asm_)
+    {
         int n = 0;
         std::istringstream ss(asm_);
         std::string line;
         while (std::getline(ss, line))
-            if (!line.empty() && line.back() == ':' && line[0] != ' ' && line[0] != '\t'
-                && line[0] != '.')
+            if (!line.empty() && line.back() == ':' && line[0] != ' ' && line[0] != '\t' &&
+                line[0] != '.')
                 ++n;
         return n;
     };
 
     const int labelsWithout = countLabels(m1.assembly);
-    const int labelsWith    = countLabels(m2.assembly);
+    const int labelsWith = countLabels(m2.assembly);
 
     if (labelsWithout != labelsWith)
     {
@@ -208,21 +209,20 @@ TEST(AArch64BlockLayout, BlockCountStable)
 TEST(AArch64BlockLayout, LoopBranchReduced)
 {
     // Exit is defined before start/loop — forcing a suboptimal block order.
-    const std::string il =
-        "il 0.1\n"
-        "func @loop_sum() -> i64 {\n"
-        "entry:\n"
-        "  br start(0, 0)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "start(%i:i64, %s:i64):\n"
-        "  %done = icmp_eq %i, 10\n"
-        "  cbr %done, exit(%s), loop(%i, %s)\n"
-        "loop(%i:i64, %s:i64):\n"
-        "  %ns = add %s, %i\n"
-        "  %ni = add %i, 1\n"
-        "  br start(%ni, %ns)\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @loop_sum() -> i64 {\n"
+                           "entry:\n"
+                           "  br start(0, 0)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "start(%i:i64, %s:i64):\n"
+                           "  %done = icmp_eq %i, 10\n"
+                           "  cbr %done, exit(%s), loop(%i, %s)\n"
+                           "loop(%i:i64, %s:i64):\n"
+                           "  %ns = add %s, %i\n"
+                           "  %ni = add %i, 1\n"
+                           "  br start(%ni, %ns)\n"
+                           "}\n";
 
     // Without BlockLayoutPass.
     PassManager withoutLayout;
@@ -238,8 +238,10 @@ TEST(AArch64BlockLayout, LoopBranchReduced)
 
     const TargetInfo &ti = darwinTarget();
     AArch64Module m1, m2;
-    m1.ilMod = &mod1; m1.ti = &ti;
-    m2.ilMod = &mod2; m2.ti = &ti;
+    m1.ilMod = &mod1;
+    m1.ti = &ti;
+    m2.ilMod = &mod2;
+    m2.ti = &ti;
 
     Diagnostics d1, d2;
     ASSERT_TRUE(withoutLayout.run(m1, d1));
@@ -257,23 +259,23 @@ TEST(AArch64BlockLayout, LoopBranchReduced)
         {
             // Match "  b <label>" but not "  b.<cond>"
             auto pos = line.find("  b ");
-            if (pos != std::string::npos && pos + 4 < line.size()
-                && line[pos + 3] == ' ')
+            if (pos != std::string::npos && pos + 4 < line.size() && line[pos + 3] == ' ')
                 ++n;
         }
         return n;
     };
 
     const int brWithout = countUnconditionalBranches(m1.assembly);
-    const int brWith    = countUnconditionalBranches(m2.assembly);
+    const int brWith = countUnconditionalBranches(m2.assembly);
 
     if (brWith >= brWithout)
     {
         std::cerr << "Expected fewer unconditional branches with BlockLayoutPass.\n"
                   << "Without: " << brWithout << "\n"
                   << "With:    " << brWith << "\n"
-                  << "--- Without layout ---\n" << m1.assembly
-                  << "--- With layout ---\n" << m2.assembly;
+                  << "--- Without layout ---\n"
+                  << m1.assembly << "--- With layout ---\n"
+                  << m2.assembly;
     }
     EXPECT_TRUE(brWith < brWithout);
 }
@@ -283,18 +285,17 @@ TEST(AArch64BlockLayout, LoopBranchReduced)
 // ---------------------------------------------------------------------------
 TEST(AArch64BlockLayout, EntryBlockFirst)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @entry_first() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0)\n"
-        "loop(%i:i64):\n"
-        "  %next = add %i, 1\n"
-        "  %done = icmp_eq %next, 5\n"
-        "  cbr %done, exit(%next), loop(%next)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @entry_first() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0)\n"
+                           "loop(%i:i64):\n"
+                           "  %next = add %i, 1\n"
+                           "  %done = icmp_eq %next, 5\n"
+                           "  cbr %done, exit(%next), loop(%next)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -302,7 +303,7 @@ TEST(AArch64BlockLayout, EntryBlockFirst)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     // Run only through BlockLayoutPass (no emit needed).
     PassManager pm;
@@ -328,14 +329,13 @@ TEST(AArch64BlockLayout, EntryBlockFirst)
 // ---------------------------------------------------------------------------
 TEST(AArch64BlockLayout, PipelineIntegration)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @layout_integration() -> i64 {\n"
-        "entry:\n"
-        "  %a = add 10, 20\n"
-        "  %b = mul %a, 3\n"
-        "  ret %b\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @layout_integration() -> i64 {\n"
+                           "entry:\n"
+                           "  %a = add 10, 20\n"
+                           "  %b = mul %a, 3\n"
+                           "  ret %b\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -343,7 +343,7 @@ TEST(AArch64BlockLayout, PipelineIntegration)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     Diagnostics diags;
     EXPECT_TRUE(buildLayoutPipeline().run(m, diags));

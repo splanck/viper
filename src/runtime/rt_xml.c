@@ -1537,8 +1537,12 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str)
     size_t slen = strlen(str);
     while (*len + slen + 1 > *cap)
     {
-        *cap = (*cap == 0) ? 256 : (*cap * 2);
-        *buf = realloc(*buf, *cap);
+        size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
+        char *tmp = (char *)realloc(*buf, new_cap);
+        if (!tmp)
+            rt_trap("XML format: memory allocation failed");
+        *buf = tmp;
+        *cap = new_cap;
     }
     memcpy(*buf + *len, str, slen);
     *len += slen;
@@ -1549,8 +1553,12 @@ static void buf_append_n(char **buf, size_t *cap, size_t *len, const char *str, 
 {
     while (*len + n + 1 > *cap)
     {
-        *cap = (*cap == 0) ? 256 : (*cap * 2);
-        *buf = realloc(*buf, *cap);
+        size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
+        char *tmp = (char *)realloc(*buf, new_cap);
+        if (!tmp)
+            rt_trap("XML format: memory allocation failed");
+        *buf = tmp;
+        *cap = new_cap;
     }
     memcpy(*buf + *len, str, n);
     *len += n;
@@ -1561,8 +1569,12 @@ static void buf_append_char(char **buf, size_t *cap, size_t *len, char c)
 {
     if (*len + 2 > *cap)
     {
-        *cap = (*cap == 0) ? 256 : (*cap * 2);
-        *buf = realloc(*buf, *cap);
+        size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
+        char *tmp = (char *)realloc(*buf, new_cap);
+        if (!tmp)
+            rt_trap("XML format: memory allocation failed");
+        *buf = tmp;
+        *cap = new_cap;
     }
     (*buf)[*len] = c;
     (*len)++;

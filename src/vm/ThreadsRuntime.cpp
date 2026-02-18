@@ -267,8 +267,7 @@ void registerThreadsRuntimeExternals()
     {
         ExternDesc ext;
         ext.name = il::runtime::names::kThreadsThreadStartSafe;
-        ext.signature =
-            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_thread_start_safe_handler);
         RuntimeBridge::registerExtern(ext);
     }

@@ -174,6 +174,37 @@ TEST(Arm64StringStore, StringArray)
     EXPECT_NE(asmText.find(blSym("rt_arr_str_put")), std::string::npos);
 }
 
+// Test 7: Call returning Str must emit rt_str_retain_maybe (BUG-NAT-005).
+// Without the retain, a string returned by a call that is immediately passed to
+// a consuming function (like rt_str_concat) would be freed prematurely.
+TEST(Arm64StringStore, CallReturnedStringIsRetained)
+{
+    const std::string in = outPath("arm64_str_call_retain.il");
+    const std::string out = outPath("arm64_str_call_retain.s");
+    // @get_str returns a string; @concat passes that result directly to
+    // rt_str_concat without an intervening alloca store.
+    // Use explicit type annotations so the codegen sees Kind::Str on the
+    // call instructions and can emit rt_str_retain_maybe (requires il 0.2.0).
+    const std::string il = "il 0.2.0\n"
+                           "extern @rt_str_concat(str, str) -> str\n"
+                           "extern @get_str() -> str\n"
+                           "func @concat_with_call_result() -> str {\n"
+                           "entry:\n"
+                           "  %s: str = call @get_str()\n"
+                           "  %r: str = call @rt_str_concat(%s, %s)\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    // The generated code must retain the string returned by @get_str before
+    // passing it to rt_str_concat; otherwise the consume (unref) in concat
+    // would drop the refcount to zero and free the string prematurely.
+    // Call returning str must emit rt_str_retain_maybe (BUG-NAT-005).
+    EXPECT_NE(asmText.find(blSym("rt_str_retain_maybe")), std::string::npos);
+}
+
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, &argv);

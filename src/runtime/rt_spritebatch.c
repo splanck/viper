@@ -112,7 +112,8 @@ static void add_item(spritebatch_impl *batch, batch_item *item)
 
 void *rt_spritebatch_new(int64_t capacity)
 {
-    spritebatch_impl *batch = (spritebatch_impl *)rt_obj_new_i64(0, (int64_t)sizeof(spritebatch_impl));
+    spritebatch_impl *batch =
+        (spritebatch_impl *)rt_obj_new_i64(0, (int64_t)sizeof(spritebatch_impl));
     memset(batch, 0, sizeof(spritebatch_impl));
 
     if (capacity <= 0)

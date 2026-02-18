@@ -244,7 +244,7 @@ TEST(EarlyCSEDomTree, CrossBlockCSEEliminatesDuplicateInDominatedBlock)
 
     // The surviving ret must reference the entry-block add result.
     const BasicBlock &entryBlock = fn.blocks[0];
-    const BasicBlock &nextBlock  = fn.blocks[1];
+    const BasicBlock &nextBlock = fn.blocks[1];
     ASSERT_FALSE(entryBlock.instructions.empty());
     unsigned entryAddId = *entryBlock.instructions[0].result;
 

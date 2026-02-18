@@ -182,7 +182,7 @@ TEST(Arm64CrossBlockPhi, NestedLoopPhi)
     const std::string asmText = readFile(out);
     // Should have multiplication — either as a standalone mul or as a fused madd
     // (peephole fuses mul+add → madd when they are adjacent after regalloc).
-    const bool hasMul  = asmText.find("mul x")  != std::string::npos;
+    const bool hasMul = asmText.find("mul x") != std::string::npos;
     const bool hasMadd = asmText.find("madd x") != std::string::npos;
     EXPECT_TRUE(hasMul || hasMadd);
 }

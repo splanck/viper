@@ -53,9 +53,9 @@ int main()
         b.createBlock(fn, "B");
         b.createBlock(fn, "exit");
         Block &bEntry = fn.blocks[0];
-        Block &bA     = fn.blocks[1];
-        Block &bB     = fn.blocks[2];
-        Block &bExit  = fn.blocks[3];
+        Block &bA = fn.blocks[1];
+        Block &bB = fn.blocks[2];
+        Block &bExit = fn.blocks[3];
 
         b.setInsertPoint(bEntry);
         b.br(bA, {});
@@ -69,19 +69,20 @@ int main()
         CFGContext ctx(m);
         PostDomTree pdt = computePostDominatorTree(ctx, fn);
 
-        assert(pdt.immediatePostDominator(&bExit)  == nullptr && "exit block has virtual exit as ipostdom");
-        assert(pdt.immediatePostDominator(&bB)     == &bExit  && "B ipostdom is exit");
-        assert(pdt.immediatePostDominator(&bA)     == &bB     && "A ipostdom is B");
-        assert(pdt.immediatePostDominator(&bEntry) == &bA     && "entry ipostdom is A");
+        assert(pdt.immediatePostDominator(&bExit) == nullptr &&
+               "exit block has virtual exit as ipostdom");
+        assert(pdt.immediatePostDominator(&bB) == &bExit && "B ipostdom is exit");
+        assert(pdt.immediatePostDominator(&bA) == &bB && "A ipostdom is B");
+        assert(pdt.immediatePostDominator(&bEntry) == &bA && "entry ipostdom is A");
 
-        assert(pdt.postDominates(&bExit, &bB)     && "exit pdoms B");
-        assert(pdt.postDominates(&bExit, &bA)     && "exit pdoms A");
+        assert(pdt.postDominates(&bExit, &bB) && "exit pdoms B");
+        assert(pdt.postDominates(&bExit, &bA) && "exit pdoms A");
         assert(pdt.postDominates(&bExit, &bEntry) && "exit pdoms entry");
-        assert(pdt.postDominates(&bB, &bA)        && "B pdoms A");
-        assert(pdt.postDominates(&bB, &bEntry)    && "B pdoms entry");
-        assert(pdt.postDominates(&bA, &bEntry)    && "A pdoms entry");
+        assert(pdt.postDominates(&bB, &bA) && "B pdoms A");
+        assert(pdt.postDominates(&bB, &bEntry) && "B pdoms entry");
+        assert(pdt.postDominates(&bA, &bEntry) && "A pdoms entry");
 
-        assert(!pdt.postDominates(&bA, &bB)    && "A does not pdom B");
+        assert(!pdt.postDominates(&bA, &bB) && "A does not pdom B");
         assert(!pdt.postDominates(&bEntry, &bA) && "entry does not pdom A");
     }
 
@@ -114,10 +115,10 @@ int main()
         b.createBlock(fn, "merge");
         b.createBlock(fn, "exit");
         Block &bEntry = fn.blocks[0];
-        Block &bLeft  = fn.blocks[1];
+        Block &bLeft = fn.blocks[1];
         Block &bRight = fn.blocks[2];
         Block &bMerge = fn.blocks[3];
-        Block &bExit  = fn.blocks[4];
+        Block &bExit = fn.blocks[4];
 
         b.setInsertPoint(bEntry);
         b.cbr(Value::constBool(true), bLeft, {}, bRight, {});
@@ -133,21 +134,22 @@ int main()
         CFGContext ctx(m);
         PostDomTree pdt = computePostDominatorTree(ctx, fn);
 
-        assert(pdt.immediatePostDominator(&bExit)  == nullptr  && "exit block ipostdom is virtual exit");
-        assert(pdt.immediatePostDominator(&bMerge) == &bExit   && "merge ipostdom is exit");
-        assert(pdt.immediatePostDominator(&bLeft)  == &bMerge  && "left ipostdom is merge");
-        assert(pdt.immediatePostDominator(&bRight) == &bMerge  && "right ipostdom is merge");
-        assert(pdt.immediatePostDominator(&bEntry) == &bMerge  && "entry ipostdom is merge");
+        assert(pdt.immediatePostDominator(&bExit) == nullptr &&
+               "exit block ipostdom is virtual exit");
+        assert(pdt.immediatePostDominator(&bMerge) == &bExit && "merge ipostdom is exit");
+        assert(pdt.immediatePostDominator(&bLeft) == &bMerge && "left ipostdom is merge");
+        assert(pdt.immediatePostDominator(&bRight) == &bMerge && "right ipostdom is merge");
+        assert(pdt.immediatePostDominator(&bEntry) == &bMerge && "entry ipostdom is merge");
 
         assert(pdt.postDominates(&bMerge, &bEntry) && "merge pdoms entry");
-        assert(pdt.postDominates(&bExit, &bEntry)  && "exit pdoms entry");
-        assert(pdt.postDominates(&bMerge, &bLeft)  && "merge pdoms left");
+        assert(pdt.postDominates(&bExit, &bEntry) && "exit pdoms entry");
+        assert(pdt.postDominates(&bMerge, &bLeft) && "merge pdoms left");
         assert(pdt.postDominates(&bMerge, &bRight) && "merge pdoms right");
 
-        assert(!pdt.postDominates(&bLeft, &bEntry)  && "left does not pdom entry");
+        assert(!pdt.postDominates(&bLeft, &bEntry) && "left does not pdom entry");
         assert(!pdt.postDominates(&bRight, &bEntry) && "right does not pdom entry");
-        assert(!pdt.postDominates(&bLeft, &bRight)  && "left does not pdom right");
-        assert(!pdt.postDominates(&bRight, &bLeft)  && "right does not pdom left");
+        assert(!pdt.postDominates(&bLeft, &bRight) && "left does not pdom right");
+        assert(!pdt.postDominates(&bRight, &bLeft) && "right does not pdom left");
     }
 
     // -------------------------------------------------------------------------
@@ -177,7 +179,7 @@ int main()
         b.createBlock(fn, "exit1");
         b.createBlock(fn, "exit2");
         Block &bEntry = fn.blocks[0];
-        Block &bLeft  = fn.blocks[1];
+        Block &bLeft = fn.blocks[1];
         Block &bRight = fn.blocks[2];
         Block &bExit1 = fn.blocks[3];
         Block &bExit2 = fn.blocks[4];
@@ -196,21 +198,21 @@ int main()
         CFGContext ctx(m);
         PostDomTree pdt = computePostDominatorTree(ctx, fn);
 
-        assert(pdt.immediatePostDominator(&bExit1) == nullptr  && "exit1 ipostdom is virtual exit");
-        assert(pdt.immediatePostDominator(&bExit2) == nullptr  && "exit2 ipostdom is virtual exit");
-        assert(pdt.immediatePostDominator(&bLeft)  == &bExit1  && "left ipostdom is exit1");
-        assert(pdt.immediatePostDominator(&bRight) == &bExit2  && "right ipostdom is exit2");
-        assert(pdt.immediatePostDominator(&bEntry) == nullptr  && "entry ipostdom is virtual exit");
+        assert(pdt.immediatePostDominator(&bExit1) == nullptr && "exit1 ipostdom is virtual exit");
+        assert(pdt.immediatePostDominator(&bExit2) == nullptr && "exit2 ipostdom is virtual exit");
+        assert(pdt.immediatePostDominator(&bLeft) == &bExit1 && "left ipostdom is exit1");
+        assert(pdt.immediatePostDominator(&bRight) == &bExit2 && "right ipostdom is exit2");
+        assert(pdt.immediatePostDominator(&bEntry) == nullptr && "entry ipostdom is virtual exit");
 
         // No concrete block post-dominates entry (two separate exit paths)
-        assert(!pdt.postDominates(&bLeft,  &bEntry) && "left does not pdom entry");
+        assert(!pdt.postDominates(&bLeft, &bEntry) && "left does not pdom entry");
         assert(!pdt.postDominates(&bRight, &bEntry) && "right does not pdom entry");
         assert(!pdt.postDominates(&bExit1, &bEntry) && "exit1 does not pdom entry");
         assert(!pdt.postDominates(&bExit2, &bEntry) && "exit2 does not pdom entry");
 
         // left pdoms itself; exit1 pdoms left
-        assert(pdt.postDominates(&bLeft,  &bLeft)  && "left pdoms itself");
-        assert(pdt.postDominates(&bExit1, &bLeft)  && "exit1 pdoms left");
+        assert(pdt.postDominates(&bLeft, &bLeft) && "left pdoms itself");
+        assert(pdt.postDominates(&bExit1, &bLeft) && "exit1 pdoms left");
         assert(pdt.postDominates(&bExit2, &bRight) && "exit2 pdoms right");
     }
 

@@ -231,7 +231,11 @@ static void test_concqueue_fifo_order(void)
     void *q = rt_concqueue_new();
     assert(q);
 
-    enum { N = 16 };
+    enum
+    {
+        N = 16
+    };
+
     void *items[N];
     for (int i = 0; i < N; i++)
     {
@@ -438,7 +442,11 @@ static void test_scheduler_poll_multiple(void)
     void *sched = rt_scheduler_new();
     assert(sched);
 
-    enum { NT = 5 };
+    enum
+    {
+        NT = 5
+    };
+
     rt_string names[NT];
     const char *name_strs[NT] = {"alpha", "beta", "gamma", "delta", "epsilon"};
     for (int i = 0; i < NT; i++)

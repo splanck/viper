@@ -520,14 +520,18 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
     float content_width = widget->width - editor->gutter_width;
 
     // Draw background
-    // TODO: Use vgfx primitives
-    (void)editor->bg_color;
+    vgfx_fill_rect((vgfx_window_t)canvas,
+                   (int32_t)widget->x, (int32_t)widget->y,
+                   (int32_t)widget->width, (int32_t)widget->height,
+                   editor->bg_color);
 
     // Draw gutter background
     if (editor->show_line_numbers)
     {
-        // TODO: Use vgfx primitives
-        (void)editor->gutter_bg;
+        vgfx_fill_rect((vgfx_window_t)canvas,
+                       (int32_t)widget->x, (int32_t)widget->y,
+                       (int32_t)editor->gutter_width, (int32_t)widget->height,
+                       editor->gutter_bg);
     }
 
     vg_font_metrics_t font_metrics;
@@ -544,8 +548,10 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         // Draw current line highlight
         if (i == editor->cursor_line && (widget->state & VG_STATE_FOCUSED))
         {
-            // TODO: Use vgfx primitives
-            (void)editor->current_line_bg;
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)content_x, (int32_t)line_y,
+                           (int32_t)content_width, (int32_t)editor->line_height,
+                           editor->current_line_bg);
         }
 
         // Draw line number
@@ -597,10 +603,10 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                 float sel_width = (col_end - col_start) * editor->char_width;
 
                 // Draw selection rectangle
-                // TODO: Use vgfx primitives
-                (void)sel_x;
-                (void)sel_width;
-                (void)editor->selection_color;
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)sel_x, (int32_t)line_y,
+                               (int32_t)sel_width, (int32_t)editor->line_height,
+                               editor->selection_color);
             }
         }
 

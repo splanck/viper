@@ -805,9 +805,12 @@ void ISel::lowerMulToLea(MFunction &func) const
     // scale = factor - 1; LEA [base + index*scale] = base*(1 + scale) = base*factor.
     auto factorToScale = [](int64_t factor) -> uint8_t
     {
-        if (factor == 3) return 2;
-        if (factor == 5) return 4;
-        if (factor == 9) return 8;
+        if (factor == 3)
+            return 2;
+        if (factor == 5)
+            return 4;
+        if (factor == 9)
+            return 8;
         return 0; // not a LEA-eligible constant
     };
 
@@ -842,7 +845,7 @@ void ISel::lowerMulToLea(MFunction &func) const
                         MovRiDef def{};
                         def.defIdx = idx;
                         def.factor = imm->val;
-                        def.scale  = scale;
+                        def.scale = scale;
                         constDefs[dst->idOrPhys] = def;
                     }
                 }
@@ -904,15 +907,15 @@ void ISel::lowerMulToLea(MFunction &func) const
             // OpMem with base == index captures dst*(1+scale) = dst*factor.
             const uint16_t dstId = dst->idOrPhys;
             OpMem leaMem{};
-            leaMem.base.isPhys    = false;
-            leaMem.base.cls       = RegClass::GPR;
-            leaMem.base.idOrPhys  = dstId;
-            leaMem.index.isPhys   = false;
-            leaMem.index.cls      = RegClass::GPR;
+            leaMem.base.isPhys = false;
+            leaMem.base.cls = RegClass::GPR;
+            leaMem.base.idOrPhys = dstId;
+            leaMem.index.isPhys = false;
+            leaMem.index.cls = RegClass::GPR;
             leaMem.index.idOrPhys = dstId;
-            leaMem.scale          = def.scale;
-            leaMem.disp           = 0;
-            leaMem.hasIndex       = true;
+            leaMem.scale = def.scale;
+            leaMem.disp = 0;
+            leaMem.hasIndex = true;
 
             instr.opcode = MOpcode::LEA;
             instr.operands[0] = cloneOperand(instr.operands[0]); // dst unchanged

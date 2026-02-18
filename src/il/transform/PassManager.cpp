@@ -22,12 +22,12 @@
 
 #include "il/transform/PassManager.hpp"
 
-#include "il/transform/AnalysisIDs.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/analysis/MemorySSA.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/CheckOpt.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/LateCleanup.hpp"
@@ -64,8 +64,9 @@ PassManager::PassManager()
 #endif
     instrumentationStream_ = &std::cerr;
 
-    analysisRegistry_.registerFunctionAnalysis<CFGInfo>(
-        kAnalysisCFG, [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
+    analysisRegistry_.registerFunctionAnalysis<CFGInfo>(kAnalysisCFG,
+                                                        [](core::Module &module, core::Function &fn)
+                                                        { return buildCFG(module, fn); });
     analysisRegistry_.registerFunctionAnalysis<viper::analysis::DomTree>(
         kAnalysisDominators,
         [](core::Module &module, core::Function &fn)

@@ -250,7 +250,8 @@ std::string_view LICM::id() const
 /// @return Preserved analysis set describing which analyses remain valid.
 PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
 {
-    auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+    auto &domTree =
+        analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
     auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, function);
     auto &cfg = analysis.getFunctionResult<CFGInfo>(kAnalysisCFG, function);

@@ -1,4 +1,5 @@
 // vg_scrollview.c - Scroll view widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -260,10 +261,15 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
         float track_y = widget->y;
         float track_height = content_area_height;
 
+        vgfx_window_t win = (vgfx_window_t)canvas;
+
         // Draw track
-        // TODO: Use vgfx primitives
-        (void)track_x;
-        (void)track_y;
+        vgfx_fill_rect(win,
+                       (int32_t)track_x,
+                       (int32_t)track_y,
+                       (int32_t)scroll->scrollbar_width,
+                       (int32_t)track_height,
+                       scroll->track_color);
 
         // Calculate thumb size and position
         float visible_ratio = content_area_height / scroll->content_height;
@@ -283,10 +289,12 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
         uint32_t thumb_color = scroll->v_scrollbar_hovered || scroll->v_scrollbar_dragging
                                    ? scroll->thumb_hover_color
                                    : scroll->thumb_color;
-        // TODO: Use vgfx primitives
-        (void)thumb_height;
-        (void)thumb_y;
-        (void)thumb_color;
+        vgfx_fill_rect(win,
+                       (int32_t)track_x,
+                       (int32_t)thumb_y,
+                       (int32_t)scroll->scrollbar_width,
+                       (int32_t)thumb_height,
+                       thumb_color);
     }
 
     // Horizontal scrollbar
@@ -296,10 +304,15 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
         float track_y = widget->y + widget->height - scroll->scrollbar_width;
         float track_width = content_area_width;
 
+        vgfx_window_t win_h = (vgfx_window_t)canvas;
+
         // Draw track
-        // TODO: Use vgfx primitives
-        (void)track_x;
-        (void)track_y;
+        vgfx_fill_rect(win_h,
+                       (int32_t)track_x,
+                       (int32_t)track_y,
+                       (int32_t)track_width,
+                       (int32_t)scroll->scrollbar_width,
+                       scroll->track_color);
 
         // Calculate thumb size and position
         float visible_ratio = content_area_width / scroll->content_width;
@@ -319,10 +332,12 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
         uint32_t thumb_color = scroll->h_scrollbar_hovered || scroll->h_scrollbar_dragging
                                    ? scroll->thumb_hover_color
                                    : scroll->thumb_color;
-        // TODO: Use vgfx primitives
-        (void)thumb_width;
-        (void)thumb_x;
-        (void)thumb_color;
+        vgfx_fill_rect(win_h,
+                       (int32_t)thumb_x,
+                       (int32_t)track_y,
+                       (int32_t)thumb_width,
+                       (int32_t)scroll->scrollbar_width,
+                       thumb_color);
     }
 }
 

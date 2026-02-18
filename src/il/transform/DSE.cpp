@@ -17,13 +17,13 @@
 
 #include "il/transform/DSE.hpp"
 
-#include "il/transform/AnalysisIDs.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/analysis/MemorySSA.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 
 #include <algorithm>
@@ -115,7 +115,8 @@ inline std::optional<unsigned> accessSize(const Instr &I)
 bool runDSE(Function &F, AnalysisManager &AM)
 {
     // Acquire BasicAA when available
-    viper::analysis::BasicAA &AA = AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
+    viper::analysis::BasicAA &AA =
+        AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
     bool changed = false;
 
     for (auto &B : F.blocks)
@@ -351,7 +352,8 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
     if (F.blocks.empty())
         return false;
 
-    viper::analysis::BasicAA &AA = AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
+    viper::analysis::BasicAA &AA =
+        AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
 
     // Build a map from block label to block pointer for successor lookup
     std::unordered_map<std::string, BasicBlock *> blockMap;
@@ -530,8 +532,7 @@ bool runMemorySSADSE(Function &F, AnalysisManager &AM)
     {
         for (size_t i = 0; i < B.instructions.size(); ++i)
         {
-            if (B.instructions[i].op == Opcode::Store &&
-                mssa.isDeadStore(&B, i))
+            if (B.instructions[i].op == Opcode::Store && mssa.isDeadStore(&B, i))
             {
                 toRemove.emplace_back(&B, i);
             }
@@ -552,8 +553,7 @@ bool runMemorySSADSE(Function &F, AnalysisManager &AM)
               });
 
     for (const auto &[block, idx] : toRemove)
-        block->instructions.erase(block->instructions.begin() +
-                                  static_cast<long>(idx));
+        block->instructions.erase(block->instructions.begin() + static_cast<long>(idx));
 
     return true;
 }

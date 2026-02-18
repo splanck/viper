@@ -85,15 +85,12 @@ StmtPtr Parser::parseStatement()
     if (check(TokenKind::KwMatch))
     {
         auto nextKind = peek(1).kind;
-        bool isMatchStmt = (nextKind == TokenKind::Identifier ||
-                            nextKind == TokenKind::IntegerLiteral ||
-                            nextKind == TokenKind::NumberLiteral ||
-                            nextKind == TokenKind::StringLiteral ||
-                            nextKind == TokenKind::LParen ||
-                            nextKind == TokenKind::KwTrue ||
-                            nextKind == TokenKind::KwFalse ||
-                            nextKind == TokenKind::KwNull ||
-                            nextKind == TokenKind::KwSelf);
+        bool isMatchStmt =
+            (nextKind == TokenKind::Identifier || nextKind == TokenKind::IntegerLiteral ||
+             nextKind == TokenKind::NumberLiteral || nextKind == TokenKind::StringLiteral ||
+             nextKind == TokenKind::LParen || nextKind == TokenKind::KwTrue ||
+             nextKind == TokenKind::KwFalse || nextKind == TokenKind::KwNull ||
+             nextKind == TokenKind::KwSelf);
         if (isMatchStmt)
         {
             return parseMatchStmt();

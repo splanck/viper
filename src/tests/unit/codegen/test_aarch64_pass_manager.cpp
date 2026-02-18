@@ -83,12 +83,11 @@ static PassManager buildFullPipeline()
 //
 TEST(AArch64PassManager, PipelineRoundtrip)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @forty_two() -> i64 {\n"
-        "entry:\n"
-        "  ret 42\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @forty_two() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 42\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -96,7 +95,7 @@ TEST(AArch64PassManager, PipelineRoundtrip)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     PassManager pm = buildFullPipeline();
     Diagnostics diags;
@@ -125,13 +124,12 @@ TEST(AArch64PassManager, PipelineRoundtrip)
 //
 TEST(AArch64PassManager, PartialPipeline)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @add_two(%a:i64, %b:i64) -> i64 {\n"
-        "entry:\n"
-        "  %r = add %a, %b\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @add_two(%a:i64, %b:i64) -> i64 {\n"
+                           "entry:\n"
+                           "  %r = add %a, %b\n"
+                           "  ret %r\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -139,7 +137,7 @@ TEST(AArch64PassManager, PartialPipeline)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     // Only add the lowering pass.
     PassManager pm;
@@ -179,12 +177,11 @@ class AlwaysFailPass final : public Pass
 
 TEST(AArch64PassManager, FailPassShortCircuit)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @simple() -> i64 {\n"
-        "entry:\n"
-        "  ret 0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @simple() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 0\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -192,7 +189,7 @@ TEST(AArch64PassManager, FailPassShortCircuit)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     // Pipeline: Lower → FAIL → (Peephole should NOT run) → (Emit should NOT run).
     PassManager pm;
@@ -225,7 +222,7 @@ TEST(AArch64PassManager, EmptyModule)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     PassManager pm = buildFullPipeline();
     Diagnostics diags;

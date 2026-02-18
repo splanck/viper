@@ -30,8 +30,8 @@
 #include "codegen/common/PeepholeUtil.hpp"
 
 #include <algorithm>
+#include <array>
 #include <optional>
-#include <unordered_map>
 #include <unordered_set>
 
 namespace viper::codegen::x64
@@ -220,8 +220,13 @@ inline const std::vector<uint16_t> &getAllAllocatableRegs()
     return log;
 }
 
-/// @brief Map of registers to their known constant values from MOVri.
-using RegConstMap = std::unordered_map<uint16_t, int64_t>;
+/// @brief Array of known constant values indexed by physical register ID.
+///
+/// Each entry holds the constant loaded into that physical register by a
+/// recent MOVri, or nullopt if the register's value is unknown.  Indexed
+/// directly by static_cast<uint16_t>(PhysReg); the x86-64 PhysReg enum
+/// has 32 entries (RAX=0 … XMM15=31) so the array is always in-bounds.
+using RegConstMap = std::array<std::optional<int64_t>, 32>;
 
 /// @brief Update register constant tracking based on an instruction.
 void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
@@ -231,7 +236,7 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
     {
         const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
         const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
-        if (dst && dst->isPhys && imm)
+        if (dst && dst->isPhys && dst->idOrPhys < 32 && imm)
         {
             knownConsts[dst->idOrPhys] = imm->val;
             return;
@@ -271,21 +276,21 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
             if (!instr.operands.empty())
             {
                 const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
-                if (dst && dst->isPhys)
-                    knownConsts.erase(dst->idOrPhys);
+                if (dst && dst->isPhys && dst->idOrPhys < 32)
+                    knownConsts[dst->idOrPhys].reset();
             }
             break;
 
         case MOpcode::CQO:
             // CQO modifies RDX
-            knownConsts.erase(static_cast<uint16_t>(PhysReg::RDX));
+            knownConsts[static_cast<uint16_t>(PhysReg::RDX)].reset();
             break;
 
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
             // IDIV/DIV modify RAX and RDX
-            knownConsts.erase(static_cast<uint16_t>(PhysReg::RAX));
-            knownConsts.erase(static_cast<uint16_t>(PhysReg::RDX));
+            knownConsts[static_cast<uint16_t>(PhysReg::RAX)].reset();
+            knownConsts[static_cast<uint16_t>(PhysReg::RDX)].reset();
             break;
 
         default:
@@ -296,15 +301,15 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
     if (instr.opcode == MOpcode::CALL)
     {
         // x86-64 caller-saved: RAX, RCX, RDX, RSI, RDI, R8-R11
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::RAX));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::RCX));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::RDX));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::RSI));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::RDI));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::R8));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::R9));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::R10));
-        knownConsts.erase(static_cast<uint16_t>(PhysReg::R11));
+        knownConsts[static_cast<uint16_t>(PhysReg::RAX)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::RCX)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::RDX)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::RSI)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::RDI)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::R8)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::R9)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::R10)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::R11)].reset();
     }
 }
 
@@ -313,12 +318,9 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
                                                    const RegConstMap &knownConsts)
 {
     const auto *reg = std::get_if<OpReg>(&operand);
-    if (!reg || !reg->isPhys || reg->cls != RegClass::GPR)
+    if (!reg || !reg->isPhys || reg->cls != RegClass::GPR || reg->idOrPhys >= 32)
         return std::nullopt;
-    auto it = knownConsts.find(reg->idOrPhys);
-    if (it != knownConsts.end())
-        return it->second;
-    return std::nullopt;
+    return knownConsts[reg->idOrPhys];
 }
 
 /// @brief Check if an instruction defines a given physical register.

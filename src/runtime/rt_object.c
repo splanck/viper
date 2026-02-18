@@ -134,9 +134,11 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
     if (!payload)
     {
         char buf[128];
-        snprintf(buf, sizeof(buf),
+        snprintf(buf,
+                 sizeof(buf),
                  "rt_obj_new_i64: allocation failed (class_id=%lld, size=%lld bytes)",
-                 (long long)class_id, (long long)byte_size);
+                 (long long)class_id,
+                 (long long)byte_size);
         rt_trap(buf);
         return NULL; /* unreachable — rt_trap terminates */
     }

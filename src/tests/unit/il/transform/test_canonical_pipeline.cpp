@@ -91,7 +91,11 @@ TEST(CanonicalPipeline, O1PipelineContainsSCCP)
 
     bool found = false;
     for (const auto &id : *pipeline)
-        if (id == "sccp") { found = true; break; }
+        if (id == "sccp")
+        {
+            found = true;
+            break;
+        }
     EXPECT_TRUE(found);
 }
 
@@ -106,10 +110,14 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses)
     bool hasSccp = false, hasInline = false, hasLoopUnroll = false, hasCheckOpt = false;
     for (const auto &id : *pipeline)
     {
-        if (id == "sccp")        hasSccp = true;
-        if (id == "inline")      hasInline = true;
-        if (id == "loop-unroll") hasLoopUnroll = true;
-        if (id == "check-opt")   hasCheckOpt = true;
+        if (id == "sccp")
+            hasSccp = true;
+        if (id == "inline")
+            hasInline = true;
+        if (id == "loop-unroll")
+            hasLoopUnroll = true;
+        if (id == "check-opt")
+            hasCheckOpt = true;
     }
     EXPECT_TRUE(hasSccp);
     EXPECT_TRUE(hasInline);

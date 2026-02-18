@@ -59,9 +59,7 @@ using CSETable = std::unordered_map<ValueKey, Value, ValueKeyHash>;
 ///                  current scope. May be modified (entries appended to back).
 /// @param useInfo   Use-def information for O(uses) replacement.
 /// @return True if any instruction was removed from @p B.
-bool processBlock(BasicBlock &B,
-                  std::vector<CSETable> &scopes,
-                  viper::il::UseDefInfo &useInfo)
+bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDefInfo &useInfo)
 {
     bool changed = false;
     for (std::size_t idx = 0; idx < B.instructions.size();)

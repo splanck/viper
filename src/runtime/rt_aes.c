@@ -153,7 +153,10 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
     for (int i = 0; i < 8; i++)
         h[i] = sha256_h0[i];
 
-    // Pre-processing: adding padding bits
+    // Pre-processing: adding padding bits.
+    // Guard against integer overflow: len must be small enough that len+8 doesn't wrap.
+    if (len > SIZE_MAX - 72)
+        return; // input too large to hash
     size_t padded_len = ((len + 8) / 64 + 1) * 64;
     uint8_t *padded = (uint8_t *)calloc(padded_len, 1);
     if (!padded)
@@ -829,9 +832,22 @@ static void derive_key(const char *password, uint8_t key[32])
     size_t pass_len = password ? strlen(password) : 0;
 
     /* Fixed application-level domain separator (S-06) */
-    static const uint8_t kSalt[16] = {
-        0x56, 0x49, 0x50, 0x45, 0x52, 0x5f, 0x41, 0x45,
-        0x53, 0x5f, 0x4b, 0x44, 0x46, 0x5f, 0x76, 0x31};
+    static const uint8_t kSalt[16] = {0x56,
+                                      0x49,
+                                      0x50,
+                                      0x45,
+                                      0x52,
+                                      0x5f,
+                                      0x41,
+                                      0x45,
+                                      0x53,
+                                      0x5f,
+                                      0x4b,
+                                      0x44,
+                                      0x46,
+                                      0x5f,
+                                      0x76,
+                                      0x31};
 
     /* Build initial block: salt || length_byte || password */
     uint8_t block[16 + 1 + 256];

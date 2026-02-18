@@ -1,0 +1,56 @@
+module TestFinalConstExpr;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// Cover: final constant with non-literal expression initializers (BUG-FE-011).
+// Before the fix, these constants were silently dropped by the lowerer and all
+// references resolved to constInt(0), making equality comparisons always fail.
+
+// Arithmetic constant expressions
+final NEG_ONE = 0 - 1;          // Sub: -1
+final COMPOSED = 2 * 3 + 1;     // Mul+Add: 7
+final DOUBLED = 4 + 4;          // Add: 8
+final SHIFTED_BITS = 1 * 256;   // Mul: 256
+
+// Negative literal (unary negation, distinct from BinaryExpr)
+final NEG_LARGE = 0 - 2147483647;  // Sub: -2147483647
+
+func testNegOne() {
+    setTest("NegOne");
+    var x = 0 - 1;
+    assertEqInt(x, NEG_ONE, "x == NEG_ONE (-1)");
+}
+
+func testComposed() {
+    setTest("Composed");
+    var x = 2 * 3 + 1;
+    assertEqInt(x, COMPOSED, "x == COMPOSED (7)");
+}
+
+func testDoubled() {
+    setTest("Doubled");
+    var x = 4 + 4;
+    assertEqInt(x, DOUBLED, "x == DOUBLED (8)");
+}
+
+func testShiftedBits() {
+    setTest("ShiftedBits");
+    var x = 1 * 256;
+    assertEqInt(x, SHIFTED_BITS, "x == SHIFTED_BITS (256)");
+}
+
+func testNegLarge() {
+    setTest("NegLarge");
+    var x = 0 - 2147483647;
+    assertEqInt(x, NEG_LARGE, "x == NEG_LARGE (-2147483647)");
+}
+
+func start() {
+    testNegOne();
+    testComposed();
+    testDoubled();
+    testShiftedBits();
+    testNegLarge();
+    report();
+}

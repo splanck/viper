@@ -115,7 +115,7 @@ struct AllocaInfo
     bool addressTaken{false};
     bool hasStore{false};
     bool singleBlock{true};
-    bool typeConsistent{true}; ///< False if loads/stores use different types.
+    bool typeConsistent{true};           ///< False if loads/stores use different types.
     std::vector<BasicBlock *> useBlocks; ///< Blocks (other than defining) containing uses.
 };
 

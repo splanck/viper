@@ -753,6 +753,20 @@ bool lowerInstruction(const il::core::Instr &ins,
                         bbOut().instrs.push_back(MInstr{
                             MOpcode::MovRR,
                             {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+                        // String results must be retained immediately after the call.
+                        // Functions like rt_str_concat consume (unref) their string
+                        // arguments; without this retain a string used between Call
+                        // and its first alloca store has an unbalanced refcount and
+                        // will be freed prematurely (BUG-NAT-005).
+                        if (ins.type.kind == il::core::Type::Kind::Str)
+                        {
+                            bbOut().instrs.push_back(
+                                MInstr{MOpcode::MovRR,
+                                       {MOperand::regOp(PhysReg::X0),
+                                        MOperand::vregOp(RegClass::GPR, dst)}});
+                            bbOut().instrs.push_back(
+                                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
+                        }
                         // Bug #1 fix: mask boolean return values to a single bit.
                         // Per AAPCS64, a C function returning bool only guarantees
                         // the low 8 bits of w0 are meaningful.
@@ -794,8 +808,10 @@ bool lowerInstruction(const il::core::Instr &ins,
                 // lowerCallWithArgs failed to materialize an argument.
                 if (!ins.operands.empty())
                 {
-                    fprintf(stderr, "WARNING: lowerCallWithArgs failed for %s with %zu args\n",
-                            ins.callee.c_str(), ins.operands.size());
+                    fprintf(stderr,
+                            "WARNING: lowerCallWithArgs failed for %s with %zu args\n",
+                            ins.callee.c_str(),
+                            ins.operands.size());
                 }
                 bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(ins.callee)}});
             }
@@ -902,6 +918,16 @@ bool lowerInstruction(const il::core::Instr &ins,
                     bbOut().instrs.push_back(MInstr{
                         MOpcode::MovRR,
                         {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+                    // String results from indirect calls also need an immediate retain
+                    // for the same reason as direct calls (BUG-NAT-005).
+                    if (ins.type.kind == il::core::Type::Kind::Str)
+                    {
+                        bbOut().instrs.push_back(MInstr{
+                            MOpcode::MovRR,
+                            {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, dst)}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
+                    }
                     // Bug #1 fix: mask boolean return values from indirect calls
                     if (ins.type.kind == il::core::Type::Kind::I1)
                     {

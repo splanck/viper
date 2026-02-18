@@ -60,12 +60,10 @@ static void test_sortedset_realloc_growth(void)
     check("set created", set != NULL);
 
     // Initial capacity is 8; insert 20 items to force multiple reallocs.
-    static const char *words[] = {
-        "alpha", "bravo", "charlie", "delta", "echo",
-        "foxtrot", "golf", "hotel", "india", "juliet",
-        "kilo", "lima", "mike", "november", "oscar",
-        "papa", "quebec", "romeo", "sierra", "tango"
-    };
+    static const char *words[] = {"alpha",   "bravo",  "charlie", "delta",    "echo",
+                                  "foxtrot", "golf",   "hotel",   "india",    "juliet",
+                                  "kilo",    "lima",   "mike",    "november", "oscar",
+                                  "papa",    "quebec", "romeo",   "sierra",   "tango"};
     int n = (int)(sizeof(words) / sizeof(words[0]));
 
     for (int i = 0; i < n; i++)
@@ -82,12 +80,10 @@ static void test_sortedset_realloc_growth(void)
 
     // Verify sorted order: rt_sortedset_at(0) should be lexicographically first.
     rt_string first = rt_sortedset_first(set);
-    check("first element is 'alpha'",
-          strcmp(rt_string_cstr(first), "alpha") == 0);
+    check("first element is 'alpha'", strcmp(rt_string_cstr(first), "alpha") == 0);
 
     rt_string last = rt_sortedset_last(set);
-    check("last element is 'tango'",
-          strcmp(rt_string_cstr(last), "tango") == 0);
+    check("last element is 'tango'", strcmp(rt_string_cstr(last), "tango") == 0);
 
     // Release — finalizer (R-11b fix) must free the backing array.
     if (rt_obj_release_check0(set))
@@ -152,14 +148,18 @@ static void test_bigint_to_str_base_decimal(void)
 {
     printf("Testing rt_bigint: to_str_base decimal\n");
 
-    struct { int64_t val; const char *expected; } cases[] = {
-        {           0,             "0" },
-        {           1,             "1" },
-        {          -1,            "-1" },
-        {        1000,          "1000" },
-        {       -9999,         "-9999" },
-        { INT32_MAX,       "2147483647" },
-        { INT32_MIN + 1, "-2147483647" },
+    struct
+    {
+        int64_t val;
+        const char *expected;
+    } cases[] = {
+        {0, "0"},
+        {1, "1"},
+        {-1, "-1"},
+        {1000, "1000"},
+        {-9999, "-9999"},
+        {INT32_MAX, "2147483647"},
+        {INT32_MIN + 1, "-2147483647"},
     };
 
     for (int i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); i++)

@@ -329,8 +329,7 @@ Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
     NumericOpConfig config = normalizeNumericOperands(expr, lhs, rhs);
     lowerer.trackRuntime(Lowerer::RuntimeFeature::Pow);
     lowerer.curLoc = expr.loc;
-    Value res =
-        lowerer.emitCallRet(IlType(IlKind::F64), "rt_pow_f64", {lhs.value, rhs.value});
+    Value res = lowerer.emitCallRet(IlType(IlKind::F64), "rt_pow_f64", {lhs.value, rhs.value});
     IlType resultType =
         (config.resultType.kind == IlKind::Void) ? IlType(IlKind::F64) : config.resultType;
     return {res, resultType};

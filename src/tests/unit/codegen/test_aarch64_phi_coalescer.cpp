@@ -111,21 +111,20 @@ static int countSubstr(const std::string &text, const std::string &needle)
 //
 TEST(AArch64PhiCoalescer, SinglePhiLoop)
 {
-    const std::string in  = testOut("phi_coalescer_single.il");
+    const std::string in = testOut("phi_coalescer_single.il");
     const std::string out = testOut("phi_coalescer_single.s");
 
-    const std::string il =
-        "il 0.1\n"
-        "func @iota100() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0)\n"
-        "loop(%i:i64):\n"
-        "  %next = add %i, 1\n"
-        "  %done = icmp_eq %next, 100\n"
-        "  cbr %done, exit(%next), loop(%next)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @iota100() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0)\n"
+                           "loop(%i:i64):\n"
+                           "  %next = add %i, 1\n"
+                           "  %done = icmp_eq %next, 100\n"
+                           "  cbr %done, exit(%next), loop(%next)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -139,7 +138,8 @@ TEST(AArch64PhiCoalescer, SinglePhiLoop)
     if (strCount > 5)
     {
         std::cerr << "Expected at most 5 'str x' (phi coalescer fix); got " << strCount
-                  << "\nAssembly:\n" << asmText << "\n";
+                  << "\nAssembly:\n"
+                  << asmText << "\n";
     }
     EXPECT_TRUE(strCount <= 5);
 }
@@ -161,22 +161,21 @@ TEST(AArch64PhiCoalescer, SinglePhiLoop)
 //
 TEST(AArch64PhiCoalescer, TwoPhiLoop)
 {
-    const std::string in  = testOut("phi_coalescer_two.il");
+    const std::string in = testOut("phi_coalescer_two.il");
     const std::string out = testOut("phi_coalescer_two.s");
 
-    const std::string il =
-        "il 0.1\n"
-        "func @loop_sum() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0, 0)\n"
-        "loop(%i:i64, %sum:i64):\n"
-        "  %new_sum = add %sum, %i\n"
-        "  %next_i  = add %i, 1\n"
-        "  %done    = icmp_eq %next_i, 10\n"
-        "  cbr %done, exit(%new_sum), loop(%next_i, %new_sum)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @loop_sum() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%i:i64, %sum:i64):\n"
+                           "  %new_sum = add %sum, %i\n"
+                           "  %next_i  = add %i, 1\n"
+                           "  %done    = icmp_eq %next_i, 10\n"
+                           "  cbr %done, exit(%new_sum), loop(%next_i, %new_sum)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -189,8 +188,8 @@ TEST(AArch64PhiCoalescer, TwoPhiLoop)
     // After fix:  PhiStoreGPR removes those 2 extra stores → 11 str x.
     if (strCount > 11)
     {
-        std::cerr << "Expected at most 11 'str x'; got " << strCount
-                  << "\nAssembly:\n" << asmText << "\n";
+        std::cerr << "Expected at most 11 'str x'; got " << strCount << "\nAssembly:\n"
+                  << asmText << "\n";
     }
     EXPECT_TRUE(strCount <= 11);
 }
@@ -200,21 +199,20 @@ TEST(AArch64PhiCoalescer, TwoPhiLoop)
 // ---------------------------------------------------------------------------
 TEST(AArch64PhiCoalescer, FPRPhiLoop)
 {
-    const std::string in  = testOut("phi_coalescer_fpr.il");
+    const std::string in = testOut("phi_coalescer_fpr.il");
     const std::string out = testOut("phi_coalescer_fpr.s");
 
-    const std::string il =
-        "il 0.1\n"
-        "func @fp_accum() -> f64 {\n"
-        "entry:\n"
-        "  br loop(0.0)\n"
-        "loop(%acc:f64):\n"
-        "  %one = fadd %acc, 1.0\n"
-        "  %done = fcmp_eq %one, 10.0\n"
-        "  cbr %done, exit(%one), loop(%one)\n"
-        "exit(%r:f64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @fp_accum() -> f64 {\n"
+                           "entry:\n"
+                           "  br loop(0.0)\n"
+                           "loop(%acc:f64):\n"
+                           "  %one = fadd %acc, 1.0\n"
+                           "  %done = fcmp_eq %one, 10.0\n"
+                           "  cbr %done, exit(%one), loop(%one)\n"
+                           "exit(%r:f64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -225,8 +223,8 @@ TEST(AArch64PhiCoalescer, FPRPhiLoop)
     // FP addition must be present.
     EXPECT_NE(asmText.find("fadd"), std::string::npos);
     // Conditional branch (cbnz from peephole, or b.ne without peephole).
-    const bool hasCondBr = asmText.find("cbnz") != std::string::npos ||
-                           asmText.find("b.") != std::string::npos;
+    const bool hasCondBr =
+        asmText.find("cbnz") != std::string::npos || asmText.find("b.") != std::string::npos;
     EXPECT_TRUE(hasCondBr);
 }
 
@@ -235,21 +233,20 @@ TEST(AArch64PhiCoalescer, FPRPhiLoop)
 // ---------------------------------------------------------------------------
 TEST(AArch64PhiCoalescer, LoopStructurePreserved)
 {
-    const std::string in  = testOut("phi_coalescer_correct.il");
+    const std::string in = testOut("phi_coalescer_correct.il");
     const std::string out = testOut("phi_coalescer_correct.s");
 
-    const std::string il =
-        "il 0.1\n"
-        "func @count5() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0)\n"
-        "loop(%i:i64):\n"
-        "  %next = add %i, 1\n"
-        "  %done = icmp_eq %next, 5\n"
-        "  cbr %done, exit(%next), loop(%next)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @count5() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0)\n"
+                           "loop(%i:i64):\n"
+                           "  %next = add %i, 1\n"
+                           "  %done = icmp_eq %next, 5\n"
+                           "  cbr %done, exit(%next), loop(%next)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -266,8 +263,8 @@ TEST(AArch64PhiCoalescer, LoopStructurePreserved)
     // Loop back-edge must be present.
     EXPECT_NE(asmText.find("b loop"), std::string::npos);
     // Conditional loop exit must be present (cbnz from peephole or b.ne).
-    const bool hasCondExit = asmText.find("cbnz") != std::string::npos ||
-                             asmText.find("b.") != std::string::npos;
+    const bool hasCondExit =
+        asmText.find("cbnz") != std::string::npos || asmText.find("b.") != std::string::npos;
     EXPECT_TRUE(hasCondExit);
 }
 

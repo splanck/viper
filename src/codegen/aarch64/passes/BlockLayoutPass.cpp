@@ -72,8 +72,8 @@ static void layoutFunction(MFunction &fn)
             if (!bb.instrs.empty())
             {
                 const MInstr &last = bb.instrs.back();
-                if (last.opc == MOpcode::Br && !last.ops.empty()
-                    && last.ops[0].kind == MOperand::Kind::Label)
+                if (last.opc == MOpcode::Br && !last.ops.empty() &&
+                    last.ops[0].kind == MOperand::Kind::Label)
                 {
                     const std::string &target = last.ops[0].label;
                     auto it = nameToIdx.find(target);

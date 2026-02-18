@@ -7,14 +7,13 @@
 
 #include "rt_frozenmap.h"
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
-#include "rt_box.h"
 
 #include <stdlib.h>
 #include <string.h>
-
 
 // --- Helper: extract string from seq element (may be boxed) ---
 

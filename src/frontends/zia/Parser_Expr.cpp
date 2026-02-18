@@ -1028,15 +1028,12 @@ ExprPtr Parser::parsePrimary()
         // something that starts a scrutinee expression (identifier, literal, parenthesis).
         // When followed by ';', ')', ',', '.', operators, etc., treat it as a variable name.
         auto nextKind = peek(1).kind;
-        bool isMatchExpr = (nextKind == TokenKind::Identifier ||
-                            nextKind == TokenKind::IntegerLiteral ||
-                            nextKind == TokenKind::NumberLiteral ||
-                            nextKind == TokenKind::StringLiteral ||
-                            nextKind == TokenKind::LParen ||
-                            nextKind == TokenKind::KwTrue ||
-                            nextKind == TokenKind::KwFalse ||
-                            nextKind == TokenKind::KwNull ||
-                            nextKind == TokenKind::KwSelf);
+        bool isMatchExpr =
+            (nextKind == TokenKind::Identifier || nextKind == TokenKind::IntegerLiteral ||
+             nextKind == TokenKind::NumberLiteral || nextKind == TokenKind::StringLiteral ||
+             nextKind == TokenKind::LParen || nextKind == TokenKind::KwTrue ||
+             nextKind == TokenKind::KwFalse || nextKind == TokenKind::KwNull ||
+             nextKind == TokenKind::KwSelf);
         if (isMatchExpr)
         {
             advance(); // consume 'match'

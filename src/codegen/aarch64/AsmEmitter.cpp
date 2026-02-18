@@ -899,13 +899,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     // These lambdas shadow the free-function names within this scope.
     const bool kDarwin_ = !target_->isLinux();
     [[maybe_unused]] auto mangleSymbol = [kDarwin_](const std::string &n) -> std::string
-    {
-        return mangleSymbolImpl(n, kDarwin_);
-    };
+    { return mangleSymbolImpl(n, kDarwin_); };
     [[maybe_unused]] auto mangleCallTarget = [kDarwin_](const std::string &n) -> std::string
-    {
-        return mangleCallTargetImpl(n, kDarwin_);
-    };
+    { return mangleCallTargetImpl(n, kDarwin_); };
 
     // Handle Ret specially since it needs the epilogue
     if (mi.opc == MOpcode::Ret)

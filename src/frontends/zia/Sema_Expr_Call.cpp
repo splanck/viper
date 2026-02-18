@@ -11,8 +11,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "frontends/zia/Sema.hpp"
 #include "frontends/common/StringUtils.hpp"
+#include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>

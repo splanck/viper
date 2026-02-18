@@ -1,0 +1,187 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/runtime/RTRegexTests.cpp
+// Purpose: Validate rt_regex / rt_pattern_* API (Viper.Text.Regex).
+// Key invariants: is_match, find, replace, split, escape all behave correctly.
+// Ownership/Lifetime: Returned rt_string values are released after each test.
+//
+//===----------------------------------------------------------------------===//
+
+#include "viper/runtime/rt.h"
+
+#include "rt_regex.h"
+#include "rt_seq.h"
+#include "rt_string.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+static void check(const char *label, int ok)
+{
+    printf("  %-50s %s\n", label, ok ? "PASS" : "FAIL");
+    assert(ok);
+}
+
+static rt_string S(const char *s)
+{
+    return rt_string_from_bytes(s, strlen(s));
+}
+
+static int str_eq_c(rt_string s, const char *expected)
+{
+    rt_string exp = S(expected);
+    int result = rt_str_eq(s, exp);
+    rt_string_unref(exp);
+    return result;
+}
+
+static void test_is_match(void)
+{
+    printf("rt_pattern_is_match:\n");
+    rt_string text = S("hello world");
+    rt_string pat_hello = S("hello");
+    rt_string pat_digit = S("\\d+");
+    rt_string pat_word = S("\\w+");
+    rt_string pat_anchor = S("^hello");
+    rt_string pat_end = S("world$");
+
+    check("match literal", rt_pattern_is_match(text, pat_hello));
+    check("no match digit in alpha", !rt_pattern_is_match(text, pat_digit));
+    check("match word char class", rt_pattern_is_match(text, pat_word));
+    check("match start anchor", rt_pattern_is_match(text, pat_anchor));
+    check("match end anchor", rt_pattern_is_match(text, pat_end));
+
+    rt_string_unref(text);
+    rt_string_unref(pat_hello);
+    rt_string_unref(pat_digit);
+    rt_string_unref(pat_word);
+    rt_string_unref(pat_anchor);
+    rt_string_unref(pat_end);
+}
+
+static void test_find(void)
+{
+    printf("rt_pattern_find:\n");
+    rt_string text = S("foo123bar456");
+    rt_string pat = S("\\d+");
+
+    rt_string found = rt_pattern_find(text, pat);
+    check("find first digits", str_eq_c(found, "123"));
+    rt_string_unref(found);
+
+    rt_string pat_none = S("xyz");
+    rt_string not_found = rt_pattern_find(text, pat_none);
+    check("find returns empty on no match", rt_str_len(not_found) == 0);
+    rt_string_unref(not_found);
+
+    // Position 6 is past "foo123" (positions 0-5), so scan starts at "bar456"
+    rt_string found2 = rt_pattern_find_from(text, pat, 6);
+    check("find_from skips first match", str_eq_c(found2, "456"));
+    rt_string_unref(found2);
+
+    int64_t pos = rt_pattern_find_pos(text, pat);
+    check("find_pos returns correct offset", pos == 3);
+
+    int64_t no_pos = rt_pattern_find_pos(text, pat_none);
+    check("find_pos returns -1 on no match", no_pos == -1);
+
+    rt_string_unref(text);
+    rt_string_unref(pat);
+    rt_string_unref(pat_none);
+}
+
+static void test_replace(void)
+{
+    printf("rt_pattern_replace:\n");
+    rt_string text = S("aabbcc");
+    rt_string pat = S("[ab]");
+    rt_string repl = S("X");
+
+    rt_string result = rt_pattern_replace(text, pat, repl);
+    check("replace all matches", str_eq_c(result, "XXXXcc"));
+    rt_string_unref(result);
+
+    rt_string result2 = rt_pattern_replace_first(text, pat, repl);
+    check("replace_first replaces only first", str_eq_c(result2, "Xabbcc"));
+    rt_string_unref(result2);
+
+    rt_string_unref(text);
+    rt_string_unref(pat);
+    rt_string_unref(repl);
+}
+
+static void test_find_all(void)
+{
+    printf("rt_pattern_find_all:\n");
+    rt_string text = S("one two three");
+    rt_string pat = S("\\w+");
+
+    void *seq = rt_pattern_find_all(text, pat);
+    check("find_all returns seq", seq != NULL);
+    check("find_all matches 3 words", rt_seq_len(seq) == 3);
+
+    rt_string first = (rt_string)rt_seq_get(seq, 0);
+    check("first match is 'one'", str_eq_c(first, "one"));
+
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+
+    rt_string_unref(text);
+    rt_string_unref(pat);
+}
+
+static void test_split(void)
+{
+    printf("rt_pattern_split:\n");
+    rt_string text = S("a,b,,c");
+    rt_string pat = S(",");
+
+    void *parts = rt_pattern_split(text, pat);
+    check("split returns seq", parts != NULL);
+    check("split produces 4 parts", rt_seq_len(parts) == 4);
+
+    if (rt_obj_release_check0(parts))
+        rt_obj_free(parts);
+
+    rt_string_unref(text);
+    rt_string_unref(pat);
+}
+
+static void test_escape(void)
+{
+    printf("rt_pattern_escape:\n");
+    rt_string special = S("a.b*c?d");
+    rt_string escaped = rt_pattern_escape(special);
+
+    // After escaping, the result should be usable as a literal pattern
+    rt_string text = S("a.b*c?d");
+    check("escaped pattern matches literal text", rt_pattern_is_match(text, escaped));
+
+    // Escaped pattern must NOT match "axbxcxd" (dot/star/question would if unescaped)
+    rt_string variant = S("axbxcxd");
+    check("escaped pattern does not match changed text", !rt_pattern_is_match(variant, escaped));
+
+    rt_string_unref(special);
+    rt_string_unref(escaped);
+    rt_string_unref(text);
+    rt_string_unref(variant);
+}
+
+int main(void)
+{
+    printf("=== RTRegexTests ===\n");
+    test_is_match();
+    test_find();
+    test_replace();
+    test_find_all();
+    test_split();
+    test_escape();
+    printf("All regex tests passed.\n");
+    return 0;
+}

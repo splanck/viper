@@ -169,8 +169,7 @@ std::unordered_set<unsigned> nonEscapingAllocas(const Function &F)
 }
 
 /// True if @p ptr refers directly to a non-escaping alloca.
-inline bool isNonEscapingAlloca(const Value &ptr,
-                                const std::unordered_set<unsigned> &nonEsc)
+inline bool isNonEscapingAlloca(const Value &ptr, const std::unordered_set<unsigned> &nonEsc)
 {
     return ptr.kind == Value::Kind::Temp && nonEsc.count(ptr.id) != 0;
 }
@@ -185,20 +184,15 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
         return mssa;
 
     // LiveOnEntry sentinel at index 0.
-    mssa.accesses_.push_back(
-        MemoryAccess{MemAccessKind::LiveOnEntry, 0, nullptr, -1, 0, {}, {}});
+    mssa.accesses_.push_back(MemoryAccess{MemAccessKind::LiveOnEntry, 0, nullptr, -1, 0, {}, {}});
 
-    auto nextId = [&]() -> uint32_t
-    { return static_cast<uint32_t>(mssa.accesses_.size()); };
+    auto nextId = [&]() -> uint32_t { return static_cast<uint32_t>(mssa.accesses_.size()); };
 
-    auto makeAccess = [&](MemAccessKind kind,
-                          Block *block,
-                          int instrIdx,
-                          uint32_t definingAccess) -> uint32_t
+    auto makeAccess =
+        [&](MemAccessKind kind, Block *block, int instrIdx, uint32_t definingAccess) -> uint32_t
     {
         uint32_t id = nextId();
-        mssa.accesses_.push_back(
-            MemoryAccess{kind, id, block, instrIdx, definingAccess, {}, {}});
+        mssa.accesses_.push_back(MemoryAccess{kind, id, block, instrIdx, definingAccess, {}, {}});
         mssa.instrToAccess_[block][static_cast<size_t>(instrIdx)] = id;
         return id;
     };
@@ -423,8 +417,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                         // Register this use in the def's users list.
                         if (curDef < mssa.accesses_.size())
                         {
-                            mssa.accesses_[curDef].users.push_back(
-                                mssa.instrToAccess_[B][i]);
+                            mssa.accesses_[curDef].users.push_back(mssa.instrToAccess_[B][i]);
                         }
                         changed = true;
                     }
@@ -438,9 +431,8 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                             if (oldDef < mssa.accesses_.size())
                             {
                                 auto &users = mssa.accesses_[oldDef].users;
-                                users.erase(
-                                    std::remove(users.begin(), users.end(), existingId),
-                                    users.end());
+                                users.erase(std::remove(users.begin(), users.end(), existingId),
+                                            users.end());
                             }
                             acc.definingAccess = curDef;
                             if (curDef < mssa.accesses_.size())
@@ -635,8 +627,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                 if (pathKilled)
                     continue; // This path is covered, move to next.
 
-                if (!succ->instructions.empty() &&
-                    succ->instructions.back().op == Opcode::Ret)
+                if (!succ->instructions.empty() && succ->instructions.back().op == Opcode::Ret)
                     continue; // Path exits without reading — OK.
 
                 // Enqueue successors.

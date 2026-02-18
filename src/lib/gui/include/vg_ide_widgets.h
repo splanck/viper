@@ -1097,6 +1097,12 @@ extern "C"
     /// @param widget Widget to unregister from
     void vg_contextmenu_unregister_for_widget(vg_widget_t *widget);
 
+    /// @brief Process an event for a registered widget (call from event dispatch loop)
+    /// @param widget Widget receiving the event
+    /// @param event Incoming event
+    /// @return true if the event was consumed (right-click showed the menu)
+    bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event);
+
     /// @brief Set font for context menu
     /// @param menu ContextMenu widget
     /// @param font Font to use

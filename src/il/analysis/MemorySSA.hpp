@@ -111,7 +111,10 @@ class MemorySSA
                                                 size_t instrIdx) const;
 
     /// @brief Access the full node table (for diagnostics/testing).
-    [[nodiscard]] const std::vector<MemoryAccess> &accesses() const { return accesses_; }
+    [[nodiscard]] const std::vector<MemoryAccess> &accesses() const
+    {
+        return accesses_;
+    }
 
   private:
     friend MemorySSA computeMemorySSA(il::core::Function &F, viper::analysis::BasicAA &AA);
@@ -120,8 +123,7 @@ class MemorySSA
     std::vector<MemoryAccess> accesses_;
 
     /// (block, instrIdx) → MemoryAccess index in accesses_.
-    std::unordered_map<const il::core::Block *,
-                       std::unordered_map<size_t, uint32_t>>
+    std::unordered_map<const il::core::Block *, std::unordered_map<size_t, uint32_t>>
         instrToAccess_;
 
     /// Set of MemoryAccess IDs that represent dead stores.

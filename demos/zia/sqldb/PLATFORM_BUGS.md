@@ -273,7 +273,7 @@ These need to be fixed in the platform itself.
 
 ## BUG-NAT-005: Native codegen string lifetime bug — concatenated strings corrupted after function calls
 
-- **Status**: OPEN (workaround available)
+- **Status**: FIXED (`src/codegen/aarch64/OpcodeDispatch.cpp` — emit `rt_str_retain_maybe` immediately after Call/CallIndirect instructions that return `str`; test: `test_codegen_arm64_string_store_refcount::CallReturnedStringIsRetained`)
 - **Severity**: Medium
 - **Component**: Native codegen (AArch64) — string lifetime management
 - **Symptom**: Local variables holding concatenated strings (e.g., `var tbl = "prefix_" + Fmt.Int(i)`) become corrupted after calling functions that do heavy string operations internally (e.g., `executeSql()`). The variable's string pointer ends up pointing to overwritten memory, producing empty strings or fragments of other strings (like SQL column definitions).
@@ -383,7 +383,7 @@ These need to be fixed in the platform itself.
 
 ## BUG-IO-001: Binary data with null bytes corrupted by File.ReadAllText/WriteAllText
 
-- **Status**: OPEN (workaround available)
+- **Status**: FIXED (`src/runtime/rt_bytes.c` — `rt_bytes_from_str` now uses `rt_str_len()` instead of `strlen()` to read the stored byte count, preserving embedded null bytes; test: `zia_runtime_test_bytes_nullbyte`)
 - **Severity**: Medium
 - **Component**: Runtime (C) — `Viper.IO.File`
 - **Symptom**: Binary data containing null bytes (0x00) cannot survive a `WriteAllText` + `ReadAllText` round-trip. The data is silently truncated or corrupted at the first null byte. This prevents WAL files from being read back after writing, since the first serialized field (lsn.fileNumber) is often 0, producing null bytes at the start of the file.
@@ -425,7 +425,7 @@ These need to be fixed in the platform itself.
 
 ## BUG-FE-011: Cross-module `final` constant equality comparison always false
 
-- **Status**: OPEN (workaround available)
+- **Status**: FIXED (`src/frontends/zia/Lowerer_Decl.cpp` — `registerAllFinalConstants` and `lowerGlobalVarDecl` now use a `tryFoldNumericConstant` helper to evaluate non-literal initializers such as `0 - 2147483647`; test: `zia_runtime_test_final_const_expr`)
 - **Severity**: Low
 - **Component**: Zia frontend — constant evaluation across module boundaries
 - **Symptom**: When a `final` constant is defined in module A and used in module B via `bind`, equality comparisons (`==`, `!=`) against the constant always evaluate to false. The constant's value appears correct when used in arithmetic or as a function argument, but `if (x == MY_CONSTANT)` fails even when x holds the expected value.

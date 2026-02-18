@@ -188,15 +188,20 @@ void *rt_bytes_new(int64_t len)
 /// @see rt_bytes_to_str For the reverse operation
 void *rt_bytes_from_str(rt_string str)
 {
+    // Use rt_str_len (stored byte count) rather than strlen so that strings
+    // containing embedded null bytes (e.g. binary data) are preserved in full.
+    // strlen would truncate at the first 0x00 byte (BUG-IO-001).
+    int64_t len64 = rt_str_len(str);
+    if (len64 <= 0)
+        return rt_bytes_new(0);
+
+    size_t len = (size_t)len64;
     const char *cstr = rt_string_cstr(str);
     if (!cstr)
         return rt_bytes_new(0);
 
-    size_t len = strlen(cstr);
-
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
-    if (len > 0)
-        memcpy(bytes->data, cstr, len);
+    memcpy(bytes->data, cstr, len);
     return bytes;
 }
 
@@ -928,8 +933,8 @@ int64_t rt_bytes_read_i32le(void *obj, int64_t offset)
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
-    return (int64_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) |
-                     ((uint32_t)d[2] << 16) | ((uint32_t)d[3] << 24));
+    return (int64_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)d[2] << 16) |
+                     ((uint32_t)d[3] << 24));
 }
 
 int64_t rt_bytes_read_i32be(void *obj, int64_t offset)
@@ -937,8 +942,8 @@ int64_t rt_bytes_read_i32be(void *obj, int64_t offset)
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
-    return (int64_t)(((uint32_t)d[0] << 24) | ((uint32_t)d[1] << 16) |
-                     ((uint32_t)d[2] << 8) | (uint32_t)d[3]);
+    return (int64_t)(((uint32_t)d[0] << 24) | ((uint32_t)d[1] << 16) | ((uint32_t)d[2] << 8) |
+                     (uint32_t)d[3]);
 }
 
 int64_t rt_bytes_read_i64le(void *obj, int64_t offset)

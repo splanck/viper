@@ -142,8 +142,8 @@ bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut)
             if (instr.operands.size() < 3)
                 return false;
             const Value &index = instr.operands[0];
-            const Value &lo    = instr.operands[1];
-            const Value &hi    = instr.operands[2];
+            const Value &lo = instr.operands[1];
+            const Value &hi = instr.operands[2];
             if (!isConstInt(index) || !isConstInt(lo) || !isConstInt(hi))
                 return false;
             if (lo.i64 <= index.i64 && index.i64 < hi.i64)
@@ -357,7 +357,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     if (function.blocks.empty())
         return PreservedAnalyses::all();
 
-    auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+    auto &domTree =
+        analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
 
     bool changed = false;

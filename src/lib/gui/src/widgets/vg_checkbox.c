@@ -1,4 +1,5 @@
 // vg_checkbox.c - Checkbox widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -144,22 +145,35 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas)
     float box_x = widget->x;
     float box_y = widget->y + (widget->height - checkbox->box_size) / 2.0f;
 
-    // TODO: Draw box background and border using vgfx primitives
-    (void)box_x;
-    (void)box_y;
-    (void)box_color;
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    int32_t bx = (int32_t)box_x;
+    int32_t by = (int32_t)box_y;
+    int32_t bs = (int32_t)checkbox->box_size;
+
+    // Draw box background and border
+    vgfx_fill_rect(win, bx, by, bs, bs, box_color);
+    vgfx_rect(win, bx, by, bs, bs, theme->colors.border_primary);
 
     // Draw check mark or indeterminate mark
     if (checkbox->checked || checkbox->indeterminate)
     {
-        // TODO: Draw check mark or dash using vgfx primitives
-        (void)check_color;
+        if (checkbox->indeterminate)
+        {
+            // Dash for indeterminate
+            vgfx_fill_rect(win, bx + 3, by + bs / 2 - 1, bs - 6, 2, check_color);
+        }
+        else
+        {
+            // Two-segment tick mark (✓): short leg then long leg
+            vgfx_line(win, bx + 2, by + bs / 2, bx + bs / 2 - 1, by + bs - 3, check_color);
+            vgfx_line(win, bx + bs / 2 - 1, by + bs - 3, bx + bs - 2, by + 2, check_color);
+        }
     }
 
     // Draw focus ring
     if (widget->state & VG_STATE_FOCUSED)
     {
-        // TODO: Draw focus ring
+        vgfx_rect(win, bx - 2, by - 2, bs + 4, bs + 4, theme->colors.border_focus);
     }
 
     // Draw label text

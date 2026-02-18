@@ -1,4 +1,5 @@
 // vg_treeview.c - TreeView widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -239,22 +240,43 @@ static void paint_node(
             // Draw background for selected/hovered
             if (child == tree->selected)
             {
-                // Draw selected background
-                // TODO: Use vgfx primitives
-                (void)tree->selected_bg;
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)tree->base.x,
+                               (int32_t)display_y,
+                               (int32_t)tree->base.width,
+                               (int32_t)tree->row_height,
+                               tree->selected_bg);
             }
             else if (child == tree->hovered)
             {
-                // Draw hover background
-                // TODO: Use vgfx primitives
-                (void)tree->hover_bg;
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)tree->base.x,
+                               (int32_t)display_y,
+                               (int32_t)tree->base.width,
+                               (int32_t)tree->row_height,
+                               tree->hover_bg);
             }
 
             // Draw expand/collapse arrow if has children
             if (child->has_children || child->first_child)
             {
-                // TODO: Draw arrow/triangle indicator
-                (void)theme;
+                int32_t ax = (int32_t)(indent - tree->icon_size);
+                int32_t ay = (int32_t)(display_y + (tree->row_height - 8.0f) / 2.0f);
+                uint32_t arrow_color = theme->colors.fg_secondary;
+                if (child->expanded)
+                {
+                    // ▼ downward triangle
+                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax + 8, ay, arrow_color);
+                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax + 4, ay + 6, arrow_color);
+                    vgfx_line((vgfx_window_t)canvas, ax + 8, ay, ax + 4, ay + 6, arrow_color);
+                }
+                else
+                {
+                    // ▶ rightward triangle
+                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax, ay + 8, arrow_color);
+                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax + 6, ay + 4, arrow_color);
+                    vgfx_line((vgfx_window_t)canvas, ax, ay + 8, ax + 6, ay + 4, arrow_color);
+                }
             }
 
             // Draw text
@@ -291,9 +313,15 @@ static void paint_node(
 static void treeview_paint(vg_widget_t *widget, void *canvas)
 {
     vg_treeview_t *tree = (vg_treeview_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
 
     // Draw background
-    // TODO: Use vgfx primitives
+    vgfx_fill_rect((vgfx_window_t)canvas,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
+                   theme->colors.bg_primary);
 
     // Paint nodes
     float y = 0;

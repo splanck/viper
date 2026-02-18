@@ -221,8 +221,7 @@ bool isEHSensitiveBlock(const il::core::BasicBlock &block)
     // as the first two parameters.  Checking the parameter types is more robust
     // than relying on instruction ordering because it cannot be perturbed by
     // SimplifyCFG sub-passes that reorder or eliminate instructions.
-    if (block.params.size() >= 2 &&
-        block.params[0].type.kind == il::core::Type::Kind::Error &&
+    if (block.params.size() >= 2 && block.params[0].type.kind == il::core::Type::Kind::Error &&
         block.params[1].type.kind == il::core::Type::Kind::ResumeTok)
     {
         return true;

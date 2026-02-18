@@ -40,7 +40,7 @@ namespace viper::codegen::aarch64::passes
 struct AArch64Module
 {
     const il::core::Module *ilMod = nullptr; ///< Non-owning pointer to the IL module.
-    const TargetInfo *ti          = nullptr; ///< Non-owning pointer to the target info.
+    const TargetInfo *ti = nullptr;          ///< Non-owning pointer to the target info.
     std::vector<MFunction> mir;              ///< MIR functions, populated by LoweringPass.
     RodataPool rodataPool;                   ///< Rodata pool, populated by LoweringPass.
     std::string assembly;                    ///< Final assembly text, populated by EmitPass.
@@ -48,7 +48,7 @@ struct AArch64Module
 
 // Backward-compatible aliases — consumers use these names unchanged.
 using Diagnostics = viper::codegen::common::Diagnostics;
-using Pass        = viper::codegen::common::Pass<AArch64Module>;
+using Pass = viper::codegen::common::Pass<AArch64Module>;
 using PassManager = viper::codegen::common::PassManager<AArch64Module>;
 
 } // namespace viper::codegen::aarch64::passes

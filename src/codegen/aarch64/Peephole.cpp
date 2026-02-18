@@ -121,6 +121,9 @@ namespace
         case MOpcode::EorRRR:
         case MOpcode::AddRI:
         case MOpcode::SubRI:
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
         case MOpcode::LslRI:
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
@@ -161,6 +164,8 @@ namespace
             break;
 
         // Instructions that don't define registers
+        case MOpcode::PhiStoreGPR:
+        case MOpcode::PhiStoreFPR:
         case MOpcode::CmpRR:
         case MOpcode::CmpRI:
         case MOpcode::TstRR:

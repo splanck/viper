@@ -17,11 +17,11 @@
 
 #include "rt_intmap.h"
 
+#include "rt_box.h"
+#include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
-#include "rt_box.h"
-#include "rt_hash_util.h"
 
 #include <stdlib.h>
 #include <string.h>

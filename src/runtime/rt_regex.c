@@ -38,6 +38,7 @@
 #include <windows.h>
 static CRITICAL_SECTION g_pattern_cache_cs;
 static INIT_ONCE g_pattern_cache_cs_once = INIT_ONCE_STATIC_INIT;
+
 static BOOL WINAPI init_pattern_cache_cs(PINIT_ONCE o, PVOID p, PVOID *ctx)
 {
     (void)o;
@@ -46,17 +47,30 @@ static BOOL WINAPI init_pattern_cache_cs(PINIT_ONCE o, PVOID p, PVOID *ctx)
     InitializeCriticalSection(&g_pattern_cache_cs);
     return TRUE;
 }
+
 static void pattern_cache_lock(void)
 {
     InitOnceExecuteOnce(&g_pattern_cache_cs_once, init_pattern_cache_cs, NULL, NULL);
     EnterCriticalSection(&g_pattern_cache_cs);
 }
-static void pattern_cache_unlock(void) { LeaveCriticalSection(&g_pattern_cache_cs); }
+
+static void pattern_cache_unlock(void)
+{
+    LeaveCriticalSection(&g_pattern_cache_cs);
+}
 #else
 #include <pthread.h>
 static pthread_mutex_t g_pattern_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
-static void pattern_cache_lock(void) { pthread_mutex_lock(&g_pattern_cache_mutex); }
-static void pattern_cache_unlock(void) { pthread_mutex_unlock(&g_pattern_cache_mutex); }
+
+static void pattern_cache_lock(void)
+{
+    pthread_mutex_lock(&g_pattern_cache_mutex);
+}
+
+static void pattern_cache_unlock(void)
+{
+    pthread_mutex_unlock(&g_pattern_cache_mutex);
+}
 #endif
 
 //=============================================================================
@@ -723,14 +737,14 @@ typedef struct
 
 // Forward declarations
 static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos);
-static bool match_concat_from(match_context *ctx, re_node **children, int count,
-                              int index, int pos, int *end_pos);
+static bool match_concat_from(
+    match_context *ctx, re_node **children, int count, int index, int pos, int *end_pos);
 
 /// Collect all possible end positions for a quantified node.
 /// Returns the number of positions stored in `positions`.
 /// Positions are ordered from fewest to most repetitions.
-static int collect_quant_positions(match_context *ctx, re_node *n, int pos,
-                                   int *positions, int max_positions)
+static int collect_quant_positions(
+    match_context *ctx, re_node *n, int pos, int *positions, int max_positions)
 {
     re_node *child = n->data.quant.child;
     re_quant_type qtype = n->data.quant.qtype;
@@ -865,8 +879,8 @@ static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos)
             return false;
 
         case RE_CONCAT:
-            return match_concat_from(ctx, n->data.children.children,
-                                     n->data.children.count, 0, pos, end_pos);
+            return match_concat_from(
+                ctx, n->data.children.children, n->data.children.count, 0, pos, end_pos);
 
         case RE_ALT:
             for (int i = 0; i < n->data.children.count; i++)
@@ -899,8 +913,8 @@ static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos)
 /// quantifier children. When a quantifier child is encountered, all possible
 /// match lengths are tried (greedy = longest first) and the function recurses
 /// to verify the remaining children can also match.
-static bool match_concat_from(match_context *ctx, re_node **children, int count,
-                              int index, int pos, int *end_pos)
+static bool match_concat_from(
+    match_context *ctx, re_node **children, int count, int index, int pos, int *end_pos)
 {
     if (index >= count)
     {
@@ -918,8 +932,7 @@ static bool match_concat_from(match_context *ctx, re_node **children, int count,
         if (!positions)
             rt_trap("Pattern: memory allocation failed");
 
-        int num = collect_quant_positions(ctx, child, pos, positions,
-                                          ctx->text_len - pos + 2);
+        int num = collect_quant_positions(ctx, child, pos, positions, ctx->text_len - pos + 2);
 
         bool found = false;
         if (greedy)
@@ -927,8 +940,7 @@ static bool match_concat_from(match_context *ctx, re_node **children, int count,
             // Try longest match first, backtrack to shorter
             for (int i = num - 1; i >= 0; i--)
             {
-                if (match_concat_from(ctx, children, count, index + 1,
-                                      positions[i], end_pos))
+                if (match_concat_from(ctx, children, count, index + 1, positions[i], end_pos))
                 {
                     found = true;
                     break;
@@ -940,8 +952,7 @@ static bool match_concat_from(match_context *ctx, re_node **children, int count,
             // Try shortest match first
             for (int i = 0; i < num; i++)
             {
-                if (match_concat_from(ctx, children, count, index + 1,
-                                      positions[i], end_pos))
+                if (match_concat_from(ctx, children, count, index + 1, positions[i], end_pos))
                 {
                     found = true;
                     break;
@@ -957,8 +968,7 @@ static bool match_concat_from(match_context *ctx, re_node **children, int count,
         // Non-quantifier child: single match attempt
         int child_end;
         if (match_node(ctx, child, pos, &child_end))
-            return match_concat_from(ctx, children, count, index + 1,
-                                     child_end, end_pos);
+            return match_concat_from(ctx, children, count, index + 1, child_end, end_pos);
         return false;
     }
 }

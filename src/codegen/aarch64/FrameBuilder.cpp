@@ -124,8 +124,8 @@ int FrameBuilder::ensureSpill(uint16_t vreg, int sizeBytes, int alignBytes)
 int FrameBuilder::ensureSpillWithReuse(uint16_t vreg,
                                        unsigned lastUseInstrIdx,
                                        unsigned currentInstrIdx,
-                                       int      sizeBytes,
-                                       int      alignBytes)
+                                       int sizeBytes,
+                                       int alignBytes)
 {
     // Fast path: this vreg was already assigned a slot (e.g., re-spill after reload).
     for (const auto &S : fn_->frame.spills)
@@ -140,12 +140,11 @@ int FrameBuilder::ensureSpillWithReuse(uint16_t vreg,
     // is a per-block counter that resets to 0 at each block boundary.
     for (auto &L : slotLifetimes_)
     {
-        if (L.sizeBytes == sizeBytes &&
-            L.epoch == blockEpoch_ &&
-            L.lastUseIdx < currentInstrIdx)
+        if (L.sizeBytes == sizeBytes && L.epoch == blockEpoch_ && L.lastUseIdx < currentInstrIdx)
         {
             // Recycle: update the vreg→offset mapping and refresh the lifetime.
-            fn_->frame.spills.push_back(MFunction::SpillSlot{vreg, sizeBytes, alignBytes, L.offset});
+            fn_->frame.spills.push_back(
+                MFunction::SpillSlot{vreg, sizeBytes, alignBytes, L.offset});
             L.lastUseIdx = lastUseInstrIdx;
             // epoch stays the same (still the current block)
             return L.offset;

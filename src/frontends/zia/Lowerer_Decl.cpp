@@ -60,6 +60,99 @@ std::string Lowerer::qualifyName(const std::string &name) const
 }
 
 //=============================================================================
+// Compile-Time Constant Folding Helper
+//=============================================================================
+
+/// @brief Try to evaluate an initializer expression to a compile-time constant.
+/// @details Handles integer/float/bool literals, unary negation and bitwise NOT,
+///          and binary arithmetic on integer or float literals. String literals
+///          require the string-intern table and are handled at call sites.
+///          Returns nullopt for any expression that cannot be evaluated at
+///          compile time (e.g., function calls, identifier references).
+/// @note Fixes BUG-FE-011: non-literal final constant initializers (such as
+///       `final X = 0 - 2147483647`) were previously silently dropped, causing
+///       all references to resolve to constInt(0).
+static std::optional<il::core::Value> tryFoldNumericConstant(Expr *init)
+{
+    using Value = il::core::Value;
+
+    if (!init)
+        return std::nullopt;
+
+    if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
+        return Value::constInt(intLit->value);
+    if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
+        return Value::constFloat(numLit->value);
+    if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
+        return Value::constBool(boolLit->value);
+
+    if (auto *unary = dynamic_cast<UnaryExpr *>(init))
+    {
+        auto inner = tryFoldNumericConstant(unary->operand.get());
+        if (inner)
+        {
+            if (unary->op == UnaryOp::Neg)
+            {
+                if (inner->kind == Value::Kind::ConstInt)
+                    return Value::constInt(-inner->i64);
+                if (inner->kind == Value::Kind::ConstFloat)
+                    return Value::constFloat(-inner->f64);
+            }
+            if (unary->op == UnaryOp::BitNot && inner->kind == Value::Kind::ConstInt)
+                return Value::constInt(~inner->i64);
+        }
+    }
+
+    if (auto *binary = dynamic_cast<BinaryExpr *>(init))
+    {
+        auto lv = tryFoldNumericConstant(binary->left.get());
+        auto rv = tryFoldNumericConstant(binary->right.get());
+
+        // Integer × integer
+        if (lv && rv && lv->kind == Value::Kind::ConstInt && rv->kind == Value::Kind::ConstInt)
+        {
+            long long l = lv->i64, r = rv->i64;
+            switch (binary->op)
+            {
+                case BinaryOp::Add:
+                    return Value::constInt(l + r);
+                case BinaryOp::Sub:
+                    return Value::constInt(l - r);
+                case BinaryOp::Mul:
+                    return Value::constInt(l * r);
+                case BinaryOp::BitAnd:
+                    return Value::constInt(l & r);
+                case BinaryOp::BitOr:
+                    return Value::constInt(l | r);
+                case BinaryOp::BitXor:
+                    return Value::constInt(l ^ r);
+                default:
+                    break;
+            }
+        }
+
+        // Float × float
+        if (lv && rv && lv->kind == Value::Kind::ConstFloat && rv->kind == Value::Kind::ConstFloat)
+        {
+            double l = lv->f64, r = rv->f64;
+            switch (binary->op)
+            {
+                case BinaryOp::Add:
+                    return Value::constFloat(l + r);
+                case BinaryOp::Sub:
+                    return Value::constFloat(l - r);
+                case BinaryOp::Mul:
+                    return Value::constFloat(l * r);
+                default:
+                    break;
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+//=============================================================================
 // Final Constant Pre-Registration
 //=============================================================================
 
@@ -90,6 +183,10 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
                     std::string label = stringTable_.intern(strLit->value);
                     globalConstants_[qualifiedName] = Value::constStr(label);
                 }
+                // Fold constant-expression initializers (e.g. `0 - 2147483647`,
+                // `-1`, `2 * 1024`) that are not direct literals (BUG-FE-011).
+                else if (auto folded = tryFoldNumericConstant(init))
+                    globalConstants_[qualifiedName] = *folded;
             }
         }
         else if (decl->kind == DeclKind::Namespace)
@@ -369,6 +466,13 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
         {
             std::string label = stringTable_.intern(strLit->value);
             globalConstants_[qualifiedName] = Value::constStr(label);
+            inlinedAsConstant = true;
+        }
+        // Fold constant-expression initializers (e.g. `0 - 2147483647`, `-1`,
+        // `2 * 1024`) that are not direct literals (BUG-FE-011).
+        else if (auto folded = tryFoldNumericConstant(init))
+        {
+            globalConstants_[qualifiedName] = *folded;
             inlinedAsConstant = true;
         }
 

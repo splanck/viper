@@ -1,9 +1,10 @@
 name: CI
 
-# Temporarily disable automatic CI on push/PR to avoid noisy email
-# notifications and red checks. Manual runs remain available via the
-# GitHub UI (Run workflow). Revert this block to re‑enable automation.
 on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
 jobs:
@@ -18,13 +19,13 @@ jobs:
         run: cmake --build build --target viper -j2
       - name: Run basic string tests
         run: ctest --test-dir build --output-on-failure -R basic_strings
+
   build:
     name: build (${{ matrix.os }}-${{ matrix.cc }}-threaded-${{ matrix.threaded }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # macOS builds temporarily disabled due to failing workload tests
         include:
           - os: ubuntu-latest
             cc: clang
@@ -41,6 +42,16 @@ jobs:
             cxx: g++
             exclude_label: ""
             threaded: OFF
+          - os: macos-latest
+            cc: clang
+            cxx: clang++
+            exclude_label: ""
+            threaded: OFF
+          - os: macos-latest
+            cc: clang
+            cxx: clang++
+            exclude_label: ""
+            threaded: ON
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -54,7 +65,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.cc == 'clang'
         run: sudo apt-get install -y clang lld
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIL_WARN_AS_ERROR=ON -DIL_USE_LLD=ON -DVIPER_VM_THREADED=${{ matrix.threaded }}
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.cc }}" = "clang" ]; then
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIL_WARN_AS_ERROR=ON -DIL_USE_LLD=ON -DVIPER_VM_THREADED=${{ matrix.threaded }}
+          else
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIL_WARN_AS_ERROR=ON -DVIPER_VM_THREADED=${{ matrix.threaded }}
+          fi
       - name: Build
         run: cmake --build build -j2
       - name: Test
@@ -69,7 +85,43 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: logs-${{ matrix.os }}-${{ matrix.cc }}
+          name: logs-${{ matrix.os }}-${{ matrix.cc }}-threaded${{ matrix.threaded }}
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/CMakeCache.txt
+
+  sanitize:
+    name: sanitize (ubuntu-clang-asan-ubsan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install clang
+        run: sudo apt-get install -y clang lld
+      - name: Configure with ASAN + UBSAN
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DIL_USE_LLD=ON
+        env:
+          CC: clang
+          CXX: clang++
+      - name: Build
+        run: cmake --build build -j2
+        env:
+          CC: clang
+          CXX: clang++
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -j2
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-sanitize
           path: |
             build/Testing/Temporary/LastTest.log
             build/CMakeCache.txt

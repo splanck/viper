@@ -2,6 +2,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -25,6 +26,21 @@ static vg_widget_vtable_t g_contextmenu_vtable = {.destroy = contextmenu_destroy
                                                   .handle_event = contextmenu_handle_event,
                                                   .can_focus = NULL,
                                                   .on_focus = NULL};
+
+//=============================================================================
+// Right-click Registry
+//=============================================================================
+
+#define CONTEXTMENU_REGISTRY_MAX 64
+
+typedef struct
+{
+    vg_widget_t *widget;
+    vg_contextmenu_t *menu;
+} contextmenu_registry_entry_t;
+
+static contextmenu_registry_entry_t s_registry[CONTEXTMENU_REGISTRY_MAX];
+static int s_registry_count = 0;
 
 //=============================================================================
 // Constants
@@ -244,19 +260,22 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas)
     float w = widget->width;
     float h = widget->height;
 
-    // Draw shadow (offset)
-    // TODO: Use vgfx primitives for shadow
-    (void)theme;
+    vgfx_window_t win = (vgfx_window_t)canvas;
+
+    // Draw shadow (layered offset dark rectangles, approximating drop shadow)
+    for (int i = 1; i <= 3; i++)
+    {
+        uint32_t shadow_color = (i == 1) ? 0x505050u : (i == 2) ? 0x404040u : 0x303030u;
+        vgfx_fill_rect(win, (int32_t)(x + i), (int32_t)(y + i), (int32_t)w, (int32_t)h,
+                       shadow_color);
+    }
 
     // Draw background
-    // TODO: Use vgfx primitives
-    (void)x;
-    (void)y;
-    (void)w;
-    (void)h;
+    vgfx_fill_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, menu->bg_color);
 
     // Draw border
-    // TODO: Use vgfx primitives
+    vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, menu->border_color);
+    (void)theme;
 
     // Draw items
     float item_y = y + ITEM_PADDING_Y;
@@ -269,15 +288,20 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas)
         {
             // Draw separator line
             float sep_y = item_y + item_height / 2;
-            // TODO: Draw horizontal line at sep_y
-            (void)sep_y;
+            vgfx_fill_rect(win,
+                           (int32_t)(x + 4), (int32_t)sep_y,
+                           (int32_t)(w - 8), 1,
+                           menu->separator_color);
         }
         else
         {
             // Draw hover background
             if ((int)i == menu->hovered_index && item->enabled)
             {
-                // TODO: Draw hover background rectangle
+                vgfx_fill_rect(win,
+                               (int32_t)x, (int32_t)item_y,
+                               (int32_t)w, (int32_t)item_height,
+                               menu->hover_color);
             }
 
             // Draw text
@@ -714,7 +738,22 @@ void vg_contextmenu_show_at(vg_contextmenu_t *menu, int x, int y)
     menu->base.width = menu->base.measured_width;
     menu->base.height = menu->base.measured_height;
 
-    // TODO: Adjust position if would go off-screen
+    // Clamp position so menu stays within window bounds
+    vgfx_window_t win = (vgfx_window_t)menu->base.impl_data;
+    int32_t win_w = 0, win_h = 0;
+    if (win && vgfx_get_size(win, &win_w, &win_h) == 0)
+    {
+        float mw = menu->base.measured_width;
+        float mh = menu->base.measured_height;
+        if (menu->base.x + mw > (float)win_w)
+            menu->base.x = (float)win_w - mw;
+        if (menu->base.y + mh > (float)win_h)
+            menu->base.y = (float)win_h - mh;
+        if (menu->base.x < 0.0f)
+            menu->base.x = 0.0f;
+        if (menu->base.y < 0.0f)
+            menu->base.y = 0.0f;
+    }
 
     menu->base.visible = true;
     menu->base.needs_paint = true;
@@ -779,15 +818,63 @@ void vg_contextmenu_set_on_dismiss(vg_contextmenu_t *menu,
 
 void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *menu)
 {
-    (void)widget;
-    (void)menu;
-    // TODO: Store menu reference in widget and handle right-click events
+    if (!widget || !menu)
+        return;
+
+    // Update existing entry if widget already registered
+    for (int i = 0; i < s_registry_count; i++)
+    {
+        if (s_registry[i].widget == widget)
+        {
+            s_registry[i].menu = menu;
+            return;
+        }
+    }
+
+    // Add new entry if space available
+    if (s_registry_count < CONTEXTMENU_REGISTRY_MAX)
+    {
+        s_registry[s_registry_count].widget = widget;
+        s_registry[s_registry_count].menu   = menu;
+        s_registry_count++;
+    }
 }
 
 void vg_contextmenu_unregister_for_widget(vg_widget_t *widget)
 {
-    (void)widget;
-    // TODO: Remove menu reference from widget
+    if (!widget)
+        return;
+
+    for (int i = 0; i < s_registry_count; i++)
+    {
+        if (s_registry[i].widget == widget)
+        {
+            // Swap with last entry and shrink
+            s_registry[i] = s_registry[--s_registry_count];
+            return;
+        }
+    }
+}
+
+bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event)
+{
+    if (!widget || !event)
+        return false;
+
+    if (event->type != VG_EVENT_MOUSE_DOWN || event->mouse.button != VG_MOUSE_RIGHT)
+        return false;
+
+    for (int i = 0; i < s_registry_count; i++)
+    {
+        if (s_registry[i].widget == widget)
+        {
+            vg_contextmenu_show_at(s_registry[i].menu,
+                                   (int)event->mouse.screen_x,
+                                   (int)event->mouse.screen_y);
+            return true;
+        }
+    }
+    return false;
 }
 
 void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size)

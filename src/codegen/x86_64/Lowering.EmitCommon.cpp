@@ -831,9 +831,18 @@ std::optional<int> EmitCommon::icmpConditionCode(std::string_view opcode) noexce
         std::string_view suffix;
         int code;
     };
+
     static constexpr Entry kTable[] = {
-        {"eq", 0},  {"ne", 1},  {"slt", 2}, {"sle", 3}, {"sgt", 4},
-        {"sge", 5}, {"ugt", 6}, {"uge", 7}, {"ult", 8}, {"ule", 9},
+        {"eq", 0},
+        {"ne", 1},
+        {"slt", 2},
+        {"sle", 3},
+        {"sgt", 4},
+        {"sge", 5},
+        {"ugt", 6},
+        {"uge", 7},
+        {"ult", 8},
+        {"ule", 9},
     };
 
     const std::string_view suffix = opcode.substr(5);
@@ -867,8 +876,14 @@ std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexce
         std::string_view suffix;
         int code;
     };
+
     static constexpr Entry kTable[] = {
-        {"eq", 0}, {"ne", 1}, {"lt", 8}, {"le", 9}, {"gt", 6}, {"ge", 7},
+        {"eq", 0},
+        {"ne", 1},
+        {"lt", 8},
+        {"le", 9},
+        {"gt", 6},
+        {"ge", 7},
     };
 
     const std::string_view suffix = opcode.substr(5);

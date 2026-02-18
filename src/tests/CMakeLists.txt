@@ -595,6 +595,8 @@ set(ZIA_RUNTIME_TESTS
         test_bytes_binary
         test_map_typed
         test_list_sort
+        test_bytes_nullbyte
+        test_final_const_expr
 )
 
 foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)

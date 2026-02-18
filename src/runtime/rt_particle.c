@@ -91,8 +91,8 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
     if (max_particles > RT_PARTICLE_MAX)
         max_particles = RT_PARTICLE_MAX;
 
-    struct rt_particle_emitter_impl *e =
-        (struct rt_particle_emitter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_particle_emitter_impl));
+    struct rt_particle_emitter_impl *e = (struct rt_particle_emitter_impl *)rt_obj_new_i64(
+        0, (int64_t)sizeof(struct rt_particle_emitter_impl));
 
     e->particles = calloc((size_t)max_particles, sizeof(struct particle));
     if (!e->particles)

@@ -79,8 +79,8 @@ MFunction buildMultiUseMulFunc(int64_t factor)
     block.label = ".Lentry";
 
     const Operand constReg = makeVRegOperand(RegClass::GPR, 1);
-    const Operand dstReg   = makeVRegOperand(RegClass::GPR, 2);
-    const Operand dst2Reg  = makeVRegOperand(RegClass::GPR, 3);
+    const Operand dstReg = makeVRegOperand(RegClass::GPR, 2);
+    const Operand dst2Reg = makeVRegOperand(RegClass::GPR, 3);
 
     // MOVri vreg1, factor
     block.instructions.push_back(MInstr::make(MOpcode::MOVri, {constReg, makeImmOperand(factor)}));

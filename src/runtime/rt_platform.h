@@ -520,6 +520,7 @@ static inline void rt_windows_sleep_ms(int64_t ms)
 // Thread-Safe Time Functions
 //===----------------------------------------------------------------------===//
 
+#include <string.h>
 #include <time.h>
 
 /// @brief Thread-safe version of localtime().
@@ -551,6 +552,21 @@ static inline struct tm *rt_gmtime_r(const time_t *timer, struct tm *result)
     return NULL;
 #else
     return gmtime_r(timer, result);
+#endif
+}
+
+/// @brief Thread-safe version of strtok().
+/// Maps to strtok_r on POSIX and strtok_s on Windows (same signature).
+/// @param str   String to tokenize, or NULL to continue from last call.
+/// @param delim Delimiter characters.
+/// @param saveptr Caller-provided pointer used to store tokenizer state.
+/// @return Pointer to next token, or NULL when no more tokens remain.
+static inline char *rt_strtok_r(char *str, const char *delim, char **saveptr)
+{
+#if RT_PLATFORM_WINDOWS
+    return strtok_s(str, delim, saveptr);
+#else
+    return strtok_r(str, delim, saveptr);
 #endif
 }
 

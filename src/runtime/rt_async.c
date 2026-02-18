@@ -209,8 +209,8 @@ static void async_any_entry(void *ctx_ptr)
         elapsed_ms += 1;
         if (elapsed_ms >= ASYNC_ANY_TIMEOUT_MS)
         {
-            rt_promise_set_error(promise,
-                rt_string_from_bytes("Async.Any: timeout — no future resolved", 39));
+            rt_promise_set_error(
+                promise, rt_string_from_bytes("Async.Any: timeout — no future resolved", 39));
             return;
         }
     }

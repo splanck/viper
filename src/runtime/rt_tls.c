@@ -685,7 +685,8 @@ void rt_tls_config_init(rt_tls_config_t *config)
 
 rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config)
 {
-    rt_tls_session_t *session = (rt_tls_session_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tls_session_t));
+    rt_tls_session_t *session =
+        (rt_tls_session_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tls_session_t));
     memset(session, 0, sizeof(rt_tls_session_t));
 
     session->socket_fd = socket_fd;
@@ -777,9 +778,8 @@ int rt_tls_handshake(rt_tls_session_t *session)
                      * would parse and verify the X.509 chain here. */
                     if (session->verify_cert)
                     {
-                        session->error =
-                            "TLS: certificate validation not implemented; "
-                            "set verify_cert=0 to disable (insecure)";
+                        session->error = "TLS: certificate validation not implemented; "
+                                         "set verify_cert=0 to disable (insecure)";
                         return RT_TLS_ERROR_HANDSHAKE;
                     }
                     session->state = TLS_STATE_WAIT_CERTIFICATE_VERIFY;

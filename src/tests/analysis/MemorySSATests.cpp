@@ -97,7 +97,10 @@ void addStore(BasicBlock &block, unsigned ptrId, int64_t val, Type::Kind kind = 
 }
 
 // Helper: insert a Load instruction at the end of a block.
-void addLoad(BasicBlock &block, unsigned resultId, unsigned ptrId, Type::Kind kind = Type::Kind::I64)
+void addLoad(BasicBlock &block,
+             unsigned resultId,
+             unsigned ptrId,
+             Type::Kind kind = Type::Kind::I64)
 {
     Instr load;
     load.result = resultId;
@@ -150,9 +153,9 @@ TEST(MemorySSA, EliminatesDeadStoreWithCallBarrier)
     builder.createBlock(fn, "has_call");
     builder.createBlock(fn, "exit");
 
-    BasicBlock &entry    = fn.blocks[0];
-    BasicBlock &hasCall  = fn.blocks[1];
-    BasicBlock &exitBlk  = fn.blocks[2];
+    BasicBlock &entry = fn.blocks[0];
+    BasicBlock &hasCall = fn.blocks[1];
+    BasicBlock &exitBlk = fn.blocks[2];
 
     // entry: alloca + dead store + branch
     unsigned ptrId = builder.reserveTempId();
@@ -230,8 +233,8 @@ TEST(MemorySSA, PreservesLiveStoreWithInterveningLoad)
     builder.createBlock(fn, "entry");
     builder.createBlock(fn, "read_it");
 
-    BasicBlock &entry   = fn.blocks[0];
-    BasicBlock &readIt  = fn.blocks[1];
+    BasicBlock &entry = fn.blocks[0];
+    BasicBlock &readIt = fn.blocks[1];
 
     unsigned ptrId = builder.reserveTempId();
     {
@@ -248,8 +251,8 @@ TEST(MemorySSA, PreservesLiveStoreWithInterveningLoad)
     builder.br(readIt, {});
 
     unsigned valId = builder.reserveTempId();
-    addLoad(readIt, valId, ptrId);          // reads first store
-    addStore(readIt, ptrId, 100);           // second store
+    addLoad(readIt, valId, ptrId); // reads first store
+    addStore(readIt, ptrId, 100);  // second store
     builder.setInsertPoint(readIt);
     builder.emitRet(Value::temp(valId), {});
 
@@ -290,7 +293,7 @@ TEST(MemorySSA, EliminatesSimpleCrossBlockDeadStore)
     builder.createBlock(fn, "entry");
     builder.createBlock(fn, "exit");
 
-    BasicBlock &entry   = fn.blocks[0];
+    BasicBlock &entry = fn.blocks[0];
     BasicBlock &exitBlk = fn.blocks[1];
 
     unsigned ptrId = builder.reserveTempId();
@@ -420,9 +423,9 @@ TEST(MemorySSA, AssignsDefAndUseNodes)
         entry.instructions.push_back(std::move(alloca));
     }
 
-    addStore(entry, ptrId, 7);         // index 1 → MemoryDef
-    addLoad(entry, valId, ptrId);      // index 2 → MemoryUse
-    addStore(entry, ptrId, 8);         // index 3 → MemoryDef
+    addStore(entry, ptrId, 7);    // index 1 → MemoryDef
+    addLoad(entry, valId, ptrId); // index 2 → MemoryUse
+    addStore(entry, ptrId, 8);    // index 3 → MemoryDef
 
     builder.setInsertPoint(entry);
     builder.emitRet(std::nullopt, {});

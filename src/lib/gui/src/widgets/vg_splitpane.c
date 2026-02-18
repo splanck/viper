@@ -1,4 +1,5 @@
 // vg_splitpane.c - SplitPane widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -255,12 +256,12 @@ static void splitpane_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Draw splitter bar
-    // TODO: Use vgfx primitives
-    (void)splitter_x;
-    (void)splitter_y;
-    (void)splitter_w;
-    (void)splitter_h;
-    (void)color;
+    vgfx_fill_rect((vgfx_window_t)canvas,
+                   (int32_t)splitter_x,
+                   (int32_t)splitter_y,
+                   (int32_t)splitter_w,
+                   (int32_t)splitter_h,
+                   color);
 }
 
 static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event)

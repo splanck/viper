@@ -1,4 +1,5 @@
 // vg_button.c - Button widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -33,15 +34,7 @@ static vg_widget_vtable_t g_button_vtable = {.destroy = button_destroy,
 
 static void draw_filled_rect(void *canvas, float x, float y, float w, float h, uint32_t color)
 {
-    // Use vgfx to draw a filled rectangle
-    // For now, just draw pixel by pixel (we'll optimize later with vgfx primitives)
-    // This is a placeholder - actual implementation would use vgfx_draw_rect_filled
-    (void)canvas;
-    (void)x;
-    (void)y;
-    (void)w;
-    (void)h;
-    (void)color;
+    vgfx_fill_rect((vgfx_window_t)canvas, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, color);
 }
 
 //=============================================================================
@@ -164,8 +157,13 @@ static void button_paint(vg_widget_t *widget, void *canvas)
     // Draw background
     draw_filled_rect(canvas, widget->x, widget->y, widget->width, widget->height, bg_color);
 
-    // Draw border (simplified - no rounded corners yet)
-    // TODO: Add proper border drawing
+    // Draw border
+    vgfx_rect((vgfx_window_t)canvas,
+              (int32_t)widget->x,
+              (int32_t)widget->y,
+              (int32_t)widget->width,
+              (int32_t)widget->height,
+              button->border_color);
 
     // Draw text
     if (button->text && button->text[0] && button->font)

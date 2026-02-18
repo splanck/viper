@@ -149,11 +149,11 @@ static bool isTerminator(MOpcode opc) noexcept
 
 struct DepNode
 {
-    std::size_t          instrIdx;  ///< Index into the body instruction array.
+    std::size_t instrIdx;           ///< Index into the body instruction array.
     std::vector<std::size_t> preds; ///< Predecessor indices (must complete first).
-    std::vector<unsigned>    predLat; ///< Latency for each predecessor edge.
-    unsigned             critPath;  ///< Critical-path length from this node to end.
-    unsigned             predsDone; ///< Count of predecessors already scheduled.
+    std::vector<unsigned> predLat;  ///< Latency for each predecessor edge.
+    unsigned critPath;              ///< Critical-path length from this node to end.
+    unsigned predsDone;             ///< Count of predecessors already scheduled.
 };
 
 // ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
 
     // Last instruction indices with memory side-effects.
     std::size_t lastStore = kNone;
-    std::size_t lastLoad  = kNone;
+    std::size_t lastLoad = kNone;
 
     for (std::size_t i = 0; i < N; ++i)
     {
@@ -247,12 +247,17 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         for (std::size_t k = 0; k < p.size(); ++k)
             pl.emplace_back(p[k], l[k]);
         std::sort(pl.begin(), pl.end());
-        pl.erase(std::unique(pl.begin(), pl.end(),
-                             [](const auto &a, const auto &b)
-                             { return a.first == b.first; }),
+        pl.erase(std::unique(pl.begin(),
+                             pl.end(),
+                             [](const auto &a, const auto &b) { return a.first == b.first; }),
                  pl.end());
-        p.clear(); l.clear();
-        for (auto &[pidx, lat] : pl) { p.push_back(pidx); l.push_back(lat); }
+        p.clear();
+        l.clear();
+        for (auto &[pidx, lat] : pl)
+        {
+            p.push_back(pidx);
+            l.push_back(lat);
+        }
         n.predsDone = 0;
     }
 
@@ -275,7 +280,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         for (auto s : succs[i])
         {
             const unsigned edge = instrLatency(body[i].opc);
-            const unsigned c    = edge + nodes[s].critPath;
+            const unsigned c = edge + nodes[s].critPath;
             if (c > maxSuccCrit)
                 maxSuccCrit = c;
         }
@@ -371,7 +376,7 @@ static void scheduleFunction(MFunction &fn)
     }
 }
 
-} // namespace (anonymous)
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Pass implementation

@@ -209,7 +209,10 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
     ABIFormat abiFormat = ABIFormat::Darwin;
 
     /// @brief Returns true when emitting Linux ELF assembly.
-    [[nodiscard]] bool isLinux() const noexcept { return abiFormat == ABIFormat::Linux; }
+    [[nodiscard]] bool isLinux() const noexcept
+    {
+        return abiFormat == ABIFormat::Linux;
+    }
 };
 
 // =============================================================================

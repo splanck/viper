@@ -607,11 +607,76 @@ void vg_outputpane_set_auto_scroll(vg_outputpane_t *pane, bool auto_scroll)
 
 char *vg_outputpane_get_selection(vg_outputpane_t *pane)
 {
-    if (!pane || !pane->has_selection)
+    if (!pane || !pane->has_selection || pane->line_count == 0)
         return NULL;
 
-    // TODO: Implement selection text extraction
-    return NULL;
+    // Normalize selection bounds
+    uint32_t start_line = pane->sel_start_line;
+    uint32_t start_col  = pane->sel_start_col;
+    uint32_t end_line   = pane->sel_end_line;
+    uint32_t end_col    = pane->sel_end_col;
+    if (start_line > end_line || (start_line == end_line && start_col > end_col))
+    {
+        uint32_t tmp = start_line; start_line = end_line; end_line = tmp;
+        tmp = start_col; start_col = end_col; end_col = tmp;
+    }
+
+    // Clamp to actual line range
+    if (start_line >= (uint32_t)pane->line_count)
+        return NULL;
+    if (end_line >= (uint32_t)pane->line_count)
+        end_line = (uint32_t)(pane->line_count - 1);
+
+    // First pass: calculate required buffer size
+    size_t total = 0;
+    for (uint32_t li = start_line; li <= end_line; li++)
+    {
+        vg_output_line_t *line = &pane->lines[li];
+        size_t col = 0;
+        for (size_t si = 0; si < line->segment_count; si++)
+        {
+            const char *seg = line->segments[si].text;
+            if (!seg) continue;
+            size_t seg_len = strlen(seg);
+            for (size_t ci = 0; ci < seg_len; ci++, col++)
+            {
+                if (li == start_line && col < start_col) continue;
+                if (li == end_line && col >= end_col && end_col != UINT32_MAX) break;
+                total++;
+            }
+        }
+        if (li < end_line) total++; // newline between lines
+    }
+
+    if (total == 0)
+        return NULL;
+
+    char *buf = malloc(total + 1);
+    if (!buf)
+        return NULL;
+
+    // Second pass: copy selected text
+    size_t out = 0;
+    for (uint32_t li = start_line; li <= end_line; li++)
+    {
+        vg_output_line_t *line = &pane->lines[li];
+        size_t col = 0;
+        for (size_t si = 0; si < line->segment_count; si++)
+        {
+            const char *seg = line->segments[si].text;
+            if (!seg) continue;
+            size_t seg_len = strlen(seg);
+            for (size_t ci = 0; ci < seg_len; ci++, col++)
+            {
+                if (li == start_line && col < start_col) continue;
+                if (li == end_line && col >= end_col && end_col != UINT32_MAX) break;
+                buf[out++] = seg[ci];
+            }
+        }
+        if (li < end_line) buf[out++] = '\n';
+    }
+    buf[out] = '\0';
+    return buf;
 }
 
 void vg_outputpane_select_all(vg_outputpane_t *pane)

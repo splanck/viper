@@ -32,7 +32,7 @@ static int tests_failed = 0;
         if (!(cond))                                                                               \
         {                                                                                          \
             tests_failed++;                                                                        \
-            fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                       \
+            fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                        \
         }                                                                                          \
     } while (0)
 
@@ -51,8 +51,8 @@ static void test_file_write_bytes_roundtrip(void)
     for (int64_t i = 0; i < N; i++)
         rt_bytes_set(src_bytes, i, i & 0xFF);
 
-    rt_string path = rt_tempfile_path_with_ext(rt_const_cstr("rt_opt_test_"),
-                                               rt_const_cstr(".bin"));
+    rt_string path =
+        rt_tempfile_path_with_ext(rt_const_cstr("rt_opt_test_"), rt_const_cstr(".bin"));
     ASSERT(path != NULL);
 
     rt_file_write_bytes(path, src_bytes);
@@ -84,8 +84,8 @@ static void test_io_file_write_all_bytes_roundtrip(void)
     for (int64_t i = 0; i < N; i++)
         rt_bytes_set(src, i, (N - i) & 0xFF);
 
-    rt_string path = rt_tempfile_path_with_ext(rt_const_cstr("rt_io_opt_test_"),
-                                               rt_const_cstr(".bin"));
+    rt_string path =
+        rt_tempfile_path_with_ext(rt_const_cstr("rt_io_opt_test_"), rt_const_cstr(".bin"));
     ASSERT(path != NULL);
 
     rt_io_file_write_all_bytes(path, src);
@@ -125,11 +125,11 @@ static void test_file_write_bytes_empty(void)
 static void test_xml_text_content_single_node(void)
 {
     rt_string src = rt_string_from_bytes("<r>Hello</r>", 12);
-    void *doc     = rt_xml_parse(src);
+    void *doc = rt_xml_parse(src);
     ASSERT(doc != NULL);
 
     ASSERT(rt_xml_child_count(doc) > 0);
-    void *root    = rt_xml_child_at(doc, 0);
+    void *root = rt_xml_child_at(doc, 0);
     ASSERT(root != NULL);
     rt_string txt = rt_xml_text_content(root);
     ASSERT(txt != NULL);
@@ -143,11 +143,11 @@ static void test_xml_text_content_mixed_children(void)
 {
     // <r>Hello <b>world</b>!</r>
     rt_string src = rt_string_from_bytes("<r>Hello <b>world</b>!</r>", 26);
-    void *doc     = rt_xml_parse(src);
+    void *doc = rt_xml_parse(src);
     ASSERT(doc != NULL);
 
     ASSERT(rt_xml_child_count(doc) > 0);
-    void *root    = rt_xml_child_at(doc, 0);
+    void *root = rt_xml_child_at(doc, 0);
     ASSERT(root != NULL);
     rt_string txt = rt_xml_text_content(root);
     ASSERT(txt != NULL);
@@ -164,11 +164,11 @@ static void test_xml_text_content_mixed_children(void)
 static void test_xml_text_content_empty_element(void)
 {
     rt_string src = rt_string_from_bytes("<empty/>", 8);
-    void *doc     = rt_xml_parse(src);
+    void *doc = rt_xml_parse(src);
     ASSERT(doc != NULL);
     if (rt_xml_child_count(doc) > 0)
     {
-        void *root    = rt_xml_child_at(doc, 0);
+        void *root = rt_xml_child_at(doc, 0);
         rt_string txt = rt_xml_text_content(root);
         // Empty element → empty or NULL text
         if (txt)

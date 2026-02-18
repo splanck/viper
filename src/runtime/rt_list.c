@@ -811,8 +811,11 @@ static int64_t list_default_compare(void *a, void *b)
 }
 
 /// @brief Merge two sorted halves of a temp array.
-static void list_merge(void **items, void **temp,
-                       size_t left, size_t mid, size_t right,
+static void list_merge(void **items,
+                       void **temp,
+                       size_t left,
+                       size_t mid,
+                       size_t right,
                        int64_t (*cmp)(void *, void *))
 {
     size_t i = left, j = mid + 1, k = left;
@@ -834,9 +837,8 @@ static void list_merge(void **items, void **temp,
 }
 
 /// @brief Recursive merge sort.
-static void list_merge_sort(void **items, void **temp,
-                            size_t left, size_t right,
-                            int64_t (*cmp)(void *, void *))
+static void list_merge_sort(
+    void **items, void **temp, size_t left, size_t right, int64_t (*cmp)(void *, void *))
 {
     if (left >= right)
         return;

@@ -861,7 +861,15 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     }
 
     size_t header_len = strlen(request_str);
-    size_t request_len = header_len + (req->body ? req->body_len : 0);
+    size_t req_body_len = req->body ? req->body_len : 0;
+    if (req_body_len > SIZE_MAX - header_len)
+    {
+        free(request_str);
+        http_conn_close(&conn);
+        rt_trap("HTTP: request too large");
+        return NULL;
+    }
+    size_t request_len = header_len + req_body_len;
     uint8_t *request_buf = (uint8_t *)malloc(request_len);
     if (!request_buf)
     {

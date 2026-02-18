@@ -2,6 +2,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -768,16 +769,20 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
     float w = widget->width;
     float h = widget->height;
 
-    // Draw modal overlay
-    // TODO: Use vgfx primitives
+    vgfx_window_t win = (vgfx_window_t)canvas;
+
+    // Draw modal overlay (dark semi-transparent background behind dialog)
+    int32_t win_w = 0, win_h = 0;
+    if (vgfx_get_size(win, &win_w, &win_h) == 0)
+    {
+        vgfx_fill_rect(win, 0, 0, win_w, win_h, 0x60101010u);
+    }
 
     // Draw dialog background
-    (void)theme;
-    (void)x;
-    (void)y;
-    (void)w;
-    (void)h;
-    (void)canvas;
+    vgfx_fill_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h,
+                   theme->colors.bg_primary);
+    vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h,
+              theme->colors.border_primary);
 
     // Title bar
     float title_height = 35.0f;
@@ -834,8 +839,10 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
         uint32_t text_color = theme->colors.fg_primary;
         if (is_selected(dialog, i))
         {
-            // TODO: Draw selection background
-            text_color = theme->colors.fg_primary;
+            vgfx_fill_rect(win,
+                           (int32_t)(x + sidebar_width), (int32_t)file_y,
+                           (int32_t)(w - sidebar_width), (int32_t)row_height,
+                           theme->colors.bg_selected);
         }
 
         // Draw icon indicator
@@ -862,8 +869,33 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
         file_y += row_height;
     }
 
-    // Draw buttons
-    // TODO: Draw OK/Cancel buttons using vgfx primitives
+    // Draw OK/Cancel buttons at bottom right
+    if (dialog->base.font)
+    {
+        float btn_h  = 28.0f;
+        float btn_w  = 80.0f;
+        float btn_y  = y + h - btn_h - 10.0f;
+        float btn_margin = 8.0f;
+
+        float ok_x     = x + w - btn_w - btn_margin;
+        float cancel_x = ok_x - btn_w - btn_margin;
+
+        uint32_t btn_bg     = dialog->base.button_bg_color;
+        uint32_t btn_border = theme->colors.border_primary;
+        uint32_t btn_fg     = dialog->base.title_text_color;
+
+        // Cancel button
+        vgfx_fill_rect(win, (int32_t)cancel_x, (int32_t)btn_y, (int32_t)btn_w, (int32_t)btn_h, btn_bg);
+        vgfx_rect(win, (int32_t)cancel_x, (int32_t)btn_y, (int32_t)btn_w, (int32_t)btn_h, btn_border);
+        vg_font_draw_text(canvas, dialog->base.font, dialog->base.font_size,
+                          cancel_x + btn_w / 2.0f - 20.0f, btn_y + 18.0f, "Cancel", btn_fg);
+
+        // OK button
+        vgfx_fill_rect(win, (int32_t)ok_x, (int32_t)btn_y, (int32_t)btn_w, (int32_t)btn_h, theme->colors.accent_primary);
+        vgfx_rect(win, (int32_t)ok_x, (int32_t)btn_y, (int32_t)btn_w, (int32_t)btn_h, btn_border);
+        vg_font_draw_text(canvas, dialog->base.font, dialog->base.font_size,
+                          ok_x + btn_w / 2.0f - 8.0f, btn_y + 18.0f, "OK", btn_fg);
+    }
 }
 
 static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)

@@ -2225,9 +2225,8 @@ rt_string rt_str_screaming_snake(rt_string str)
 /// @param pat Pattern string (% = any chars, _ = one char, \ = escape).
 /// @param plen Pattern length.
 /// @return 1 if matched, 0 otherwise.
-static int8_t like_match(const char *text, size_t tlen,
-                         const char *pat, size_t plen,
-                         int case_insensitive)
+static int8_t like_match(
+    const char *text, size_t tlen, const char *pat, size_t plen, int case_insensitive)
 {
     size_t ti = 0, pi = 0;
     size_t star_pi = (size_t)-1, star_ti = 0;

@@ -136,8 +136,7 @@ void tarjanDFS(const std::string &start,
             {
                 // Propagate lowlink upward to the parent frame.
                 const std::string &parent = callStack.back().node;
-                state.lowlink[parent] =
-                    std::min(state.lowlink[parent], state.lowlink[v]);
+                state.lowlink[parent] = std::min(state.lowlink[parent], state.lowlink[v]);
             }
         }
     }

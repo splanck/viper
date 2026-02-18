@@ -124,21 +124,20 @@ static int countSubstr(const std::string &text, const std::string &needle)
 //
 TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills)
 {
-    const std::string in  = testOut("global_liveness_single.il");
+    const std::string in = testOut("global_liveness_single.il");
     const std::string out = testOut("global_liveness_single.s");
 
-    const std::string il =
-        "il 0.1\n"
-        "func @iota100_lv() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0)\n"
-        "loop(%i:i64):\n"
-        "  %next = add %i, 1\n"
-        "  %done = icmp_eq %next, 100\n"
-        "  cbr %done, exit(%next), loop(%next)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @iota100_lv() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0)\n"
+                           "loop(%i:i64):\n"
+                           "  %next = add %i, 1\n"
+                           "  %done = icmp_eq %next, 100\n"
+                           "  cbr %done, exit(%next), loop(%next)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -152,7 +151,8 @@ TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills)
     if (strCount > 2)
     {
         std::cerr << "Expected at most 2 'str x' (global liveness); got " << strCount
-                  << "\nAssembly:\n" << asmText << "\n";
+                  << "\nAssembly:\n"
+                  << asmText << "\n";
     }
     EXPECT_TRUE(strCount <= 2);
 }
@@ -172,22 +172,21 @@ TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills)
 //
 TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills)
 {
-    const std::string in  = testOut("global_liveness_two.il");
+    const std::string in = testOut("global_liveness_two.il");
     const std::string out = testOut("global_liveness_two.s");
 
-    const std::string il =
-        "il 0.1\n"
-        "func @loop_sum_lv() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0, 0)\n"
-        "loop(%i:i64, %sum:i64):\n"
-        "  %new_sum = add %sum, %i\n"
-        "  %next_i  = add %i, 1\n"
-        "  %done    = icmp_eq %next_i, 10\n"
-        "  cbr %done, exit(%new_sum), loop(%next_i, %new_sum)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @loop_sum_lv() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%i:i64, %sum:i64):\n"
+                           "  %new_sum = add %sum, %i\n"
+                           "  %next_i  = add %i, 1\n"
+                           "  %done    = icmp_eq %next_i, 10\n"
+                           "  cbr %done, exit(%new_sum), loop(%next_i, %new_sum)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -201,7 +200,8 @@ TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills)
     if (strCount > 6)
     {
         std::cerr << "Expected at most 6 'str x' (global liveness two phi); got " << strCount
-                  << "\nAssembly:\n" << asmText << "\n";
+                  << "\nAssembly:\n"
+                  << asmText << "\n";
     }
     EXPECT_TRUE(strCount <= 6);
 }
@@ -226,23 +226,22 @@ TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills)
 //
 TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled)
 {
-    const std::string in  = testOut("global_liveness_sq.il");
+    const std::string in = testOut("global_liveness_sq.il");
     const std::string out = testOut("global_liveness_sq.s");
 
-    const std::string il =
-        "il 0.1\n"
-        "func @sum_sq() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0, 0)\n"
-        "loop(%i:i64, %sum:i64):\n"
-        "  %sq   = mul %i, %i\n"
-        "  %ns   = add %sum, %sq\n"
-        "  %ni   = add %i, 1\n"
-        "  %done = icmp_eq %ni, 10\n"
-        "  cbr %done, exit(%ns), loop(%ni, %ns)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @sum_sq() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%i:i64, %sum:i64):\n"
+                           "  %sq   = mul %i, %i\n"
+                           "  %ns   = add %sum, %sq\n"
+                           "  %ni   = add %i, 1\n"
+                           "  %done = icmp_eq %ni, 10\n"
+                           "  cbr %done, exit(%ns), loop(%ni, %ns)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -255,8 +254,9 @@ TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled)
     // After fix: only phi-stores and entry initializers remain (no %sq spill).
     if (strCount > 5)
     {
-        std::cerr << "Expected at most 5 'str x' (intermediate temp not spilled); got "
-                  << strCount << "\nAssembly:\n" << asmText << "\n";
+        std::cerr << "Expected at most 5 'str x' (intermediate temp not spilled); got " << strCount
+                  << "\nAssembly:\n"
+                  << asmText << "\n";
     }
     EXPECT_TRUE(strCount <= 5);
 }
@@ -283,26 +283,25 @@ TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled)
 //
 TEST(AArch64GlobalLiveness, ConstantMaterNotSpilled)
 {
-    const std::string in  = testOut("global_liveness_const.il");
+    const std::string in = testOut("global_liveness_const.il");
     const std::string out = testOut("global_liveness_const.s");
 
     // Use icmp_eq with a literal to force a constant materialisation in the
     // loop body.  The IL codegen materialises the RHS of icmp as a vreg when
     // it doesn't fit a 12-bit immediate (here 50 fits, but the MIR lowering
     // still materialises it for the comparison register).
-    const std::string il =
-        "il 0.1\n"
-        "func @const_loop() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0)\n"
-        "loop(%i:i64):\n"
-        "  %next  = add %i, 1\n"
-        "  %limit = add 0, 50\n"
-        "  %done  = icmp_eq %next, %limit\n"
-        "  cbr %done, exit(%next), loop(%next)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @const_loop() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0)\n"
+                           "loop(%i:i64):\n"
+                           "  %next  = add %i, 1\n"
+                           "  %limit = add 0, 50\n"
+                           "  %done  = icmp_eq %next, %limit\n"
+                           "  cbr %done, exit(%next), loop(%next)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
@@ -315,8 +314,9 @@ TEST(AArch64GlobalLiveness, ConstantMaterNotSpilled)
     // After fix:  liveOut[loop] = ∅ → no block-end spills → <= 3 str x.
     if (strCount > 3)
     {
-        std::cerr << "Expected at most 3 'str x' (constant not block-end spilled); got "
-                  << strCount << "\nAssembly:\n" << asmText << "\n";
+        std::cerr << "Expected at most 3 'str x' (constant not block-end spilled); got " << strCount
+                  << "\nAssembly:\n"
+                  << asmText << "\n";
     }
     EXPECT_TRUE(strCount <= 3);
 }

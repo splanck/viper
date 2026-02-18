@@ -18,9 +18,9 @@
 
 #include "rt_binbuf.h"
 
+#include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_object.h"
-#include "rt_bytes.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -32,11 +32,11 @@
 /// @brief Internal implementation structure for the BinaryBuffer type.
 typedef struct rt_binbuf_impl
 {
-    void **vptr;       ///< Vtable pointer placeholder (for OOP compatibility).
-    uint8_t *data;     ///< Pointer to heap-allocated byte storage.
-    int64_t len;       ///< Logical length (highest byte written + 1).
-    int64_t capacity;  ///< Allocated capacity in bytes.
-    int64_t position;  ///< Read/write cursor position.
+    void **vptr;      ///< Vtable pointer placeholder (for OOP compatibility).
+    uint8_t *data;    ///< Pointer to heap-allocated byte storage.
+    int64_t len;      ///< Logical length (highest byte written + 1).
+    int64_t capacity; ///< Allocated capacity in bytes.
+    int64_t position; ///< Read/write cursor position.
 } rt_binbuf_impl;
 
 /// @brief Ensure the buffer has room for `needed` bytes starting at position.
@@ -177,7 +177,7 @@ void rt_binbuf_write_i16le(void *obj, int64_t value)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_ensure(buf, 2);
-    buf->data[buf->position]     = (uint8_t)(value & 0xFF);
+    buf->data[buf->position] = (uint8_t)(value & 0xFF);
     buf->data[buf->position + 1] = (uint8_t)((value >> 8) & 0xFF);
     binbuf_advance_write(buf, 2);
 }
@@ -188,7 +188,7 @@ void rt_binbuf_write_i16be(void *obj, int64_t value)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_ensure(buf, 2);
-    buf->data[buf->position]     = (uint8_t)((value >> 8) & 0xFF);
+    buf->data[buf->position] = (uint8_t)((value >> 8) & 0xFF);
     buf->data[buf->position + 1] = (uint8_t)(value & 0xFF);
     binbuf_advance_write(buf, 2);
 }
@@ -199,7 +199,7 @@ void rt_binbuf_write_i32le(void *obj, int64_t value)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_ensure(buf, 4);
-    buf->data[buf->position]     = (uint8_t)(value & 0xFF);
+    buf->data[buf->position] = (uint8_t)(value & 0xFF);
     buf->data[buf->position + 1] = (uint8_t)((value >> 8) & 0xFF);
     buf->data[buf->position + 2] = (uint8_t)((value >> 16) & 0xFF);
     buf->data[buf->position + 3] = (uint8_t)((value >> 24) & 0xFF);
@@ -212,7 +212,7 @@ void rt_binbuf_write_i32be(void *obj, int64_t value)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_ensure(buf, 4);
-    buf->data[buf->position]     = (uint8_t)((value >> 24) & 0xFF);
+    buf->data[buf->position] = (uint8_t)((value >> 24) & 0xFF);
     buf->data[buf->position + 1] = (uint8_t)((value >> 16) & 0xFF);
     buf->data[buf->position + 2] = (uint8_t)((value >> 8) & 0xFF);
     buf->data[buf->position + 3] = (uint8_t)(value & 0xFF);
@@ -225,7 +225,7 @@ void rt_binbuf_write_i64le(void *obj, int64_t value)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_ensure(buf, 8);
-    buf->data[buf->position]     = (uint8_t)(value & 0xFF);
+    buf->data[buf->position] = (uint8_t)(value & 0xFF);
     buf->data[buf->position + 1] = (uint8_t)((value >> 8) & 0xFF);
     buf->data[buf->position + 2] = (uint8_t)((value >> 16) & 0xFF);
     buf->data[buf->position + 3] = (uint8_t)((value >> 24) & 0xFF);
@@ -242,7 +242,7 @@ void rt_binbuf_write_i64be(void *obj, int64_t value)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_ensure(buf, 8);
-    buf->data[buf->position]     = (uint8_t)((value >> 56) & 0xFF);
+    buf->data[buf->position] = (uint8_t)((value >> 56) & 0xFF);
     buf->data[buf->position + 1] = (uint8_t)((value >> 48) & 0xFF);
     buf->data[buf->position + 2] = (uint8_t)((value >> 40) & 0xFF);
     buf->data[buf->position + 3] = (uint8_t)((value >> 32) & 0xFF);
@@ -317,8 +317,7 @@ int64_t rt_binbuf_read_i16le(void *obj)
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 2);
     int64_t pos = buf->position;
-    int64_t val = (int64_t)buf->data[pos]
-                | ((int64_t)buf->data[pos + 1] << 8);
+    int64_t val = (int64_t)buf->data[pos] | ((int64_t)buf->data[pos + 1] << 8);
     buf->position += 2;
     return val;
 }
@@ -330,8 +329,7 @@ int64_t rt_binbuf_read_i16be(void *obj)
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 2);
     int64_t pos = buf->position;
-    int64_t val = ((int64_t)buf->data[pos] << 8)
-                | (int64_t)buf->data[pos + 1];
+    int64_t val = ((int64_t)buf->data[pos] << 8) | (int64_t)buf->data[pos + 1];
     buf->position += 2;
     return val;
 }
@@ -343,10 +341,8 @@ int64_t rt_binbuf_read_i32le(void *obj)
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 4);
     int64_t pos = buf->position;
-    int64_t val = (int64_t)buf->data[pos]
-                | ((int64_t)buf->data[pos + 1] << 8)
-                | ((int64_t)buf->data[pos + 2] << 16)
-                | ((int64_t)buf->data[pos + 3] << 24);
+    int64_t val = (int64_t)buf->data[pos] | ((int64_t)buf->data[pos + 1] << 8) |
+                  ((int64_t)buf->data[pos + 2] << 16) | ((int64_t)buf->data[pos + 3] << 24);
     buf->position += 4;
     return val;
 }
@@ -358,10 +354,8 @@ int64_t rt_binbuf_read_i32be(void *obj)
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 4);
     int64_t pos = buf->position;
-    int64_t val = ((int64_t)buf->data[pos] << 24)
-                | ((int64_t)buf->data[pos + 1] << 16)
-                | ((int64_t)buf->data[pos + 2] << 8)
-                | (int64_t)buf->data[pos + 3];
+    int64_t val = ((int64_t)buf->data[pos] << 24) | ((int64_t)buf->data[pos + 1] << 16) |
+                  ((int64_t)buf->data[pos + 2] << 8) | (int64_t)buf->data[pos + 3];
     buf->position += 4;
     return val;
 }
@@ -373,14 +367,10 @@ int64_t rt_binbuf_read_i64le(void *obj)
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 8);
     int64_t pos = buf->position;
-    int64_t val = (int64_t)buf->data[pos]
-                | ((int64_t)buf->data[pos + 1] << 8)
-                | ((int64_t)buf->data[pos + 2] << 16)
-                | ((int64_t)buf->data[pos + 3] << 24)
-                | ((int64_t)buf->data[pos + 4] << 32)
-                | ((int64_t)buf->data[pos + 5] << 40)
-                | ((int64_t)buf->data[pos + 6] << 48)
-                | ((int64_t)buf->data[pos + 7] << 56);
+    int64_t val = (int64_t)buf->data[pos] | ((int64_t)buf->data[pos + 1] << 8) |
+                  ((int64_t)buf->data[pos + 2] << 16) | ((int64_t)buf->data[pos + 3] << 24) |
+                  ((int64_t)buf->data[pos + 4] << 32) | ((int64_t)buf->data[pos + 5] << 40) |
+                  ((int64_t)buf->data[pos + 6] << 48) | ((int64_t)buf->data[pos + 7] << 56);
     buf->position += 8;
     return val;
 }
@@ -392,14 +382,10 @@ int64_t rt_binbuf_read_i64be(void *obj)
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 8);
     int64_t pos = buf->position;
-    int64_t val = ((int64_t)buf->data[pos] << 56)
-                | ((int64_t)buf->data[pos + 1] << 48)
-                | ((int64_t)buf->data[pos + 2] << 40)
-                | ((int64_t)buf->data[pos + 3] << 32)
-                | ((int64_t)buf->data[pos + 4] << 24)
-                | ((int64_t)buf->data[pos + 5] << 16)
-                | ((int64_t)buf->data[pos + 6] << 8)
-                | (int64_t)buf->data[pos + 7];
+    int64_t val = ((int64_t)buf->data[pos] << 56) | ((int64_t)buf->data[pos + 1] << 48) |
+                  ((int64_t)buf->data[pos + 2] << 40) | ((int64_t)buf->data[pos + 3] << 32) |
+                  ((int64_t)buf->data[pos + 4] << 24) | ((int64_t)buf->data[pos + 5] << 16) |
+                  ((int64_t)buf->data[pos + 6] << 8) | (int64_t)buf->data[pos + 7];
     buf->position += 8;
     return val;
 }
@@ -417,7 +403,8 @@ rt_string rt_binbuf_read_str(void *obj)
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, slen);
 
-    rt_string result = rt_string_from_bytes((const char *)(buf->data + buf->position), (size_t)slen);
+    rt_string result =
+        rt_string_from_bytes((const char *)(buf->data + buf->position), (size_t)slen);
     buf->position += slen;
     return result;
 }

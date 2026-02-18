@@ -108,15 +108,14 @@ static int countSubstr(const std::string &text, const std::string &needle)
 //
 TEST(AArch64Scheduler, CorrectOutput)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @sched_simple() -> i64 {\n"
-        "entry:\n"
-        "  %a = add 10, 20\n"
-        "  %b = add 30, 40\n"
-        "  %c = add %a, %b\n"
-        "  ret %c\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @sched_simple() -> i64 {\n"
+                           "entry:\n"
+                           "  %a = add 10, 20\n"
+                           "  %b = add 30, 40\n"
+                           "  %c = add %a, %b\n"
+                           "  ret %c\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -124,7 +123,7 @@ TEST(AArch64Scheduler, CorrectOutput)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     Diagnostics diags;
     const bool ok = buildScheduledPipeline().run(m, diags);
@@ -148,16 +147,15 @@ TEST(AArch64Scheduler, CorrectOutput)
 //
 TEST(AArch64Scheduler, InstructionCountStable)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @count_stable() -> i64 {\n"
-        "entry:\n"
-        "  %a = add 1, 2\n"
-        "  %b = add 3, 4\n"
-        "  %c = mul %a, %b\n"
-        "  %d = add %c, 5\n"
-        "  ret %d\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @count_stable() -> i64 {\n"
+                           "entry:\n"
+                           "  %a = add 1, 2\n"
+                           "  %b = add 3, 4\n"
+                           "  %c = mul %a, %b\n"
+                           "  %d = add %c, 5\n"
+                           "  ret %d\n"
+                           "}\n";
 
     // Unscheduled pipeline (no SchedulerPass).
     PassManager unscheduled;
@@ -179,8 +177,10 @@ TEST(AArch64Scheduler, InstructionCountStable)
 
     const TargetInfo &ti = darwinTarget();
     AArch64Module m1, m2;
-    m1.ilMod = &mod1; m1.ti = &ti;
-    m2.ilMod = &mod2; m2.ti = &ti;
+    m1.ilMod = &mod1;
+    m1.ti = &ti;
+    m2.ilMod = &mod2;
+    m2.ti = &ti;
 
     Diagnostics d1, d2;
     ASSERT_TRUE(unscheduled.run(m1, d1));
@@ -188,7 +188,8 @@ TEST(AArch64Scheduler, InstructionCountStable)
 
     // Count total instruction lines (lines with leading whitespace).
     // We exclude labels (no leading space) and directives (.text, .globl).
-    auto countInstrs = [](const std::string &asm_) {
+    auto countInstrs = [](const std::string &asm_)
+    {
         int n = 0;
         std::istringstream ss(asm_);
         std::string line;
@@ -200,16 +201,17 @@ TEST(AArch64Scheduler, InstructionCountStable)
         return n;
     };
 
-    const int unschCount  = countInstrs(m1.assembly);
-    const int schedCount  = countInstrs(m2.assembly);
+    const int unschCount = countInstrs(m1.assembly);
+    const int schedCount = countInstrs(m2.assembly);
 
     // Scheduling must not add or remove instructions.
     if (unschCount != schedCount)
     {
         std::cerr << "Unscheduled: " << unschCount << " instructions\n"
                   << "Scheduled:   " << schedCount << " instructions\n"
-                  << "Unscheduled assembly:\n" << m1.assembly
-                  << "\nScheduled assembly:\n" << m2.assembly << "\n";
+                  << "Unscheduled assembly:\n"
+                  << m1.assembly << "\nScheduled assembly:\n"
+                  << m2.assembly << "\n";
     }
     EXPECT_TRUE(unschCount == schedCount);
 }
@@ -244,15 +246,14 @@ TEST(AArch64Scheduler, LoadUseSeparation)
     // Note: IL does not have a direct "load" opcode for this pointer form.
     // We test load-use separation using a multi-multiply pattern that exercises
     // the scheduler's ability to interleave independent instruction streams.
-    const std::string il =
-        "il 0.1\n"
-        "func @interleaved(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %x = mul %a, %a\n"  // 3-cycle multiply
-        "  %y = mul %b, %b\n"  // 3-cycle multiply (independent of x)
-        "  %r = add %x, %y\n"  // uses both
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @interleaved(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %x = mul %a, %a\n" // 3-cycle multiply
+                           "  %y = mul %b, %b\n" // 3-cycle multiply (independent of x)
+                           "  %r = add %x, %y\n" // uses both
+                           "  ret %r\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -260,7 +261,7 @@ TEST(AArch64Scheduler, LoadUseSeparation)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     Diagnostics diags;
     const bool ok = buildScheduledPipeline().run(m, diags);
@@ -270,9 +271,9 @@ TEST(AArch64Scheduler, LoadUseSeparation)
     // The function must contain two multiply-class instructions and one add-class.
     // The peephole may fuse the second mul + add into a single madd instruction,
     // so we count both "mul" and "madd" as multiply-class occurrences.
-    const int mulCount  = countSubstr(m.assembly, "mul");
+    const int mulCount = countSubstr(m.assembly, "mul");
     const int maddCount = countSubstr(m.assembly, "madd");
-    const int addCount  = countSubstr(m.assembly, "add"); // "madd" also contains "add"
+    const int addCount = countSubstr(m.assembly, "add"); // "madd" also contains "add"
 
     // At least 2 multiply-class instructions (mul or madd) must be present.
     EXPECT_TRUE(mulCount + maddCount >= 2);
@@ -292,18 +293,17 @@ TEST(AArch64Scheduler, LoadUseSeparation)
 //
 TEST(AArch64Scheduler, TerminatorLast)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @loop_sched() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0)\n"
-        "loop(%i:i64):\n"
-        "  %next = add %i, 1\n"
-        "  %done = icmp_eq %next, 10\n"
-        "  cbr %done, exit(%next), loop(%next)\n"
-        "exit(%r:i64):\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @loop_sched() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0)\n"
+                           "loop(%i:i64):\n"
+                           "  %next = add %i, 1\n"
+                           "  %done = icmp_eq %next, 10\n"
+                           "  cbr %done, exit(%next), loop(%next)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -311,7 +311,7 @@ TEST(AArch64Scheduler, TerminatorLast)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     // Run only through scheduler — no EmitPass needed; check MIR directly.
     // Assembly-level terminator inspection is fragile: the emitter elides
@@ -329,10 +329,10 @@ TEST(AArch64Scheduler, TerminatorLast)
 
     // Every MIR block's last instruction must be a terminator.
     // This directly verifies the scheduler's invariant at the level it operates.
-    auto isMirTerminator = [](MOpcode opc) -> bool {
-        return opc == MOpcode::Ret || opc == MOpcode::Br ||
-               opc == MOpcode::BCond || opc == MOpcode::Cbz ||
-               opc == MOpcode::Cbnz;
+    auto isMirTerminator = [](MOpcode opc) -> bool
+    {
+        return opc == MOpcode::Ret || opc == MOpcode::Br || opc == MOpcode::BCond ||
+               opc == MOpcode::Cbz || opc == MOpcode::Cbnz;
     };
 
     bool terminatorOk = true;
@@ -345,8 +345,7 @@ TEST(AArch64Scheduler, TerminatorLast)
             const MOpcode lastOpc = bb.instrs.back().opc;
             if (!isMirTerminator(lastOpc))
             {
-                std::cerr << "Block '" << bb.name
-                          << "' does not end with a terminator.\n";
+                std::cerr << "Block '" << bb.name << "' does not end with a terminator.\n";
                 terminatorOk = false;
             }
         }
@@ -359,15 +358,14 @@ TEST(AArch64Scheduler, TerminatorLast)
 // ---------------------------------------------------------------------------
 TEST(AArch64Scheduler, PipelineIntegration)
 {
-    const std::string il =
-        "il 0.1\n"
-        "func @pipeline_test() -> i64 {\n"
-        "entry:\n"
-        "  %a = add 1, 2\n"
-        "  %b = add 3, 4\n"
-        "  %c = mul %a, %b\n"
-        "  ret %c\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @pipeline_test() -> i64 {\n"
+                           "entry:\n"
+                           "  %a = add 1, 2\n"
+                           "  %b = add 3, 4\n"
+                           "  %c = mul %a, %b\n"
+                           "  ret %c\n"
+                           "}\n";
 
     il::core::Module mod = parseIL(il);
     ASSERT_FALSE(mod.functions.empty());
@@ -375,7 +373,7 @@ TEST(AArch64Scheduler, PipelineIntegration)
     const TargetInfo &ti = darwinTarget();
     AArch64Module m;
     m.ilMod = &mod;
-    m.ti    = &ti;
+    m.ti = &ti;
 
     // Full pipeline with scheduler.
     Diagnostics diags;

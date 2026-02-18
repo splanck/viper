@@ -110,7 +110,7 @@ class FrameBuilder
     int ensureSpillWithReuse(uint16_t vreg,
                              unsigned lastUseInstrIdx,
                              unsigned currentInstrIdx,
-                             int sizeBytes  = kSlotSizeBytes,
+                             int sizeBytes = kSlotSizeBytes,
                              int alignBytes = kSlotSizeBytes);
 
     /// @brief Reserve space for outgoing arguments passed on the stack.
@@ -128,10 +128,12 @@ class FrameBuilder
     /// Increments the block epoch so that spill slots from previous blocks are
     /// never reused in the current block.  Must be called before processing
     /// each basic block during register allocation.
-    void beginNewBlock() noexcept { ++blockEpoch_; }
+    void beginNewBlock() noexcept
+    {
+        ++blockEpoch_;
+    }
 
   private:
-
     /// @brief Lifetime record for a single spill slot.
     ///
     /// Tracks the FP-relative offset, the instruction index of the last use of
@@ -142,16 +144,16 @@ class FrameBuilder
     /// boundary, making cross-epoch comparisons meaningless.
     struct SlotLifetime
     {
-        int      offset;       ///< FP-relative offset (always negative).
-        int      sizeBytes;    ///< Slot size (for size-compatible reuse check).
-        unsigned lastUseIdx;   ///< Last instruction index reading the current vreg.
-        uint32_t epoch;        ///< Block epoch when lastUseIdx was recorded.
+        int offset;          ///< FP-relative offset (always negative).
+        int sizeBytes;       ///< Slot size (for size-compatible reuse check).
+        unsigned lastUseIdx; ///< Last instruction index reading the current vreg.
+        uint32_t epoch;      ///< Block epoch when lastUseIdx was recorded.
     };
 
     MFunction *fn_{};
     int nextOffset_{-kSlotSizeBytes}; ///< Next available slot (first at [x29, #-8]).
     int minOffset_{0};                ///< Most negative offset assigned.
-    uint32_t blockEpoch_{0};         ///< Monotonically-increasing block counter.
+    uint32_t blockEpoch_{0};          ///< Monotonically-increasing block counter.
 
     /// Lifetime records for every slot allocated via ensureSpillWithReuse().
     std::vector<SlotLifetime> slotLifetimes_;

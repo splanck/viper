@@ -561,6 +561,26 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_json_stream PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_json_stream test_rt_json_stream)
 
+    viper_add_test(test_rt_regex ${VIPER_TESTS_DIR}/runtime/RTRegexTests.cpp)
+    target_link_libraries(test_rt_regex PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_regex test_rt_regex)
+
+    viper_add_test(test_rt_datetime ${VIPER_TESTS_DIR}/runtime/RTDatetimeTests.cpp)
+    target_link_libraries(test_rt_datetime PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_datetime test_rt_datetime)
+
+    viper_add_test(test_rt_aes ${VIPER_TESTS_DIR}/runtime/RTAesTests.cpp)
+    target_link_libraries(test_rt_aes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_aes test_rt_aes)
+
+    viper_add_test(test_rt_bigint ${VIPER_TESTS_DIR}/runtime/RTBigintTests.cpp)
+    target_link_libraries(test_rt_bigint PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bigint test_rt_bigint)
+
+    viper_add_test(test_rt_xml ${VIPER_TESTS_DIR}/runtime/RTXmlTests.cpp)
+    target_link_libraries(test_rt_xml PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_xml test_rt_xml)
+
     viper_add_test(test_rt_hash ${VIPER_TESTS_DIR}/runtime/RTHashTests.cpp)
     target_link_libraries(test_rt_hash PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_hash test_rt_hash)

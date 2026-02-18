@@ -96,7 +96,7 @@ Module buildSingleBlockNonEntryAlloca()
         load.result = id++;
         load.op = Opcode::Load;
         load.type = Type(Type::Kind::I64);
-        load.operands.push_back(Value::temp(0)); // ptr t0
+        load.operands.push_back(Value::temp(0));        // ptr t0
         middle.instructions.push_back(std::move(load)); // t1
 
         Instr ret;
@@ -163,7 +163,7 @@ Module buildDominatingNonEntryAlloca()
     then_.label = "then";
     {
         Instr alloca_;
-        alloca_.result = id++;  // t0
+        alloca_.result = id++; // t0
         alloca_.op = Opcode::Alloca;
         alloca_.type = Type(Type::Kind::Ptr);
         alloca_.operands.push_back(Value::constInt(8));
@@ -177,7 +177,7 @@ Module buildDominatingNonEntryAlloca()
         then_.instructions.push_back(std::move(store));
 
         Instr load;
-        load.result = id++;  // t1
+        load.result = id++; // t1
         load.op = Opcode::Load;
         load.type = Type(Type::Kind::I64);
         load.operands.push_back(Value::temp(0));
@@ -210,7 +210,7 @@ Module buildDominatingNonEntryAlloca()
     merge.label = "merge";
     {
         Param p;
-        p.id = id++;  // t2
+        p.id = id++; // t2
         p.type = Type(Type::Kind::I64);
         p.name = "x";
         merge.params.push_back(std::move(p));

@@ -13,6 +13,9 @@
 #include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
+#include "tests/common/PosixCompat.h"
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 using namespace il::frontends::zia;
@@ -908,6 +911,138 @@ func start() {
     auto result = compile(input, opts, sm);
 
     EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// BUG-FE-011: Cross-module `final` constant equality always evaluates false
+//===----------------------------------------------------------------------===//
+
+namespace fs = std::filesystem;
+
+static fs::path writeFileFE011(const fs::path &dir,
+                               const std::string &name,
+                               const std::string &contents)
+{
+    fs::create_directories(dir);
+    fs::path path = dir / name;
+    std::ofstream out(path);
+    out << contents;
+    return path;
+}
+
+/// @brief A `final` constant with a non-literal initializer (e.g., a BinaryExpr
+/// like `0 - 2147483647`) must be constant-folded so that the resulting IL uses
+/// the correct value rather than constInt(0).
+TEST(ZiaBugFixes, BugFE011_NonLiteralFinalFoldsToCorrectValue)
+{
+    SourceManager sm;
+    // `final SENTINEL = 0 - 2147483647` is a BinaryExpr, not an IntLiteralExpr.
+    // Before the fix, this resolved to constInt(0) everywhere it was referenced.
+    const std::string source = R"(
+module Test;
+
+final SENTINEL = 0 - 2147483647;
+final MASK = 255 & 15;
+
+func start() {
+    var s: Integer = SENTINEL;
+    var m: Integer = MASK;
+    Viper.Terminal.SayInt(s);
+    Viper.Terminal.SayInt(m);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe011_nonliteral.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+
+    if (result.succeeded())
+    {
+        // The IL must contain -2147483647 (= 0 - 2147483647) and 15 (= 255 & 15).
+        // Before the fix, both would appear as 0.
+        bool foundSentinel = false;
+        bool foundMask = false;
+        for (auto &fn : result.module.functions)
+        {
+            for (auto &bb : fn.blocks)
+            {
+                for (auto &instr : bb.instructions)
+                {
+                    for (auto &op : instr.operands)
+                    {
+                        if (op.kind == il::core::Value::Kind::ConstInt)
+                        {
+                            if (op.i64 == -2147483647LL)
+                                foundSentinel = true;
+                            if (op.i64 == 15LL)
+                                foundMask = true;
+                        }
+                    }
+                }
+            }
+        }
+        // IL must contain -2147483647 (= 0 - 2147483647) and 15 (= 255 & 15)
+        EXPECT_TRUE(foundSentinel);
+        EXPECT_TRUE(foundMask);
+    }
+}
+
+/// @brief Non-literal final constants exported from a bound module must resolve
+/// to their computed value when referenced from the importing module.
+TEST(ZiaBugFixes, BugFE011_CrossModuleNonLiteralFinalConstant)
+{
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_fe011_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "cross_module_final";
+
+    // Library module exposes a final constant with a non-literal initializer.
+    (void)writeFileFE011(dir,
+                         "consts.zia",
+                         R"(
+module Consts;
+
+final SENTINEL = 0 - 2147483647;
+)");
+
+    const std::string mainSource = R"(
+module Main;
+bind "consts.zia";
+
+func start() {
+    var x: Integer = SENTINEL;
+    Viper.Terminal.SayInt(x);
+}
+)";
+    const fs::path mainPath = writeFileFE011(dir, "main.zia", mainSource);
+    const std::string mainPathStr = mainPath.string();
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+
+    if (result.succeeded())
+    {
+        bool foundSentinel = false;
+        for (auto &fn : result.module.functions)
+        {
+            for (auto &bb : fn.blocks)
+            {
+                for (auto &instr : bb.instructions)
+                {
+                    for (auto &op : instr.operands)
+                    {
+                        if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == -2147483647LL)
+                            foundSentinel = true;
+                    }
+                }
+            }
+        }
+        // Cross-module non-literal final must fold to -2147483647, not 0
+        EXPECT_TRUE(foundSentinel);
+    }
 }
 
 } // namespace

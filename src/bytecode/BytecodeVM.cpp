@@ -1144,7 +1144,8 @@ void BytecodeVM::run()
                 {
                     // Grow buffer if needed (up to 16MB limit)
                     size_t newSize = allocaBuffer_.size() * 2;
-                    if (newSize > 16 * 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
+                    if (newSize > 16 * 1024 * 1024 ||
+                        allocaTop_ + static_cast<size_t>(size) > newSize)
                     {
                         trap(TrapKind::StackOverflow, "alloca stack overflow");
                         break;

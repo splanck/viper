@@ -43,7 +43,7 @@ TEST(AArch64SpillReuse, NonOverlappingSharesSlot)
     MFunction mf{};
     FrameBuilder fb{mf};
 
-    const int off0 = fb.ensureSpillWithReuse(/*vreg=*/0, /*lastUse=*/5,  /*current=*/2);
+    const int off0 = fb.ensureSpillWithReuse(/*vreg=*/0, /*lastUse=*/5, /*current=*/2);
     const int off1 = fb.ensureSpillWithReuse(/*vreg=*/1, /*lastUse=*/10, /*current=*/6);
 
     // vreg 0 is dead at instr 6 (lastUse=5 < 6), so vreg 1 must reuse the slot.
@@ -63,7 +63,7 @@ TEST(AArch64SpillReuse, OverlappingAllocatesSeparateSlots)
     MFunction mf{};
     FrameBuilder fb{mf};
 
-    const int off0 = fb.ensureSpillWithReuse(/*vreg=*/0, /*lastUse=*/8,  /*current=*/2);
+    const int off0 = fb.ensureSpillWithReuse(/*vreg=*/0, /*lastUse=*/8, /*current=*/2);
     const int off1 = fb.ensureSpillWithReuse(/*vreg=*/1, /*lastUse=*/10, /*current=*/5);
 
     EXPECT_NE(off0, off1);
@@ -122,9 +122,9 @@ TEST(AArch64SpillReuse, ReusedFrameSmallerThanUniqueSlots)
     {
         MFunction mf{};
         FrameBuilder fb{mf};
-        fb.ensureSpillWithReuse(0, /*lastUse=*/3,  /*current=*/1);
-        fb.ensureSpillWithReuse(1, /*lastUse=*/6,  /*current=*/4);
-        fb.ensureSpillWithReuse(2, /*lastUse=*/9,  /*current=*/7);
+        fb.ensureSpillWithReuse(0, /*lastUse=*/3, /*current=*/1);
+        fb.ensureSpillWithReuse(1, /*lastUse=*/6, /*current=*/4);
+        fb.ensureSpillWithReuse(2, /*lastUse=*/9, /*current=*/7);
         fb.ensureSpillWithReuse(3, /*lastUse=*/12, /*current=*/10);
         fb.finalize();
         EXPECT_EQ(mf.frame.totalBytes, 16); // one slot, 16-byte aligned

@@ -1,4 +1,5 @@
 // vg_tabbar.c - TabBar widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -197,9 +198,15 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas)
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
 
-    // Draw background
-    // TODO: Use vgfx primitives
-    (void)theme;
+    vgfx_window_t win = (vgfx_window_t)canvas;
+
+    // Draw tab bar background
+    vgfx_fill_rect(win,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
+                   theme->colors.bg_secondary);
 
     float tab_x = widget->x - tabbar->scroll_x;
 
@@ -222,8 +229,8 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas)
         }
 
         // Draw tab background
-        // TODO: Use vgfx primitives
-        (void)bg;
+        vgfx_fill_rect(
+            win, (int32_t)tab_x, (int32_t)widget->y, (int32_t)width, (int32_t)widget->height, bg);
 
         // Draw tab title
         if (tabbar->font && tab->title)
@@ -260,11 +267,12 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas)
                 close_color = theme->colors.accent_danger;
             }
 
-            // Draw X button
-            // TODO: Draw close button using vgfx primitives
-            (void)close_x;
-            (void)close_y;
-            (void)close_color;
+            // Draw X button as two crossing diagonal lines
+            int32_t cx = (int32_t)(close_x + tabbar->close_button_size / 2.0f);
+            int32_t cy = (int32_t)(close_y + tabbar->close_button_size / 2.0f);
+            int32_t r = (int32_t)(tabbar->close_button_size / 2.0f) - 1;
+            vgfx_line(win, cx - r, cy - r, cx + r, cy + r, close_color);
+            vgfx_line(win, cx - r, cy + r, cx + r, cy - r, close_color);
         }
 
         tab_x += width;

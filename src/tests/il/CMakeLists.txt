@@ -822,7 +822,7 @@ function(viper_add_il_analysis_tests)
 
     viper_add_test(test_analysis_memory_ssa ${_VIPER_ANALYSIS_DIR}/MemorySSATests.cpp)
     target_link_libraries(test_analysis_memory_ssa
-        PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform viper_test_common)
+            PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform viper_test_common)
     viper_add_ctest(test_analysis_memory_ssa test_analysis_memory_ssa)
 endfunction()
 
