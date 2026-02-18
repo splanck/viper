@@ -161,8 +161,11 @@ int64_t rt_clock_ticks_us(void)
 
     QueryPerformanceCounter(&counter);
 
-    // Convert to microseconds: (counter * 1000000) / freq
-    int64_t us = (int64_t)((counter.QuadPart * 1000000LL) / freq.QuadPart);
+    // Convert to microseconds using split division to avoid overflow:
+    // (counter / freq) * 1000000 + (counter % freq) * 1000000 / freq
+    int64_t whole = counter.QuadPart / freq.QuadPart;
+    int64_t remainder = counter.QuadPart % freq.QuadPart;
+    int64_t us = whole * 1000000LL + remainder * 1000000LL / freq.QuadPart;
     return us;
 }
 

@@ -440,6 +440,13 @@ void rt_env_set_var(rt_string name, rt_string value)
         rt_env_require_name(name, "Viper.Environment.SetVariable: name must not be empty");
     const char *cvalue = value ? rt_string_cstr(value) : "";
 
+    // Reject embedded null bytes: setenv/SetEnvironmentVariableA terminate at the
+    // first '\0', so a Viper String with internal nulls would be silently truncated.
+    if (strlen(cname) != (size_t)rt_str_len(name))
+        rt_trap("Viper.Environment.SetVariable: name must not contain null bytes");
+    if (value && strlen(cvalue) != (size_t)rt_str_len(value))
+        rt_trap("Viper.Environment.SetVariable: value must not contain null bytes");
+
 #ifdef _WIN32
     if (!SetEnvironmentVariableA(cname, cvalue))
     {

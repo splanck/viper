@@ -92,6 +92,14 @@ struct InlineCost
         return cost;
     }
 
+    /// @brief Decide whether a call site is within the inline budget.
+    /// @details First checks hard limits (inlinability flag, block count, call-site
+    ///          count) and then compares the adjusted instruction cost against the
+    ///          configured threshold.  Constant argument bonuses are applied inside
+    ///          @ref adjustedCost so specialisable sites are more aggressively inlined.
+    /// @param config        Tuning parameters for the inliner.
+    /// @param constArgCount Number of call arguments known to be constants.
+    /// @return @c true when inlining is legal and within cost budget.
     bool withinBudget(const InlineCostConfig &config, unsigned constArgCount) const
     {
         if (!isInlinable())

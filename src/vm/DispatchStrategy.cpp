@@ -208,6 +208,8 @@ class SwitchStrategy final : public DispatchStrategy
         return Kind::Switch;
     }
 
+    /// @brief Returns @c true because the switch-based dispatcher calls
+    ///        finalizeInstruction() inside each generated case block.
     bool handlesFinalizationInternally() const override
     {
         return true;
@@ -273,6 +275,9 @@ class ThreadedStrategy final : public DispatchStrategy
         return Kind::Threaded;
     }
 
+    /// @brief Returns @c true because the threaded dispatcher's computed-goto loop
+    ///        can throw exceptions from within trapping opcodes, requiring the
+    ///        shared dispatch loop to install a @c try/catch guard.
     bool requiresTrapCatch() const override
     {
         return true;

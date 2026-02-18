@@ -23,6 +23,7 @@
 
 #include "il/transform/LICM.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
@@ -249,10 +250,10 @@ std::string_view LICM::id() const
 /// @return Preserved analysis set describing which analyses remain valid.
 PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
 {
-    auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>("loop-info", function);
-    auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>("basic-aa", function);
-    auto &cfg = analysis.getFunctionResult<CFGInfo>("cfg", function);
+    auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
+    auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, function);
+    auto &cfg = analysis.getFunctionResult<CFGInfo>(kAnalysisCFG, function);
 
     std::unordered_map<std::string, BasicBlock *> blockLookup;
     blockLookup.reserve(function.blocks.size());
@@ -370,9 +371,9 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
 
     PreservedAnalyses preserved;
     preserved.preserveAllModules();
-    preserved.preserveFunction("cfg");
-    preserved.preserveFunction("dominators");
-    preserved.preserveFunction("loop-info");
+    preserved.preserveFunction(kAnalysisCFG);
+    preserved.preserveFunction(kAnalysisDominators);
+    preserved.preserveFunction(kAnalysisLoopInfo);
     return preserved;
 }
 

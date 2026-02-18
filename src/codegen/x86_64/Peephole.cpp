@@ -27,6 +27,8 @@
 
 #include "Peephole.hpp"
 
+#include "codegen/common/PeepholeUtil.hpp"
+
 #include <algorithm>
 #include <optional>
 #include <unordered_map>
@@ -703,8 +705,9 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
     return true;
 }
 
-// Forward declaration
-void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove);
+// Bring the shared compaction helper into this namespace scope so existing
+// callers within this file need no changes.
+using viper::codegen::common::removeMarkedInstructions;
 
 /// @brief Check if an instruction modifies RSP (the stack pointer).
 /// @details RSP modifications always have implicit side effects because they
@@ -1043,21 +1046,8 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
     return totalEliminated;
 }
 
-/// @brief Remove instructions marked for deletion from a basic block.
-void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove)
-{
-    std::size_t writeIdx = 0;
-    for (std::size_t readIdx = 0; readIdx < instrs.size(); ++readIdx)
-    {
-        if (!toRemove[readIdx])
-        {
-            if (writeIdx != readIdx)
-                instrs[writeIdx] = std::move(instrs[readIdx]);
-            ++writeIdx;
-        }
-    }
-    instrs.resize(writeIdx);
-}
+// removeMarkedInstructions is provided by the using-declaration above
+// (viper::codegen::common::removeMarkedInstructions from PeepholeUtil.hpp).
 
 } // namespace
 

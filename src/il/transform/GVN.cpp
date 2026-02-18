@@ -24,6 +24,7 @@
 
 #include "il/transform/GVN.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/ValueKey.hpp"
 
@@ -266,9 +267,9 @@ std::string_view GVN::id() const
 PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
 {
     // Query required analyses
-    (void)analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function); // ensure available
-    auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
-    auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>("basic-aa", function);
+    (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG, function); // ensure available
+    auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+    auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, function);
 
     bool changed = false;
 

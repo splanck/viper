@@ -31,6 +31,8 @@
 
 #include "Peephole.hpp"
 
+#include "codegen/common/PeepholeUtil.hpp"
+
 #include <algorithm>
 #include <cstring>
 #include <optional>
@@ -697,24 +699,9 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
     return true;
 }
 
-/// @brief Remove instructions marked for deletion from a basic block.
-///
-/// @param instrs Vector of instructions to filter.
-/// @param toRemove Set of indices to remove.
-void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove)
-{
-    std::size_t writeIdx = 0;
-    for (std::size_t readIdx = 0; readIdx < instrs.size(); ++readIdx)
-    {
-        if (!toRemove[readIdx])
-        {
-            if (writeIdx != readIdx)
-                instrs[writeIdx] = std::move(instrs[readIdx]);
-            ++writeIdx;
-        }
-    }
-    instrs.resize(writeIdx);
-}
+// Bring the shared compaction helper into this namespace scope so existing
+// callers within this file need no changes.
+using viper::codegen::common::removeMarkedInstructions;
 
 /// @brief Get a unique key for a physical register (for use in maps).
 [[nodiscard]] uint32_t regKey(const MOperand &op) noexcept

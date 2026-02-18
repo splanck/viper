@@ -22,6 +22,7 @@
 
 #include "il/transform/PassManager.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
@@ -64,36 +65,36 @@ PassManager::PassManager()
     instrumentationStream_ = &std::cerr;
 
     analysisRegistry_.registerFunctionAnalysis<CFGInfo>(
-        "cfg", [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
+        kAnalysisCFG, [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
     analysisRegistry_.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
+        kAnalysisDominators,
         [](core::Module &module, core::Function &fn)
         {
             viper::analysis::CFGContext ctx(module);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
     analysisRegistry_.registerFunctionAnalysis<viper::analysis::PostDomTree>(
-        "post-dominators",
+        kAnalysisPostDominators,
         [](core::Module &module, core::Function &fn)
         {
             viper::analysis::CFGContext ctx(module);
             return viper::analysis::computePostDominatorTree(ctx, fn);
         });
     analysisRegistry_.registerFunctionAnalysis<LoopInfo>(
-        "loop-info",
+        kAnalysisLoopInfo,
         [](core::Module &module, core::Function &fn) { return computeLoopInfo(module, fn); });
     analysisRegistry_.registerFunctionAnalysis<LivenessInfo>(
-        "liveness",
+        kAnalysisLiveness,
         [](core::Module &module, core::Function &fn) { return computeLiveness(module, fn); });
     // Basic alias analysis for memory disambiguation (available to DSE/LICM etc.)
     analysisRegistry_.registerFunctionAnalysis<viper::analysis::BasicAA>(
-        "basic-aa",
+        kAnalysisBasicAA,
         [](core::Module &module, core::Function &fn)
         { return viper::analysis::BasicAA(module, fn); });
     // MemorySSA: precise def-use chains for memory operations; used by DSE for
     // cross-block dead-store elimination without false read-barriers on calls.
     analysisRegistry_.registerFunctionAnalysis<viper::analysis::MemorySSA>(
-        "memory-ssa",
+        kAnalysisMemorySSA,
         [](core::Module &module, core::Function &fn)
         {
             viper::analysis::BasicAA aa(module, fn);

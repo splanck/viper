@@ -17,6 +17,7 @@
 
 #include "il/transform/DSE.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/analysis/MemorySSA.hpp"
@@ -114,7 +115,7 @@ inline std::optional<unsigned> accessSize(const Instr &I)
 bool runDSE(Function &F, AnalysisManager &AM)
 {
     // Acquire BasicAA when available
-    viper::analysis::BasicAA &AA = AM.getFunctionResult<viper::analysis::BasicAA>("basic-aa", F);
+    viper::analysis::BasicAA &AA = AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
     bool changed = false;
 
     for (auto &B : F.blocks)
@@ -350,7 +351,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
     if (F.blocks.empty())
         return false;
 
-    viper::analysis::BasicAA &AA = AM.getFunctionResult<viper::analysis::BasicAA>("basic-aa", F);
+    viper::analysis::BasicAA &AA = AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
 
     // Build a map from block label to block pointer for successor lookup
     std::unordered_map<std::string, BasicBlock *> blockMap;
@@ -521,7 +522,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
 bool runMemorySSADSE(Function &F, AnalysisManager &AM)
 {
     viper::analysis::MemorySSA &mssa =
-        AM.getFunctionResult<viper::analysis::MemorySSA>("memory-ssa", F);
+        AM.getFunctionResult<viper::analysis::MemorySSA>(kAnalysisMemorySSA, F);
 
     std::vector<std::pair<Block *, size_t>> toRemove;
 

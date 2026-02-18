@@ -120,6 +120,9 @@ class Runner::Impl
         return vm.opcodeCounts();
     }
 
+    /// @brief Zero all per-opcode execution counters.
+    /// @details Useful when starting a profiling interval; counters are
+    ///          accumulated by the VM's hot dispatch path.
     void resetOpcodeCounts()
     {
         vm.resetOpcodeCounts();
@@ -184,6 +187,10 @@ class Runner::Impl
         }
     }
 
+    /// @brief Register a source-level breakpoint at the given location.
+    /// @details Looks up the file path via the debug controller's source manager.
+    ///          No-ops when the location is incomplete or no source manager is attached.
+    /// @param loc Source location (file + line) at which to break.
     void setBreakpoint(const il::support::SourceLoc &loc)
     {
         auto &dbg = detail::VMAccess::debug(vm);
@@ -193,6 +200,9 @@ class Runner::Impl
         dbg.addBreakSrcLine(std::string(sm->getPath(loc.file_id)), loc.line);
     }
 
+    /// @brief Remove all registered breakpoints.
+    /// @details Replaces the debug controller with a fresh instance, preserving
+    ///          the source manager reference so file-path lookups still work.
     void clearBreakpoints()
     {
         auto &dbg = detail::VMAccess::debug(vm);
@@ -203,11 +213,22 @@ class Runner::Impl
         dbg = std::move(fresh);
     }
 
+    /// @brief Cap the total number of IL instructions the VM will execute.
+    /// @details When the step counter reaches @p max the VM halts with a
+    ///          @c Paused status so the caller can inspect or resume.
+    /// @param max Maximum instruction count (0 = unlimited).
     void setMaxSteps(uint64_t max)
     {
         detail::VMAccess::setMaxSteps(vm, max);
     }
 
+    /// @brief Install a memory-watch guard over [@p addr, @p addr+@p size).
+    /// @details Alerts are collected and returned by @ref drainMemWatchHits.
+    ///          Refreshes the VM's debug fast-path flag so the hot loop checks
+    ///          for watches on every memory access.
+    /// @param addr  Start of the memory region to watch.
+    /// @param size  Number of bytes covered by the watch.
+    /// @param tag   Human-readable label reported in watch hit events.
     void addMemWatch(const void *addr, std::size_t size, std::string tag)
     {
         detail::VMAccess::debug(vm).addMemWatch(addr, size, std::move(tag));

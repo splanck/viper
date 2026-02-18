@@ -16,6 +16,8 @@
 #include "rt_path.h"
 #include "rt_string.h"
 
+extern void rt_trap(const char *msg);
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +136,8 @@ rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension)
     // Build filename: prefix + unique_id + extension
     size_t filename_len = strlen(prefix_cstr) + strlen(unique_id) + strlen(ext_cstr) + 1;
     char *filename = (char *)malloc(filename_len);
+    if (!filename)
+        rt_trap("TempFile: memory allocation failed");
     snprintf(filename, filename_len, "%s%s%s", prefix_cstr, unique_id, ext_cstr);
 
     rt_string temp_dir = rt_tempfile_dir();
@@ -209,6 +213,8 @@ rt_string rt_tempdir_create_with_prefix(rt_string prefix)
     // Build dirname: prefix + unique_id
     size_t dirname_len = strlen(prefix_cstr) + strlen(unique_id) + 1;
     char *dirname = (char *)malloc(dirname_len);
+    if (!dirname)
+        rt_trap("TempFile: memory allocation failed");
     snprintf(dirname, dirname_len, "%s%s", prefix_cstr, unique_id);
 
     rt_string temp_dir = rt_tempfile_dir();

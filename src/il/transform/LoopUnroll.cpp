@@ -17,6 +17,7 @@
 
 #include "il/transform/LoopUnroll.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
@@ -611,9 +612,9 @@ std::string_view LoopUnroll::id() const
 
 PreservedAnalyses LoopUnroll::run(Function &function, AnalysisManager &analysis)
 {
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>("loop-info", function);
-    auto &cfg = analysis.getFunctionResult<CFGInfo>("cfg", function);
-    (void)analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
+    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
+    auto &cfg = analysis.getFunctionResult<CFGInfo>(kAnalysisCFG, function);
+    (void)analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
 
     std::unordered_map<std::string, BasicBlock *> blockMap;
     blockMap.reserve(function.blocks.size());

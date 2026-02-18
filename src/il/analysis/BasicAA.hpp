@@ -124,6 +124,10 @@ class BasicAA
         bool readonly = false;
     };
 
+    /// @brief Populate the internal alloca, parameter, and no-alias sets from @p function.
+    /// @details Scans the entry block for @c Alloca instructions and records each
+    ///          parameter, building the data structures that drive pointer-identity
+    ///          queries later.  Called once during construction.
     void collectFunctionInfo(const il::core::Function &function);
 
     [[nodiscard]] static bool equalValues(const il::core::Value &lhs, const il::core::Value &rhs);

@@ -211,7 +211,7 @@ static void test_copy_rect_null_safety()
 
 static void test_save_bmp_null_safety()
 {
-    int64_t result = rt_canvas_save_bmp(nullptr, (rt_string) "test.bmp");
+    int64_t result = rt_canvas_save_bmp(nullptr, nullptr);
     assert(result == 0); // Should return 0 for null canvas
     printf("test_save_bmp_null_safety: PASSED\n");
 }

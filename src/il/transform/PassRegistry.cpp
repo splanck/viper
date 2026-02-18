@@ -14,6 +14,7 @@
 
 #include "il/transform/PassRegistry.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/DCE.hpp"
@@ -163,27 +164,27 @@ bool PreservedAnalyses::hasFunctionPreservations() const
 
 PreservedAnalyses &PreservedAnalyses::preserveCFG()
 {
-    return preserveFunction("cfg");
+    return preserveFunction(kAnalysisCFG);
 }
 
 PreservedAnalyses &PreservedAnalyses::preserveDominators()
 {
-    return preserveFunction("dominators");
+    return preserveFunction(kAnalysisDominators);
 }
 
 PreservedAnalyses &PreservedAnalyses::preserveLoopInfo()
 {
-    return preserveFunction("loop-info");
+    return preserveFunction(kAnalysisLoopInfo);
 }
 
 PreservedAnalyses &PreservedAnalyses::preserveLiveness()
 {
-    return preserveFunction("liveness");
+    return preserveFunction(kAnalysisLiveness);
 }
 
 PreservedAnalyses &PreservedAnalyses::preserveBasicAA()
 {
-    return preserveFunction("basic-aa");
+    return preserveFunction(kAnalysisBasicAA);
 }
 
 namespace

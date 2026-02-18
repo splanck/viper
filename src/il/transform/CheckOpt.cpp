@@ -13,6 +13,7 @@
 
 #include "il/transform/CheckOpt.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
@@ -356,8 +357,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     if (function.blocks.empty())
         return PreservedAnalyses::all();
 
-    auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>("loop-info", function);
+    auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
 
     bool changed = false;
 
@@ -556,11 +557,11 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     PreservedAnalyses preserved;
     preserved.preserveAllModules();
     // CFG structure is preserved (no block additions/removals or edge changes)
-    preserved.preserveFunction("cfg");
+    preserved.preserveFunction(kAnalysisCFG);
     // Dominators are preserved (we only remove instructions, not blocks)
-    preserved.preserveFunction("dominators");
+    preserved.preserveFunction(kAnalysisDominators);
     // Loop info is preserved (loop structure unchanged)
-    preserved.preserveFunction("loop-info");
+    preserved.preserveFunction(kAnalysisLoopInfo);
     return preserved;
 }
 

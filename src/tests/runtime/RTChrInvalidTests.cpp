@@ -22,10 +22,7 @@
 
 int main()
 {
-#ifdef VIPER_NO_FORK
-    printf("Test skipped: fork() not available on Windows\n");
-    return 0;
-#endif
+    SKIP_TEST_NO_FORK();
     int fds[2];
     assert(pipe(fds) == 0);
     pid_t pid = fork();

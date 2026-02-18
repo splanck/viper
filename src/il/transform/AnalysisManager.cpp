@@ -94,6 +94,10 @@ class AnalysisCacheInvalidator
     }
 
   private:
+    /// @brief Evict module-level cached analyses that were not preserved.
+    /// @details Short-circuits when no module analyses are registered, when the
+    ///          pass preserves everything, or when nothing is preserved (full
+    ///          clear).  Otherwise removes only the stale entries.
     void invalidateModuleCache()
     {
         if (!manager_.moduleAnalyses_)
@@ -117,6 +121,10 @@ class AnalysisCacheInvalidator
         }
     }
 
+    /// @brief Evict per-function cached analyses that were not preserved by a module pass.
+    /// @details A module pass potentially affects all functions, so the entire
+    ///          function cache is cleared when nothing is preserved.  If some
+    ///          analyses are preserved, only the stale per-analysis entries are removed.
     void invalidateFunctionCacheForModulePass()
     {
         if (!manager_.functionAnalyses_)
@@ -140,6 +148,10 @@ class AnalysisCacheInvalidator
         }
     }
 
+    /// @brief Assert that every cached analysis has a corresponding registration entry.
+    /// @details Debug-mode guard only; verifies the module and function caches are
+    ///          consistent with the registry so stale or orphaned cache entries are
+    ///          caught early.
     void assertWellFormed() const
     {
 #ifndef NDEBUG

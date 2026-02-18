@@ -83,8 +83,8 @@ typedef struct
     int depth; // Current nesting depth
 } yaml_parser;
 
-/// @brief Last parse error message.
-static char yaml_last_error[256] = {0};
+/// @brief Last parse error message (thread-local to avoid concurrent parse clobbering).
+static _Thread_local char yaml_last_error[256];
 
 static void set_error(const char *msg, int line)
 {

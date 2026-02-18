@@ -60,7 +60,7 @@ int main()
 #if defined(__APPLE__)
     std::fprintf(stderr, "switch-block-label: skipping on macOS sandbox environment\n");
     return 0;
-#endif
+#else
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -159,4 +159,5 @@ int main()
     }
 
     return 0;
+#endif // !__APPLE__
 }

@@ -67,6 +67,12 @@ class PipelineExecutor
                      Instrumentation instrumentation,
                      bool parallelFunctionPasses = false);
 
+    /// @brief Execute the pass pipeline against @p module.
+    /// @details Resolves each pass name via the registry, constructs an
+    ///          @ref AnalysisManager, and drives module or function passes in
+    ///          order.  Instrumentation hooks are called around each pass.
+    /// @param module   Module to transform in place.
+    /// @param pipeline Ordered list of pass identifiers to run.
     void run(core::Module &module, const std::vector<std::string> &pipeline) const;
 
   private:

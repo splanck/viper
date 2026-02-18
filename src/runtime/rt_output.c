@@ -39,24 +39,37 @@
 /// @brief Internal stdout buffer for full buffering mode.
 static char g_output_buffer[RT_OUTPUT_BUFFER_SIZE];
 
-/// @brief Flag indicating whether output initialization has occurred.
-static int g_output_initialized = 0;
+/// @brief Atomic init state: 0=uninit, 1=initializing, 2=done.
+/// @details Uses double-checked locking (same pattern as rt_context.c) so that
+///          concurrent calls to rt_output_init are safe without a mutex.
+static int g_output_init_state = 0;
 
-/// @brief Reference count for nested batch mode calls.
-/// @details Allows nested begin/end batch calls to work correctly.
+/// @brief Reference count for nested batch mode calls (atomic).
+/// @details Allows nested begin/end batch calls to work correctly across threads.
 static int g_batch_mode_depth = 0;
 
 void rt_output_init(void)
 {
-    if (g_output_initialized)
+    if (__atomic_load_n(&g_output_init_state, __ATOMIC_ACQUIRE) == 2)
         return;
 
-    // Configure stdout for full buffering with our internal buffer.
-    // _IOFBF = full buffering: output is written when buffer is full or fflush() is called.
-    // This is the key change that reduces system calls.
-    setvbuf(stdout, g_output_buffer, _IOFBF, RT_OUTPUT_BUFFER_SIZE);
+    int expected = 0;
+    if (__atomic_compare_exchange_n(
+            &g_output_init_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+    {
+        // Configure stdout for full buffering with our internal buffer.
+        // _IOFBF = full buffering: output is written when buffer is full or fflush() is called.
+        // This is the key change that reduces system calls.
+        setvbuf(stdout, g_output_buffer, _IOFBF, RT_OUTPUT_BUFFER_SIZE);
+        __atomic_store_n(&g_output_init_state, 2, __ATOMIC_RELEASE);
+        return;
+    }
 
-    g_output_initialized = 1;
+    // Another thread is initializing; spin until done.
+    while (__atomic_load_n(&g_output_init_state, __ATOMIC_ACQUIRE) != 2)
+    {
+        // spin
+    }
 }
 
 void rt_output_str(const char *s)
@@ -80,30 +93,27 @@ void rt_output_flush(void)
 
 void rt_output_begin_batch(void)
 {
-    g_batch_mode_depth++;
+    __atomic_fetch_add(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
 }
 
 void rt_output_end_batch(void)
 {
-    if (g_batch_mode_depth > 0)
+    int prev = __atomic_fetch_sub(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
+    if (prev <= 1)
     {
-        g_batch_mode_depth--;
-        if (g_batch_mode_depth == 0)
-        {
-            // Exiting batch mode: flush accumulated output
-            fflush(stdout);
-        }
+        // Exiting outermost batch mode: flush accumulated output
+        fflush(stdout);
     }
 }
 
 int rt_output_is_batch_mode(void)
 {
-    return g_batch_mode_depth > 0;
+    return __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) > 0;
 }
 
 void rt_output_flush_if_not_batch(void)
 {
-    if (g_batch_mode_depth == 0)
+    if (__atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) == 0)
     {
         fflush(stdout);
     }

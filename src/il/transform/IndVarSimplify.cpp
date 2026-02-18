@@ -26,6 +26,7 @@
 
 #include "il/transform/IndVarSimplify.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
@@ -411,9 +412,9 @@ std::string_view IndVarSimplify::id() const
 PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analysis)
 {
     // Analyses
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>("loop-info", function);
-    (void)analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
-    auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
+    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
+    (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG, function);
+    auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     (void)dom;
 
     // Build use-def chains for O(uses) replacement

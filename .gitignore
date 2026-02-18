@@ -133,6 +133,9 @@ benchmarks/bench_c_O0
 benchmarks/bench_native
 benchmarks/bench_new
 
+# --- Demo binaries ---
+demos/bin/
+
 # --- Root-level scratch/analysis files ---
 viper_issues*.txt
 viper_runtime_*.md

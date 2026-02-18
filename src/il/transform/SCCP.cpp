@@ -163,31 +163,37 @@ struct ValueLattice
         Overdefined
     };
 
+    /// @brief Construct the top (⊤) lattice element — value not yet seen.
     static ValueLattice unknown()
     {
         return ValueLattice{Kind::Unknown, {}};
     }
 
+    /// @brief Construct a constant lattice element carrying the given value.
     static ValueLattice fromConstant(Value v)
     {
         return ValueLattice{Kind::Constant, v};
     }
 
+    /// @brief Construct the bottom (⊥) lattice element — value not constant.
     static ValueLattice overdefined()
     {
         return ValueLattice{Kind::Overdefined, {}};
     }
 
+    /// @brief Return @c true when the element is ⊤ (no information yet).
     bool isUnknown() const
     {
         return kind == Kind::Unknown;
     }
 
+    /// @brief Return @c true when the element holds a specific constant.
     bool isConstant() const
     {
         return kind == Kind::Constant;
     }
 
+    /// @brief Return @c true when the element is ⊥ (value cannot be constant).
     bool isOverdefined() const
     {
         return kind == Kind::Overdefined;
@@ -288,6 +294,7 @@ bool valuesEqual(const Value &lhs, const Value &rhs)
     return false;
 }
 
+/// @brief Produce a human-readable description of an IL value for debug output.
 std::string describeValue(const Value &value)
 {
     std::ostringstream oss;
@@ -425,6 +432,8 @@ struct FoldContext
     const Instr &instr;
     std::function<bool(size_t, Value &)> resolveOperand;
 
+    /// @brief Resolve operand @p index and extract its signed integer value.
+    /// @return @c true when the operand is a known integer constant.
     bool getConstIntOperand(size_t index, long long &out) const
     {
         if (index >= instr.operands.size())
@@ -435,6 +444,8 @@ struct FoldContext
         return getConstInt(resolved, out);
     }
 
+    /// @brief Resolve operand @p index and extract its unsigned integer value.
+    /// @return @c true when the operand is a known integer constant.
     bool getConstUIntOperand(size_t index, unsigned long long &out) const
     {
         if (index >= instr.operands.size())
@@ -445,6 +456,9 @@ struct FoldContext
         return getConstUInt(resolved, out);
     }
 
+    /// @brief Resolve operand @p index and extract its floating-point value.
+    /// @details Integer constants are widened to double.
+    /// @return @c true when the operand has a known numeric value.
     bool getConstFloatOperand(size_t index, double &out) const
     {
         if (index >= instr.operands.size())
@@ -907,6 +921,9 @@ class SCCPSolver
         return it->second;
     }
 
+    /// @brief Mark a basic block as reachable and push it onto the block worklist.
+    /// @details No-op when the block is already known executable; otherwise records
+    ///          the block and schedules its instructions for re-evaluation.
     void markBlockExecutable(size_t index)
     {
         if (blockExecutable_[index])
@@ -917,6 +934,9 @@ class SCCPSolver
         blockWorklist_.push(index);
     }
 
+    /// @brief Record that a block's terminator evaluates to a runtime trap.
+    /// @details Once marked, the block's instructions are excluded from the
+    ///          rewriting phase so no live code is removed.
     void markBlockTrap(size_t index)
     {
         if (blockTraps_[index])
@@ -926,6 +946,10 @@ class SCCPSolver
             std::cerr << "[sccp] block " << function_.blocks[index].label << " known to trap\n";
     }
 
+    /// @brief Emit a debug trace line for a lattice value change.
+    /// @param id    Virtual register whose state changed.
+    /// @param action Short description of the transition (e.g. "const").
+    /// @param v Optional new constant value for the log line.
     void traceValueChange(unsigned id, std::string_view action, const Value *v = nullptr)
     {
         if (!debug_)
@@ -936,12 +960,16 @@ class SCCPSolver
         std::cerr << "\n";
     }
 
+    /// @brief Add an instruction to the instruction worklist if not already present.
     void enqueueInstr(Instr &instr)
     {
         if (inInstrWorklist_.insert(&instr).second)
             instrWorklist_.push(&instr);
     }
 
+    /// @brief Schedule all instructions that use virtual register @p id for re-evaluation.
+    /// @details Only enqueues instructions that live in currently executable blocks so
+    ///          we never visit dead code.
     void enqueueUsers(unsigned id)
     {
         auto it = uses_.find(id);
@@ -957,6 +985,8 @@ class SCCPSolver
         }
     }
 
+    /// @brief Raise the lattice state for @p id to @p v, propagating to users.
+    /// @return @c true when the state actually changed (i.e. was previously Unknown).
     bool mergeConstant(unsigned id, const Value &v)
     {
         ValueLattice &state = valueState(id);
@@ -969,6 +999,8 @@ class SCCPSolver
         return false;
     }
 
+    /// @brief Raise the lattice state for @p id to Overdefined, propagating to users.
+    /// @return @c true when the state actually changed.
     bool markOverdefined(unsigned id)
     {
         ValueLattice &state = valueState(id);
@@ -1092,6 +1124,10 @@ class SCCPSolver
     // Instruction Visitors
     //===------------------------------------------------------------------===//
 
+    /// @brief Dispatch a single instruction to the appropriate visitor.
+    /// @details Terminators are handled specially: unconditional branches propagate
+    ///          along their single edge; trapping terminators mark the block; all
+    ///          other instructions are forwarded to @ref visitComputational.
     void visitInstruction(Instr &instr, size_t blockIndex)
     {
         if (blockTraps_[blockIndex])
@@ -1122,6 +1158,9 @@ class SCCPSolver
         }
     }
 
+    /// @brief Evaluate a conditional branch and propagate along the reachable edge(s).
+    /// @details When the condition is a known constant, only the taken edge is activated.
+    ///          When the condition is overdefined, both edges are marked executable.
     void visitCBr(size_t blockIndex, Instr &instr)
     {
         if (instr.operands.empty())
@@ -1144,6 +1183,10 @@ class SCCPSolver
         }
     }
 
+    /// @brief Evaluate a switch and propagate along matching case edge(s).
+    /// @details When the scrutinee is a known constant, only the matching arm is
+    ///          activated (or the default if no case matches).  When overdefined,
+    ///          all edges are propagated.
     void visitSwitch(size_t blockIndex, Instr &instr)
     {
         if (instr.operands.empty())
@@ -1172,6 +1215,10 @@ class SCCPSolver
         }
     }
 
+    /// @brief Evaluate a non-terminator instruction and update its result lattice.
+    /// @details Attempts constant folding.  If all operands are constants and the
+    ///          fold succeeds the result is raised to Constant; if any operand is
+    ///          overdefined the result is raised to Overdefined.
     void visitComputational(Instr &instr, size_t blockIndex)
     {
         FoldResult folded = foldInstruction(instr);
@@ -1375,6 +1422,10 @@ class SCCPSolver
     // Rewriting Phase
     //===------------------------------------------------------------------===//
 
+    /// @brief Substitute all SSA values whose lattice state is Constant.
+    /// @details Iterates the value map and calls @ref replaceAllUses for every
+    ///          entry that holds a definite constant.  Non-constant values are
+    ///          left unchanged.
     void rewriteConstants()
     {
         for (auto &[id, state] : values_)
@@ -1410,6 +1461,9 @@ class SCCPSolver
     // Terminator Folding
     //===------------------------------------------------------------------===//
 
+    /// @brief Lower constant conditional branches and switches to unconditional branches.
+    /// @details Walks all executable, non-trapping blocks and converts any CBr or
+    ///          SwitchI32 whose scrutinee is now a known constant into a plain Br.
     void foldTerminators()
     {
         for (size_t bi = 0; bi < function_.blocks.size(); ++bi)
@@ -1427,6 +1481,7 @@ class SCCPSolver
         }
     }
 
+    /// @brief Rewrite a constant CBr into an unconditional branch along the taken edge.
     void rewriteConditional(Instr &instr)
     {
         if (instr.operands.empty())
@@ -1443,6 +1498,9 @@ class SCCPSolver
             convertToBranch(instr, 1);
     }
 
+    /// @brief Mutate a conditional or switch terminator into an unconditional branch.
+    /// @param instr    Terminator instruction to rewrite in place.
+    /// @param succSlot Index into @c instr.labels selecting the target successor.
     void convertToBranch(Instr &instr, size_t succSlot)
     {
         if (succSlot >= instr.labels.size())
@@ -1461,6 +1519,7 @@ class SCCPSolver
         instr.type = Type(Type::Kind::Void);
     }
 
+    /// @brief Rewrite a constant SwitchI32 into an unconditional branch to the matching arm.
     void rewriteSwitch(Instr &instr)
     {
         if (instr.operands.empty())

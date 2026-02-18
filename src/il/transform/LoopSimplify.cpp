@@ -14,6 +14,7 @@
 
 #include "il/transform/LoopSimplify.hpp"
 
+#include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 // Reuse shared CFG utilities to avoid duplication of value equality and
@@ -322,8 +323,8 @@ std::string_view LoopSimplify::id() const
 PreservedAnalyses LoopSimplify::run(Function &function, AnalysisManager &analysis)
 {
     [[maybe_unused]] auto &domTree =
-        analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>("loop-info", function);
+        analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
 
     bool changed = false;
     for (const Loop &loop : loopInfo.loops())

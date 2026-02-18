@@ -270,10 +270,10 @@ int main()
         bogus.literal_refs = 1;
 
         il::core::Module module;
-        il::core::Function fn;
-        fn.name = "main";
-        fn.retType = Type(Type::Kind::I64);
-        fn.valueNames.resize(4);
+        il::core::Function func;
+        func.name = "main";
+        func.retType = Type(Type::Kind::I64);
+        func.valueNames.resize(4);
 
         il::core::BasicBlock entry;
         entry.label = "entry";
@@ -342,9 +342,9 @@ int main()
         handler.instructions.push_back(resumeNext);
         handler.terminated = true;
 
-        fn.blocks.push_back(entry);
-        fn.blocks.push_back(handler);
-        module.functions.push_back(fn);
+        func.blocks.push_back(entry);
+        func.blocks.push_back(handler);
+        module.functions.push_back(func);
 
         il::vm::VM vm(module);
         std::vector<il::vm::Slot> args(1);
@@ -360,11 +360,11 @@ int main()
         constexpr const char kMutatedText[] = "bridge-mutated";
 
         il::core::Module module;
-        il::core::Function fn;
-        fn.name = "mutate";
-        fn.retType = Type(Type::Kind::Void);
-        fn.valueNames.resize(1);
-        module.functions.push_back(fn);
+        il::core::Function func;
+        func.name = "mutate";
+        func.retType = Type(Type::Kind::Void);
+        func.valueNames.resize(1);
+        module.functions.push_back(func);
 
         il::vm::VM vm(module);
 

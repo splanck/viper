@@ -680,6 +680,12 @@ class VM
         void operator()(RtContext *ctx) const noexcept;
     };
 
+    /// @brief Initialise the VM with an existing shared program state.
+    /// @details Called by the move constructor and by other factory paths that
+    ///          need to attach a pre-built @c ProgramState rather than building
+    ///          one from scratch.  Sets up the runtime bridge, debug flags, and
+    ///          registers the VM with the runtime context pool.
+    /// @param program Shared program state supplying the module and global store.
     void init(std::shared_ptr<ProgramState> program);
 
     /// @brief Shared program instance state (globals + runtime context).

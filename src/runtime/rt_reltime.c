@@ -24,6 +24,8 @@ static int64_t current_unix_seconds(void)
 
 static int64_t i64_abs(int64_t x)
 {
+    if (x == INT64_MIN)
+        return INT64_MAX; // -INT64_MIN is UB; saturate instead
     return x < 0 ? -x : x;
 }
 

@@ -22,27 +22,42 @@
 /// @brief CRC32 lookup table (256 entries for byte-at-a-time processing).
 static uint32_t crc32_table[256];
 
-/// @brief Flag indicating whether the table has been initialized.
-static int crc32_table_initialized = 0;
+/// @brief Atomic init state: 0=uninit, 1=initializing, 2=done.
+/// @details Uses double-checked locking with acquire/release ordering so that
+///          concurrent callers either wait for completion or see the fully
+///          populated table. Matches the pattern in rt_context.c.
+static int crc32_init_state = 0;
 
 void rt_crc32_init(void)
 {
-    if (crc32_table_initialized)
+    if (__atomic_load_n(&crc32_init_state, __ATOMIC_ACQUIRE) == 2)
         return;
 
-    for (uint32_t i = 0; i < 256; i++)
+    int expected = 0;
+    if (__atomic_compare_exchange_n(
+            &crc32_init_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
     {
-        uint32_t crc = i;
-        for (int j = 0; j < 8; j++)
+        for (uint32_t i = 0; i < 256; i++)
         {
-            if (crc & 1)
-                crc = 0xEDB88320 ^ (crc >> 1);
-            else
-                crc >>= 1;
+            uint32_t crc = i;
+            for (int j = 0; j < 8; j++)
+            {
+                if (crc & 1)
+                    crc = 0xEDB88320 ^ (crc >> 1);
+                else
+                    crc >>= 1;
+            }
+            crc32_table[i] = crc;
         }
-        crc32_table[i] = crc;
+        __atomic_store_n(&crc32_init_state, 2, __ATOMIC_RELEASE);
+        return;
     }
-    crc32_table_initialized = 1;
+
+    // Another thread is initializing; spin until done.
+    while (__atomic_load_n(&crc32_init_state, __ATOMIC_ACQUIRE) != 2)
+    {
+        // spin
+    }
 }
 
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len)

@@ -67,6 +67,10 @@ struct AnalysisCounts
 class AnalysisRegistry
 {
   public:
+    /// @brief Register a module-level analysis computation.
+    /// @tparam Result Concrete analysis result type (must be copy-constructible for @c std::any).
+    /// @param id     Unique string identifier used to look up the analysis later.
+    /// @param fn     Callable that computes a fresh @c Result from a @c Module.
     template <typename Result>
     void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn)
     {
@@ -75,6 +79,10 @@ class AnalysisRegistry
             std::type_index(typeid(Result))};
     }
 
+    /// @brief Register a function-level analysis computation.
+    /// @tparam Result Concrete analysis result type (must be copy-constructible for @c std::any).
+    /// @param id     Unique string identifier used to look up the analysis later.
+    /// @param fn     Callable that computes a fresh @c Result from a @c Module and @c Function.
     template <typename Result>
     void registerFunctionAnalysis(const std::string &id,
                                   std::function<Result(core::Module &, core::Function &)> fn)

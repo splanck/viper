@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 // Irregular plural forms (singular -> plural)
 typedef struct
 {
@@ -133,9 +135,14 @@ rt_string rt_pluralize(rt_string word)
         str_ends_with(src, len, "z") || str_ends_with(src, len, "ch") ||
         str_ends_with(src, len, "sh"))
     {
-        char buf[512];
-        snprintf(buf, sizeof(buf), "%ses", src);
-        return rt_string_from_bytes(buf, strlen(buf));
+        size_t blen = len + 2; // + "es"
+        char *buf = (char *)malloc(blen + 1);
+        if (!buf)
+            rt_trap("Pluralize: memory allocation failed");
+        snprintf(buf, blen + 1, "%ses", src);
+        rt_string result = rt_string_from_bytes(buf, blen);
+        free(buf);
+        return result;
     }
 
     // consonant + y -> ies
@@ -144,32 +151,47 @@ rt_string rt_pluralize(rt_string word)
         char prev = (char)tolower((unsigned char)src[len - 2]);
         if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u')
         {
-            char buf[512];
+            size_t blen = len + 2; // (len-1) + "ies"
+            char *buf = (char *)malloc(blen + 1);
+            if (!buf)
+                rt_trap("Pluralize: memory allocation failed");
             memcpy(buf, src, len - 1);
             memcpy(buf + len - 1, "ies", 3);
-            buf[len + 2] = '\0';
-            return rt_string_from_bytes(buf, len + 2);
+            buf[blen] = '\0';
+            rt_string result = rt_string_from_bytes(buf, blen);
+            free(buf);
+            return result;
         }
     }
 
     // -f -> -ves (but not already covered by irregulars)
     if (len >= 2 && src[len - 1] == 'f' && src[len - 2] != 'f')
     {
-        char buf[512];
+        size_t blen = len + 2; // (len-1) + "ves"
+        char *buf = (char *)malloc(blen + 1);
+        if (!buf)
+            rt_trap("Pluralize: memory allocation failed");
         memcpy(buf, src, len - 1);
         memcpy(buf + len - 1, "ves", 3);
-        buf[len + 2] = '\0';
-        return rt_string_from_bytes(buf, len + 2);
+        buf[blen] = '\0';
+        rt_string result = rt_string_from_bytes(buf, blen);
+        free(buf);
+        return result;
     }
 
     // -fe -> -ves
     if (str_ends_with(src, len, "fe"))
     {
-        char buf[512];
+        size_t blen = len + 1; // (len-2) + "ves"
+        char *buf = (char *)malloc(blen + 1);
+        if (!buf)
+            rt_trap("Pluralize: memory allocation failed");
         memcpy(buf, src, len - 2);
         memcpy(buf + len - 2, "ves", 3);
-        buf[len + 1] = '\0';
-        return rt_string_from_bytes(buf, len + 1);
+        buf[blen] = '\0';
+        rt_string result = rt_string_from_bytes(buf, blen);
+        free(buf);
+        return result;
     }
 
     // -o -> -oes for certain words (simplified: consonant + o -> oes)
@@ -178,16 +200,28 @@ rt_string rt_pluralize(rt_string word)
         char prev = (char)tolower((unsigned char)src[len - 2]);
         if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u')
         {
-            char buf[512];
-            snprintf(buf, sizeof(buf), "%ses", src);
-            return rt_string_from_bytes(buf, strlen(buf));
+            size_t blen = len + 2; // + "es"
+            char *buf = (char *)malloc(blen + 1);
+            if (!buf)
+                rt_trap("Pluralize: memory allocation failed");
+            snprintf(buf, blen + 1, "%ses", src);
+            rt_string result = rt_string_from_bytes(buf, blen);
+            free(buf);
+            return result;
         }
     }
 
     // Default: add -s
-    char buf[512];
-    snprintf(buf, sizeof(buf), "%ss", src);
-    return rt_string_from_bytes(buf, strlen(buf));
+    {
+        size_t blen = len + 1; // + "s"
+        char *buf = (char *)malloc(blen + 1);
+        if (!buf)
+            rt_trap("Pluralize: memory allocation failed");
+        snprintf(buf, blen + 1, "%ss", src);
+        rt_string result = rt_string_from_bytes(buf, blen);
+        free(buf);
+        return result;
+    }
 }
 
 rt_string rt_singularize(rt_string word)
@@ -216,21 +250,31 @@ rt_string rt_singularize(rt_string word)
     if (str_ends_with(src, len, "ves") && len > 3)
     {
         // Try -f first (e.g., "wolves" -> "wolf")
-        char buf[512];
+        size_t blen = len - 2; // (len-3) chars + 'f' + null
+        char *buf = (char *)malloc(blen + 1);
+        if (!buf)
+            rt_trap("Singularize: memory allocation failed");
         memcpy(buf, src, len - 3);
         buf[len - 3] = 'f';
-        buf[len - 2] = '\0';
-        return rt_string_from_bytes(buf, len - 2);
+        buf[blen] = '\0';
+        rt_string result = rt_string_from_bytes(buf, blen);
+        free(buf);
+        return result;
     }
 
     // -ies -> -y
     if (str_ends_with(src, len, "ies") && len > 3)
     {
-        char buf[512];
+        size_t blen = len - 2; // (len-3) chars + 'y'
+        char *buf = (char *)malloc(blen + 1);
+        if (!buf)
+            rt_trap("Singularize: memory allocation failed");
         memcpy(buf, src, len - 3);
         buf[len - 3] = 'y';
-        buf[len - 2] = '\0';
-        return rt_string_from_bytes(buf, len - 2);
+        buf[blen] = '\0';
+        rt_string result = rt_string_from_bytes(buf, blen);
+        free(buf);
+        return result;
     }
 
     // -ses, -xes, -zes, -ches, -shes -> remove -es
@@ -270,8 +314,17 @@ rt_string rt_pluralize_count(int64_t count, rt_string word)
     if (!nstr)
         nstr = "";
 
-    char buf[600];
-    snprintf(buf, sizeof(buf), "%lld %s", (long long)count, nstr);
+    // 21 = max chars for int64 (sign + 19 digits) + 1 space + word + null
+    size_t blen = 21 + strlen(nstr);
+    char *buf = (char *)malloc(blen + 1);
+    if (!buf)
+    {
+        rt_string_unref(noun);
+        rt_trap("Pluralize: memory allocation failed");
+    }
+    int written = snprintf(buf, blen + 1, "%lld %s", (long long)count, nstr);
     rt_string_unref(noun);
-    return rt_string_from_bytes(buf, strlen(buf));
+    rt_string result = rt_string_from_bytes(buf, (size_t)(written > 0 ? written : 0));
+    free(buf);
+    return result;
 }

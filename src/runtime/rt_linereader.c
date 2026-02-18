@@ -305,6 +305,14 @@ rt_string rt_linereader_read(void *obj)
             // Regular character - add to buffer
             if (len >= cap - 1)
             {
+                // Guard against unbounded growth from files with no newlines.
+#define RT_LINEREADER_MAX_LINE (256 * 1024 * 1024)
+                if (cap >= RT_LINEREADER_MAX_LINE)
+                {
+                    free(buf);
+                    rt_trap("LineReader.Read: line length exceeds maximum (256 MiB)");
+                    return rt_string_from_bytes("", 0);
+                }
                 cap *= 2;
                 char *new_buf = (char *)realloc(buf, cap);
                 if (!new_buf)

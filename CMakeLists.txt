@@ -125,7 +125,17 @@ else()
   # GCC/Clang compiler flags
   list(APPEND IL_COMPILE_FLAGS -Wall -Wextra -Wpedantic)
 
+  # High-value warnings not included in -Wall/-Wextra
+  list(APPEND IL_COMPILE_FLAGS
+    -Wshadow             # local hides outer declaration
+    -Wnull-dereference   # potential null pointer dereference
+    -Wcast-qual          # cast drops const/volatile qualifier
+    -Wimplicit-fallthrough  # switch fallthrough without [[fallthrough]]
+    -Wformat=2           # stricter printf/scanf format string checking
+  )
+
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND IL_COMPILE_FLAGS -Wunreachable-code)  # dead code after return/throw/break
     list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter -Wno-unused-private-field -Wno-mismatched-tags)
     if(IL_SANITIZE_ADDRESS)
       list(APPEND IL_COMPILE_FLAGS -fsanitize=address)

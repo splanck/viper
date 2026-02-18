@@ -178,7 +178,7 @@ rt_string rt_numfmt_percent(double n)
 rt_string rt_numfmt_ordinal(int64_t n)
 {
     const char *suffix;
-    int64_t abs_n = n < 0 ? -n : n;
+    int64_t abs_n = (n == INT64_MIN) ? INT64_MAX : (n < 0 ? -n : n);
     int64_t mod100 = abs_n % 100;
     int64_t mod10 = abs_n % 10;
 
