@@ -450,6 +450,12 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_vm_p1_optimizations ${_VIPER_VM_DIR}/P1OptimizationTests.cpp)
     target_link_libraries(test_vm_p1_optimizations PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_p1_optimizations test_vm_p1_optimizations)
+
+    # VM interrupt mechanism tests (HIGH-3: requestInterrupt/clearInterrupt API,
+    # poll-triggered interrupt, normal program unaffected after clearInterrupt)
+    viper_add_test(test_vm_interrupt ${_VIPER_VM_DIR}/InterruptTests.cpp)
+    target_link_libraries(test_vm_interrupt PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_interrupt test_vm_interrupt)
 endfunction()
 
 function(viper_add_vm_path_tests)

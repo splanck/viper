@@ -264,7 +264,13 @@ int emitAndMaybeLink(const Options &opts)
         return 1;
 #endif
     }
+#if defined(_WIN32)
+    auto &ti = windowsTarget();
+#elif defined(__APPLE__)
     auto &ti = darwinTarget();
+#else
+    auto &ti = linuxTarget();
+#endif
     AsmEmitter emitter{ti};
     LowerILToMIR lowerer{ti};
 

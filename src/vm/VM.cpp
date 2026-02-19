@@ -62,12 +62,68 @@
 #include "rt_context.h"
 
 #include <algorithm>
+#include <atomic>
+#include <csignal>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 namespace il::vm
 {
+
+// =============================================================================
+// Platform interrupt support
+// =============================================================================
+// A VM-level interrupt is requested when the user presses Ctrl-C (or when the
+// host explicitly calls VM::requestInterrupt()).  The flag is checked at every
+// function-call boundary in the dispatch loop so that long-running programs
+// terminate gracefully with a trap message rather than an abrupt SIGKILL.
+
+static std::atomic<bool> s_interruptRequested{false};
+
+#if defined(_WIN32)
+static BOOL WINAPI windowsCtrlHandler(DWORD /*ctrlType*/)
+{
+    s_interruptRequested.store(true, std::memory_order_relaxed);
+    return TRUE; // We handled it; do not call the next handler.
+}
+#else
+static void posixSigintHandler(int /*signum*/)
+{
+    // async-signal-safe: std::atomic store is safe here.
+    s_interruptRequested.store(true, std::memory_order_relaxed);
+}
+#endif
+
+/// @brief Register the process-level interrupt handler (called once per process).
+static void registerInterruptHandler()
+{
+    // Guard against redundant registration when multiple VMs are created.
+    static std::atomic<bool> registered{false};
+    bool expected = false;
+    if (!registered.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+        return;
+
+#if defined(_WIN32)
+    SetConsoleCtrlHandler(windowsCtrlHandler, TRUE);
+#else
+    struct sigaction sa {};
+    sa.sa_handler = posixSigintHandler;
+    sigemptyset(&sa.sa_mask);
+    // SA_RESTART: resume interrupted system calls where possible.
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sa, nullptr);
+#endif
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // Section 1: DISPATCH DRIVER INTERFACE AND IMPLEMENTATIONS
@@ -385,6 +441,11 @@ const char *VM::TrapDispatchSignal::what() const noexcept
 /// @retval 1 When the module lacks an entry point, after printing "missing main".
 int64_t VM::run()
 {
+    // Ensure Ctrl-C is caught and converted to a graceful trap rather than an
+    // abrupt process kill.  Registration is idempotent — safe to call for every
+    // top-level run() invocation including from threaded VMs.
+    registerInterruptHandler();
+
     auto it = fnMap.find("main");
     if (it == fnMap.end())
     {
@@ -392,6 +453,20 @@ int64_t VM::run()
         return 1;
     }
     return execFunction(*it->second, {}).i64;
+}
+
+/// @brief Request a graceful interrupt of any currently-running VM on this process.
+/// Equivalent to the user pressing Ctrl-C.  Thread-safe.
+void VM::requestInterrupt() noexcept
+{
+    s_interruptRequested.store(true, std::memory_order_relaxed);
+}
+
+/// @brief Reset the global interrupt flag.  Must be called after handling an
+/// interrupt if the same process will continue running programs.
+void VM::clearInterrupt() noexcept
+{
+    s_interruptRequested.store(false, std::memory_order_relaxed);
 }
 
 /// @brief Dispatch and execute a single IL instruction.
@@ -620,13 +695,44 @@ Slot VM::runFunctionLoop(ExecState &st)
     VMContext context(*this);
     for (;;)
     {
+        // Check for a pending Ctrl-C / programmatic interrupt.  We test at the
+        // top of every iteration (i.e. every function-call boundary) rather than
+        // every instruction to keep overhead negligible.
+        if (s_interruptRequested.load(std::memory_order_relaxed))
+        {
+            s_interruptRequested.store(false, std::memory_order_relaxed);
+            RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
+        }
+
         clearCurrentContext();
         try
         {
             if (!dispatchDriver)
                 dispatchDriver = makeDispatchDriver(dispatchKind);
 
+#if defined(_WIN32)
+            // On Windows, hardware exceptions (access violations, divide-by-zero,
+            // stack overflow) manifest as Structured Exceptions rather than POSIX
+            // signals.  Wrap the dispatch step so that hardware faults produce a
+            // clean Viper trap message instead of an unhandled-exception dialog.
+            //
+            // Note: __try/__except cannot appear in the same function as C++ objects
+            // with destructors in MSVC — move the dispatch call to a separate helper.
+            bool finished = runDispatchStep(context, st);
+#else
             const bool finished = dispatchDriver ? dispatchDriver->run(*this, context, st) : false;
+#endif
+
+            // Re-check the interrupt flag after dispatch returns.  The flag may
+            // have been set by a poll callback (which also returns false to stop
+            // the driver via requestPause).  Without this second check the
+            // interrupt would never be observed for programs whose dispatch loop
+            // never yields on its own (e.g. tight branch loops).
+            if (s_interruptRequested.load(std::memory_order_relaxed))
+            {
+                s_interruptRequested.store(false, std::memory_order_relaxed);
+                RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
+            }
 
             if (finished)
             {
@@ -645,6 +751,32 @@ Slot VM::runFunctionLoop(ExecState &st)
         }
     }
 }
+
+#if defined(_WIN32)
+/// @brief Execute one dispatch step, translating Windows hardware exceptions into
+/// Viper traps.  Kept in a separate function so that __try/__except (SEH) and
+/// C++ objects with non-trivial destructors never share the same stack frame,
+/// which is a requirement of the MSVC SEH implementation.
+bool VM::runDispatchStep(VMContext &context, ExecState &st)
+{
+    bool finished = false;
+    __try
+    {
+        if (dispatchDriver)
+            finished = dispatchDriver->run(*this, context, st);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        // Convert any hardware exception (AV, divide-by-zero, stack overflow)
+        // to a Viper RuntimeError trap so the program gets a clean error message.
+        RuntimeBridge::trap(TrapKind::RuntimeError,
+                            "hardware exception (access violation, divide by zero, or stack overflow)",
+                            {}, "", "");
+        // RuntimeBridge::trap throws TrapDispatchSignal — unreachable.
+    }
+    return finished;
+}
+#endif
 
 /// @brief Custom deleter implementation for RtContext.
 void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept

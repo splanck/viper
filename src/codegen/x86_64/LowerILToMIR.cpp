@@ -518,10 +518,15 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
                 }
                 else
                 {
-                    // Stack-passed XMM argument
-                    // SysV AMD64: [RBP + 16 + stackArgIdx*8] after standard prologue
-                    // (8 for saved RBP + 8 for return address, no shadow space)
-                    const int32_t offset = 16 + static_cast<int32_t>(stackArgIdx * 8);
+                    // Stack-passed XMM argument.
+                    // Offset from RBP after standard prologue:
+                    //   SysV AMD64:  16 + stackArgIdx*8  (8 saved RBP + 8 return address)
+                    //   Windows x64: shadowSpace + 16 + stackArgIdx*8  (= 48 + stackArgIdx*8)
+                    //                The 32-byte shadow space lives between the return address
+                    //                and the first stack-passed argument in the caller frame.
+                    const int32_t offset =
+                        static_cast<int32_t>(target_->shadowSpace) +
+                        16 + static_cast<int32_t>(stackArgIdx * 8);
                     stackParams.push_back({paramId, offset, kind});
                     ++stackArgIdx;
                 }
@@ -536,9 +541,12 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
                 }
                 else
                 {
-                    // Stack-passed GPR argument
-                    // SysV AMD64: [RBP + 16 + stackArgIdx*8] after standard prologue
-                    const int32_t offset = 16 + static_cast<int32_t>(stackArgIdx * 8);
+                    // Stack-passed GPR argument.
+                    // SysV AMD64:  16 + stackArgIdx*8
+                    // Windows x64: shadowSpace + 16 + stackArgIdx*8
+                    const int32_t offset =
+                        static_cast<int32_t>(target_->shadowSpace) +
+                        16 + static_cast<int32_t>(stackArgIdx * 8);
                     stackParams.push_back({paramId, offset, kind});
                     ++stackArgIdx;
                 }

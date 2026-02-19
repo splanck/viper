@@ -306,7 +306,9 @@ static void test_xml_text_content_basic(void)
 static rt_string make_deep_yaml(int depth)
 {
     // Build: "key:\n  key:\n    key:\n      value\n"
-    size_t total = (size_t)depth * 12 + 16;
+    // Each level i writes 2*i spaces + "key:\n" (5 chars) = 2*i+5 bytes.
+    // Sum over depth levels: sum(2*i+5, i=0..depth-1) = depth^2 + 4*depth.
+    size_t total = (size_t)depth * ((size_t)depth + 4) + 16;
     char *buf = (char *)malloc(total);
     if (!buf)
         return rt_string_from_bytes("key: val\n", 9);

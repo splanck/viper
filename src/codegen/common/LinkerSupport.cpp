@@ -105,10 +105,16 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text)
 std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName)
 {
+#ifdef _WIN32
+    // MSVC/Clang-CL static libraries use .lib; MinGW uses .a (prefix lib).
+    // Default to the MSVC convention when building on Windows.
+    const std::string libName = std::string(libBaseName) + ".lib";
+#else
+    const std::string libName = "lib" + std::string(libBaseName) + ".a";
+#endif
     if (!buildDir.empty())
-        return buildDir / "src/runtime" / (std::string("lib") + std::string(libBaseName) + ".a");
-    return std::filesystem::path("src/runtime") /
-           (std::string("lib") + std::string(libBaseName) + ".a");
+        return buildDir / "src/runtime" / libName;
+    return std::filesystem::path("src/runtime") / libName;
 }
 
 // =========================================================================
@@ -206,10 +212,15 @@ void appendGraphicsLibs(const LinkContext &ctx,
         return;
 
     std::filesystem::path gfxLib;
+#ifdef _WIN32
+    const char *gfxLibName = "vipergfx.lib";
+#else
+    const char *gfxLibName = "libvipergfx.a";
+#endif
     if (!ctx.buildDir.empty())
-        gfxLib = ctx.buildDir / "lib" / "libvipergfx.a";
+        gfxLib = ctx.buildDir / "lib" / gfxLibName;
     else
-        gfxLib = std::filesystem::path("lib") / "libvipergfx.a";
+        gfxLib = std::filesystem::path("lib") / gfxLibName;
     if (fileExists(gfxLib))
         cmd.push_back(gfxLib.string());
 

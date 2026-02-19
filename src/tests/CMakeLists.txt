@@ -196,6 +196,12 @@ if (NOT WIN32)
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_block_layout.cpp
             "il_codegen_aarch64")
 
+    # Cross-platform ABI invariants (CRIT-1 Win64 shadow space, CRIT-3 AArch64
+    # Windows ARM64 target, HIGH-4 LinkerSupport archive extension)
+    _aarch64_add_test_common(test_cross_platform_abi
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_cross_platform_abi.cpp
+            "il_codegen_aarch64;viper_codegen_x86_64")
+
     # Environment.IsNative should distinguish VM vs native paths
     _aarch64_add_test_common(test_codegen_env_is_native
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp

@@ -16,6 +16,7 @@
 #include "rt_crypto.h"
 #include "rt_object.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -924,22 +925,40 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     rt_net_init_wsa();
 #endif
 
-    // Resolve hostname
-    struct hostent *he = gethostbyname(host);
-    if (!he)
+    // Resolve hostname using getaddrinfo (thread-safe; supports IPv4 and IPv6).
+    // gethostbyname() was deprecated in POSIX.1-2001 and uses a static buffer
+    // that is not thread-safe — two concurrent TLS connections would corrupt
+    // each other's lookup result.
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family   = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    char port_str[8];
+    snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
+
+    struct addrinfo *res = NULL;
+    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res)
         return NULL;
 
     // Create socket
     socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
+    {
+        freeaddrinfo(res);
         return NULL;
+    }
 
     // Connect
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    memcpy(&addr.sin_addr, he->h_addr_list[0], 4);
+    addr.sin_port   = htons(port);
+    memcpy(&addr.sin_addr,
+           &((struct sockaddr_in *)res->ai_addr)->sin_addr,
+           sizeof(addr.sin_addr));
+    freeaddrinfo(res);
+    res = NULL;
 
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {

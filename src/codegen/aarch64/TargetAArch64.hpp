@@ -196,12 +196,17 @@ inline constexpr PhysReg kScratchFPR = PhysReg::V16;
 /// @see linuxTarget()  for the Linux ELF target instance
 
 /// @brief Identifies the target OS ABI for assembly emission.
-/// Controls symbol mangling (underscore prefix) and ELF-specific directives
-/// (.type, .size) that are required on Linux but absent on Darwin Mach-O.
+/// Controls symbol mangling (underscore prefix) and format-specific directives.
+///
+///  - Darwin:  '_' prefix on symbols; Mach-O format; no ELF directives.
+///  - Linux:   No prefix; ELF format; .type/.size directives required.
+///  - Windows: No prefix; PE/COFF format; no ELF .type/.size directives.
+///             Register conventions are identical to Linux AAPCS64.
 enum class ABIFormat
 {
-    Darwin, ///< macOS/iOS; symbols prefixed with '_', no ELF directives.
-    Linux,  ///< Linux ELF; no symbol prefix, .type/.size required.
+    Darwin,  ///< macOS/iOS; symbols prefixed with '_', Mach-O format.
+    Linux,   ///< Linux ELF; no symbol prefix, .type/.size required.
+    Windows, ///< Windows ARM64; no symbol prefix, PE/COFF format (no .type/.size).
 };
 
 struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs>
@@ -212,6 +217,12 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
     [[nodiscard]] bool isLinux() const noexcept
     {
         return abiFormat == ABIFormat::Linux;
+    }
+
+    /// @brief Returns true when emitting Windows ARM64 PE/COFF assembly.
+    [[nodiscard]] bool isWindows() const noexcept
+    {
+        return abiFormat == ABIFormat::Windows;
     }
 };
 
@@ -327,6 +338,11 @@ class CallingConvention
 /// Same register convention as Darwin; differs only in assembly syntax
 /// (no underscore prefix, emits .type/.size ELF directives).
 [[nodiscard]] const TargetInfo &linuxTarget() noexcept;
+
+/// @brief Return the singleton TargetInfo for Windows ARM64 (PE/COFF / AAPCS64).
+/// Identical register convention to Linux; differs in assembly syntax:
+/// no underscore prefix, no ELF .type/.size directives (PE/COFF format).
+[[nodiscard]] const TargetInfo &windowsTarget() noexcept;
 
 /// @brief Tests whether a physical register is a general-purpose register.
 /// @param reg The register to test.

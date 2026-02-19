@@ -608,6 +608,13 @@ class VM
      */
     int64_t run();
 
+    /// @brief Request a graceful interrupt of any running program on this process.
+    /// Thread-safe.  Equivalent to the user pressing Ctrl-C.
+    static void requestInterrupt() noexcept;
+
+    /// @brief Clear the global interrupt flag after it has been handled.
+    static void clearInterrupt() noexcept;
+
     /// @brief Function signature for opcode handlers.
     using OpcodeHandler = ExecResult (*)(VM &,
                                          Frame &,
@@ -1032,6 +1039,14 @@ class VM
     /// @param st Prepared execution state.
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
+
+#if defined(_WIN32)
+    /// @brief Windows-only: execute one dispatch step inside a SEH __try/__except
+    /// frame so that hardware exceptions (AV, divide-by-zero) produce clean traps.
+    /// Kept in a separate function because MSVC forbids C++ objects with destructors
+    /// in the same stack frame as __try/__except.
+    bool runDispatchStep(VMContext &context, ExecState &st);
+#endif
 
     // =========================================================================
     // Dispatch Handler Declarations (Generated)

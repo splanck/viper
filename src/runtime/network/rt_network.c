@@ -205,6 +205,11 @@ static void rt_tcp_server_finalize(void *obj)
 #ifdef _WIN32
 static bool wsa_initialized = false;
 
+static void rt_net_cleanup_wsa(void)
+{
+    WSACleanup();
+}
+
 void rt_net_init_wsa(void)
 {
     if (wsa_initialized)
@@ -217,6 +222,10 @@ void rt_net_init_wsa(void)
         rt_trap("Network: WSAStartup failed");
     }
     wsa_initialized = true;
+    // Ensure WSACleanup is called on process exit.  Calling it manually after
+    // each WSAStartup is not safe because other subsystems may still be using
+    // sockets.  atexit() guarantees cleanup happens exactly once at shutdown.
+    atexit(rt_net_cleanup_wsa);
 }
 #else
 void rt_net_init_wsa(void) {}

@@ -2192,7 +2192,10 @@ rt_string rt_url_host_port(void *obj)
     if (show_port)
         sprintf(result, "%s:%lld", url->host, (long long)url->port);
     else
-        strcpy(result, url->host);
+    {
+        size_t hlen = strlen(url->host);
+        memcpy(result, url->host, hlen + 1);
+    }
 
     rt_string str = rt_string_from_bytes(result, strlen(result));
     free(result);
@@ -2469,7 +2472,8 @@ void *rt_url_resolve(void *obj, rt_string relative)
                             if (result->path)
                             {
                                 memcpy(result->path, base->path, base_len);
-                                strcpy(result->path + base_len, rel.path);
+                                size_t rel_len = strlen(rel.path);
+                                memcpy(result->path + base_len, rel.path, rel_len + 1);
                             }
                         }
                         else

@@ -159,14 +159,15 @@ static std::string sanitizeLabel(const std::string &name)
 
 void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const
 {
-    const bool darwin = !target_->isLinux();
+    const bool darwin = !target_->isLinux() && !target_->isWindows();
     os << ".text\n";
     os << ".align 2\n";
 
     const std::string sym = mangleSymbolImpl(name, darwin);
 
-    // On Darwin, skip .globl for L*/_L*-prefixed local labels.
-    // On Linux, always emit .globl followed by .type for ELF function metadata.
+    // Darwin:  skip .globl for L*/_L*-prefixed local labels.
+    // Linux:   always emit .globl + .type (ELF function metadata).
+    // Windows: emit .globl only; PE/COFF has no .type/.size directives.
     if (darwin)
     {
         if (!(sym.size() >= 1 &&
@@ -175,10 +176,15 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
             os << ".globl " << sym << "\n";
         }
     }
-    else
+    else if (target_->isLinux())
     {
         os << ".globl " << sym << "\n";
         os << ".type " << sym << ", @function\n";
+    }
+    else
+    {
+        // Windows ARM64 (PE/COFF): .globl only, no ELF-specific directives.
+        os << ".globl " << sym << "\n";
     }
     os << sym << ":\n";
 }
@@ -856,7 +862,7 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 
     // For the main function, initialize the runtime context before executing user code.
     // This is required because runtime functions expect an active RtContext.
-    const bool darwin = !target_->isLinux();
+    const bool darwin = !target_->isLinux() && !target_->isWindows();
     if (fn.name == "main")
     {
         os << "  ; Initialize runtime context for native execution\n";
@@ -876,7 +882,8 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 
     // On Linux ELF, emit .size after the function body so the linker and
     // profilers can determine the function's byte extent.
-    if (!darwin)
+    // Windows PE/COFF does not use .size directives.
+    if (target_->isLinux())
     {
         const std::string sym = mangleSymbolImpl(fn.name, /*isDarwin=*/false);
         os << ".size " << sym << ", .-" << sym << "\n";
@@ -897,7 +904,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     // Provide single-argument wrappers used by the generated OpcodeDispatch.inc,
     // which was generated without knowledge of the isDarwin parameter.
     // These lambdas shadow the free-function names within this scope.
-    const bool kDarwin_ = !target_->isLinux();
+    const bool kDarwin_ = !target_->isLinux() && !target_->isWindows();
     [[maybe_unused]] auto mangleSymbol = [kDarwin_](const std::string &n) -> std::string
     { return mangleSymbolImpl(n, kDarwin_); };
     [[maybe_unused]] auto mangleCallTarget = [kDarwin_](const std::string &n) -> std::string

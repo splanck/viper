@@ -188,8 +188,19 @@ static TargetInfo makeLinuxTarget()
     return info;
 }
 
+/// @brief Build the Windows ARM64 target.
+/// Identical AAPCS64 register convention to Linux; PE/COFF assembly format
+/// (no underscore symbol prefix, no ELF .type/.size directives).
+static TargetInfo makeWindowsTarget()
+{
+    TargetInfo info = makeDarwinTarget();
+    info.abiFormat = ABIFormat::Windows;
+    return info;
+}
+
 TargetInfo darwinTargetInstance = makeDarwinTarget();
 TargetInfo linuxTargetInstance = makeLinuxTarget();
+TargetInfo windowsTargetInstance = makeWindowsTarget();
 
 } // namespace
 
@@ -205,6 +216,14 @@ const TargetInfo &darwinTarget() noexcept
 const TargetInfo &linuxTarget() noexcept
 {
     return linuxTargetInstance;
+}
+
+/// @brief Get the singleton TargetInfo instance for Windows ARM64 (PE/COFF).
+/// Identical AAPCS64 register convention to Linux; only assembly syntax differs.
+/// @return Reference to the pre-configured Windows ARM64 target information.
+const TargetInfo &windowsTarget() noexcept
+{
+    return windowsTargetInstance;
 }
 
 /// @brief Check if a physical register is a general-purpose register (GPR).

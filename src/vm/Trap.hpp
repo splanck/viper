@@ -40,6 +40,7 @@ enum class TrapKind : int32_t
     IOError = 7,          ///< Generic I/O failure.
     InvalidOperation = 8, ///< Operation outside the allowed state machine.
     RuntimeError = 9,     ///< Catch-all for unexpected runtime failures.
+    Interrupt = 10,       ///< Program interrupted by Ctrl-C or requestInterrupt().
 };
 
 /// @brief Structured representation of a VM error record.
@@ -89,6 +90,8 @@ constexpr std::string_view toString(TrapKind kind) noexcept
             return "InvalidOperation";
         case TrapKind::RuntimeError:
             return "RuntimeError";
+        case TrapKind::Interrupt:
+            return "Interrupt";
     }
     return "RuntimeError";
 }
