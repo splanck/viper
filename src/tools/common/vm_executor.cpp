@@ -9,8 +9,8 @@
 
 #include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/BytecodeVM.hpp"
-#include "runtime/rt_args.h"
-#include "runtime/rt_string.h"
+#include "runtime/core/rt_args.h"
+#include "runtime/core/rt_string.h"
 
 #include <cstdio>
 #include <iostream>

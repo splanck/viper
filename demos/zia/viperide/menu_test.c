@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../../../src/runtime/rt_gui.h"
-#include "../../../src/runtime/rt_string.h"
+#include "rt_gui.h"
+#include "rt_string.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
