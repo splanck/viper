@@ -159,6 +159,14 @@ else()
     list(APPEND IL_COMPILE_FLAGS -Werror)
   endif()
 
+  # Symbol visibility: default to hidden so only explicitly exported symbols
+  # appear in shared-library export tables, reducing binary size and enabling
+  # better LTO dead-code elimination on Linux/macOS (LOW-4).
+  # Static archives are unaffected; this only matters for DSOs and executables.
+  if(NOT WIN32)
+    list(APPEND IL_COMPILE_FLAGS -fvisibility=hidden -fvisibility-inlines-hidden)
+  endif()
+
   # Test code often has variables/functions/types used only in assertions (compiled out in release builds)
   if(VIPER_BUILD_TESTING)
     list(APPEND IL_COMPILE_FLAGS -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-lambda-capture -Wno-unused-local-typedef)
@@ -323,7 +331,9 @@ if(APPLE)
   set(IL_X64_LD_FLAGS  "-arch x86_64 -mmacosx-version-min=12.0" CACHE STRING "" FORCE)
 endif()
 
-find_program(CLANG_EXECUTABLE NAMES clang clang-17 clang-16 clang-15)
+# LOW-3: Include clang-cl (LLVM MSVC-compatible front-end) so Windows builds
+# can locate the assembler/linker driver without a separate PATH entry.
+find_program(CLANG_EXECUTABLE NAMES clang clang-cl clang-17 clang-16 clang-15)
 set(CLANG_FOUND OFF)
 if(CLANG_EXECUTABLE)
   set(CLANG_FOUND ON)

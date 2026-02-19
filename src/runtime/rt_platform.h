@@ -409,11 +409,11 @@ static inline void rt_atomic_thread_fence(int order)
 // POSIX-like type definitions
 #ifndef _SSIZE_T_DEFINED
 #define _SSIZE_T_DEFINED
-#ifdef _WIN64
+// LOW-1: Use 64-bit ssize_t on both 32-bit and 64-bit Windows.
+// The legacy 32-bit definition (int) limited I/O return values to ±2 GB and
+// caused sign-extension hazards when assigning to 64-bit targets.  Using
+// long long uniformly matches POSIX semantics regardless of pointer width.
 typedef long long ssize_t;
-#else
-typedef int ssize_t;
-#endif
 #endif
 
 // POSIX function mappings

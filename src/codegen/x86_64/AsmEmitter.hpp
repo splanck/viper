@@ -7,6 +7,15 @@
 //
 // File: codegen/x86_64/AsmEmitter.hpp
 // Purpose: Declare the x86-64 assembly emitter for Machine IR to AT&T syntax.
+//
+// Assembly format: GNU Assembler (GAS) AT&T syntax only (LOW-2).
+//   - Operand order: source, destination  (mov $1, %rax — not Intel src,dst reversal)
+//   - Register names: %-prefixed (%rax, %xmm0)
+//   - Immediate values: $-prefixed ($42)
+//   - Memory references: disp(base, index, scale)
+// The emitted .s files are intended for consumption by `clang`/`gcc`/`as`.
+// MASM (ml64.exe) and NASM (.asm) output is not supported.
+//
 // Key invariants: Emission preserves operand ordering and branch destinations;
 //                 encoding rows are matched deterministically by opcode and
 //                 operand pattern; rodata labels are unique per literal kind.

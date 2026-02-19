@@ -8,9 +8,19 @@
 // File: codegen/aarch64/AsmEmitter.hpp
 // Purpose: AArch64 assembly text emitter for machine IR functions.
 //
+// Assembly format: GNU Assembler (GAS) unified syntax — target OS selects
+// the directive dialect (LOW-2):
+//   - macOS / Darwin: Mach-O sections (.section __TEXT,__text), underscore-
+//     prefixed symbols (_func), no ELF .type/.size directives.
+//   - Linux / ELF: Standard ELF directives (.type func, %function; .size).
+//   - Windows / PE-COFF: no .type/.size, no underscore prefix, SEH unwind
+//     annotations (.def/.endef) when required.
+// The emitted .s files target `clang`/`gcc`/`as` on the respective platform.
+// MASM (armasm64.exe) output is not supported.
+//
 // This class converts Machine IR instructions to AArch64 assembly text output.
 // It handles prologue/epilogue generation, instruction encoding to text form,
-// and symbol/label emission following Mach-O conventions.
+// and symbol/label emission following the target platform's conventions.
 //
 // Key invariants:
 // - All physical registers must be valid AArch64 registers.
