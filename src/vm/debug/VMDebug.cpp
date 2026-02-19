@@ -56,8 +56,7 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
     for (const auto &p : bb.params)
     {
         assert(p.id < fr.params.size());
-        auto &pending = fr.params[p.id];
-        if (!pending)
+        if (!fr.paramsSet[p.id])
             continue;
         if (fr.regs.size() <= p.id)
             fr.regs.resize(p.id + 1);
@@ -65,12 +64,12 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
         Instr pseudo;
         pseudo.result = p.id;
         pseudo.type = p.type;
-        detail::ops::storeResult(fr, pseudo, *pending);
+        detail::ops::storeResult(fr, pseudo, fr.params[p.id]);
         debug.onStore(
             p.name, p.type.kind, fr.regs[p.id].i64, fr.regs[p.id].f64, fr.func->name, bb.label, 0);
         if (p.type.kind == Type::Kind::Str)
-            rt_str_release_maybe(pending->str);
-        pending.reset();
+            rt_str_release_maybe(fr.params[p.id].str);
+        fr.paramsSet[p.id] = 0;
     }
 }
 
@@ -156,7 +155,11 @@ std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool
             return s;
         }
         if (st.ip == 0 && st.bb)
+        {
             transferBlockParams(st.fr, *st.bb);
+            // Refresh the pre-resolved operand cache for the newly active block.
+            st.blockCache = getOrBuildBlockCache(st.fr.func, st.bb);
+        }
         if (st.ip == 0 && stepBudget == 0 && !st.skipBreakOnce)
         {
             if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, nullptr))

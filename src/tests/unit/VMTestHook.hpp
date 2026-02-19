@@ -110,5 +110,33 @@ struct VMTestHook
         vm.enableOpcodeCounts = enabled;
     }
 #endif
+
+    /// @brief Access the pre-resolved operand cache for the current block.
+    static const BlockExecCache *blockCache(const VM::ExecState &st)
+    {
+        return st.blockCache;
+    }
+
+    /// @brief Number of switch cache entries accumulated by the VM.
+    /// @details A non-zero count after executing a switch confirms that the
+    ///          VM-level cache was populated.  Equal counts across multiple
+    ///          calls confirm the cache was reused rather than rebuilt.
+    static size_t switchCacheSize(const VM &vm)
+    {
+        return vm.switchCache_.entries.size();
+    }
+
+    /// @brief True when the ExecState poll callback slot holds a non-null fn ptr.
+    static bool hasPollFnPtr(const VM::ExecState &st)
+    {
+        return st.config.pollCallback != nullptr;
+    }
+
+    /// @brief Set the poll config on @p vm directly (bypasses VMAccess for test isolation).
+    static void setPoll(VM &vm, uint32_t everyN, std::function<bool(VM &)> cb)
+    {
+        vm.pollEveryN_ = everyN;
+        vm.pollCallback_ = std::move(cb);
+    }
 };
 } // namespace il::vm

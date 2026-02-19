@@ -156,6 +156,24 @@ struct VMAccess
         return vm.regCountCache_;
     }
 
+    /// @brief Access the VM-level switch dispatch cache.
+    /// @details The cache persists across function calls; entries are deterministic
+    ///          (keyed by stable @c const @c Instr* and computed from case values).
+    static inline viper::vm::SwitchCache &switchCache(VM &vm)
+    {
+        return vm.switchCache_;
+    }
+
+    /// @brief Obtain the pre-resolved operand cache for a specific block.
+    /// @details Delegates to @c VM::getOrBuildBlockCache, which lazily builds
+    ///          the cache for the entire function on first access.
+    static inline const BlockExecCache *blockExecCache(VM &vm,
+                                                       const il::core::Function *fn,
+                                                       const il::core::BasicBlock *bb)
+    {
+        return vm.getOrBuildBlockCache(fn, bb);
+    }
+
     /// @brief Transfer block parameters from pending slots to registers.
     /// @details Used by TCO to ensure parameters are copied to registers after
     ///          setting up the tail-call frame.

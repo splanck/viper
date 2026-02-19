@@ -163,6 +163,26 @@ int64_t rt_obj_class_id(void *p)
     return hdr ? hdr->class_id : 0;
 }
 
+/// @brief Resurrect an object from inside its finalizer to return it to a pool.
+///
+/// Sets the reference count from 0 to 1.  Must be called only from within a
+/// finalizer installed via @ref rt_obj_set_finalizer.  After this call @ref
+/// rt_heap_free_zero_ref will observe a non-zero count and skip the free,
+/// keeping the allocation alive for reuse.
+///
+/// @param p Object payload pointer whose refcount is currently zero.
+void rt_obj_resurrect(void *p)
+{
+    if (!p)
+        return;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    if (!hdr)
+        return;
+    // Direct atomic store bypasses rt_heap_retain's assert(old > 0):
+    // this is the only safe call site (inside a finalizer, refcount == 0).
+    __atomic_store_n(&hdr->refcnt, 1, __ATOMIC_RELEASE);
+}
+
 /// @brief Set a custom finalizer for an object.
 ///
 /// Registers a callback function to be invoked when the object's reference

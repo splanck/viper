@@ -15,10 +15,13 @@
 
 #pragma once
 
+#include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
 
 #include "il/core/Instr.hpp"
+#include "il/core/Value.hpp"
 
+#include <bit>
 #include <limits>
 #include <string>
 #include <type_traits>
@@ -320,16 +323,71 @@ template <typename T, typename Trap> inline bool trap_mul(T lhs, T rhs, T *resul
 /// @param val Slot to write into the destination register.
 void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val);
 
+/// @brief Evaluate a pre-resolved operand in the hot dispatch path.
+/// @details Avoids the @c std::vector<Value> heap indirection and the
+///          @c Value::kind branch for the three common operand kinds.
+///          The @c Cold case falls back to @c VM::eval() which handles
+///          ConstStr, GlobalAddr, and NullPtr correctly.
+/// @param vm      Active VM (needed for the Cold fallback).
+/// @param fr      Current execution frame providing the register file.
+/// @param op      Pre-resolved operand from @c BlockExecCache.
+/// @param original Original IL value, used only for the @c Cold fallback.
+/// @return @c Slot containing the evaluated operand.
+[[nodiscard]] inline Slot evalFast(VM &vm,
+                                   Frame &fr,
+                                   const ResolvedOp &op,
+                                   const il::core::Value &original) noexcept
+{
+    switch (op.kind)
+    {
+        case ResolvedOp::Kind::Reg:
+            // Hot path: register read — bounds check guards rare out-of-range errors
+            if (op.regId < fr.regs.size()) [[likely]]
+                return fr.regs[op.regId];
+            return detail::VMAccess::eval(vm, fr, original); // let VM::eval() report the error
+        case ResolvedOp::Kind::ImmI64:
+        {
+            Slot s{};
+            s.i64 = op.numVal;
+            return s;
+        }
+        case ResolvedOp::Kind::ImmF64:
+        {
+            Slot s{};
+            s.f64 = std::bit_cast<double>(op.numVal);
+            return s;
+        }
+        case ResolvedOp::Kind::Cold:
+        default:
+            return detail::VMAccess::eval(vm, fr, original);
+    }
+}
+
 /// @brief Internal dispatcher that evaluates operands via the VM.
 /// @note Optimized for the dispatch hot path: uses uninitialized Slot for output
 ///       since the compute/compare functor immediately overwrites it.
+///       When @c ExecState::blockCache is populated the pre-resolved @c ResolvedOp
+///       array is used to avoid the @c std::vector<Value> heap indirection.
 struct OperandDispatcher
 {
     template <typename Compute>
     static VM::ExecResult runBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute &&compute)
     {
-        const Slot lhs = vm.eval(fr, in.operands[0]);
-        const Slot rhs = vm.eval(fr, in.operands[1]);
+        Slot lhs, rhs;
+        // Fast path: use pre-resolved operand cache when available.
+        const auto *state = detail::VMAccess::currentExecState(vm);
+        const auto *bc = state ? state->blockCache : nullptr;
+        if (bc && state->ip < bc->instrOpOffset.size()) [[likely]]
+        {
+            const uint32_t off = bc->instrOpOffset[state->ip];
+            lhs = evalFast(vm, fr, bc->resolvedOps[off], in.operands[0]);
+            rhs = evalFast(vm, fr, bc->resolvedOps[off + 1], in.operands[1]);
+        }
+        else
+        {
+            lhs = vm.eval(fr, in.operands[0]);
+            rhs = vm.eval(fr, in.operands[1]);
+        }
         Slot out;
         std::forward<Compute>(compute)(out, lhs, rhs);
         storeResult(fr, in, out);
@@ -342,8 +400,21 @@ struct OperandDispatcher
                                      const il::core::Instr &in,
                                      Compare &&compare)
     {
-        const Slot lhs = vm.eval(fr, in.operands[0]);
-        const Slot rhs = vm.eval(fr, in.operands[1]);
+        Slot lhs, rhs;
+        // Fast path: use pre-resolved operand cache when available.
+        const auto *state = detail::VMAccess::currentExecState(vm);
+        const auto *bc = state ? state->blockCache : nullptr;
+        if (bc && state->ip < bc->instrOpOffset.size()) [[likely]]
+        {
+            const uint32_t off = bc->instrOpOffset[state->ip];
+            lhs = evalFast(vm, fr, bc->resolvedOps[off], in.operands[0]);
+            rhs = evalFast(vm, fr, bc->resolvedOps[off + 1], in.operands[1]);
+        }
+        else
+        {
+            lhs = vm.eval(fr, in.operands[0]);
+            rhs = vm.eval(fr, in.operands[1]);
+        }
         Slot out;
         out.i64 = std::forward<Compare>(compare)(lhs, rhs) ? 1 : 0;
         storeResult(fr, in, out);

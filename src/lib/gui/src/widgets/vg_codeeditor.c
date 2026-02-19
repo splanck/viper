@@ -521,16 +521,20 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
 
     // Draw background
     vgfx_fill_rect((vgfx_window_t)canvas,
-                   (int32_t)widget->x, (int32_t)widget->y,
-                   (int32_t)widget->width, (int32_t)widget->height,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
                    editor->bg_color);
 
     // Draw gutter background
     if (editor->show_line_numbers)
     {
         vgfx_fill_rect((vgfx_window_t)canvas,
-                       (int32_t)widget->x, (int32_t)widget->y,
-                       (int32_t)editor->gutter_width, (int32_t)widget->height,
+                       (int32_t)widget->x,
+                       (int32_t)widget->y,
+                       (int32_t)editor->gutter_width,
+                       (int32_t)widget->height,
                        editor->gutter_bg);
     }
 
@@ -549,8 +553,10 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         if (i == editor->cursor_line && (widget->state & VG_STATE_FOCUSED))
         {
             vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)content_x, (int32_t)line_y,
-                           (int32_t)content_width, (int32_t)editor->line_height,
+                           (int32_t)content_x,
+                           (int32_t)line_y,
+                           (int32_t)content_width,
+                           (int32_t)editor->line_height,
                            editor->current_line_bg);
         }
 
@@ -604,8 +610,10 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
 
                 // Draw selection rectangle
                 vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)sel_x, (int32_t)line_y,
-                               (int32_t)sel_width, (int32_t)editor->line_height,
+                               (int32_t)sel_x,
+                               (int32_t)line_y,
+                               (int32_t)sel_width,
+                               (int32_t)editor->line_height,
                                editor->selection_color);
             }
         }

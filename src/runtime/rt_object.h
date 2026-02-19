@@ -57,6 +57,17 @@ extern "C"
     /// @param fn Finalizer callback or NULL to clear.
     void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn);
 
+    /// @brief Resurrect an object inside its finalizer to recycle it into a pool.
+    /// @details Sets the reference count from 0 to 1 atomically.  Must only be
+    ///          called from within a finalizer installed via @ref rt_obj_set_finalizer.
+    ///          After resurrection @ref rt_heap_free_zero_ref will observe a
+    ///          non-zero count and skip deallocation, keeping the allocation alive.
+    ///          The caller is responsible for re-installing the finalizer before
+    ///          returning the object to callers so the next release cycle can
+    ///          recycle the object again.
+    /// @param p Object payload pointer whose refcount is currently zero.
+    void rt_obj_resurrect(void *p);
+
     // --- System.Object runtime surface ---
     // Instance methods
     /// What: Value equality check between @p self and @p other.

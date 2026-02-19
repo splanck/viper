@@ -104,10 +104,9 @@ int main()
     if (sink.params.empty())
         return 1;
     const unsigned paramId = sink.params[0].id;
-    auto &pendingOpt = state.fr.params[paramId];
-    if (!pendingOpt)
+    if (!state.fr.paramsSet[paramId])
         return 1;
-    if (pendingOpt->str != produced)
+    if (state.fr.params[paramId].str != produced)
         return 1;
 
     if (get_string_refcount(produced) != refAfterCall + 1)

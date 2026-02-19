@@ -11,6 +11,7 @@ set(RT_BASE_SOURCES
         rt_string_builder.c
         rt_string_format.c
         rt_string_encode.c
+        rt_string_intern.c
         rt_io.c
         rt_math.c
         rt_perlin.c
@@ -49,6 +50,7 @@ set(RT_ARRAY_SOURCES
         rt_array_f64.c
         rt_array_str.c
         rt_array_obj.c
+        rt_list_i64.c
 )
 
 set(RT_OOP_SOURCES

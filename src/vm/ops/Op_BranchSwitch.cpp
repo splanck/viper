@@ -197,18 +197,9 @@ VM::ExecResult handleSwitchI32(VM &vm,
     const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
     const int32_t sel = scrutineeScalar.value;
 
-    SwitchCache *cache = nullptr;
-    if (auto *state = VMAccess::currentExecState(vm))
-    {
-        cache = &state->switchCache;
-    }
-    else
-    {
-        static thread_local SwitchCache fallbackCache;
-        cache = &fallbackCache;
-    }
+    SwitchCache &cache = VMAccess::switchCache(vm);
 
-    auto &entry = getOrBuildSwitchCache(*cache, in);
+    auto &entry = getOrBuildSwitchCache(cache, in);
 
     int32_t idx = entry.defaultIdx;
 

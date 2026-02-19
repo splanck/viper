@@ -95,7 +95,8 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     fr.regs.resize(regCount);
     fr.sp = 0;
     // Reset params to new size
-    fr.params.assign(fr.regs.size(), std::nullopt);
+    fr.params.assign(fr.regs.size(), Slot{});
+    fr.paramsSet.assign(fr.regs.size(), 0);
     // Restore preserved EH state
     fr.ehStack = std::move(preservedEh);
     fr.resumeState = preservedResume;
@@ -120,18 +121,19 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
         const bool isStr = params[i].type.kind == il::core::Type::Kind::Str;
         if (isStr)
         {
-            auto &dest = fr.params[id];
             // Retain new value before releasing old to prevent dangling pointer
             // when args[i] aliases fr.params[id] (self-assignment during tail call).
             Slot retained = args[i];
             rt_str_retain_maybe(retained.str);
-            if (dest)
-                rt_str_release_maybe(dest->str);
-            dest = retained;
+            if (fr.paramsSet[id])
+                rt_str_release_maybe(fr.params[id].str);
+            fr.params[id] = retained;
+            fr.paramsSet[id] = 1;
         }
         else
         {
             fr.params[id] = args[i];
+            fr.paramsSet[id] = 1;
         }
     }
 
@@ -139,11 +141,12 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     st.bb = entry;
     st.ip = 0;
     st.skipBreakOnce = false;
-    st.switchCache.clear();
     // Transfer block parameters to registers immediately.
     // This is critical because after TCO, the dispatch loop may use the fast path
     // which skips the pre-execution debug hooks that normally call transferBlockParams.
     detail::VMAccess::transferBlockParams(vm, fr, *entry);
+    // Prime the pre-resolved operand cache for the callee's entry block.
+    st.blockCache = detail::VMAccess::blockExecCache(vm, callee, entry);
     // Emit debug/trace tailcall event
     vm.onTailCall(fromFn, callee);
     return true;

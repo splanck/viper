@@ -75,6 +75,37 @@
 
 #include <math.h>
 
+// ============================================================================
+// Thread-local free-list pool (P2-3.6)
+// ============================================================================
+// Vec2 objects follow an allocate→use→release-immediately pattern in tight
+// loops, making a LIFO pool highly effective.  Each pooled object keeps its
+// heap header alive (refcount=1 inside the pool) and is returned to callers
+// without any additional heap allocation.
+//
+// Pool finalizer lifecycle:
+//   1. vec2_alloc():  fresh object gets vec2_pool_return as finalizer.
+//   2. User releases: refcount→0, rt_obj_free calls finalizer.
+//   3. vec2_pool_return: if space, rt_obj_resurrect()+re-arm finalizer, push.
+//                        if full, fall through to rt_heap_free_zero_ref (free).
+//   4. vec2_alloc(): pool non-empty → pop, re-init fields, return (no malloc).
+
+#define VEC2_POOL_CAPACITY 32
+
+static _Thread_local void *vec2_pool_buf_[VEC2_POOL_CAPACITY];
+static _Thread_local int vec2_pool_top_ = 0;
+
+static void vec2_pool_return(void *p)
+{
+    if (vec2_pool_top_ < VEC2_POOL_CAPACITY)
+    {
+        rt_obj_resurrect(p);                       // refcount 0 → 1
+        rt_obj_set_finalizer(p, vec2_pool_return); // re-arm for next cycle
+        vec2_pool_buf_[vec2_pool_top_++] = p;
+    }
+    // else: pool full — let rt_heap_free_zero_ref free the object normally.
+}
+
 /// @brief Internal Vec2 implementation structure.
 ///
 /// Stores the X and Y components of a 2D vector as double-precision
@@ -101,11 +132,22 @@ typedef struct
 /// @note This is an internal function - use rt_vec2_new() for public API.
 static ViperVec2 *vec2_alloc(double x, double y)
 {
-    ViperVec2 *v = (ViperVec2 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec2));
-    if (!v)
+    ViperVec2 *v;
+    if (vec2_pool_top_ > 0)
     {
-        rt_trap("Vec2: memory allocation failed");
-        return NULL; // Unreachable after trap
+        // Fast path: reuse a pooled object (no heap allocation).
+        v = (ViperVec2 *)vec2_pool_buf_[--vec2_pool_top_];
+    }
+    else
+    {
+        // Slow path: heap-allocate a fresh object and arm the pool finalizer.
+        v = (ViperVec2 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec2));
+        if (!v)
+        {
+            rt_trap("Vec2: memory allocation failed");
+            return NULL; // Unreachable after trap
+        }
+        rt_obj_set_finalizer(v, vec2_pool_return);
     }
     v->x = x;
     v->y = y;

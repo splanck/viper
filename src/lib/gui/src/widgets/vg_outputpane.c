@@ -612,13 +612,17 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane)
 
     // Normalize selection bounds
     uint32_t start_line = pane->sel_start_line;
-    uint32_t start_col  = pane->sel_start_col;
-    uint32_t end_line   = pane->sel_end_line;
-    uint32_t end_col    = pane->sel_end_col;
+    uint32_t start_col = pane->sel_start_col;
+    uint32_t end_line = pane->sel_end_line;
+    uint32_t end_col = pane->sel_end_col;
     if (start_line > end_line || (start_line == end_line && start_col > end_col))
     {
-        uint32_t tmp = start_line; start_line = end_line; end_line = tmp;
-        tmp = start_col; start_col = end_col; end_col = tmp;
+        uint32_t tmp = start_line;
+        start_line = end_line;
+        end_line = tmp;
+        tmp = start_col;
+        start_col = end_col;
+        end_col = tmp;
     }
 
     // Clamp to actual line range
@@ -636,16 +640,20 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane)
         for (size_t si = 0; si < line->segment_count; si++)
         {
             const char *seg = line->segments[si].text;
-            if (!seg) continue;
+            if (!seg)
+                continue;
             size_t seg_len = strlen(seg);
             for (size_t ci = 0; ci < seg_len; ci++, col++)
             {
-                if (li == start_line && col < start_col) continue;
-                if (li == end_line && col >= end_col && end_col != UINT32_MAX) break;
+                if (li == start_line && col < start_col)
+                    continue;
+                if (li == end_line && col >= end_col && end_col != UINT32_MAX)
+                    break;
                 total++;
             }
         }
-        if (li < end_line) total++; // newline between lines
+        if (li < end_line)
+            total++; // newline between lines
     }
 
     if (total == 0)
@@ -664,16 +672,20 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane)
         for (size_t si = 0; si < line->segment_count; si++)
         {
             const char *seg = line->segments[si].text;
-            if (!seg) continue;
+            if (!seg)
+                continue;
             size_t seg_len = strlen(seg);
             for (size_t ci = 0; ci < seg_len; ci++, col++)
             {
-                if (li == start_line && col < start_col) continue;
-                if (li == end_line && col >= end_col && end_col != UINT32_MAX) break;
+                if (li == start_line && col < start_col)
+                    continue;
+                if (li == end_line && col >= end_col && end_col != UINT32_MAX)
+                    break;
                 buf[out++] = seg[ci];
             }
         }
-        if (li < end_line) buf[out++] = '\n';
+        if (li < end_line)
+            buf[out++] = '\n';
     }
     buf[out] = '\0';
     return buf;

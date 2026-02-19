@@ -1,8 +1,8 @@
 // vg_contextmenu.c - ContextMenu widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -266,8 +266,8 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas)
     for (int i = 1; i <= 3; i++)
     {
         uint32_t shadow_color = (i == 1) ? 0x505050u : (i == 2) ? 0x404040u : 0x303030u;
-        vgfx_fill_rect(win, (int32_t)(x + i), (int32_t)(y + i), (int32_t)w, (int32_t)h,
-                       shadow_color);
+        vgfx_fill_rect(
+            win, (int32_t)(x + i), (int32_t)(y + i), (int32_t)w, (int32_t)h, shadow_color);
     }
 
     // Draw background
@@ -288,10 +288,8 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas)
         {
             // Draw separator line
             float sep_y = item_y + item_height / 2;
-            vgfx_fill_rect(win,
-                           (int32_t)(x + 4), (int32_t)sep_y,
-                           (int32_t)(w - 8), 1,
-                           menu->separator_color);
+            vgfx_fill_rect(
+                win, (int32_t)(x + 4), (int32_t)sep_y, (int32_t)(w - 8), 1, menu->separator_color);
         }
         else
         {
@@ -299,8 +297,10 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas)
             if ((int)i == menu->hovered_index && item->enabled)
             {
                 vgfx_fill_rect(win,
-                               (int32_t)x, (int32_t)item_y,
-                               (int32_t)w, (int32_t)item_height,
+                               (int32_t)x,
+                               (int32_t)item_y,
+                               (int32_t)w,
+                               (int32_t)item_height,
                                menu->hover_color);
             }
 
@@ -835,7 +835,7 @@ void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *m
     if (s_registry_count < CONTEXTMENU_REGISTRY_MAX)
     {
         s_registry[s_registry_count].widget = widget;
-        s_registry[s_registry_count].menu   = menu;
+        s_registry[s_registry_count].menu = menu;
         s_registry_count++;
     }
 }
@@ -868,9 +868,8 @@ bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event)
     {
         if (s_registry[i].widget == widget)
         {
-            vg_contextmenu_show_at(s_registry[i].menu,
-                                   (int)event->mouse.screen_x,
-                                   (int)event->mouse.screen_y);
+            vg_contextmenu_show_at(
+                s_registry[i].menu, (int)event->mouse.screen_x, (int)event->mouse.screen_y);
             return true;
         }
     }

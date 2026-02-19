@@ -1328,4 +1328,21 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_optimization_fixes ${VIPER_TESTS_DIR}/runtime/RTOptimizationFixesTests.c)
     target_link_libraries(test_rt_optimization_fixes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_optimization_fixes test_rt_optimization_fixes)
+
+    # P2 optimisation tests
+    viper_add_test(test_rt_vec2_pool ${VIPER_TESTS_DIR}/runtime/RTVec2PoolTests.cpp)
+    target_link_libraries(test_rt_vec2_pool PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_vec2_pool test_rt_vec2_pool)
+
+    viper_add_test(test_rt_vec3_pool ${VIPER_TESTS_DIR}/runtime/RTVec3PoolTests.cpp)
+    target_link_libraries(test_rt_vec3_pool PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_vec3_pool test_rt_vec3_pool)
+
+    viper_add_test(test_rt_list_i64 ${VIPER_TESTS_DIR}/runtime/RTListI64Tests.cpp)
+    target_link_libraries(test_rt_list_i64 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_list_i64 test_rt_list_i64)
+
+    viper_add_test(test_rt_string_intern ${VIPER_TESTS_DIR}/runtime/RTStringInternTests.cpp)
+    target_link_libraries(test_rt_string_intern PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_intern test_rt_string_intern)
 endfunction()

@@ -74,6 +74,24 @@
 
 #include <math.h>
 
+// ============================================================================
+// Thread-local free-list pool (P2-3.6)
+// ============================================================================
+#define VEC3_POOL_CAPACITY 32
+
+static _Thread_local void *vec3_pool_buf_[VEC3_POOL_CAPACITY];
+static _Thread_local int vec3_pool_top_ = 0;
+
+static void vec3_pool_return(void *p)
+{
+    if (vec3_pool_top_ < VEC3_POOL_CAPACITY)
+    {
+        rt_obj_resurrect(p);
+        rt_obj_set_finalizer(p, vec3_pool_return);
+        vec3_pool_buf_[vec3_pool_top_++] = p;
+    }
+}
+
 /// @brief Internal Vec3 implementation structure.
 ///
 /// Stores the X, Y, and Z components of a 3D vector as double-precision
@@ -102,11 +120,20 @@ typedef struct
 /// @note This is an internal function - use rt_vec3_new() for public API.
 static ViperVec3 *vec3_alloc(double x, double y, double z)
 {
-    ViperVec3 *v = (ViperVec3 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec3));
-    if (!v)
+    ViperVec3 *v;
+    if (vec3_pool_top_ > 0)
     {
-        rt_trap("Vec3: memory allocation failed");
-        return NULL; // Unreachable after trap
+        v = (ViperVec3 *)vec3_pool_buf_[--vec3_pool_top_];
+    }
+    else
+    {
+        v = (ViperVec3 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec3));
+        if (!v)
+        {
+            rt_trap("Vec3: memory allocation failed");
+            return NULL; // Unreachable after trap
+        }
+        rt_obj_set_finalizer(v, vec3_pool_return);
     }
     v->x = x;
     v->y = y;

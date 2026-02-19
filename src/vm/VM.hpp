@@ -134,6 +134,52 @@ union Slot
 static_assert(sizeof(Slot) == 8, "Slot must be 8 bytes for optimal copy performance");
 static_assert(std::is_trivially_copyable_v<Slot>, "Slot must be trivially copyable");
 
+//===----------------------------------------------------------------------===//
+// FunctionExecCache — compact pre-resolved operand representations
+//===----------------------------------------------------------------------===//
+// Rationale: il::core::Value is ~40 bytes with a std::string field (heap
+// allocation for non-SSO strings, wasted space for Temp/ConstInt/ConstFloat).
+// ResolvedOp collapses the three hot-path kinds to 16 bytes with no heap
+// chase, reducing cache pressure in the interpreter inner loop.
+
+/// @brief Compact pre-resolved form of an IL operand for the hot dispatch path.
+/// @details Eliminates the per-operand @c Value::kind branch and the
+///          @c std::vector<Value> heap indirection for the three most common
+///          operand kinds.  Cold operands (ConstStr, GlobalAddr, NullPtr)
+///          are marked @c Kind::Cold and re-evaluated via VM::eval().
+struct alignas(8) ResolvedOp
+{
+    /// @brief Discriminant selecting the active payload field.
+    enum class Kind : uint8_t
+    {
+        Reg,    ///< SSA temporary — regId holds the register index
+        ImmI64, ///< Integer constant — numVal holds the int64 value
+        ImmF64, ///< Float constant — numVal holds the f64 bits (bit-identical)
+        Cold,   ///< Uncommon kind — delegate to VM::eval() with original Value
+    };
+
+    Kind kind;       ///< Discriminant (1 byte)
+    uint8_t _pad[3]; ///< Alignment padding
+    uint32_t regId;  ///< Register index (valid when kind == Reg)
+    int64_t numVal;  ///< Integer or float payload (valid when kind == ImmI64/ImmF64)
+};
+
+static_assert(sizeof(ResolvedOp) == 16, "ResolvedOp must be 16 bytes");
+static_assert(alignof(ResolvedOp) == 8, "ResolvedOp must be 8-byte aligned");
+
+/// @brief Pre-resolved operand cache for all instructions in one basic block.
+/// @details @c instrOpOffset[ip] gives the index into @c resolvedOps where
+///          instruction @c ip's operands begin.  Operands are laid out
+///          consecutively so two adjacent loads cover a binary instruction's
+///          lhs and rhs without any additional indirection.
+struct BlockExecCache
+{
+    /// @brief Per-instruction start offset into @c resolvedOps.
+    std::vector<uint32_t> instrOpOffset;
+    /// @brief Flat array of all pre-resolved operands for the block.
+    std::vector<ResolvedOp> resolvedOps;
+};
+
 /// @brief Call frame storing registers and operand stack.
 /// @invariant Stack pointer @c sp never exceeds @c stack size.
 struct Frame
@@ -184,7 +230,14 @@ struct Frame
 
     /// @brief Pending block parameter values indexed by SSA id.
     /// @ownership Owned by the frame; sized to the register file and reset on use.
-    std::vector<std::optional<Slot>> params;
+    /// @see paramsSet for validity flags.
+    std::vector<Slot> params;
+
+    /// @brief Pending validity flags parallel to @c params.
+    /// @details paramsSet[i] != 0 means params[i] holds a valid pending value.
+    ///          Uses uint8_t instead of optional<Slot> to avoid 8-byte alignment
+    ///          padding (optional<Slot> is 16 bytes; Slot + uint8_t is 9 bytes/entry).
+    std::vector<uint8_t> paramsSet;
 
     /// @brief Active exception handlers in this frame.
     std::vector<HandlerRecord> ehStack;
@@ -376,9 +429,14 @@ class VM
             nullptr;                          ///< Block of the call that entered this frame
         size_t callSiteIp = 0;                ///< Instruction index of the call in the caller
         il::support::SourceLoc callSiteLoc{}; ///< Source location of the call site
-        viper::vm::SwitchCache switchCache{}; ///< Memoized switch dispatch data for this frame
-        Slot pendingResult{};                 ///< Result staged by interpreter
-        bool hasPendingResult = false;        ///< Whether pendingResult is valid
+        // SwitchCache moved to VM level (vm.switchCache_) so entries persist across calls
+        /// @brief Pre-resolved operand cache for the currently active basic block.
+        /// @details Populated by @c VM::getOrBuildBlockCache at function entry and
+        ///          refreshed on every block transition (ip == 0) by @c processDebugControl.
+        ///          nullptr when the cache is unavailable (e.g. before first build).
+        const BlockExecCache *blockCache = nullptr;
+        Slot pendingResult{};          ///< Result staged by interpreter
+        bool hasPendingResult = false; ///< Whether pendingResult is valid
         const il::core::Instr *currentInstr =
             nullptr;                ///< Instruction under execution for inline dispatch
         bool exitRequested = false; ///< Whether the active loop should exit
@@ -387,7 +445,12 @@ class VM
         struct PollConfig
         {
             uint32_t interruptEveryN = 0;
-            std::function<bool(VM &)> pollCallback;
+            /// @brief Raw function pointer trampoline for the poll callback.
+            /// @details Using a plain fn pointer avoids std::function overhead
+            ///          (SBO check, type erasure, non-trivial destructor) on every
+            ///          dispatch boundary.  The actual user callback is stored in
+            ///          VM::pollCallback_ and invoked via VM::pollCallbackTrampoline_.
+            bool (*pollCallback)(VM *) = nullptr;
             bool enableOpcodeCounts = true; ///< Runtime toggle for opcode counting
         } config;                           ///< Per-run polling configuration
 
@@ -791,6 +854,26 @@ class VM
     /// @details Avoids allocation churn for functions with similar SSA counts.
     std::vector<std::vector<Slot>> regFilePool_;
 
+    /// @brief VM-level switch dispatch cache keyed by instruction pointer.
+    /// @details Persists across function calls — entries are deterministic
+    ///          (derived from stable @c const @c Instr* + case values) so
+    ///          clearing on function transitions is unnecessary and wasteful.
+    viper::vm::SwitchCache switchCache_;
+
+    /// @brief Per-function operand resolution caches, keyed by BasicBlock*.
+    /// @details Built lazily on first entry to each function. Entries are stable
+    ///          for the lifetime of the program (IL is immutable after parsing).
+    std::unordered_map<const il::core::Function *,
+                       std::unordered_map<const il::core::BasicBlock *, BlockExecCache>>
+        fnExecCache_;
+
+    /// @brief Obtain (or lazily build) the pre-resolved operand cache for @p bb.
+    /// @param fn Function owning the block (used as the cache key).
+    /// @param bb Basic block whose operands should be pre-resolved.
+    /// @return Pointer to the @c BlockExecCache for @p bb, or nullptr if unavailable.
+    const BlockExecCache *getOrBuildBlockCache(const il::core::Function *fn,
+                                               const il::core::BasicBlock *bb);
+
     /// @brief Cached pointer to the opcode handler table for quick access.
     const OpcodeHandlerTable *handlerTable_ = nullptr;
 
@@ -991,6 +1074,16 @@ class VM
     // Polling configuration stored on VM and propagated to new ExecStates
     uint32_t pollEveryN_ = 0;
     std::function<bool(VM &)> pollCallback_{};
+
+    /// @brief Static trampoline for the poll callback.
+    /// @details Bridges the raw @c bool(*)(VM*) in @c PollConfig::pollCallback to
+    ///          the user-supplied @c std::function stored in @c pollCallback_.
+    ///          Keeping std::function at VM level (set once) avoids per-instruction
+    ///          overhead while the trampoline itself is a trivial indirect call.
+    static bool pollCallbackTrampoline_(VM *vm)
+    {
+        return vm->pollCallback_(*vm);
+    }
 
     //===------------------------------------------------------------------===//
     // Per-VM Extern Registry

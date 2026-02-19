@@ -70,7 +70,7 @@
         {                                                                                          \
             if ((++(ST).pollTick % cfg.interruptEveryN) == 0)                                      \
             {                                                                                      \
-                if (cfg.pollCallback && !(cfg.pollCallback(*((ST).vm()))))                         \
+                if (cfg.pollCallback && !(cfg.pollCallback((ST).vm())))                            \
                 {                                                                                  \
                     (ST).requestPause();                                                           \
                 }                                                                                  \

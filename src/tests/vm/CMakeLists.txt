@@ -443,6 +443,13 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_vm_entity_stress ${_VIPER_VM_DIR}/EntityStressTests.cpp)
     target_link_libraries(test_vm_entity_stress PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common fe_zia)
     viper_add_ctest(test_vm_entity_stress test_vm_entity_stress)
+
+    # Priority-1 hot-path optimisation correctness tests
+    # Covers: flat Slot+paramsSet (P1-3.3), VM-level SwitchCache (P1-3.4),
+    #         raw fn-pointer poll trampoline (P1-3.5), FunctionExecCache (P1-3.1/3.2)
+    viper_add_test(test_vm_p1_optimizations ${_VIPER_VM_DIR}/P1OptimizationTests.cpp)
+    target_link_libraries(test_vm_p1_optimizations PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_p1_optimizations test_vm_p1_optimizations)
 endfunction()
 
 function(viper_add_vm_path_tests)

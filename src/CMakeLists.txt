@@ -244,6 +244,7 @@ add_library(il_vm STATIC
         vm/VM.cpp
         vm/DispatchStrategy.cpp
         vm/tco.cpp
+        vm/FunctionExecCache.cpp
         vm/debug/VM_DebugUtils.cpp
         # VMInit.cpp is included directly in Runner.cpp to avoid Windows static lib linking issues
         vm/VMContext.cpp

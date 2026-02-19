@@ -537,7 +537,8 @@ Frame VM::setupFrame(const Function &fn,
                      fn.valueNames.size());
         std::fflush(stderr);
     }
-    fr.params.assign(fr.regs.size(), std::nullopt);
+    fr.params.assign(fr.regs.size(), Slot{});
+    fr.paramsSet.assign(fr.regs.size(), 0);
     // Acquire stack buffer from pool or allocate new.
     // Pool reuse avoids repeated 64KB allocations.
     fr.stack = acquireStackBuffer(stackBytes_);
@@ -569,17 +570,18 @@ Frame VM::setupFrame(const Function &fn,
             const bool isStringParam = params[i].type.kind == Type::Kind::Str;
             if (isStringParam)
             {
-                auto &dest = fr.params[id];
-                if (dest)
-                    rt_str_release_maybe(dest->str);
+                if (fr.paramsSet[id])
+                    rt_str_release_maybe(fr.params[id].str);
 
                 Slot retained = args[i];
                 rt_str_retain_maybe(retained.str);
-                dest = retained;
+                fr.params[id] = retained;
+                fr.paramsSet[id] = 1;
                 continue;
             }
 
             fr.params[id] = args[i];
+            fr.paramsSet[id] = 1;
         }
     }
     return fr;
@@ -616,7 +618,10 @@ VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> arg
         st.branchTargetCache.reserve(estTerms);
     // Inherit polling configuration from VM.
     st.config.interruptEveryN = pollEveryN_;
-    st.config.pollCallback = pollCallback_;
+    // Install raw fn pointer trampoline; the actual std::function is stored in
+    // pollCallback_ and invoked through pollCallbackTrampoline_ to avoid
+    // std::function overhead (SBO + type-erasure cost) on every dispatch boundary.
+    st.config.pollCallback = pollCallback_ ? &VM::pollCallbackTrampoline_ : nullptr;
 #if VIPER_VM_OPCOUNTS
     st.config.enableOpcodeCounts = enableOpcodeCounts;
 #else
@@ -626,7 +631,9 @@ VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> arg
     debug.resetLastHit();
     st.ip = 0;
     st.skipBreakOnce = false;
-    st.switchCache.clear();
+    // Prime the pre-resolved operand cache for the entry block so the first
+    // instruction dispatch can use the fast evalFast() path immediately.
+    st.blockCache = getOrBuildBlockCache(&fn, st.bb);
     return st;
 }
 

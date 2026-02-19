@@ -150,19 +150,20 @@ void jump(Frame &frame, Target target)
                 assert(id < frame.params.size());
 
                 Slot incoming = detail::VMAccess::eval(*target.vm, frame, args[i]);
-                auto &destSlot = frame.params[id];
 
                 if (param.type.kind == il::core::Type::Kind::Str)
                 {
-                    if (destSlot)
-                        rt_str_release_maybe(destSlot->str);
+                    if (frame.paramsSet[id])
+                        rt_str_release_maybe(frame.params[id].str);
 
                     rt_str_retain_maybe(incoming.str);
-                    destSlot = incoming;
+                    frame.params[id] = incoming;
+                    frame.paramsSet[id] = 1;
                     continue;
                 }
 
-                destSlot = incoming;
+                frame.params[id] = incoming;
+                frame.paramsSet[id] = 1;
             }
         }
 
