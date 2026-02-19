@@ -444,8 +444,19 @@ if (WIN32)
 endif ()
 
 if (NOT WIN32)
-    target_link_libraries(viper_runtime PUBLIC m)
-    target_link_libraries(viper_rt_base PUBLIC m)
+    # -lm is an implementation detail of the runtime; PRIVATE prevents it from
+    # leaking into consumers' link lines (MED-7).
+    target_link_libraries(viper_runtime PRIVATE m)
+    target_link_libraries(viper_rt_base PRIVATE m)
+endif ()
+
+# MSVC release linker flags: /OPT:REF removes unreferenced functions/data,
+# /OPT:ICF merges identical COMDAT sections — equivalent to GCC/Clang
+# --gc-sections + --icf=all (MED-6).
+if (MSVC)
+    target_link_options(viper_runtime PRIVATE
+            $<$<CONFIG:Release>:/OPT:REF>
+            $<$<CONFIG:Release>:/OPT:ICF>)
 endif ()
 
 if (APPLE)

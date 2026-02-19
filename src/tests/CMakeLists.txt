@@ -55,22 +55,25 @@ add_subdirectory(golden)
 add_subdirectory(e2e)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
 
-# ARM64/AArch64 tests - skip on Windows (x86_64)
-if (NOT WIN32)
+# ── helpers for AArch64 and cross-platform codegen tests ────────────────────
+# Defined at file scope so they are available both inside and outside the
+# ARM64-gated block below.
+macro(_aarch64_add_test _name _src _libs)
+    add_executable(${_name} ${_src})
+    target_link_libraries(${_name} PRIVATE viper_testing ${_libs})
+    viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
+endmacro()
 
-    # ── helper: register one codegen unit test ──────────────────────────
-    macro(_aarch64_add_test _name _src _libs)
-        add_executable(${_name} ${_src})
-        target_link_libraries(${_name} PRIVATE viper_testing ${_libs})
-        viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
-    endmacro()
+macro(_aarch64_add_test_common _name _src _libs)
+    add_executable(${_name} ${_src})
+    target_link_libraries(${_name} PRIVATE viper_test_common ${_libs})
+    viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
+endmacro()
 
-    # helper variant for tests that use viper_test_common instead of viper_testing
-    macro(_aarch64_add_test_common _name _src _libs)
-        add_executable(${_name} ${_src})
-        target_link_libraries(${_name} PRIVATE viper_test_common ${_libs})
-        viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
-    endmacro()
+# ARM64/AArch64 codegen tests — gated on ARM64 processor.
+# Using CMAKE_SYSTEM_PROCESSOR instead of NOT WIN32 so that Windows ARM64
+# devices (Surface Pro X, Snapdragon X Elite) correctly run these tests.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
 
     # ── Group 1: il_codegen_aarch64 only ────────────────────────────────
     set(_AARCH64_CODEGEN_ONLY_TESTS
@@ -196,12 +199,6 @@ if (NOT WIN32)
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_block_layout.cpp
             "il_codegen_aarch64")
 
-    # Cross-platform ABI invariants (CRIT-1 Win64 shadow space, CRIT-3 AArch64
-    # Windows ARM64 target, HIGH-4 LinkerSupport archive extension)
-    _aarch64_add_test_common(test_cross_platform_abi
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_cross_platform_abi.cpp
-            "il_codegen_aarch64;viper_codegen_x86_64")
-
     # Environment.IsNative should distinguish VM vs native paths
     _aarch64_add_test_common(test_codegen_env_is_native
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp
@@ -215,16 +212,6 @@ if (NOT WIN32)
             "il_codegen_aarch64;viper_cmd_arm64")
     set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow")
 
-    # x86-64 runtime map (lives here because it requires non-Windows host)
-    _aarch64_add_test_common(test_emit_x86_runtime_map
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp
-            "viper_codegen_x86_64")
-
-    # Optimizer pipeline differential testing (VM baseline vs O0/O1/O2)
-    _aarch64_add_test_common(test_il_opt_equivalence
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp
-            "il_transform;viper::il_verify")
-
     # ── ARM64 end-to-end demo tests ────────────────────────────────────
     set(_AARCH64_E2E_TESTS
             test_arm64_demos
@@ -236,7 +223,27 @@ if (NOT WIN32)
                 "viper_common")
     endforeach ()
 
-endif () # NOT WIN32 - ARM64 tests
+endif () # ARM64 processor tests
+
+# ── Tests that exercise both AArch64 and x86-64 codegen but do not execute
+# generated machine code — run on all platforms. ─────────────────────────────
+
+# Cross-platform ABI invariants (CRIT-1 Win64 shadow space, CRIT-3 AArch64
+# Windows ARM64 target, HIGH-4 LinkerSupport archive extension).
+_aarch64_add_test_common(test_cross_platform_abi
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_cross_platform_abi.cpp
+        "il_codegen_aarch64;viper_codegen_x86_64")
+
+# x86-64 runtime map — no ARM64 execution required.
+_aarch64_add_test_common(test_emit_x86_runtime_map
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp
+        "viper_codegen_x86_64")
+
+# IL optimizer differential testing (VM baseline vs O0/O1/O2) — pure IL, no
+# architecture dependency.
+_aarch64_add_test_common(test_il_opt_equivalence
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp
+        "il_transform;viper::il_verify")
 
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}

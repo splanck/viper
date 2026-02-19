@@ -1,0 +1,31 @@
+# Enforce LF line endings on checkout for all text files (MED-5).
+# This prevents golden test CRLF/LF mismatches on Windows where
+# git core.autocrlf=true would otherwise convert committed LF files to CRLF.
+
+# Auto-detect text/binary; default text files to LF.
+* text=auto eol=lf
+
+# Explicitly binary — never touch line endings.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.bmp   binary
+*.a     binary
+*.lib   binary
+*.o     binary
+*.obj   binary
+*.so    binary
+*.dylib binary
+*.dll   binary
+*.exe   binary
+*.wasm  binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+*.mp3   binary
+*.ogg   binary
+*.wav   binary
+*.ttf   binary
+*.otf   binary

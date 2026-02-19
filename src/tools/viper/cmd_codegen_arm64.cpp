@@ -198,7 +198,17 @@ static int linkToExe(const std::string &asmPath,
     if (const int rc = prepareLinkContext(asmPath, ctx, out, err); rc != 0)
         return rc;
 
+    // Select the linker front-end and architecture flag based on host OS (MED-11).
+    // - macOS: `cc -arch arm64` (Clang driver; explicit arch required for fat-binary hosts)
+    // - Windows: `clang --target=aarch64-pc-windows-msvc` (LLVM cross-linker)
+    // - Linux/other Unix: `cc` with no -arch (already running on native ARM64)
+#if defined(__APPLE__)
     std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", asmPath};
+#elif defined(_WIN32)
+    std::vector<std::string> linkCmd = {"clang", "--target=aarch64-pc-windows-msvc", asmPath};
+#else
+    std::vector<std::string> linkCmd = {"cc", asmPath};
+#endif
     appendArchives(ctx, linkCmd);
     appendGraphicsLibs(ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation"});
 

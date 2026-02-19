@@ -47,7 +47,9 @@ if (APPLE)
 elseif (UNIX)
     find_package(X11 QUIET)
     if (NOT X11_FOUND)
-        message(STATUS "ViperGFX: X11 not found - skipping graphics library (install libx11-dev to enable)")
+        message(WARNING "ViperGFX: X11 not found — graphics library will not be built.\n"
+                "  Install libx11-dev (Debian/Ubuntu) or libX11-devel (Fedora/RHEL) to enable.\n"
+                "  Targets that link vipergfx will fail if this library is needed.")
         return()
     endif ()
     message(STATUS "ViperGFX: Building for Linux (X11 backend)")
