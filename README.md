@@ -126,7 +126,7 @@ Native binaries are output to `demos/bin/`. See the **[demos/](demos/README.md)*
 
 | Demo | Description |
 |------|-------------|
-| `demos/zia/viperide` | Simple code editor IDE (in development) with tabs, find/replace, and integrated build |
+| `demos/zia/viperide` | Simple Viper IDE with tabs, find/replace, and integrated build |
 | `demos/zia/paint` | Paint application with drawing tools, shapes, and color picker |
 | `demos/zia/pacman` | Pac-Man clone with ghost AI, animations, and tile-based rendering |
 | `demos/zia/sqldb` | SQL database engine with REPL, query execution, and persistent storage |
