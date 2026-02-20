@@ -47,8 +47,9 @@
   - [Tooltip](#tooltip)
 - [Utilities](#utilities)
   - [Clipboard](#clipboard)
-  - [Shortcuts](#shortcuts)
+  - [Container](#container)
   - [Cursor](#cursor)
+  - [Shortcuts](#shortcuts)
 - [Themes](#themes)
 
 ---
@@ -1566,6 +1567,61 @@ if Clipboard.HasText() == 1 {
     Say(text);
 }
 Clipboard.Clear();
+```
+
+---
+
+### Container
+
+Static utility for setting layout properties on any container widget (VBox, HBox, ScrollView, etc.).
+
+**Type:** Static utility class
+
+| Method                       | Signature              | Description                                      |
+|------------------------------|------------------------|--------------------------------------------------|
+| `Viper.GUI.Container.SetSpacing(widget, value)` | `Void(Object, Double)` | Set spacing between children of the container    |
+| `Viper.GUI.Container.SetPadding(widget, value)` | `Void(Object, Double)` | Set internal padding around the container's edge |
+
+### Notes
+
+- These methods accept any layout container widget (VBox, HBox, or others) as the first argument.
+- They are equivalent to calling `widget.SetSpacing(value)` / `widget.SetPadding(value)` directly on VBox or HBox instances, but are useful when the widget type is held as a generic `Object` reference.
+
+### Zia Example
+
+```zia
+module ContainerDemo;
+
+bind Viper.Terminal;
+bind Viper.GUI.App as App;
+bind Viper.GUI.VBox as VBox;
+bind Viper.GUI.Container as Container;
+
+func start() {
+    var app = App.New("Container Demo", 400, 300);
+    var root = app.get_Root();
+
+    // Create a VBox and configure via the static utility
+    var vbox = VBox.New();
+    Container.SetSpacing(vbox, 12.0);
+    Container.SetPadding(vbox, 16.0);
+    root.AddChild(vbox);
+}
+```
+
+### BASIC Example
+
+```basic
+DIM vbox AS OBJECT = NEW Viper.GUI.VBox()
+app.Root.AddChild(vbox)
+
+' Configure via static utility (useful when widget is an Object reference)
+Viper.GUI.Container.SetSpacing(vbox, 10.0)
+Viper.GUI.Container.SetPadding(vbox, 20.0)
+
+' Equivalent direct call on a known VBox:
+' vbox.SetSpacing(10)
+' vbox.SetPadding(20)
 ```
 
 ---

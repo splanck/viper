@@ -5,6 +5,7 @@ bind Viper.Graphics;
 bind Viper.Time;
 bind Viper.Input;
 bind Viper.Core.Convert;
+bind Viper.Collections;
 
 bind "./config";
 bind "./canvas";
@@ -71,6 +72,11 @@ entity PaintApp {
     hide Integer mouseY;
     hide Integer mouseDown;
     hide Integer lastMouseDown;
+    hide Integer mouseRight;
+    hide Integer lastMouseRight;
+
+    // Undo stack (List of Pixels snapshots)
+    hide List undoStack;
 
     // Application state
     expose Integer running;
@@ -113,11 +119,16 @@ entity PaintApp {
 
         // State
         running = 1;
-        statusMessage = "Ready - Click to draw, 1-8: tools, Q: quit";
+        statusMessage = "Ready - Click to draw, 1-8: tools, Ctrl+Z: undo, Q: quit";
         mouseX = 0;
         mouseY = 0;
         mouseDown = 0;
         lastMouseDown = 0;
+        mouseRight = 0;
+        lastMouseRight = 0;
+
+        // Undo stack
+        undoStack = new List();
     }
 
     // Initialize UI elements
@@ -194,6 +205,14 @@ entity PaintApp {
         btnClear.setup(btnX, btnY, btnW + 10, btnH, "Clear");
     }
 
+    // Snapshot current canvas pixels for undo (call before each stroke)
+    hide func snapshotForUndo() {
+        undoStack.Push(canvas.getPixels().Clone());
+        while undoStack.Len > config.MAX_UNDO_LEVELS {
+            undoStack.RemoveAt(0);
+        }
+    }
+
     // Main run loop
     expose func run() {
         while running == 1 {
@@ -220,12 +239,18 @@ entity PaintApp {
 
         // Get mouse state
         lastMouseDown = mouseDown;
+        lastMouseRight = mouseRight;
         mouseX = Viper.Input.Mouse.X();
         mouseY = Viper.Input.Mouse.Y();
         if Viper.Input.Mouse.Left() {
             mouseDown = 1;
         } else {
             mouseDown = 0;
+        }
+        if Viper.Input.Mouse.Right() {
+            mouseRight = 1;
+        } else {
+            mouseRight = 0;
         }
 
         // Q key = quit (keycode 81)
@@ -380,6 +405,15 @@ entity PaintApp {
             colors.swap();
         }
 
+        // Undo with Ctrl+Z
+        if gfx.KeyHeld( config.KEY_Z) == 1 and Viper.Input.Keyboard.Ctrl() {
+            if undoStack.Len > 0 {
+                var snapshot = undoStack.Pop();
+                canvas.restorePixels(snapshot);
+                statusMessage = "Undo";
+            }
+        }
+
         // Brush size with [ and ]
         if gfx.KeyHeld( config.KEY_LEFT_BRACKET) == 1 {
             brushSettings.decreaseSize();
@@ -421,6 +455,7 @@ entity PaintApp {
 
     // Canvas mouse down handler
     hide func onCanvasMouseDown(x: Integer, y: Integer) {
+        snapshotForUndo();
         if currentTool == config.TOOL_PENCIL {
             pencilTool.onMouseDown(x, y, canvas, colors);
         } else if currentTool == config.TOOL_BRUSH {
@@ -614,7 +649,7 @@ entity PaintApp {
             i = i + 1;
         }
 
-        // Handle palette clicks
+        // Handle palette left-click (set foreground) and right-click (set background)
         if mouseDown == 1 and lastMouseDown == 0 {
             i = 0;
             while i < 64 {
@@ -624,6 +659,20 @@ entity PaintApp {
                 var cy = paletteY + row * (cellSize + 2);
                 if mouseX >= cx and mouseX < cx + cellSize and mouseY >= cy and mouseY < cy + cellSize {
                     colors.setForeground(colors.getPaletteColor(i));
+                }
+                i = i + 1;
+            }
+        }
+        if mouseRight == 1 and lastMouseRight == 0 {
+            i = 0;
+            while i < 64 {
+                var row = i / cols;
+                var col = i % cols;
+                var cx = paletteX + col * (cellSize + 2);
+                var cy = paletteY + row * (cellSize + 2);
+                if mouseX >= cx and mouseX < cx + cellSize and mouseY >= cy and mouseY < cy + cellSize {
+                    colors.setBackground(colors.getPaletteColor(i));
+                    statusMessage = "Background color set";
                 }
                 i = i + 1;
             }

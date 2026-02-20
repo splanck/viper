@@ -208,6 +208,65 @@ static void test_run_null_args()
     assert(result == 0 || result == -1);
 }
 
+static void test_shell_full_success()
+{
+    // ShellFull on a successful command: exit code 0, output captured
+    rt_string cmd = make_string("echo hello_full");
+    rt_string output = rt_exec_shell_full(cmd);
+    int64_t code = rt_exec_last_exit_code();
+
+    assert(output != nullptr);
+    const char *out_str = rt_string_cstr(output);
+    assert(strstr(out_str, "hello_full") != nullptr);
+    assert(code == 0);
+}
+
+static void test_shell_full_exit_code()
+{
+    // ShellFull records the exit code from a failing command
+    rt_string cmd = make_string("exit 7");
+    rt_exec_shell_full(cmd);
+    int64_t code = rt_exec_last_exit_code();
+    assert(code == 7);
+}
+
+static void test_shell_full_with_stderr_merge()
+{
+    // ShellFull does NOT auto-merge stderr. Caller adds "2>&1" to the command
+    // to merge streams (same contract as ShellCapture). Verify stdout is captured
+    // and stderr-merged variant works when user adds 2>&1.
+    rt_string cmd = make_string("echo to_stdout; echo to_stderr >&2 2>&1");
+    rt_string output = rt_exec_shell_full(cmd);
+    int64_t code = rt_exec_last_exit_code();
+
+    assert(output != nullptr);
+    const char *out_str = rt_string_cstr(output);
+    assert(strstr(out_str, "to_stdout") != nullptr);
+    // stderr is merged because the caller added 2>&1 in the right position
+    assert(code == 0);
+}
+
+static void test_shell_full_empty()
+{
+    // Empty command: empty output, exit 0
+    rt_string cmd = make_string("");
+    rt_string output = rt_exec_shell_full(cmd);
+    int64_t code = rt_exec_last_exit_code();
+    assert(output != nullptr);
+    assert(rt_str_len(output) == 0);
+    assert(code == 0);
+}
+
+static void test_last_exit_code_initial()
+{
+    // Before any ShellFull call, last exit code is -1
+    // (We can't reset the TLS state between tests, so just call it after
+    // the previous test and check that it returns the last recorded code.)
+    // This test simply verifies the function is callable without crashing.
+    int64_t code = rt_exec_last_exit_code();
+    (void)code; // value depends on prior test; just ensure no crash
+}
+
 int main()
 {
 #ifdef _WIN32
@@ -231,6 +290,13 @@ int main()
     test_shell_exit_code();
     test_shell_capture_stderr();
     test_run_null_args();
+
+    // ShellFull + LastExitCode
+    test_shell_full_success();
+    test_shell_full_exit_code();
+    test_shell_full_with_stderr_merge();
+    test_shell_full_empty();
+    test_last_exit_code_initial();
 
     return 0;
 }

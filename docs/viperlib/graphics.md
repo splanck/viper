@@ -10,6 +10,7 @@
 - [Viper.Graphics.Color](#vipergraphicscolor)
 - [Viper.Graphics.Pixels](#vipergraphicspixels)
 - [Viper.Graphics.Sprite](#vipergraphicssprite)
+- [Viper.Graphics.SpriteSheet](#vipergraphicsspritesheet)
 - [Viper.Graphics.Tilemap](#vipergraphicstilemap)
 - [Viper.Graphics.Camera](#vipergraphicscamera)
 - [Viper.Graphics.SceneNode](#vipergraphicsscenenode)
@@ -510,16 +511,77 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 | `LoadBmp(path)`                   | `Pixels(String)`                  | Load from a 24-bit BMP file. Returns null on failure  |
 | `LoadPng(path)`                   | `Pixels(String)`                  | Load from a PNG file. Returns null on failure          |
 
+### Drawing Primitives
+
+Drawing primitives use the `0x00RRGGBB` color format (compatible with `Canvas` and `Color.RGB()`).
+Alpha is always 255 (fully opaque). Coordinates outside the pixel buffer are silently clipped.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetRGB(x, y, color)` | `Void(Integer, Integer, Integer)` | Set pixel using `0x00RRGGBB` format (alpha = 255) |
+| `GetRGB(x, y)` | `Integer(Integer, Integer)` | Get pixel as `0x00RRGGBB` (alpha discarded) |
+| `DrawLine(x1, y1, x2, y2, color)` | `Void(Integer...)` | Bresenham line between two points |
+| `DrawBox(x, y, w, h, color)` | `Void(Integer...)` | Filled rectangle |
+| `DrawFrame(x, y, w, h, color)` | `Void(Integer...)` | Rectangle outline |
+| `DrawDisc(cx, cy, r, color)` | `Void(Integer...)` | Filled circle |
+| `DrawRing(cx, cy, r, color)` | `Void(Integer...)` | Circle outline |
+| `DrawEllipse(cx, cy, rx, ry, color)` | `Void(Integer...)` | Filled ellipse |
+| `DrawEllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)` | Ellipse outline |
+| `FloodFill(x, y, color)` | `Void(Integer...)` | Iterative scanline flood fill (no recursion depth limit) |
+| `DrawThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)` | Line with thickness (pen-radius circles at each point) |
+| `DrawTriangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)` | Filled triangle |
+| `DrawBezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)` | Quadratic Bezier curve |
+
+> **Color format note:** `Pixels.Set(x, y, color)` and `Pixels.Get(x, y)` use `0xRRGGBBAA` (packed RGBA
+> with explicit alpha). Drawing primitives and `SetRGB`/`GetRGB` use `0x00RRGGBB` — the same format as
+> `Canvas` drawing calls and `Color.RGB()`. This allows the same color constants to be used when drawing
+> to both a Canvas and an off-screen Pixels buffer without any format conversion.
+
+#### Zia Example — Drawing into an off-screen buffer
+
+```zia
+module PixelsDrawDemo;
+
+bind Viper.Graphics;
+bind Viper.Graphics.Color as Color;
+
+func start() {
+    // Create an off-screen pixel buffer and draw into it
+    var buf = Pixels.New(320, 240);
+
+    // All drawing uses 0x00RRGGBB — same as Canvas and Color.RGB()
+    buf.DrawBox(0, 0, 320, 240, Color.RGB(30, 30, 30));       // dark background
+    buf.DrawDisc(160, 120, 80, Color.RGB(0, 120, 220));        // blue filled circle
+    buf.DrawRing(160, 120, 80, Color.RGB(255, 255, 255));      // white outline
+    buf.DrawLine(0, 0, 319, 239, Color.RGB(255, 80, 0));       // orange diagonal
+    buf.DrawEllipse(160, 60, 60, 25, Color.RGB(200, 0, 200)); // purple ellipse
+    buf.FloodFill(5, 5, Color.RGB(10, 10, 50));                // flood fill corner
+
+    // Blit the finished buffer to a canvas for display
+    var c = Canvas.New("Pixels Draw Demo", 320, 240);
+    while c.ShouldClose == 0 {
+        c.Poll();
+        c.Blit(0, 0, buf);
+        c.Flip();
+    }
+}
+```
+
 ### Color Format
 
-Colors are stored as packed 32-bit RGBA integers in the format `0xRRGGBBAA`:
+`Pixels.Set` and `Pixels.Get` use packed 32-bit RGBA in the format `0xRRGGBBAA`:
 
 - `RR` - Red component (0-255)
 - `GG` - Green component (0-255)
 - `BB` - Blue component (0-255)
 - `AA` - Alpha component (0-255, where 255 = opaque)
 
-Use `Viper.Graphics.Color.RGBA()` to create colors.
+**Drawing primitives** (`SetRGB`, `GetRGB`, `DrawLine`, `DrawBox`, etc.) use `0x00RRGGBB` — the same
+format as `Canvas` methods and `Color.RGB()`. This makes it straightforward to share color constants
+between on-screen canvas drawing and off-screen pixel buffer operations.
+
+Use `Viper.Graphics.Color.RGBA()` to create `0xRRGGBBAA` colors for `Set`/`Get`, and
+`Viper.Graphics.Color.RGB()` to create `0x00RRGGBB` colors for drawing primitives.
 
 ### Zia Example
 
@@ -794,6 +856,131 @@ DIM mx AS INTEGER = Viper.Input.Mouse.X
 DIM my AS INTEGER = Viper.Input.Mouse.Y
 IF player.Contains(mx, my) = 1 THEN
     PRINT "Mouse over player!"
+END IF
+```
+
+---
+
+## Viper.Graphics.SpriteSheet
+
+Sprite sheet/atlas for named region extraction from a single texture. Defines named rectangular regions within an atlas image and extracts them as individual `Pixels` buffers.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics.SpriteSheet(atlas)` or `Viper.Graphics.SpriteSheet.FromGrid(atlas, frameW, frameH)`
+
+### Static Methods (Constructors)
+
+| Method                                 | Signature                       | Description                                                             |
+|----------------------------------------|---------------------------------|-------------------------------------------------------------------------|
+| `New(atlas)`                           | `SpriteSheet(Pixels)`           | Create from atlas Pixels buffer                                         |
+| `FromGrid(atlas, frameW, frameH)`      | `SpriteSheet(Pixels, Int, Int)` | Auto-slice atlas into uniform cells; regions named `"0"`, `"1"`, etc.  |
+
+### Properties
+
+| Property      | Type    | Access | Description                              |
+|---------------|---------|--------|------------------------------------------|
+| `RegionCount` | Integer | Read   | Number of defined named regions          |
+| `Width`       | Integer | Read   | Width of the underlying atlas in pixels  |
+| `Height`      | Integer | Read   | Height of the underlying atlas in pixels |
+
+### Methods
+
+| Method                              | Signature                          | Description                                            |
+|-------------------------------------|------------------------------------|--------------------------------------------------------|
+| `GetRegion(name)`                   | `Pixels(String)`                   | Extract region as a new Pixels buffer; NULL if missing |
+| `HasRegion(name)`                   | `Boolean(String)`                  | Check if a region name exists                          |
+| `RegionNames()`                     | `Seq()`                            | Return all region names as a Seq of strings            |
+| `RemoveRegion(name)`                | `Boolean(String)`                  | Remove a named region; returns false if not found      |
+| `SetRegion(name, x, y, w, h)`       | `Void(String, Int, Int, Int, Int)` | Define a named rectangular region within the atlas     |
+
+### Notes
+
+- `FromGrid()` automatically slices the atlas into equal cells, named `"0"`, `"1"`, etc. (left-to-right, top-to-bottom)
+- `GetRegion()` returns a new Pixels object on each call — cache results for repeated use
+- Region coordinates are in pixels, relative to the atlas top-left corner
+- All regions share the underlying atlas Pixels object
+
+### Zia Example
+
+```zia
+module SpriteSheetDemo;
+
+bind Viper.Graphics;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var atlas = Pixels.New(128, 128);
+    atlas.Fill(Color.RGB(200, 100, 50));
+
+    var sheet = SpriteSheet.New(atlas);
+    Say("Regions: " + Fmt.Int(sheet.RegionCount));  // 0
+
+    // Define named regions
+    sheet.SetRegion("idle", 0, 0, 32, 32);
+    sheet.SetRegion("walk1", 32, 0, 32, 32);
+    sheet.SetRegion("walk2", 64, 0, 32, 32);
+
+    SayBool(sheet.HasRegion("idle"));    // true
+    SayBool(sheet.HasRegion("jump"));    // false
+    Say("Regions: " + Fmt.Int(sheet.RegionCount));  // 3
+
+    // Extract region as Pixels
+    var idleFrame = sheet.GetRegion("idle");
+    Say("Frame: " + Fmt.Int(idleFrame.Width) + "x" + Fmt.Int(idleFrame.Height));  // 32x32
+
+    // List all region names
+    var names = sheet.RegionNames();
+
+    // Remove a region
+    SayBool(sheet.RemoveRegion("walk2"));  // true
+    Say("Regions: " + Fmt.Int(sheet.RegionCount));  // 2
+
+    // Auto-slice from uniform grid
+    var gridSheet = SpriteSheet.FromGrid(atlas, 32, 32);
+    Say("Grid regions: " + Fmt.Int(gridSheet.RegionCount));  // 16
+}
+```
+
+### Example
+
+```basic
+' Load atlas image
+DIM atlas AS Viper.Graphics.Pixels
+atlas = Viper.Graphics.Pixels.LoadBmp("sprites.bmp")
+
+' Method 1: Manual region definition
+DIM sheet AS Viper.Graphics.SpriteSheet
+sheet = Viper.Graphics.SpriteSheet.New(atlas)
+
+sheet.SetRegion("player_idle",  0,  0, 32, 48)
+sheet.SetRegion("player_walk1", 32, 0, 32, 48)
+sheet.SetRegion("player_walk2", 64, 0, 32, 48)
+sheet.SetRegion("enemy",         0, 48, 32, 32)
+
+PRINT "Region count: "; sheet.RegionCount   ' Output: 4
+
+' Check existence and extract
+IF sheet.HasRegion("player_idle") THEN
+    DIM frame AS Viper.Graphics.Pixels
+    frame = sheet.GetRegion("player_idle")
+    PRINT "Frame size: "; frame.Width; "x"; frame.Height
+END IF
+
+' Method 2: Uniform grid layout
+DIM gridSheet AS Viper.Graphics.SpriteSheet
+gridSheet = Viper.Graphics.SpriteSheet.FromGrid(atlas, 32, 32)
+' Regions auto-named "0", "1", "2", ... (left-to-right, top-to-bottom)
+DIM frame0 AS Viper.Graphics.Pixels
+frame0 = gridSheet.GetRegion("0")
+
+' List all region names
+DIM names AS OBJECT
+names = sheet.RegionNames()
+
+' Remove a region
+IF sheet.RemoveRegion("enemy") THEN
+    PRINT "Region removed"
 END IF
 ```
 

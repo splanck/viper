@@ -100,6 +100,18 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                                   ? Type(Type::Kind::Ptr)
                                   : right.type;
 
+            // Unbox obj (Ptr) to primitive type when assigning a boxed value to a typed slot.
+            // This handles e.g. `intField = list.Get(i)` where List.Get() returns Ptr.
+            if (right.type.kind == Type::Kind::Ptr && targetType)
+            {
+                Type targetILType = mapType(targetType);
+                if (targetILType.kind != Type::Kind::Ptr)
+                {
+                    assignValue = emitUnbox(assignValue, targetILType).value;
+                    assignType  = targetILType;
+                }
+            }
+
             // Handle value type copy semantics - deep copy on assignment
             if (rightType && rightType->kind == TypeKindSem::Value)
             {
@@ -129,6 +141,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
+                        // Unbox obj (Ptr) to the field's primitive IL type.
+                        if (right.type.kind == Type::Kind::Ptr && field->type)
+                        {
+                            Type fieldILType = mapType(field->type);
+                            if (fieldILType.kind != Type::Kind::Ptr)
+                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
+                        }
                         emitFieldStore(field, selfPtr, fieldValue);
                         return right;
                     }
@@ -146,6 +165,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
+                        // Unbox obj (Ptr) to the field's primitive IL type.
+                        if (right.type.kind == Type::Kind::Ptr && field->type)
+                        {
+                            Type fieldILType = mapType(field->type);
+                            if (fieldILType.kind != Type::Kind::Ptr)
+                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
+                        }
                         emitFieldStore(field, selfPtr, fieldValue);
                         return right;
                     }
@@ -214,6 +240,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
+                        // Unbox obj (Ptr) to the field's primitive IL type.
+                        if (right.type.kind == Type::Kind::Ptr && field->type)
+                        {
+                            Type fieldILType = mapType(field->type);
+                            if (fieldILType.kind != Type::Kind::Ptr)
+                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
+                        }
                         emitFieldStore(field, base.value, fieldValue);
                         return right;
                     }
@@ -228,6 +261,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
+                        // Unbox obj (Ptr) to the field's primitive IL type.
+                        if (right.type.kind == Type::Kind::Ptr && field->type)
+                        {
+                            Type fieldILType = mapType(field->type);
+                            if (fieldILType.kind != Type::Kind::Ptr)
+                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
+                        }
                         emitFieldStore(field, base.value, fieldValue);
                         return right;
                     }

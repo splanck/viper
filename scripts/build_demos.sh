@@ -75,8 +75,7 @@ BASIC_DEMOS=(
 
 ZIA_DEMOS=(
     "paint:${ZIA_DIR}/paint"
-    # viperide requires unimplemented vipergfx GUI widget layer (vg_* symbols)
-    #"viperide:${ZIA_DIR}/viperide"
+    "viperide:${ZIA_DIR}/viperide"
     "pacman-zia:${ZIA_DIR}/pacman"
     "sqldb:${ZIA_DIR}/sqldb"
 )

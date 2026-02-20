@@ -25,6 +25,8 @@
 /// │ CaptureArgs()   │ Execute with args and capture stdout              │
 /// │ Shell(cmd)      │ Execute via system shell                          │
 /// │ ShellCapture()  │ Execute via shell and capture output              │
+/// │ ShellFull(cmd)  │ Execute via shell, capture output, store exit code│
+/// │ LastExitCode()  │ Return exit code from most recent ShellFull()     │
 /// └─────────────────┴───────────────────────────────────────────────────┘
 /// ```
 ///
@@ -119,6 +121,9 @@ extern char **environ;
 
 /// @brief Maximum buffer size for capturing output (16MB).
 #define CAPTURE_MAX_SIZE (16 * 1024 * 1024)
+
+/// @brief Thread-local exit code from the most recent rt_exec_shell_full() call.
+static _Thread_local int64_t tl_last_exit_code = -1;
 
 /// @brief Read all output from a pipe into a dynamically allocated buffer.
 static char *read_pipe_output(FILE *fp, size_t *out_len)
@@ -922,4 +927,53 @@ rt_string rt_exec_shell_capture(rt_string command)
     rt_string result = rt_string_from_bytes(output, len);
     free(output);
     return result;
+}
+
+rt_string rt_exec_shell_full(rt_string command)
+{
+    if (!command)
+    {
+        rt_trap("Exec.ShellFull: null command");
+        tl_last_exit_code = -1;
+        return rt_string_from_bytes("", 0);
+    }
+
+    const char *cmd_str = rt_string_cstr(command);
+    if (!cmd_str || rt_str_len(command) == 0)
+    {
+        tl_last_exit_code = 0;
+        return rt_string_from_bytes("", 0);
+    }
+
+    FILE *fp = popen(cmd_str, "r");
+
+    if (!fp)
+    {
+        tl_last_exit_code = -1;
+        return rt_string_from_bytes("", 0);
+    }
+
+    size_t len;
+    char *output = read_pipe_output(fp, &len);
+    int status = pclose(fp);
+
+#ifdef _WIN32
+    tl_last_exit_code = (int64_t)status;
+#else
+    tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
+#endif
+
+    if (!output)
+    {
+        return rt_string_from_bytes("", 0);
+    }
+
+    rt_string full_result = rt_string_from_bytes(output, len);
+    free(output);
+    return full_result;
+}
+
+int64_t rt_exec_last_exit_code(void)
+{
+    return tl_last_exit_code;
 }

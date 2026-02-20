@@ -781,6 +781,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_pixels PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_pixels test_rt_pixels)
 
+    viper_add_test(test_rt_pixels_draw ${VIPER_TESTS_DIR}/runtime/RTPixelsDrawTests.cpp)
+    target_link_libraries(test_rt_pixels_draw PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_pixels_draw test_rt_pixels_draw)
+
     viper_add_test(test_rt_scene ${VIPER_TESTS_DIR}/runtime/RTSceneTests.cpp)
     target_link_libraries(test_rt_scene PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_scene test_rt_scene)

@@ -579,6 +579,51 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - `Submit` returns false after `Shutdown` or `ShutdownNow` has been called.
 - `ShutdownNow` discards queued tasks; `Shutdown` allows them to finish.
 
+### Zia Example
+
+> Pool requires function pointers (`addr_of`) for task callbacks. See the BASIC example or use `addr_of` in advanced Zia code.
+
+### BASIC Example
+
+```basic
+' Create a pool with 4 worker threads
+DIM pool AS OBJECT = Viper.Threads.Pool.New(4)
+PRINT "Size: "; pool.Size         ' Output: 4
+PRINT "IsShutdown: "; pool.IsShutdown  ' Output: 0
+
+' Submit tasks (callback takes a single ptr argument)
+SUB DoWork(arg AS PTR)
+    ' Perform task work
+    Viper.Threads.Thread.Sleep(10)
+END SUB
+
+pool.Submit(ADDR_OF DoWork, 0)
+pool.Submit(ADDR_OF DoWork, 0)
+pool.Submit(ADDR_OF DoWork, 0)
+
+PRINT "Pending: "; pool.Pending   ' Output: up to 3
+PRINT "Active: "; pool.Active     ' Output: up to 3
+
+' Wait for all tasks to complete
+pool.Wait()
+PRINT "Pending after Wait: "; pool.Pending  ' Output: 0
+
+' Graceful shutdown (drains queue before stopping)
+pool.Shutdown()
+PRINT "IsShutdown: "; pool.IsShutdown  ' Output: 1
+
+' Submit returns false after shutdown
+DIM ok AS INTEGER = pool.Submit(ADDR_OF DoWork, 0)
+PRINT "Submit after shutdown: "; ok   ' Output: 0
+
+' WaitFor with timeout
+DIM pool2 AS OBJECT = Viper.Threads.Pool.New(2)
+pool2.Submit(ADDR_OF DoWork, 0)
+DIM done AS INTEGER = pool2.WaitFor(5000)  ' Wait up to 5 seconds
+PRINT "Completed in time: "; done
+pool2.Shutdown()
+```
+
 ---
 
 ## Viper.Threads.Promise
@@ -1472,6 +1517,93 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 - Closing a channel prevents further sends but receivers can still drain remaining items.
 - A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
 - `Send` traps if the channel is closed.
+
+### Zia Example
+
+```zia
+module ChannelDemo;
+
+bind Viper.Terminal;
+bind Viper.Threads.Channel as Channel;
+bind Viper.Core.Box as Box;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var ch = Channel.New(8);
+    Say("Cap: " + Fmt.Int(ch.get_Cap()));      // 8
+    Say("IsEmpty: " + Fmt.Bool(ch.get_IsEmpty()));  // true
+
+    // Send items
+    ch.Send(Box.I64(1));
+    ch.Send(Box.I64(2));
+    ch.Send(Box.I64(3));
+    Say("Len: " + Fmt.Int(ch.get_Len()));       // 3
+
+    // Non-blocking send (returns false if full or closed)
+    Say("TrySend: " + Fmt.Bool(ch.TrySend(Box.I64(4))));  // true
+
+    // Receive items
+    Say("Recv: " + Fmt.Int(Box.ToI64(ch.Recv())));    // 1
+    Say("Recv: " + Fmt.Int(Box.ToI64(ch.Recv())));    // 2
+
+    // Close channel
+    ch.Close();
+    Say("IsClosed: " + Fmt.Bool(ch.get_IsClosed()));  // true
+}
+```
+
+### BASIC Producer/Consumer Example
+
+```basic
+' Bounded channel with capacity 16
+DIM ch AS OBJECT = Viper.Threads.Channel.New(16)
+
+' Producer: send items
+SUB Producer(channel AS PTR)
+    DIM i AS INTEGER
+    FOR i = 1 TO 10
+        channel.Send(Viper.Core.Box.I64(i))
+    NEXT i
+    channel.Close()
+END SUB
+
+' Consumer: receive until closed and empty
+SUB Consumer(channel AS PTR)
+    DO
+        DIM item AS OBJECT = channel.Recv()
+        IF item = NULL THEN EXIT DO   ' closed and drained
+        PRINT "Received: "; Viper.Core.Box.ToI64(item)
+    LOOP
+END SUB
+
+' In a single-threaded context, demonstrate send/recv
+DIM i AS INTEGER
+FOR i = 1 TO 5
+    ch.Send(Viper.Core.Box.I64(i * 10))
+NEXT i
+PRINT "Len: "; ch.Len     ' Output: 5
+PRINT "IsFull: "; ch.IsFull  ' Output: 0 (cap 16, only 5 items)
+
+' Non-blocking receive
+DIM item AS OBJECT = ch.Recv()
+PRINT "Recv: "; Viper.Core.Box.ToI64(item)  ' Output: 10
+
+' Timeout-based receive (100ms)
+DIM out AS OBJECT = NULL
+DIM got AS INTEGER = ch.RecvFor(out, 100)
+IF got THEN
+    PRINT "Got: "; Viper.Core.Box.ToI64(out)
+ELSE
+    PRINT "Timed out"
+END IF
+
+' Send with timeout
+DIM sent AS INTEGER = ch.SendFor(Viper.Core.Box.I64(99), 200)
+PRINT "Sent: "; sent
+
+ch.Close()
+PRINT "IsClosed: "; ch.IsClosed  ' Output: 1
+```
 
 ---
 

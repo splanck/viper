@@ -17,6 +17,7 @@ entity AppShell {
     expose GUI.VBox mainVBox;
     expose GUI.SplitPane splitPane;
     expose GUI.VBox editorArea;
+    expose GUI.HBox editorRow;         // horizontal: editor (flex) + minimap
 
     // Menu bar + menus
     expose GUI.MenuBar menuBar;
@@ -33,6 +34,7 @@ entity AppShell {
     expose GUI.MenuItem miSaveAs;
     expose GUI.MenuItem miSaveAll;
     expose GUI.MenuItem miClose;
+    expose GUI.MenuItem miReload;      // Reload File from disk
     expose GUI.MenuItem miExit;
 
     // Edit menu items
@@ -54,6 +56,9 @@ entity AppShell {
     expose GUI.MenuItem miBuildAndRun;
     expose GUI.MenuItem miRun;
 
+    // Help menu
+    expose GUI.MenuItem miAbout;
+
     // Toolbar + items
     expose GUI.Toolbar toolbar;
     expose GUI.ToolbarItem tbNew;
@@ -64,11 +69,32 @@ entity AppShell {
     // Tab bar
     expose GUI.TabBar tabBar;
 
+    // Breadcrumb (file path, below tab bar)
+    expose GUI.Breadcrumb breadcrumb;
+
     // Sidebar
     expose GUI.TreeView sidebarTree;
 
-    // Status bar
+    // Find bar (hidden by default; shown by Ctrl+F)
+    expose GUI.FindBar findBar;
+
+    // Minimap (right of editor; bound to editor after engine.Setup in main.zia)
+    expose GUI.Minimap minimap;
+
+    // Diagnostics panel (below editor; populated after build)
+    expose GUI.ListBox diagListBox;
+
+    // Context menu for the file tree
+    expose GUI.ContextMenu treeContextMenu;
+    expose GUI.MenuItem ctxOpen;
+    expose GUI.MenuItem ctxReveal;
+
+    // Status bar + items
     expose GUI.StatusBar statusBar;
+    expose GUI.StatusBarItem cursorItem;   // clickable Ln/Col display (center zone)
+
+    // Command palette (Ctrl+Shift+P)
+    expose GUI.CommandPalette commandPalette;
 
     // State
     expose Boolean sidebarVisible;
@@ -112,6 +138,8 @@ entity AppShell {
         fileMenu.AddSeparator();
         miClose = fileMenu.AddItem("Close File");
         miClose.SetShortcut("Ctrl+W");
+        miReload = fileMenu.AddItem("Reload File");
+        miReload.SetShortcut("Ctrl+Shift+R");
         fileMenu.AddSeparator();
         miExit = fileMenu.AddItem("Exit");
 
@@ -151,7 +179,7 @@ entity AppShell {
 
         // Help menu
         helpMenu = menuBar.AddMenu("Help");
-        var miAbout: GUI.MenuItem = helpMenu.AddItem("About ViperIDE");
+        miAbout = helpMenu.AddItem("About ViperIDE");
 
         // ====================================================================
         // Toolbar
@@ -174,7 +202,7 @@ entity AppShell {
         var leftPanel: GUI.Widget = splitPane.First;
         sidebarTree = GUI.TreeView.New(leftPanel);
 
-        // Editor area — VBox in right panel (TabBar + CodeEditor)
+        // Editor area — VBox in right panel
         var rightPanel: GUI.Widget = splitPane.Second;
         editorArea = GUI.VBox.New();
         editorArea.SetSpacing(0.0);
@@ -184,13 +212,47 @@ entity AppShell {
         // Tab bar inside editor area
         tabBar = GUI.TabBar.New(editorArea);
 
+        // Breadcrumb (file path, shown below the tab bar)
+        breadcrumb = GUI.Breadcrumb.New(editorArea);
+        breadcrumb.SetSeparator("/");
+
+        // Find bar inside editor area (hidden until Ctrl+F)
+        findBar = GUI.FindBar.New(editorArea);
+        findBar.SetVisible(0);
+
+        // Editor row — HBox (editor left with flex, minimap right with fixed width).
+        // The editor widget is added to editorRow by engine.Setup() in main.zia;
+        // the minimap is added immediately after in main.zia.
+        editorRow = GUI.HBox.New();
+        editorRow.SetSpacing(0.0);
+        editorRow.SetPadding(0.0);
+        editorRow.SetFlex(1.0);
+        editorArea.AddChild(editorRow);
+
+        // Diagnostics panel (hidden until a build produces errors or warnings)
+        diagListBox = GUI.ListBox.New(editorArea);
+        diagListBox.SetVisible(0);
+        diagListBox.SetSize(0, 120);
+
+        // Context menu for the file tree (populated on right-click)
+        treeContextMenu = GUI.ContextMenu.New();
+        ctxOpen = treeContextMenu.AddItem("Open File");
+        treeContextMenu.AddSeparator();
+        ctxReveal = treeContextMenu.AddItem("Reveal in Finder");
+
         // ====================================================================
         // Status Bar
         // ====================================================================
         statusBar = GUI.StatusBar.New(mainVBox);
         statusBar.SetLeftText("Ready");
-        statusBar.SetCenterText("");
+        cursorItem = statusBar.AddText("Ln 1, Col 1", 1);   // zone 1 = center
         statusBar.SetRightText("ViperIDE");
+
+        // ====================================================================
+        // Command Palette (application-level overlay, shown via Ctrl+Shift+P)
+        // ====================================================================
+        commandPalette = GUI.CommandPalette.New(app);
+        commandPalette.SetPlaceholder("Type a command...");
     }
 
     // Check if the window should close.
@@ -213,15 +275,17 @@ entity AppShell {
         app.Destroy();
     }
 
-    // Update the status bar text.
+    // Update the status bar left text.
     expose func SetStatusLeft(text: String) {
         statusBar.SetLeftText(text);
     }
 
+    // Update the cursor position item (center zone).
     expose func SetStatusCenter(text: String) {
-        statusBar.SetCenterText(text);
+        cursorItem.SetText(text);
     }
 
+    // Update the status bar right text.
     expose func SetStatusRight(text: String) {
         statusBar.SetRightText(text);
     }

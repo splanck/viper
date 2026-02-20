@@ -1077,6 +1077,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 
     // Create function
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+    currentReturnType_ = returnType;
     blockMgr_.bind(builder_.get(), currentFunc_);
     locals_.clear();
     slots_.clear();
@@ -1160,6 +1161,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     }
 
     currentFunc_ = nullptr;
+    currentReturnType_ = nullptr;
     currentValueType_ = nullptr;
     currentEntityType_ = nullptr;
 }

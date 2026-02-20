@@ -187,6 +187,99 @@ extern "C"
     /// @return New scaled Pixels object.
     void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height);
 
+    //=========================================================================
+    // Drawing Primitives  (color format: 0x00RRGGBB — Canvas-compatible)
+    //=========================================================================
+    // All drawing primitives accept colors in the same 0x00RRGGBB format used
+    // by Canvas drawing calls and Color.RGB(). Alpha is always 255 (fully
+    // opaque). Coordinates outside the buffer are silently clipped.
+
+    /// @brief Set a pixel using 0x00RRGGBB color format (alpha = 255).
+    void rt_pixels_set_rgb(void *pixels, int64_t x, int64_t y, int64_t color);
+
+    /// @brief Get a pixel as 0x00RRGGBB (alpha channel discarded).
+    int64_t rt_pixels_get_rgb(void *pixels, int64_t x, int64_t y);
+
+    /// @brief Draw a line between two points (Bresenham algorithm).
+    void rt_pixels_draw_line(void *pixels,
+                             int64_t x1, int64_t y1,
+                             int64_t x2, int64_t y2,
+                             int64_t color);
+
+    /// @brief Draw a filled rectangle.
+    void rt_pixels_draw_box(void *pixels,
+                            int64_t x, int64_t y,
+                            int64_t w, int64_t h,
+                            int64_t color);
+
+    /// @brief Draw a rectangle outline.
+    void rt_pixels_draw_frame(void *pixels,
+                              int64_t x, int64_t y,
+                              int64_t w, int64_t h,
+                              int64_t color);
+
+    /// @brief Draw a filled circle.
+    void rt_pixels_draw_disc(void *pixels,
+                             int64_t cx, int64_t cy,
+                             int64_t r, int64_t color);
+
+    /// @brief Draw a circle outline.
+    void rt_pixels_draw_ring(void *pixels,
+                             int64_t cx, int64_t cy,
+                             int64_t r, int64_t color);
+
+    /// @brief Draw a filled ellipse.
+    void rt_pixels_draw_ellipse(void *pixels,
+                                int64_t cx, int64_t cy,
+                                int64_t rx, int64_t ry,
+                                int64_t color);
+
+    /// @brief Draw an ellipse outline.
+    void rt_pixels_draw_ellipse_frame(void *pixels,
+                                      int64_t cx, int64_t cy,
+                                      int64_t rx, int64_t ry,
+                                      int64_t color);
+
+    /// @brief Flood fill from a seed point (iterative scanline, any canvas size).
+    void rt_pixels_flood_fill(void *pixels,
+                              int64_t x, int64_t y,
+                              int64_t color);
+
+    /// @brief Draw a thick line (pen-radius approach).
+    /// @param thickness Stroke width in pixels (pen diameter).
+    void rt_pixels_draw_thick_line(void *pixels,
+                                   int64_t x1, int64_t y1,
+                                   int64_t x2, int64_t y2,
+                                   int64_t thickness, int64_t color);
+
+    /// @brief Draw a filled triangle (scanline fill).
+    void rt_pixels_draw_triangle(void *pixels,
+                                 int64_t x1, int64_t y1,
+                                 int64_t x2, int64_t y2,
+                                 int64_t x3, int64_t y3,
+                                 int64_t color);
+
+    /// @brief Draw a quadratic Bézier curve.
+    /// @param x1,y1 Start point.
+    /// @param cx,cy Control point.
+    /// @param x2,y2 End point.
+    void rt_pixels_draw_bezier(void *pixels,
+                               int64_t x1, int64_t y1,
+                               int64_t cx, int64_t cy,
+                               int64_t x2, int64_t y2,
+                               int64_t color);
+
+    /// @brief Alpha-composite a color onto a pixel (Porter-Duff over).
+    /// @param pixels Pixels object.
+    /// @param x X coordinate.
+    /// @param y Y coordinate.
+    /// @param color Source color in 0x00RRGGBB format (Canvas-compatible).
+    /// @param alpha Source alpha 0–255 (0 = transparent, 255 = fully opaque).
+    /// @note Coordinates outside the buffer are silently clipped.
+    void rt_pixels_blend_pixel(void *pixels,
+                               int64_t x, int64_t y,
+                               int64_t color, int64_t alpha);
+
 #ifdef __cplusplus
 }
 #endif

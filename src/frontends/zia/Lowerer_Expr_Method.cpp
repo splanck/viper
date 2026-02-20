@@ -243,6 +243,17 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
         }
 
+        case CollectionMethod::Pop:
+        {
+            // Pop removes and returns the last element as a boxed obj.
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListPop, {baseValue});
+            TypeRef elemType = baseType ? baseType->elementType() : nullptr;
+            if (!elemType)
+                elemType = sema_.typeOf(expr);
+            Type ilElemType = mapType(elemType);
+            return emitUnboxValue(boxed, ilElemType, elemType);
+        }
+
         case CollectionMethod::Size:
         case CollectionMethod::Count:
         case CollectionMethod::Length:

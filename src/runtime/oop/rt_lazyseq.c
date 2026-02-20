@@ -945,3 +945,39 @@ int64_t rt_lazyseq_w_count(void *seq)
 {
     return rt_lazyseq_count((rt_lazyseq)seq);
 }
+
+void *rt_lazyseq_w_map(void *seq, void *fn)
+{
+    return (void *)rt_lazyseq_map((rt_lazyseq)seq, (void *(*)(void *))fn);
+}
+
+void *rt_lazyseq_w_filter(void *seq, void *pred)
+{
+    return (void *)rt_lazyseq_filter((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+}
+
+void *rt_lazyseq_w_take_while(void *seq, void *pred)
+{
+    return (void *)rt_lazyseq_take_while((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+}
+
+void *rt_lazyseq_w_drop_while(void *seq, void *pred)
+{
+    return (void *)rt_lazyseq_drop_while((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+}
+
+void *rt_lazyseq_w_find(void *seq, void *pred)
+{
+    int8_t found;
+    return rt_lazyseq_find((rt_lazyseq)seq, (int8_t (*)(void *))pred, &found);
+}
+
+int8_t rt_lazyseq_w_any(void *seq, void *pred)
+{
+    return rt_lazyseq_any((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+}
+
+int8_t rt_lazyseq_w_all(void *seq, void *pred)
+{
+    return rt_lazyseq_all((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+}

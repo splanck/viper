@@ -211,16 +211,30 @@ void appendGraphicsLibs(const LinkContext &ctx,
     if (!hasComponent(ctx, RtComponent::Graphics))
         return;
 
-    std::filesystem::path gfxLib;
 #ifdef _WIN32
+    const char *guiLibName = "vipergui.lib";
     const char *gfxLibName = "vipergfx.lib";
 #else
+    const char *guiLibName = "libvipergui.a";
     const char *gfxLibName = "libvipergfx.a";
 #endif
+
+    // vipergui (widget implementations) must come before vipergfx (primitives)
+    // because libviper_rt_graphics calls vg_* from vipergui, which in turn
+    // calls the lower-level drawing APIs in vipergfx.
+    std::filesystem::path guiLib, gfxLib;
     if (!ctx.buildDir.empty())
+    {
+        guiLib = ctx.buildDir / "src" / "lib" / "gui" / guiLibName;
         gfxLib = ctx.buildDir / "lib" / gfxLibName;
+    }
     else
+    {
+        guiLib = std::filesystem::path("src") / "lib" / "gui" / guiLibName;
         gfxLib = std::filesystem::path("lib") / gfxLibName;
+    }
+    if (fileExists(guiLib))
+        cmd.push_back(guiLib.string());
     if (fileExists(gfxLib))
         cmd.push_back(gfxLib.string());
 

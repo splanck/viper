@@ -821,6 +821,60 @@ static void test_scale_down()
     printf("test_scale_down: PASSED\n");
 }
 
+// ============================================================================
+// BlendPixel Tests
+// ============================================================================
+
+static void test_blend_fully_opaque()
+{
+    void *p = rt_pixels_new(4, 4);
+    // Black canvas; blend fully-opaque red (alpha=255) at (1,1)
+    rt_pixels_blend_pixel(p, 1, 1, 0x00FF0000, 255);
+    // Should be identical to set_rgb (fully opaque fast path)
+    int64_t got = rt_pixels_get_rgb(p, 1, 1);
+    assert(got == 0x00FF0000);
+    printf("test_blend_fully_opaque: PASSED\n");
+}
+
+static void test_blend_transparent()
+{
+    void *p = rt_pixels_new(4, 4);
+    rt_pixels_fill(p, (int64_t)0xFF000000); // red opaque background
+    // Blend with alpha=0 — no change expected
+    rt_pixels_blend_pixel(p, 0, 0, 0x0000FF00, 0);
+    int64_t got = rt_pixels_get(p, 0, 0);
+    // Background (red RGBA) should be preserved
+    assert((got >> 24) == 0xFF && ((got >> 16) & 0xFF) == 0 && ((got >> 8) & 0xFF) == 0);
+    printf("test_blend_transparent: PASSED\n");
+}
+
+static void test_blend_50_percent()
+{
+    void *p = rt_pixels_new(4, 4);
+    // Set background pixel to opaque white (0xFFFFFFFF in RGBA)
+    rt_pixels_set(p, 2, 2, (int64_t)0xFFFFFFFF);
+    // Blend opaque black (0x000000) at 50% alpha
+    rt_pixels_blend_pixel(p, 2, 2, 0x00000000, 128);
+    // Result: ~50% grey — channels should be near 127 (within rounding ±2)
+    int64_t rgba = rt_pixels_get(p, 2, 2);
+    int r = (int)((rgba >> 24) & 0xFF);
+    int g = (int)((rgba >> 16) & 0xFF);
+    int b = (int)((rgba >>  8) & 0xFF);
+    assert(r >= 125 && r <= 130);
+    assert(g >= 125 && g <= 130);
+    assert(b >= 125 && b <= 130);
+    printf("test_blend_50_percent: PASSED\n");
+}
+
+static void test_blend_out_of_bounds()
+{
+    // Should silently clip — no crash
+    void *p = rt_pixels_new(4, 4);
+    rt_pixels_blend_pixel(p, -1, -1, 0x00FF0000, 255);
+    rt_pixels_blend_pixel(p, 100, 100, 0x00FF0000, 255);
+    printf("test_blend_out_of_bounds: PASSED\n");
+}
+
 int main()
 {
 #ifdef _WIN32
@@ -874,6 +928,12 @@ int main()
     test_rotate_180();
     test_scale_up();
     test_scale_down();
+
+    // BlendPixel
+    test_blend_fully_opaque();
+    test_blend_transparent();
+    test_blend_50_percent();
+    test_blend_out_of_bounds();
 
     printf("\nAll tests passed!\n");
     return 0;

@@ -156,6 +156,8 @@ inline constexpr const char *kListRemove = kCollectionsListRemove;
 inline constexpr const char *kListInsert = kCollectionsListInsert;
 /// @brief Find the index of the first occurrence of a value, or -1 if absent.
 inline constexpr const char *kListFind = kCollectionsListFind;
+/// @brief Remove and return the last element.
+inline constexpr const char *kListPop = kCollectionsListPop;
 /// @}
 
 //=============================================================================

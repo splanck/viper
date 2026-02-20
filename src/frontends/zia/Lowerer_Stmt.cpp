@@ -707,6 +707,14 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
                 blockMgr_.currentBlock()->instructions.push_back(convInstr);
                 returnValue = Value::temp(convId);
             }
+            else if (result.type.kind == Type::Kind::Ptr)
+            {
+                // Unbox a boxed obj (e.g., from untyped List.Get()) when returning as Integer.
+                // This occurs when an untyped List holds integers: the runtime boxes them as heap
+                // objects, so List.Get() returns Ptr. The return statement must unbox to i64.
+                auto unboxed = emitUnbox(returnValue, Type(Type::Kind::I64));
+                returnValue = unboxed.value;
+            }
         }
 
         // Handle Integer -> Number implicit conversion for return statements

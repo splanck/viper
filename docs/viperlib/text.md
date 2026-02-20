@@ -1,6 +1,6 @@
-# Text Processing
+# Text Processing & Data Formats
 
-> String building, encoding/decoding, pattern matching, and text utilities.
+> String building, encoding/decoding, pattern matching, text utilities, and structured data formats (XML, YAML, multi-format serialization).
 
 **Part of the [Viper Runtime Library](README.md)**
 
@@ -27,6 +27,8 @@
 - [Viper.Text.Uuid](#vipertextuuid)
 - [Viper.Text.Version](#vipertextversion)
 - [Viper.Data.Serialize](#viperdataserialize)
+- [Viper.Data.Xml](#viperdataxml)
+- [Viper.Data.Yaml](#viperdatayaml)
 - [String.Like / String.LikeCI](#stringlike--stringlikeci)
 
 ---
@@ -1500,6 +1502,265 @@ END IF
 - **Auto-detection:** Process files without knowing their format in advance
 - **Validation:** Check input format before processing
 - **Round-trip:** Parse → modify → reformat data
+
+---
+
+## Viper.Data.Xml
+
+XML document model with a mutable node tree. Supports parsing, navigation, attribute access, child manipulation, and
+XPath-lite path queries. All node values are opaque objects.
+
+**Type:** Static utility class
+
+### Parsing and Validation
+
+| Method             | Signature                | Description                                     |
+|--------------------|--------------------------|--------------------------------------------------|
+| `Parse(xml)`       | `Object(String)`         | Parse an XML string; returns root node or NULL  |
+| `Error()`          | `String()`               | Last parse/operation error (empty if none)      |
+| `IsValid(xml)`     | `Boolean(String)`        | True if the string is well-formed XML            |
+
+### Node Creation
+
+| Method              | Signature                | Description                              |
+|---------------------|--------------------------|------------------------------------------|
+| `Element(tag)`      | `Object(String)`         | Create a new element node with a tag     |
+| `Text(content)`     | `Object(String)`         | Create a text node                       |
+| `Comment(text)`     | `Object(String)`         | Create a comment node                    |
+| `Cdata(text)`       | `Object(String)`         | Create a CDATA section node              |
+
+### Node Information
+
+| Method               | Signature                | Description                                         |
+|----------------------|--------------------------|-----------------------------------------------------|
+| `NodeType(n)`        | `String(Object)`         | Node type: "element", "text", "comment", "cdata"    |
+| `Tag(n)`             | `String(Object)`         | Tag name (element nodes only)                       |
+| `Content(n)`         | `String(Object)`         | Raw text content of a text/comment/cdata node       |
+| `TextContent(n)`     | `String(Object)`         | All descendant text concatenated (recursive)        |
+
+### Attributes
+
+| Method                    | Signature                         | Description                               |
+|---------------------------|-----------------------------------|-------------------------------------------|
+| `Attr(n, name)`           | `String(Object, String)`          | Attribute value (empty string if absent)  |
+| `HasAttr(n, name)`        | `Boolean(Object, String)`         | True if attribute exists                  |
+| `SetAttr(n, name, value)` | `Void(Object, String, String)`    | Set or add attribute                      |
+| `RemoveAttr(n, name)`     | `Void(Object, String)`            | Remove attribute                          |
+| `AttrNames(n)`            | `Seq(Object)`                     | Sequence of attribute name strings        |
+
+### Navigation
+
+| Method                  | Signature                    | Description                                        |
+|-------------------------|------------------------------|----------------------------------------------------|
+| `Children(n)`           | `Seq(Object)`                | All child nodes as a sequence                      |
+| `ChildCount(n)`         | `Integer(Object)`            | Number of child nodes                              |
+| `ChildAt(n, i)`         | `Object(Object, Integer)`    | Child at index i (0-based)                         |
+| `Child(n, tag)`         | `Object(Object, String)`     | First child element with given tag, or NULL        |
+| `ChildrenByTag(n, tag)` | `Seq(Object, String)`        | All child elements with given tag                  |
+| `Parent(n)`             | `Object(Object)`             | Parent node, or NULL for root                      |
+| `Root(n)`               | `Object(Object)`             | Document root starting from any node               |
+
+### Search
+
+| Method            | Signature                | Description                                             |
+|-------------------|--------------------------|---------------------------------------------------------|
+| `Find(n, path)`   | `Object(Object, String)` | Find first node matching a simple path (e.g. "a/b/c")  |
+| `FindAll(n, path)`| `Seq(Object, String)`    | Find all nodes matching the path                        |
+
+### Mutation
+
+| Method                    | Signature                        | Description                       |
+|---------------------------|----------------------------------|-----------------------------------|
+| `Append(n, child)`        | `Void(Object, Object)`           | Append child to node              |
+| `Insert(n, i, child)`     | `Void(Object, Integer, Object)`  | Insert child at index i           |
+| `Remove(n, child)`        | `Void(Object, Object)`           | Remove specific child node        |
+| `RemoveAt(n, i)`          | `Void(Object, Integer)`          | Remove child at index i           |
+| `SetText(n, text)`        | `Void(Object, String)`           | Replace all children with a single text node |
+
+### Serialization
+
+| Method                    | Signature                         | Description                                     |
+|---------------------------|-----------------------------------|-------------------------------------------------|
+| `Format(n)`               | `String(Object)`                  | Compact XML string                              |
+| `FormatPretty(n, indent)` | `String(Object, Integer)`         | Indented XML string (spaces per level)          |
+| `Escape(s)`               | `String(String)`                  | Escape XML special characters (`<>&"'`)         |
+| `Unescape(s)`             | `String(String)`                  | Unescape XML entities                           |
+
+### Notes
+
+- `Parse` returns the document root element on success, or NULL on error.
+- Check `Error()` after any NULL return for a diagnostic message.
+- Path syntax for `Find`/`FindAll`: slash-separated tag names from the given node (e.g. `"books/book/title"`).
+- Attribute and child mutations are performed in-place on the node object.
+- `TextContent` is useful for extracting all readable text from a subtree.
+
+### Zia Example
+
+```zia
+module XmlDemo;
+
+bind Viper.Terminal;
+bind Viper.Data.Xml as Xml;
+
+func start() {
+    var src = "<catalog><book id=\"1\"><title>Viper Primer</title><price>29.99</price></book></catalog>";
+    var root = Xml.Parse(src);
+
+    var book = Xml.Child(root, "book");
+    Say("ID: " + Xml.Attr(book, "id"));                     // 1
+    Say("Title: " + Xml.TextContent(Xml.Child(book, "title")));  // Viper Primer
+
+    // Build a new node and append it
+    var book2 = Xml.Element("book");
+    Xml.SetAttr(book2, "id", "2");
+    var t2 = Xml.Element("title");
+    Xml.SetText(t2, "Advanced Viper");
+    Xml.Append(book2, t2);
+    Xml.Append(root, book2);
+
+    Say("Children: " + Xml.Format(root));
+    Say("Pretty:\n" + Xml.FormatPretty(root, 2));
+
+    // Query all books
+    var books = Xml.ChildrenByTag(root, "book");
+    Say("Count: " + Xml.ChildCount(root));  // 2
+}
+```
+
+### BASIC Example
+
+```basic
+DIM src AS STRING = "<config><host>localhost</host><port>8080</port></config>"
+DIM root AS OBJECT = Viper.Data.Xml.Parse(src)
+
+IF root = NULL THEN
+    PRINT "Parse error: "; Viper.Data.Xml.Error()
+    END
+END IF
+
+DIM host AS STRING = Viper.Data.Xml.TextContent(Viper.Data.Xml.Child(root, "host"))
+DIM port AS STRING = Viper.Data.Xml.TextContent(Viper.Data.Xml.Child(root, "port"))
+PRINT "Host: "; host   ' localhost
+PRINT "Port: "; port   ' 8080
+
+' Add a new element
+DIM debug AS OBJECT = Viper.Data.Xml.Element("debug")
+Viper.Data.Xml.SetText(debug, "true")
+Viper.Data.Xml.Append(root, debug)
+
+PRINT Viper.Data.Xml.FormatPretty(root, 2)
+' <config>
+'   <host>localhost</host>
+'   <port>8080</port>
+'   <debug>true</debug>
+' </config>
+
+' Attribute access
+DIM items AS STRING = "<items><item key=""a"" val=""1""/><item key=""b"" val=""2""/></items>"
+DIM ir AS OBJECT = Viper.Data.Xml.Parse(items)
+DIM allItems AS OBJECT = Viper.Data.Xml.ChildrenByTag(ir, "item")
+FOR i = 0 TO allItems.Len - 1
+    DIM it AS OBJECT = allItems.Get(i)
+    PRINT Viper.Data.Xml.Attr(it, "key"); "="; Viper.Data.Xml.Attr(it, "val")
+NEXT
+```
+
+---
+
+## Viper.Data.Yaml
+
+YAML 1.2 parser and formatter. Converts YAML text to/from Viper objects (maps, sequences, scalars). The object
+model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, maps, and sequences.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                    | Signature                        | Description                                           |
+|---------------------------|----------------------------------|-------------------------------------------------------|
+| `Parse(yaml)`             | `Object(String)`                 | Parse YAML string; returns value or NULL on error     |
+| `Error()`                 | `String()`                       | Last error message (empty string if none)             |
+| `IsValid(yaml)`           | `Boolean(String)`                | True if the string is valid YAML                      |
+| `Format(obj)`             | `String(Object)`                 | Format a value as compact YAML                        |
+| `FormatIndent(obj, spaces)` | `String(Object, Integer)`      | Format with given indentation level                   |
+| `TypeOf(obj)`             | `String(Object)`                 | Value type string (see below)                         |
+
+### TypeOf Return Values
+
+| String        | Description                                   |
+|---------------|-----------------------------------------------|
+| `"null"`      | YAML null / missing value                     |
+| `"bool"`      | Boolean (true/false)                          |
+| `"int"`       | Integer scalar                                |
+| `"float"`     | Floating-point scalar                         |
+| `"string"`    | String scalar                                 |
+| `"sequence"`  | Ordered list (YAML sequence)                  |
+| `"mapping"`   | Key-value pairs (YAML mapping)                |
+
+### Notes
+
+- The returned object uses the same representation as `Viper.Text.Json.Parse` — use `Map`, `Seq`, and scalar
+  accessors to traverse the parsed value.
+- Multi-document YAML (separated by `---`) is not supported; only the first document is parsed.
+- Anchors and aliases are resolved during parsing and are transparent to the caller.
+- `Format` round-trips losslessly for all scalar types, sequences, and mappings.
+- YAML scalars with no explicit type tag are auto-typed (number detection, boolean keywords, etc.).
+
+### Zia Example
+
+```zia
+module YamlDemo;
+
+bind Viper.Terminal;
+bind Viper.Data.Yaml as Yaml;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var src = "name: Alice\nage: 30\nscores:\n  - 95\n  - 87\n  - 92\n";
+    var obj = Yaml.Parse(src);
+
+    Say("Type: " + Yaml.TypeOf(obj));  // mapping
+
+    // Navigate using Map accessors (same as Json object)
+    // Re-format as YAML
+    Say(Yaml.FormatIndent(obj, 2));
+
+    // Check validity
+    Say("Valid: " + Fmt.Bool(Yaml.IsValid(src)));  // true
+    Say("Invalid: " + Fmt.Bool(Yaml.IsValid("{")));  // false
+}
+```
+
+### BASIC Example
+
+```basic
+DIM src AS STRING = "server:" & Chr(10) & _
+                    "  host: localhost" & Chr(10) & _
+                    "  port: 9090" & Chr(10) & _
+                    "  tls: false" & Chr(10)
+
+DIM cfg AS OBJECT = Viper.Data.Yaml.Parse(src)
+
+IF cfg = NULL THEN
+    PRINT "YAML error: "; Viper.Data.Yaml.Error()
+    END
+END IF
+
+PRINT "Type: "; Viper.Data.Yaml.TypeOf(cfg)   ' mapping
+
+' Re-format as compact YAML
+PRINT Viper.Data.Yaml.Format(cfg)
+
+' Re-format with 4-space indent
+PRINT Viper.Data.Yaml.FormatIndent(cfg, 4)
+
+' Validate before processing user input
+DIM userYaml AS STRING = "key: value"
+IF Viper.Data.Yaml.IsValid(userYaml) THEN
+    DIM parsed AS OBJECT = Viper.Data.Yaml.Parse(userYaml)
+    PRINT Viper.Data.Yaml.TypeOf(parsed)  ' mapping
+END IF
+```
 
 ---
 

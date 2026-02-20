@@ -10,7 +10,7 @@ bind "../services/file_utils";
 entity DocumentManager {
     expose List[document.Document] documents;  // All open documents
     expose Integer activeIndex;                // Index of active document (-1 = none)
-    expose Integer untitledCount;              // Counter for "Untitled N" naming
+    expose Integer untitledCount;             // Counter for "Untitled N" naming
 
     expose func init() {
         documents = [];

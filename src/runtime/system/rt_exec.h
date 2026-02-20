@@ -64,6 +64,20 @@ extern "C"
     /// @warning Do not pass unsanitized user input - shell injection risk.
     rt_string rt_exec_shell_capture(rt_string command);
 
+    /// @brief Execute a shell command, capture stdout, and record the exit code
+    ///        for retrieval via rt_exec_last_exit_code().
+    /// @param command Shell command string (passed to /bin/sh -c).
+    /// @return Captured stdout as string. To include stderr, append "2>&1" to
+    ///         the command (the caller controls stream merging, same as ShellCapture).
+    /// @note The exit code is stored per-thread; call rt_exec_last_exit_code()
+    ///       immediately after to retrieve it before the next exec call.
+    /// @warning Do not pass unsanitized user input - shell injection risk.
+    rt_string rt_exec_shell_full(rt_string command);
+
+    /// @brief Return the exit code from the most recent rt_exec_shell_full() call.
+    /// @return Exit code (0 = success), or -1 if rt_exec_shell_full was never called.
+    int64_t rt_exec_last_exit_code(void);
+
 #ifdef __cplusplus
 }
 #endif

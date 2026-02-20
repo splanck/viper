@@ -385,6 +385,9 @@ int invokeLinker(const std::filesystem::path &asmPath,
         std::vector<std::string> frameworks;
 #if defined(__APPLE__)
         frameworks.push_back("Cocoa");
+        frameworks.push_back("IOKit");
+        frameworks.push_back("CoreFoundation");
+        frameworks.push_back("UniformTypeIdentifiers");
 #endif
         appendGraphicsLibs(ctx, cmd, frameworks);
     }

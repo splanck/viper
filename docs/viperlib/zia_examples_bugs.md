@@ -2,7 +2,25 @@
 
 > Generated during systematic audit of viper-lib documentation.
 > Each entry records bugs found while testing Zia examples against both VM and ARM64 native codegen.
-> Last updated: 2026-02-06
+> Last updated: 2026-02-19
+
+---
+
+## Recent Fixes
+
+### `Viper.Text.CompiledPattern` — All methods now wired (2026-02-19)
+
+**Root cause:** `RT_CLASS_BEGIN` for `Viper.Text.CompiledPattern` declared RT_METHOD entries
+(`Captures`, `CapturesFrom`, `Find`, `FindFrom`, `FindPos`, `FindAll`, `Replace`, `ReplaceFirst`,
+`Split`, `SplitN`, `IsMatch`, `get_Pattern`) but had no backing `RT_FUNC` entries. Any call to
+these methods produced an "unknown callee" IL linker error at runtime.
+
+**Fix:** Added 13 `RT_FUNC` entries to `src/il/runtime/runtime.def` for all CompiledPattern
+methods. The class is now fully functional.
+
+**Affected Zia code:** Any usage of `CP.New(pattern).Captures(str)` or similar.
+
+---
 
 ---
 

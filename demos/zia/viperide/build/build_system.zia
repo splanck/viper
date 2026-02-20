@@ -3,12 +3,18 @@ module build_system;
 bind Str = Viper.String;
 bind Exec = Viper.Exec;
 bind Convert = Viper.Core.Convert;
+bind CP = Viper.Text.CompiledPattern;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+bind Sw = Viper.Time.Stopwatch;
 
 // ============================================================================
 // BuildSystem — compile and run Zia/BASIC programs from the IDE
 // ============================================================================
 // Handles compilation, error parsing, and running programs.
-// Uses Exec.ShellCapture to run the zia compiler.
+// Uses Exec.ShellFull to run the zia compiler and capture the exit code.
+//
+// Diagnostic format: "file.zia:line:col: error[code]: message"
 // ============================================================================
 
 entity BuildSystem {
@@ -21,6 +27,9 @@ entity BuildSystem {
     expose String buildOutput;
     expose String compilerPath;
 
+    // Build timing ("1.2s" after last build)
+    expose String lastBuildTime;
+
     // Parsed diagnostics
     expose List[Diagnostic] diagnostics;
 
@@ -30,6 +39,7 @@ entity BuildSystem {
         lastBuildSuccess = false;
         buildOutput = "";
         compilerPath = "zia";
+        lastBuildTime = "";
         diagnostics = [];
     }
 
@@ -38,14 +48,21 @@ entity BuildSystem {
         isBuilding = true;
         diagnostics = [];
 
-        // Construct the compile command
+        var sw = Sw.New();
+        sw.Start();
+
+        // Run compiler with stderr merged so error messages are captured
         var cmd = compilerPath + " " + filePath + " --emit-il 2>&1";
+        buildOutput = Exec.ShellFull(cmd);
 
-        // Run the compiler and capture output
-        buildOutput = Exec.ShellCapture(cmd);
+        // Use exit code as the authoritative success indicator
+        lastBuildSuccess = Exec.LastExitCode() == 0;
 
-        // Check for errors in output
-        lastBuildSuccess = ParseBuildOutput();
+        // Record elapsed time
+        lastBuildTime = "" + sw.ElapsedMs + "ms";
+
+        // Parse output to populate the diagnostics list for gutter markers
+        ParseBuildOutput();
 
         isBuilding = false;
         return lastBuildSuccess;
@@ -56,122 +73,54 @@ entity BuildSystem {
         isBuilding = true;
         diagnostics = [];
 
-        // Just run the file directly (zia will compile and run)
-        var cmd = compilerPath + " " + filePath + " 2>&1";
-        buildOutput = Exec.ShellCapture(cmd);
+        var sw = Sw.New();
+        sw.Start();
 
-        // Check for errors
-        lastBuildSuccess = ParseBuildOutput();
+        // Run file directly (zia compiles and runs); merge stderr for error capture
+        var cmd = compilerPath + " " + filePath + " 2>&1";
+        buildOutput = Exec.ShellFull(cmd);
+
+        lastBuildSuccess = Exec.LastExitCode() == 0;
+
+        lastBuildTime = "" + sw.ElapsedMs + "ms";
+
+        ParseBuildOutput();
 
         isBuilding = false;
         return lastBuildSuccess;
     }
 
-    // Parse build output for errors and warnings.
-    // Returns true if no errors found.
-    func ParseBuildOutput() -> Boolean {
-        var hasErrors = false;
-
-        // Split output into lines and look for error patterns
+    // Parse build output for diagnostics (error/warning lines).
+    // Populates `diagnostics` list. Success is determined by exit code in callers.
+    func ParseBuildOutput() {
+        // Regex for compiler diagnostic lines.
         // Format: "file.zia:line:col: error[code]: message"
-        var output = buildOutput;
-        var pos = 0;
-        var len = Str.Length(output);
+        // Group 1=file  2=line  3=col  4=severity  5=code  6=message
+        var diagPat = CP.New("([^:]+):([0-9]+):([0-9]+): (error|warning)\\[([^\\]]*)\\]: (.+)");
 
-        while pos < len {
-            // Find the end of this line
-            var lineEnd = FindLineEnd(output, pos);
-            var line = Str.Substring(output, pos, lineEnd - pos);
+        // Split output into lines and scan for diagnostic entries
+        var lines = Str.Split(buildOutput, "\n");
+        var i = 0;
+        while i < Seq.get_Len(lines) {
+            var line = Seq.Get(lines, i);
 
-            // Try to parse as diagnostic
-            var diag = ParseDiagnosticLine(line);
-            if diag != null {
-                diagnostics.add(diag);
-                if diag.severity == 0 {
-                    hasErrors = true;
+            var caps = diagPat.Captures(line);
+            if Seq.get_Len(caps) >= 7 {
+                var diag = new Diagnostic();
+                diag.filePath = Obj.ToString(Seq.Get(caps, 1));
+                diag.line     = Convert.ToInt(Seq.Get(caps, 2));
+                diag.column   = Convert.ToInt(Seq.Get(caps, 3));
+                var sev       = Obj.ToString(Seq.Get(caps, 4));
+                diag.severity = 0;
+                if sev == "warning" {
+                    diag.severity = 1;
                 }
+                diag.code    = Obj.ToString(Seq.Get(caps, 5));
+                diag.message = Obj.ToString(Seq.Get(caps, 6));
+                diagnostics.add(diag);
             }
 
-            pos = lineEnd + 1;
-        }
-
-        return hasErrors == false;
-    }
-
-    // Find the end of a line in the string.
-    func FindLineEnd(s: String, start: Integer) -> Integer {
-        var len = Str.Length(s);
-        var pos = start;
-        while pos < len {
-            var ch = Str.Substring(s, pos, 1);
-            if ch == "\n" {
-                return pos;
-            }
-            pos = pos + 1;
-        }
-        return len;
-    }
-
-    // Parse a single line for diagnostic info.
-    // Format: "file.zia:line:col: error[code]: message"
-    func ParseDiagnosticLine(line: String) -> Diagnostic? {
-        // Look for " error[" or " warning["
-        var errorIdx = Str.IndexOf(line, " error[");
-        var warnIdx = Str.IndexOf(line, " warning[");
-
-        if errorIdx <= 0 and warnIdx <= 0 {
-            return null;
-        }
-
-        var diag = new Diagnostic();
-
-        if errorIdx > 0 {
-            diag.severity = 0;  // Error
-            // Parse file:line:col before " error["
-            ParseLocation(line, errorIdx - 1, diag);
-            // Extract message after the bracket
-            var msgStart = Str.IndexOf(line, "]: ");
-            if msgStart > 0 {
-                diag.message = Str.Substring(line, msgStart + 2, Str.Length(line) - msgStart - 2);
-            }
-        } else if warnIdx > 0 {
-            diag.severity = 1;  // Warning
-            ParseLocation(line, warnIdx - 1, diag);
-            var msgStart = Str.IndexOf(line, "]: ");
-            if msgStart > 0 {
-                diag.message = Str.Substring(line, msgStart + 2, Str.Length(line) - msgStart - 2);
-            }
-        }
-
-        return diag;
-    }
-
-    // Parse "file:line:col" from the start of a string.
-    func ParseLocation(line: String, endPos: Integer, diag: Diagnostic) {
-        // Find first colon (end of filename)
-        var firstColon = Str.IndexOf(line, ":");
-        if firstColon <= 0 {
-            return;
-        }
-
-        diag.filePath = Str.Substring(line, 0, firstColon - 1);
-
-        // Find second colon (end of line number)
-        var rest = Str.Substring(line, firstColon, Str.Length(line) - firstColon);
-        var secondColon = Str.IndexOf(rest, ":");
-        if secondColon <= 0 {
-            return;
-        }
-
-        var lineStr = Str.Substring(rest, 0, secondColon - 1);
-        diag.line = Convert.ToInt(lineStr);
-
-        // Find third colon (end of column)
-        var rest2 = Str.Substring(rest, secondColon, Str.Length(rest) - secondColon);
-        var thirdColon = Str.IndexOf(rest2, ":");
-        if thirdColon > 0 {
-            var colStr = Str.Substring(rest2, 0, thirdColon - 1);
-            diag.column = Convert.ToInt(colStr);
+            i = i + 1;
         }
     }
 
@@ -206,6 +155,11 @@ entity BuildSystem {
     // Get the build output text.
     expose func GetOutput() -> String {
         return buildOutput;
+    }
+
+    // Get the elapsed time of the last build ("1.2s").
+    expose func GetBuildTime() -> String {
+        return lastBuildTime;
     }
 
     // Clear diagnostics.

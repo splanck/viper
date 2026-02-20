@@ -222,6 +222,13 @@ extern "C"
     void *rt_lazyseq_w_to_seq(void *seq);
     void *rt_lazyseq_w_to_seq_n(void *seq, int64_t n);
     int64_t rt_lazyseq_w_count(void *seq);
+    void *rt_lazyseq_w_map(void *seq, void *fn);
+    void *rt_lazyseq_w_filter(void *seq, void *pred);
+    void *rt_lazyseq_w_take_while(void *seq, void *pred);
+    void *rt_lazyseq_w_drop_while(void *seq, void *pred);
+    void *rt_lazyseq_w_find(void *seq, void *pred);
+    int8_t rt_lazyseq_w_any(void *seq, void *pred);
+    int8_t rt_lazyseq_w_all(void *seq, void *pred);
 
 #ifdef __cplusplus
 }

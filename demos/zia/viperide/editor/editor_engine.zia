@@ -18,7 +18,7 @@ entity EditorEngine {
     }
 
     // Create the CodeEditor widget inside a parent container.
-    expose func Setup(parent: GUI.VBox) {
+    expose func Setup(parent: GUI.HBox) {
         editor = GUI.CodeEditor.New(parent);
         editor.SetShowLineNumbers(1);
         editor.SetFlex(1.0);

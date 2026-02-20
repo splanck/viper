@@ -5,22 +5,12 @@ bind Viper.Graphics;
 
 bind "./config";
 
-// Convert 0x00RRGGBB (Canvas format) to 0xRRGGBBFF (Pixels format)
-func toPixelColor(color: Integer) -> Integer {
-    return color * 256 + 255;
-}
-
-// Convert 0xRRGGBBFF (Pixels format) to 0x00RRGGBB (Canvas format)
-func fromPixelColor(color: Integer) -> Integer {
-    return color / 256;
-}
-
 // DrawingCanvas entity - manages the pixel buffer for drawing
 entity DrawingCanvas {
     expose Integer width;           // Canvas width in pixels
     expose Integer height;          // Canvas height in pixels
     expose Integer backgroundColor; // Background color (for clear/eraser)
-    hide Pixels pixels;  // Pixel buffer
+    hide Pixels pixels;             // Pixel buffer
 
     // Default constructor (required for new Entity() pattern)
     expose func init() {
@@ -43,256 +33,79 @@ entity DrawingCanvas {
         initWithSize(config.DEFAULT_CANVAS_WIDTH, config.DEFAULT_CANVAS_HEIGHT);
     }
 
-    // Clear canvas to background color
+    // Clear canvas to background color (0x00RRGGBB format)
     expose func clear() {
-        // Use native Fill for O(1) instead of O(width*height) pixel-by-pixel
-        var pixelBg = toPixelColor(backgroundColor);
-        pixels.Fill(pixelBg);
+        pixels.DrawBox(0, 0, width, height, backgroundColor);
     }
 
     // Get pixel color at position (returns 0x00RRGGBB format)
     expose func getPixel(x: Integer, y: Integer) -> Integer {
-        if x >= 0 and x < width and y >= 0 and y < height {
-            return fromPixelColor(pixels.Get(x, y));
-        }
-        return 0;
+        return pixels.GetRGB(x, y);
     }
 
     // Set pixel color at position (expects 0x00RRGGBB format)
     expose func setPixel(x: Integer, y: Integer, color: Integer) {
-        if x >= 0 and x < width and y >= 0 and y < height {
-            pixels.Set(x, y, toPixelColor(color));
-        }
+        pixels.SetRGB(x, y, color);
     }
 
-    // Set pixel with opacity blending (expects 0x00RRGGBB format)
+    // Set pixel with opacity blending (expects 0x00RRGGBB format, opacity 0-100)
     expose func setPixelBlend(x: Integer, y: Integer, color: Integer, opacity: Integer) {
-        if x >= 0 and x < width and y >= 0 and y < height {
-            if opacity >= 100 {
-                pixels.Set(x, y, toPixelColor(color));
-            } else if opacity > 0 {
-                var existing = fromPixelColor(pixels.Get(x, y));
-                var blended = blendColorsForOpacity(existing, color, opacity);
-                pixels.Set(x, y, toPixelColor(blended));
-            }
+        if opacity >= 100 {
+            pixels.SetRGB(x, y, color);
+        } else if opacity > 0 {
+            var existing = pixels.GetRGB(x, y);
+            pixels.SetRGB(x, y, Color.Lerp(existing, color, opacity));
         }
     }
 
-    // Draw a line using Bresenham's algorithm
+    // Draw a line (Bresenham, 0x00RRGGBB color)
     expose func drawLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, color: Integer) {
-        var dx = x2 - x1;
-        var dy = y2 - y1;
-        if dx < 0 { dx = 0 - dx; }
-        if dy < 0 { dy = 0 - dy; }
-
-        var sx = 1;
-        var sy = 1;
-        if x1 > x2 { sx = 0 - 1; }
-        if y1 > y2 { sy = 0 - 1; }
-
-        var err = dx - dy;
-        var x = x1;
-        var y = y1;
-
-        while 1 == 1 {
-            setPixel(x, y, color);
-            if x == x2 and y == y2 {
-                return;
-            }
-            var e2 = err * 2;
-            if e2 > 0 - dy {
-                err = err - dy;
-                x = x + sx;
-            }
-            if e2 < dx {
-                err = err + dx;
-                y = y + sy;
-            }
-        }
+        pixels.DrawLine(x1, y1, x2, y2, color);
     }
 
     // Draw rectangle (filled)
     expose func drawRectFill(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
-        var py = y;
-        while py < y + h {
-            var px = x;
-            while px < x + w {
-                setPixel(px, py, color);
-                px = px + 1;
-            }
-            py = py + 1;
-        }
+        pixels.DrawBox(x, y, w, h, color);
     }
 
     // Draw rectangle (outline)
     expose func drawRect(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
-        // Top and bottom
-        var px = x;
-        while px < x + w {
-            setPixel(px, y, color);
-            setPixel(px, y + h - 1, color);
-            px = px + 1;
-        }
-        // Left and right
-        var py = y;
-        while py < y + h {
-            setPixel(x, py, color);
-            setPixel(x + w - 1, py, color);
-            py = py + 1;
-        }
+        pixels.DrawFrame(x, y, w, h, color);
     }
 
-    // Draw circle (filled) using midpoint algorithm
+    // Draw circle (filled)
     expose func drawDiscFill(cx: Integer, cy: Integer, radius: Integer, color: Integer) {
-        var y = 0 - radius;
-        while y <= radius {
-            var x = 0 - radius;
-            while x <= radius {
-                if x * x + y * y <= radius * radius {
-                    setPixel(cx + x, cy + y, color);
-                }
-                x = x + 1;
-            }
-            y = y + 1;
-        }
+        pixels.DrawDisc(cx, cy, radius, color);
     }
 
     // Draw circle (outline)
     expose func drawCircle(cx: Integer, cy: Integer, radius: Integer, color: Integer) {
-        var x = radius;
-        var y = 0;
-        var err = 0;
-
-        while x >= y {
-            setPixel(cx + x, cy + y, color);
-            setPixel(cx + y, cy + x, color);
-            setPixel(cx - y, cy + x, color);
-            setPixel(cx - x, cy + y, color);
-            setPixel(cx - x, cy - y, color);
-            setPixel(cx - y, cy - x, color);
-            setPixel(cx + y, cy - x, color);
-            setPixel(cx + x, cy - y, color);
-
-            y = y + 1;
-            if err <= 0 {
-                err = err + 2 * y + 1;
-            }
-            if err > 0 {
-                x = x - 1;
-                err = err - 2 * x + 1;
-            }
-        }
+        pixels.DrawRing(cx, cy, radius, color);
     }
 
     // Draw ellipse (filled)
     expose func drawEllipseFill(cx: Integer, cy: Integer, rx: Integer, ry: Integer, color: Integer) {
-        var y = 0 - ry;
-        while y <= ry {
-            var x = 0 - rx;
-            while x <= rx {
-                // Check if point is inside ellipse: (x/rx)^2 + (y/ry)^2 <= 1
-                // Rearranged to avoid division: x^2 * ry^2 + y^2 * rx^2 <= rx^2 * ry^2
-                var check = x * x * ry * ry + y * y * rx * rx;
-                var limit = rx * rx * ry * ry;
-                if check <= limit {
-                    setPixel(cx + x, cy + y, color);
-                }
-                x = x + 1;
-            }
-            y = y + 1;
-        }
+        pixels.DrawEllipse(cx, cy, rx, ry, color);
     }
 
     // Draw ellipse (outline)
     expose func drawEllipse(cx: Integer, cy: Integer, rx: Integer, ry: Integer, color: Integer) {
-        // Midpoint ellipse algorithm
-        var x = 0;
-        var y = ry;
-        var rx2 = rx * rx;
-        var ry2 = ry * ry;
-        var tworx2 = 2 * rx2;
-        var twory2 = 2 * ry2;
-        var px = 0;
-        var py = tworx2 * y;
-
-        // Region 1
-        var p = ry2 - rx2 * ry + rx2 / 4;
-        while px < py {
-            setPixel(cx + x, cy + y, color);
-            setPixel(cx - x, cy + y, color);
-            setPixel(cx + x, cy - y, color);
-            setPixel(cx - x, cy - y, color);
-            x = x + 1;
-            px = px + twory2;
-            if p < 0 {
-                p = p + ry2 + px;
-            } else {
-                y = y - 1;
-                py = py - tworx2;
-                p = p + ry2 + px - py;
-            }
-        }
-
-        // Region 2
-        p = ry2 * (x * 2 + 1) * (x * 2 + 1) / 4 + rx2 * (y - 1) * (y - 1) - rx2 * ry2;
-        while y >= 0 {
-            setPixel(cx + x, cy + y, color);
-            setPixel(cx - x, cy + y, color);
-            setPixel(cx + x, cy - y, color);
-            setPixel(cx - x, cy - y, color);
-            y = y - 1;
-            py = py - tworx2;
-            if p > 0 {
-                p = p + rx2 - py;
-            } else {
-                x = x + 1;
-                px = px + twory2;
-                p = p + rx2 - py + px;
-            }
-        }
+        pixels.DrawEllipseFrame(cx, cy, rx, ry, color);
     }
 
-    // Flood fill using scanline algorithm (iterative)
+    // Flood fill (iterative — no depth limit, works on any canvas size)
     expose func floodFill(startX: Integer, startY: Integer, newColor: Integer) {
-        if startX < 0 or startX >= width or startY < 0 or startY >= height {
-            return;
-        }
-
-        var targetColor = getPixel(startX, startY);
-        if targetColor == newColor {
-            return;
-        }
-
-        // Simple recursive fill (limited depth)
-        floodFillHelper(startX, startY, targetColor, newColor, 0);
-    }
-
-    // Flood fill helper with depth limit
-    // Note: depth limit must be low enough to avoid stack overflow in native code
-    // (~280 bytes per frame, 1MB default stack = ~3500 max, use 2000 for safety)
-    hide func floodFillHelper(x: Integer, y: Integer, targetColor: Integer, newColor: Integer, depth: Integer) {
-        if depth > 2000 {
-            return;
-        }
-        if x < 0 or x >= width or y < 0 or y >= height {
-            return;
-        }
-        if getPixel(x, y) != targetColor {
-            return;
-        }
-
-        setPixel(x, y, newColor);
-
-        // Fill in four directions
-        floodFillHelper(x + 1, y, targetColor, newColor, depth + 1);
-        floodFillHelper(x - 1, y, targetColor, newColor, depth + 1);
-        floodFillHelper(x, y + 1, targetColor, newColor, depth + 1);
-        floodFillHelper(x, y - 1, targetColor, newColor, depth + 1);
+        pixels.FloodFill(startX, startY, newColor);
     }
 
     // Get the raw pixels object for blitting
     expose func getPixels() -> Pixels {
         return pixels;
+    }
+
+    // Restore pixels from an undo snapshot
+    expose func restorePixels(snapshot: Pixels) {
+        pixels = snapshot;
     }
 
     // Save to BMP file
@@ -305,26 +118,8 @@ entity DrawingCanvas {
         var loaded = Pixels.LoadBmp(filename);
         if loaded != null {
             pixels = loaded;
-            // Note: Width/height should match original canvas
             return 1;
         }
         return 0;
     }
-}
-
-// Helper: Blend two colors (t = 0 to 100) - 0x00RRGGBB format
-func blendColorsForOpacity(c1: Integer, c2: Integer, t: Integer) -> Integer {
-    var r1 = (c1 / 65536) % 256;
-    var g1 = (c1 / 256) % 256;
-    var b1 = c1 % 256;
-
-    var r2 = (c2 / 65536) % 256;
-    var g2 = (c2 / 256) % 256;
-    var b2 = c2 % 256;
-
-    var r = r1 + (r2 - r1) * t / 100;
-    var g = g1 + (g2 - g1) * t / 100;
-    var b = b1 + (b2 - b1) * t / 100;
-
-    return r * 65536 + g * 256 + b;
 }

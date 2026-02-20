@@ -11,6 +11,10 @@ bind "services/file_utils";
 bind "build/build_system";
 
 bind Viper.GUI;
+bind IO = Viper.IO;
+bind Input = Viper.Input;
+bind Exec = Viper.Exec;
+bind Convert = Viper.Core.Convert;
 
 // ============================================================================
 // ViperIDE — main entry point
@@ -37,8 +41,13 @@ func main() {
     // Build the UI shell
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
 
-    // Setup editor inside the editor area (right panel of SplitPane)
-    engine.Setup(shell.editorArea);
+    // Setup editor inside editorRow (the HBox for editor + minimap side by side)
+    engine.Setup(shell.editorRow);
+
+    // Create minimap in the right side of editorRow and bind it to the editor
+    shell.minimap = GUI.Minimap.New(shell.editorRow);
+    shell.minimap.SetWidth(100);
+    shell.minimap.BindEditor(engine.editor);
 
     // Setup tab bar
     tabs.Setup(shell.tabBar);
@@ -49,14 +58,34 @@ func main() {
     // ========================================================================
     // Register keyboard shortcuts
     // ========================================================================
-    Shortcuts.Register("new", "Ctrl+N", "New File");
-    Shortcuts.Register("open", "Ctrl+O", "Open File");
-    Shortcuts.Register("save", "Ctrl+S", "Save File");
-    Shortcuts.Register("saveall", "Ctrl+Shift+S", "Save All Files");
-    Shortcuts.Register("close", "Ctrl+W", "Close File");
-    Shortcuts.Register("togglesidebar", "Ctrl+B", "Toggle Sidebar");
-    Shortcuts.Register("build", "Ctrl+Shift+B", "Build");
-    Shortcuts.Register("buildrun", "F5", "Build and Run");
+    Shortcuts.Register("new",       "Ctrl+N",       "New File");
+    Shortcuts.Register("open",      "Ctrl+O",       "Open File");
+    Shortcuts.Register("save",      "Ctrl+S",       "Save File");
+    Shortcuts.Register("saveall",   "Ctrl+Shift+S", "Save All Files");
+    Shortcuts.Register("close",     "Ctrl+W",       "Close File");
+    Shortcuts.Register("reload",    "Ctrl+Shift+R", "Reload File");
+    Shortcuts.Register("togglesidebar", "Ctrl+B",   "Toggle Sidebar");
+    Shortcuts.Register("build",     "Ctrl+Shift+B", "Build");
+    Shortcuts.Register("buildrun",  "F5",           "Build and Run");
+    Shortcuts.Register("run",       "Ctrl+F5",      "Run without Build");
+    Shortcuts.Register("find",      "Ctrl+F",       "Find / Replace");
+    Shortcuts.Register("palette",   "Ctrl+Shift+P", "Command Palette");
+
+    // ========================================================================
+    // Register command palette commands
+    // ========================================================================
+    shell.commandPalette.AddCommandWithShortcut("new",       "New File",          "Create a new untitled file",      "Ctrl+N");
+    shell.commandPalette.AddCommandWithShortcut("open",      "Open File...",      "Open a file from disk",           "Ctrl+O");
+    shell.commandPalette.AddCommandWithShortcut("save",      "Save",              "Save the current file",           "Ctrl+S");
+    shell.commandPalette.AddCommandWithShortcut("saveall",   "Save All",          "Save all open files",             "Ctrl+Shift+S");
+    shell.commandPalette.AddCommandWithShortcut("close",     "Close File",        "Close the current tab",           "Ctrl+W");
+    shell.commandPalette.AddCommandWithShortcut("reload",    "Reload File",       "Reload file from disk",           "Ctrl+Shift+R");
+    shell.commandPalette.AddCommandWithShortcut("find",      "Find / Replace",    "Open the find bar",               "Ctrl+F");
+    shell.commandPalette.AddCommandWithShortcut("build",     "Build",             "Compile the current file",        "Ctrl+Shift+B");
+    shell.commandPalette.AddCommandWithShortcut("buildrun",  "Build and Run",     "Build and run the current file",  "F5");
+    shell.commandPalette.AddCommandWithShortcut("run",       "Run without Build", "Run without compiling first",     "Ctrl+F5");
+    shell.commandPalette.AddCommandWithShortcut("sidebar",   "Toggle Sidebar",    "Show or hide the file tree",      "Ctrl+B");
+    shell.commandPalette.AddCommandWithShortcut("statusbar", "Toggle Status Bar", "Show or hide the status bar",     "");
 
     // ========================================================================
     // Create welcome document
@@ -78,16 +107,59 @@ func main() {
     shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
     shell.SetStatusRight(welcomeDoc.fileName);
 
+    // Wire the find bar to the editor (enables Find/Replace to search in editor)
+    shell.findBar.BindEditor(engine.editor);
+
+    // File watcher — tracks whether the active file was modified externally.
+    // hasWatcher is false until the first non-new document is active.
+    var watchedPath = "";
+    var hasWatcher = false;
+    var fileWatcher = IO.Watcher.New(".");
+
+    // True when an external modification to the active file is pending reload.
+    var pendingReload = false;
+
     // ========================================================================
     // Main event loop
     // ========================================================================
     var loopCount = 0;
+    var cpSelected = "";   // command palette selection for this frame
+
     while shell != null and shell.ShouldClose() == false {
         loopCount = loopCount + 1;
         shell.Poll();
 
         // ====================================================================
-        // Handle New File (menu, toolbar, or Ctrl+N)
+        // Command Palette — check selection and show on Ctrl+Shift+P
+        // ====================================================================
+        cpSelected = "";
+        if shell.commandPalette.WasSelected() != 0 {
+            cpSelected = shell.commandPalette.GetSelected();
+        }
+        if Shortcuts.WasTriggered("palette") != 0 {
+            shell.commandPalette.Show();
+        }
+
+        // ====================================================================
+        // Context menu — right-click on the file tree
+        // ====================================================================
+        if Input.Mouse.WasClicked(1) {
+            if shell.sidebarTree.IsHovered() != 0 {
+                shell.treeContextMenu.Show(Input.Mouse.X, Input.Mouse.Y);
+            }
+        }
+        if shell.ctxOpen.WasClicked() != 0 {
+            // Same action as a tree left-click — handled below via projMgr
+        }
+        if shell.ctxReveal.WasClicked() != 0 {
+            var revealDoc = docMgr.GetActive();
+            if revealDoc != null and revealDoc.isNew == false {
+                Exec.Shell("open -R \"" + revealDoc.filePath + "\"");
+            }
+        }
+
+        // ====================================================================
+        // Handle New File (menu, toolbar, Ctrl+N, or CommandPalette)
         // ====================================================================
         var doNew = shell.miNew.WasClicked() != 0;
         if doNew == false {
@@ -95,6 +167,9 @@ func main() {
         }
         if doNew == false {
             doNew = Shortcuts.WasTriggered("new") != 0;
+        }
+        if doNew == false {
+            doNew = cpSelected == "new";
         }
         if doNew {
             SaveEditorState(docMgr, engine);
@@ -104,12 +179,14 @@ func main() {
             tabs.SetActive(docMgr.activeIndex);
             engine.LoadDocument(newDoc);
 
+            shell.breadcrumb.SetPath("", "/");
             shell.SetStatusLeft("New file created");
             shell.SetStatusRight(newDoc.fileName);
+            pendingReload = false;
         }
 
         // ====================================================================
-        // Handle Open File (menu, toolbar, or Ctrl+O)
+        // Handle Open File (menu, toolbar, Ctrl+O, or CommandPalette)
         // ====================================================================
         var doOpen = shell.miOpen.WasClicked() != 0;
         if doOpen == false {
@@ -117,6 +194,9 @@ func main() {
         }
         if doOpen == false {
             doOpen = Shortcuts.WasTriggered("open") != 0;
+        }
+        if doOpen == false {
+            doOpen = cpSelected == "open";
         }
         if doOpen {
             var path = FileDialog.Open("Open File", "*.zia;*.bas;*.txt", "");
@@ -132,8 +212,10 @@ func main() {
                 tabs.SetActive(docMgr.activeIndex);
                 engine.LoadDocument(openDoc);
 
+                shell.breadcrumb.SetPath(openDoc.filePath, "/");
                 shell.SetStatusLeft("Opened: " + openDoc.fileName);
                 shell.SetStatusRight(openDoc.fileName);
+                pendingReload = false;
             }
         }
 
@@ -164,12 +246,14 @@ func main() {
             tabs.SetActive(docMgr.activeIndex);
             engine.LoadDocument(treeOpenDoc);
 
+            shell.breadcrumb.SetPath(treeOpenDoc.filePath, "/");
             shell.SetStatusLeft("Opened: " + treeOpenDoc.fileName);
             shell.SetStatusRight(treeOpenDoc.fileName);
+            pendingReload = false;
         }
 
         // ====================================================================
-        // Handle Save (menu, toolbar, or Ctrl+S)
+        // Handle Save (menu, toolbar, Ctrl+S, or CommandPalette)
         // ====================================================================
         var doSave = shell.miSave.WasClicked() != 0;
         if doSave == false {
@@ -177,6 +261,9 @@ func main() {
         }
         if doSave == false {
             doSave = Shortcuts.WasTriggered("save") != 0;
+        }
+        if doSave == false {
+            doSave = cpSelected == "save";
         }
         if doSave {
             SaveEditorState(docMgr, engine);
@@ -190,14 +277,18 @@ func main() {
                         tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
                         tabs.SetModified(docMgr.activeIndex, false);
                         engine.ClearModified();
+                        shell.breadcrumb.SetPath(saveDoc.filePath, "/");
                         shell.SetStatusLeft("Saved: " + saveDoc.fileName);
                         shell.SetStatusRight(saveDoc.fileName);
+                        GUI.Toast.Success("Saved: " + saveDoc.fileName);
                     }
                 } else {
                     docMgr.SaveActive();
                     tabs.SetModified(docMgr.activeIndex, false);
                     engine.ClearModified();
+                    pendingReload = false;
                     shell.SetStatusLeft("Saved: " + saveDoc.fileName);
+                    GUI.Toast.Success("Saved: " + saveDoc.fileName);
                 }
             }
         }
@@ -216,6 +307,7 @@ func main() {
                     tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
                     tabs.SetModified(docMgr.activeIndex, false);
                     engine.ClearModified();
+                    shell.breadcrumb.SetPath(saveAsDoc.filePath, "/");
                     shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
                     shell.SetStatusRight(saveAsDoc.fileName);
                 }
@@ -223,7 +315,7 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Save All (menu, toolbar, or Ctrl+Shift+S)
+        // Handle Save All (menu, toolbar, Ctrl+Shift+S, or CommandPalette)
         // ====================================================================
         var doSaveAll = shell.miSaveAll.WasClicked() != 0;
         if doSaveAll == false {
@@ -231,6 +323,9 @@ func main() {
         }
         if doSaveAll == false {
             doSaveAll = Shortcuts.WasTriggered("saveall") != 0;
+        }
+        if doSaveAll == false {
+            doSaveAll = cpSelected == "saveall";
         }
         if doSaveAll {
             SaveEditorState(docMgr, engine);
@@ -248,11 +343,37 @@ func main() {
         }
 
         // ====================================================================
+        // Handle Reload File (menu, Ctrl+Shift+R, or CommandPalette)
+        // ====================================================================
+        var doReload = shell.miReload.WasClicked() != 0;
+        if doReload == false {
+            doReload = Shortcuts.WasTriggered("reload") != 0;
+        }
+        if doReload == false {
+            doReload = cpSelected == "reload";
+        }
+        if doReload {
+            var reloadDoc = docMgr.GetActive();
+            if reloadDoc != null and reloadDoc.isNew == false {
+                reloadDoc.content = IO.File.ReadAllText(reloadDoc.filePath);
+                engine.LoadDocument(reloadDoc);
+                engine.ClearModified();
+                tabs.SetModified(docMgr.activeIndex, false);
+                pendingReload = false;
+                shell.SetStatusLeft("Reloaded: " + reloadDoc.fileName);
+                GUI.Toast.Success("File reloaded from disk");
+            }
+        }
+
+        // ====================================================================
         // Handle Close File (menu, Ctrl+W, or tab close button)
         // ====================================================================
         var doClose = shell.miClose.WasClicked() != 0;
         if doClose == false {
             doClose = Shortcuts.WasTriggered("close") != 0;
+        }
+        if doClose == false {
+            doClose = cpSelected == "close";
         }
         var closeIdx = -1;
         if doClose {
@@ -268,22 +389,38 @@ func main() {
             // Save editor state before closing
             SaveEditorState(docMgr, engine);
 
-            // Close document and remove tab
-            docMgr.CloseDocument(closeIdx);
-            tabs.RemoveTab(closeIdx);
-
-            // Update editor with next document or clear
-            var nextDoc = docMgr.GetActive();
-            if nextDoc != null {
-                tabs.SetActive(docMgr.activeIndex);
-                engine.LoadDocument(nextDoc);
-                shell.SetStatusRight(nextDoc.fileName);
-            } else {
-                engine.SetText("");
-                engine.ClearModified();
-                shell.SetStatusRight("No file");
+            // Ask for confirmation if the document has unsaved changes
+            var closingDoc = docMgr.documents.get(closeIdx);
+            if closingDoc != null and closingDoc.isModified {
+                var confirmed = GUI.MessageBox.Confirm(
+                    "Unsaved Changes",
+                    closingDoc.fileName + " has unsaved changes.\nClose without saving?");
+                if confirmed == 0 {
+                    doClose = false;
+                }
             }
-            shell.SetStatusLeft("File closed");
+
+            if doClose {
+                // Close document and remove tab
+                docMgr.CloseDocument(closeIdx);
+                tabs.RemoveTab(closeIdx);
+
+                // Update editor with next document or clear
+                var nextDoc = docMgr.GetActive();
+                if nextDoc != null {
+                    tabs.SetActive(docMgr.activeIndex);
+                    engine.LoadDocument(nextDoc);
+                    shell.breadcrumb.SetPath(nextDoc.filePath, "/");
+                    shell.SetStatusRight(nextDoc.fileName);
+                } else {
+                    engine.SetText("");
+                    engine.ClearModified();
+                    shell.breadcrumb.SetPath("", "/");
+                    shell.SetStatusRight("No file");
+                }
+                pendingReload = false;
+                shell.SetStatusLeft("File closed");
+            }
         }
 
         // ====================================================================
@@ -296,7 +433,7 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Edit menu: Undo (menu item)
+        // Handle Edit menu: Undo
         // ====================================================================
         if shell.miUndo.WasClicked() != 0 {
             if engine != null and engine.editor != null {
@@ -305,7 +442,7 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Edit menu: Redo (menu item)
+        // Handle Edit menu: Redo
         // ====================================================================
         if shell.miRedo.WasClicked() != 0 {
             if engine != null and engine.editor != null {
@@ -314,7 +451,7 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Edit menu: Cut (menu item)
+        // Handle Edit menu: Cut
         // ====================================================================
         if shell.miCut.WasClicked() != 0 {
             if engine != null and engine.editor != null {
@@ -323,7 +460,7 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Edit menu: Copy (menu item)
+        // Handle Edit menu: Copy
         // ====================================================================
         if shell.miCopy.WasClicked() != 0 {
             if engine != null and engine.editor != null {
@@ -332,7 +469,7 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Edit menu: Paste (menu item)
+        // Handle Edit menu: Paste
         // ====================================================================
         if shell.miPaste.WasClicked() != 0 {
             if engine != null and engine.editor != null {
@@ -341,7 +478,7 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Edit menu: Select All (menu item)
+        // Handle Edit menu: Select All
         // ====================================================================
         if shell.miSelectAll.WasClicked() != 0 {
             if engine != null and engine.editor != null {
@@ -350,22 +487,84 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Toggle Sidebar (menu or Ctrl+B)
+        // Handle Find / Replace (menu item or Ctrl+F)
+        // ====================================================================
+        var doFind = shell.miFind.WasClicked() != 0;
+        if doFind == false {
+            doFind = Shortcuts.WasTriggered("find") != 0;
+        }
+        if doFind == false {
+            doFind = cpSelected == "find";
+        }
+        if doFind {
+            if shell.findBar.IsVisible() != 0 {
+                // Already visible — hide it
+                shell.findBar.SetVisible(0);
+            } else {
+                shell.findBar.SetVisible(1);
+                shell.findBar.Focus();
+            }
+        }
+
+        // FindBar per-frame: trigger navigation actions and show match count.
+        if shell.findBar.IsVisible() != 0 {
+            shell.findBar.FindNext();
+            shell.findBar.FindPrev();
+            shell.findBar.Replace();
+            shell.findBar.ReplaceAll();
+            var matchCount = shell.findBar.GetMatchCount();
+            if matchCount > 0 {
+                var currMatch = shell.findBar.GetCurrentMatch();
+                shell.SetStatusLeft("" + currMatch + " of " + matchCount + " matches");
+            }
+        }
+
+        // ====================================================================
+        // Handle Toggle Sidebar (menu, Ctrl+B, or CommandPalette)
         // ====================================================================
         var doToggleSidebar = shell.miToggleSidebar.WasClicked() != 0;
         if doToggleSidebar == false {
             doToggleSidebar = Shortcuts.WasTriggered("togglesidebar") != 0;
+        }
+        if doToggleSidebar == false {
+            doToggleSidebar = cpSelected == "sidebar";
         }
         if doToggleSidebar {
             shell.ToggleSidebar();
         }
 
         // ====================================================================
-        // Handle Build (menu, Ctrl+Shift+B)
+        // Handle Toggle Status Bar (View menu or CommandPalette)
+        // ====================================================================
+        var doToggleStatusBar = shell.miToggleStatusBar.WasClicked() != 0;
+        if doToggleStatusBar == false {
+            doToggleStatusBar = cpSelected == "statusbar";
+        }
+        if doToggleStatusBar {
+            if shell.statusBar.IsVisible() != 0 {
+                shell.statusBar.SetVisible(0);
+            } else {
+                shell.statusBar.SetVisible(1);
+            }
+        }
+
+        // ====================================================================
+        // Handle About (Help menu)
+        // ====================================================================
+        if shell.miAbout.WasClicked() != 0 {
+            GUI.MessageBox.Info("About ViperIDE",
+                "ViperIDE — IDE for Zia and Viper Basic\nPowered by the Viper Runtime.");
+        }
+
+        // ====================================================================
+        // Handle Build (menu, Ctrl+Shift+B, or CommandPalette)
         // ====================================================================
         var doBuild = shell.miBuild.WasClicked() != 0;
         if doBuild == false {
             doBuild = Shortcuts.WasTriggered("build") != 0;
+        }
+        if doBuild == false {
+            doBuild = cpSelected == "build";
         }
         if doBuild {
             SaveEditorState(docMgr, engine);
@@ -376,10 +575,15 @@ func main() {
                     shell.SetStatusLeft("Building...");
                     var success = buildSys.Build(buildDoc.filePath);
                     if success {
-                        shell.SetStatusLeft("Build succeeded");
+                        shell.SetStatusLeft("Build succeeded in " + buildSys.GetBuildTime());
+                        GUI.Toast.Success("Build succeeded in " + buildSys.GetBuildTime());
                     } else {
-                        shell.SetStatusLeft("Build failed: " + buildSys.GetErrorCount() + " errors");
+                        var errCount = buildSys.GetErrorCount();
+                        shell.SetStatusLeft("Build failed: " + errCount + " errors");
+                        GUI.Toast.Error("Build failed: " + errCount + " errors");
                     }
+                    // Refresh diagnostics panel and minimap markers
+                    UpdateDiagnostics(shell, buildSys, engine);
                 } else {
                     shell.SetStatusLeft("Save file before building");
                 }
@@ -387,11 +591,14 @@ func main() {
         }
 
         // ====================================================================
-        // Handle Build and Run (menu, F5)
+        // Handle Build and Run (menu, F5, or CommandPalette)
         // ====================================================================
         var doBuildRun = shell.miBuildAndRun.WasClicked() != 0;
         if doBuildRun == false {
             doBuildRun = Shortcuts.WasTriggered("buildrun") != 0;
+        }
+        if doBuildRun == false {
+            doBuildRun = cpSelected == "buildrun";
         }
         if doBuildRun {
             SaveEditorState(docMgr, engine);
@@ -402,12 +609,62 @@ func main() {
                     shell.SetStatusLeft("Building and running...");
                     var success = buildSys.BuildAndRun(runDoc.filePath);
                     if success {
-                        shell.SetStatusLeft("Run completed");
+                        shell.SetStatusLeft("Run completed in " + buildSys.GetBuildTime());
+                        GUI.Toast.Info("Run completed in " + buildSys.GetBuildTime());
                     } else {
-                        shell.SetStatusLeft("Build failed: " + buildSys.GetErrorCount() + " errors");
+                        var errCount = buildSys.GetErrorCount();
+                        shell.SetStatusLeft("Build failed: " + errCount + " errors");
+                        GUI.Toast.Error("Build failed: " + errCount + " errors");
                     }
+                    UpdateDiagnostics(shell, buildSys, engine);
                 } else {
                     shell.SetStatusLeft("Save file before running");
+                }
+            }
+        }
+
+        // ====================================================================
+        // Handle Run without Build (menu, Ctrl+F5, or CommandPalette)
+        // ====================================================================
+        var doRunOnly = shell.miRun.WasClicked() != 0;
+        if doRunOnly == false {
+            doRunOnly = Shortcuts.WasTriggered("run") != 0;
+        }
+        if doRunOnly == false {
+            doRunOnly = cpSelected == "run";
+        }
+        if doRunOnly {
+            SaveEditorState(docMgr, engine);
+            var runOnlyDoc = docMgr.GetActive();
+            if runOnlyDoc != null {
+                if runOnlyDoc.isNew == false {
+                    shell.SetStatusLeft("Running...");
+                    var runSuccess = buildSys.BuildAndRun(runOnlyDoc.filePath);
+                    if runSuccess {
+                        shell.SetStatusLeft("Run completed in " + buildSys.GetBuildTime());
+                        GUI.Toast.Info("Run completed in " + buildSys.GetBuildTime());
+                    } else {
+                        var runErrCount = buildSys.GetErrorCount();
+                        shell.SetStatusLeft("Run failed: " + runErrCount + " errors");
+                        GUI.Toast.Error("Run failed: " + runErrCount + " errors");
+                    }
+                    UpdateDiagnostics(shell, buildSys, engine);
+                } else {
+                    shell.SetStatusLeft("Save file before running");
+                }
+            }
+        }
+
+        // ====================================================================
+        // Handle Diagnostics panel: click to navigate to error line
+        // ====================================================================
+        if shell.diagListBox.WasSelectionChanged() != 0 {
+            var selItem = shell.diagListBox.Selected;
+            if selItem != null {
+                var lineStr = GUI.ListBox.ItemGetData(selItem);
+                var lineNum = Convert.ToInt(lineStr);
+                if lineNum > 0 {
+                    engine.GoToLine(lineNum);
                 }
             }
         }
@@ -424,8 +681,14 @@ func main() {
                 var switchDoc = docMgr.GetActive();
                 if switchDoc != null {
                     engine.LoadDocument(switchDoc);
+                    if switchDoc.isNew {
+                        shell.breadcrumb.SetPath("", "/");
+                    } else {
+                        shell.breadcrumb.SetPath(switchDoc.filePath, "/");
+                    }
                     shell.SetStatusRight(switchDoc.fileName);
                     shell.SetStatusLeft("Switched to: " + switchDoc.fileName);
+                    pendingReload = false;
                 }
             }
         }
@@ -446,7 +709,42 @@ func main() {
         }
 
         // ====================================================================
-        // Update status bar
+        // File change detection (IO.Watcher for active document)
+        // ====================================================================
+        var activeDoc = docMgr.GetActive();
+        if activeDoc != null and activeDoc.isNew == false {
+            if activeDoc.filePath != watchedPath {
+                // Active document changed — stop old watcher and start a new one
+                if hasWatcher {
+                    fileWatcher.Stop();
+                }
+                watchedPath = activeDoc.filePath;
+                fileWatcher = IO.Watcher.New(watchedPath);
+                fileWatcher.Start();
+                hasWatcher = true;
+                pendingReload = false;
+            }
+            if hasWatcher {
+                var watchEvent = fileWatcher.Poll();
+                if watchEvent == fileWatcher.EVENT_MODIFIED {
+                    if pendingReload == false {
+                        pendingReload = true;
+                        GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
+                        shell.SetStatusLeft("Warning: external change — " + activeDoc.fileName);
+                    }
+                }
+            }
+        } else {
+            if hasWatcher {
+                fileWatcher.Stop();
+                hasWatcher = false;
+                pendingReload = false;
+            }
+            watchedPath = "";
+        }
+
+        // ====================================================================
+        // Update status bar cursor position
         // ====================================================================
         if engine != null {
             shell.SetStatusCenter("Ln " + engine.GetCursorLine() + ", Col " + engine.GetCursorCol() + "  |  Lines: " + engine.GetLineCount());
@@ -472,5 +770,36 @@ func SaveEditorState(docMgr: document_manager.DocumentManager,
     var doc = docMgr.GetActive();
     if doc != null {
         engine.SaveToDocument(doc);
+    }
+}
+
+// Refresh the diagnostics panel and minimap markers after a build.
+// Error lines are marked red (16711680) and warnings yellow (16776960).
+func UpdateDiagnostics(shell: app_shell.AppShell,
+                       buildSys: build_system.BuildSystem,
+                       engine: editor_engine.EditorEngine) {
+    shell.diagListBox.Clear();
+    shell.minimap.ClearMarkers();
+
+    var diagCount = buildSys.diagnostics.count();
+    if diagCount > 0 {
+        shell.diagListBox.SetVisible(1);
+        var i = 0;
+        while i < diagCount {
+            var diag = buildSys.diagnostics.get(i);
+            var sevLabel = "error";
+            var markerColor = 16711680;   // red
+            if diag.severity == 1 {
+                sevLabel = "warning";
+                markerColor = 16776960;   // yellow
+            }
+            var diagText = diag.filePath + ":" + diag.line + "  " + sevLabel + "[" + diag.code + "]: " + diag.message;
+            var item = shell.diagListBox.AddItem(diagText);
+            GUI.ListBox.ItemSetData(item, "" + diag.line);
+            shell.minimap.AddMarker(diag.line, 1, markerColor);
+            i = i + 1;
+        }
+    } else {
+        shell.diagListBox.SetVisible(0);
     }
 }

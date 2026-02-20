@@ -210,7 +210,8 @@ static int linkToExe(const std::string &asmPath,
     std::vector<std::string> linkCmd = {"cc", asmPath};
 #endif
     appendArchives(ctx, linkCmd);
-    appendGraphicsLibs(ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation"});
+    // UniformTypeIdentifiers is required by vipergui's native file dialog on macOS.
+    appendGraphicsLibs(ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers"});
 
     // C++ runtime archives (e.g. Threads) need the C++ standard library.
     if (hasComponent(ctx, codegen::RtComponent::Threads))

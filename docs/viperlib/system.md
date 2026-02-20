@@ -9,6 +9,7 @@
 - [Viper.Environment](#viperenvironment)
 - [Viper.Exec](#viperexec)
 - [Viper.Machine](#vipermachine)
+- [Viper.Memory.GC](#vipermemory-gc)
 - [Viper.Terminal](#viperterminal)
 
 ---
@@ -295,6 +296,65 @@ END IF
 - **MemTotal/MemFree**: On macOS uses `sysctl` and `host_statistics64`. On Linux uses `sysinfo()`. On Windows uses
   `GlobalMemoryStatusEx()`.
 - **Endian**: Runtime detection via union trick. Most modern systems are little-endian.
+
+---
+
+## Viper.Memory.GC
+
+Low-level garbage collector diagnostics. Provides visibility into the reference-counting GC's collection activity. Most programs do not need to call these methods directly.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method              | Signature    | Description                                                          |
+|---------------------|--------------|----------------------------------------------------------------------|
+| `Collect()`         | `Integer()`  | Trigger a GC sweep immediately; returns count of objects collected   |
+| `TrackedCount()`    | `Integer()`  | Return the number of objects currently tracked by the GC             |
+| `TotalCollected()`  | `Integer()`  | Return cumulative count of all objects collected since program start  |
+| `PassCount()`       | `Integer()`  | Return the number of GC passes (sweeps) performed so far             |
+
+### Notes
+
+- The Viper runtime uses reference counting with a cycle-collector sweep. `Collect()` forces a sweep to run now rather than waiting for the next automatic trigger.
+- `TrackedCount` is useful for detecting object leaks in long-running programs.
+- These are diagnostic APIs; calling `Collect()` frequently in hot paths can reduce throughput.
+
+### Zia Example
+
+```zia
+module GCDemo;
+
+bind Viper.Terminal;
+bind Viper.Memory.GC as GC;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("Tracked: " + Fmt.Int(GC.TrackedCount()));
+    Say("Total collected: " + Fmt.Int(GC.TotalCollected()));
+
+    // Force a sweep and report how many objects were collected
+    var freed = GC.Collect();
+    Say("Freed this pass: " + Fmt.Int(freed));
+    Say("GC passes so far: " + Fmt.Int(GC.PassCount()));
+}
+```
+
+### BASIC Example
+
+```basic
+' Print GC state before a large operation
+PRINT "Tracked objects: "; Viper.Memory.GC.TrackedCount()
+PRINT "Total collected: "; Viper.Memory.GC.TotalCollected()
+
+' Run a batch operation that allocates many temporaries
+DoBatchWork()
+
+' Force a GC sweep to reclaim cycle garbage
+DIM freed AS INTEGER = Viper.Memory.GC.Collect()
+PRINT "Freed by GC: "; freed
+PRINT "GC passes: "; Viper.Memory.GC.PassCount()
+```
 
 ---
 

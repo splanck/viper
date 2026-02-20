@@ -7,13 +7,15 @@
 ## Contents
 
 - [Viper.Core.Box](#vipercorebox)
+- [Viper.Core.Diagnostics](#vipercorediagnostics)
 - [Viper.Core.MessageBus](#vipercoremessagebus)
-- [Viper.Object](#viperobject)
+- [Viper.Core.Object](#vipercoreobject)
+- [Viper.Core.Parse](#vipercoreparse)
 - [Viper.String](#viperstring)
 
 ---
 
-## Viper.Object
+## Viper.Core.Object
 
 Base class for all Viper reference types. Provides fundamental object operations.
 
@@ -24,14 +26,17 @@ Base class for all Viper reference types. Provides fundamental object operations
 | Method          | Signature         | Description                                    |
 |-----------------|-------------------|------------------------------------------------|
 | `Equals(other)` | `Boolean(Object)` | Compares this object with another for equality |
-| `HashCode()` | `Integer()`       | Returns a hash code for the object             |
+| `HashCode()`    | `Integer()`       | Returns a hash code for the object             |
+| `IsNull()`      | `Boolean()`       | Returns true if this reference is null         |
 | `ToString()`    | `String()`        | Returns a string representation of the object  |
+| `TypeId()`      | `Integer()`       | Returns a numeric type identifier for the object's runtime type |
+| `TypeName()`    | `String()`        | Returns the runtime type name of the object    |
 
 ### Static Functions
 
-| Function                             | Signature                 | Description                                               |
-|--------------------------------------|---------------------------|-----------------------------------------------------------|
-| `Viper.Object.RefEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
+| Function                                    | Signature                 | Description                                               |
+|---------------------------------------------|---------------------------|-----------------------------------------------------------|
+| `Viper.Core.Object.RefEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
 
 ### Zia Example
 
@@ -41,8 +46,8 @@ Base class for all Viper reference types. Provides fundamental object operations
 ### BASIC Example
 
 ```basic
-DIM obj1 AS Viper.Object
-DIM obj2 AS Viper.Object
+DIM obj1 AS Viper.Core.Object
+DIM obj2 AS Viper.Core.Object
 
 IF obj1.Equals(obj2) THEN
     PRINT "Objects are equal"
@@ -50,9 +55,12 @@ END IF
 
 PRINT obj1.ToString()
 PRINT obj1.HashCode()
+PRINT obj1.TypeName()   ' Runtime type name
+PRINT obj1.TypeId()     ' Numeric type ID
+PRINT obj1.IsNull()     ' True if null reference
 
 ' Static function call - check if same instance
-IF Viper.Object.RefEquals(obj1, obj2) THEN
+IF Viper.Core.Object.RefEquals(obj1, obj2) THEN
     PRINT "Same object instance"
 END IF
 ```
@@ -121,6 +129,167 @@ boxed = Viper.Core.Box.I64(42)
 PRINT Viper.Core.Box.Type(boxed)         ' Output: 0
 PRINT Viper.Core.Box.ToI64(boxed)        ' Output: 42
 PRINT Viper.Core.Box.EqI64(boxed, 42)    ' Output: true
+```
+
+---
+
+## Viper.Core.Diagnostics
+
+Assertion and trap utilities for program correctness checks. All methods trap (abort with message) on failure.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                      | Signature                          | Description                                               |
+|-----------------------------|------------------------------------|-----------------------------------------------------------|
+| `Assert(cond, msg)`         | `Void(Boolean, String)`            | Trap with `msg` if `cond` is false                        |
+| `AssertEq(a, b, msg)`       | `Void(Object, Object, String)`     | Trap if `a` and `b` are not equal (generic)               |
+| `AssertNeq(a, b, msg)`      | `Void(Object, Object, String)`     | Trap if `a` and `b` are equal (generic)                   |
+| `AssertEqNum(a, b, msg)`    | `Void(Double, Double, String)`     | Trap if two numbers are not equal                         |
+| `AssertEqStr(a, b, msg)`    | `Void(String, String, String)`     | Trap if two strings are not equal                         |
+| `AssertNull(obj, msg)`      | `Void(Object, String)`             | Trap if `obj` is not null                                 |
+| `AssertNotNull(obj, msg)`   | `Void(Object, String)`             | Trap if `obj` is null                                     |
+| `AssertFail(msg)`           | `Void(String)`                     | Unconditional trap with `msg`                             |
+| `AssertGt(a, b, msg)`       | `Void(Double, Double, String)`     | Trap if `a` is not greater than `b`                       |
+| `AssertLt(a, b, msg)`       | `Void(Double, Double, String)`     | Trap if `a` is not less than `b`                          |
+| `AssertGte(a, b, msg)`      | `Void(Double, Double, String)`     | Trap if `a` is not greater than or equal to `b`           |
+| `AssertLte(a, b, msg)`      | `Void(Double, Double, String)`     | Trap if `a` is not less than or equal to `b`              |
+| `Trap(msg)`                 | `Void(String)`                     | Trigger a runtime trap with the given message             |
+
+### Notes
+
+- All assertion failures terminate the program via the runtime trap mechanism (equivalent to a bounds-check failure).
+- `Trap` is an unconditional halt; prefer `AssertFail` when the intent is a named assertion failure.
+- These are intended for invariant checking during development and internal consistency validation.
+
+### Zia Example
+
+```zia
+module DiagnosticsDemo;
+
+bind Viper.Terminal;
+bind Viper.Core.Diagnostics as Diag;
+bind Viper.Fmt as Fmt;
+
+func divide(a: Integer, b: Integer) -> Integer {
+    Diag.Assert(b != 0, "divide: divisor must be non-zero");
+    return a / b;
+}
+
+func start() {
+    Say(Fmt.Int(divide(10, 2)));   // 5
+
+    var obj = Viper.Core.Box.I64(42);
+    Diag.AssertNotNull(obj, "box must not be null");
+
+    Diag.AssertEqStr("hello", "hello", "strings must match");
+    Diag.AssertGt(5.0, 3.0, "5 must be > 3");
+}
+```
+
+### BASIC Example
+
+```basic
+' Basic assertions
+Viper.Core.Diagnostics.Assert(x > 0, "x must be positive")
+Viper.Core.Diagnostics.AssertEqStr(name, "Alice", "unexpected name")
+
+' Null checks
+DIM obj AS OBJECT = GetSomething()
+Viper.Core.Diagnostics.AssertNotNull(obj, "GetSomething returned null")
+
+' Ordering assertions
+Viper.Core.Diagnostics.AssertGte(score, 0.0, "score out of range")
+Viper.Core.Diagnostics.AssertLte(score, 100.0, "score out of range")
+
+' Unconditional trap
+IF unrecoverableError THEN
+    Viper.Core.Diagnostics.Trap("fatal: unrecoverable error in pipeline")
+END IF
+```
+
+---
+
+## Viper.Core.Parse
+
+Safe string parsing utilities. Methods return a success flag or a default value rather than trapping on bad input.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                      | Signature                           | Description                                                        |
+|-----------------------------|-------------------------------------|--------------------------------------------------------------------|
+| `TryInt(s, outPtr)`         | `Boolean(String, Ptr)`              | Parse `s` as integer; write result to `outPtr`; return success     |
+| `TryNum(s, outPtr)`         | `Boolean(String, Ptr)`              | Parse `s` as double; write result to `outPtr`; return success      |
+| `TryBool(s, outPtr)`        | `Boolean(String, Ptr)`              | Parse `s` as boolean (`"true"`/`"false"`); write to `outPtr`       |
+| `IntOr(s, default)`         | `Integer(String, Integer)`          | Parse `s` as integer; return `default` on failure                  |
+| `NumOr(s, default)`         | `Double(String, Double)`            | Parse `s` as double; return `default` on failure                   |
+| `BoolOr(s, default)`        | `Boolean(String, Boolean)`          | Parse `s` as boolean; return `default` on failure                  |
+| `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
+| `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
+| `IntRadix(s, radix, default)` | `Integer(String, Integer, Integer)` | Parse `s` in the given radix (2–36); return `default` on failure |
+
+### Notes
+
+- `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are most useful from IL or advanced Zia/BASIC code. For typical use, prefer `IntOr`/`NumOr`/`BoolOr`.
+- `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary).
+- Leading/trailing whitespace is rejected; the input must be a clean numeric string.
+
+### Zia Example
+
+```zia
+module ParseDemo;
+
+bind Viper.Terminal;
+bind Viper.Core.Parse as Parse;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Safe integer parsing with default
+    var n = Parse.IntOr("42", 0);
+    Say("Parsed: " + Fmt.Int(n));         // 42
+
+    var bad = Parse.IntOr("abc", -1);
+    Say("Bad input: " + Fmt.Int(bad));    // -1
+
+    // Validation without parsing
+    Say(Fmt.Bool(Parse.IsInt("123")));    // true
+    Say(Fmt.Bool(Parse.IsInt("12.5")));   // false
+
+    // Hex parsing
+    var hex = Parse.IntRadix("FF", 16, 0);
+    Say("0xFF = " + Fmt.Int(hex));        // 255
+
+    // Float parsing
+    var f = Parse.NumOr("3.14", 0.0);
+    Say("Float: " + Fmt.Num(f));          // 3.14
+}
+```
+
+### BASIC Example
+
+```basic
+' Safe parsing with defaults
+DIM n AS INTEGER = Viper.Core.Parse.IntOr(userInput, 0)
+DIM f AS DOUBLE  = Viper.Core.Parse.NumOr(userInput, 0.0)
+DIM b AS INTEGER = Viper.Core.Parse.BoolOr(userInput, 0)
+
+' Validation before use
+IF Viper.Core.Parse.IsInt(inputStr) THEN
+    DIM value AS INTEGER = Viper.Core.Parse.IntOr(inputStr, 0)
+    PRINT "Value: "; value
+ELSE
+    PRINT "Not a valid integer"
+END IF
+
+' Radix parsing (hex, binary, etc.)
+DIM hexVal AS INTEGER = Viper.Core.Parse.IntRadix("1A3F", 16, 0)
+PRINT "Hex 1A3F = "; hexVal    ' Output: 6719
+
+DIM binVal AS INTEGER = Viper.Core.Parse.IntRadix("1010", 2, 0)
+PRINT "Bin 1010 = "; binVal    ' Output: 10
 ```
 
 ---
@@ -211,6 +380,13 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `JaroWinkler(other)`  | `Double(String)`   | Compute Jaro-Winkler similarity score (0.0 to 1.0)     |
 | `Hamming(other)`      | `Integer(String)`  | Compute Hamming distance (strings must be equal length)  |
 
+**Pattern Matching:**
+
+| Method           | Signature         | Description                                              |
+|------------------|-------------------|----------------------------------------------------------|
+| `Like(pattern)`  | `Boolean(String)` | Wildcard match against pattern (`*` = any, `?` = one char) |
+| `LikeCI(pattern)` | `Boolean(String)` | Case-insensitive wildcard match                         |
+
 **Comparison:**
 
 | Method             | Signature         | Description                                      |
@@ -220,12 +396,15 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 
 ### Static Functions (Viper.String)
 
-| Function                                       | Signature                  | Description                              |
-|------------------------------------------------|----------------------------|------------------------------------------|
-| `Viper.String.FromStr(text)`                   | `String(String)`           | Create a runtime string from text        |
-| `Viper.String.FromSingle(value)`               | `String(Double)`           | Convert single-precision value to string |
-| `Viper.String.Equals(a, b)`                    | `Boolean(String, String)`  | Compare two strings for equality         |
-| `Viper.String.Join(separator, items)`          | `String(String, Seq)`      | Joins sequence of strings with separator |
+| Function                                       | Signature                  | Description                                                      |
+|------------------------------------------------|----------------------------|------------------------------------------------------------------|
+| `Viper.String.Equals(a, b)`                    | `Boolean(String, String)`  | Compare two strings for equality                                 |
+| `Viper.String.FromI16(value)`                  | `String(Integer)`          | Convert a 16-bit integer to string                               |
+| `Viper.String.FromI32(value)`                  | `String(Integer)`          | Convert a 32-bit integer to string                               |
+| `Viper.String.FromSingle(value)`               | `String(Double)`           | Convert a double formatted as single-precision (f32) to string   |
+| `Viper.String.FromStr(text)`                   | `String(String)`           | Create a runtime string from text                                |
+| `Viper.String.Join(separator, items)`          | `String(String, Seq)`      | Joins sequence of strings with separator                         |
+| `Viper.String.SplitFields(text, buf, maxCount)` | `Integer(String, Ptr, Integer)` | Split by whitespace into a buffer; returns field count      |
 
 ### Conversion Functions (Viper.Convert)
 

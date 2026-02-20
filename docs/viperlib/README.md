@@ -2,7 +2,7 @@
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-02-17
+> **Last updated:** 2026-02-19
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -15,21 +15,21 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Audio`, `Music`, `Sound`, `Voice` — audio playback for games and applications |
-| [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `WeakMap` |
-| [Core Types](core.md)           | `Box`, `MessageBus`, `Object`, `String` — foundational types              |
+| [Collections](collections.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `Trie`, `WeakMap` |
+| [Core Types](core.md)           | `Box`, `Diagnostics`, `MessageBus`, `Object`, `Parse`, `String` — foundational types (`Viper.Core`) |
 | [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
-| [Game Utilities](game.md)       | `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `SpriteSheet`, `StateMachine`, `Timer`, `Tween` |
-| [Graphics](graphics.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `Tilemap` |
-| [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
+| [Game Utilities](game.md)       | `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween` (see also `Viper.Graphics.SpriteSheet`) |
+| [Graphics](graphics.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `Tilemap` |
+| [GUI](gui.md)                   | `App`, `Breadcrumb`, `Button`, `Clipboard`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
 | [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
 | [Input/Output](io.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
-| [Mathematics](math.md)          | `Bits`, `Easing`, `Math`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
+| [Mathematics](math.md)          | `BigInt`, `Bits`, `Easing`, `Mat3`, `Mat4`, `Math`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
-| [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `NumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version` |
-| [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
+| [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`; `Viper.Memory`: `GC`       |
+| [Text & Data](text.md)          | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `NumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version`; `Viper.Data`: `Serialize`, `Xml`, `Yaml` |
+| [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `Channel`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
 
@@ -41,6 +41,7 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                        | Type     | Description                                   |
 |----------------------------------------------|----------|-----------------------------------------------|
+| [`BigInt`](math.md#vipermathbigint)          | Static   | Arbitrary-precision integer arithmetic        |
 | [`Bits`](math.md#vipermathbits)              | Static   | Bit manipulation (shifts, rotates, counting)  |
 | [`Box`](core.md#vipercorebox)                | Static   | Boxing helpers for generic collections        |
 | [`Convert`](utilities.md#viperconvert)       | Static   | Type conversion utilities                     |
@@ -51,9 +52,11 @@ implemented in C and exposed through the IL runtime system.
 | [`Lazy`](functional.md#viperlazy)            | Static   | Lazy evaluation wrapper                       |
 | [`Log`](utilities.md#viperlog)               | Static   | Logging utilities                             |
 | [`Machine`](system.md#vipermachine)          | Static   | System information queries                    |
+| [`Mat3`](math.md#vipermathmat3)              | Static   | 3×3 matrix for 2D affine transforms           |
+| [`Mat4`](math.md#vipermathmat4)              | Static   | 4×4 matrix for 3D transforms and projection   |
 | [`Math`](math.md#vipermath)                  | Static   | Mathematical functions (trig, pow, abs, etc.) |
 | [`MessageBus`](core.md#vipercoremessagebus)  | Instance | In-process publish/subscribe messaging        |
-| [`Object`](core.md#viperobject)              | Base     | Root type for all reference types             |
+| [`Object`](core.md#vipercoreobject)          | Base     | Root type for all reference types             |
 | [`Option`](functional.md#viperoption)        | Static   | Optional value type (Some/None)               |
 | [`PerlinNoise`](math.md#vipermathperlinnoise) | Instance | Perlin noise for procedural generation       |
 | [`Quaternion`](math.md#vipermathquaternion)  | Instance | Quaternion math for 3D rotations              |
@@ -112,6 +115,14 @@ implemented in C and exposed through the IL runtime system.
 | [`Rand`](crypto.md#vipercryptorand)           | Static   | Cryptographically secure random bytes    |
 | [`Tls`](crypto.md#vipercryptotls)             | Instance | TLS 1.3 secure socket connections        |
 
+### Viper.Data
+
+| Class                                               | Type   | Description                                           |
+|-----------------------------------------------------|--------|-------------------------------------------------------|
+| [`Serialize`](text.md#viperdataserialize)           | Static | Unified multi-format serializer (JSON/XML/YAML/TOML/CSV) |
+| [`Xml`](text.md#viperdataxml)                       | Static | XML document model — parse, navigate, mutate          |
+| [`Yaml`](text.md#viperdatayaml)                     | Static | YAML parse and format                                 |
+
 ### Viper.Diagnostics
 
 | Class                                             | Type     | Description        |
@@ -135,7 +146,6 @@ implemented in C and exposed through the IL runtime system.
 | [`ScreenFX`](game.md#vipergamescreenfx)                   | Instance | Screen effects (shake, flash, fade)      |
 | [`SmoothValue`](game.md#vipergamesmoothvalue)             | Instance | Smooth value interpolation               |
 | [`SpriteAnimation`](game.md#vipergamespriteanimation)     | Instance | Frame-based sprite animation controller  |
-| [`SpriteSheet`](game.md#vipergamespritesheet)             | Instance | Sprite sheet/atlas with region extraction|
 | [`StateMachine`](game.md#vipergamestatemachine)           | Instance | Finite state machine for game states     |
 | [`Timer`](game.md#vipergametimer)                         | Instance | Frame-based game timers                  |
 | [`Tween`](game.md#vipergametween)                         | Instance | Animation tweening with 19 easing curves |
@@ -161,29 +171,41 @@ implemented in C and exposed through the IL runtime system.
 | [`SceneNode`](graphics.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
 | [`Sprite`](graphics.md#vipergraphicssprite)         | Instance | 2D sprite with flip/animation    |
 | [`SpriteBatch`](graphics.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
+| [`SpriteSheet`](graphics.md#vipergraphicsspritesheet)| Instance | Sprite sheet/atlas with named region extraction |
 | [`Tilemap`](graphics.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
 
 ### Viper.GUI
 
-| Class                                               | Type     | Description                       |
-|-----------------------------------------------------|----------|-----------------------------------|
-| [`App`](gui.md#vipergui-app)                        | Instance | Main application window           |
-| [`Font`](gui.md#vipergui-font)                      | Instance | Font for text rendering           |
-| [`Label`](gui.md#vipergui-label)                    | Instance | Text display widget               |
-| [`Button`](gui.md#vipergui-button)                  | Instance | Clickable button widget           |
-| [`TextInput`](gui.md#vipergui-textinput)            | Instance | Single-line text entry            |
-| [`Checkbox`](gui.md#vipergui-checkbox)              | Instance | Boolean toggle widget             |
-| [`RadioButton`](gui.md#vipergui-radiobutton)        | Instance | Single-select option widget       |
-| [`Slider`](gui.md#vipergui-slider)                  | Instance | Numeric range slider              |
-| [`Spinner`](gui.md#vipergui-spinner)                | Instance | Numeric spinner control           |
-| [`ProgressBar`](gui.md#vipergui-progressbar)        | Instance | Progress indicator                |
-| [`Dropdown`](gui.md#vipergui-dropdown)              | Instance | Drop-down selection               |
-| [`ListBox`](gui.md#vipergui-listbox)                | Instance | Scrollable list selection         |
-| [`ScrollView`](gui.md#vipergui-scrollview)          | Instance | Scrollable container              |
-| [`SplitPane`](gui.md#vipergui-splitpane)            | Instance | Resizable split container         |
-| [`TabBar`](gui.md#vipergui-tabbar)                  | Instance | Tabbed container                  |
-| [`TreeView`](gui.md#vipergui-treeview)              | Instance | Hierarchical tree widget          |
-| [`CodeEditor`](gui.md#vipergui-codeeditor)          | Instance | Code editing with syntax coloring |
+| Class                                               | Type     | Description                                      |
+|-----------------------------------------------------|----------|--------------------------------------------------|
+| [`App`](gui.md#vipergui-app)                        | Instance | Main application window                          |
+| [`Breadcrumb`](gui.md#breadcrumb)                   | Instance | Breadcrumb navigation widget                     |
+| [`Button`](gui.md#vipergui-button)                  | Instance | Clickable button widget                          |
+| [`Container`](gui.md#vipergui-container)            | Instance | Generic layout container widget                  |
+| [`Checkbox`](gui.md#vipergui-checkbox)              | Instance | Boolean toggle widget                            |
+| [`Clipboard`](gui.md#clipboard)                     | Static   | System clipboard access                          |
+| [`CodeEditor`](gui.md#vipergui-codeeditor)          | Instance | Code editing with syntax coloring                |
+| [`CommandPalette`](gui.md#commandpalette)           | Instance | Searchable command palette overlay               |
+| [`Cursor`](gui.md#cursor)                           | Static   | System cursor type and visibility                |
+| [`Dropdown`](gui.md#vipergui-dropdown)              | Instance | Drop-down selection                              |
+| [`FileDialog`](gui.md#filedialog)                   | Static   | Native open/save file dialogs                    |
+| [`Font`](gui.md#vipergui-font)                      | Instance | Font for text rendering                          |
+| [`Label`](gui.md#vipergui-label)                    | Instance | Text display widget                              |
+| [`ListBox`](gui.md#vipergui-listbox)                | Instance | Scrollable list selection                        |
+| [`MessageBox`](gui.md#messagebox)                   | Static   | Native info/warning/error/question dialogs       |
+| [`Minimap`](gui.md#minimap)                         | Instance | Code minimap sidebar bound to a CodeEditor       |
+| [`ProgressBar`](gui.md#vipergui-progressbar)        | Instance | Progress indicator                               |
+| [`RadioButton`](gui.md#vipergui-radiobutton)        | Instance | Single-select option widget                      |
+| [`ScrollView`](gui.md#vipergui-scrollview)          | Instance | Scrollable container                             |
+| [`Shortcuts`](gui.md#shortcuts)                     | Static   | Global keyboard shortcut registration            |
+| [`Slider`](gui.md#vipergui-slider)                  | Instance | Numeric range slider                             |
+| [`Spinner`](gui.md#vipergui-spinner)                | Instance | Numeric spinner control                          |
+| [`SplitPane`](gui.md#vipergui-splitpane)            | Instance | Resizable split container                        |
+| [`TabBar`](gui.md#vipergui-tabbar)                  | Instance | Tabbed container                                 |
+| [`TextInput`](gui.md#vipergui-textinput)            | Instance | Single-line text entry                           |
+| [`Toast`](gui.md#toast)                             | Instance | Transient notification toasts                    |
+| [`Tooltip`](gui.md#tooltip)                         | Static   | Floating tooltip display                         |
+| [`TreeView`](gui.md#vipergui-treeview)              | Instance | Hierarchical tree widget                         |
 
 ### Viper.Input
 
@@ -265,6 +287,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Async`](threads.md#viperthreadsasync)                   | Static   | Async task combinators (Delay, All, Any)      |
 | [`Barrier`](threads.md#viperthreadsbarrier)               | Instance | Synchronization barrier for N participants    |
 | [`CancelToken`](threads.md#viperthreadscanceltoken)       | Instance | Cooperative cancellation token                |
+| [`Channel`](threads.md#viperthreadschannel)               | Instance | Typed buffered/unbuffered message channel     |
 | [`ConcurrentMap`](threads.md#viperthreadsconcurrentmap)   | Instance | Thread-safe string-keyed hash map             |
 | [`Debouncer`](threads.md#viperthreadsdebouncer)           | Instance | Debounce rapid calls to single execution      |
 | [`Future`](threads.md#viperthreadsfuture)                 | Instance | Read-only handle for async result             |
@@ -278,6 +301,12 @@ implemented in C and exposed through the IL runtime system.
 | [`Scheduler`](threads.md#viperthreadsscheduler)           | Instance | Delayed and periodic task scheduling          |
 | [`Thread`](threads.md#viperthreadsthread)                 | Instance | OS thread handle + join/sleep/yield helpers   |
 | [`Throttler`](threads.md#viperthreadsthrottler)           | Instance | Rate-limit calls to at most once per interval |
+
+### Viper.Memory
+
+| Class                                           | Type   | Description                                     |
+|-------------------------------------------------|--------|-------------------------------------------------|
+| [`GC`](core.md#vipermemory)                     | Static | Garbage collector controls (hint, collect, stat)|
 
 ### Viper.Time
 

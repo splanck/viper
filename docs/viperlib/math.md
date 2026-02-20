@@ -7,8 +7,11 @@
 ## Contents
 
 - [Viper.Math](#vipermath)
+- [Viper.Math.BigInt](#vipermathbigint)
 - [Viper.Math.Bits](#vipermathbits)
 - [Viper.Math.Easing](#vipermatheasing)
+- [Viper.Math.Mat3](#vipermathmat3)
+- [Viper.Math.Mat4](#vipermathmat4)
 - [Viper.Math.PerlinNoise](#vipermathperlinnoise)
 - [Viper.Math.Quaternion](#vipermathquaternion)
 - [Viper.Math.Random](#vipermathrandom)
@@ -1039,6 +1042,436 @@ NEXT y
 - **Animation:** Add organic movement to objects
 - **Game worlds:** Procedurally generate caves, forests, and biomes
 - **Particle effects:** Add natural variation to particle systems
+
+---
+
+## Viper.Math.BigInt
+
+Arbitrary-precision integer arithmetic. All methods are static; instance values are opaque objects returned by the
+constructors. Pass the bigint object explicitly as the first argument to instance-style methods.
+
+**Type:** Static utility class
+
+### Constructors and Constants
+
+| Method / Property  | Signature         | Description                                    |
+|--------------------|-------------------|------------------------------------------------|
+| `FromInt(n)`       | `Object(Integer)` | Create a BigInt from a 64-bit integer          |
+| `FromStr(s)`       | `Object(String)`  | Create a BigInt from a decimal string          |
+| `FromBytes(b)`     | `Object(Bytes)`   | Create a BigInt from little-endian Bytes       |
+| `Zero`             | `Object`          | The constant 0                                 |
+| `One`              | `Object`          | The constant 1                                 |
+
+### Conversion Methods
+
+| Method             | Signature                | Description                                      |
+|--------------------|--------------------------|--------------------------------------------------|
+| `ToInt(n)`         | `Integer(Object)`        | Convert to 64-bit integer (traps if out of range)|
+| `ToString(n)`      | `String(Object)`         | Convert to decimal string                        |
+| `ToStrBase(n, base)` | `String(Object, Integer)` | Convert to string in given base (2–36)        |
+| `ToBytes(n)`       | `Bytes(Object)`          | Convert to little-endian Bytes                   |
+| `FitsInt(n)`       | `Boolean(Object)`        | True if value fits in a 64-bit signed integer    |
+
+### Arithmetic Methods
+
+| Method           | Signature                    | Description              |
+|------------------|------------------------------|--------------------------|
+| `Add(a, b)`      | `Object(Object, Object)`     | a + b                    |
+| `Sub(a, b)`      | `Object(Object, Object)`     | a − b                    |
+| `Mul(a, b)`      | `Object(Object, Object)`     | a × b                    |
+| `Div(a, b)`      | `Object(Object, Object)`     | Truncated division a ÷ b |
+| `Mod(a, b)`      | `Object(Object, Object)`     | Remainder of a ÷ b       |
+| `Neg(n)`         | `Object(Object)`             | Negate: −n               |
+| `Abs(n)`         | `Object(Object)`             | Absolute value           |
+| `Sqrt(n)`        | `Object(Object)`             | Integer square root (floor) |
+| `Pow(n, exp)`    | `Object(Object, Integer)`    | n raised to exp          |
+| `PowMod(n, exp, mod)` | `Object(Object, Object, Object)` | Modular exponentiation |
+| `Gcd(a, b)`      | `Object(Object, Object)`     | Greatest common divisor  |
+| `Lcm(a, b)`      | `Object(Object, Object)`     | Least common multiple    |
+
+### Comparison and Inspection
+
+| Method           | Signature                    | Description                           |
+|------------------|------------------------------|---------------------------------------|
+| `Cmp(a, b)`      | `Integer(Object, Object)`    | -1 if a < b, 0 if equal, 1 if a > b  |
+| `Eq(a, b)`       | `Boolean(Object, Object)`    | True if a equals b                    |
+| `IsZero(n)`      | `Boolean(Object)`            | True if n == 0                        |
+| `IsNegative(n)`  | `Boolean(Object)`            | True if n < 0                         |
+| `Sign(n)`        | `Integer(Object)`            | -1, 0, or 1                           |
+
+### Bitwise Methods
+
+| Method              | Signature                    | Description                           |
+|---------------------|------------------------------|---------------------------------------|
+| `And(a, b)`         | `Object(Object, Object)`     | Bitwise AND                           |
+| `Or(a, b)`          | `Object(Object, Object)`     | Bitwise OR                            |
+| `Xor(a, b)`         | `Object(Object, Object)`     | Bitwise XOR                           |
+| `Not(n)`            | `Object(Object)`             | Bitwise NOT (one's complement)        |
+| `Shl(n, bits)`      | `Object(Object, Integer)`    | Shift left by bits                    |
+| `Shr(n, bits)`      | `Object(Object, Integer)`    | Arithmetic shift right by bits        |
+| `BitLength(n)`      | `Integer(Object)`            | Number of bits in binary representation |
+| `TestBit(n, i)`     | `Boolean(Object, Integer)`   | True if bit i is set                  |
+| `SetBit(n, i)`      | `Object(Object, Integer)`    | Return n with bit i set               |
+| `ClearBit(n, i)`    | `Object(Object, Integer)`    | Return n with bit i cleared           |
+
+### Notes
+
+- BigInt values are immutable — all operations return new objects.
+- `Div(a, b)` traps on division by zero.
+- `Sqrt(n)` traps if n is negative.
+- `Pow(n, exp)` requires a non-negative integer exponent.
+- `ToStrBase` supports bases 2 through 36; digits above 9 use lowercase letters.
+
+### Zia Example
+
+```zia
+module BigIntDemo;
+
+bind Viper.Terminal;
+bind Viper.Math.BigInt as BigInt;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var a = BigInt.FromStr("123456789012345678901234567890");
+    var b = BigInt.FromInt(999999999);
+
+    var sum  = BigInt.Add(a, b);
+    var prod = BigInt.Mul(b, b);
+
+    Say("Sum: " + BigInt.ToString(sum));
+    Say("Product: " + BigInt.ToString(prod));
+    Say("FitsInt(b): " + Fmt.Bool(BigInt.FitsInt(b)));  // true
+    Say("FitsInt(a): " + Fmt.Bool(BigInt.FitsInt(a)));  // false
+
+    var g = BigInt.Gcd(BigInt.FromInt(48), BigInt.FromInt(36));
+    Say("Gcd(48,36): " + BigInt.ToString(g));           // 12
+
+    var pm = BigInt.PowMod(BigInt.FromInt(2), BigInt.FromInt(10), BigInt.FromInt(1000));
+    Say("2^10 mod 1000: " + BigInt.ToString(pm));       // 24
+
+    Say("BitLength: " + Fmt.Int(BigInt.BitLength(BigInt.FromInt(255))));  // 8
+}
+```
+
+### BASIC Example
+
+```basic
+' Arbitrary-precision arithmetic
+DIM a AS OBJECT = Viper.Math.BigInt.FromStr("999999999999999999999999")
+DIM b AS OBJECT = Viper.Math.BigInt.FromInt(2)
+
+DIM doubled AS OBJECT = Viper.Math.BigInt.Mul(a, b)
+PRINT Viper.Math.BigInt.ToString(doubled)
+' Output: 1999999999999999999999998
+
+' Modular exponentiation (useful in cryptography)
+DIM base AS OBJECT = Viper.Math.BigInt.FromInt(65537)
+DIM exp  AS OBJECT = Viper.Math.BigInt.FromInt(65537)
+DIM mod  AS OBJECT = Viper.Math.BigInt.FromStr("340282366920938463463374607431768211457")
+DIM result AS OBJECT = Viper.Math.BigInt.PowMod(base, exp, mod)
+PRINT Viper.Math.BigInt.ToString(result)
+
+' GCD and LCM
+DIM g AS OBJECT = Viper.Math.BigInt.Gcd(Viper.Math.BigInt.FromInt(48), Viper.Math.BigInt.FromInt(36))
+PRINT Viper.Math.BigInt.ToString(g)   ' 12
+
+' Comparison
+DIM x AS OBJECT = Viper.Math.BigInt.FromStr("100000000000000000000")
+DIM y AS OBJECT = Viper.Math.BigInt.FromStr("99999999999999999999")
+PRINT Viper.Math.BigInt.Cmp(x, y)    ' 1 (x > y)
+
+' Bitwise ops
+DIM n AS OBJECT = Viper.Math.BigInt.FromInt(255)
+PRINT Viper.Math.BigInt.BitLength(n)  ' 8
+PRINT Viper.Math.BigInt.TestBit(n, 7) ' True
+DIM shifted AS OBJECT = Viper.Math.BigInt.Shl(n, 8)
+PRINT Viper.Math.BigInt.ToString(shifted)  ' 65280
+
+' Check if big number fits in 64-bit integer
+DIM big AS OBJECT = Viper.Math.BigInt.FromStr("99999999999999999999")
+IF NOT Viper.Math.BigInt.FitsInt(big) THEN
+    PRINT "Too large for native integer"
+END IF
+```
+
+---
+
+## Viper.Math.Mat3
+
+3×3 matrix for 2D affine transformations (translation, rotation, scale, shear). All methods are static; matrix
+values are opaque objects. Pass the matrix as the first argument to instance-style methods.
+
+**Type:** Static utility class
+
+### Constructors
+
+| Method                        | Signature                                    | Description                                    |
+|-------------------------------|----------------------------------------------|------------------------------------------------|
+| `New(m00..m22)`               | `Object(f64×9)`                              | Create from 9 row-major floats                 |
+| `Identity()`                  | `Object()`                                   | 3×3 identity matrix                            |
+| `Zero()`                      | `Object()`                                   | 3×3 zero matrix                               |
+
+### 2D Transform Factories
+
+| Method                | Signature                 | Description                                     |
+|-----------------------|---------------------------|-------------------------------------------------|
+| `Translate(x, y)`     | `Object(f64, f64)`        | Translation matrix                              |
+| `Scale(x, y)`         | `Object(f64, f64)`        | Non-uniform scale matrix                        |
+| `ScaleUniform(s)`     | `Object(f64)`             | Uniform scale matrix                            |
+| `Rotate(angle)`       | `Object(f64)`             | Counter-clockwise rotation matrix (radians)     |
+| `Shear(x, y)`         | `Object(f64, f64)`        | Shear matrix (x shear in X direction, etc.)     |
+
+### Element Access
+
+| Method           | Signature                    | Description                         |
+|------------------|------------------------------|-------------------------------------|
+| `Get(m, row, col)` | `f64(Object, Integer, Integer)` | Get element at (row, col) 0-indexed |
+| `Row(m, i)`      | `Object(Object, Integer)`    | Return row i as a Vec3              |
+| `Col(m, i)`      | `Object(Object, Integer)`    | Return column i as a Vec3           |
+
+### Math Operations
+
+| Method              | Signature                    | Description                           |
+|---------------------|------------------------------|---------------------------------------|
+| `Add(a, b)`         | `Object(Object, Object)`     | Component-wise addition               |
+| `Sub(a, b)`         | `Object(Object, Object)`     | Component-wise subtraction            |
+| `Mul(a, b)`         | `Object(Object, Object)`     | Matrix multiplication                 |
+| `MulScalar(m, s)`   | `Object(Object, f64)`        | Multiply every element by scalar      |
+| `Neg(m)`            | `Object(Object)`             | Negate every element                  |
+| `Transpose(m)`      | `Object(Object)`             | Transpose rows and columns            |
+| `Inverse(m)`        | `Object(Object)`             | Matrix inverse (traps if singular)    |
+| `Det(m)`            | `f64(Object)`                | Determinant                           |
+
+### Transform Application
+
+| Method                 | Signature                | Description                                      |
+|------------------------|--------------------------|--------------------------------------------------|
+| `TransformPoint(m, v)` | `Object(Object, Object)` | Transform a Vec2 point (applies translation)     |
+| `TransformVec(m, v)`   | `Object(Object, Object)` | Transform a Vec2 direction (ignores translation) |
+| `Eq(a, b, eps)`        | `Boolean(Object, Object, f64)` | True if all elements differ by less than eps |
+
+### Notes
+
+- Matrices are stored in row-major order.
+- `TransformPoint` treats the Vec2 as a homogeneous point (w=1); translation is applied.
+- `TransformVec` treats the Vec2 as a direction (w=0); translation is not applied.
+- `Inverse` traps when the determinant is zero.
+- All factory methods return a new matrix; matrices are immutable.
+
+### Zia Example
+
+```zia
+module Mat3Demo;
+
+bind Viper.Terminal;
+bind Viper.Math.Mat3 as Mat3;
+bind Viper.Math.Vec2 as Vec2;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Build a combined 2D transform: scale then translate
+    var s  = Mat3.Scale(2.0, 2.0);
+    var t  = Mat3.Translate(10.0, 5.0);
+    var m  = Mat3.Mul(t, s);   // apply scale first, then translate
+
+    // Transform a point
+    var p      = Vec2.New(1.0, 1.0);
+    var result = Mat3.TransformPoint(m, p);
+    // Scaled: (2, 2) then translated: (12, 7)
+    Say("X: " + Fmt.NumFixed(Vec2.get_X(result), 1));  // 12.0
+    Say("Y: " + Fmt.NumFixed(Vec2.get_Y(result), 1));  // 7.0
+
+    // Rotation by 90 degrees
+    var r   = Mat3.Rotate(1.5707963);
+    var dir = Vec2.New(1.0, 0.0);
+    var rd  = Mat3.TransformVec(r, dir);
+    Say("Rotated X: " + Fmt.NumFixed(Vec2.get_X(rd), 1));  // ~0.0
+    Say("Rotated Y: " + Fmt.NumFixed(Vec2.get_Y(rd), 1));  // ~1.0
+
+    // Determinant and inverse
+    Say("Det: " + Fmt.NumFixed(Mat3.Det(m), 1));   // 4.0 (scale factor²)
+    var inv = Mat3.Inverse(m);
+    var chk = Mat3.Mul(m, inv);
+    Say("[0,0] should be 1: " + Fmt.NumFixed(Mat3.Get(chk, 0, 0), 4));
+}
+```
+
+### BASIC Example
+
+```basic
+' 2D transform pipeline
+DIM scale AS OBJECT = Viper.Math.Mat3.Scale(3.0, 3.0)
+DIM rot   AS OBJECT = Viper.Math.Mat3.Rotate(Viper.Math.Rad(45.0))
+DIM trans AS OBJECT = Viper.Math.Mat3.Translate(100.0, 50.0)
+
+' Compose: scale → rotate → translate (right to left application order)
+DIM m AS OBJECT = Viper.Math.Mat3.Mul(trans, Viper.Math.Mat3.Mul(rot, scale))
+
+' Transform a point
+DIM pt AS OBJECT = Viper.Math.Vec2.New(1.0, 0.0)
+DIM out AS OBJECT = Viper.Math.Mat3.TransformPoint(m, pt)
+PRINT "x="; Viper.Math.Vec2.get_X(out); " y="; Viper.Math.Vec2.get_Y(out)
+
+' Identity check
+DIM id AS OBJECT = Viper.Math.Mat3.Identity()
+PRINT "Det(I): "; Viper.Math.Mat3.Det(id)   ' 1.0
+
+' Epsilon comparison
+DIM a AS OBJECT = Viper.Math.Mat3.Identity()
+DIM b AS OBJECT = Viper.Math.Mat3.Mul(a, Viper.Math.Mat3.Identity())
+PRINT Viper.Math.Mat3.Eq(a, b, 0.0001)   ' True
+
+' Row and column extraction
+DIM row0 AS OBJECT = Viper.Math.Mat3.Row(id, 0)
+PRINT Viper.Math.Vec3.get_X(row0)   ' 1.0 (first row of identity)
+```
+
+---
+
+## Viper.Math.Mat4
+
+4×4 matrix for 3D transformations, including translation, rotation, scale, and projection. All methods are static;
+matrix values are opaque objects. Pass the matrix as the first argument to instance-style methods.
+
+**Type:** Static utility class
+
+### Constructors
+
+| Method         | Signature    | Description                              |
+|----------------|--------------|------------------------------------------|
+| `New(m00..m33)` | `Object(f64×16)` | Create from 16 row-major floats      |
+| `Identity()`   | `Object()`   | 4×4 identity matrix                      |
+| `Zero()`       | `Object()`   | 4×4 zero matrix                          |
+
+### 3D Transform Factories
+
+| Method                      | Signature                        | Description                                    |
+|-----------------------------|----------------------------------|------------------------------------------------|
+| `Translate(x, y, z)`        | `Object(f64, f64, f64)`          | Translation matrix                             |
+| `Scale(x, y, z)`            | `Object(f64, f64, f64)`          | Non-uniform scale matrix                       |
+| `ScaleUniform(s)`           | `Object(f64)`                    | Uniform scale matrix                           |
+| `RotateX(angle)`            | `Object(f64)`                    | Rotation around X axis (radians)               |
+| `RotateY(angle)`            | `Object(f64)`                    | Rotation around Y axis (radians)               |
+| `RotateZ(angle)`            | `Object(f64)`                    | Rotation around Z axis (radians)               |
+| `RotateAxis(axis, angle)`   | `Object(Object, f64)`            | Rotation around an arbitrary Vec3 axis         |
+
+### Projection Factories
+
+| Method                              | Signature                               | Description                              |
+|-------------------------------------|-----------------------------------------|------------------------------------------|
+| `Perspective(fov, aspect, near, far)` | `Object(f64, f64, f64, f64)`          | Perspective projection matrix (fov in radians, column-major convention) |
+| `Ortho(l, r, b, t, near, far)`      | `Object(f64, f64, f64, f64, f64, f64)` | Orthographic projection matrix           |
+| `LookAt(eye, center, up)`           | `Object(Object, Object, Object)`        | View matrix from eye/center/up (Vec3)    |
+
+### Element Access and Math
+
+| Method              | Signature                          | Description                           |
+|---------------------|------------------------------------|---------------------------------------|
+| `Get(m, row, col)`  | `f64(Object, Integer, Integer)`    | Get element at (row, col) 0-indexed   |
+| `Add(a, b)`         | `Object(Object, Object)`           | Component-wise addition               |
+| `Sub(a, b)`         | `Object(Object, Object)`           | Component-wise subtraction            |
+| `Mul(a, b)`         | `Object(Object, Object)`           | Matrix multiplication                 |
+| `MulScalar(m, s)`   | `Object(Object, f64)`              | Multiply every element by scalar      |
+| `Neg(m)`            | `Object(Object)`                   | Negate every element                  |
+| `Transpose(m)`      | `Object(Object)`                   | Transpose rows and columns            |
+| `Inverse(m)`        | `Object(Object)`                   | Matrix inverse (traps if singular)    |
+| `Det(m)`            | `f64(Object)`                      | Determinant                           |
+| `Eq(a, b, eps)`     | `Boolean(Object, Object, f64)`     | True if all elements differ by < eps  |
+
+### Transform Application
+
+| Method                 | Signature                | Description                                       |
+|------------------------|--------------------------|---------------------------------------------------|
+| `TransformPoint(m, v)` | `Object(Object, Object)` | Transform a Vec3 point (applies translation)      |
+| `TransformVec(m, v)`   | `Object(Object, Object)` | Transform a Vec3 direction (ignores translation)  |
+
+### Notes
+
+- Matrices are stored in row-major order.
+- `LookAt` expects right-handed coordinate system (OpenGL convention).
+- `Perspective` uses the standard OpenGL depth range [-1, 1].
+- `RotateAxis` normalizes the axis internally; passing a zero-length axis traps.
+- Composing transforms: `Mul(B, A)` applies A first, then B (right-to-left).
+
+### Zia Example
+
+```zia
+module Mat4Demo;
+
+bind Viper.Terminal;
+bind Viper.Math.Mat4 as Mat4;
+bind Viper.Math.Vec3 as Vec3;
+bind Viper.Math as Math;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Simple model matrix: scale → rotateY → translate
+    var s = Mat4.Scale(2.0, 2.0, 2.0);
+    var r = Mat4.RotateY(Math.Rad(45.0));
+    var t = Mat4.Translate(0.0, 0.0, -5.0);
+    var model = Mat4.Mul(t, Mat4.Mul(r, s));
+
+    // Camera view matrix
+    var eye    = Vec3.New(0.0, 3.0, 8.0);
+    var center = Vec3.New(0.0, 0.0, 0.0);
+    var up     = Vec3.New(0.0, 1.0, 0.0);
+    var view   = Mat4.LookAt(eye, center, up);
+
+    // Perspective projection
+    var proj = Mat4.Perspective(Math.Rad(60.0), 16.0 / 9.0, 0.1, 1000.0);
+
+    // MVP matrix
+    var mvp = Mat4.Mul(proj, Mat4.Mul(view, model));
+
+    // Transform a point
+    var pt  = Vec3.New(1.0, 0.0, 0.0);
+    var out = Mat4.TransformPoint(mvp, pt);
+    Say("Transformed X: " + Fmt.NumFixed(Vec3.get_X(out), 4));
+
+    // Verify identity round-trip
+    var id  = Mat4.Identity();
+    var inv = Mat4.Inverse(id);
+    var chk = Mat4.Mul(id, inv);
+    Say("[0,0]: " + Fmt.NumFixed(Mat4.Get(chk, 0, 0), 2));  // 1.00
+}
+```
+
+### BASIC Example
+
+```basic
+' Build a 3D model-view-projection matrix
+DIM scale AS OBJECT = Viper.Math.Mat4.Scale(1.0, 1.0, 1.0)
+DIM rotY  AS OBJECT = Viper.Math.Mat4.RotateY(Viper.Math.Rad(30.0))
+DIM trans AS OBJECT = Viper.Math.Mat4.Translate(0.0, 0.0, -10.0)
+
+DIM model AS OBJECT = Viper.Math.Mat4.Mul(trans, Viper.Math.Mat4.Mul(rotY, scale))
+
+' Camera
+DIM eye    AS OBJECT = Viper.Math.Vec3.New(0.0, 5.0, 10.0)
+DIM center AS OBJECT = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
+DIM up     AS OBJECT = Viper.Math.Vec3.New(0.0, 1.0, 0.0)
+DIM view   AS OBJECT = Viper.Math.Mat4.LookAt(eye, center, up)
+
+' Projection
+DIM proj AS OBJECT = Viper.Math.Mat4.Perspective(Viper.Math.Rad(60.0), 1.777, 0.1, 1000.0)
+
+' Combined MVP
+DIM mvp AS OBJECT = Viper.Math.Mat4.Mul(proj, Viper.Math.Mat4.Mul(view, model))
+
+' Transform a world-space point into clip space
+DIM pt  AS OBJECT = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
+DIM out AS OBJECT = Viper.Math.Mat4.TransformPoint(mvp, pt)
+PRINT "Clip X: "; Viper.Math.Vec3.get_X(out)
+PRINT "Clip Y: "; Viper.Math.Vec3.get_Y(out)
+
+' Orthographic projection for 2D/UI overlay
+DIM ortho AS OBJECT = Viper.Math.Mat4.Ortho(0.0, 1920.0, 0.0, 1080.0, -1.0, 1.0)
+PRINT "Det(ortho): "; Viper.Math.Mat4.Det(ortho)
+
+' Rotate around arbitrary axis
+DIM axis    AS OBJECT = Viper.Math.Vec3.New(1.0, 1.0, 0.0)
+DIM rotAxis AS OBJECT = Viper.Math.Mat4.RotateAxis(axis, Viper.Math.Rad(45.0))
+```
 
 ---
 

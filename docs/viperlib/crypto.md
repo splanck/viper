@@ -24,18 +24,65 @@ AES-128/256 symmetric encryption with CBC mode and PKCS7 padding.
 
 ### Methods
 
-| Method                           | Signature                      | Description                                           |
-|----------------------------------|--------------------------------|-------------------------------------------------------|
-| `Encrypt(data, key, iv)`        | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt data with AES key and initialization vector  |
-| `Decrypt(data, key, iv)`        | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt data with AES key and initialization vector  |
-| `EncryptStr(plaintext, password)` | `Bytes(String, String)`      | Encrypt a string with a password (key derived via SHA-256; output: 16-byte IV + ciphertext) |
-| `DecryptStr(ciphertext, password)` | `String(Bytes, String)`     | Decrypt ciphertext to a string using a password (expects 16-byte IV prefix) |
+| Method                              | Signature                      | Description                                                                   |
+|-------------------------------------|--------------------------------|-------------------------------------------------------------------------------|
+| `Encrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt data with AES key and initialization vector                           |
+| `Decrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt data with AES key and initialization vector                           |
+| `EncryptStr(plaintext, password)`   | `Bytes(String, String)`        | Encrypt a string with a password (key derived via SHA-256; output: 16-byte IV + ciphertext) |
+| `DecryptStr(ciphertext, password)`  | `String(Bytes, String)`        | Decrypt ciphertext to a string using a password (expects 16-byte IV prefix)   |
 
 ### Notes
 
 - `Encrypt`/`Decrypt` require a raw key (16 or 32 bytes) and IV (16 bytes)
 - `EncryptStr`/`DecryptStr` derive the AES-256 key from the password using SHA-256 and prepend a 16-byte IV to the output
 - For higher-level authenticated encryption with automatic key management, use `Viper.Crypto.Cipher` instead
+
+### Zia Example
+
+```zia
+module AesDemo;
+
+bind Viper.Terminal;
+bind Viper.Crypto.Aes as Aes;
+bind Viper.Crypto.Rand as CRand;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Encrypt a string with a password
+    var ciphertext = Aes.EncryptStr("Hello, AES!", "my-password");
+    Say("Encrypted len: " + Fmt.Int(ciphertext.Len));
+
+    // Decrypt it back
+    var plaintext = Aes.DecryptStr(ciphertext, "my-password");
+    Say("Decrypted: " + plaintext);
+
+    // Raw AES with explicit key and IV
+    var key = CRand.Bytes(32);   // 256-bit key
+    var iv = CRand.Bytes(16);    // 128-bit IV
+    var data = Bytes.FromStr("Secret data");
+    var enc = Aes.Encrypt(data, key, iv);
+    var dec = Aes.Decrypt(enc, key, iv);
+    Say("Round-trip: " + dec.ToStr());
+}
+```
+
+### BASIC Example
+
+```basic
+' Encrypt and decrypt a string with a password
+DIM ciphertext AS OBJECT = Viper.Crypto.Aes.EncryptStr("Hello, AES!", "my-password")
+DIM plaintext AS STRING = Viper.Crypto.Aes.DecryptStr(ciphertext, "my-password")
+PRINT "Decrypted: "; plaintext
+
+' Raw AES with explicit key and IV
+DIM key AS OBJECT = Viper.Crypto.Rand.Bytes(32)   ' 256-bit key
+DIM iv AS OBJECT = Viper.Crypto.Rand.Bytes(16)    ' 128-bit IV
+DIM data AS OBJECT = Viper.Collections.Bytes.FromStr("Secret data")
+DIM enc AS OBJECT = Viper.Crypto.Aes.Encrypt(data, key, iv)
+DIM dec AS OBJECT = Viper.Crypto.Aes.Decrypt(enc, key, iv)
+PRINT "Round-trip: "; dec.ToStr()
+```
 
 ---
 
