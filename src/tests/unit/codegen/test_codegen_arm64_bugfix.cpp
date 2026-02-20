@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_bugfix.cpp
-// Purpose: Regression tests for ARM64 codegen bug fixes #1, #2, #3.
+// Purpose: Regression tests for ARM64 codegen bug fixes #1, #2, #3, #4.
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
@@ -81,6 +81,72 @@ TEST(Arm64Bugfix, BoolReturnMasked)
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
     // Equal strings should return exit code 0 (took the yes branch)
     ASSERT_EQ(rc, 0);
+}
+
+/// Bug #4: AddFpImm operand must be classified as DEF-only (not USE-only) in
+/// RegAllocLinear::operandRoles so that the dirty flag is set after alloca
+/// address materialisation.
+///
+/// Without the fix, when register pressure forced the eviction of the AddFpImm
+/// result vreg before it was consumed by the following AddRI (GEP offset add),
+/// the dirty flag remained false and no spill store was emitted.  The
+/// subsequent reload then read an uninitialised frame slot, producing a garbage
+/// address that caused a store to crash (EXC_BAD_ACCESS in the chess demo).
+///
+/// The test uses 22 live temps (> 19 available GPRs) so that the pool is full
+/// when the critical field-3 GEP (offset 24) is processed.  All 22 temps have
+/// future uses AFTER the critical GEP, so they all have finite next-use
+/// distances and are not selected as spill victims — only the AddFpImm result
+/// has UINT_MAX distance (no use after AddRI), making the eviction deterministic.
+TEST(Arm64Bugfix, AddFpImmDirtyFlagUnderPressure)
+{
+    // Build IL with 22 live temporaries + alloca + GEP store at offset 24.
+    // The 22 temps all have future uses (stores after field 3), so only the
+    // AddFpImm result vreg (no future use past the AddRI) has UINT_MAX distance
+    // and is selected as the eviction victim.
+    std::string il = "il 0.1\n"
+                     "func @main() -> i64 {\n"
+                     "entry:\n";
+
+    // 22 live temps — enough to exceed the 19-register GPR pool
+    for (int i = 0; i < 22; ++i)
+        il += "  %v" + std::to_string(i) + " = add 0, " + std::to_string(i + 1) + "\n";
+
+    // 192-byte alloca (enough for 24 i64 fields)
+    il += "  %base = alloca 192\n";
+
+    // CRITICAL: GEP at offset 24 (field 3) — triggers the AddFpImm dirty-flag bug.
+    // Without fix: AddFpImm result evicted with dirty=false → reload from
+    // uninitialised slot → garbage address → SIGSEGV.
+    // With fix:    AddFpImm result evicted with dirty=true  → slot written →
+    // reload correct → store 42 to correct address.
+    il += "  %p24 = gep %base, 24\n";
+    il += "  store i64, %p24, 42\n";
+
+    // Use all 22 temps in stores AFTER field 3 so they have finite future-use
+    // distances during field-3 GEP processing (ensures they are not evicted
+    // instead of the AddFpImm result).
+    // Offsets: 0,8,16,32,40,...,176 — skipping 24 which holds the sentinel.
+    int offset = 0;
+    for (int i = 0; i < 22; ++i)
+    {
+        if (offset == 24)
+            offset += 8; // skip offset 24 (sentinel slot)
+        il += "  %q" + std::to_string(i) + " = gep %base, " + std::to_string(offset) + "\n";
+        il += "  store i64, %q" + std::to_string(i) + ", %v" + std::to_string(i) + "\n";
+        offset += 8;
+    }
+
+    // Load sentinel from field 3 and return — must be 42
+    il += "  %result = load i64, %p24\n";
+    il += "  ret %result\n";
+    il += "}\n";
+
+    const std::string in = outPath("arm64_bugfix_addfpimm_dirty.il");
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-run-native"};
+    const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 42);
 }
 
 int main(int argc, char **argv)

@@ -1097,6 +1097,11 @@ class LinearAllocator
         if ((ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR) && idx == 0)
             return {true, false};
 
+        // AddFpImm: dst = fp + imm (alloca address materialisation).
+        // Operand 0 is def-only (the computed address); operand 1 is an immediate.
+        if (ins.opc == MOpcode::AddFpImm)
+            return {false, idx == 0};
+
         // AdrPage: dst is def-only, label operand is not a register
         if (ins.opc == MOpcode::AdrPage)
             return {false, idx == 0};
