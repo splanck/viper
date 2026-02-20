@@ -79,6 +79,10 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerUnary(static_cast<UnaryExpr *>(expr));
         case ExprKind::Ternary:
             return lowerTernary(static_cast<TernaryExpr *>(expr));
+        case ExprKind::If:
+            return lowerIfExpr(static_cast<IfExpr *>(expr));
+        case ExprKind::StructLiteral:
+            return lowerStructLiteral(static_cast<StructLiteralExpr *>(expr));
         case ExprKind::Call:
             return lowerCall(static_cast<CallExpr *>(expr));
         case ExprKind::Field:
@@ -307,6 +311,97 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
         if (expectsOptional)
         {
             TypeRef elseType = sema_.typeOf(expr->elseExpr.get());
+            if (!elseType || elseType->kind != TypeKindSem::Optional)
+            {
+                if (optionalInner)
+                    elseValue = emitOptionalWrap(elseResult.value, optionalInner);
+            }
+        }
+        if (ilResultType.kind != Type::Kind::Void)
+        {
+            il::core::Instr storeInstr;
+            storeInstr.op = Opcode::Store;
+            storeInstr.type = ilResultType;
+            storeInstr.operands = {resultSlot, elseValue};
+            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        }
+    }
+    emitBr(mergeIdx);
+
+    setBlock(mergeIdx);
+    if (ilResultType.kind == Type::Kind::Void)
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+
+    unsigned loadId = nextTempId();
+    il::core::Instr loadInstr;
+    loadInstr.result = loadId;
+    loadInstr.op = Opcode::Load;
+    loadInstr.type = ilResultType;
+    loadInstr.operands = {resultSlot};
+    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+    return {Value::temp(loadId), ilResultType};
+}
+
+//=============================================================================
+// If-Expression Lowering
+//=============================================================================
+
+LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
+{
+    auto cond = lowerExpr(expr->condition.get());
+    TypeRef resultType = sema_.typeOf(expr);
+    Type ilResultType = mapType(resultType);
+    bool expectsOptional = resultType && resultType->kind == TypeKindSem::Optional;
+    TypeRef optionalInner = expectsOptional ? resultType->innerType() : nullptr;
+
+    // Allocate a stack slot for the result before branching.
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(8)};
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value resultSlot = Value::temp(allocaId);
+
+    size_t thenIdx = createBlock("ifexpr_then");
+    size_t elseIdx = createBlock("ifexpr_else");
+    size_t mergeIdx = createBlock("ifexpr_merge");
+
+    emitCBr(cond.value, thenIdx, elseIdx);
+
+    setBlock(thenIdx);
+    {
+        auto thenResult = lowerExpr(expr->thenBranch.get());
+        Value thenValue = thenResult.value;
+        if (expectsOptional)
+        {
+            TypeRef thenType = sema_.typeOf(expr->thenBranch.get());
+            if (!thenType || thenType->kind != TypeKindSem::Optional)
+            {
+                if (optionalInner)
+                    thenValue = emitOptionalWrap(thenResult.value, optionalInner);
+            }
+        }
+        if (ilResultType.kind != Type::Kind::Void)
+        {
+            il::core::Instr storeInstr;
+            storeInstr.op = Opcode::Store;
+            storeInstr.type = ilResultType;
+            storeInstr.operands = {resultSlot, thenValue};
+            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        }
+    }
+    emitBr(mergeIdx);
+
+    setBlock(elseIdx);
+    {
+        auto elseResult = lowerExpr(expr->elseBranch.get());
+        Value elseValue = elseResult.value;
+        if (expectsOptional)
+        {
+            TypeRef elseType = sema_.typeOf(expr->elseBranch.get());
             if (!elseType || elseType->kind != TypeKindSem::Optional)
             {
                 if (optionalInner)

@@ -82,6 +82,16 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr)
         return baseType->valueType() ? baseType->valueType() : types::unknown();
     }
 
+    // Fixed-size array: T[N] — element access returns the element type
+    if (baseType->kind == TypeKindSem::FixedArray)
+    {
+        if (!indexType->isIntegral())
+        {
+            error(expr->index->loc, "Index must be an integer");
+        }
+        return baseType->elementType() ? baseType->elementType() : types::unknown();
+    }
+
     error(expr->loc, "Expression is not indexable");
     return types::unknown();
 }
@@ -963,6 +973,41 @@ TypeRef Sema::analyzeBlockExpr(BlockExpr *expr)
 
     popScope();
     return resultType;
+}
+
+/// @brief Analyze a struct-literal expression (`TypeName { field = val, ... }`).
+/// @param expr The struct-literal expression node.
+/// @return The value type named by the expression, or unknown on error.
+TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr)
+{
+    // Look up the type name and verify it is a value type.
+    auto typeIt = typeRegistry_.find(expr->typeName);
+    if (typeIt == typeRegistry_.end())
+    {
+        error(expr->loc, "Unknown type '" + expr->typeName + "'");
+        return types::unknown();
+    }
+    TypeRef valueType = typeIt->second;
+    if (!valueType || valueType->kind != TypeKindSem::Value)
+    {
+        error(expr->loc, "'" + expr->typeName + "' is not a value type; struct literal requires a value type");
+        return types::unknown();
+    }
+
+    // For each named field, verify the field exists and type-check the value.
+    for (auto &field : expr->fields)
+    {
+        TypeRef fieldType = getFieldType(expr->typeName, field.name);
+        if (!fieldType)
+        {
+            error(field.loc, "'" + expr->typeName + "' has no field '" + field.name + "'");
+            continue;
+        }
+        TypeRef valType = analyzeExpr(field.value.get());
+        (void)valType; // type compatibility checked by assignment sema
+    }
+
+    return valueType;
 }
 
 } // namespace il::frontends::zia

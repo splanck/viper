@@ -287,14 +287,28 @@ void Lowerer::registerEntityLayout(EntityDecl &decl)
             TypeRef fieldType =
                 field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
-            Type ilFieldType = mapType(fieldType);
-            size_t alignment = getILTypeAlignment(ilFieldType);
+            // Compute size and alignment; fixed-size arrays are stored inline.
+            size_t fieldLayoutSize, fieldLayoutAlignment;
+            if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
+            {
+                TypeRef elemType = fieldType->elementType();
+                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+                size_t elemSize = getILTypeSize(ilElemType);
+                fieldLayoutSize = elemSize * fieldType->elementCount;
+                fieldLayoutAlignment = elemSize;
+            }
+            else
+            {
+                Type ilFieldType = mapType(fieldType);
+                fieldLayoutSize = getILTypeSize(ilFieldType);
+                fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
+            }
 
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
-            layout.offset = alignTo(info.totalSize, alignment);
-            layout.size = getILTypeSize(ilFieldType);
+            layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
+            layout.size = fieldLayoutSize;
 
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
@@ -348,14 +362,28 @@ void Lowerer::registerValueLayout(ValueDecl &decl)
             TypeRef fieldType =
                 field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
-            Type ilFieldType = mapType(fieldType);
-            size_t alignment = getILTypeAlignment(ilFieldType);
+            // Compute size and alignment; fixed-size arrays are stored inline.
+            size_t fieldLayoutSize, fieldLayoutAlignment;
+            if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
+            {
+                TypeRef elemType = fieldType->elementType();
+                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+                size_t elemSize = getILTypeSize(ilElemType);
+                fieldLayoutSize = elemSize * fieldType->elementCount;
+                fieldLayoutAlignment = elemSize;
+            }
+            else
+            {
+                Type ilFieldType = mapType(fieldType);
+                fieldLayoutSize = getILTypeSize(ilFieldType);
+                fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
+            }
 
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
-            layout.offset = alignTo(info.totalSize, alignment);
-            layout.size = getILTypeSize(ilFieldType);
+            layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
+            layout.size = fieldLayoutSize;
 
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
@@ -790,14 +818,28 @@ const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeNa
             if (!fieldType)
                 fieldType = types::unknown();
 
-            Type ilFieldType = mapType(fieldType);
-            size_t alignment = getILTypeAlignment(ilFieldType);
+            // Compute size and alignment; fixed-size arrays are stored inline.
+            size_t fieldLayoutSize, fieldLayoutAlignment;
+            if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
+            {
+                TypeRef elemType = fieldType->elementType();
+                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+                size_t elemSize = getILTypeSize(ilElemType);
+                fieldLayoutSize = elemSize * fieldType->elementCount;
+                fieldLayoutAlignment = elemSize;
+            }
+            else
+            {
+                Type ilFieldType = mapType(fieldType);
+                fieldLayoutSize = getILTypeSize(ilFieldType);
+                fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
+            }
 
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
-            layout.offset = alignTo(info.totalSize, alignment);
-            layout.size = getILTypeSize(ilFieldType);
+            layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
+            layout.size = fieldLayoutSize;
 
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
@@ -888,14 +930,28 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
             if (!fieldType)
                 fieldType = types::unknown();
 
-            Type ilFieldType = mapType(fieldType);
-            size_t alignment = getILTypeAlignment(ilFieldType);
+            // Compute size and alignment; fixed-size arrays are stored inline.
+            size_t fieldLayoutSize, fieldLayoutAlignment;
+            if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
+            {
+                TypeRef elemType = fieldType->elementType();
+                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+                size_t elemSize = getILTypeSize(ilElemType);
+                fieldLayoutSize = elemSize * fieldType->elementCount;
+                fieldLayoutAlignment = elemSize;
+            }
+            else
+            {
+                Type ilFieldType = mapType(fieldType);
+                fieldLayoutSize = getILTypeSize(ilFieldType);
+                fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
+            }
 
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
-            layout.offset = alignTo(info.totalSize, alignment);
-            layout.size = getILTypeSize(ilFieldType);
+            layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
+            layout.size = fieldLayoutSize;
 
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);

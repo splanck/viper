@@ -1045,6 +1045,342 @@ func start() {
     }
 }
 
+//===----------------------------------------------------------------------===//
+// ZIA-007: Viper.Terminal.Int() — integer-to-string conversion without
+//          requiring a separate `bind Viper.Fmt` import.
+//===----------------------------------------------------------------------===//
+
+/// @brief Viper.Terminal now exposes Int(i64) -> str so that integer-to-string
+/// conversion is available in any module that binds Viper.Terminal, without
+/// also requiring `bind Viper.Fmt`.
+TEST(ZiaBugFixes, ZIA007_TerminalIntConversion)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Terminal;
+
+func start() {
+    Say("x=" + Int(42));
+    Say("neg=" + Int(-7));
+}
+)";
+    CompilerInput input{.source = source, .path = "zia007.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Int() in Terminal should work alongside Say() in the same expression.
+TEST(ZiaBugFixes, ZIA007_TerminalIntInConcatenation)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Terminal;
+
+func start() {
+    var n = 100;
+    Say("Result: " + Int(n) + " done");
+}
+)";
+    CompilerInput input{.source = source, .path = "zia007b.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// ZIA-006: Empty list [] inherits element type from declaration annotation.
+//===----------------------------------------------------------------------===//
+
+/// @brief `var items: List[Integer] = []` must produce a typed list so that
+/// arithmetic on elements retrieved via .get() compiles without error.
+TEST(ZiaBugFixes, ZIA006_EmptyListTypeAnnotation)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var items: List[Integer] = [];
+    items.add(10);
+    items.add(20);
+    var sum = items.get(0) + items.get(1);
+    Viper.Terminal.SayInt(sum);
+}
+)";
+    CompilerInput input{.source = source, .path = "zia006.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Empty List[String] annotation must propagate, allowing .length() on
+/// the populated list.
+TEST(ZiaBugFixes, ZIA006_EmptyStringListAnnotation)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var names: List[String] = [];
+    names.add("alice");
+    names.add("bob");
+    Viper.Terminal.SayInt(names.length());
+}
+)";
+    CompilerInput input{.source = source, .path = "zia006b.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// ZIA-003: Negative range literals `for x in -1..2` must work correctly.
+//===----------------------------------------------------------------------===//
+
+/// @brief `for x in -1..2` should iterate -1, 0, 1 (sum = 0).
+TEST(ZiaBugFixes, ZIA003_NegativeRangeForLoop)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var sum = 0;
+    for x in -1..2 {
+        sum = sum + x;
+    }
+    Viper.Terminal.SayInt(sum);
+}
+)";
+    CompilerInput input{.source = source, .path = "zia003.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Nested negative ranges (double-nested direction loop) must work.
+TEST(ZiaBugFixes, ZIA003_NestedNegativeRanges)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var count = 0;
+    for dr in -1..2 {
+        for df in -1..2 {
+            count = count + 1;
+        }
+    }
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "zia003b.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// ZIA-004: `if` used as an expression (value-returning if).
+//===----------------------------------------------------------------------===//
+
+/// @brief `var x = if cond { a } else { b }` must compile and produce the
+/// correct value in both branches.
+TEST(ZiaBugFixes, ZIA004_IfExpression)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var x = 10;
+    var label = if x > 5 { "big" } else { "small" };
+    Viper.Terminal.Say(label);
+    var white = true;
+    var dir = if white { -1 } else { 1 };
+    Viper.Terminal.SayInt(dir);
+    var abs = if x > 0 { x } else { -x };
+    Viper.Terminal.SayInt(abs);
+}
+)";
+    CompilerInput input{.source = source, .path = "zia004.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Nested if-expressions and if-expressions inside larger expressions.
+TEST(ZiaBugFixes, ZIA004_IfExpressionNested)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var a = 3;
+    var b = 7;
+    var max = if a > b { a } else { b };
+    var sign = if max > 0 { 1 } else { if max < 0 { -1 } else { 0 } };
+    Viper.Terminal.SayInt(max);
+    Viper.Terminal.SayInt(sign);
+}
+)";
+    CompilerInput input{.source = source, .path = "zia004b.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// ZIA-001: Struct-literal initialization for `value` types.
+//===----------------------------------------------------------------------===//
+
+/// @brief `var p = Point { x = 3, y = 4 }` must compile and field values must
+/// be correctly set.
+TEST(ZiaBugFixes, ZIA001_StructLiteralInit)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+value Point {
+    expose Integer x;
+    expose Integer y;
+    expose func init(px: Integer, py: Integer) { x = px; y = py; }
+}
+
+func start() {
+    var p = Point { x = 3, y = 4 };
+    var q = Point { x = p.x + 1, y = p.y };
+    Viper.Terminal.SayInt(p.x);
+    Viper.Terminal.SayInt(p.y);
+    Viper.Terminal.SayInt(q.x);
+}
+)";
+    CompilerInput input{.source = source, .path = "zia001.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Struct literal with all fields omitting some (only named fields set).
+TEST(ZiaBugFixes, ZIA001_StructLiteralPartialFields)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+value Color {
+    expose Integer r;
+    expose Integer g;
+    expose Integer b;
+    expose func init(rv: Integer, gv: Integer, bv: Integer) { r = rv; g = gv; b = bv; }
+}
+
+func start() {
+    var red = Color { r = 255, g = 0, b = 0 };
+    var green = Color { r = 0, g = 255, b = 0 };
+    Viper.Terminal.SayInt(red.r);
+    Viper.Terminal.SayInt(green.g);
+}
+)";
+    CompilerInput input{.source = source, .path = "zia001b.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+//===----------------------------------------------------------------------===//
+// ZIA-002: Fixed-size array fields in `entity` types (`Integer[64]`).
+//===----------------------------------------------------------------------===//
+
+/// @brief An entity with an `Integer[N]` field must compile; individual elements
+/// must be readable and writable via subscript syntax.
+TEST(ZiaBugFixes, ZIA002_FixedSizeArrayField)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Board {
+    expose Integer[64] squares;
+    expose func init() {}
+    expose func get(i: Integer) -> Integer { return squares[i]; }
+    expose func set(i: Integer, v: Integer) { squares[i] = v; }
+}
+
+func start() {
+    var b = new Board();
+    b.init();
+    b.set(0, 42);
+    b.set(63, 7);
+    Viper.Terminal.SayInt(b.get(0));
+    Viper.Terminal.SayInt(b.get(63));
+}
+)";
+    CompilerInput input{.source = source, .path = "zia002.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Fixed-size array field with element arithmetic.
+TEST(ZiaBugFixes, ZIA002_FixedSizeArrayArithmetic)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Vec {
+    expose Float[4] data;
+    expose func init() {}
+    expose func set(i: Integer, v: Float) { data[i] = v; }
+    expose func get(i: Integer) -> Float { return data[i]; }
+}
+
+func start() {
+    var v = new Vec();
+    v.init();
+    v.set(0, 1.0);
+    v.set(1, 2.0);
+    Viper.Terminal.SayNum(v.get(0) + v.get(1));
+}
+)";
+    CompilerInput input{.source = source, .path = "zia002b.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

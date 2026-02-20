@@ -127,6 +127,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             blockMgr_.currentBlock()->instructions.push_back(gepInstr);
             Value fieldAddr = Value::temp(gepId);
 
+            // Fixed-size arrays: return the base pointer to inline storage (no load).
+            if (field->type && field->type->kind == TypeKindSem::FixedArray)
+                return {fieldAddr, Type(Type::Kind::Ptr)};
+
             // Load the field value
             Type fieldType = mapType(field->type);
             unsigned loadId = nextTempId();
@@ -159,6 +163,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             gepInstr.operands = {base.value, Value::constInt(static_cast<int64_t>(field->offset))};
             blockMgr_.currentBlock()->instructions.push_back(gepInstr);
             Value fieldAddr = Value::temp(gepId);
+
+            // Fixed-size arrays: return the base pointer to inline storage (no load).
+            if (field->type && field->type->kind == TypeKindSem::FixedArray)
+                return {fieldAddr, Type(Type::Kind::Ptr)};
 
             // Load the field value
             Type fieldType = mapType(field->type);

@@ -193,11 +193,13 @@ StmtPtr Parser::parseVarDecl()
             return nullptr;
     }
 
-    // Optional initializer
+    // Optional initializer — allow struct literals in this position
     ExprPtr init;
     if (match(TokenKind::Equal))
     {
+        allowStructLiterals_ = true;
         init = parseExpression();
+        allowStructLiterals_ = false;
         if (!init)
             return nullptr;
     }
@@ -496,7 +498,9 @@ StmtPtr Parser::parseReturnStmt()
     ExprPtr value;
     if (!check(TokenKind::Semicolon))
     {
+        allowStructLiterals_ = true;
         value = parseExpression();
+        allowStructLiterals_ = false;
         if (!value)
             return nullptr;
     }

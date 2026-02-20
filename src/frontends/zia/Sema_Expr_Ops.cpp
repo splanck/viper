@@ -178,6 +178,34 @@ TypeRef Sema::analyzeTernary(TernaryExpr *expr)
     return types::unknown();
 }
 
+/// @brief Analyze an if-expression (`if cond { thenExpr } else { elseExpr }`).
+/// @param expr The if-expression AST node.
+/// @return The common type of the then and else branches.
+TypeRef Sema::analyzeIfExpr(IfExpr *expr)
+{
+    TypeRef condType = analyzeExpr(expr->condition.get());
+    if (condType && condType->kind != TypeKindSem::Boolean && condType->kind != TypeKindSem::Unknown)
+    {
+        error(expr->condition->loc, "Condition must be Boolean");
+    }
+
+    TypeRef thenType = analyzeExpr(expr->thenBranch.get());
+    TypeRef elseType = analyzeExpr(expr->elseBranch.get());
+
+    TypeRef resultType = commonType(thenType, elseType);
+    if (resultType && resultType->kind != TypeKindSem::Unknown)
+        return resultType;
+
+    // If one branch is unknown, return the other — avoids spurious errors on null branches
+    if (thenType && thenType->kind != TypeKindSem::Unknown)
+        return thenType;
+    if (elseType && elseType->kind != TypeKindSem::Unknown)
+        return elseType;
+
+    error(expr->loc, "Incompatible types in if-expression");
+    return types::unknown();
+}
+
 /// @brief Compute the common type of two types for type unification.
 /// @param lhs The first type.
 /// @param rhs The second type.

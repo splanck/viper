@@ -413,6 +413,9 @@ void Lowerer::emitStore(Value ptr, Value val, Type type)
 Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr)
 {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
+    // Fixed-size arrays: return the base address of the inline storage (no load).
+    if (field->type && field->type->kind == TypeKindSem::FixedArray)
+        return fieldAddr;
     Type fieldType = mapType(field->type);
     return emitLoad(fieldAddr, fieldType);
 }

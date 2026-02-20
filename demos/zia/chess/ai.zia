@@ -1,0 +1,361 @@
+module ai;
+
+bind "./config";
+bind "./board";
+bind "./moves";
+bind "./eval";
+
+// ============================================================================
+// ChessAI — iterative-deepening minimax with alpha-beta pruning.
+//
+// Algorithm:
+//   1. Iterative deepening: search depth 1..maxDepth
+//   2. Negamax alpha-beta with move ordering
+//   3. Quiescence search to avoid horizon-effect blunders
+//   4. Transposition table (Zobrist-keyed) for repeated positions
+//   5. Move ordering: captures by MVV-LVA first, then quiet moves
+//
+// The score is always from the perspective of the side to move (negamax convention).
+// ============================================================================
+entity ChessAI {
+    hide MoveGen moveGen;
+    hide Evaluator evaluator;
+    hide Integer maxDepth;
+
+    // Transposition table: List[Integer] of (hash, score, depth, flag) tuples
+    // Stored as pairs of lists for simplicity (Zia has no tuples)
+    hide List[Integer] ttHash;
+    hide List[Integer] ttScore;
+    hide List[Integer] ttDepth;
+    hide List[Integer] ttFlag;
+    hide Integer ttSize;
+
+    // Killer moves: 2 per ply (quiet moves that caused beta cutoffs)
+    hide List[Integer] killerA;
+    hide List[Integer] killerB;
+    hide Integer maxPly;
+
+    // Statistics
+    hide Integer nodesSearched;
+
+    expose func init() {
+        moveGen   = new MoveGen();
+        evaluator = new Evaluator();
+        evaluator.init();
+        maxDepth = DIFF_HARD;   // default; override with setDepth()
+        ttSize   = 4096;
+
+        maxPly  = 12;
+        nodesSearched = 0;
+
+        resetTables();
+    }
+
+    // Call this to configure the search depth (and reset the TT).
+    expose func setDepth(depth: Integer) {
+        maxDepth = depth;
+        resetTables();
+    }
+
+    hide func resetTables() {
+        ttHash  = [];
+        ttScore = [];
+        ttDepth = [];
+        ttFlag  = [];
+        for i in 0..ttSize {
+            ttHash.add(0);
+            ttScore.add(0);
+            ttDepth.add(-1);
+            ttFlag.add(TT_EXACT);
+        }
+
+        killerA = [];
+        killerB = [];
+        for i in 0..maxPly {
+            killerA.add(-1);
+            killerB.add(-1);
+        }
+
+        nodesSearched = 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Find the best move for the current position.
+    // Returns the chosen Move (or a null-safe sentinel move if no moves).
+    // -------------------------------------------------------------------------
+    expose func findBestMove(b: Board) -> Move {
+        nodesSearched = 0;
+        // Reset killer table for clean search
+        for i in 0..maxPly { killerA.set(i, -1); killerB.set(i, -1); }
+
+        var legal = moveGen.legalMoves(b);
+        if legal.length() == 0 {
+            // No legal moves — return sentinel (from=-1 signals no move to caller)
+            return new Move(-1, 0, 0, false, false, false, false, 0);
+        }
+        if legal.length() == 1 {
+            return legal.get(0);
+        }
+
+        var bestMove = legal.get(0);
+        var bestScore = -INF - 1;
+
+        // Iterative deepening: search depths 1 through maxDepth
+        for depth in 1..maxDepth + 1 {
+            var iterBest = legal.get(0);
+            var iterScore = -INF - 1;
+            var alpha = -INF;
+            var beta  = INF;
+
+            // Move ordering for this iteration: try TT move first
+            var ordered = orderMoves(legal, b, 0);
+
+            for i in 0..ordered.length() {
+                var m = ordered.get(i);
+                var undo = b.makeMove(m);
+                var score = -negamax(b, depth - 1, 1, -beta, -alpha);
+                b.unmakeMove(m, undo);
+
+                if score > iterScore {
+                    iterScore = score;
+                    iterBest  = m;
+                }
+                if score > alpha { alpha = score; }
+            }
+
+            bestMove  = iterBest;
+            bestScore = iterScore;
+
+            // Early termination: found forced mate
+            if bestScore >= MATE_SCORE - 50 { break; }
+        }
+
+        return bestMove;
+    }
+
+    // -------------------------------------------------------------------------
+    // Negamax alpha-beta search (recursive).
+    // Returns score from the perspective of the side to move.
+    // -------------------------------------------------------------------------
+    hide func negamax(b: Board, depth: Integer, ply: Integer,
+                      alpha: Integer, beta: Integer) -> Integer {
+        nodesSearched = nodesSearched + 1;
+
+        // Transposition table probe
+        var hash    = b.getHash();
+        var ttEntry = probeTable(hash, depth, alpha, beta);
+        if ttEntry != INF + 1 { return ttEntry; }
+
+        // Leaf node: quiescence search
+        if depth == 0 {
+            return quiescence(b, ply, alpha, beta);
+        }
+
+        var legal = moveGen.legalMoves(b);
+
+        // Terminal states
+        if legal.length() == 0 {
+            if moveGen.isInCheck(b, b.whiteToMove) {
+                return -(MATE_SCORE - ply);   // checkmate (prefer faster mates)
+            }
+            return 0;                          // stalemate
+        }
+
+        var ordered = orderMoves(legal, b, ply);
+        var bestScore = -INF - 1;
+        var bestMove  = ordered.get(0);
+        var ttBound   = TT_ALPHA;
+
+        for i in 0..ordered.length() {
+            var m    = ordered.get(i);
+            var undo = b.makeMove(m);
+            var score = -negamax(b, depth - 1, ply + 1, -beta, -alpha);
+            b.unmakeMove(m, undo);
+
+            if score > bestScore {
+                bestScore = score;
+                bestMove  = m;
+            }
+            if score > alpha {
+                alpha    = score;
+                ttBound  = TT_EXACT;
+            }
+            if alpha >= beta {
+                // Beta cutoff — store killer move
+                storeKiller(m, ply);
+                storeTable(hash, beta, depth, TT_BETA);
+                return beta;
+            }
+        }
+
+        storeTable(hash, bestScore, depth, ttBound);
+        return bestScore;
+    }
+
+    // -------------------------------------------------------------------------
+    // Quiescence search — only examine captures until position is "quiet".
+    // Prevents horizon-effect blunders at leaf nodes.
+    // -------------------------------------------------------------------------
+    hide func quiescence(b: Board, ply: Integer, alpha: Integer, beta: Integer) -> Integer {
+        nodesSearched = nodesSearched + 1;
+
+        // Stand-pat evaluation (lower bound — can choose not to capture)
+        var standPat = staticEval(b);
+
+        if standPat >= beta { return beta; }
+        if standPat > alpha { alpha = standPat; }
+
+        // Generate and search captures only
+        var captures = captureMovesOnly(b);
+        var ordered  = orderCaptures(captures, b);
+
+        for i in 0..ordered.length() {
+            var m    = ordered.get(i);
+            var undo = b.makeMove(m);
+            var score = -quiescence(b, ply + 1, -beta, -alpha);
+            b.unmakeMove(m, undo);
+
+            if score >= beta { return beta; }
+            if score > alpha { alpha = score; }
+        }
+
+        return alpha;
+    }
+
+    // -------------------------------------------------------------------------
+    // Static evaluation from the side-to-move's perspective.
+    // -------------------------------------------------------------------------
+    hide func staticEval(b: Board) -> Integer {
+        var score = evaluator.evaluate(b);
+        if !b.whiteToMove { score = -score; }
+        return score;
+    }
+
+    // -------------------------------------------------------------------------
+    // Move ordering for alpha-beta efficiency:
+    //   1. Captures (MVV-LVA: most valuable victim / least valuable attacker)
+    //   2. Killer moves (non-captures that caused cutoffs at this ply)
+    //   3. All other quiet moves
+    // -------------------------------------------------------------------------
+    hide func orderMoves(moves: List[Move], b: Board, ply: Integer) -> List[Move] {
+        var captures = [];
+        var killers  = [];
+        var quiet    = [];
+
+        var ka = -1;
+        var kb = -1;
+        if ply < maxPly {
+            ka = killerA.get(ply);
+            kb = killerB.get(ply);
+        }
+
+        for i in 0..moves.length() {
+            var m    = moves.get(i);
+            var mkey = m.from * 64 + m.to;
+            if m.captured != 0 || m.enPassant {
+                captures.add(m);
+            } else if mkey == ka || mkey == kb {
+                killers.add(m);
+            } else {
+                quiet.add(m);
+            }
+        }
+
+        var ordered = orderCaptures(captures, b);
+        for i in 0..killers.length() { ordered.add(killers.get(i)); }
+        for i in 0..quiet.length()   { ordered.add(quiet.get(i)); }
+        return ordered;
+    }
+
+    // Sort captures by MVV-LVA: most valuable victim first, least valuable attacker first
+    hide func orderCaptures(captures: List[Move], b: Board) -> List[Move] {
+        // Simple insertion sort (small lists in practice)
+        var n = captures.length();
+        for i in 0..n {
+            for j in i + 1..n {
+                var mi = captures.get(i);
+                var mj = captures.get(j);
+                var scorei = mvvLva(mi, b);
+                var scorej = mvvLva(mj, b);
+                if scorej > scorei {
+                    captures.set(i, mj);
+                    captures.set(j, mi);
+                }
+            }
+        }
+        return captures;
+    }
+
+    // MVV-LVA score: victim value * 10 - attacker value (higher = search first)
+    hide func mvvLva(m: Move, b: Board) -> Integer {
+        var victim   = m.captured;
+        var attacker = b.pieceType(b.get(m.from));
+        if victim == 0 { return 0; }
+        return evaluator.materialValue(victim) * 10 - evaluator.materialValue(attacker);
+    }
+
+    // Collect only captures from the full legal-move list
+    hide func captureMovesOnly(b: Board) -> List[Move] {
+        var all = moveGen.legalMoves(b);
+        var caps = [];
+        for i in 0..all.length() {
+            var m = all.get(i);
+            if m.captured != 0 || m.enPassant { caps.add(m); }
+        }
+        return caps;
+    }
+
+    // -------------------------------------------------------------------------
+    // Transposition table (simple direct-mapped hash table)
+    // -------------------------------------------------------------------------
+
+    hide func probeTable(hash: Integer, depth: Integer, alpha: Integer, beta: Integer) -> Integer {
+        var idx   = absInt(hash) % ttSize;
+        var entry = ttHash.get(idx);
+        if entry != hash { return INF + 1; }     // cache miss (sentinel)
+
+        var storedDepth = ttDepth.get(idx);
+        if storedDepth < depth { return INF + 1; } // shallow entry
+
+        var score = ttScore.get(idx);
+        var flag  = ttFlag.get(idx);
+
+        if flag == TT_EXACT { return score; }
+        if flag == TT_ALPHA && score <= alpha { return alpha; }
+        if flag == TT_BETA  && score >= beta  { return beta;  }
+
+        return INF + 1;  // not usable
+    }
+
+    hide func storeTable(hash: Integer, score: Integer, depth: Integer, flag: Integer) {
+        var idx = absInt(hash) % ttSize;
+        ttHash.set(idx, hash);
+        ttScore.set(idx, score);
+        ttDepth.set(idx, depth);
+        ttFlag.set(idx, flag);
+    }
+
+    // -------------------------------------------------------------------------
+    // Killer move heuristic
+    // -------------------------------------------------------------------------
+    hide func storeKiller(m: Move, ply: Integer) {
+        if m.captured != 0 { return; }  // only quiet moves
+        if ply >= maxPly { return; }
+        // Use from*64+to as the killer key for precise move identity
+        var key = m.from * 64 + m.to;
+        if killerA.get(ply) != key {
+            killerB.set(ply, killerA.get(ply));
+            killerA.set(ply, key);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Utility: absolute value (Zia has no built-in abs for Integer)
+    // -------------------------------------------------------------------------
+    hide func absInt(x: Integer) -> Integer {
+        if x < 0 { return -x; }
+        return x;
+    }
+
+    expose func getNodesSearched() -> Integer { return nodesSearched; }
+}

@@ -202,6 +202,12 @@ enum class TypeKindSem
     /// be hashable and comparable for equality.
     Set,
 
+    /// @brief Fixed-size inline array: `T[N]`.
+    /// @details Compile-time-sized array stored inline in the parent entity or
+    /// value type. No heap allocation. Elements are accessed via GEP + load/store.
+    /// The element type is stored in typeArgs[0]; the count in elementCount.
+    FixedArray,
+
     /// @}
     // =========================================================================
     /// @name Function Type
@@ -336,7 +342,13 @@ struct ViperType
     /// - List[Integer]: typeArgs = [Integer]
     /// - Map[String, Integer]: typeArgs = [String, Integer]
     /// - (Int, Int) -> Bool: typeArgs = [Int, Int, Bool]
+    /// - FixedArray[Integer, 64]: typeArgs = [Integer], elementCount = 64
     std::vector<TypeRef> typeArgs;
+
+    /// @brief Element count for FixedArray types.
+    /// @details Only meaningful when kind == TypeKindSem::FixedArray.
+    /// For all other types this field is zero.
+    size_t elementCount = 0;
 
     /// @brief Default constructor creates an Unknown type.
     /// @details Unknown types are placeholders during type inference.
@@ -363,6 +375,14 @@ struct ViperType
     /// @details Used for user-defined generic types like MyList[T].
     ViperType(TypeKindSem k, std::string n, std::vector<TypeRef> args)
         : kind(k), name(std::move(n)), typeArgs(std::move(args))
+    {
+    }
+
+    /// @brief Construct a fixed-size array type.
+    /// @param elemType The element type (stored in typeArgs[0]).
+    /// @param count Number of elements (stored in elementCount).
+    ViperType(TypeKindSem k, TypeRef elemType, size_t count)
+        : kind(k), typeArgs({std::move(elemType)}), elementCount(count)
     {
     }
 
@@ -527,12 +547,14 @@ struct ViperType
         return nullptr;
     }
 
-    /// @brief Get the element type for List[T] or Set[T].
+    /// @brief Get the element type for List[T], Set[T], or FixedArray T[N].
     /// @return The element type T, or nullptr if not a collection.
-    /// @details For `List[Integer]`, returns the Integer type.
+    /// @details For `List[Integer]` or `Integer[64]`, returns the Integer type.
     TypeRef elementType() const
     {
-        if ((kind == TypeKindSem::List || kind == TypeKindSem::Set) && !typeArgs.empty())
+        if ((kind == TypeKindSem::List || kind == TypeKindSem::Set ||
+             kind == TypeKindSem::FixedArray) &&
+            !typeArgs.empty())
             return typeArgs[0];
         return nullptr;
     }
@@ -825,6 +847,13 @@ TypeRef runtimeClass(const std::string &name);
 /// @return A new module type for accessing imported symbols.
 /// @details Used for imported modules to enable qualified access like `colors.func()`.
 TypeRef module(const std::string &name);
+
+/// @brief Create a fixed-size array type: `T[N]`.
+/// @param elemType The element type T.
+/// @param count Number of elements N (compile-time constant).
+/// @return A new FixedArray type.
+/// @details Used for inline array fields in entity types. No heap allocation.
+TypeRef fixedArray(TypeRef elemType, size_t count);
 
 /// @}
 

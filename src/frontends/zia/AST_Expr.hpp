@@ -184,6 +184,10 @@ enum class ExprKind
     /// @see NewExpr
     New,
 
+    /// @brief Struct-literal initialization for value types: `Point { x = 3, y = 4 }`.
+    /// @see StructLiteralExpr
+    StructLiteral,
+
     /// @brief Anonymous function: `(x) => x + 1`.
     /// @see LambdaExpr
     Lambda,
@@ -997,6 +1001,31 @@ struct IfExpr : Expr
     IfExpr(SourceLoc l, ExprPtr c, ExprPtr t, ExprPtr e)
         : Expr(ExprKind::If, l), condition(std::move(c)), thenBranch(std::move(t)),
           elseBranch(std::move(e))
+    {
+    }
+};
+
+/// @brief Struct-literal initialization for value types.
+/// @details `Point { x = 3, y = 4 }` initializes a value type by field name.
+/// Each field may appear in any order; the lowerer reorders by declaration order.
+struct StructLiteralExpr : Expr
+{
+    /// @brief One named-field initializer.
+    struct Field
+    {
+        std::string name;  ///< Field name as written in source.
+        ExprPtr value;     ///< Initializer expression for this field.
+        SourceLoc loc;     ///< Location of this field entry.
+    };
+
+    /// @brief The value type name (e.g., "Point").
+    std::string typeName;
+
+    /// @brief Named field initializers (in source order).
+    std::vector<Field> fields;
+
+    StructLiteralExpr(SourceLoc l, std::string name, std::vector<Field> fs)
+        : Expr(ExprKind::StructLiteral, l), typeName(std::move(name)), fields(std::move(fs))
     {
     }
 };

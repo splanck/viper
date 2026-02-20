@@ -308,6 +308,11 @@ std::string ViperType::toString() const
 
         case TypeKindSem::Module:
             return name.empty() ? "Module" : name;
+
+        case TypeKindSem::FixedArray:
+            ss << (typeArgs.empty() ? "?" : typeArgs[0]->toString());
+            ss << "[" << elementCount << "]";
+            return ss.str();
     }
 
     return "?";
@@ -538,6 +543,11 @@ TypeRef module(const std::string &name)
     return std::make_shared<ViperType>(TypeKindSem::Module, name);
 }
 
+TypeRef fixedArray(TypeRef elemType, size_t count)
+{
+    return std::make_shared<ViperType>(TypeKindSem::FixedArray, std::move(elemType), count);
+}
+
 } // namespace types
 
 //=============================================================================
@@ -611,6 +621,11 @@ il::core::Type::Kind toILType(const ViperType &type)
         case TypeKindSem::Tuple:
             return il::core::Type::Kind::Ptr;
 
+        // Fixed-size arrays are stored inline; accessing the field yields
+        // a pointer to the first element within the parent object.
+        case TypeKindSem::FixedArray:
+            return il::core::Type::Kind::Ptr;
+
         // Unknown types (inference placeholder)
         case TypeKindSem::Unknown:
         case TypeKindSem::TypeParam:
@@ -677,6 +692,11 @@ size_t typeSize(const ViperType &type)
                     size += typeSize(*elem);
                 return size;
             }
+        case TypeKindSem::FixedArray:
+            // Inline storage: elementSize * elementCount
+            if (!type.typeArgs.empty())
+                return typeSize(*type.typeArgs[0]) * type.elementCount;
+            return 0;
         case TypeKindSem::Unknown:
         case TypeKindSem::Never:
         case TypeKindSem::Any:
@@ -717,6 +737,11 @@ size_t typeAlignment(const ViperType &type)
         case TypeKindSem::TypeParam:
         case TypeKindSem::Module:
             return 1;
+        case TypeKindSem::FixedArray:
+            // Alignment matches element alignment
+            if (!type.typeArgs.empty())
+                return typeAlignment(*type.typeArgs[0]);
+            return 8;
         case TypeKindSem::Value:
             return 8; // Default alignment
     }
@@ -775,6 +800,8 @@ const char *kindToString(TypeKindSem kind)
             return "TypeParam";
         case TypeKindSem::Module:
             return "Module";
+        case TypeKindSem::FixedArray:
+            return "FixedArray";
     }
     return "?";
 }

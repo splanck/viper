@@ -150,8 +150,40 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
     auto base = lowerExpr(expr->base.get());
     auto index = lowerExpr(expr->index.get());
 
-    // Get the base type to determine if it's a List or Map
+    // Get the base type to determine if it's a FixedArray, List, or Map
     TypeRef baseType = sema_.typeOf(expr->base.get());
+
+    // Fixed-size array: direct GEP + Load (no boxing, no runtime call)
+    if (baseType && baseType->kind == TypeKindSem::FixedArray)
+    {
+        TypeRef elemType = baseType->elementType();
+        Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+        size_t elemSize = getILTypeSize(ilElemType);
+
+        // Compute byte offset: index * elemSize
+        unsigned mulId = nextTempId();
+        il::core::Instr mulInstr;
+        mulInstr.result = mulId;
+        mulInstr.op = Opcode::Mul;
+        mulInstr.type = Type(Type::Kind::I64);
+        mulInstr.operands = {index.value, Value::constInt(static_cast<int64_t>(elemSize))};
+        blockMgr_.currentBlock()->instructions.push_back(mulInstr);
+        Value byteOffset = Value::temp(mulId);
+
+        // GEP with runtime offset to reach the element
+        unsigned gepId = nextTempId();
+        il::core::Instr gepInstr;
+        gepInstr.result = gepId;
+        gepInstr.op = Opcode::GEP;
+        gepInstr.type = Type(Type::Kind::Ptr);
+        gepInstr.operands = {base.value, byteOffset};
+        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+        Value elemAddr = Value::temp(gepId);
+
+        // Load the element
+        Value elemVal = emitLoad(elemAddr, ilElemType);
+        return {elemVal, ilElemType};
+    }
 
     Value boxed;
     if (baseType && baseType->kind == TypeKindSem::Map)

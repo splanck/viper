@@ -197,13 +197,50 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             return right;
         }
 
-        // Handle index assignment (list[i] = value, map[key] = value)
+        // Handle index assignment (arr[i] = value, list[i] = value, map[key] = value)
         if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get()))
         {
             auto base = lowerExpr(indexExpr->base.get());
             auto index = lowerExpr(indexExpr->index.get());
             TypeRef baseType = sema_.typeOf(indexExpr->base.get());
             TypeRef rightType = sema_.typeOf(expr->right.get());
+
+            // Fixed-size array: direct GEP + Store (no boxing, no runtime call)
+            if (baseType && baseType->kind == TypeKindSem::FixedArray)
+            {
+                TypeRef elemType = baseType->elementType();
+                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+                size_t elemSize = getILTypeSize(ilElemType);
+
+                // Compute byte offset: index * elemSize
+                unsigned mulId = nextTempId();
+                il::core::Instr mulInstr;
+                mulInstr.result = mulId;
+                mulInstr.op = Opcode::Mul;
+                mulInstr.type = Type(Type::Kind::I64);
+                mulInstr.operands = {index.value,
+                                     Value::constInt(static_cast<int64_t>(elemSize))};
+                blockMgr_.currentBlock()->instructions.push_back(mulInstr);
+                Value byteOffset = Value::temp(mulId);
+
+                // GEP to element address
+                unsigned gepId = nextTempId();
+                il::core::Instr gepInstr;
+                gepInstr.result = gepId;
+                gepInstr.op = Opcode::GEP;
+                gepInstr.type = Type(Type::Kind::Ptr);
+                gepInstr.operands = {base.value, byteOffset};
+                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+                Value elemAddr = Value::temp(gepId);
+
+                // Store the element value
+                il::core::Instr storeInstr;
+                storeInstr.op = Opcode::Store;
+                storeInstr.type = ilElemType;
+                storeInstr.operands = {elemAddr, right.value};
+                blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+                return right;
+            }
 
             Value boxedValue = emitBoxValue(right.value, right.type, rightType);
             if (baseType && baseType->kind == TypeKindSem::Map)

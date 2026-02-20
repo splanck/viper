@@ -1,0 +1,387 @@
+module moves;
+
+bind "./config";
+bind "./board";
+
+// ============================================================================
+// MoveGen — Legal move generator for all piece types
+//
+// Strategy: generate pseudo-legal moves, then filter those that leave the
+// moving side's king in check. Simple, readable, and sufficient for depth 4-5.
+// ============================================================================
+entity MoveGen {
+
+    // -----------------------------------------------------------------------
+    // Move construction helpers — Zia value types require constructor syntax
+    // -----------------------------------------------------------------------
+    hide func qMove(from: Integer, to: Integer) -> Move {
+        return new Move(from, to, 0, false, false, false, false, 0);
+    }
+
+    hide func cMove(from: Integer, to: Integer, cap: Integer) -> Move {
+        return new Move(from, to, cap, false, false, false, false, 0);
+    }
+
+    hide func epMove(from: Integer, to: Integer) -> Move {
+        return new Move(from, to, config.PAWN, true, false, false, false, 0);
+    }
+
+    hide func ckMove(from: Integer, to: Integer) -> Move {
+        return new Move(from, to, 0, false, true, false, false, 0);
+    }
+
+    hide func cqMove(from: Integer, to: Integer) -> Move {
+        return new Move(from, to, 0, false, false, true, false, 0);
+    }
+
+    hide func promoMove(from: Integer, to: Integer, cap: Integer, pp: Integer) -> Move {
+        return new Move(from, to, cap, false, false, false, true, pp);
+    }
+
+    // -----------------------------------------------------------------------
+    // Public API
+    // -----------------------------------------------------------------------
+
+    expose func legalMoves(b: Board) -> List[Move] {
+        var pseudo = self.pseudoLegal(b, b.whiteToMove);
+        var legal = [];
+        for i in 0..pseudo.length() {
+            var m = pseudo.get(i);
+            if self.isLegal(b, m) {
+                legal.add(m);
+            }
+        }
+        return legal;
+    }
+
+    expose func isInCheck(b: Board, white: Boolean) -> Boolean {
+        var kSq = b.kingSquare(white);
+        if kSq < 0 { return false; }
+        return self.isAttacked(b, kSq, !white);
+    }
+
+    // Is square sq attacked by any piece of the given side?
+    expose func isAttacked(b: Board, sq: Integer, byWhite: Boolean) -> Boolean {
+        var sqR = sq / 8;
+        var sqF = sq % 8;
+
+        // Pawn attacks
+        var pawn = config.PAWN;
+        if !byWhite { pawn = -config.PAWN; }
+        var pDir = 1;
+        if !byWhite { pDir = -1; }
+        var atkRank = sqR + pDir;
+        if atkRank >= 0 && atkRank <= 7 {
+            if sqF > 0 && b.get(atkRank * 8 + sqF - 1) == pawn { return true; }
+            if sqF < 7 && b.get(atkRank * 8 + sqF + 1) == pawn { return true; }
+        }
+
+        // Knight attacks
+        var knight = config.KNIGHT;
+        if !byWhite { knight = -config.KNIGHT; }
+        var knR = [-2, -2, -1, -1, 1, 1, 2, 2];
+        var knF = [-1,  1, -2,  2, -2, 2, -1, 1];
+        for i in 0..8 {
+            var nr = sqR + knR.get(i);
+            var nf = sqF + knF.get(i);
+            if nr >= 0 && nr <= 7 && nf >= 0 && nf <= 7 {
+                if b.get(nr * 8 + nf) == knight { return true; }
+            }
+        }
+
+        // Sliding pieces
+        var bishop = config.BISHOP;
+        if !byWhite { bishop = -config.BISHOP; }
+        var rook = config.ROOK;
+        if !byWhite { rook = -config.ROOK; }
+        var queen = config.QUEEN;
+        if !byWhite { queen = -config.QUEEN; }
+
+        // Diagonal (bishop/queen)
+        var diagDR = [-1, -1, 1, 1];
+        var diagDF = [-1,  1, -1, 1];
+        for d in 0..4 {
+            var r = sqR + diagDR.get(d);
+            var f = sqF + diagDF.get(d);
+            while r >= 0 && r <= 7 && f >= 0 && f <= 7 {
+                var p = b.get(r * 8 + f);
+                if p != 0 {
+                    if p == bishop || p == queen { return true; }
+                    break;
+                }
+                r = r + diagDR.get(d);
+                f = f + diagDF.get(d);
+            }
+        }
+
+        // Straight (rook/queen)
+        var strDR = [-1, 1, 0, 0];
+        var strDF = [0, 0, -1, 1];
+        for d in 0..4 {
+            var r = sqR + strDR.get(d);
+            var f = sqF + strDF.get(d);
+            while r >= 0 && r <= 7 && f >= 0 && f <= 7 {
+                var p = b.get(r * 8 + f);
+                if p != 0 {
+                    if p == rook || p == queen { return true; }
+                    break;
+                }
+                r = r + strDR.get(d);
+                f = f + strDF.get(d);
+            }
+        }
+
+        // King attacks — explicit 8 directions
+        var king = config.KING;
+        if !byWhite { king = -config.KING; }
+        var kDR = [-1, -1, -1, 0, 0, 1, 1, 1];
+        var kDF = [-1,  0,  1, -1, 1, -1, 0, 1];
+        for d in 0..8 {
+            var r = sqR + kDR.get(d);
+            var f = sqF + kDF.get(d);
+            if r >= 0 && r <= 7 && f >= 0 && f <= 7 {
+                if b.get(r * 8 + f) == king { return true; }
+            }
+        }
+
+        return false;
+    }
+
+    // Perft — counts leaf nodes at given depth; validates move generation
+    expose func perft(b: Board, depth: Integer) -> Integer {
+        if depth == 0 { return 1; }
+        var legal = self.legalMoves(b);
+        if depth == 1 { return legal.length(); }
+        var total = 0;
+        for i in 0..legal.length() {
+            var m = legal.get(i);
+            var undo = b.makeMove(m);
+            total = total + self.perft(b, depth - 1);
+            b.unmakeMove(m, undo);
+        }
+        return total;
+    }
+
+    // -----------------------------------------------------------------------
+    // Internal: generate all pseudo-legal moves for side `white`
+    // -----------------------------------------------------------------------
+    hide func pseudoLegal(b: Board, white: Boolean) -> List[Move] {
+        var out = [];
+        for sq in 0..64 {
+            var piece = b.get(sq);
+            if piece == 0 { continue; }
+            if (piece > 0) != white { continue; }
+            var t = b.pieceType(piece);
+            if t == config.PAWN   { self.addPawnMoves(b, sq, white, out); }
+            if t == config.KNIGHT { self.addKnightMoves(b, sq, white, out); }
+            if t == config.BISHOP { self.addSlidingMoves(b, sq, white, true, false, out); }
+            if t == config.ROOK   { self.addSlidingMoves(b, sq, white, false, true, out); }
+            if t == config.QUEEN  { self.addSlidingMoves(b, sq, white, true, true, out); }
+            if t == config.KING   { self.addKingMoves(b, sq, white, out); }
+        }
+        self.addCastlingMoves(b, white, out);
+        return out;
+    }
+
+    // -----------------------------------------------------------------------
+    // Pawn moves
+    // -----------------------------------------------------------------------
+    hide func addPawnMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
+        var rank = sq / 8;
+        var file = sq % 8;
+        var dir = 1;
+        if white { dir = -1; }
+        var startRank = 1;
+        if white { startRank = 6; }
+        var promRank = 7;
+        if white { promRank = 0; }
+
+        // Single push
+        var to1 = sq + dir * 8;
+        if to1 >= 0 && to1 < 64 && b.get(to1) == 0 {
+            if (to1 / 8) == promRank {
+                self.addPromo(sq, to1, 0, out);
+            } else {
+                out.add(self.qMove(sq, to1));
+            }
+            // Double push from starting rank
+            if rank == startRank {
+                var to2 = sq + dir * 16;
+                if b.get(to2) == 0 {
+                    out.add(self.qMove(sq, to2));
+                }
+            }
+        }
+
+        // Diagonal captures
+        var capFiles = [file - 1, file + 1];
+        for ci in 0..2 {
+            var cf = capFiles.get(ci);
+            if cf < 0 || cf > 7 { continue; }
+            var capSq = (rank + dir) * 8 + cf;
+            if capSq < 0 || capSq >= 64 { continue; }
+            var target = b.get(capSq);
+            // Normal capture
+            if target != 0 && (target > 0) != white {
+                var capType = b.pieceType(target);
+                if (capSq / 8) == promRank {
+                    self.addPromo(sq, capSq, capType, out);
+                } else {
+                    out.add(self.cMove(sq, capSq, capType));
+                }
+            }
+            // En passant
+            if b.enPassantFile == cf {
+                var epRank = 4;
+                if white { epRank = 3; }
+                if rank == epRank {
+                    out.add(self.epMove(sq, capSq));
+                }
+            }
+        }
+    }
+
+    hide func addPromo(from: Integer, to: Integer, captured: Integer, out: List[Move]) {
+        out.add(self.promoMove(from, to, captured, config.QUEEN));
+        out.add(self.promoMove(from, to, captured, config.ROOK));
+        out.add(self.promoMove(from, to, captured, config.BISHOP));
+        out.add(self.promoMove(from, to, captured, config.KNIGHT));
+    }
+
+    // -----------------------------------------------------------------------
+    // Knight moves
+    // -----------------------------------------------------------------------
+    hide func addKnightMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
+        var rank = sq / 8;
+        var file = sq % 8;
+        var drs = [-2, -2, -1, -1, 1, 1, 2, 2];
+        var dfs = [-1,  1, -2,  2, -2, 2, -1, 1];
+        for i in 0..8 {
+            var nr = rank + drs.get(i);
+            var nf = file + dfs.get(i);
+            if nr < 0 || nr > 7 || nf < 0 || nf > 7 { continue; }
+            var target = b.get(nr * 8 + nf);
+            if target != 0 && (target > 0) == white { continue; }
+            var capType = 0;
+            if target != 0 { capType = b.pieceType(target); }
+            out.add(self.cMove(sq, nr*8+nf, capType));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Sliding piece moves (bishop, rook, queen)
+    // Uses a per-direction helper to avoid dynamically-typed empty lists
+    // (Zia: only literal-initialized lists have element type inference)
+    // -----------------------------------------------------------------------
+    hide func slidingDir(b: Board, sq: Integer, white: Boolean,
+                          dr: Integer, df: Integer, out: List[Move]) {
+        var rank = sq / 8;
+        var file = sq % 8;
+        var r = rank + dr;
+        var f = file + df;
+        while r >= 0 && r <= 7 && f >= 0 && f <= 7 {
+            var target = b.get(r * 8 + f);
+            if target != 0 {
+                if (target > 0) != white {
+                    out.add(self.cMove(sq, r*8+f, b.pieceType(target)));
+                }
+                break;
+            }
+            out.add(self.qMove(sq, r*8+f));
+            r = r + dr;
+            f = f + df;
+        }
+    }
+
+    hide func addSlidingMoves(b: Board, sq: Integer, white: Boolean,
+                               diag: Boolean, straight: Boolean, out: List[Move]) {
+        if diag {
+            self.slidingDir(b, sq, white, -1, -1, out);
+            self.slidingDir(b, sq, white, -1,  1, out);
+            self.slidingDir(b, sq, white,  1, -1, out);
+            self.slidingDir(b, sq, white,  1,  1, out);
+        }
+        if straight {
+            self.slidingDir(b, sq, white, -1, 0, out);
+            self.slidingDir(b, sq, white,  1, 0, out);
+            self.slidingDir(b, sq, white,  0, -1, out);
+            self.slidingDir(b, sq, white,  0,  1, out);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // King moves (normal — castling handled separately)
+    // -----------------------------------------------------------------------
+    hide func addKingMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
+        var rank = sq / 8;
+        var file = sq % 8;
+        var kDR = [-1, -1, -1, 0, 0, 1, 1, 1];
+        var kDF = [-1,  0,  1, -1, 1, -1, 0, 1];
+        for d in 0..8 {
+            var nr = rank + kDR.get(d);
+            var nf = file + kDF.get(d);
+            if nr < 0 || nr > 7 || nf < 0 || nf > 7 { continue; }
+            var target = b.get(nr * 8 + nf);
+            if target != 0 && (target > 0) == white { continue; }
+            var capType = 0;
+            if target != 0 { capType = b.pieceType(target); }
+            out.add(self.cMove(sq, nr*8+nf, capType));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Castling moves
+    // -----------------------------------------------------------------------
+    hide func addCastlingMoves(b: Board, white: Boolean, out: List[Move]) {
+        if self.isInCheck(b, white) { return; }
+
+        if white {
+            var kSq = 60;
+            if b.castleWK && b.get(61) == 0 && b.get(62) == 0 {
+                if !self.isAttacked(b, 61, false) && !self.isAttacked(b, 62, false) {
+                    out.add(self.ckMove(kSq, 62));
+                }
+            }
+            if b.castleWQ && b.get(59) == 0 && b.get(58) == 0 && b.get(57) == 0 {
+                if !self.isAttacked(b, 59, false) && !self.isAttacked(b, 58, false) {
+                    out.add(self.cqMove(kSq, 58));
+                }
+            }
+        } else {
+            var kSq = 4;
+            if b.castleBK && b.get(5) == 0 && b.get(6) == 0 {
+                if !self.isAttacked(b, 5, true) && !self.isAttacked(b, 6, true) {
+                    out.add(self.ckMove(kSq, 6));
+                }
+            }
+            if b.castleBQ && b.get(3) == 0 && b.get(2) == 0 && b.get(1) == 0 {
+                if !self.isAttacked(b, 3, true) && !self.isAttacked(b, 2, true) {
+                    out.add(self.cqMove(kSq, 2));
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Legality filter: does this move leave our king in check?
+    // -----------------------------------------------------------------------
+    hide func isLegal(b: Board, m: Move) -> Boolean {
+        var piece = b.get(m.from);
+        var white = piece > 0;
+        var undo = b.makeMove(m);
+        var inCheck = self.isInCheck(b, white);
+        b.unmakeMove(m, undo);
+        return !inCheck;
+    }
+
+    // -----------------------------------------------------------------------
+    // Utility: does the given side have any legal moves?
+    // -----------------------------------------------------------------------
+    expose func hasLegalMoves(b: Board, white: Boolean) -> Boolean {
+        var pseudo = self.pseudoLegal(b, white);
+        for i in 0..pseudo.length() {
+            if self.isLegal(b, pseudo.get(i)) { return true; }
+        }
+        return false;
+    }
+}

@@ -1021,6 +1021,37 @@ ExprPtr Parser::parsePrimary()
         return std::make_unique<NewExpr>(loc, std::move(type), std::move(args));
     }
 
+    // If-expression: `if cond { thenExpr } else { elseExpr }`
+    // Only valid in expression position (parsePrimary is never called from statement dispatch).
+    if (check(TokenKind::KwIf))
+    {
+        advance(); // consume 'if'
+        ExprPtr cond = parseExpression();
+        if (!cond)
+            return nullptr;
+
+        if (!expect(TokenKind::LBrace, "{"))
+            return nullptr;
+        ExprPtr thenExpr = parseExpression();
+        if (!thenExpr)
+            return nullptr;
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        if (!expect(TokenKind::KwElse, "else"))
+            return nullptr;
+        if (!expect(TokenKind::LBrace, "{"))
+            return nullptr;
+        ExprPtr elseExpr = parseExpression();
+        if (!elseExpr)
+            return nullptr;
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        return std::make_unique<IfExpr>(loc, std::move(cond), std::move(thenExpr),
+                                        std::move(elseExpr));
+    }
+
     // Match expression or 'match' used as identifier
     if (check(TokenKind::KwMatch))
     {
@@ -1045,9 +1076,70 @@ ExprPtr Parser::parsePrimary()
         return std::make_unique<IdentExpr>(loc, std::move(name));
     }
 
-    // Identifier (including contextual keywords like 'value' used as variable names)
+    // Identifier or struct-literal: `TypeName { field = expr, ... }`
+    // Struct literals are only attempted when explicitly enabled (initializer/return context)
+    // to avoid ambiguity with for/if/while block bodies.
     if (checkIdentifierLike())
     {
+        // Struct-literal detection: only when allowStructLiterals_ is set.
+        // Disambiguate: peek(1) == '{' and (peek(2) == '}' or (peek(2) == Ident and peek(3) == '='))
+        if (allowStructLiterals_)
+        {
+            auto nextKind = peek(1).kind;
+            bool isStructLiteral = false;
+            if (nextKind == TokenKind::LBrace)
+            {
+                auto k2 = peek(2).kind;
+                if (k2 == TokenKind::RBrace)
+                {
+                    isStructLiteral = true; // empty struct literal: TypeName {}
+                }
+                else if ((k2 == TokenKind::Identifier) && peek(3).kind == TokenKind::Equal)
+                {
+                    isStructLiteral = true; // TypeName { field = expr }
+                }
+            }
+
+            if (isStructLiteral)
+            {
+                std::string typeName = peek().text;
+                advance();   // consume TypeName
+                advance();   // consume '{'
+
+                std::vector<StructLiteralExpr::Field> fields;
+                while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+                {
+                    if (!fields.empty())
+                    {
+                        if (!match(TokenKind::Comma))
+                            break;
+                        if (check(TokenKind::RBrace))
+                            break; // trailing comma
+                    }
+                    SourceLoc fieldLoc = peek().loc;
+                    if (!check(TokenKind::Identifier))
+                    {
+                        error("Expected field name in struct literal");
+                        break;
+                    }
+                    std::string fieldName = peek().text;
+                    advance();
+                    if (!expect(TokenKind::Equal, "="))
+                        return nullptr;
+                    ExprPtr fieldVal = parseExpression();
+                    if (!fieldVal)
+                        return nullptr;
+                    fields.push_back(
+                        StructLiteralExpr::Field{fieldName, std::move(fieldVal), fieldLoc});
+                }
+                if (!expect(TokenKind::RBrace, "}"))
+                    return nullptr;
+                return std::make_unique<StructLiteralExpr>(
+                    loc, std::move(typeName), std::move(fields));
+            }
+        }
+
+        // Plain identifier
         std::string name = peek().text;
         advance();
         return std::make_unique<IdentExpr>(loc, std::move(name));

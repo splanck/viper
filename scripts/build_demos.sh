@@ -78,6 +78,7 @@ ZIA_DEMOS=(
     "viperide:${ZIA_DIR}/viperide"
     "pacman-zia:${ZIA_DIR}/pacman"
     "sqldb:${ZIA_DIR}/sqldb"
+    "chess-zia:${ZIA_DIR}/chess"
 )
 
 build_demo() {

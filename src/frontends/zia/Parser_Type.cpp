@@ -56,9 +56,30 @@ TypePtr Parser::parseBaseType()
             name += nextTok.text;
         }
 
-        // Check for generic parameters
-        if (match(TokenKind::LBracket))
+        // Check for fixed-size array (T[N]) or generic parameters (T[Type, ...])
+        if (check(TokenKind::LBracket))
         {
+            // Peek past '[' to see if the next token is an integer literal.
+            // If so, parse as a fixed-size array type: T[N].
+            // Otherwise fall through to the generic type path: T[Type, ...].
+            if (peek(1).kind == TokenKind::IntegerLiteral)
+            {
+                advance(); // consume '['
+                int64_t count = std::stoll(peek().text);
+                if (count < 0)
+                {
+                    error("fixed-size array count must be non-negative");
+                    return nullptr;
+                }
+                advance(); // consume N
+                if (!expect(TokenKind::RBracket, "]"))
+                    return nullptr;
+                auto elemType = std::make_unique<NamedType>(loc, std::move(name));
+                return std::make_unique<FixedArrayType>(
+                    loc, std::move(elemType), static_cast<size_t>(count));
+            }
+
+            advance(); // consume '['
             std::vector<TypePtr> args;
 
             do

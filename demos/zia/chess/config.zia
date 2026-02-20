@@ -1,0 +1,112 @@
+module config;
+
+// ============================================================================
+// Piece IDs
+// Positive = White, Negative = Black, 0 = Empty
+// ============================================================================
+final EMPTY  = 0;
+final PAWN   = 1;
+final KNIGHT = 2;
+final BISHOP = 3;
+final ROOK   = 4;
+final QUEEN  = 5;
+final KING   = 6;
+
+// ============================================================================
+// Piece Values (centipawns)
+// ============================================================================
+final VAL_PAWN   = 100;
+final VAL_KNIGHT = 320;
+final VAL_BISHOP = 330;
+final VAL_ROOK   = 500;
+final VAL_QUEEN  = 900;
+final VAL_KING   = 20000;
+
+// ============================================================================
+// Window & Board Layout
+// ============================================================================
+final WIN_W     = 960;
+final WIN_H     = 700;
+final BOARD_X   = 0;
+final BOARD_Y   = 40;
+final SQ_SIZE   = 80;    // pixels per square
+final PIECE_SZ  = 70;    // piece Pixels buffer size
+final PANEL_X   = 640;   // side panel left edge
+final PANEL_W   = 320;   // side panel width
+final BAR_H     = 40;    // top and bottom bar height
+
+// ============================================================================
+// Board Colors
+// ============================================================================
+final COL_LIGHT       = 0xF0D9B5;   // warm cream — light squares
+final COL_DARK        = 0xB58863;   // warm brown — dark squares
+final COL_HL_SEL      = 0xF6F669;   // yellow — selected square
+final COL_HL_MOVE     = 0x646D40;   // olive — legal move dot
+final COL_HL_CAP      = 0xCC4444;   // red — legal capture ring
+final COL_HL_LAST     = 0xCDD52F;   // green-yellow — last move
+final COL_HL_CHECK    = 0xFF3030;   // red — king in check
+
+// ============================================================================
+// UI Colors
+// ============================================================================
+final COL_UI_BG       = 0x1A1A2E;   // dark navy — background
+final COL_UI_PANEL    = 0x16213E;   // slightly lighter panel blocks
+final COL_UI_PANEL2   = 0x0F3460;   // deep blue — top bar, section headers
+final COL_UI_TEXT     = 0xE0E0E0;   // light grey — primary text
+final COL_UI_ACCENT   = 0xF5A623;   // orange — active player indicator
+final COL_UI_DIM      = 0x888888;   // dimmed — secondary text
+final COL_UI_WHITE    = 0xFFFFFF;
+final COL_UI_SEP      = 0x2A2A4A;   // separator line color
+
+// ============================================================================
+// Game States
+// ============================================================================
+final STATE_MENU      = 0;
+final STATE_PLAYING   = 1;
+final STATE_PROMO     = 2;
+final STATE_AI_THINK  = 3;
+final STATE_CHECKMATE = 4;
+final STATE_STALEMATE = 5;
+final STATE_DRAW      = 6;
+
+// ============================================================================
+// Game Modes
+// ============================================================================
+final MODE_PVP = 0;   // Human vs Human
+final MODE_PVC = 1;   // Human vs Computer
+final MODE_CVC = 2;   // Computer vs Computer
+
+// ============================================================================
+// AI Difficulty (search depth)
+// ============================================================================
+final DIFF_EASY   = 2;
+final DIFF_MEDIUM = 3;
+final DIFF_HARD   = 4;
+final DIFF_EXPERT = 5;
+
+// ============================================================================
+// Castle Rights Indices
+// ============================================================================
+final CR_WK = 0;   // White kingside
+final CR_WQ = 1;   // White queenside
+final CR_BK = 2;   // Black kingside
+final CR_BQ = 3;   // Black queenside
+
+// ============================================================================
+// Transposition Table Flags
+// ============================================================================
+final TT_EXACT = 0;
+final TT_ALPHA = 1;
+final TT_BETA  = 2;
+
+// ============================================================================
+// Search Constants
+// ============================================================================
+final INF         = 1000000;
+final MATE_SCORE  = 19000;
+final MAX_HISTORY = 100;    // move history list display limit
+
+// ============================================================================
+// CvC auto-play delay (ms between moves)
+// ============================================================================
+final CVC_DELAY_MS = 600;

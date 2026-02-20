@@ -1,0 +1,573 @@
+module renderer;
+
+bind Viper.Graphics;
+bind Viper.Fmt;
+bind "./config";
+bind "./board";
+
+// ============================================================================
+// BoardRenderer — handles all visual output for the chess game.
+//
+// Draws the board, pieces, highlights, and all UI panels using only canvas
+// drawing primitives (no external image files required).
+//
+// Coordinate system:
+//   Board top-left: (BOARD_X, BOARD_Y)
+//   Squares: 80×80 px each, rank 0 (black's back rank) at top, rank 7 at bottom
+//   File 0 (a-file) at left, file 7 (h-file) at right
+//   Square index: sq = rank * 8 + file
+// ============================================================================
+entity BoardRenderer {
+    hide Canvas canvas;
+
+    // Cached piece colors, set by setPieceColors()
+    hide Integer pieceFill;
+    hide Integer pieceOutline;
+
+    expose func init() {
+        pieceFill    = 0xFAFAFA;
+        pieceOutline = 0x1A1A1A;
+    }
+
+    // Set the canvas target. Must be called before any drawing methods.
+    expose func setCanvas(cv: Canvas) {
+        canvas = cv;
+    }
+
+    // -------------------------------------------------------------------------
+    // Square coordinate helpers
+    // -------------------------------------------------------------------------
+
+    expose func squareFile(sq: Integer) -> Integer { return sq % 8; }
+    expose func squareRank(sq: Integer) -> Integer { return sq / 8; }
+
+    // Pixel coords for the top-left corner of square sq
+    expose func squareX(sq: Integer) -> Integer {
+        return BOARD_X + (sq % 8) * SQ_SIZE;
+    }
+    expose func squareY(sq: Integer) -> Integer {
+        return BOARD_Y + (sq / 8) * SQ_SIZE;
+    }
+
+    // Pixel coords for the center of square sq
+    expose func squareCenterX(sq: Integer) -> Integer {
+        return BOARD_X + (sq % 8) * SQ_SIZE + SQ_SIZE / 2;
+    }
+    expose func squareCenterY(sq: Integer) -> Integer {
+        return BOARD_Y + (sq / 8) * SQ_SIZE + SQ_SIZE / 2;
+    }
+
+    // Convert mouse coords to square index (-1 if outside board)
+    expose func squareAt(mx: Integer, my: Integer) -> Integer {
+        if mx < BOARD_X { return -1; }
+        if mx >= BOARD_X + 640 { return -1; }
+        if my < BOARD_Y { return -1; }
+        if my >= BOARD_Y + 640 { return -1; }
+        var f = (mx - BOARD_X) / SQ_SIZE;
+        var r = (my - BOARD_Y) / SQ_SIZE;
+        return r * 8 + f;
+    }
+
+    // -------------------------------------------------------------------------
+    // Board squares
+    // -------------------------------------------------------------------------
+
+    expose func drawBoard(lastFrom: Integer, lastTo: Integer) {
+        for r in 0..8 {
+            for f in 0..8 {
+                var sq = r * 8 + f;
+                var bx = BOARD_X + f * SQ_SIZE;
+                var by = BOARD_Y + r * SQ_SIZE;
+
+                // Determine square base color
+                var isLight = (r + f) % 2 == 0;
+                var sqCol = COL_DARK;
+                if isLight { sqCol = COL_LIGHT; }
+
+                // Last-move highlight (overrides base color)
+                if sq == lastFrom || sq == lastTo { sqCol = COL_HL_LAST; }
+
+                canvas.Box(bx, by, SQ_SIZE, SQ_SIZE, sqCol);
+
+                // Rank label (1-8) inside file-0 squares, top-left corner
+                if f == 0 {
+                    var rankLabel = Int(8 - r);
+                    var labelCol = COL_DARK;
+                    if isLight { labelCol = COL_DARK; } else { labelCol = COL_LIGHT; }
+                    canvas.Text(bx + 3, by + 3, rankLabel, labelCol);
+                }
+
+                // File label (a-h) inside rank-7 squares, bottom-right corner
+                if r == 7 {
+                    var fileLabels = ["a", "b", "c", "d", "e", "f", "g", "h"];
+                    var labelCol = COL_LIGHT;
+                    if isLight { labelCol = COL_DARK; } else { labelCol = COL_LIGHT; }
+                    canvas.Text(bx + SQ_SIZE - 11, by + SQ_SIZE - 15, fileLabels.get(f), labelCol);
+                }
+            }
+        }
+
+        // Board border
+        canvas.Frame(BOARD_X, BOARD_Y, 640, 640, 0x111111);
+    }
+
+    // -------------------------------------------------------------------------
+    // Highlights: selected square + legal move destinations
+    // -------------------------------------------------------------------------
+
+    expose func drawHighlights(selectedSq: Integer, legalMoves: List[Move]) {
+        if selectedSq < 0 { return; }
+
+        // Yellow overlay on selected square
+        var sx = squareX(selectedSq);
+        var sy = squareY(selectedSq);
+        canvas.Box(sx, sy, SQ_SIZE, SQ_SIZE, COL_HL_SEL);
+
+        // Legal-move destinations: dot for empty squares, ring for captures
+        for i in 0..legalMoves.length() {
+            var m = legalMoves.get(i);
+            if m.from != selectedSq { continue; }
+            var tx = squareCenterX(m.to);
+            var ty = squareCenterY(m.to);
+            if m.captured != 0 || m.enPassant {
+                // Capture ring
+                canvas.Ring(tx, ty, SQ_SIZE / 2 - 4, COL_HL_CAP);
+                canvas.Ring(tx, ty, SQ_SIZE / 2 - 6, COL_HL_CAP);
+            } else {
+                // Move dot
+                canvas.Disc(tx, ty, 12, COL_HL_MOVE);
+            }
+        }
+    }
+
+    // Red overlay on king square when in check
+    expose func drawCheckHighlight(kingSq: Integer) {
+        if kingSq < 0 { return; }
+        canvas.Box(squareX(kingSq), squareY(kingSq), SQ_SIZE, SQ_SIZE, COL_HL_CHECK);
+    }
+
+    // -------------------------------------------------------------------------
+    // Pieces
+    // -------------------------------------------------------------------------
+
+    expose func drawPieces(b: Board, dragFrom: Integer) {
+        for sq in 0..64 {
+            if sq == dragFrom { continue; }
+            var piece = b.get(sq);
+            if piece == 0 { continue; }
+            drawPiece(b.pieceType(piece), b.isWhitePiece(piece),
+                      squareCenterX(sq), squareCenterY(sq));
+        }
+    }
+
+    // Draw a single piece at arbitrary pixel coordinates (for drag animation)
+    expose func drawDragPiece(pieceType: Integer, white: Boolean, x: Integer, y: Integer) {
+        if pieceType == 0 { return; }
+        drawPiece(pieceType, white, x, y);
+    }
+
+    // =========================================================================
+    // Piece drawing — all shapes drawn relative to piece center (cx, cy).
+    //
+    // Technique: draw outline shape (slightly larger) first in outline color,
+    // then fill shape (slightly smaller) on top in fill color.
+    //
+    // All pieces share base + body + distinctive top element.
+    // =========================================================================
+
+    hide func setPieceColors(white: Boolean) {
+        if white {
+            pieceFill    = 0xF8F8F8;  // near-white fill
+            pieceOutline = 0x1E1E1E;  // near-black outline
+        } else {
+            pieceFill    = 0x282828;  // near-black fill
+            pieceOutline = 0xE0E0E0;  // light grey outline
+        }
+    }
+
+    hide func drawPiece(type_: Integer, white: Boolean, cx: Integer, cy: Integer) {
+        if type_ == PAWN   { drawPawn(white, cx, cy); }
+        if type_ == ROOK   { drawRook(white, cx, cy); }
+        if type_ == KNIGHT { drawKnight(white, cx, cy); }
+        if type_ == BISHOP { drawBishop(white, cx, cy); }
+        if type_ == QUEEN  { drawQueen(white, cx, cy); }
+        if type_ == KING   { drawKing(white, cx, cy); }
+    }
+
+    // -------------------------------------------------------------------------
+    // PAWN: base ellipse + round body + round head
+    // -------------------------------------------------------------------------
+    hide func drawPawn(white: Boolean, cx: Integer, cy: Integer) {
+        setPieceColors(white);
+        // Base
+        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
+        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
+        // Neck (small connecting rectangle)
+        canvas.Box(cx - 4, cy + 10, 8, 14, pieceFill);
+        // Body
+        canvas.Disc(cx, cy + 10, 10, pieceOutline);
+        canvas.Disc(cx, cy + 10, 8, pieceFill);
+        // Head
+        canvas.Disc(cx, cy - 4, 13, pieceOutline);
+        canvas.Disc(cx, cy - 4, 11, pieceFill);
+    }
+
+    // -------------------------------------------------------------------------
+    // ROOK: base + rectangular body + battlement top
+    // -------------------------------------------------------------------------
+    hide func drawRook(white: Boolean, cx: Integer, cy: Integer) {
+        setPieceColors(white);
+        // Base
+        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
+        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
+        // Body column
+        canvas.Box(cx - 11, cy - 4, 22, 30, pieceOutline);
+        canvas.Box(cx - 9, cy - 2, 18, 26, pieceFill);
+        // Top platform
+        canvas.Box(cx - 13, cy - 14, 26, 12, pieceOutline);
+        canvas.Box(cx - 11, cy - 12, 22, 10, pieceFill);
+        // Three crenellations
+        canvas.Box(cx - 13, cy - 24, 7, 12, pieceOutline);
+        canvas.Box(cx - 12, cy - 23, 5, 10, pieceFill);
+        canvas.Box(cx - 3,  cy - 24, 6, 12, pieceOutline);
+        canvas.Box(cx - 2,  cy - 23, 4, 10, pieceFill);
+        canvas.Box(cx + 6,  cy - 24, 7, 12, pieceOutline);
+        canvas.Box(cx + 7,  cy - 23, 5, 10, pieceFill);
+    }
+
+    // -------------------------------------------------------------------------
+    // KNIGHT: base + neck block + horse-head disc + ear + eye dot
+    // -------------------------------------------------------------------------
+    hide func drawKnight(white: Boolean, cx: Integer, cy: Integer) {
+        setPieceColors(white);
+        // Base
+        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
+        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
+        // Neck block (left-of-center)
+        canvas.Box(cx - 9, cy + 2, 14, 24, pieceOutline);
+        canvas.Box(cx - 8, cy + 3, 12, 22, pieceFill);
+        // Horse head (disc offset to the right for profile look)
+        canvas.Disc(cx + 5, cy - 6, 15, pieceOutline);
+        canvas.Disc(cx + 5, cy - 6, 13, pieceFill);
+        // Ear (small box at top-right)
+        canvas.Box(cx + 9,  cy - 22, 7, 14, pieceOutline);
+        canvas.Box(cx + 10, cy - 21, 5, 12, pieceFill);
+        // Eye dot (contrasting color for recognizability)
+        canvas.Disc(cx + 11, cy - 8, 3, pieceOutline);
+    }
+
+    // -------------------------------------------------------------------------
+    // BISHOP: base + tall tapered body + ball + tip
+    // -------------------------------------------------------------------------
+    hide func drawBishop(white: Boolean, cx: Integer, cy: Integer) {
+        setPieceColors(white);
+        // Base
+        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
+        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
+        // Tapered body (tall narrow ellipse)
+        canvas.Ellipse(cx, cy + 5, 11, 22, pieceOutline);
+        canvas.Ellipse(cx, cy + 5, 9, 20, pieceFill);
+        // Ball at top
+        canvas.Disc(cx, cy - 17, 9, pieceOutline);
+        canvas.Disc(cx, cy - 17, 7, pieceFill);
+        // Pointed tip
+        canvas.Disc(cx, cy - 27, 4, pieceOutline);
+        canvas.Disc(cx, cy - 27, 2, pieceFill);
+        // Diagonal slash (bishop's characteristic mark)
+        canvas.Line(cx - 5, cy - 14, cx + 5, cy - 20, pieceOutline);
+    }
+
+    // -------------------------------------------------------------------------
+    // QUEEN: base + wide body + crown of 5 balls
+    // -------------------------------------------------------------------------
+    hide func drawQueen(white: Boolean, cx: Integer, cy: Integer) {
+        setPieceColors(white);
+        // Base
+        canvas.Ellipse(cx, cy + 24, 21, 9, pieceOutline);
+        canvas.Ellipse(cx, cy + 24, 18, 7, pieceFill);
+        // Body
+        canvas.Ellipse(cx, cy + 2, 13, 24, pieceOutline);
+        canvas.Ellipse(cx, cy + 2, 11, 22, pieceFill);
+        // Crown — 5 balls: center + 2 pairs at ±10 and ±18 offset
+        // Center ball
+        canvas.Disc(cx,      cy - 24, 6, pieceOutline);
+        canvas.Disc(cx,      cy - 24, 4, pieceFill);
+        // Inner pair
+        canvas.Disc(cx - 10, cy - 21, 6, pieceOutline);
+        canvas.Disc(cx - 10, cy - 21, 4, pieceFill);
+        canvas.Disc(cx + 10, cy - 21, 6, pieceOutline);
+        canvas.Disc(cx + 10, cy - 21, 4, pieceFill);
+        // Outer pair
+        canvas.Disc(cx - 19, cy - 14, 6, pieceOutline);
+        canvas.Disc(cx - 19, cy - 14, 4, pieceFill);
+        canvas.Disc(cx + 19, cy - 14, 6, pieceOutline);
+        canvas.Disc(cx + 19, cy - 14, 4, pieceFill);
+    }
+
+    // -------------------------------------------------------------------------
+    // KING: base + wide body + bold cross
+    // -------------------------------------------------------------------------
+    hide func drawKing(white: Boolean, cx: Integer, cy: Integer) {
+        setPieceColors(white);
+        // Base
+        canvas.Ellipse(cx, cy + 24, 21, 9, pieceOutline);
+        canvas.Ellipse(cx, cy + 24, 18, 7, pieceFill);
+        // Body
+        canvas.Ellipse(cx, cy + 2, 13, 24, pieceOutline);
+        canvas.Ellipse(cx, cy + 2, 11, 22, pieceFill);
+        // Cross horizontal bar
+        canvas.Box(cx - 13, cy - 22, 26, 7, pieceOutline);
+        canvas.Box(cx - 11, cy - 21, 22, 5, pieceFill);
+        // Cross vertical bar
+        canvas.Box(cx - 4, cy - 32, 8, 20, pieceOutline);
+        canvas.Box(cx - 3, cy - 31, 6, 18, pieceFill);
+    }
+
+    // =========================================================================
+    // Top bar (40px height, full width)
+    // =========================================================================
+
+    expose func drawTopBar(turnText: String, gameMode: Integer) {
+        canvas.Box(0, 0, WIN_W, BAR_H, COL_UI_PANEL2);
+
+        // Title
+        canvas.Text(12, 11, "Viper Chess", COL_UI_TEXT);
+
+        // Turn / status indicator
+        canvas.Text(WIN_W / 2 - 60, 11, turnText, COL_UI_TEXT);
+
+        // Buttons (right side)
+        canvas.RoundBox(WIN_W - 120, 6, 50, 28, 4, COL_UI_PANEL);
+        canvas.Text(WIN_W - 109, 11, "New", COL_UI_TEXT);
+
+        canvas.RoundBox(WIN_W - 64, 6, 54, 28, 4, COL_UI_PANEL);
+        canvas.Text(WIN_W - 53, 11, "Menu", COL_UI_TEXT);
+    }
+
+    // =========================================================================
+    // Bottom bar (40px height, full width)
+    // =========================================================================
+
+    expose func drawBottomBar(statusText: String) {
+        canvas.Box(0, WIN_H - BAR_H, WIN_W, BAR_H, COL_UI_PANEL2);
+        canvas.Text(12, WIN_H - BAR_H + 11, statusText, COL_UI_TEXT);
+
+        // Draw / Resign buttons
+        canvas.RoundBox(WIN_W - 170, WIN_H - BAR_H + 6, 60, 28, 4, COL_UI_PANEL);
+        canvas.Text(WIN_W - 158, WIN_H - BAR_H + 11, "Draw", COL_UI_TEXT);
+
+        canvas.RoundBox(WIN_W - 104, WIN_H - BAR_H + 6, 70, 28, 4, COL_UI_PANEL);
+        canvas.Text(WIN_W - 92, WIN_H - BAR_H + 11, "Resign", COL_UI_TEXT);
+    }
+
+    // =========================================================================
+    // Side panel (320×620 px, starting at x=640, y=40)
+    // =========================================================================
+
+    expose func drawPanel(b: Board,
+                          whiteTimeSec: Integer, blackTimeSec: Integer,
+                          sanHistory: List[String],
+                          whiteCaps: List[Integer], blackCaps: List[Integer],
+                          gameMode: Integer, aiDepth: Integer) {
+        var px = PANEL_X;
+        var py = BOARD_Y;
+        var pw = PANEL_W;
+
+        // Panel background
+        canvas.Box(px, py, pw, 620, COL_UI_BG);
+        canvas.Line(px, py, px, py + 620, 0x111111);
+
+        // --- BLACK section (top of panel) ---
+        var blackActive = b.whiteToMove == false;
+        drawPlayerSection(px, py, pw, "BLACK", blackTimeSec, blackCaps, blackActive);
+
+        // --- Move history ---
+        var histY = py + 130;
+        canvas.Box(px, histY, pw, 1, 0x333355);
+        canvas.Text(px + 10, histY + 6, "Move History", COL_UI_DIM);
+        drawMoveHistory(px, histY + 26, pw, sanHistory);
+
+        // --- WHITE section (bottom of panel) ---
+        drawPlayerSection(px, py + 400, pw, "WHITE", whiteTimeSec, whiteCaps, b.whiteToMove);
+
+        // --- Mode / level ---
+        var modeY = py + 540;
+        canvas.Box(px, modeY, pw, 1, 0x333355);
+        var modeStr = "PvP";
+        if gameMode == MODE_PVC { modeStr = "PvC"; }
+        if gameMode == MODE_CVC { modeStr = "CvC"; }
+        canvas.Text(px + 10, modeY + 8, "Mode:  " + modeStr, COL_UI_DIM);
+
+        var levelStr = "Easy";
+        if aiDepth == DIFF_MEDIUM { levelStr = "Medium"; }
+        if aiDepth == DIFF_HARD   { levelStr = "Hard";   }
+        if aiDepth == DIFF_EXPERT { levelStr = "Expert"; }
+        canvas.Text(px + 10, modeY + 26, "Level: " + levelStr, COL_UI_DIM);
+    }
+
+    // One player section: clock + captured pieces
+    hide func drawPlayerSection(px: Integer, py: Integer, pw: Integer,
+                                 name: String, timeSec: Integer,
+                                 captures: List[Integer], active: Boolean) {
+        // Active player indicator
+        var indicatorCol = COL_UI_DIM;
+        if active { indicatorCol = COL_UI_ACCENT; }
+        canvas.Disc(px + 14, py + 20, 8, indicatorCol);
+
+        // Name
+        canvas.Text(px + 28, py + 13, name, COL_UI_TEXT);
+
+        // Clock
+        var mins = timeSec / 60;
+        var secs = timeSec % 60;
+        var secStr = Int(secs);
+        if secs < 10 { secStr = "0" + Int(secs); }
+        var clockStr = Int(mins) + ":" + secStr;
+        canvas.Text(pw - 60, py + 13, clockStr, COL_UI_TEXT);
+
+        // Captured pieces (small colored circles)
+        canvas.Text(px + 10, py + 44, "Captures:", COL_UI_DIM);
+        for i in 0..captures.length() {
+            var capType = captures.get(i);
+            var ccx = px + 90 + i * 14;
+            var ccy = py + 52;
+            canvas.Disc(ccx, ccy, 5, COL_UI_TEXT);
+        }
+    }
+
+    // Move history list (last N moves)
+    hide func drawMoveHistory(px: Integer, py: Integer, pw: Integer, history: List[String]) {
+        var visibleRows = 9;      // number of move-pair rows visible
+        var rowH = 18;
+        var total = history.length();
+
+        // Compute starting index (show most recent moves)
+        var startMove = total - visibleRows * 2;
+        if startMove < 0 { startMove = 0; }
+        // Round down to even (start of a full move pair)
+        if startMove % 2 != 0 { startMove = startMove - 1; }
+
+        var row = 0;
+        var i = startMove;
+        while i < total && row < visibleRows {
+            var moveNum = i / 2 + 1;
+            var whiteMove = history.get(i);
+            var blackMove = "";
+            if i + 1 < total { blackMove = history.get(i + 1); }
+
+            var rowY = py + row * rowH;
+            canvas.Text(px + 10, rowY, Int(moveNum) + ".", COL_UI_DIM);
+            canvas.Text(px + 42, rowY, whiteMove, COL_UI_TEXT);
+            canvas.Text(px + 140, rowY, blackMove, COL_UI_TEXT);
+
+            i = i + 2;
+            row = row + 1;
+        }
+    }
+
+    // =========================================================================
+    // Promotion dialog
+    // =========================================================================
+
+    expose func drawPromoDialog(white: Boolean) {
+        // Semi-transparent dark overlay
+        canvas.Box(200, 250, 240, 110, 0x111122);
+        canvas.Frame(200, 250, 240, 110, COL_UI_ACCENT);
+        canvas.Text(232, 260, "Promote pawn to:", COL_UI_TEXT);
+
+        var pieces = [QUEEN, ROOK, BISHOP, KNIGHT];
+        for i in 0..4 {
+            var bx = 208 + i * 56;
+            var by = 280;
+            canvas.RoundBox(bx, by, 50, 60, 4, COL_UI_PANEL);
+            canvas.Frame(bx, by, 50, 60, COL_UI_DIM);
+            drawPiece(pieces.get(i), white, bx + 25, by + 32);
+        }
+    }
+
+    // =========================================================================
+    // Main menu screen
+    // =========================================================================
+
+    expose func drawMainMenu(gameMode: Integer, aiDepth: Integer) {
+        canvas.Clear(COL_UI_BG);
+
+        // Title
+        canvas.Text(WIN_W / 2 - 80, 100, "Viper Chess", COL_UI_ACCENT);
+
+        // Mode buttons
+        canvas.Text(WIN_W / 2 - 60, 200, "Game Mode:", COL_UI_TEXT);
+
+        var pvpCol = COL_UI_DIM;
+        var pvcCol = COL_UI_DIM;
+        var cvcCol = COL_UI_DIM;
+        if gameMode == MODE_PVP { pvpCol = COL_UI_ACCENT; }
+        if gameMode == MODE_PVC { pvcCol = COL_UI_ACCENT; }
+        if gameMode == MODE_CVC { cvcCol = COL_UI_ACCENT; }
+
+        canvas.RoundBox(WIN_W / 2 - 150, 230, 90, 36, 6, COL_UI_PANEL);
+        canvas.Text(WIN_W / 2 - 132, 241, "PvP", pvpCol);
+
+        canvas.RoundBox(WIN_W / 2 - 48,  230, 90, 36, 6, COL_UI_PANEL);
+        canvas.Text(WIN_W / 2 - 30, 241, "PvC", pvcCol);
+
+        canvas.RoundBox(WIN_W / 2 + 54,  230, 90, 36, 6, COL_UI_PANEL);
+        canvas.Text(WIN_W / 2 + 70, 241, "CvC", cvcCol);
+
+        // AI difficulty
+        canvas.Text(WIN_W / 2 - 60, 300, "AI Level:", COL_UI_TEXT);
+
+        var easyCol   = COL_UI_DIM;
+        var medCol    = COL_UI_DIM;
+        var hardCol   = COL_UI_DIM;
+        var expertCol = COL_UI_DIM;
+        if aiDepth == DIFF_EASY   { easyCol   = COL_UI_ACCENT; }
+        if aiDepth == DIFF_MEDIUM { medCol    = COL_UI_ACCENT; }
+        if aiDepth == DIFF_HARD   { hardCol   = COL_UI_ACCENT; }
+        if aiDepth == DIFF_EXPERT { expertCol = COL_UI_ACCENT; }
+
+        canvas.RoundBox(WIN_W / 2 - 200, 330, 85, 32, 5, COL_UI_PANEL);
+        canvas.Text(WIN_W / 2 - 190, 339, "Easy",   easyCol);
+        canvas.RoundBox(WIN_W / 2 - 104, 330, 85, 32, 5, COL_UI_PANEL);
+        canvas.Text(WIN_W / 2 - 94,  339, "Medium", medCol);
+        canvas.RoundBox(WIN_W / 2 - 8,   330, 85, 32, 5, COL_UI_PANEL);
+        canvas.Text(WIN_W / 2 + 2,   339, "Hard",   hardCol);
+        canvas.RoundBox(WIN_W / 2 + 88,  330, 85, 32, 5, COL_UI_PANEL);
+        canvas.Text(WIN_W / 2 + 100, 339, "Expert", expertCol);
+
+        // Start button
+        canvas.RoundBox(WIN_W / 2 - 80, 420, 160, 48, 8, COL_UI_ACCENT);
+        canvas.Text(WIN_W / 2 - 50, 438, "Start Game", COL_UI_BG);
+
+        canvas.Text(WIN_W / 2 - 100, 500, "Click to select, then Start", COL_UI_DIM);
+    }
+
+    // =========================================================================
+    // Game-over overlay
+    // =========================================================================
+
+    expose func drawGameOverOverlay(reason: String, winnerText: String) {
+        // Dark overlay over board
+        canvas.Box(BOARD_X + 80, BOARD_Y + 200, 480, 200, 0x0A0A1E);
+        canvas.Frame(BOARD_X + 80, BOARD_Y + 200, 480, 200, COL_UI_ACCENT);
+
+        canvas.Text(BOARD_X + 180, BOARD_Y + 230, winnerText, COL_UI_ACCENT);
+        canvas.Text(BOARD_X + 160, BOARD_Y + 270, reason,     COL_UI_TEXT);
+
+        canvas.RoundBox(BOARD_X + 170, BOARD_Y + 330, 120, 40, 6, COL_UI_PANEL);
+        canvas.Text(BOARD_X + 186, BOARD_Y + 343, "New Game", COL_UI_TEXT);
+
+        canvas.RoundBox(BOARD_X + 310, BOARD_Y + 330, 120, 40, 6, COL_UI_PANEL);
+        canvas.Text(BOARD_X + 330, BOARD_Y + 343, "Main Menu", COL_UI_TEXT);
+    }
+
+    // =========================================================================
+    // "AI is thinking..." indicator
+    // =========================================================================
+
+    expose func drawThinkingIndicator() {
+        canvas.Box(BOARD_X + 200, BOARD_Y + 290, 240, 50, 0x0A0A1E);
+        canvas.Frame(BOARD_X + 200, BOARD_Y + 290, 240, 50, COL_UI_DIM);
+        canvas.Text(BOARD_X + 230, BOARD_Y + 308, "AI is thinking...", COL_UI_DIM);
+    }
+}

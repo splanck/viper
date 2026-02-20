@@ -86,6 +86,12 @@ enum class TypeKind
     /// Currently used primarily in pattern matching.
     /// @see TupleType
     Tuple,
+
+    /// @brief Fixed-size array type: `T[N]` (N is a compile-time integer constant).
+    /// @details Used for inline fixed-size arrays in entity/value type fields.
+    /// The array is stored contiguously in the parent object with no heap allocation.
+    /// @see FixedArrayType
+    FixedArray,
 };
 
 /// @brief Base class for all type annotation nodes.
@@ -246,6 +252,32 @@ struct TupleType : TypeNode
     /// @param e Element types.
     TupleType(SourceLoc l, std::vector<TypePtr> e)
         : TypeNode(TypeKind::Tuple, l), elements(std::move(e))
+    {
+    }
+};
+
+/// @brief Fixed-size array type: `Integer[64]`, `Number[8]`.
+/// @details Represents a compile-time-sized array of a base element type.
+/// The array is stored inline in the containing entity or value type field —
+/// no heap allocation. The count is a compile-time integer constant.
+///
+/// ## Examples
+/// - `Integer[64]` — 64 contiguous i64 values (512 bytes)
+/// - `Number[4]` — 4 contiguous f64 values (32 bytes)
+struct FixedArrayType : TypeNode
+{
+    /// @brief The element type of the fixed-size array.
+    TypePtr elementType;
+
+    /// @brief Number of elements (compile-time constant).
+    size_t count;
+
+    /// @brief Construct a fixed-size array type.
+    /// @param l Source location of the type annotation.
+    /// @param elem The element type (e.g., NamedType("Integer")).
+    /// @param n Number of elements.
+    FixedArrayType(SourceLoc l, TypePtr elem, size_t n)
+        : TypeNode(TypeKind::FixedArray, l), elementType(std::move(elem)), count(n)
     {
     }
 };

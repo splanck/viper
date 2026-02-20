@@ -1,0 +1,790 @@
+module game;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Time;
+bind Viper.Fmt;
+bind Viper.Terminal;
+bind "./config";
+bind "./board";
+bind "./moves";
+bind "./renderer";
+bind "./eval";
+bind "./ai";
+
+// ============================================================================
+// ChessGame — main game entity.
+//
+// Manages the game state machine, input handling, AI turns, and the render loop.
+//
+// States:
+//   STATE_MENU      — main menu (mode/difficulty selection)
+//   STATE_PLAYING   — active game (human or AI turn)
+//   STATE_PROMO     — awaiting promotion piece selection
+//   STATE_AI_THINK  — AI is computing (runs synchronously; frame loop continues)
+//   STATE_CHECKMATE — game over (checkmate)
+//   STATE_STALEMATE — game over (stalemate)
+//   STATE_DRAW      — game over (50-move rule / threefold repetition)
+//
+// Keyboard shortcuts (SDL scancodes, active during PLAYING state):
+//   N (scancode 17)              — start new game
+//   Ctrl+Z (scancodes 224+29)   — undo last move (2 in PvC: AI + human)
+// ============================================================================
+entity ChessGame {
+    hide Canvas        canvas;
+    hide Board         board;
+    hide MoveGen       moveGen;
+    hide ChessAI       chessAI;
+    hide BoardRenderer renderer;
+
+    // --- Game configuration ---
+    hide Integer gameState;
+    hide Integer gameMode;
+    hide Integer aiDepth;
+    hide Boolean playerIsWhite;   // which color the human plays in PvC
+
+    // --- Input state ---
+    hide Integer selectedSq;          // square clicked/selected (-1 = none)
+    hide Integer dragFrom;            // square being dragged from (-1 = not dragging)
+    hide Integer dragX;               // current drag cursor pixel X
+    hide Integer dragY;               // current drag cursor pixel Y
+    hide List[Move] movesForSelected; // legal moves from selectedSq
+
+    // --- Board display state ---
+    hide Integer lastFrom;
+    hide Integer lastTo;
+    hide Integer checkedKingSq;       // king sq if in check, else -1
+
+    // --- Move history & captures ---
+    hide List[String]  sanHistory;
+    hide List[Integer] whiteCaptured; // piece types captured by white
+    hide List[Integer] blackCaptured; // piece types captured by black
+    hide Integer moveCount;
+
+    // --- Clock state (count-up from 0, seconds per side) ---
+    hide Integer whiteTimeSec;
+    hide Integer blackTimeSec;
+    hide Integer lastTickMs;
+
+    // --- Promotion ---
+    hide Integer promoFrom;
+    hide Integer promoTo;
+
+    // --- Threefold repetition ---
+    hide List[Integer] positionHashes;
+
+    // --- Game over ---
+    hide String gameOverReason;
+    hide String gameOverWinner;
+
+    // --- AI ---
+    hide Integer aiThinkStartMs;
+    hide Boolean pendingAIMove;
+
+    // --- Undo stacks (parallel arrays, one entry per applied move) ---
+    hide List[Move]     undoMoveStack;
+    hide List[UndoInfo] undoInfoStack;
+    hide List[Integer]  undoPrevFromStack;       // lastFrom before the move
+    hide List[Integer]  undoPrevToStack;         // lastTo before the move
+    hide List[Integer]  undoCaptureColorStack;   // 1=white captured, -1=black, 0=none
+
+    // --- Key debounce flags (prevent hold-key repeat) ---
+    hide Boolean ctrlZWasDown;
+    hide Boolean newGameKeyWasDown;
+
+    expose func init() {
+        canvas   = Canvas.New("Viper Chess", WIN_W, WIN_H);
+        board    = new Board();
+        moveGen  = new MoveGen();
+        chessAI  = new ChessAI();
+        renderer = new BoardRenderer();
+
+        renderer.setCanvas(canvas);
+
+        gameState     = STATE_MENU;
+        gameMode      = MODE_PVC;
+        aiDepth       = DIFF_HARD;
+        playerIsWhite = true;
+
+        selectedSq       = -1;
+        dragFrom         = -1;
+        dragX            = 0;
+        dragY            = 0;
+        movesForSelected = [];
+
+        lastFrom      = -1;
+        lastTo        = -1;
+        checkedKingSq = -1;
+
+        sanHistory    = [];
+        whiteCaptured = [];
+        blackCaptured = [];
+        moveCount     = 0;
+
+        // Clocks count up from 0
+        whiteTimeSec = 0;
+        blackTimeSec = 0;
+        lastTickMs   = 0;
+
+        promoFrom = -1;
+        promoTo   = -1;
+
+        positionHashes = [];
+
+        gameOverReason = "";
+        gameOverWinner = "";
+
+        aiThinkStartMs = 0;
+        pendingAIMove  = false;
+
+        undoMoveStack         = [];
+        undoInfoStack         = [];
+        undoPrevFromStack     = [];
+        undoPrevToStack       = [];
+        undoCaptureColorStack = [];
+
+        ctrlZWasDown      = false;
+        newGameKeyWasDown = false;
+    }
+
+    // =========================================================================
+    // Main game loop
+    // =========================================================================
+
+    expose func run() {
+        lastTickMs = Viper.Time.GetTickCount();
+
+        while canvas.get_ShouldClose() == 0 {
+            canvas.Poll();
+
+            handleInput();
+            updateClocks();
+
+            if gameState == STATE_AI_THINK {
+                runAITurn();
+            }
+
+            render();
+            Viper.Time.SleepMs(8);   // ~120 FPS cap
+        }
+    }
+
+    // =========================================================================
+    // Input handling
+    // =========================================================================
+
+    hide func handleInput() {
+        var mx = Viper.Input.Mouse.X();
+        var my = Viper.Input.Mouse.Y();
+
+        if gameState == STATE_MENU {
+            handleMenuInput(mx, my);
+            return;
+        }
+
+        // Ctrl+Z — undo (SDL_SCANCODE_LCTRL=224, SDL_SCANCODE_Z=29)
+        // Works from any non-menu game state including game-over screens.
+        var ctrlZ = canvas.KeyHeld(224) && canvas.KeyHeld(29);
+        if !ctrlZ { ctrlZWasDown = false; }
+        if ctrlZ && !ctrlZWasDown {
+            ctrlZWasDown = true;
+            handleUndo();
+        }
+
+        if gameState == STATE_CHECKMATE || gameState == STATE_STALEMATE || gameState == STATE_DRAW {
+            handleGameOverInput(mx, my);
+            return;
+        }
+
+        if gameState == STATE_PROMO {
+            handlePromoInput(mx, my);
+            return;
+        }
+
+        if gameState != STATE_PLAYING { return; }
+
+        // 'N' — new game (SDL_SCANCODE_N = 17)
+        var nKey = canvas.KeyHeld(17);
+        if !nKey { newGameKeyWasDown = false; }
+        if nKey && !newGameKeyWasDown {
+            newGameKeyWasDown = true;
+            startNewGame();
+            return;
+        }
+
+        // Mouse press — pick up a piece
+        if Viper.Input.Mouse.WasPressed(0) {
+            handleMousePress(mx, my);
+        }
+
+        // Mouse hold — update drag position
+        if Viper.Input.Mouse.Left() {
+            if dragFrom >= 0 {
+                dragX = mx;
+                dragY = my;
+            }
+        }
+
+        // Mouse release — drop piece
+        if Viper.Input.Mouse.WasReleased(0) {
+            handleMouseRelease(mx, my);
+        }
+    }
+
+    hide func handleMousePress(mx: Integer, my: Integer) {
+        var sq = renderer.squareAt(mx, my);
+
+        if sq < 0 {
+            selectedSq       = -1;
+            movesForSelected = [];
+            return;
+        }
+
+        var piece = board.get(sq);
+        var isMyPiece = false;
+
+        if gameMode == MODE_PVP {
+            // In PvP, current player's piece
+            isMyPiece = piece != 0 && board.isWhitePiece(piece) == board.whiteToMove;
+        } else {
+            // In PvC, only the human's pieces on the human's turn
+            isMyPiece = piece != 0 && board.isWhitePiece(piece) == playerIsWhite &&
+                        board.whiteToMove == playerIsWhite;
+        }
+
+        if isMyPiece {
+            selectedSq = sq;
+            dragFrom   = sq;
+            dragX      = mx;
+            dragY      = my;
+            movesForSelected = legalMovesFrom(sq);
+        } else if selectedSq >= 0 {
+            // Try click-to-move to this square
+            if tryMove(selectedSq, sq) {
+                selectedSq       = -1;
+                movesForSelected = [];
+            } else {
+                selectedSq       = -1;
+                movesForSelected = [];
+                dragFrom         = -1;
+            }
+        }
+    }
+
+    hide func handleMouseRelease(mx: Integer, my: Integer) {
+        if dragFrom < 0 { return; }
+
+        var sq = renderer.squareAt(mx, my);
+
+        if sq >= 0 && sq != dragFrom {
+            // Drag-and-drop: attempt move
+            if tryMove(dragFrom, sq) {
+                selectedSq       = -1;
+                movesForSelected = [];
+            } else {
+                // Invalid drop: keep piece selected at origin
+                selectedSq       = dragFrom;
+                movesForSelected = legalMovesFrom(dragFrom);
+            }
+        } else if sq == dragFrom {
+            // Dropped back on origin: toggle selection
+            if selectedSq == dragFrom {
+                selectedSq       = -1;
+                movesForSelected = [];
+            } else {
+                selectedSq       = dragFrom;
+                movesForSelected = legalMovesFrom(dragFrom);
+            }
+        }
+
+        dragFrom = -1;
+    }
+
+    hide func handleMenuInput(mx: Integer, my: Integer) {
+        if !Viper.Input.Mouse.WasClicked(0) { return; }
+
+        var cx = WIN_W / 2;
+
+        // Mode buttons
+        if my >= 230 && my <= 266 {
+            if mx >= cx - 150 && mx <= cx - 60  { gameMode = MODE_PVP; }
+            if mx >= cx - 48  && mx <= cx + 42  { gameMode = MODE_PVC; }
+            if mx >= cx + 54  && mx <= cx + 144 { gameMode = MODE_CVC; }
+        }
+
+        // Difficulty buttons
+        if my >= 330 && my <= 362 {
+            if mx >= cx - 200 && mx <= cx - 115 { aiDepth = DIFF_EASY;   }
+            if mx >= cx - 104 && mx <= cx - 19  { aiDepth = DIFF_MEDIUM; }
+            if mx >= cx - 8   && mx <= cx + 77  { aiDepth = DIFF_HARD;   }
+            if mx >= cx + 88  && mx <= cx + 173 { aiDepth = DIFF_EXPERT; }
+        }
+
+        // Start button
+        if my >= 420 && my <= 468 && mx >= cx - 80 && mx <= cx + 80 {
+            startNewGame();
+        }
+    }
+
+    hide func handleGameOverInput(mx: Integer, my: Integer) {
+        if !Viper.Input.Mouse.WasClicked(0) { return; }
+
+        var bx = BOARD_X;
+        var by = BOARD_Y;
+
+        // "New Game" button
+        if mx >= bx + 170 && mx <= bx + 290 && my >= by + 330 && my <= by + 370 {
+            startNewGame();
+        }
+
+        // "Main Menu" button
+        if mx >= bx + 310 && mx <= bx + 430 && my >= by + 330 && my <= by + 370 {
+            gameState = STATE_MENU;
+        }
+    }
+
+    hide func handlePromoInput(mx: Integer, my: Integer) {
+        if !Viper.Input.Mouse.WasClicked(0) { return; }
+
+        // Promotion dialog boxes at x=208,264,320,376 y=280 w=50 h=60
+        var pieces = [QUEEN, ROOK, BISHOP, KNIGHT];
+        for i in 0..4 {
+            var bx = 208 + i * 56;
+            if mx >= bx && mx <= bx + 50 && my >= 280 && my <= 340 {
+                executePromo(pieces.get(i));
+                return;
+            }
+        }
+    }
+
+    // =========================================================================
+    // Undo handling
+    // =========================================================================
+
+    hide func handleUndo() {
+        if gameState == STATE_AI_THINK { return; }   // unsafe while AI is mid-search
+        if undoMoveStack.length() == 0 { return; }
+
+        // Undo the last move
+        undoLastMove();
+
+        // In PvC mode: also undo the AI's preceding response so the human
+        // gets to replay their own move (not the AI's reply).
+        if gameMode == MODE_PVC && undoMoveStack.length() > 0 {
+            undoLastMove();
+        }
+
+        pendingAIMove = false;
+    }
+
+    hide func undoLastMove() {
+        if undoMoveStack.length() == 0 { return; }
+
+        var m        = undoMoveStack.pop();
+        var undo     = undoInfoStack.pop();
+        var prevFrom = undoPrevFromStack.pop();
+        var prevTo   = undoPrevToStack.pop();
+        var capColor = undoCaptureColorStack.pop();
+
+        // Restore board state
+        board.unmakeMove(m, undo);
+
+        // Restore last-move highlight
+        lastFrom = prevFrom;
+        lastTo   = prevTo;
+
+        // Undo capture tracking
+        if capColor == 1 && whiteCaptured.length() > 0  { whiteCaptured.pop(); }
+        if capColor == -1 && blackCaptured.length() > 0 { blackCaptured.pop(); }
+
+        // Undo position-hash and SAN history entries
+        if positionHashes.length() > 0 { positionHashes.pop(); }
+        if sanHistory.length() > 0     { sanHistory.pop(); }
+
+        moveCount = moveCount - 1;
+
+        // Recompute check highlight for the restored position
+        checkedKingSq = -1;
+        if moveGen.isInCheck(board, board.whiteToMove) {
+            checkedKingSq = board.kingSquare(board.whiteToMove);
+        }
+
+        // Clear selection
+        selectedSq       = -1;
+        movesForSelected = [];
+        dragFrom         = -1;
+
+        gameState = STATE_PLAYING;
+    }
+
+    // =========================================================================
+    // Move execution
+    // =========================================================================
+
+    // Returns true if a legal move from→to was found and executed (or queued for promo).
+    hide func tryMove(fromSq: Integer, toSq: Integer) -> Boolean {
+        var m = findLegalMove(fromSq, toSq, 0);
+        if m.from == -1 { return false; }
+
+        // Pawn reaching the back rank: show promotion dialog first
+        if m.promotion {
+            promoFrom = fromSq;
+            promoTo   = toSq;
+            gameState = STATE_PROMO;
+            return true;
+        }
+
+        applyMove(m);
+        return true;
+    }
+
+    hide func executePromo(pieceType: Integer) {
+        var m = findLegalMove(promoFrom, promoTo, pieceType);
+        if m.from >= 0 {
+            applyMove(m);
+        }
+        gameState = STATE_PLAYING;
+    }
+
+    // Find a legal move from→to with optional promotion piece constraint.
+    // Returns a move with from=-1 if not found.
+    hide func findLegalMove(fromSq: Integer, toSq: Integer, promoPiece: Integer) -> Move {
+        var all = moveGen.legalMoves(board);
+        for i in 0..all.length() {
+            var m = all.get(i);
+            if m.from != fromSq { continue; }
+            if m.to   != toSq   { continue; }
+            if m.promotion && promoPiece > 0 && m.promotePiece != promoPiece { continue; }
+            if m.promotion && promoPiece == 0 { return m; }  // any promo (caller shows dialog)
+            return m;
+        }
+        return new Move(-1, -1, 0, false, false, false, false, 0);
+    }
+
+    hide func applyMove(m: Move) {
+        // --- Push undo state BEFORE modifying anything ---
+        undoPrevFromStack.add(lastFrom);
+        undoPrevToStack.add(lastTo);
+
+        // Track captures. board.whiteToMove = the side making this move.
+        var captureColor = 0;
+        if m.captured != 0 {
+            if board.whiteToMove {
+                whiteCaptured.add(m.captured);
+                captureColor = 1;
+            } else {
+                blackCaptured.add(m.captured);
+                captureColor = -1;
+            }
+        }
+        undoCaptureColorStack.add(captureColor);
+
+        // Update move highlight
+        lastFrom = m.from;
+        lastTo   = m.to;
+
+        // Record hash of the position BEFORE this move (for threefold detection)
+        positionHashes.add(board.getHash());
+
+        // Apply the move; capture the undo struct
+        var undo = board.makeMove(m);
+
+        // Push move + undo for later unmaking
+        undoMoveStack.add(m);
+        undoInfoStack.add(undo);
+
+        // SAN notation (board now reflects the post-move state)
+        var san = buildSAN(m);
+        sanHistory.add(san);
+
+        moveCount = moveCount + 1;
+
+        // Check for terminal conditions
+        checkGameOver();
+
+        // Schedule AI move if it is now the AI's turn
+        if gameState == STATE_PLAYING {
+            if isAITurn() {
+                gameState      = STATE_AI_THINK;
+                aiThinkStartMs = Viper.Time.GetTickCount();
+                pendingAIMove  = true;
+            }
+        }
+    }
+
+    // =========================================================================
+    // AI turn
+    // =========================================================================
+
+    hide func isAITurn() -> Boolean {
+        if gameMode == MODE_CVC { return true; }
+        if gameMode == MODE_PVC && board.whiteToMove != playerIsWhite { return true; }
+        return false;
+    }
+
+    hide func runAITurn() {
+        if !pendingAIMove { return; }
+        pendingAIMove = false;
+
+        var m = chessAI.findBestMove(board);
+
+        // Sentinel: from < 0 means no legal moves — let checkGameOver handle it
+        if m.from < 0 {
+            checkGameOver();
+            return;
+        }
+
+        gameState = STATE_PLAYING;
+
+        // For CvC: enforce a minimum delay between AI moves so the game is watchable
+        if gameMode == MODE_CVC {
+            var elapsed = Viper.Time.GetTickCount() - aiThinkStartMs;
+            if elapsed < CVC_DELAY_MS {
+                Viper.Time.SleepMs(CVC_DELAY_MS - elapsed);
+            }
+        }
+
+        applyMove(m);
+    }
+
+    // =========================================================================
+    // Game over detection
+    // =========================================================================
+
+    hide func checkGameOver() {
+        var legal   = moveGen.legalMoves(board);
+        var inCheck = moveGen.isInCheck(board, board.whiteToMove);
+
+        checkedKingSq = -1;
+        if inCheck { checkedKingSq = board.kingSquare(board.whiteToMove); }
+
+        if legal.length() == 0 {
+            if inCheck {
+                // Checkmate
+                gameState = STATE_CHECKMATE;
+                gameOverReason = "Checkmate";
+                if board.whiteToMove {
+                    gameOverWinner = "Black wins!";
+                } else {
+                    gameOverWinner = "White wins!";
+                }
+            } else {
+                // Stalemate
+                gameState = STATE_STALEMATE;
+                gameOverReason = "Stalemate";
+                gameOverWinner = "Draw";
+            }
+            return;
+        }
+
+        // 50-move rule
+        if board.halfMoveClock >= 100 {
+            gameState = STATE_DRAW;
+            gameOverReason = "50-move rule";
+            gameOverWinner = "Draw";
+            return;
+        }
+
+        // Threefold repetition: current hash matches 2+ earlier positions
+        var currentHash = board.getHash();
+        var count = 0;
+        for i in 0..positionHashes.length() {
+            if positionHashes.get(i) == currentHash { count = count + 1; }
+        }
+        if count >= 2 {
+            gameState = STATE_DRAW;
+            gameOverReason = "Threefold repetition";
+            gameOverWinner = "Draw";
+            return;
+        }
+    }
+
+    // =========================================================================
+    // Game management
+    // =========================================================================
+
+    hide func startNewGame() {
+        // new Board() automatically calls init() → setupStartPosition()
+        board = new Board();
+
+        chessAI.setDepth(aiDepth);
+
+        selectedSq       = -1;
+        dragFrom         = -1;
+        movesForSelected = [];
+        sanHistory       = [];
+        whiteCaptured    = [];
+        blackCaptured    = [];
+        positionHashes   = [];
+        moveCount        = 0;
+        lastFrom         = -1;
+        lastTo           = -1;
+        checkedKingSq    = -1;
+
+        // Clocks count up from 0
+        whiteTimeSec = 0;
+        blackTimeSec = 0;
+        lastTickMs   = Viper.Time.GetTickCount();
+
+        pendingAIMove = false;
+
+        undoMoveStack         = [];
+        undoInfoStack         = [];
+        undoPrevFromStack     = [];
+        undoPrevToStack       = [];
+        undoCaptureColorStack = [];
+
+        gameState = STATE_PLAYING;
+
+        // In PvC with AI as white, trigger AI immediately
+        if isAITurn() {
+            gameState      = STATE_AI_THINK;
+            aiThinkStartMs = Viper.Time.GetTickCount();
+            pendingAIMove  = true;
+        }
+    }
+
+    // =========================================================================
+    // Clock update (count-up: increment the active player's clock each second)
+    // =========================================================================
+
+    hide func updateClocks() {
+        if gameState != STATE_PLAYING { return; }
+
+        var now     = Viper.Time.GetTickCount();
+        var elapsed = (now - lastTickMs) / 1000;  // ms → seconds
+
+        if elapsed >= 1 {
+            lastTickMs = now;
+            if board.whiteToMove {
+                whiteTimeSec = whiteTimeSec + 1;
+            } else {
+                blackTimeSec = blackTimeSec + 1;
+            }
+        }
+    }
+
+    // =========================================================================
+    // Rendering
+    // =========================================================================
+
+    hide func render() {
+        canvas.Clear(COL_UI_BG);
+
+        if gameState == STATE_MENU {
+            renderer.drawMainMenu(gameMode, aiDepth);
+            canvas.Flip();
+            return;
+        }
+
+        // Draw board and pieces
+        renderer.drawBoard(lastFrom, lastTo);
+        renderer.drawCheckHighlight(checkedKingSq);
+        renderer.drawHighlights(selectedSq, movesForSelected);
+        renderer.drawPieces(board, dragFrom);
+
+        // Draw dragged piece following the cursor
+        if dragFrom >= 0 {
+            var piece = board.get(dragFrom);
+            if piece != 0 {
+                renderer.drawDragPiece(board.pieceType(piece), board.isWhitePiece(piece), dragX, dragY);
+            }
+        }
+
+        // Top and bottom bars
+        var turnStr = "White to move";
+        if !board.whiteToMove   { turnStr = "Black to move"; }
+        if gameState == STATE_AI_THINK { turnStr = "AI thinking..."; }
+        renderer.drawTopBar(turnStr, gameMode);
+
+        var statusStr = "Move " + Int(board.fullMoveNumber);
+        renderer.drawBottomBar(statusStr);
+
+        // Side panel
+        renderer.drawPanel(board,
+                          whiteTimeSec, blackTimeSec,
+                          sanHistory,
+                          whiteCaptured, blackCaptured,
+                          gameMode, aiDepth);
+
+        // Overlays (in order of priority)
+        if gameState == STATE_PROMO {
+            renderer.drawPromoDialog(board.whiteToMove);
+        }
+
+        if gameState == STATE_AI_THINK {
+            renderer.drawThinkingIndicator();
+        }
+
+        if gameState == STATE_CHECKMATE || gameState == STATE_STALEMATE || gameState == STATE_DRAW {
+            renderer.drawGameOverOverlay(gameOverReason, gameOverWinner);
+        }
+
+        canvas.Flip();
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    hide func legalMovesFrom(sq: Integer) -> List[Move] {
+        var all    = moveGen.legalMoves(board);
+        var result = [];
+        for i in 0..all.length() {
+            var m = all.get(i);
+            if m.from == sq { result.add(m); }
+        }
+        return result;
+    }
+
+    // Build simplified algebraic notation for move m.
+    // Precondition: m has already been applied to the board (board reflects post-move state).
+    //
+    // Promotion fix: when m.promotion is true, the moving piece was a pawn.
+    // Reading board.get(m.to) after promotion returns the promoted piece (e.g. QUEEN),
+    // which would incorrectly produce "Qd8=Q". We use type_ = PAWN in that case,
+    // suppressing the piece-letter prefix as per SAN rules.
+    hide func buildSAN(m: Move) -> String {
+        var files    = ["a", "b", "c", "d", "e", "f", "g", "h"];
+        var fromFile = m.from % 8;
+        var toFile   = m.to % 8;
+        var toRank   = 8 - m.to / 8;
+
+        // Castling
+        if m.castleKing  { return "O-O"; }
+        if m.castleQueen { return "O-O-O"; }
+
+        // Determine moving piece type.
+        // For promotions the mover was always a pawn → no prefix letter.
+        // For normal moves read the piece now at the destination.
+        var type_ = PAWN;
+        if !m.promotion {
+            type_ = board.pieceType(board.get(m.to));
+        }
+
+        var san = "";
+        if type_ == KNIGHT { san = "N"; }
+        if type_ == BISHOP { san = "B"; }
+        if type_ == ROOK   { san = "R"; }
+        if type_ == QUEEN  { san = "Q"; }
+        if type_ == KING   { san = "K"; }
+
+        // Capture prefix (file letter for pawn captures, piece letter for others)
+        if m.captured != 0 || m.enPassant {
+            if san == "" { san = files.get(fromFile); }
+            san = san + "x";
+        }
+
+        san = san + files.get(toFile) + Int(toRank);
+
+        // Promotion suffix
+        if m.promotion {
+            if m.promotePiece == QUEEN  { san = san + "=Q"; }
+            if m.promotePiece == ROOK   { san = san + "=R"; }
+            if m.promotePiece == BISHOP { san = san + "=B"; }
+            if m.promotePiece == KNIGHT { san = san + "=N"; }
+        }
+
+        return san;
+    }
+}

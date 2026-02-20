@@ -682,6 +682,12 @@ class Parser
     /// @brief Depth of speculative parsing scopes (suppresses diagnostics).
     int suppressionDepth_{0};
 
+    /// @brief Whether struct literals are allowed in the current expression context.
+    /// @details Struct literals (`TypeName { field = val }`) are only permitted
+    /// in initializer positions (var x = ..., return ..., rhs of assignment) to
+    /// avoid ambiguity with block statements in for/if/while conditions.
+    bool allowStructLiterals_{false};
+
     /// @}
 };
 

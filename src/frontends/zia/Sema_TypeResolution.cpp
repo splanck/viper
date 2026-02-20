@@ -229,6 +229,13 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
             }
             return types::tuple(std::move(elementTypes));
         }
+
+        case TypeKind::FixedArray:
+        {
+            const auto *arr = static_cast<const FixedArrayType *>(node);
+            TypeRef elemType = resolveTypeNode(arr->elementType.get());
+            return types::fixedArray(elemType, arr->count);
+        }
     }
 
     return types::unknown();

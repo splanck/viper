@@ -1,0 +1,456 @@
+module board;
+
+bind "./config";
+
+// ============================================================================
+// Move — represents a single chess move
+// ============================================================================
+value Move {
+    expose Integer from;
+    expose Integer to;
+    expose Integer captured;       // piece type captured (0 = none), always positive
+    expose Boolean enPassant;
+    expose Boolean castleKing;
+    expose Boolean castleQueen;
+    expose Boolean promotion;
+    expose Integer promotePiece;   // piece type to promote to (0 = not a promotion)
+
+    expose func init(f: Integer, t: Integer, cap: Integer,
+                     ep: Boolean, ck: Boolean, cq: Boolean,
+                     promo: Boolean, pp: Integer) {
+        from = f;
+        to = t;
+        captured = cap;
+        enPassant = ep;
+        castleKing = ck;
+        castleQueen = cq;
+        promotion = promo;
+        promotePiece = pp;
+    }
+}
+
+// ============================================================================
+// UndoInfo — state captured before makeMove, needed to restore after unmakeMove
+// ============================================================================
+value UndoInfo {
+    expose Integer enPassantFile;
+    expose Boolean castleWK;
+    expose Boolean castleWQ;
+    expose Boolean castleBK;
+    expose Boolean castleBQ;
+    expose Integer halfMoveClock;
+    expose Integer capturedSq;     // actual square where captured piece was (differs from to for en passant)
+
+    expose func init(epFile: Integer, cwk: Boolean, cwq: Boolean,
+                     cbk: Boolean, cbq: Boolean,
+                     hmc: Integer, capSq: Integer) {
+        enPassantFile = epFile;
+        castleWK = cwk;
+        castleWQ = cwq;
+        castleBK = cbk;
+        castleBQ = cbq;
+        halfMoveClock = hmc;
+        capturedSq = capSq;
+    }
+}
+
+// ============================================================================
+// Board — the chess board state
+//
+// Square encoding: sq = rank * 8 + file
+//   rank 0 = row 8 (black back rank, top of display)
+//   rank 7 = row 1 (white back rank, bottom of display)
+//   file 0 = a-file (left), file 7 = h-file (right)
+//
+// Piece encoding: positive = white, negative = black, 0 = empty
+//   abs(piece) gives piece type (PAWN=1..KING=6)
+// ============================================================================
+entity Board {
+    expose Integer squares0;   expose Integer squares1;
+    expose Integer squares2;   expose Integer squares3;
+    expose Integer squares4;   expose Integer squares5;
+    expose Integer squares6;   expose Integer squares7;
+    expose Integer squares8;   expose Integer squares9;
+    expose Integer squares10;  expose Integer squares11;
+    expose Integer squares12;  expose Integer squares13;
+    expose Integer squares14;  expose Integer squares15;
+    expose Integer squares16;  expose Integer squares17;
+    expose Integer squares18;  expose Integer squares19;
+    expose Integer squares20;  expose Integer squares21;
+    expose Integer squares22;  expose Integer squares23;
+    expose Integer squares24;  expose Integer squares25;
+    expose Integer squares26;  expose Integer squares27;
+    expose Integer squares28;  expose Integer squares29;
+    expose Integer squares30;  expose Integer squares31;
+    expose Integer squares32;  expose Integer squares33;
+    expose Integer squares34;  expose Integer squares35;
+    expose Integer squares36;  expose Integer squares37;
+    expose Integer squares38;  expose Integer squares39;
+    expose Integer squares40;  expose Integer squares41;
+    expose Integer squares42;  expose Integer squares43;
+    expose Integer squares44;  expose Integer squares45;
+    expose Integer squares46;  expose Integer squares47;
+    expose Integer squares48;  expose Integer squares49;
+    expose Integer squares50;  expose Integer squares51;
+    expose Integer squares52;  expose Integer squares53;
+    expose Integer squares54;  expose Integer squares55;
+    expose Integer squares56;  expose Integer squares57;
+    expose Integer squares58;  expose Integer squares59;
+    expose Integer squares60;  expose Integer squares61;
+    expose Integer squares62;  expose Integer squares63;
+
+    expose Boolean whiteToMove;
+    expose Integer enPassantFile;   // -1 = no en passant, 0-7 = file
+    expose Boolean castleWK;        // White kingside castling right
+    expose Boolean castleWQ;        // White queenside castling right
+    expose Boolean castleBK;        // Black kingside castling right
+    expose Boolean castleBQ;        // Black queenside castling right
+    expose Integer halfMoveClock;   // 50-move rule counter
+    expose Integer fullMoveNumber;
+
+    // Zobrist hash (maintained incrementally)
+    hide Integer hashVal;
+
+    // Precomputed Zobrist keys: 64 squares * 12 piece slots + 1 side + 4 castle + 8 ep
+    hide List[Integer] zkPieces;    // [sq * 12 + pieceSlot]  pieceSlot: 0-5=white, 6-11=black
+    hide List[Integer] zkSide;      // [0] = hash for black to move
+    hide List[Integer] zkCastle;    // [0..3] CR_WK/WQ/BK/BQ
+    hide List[Integer] zkEP;        // [0..7] en passant file
+
+    expose func init() {
+        self.initZobrist();
+        self.setupStartPosition();
+    }
+
+    // -----------------------------------------------------------------------
+    // Square access (flat array emulated via named fields)
+    // Zia does not support Integer[] fixed arrays as entity fields,
+    // so we use a List for runtime storage.
+    // -----------------------------------------------------------------------
+    hide List[Integer] sq;
+
+    expose func get(index: Integer) -> Integer {
+        return self.sq.get(index);
+    }
+
+    expose func set(index: Integer, piece: Integer) {
+        var old = self.sq.get(index);
+        if old != 0 {
+            self.hashVal = self.hashVal ^ self.zkPieces.get(index * 12 + self.pieceSlot(old));
+        }
+        self.sq.set(index, piece);
+        if piece != 0 {
+            self.hashVal = self.hashVal ^ self.zkPieces.get(index * 12 + self.pieceSlot(piece));
+        }
+    }
+
+    hide func pieceSlot(piece: Integer) -> Integer {
+        // Returns 0-5 for white pieces (type 1-6), 6-11 for black pieces
+        if piece > 0 {
+            return piece - 1;
+        }
+        return (-piece) - 1 + 6;
+    }
+
+    // -----------------------------------------------------------------------
+    // Zobrist hash initialization
+    // -----------------------------------------------------------------------
+    hide func initZobrist() {
+        self.zkPieces = [];
+        self.zkSide = [];
+        self.zkCastle = [];
+        self.zkEP = [];
+
+        // Simple deterministic LCG PRNG for Zobrist key generation
+        var seed = 1070372317;
+        for i in 0..768 {   // 64 * 12
+            seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
+            self.zkPieces.add(seed);
+        }
+        seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
+        self.zkSide.add(seed);
+        for i in 0..4 {
+            seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
+            self.zkCastle.add(seed);
+        }
+        for i in 0..8 {
+            seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
+            self.zkEP.add(seed);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Starting position setup
+    // -----------------------------------------------------------------------
+    expose func setupStartPosition() {
+        self.sq = [];
+        for i in 0..64 {
+            self.sq.add(0);
+        }
+        self.hashVal = 0;
+        self.whiteToMove = true;
+        self.enPassantFile = -1;
+        self.castleWK = true;
+        self.castleWQ = true;
+        self.castleBK = true;
+        self.castleBQ = true;
+        self.halfMoveClock = 0;
+        self.fullMoveNumber = 1;
+
+        // Black back rank (rank 0)
+        self.set(0,  -config.ROOK);    self.set(1,  -config.KNIGHT);
+        self.set(2,  -config.BISHOP);  self.set(3,  -config.QUEEN);
+        self.set(4,  -config.KING);    self.set(5,  -config.BISHOP);
+        self.set(6,  -config.KNIGHT);  self.set(7,  -config.ROOK);
+        // Black pawns (rank 1)
+        for f in 0..8 { self.set(8 + f, -config.PAWN); }
+        // Empty ranks (2-5)
+        // Already 0
+        // White pawns (rank 6)
+        for f in 0..8 { self.set(48 + f, config.PAWN); }
+        // White back rank (rank 7)
+        self.set(56, config.ROOK);    self.set(57, config.KNIGHT);
+        self.set(58, config.BISHOP);  self.set(59, config.QUEEN);
+        self.set(60, config.KING);    self.set(61, config.BISHOP);
+        self.set(62, config.KNIGHT);  self.set(63, config.ROOK);
+
+        // Hash castle rights (all four on at start)
+        self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WK);
+        self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WQ);
+        self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BK);
+        self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BQ);
+        // White to move — no XOR (side key only XORed when black to move)
+    }
+
+    // -----------------------------------------------------------------------
+    // Hash accessors — used by transposition table and repetition detection
+    // -----------------------------------------------------------------------
+    expose func getHash() -> Integer {
+        return self.hashVal;
+    }
+
+    // -----------------------------------------------------------------------
+    // Apply a move and return undo info
+    // -----------------------------------------------------------------------
+    expose func makeMove(move: Move) -> UndoInfo {
+        var undo = new UndoInfo(self.enPassantFile, self.castleWK, self.castleWQ,
+                               self.castleBK, self.castleBQ, self.halfMoveClock, move.to);
+
+        var piece = self.get(move.from);
+        var pieceType = self.pieceType(piece);
+        var isWhite = piece > 0;
+
+        // Remove en passant hash if active
+        if self.enPassantFile >= 0 {
+            self.hashVal = self.hashVal ^ self.zkEP.get(self.enPassantFile);
+        }
+        self.enPassantFile = -1;
+
+        // Remove old castle hash bits
+        if self.castleWK { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WK); }
+        if self.castleWQ { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WQ); }
+        if self.castleBK { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BK); }
+        if self.castleBQ { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BQ); }
+
+        // En passant capture: remove pawn from adjacent square
+        if move.enPassant {
+            var capFile = move.to % 8;
+            var capRank = move.from / 8;  // same rank as capturing pawn
+            var capSq = capRank * 8 + capFile;
+            undo = new UndoInfo(undo.enPassantFile, undo.castleWK, undo.castleWQ,
+                               undo.castleBK, undo.castleBQ, undo.halfMoveClock, capSq);
+            self.set(capSq, 0);
+        }
+
+        // Move the piece
+        self.set(move.from, 0);
+        if move.promotion {
+            var promPiece = move.promotePiece;
+            if !isWhite { promPiece = -move.promotePiece; }
+            self.set(move.to, promPiece);
+        } else {
+            self.set(move.to, piece);
+        }
+
+        // Castling — move the rook too
+        if move.castleKing {
+            if isWhite {
+                self.set(63, 0);  self.set(61, config.ROOK);   // h1 rook → f1
+            } else {
+                self.set(7, 0);   self.set(5, -config.ROOK);   // h8 rook → f8
+            }
+        }
+        if move.castleQueen {
+            if isWhite {
+                self.set(56, 0);  self.set(59, config.ROOK);   // a1 rook → d1
+            } else {
+                self.set(0, 0);   self.set(3, -config.ROOK);   // a8 rook → d8
+            }
+        }
+
+        // Set new en passant file if double pawn push
+        if pieceType == config.PAWN {
+            var rankDiff = (move.from / 8) - (move.to / 8);
+            if rankDiff == 2 || rankDiff == -2 {
+                self.enPassantFile = move.from % 8;
+                self.hashVal = self.hashVal ^ self.zkEP.get(self.enPassantFile);
+            }
+        }
+
+        // Update castling rights
+        if pieceType == config.KING {
+            if isWhite { self.castleWK = false; self.castleWQ = false; }
+            else        { self.castleBK = false; self.castleBQ = false; }
+        }
+        if move.from == 56 || move.to == 56 { self.castleWQ = false; }
+        if move.from == 63 || move.to == 63 { self.castleWK = false; }
+        if move.from == 0  || move.to == 0  { self.castleBQ = false; }
+        if move.from == 7  || move.to == 7  { self.castleBK = false; }
+
+        // Re-hash castle rights
+        if self.castleWK { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WK); }
+        if self.castleWQ { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WQ); }
+        if self.castleBK { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BK); }
+        if self.castleBQ { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BQ); }
+
+        // Update clocks
+        if pieceType == config.PAWN || move.captured > 0 {
+            self.halfMoveClock = 0;
+        } else {
+            self.halfMoveClock = self.halfMoveClock + 1;
+        }
+        if !isWhite { self.fullMoveNumber = self.fullMoveNumber + 1; }
+
+        // Flip side to move
+        self.whiteToMove = !self.whiteToMove;
+        self.hashVal = self.hashVal ^ self.zkSide.get(0);
+
+        return undo;
+    }
+
+    // -----------------------------------------------------------------------
+    // Undo a move using saved UndoInfo
+    // -----------------------------------------------------------------------
+    expose func unmakeMove(move: Move, undo: UndoInfo) {
+        // Flip side back
+        self.whiteToMove = !self.whiteToMove;
+        var isWhite = self.whiteToMove;
+
+        var piece = self.get(move.to);
+        var origPiece = piece;
+        if move.promotion {
+            if isWhite { origPiece = config.PAWN; } else { origPiece = -config.PAWN; }
+        }
+
+        // Restore piece to from-square
+        self.set(move.from, origPiece);
+        self.set(move.to, 0);
+
+        // Restore captured piece
+        if move.captured > 0 {
+            var capPiece = move.captured;
+            if isWhite { capPiece = -move.captured; }
+            self.set(undo.capturedSq, capPiece);
+        }
+
+        // Restore castling rook
+        if move.castleKing {
+            if isWhite {
+                self.set(61, 0);  self.set(63, config.ROOK);
+            } else {
+                self.set(5, 0);   self.set(7, -config.ROOK);
+            }
+        }
+        if move.castleQueen {
+            if isWhite {
+                self.set(59, 0);  self.set(56, config.ROOK);
+            } else {
+                self.set(3, 0);   self.set(0, -config.ROOK);
+            }
+        }
+
+        // Restore saved state
+        self.enPassantFile = undo.enPassantFile;
+        self.castleWK = undo.castleWK;
+        self.castleWQ = undo.castleWQ;
+        self.castleBK = undo.castleBK;
+        self.castleBQ = undo.castleBQ;
+        self.halfMoveClock = undo.halfMoveClock;
+        if isWhite { self.fullMoveNumber = self.fullMoveNumber - 1; }
+
+        // Recompute hash from scratch (simpler than tracking all changes in reverse)
+        self.recomputeHash();
+    }
+
+    // -----------------------------------------------------------------------
+    // Recompute Zobrist hash from current board state
+    // Used after unmakeMove for correctness
+    // -----------------------------------------------------------------------
+    hide func recomputeHash() {
+        self.hashVal = 0;
+        for i in 0..64 {
+            var p = self.sq.get(i);
+            if p != 0 {
+                self.hashVal = self.hashVal ^ self.zkPieces.get(i * 12 + self.pieceSlot(p));
+            }
+        }
+        if !self.whiteToMove { self.hashVal = self.hashVal ^ self.zkSide.get(0); }
+        if self.castleWK { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WK); }
+        if self.castleWQ { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_WQ); }
+        if self.castleBK { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BK); }
+        if self.castleBQ { self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BQ); }
+        if self.enPassantFile >= 0 {
+            self.hashVal = self.hashVal ^ self.zkEP.get(self.enPassantFile);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: extract piece type (always positive)
+    // -----------------------------------------------------------------------
+    expose func pieceType(piece: Integer) -> Integer {
+        if piece > 0 { return piece; }
+        return -piece;
+    }
+
+    expose func isWhitePiece(piece: Integer) -> Boolean {
+        return piece > 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // Find a king's square
+    // -----------------------------------------------------------------------
+    expose func kingSquare(white: Boolean) -> Integer {
+        var target = config.KING;
+        if !white { target = -config.KING; }
+        for i in 0..64 {
+            if self.sq.get(i) == target { return i; }
+        }
+        return -1;
+    }
+
+    // -----------------------------------------------------------------------
+    // Copy the board (deep copy for AI search)
+    // -----------------------------------------------------------------------
+    expose func copy() -> Board {
+        var b = new Board();
+        b.init();
+        b.sq = [];
+        for i in 0..64 {
+            b.sq.add(self.sq.get(i));
+        }
+        b.whiteToMove   = self.whiteToMove;
+        b.enPassantFile = self.enPassantFile;
+        b.castleWK      = self.castleWK;
+        b.castleWQ      = self.castleWQ;
+        b.castleBK      = self.castleBK;
+        b.castleBQ      = self.castleBQ;
+        b.halfMoveClock = self.halfMoveClock;
+        b.fullMoveNumber = self.fullMoveNumber;
+        b.hashVal       = self.hashVal;
+        b.zkPieces      = self.zkPieces;
+        b.zkSide        = self.zkSide;
+        b.zkCastle      = self.zkCastle;
+        b.zkEP          = self.zkEP;
+        return b;
+    }
+}

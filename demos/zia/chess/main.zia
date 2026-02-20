@@ -1,0 +1,12 @@
+module main;
+
+bind "./game";
+
+// Entry point for the Viper Chess game.
+// Creates the ChessGame entity and starts the game loop.
+
+func start() {
+    var g = new ChessGame();
+    g.init();
+    g.run();
+}

@@ -67,6 +67,12 @@ TypeRef Sema::analyzeExpr(Expr *expr)
         case ExprKind::Ternary:
             result = analyzeTernary(static_cast<TernaryExpr *>(expr));
             break;
+        case ExprKind::If:
+            result = analyzeIfExpr(static_cast<IfExpr *>(expr));
+            break;
+        case ExprKind::StructLiteral:
+            result = analyzeStructLiteral(static_cast<StructLiteralExpr *>(expr));
+            break;
         case ExprKind::Call:
             result = analyzeCall(static_cast<CallExpr *>(expr));
             break;

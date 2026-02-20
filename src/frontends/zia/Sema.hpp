@@ -775,6 +775,14 @@ class Sema
     /// @return The common type of the branches.
     TypeRef analyzeTernary(TernaryExpr *expr);
 
+    /// @brief Analyze an if-expression (`if cond { then } else { else }`).
+    /// @return The common type of the branches.
+    TypeRef analyzeIfExpr(IfExpr *expr);
+
+    /// @brief Analyze a struct-literal expression (`TypeName { field = val, ... }`).
+    /// @return The value type named by the struct literal.
+    TypeRef analyzeStructLiteral(StructLiteralExpr *expr);
+
     /// @brief Analyze a function/method call expression.
     /// @return The return type of the called function.
     TypeRef analyzeCall(CallExpr *expr);

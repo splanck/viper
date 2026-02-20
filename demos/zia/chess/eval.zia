@@ -1,0 +1,183 @@
+module eval;
+
+bind "./config";
+bind "./board";
+
+// ============================================================================
+// Evaluator — material balance + piece-square tables.
+//
+// Score is from White's perspective (positive = White winning).
+// Each piece earns its material value plus a positional bonus from PST tables.
+//
+// PSTs use standard values from well-known chess engine literature.
+// White piece ranks are mirrored: index = (7 - rank) * 8 + file for white,
+// index = rank * 8 + file for black.
+// ============================================================================
+entity Evaluator {
+    // Piece-square tables (64 integers each, in display order: rank 0 = top)
+    hide List[Integer] pstPawn;
+    hide List[Integer] pstKnight;
+    hide List[Integer] pstBishop;
+    hide List[Integer] pstRook;
+    hide List[Integer] pstQueen;
+    hide List[Integer] pstKingMid;
+    hide List[Integer] pstKingEnd;
+
+    expose func init() {
+        initPSTs();
+    }
+
+    // -------------------------------------------------------------------------
+    // Main evaluation entry point.
+    // Returns score in centipawns from White's perspective.
+    // -------------------------------------------------------------------------
+    expose func evaluate(b: Board) -> Integer {
+        var score = 0;
+        for sq in 0..64 {
+            var piece = b.get(sq);
+            if piece == 0 { continue; }
+
+            var type_ = b.pieceType(piece);
+            var white = b.isWhitePiece(piece);
+
+            // Material value
+            var mat = materialValue(type_);
+
+            // PST index: white uses mirrored rank, black uses natural rank
+            var pstIdx = sq;
+            if white {
+                var rank = sq / 8;
+                var file = sq % 8;
+                pstIdx = (7 - rank) * 8 + file;
+            }
+
+            var positional = pstBonus(type_, pstIdx);
+
+            if white {
+                score = score + mat + positional;
+            } else {
+                score = score - mat - positional;
+            }
+        }
+        return score;
+    }
+
+    expose func materialValue(type_: Integer) -> Integer {
+        if type_ == PAWN   { return VAL_PAWN;   }
+        if type_ == KNIGHT { return VAL_KNIGHT; }
+        if type_ == BISHOP { return VAL_BISHOP; }
+        if type_ == ROOK   { return VAL_ROOK;   }
+        if type_ == QUEEN  { return VAL_QUEEN;  }
+        if type_ == KING   { return VAL_KING;   }
+        return 0;
+    }
+
+    hide func pstBonus(type_: Integer, idx: Integer) -> Integer {
+        if type_ == PAWN   { return pstPawn.get(idx);   }
+        if type_ == KNIGHT { return pstKnight.get(idx); }
+        if type_ == BISHOP { return pstBishop.get(idx); }
+        if type_ == ROOK   { return pstRook.get(idx);   }
+        if type_ == QUEEN  { return pstQueen.get(idx);  }
+        if type_ == KING   { return pstKingMid.get(idx);}
+        return 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Piece-square table initialization.
+    //
+    // Values in centipawns added to (or subtracted from) material score.
+    // Positive = square is good for that piece color.
+    // -------------------------------------------------------------------------
+    hide func initPSTs() {
+        // --- PAWN ---
+        // Encourage center pawns to advance; penalize edge pawns.
+        pstPawn = [
+             0,  0,  0,  0,  0,  0,  0,  0,
+            50, 50, 50, 50, 50, 50, 50, 50,
+            10, 10, 20, 30, 30, 20, 10, 10,
+             5,  5, 10, 25, 25, 10,  5,  5,
+             0,  0,  0, 20, 20,  0,  0,  0,
+             5, -5,-10,  0,  0,-10, -5,  5,
+             5, 10, 10,-20,-20, 10, 10,  5,
+             0,  0,  0,  0,  0,  0,  0,  0
+        ];
+
+        // --- KNIGHT ---
+        // Penalize rim; reward center and forward posts.
+        pstKnight = [
+            -50,-40,-30,-30,-30,-30,-40,-50,
+            -40,-20,  0,  0,  0,  0,-20,-40,
+            -30,  0, 10, 15, 15, 10,  0,-30,
+            -30,  5, 15, 20, 20, 15,  5,-30,
+            -30,  0, 15, 20, 20, 15,  0,-30,
+            -30,  5, 10, 15, 15, 10,  5,-30,
+            -40,-20,  0,  5,  5,  0,-20,-40,
+            -50,-40,-30,-30,-30,-30,-40,-50
+        ];
+
+        // --- BISHOP ---
+        // Reward diagonals; penalize corners and edges.
+        pstBishop = [
+            -20,-10,-10,-10,-10,-10,-10,-20,
+            -10,  0,  0,  0,  0,  0,  0,-10,
+            -10,  0,  5, 10, 10,  5,  0,-10,
+            -10,  5,  5, 10, 10,  5,  5,-10,
+            -10,  0, 10, 10, 10, 10,  0,-10,
+            -10, 10, 10, 10, 10, 10, 10,-10,
+            -10,  5,  0,  0,  0,  0,  5,-10,
+            -20,-10,-10,-10,-10,-10,-10,-20
+        ];
+
+        // --- ROOK ---
+        // Reward 7th rank (enemy back rank), open files.
+        pstRook = [
+             0,  0,  0,  0,  0,  0,  0,  0,
+             5, 10, 10, 10, 10, 10, 10,  5,
+            -5,  0,  0,  0,  0,  0,  0, -5,
+            -5,  0,  0,  0,  0,  0,  0, -5,
+            -5,  0,  0,  0,  0,  0,  0, -5,
+            -5,  0,  0,  0,  0,  0,  0, -5,
+            -5,  0,  0,  0,  0,  0,  0, -5,
+             0,  0,  0,  5,  5,  0,  0,  0
+        ];
+
+        // --- QUEEN ---
+        // Slight penalty for early queen development.
+        pstQueen = [
+            -20,-10,-10, -5, -5,-10,-10,-20,
+            -10,  0,  0,  0,  0,  0,  0,-10,
+            -10,  0,  5,  5,  5,  5,  0,-10,
+             -5,  0,  5,  5,  5,  5,  0, -5,
+              0,  0,  5,  5,  5,  5,  0, -5,
+            -10,  5,  5,  5,  5,  5,  0,-10,
+            -10,  0,  5,  0,  0,  0,  0,-10,
+            -20,-10,-10, -5, -5,-10,-10,-20
+        ];
+
+        // --- KING MIDDLEGAME ---
+        // King seeks safety behind pawns; penalize center.
+        pstKingMid = [
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -20,-30,-30,-40,-40,-30,-30,-20,
+            -10,-20,-20,-20,-20,-20,-20,-10,
+             20, 20,  0,  0,  0,  0, 20, 20,
+             20, 30, 10,  0,  0, 10, 30, 20
+        ];
+
+        // --- KING ENDGAME ---
+        // King should be active in the endgame.
+        pstKingEnd = [
+            -50,-40,-30,-20,-20,-30,-40,-50,
+            -30,-20,-10,  0,  0,-10,-20,-30,
+            -30,-10, 20, 30, 30, 20,-10,-30,
+            -30,-10, 30, 40, 40, 30,-10,-30,
+            -30,-10, 30, 40, 40, 30,-10,-30,
+            -30,-10, 20, 30, 30, 20,-10,-30,
+            -30,-30,  0,  0,  0,  0,-30,-30,
+            -50,-30,-30,-30,-30,-30,-30,-50
+        ];
+    }
+}

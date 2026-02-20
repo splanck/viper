@@ -742,6 +742,10 @@ class Lowerer
     /// @return LowerResult with the selected branch value.
     LowerResult lowerTernary(TernaryExpr *expr);
 
+    /// @brief Lower an if-expression (`if cond { then } else { else }`).
+    /// @return LowerResult with the selected branch value.
+    LowerResult lowerIfExpr(IfExpr *expr);
+
     /// @brief Lower a call expression.
     /// @return LowerResult with the call result.
     LowerResult lowerCall(CallExpr *expr);
@@ -764,6 +768,10 @@ class Lowerer
     /// @brief Lower a new expression (object creation).
     /// @return LowerResult with pointer to new object.
     LowerResult lowerNew(NewExpr *expr);
+
+    /// @brief Lower a struct-literal expression (`TypeName { field = val, ... }`).
+    /// @return LowerResult with pointer to the initialized value type on stack.
+    LowerResult lowerStructLiteral(StructLiteralExpr *expr);
 
     /// @brief Lower a null coalesce expression.
     /// @return LowerResult with the coalesced value.

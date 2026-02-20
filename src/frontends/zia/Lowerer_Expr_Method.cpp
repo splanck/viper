@@ -713,4 +713,94 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
     return LowerResult{ptr, Type(Type::Kind::Ptr)};
 }
 
+//=============================================================================
+// Struct-Literal Lowering (ZIA-001)
+//=============================================================================
+
+/// @brief Lower a struct-literal expression: `TypeName { field = val, ... }`.
+/// @details Reorders the named fields by declaration order, then delegates to
+/// the same alloca+init logic used by lowerValueTypeConstruction.
+LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
+{
+    const std::string &typeName = expr->typeName;
+    const ValueTypeInfo *infoPtr = getOrCreateValueTypeInfo(typeName);
+    if (!infoPtr)
+    {
+        // Fallback: treat as a zero-initialised value (unreachable after sema checks)
+        return {Value::constInt(0), Type(Type::Kind::Ptr)};
+    }
+    const ValueTypeInfo &info = *infoPtr;
+
+    // Build a map from field name → lowered value for quick lookup.
+    std::unordered_map<std::string, Value> fieldValues;
+    for (auto &f : expr->fields)
+    {
+        auto result = lowerExpr(f.value.get());
+        fieldValues[f.name] = result.value;
+    }
+
+    // Build arg list in field declaration order (matches init parameter order).
+    std::vector<Value> argValues;
+    argValues.reserve(info.fields.size());
+    for (const auto &field : info.fields)
+    {
+        auto it = fieldValues.find(field.name);
+        if (it != fieldValues.end())
+        {
+            argValues.push_back(it->second);
+        }
+        else
+        {
+            // Missing field → zero-initialise
+            argValues.push_back(Value::constInt(0));
+        }
+    }
+
+    // Allocate stack space for the value.
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value ptr = Value::temp(allocaId);
+
+    // If an explicit init method exists, call it (same as lowerValueTypeConstruction).
+    auto initIt = info.methodMap.find("init");
+    if (initIt != info.methodMap.end())
+    {
+        std::string initName = typeName + ".init";
+        std::vector<Value> initArgs;
+        initArgs.push_back(ptr); // self is first argument
+        for (const auto &argVal : argValues)
+            initArgs.push_back(argVal);
+        emitCall(initName, initArgs);
+    }
+    else
+    {
+        // No init method — store args directly into fields by declaration order.
+        for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
+        {
+            const FieldLayout &field = info.fields[i];
+            unsigned gepId = nextTempId();
+            il::core::Instr gepInstr;
+            gepInstr.result = gepId;
+            gepInstr.op = Opcode::GEP;
+            gepInstr.type = Type(Type::Kind::Ptr);
+            gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+            Value fieldAddr = Value::temp(gepId);
+
+            il::core::Instr storeInstr;
+            storeInstr.op = Opcode::Store;
+            storeInstr.type = mapType(field.type);
+            storeInstr.operands = {fieldAddr, argValues[i]};
+            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        }
+    }
+
+    return {ptr, Type(Type::Kind::Ptr)};
+}
+
 } // namespace il::frontends::zia
