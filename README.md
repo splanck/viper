@@ -126,9 +126,15 @@ Native binaries are output to `demos/bin/`. See the **[demos/](demos/README.md)*
 
 | Demo | Description |
 |------|-------------|
-| `demos/zia/paint` | Full-featured paint application with drawing tools and color picker |
+| `demos/zia/viperide` | Full-featured code editor with tabs, minimap, command palette, and integrated build system |
+| `demos/zia/paint` | Paint application with drawing tools, shapes, and color picker |
 | `demos/zia/pacman` | Pac-Man clone with ghost AI, animations, and tile-based rendering |
 | `demos/zia/sqldb` | SQL database engine with REPL, query execution, and persistent storage |
+| `demos/zia/webserver` | Multi-threaded HTTP server with routing and request logging |
+| `demos/zia/telnet` | Telnet client and server with interactive shell |
+| `demos/zia/gfx_centipede` | Centipede arcade game using the Canvas graphics API |
+| `demos/zia/vedit` | Lightweight GUI text editor |
+| `demos/zia/varc` | Archive utility with DEFLATE compression and AES encryption |
 
 ### BASIC Demos
 
