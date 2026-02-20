@@ -28,21 +28,17 @@ Native binaries land in `demos/bin/`.
 
 ---
 
-### ViperIDE — `demos/zia/viperide/`
+### ViperIDE — `demos/zia/viperide/` *(in development)*
 
-A full-featured code editor built entirely in Zia, demonstrating the complete Viper GUI stack.
+A simple code editor built entirely in Zia, demonstrating the Viper GUI stack. Still early — expect rough edges.
 
-**Features:**
+**Current features:**
 - Multi-tab document management with modified-file indicators
-- Syntax-highlighted code editor with line numbers
-- Integrated find/replace bar with match count and navigation
-- Minimap for quick file navigation
-- Breadcrumb path display
-- Command palette for quick actions
-- Integrated build system — compile and run Zia/BASIC files directly from the IDE
-- File open/save dialogs with native OS integration
-- Status bar with cursor position and language mode
-- Toast notifications for build results
+- Code editor with find/replace and match navigation
+- Minimap, breadcrumb path display, and command palette
+- Integrated build system — compile and run Zia/BASIC files from the editor
+- File open/save via native OS dialogs
+- Status bar and toast notifications for build results
 
 ```bash
 ./build/src/tools/viper/viper run demos/zia/viperide/
