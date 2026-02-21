@@ -459,6 +459,22 @@ void vgfx_set_title(vgfx_window_t window, const char *title)
     vgfx_platform_set_title(window, actual_title);
 }
 
+/// @brief Register a callback invoked immediately on window resize.
+/// @details On macOS the Cocoa live-resize modal loop blocks the main thread;
+///          calling the callback from windowDidResize: keeps the window painted
+///          during the drag.  On other platforms the callback is stored but
+///          never invoked from platform code (resize events arrive via poll).
+void vgfx_set_resize_callback(vgfx_window_t window,
+                               void (*callback)(void *userdata, int32_t w, int32_t h),
+                               void *userdata)
+{
+    if (!window)
+        return;
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    win->on_resize = callback;
+    win->on_resize_userdata = userdata;
+}
+
 /// @brief Set the window to fullscreen or windowed mode.
 /// @details Toggles between fullscreen and windowed modes. The framebuffer
 ///          may be resized when switching modes.

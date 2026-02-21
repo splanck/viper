@@ -228,6 +228,8 @@ extern "C"
         // Callbacks
         vg_text_change_callback_t on_change;
         void *on_change_data;
+        vg_text_change_callback_t on_commit; ///< Called when Enter is pressed (single-line)
+        void *on_commit_data;
 
         // Internal state
         float cursor_blink_time; ///< Cursor blink timer
@@ -259,6 +261,14 @@ extern "C"
     /// @param callback Change handler function
     /// @param user_data User data passed to callback
     void vg_textinput_set_on_change(vg_textinput_t *input,
+                                    vg_text_change_callback_t callback,
+                                    void *user_data);
+
+    /// @brief Set commit callback (called when Enter is pressed in single-line mode)
+    /// @param input Text input widget
+    /// @param callback Commit handler function
+    /// @param user_data User data passed to callback
+    void vg_textinput_set_on_commit(vg_textinput_t *input,
                                     vg_text_change_callback_t callback,
                                     void *user_data);
 

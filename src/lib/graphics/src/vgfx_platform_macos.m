@@ -394,6 +394,15 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
                           .time_ms = vgfx_platform_now_ms(),
                           .data.resize = {.width = new_width, .height = new_height}};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
+
+    /* Re-render immediately to avoid black window during Cocoa live-resize.
+     * While the user drags the resize handle, Cocoa runs a modal loop that
+     * blocks our main thread.  The registered callback (if any) calls
+     * rt_gui_app_render, keeping the window content visible. */
+    if (_vgfxWindow->on_resize)
+    {
+        _vgfxWindow->on_resize(_vgfxWindow->on_resize_userdata, new_width, new_height);
+    }
 }
 
 /// @brief Handle window gaining focus.

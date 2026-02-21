@@ -15,6 +15,24 @@
 // Global pointer to the current app for widget constructors to access the default font.
 rt_gui_app_t *s_current_app = NULL;
 
+// Active modal dialog (NULL = none). Set by rt_gui_set_active_dialog().
+// Rendered on top of everything else during rt_gui_app_render().
+static vg_dialog_t *g_active_dialog = NULL;
+
+void rt_gui_set_active_dialog(void *dlg)
+{
+    g_active_dialog = (vg_dialog_t *)dlg;
+}
+
+// Resize callback: called from the platform's windowDidResize: (macOS) to
+// keep the window repainted during the Cocoa live-resize modal loop.
+static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h)
+{
+    (void)w;
+    (void)h;
+    rt_gui_app_render(userdata);
+}
+
 void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 {
     rt_gui_app_t *app = (rt_gui_app_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_app_t));
@@ -38,6 +56,11 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     {
         return NULL;
     }
+
+    // Register resize callback so the window repaints during macOS live-resize.
+    // Without this, the Cocoa modal resize loop blocks our main thread and
+    // the framebuffer stays black until the drag ends.
+    vgfx_set_resize_callback(app->window, rt_gui_app_resize_render, app);
 
     // Create root container
     app->root = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -179,6 +202,18 @@ void rt_gui_app_poll(void *app_ptr)
             {
                 shortcut_matched =
                     rt_shortcuts_check_key(event.data.key.key, event.data.key.modifiers);
+            }
+
+            // If a modal dialog is open, route all events to it and skip the
+            // normal widget tree dispatch (dialog is modal).
+            if (g_active_dialog && g_active_dialog->is_open)
+            {
+                if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->handle_event)
+                {
+                    g_active_dialog->base.vtable->handle_event(&g_active_dialog->base,
+                                                               &gui_event);
+                }
+                continue;
             }
 
             // Dispatch all events to widget tree (handles focus, keyboard, etc.)
@@ -568,6 +603,43 @@ void rt_gui_app_render(void *app_ptr)
         // Restore relative coords
         capture->x = rel_x;
         capture->y = rel_y;
+    }
+
+    // Paint active modal dialog on top of everything else.
+    if (g_active_dialog)
+    {
+        if (g_active_dialog->is_open)
+        {
+            int32_t dlg_win_w = 0, dlg_win_h = 0;
+            vgfx_get_size(app->window, &dlg_win_w, &dlg_win_h);
+
+            // Measure on first render so we know the dialog size
+            if (g_active_dialog->base.width < 1.0f)
+            {
+                vg_widget_measure(&g_active_dialog->base,
+                                  (float)dlg_win_w, (float)dlg_win_h);
+            }
+            float dw = g_active_dialog->base.width;
+            float dh = g_active_dialog->base.height;
+            vg_widget_arrange(&g_active_dialog->base,
+                              (dlg_win_w - dw) / 2.0f, (dlg_win_h - dh) / 2.0f, dw, dh);
+
+            // Dim the content behind the dialog
+            vgfx_fill_rect(app->window, 0, 0, dlg_win_w, dlg_win_h, 0x80000000);
+
+            // Paint the dialog
+            if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->paint)
+            {
+                g_active_dialog->base.vtable->paint(&g_active_dialog->base,
+                                                     (void *)app->window);
+            }
+        }
+        else
+        {
+            // Dialog was closed (button clicked) — free and clear
+            vg_widget_destroy(&g_active_dialog->base);
+            g_active_dialog = NULL;
+        }
     }
 
     // Present

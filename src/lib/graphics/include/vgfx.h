@@ -368,6 +368,20 @@ extern "C"
     /// @param title New window title (UTF-8 string; NULL restores default)
     void vgfx_set_title(vgfx_window_t window, const char *title);
 
+    /// @brief Register a callback invoked immediately on window resize.
+    /// @details On macOS, the Cocoa live-resize modal loop blocks the main
+    ///          thread while the user drags the resize handle.  Registering a
+    ///          callback here allows the application to re-render on each resize
+    ///          notification, preventing the window from going blank.
+    ///          On other platforms the callback is stored but never called
+    ///          (resize events arrive via the normal poll loop instead).
+    /// @param window   Window handle
+    /// @param callback Function called with (userdata, new_width, new_height)
+    /// @param userdata Opaque pointer passed back to the callback
+    void vgfx_set_resize_callback(vgfx_window_t window,
+                                   void (*callback)(void *userdata, int32_t w, int32_t h),
+                                   void *userdata);
+
     /// @brief Set the window to fullscreen or windowed mode.
     /// @details Toggles the window between fullscreen and windowed modes. In
     ///          fullscreen mode, the window covers the entire screen with no

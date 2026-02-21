@@ -114,6 +114,33 @@ static void free_line(vg_code_line_t *line)
     }
     line->length = 0;
     line->capacity = 0;
+    line->colors_capacity = 0;
+}
+
+// Ensure the colors array for line_idx is allocated and call the syntax highlighter.
+// Safe to call every frame — realloc only when capacity is insufficient.
+static void highlight_line(vg_codeeditor_t *editor, size_t line_idx)
+{
+    if (!editor->syntax_highlighter || line_idx >= (size_t)editor->line_count)
+        return;
+
+    vg_code_line_t *line = &editor->lines[line_idx];
+    if (line->length == 0)
+        return;
+
+    // Grow the colors buffer if needed
+    if (line->colors_capacity < line->length)
+    {
+        size_t new_cap = line->length + 16;
+        uint32_t *nc = (uint32_t *)realloc(line->colors, new_cap * sizeof(uint32_t));
+        if (!nc)
+            return;
+        line->colors = nc;
+        line->colors_capacity = new_cap;
+    }
+
+    editor->syntax_highlighter(
+        (vg_widget_t *)editor, (int)line_idx, line->text, line->colors, editor->syntax_data);
 }
 
 static void update_gutter_width(vg_codeeditor_t *editor)
@@ -624,6 +651,9 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
             float text_x = content_x - editor->scroll_x;
             float text_y = line_y + font_metrics.ascent;
 
+            // Run syntax highlighter (no-op if none registered or colors up-to-date)
+            highlight_line(editor, i);
+
             // Apply syntax highlighting colors if available
             if (editor->lines[i].colors)
             {
@@ -845,6 +875,41 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
 
     switch (event->type)
     {
+        case VG_EVENT_MOUSE_UP:
+            if (editor->scrollbar_dragging)
+            {
+                editor->scrollbar_dragging = false;
+                widget->needs_paint = true;
+                return true;
+            }
+            break;
+
+        case VG_EVENT_MOUSE_MOVE:
+            if (editor->scrollbar_dragging)
+            {
+                float delta = event->mouse.y - editor->scrollbar_drag_offset;
+                float total_ch = editor->line_count * editor->line_height;
+                float vis_h = widget->height;
+                float scroll_range = total_ch - vis_h;
+                float thumb_h = vis_h * (vis_h / total_ch);
+                if (thumb_h < 20.0f)
+                    thumb_h = 20.0f;
+                float thumb_travel = vis_h - thumb_h;
+                if (thumb_travel > 0.0f && scroll_range > 0.0f)
+                {
+                    editor->scroll_y = editor->scrollbar_drag_start_scroll
+                                       + delta * (scroll_range / thumb_travel);
+                }
+                if (editor->scroll_y < 0.0f)
+                    editor->scroll_y = 0.0f;
+                float max_s = (editor->line_count - 1) * editor->line_height;
+                if (editor->scroll_y > max_s)
+                    editor->scroll_y = max_s;
+                widget->needs_paint = true;
+                return true;
+            }
+            break;
+
         case VG_EVENT_MOUSE_DOWN:
         {
             float scrollbar_width = 12.0f;
@@ -855,14 +920,38 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
             if (total_content_height > visible_height &&
                 event->mouse.x >= widget->width - scrollbar_width)
             {
-                // Click on scrollbar - jump to position
-                float click_ratio = event->mouse.y / visible_height;
+                // Calculate thumb position (matches paint code in codeeditor_paint)
+                float thumb_ratio = visible_height / total_content_height;
+                if (thumb_ratio > 1.0f)
+                    thumb_ratio = 1.0f;
+                float thumb_height = visible_height * thumb_ratio;
+                if (thumb_height < 20.0f)
+                    thumb_height = 20.0f;
                 float max_scroll = total_content_height - visible_height;
-                editor->scroll_y = click_ratio * max_scroll;
-                if (editor->scroll_y < 0)
-                    editor->scroll_y = 0;
-                if (editor->scroll_y > max_scroll)
-                    editor->scroll_y = max_scroll;
+                float scroll_ratio = (max_scroll > 0.0f) ? editor->scroll_y / max_scroll : 0.0f;
+                if (scroll_ratio < 0.0f)
+                    scroll_ratio = 0.0f;
+                if (scroll_ratio > 1.0f)
+                    scroll_ratio = 1.0f;
+                float thumb_y = scroll_ratio * (visible_height - thumb_height);
+
+                if (event->mouse.y >= thumb_y && event->mouse.y <= thumb_y + thumb_height)
+                {
+                    // Click on thumb — start drag
+                    editor->scrollbar_dragging = true;
+                    editor->scrollbar_drag_offset = event->mouse.y;
+                    editor->scrollbar_drag_start_scroll = editor->scroll_y;
+                }
+                else
+                {
+                    // Click on track — jump to position
+                    float click_ratio = event->mouse.y / visible_height;
+                    editor->scroll_y = click_ratio * max_scroll;
+                    if (editor->scroll_y < 0)
+                        editor->scroll_y = 0;
+                    if (editor->scroll_y > max_scroll)
+                        editor->scroll_y = max_scroll;
+                }
                 widget->needs_paint = true;
                 return true;
             }
@@ -1523,6 +1612,17 @@ void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
         return;
     editor->syntax_highlighter = callback;
     editor->syntax_data = user_data;
+    // Invalidate cached colors so the new highlighter runs on the next paint
+    for (int i = 0; i < editor->line_count; i++)
+    {
+        if (editor->lines[i].colors)
+        {
+            free(editor->lines[i].colors);
+            editor->lines[i].colors = NULL;
+            editor->lines[i].colors_capacity = 0;
+        }
+    }
+    editor->base.needs_paint = true;
 }
 
 // Internal helper: insert text at position without recording to history

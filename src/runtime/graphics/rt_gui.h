@@ -1836,6 +1836,12 @@ extern "C"
     /// @return 1 = OK, 0 = Cancel.
     int64_t rt_messagebox_confirm(rt_string title, rt_string message);
 
+    /// @brief Show a prompt dialog with a text input field.
+    /// @param title Dialog title.
+    /// @param message Prompt label shown above the input.
+    /// @return Text entered by the user, or empty string if cancelled.
+    rt_string rt_messagebox_prompt(rt_string title, rt_string message);
+
     /// @brief Create a custom message box.
     /// @param title Dialog title.
     /// @param message Dialog message.

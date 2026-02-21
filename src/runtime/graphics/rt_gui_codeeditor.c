@@ -16,13 +16,258 @@
 // CodeEditor Enhancements - Syntax Highlighting (Phase 4)
 //=============================================================================
 
+// VS Code dark-theme inspired palette (ARGB 0xAARRGGBB)
+#define SYN_COLOR_DEFAULT  0xFFD4D4D4u   // light grey
+#define SYN_COLOR_KEYWORD  0xFF569CD6u   // blue
+#define SYN_COLOR_TYPE     0xFF4EC9B0u   // teal
+#define SYN_COLOR_STRING   0xFFCE9178u   // orange
+#define SYN_COLOR_COMMENT  0xFF6A9955u   // green
+#define SYN_COLOR_NUMBER   0xFFB5CEA8u   // light green
+
+// Fill `n` colors with `color` starting at `colors[pos]`
+static void syn_fill(uint32_t *colors, size_t pos, size_t n, uint32_t color)
+{
+    for (size_t i = 0; i < n; i++)
+        colors[pos + i] = color;
+}
+
+// Check if character is an identifier start character
+static int syn_is_id_start(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+// Check if character is an identifier continuation character
+static int syn_is_id_cont(char c)
+{
+    return syn_is_id_start(c) || (c >= '0' && c <= '9');
+}
+
+// Case-insensitive string equality check for a fixed-length word
+static int syn_word_eq_ci(const char *a, const char *b, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+    {
+        char ca = (a[i] >= 'a' && a[i] <= 'z') ? a[i] - 32 : a[i];
+        char cb = (b[i] >= 'a' && b[i] <= 'z') ? b[i] - 32 : b[i];
+        if (ca != cb)
+            return 0;
+    }
+    return 1;
+}
+
+// Match `word` (length wlen) against a NULL-terminated keyword table (case-sensitive)
+static int syn_is_keyword(const char *word, size_t wlen, const char *const *table)
+{
+    for (int i = 0; table[i]; i++)
+    {
+        size_t klen = strlen(table[i]);
+        if (klen == wlen && memcmp(word, table[i], wlen) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+// Match `word` (length wlen) against a NULL-terminated keyword table (case-insensitive)
+static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *table)
+{
+    for (int i = 0; table[i]; i++)
+    {
+        size_t klen = strlen(table[i]);
+        if (klen == wlen && syn_word_eq_ci(word, table[i], wlen))
+            return 1;
+    }
+    return 0;
+}
+
+// ─── Zia language tokenizer ────────────────────────────────────────────────
+
+static const char *const zia_keywords[] = {
+    "func", "expose", "hide", "entity", "value", "var", "new",
+    "if", "else", "while", "for", "in", "return", "break", "continue", "do",
+    "and", "or", "not", "true", "false", "null", "module", "bind", "self",
+    NULL
+};
+
+static const char *const zia_types[] = {
+    "Integer", "Boolean", "String", "Number", "Byte",
+    "List", "Seq", "Map", "Set", "Stack", "Queue",
+    NULL
+};
+
+static void rt_zia_syntax_cb(vg_widget_t *editor,
+                              int line_num,
+                              const char *text,
+                              uint32_t *colors,
+                              void *user_data)
+{
+    (void)editor;
+    (void)line_num;
+    (void)user_data;
+
+    size_t len = strlen(text);
+    size_t i   = 0;
+
+    while (i < len)
+    {
+        // Line comment
+        if (text[i] == '/' && i + 1 < len && text[i + 1] == '/')
+        {
+            syn_fill(colors, i, len - i, SYN_COLOR_COMMENT);
+            return;
+        }
+
+        // String literal
+        if (text[i] == '"')
+        {
+            size_t start = i++;
+            while (i < len && text[i] != '"')
+            {
+                if (text[i] == '\\')
+                    i++; // skip escaped character
+                i++;
+            }
+            if (i < len)
+                i++; // closing quote
+            syn_fill(colors, start, i - start, SYN_COLOR_STRING);
+            continue;
+        }
+
+        // Number literal
+        if (text[i] >= '0' && text[i] <= '9')
+        {
+            size_t start = i;
+            while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
+                i++;
+            syn_fill(colors, start, i - start, SYN_COLOR_NUMBER);
+            continue;
+        }
+
+        // Identifier or keyword
+        if (syn_is_id_start(text[i]))
+        {
+            size_t start = i;
+            while (i < len && syn_is_id_cont(text[i]))
+                i++;
+            size_t wlen = i - start;
+            uint32_t color = SYN_COLOR_DEFAULT;
+            if (syn_is_keyword(text + start, wlen, zia_keywords))
+                color = SYN_COLOR_KEYWORD;
+            else if (syn_is_keyword(text + start, wlen, zia_types))
+                color = SYN_COLOR_TYPE;
+            syn_fill(colors, start, wlen, color);
+            continue;
+        }
+
+        // Default (operators, punctuation)
+        colors[i++] = SYN_COLOR_DEFAULT;
+    }
+}
+
+// ─── Viper BASIC language tokenizer ───────────────────────────────────────
+
+static const char *const basic_keywords[] = {
+    "DIM", "LET", "IF", "THEN", "ELSE", "ENDIF", "FOR", "NEXT", "TO", "STEP",
+    "WHILE", "WEND", "DO", "LOOP", "UNTIL", "GOSUB", "RETURN", "PRINT",
+    "INPUT", "GOTO", "SUB", "END", "FUNCTION", "CALL",
+    "TRUE", "FALSE", "AND", "OR", "NOT", "MOD",
+    NULL
+};
+
+static void rt_basic_syntax_cb(vg_widget_t *editor,
+                                int line_num,
+                                const char *text,
+                                uint32_t *colors,
+                                void *user_data)
+{
+    (void)editor;
+    (void)line_num;
+    (void)user_data;
+
+    size_t len = strlen(text);
+    size_t i   = 0;
+
+    // Skip leading whitespace to detect REM comments
+    size_t first_word_start = 0;
+    while (first_word_start < len && text[first_word_start] == ' ')
+        first_word_start++;
+
+    while (i < len)
+    {
+        // Single-quote comment
+        if (text[i] == '\'')
+        {
+            syn_fill(colors, i, len - i, SYN_COLOR_COMMENT);
+            return;
+        }
+
+        // String literal
+        if (text[i] == '"')
+        {
+            size_t start = i++;
+            while (i < len && text[i] != '"')
+                i++;
+            if (i < len)
+                i++;
+            syn_fill(colors, start, i - start, SYN_COLOR_STRING);
+            continue;
+        }
+
+        // Number literal
+        if (text[i] >= '0' && text[i] <= '9')
+        {
+            size_t start = i;
+            while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
+                i++;
+            syn_fill(colors, start, i - start, SYN_COLOR_NUMBER);
+            continue;
+        }
+
+        // Identifier or keyword (case-insensitive for BASIC)
+        if (syn_is_id_start(text[i]))
+        {
+            size_t start = i;
+            while (i < len && syn_is_id_cont(text[i]))
+                i++;
+            size_t wlen = i - start;
+
+            // REM comment: rest of line is a comment
+            if (wlen == 3 && syn_word_eq_ci(text + start, "REM", 3))
+            {
+                syn_fill(colors, start, len - start, SYN_COLOR_COMMENT);
+                return;
+            }
+
+            uint32_t color = SYN_COLOR_DEFAULT;
+            if (syn_is_keyword_ci(text + start, wlen, basic_keywords))
+                color = SYN_COLOR_KEYWORD;
+            syn_fill(colors, start, wlen, color);
+            continue;
+        }
+
+        // Default
+        colors[i++] = SYN_COLOR_DEFAULT;
+    }
+}
+
+// ─── Public: set language ─────────────────────────────────────────────────
+
 void rt_codeeditor_set_language(void *editor, rt_string language)
 {
     if (!editor)
         return;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     char *clang = rt_string_to_cstr(language);
-    // Store language in editor state (would need vg_codeeditor_set_language)
-    // Stub for now - the actual implementation would set up syntax rules
+    if (!clang)
+        return;
+
+    if (strcmp(clang, "zia") == 0)
+        vg_codeeditor_set_syntax(ce, rt_zia_syntax_cb, NULL);
+    else if (strcmp(clang, "basic") == 0)
+        vg_codeeditor_set_syntax(ce, rt_basic_syntax_cb, NULL);
+    else
+        vg_codeeditor_set_syntax(ce, NULL, NULL); // plain text
+
     free(clang);
 }
 
@@ -439,8 +684,7 @@ int64_t rt_messagebox_info(rt_string title, rt_string message)
     if (!dlg)
         return 0;
     vg_dialog_show(dlg);
-    // In a real implementation, we'd need to run a modal loop
-    // For now, just return 0 (OK button)
+    rt_gui_set_active_dialog(dlg);
     return 0;
 }
 
@@ -457,6 +701,7 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message)
     if (!dlg)
         return 0;
     vg_dialog_show(dlg);
+    rt_gui_set_active_dialog(dlg);
     return 0;
 }
 
@@ -472,6 +717,7 @@ int64_t rt_messagebox_error(rt_string title, rt_string message)
     if (!dlg)
         return 0;
     vg_dialog_show(dlg);
+    rt_gui_set_active_dialog(dlg);
     return 0;
 }
 
@@ -507,6 +753,98 @@ int64_t rt_messagebox_confirm(rt_string title, rt_string message)
     vg_dialog_show(dlg);
     // Return 1 for OK, 0 for Cancel - would need modal loop for real result
     return 1;
+}
+
+// Prompt commit callback data
+typedef struct
+{
+    vg_dialog_t *dialog;
+} rt_prompt_commit_data_t;
+
+static void prompt_on_commit(vg_widget_t *w, const char *text, void *user_data)
+{
+    (void)w;
+    (void)text;
+    rt_prompt_commit_data_t *d = (rt_prompt_commit_data_t *)user_data;
+    if (d && d->dialog)
+        vg_dialog_close(d->dialog, VG_DIALOG_RESULT_OK);
+}
+
+rt_string rt_messagebox_prompt(rt_string title, rt_string message)
+{
+    if (!s_current_app)
+        return rt_string_from_bytes("", 0);
+
+    char *ctitle = rt_string_to_cstr(title);
+    char *cmsg   = rt_string_to_cstr(message);
+
+    vg_dialog_t *dlg = vg_dialog_create(ctitle);
+    if (ctitle)
+        free(ctitle);
+    if (!dlg)
+    {
+        if (cmsg)
+            free(cmsg);
+        return rt_string_from_bytes("", 0);
+    }
+
+    // Show the prompt message above the text input
+    if (cmsg)
+    {
+        vg_dialog_set_message(dlg, cmsg);
+        free(cmsg);
+    }
+
+    // Apply app font to dialog
+    if (s_current_app->default_font)
+        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
+
+    // Create the text input (no parent — set as dialog content, not widget-tree child)
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    if (!input)
+    {
+        vg_widget_destroy((vg_widget_t *)dlg);
+        return rt_string_from_bytes("", 0);
+    }
+
+    if (s_current_app->default_font)
+        vg_textinput_set_font(input, s_current_app->default_font, s_current_app->default_font_size);
+
+    // When Enter is pressed inside the input, dismiss as OK
+    rt_prompt_commit_data_t commit_data = {.dialog = dlg};
+    vg_textinput_set_on_commit(input, prompt_on_commit, &commit_data);
+
+    // Place the input as the dialog's content widget
+    vg_dialog_set_content(dlg, (vg_widget_t *)input);
+    vg_dialog_set_buttons(dlg, VG_DIALOG_BUTTONS_OK_CANCEL);
+    vg_dialog_set_modal(dlg, true, s_current_app->root);
+
+    // Show and focus the input so the user can type immediately
+    vg_dialog_show_centered(dlg, s_current_app->root);
+    vg_widget_set_focus((vg_widget_t *)input);
+
+    // Modal event loop: pump events and render until dialog is dismissed
+    while (vg_dialog_is_open(dlg))
+    {
+        rt_gui_app_poll(s_current_app);
+        rt_gui_app_render(s_current_app);
+    }
+
+    // Collect result before destroying
+    rt_string result = rt_string_from_bytes("", 0);
+    if (vg_dialog_get_result(dlg) == VG_DIALOG_RESULT_OK)
+    {
+        const char *text = vg_textinput_get_text(input);
+        if (text && text[0])
+            result = rt_string_from_bytes(text, strlen(text));
+    }
+
+    // The dialog does not own the input (created with NULL parent); destroy both.
+    // Clear content pointer first so dialog_destroy doesn't see a stale pointer.
+    dlg->content = NULL;
+    vg_widget_destroy((vg_widget_t *)dlg);
+    vg_widget_destroy((vg_widget_t *)input);
+    return result;
 }
 
 // Custom MessageBox structure for tracking state

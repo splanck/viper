@@ -167,7 +167,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
     // Find target widget for mouse events
     if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
         event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
-        event->type == VG_EVENT_DOUBLE_CLICK)
+        event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_MOUSE_WHEEL)
     {
         // Check if a widget has captured input (e.g., open dropdown menu).
         // When capture is active, all mouse events route to the captured widget

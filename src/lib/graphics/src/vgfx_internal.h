@@ -206,6 +206,20 @@ struct vgfx_window
     int32_t close_requested;
 
     //===------------------------------------------------------------------===//
+    // Resize Callback
+    //===------------------------------------------------------------------===//
+
+    /// @brief Optional callback invoked immediately after a window resize.
+    /// @details On macOS, the Cocoa live-resize modal loop blocks the main
+    ///          thread.  Calling this callback from windowDidResize: allows
+    ///          the application to re-render during the drag instead of
+    ///          showing a black window.  NULL = no callback.
+    void (*on_resize)(void *userdata, int32_t width, int32_t height);
+
+    /// @brief Userdata passed to on_resize.
+    void *on_resize_userdata;
+
+    //===------------------------------------------------------------------===//
     // Platform-Specific Data
     //===------------------------------------------------------------------===//
 

@@ -106,6 +106,13 @@ void rt_gui_ensure_default_font(void);
 /// @param widget Pointer to the clicked widget (may be NULL to clear).
 void rt_gui_set_last_clicked(void *widget);
 
+/// @brief Set the active modal dialog.
+/// @details When non-NULL, all events are routed to this dialog and the
+///          dialog is rendered as a centered modal overlay above all other
+///          widgets. Set to NULL to dismiss. Defined in rt_gui_app.c.
+/// @param dlg Dialog handle (vg_dialog_t*), or NULL to clear.
+void rt_gui_set_active_dialog(void *dlg);
+
 /// @brief Clear all triggered shortcut flags for the current frame.
 /// @details Called at the start of each poll cycle to reset shortcut state.
 ///          Defined in rt_gui_system.c.

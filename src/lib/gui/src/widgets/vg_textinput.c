@@ -492,6 +492,11 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     input->selection_start = input->selection_end = input->text_len;
                     break;
 
+                case VG_KEY_ENTER:
+                    if (!input->multiline && input->on_commit)
+                        input->on_commit(widget, input->text, input->on_commit_data);
+                    break;
+
                 default:
                     break;
             }
@@ -618,6 +623,17 @@ void vg_textinput_set_on_change(vg_textinput_t *input,
 
     input->on_change = callback;
     input->on_change_data = user_data;
+}
+
+void vg_textinput_set_on_commit(vg_textinput_t *input,
+                                vg_text_change_callback_t callback,
+                                void *user_data)
+{
+    if (!input)
+        return;
+
+    input->on_commit = callback;
+    input->on_commit_data = user_data;
 }
 
 void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos)

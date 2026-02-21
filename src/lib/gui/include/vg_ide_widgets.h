@@ -1958,11 +1958,12 @@ extern "C"
     /// @brief Line information
     typedef struct vg_code_line
     {
-        char *text;       ///< Line text (owned)
-        size_t length;    ///< Text length
-        size_t capacity;  ///< Buffer capacity
-        uint32_t *colors; ///< Per-character colors (owned, optional)
-        bool modified;    ///< Line modified since last save
+        char *text;            ///< Line text (owned)
+        size_t length;         ///< Text length
+        size_t capacity;       ///< Buffer capacity
+        uint32_t *colors;      ///< Per-character colors (owned, optional)
+        size_t colors_capacity; ///< Allocated entries in colors array
+        bool modified;         ///< Line modified since last save
     } vg_code_line_t;
 
     /// @brief Selection range
@@ -2038,6 +2039,11 @@ extern "C"
 
         // Undo/redo history
         vg_edit_history_t *history; ///< Edit history for undo/redo
+
+        // Scrollbar drag state
+        bool  scrollbar_dragging;          ///< True while user is dragging the scroll thumb
+        float scrollbar_drag_offset;       ///< Mouse Y at drag start (widget-relative)
+        float scrollbar_drag_start_scroll; ///< scroll_y value at drag start
     } vg_codeeditor_t;
 
     /// @brief Create a new code editor widget
