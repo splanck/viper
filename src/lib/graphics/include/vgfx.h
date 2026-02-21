@@ -396,6 +396,69 @@ extern "C"
     /// @return 1 if fullscreen, 0 if windowed, -1 if window is NULL
     int vgfx_is_fullscreen(vgfx_window_t window);
 
+    /// @brief Minimize (iconify) the window.
+    void vgfx_minimize(vgfx_window_t window);
+
+    /// @brief Maximize (zoom) the window.
+    void vgfx_maximize(vgfx_window_t window);
+
+    /// @brief Restore the window from minimized or maximized state.
+    void vgfx_restore(vgfx_window_t window);
+
+    /// @brief Check if the window is currently minimized.
+    /// @return 1 if minimized, 0 otherwise
+    int32_t vgfx_is_minimized(vgfx_window_t window);
+
+    /// @brief Check if the window is currently maximized.
+    /// @return 1 if maximized, 0 otherwise
+    int32_t vgfx_is_maximized(vgfx_window_t window);
+
+    /// @brief Get the window's current screen position.
+    /// @param window Window handle
+    /// @param out_x Pointer to receive X coordinate (may be NULL)
+    /// @param out_y Pointer to receive Y coordinate (may be NULL)
+    void vgfx_get_position(vgfx_window_t window, int32_t *out_x, int32_t *out_y);
+
+    /// @brief Move the window to a new screen position.
+    /// @param window Window handle
+    /// @param x New X coordinate
+    /// @param y New Y coordinate
+    void vgfx_set_position(vgfx_window_t window, int32_t x, int32_t y);
+
+    /// @brief Bring the window to the front and give it keyboard focus.
+    void vgfx_focus(vgfx_window_t window);
+
+    /// @brief Check if the window currently has keyboard focus.
+    /// @return 1 if focused, 0 otherwise
+    int32_t vgfx_is_focused(vgfx_window_t window);
+
+    /// @brief Control whether clicking the close button closes the window.
+    /// @param window Window handle
+    /// @param prevent 1 to block close, 0 to allow
+    void vgfx_set_prevent_close(vgfx_window_t window, int32_t prevent);
+
+    /// @brief Cursor type constants for vgfx_set_cursor().
+    /// DEFAULT=0, POINTER=1, TEXT=2, RESIZE_H=3, RESIZE_V=4, WAIT=5
+    typedef enum
+    {
+        VGFX_CURSOR_DEFAULT  = 0, ///< Standard arrow cursor
+        VGFX_CURSOR_POINTER  = 1, ///< Hand/pointer cursor (links, buttons)
+        VGFX_CURSOR_TEXT     = 2, ///< I-beam text cursor
+        VGFX_CURSOR_RESIZE_H = 3, ///< Horizontal resize cursor
+        VGFX_CURSOR_RESIZE_V = 4, ///< Vertical resize cursor
+        VGFX_CURSOR_WAIT     = 5  ///< Busy/spinner cursor
+    } vgfx_cursor_type_t;
+
+    /// @brief Set the mouse cursor shape.
+    /// @param window Window handle
+    /// @param cursor_type Cursor type (VGFX_CURSOR_* constant)
+    void vgfx_set_cursor(vgfx_window_t window, int32_t cursor_type);
+
+    /// @brief Show or hide the mouse cursor.
+    /// @param window Window handle
+    /// @param visible 1 to show, 0 to hide
+    void vgfx_set_cursor_visible(vgfx_window_t window, int32_t visible);
+
     /// @brief Get direct access to the framebuffer.
     /// @details Returns a descriptor with pointers to the raw RGBA pixel data.
     ///          The framebuffer is always stored in row-major order with 4 bytes

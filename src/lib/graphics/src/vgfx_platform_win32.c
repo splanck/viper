@@ -205,6 +205,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_CLOSE:
         {
             /* User clicked close button - enqueue CLOSE event but don't destroy window */
+            if (win->prevent_close)
+                return 0; /* Blocked by application */
             if (w32)
             {
                 w32->close_requested = 1;
@@ -238,6 +240,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_SETFOCUS:
         {
             /* Window gained focus */
+            win->is_focused = 1;
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
@@ -246,6 +249,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_KILLFOCUS:
         {
             /* Window lost focus */
+            win->is_focused = 0;
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
@@ -989,6 +993,140 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win)
 {
     (void)win;
     return g_saved_state.is_fullscreen;
+}
+
+/// @brief Minimize (iconify) the window.
+void vgfx_platform_minimize(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (w32->hwnd)
+        ShowWindow(w32->hwnd, SW_MINIMIZE);
+}
+
+/// @brief Maximize the window.
+void vgfx_platform_maximize(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (w32->hwnd)
+        ShowWindow(w32->hwnd, SW_MAXIMIZE);
+}
+
+/// @brief Restore the window from minimized or maximized state.
+void vgfx_platform_restore(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (w32->hwnd)
+        ShowWindow(w32->hwnd, SW_RESTORE);
+}
+
+/// @brief Return 1 if the window is minimized (iconic), 0 otherwise.
+int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    return (w32->hwnd && IsIconic(w32->hwnd)) ? 1 : 0;
+}
+
+/// @brief Return 1 if the window is maximized (zoomed), 0 otherwise.
+int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    return (w32->hwnd && IsZoomed(w32->hwnd)) ? 1 : 0;
+}
+
+/// @brief Get the window's top-left screen position.
+void vgfx_platform_get_position(struct vgfx_window *win, int32_t *x, int32_t *y)
+{
+    if (!win || !win->platform_data || !x || !y)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->hwnd)
+    {
+        *x = 0;
+        *y = 0;
+        return;
+    }
+    RECT r = {0};
+    GetWindowRect(w32->hwnd, &r);
+    *x = (int32_t)r.left;
+    *y = (int32_t)r.top;
+}
+
+/// @brief Move the window to the given screen position.
+void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (w32->hwnd)
+        SetWindowPos(w32->hwnd, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+}
+
+/// @brief Bring the window to the foreground and give it focus.
+void vgfx_platform_focus(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (w32->hwnd)
+        SetForegroundWindow(w32->hwnd);
+}
+
+/// @brief Return 1 if the window currently has keyboard focus.
+int32_t vgfx_platform_is_focused(struct vgfx_window *win)
+{
+    return (win && win->is_focused) ? 1 : 0;
+}
+
+/// @brief Set whether the close button dismisses the window.
+void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent)
+{
+    if (win)
+        win->prevent_close = prevent;
+}
+
+/// @brief Change the cursor shape for this window.
+/// @param type 0=arrow, 1=hand, 2=ibeam, 3=resize_h, 4=resize_v, 5=wait
+void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t type)
+{
+    (void)win;
+    static LPCWSTR const s_cursor_ids[] = {
+        IDC_ARROW,  /* 0: default */
+        IDC_HAND,   /* 1: pointer */
+        IDC_IBEAM,  /* 2: text    */
+        IDC_SIZEWE, /* 3: resize_h */
+        IDC_SIZENS, /* 4: resize_v */
+        IDC_WAIT,   /* 5: wait    */
+    };
+    int idx = (type >= 0 && type < 6) ? type : 0;
+    HCURSOR hc = LoadCursorW(NULL, s_cursor_ids[idx]);
+    if (hc)
+        SetCursor(hc);
+}
+
+/// @brief Show or hide the mouse cursor.
+void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
+{
+    (void)win;
+    /* ShowCursor is reference-counted; track the state manually to avoid drift */
+    static int32_t s_cursor_visible = 1;
+    int want = visible ? 1 : 0;
+    if (want == s_cursor_visible)
+        return;
+    s_cursor_visible = want;
+    if (want)
+        ShowCursor(TRUE);
+    else
+        ShowCursor(FALSE);
 }
 
 #endif /* _WIN32 */

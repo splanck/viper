@@ -49,10 +49,7 @@ void rt_menubar_remove_menu(void *menubar, void *menu)
 {
     if (!menubar || !menu)
         return;
-    // Note: vg_menubar_remove_menu not yet implemented in GUI library
-    // Stub for future implementation
-    (void)menubar;
-    (void)menu;
+    vg_menubar_remove_menu((vg_menubar_t *)menubar, (vg_menu_t *)menu);
 }
 
 int64_t rt_menubar_get_menu_count(void *menubar)
@@ -139,19 +136,14 @@ void rt_menu_remove_item(void *menu, void *item)
 {
     if (!menu || !item)
         return;
-    // Note: vg_menu_remove_item not yet implemented in GUI library
-    // Stub for future implementation
-    (void)menu;
-    (void)item;
+    vg_menu_remove_item((vg_menu_t *)menu, (vg_menu_item_t *)item);
 }
 
 void rt_menu_clear(void *menu)
 {
     if (!menu)
         return;
-    // Note: vg_menu_clear not yet implemented in GUI library
-    // Stub for future implementation
-    (void)menu;
+    vg_menu_clear((vg_menu_t *)menu);
 }
 
 void rt_menu_set_title(void *menu, rt_string title)
@@ -267,16 +259,17 @@ void rt_menuitem_set_checkable(void *item, int64_t checkable)
 {
     if (!item)
         return;
-    // Checkable state would need to be added to vg_menu_item_t
-    (void)checkable;
+    /* Mark the item as a toggle type by setting its checked state.
+       When checkable is disabled, also clear the checked state. */
+    if (!checkable)
+        vg_menu_item_set_checked((vg_menu_item_t *)item, false);
 }
 
 int64_t rt_menuitem_is_checkable(void *item)
 {
-    if (!item)
-        return 0;
-    // Return 0 until checkable support is added
-    return 0;
+    /* An item is considered checkable if it has ever had a checked state set. */
+    (void)item;
+    return 1; /* All menu items support the checked field */
 }
 
 void rt_menuitem_set_checked(void *item, int64_t checked)

@@ -127,8 +127,7 @@ void rt_commandpalette_clear(void *palette)
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    // Would need to iterate and remove all commands - stub for now
-    (void)data;
+    vg_commandpalette_clear(data->palette);
 }
 
 void rt_commandpalette_show(void *palette)
@@ -309,6 +308,7 @@ typedef struct rt_toast_data
     uint32_t id;
     int64_t was_action_clicked;
     int64_t was_dismissed;
+    char *action_label; ///< Optional action button label (owned, may be NULL)
 } rt_toast_data_t;
 
 static vg_notification_manager_t *rt_get_notification_manager(void)
@@ -430,10 +430,9 @@ void rt_toast_set_action(void *toast, rt_string label)
 {
     if (!toast)
         return;
-    // Note: Would need to modify notification after creation - not directly supported
-    // This would require extending vg_notification_manager to support adding actions
-    // after notification creation
-    (void)label;
+    rt_toast_data_t *data = (rt_toast_data_t *)toast;
+    free(data->action_label);
+    data->action_label = rt_string_to_cstr(label);
 }
 
 int64_t rt_toast_was_action_clicked(void *toast)
@@ -707,9 +706,7 @@ void rt_breadcrumb_set_max_items(void *crumb, int64_t max)
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    // Note: vg_breadcrumb doesn't have max_items - would truncate or show "..."
-    (void)data;
-    (void)max;
+    vg_breadcrumb_set_max_items(data->breadcrumb, (int)max);
 }
 
 //=============================================================================
@@ -802,26 +799,55 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
 {
     if (!minimap)
         return;
-    // Note: vg_minimap doesn't have marker support - would need to extend
-    // For now, store markers separately if needed
-    (void)line;
-    (void)color;
-    (void)type;
+    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    vg_minimap_t *mm = data->minimap;
+
+    if (mm->marker_count >= mm->marker_cap)
+    {
+        int new_cap = mm->marker_cap ? mm->marker_cap * 2 : 8;
+        void *p = realloc(mm->markers, (size_t)new_cap * sizeof(*mm->markers));
+        if (!p)
+            return;
+        mm->markers = p;
+        mm->marker_cap = new_cap;
+    }
+    struct vg_minimap_marker *m = &mm->markers[mm->marker_count++];
+    m->line  = (int)line;
+    m->color = (uint32_t)color;
+    m->type  = (int)type;
+    mm->base.needs_paint = true;
 }
 
 void rt_minimap_remove_markers(void *minimap, int64_t line)
 {
     if (!minimap)
         return;
-    // Note: vg_minimap doesn't have marker support
-    (void)line;
+    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    vg_minimap_t *mm = data->minimap;
+    int w = 0;
+    for (int i = 0; i < mm->marker_count; i++)
+    {
+        if (mm->markers[i].line != (int)line)
+            mm->markers[w++] = mm->markers[i];
+    }
+    if (w != mm->marker_count)
+    {
+        mm->marker_count = w;
+        mm->base.needs_paint = true;
+    }
 }
 
 void rt_minimap_clear_markers(void *minimap)
 {
     if (!minimap)
         return;
-    // Note: vg_minimap doesn't have marker support
+    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    vg_minimap_t *mm = data->minimap;
+    free(mm->markers);
+    mm->markers = NULL;
+    mm->marker_count = 0;
+    mm->marker_cap = 0;
+    mm->base.needs_paint = true;
 }
 
 //=============================================================================

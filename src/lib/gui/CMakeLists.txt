@@ -121,6 +121,15 @@ if (BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_font COMMAND test_vg_font)
+    set_tests_properties(test_vg_font PROPERTIES LABELS "tui")
+
+    add_executable(test_vg_widgets_new tests/test_vg_widgets_new.c)
+    target_link_libraries(test_vg_widgets_new vipergui)
+    target_include_directories(test_vg_widgets_new PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_widgets_new COMMAND test_vg_widgets_new)
+    set_tests_properties(test_vg_widgets_new PROPERTIES LABELS "tui" TIMEOUT 15)
 endif ()
 
 # Demo applications

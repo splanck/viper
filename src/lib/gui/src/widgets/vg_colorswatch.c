@@ -2,6 +2,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,13 +34,27 @@ static vg_widget_vtable_t g_colorswatch_vtable = {.destroy = colorswatch_destroy
 
 static void draw_checkerboard(void *canvas, float x, float y, float w, float h, int check_size)
 {
-    (void)canvas;
-    (void)x;
-    (void)y;
-    (void)w;
-    (void)h;
-    (void)check_size;
-    // Placeholder - would draw checkerboard pattern for alpha visualization
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    if (check_size <= 0)
+        check_size = 8;
+
+    for (int cy = 0; cy * check_size < (int)h; cy++)
+    {
+        for (int cx = 0; cx * check_size < (int)w; cx++)
+        {
+            uint32_t color = ((cx + cy) % 2 == 0) ? 0x00AAAAAA : 0x00888888;
+            int rx = (int)x + cx * check_size;
+            int ry = (int)y + cy * check_size;
+            int rw = check_size;
+            if (rx + rw > (int)(x + w))
+                rw = (int)(x + w) - rx;
+            int rh = check_size;
+            if (ry + rh > (int)(y + h))
+                rh = (int)(y + h) - ry;
+            if (rw > 0 && rh > 0)
+                vgfx_fill_rect(win, rx, ry, rw, rh, color);
+        }
+    }
 }
 
 //=============================================================================
@@ -127,9 +142,14 @@ static void colorswatch_measure(vg_widget_t *widget, float available_width, floa
 static void colorswatch_paint(vg_widget_t *widget, void *canvas)
 {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
-    (void)canvas;
 
-    // Get alpha component
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    int32_t x = (int32_t)widget->x;
+    int32_t y = (int32_t)widget->y;
+    int32_t w = (int32_t)widget->width;
+    int32_t h = (int32_t)widget->height;
+
+    // Get alpha component (color is stored as AARRGGBB)
     uint8_t alpha = (swatch->color >> 24) & 0xFF;
 
     // If color has transparency, draw checkerboard first
@@ -138,30 +158,16 @@ static void colorswatch_paint(vg_widget_t *widget, void *canvas)
         draw_checkerboard(canvas, widget->x, widget->y, widget->width, widget->height, 4);
     }
 
-    // Draw color fill
-    // In a real implementation, this would call vgfx_draw_rect_filled
-    // For now, this is a placeholder - actual rendering happens in the graphics layer
+    // Draw color fill — vgfx ignores top byte, so AARRGGBB works as-is
+    vgfx_fill_rect(win, x, y, w, h, swatch->color & 0x00FFFFFF);
 
     // Draw border
     if (swatch->show_border)
     {
         uint32_t border = swatch->selected ? swatch->selected_border : swatch->border_color;
-
-        // If hovered, slightly brighten border
         if (widget->state & VG_STATE_HOVERED)
-        {
             border = swatch->selected_border;
-        }
-
-        // Border drawing placeholder
-        (void)border;
-    }
-
-    // Draw selection indicator if selected
-    if (swatch->selected)
-    {
-        // Draw inner highlight or checkmark
-        // Placeholder
+        vgfx_rect(win, x, y, w, h, border);
     }
 }
 

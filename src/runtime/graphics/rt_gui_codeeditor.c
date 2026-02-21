@@ -273,21 +273,17 @@ void rt_codeeditor_set_language(void *editor, rt_string language)
 
 void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t color)
 {
-    if (!editor)
-        return;
-    // Would store token colors in editor state
-    // Stub for now
+    /* No token_colors array yet — no-op for now */
+    (void)editor;
     (void)token_type;
     (void)color;
 }
 
 void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords)
 {
-    if (!editor)
-        return;
+    /* No custom_keywords field yet — no-op for now */
+    (void)editor;
     char *ckw = rt_string_to_cstr(keywords);
-    // Would parse and store custom keywords
-    // Stub for now
     free(ckw);
 }
 
@@ -295,8 +291,12 @@ void rt_codeeditor_clear_highlights(void *editor)
 {
     if (!editor)
         return;
-    // Would clear all syntax highlight spans
-    // Stub for now
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    free(ce->highlight_spans);
+    ce->highlight_spans = NULL;
+    ce->highlight_span_count = 0;
+    ce->highlight_span_cap = 0;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_add_highlight(void *editor,
@@ -304,25 +304,35 @@ void rt_codeeditor_add_highlight(void *editor,
                                  int64_t start_col,
                                  int64_t end_line,
                                  int64_t end_col,
-                                 int64_t token_type)
+                                 int64_t color)
 {
     if (!editor)
         return;
-    // Would add a highlight span to the editor
-    // Stub for now
-    (void)start_line;
-    (void)start_col;
-    (void)end_line;
-    (void)end_col;
-    (void)token_type;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (ce->highlight_span_count >= ce->highlight_span_cap)
+    {
+        int new_cap = ce->highlight_span_cap ? ce->highlight_span_cap * 2 : 8;
+        void *p = realloc(ce->highlight_spans,
+                          (size_t)new_cap * sizeof(*ce->highlight_spans));
+        if (!p)
+            return;
+        ce->highlight_spans = p;
+        ce->highlight_span_cap = new_cap;
+    }
+    struct vg_highlight_span *s = &ce->highlight_spans[ce->highlight_span_count++];
+    s->start_line = (int)start_line;
+    s->start_col  = (int)start_col;
+    s->end_line   = (int)end_line;
+    s->end_col    = (int)end_col;
+    s->color      = (uint32_t)color;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_refresh_highlights(void *editor)
 {
     if (!editor)
         return;
-    // Would trigger a re-render with updated highlights
-    // Stub for now
+    ((vg_codeeditor_t *)editor)->base.needs_paint = true;
 }
 
 //=============================================================================
@@ -356,30 +366,69 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
 {
     if (!editor)
         return;
-    // Would store gutter icon for the line/slot
-    // Stub for now
-    (void)line;
-    (void)pixels;
-    (void)slot;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    /* slot maps to icon type: 0=breakpoint, 1=warning, 2=error, 3=info */
+    int type = (int)(slot & 3);
+    /* Update existing icon on same line+type if present */
+    for (int i = 0; i < ce->gutter_icon_count; i++)
+    {
+        if (ce->gutter_icons[i].line == (int)line && ce->gutter_icons[i].type == type)
+        {
+            ce->base.needs_paint = true;
+            return; /* already registered */
+        }
+    }
+    if (ce->gutter_icon_count >= ce->gutter_icon_cap)
+    {
+        int new_cap = ce->gutter_icon_cap ? ce->gutter_icon_cap * 2 : 8;
+        void *p = realloc(ce->gutter_icons, (size_t)new_cap * sizeof(*ce->gutter_icons));
+        if (!p)
+            return;
+        ce->gutter_icons = p;
+        ce->gutter_icon_cap = new_cap;
+    }
+    /* Default color per type */
+    static const uint32_t s_type_colors[] = {0x00E81123, 0x00FFB900, 0x00E81123, 0x000078D4};
+    struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
+    icon->line  = (int)line;
+    icon->type  = type;
+    icon->color = s_type_colors[type];
+    (void)pixels; /* pixel icons not yet blitted; use colored disc */
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot)
 {
     if (!editor)
         return;
-    // Would clear gutter icon for the line/slot
-    // Stub for now
-    (void)line;
-    (void)slot;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int type = (int)(slot & 3);
+    for (int i = 0; i < ce->gutter_icon_count; i++)
+    {
+        if (ce->gutter_icons[i].line == (int)line && ce->gutter_icons[i].type == type)
+        {
+            /* Swap-remove */
+            ce->gutter_icons[i] = ce->gutter_icons[--ce->gutter_icon_count];
+            ce->base.needs_paint = true;
+            return;
+        }
+    }
 }
 
 void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot)
 {
     if (!editor)
         return;
-    // Would clear all gutter icons for the slot
-    // Stub for now
-    (void)slot;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int type = (int)(slot & 3);
+    int w = 0;
+    for (int i = 0; i < ce->gutter_icon_count; i++)
+    {
+        if (ce->gutter_icons[i].type != type)
+            ce->gutter_icons[w++] = ce->gutter_icons[i];
+    }
+    ce->gutter_icon_count = w;
+    ce->base.needs_paint = true;
 }
 
 // Gutter click tracking
@@ -439,63 +488,109 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
 {
     if (!editor)
         return;
-    // Would add a foldable region
-    // Stub for now
-    (void)start_line;
-    (void)end_line;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (ce->fold_region_count >= ce->fold_region_cap)
+    {
+        int new_cap = ce->fold_region_cap ? ce->fold_region_cap * 2 : 8;
+        void *p = realloc(ce->fold_regions, (size_t)new_cap * sizeof(*ce->fold_regions));
+        if (!p)
+            return;
+        ce->fold_regions = p;
+        ce->fold_region_cap = new_cap;
+    }
+    struct vg_fold_region *r = &ce->fold_regions[ce->fold_region_count++];
+    r->start_line = (int)start_line;
+    r->end_line   = (int)end_line;
+    r->folded     = false;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line)
 {
     if (!editor)
         return;
-    // Would remove a foldable region
-    // Stub for now
-    (void)start_line;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    for (int i = 0; i < ce->fold_region_count; i++)
+    {
+        if (ce->fold_regions[i].start_line == (int)start_line)
+        {
+            ce->fold_regions[i] = ce->fold_regions[--ce->fold_region_count];
+            ce->base.needs_paint = true;
+            return;
+        }
+    }
 }
 
 void rt_codeeditor_clear_fold_regions(void *editor)
 {
     if (!editor)
         return;
-    // Would clear all fold regions
-    // Stub for now
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    free(ce->fold_regions);
+    ce->fold_regions = NULL;
+    ce->fold_region_count = 0;
+    ce->fold_region_cap = 0;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_fold(void *editor, int64_t line)
 {
     if (!editor)
         return;
-    // Would fold the region at line
-    // Stub for now
-    (void)line;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    for (int i = 0; i < ce->fold_region_count; i++)
+    {
+        if (ce->fold_regions[i].start_line == (int)line)
+        {
+            ce->fold_regions[i].folded = true;
+            ce->base.needs_paint = true;
+            return;
+        }
+    }
 }
 
 void rt_codeeditor_unfold(void *editor, int64_t line)
 {
     if (!editor)
         return;
-    // Would unfold the region at line
-    // Stub for now
-    (void)line;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    for (int i = 0; i < ce->fold_region_count; i++)
+    {
+        if (ce->fold_regions[i].start_line == (int)line)
+        {
+            ce->fold_regions[i].folded = false;
+            ce->base.needs_paint = true;
+            return;
+        }
+    }
 }
 
 void rt_codeeditor_toggle_fold(void *editor, int64_t line)
 {
     if (!editor)
         return;
-    // Would toggle fold state at line
-    // Stub for now
-    (void)line;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    for (int i = 0; i < ce->fold_region_count; i++)
+    {
+        if (ce->fold_regions[i].start_line == (int)line)
+        {
+            ce->fold_regions[i].folded = !ce->fold_regions[i].folded;
+            ce->base.needs_paint = true;
+            return;
+        }
+    }
 }
 
 int64_t rt_codeeditor_is_folded(void *editor, int64_t line)
 {
     if (!editor)
         return 0;
-    // Would check if line is in a folded region
-    // Stub for now
-    (void)line;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    for (int i = 0; i < ce->fold_region_count; i++)
+    {
+        if (ce->fold_regions[i].start_line == (int)line)
+            return ce->fold_regions[i].folded ? 1 : 0;
+    }
     return 0;
 }
 
@@ -503,24 +598,26 @@ void rt_codeeditor_fold_all(void *editor)
 {
     if (!editor)
         return;
-    // Would fold all regions
-    // Stub for now
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    for (int i = 0; i < ce->fold_region_count; i++)
+        ce->fold_regions[i].folded = true;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_unfold_all(void *editor)
 {
     if (!editor)
         return;
-    // Would unfold all regions
-    // Stub for now
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    for (int i = 0; i < ce->fold_region_count; i++)
+        ce->fold_regions[i].folded = false;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable)
 {
-    if (!editor)
-        return;
-    // Would enable/disable automatic fold detection
-    // Stub for now
+    /* Auto fold detection requires language-specific parsing; no-op for now */
+    (void)editor;
     (void)enable;
 }
 
@@ -532,35 +629,55 @@ int64_t rt_codeeditor_get_cursor_count(void *editor)
 {
     if (!editor)
         return 1;
-    // Currently only support single cursor, return 1
-    return 1;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    return 1 + ce->extra_cursor_count;
 }
 
 void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col)
 {
     if (!editor)
         return;
-    // Would add additional cursor
-    // Stub for now - single cursor only
-    (void)line;
-    (void)col;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (ce->extra_cursor_count >= ce->extra_cursor_cap)
+    {
+        int new_cap = ce->extra_cursor_cap ? ce->extra_cursor_cap * 2 : 4;
+        void *p = realloc(ce->extra_cursors, (size_t)new_cap * sizeof(*ce->extra_cursors));
+        if (!p)
+            return;
+        ce->extra_cursors = p;
+        ce->extra_cursor_cap = new_cap;
+    }
+    struct vg_extra_cursor *c = &ce->extra_cursors[ce->extra_cursor_count++];
+    c->line = (int)line;
+    c->col  = (int)col;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_remove_cursor(void *editor, int64_t index)
 {
     if (!editor)
         return;
-    // Would remove cursor at index (except primary)
-    // Stub for now
-    (void)index;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int idx = (int)index - 1; /* index 0 = primary cursor (not in extra array) */
+    if (idx < 0 || idx >= ce->extra_cursor_count)
+        return;
+    /* Shift remaining cursors down */
+    for (int i = idx; i < ce->extra_cursor_count - 1; i++)
+        ce->extra_cursors[i] = ce->extra_cursors[i + 1];
+    ce->extra_cursor_count--;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_clear_extra_cursors(void *editor)
 {
     if (!editor)
         return;
-    // Would clear all cursors except primary
-    // Stub for now - only single cursor supported
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    free(ce->extra_cursors);
+    ce->extra_cursors = NULL;
+    ce->extra_cursor_count = 0;
+    ce->extra_cursor_cap = 0;
+    ce->base.needs_paint = true;
 }
 
 int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index)
@@ -733,7 +850,7 @@ int64_t rt_messagebox_error(rt_string title, rt_string message)
 int64_t rt_messagebox_question(rt_string title, rt_string message)
 {
     char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg   = rt_string_to_cstr(message);
     vg_dialog_t *dlg =
         vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_YES_NO);
     if (ctitle)
@@ -742,15 +859,30 @@ int64_t rt_messagebox_question(rt_string title, rt_string message)
         free(cmsg);
     if (!dlg)
         return 0;
+
+    rt_gui_ensure_default_font();
+    if (s_current_app)
+        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
     vg_dialog_show(dlg);
-    // Return 1 for Yes, 0 for No - would need modal loop for real result
-    return 1;
+    rt_gui_set_active_dialog(dlg);
+
+    // Blocking modal loop — runs until user clicks Yes or No
+    while (dlg->is_open && s_current_app && !s_current_app->should_close)
+    {
+        rt_gui_app_poll(s_current_app);
+        rt_gui_app_render(s_current_app);
+    }
+
+    vg_dialog_result_t result = vg_dialog_get_result(dlg);
+    rt_gui_set_active_dialog(NULL);
+    vg_widget_destroy(&dlg->base);
+    return (result == VG_DIALOG_RESULT_YES) ? 1 : 0;
 }
 
 int64_t rt_messagebox_confirm(rt_string title, rt_string message)
 {
     char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg   = rt_string_to_cstr(message);
     vg_dialog_t *dlg =
         vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_OK_CANCEL);
     if (ctitle)
@@ -759,9 +891,24 @@ int64_t rt_messagebox_confirm(rt_string title, rt_string message)
         free(cmsg);
     if (!dlg)
         return 0;
+
+    rt_gui_ensure_default_font();
+    if (s_current_app)
+        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
     vg_dialog_show(dlg);
-    // Return 1 for OK, 0 for Cancel - would need modal loop for real result
-    return 1;
+    rt_gui_set_active_dialog(dlg);
+
+    // Blocking modal loop — runs until user clicks OK or Cancel
+    while (dlg->is_open && s_current_app && !s_current_app->should_close)
+    {
+        rt_gui_app_poll(s_current_app);
+        rt_gui_app_render(s_current_app);
+    }
+
+    vg_dialog_result_t result = vg_dialog_get_result(dlg);
+    rt_gui_set_active_dialog(NULL);
+    vg_widget_destroy(&dlg->base);
+    return (result == VG_DIALOG_RESULT_OK) ? 1 : 0;
 }
 
 // Prompt commit callback data

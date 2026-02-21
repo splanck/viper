@@ -2,6 +2,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -229,6 +230,82 @@ static void statusbar_arrange(vg_widget_t *widget, float x, float y, float width
     widget->height = height;
 }
 
+static void statusbar_draw_item(vg_statusbar_t *sb,
+                                vgfx_window_t win,
+                                vg_statusbar_item_t *item,
+                                float x,
+                                float item_width,
+                                float text_y,
+                                void *canvas)
+{
+    float wy = sb->base.y, wh = (float)sb->height;
+
+    // Draw hover background for buttons
+    if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item)
+    {
+        vgfx_fill_rect(win,
+                       (int32_t)x,
+                       (int32_t)wy,
+                       (int32_t)item_width,
+                       (int32_t)wh,
+                       sb->hover_color);
+    }
+
+    switch (item->type)
+    {
+        case VG_STATUSBAR_ITEM_TEXT:
+        case VG_STATUSBAR_ITEM_BUTTON:
+            if (item->text)
+            {
+                vg_font_draw_text(canvas,
+                                  sb->font,
+                                  sb->font_size,
+                                  x + sb->item_padding,
+                                  text_y,
+                                  item->text,
+                                  sb->text_color);
+            }
+            break;
+
+        case VG_STATUSBAR_ITEM_SEPARATOR:
+        {
+            // Vertical separator centered within the item
+            int32_t sx = (int32_t)(x + item_width / 2.0f);
+            vgfx_fill_rect(win, sx, (int32_t)(wy + 3), 1, (int32_t)(wh - 6), sb->border_color);
+            break;
+        }
+
+        case VG_STATUSBAR_ITEM_PROGRESS:
+        {
+            float pw = item->min_width > 0 ? (float)item->min_width : 60.0f;
+            float bar_h = 4.0f;
+            float bar_y = wy + (wh - bar_h) / 2.0f;
+            // Track background
+            vgfx_fill_rect(win,
+                           (int32_t)x,
+                           (int32_t)bar_y,
+                           (int32_t)pw,
+                           (int32_t)bar_h,
+                           0x00404040);
+            // Progress fill
+            float fill_w = item->progress * pw;
+            if (fill_w > 0.0f)
+            {
+                vgfx_fill_rect(win,
+                               (int32_t)x,
+                               (int32_t)bar_y,
+                               (int32_t)fill_w,
+                               (int32_t)bar_h,
+                               0x000078D4);
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
 static void statusbar_paint(vg_widget_t *widget, void *canvas)
 {
     vg_statusbar_t *sb = (vg_statusbar_t *)widget;
@@ -236,51 +313,29 @@ static void statusbar_paint(vg_widget_t *widget, void *canvas)
     if (!sb->font)
         return;
 
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    float wx = widget->x, wy = widget->y, ww = widget->width, wh = widget->height;
+
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(sb->font, sb->font_size, &font_metrics);
 
-    // Draw background (placeholder - would use vgfx)
-    (void)sb->bg_color;
+    // Draw background
+    vgfx_fill_rect(win, (int32_t)wx, (int32_t)wy, (int32_t)ww, (int32_t)wh, sb->bg_color);
 
-    // Draw top border
-    (void)sb->border_color;
+    // Draw top border (1px separator line)
+    vgfx_fill_rect(win, (int32_t)wx, (int32_t)wy, (int32_t)ww, 1, sb->border_color);
 
-    float left_x = widget->x + sb->item_padding;
-    float right_x = widget->x + widget->width - sb->item_padding;
-    float text_y =
-        widget->y + (widget->height - font_metrics.line_height) / 2.0f + font_metrics.ascent;
+    float left_x = wx + sb->item_padding;
+    float right_x = wx + ww - sb->item_padding;
+    float text_y = wy + (wh - font_metrics.line_height) / 2.0f + font_metrics.ascent;
 
     // Calculate widths for each zone
-    float left_width = 0;
-    for (size_t i = 0; i < sb->left_count; i++)
-    {
-        left_width += measure_item_width(sb, sb->left_items[i]);
-    }
-
-    float right_width = 0;
-    for (size_t i = 0; i < sb->right_count; i++)
-    {
-        right_width += measure_item_width(sb, sb->right_items[i]);
-    }
-
     float center_width = 0;
-    int spacer_count = 0;
     for (size_t i = 0; i < sb->center_count; i++)
     {
-        if (sb->center_items[i]->type == VG_STATUSBAR_ITEM_SPACER)
-        {
-            spacer_count++;
-        }
-        else
-        {
+        if (sb->center_items[i]->type != VG_STATUSBAR_ITEM_SPACER)
             center_width += measure_item_width(sb, sb->center_items[i]);
-        }
     }
-
-    // Suppress unused variable warnings (computed for future layout improvements)
-    (void)left_width;
-    (void)right_width;
-    (void)spacer_count;
 
     // Draw left zone items
     float x = left_x;
@@ -291,42 +346,7 @@ static void statusbar_paint(vg_widget_t *widget, void *canvas)
             continue;
 
         float item_width = measure_item_width(sb, item);
-
-        // Draw hover background for buttons
-        if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item)
-        {
-            // Draw hover rectangle (placeholder)
-            (void)sb->hover_color;
-        }
-
-        switch (item->type)
-        {
-            case VG_STATUSBAR_ITEM_TEXT:
-            case VG_STATUSBAR_ITEM_BUTTON:
-                if (item->text)
-                {
-                    vg_font_draw_text(canvas,
-                                      sb->font,
-                                      sb->font_size,
-                                      x + sb->item_padding,
-                                      text_y,
-                                      item->text,
-                                      sb->text_color);
-                }
-                break;
-
-            case VG_STATUSBAR_ITEM_SEPARATOR:
-                // Draw vertical line (placeholder)
-                break;
-
-            case VG_STATUSBAR_ITEM_PROGRESS:
-                // Draw progress bar (placeholder)
-                break;
-
-            default:
-                break;
-        }
-
+        statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
         x += item_width;
     }
 
@@ -340,76 +360,20 @@ static void statusbar_paint(vg_widget_t *widget, void *canvas)
 
         float item_width = measure_item_width(sb, item);
         x -= item_width;
-
-        // Draw hover background for buttons
-        if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item)
-        {
-            // Draw hover rectangle (placeholder)
-        }
-
-        switch (item->type)
-        {
-            case VG_STATUSBAR_ITEM_TEXT:
-            case VG_STATUSBAR_ITEM_BUTTON:
-                if (item->text)
-                {
-                    vg_font_draw_text(canvas,
-                                      sb->font,
-                                      sb->font_size,
-                                      x + sb->item_padding,
-                                      text_y,
-                                      item->text,
-                                      sb->text_color);
-                }
-                break;
-
-            case VG_STATUSBAR_ITEM_SEPARATOR:
-                // Draw vertical line (placeholder)
-                break;
-
-            case VG_STATUSBAR_ITEM_PROGRESS:
-                // Draw progress bar (placeholder)
-                break;
-
-            default:
-                break;
-        }
+        statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
     }
 
     // Draw center zone items
-    float center_start = widget->x + widget->width / 2 - center_width / 2;
+    float center_start = wx + ww / 2.0f - center_width / 2.0f;
     x = center_start;
     for (size_t i = 0; i < sb->center_count; i++)
     {
         vg_statusbar_item_t *item = sb->center_items[i];
-        if (!item->visible)
-            continue;
-
-        if (item->type == VG_STATUSBAR_ITEM_SPACER)
+        if (!item->visible || item->type == VG_STATUSBAR_ITEM_SPACER)
             continue;
 
         float item_width = measure_item_width(sb, item);
-
-        switch (item->type)
-        {
-            case VG_STATUSBAR_ITEM_TEXT:
-            case VG_STATUSBAR_ITEM_BUTTON:
-                if (item->text)
-                {
-                    vg_font_draw_text(canvas,
-                                      sb->font,
-                                      sb->font_size,
-                                      x + sb->item_padding,
-                                      text_y,
-                                      item->text,
-                                      sb->text_color);
-                }
-                break;
-
-            default:
-                break;
-        }
-
+        statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
         x += item_width;
     }
 }

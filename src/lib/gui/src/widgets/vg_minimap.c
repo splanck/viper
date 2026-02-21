@@ -2,6 +2,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -153,10 +154,11 @@ static void render_minimap_buffer(vg_minimap_t *minimap)
 static void minimap_paint(vg_widget_t *widget, void *canvas)
 {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
-    (void)canvas;
 
     if (!minimap->editor)
         return;
+
+    vgfx_window_t win = (vgfx_window_t)canvas;
 
     // Render buffer if dirty
     if (minimap->buffer_dirty)
@@ -164,22 +166,48 @@ static void minimap_paint(vg_widget_t *widget, void *canvas)
         render_minimap_buffer(minimap);
     }
 
-    // Draw buffer (placeholder - actual texture upload to vgfx)
-    // In a real implementation, this would upload the render_buffer as a texture
+    // Blit render_buffer pixel-by-pixel (RGBA bytes → 0x00RRGGBB)
+    if (minimap->render_buffer && minimap->buffer_width > 0 && minimap->buffer_height > 0)
+    {
+        uint32_t bw = minimap->buffer_width;
+        uint32_t bh = minimap->buffer_height;
+        for (uint32_t py = 0; py < bh; py++)
+        {
+            for (uint32_t px = 0; px < bw; px++)
+            {
+                uint32_t idx = (py * bw + px) * 4;
+                uint32_t color = ((uint32_t)minimap->render_buffer[idx + 0] << 16) |
+                                 ((uint32_t)minimap->render_buffer[idx + 1] << 8) |
+                                 (uint32_t)minimap->render_buffer[idx + 2];
+                vgfx_pset(win,
+                          (int32_t)(widget->x + px),
+                          (int32_t)(widget->y + py),
+                          color);
+            }
+        }
+    }
 
-    // Draw viewport indicator
+    // Draw viewport indicator overlay
     if (minimap->show_viewport && minimap->editor)
     {
         vg_codeeditor_t *ed = minimap->editor;
 
-        // Calculate viewport rectangle
-        float start_y = widget->y + ed->visible_first_line * minimap->line_height;
-        float end_y = start_y + ed->visible_line_count * minimap->line_height;
+        // Map editor line coordinates to minimap pixel rows
+        int32_t start_y = (int32_t)(widget->y + ed->visible_first_line * minimap->line_height);
+        int32_t end_y   = (int32_t)(widget->y +
+                           (ed->visible_first_line + ed->visible_line_count) * minimap->line_height);
+        int32_t h = end_y - start_y;
+        if (h < 2)
+            h = 2;
 
-        // Draw viewport highlight (placeholder)
-        (void)minimap->viewport_color;
-        (void)start_y;
-        (void)end_y;
+        // Draw viewport highlight rectangle
+        uint32_t vc = minimap->viewport_color & 0x00FFFFFF; // strip alpha for vgfx
+        vgfx_rect(win,
+                  (int32_t)widget->x,
+                  start_y,
+                  (int32_t)minimap->buffer_width,
+                  h,
+                  vc);
     }
 }
 

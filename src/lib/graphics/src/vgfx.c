@@ -500,6 +500,88 @@ int vgfx_is_fullscreen(vgfx_window_t window)
     return vgfx_platform_is_fullscreen(window);
 }
 
+void vgfx_minimize(vgfx_window_t window)
+{
+    if (window)
+        vgfx_platform_minimize(window);
+}
+
+void vgfx_maximize(vgfx_window_t window)
+{
+    if (window)
+        vgfx_platform_maximize(window);
+}
+
+void vgfx_restore(vgfx_window_t window)
+{
+    if (window)
+        vgfx_platform_restore(window);
+}
+
+int32_t vgfx_is_minimized(vgfx_window_t window)
+{
+    if (!window)
+        return 0;
+    return vgfx_platform_is_minimized(window);
+}
+
+int32_t vgfx_is_maximized(vgfx_window_t window)
+{
+    if (!window)
+        return 0;
+    return vgfx_platform_is_maximized(window);
+}
+
+void vgfx_get_position(vgfx_window_t window, int32_t *out_x, int32_t *out_y)
+{
+    if (!window)
+    {
+        if (out_x)
+            *out_x = 0;
+        if (out_y)
+            *out_y = 0;
+        return;
+    }
+    vgfx_platform_get_position(window, out_x, out_y);
+}
+
+void vgfx_set_position(vgfx_window_t window, int32_t x, int32_t y)
+{
+    if (window)
+        vgfx_platform_set_position(window, x, y);
+}
+
+void vgfx_focus(vgfx_window_t window)
+{
+    if (window)
+        vgfx_platform_focus(window);
+}
+
+int32_t vgfx_is_focused(vgfx_window_t window)
+{
+    if (!window)
+        return 0;
+    return vgfx_platform_is_focused(window);
+}
+
+void vgfx_set_prevent_close(vgfx_window_t window, int32_t prevent)
+{
+    if (window)
+        vgfx_platform_set_prevent_close(window, prevent);
+}
+
+void vgfx_set_cursor(vgfx_window_t window, int32_t cursor_type)
+{
+    if (window)
+        vgfx_platform_set_cursor(window, cursor_type);
+}
+
+void vgfx_set_cursor_visible(vgfx_window_t window, int32_t visible)
+{
+    if (window)
+        vgfx_platform_set_cursor_visible(window, visible);
+}
+
 //===----------------------------------------------------------------------===//
 // Window Management
 //===----------------------------------------------------------------------===//

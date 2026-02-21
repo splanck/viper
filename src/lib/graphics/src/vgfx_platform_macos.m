@@ -321,6 +321,10 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     if (!platform)
         return NO;
 
+    /* If the app has requested we prevent close, swallow the event silently */
+    if (_vgfxWindow->prevent_close)
+        return NO;
+
     /* Mark close as requested (can be checked by the application) */
     platform->close_requested = 1;
     _vgfxWindow->close_requested = 1;
@@ -1038,6 +1042,161 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win)
             return 0;
 
         return ([platform->window styleMask] & NSWindowStyleMaskFullScreen) != 0 ? 1 : 0;
+    }
+}
+
+void vgfx_platform_minimize(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (platform->window)
+            [platform->window miniaturize:nil];
+    }
+}
+
+void vgfx_platform_maximize(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (platform->window && ![platform->window isZoomed])
+            [platform->window zoom:nil];
+    }
+}
+
+void vgfx_platform_restore(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (!platform->window)
+            return;
+        if ([platform->window isMiniaturized])
+            [platform->window deminiaturize:nil];
+        else if ([platform->window isZoomed])
+            [platform->window zoom:nil];
+    }
+}
+
+int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        return (platform->window && [platform->window isMiniaturized]) ? 1 : 0;
+    }
+}
+
+int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        return (platform->window && [platform->window isZoomed]) ? 1 : 0;
+    }
+}
+
+void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y)
+{
+    if (!win || !win->platform_data)
+    {
+        if (out_x)
+            *out_x = 0;
+        if (out_y)
+            *out_y = 0;
+        return;
+    }
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (!platform->window)
+            return;
+        NSRect frame = [platform->window frame];
+        if (out_x)
+            *out_x = (int32_t)frame.origin.x;
+        if (out_y)
+            *out_y = (int32_t)frame.origin.y;
+    }
+}
+
+void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y)
+{
+    if (!win || !win->platform_data)
+        return;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (platform->window)
+            [platform->window setFrameOrigin:NSMakePoint((CGFloat)x, (CGFloat)y)];
+    }
+}
+
+void vgfx_platform_focus(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (platform->window)
+            [platform->window makeKeyAndOrderFront:nil];
+    }
+}
+
+int32_t vgfx_platform_is_focused(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        return (platform->window && [platform->window isKeyWindow]) ? 1 : 0;
+    }
+}
+
+void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent)
+{
+    if (win)
+        win->prevent_close = prevent;
+}
+
+void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
+{
+    (void)win;
+    @autoreleasepool
+    {
+        switch (cursor_type)
+        {
+            case 1: [[NSCursor pointingHandCursor] set]; break;
+            case 2: [[NSCursor IBeamCursor] set];        break;
+            case 3: [[NSCursor resizeLeftRightCursor] set]; break;
+            case 4: [[NSCursor resizeUpDownCursor] set]; break;
+            case 5: [[NSCursor arrowCursor] set];        break; /* no public wait cursor in NSCursor */
+            default: [[NSCursor arrowCursor] set];       break;
+        }
+    }
+}
+
+void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
+{
+    (void)win;
+    @autoreleasepool
+    {
+        if (visible)
+            [NSCursor unhide];
+        else
+            [NSCursor hide];
     }
 }
 

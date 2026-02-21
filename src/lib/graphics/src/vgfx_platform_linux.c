@@ -777,4 +777,243 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win)
     return is_fullscreen;
 }
 
+/// @brief Send a _NET_WM_STATE client message to the window manager.
+static void x11_send_wm_state(vgfx_x11_data *x11, int action, Atom atom1, Atom atom2)
+{
+    // action: 0 = remove, 1 = add, 2 = toggle
+    XEvent event;
+    memset(&event, 0, sizeof(event));
+    event.type = ClientMessage;
+    event.xclient.window = x11->window;
+    event.xclient.message_type = XInternAtom(x11->display, "_NET_WM_STATE", False);
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = action;
+    event.xclient.data.l[1] = (long)atom1;
+    event.xclient.data.l[2] = (long)atom2;
+    event.xclient.data.l[3] = 1; // source indication: normal application
+    XSendEvent(x11->display,
+               DefaultRootWindow(x11->display),
+               False,
+               SubstructureNotifyMask | SubstructureRedirectMask,
+               &event);
+    XFlush(x11->display);
+}
+
+void vgfx_platform_minimize(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (x11->display && x11->window)
+    {
+        XIconifyWindow(x11->display, x11->window, x11->screen);
+        XFlush(x11->display);
+    }
+}
+
+void vgfx_platform_maximize(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+    Atom hz = XInternAtom(x11->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    Atom vt = XInternAtom(x11->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    x11_send_wm_state(x11, 1, hz, vt);
+}
+
+void vgfx_platform_restore(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+    // Remove maximized state
+    Atom hz = XInternAtom(x11->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    Atom vt = XInternAtom(x11->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    x11_send_wm_state(x11, 0, hz, vt);
+    // Deiconify if minimized
+    XMapWindow(x11->display, x11->window);
+    XFlush(x11->display);
+}
+
+int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return 0;
+    Atom wm_state_atom = XInternAtom(x11->display, "_NET_WM_STATE", False);
+    Atom hidden = XInternAtom(x11->display, "_NET_WM_STATE_HIDDEN", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+    int status = XGetWindowProperty(x11->display, x11->window, wm_state_atom,
+                                    0, 1024, False, XA_ATOM, &actual_type,
+                                    &actual_format, &nitems, &bytes_after, &data);
+    if (status != Success || !data)
+        return 0;
+    int found = 0;
+    Atom *atoms = (Atom *)data;
+    for (unsigned long i = 0; i < nitems; i++)
+    {
+        if (atoms[i] == hidden)
+        {
+            found = 1;
+            break;
+        }
+    }
+    XFree(data);
+    return found;
+}
+
+int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return 0;
+    Atom wm_state_atom = XInternAtom(x11->display, "_NET_WM_STATE", False);
+    Atom hz = XInternAtom(x11->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+    int status = XGetWindowProperty(x11->display, x11->window, wm_state_atom,
+                                    0, 1024, False, XA_ATOM, &actual_type,
+                                    &actual_format, &nitems, &bytes_after, &data);
+    if (status != Success || !data)
+        return 0;
+    int found = 0;
+    Atom *atoms = (Atom *)data;
+    for (unsigned long i = 0; i < nitems; i++)
+    {
+        if (atoms[i] == hz)
+        {
+            found = 1;
+            break;
+        }
+    }
+    XFree(data);
+    return found;
+}
+
+void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y)
+{
+    if (!win || !win->platform_data)
+    {
+        if (out_x)
+            *out_x = 0;
+        if (out_y)
+            *out_y = 0;
+        return;
+    }
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+    Window child;
+    int x = 0, y = 0;
+    XWindowAttributes attrs;
+    XGetWindowAttributes(x11->display, x11->window, &attrs);
+    XTranslateCoordinates(x11->display, x11->window, attrs.root, 0, 0, &x, &y, &child);
+    if (out_x)
+        *out_x = (int32_t)x;
+    if (out_y)
+        *out_y = (int32_t)y;
+}
+
+void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (x11->display && x11->window)
+    {
+        XMoveWindow(x11->display, x11->window, (int)x, (int)y);
+        XFlush(x11->display);
+    }
+}
+
+void vgfx_platform_focus(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (x11->display && x11->window)
+    {
+        XSetInputFocus(x11->display, x11->window, RevertToParent, CurrentTime);
+        XFlush(x11->display);
+    }
+}
+
+int32_t vgfx_platform_is_focused(struct vgfx_window *win)
+{
+    if (!win)
+        return 0;
+    return win->is_focused;
+}
+
+void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent)
+{
+    if (win)
+        win->prevent_close = prevent;
+}
+
+void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+
+    // Map cursor type to X11 cursor font constant
+    unsigned int shape;
+    switch (cursor_type)
+    {
+        case 1: shape = 58;  break; // XC_hand2
+        case 2: shape = 152; break; // XC_xterm
+        case 3: shape = 108; break; // XC_sb_h_double_arrow
+        case 4: shape = 116; break; // XC_sb_v_double_arrow
+        case 5: shape = 150; break; // XC_watch
+        default: shape = 68;  break; // XC_left_ptr (default arrow)
+    }
+    Cursor cursor = XCreateFontCursor(x11->display, shape);
+    XDefineCursor(x11->display, x11->window, cursor);
+    XFreeCursor(x11->display, cursor);
+    XFlush(x11->display);
+}
+
+void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+
+    if (visible)
+    {
+        // Restore default cursor
+        XUndefineCursor(x11->display, x11->window);
+    }
+    else
+    {
+        // Create invisible blank cursor
+        Pixmap blank = XCreatePixmap(x11->display, x11->window, 1, 1, 1);
+        XColor dummy;
+        memset(&dummy, 0, sizeof(dummy));
+        Cursor invisible = XCreatePixmapCursor(x11->display, blank, blank, &dummy, &dummy, 0, 0);
+        XDefineCursor(x11->display, x11->window, invisible);
+        XFreeCursor(x11->display, invisible);
+        XFreePixmap(x11->display, blank);
+    }
+    XFlush(x11->display);
+}
+
 #endif /* __linux__ || __unix__ */

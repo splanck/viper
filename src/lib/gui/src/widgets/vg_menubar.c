@@ -790,6 +790,66 @@ void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked)
     }
 }
 
+void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item)
+{
+    if (!menu || !item)
+        return;
+
+    if (item->prev)
+        item->prev->next = item->next;
+    else
+        menu->first_item = item->next;
+
+    if (item->next)
+        item->next->prev = item->prev;
+    else
+        menu->last_item = item->prev;
+
+    menu->item_count--;
+    free_menu_item(item);
+}
+
+void vg_menu_clear(vg_menu_t *menu)
+{
+    if (!menu)
+        return;
+
+    vg_menu_item_t *item = menu->first_item;
+    while (item)
+    {
+        vg_menu_item_t *next = item->next;
+        free_menu_item(item);
+        item = next;
+    }
+
+    menu->first_item = menu->last_item = NULL;
+    menu->item_count = 0;
+}
+
+void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu)
+{
+    if (!menubar || !menu)
+        return;
+
+    if (menu->prev)
+        menu->prev->next = menu->next;
+    else
+        menubar->first_menu = menu->next;
+
+    if (menu->next)
+        menu->next->prev = menu->prev;
+    else
+        menubar->last_menu = menu->prev;
+
+    menubar->menu_count--;
+
+    if (menubar->open_menu == menu)
+        menubar->open_menu = NULL;
+
+    free_menu(menu);
+    menubar->base.needs_paint = true;
+}
+
 void vg_menubar_set_font(vg_menubar_t *menubar, vg_font_t *font, float size)
 {
     if (!menubar)

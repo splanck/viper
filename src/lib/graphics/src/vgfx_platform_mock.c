@@ -476,5 +476,27 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win)
 }
 
 //===----------------------------------------------------------------------===//
+// Window Management Stubs (added with platform extensions)
+//===----------------------------------------------------------------------===//
+
+void vgfx_platform_minimize(struct vgfx_window *win)          { (void)win; }
+void vgfx_platform_maximize(struct vgfx_window *win)           { (void)win; }
+void vgfx_platform_restore(struct vgfx_window *win)            { (void)win; }
+int32_t vgfx_platform_is_minimized(struct vgfx_window *win)    { (void)win; return 0; }
+int32_t vgfx_platform_is_maximized(struct vgfx_window *win)    { (void)win; return 0; }
+void vgfx_platform_get_position(struct vgfx_window *win, int32_t *x, int32_t *y)
+    { (void)win; if (x) *x = 0; if (y) *y = 0; }
+void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y)
+    { (void)win; (void)x; (void)y; }
+void vgfx_platform_focus(struct vgfx_window *win)              { (void)win; }
+int32_t vgfx_platform_is_focused(struct vgfx_window *win)      { (void)win; return 1; }
+void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t p)
+    { if (win) win->prevent_close = p; }
+void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t type)
+    { (void)win; (void)type; }
+void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
+    { (void)win; (void)visible; }
+
+//===----------------------------------------------------------------------===//
 // End of Mock Backend
 //===----------------------------------------------------------------------===//

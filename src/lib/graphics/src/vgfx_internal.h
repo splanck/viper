@@ -205,6 +205,15 @@ struct vgfx_window
     ///        auto-terminate without requiring application-level handling.
     int32_t close_requested;
 
+    /// @brief When non-zero, clicking the close button does not close the window.
+    /// @details The close event is still generated so the application can prompt
+    ///          the user before actually quitting.
+    int32_t prevent_close;
+
+    /// @brief Non-zero when the window has keyboard focus.
+    /// @details Updated by the platform backend on focus-gained/lost events.
+    int32_t is_focused;
+
     //===------------------------------------------------------------------===//
     // Resize Callback
     //===------------------------------------------------------------------===//
@@ -345,6 +354,46 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen);
 /// @param win Pointer to the window structure
 /// @return 1 if fullscreen, 0 if windowed
 int vgfx_platform_is_fullscreen(struct vgfx_window *win);
+
+/// @brief Minimize (iconify) the native window.
+void vgfx_platform_minimize(struct vgfx_window *win);
+
+/// @brief Maximize (zoom) the native window.
+void vgfx_platform_maximize(struct vgfx_window *win);
+
+/// @brief Restore the native window from minimized or maximized state.
+void vgfx_platform_restore(struct vgfx_window *win);
+
+/// @brief Check if the native window is currently minimized.
+/// @return 1 if minimized, 0 otherwise
+int32_t vgfx_platform_is_minimized(struct vgfx_window *win);
+
+/// @brief Check if the native window is currently maximized.
+/// @return 1 if maximized, 0 otherwise
+int32_t vgfx_platform_is_maximized(struct vgfx_window *win);
+
+/// @brief Get the native window's current screen position.
+void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y);
+
+/// @brief Move the native window to a new screen position.
+void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y);
+
+/// @brief Give keyboard focus to the native window.
+void vgfx_platform_focus(struct vgfx_window *win);
+
+/// @brief Check if the native window has keyboard focus.
+/// @return 1 if focused, 0 otherwise
+int32_t vgfx_platform_is_focused(struct vgfx_window *win);
+
+/// @brief Control whether clicking the native close button closes the window.
+void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent);
+
+/// @brief Set the native mouse cursor shape.
+/// @param cursor_type VGFX_CURSOR_* constant
+void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type);
+
+/// @brief Show or hide the native mouse cursor.
+void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible);
 
 //===----------------------------------------------------------------------===//
 // Internal Helper Functions

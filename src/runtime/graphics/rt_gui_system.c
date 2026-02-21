@@ -338,16 +338,20 @@ void rt_app_set_title(void *app, rt_string title)
 {
     if (!app)
         return;
-    // Window title changes are not directly supported in vgfx yet
-    // This is a stub for future implementation
-    (void)title;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (!gui_app->window)
+        return;
+    char *cstr = rt_string_to_cstr(title);
+    if (cstr)
+    {
+        vgfx_set_title(gui_app->window, cstr);
+        free(cstr);
+    }
 }
 
 rt_string rt_app_get_title(void *app)
 {
-    if (!app)
-        return rt_str_empty();
-    // Return empty string until window title tracking is implemented
+    (void)app;
     return rt_str_empty();
 }
 
@@ -390,83 +394,112 @@ int64_t rt_app_get_height(void *app)
 
 void rt_app_set_position(void *app, int64_t x, int64_t y)
 {
-    // Window positioning not yet supported in vgfx
-    (void)app;
-    (void)x;
-    (void)y;
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app->window)
+        vgfx_set_position(gui_app->window, (int32_t)x, (int32_t)y);
 }
 
 int64_t rt_app_get_x(void *app)
 {
-    // Window position not yet supported in vgfx
-    (void)app;
-    return 0;
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (!gui_app->window)
+        return 0;
+    int32_t x = 0, y = 0;
+    vgfx_get_position(gui_app->window, &x, &y);
+    return x;
 }
 
 int64_t rt_app_get_y(void *app)
 {
-    // Window position not yet supported in vgfx
-    (void)app;
-    return 0;
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (!gui_app->window)
+        return 0;
+    int32_t x = 0, y = 0;
+    vgfx_get_position(gui_app->window, &x, &y);
+    return y;
 }
 
 void rt_app_minimize(void *app)
 {
-    // Window state control not yet supported in vgfx
-    (void)app;
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app->window)
+        vgfx_minimize(gui_app->window);
 }
 
 void rt_app_maximize(void *app)
 {
-    // Window state control not yet supported in vgfx
-    (void)app;
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app->window)
+        vgfx_maximize(gui_app->window);
 }
 
 void rt_app_restore(void *app)
 {
-    // Window state control not yet supported in vgfx
-    (void)app;
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app->window)
+        vgfx_restore(gui_app->window);
 }
 
 int64_t rt_app_is_minimized(void *app)
 {
-    // Window state not yet supported in vgfx
-    (void)app;
-    return 0;
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    return gui_app->window ? vgfx_is_minimized(gui_app->window) : 0;
 }
 
 int64_t rt_app_is_maximized(void *app)
 {
-    // Window state not yet supported in vgfx
-    (void)app;
-    return 0;
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    return gui_app->window ? vgfx_is_maximized(gui_app->window) : 0;
 }
 
 void rt_app_set_fullscreen(void *app, int64_t fullscreen)
 {
-    // Fullscreen not yet supported in vgfx
-    (void)app;
-    (void)fullscreen;
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app->window)
+        vgfx_set_fullscreen(gui_app->window, (int32_t)fullscreen);
 }
 
 int64_t rt_app_is_fullscreen(void *app)
 {
-    // Fullscreen not yet supported in vgfx
-    (void)app;
-    return 0;
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    return gui_app->window ? vgfx_is_fullscreen(gui_app->window) : 0;
 }
 
 void rt_app_focus(void *app)
 {
-    // Window focus control not yet supported in vgfx
-    (void)app;
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app->window)
+        vgfx_focus(gui_app->window);
 }
 
 int64_t rt_app_is_focused(void *app)
 {
-    // Window focus state not yet supported in vgfx
-    (void)app;
-    return 1; // Assume focused for now
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    return gui_app->window ? vgfx_is_focused(gui_app->window) : 0;
 }
 
 void rt_app_set_prevent_close(void *app, int64_t prevent)
@@ -474,9 +507,8 @@ void rt_app_set_prevent_close(void *app, int64_t prevent)
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
-    // Store prevent_close flag (would need to add field to rt_gui_app_t)
-    (void)gui_app;
-    (void)prevent;
+    if (gui_app->window)
+        vgfx_set_prevent_close(gui_app->window, (int32_t)prevent);
 }
 
 int64_t rt_app_was_close_requested(void *app)
@@ -491,38 +523,31 @@ int64_t rt_app_was_close_requested(void *app)
 // Cursor Styles (Phase 1)
 //=============================================================================
 
-static int64_t g_current_cursor = RT_CURSOR_ARROW;
-static int64_t g_cursor_visible = 1;
-
 void rt_cursor_set(int64_t type)
 {
-    g_current_cursor = type;
-    // Actual cursor setting would require vgfx platform support
+    if (s_current_app && s_current_app->window)
+        vgfx_set_cursor(s_current_app->window, (int32_t)type);
 }
 
 void rt_cursor_reset(void)
 {
-    g_current_cursor = RT_CURSOR_ARROW;
+    rt_cursor_set(0); /* VGFX_CURSOR_DEFAULT */
 }
 
 void rt_cursor_set_visible(int64_t visible)
 {
-    g_cursor_visible = visible;
-    // Actual visibility control would require vgfx platform support
+    if (s_current_app && s_current_app->window)
+        vgfx_set_cursor_visible(s_current_app->window, (int32_t)visible);
 }
 
 void rt_widget_set_cursor(void *widget, int64_t type)
 {
-    if (!widget)
-        return;
-    // Widget cursor would be stored in widget data
-    // For now, just set global cursor when widget is hovered
-    (void)type;
+    (void)widget;
+    rt_cursor_set(type);
 }
 
 void rt_widget_reset_cursor(void *widget)
 {
-    if (!widget)
-        return;
-    // Reset widget cursor to default
+    (void)widget;
+    rt_cursor_reset();
 }

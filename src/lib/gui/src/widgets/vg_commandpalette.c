@@ -508,3 +508,19 @@ void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, f
     palette->font_size = size;
     palette->base.needs_paint = true;
 }
+
+void vg_commandpalette_clear(vg_commandpalette_t *palette)
+{
+    if (!palette)
+        return;
+
+    for (size_t i = 0; i < palette->command_count; i++)
+        free_command(palette->commands[i]);
+
+    palette->command_count = 0;
+    /* Keep the allocation; clear filtered list */
+    palette->filtered_count = 0;
+    palette->selected_index = -1;
+    palette->hovered_index = -1;
+    palette->base.needs_paint = true;
+}

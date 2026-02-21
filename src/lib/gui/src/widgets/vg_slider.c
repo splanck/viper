@@ -1,6 +1,195 @@
 // vg_slider.c - Slider widget implementation
 #include "../../include/vg_widgets.h"
+#include "../../include/vg_event.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
+
+//=============================================================================
+// Forward declarations
+//=============================================================================
+
+static void slider_measure(vg_widget_t *widget, float available_width, float available_height);
+static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float h);
+static void slider_paint(vg_widget_t *widget, void *canvas);
+static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event);
+
+//=============================================================================
+// VTable
+//=============================================================================
+
+static vg_widget_vtable_t g_slider_vtable = {
+    .destroy = NULL,
+    .measure = slider_measure,
+    .arrange = slider_arrange,
+    .paint = slider_paint,
+    .handle_event = slider_handle_event,
+    .can_focus = NULL,
+    .on_focus = NULL,
+};
+
+//=============================================================================
+// Vtable Implementations
+//=============================================================================
+
+static void slider_measure(vg_widget_t *widget, float available_width, float available_height)
+{
+    vg_slider_t *slider = (vg_slider_t *)widget;
+    (void)available_width;
+    (void)available_height;
+    if (slider->orientation == VG_SLIDER_HORIZONTAL)
+    {
+        widget->measured_width = 100.0f;
+        widget->measured_height = slider->thumb_size > 0 ? slider->thumb_size : 24.0f;
+    }
+    else
+    {
+        widget->measured_width = slider->thumb_size > 0 ? slider->thumb_size : 24.0f;
+        widget->measured_height = 100.0f;
+    }
+}
+
+static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float h)
+{
+    widget->x = x;
+    widget->y = y;
+    widget->width = w;
+    widget->height = h;
+}
+
+static void slider_paint(vg_widget_t *widget, void *canvas)
+{
+    vg_slider_t *slider = (vg_slider_t *)widget;
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    float x = widget->x, y = widget->y, w = widget->width, h = widget->height;
+
+    float range = slider->max_value - slider->min_value;
+    float norm = (range > 0.0f) ? (slider->value - slider->min_value) / range : 0.0f;
+    if (norm < 0.0f)
+        norm = 0.0f;
+    if (norm > 1.0f)
+        norm = 1.0f;
+
+    if (slider->orientation == VG_SLIDER_HORIZONTAL)
+    {
+        float track_th = slider->track_thickness > 0 ? slider->track_thickness : 4.0f;
+        int32_t track_y = (int32_t)(y + (h - track_th) / 2.0f);
+        int32_t track_h = (int32_t)track_th;
+
+        /* Track background */
+        vgfx_fill_rect(win, (int32_t)x, track_y, (int32_t)w, track_h, slider->track_color);
+
+        /* Fill (value portion) */
+        int32_t fill_w = (int32_t)(norm * w);
+        if (fill_w > 0)
+            vgfx_fill_rect(win, (int32_t)x, track_y, fill_w, track_h, slider->fill_color);
+
+        /* Thumb */
+        float thumb_cx = x + norm * w;
+        float thumb_cy = y + h / 2.0f;
+        int32_t thumb_r = (int32_t)(slider->thumb_size / 2.0f);
+        uint32_t tc = slider->thumb_hovered ? slider->thumb_hover_color : slider->thumb_color;
+        vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_r, tc);
+    }
+    else
+    {
+        /* Vertical orientation */
+        float track_th = slider->track_thickness > 0 ? slider->track_thickness : 4.0f;
+        int32_t track_x = (int32_t)(x + (w - track_th) / 2.0f);
+        int32_t track_w = (int32_t)track_th;
+
+        vgfx_fill_rect(win, track_x, (int32_t)y, track_w, (int32_t)h, slider->track_color);
+
+        int32_t fill_h = (int32_t)(norm * h);
+        int32_t fill_y = (int32_t)(y + h - fill_h);
+        if (fill_h > 0)
+            vgfx_fill_rect(win, track_x, fill_y, track_w, fill_h, slider->fill_color);
+
+        float thumb_cx = x + w / 2.0f;
+        float thumb_cy = y + h - norm * h;
+        int32_t thumb_r = (int32_t)(slider->thumb_size / 2.0f);
+        uint32_t tc = slider->thumb_hovered ? slider->thumb_hover_color : slider->thumb_color;
+        vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_r, tc);
+    }
+}
+
+static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event)
+{
+    vg_slider_t *slider = (vg_slider_t *)widget;
+    float x = widget->x, y = widget->y, w = widget->width, h = widget->height;
+
+    float range = slider->max_value - slider->min_value;
+    bool horizontal = (slider->orientation == VG_SLIDER_HORIZONTAL);
+    float thumb_r = slider->thumb_size / 2.0f;
+
+    switch (event->type)
+    {
+        case VG_EVENT_MOUSE_DOWN:
+        {
+            float norm = (range > 0.0f) ? (slider->value - slider->min_value) / range : 0.0f;
+            float thumb_cx = horizontal ? (x + norm * w) : (x + w / 2.0f);
+            float thumb_cy = horizontal ? (y + h / 2.0f) : (y + h - norm * h);
+            float mx = event->mouse.screen_x, my = event->mouse.screen_y;
+            float dx = mx - thumb_cx, dy = my - thumb_cy;
+            if (dx * dx + dy * dy <= thumb_r * thumb_r)
+            {
+                slider->dragging = true;
+                event->handled = true;
+                return true;
+            }
+            break;
+        }
+
+        case VG_EVENT_MOUSE_MOVE:
+        {
+            float mx = event->mouse.screen_x, my = event->mouse.screen_y;
+            if (slider->dragging)
+            {
+                float norm;
+                if (horizontal)
+                    norm = (w > 0.0f) ? (mx - x) / w : 0.0f;
+                else
+                    norm = (h > 0.0f) ? (y + h - my) / h : 0.0f;
+                if (norm < 0.0f)
+                    norm = 0.0f;
+                if (norm > 1.0f)
+                    norm = 1.0f;
+                float new_val = slider->min_value + norm * range;
+                vg_slider_set_value(slider, new_val);
+                event->handled = true;
+                return true;
+            }
+            /* Update thumb hover state */
+            float norm = (range > 0.0f) ? (slider->value - slider->min_value) / range : 0.0f;
+            float thumb_cx = horizontal ? (x + norm * w) : (x + w / 2.0f);
+            float thumb_cy = horizontal ? (y + h / 2.0f) : (y + h - norm * h);
+            float dx = mx - thumb_cx, dy = my - thumb_cy;
+            slider->thumb_hovered = (dx * dx + dy * dy <= thumb_r * thumb_r);
+            break;
+        }
+
+        case VG_EVENT_MOUSE_UP:
+        {
+            if (slider->dragging)
+            {
+                slider->dragging = false;
+                event->handled = true;
+                return true;
+            }
+            break;
+        }
+
+        case VG_EVENT_MOUSE_LEAVE:
+        {
+            slider->thumb_hovered = false;
+            slider->dragging = false;
+            break;
+        }
+
+        default:
+            break;
+    }
+    return false;
+}
 
 vg_slider_t *vg_slider_create(vg_widget_t *parent, vg_slider_orientation_t orientation)
 {
@@ -8,9 +197,7 @@ vg_slider_t *vg_slider_create(vg_widget_t *parent, vg_slider_orientation_t orien
     if (!slider)
         return NULL;
 
-    slider->base.type = VG_WIDGET_SLIDER;
-    slider->base.visible = true;
-    slider->base.enabled = true;
+    vg_widget_init(&slider->base, VG_WIDGET_SLIDER, &g_slider_vtable);
     slider->orientation = orientation;
 
     // Default values

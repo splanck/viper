@@ -1873,6 +1873,20 @@ extern "C"
     /// @param checked Checked state
     void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked);
 
+    /// @brief Remove and free a specific item from a menu.
+    /// @param menu  Menu containing the item
+    /// @param item  Item to remove and free
+    void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item);
+
+    /// @brief Remove and free all items from a menu.
+    /// @param menu Menu to clear
+    void vg_menu_clear(vg_menu_t *menu);
+
+    /// @brief Remove a menu from the menubar and free it.
+    /// @param menubar MenuBar widget
+    /// @param menu    Menu to remove and free
+    void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu);
+
     /// @brief Set font for menu bar
     /// @param menubar MenuBar widget
     /// @param font Font to use
@@ -2044,6 +2058,45 @@ extern "C"
         bool  scrollbar_dragging;          ///< True while user is dragging the scroll thumb
         float scrollbar_drag_offset;       ///< Mouse Y at drag start (widget-relative)
         float scrollbar_drag_start_scroll; ///< scroll_y value at drag start
+
+        // Highlight spans (arbitrary colored regions overlaid on text)
+        struct vg_highlight_span
+        {
+            int start_line, start_col; ///< Inclusive start position
+            int end_line, end_col;     ///< Exclusive end position
+            uint32_t color;            ///< Background highlight color (0x00RRGGBB)
+        } *highlight_spans;            ///< Owned array; NULL when unused
+        int highlight_span_count;      ///< Active span count
+        int highlight_span_cap;        ///< Allocated capacity
+
+        // Gutter icons (breakpoints, diagnostics, etc.)
+        struct vg_gutter_icon
+        {
+            int line;       ///< 0-based line number
+            int type;       ///< 0=breakpoint, 1=warning, 2=error, 3=info
+            uint32_t color; ///< Icon color (0x00RRGGBB)
+        } *gutter_icons;               ///< Owned array; NULL when unused
+        int gutter_icon_count;         ///< Active icon count
+        int gutter_icon_cap;           ///< Allocated capacity
+
+        // Fold regions
+        struct vg_fold_region
+        {
+            int start_line; ///< First line of the foldable block
+            int end_line;   ///< Last line of the foldable block (inclusive)
+            bool folded;    ///< Whether the region is currently collapsed
+        } *fold_regions;               ///< Owned array; NULL when unused
+        int fold_region_count;         ///< Active region count
+        int fold_region_cap;           ///< Allocated capacity
+
+        // Extra cursors (multi-cursor display — input still uses primary cursor)
+        struct vg_extra_cursor
+        {
+            int line; ///< 0-based line number
+            int col;  ///< 0-based column number
+        } *extra_cursors;              ///< Owned array; NULL when unused
+        int extra_cursor_count;        ///< Active extra cursor count
+        int extra_cursor_cap;          ///< Allocated capacity
     } vg_codeeditor_t;
 
     /// @brief Create a new code editor widget
@@ -2376,6 +2429,10 @@ extern "C"
     /// @return Command or NULL
     vg_command_t *vg_commandpalette_get_command(vg_commandpalette_t *palette, const char *id);
 
+    /// @brief Remove all commands from the palette.
+    /// @param palette Command palette
+    void vg_commandpalette_clear(vg_commandpalette_t *palette);
+
     /// @brief Show command palette
     /// @param palette Command palette
     void vg_commandpalette_show(vg_commandpalette_t *palette);
@@ -2614,6 +2671,7 @@ extern "C"
         bool dropdown_open;   ///< Is dropdown open
         int dropdown_index;   ///< Which item's dropdown is open
         int dropdown_hovered; ///< Hovered dropdown item
+        int max_items;        ///< Maximum items to display (0 = unlimited, oldest removed when exceeded)
 
         // Callbacks
         void (*on_click)(struct vg_breadcrumb *bc, int index, void *user_data);
@@ -2671,6 +2729,12 @@ extern "C"
     /// @param size Font size
     void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size);
 
+    /// @brief Set maximum number of breadcrumb items.
+    /// @details When exceeded, the oldest (leftmost) item is removed automatically.
+    /// @param bc   Breadcrumb widget
+    /// @param max  Maximum items (0 = unlimited)
+    void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max);
+
     //=============================================================================
     // Minimap Widget
     //=============================================================================
@@ -2707,6 +2771,16 @@ extern "C"
         // Interaction
         bool dragging;    ///< Dragging viewport
         int drag_start_y; ///< Drag start Y position
+
+        // Markers (colored horizontal lines overlaid on the minimap)
+        struct vg_minimap_marker
+        {
+            int line;       ///< Source editor line number (0-based)
+            uint32_t color; ///< Marker color (0x00RRGGBB)
+            int type;       ///< Marker type (user-defined category)
+        } *markers;         ///< Owned array; NULL when unused
+        int marker_count;   ///< Active marker count
+        int marker_cap;     ///< Allocated capacity
     } vg_minimap_t;
 
     /// @brief Create a new minimap widget

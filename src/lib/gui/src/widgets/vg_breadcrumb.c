@@ -303,6 +303,15 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data)
         bc->item_capacity = new_cap;
     }
 
+    /* Enforce max_items: remove oldest (index 0) when limit exceeded */
+    if (bc->max_items > 0 && (int)bc->item_count >= bc->max_items)
+    {
+        free_breadcrumb_item(&bc->items[0]);
+        memmove(&bc->items[0], &bc->items[1],
+                (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));
+        bc->item_count--;
+    }
+
     vg_breadcrumb_item_t *item = &bc->items[bc->item_count++];
     memset(item, 0, sizeof(vg_breadcrumb_item_t));
     item->label = strdup(label);
@@ -394,6 +403,26 @@ void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size)
 
     bc->font = font;
     bc->font_size = size;
+    bc->base.needs_layout = true;
+    bc->base.needs_paint = true;
+}
+
+void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max)
+{
+    if (!bc)
+        return;
+    bc->max_items = max;
+    /* Trim existing items if already over the limit */
+    if (max > 0)
+    {
+        while ((int)bc->item_count > max && bc->item_count > 0)
+        {
+            free_breadcrumb_item(&bc->items[0]);
+            memmove(&bc->items[0], &bc->items[1],
+                    (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));
+            bc->item_count--;
+        }
+    }
     bc->base.needs_layout = true;
     bc->base.needs_paint = true;
 }

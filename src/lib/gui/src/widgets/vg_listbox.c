@@ -1,8 +1,191 @@
 // vg_listbox.c - ListBox widget implementation
 #include "../../include/vg_widgets.h"
+#include "../../include/vg_event.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+//=============================================================================
+// Forward declarations
+//=============================================================================
+
+static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h);
+static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, float h);
+static void listbox_paint(vg_widget_t *widget, void *canvas);
+static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event);
+
+//=============================================================================
+// VTable
+//=============================================================================
+
+static vg_widget_vtable_t g_listbox_vtable = {
+    .destroy = NULL,
+    .measure = listbox_measure,
+    .arrange = listbox_arrange,
+    .paint = listbox_paint,
+    .handle_event = listbox_handle_event,
+    .can_focus = NULL,
+    .on_focus = NULL,
+};
+
+//=============================================================================
+// VTable Implementations
+//=============================================================================
+
+static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h)
+{
+    vg_listbox_t *lb = (vg_listbox_t *)widget;
+    (void)avail_w;
+    (void)avail_h;
+    int count = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
+    int visible = count > 5 ? count : 5;
+    widget->measured_width = 200.0f;
+    widget->measured_height = (float)(visible * (int)lb->item_height);
+}
+
+static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, float h)
+{
+    widget->x = x;
+    widget->y = y;
+    widget->width = w;
+    widget->height = h;
+}
+
+static void listbox_paint(vg_widget_t *widget, void *canvas)
+{
+    vg_listbox_t *lb = (vg_listbox_t *)widget;
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
+    int32_t w = (int32_t)widget->width, h = (int32_t)widget->height;
+
+    /* Background */
+    vgfx_fill_rect(win, x, y, w, h, lb->bg_color);
+
+    /* Draw items */
+    float item_y = widget->y - lb->scroll_y;
+    float ih = lb->item_height;
+
+    for (vg_listbox_item_t *item = lb->first_item; item; item = item->next)
+    {
+        float item_bottom = item_y + ih;
+        if (item_bottom < widget->y)
+        {
+            item_y += ih;
+            continue;
+        }
+        if (item_y > widget->y + widget->height)
+            break;
+
+        uint32_t bg;
+        if (item == lb->selected)
+            bg = lb->selected_bg;
+        else if (item == lb->hovered)
+            bg = lb->hover_bg;
+        else
+            bg = lb->item_bg;
+
+        int32_t iy = (int32_t)item_y;
+        int32_t ih32 = (int32_t)ih;
+        vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
+
+        if (item->text && lb->font)
+        {
+            float ty = item_y + ih * 0.7f;
+            vg_font_draw_text(canvas, lb->font, lb->font_size,
+                              widget->x + 4.0f, ty, item->text, lb->text_color);
+        }
+
+        item_y += ih;
+    }
+
+    /* Border */
+    vgfx_rect(win, x, y, w, h, lb->border_color);
+}
+
+static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
+{
+    vg_listbox_t *lb = (vg_listbox_t *)widget;
+
+    switch (event->type)
+    {
+        case VG_EVENT_MOUSE_DOWN:
+        {
+            if (lb->virtual_mode)
+                break;
+            /* Find which item was clicked */
+            float ry = event->mouse.screen_y - widget->y + lb->scroll_y;
+            int idx = (lb->item_height > 0) ? (int)(ry / lb->item_height) : -1;
+            if (idx >= 0 && idx < lb->item_count)
+            {
+                vg_listbox_item_t *item = lb->first_item;
+                for (int i = 0; i < idx && item; i++)
+                    item = item->next;
+                if (item)
+                {
+                    vg_listbox_select(lb, item);
+                    event->handled = true;
+                    return true;
+                }
+            }
+            break;
+        }
+
+        case VG_EVENT_MOUSE_MOVE:
+        {
+            if (lb->virtual_mode)
+                break;
+            float ry = event->mouse.screen_y - widget->y + lb->scroll_y;
+            int idx = (lb->item_height > 0) ? (int)(ry / lb->item_height) : -1;
+            vg_listbox_item_t *hovered = NULL;
+            if (idx >= 0 && idx < lb->item_count)
+            {
+                hovered = lb->first_item;
+                for (int i = 0; i < idx && hovered; i++)
+                    hovered = hovered->next;
+            }
+            lb->hovered = hovered;
+            break;
+        }
+
+        case VG_EVENT_MOUSE_LEAVE:
+        {
+            lb->hovered = NULL;
+            break;
+        }
+
+        case VG_EVENT_MOUSE_WHEEL:
+        {
+            float scroll_delta = -event->wheel.delta_y * lb->item_height;
+            lb->scroll_y += scroll_delta;
+            if (lb->scroll_y < 0.0f)
+                lb->scroll_y = 0.0f;
+            /* Clamp to max scroll */
+            float max_scroll = (float)(lb->item_count) * lb->item_height - widget->height;
+            if (max_scroll < 0.0f)
+                max_scroll = 0.0f;
+            if (lb->scroll_y > max_scroll)
+                lb->scroll_y = max_scroll;
+            event->handled = true;
+            return true;
+        }
+
+        case VG_EVENT_DOUBLE_CLICK:
+        {
+            if (lb->selected && lb->on_activate)
+            {
+                lb->on_activate(widget, lb->selected, lb->on_activate_data);
+                event->handled = true;
+                return true;
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+    return false;
+}
 
 vg_listbox_t *vg_listbox_create(vg_widget_t *parent)
 {
@@ -10,9 +193,7 @@ vg_listbox_t *vg_listbox_create(vg_widget_t *parent)
     if (!listbox)
         return NULL;
 
-    listbox->base.type = VG_WIDGET_LISTBOX;
-    listbox->base.visible = true;
-    listbox->base.enabled = true;
+    vg_widget_init(&listbox->base, VG_WIDGET_LISTBOX, &g_listbox_vtable);
 
     // Default appearance
     listbox->item_height = 24;
