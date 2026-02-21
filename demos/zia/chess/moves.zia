@@ -11,6 +11,30 @@ bind "./board";
 // ============================================================================
 entity MoveGen {
 
+    // Direction tables cached as entity fields (avoids per-call list allocation)
+    hide List[Integer] knR_;
+    hide List[Integer] knF_;
+    hide List[Integer] diagDR_;
+    hide List[Integer] diagDF_;
+    hide List[Integer] strDR_;
+    hide List[Integer] strDF_;
+    hide List[Integer] kDR_;
+    hide List[Integer] kDF_;
+
+    // -----------------------------------------------------------------------
+    // Initialization: pre-build direction tables shared across all calls
+    // -----------------------------------------------------------------------
+    expose func init() {
+        knR_    = [-2, -2, -1, -1, 1, 1, 2, 2];
+        knF_    = [-1,  1, -2,  2, -2, 2, -1, 1];
+        diagDR_ = [-1, -1, 1, 1];
+        diagDF_ = [-1,  1, -1, 1];
+        strDR_  = [-1, 1, 0, 0];
+        strDF_  = [0, 0, -1, 1];
+        kDR_    = [-1, -1, -1, 0, 0, 1, 1, 1];
+        kDF_    = [-1,  0,  1, -1, 1, -1, 0, 1];
+    }
+
     // -----------------------------------------------------------------------
     // Move construction helpers — Zia value types require constructor syntax
     // -----------------------------------------------------------------------
@@ -79,11 +103,9 @@ entity MoveGen {
         // Knight attacks
         var knight = config.KNIGHT;
         if !byWhite { knight = -config.KNIGHT; }
-        var knR = [-2, -2, -1, -1, 1, 1, 2, 2];
-        var knF = [-1,  1, -2,  2, -2, 2, -1, 1];
         for i in 0..8 {
-            var nr = sqR + knR.get(i);
-            var nf = sqF + knF.get(i);
+            var nr = sqR + knR_.get(i);
+            var nf = sqF + knF_.get(i);
             if nr >= 0 && nr <= 7 && nf >= 0 && nf <= 7 {
                 if b.get(nr * 8 + nf) == knight { return true; }
             }
@@ -98,47 +120,41 @@ entity MoveGen {
         if !byWhite { queen = -config.QUEEN; }
 
         // Diagonal (bishop/queen)
-        var diagDR = [-1, -1, 1, 1];
-        var diagDF = [-1,  1, -1, 1];
         for d in 0..4 {
-            var r = sqR + diagDR.get(d);
-            var f = sqF + diagDF.get(d);
+            var r = sqR + diagDR_.get(d);
+            var f = sqF + diagDF_.get(d);
             while r >= 0 && r <= 7 && f >= 0 && f <= 7 {
                 var p = b.get(r * 8 + f);
                 if p != 0 {
                     if p == bishop || p == queen { return true; }
                     break;
                 }
-                r = r + diagDR.get(d);
-                f = f + diagDF.get(d);
+                r = r + diagDR_.get(d);
+                f = f + diagDF_.get(d);
             }
         }
 
         // Straight (rook/queen)
-        var strDR = [-1, 1, 0, 0];
-        var strDF = [0, 0, -1, 1];
         for d in 0..4 {
-            var r = sqR + strDR.get(d);
-            var f = sqF + strDF.get(d);
+            var r = sqR + strDR_.get(d);
+            var f = sqF + strDF_.get(d);
             while r >= 0 && r <= 7 && f >= 0 && f <= 7 {
                 var p = b.get(r * 8 + f);
                 if p != 0 {
                     if p == rook || p == queen { return true; }
                     break;
                 }
-                r = r + strDR.get(d);
-                f = f + strDF.get(d);
+                r = r + strDR_.get(d);
+                f = f + strDF_.get(d);
             }
         }
 
         // King attacks — explicit 8 directions
         var king = config.KING;
         if !byWhite { king = -config.KING; }
-        var kDR = [-1, -1, -1, 0, 0, 1, 1, 1];
-        var kDF = [-1,  0,  1, -1, 1, -1, 0, 1];
         for d in 0..8 {
-            var r = sqR + kDR.get(d);
-            var f = sqF + kDF.get(d);
+            var r = sqR + kDR_.get(d);
+            var f = sqF + kDF_.get(d);
             if r >= 0 && r <= 7 && f >= 0 && f <= 7 {
                 if b.get(r * 8 + f) == king { return true; }
             }
@@ -254,11 +270,9 @@ entity MoveGen {
     hide func addKnightMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
         var rank = sq / 8;
         var file = sq % 8;
-        var drs = [-2, -2, -1, -1, 1, 1, 2, 2];
-        var dfs = [-1,  1, -2,  2, -2, 2, -1, 1];
         for i in 0..8 {
-            var nr = rank + drs.get(i);
-            var nf = file + dfs.get(i);
+            var nr = rank + knR_.get(i);
+            var nf = file + knF_.get(i);
             if nr < 0 || nr > 7 || nf < 0 || nf > 7 { continue; }
             var target = b.get(nr * 8 + nf);
             if target != 0 && (target > 0) == white { continue; }
@@ -315,11 +329,9 @@ entity MoveGen {
     hide func addKingMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
         var rank = sq / 8;
         var file = sq % 8;
-        var kDR = [-1, -1, -1, 0, 0, 1, 1, 1];
-        var kDF = [-1,  0,  1, -1, 1, -1, 0, 1];
         for d in 0..8 {
-            var nr = rank + kDR.get(d);
-            var nf = file + kDF.get(d);
+            var nr = rank + kDR_.get(d);
+            var nf = file + kDF_.get(d);
             if nr < 0 || nr > 7 || nf < 0 || nf > 7 { continue; }
             var target = b.get(nr * 8 + nf);
             if target != 0 && (target > 0) == white { continue; }

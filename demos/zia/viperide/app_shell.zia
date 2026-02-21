@@ -1,6 +1,7 @@
 module app_shell;
 
 bind GUI = Viper.GUI;
+bind Seq = Viper.Collections.Seq;
 
 // ============================================================================
 // AppShell — top-level UI layout for ViperIDE
@@ -84,10 +85,15 @@ entity AppShell {
     // Diagnostics panel (below editor; populated after build)
     expose GUI.ListBox diagListBox;
 
+    // Build output panel (below diagnostics; shows raw compiler output)
+    expose GUI.ListBox outputListBox;
+
     // Context menu for the file tree
     expose GUI.ContextMenu treeContextMenu;
     expose GUI.MenuItem ctxOpen;
     expose GUI.MenuItem ctxReveal;
+    expose GUI.MenuItem ctxNewFile;
+    expose GUI.MenuItem ctxNewFolder;
 
     // Status bar + items
     expose GUI.StatusBar statusBar;
@@ -234,11 +240,19 @@ entity AppShell {
         diagListBox.SetVisible(0);
         diagListBox.SetSize(0, 120);
 
+        // Build output panel (hidden until a build runs; shows raw compiler stdout/stderr)
+        outputListBox = GUI.ListBox.New(editorArea);
+        outputListBox.SetVisible(0);
+        outputListBox.SetSize(0, 100);
+
         // Context menu for the file tree (populated on right-click)
         treeContextMenu = GUI.ContextMenu.New();
         ctxOpen = treeContextMenu.AddItem("Open File");
         treeContextMenu.AddSeparator();
         ctxReveal = treeContextMenu.AddItem("Reveal in Finder");
+        treeContextMenu.AddSeparator();
+        ctxNewFile = treeContextMenu.AddItem("New File...");
+        ctxNewFolder = treeContextMenu.AddItem("New Folder...");
 
         // ====================================================================
         // Status Bar
@@ -288,6 +302,27 @@ entity AppShell {
     // Update the status bar right text.
     expose func SetStatusRight(text: String) {
         statusBar.SetRightText(text);
+    }
+
+    // Populate the build output panel with lines of compiler output.
+    // Pass an empty string to clear and hide the panel.
+    expose func SetBuildOutput(output: String) {
+        outputListBox.Clear();
+        if output == "" {
+            outputListBox.SetVisible(0);
+            return;
+        }
+        var lines = Str.Split(output, "\n");
+        var n = Seq.get_Len(lines);
+        var i = 0;
+        while i < n {
+            var line = Seq.Get(lines, i);
+            if line != "" {
+                outputListBox.AddItem(line);
+            }
+            i = i + 1;
+        }
+        outputListBox.SetVisible(1);
     }
 
     // Toggle the sidebar visibility.

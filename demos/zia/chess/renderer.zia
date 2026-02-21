@@ -73,6 +73,7 @@ entity BoardRenderer {
     // -------------------------------------------------------------------------
 
     expose func drawBoard(lastFrom: Integer, lastTo: Integer) {
+        var fileLabels = ["a", "b", "c", "d", "e", "f", "g", "h"];
         for r in 0..8 {
             for f in 0..8 {
                 var sq = r * 8 + f;
@@ -99,7 +100,6 @@ entity BoardRenderer {
 
                 // File label (a-h) inside rank-7 squares, bottom-right corner
                 if r == 7 {
-                    var fileLabels = ["a", "b", "c", "d", "e", "f", "g", "h"];
                     var labelCol = COL_LIGHT;
                     if isLight { labelCol = COL_DARK; } else { labelCol = COL_LIGHT; }
                     canvas.Text(bx + SQ_SIZE - 11, by + SQ_SIZE - 15, fileLabels.get(f), labelCol);

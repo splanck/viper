@@ -4,7 +4,6 @@ bind "project";
 bind GUI = Viper.GUI;
 bind Path = Viper.IO.Path;
 bind Dir = Viper.IO.Dir;
-bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
 
 // ============================================================================
@@ -83,14 +82,8 @@ entity ProjectManager {
 
     // Build tree recursively for a directory.
     func BuildTree(dirPath: String, parentNode: GUI.TreeNode) {
-        // First add directories (sorted by name)
-        var dirs = Dir.DirsSeq(dirPath);
-        var dirCount = Seq.get_Len(dirs);
-        var i = 0;
-
-        while i < dirCount {
-            var dirName = Seq.Get(dirs, i);
-
+        // First add directories
+        for dirName in Dir.DirsSeq(dirPath) {
             // Skip hidden directories and common excludes
             if ShouldExclude(dirName) == false {
                 var fullPath = Path.Join(dirPath, dirName);
@@ -101,17 +94,10 @@ entity ProjectManager {
                 // Recurse into subdirectory
                 BuildTree(fullPath, folderNode);
             }
-            i = i + 1;
         }
 
         // Then add files
-        var files = Dir.FilesSeq(dirPath);
-        var fileCount = Seq.get_Len(files);
-        i = 0;
-
-        while i < fileCount {
-            var fileName = Seq.Get(files, i);
-
+        for fileName in Dir.FilesSeq(dirPath) {
             // Skip hidden files
             if ShouldExcludeFile(fileName) == false {
                 var fullPath = Path.Join(dirPath, fileName);
@@ -119,7 +105,6 @@ entity ProjectManager {
                 var fileNode = treeView.AddNode(parentNode, fileLabel);
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
             }
-            i = i + 1;
         }
     }
 
@@ -140,9 +125,10 @@ entity ProjectManager {
                 var path = GUI.TreeView.Node.GetData(selected);
                 var label = GUI.TreeView.Node.GetText(selected);
 
-                // Check if it's a file (not a directory)
-                // Files don't have "[D] " prefix
-                if Str.IndexOf(label, "[D] ") != 1 {
+                // Check if it's a file: file nodes always have a 4-space prefix.
+                // This correctly ignores both directory nodes ("[D] ...") and
+                // the root project node (label = project name, no prefix).
+                if Str.Left(label, 4) == "    " {
                     selectedFilePath = path;
                     fileWasSelected = true;
                     return path;

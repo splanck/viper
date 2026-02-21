@@ -92,6 +92,10 @@ entity ChessGame {
     hide Boolean ctrlZWasDown;
     hide Boolean newGameKeyWasDown;
 
+    // --- Legal moves cache (invalidated after each board change) ---
+    hide List[Move] cachedLegalMoves_;
+    hide Boolean    legalMovesValid_;
+
     expose func init() {
         canvas   = Canvas.New("Viper Chess", WIN_W, WIN_H);
         board    = new Board();
@@ -145,6 +149,9 @@ entity ChessGame {
 
         ctrlZWasDown      = false;
         newGameKeyWasDown = false;
+
+        cachedLegalMoves_ = [];
+        legalMovesValid_  = false;
     }
 
     // =========================================================================
@@ -160,11 +167,11 @@ entity ChessGame {
             handleInput();
             updateClocks();
 
+            render();
+
             if gameState == STATE_AI_THINK {
                 runAITurn();
             }
-
-            render();
             Viper.Time.SleepMs(8);   // ~120 FPS cap
         }
     }
@@ -184,7 +191,7 @@ entity ChessGame {
 
         // Ctrl+Z — undo (SDL_SCANCODE_LCTRL=224, SDL_SCANCODE_Z=29)
         // Works from any non-menu game state including game-over screens.
-        var ctrlZ = canvas.KeyHeld(224) && canvas.KeyHeld(29);
+        var ctrlZ = canvas.KeyHeld(224) != 0 && canvas.KeyHeld(29) != 0;
         if !ctrlZ { ctrlZWasDown = false; }
         if ctrlZ && !ctrlZWasDown {
             ctrlZWasDown = true;
@@ -204,7 +211,7 @@ entity ChessGame {
         if gameState != STATE_PLAYING { return; }
 
         // 'N' — new game (SDL_SCANCODE_N = 17)
-        var nKey = canvas.KeyHeld(17);
+        var nKey = canvas.KeyHeld(17) != 0;
         if !nKey { newGameKeyWasDown = false; }
         if nKey && !newGameKeyWasDown {
             newGameKeyWasDown = true;
@@ -388,6 +395,7 @@ entity ChessGame {
 
         // Restore board state
         board.unmakeMove(m, undo);
+        invalidateLegalMoves();
 
         // Restore last-move highlight
         lastFrom = prevFrom;
@@ -449,7 +457,7 @@ entity ChessGame {
     // Find a legal move from→to with optional promotion piece constraint.
     // Returns a move with from=-1 if not found.
     hide func findLegalMove(fromSq: Integer, toSq: Integer, promoPiece: Integer) -> Move {
-        var all = moveGen.legalMoves(board);
+        var all = getLegalMoves();
         for i in 0..all.length() {
             var m = all.get(i);
             if m.from != fromSq { continue; }
@@ -488,6 +496,7 @@ entity ChessGame {
 
         // Apply the move; capture the undo struct
         var undo = board.makeMove(m);
+        invalidateLegalMoves();
 
         // Push move + undo for later unmaking
         undoMoveStack.add(m);
@@ -552,7 +561,7 @@ entity ChessGame {
     // =========================================================================
 
     hide func checkGameOver() {
-        var legal   = moveGen.legalMoves(board);
+        var legal   = getLegalMoves();
         var inCheck = moveGen.isInCheck(board, board.whiteToMove);
 
         checkedKingSq = -1;
@@ -606,6 +615,7 @@ entity ChessGame {
     hide func startNewGame() {
         // new Board() automatically calls init() → setupStartPosition()
         board = new Board();
+        invalidateLegalMoves();
 
         chessAI.setDepth(aiDepth);
 
@@ -727,8 +737,20 @@ entity ChessGame {
     // Helpers
     // =========================================================================
 
+    hide func getLegalMoves() -> List[Move] {
+        if !legalMovesValid_ {
+            cachedLegalMoves_ = moveGen.legalMoves(board);
+            legalMovesValid_  = true;
+        }
+        return cachedLegalMoves_;
+    }
+
+    hide func invalidateLegalMoves() {
+        legalMovesValid_ = false;
+    }
+
     hide func legalMovesFrom(sq: Integer) -> List[Move] {
-        var all    = moveGen.legalMoves(board);
+        var all    = getLegalMoves();
         var result = [];
         for i in 0..all.length() {
             var m = all.get(i);

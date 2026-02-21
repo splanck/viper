@@ -12,6 +12,8 @@ bind "build/build_system";
 
 bind Viper.GUI;
 bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
 bind Input = Viper.Input;
 bind Exec = Viper.Exec;
 bind Convert = Viper.Core.Convert;
@@ -69,6 +71,7 @@ func main() {
     Shortcuts.Register("buildrun",  "F5",           "Build and Run");
     Shortcuts.Register("run",       "Ctrl+F5",      "Run without Build");
     Shortcuts.Register("find",      "Ctrl+F",       "Find / Replace");
+    Shortcuts.Register("goto",      "Ctrl+G",       "Go To Line");
     Shortcuts.Register("palette",   "Ctrl+Shift+P", "Command Palette");
 
     // ========================================================================
@@ -81,6 +84,7 @@ func main() {
     shell.commandPalette.AddCommandWithShortcut("close",     "Close File",        "Close the current tab",           "Ctrl+W");
     shell.commandPalette.AddCommandWithShortcut("reload",    "Reload File",       "Reload file from disk",           "Ctrl+Shift+R");
     shell.commandPalette.AddCommandWithShortcut("find",      "Find / Replace",    "Open the find bar",               "Ctrl+F");
+    shell.commandPalette.AddCommandWithShortcut("goto",      "Go To Line",        "Jump to a specific line number",  "Ctrl+G");
     shell.commandPalette.AddCommandWithShortcut("build",     "Build",             "Compile the current file",        "Ctrl+Shift+B");
     shell.commandPalette.AddCommandWithShortcut("buildrun",  "Build and Run",     "Build and run the current file",  "F5");
     shell.commandPalette.AddCommandWithShortcut("run",       "Run without Build", "Run without compiling first",     "Ctrl+F5");
@@ -105,7 +109,7 @@ func main() {
 
     shell.SetStatusLeft("Ready");
     shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
-    shell.SetStatusRight(welcomeDoc.fileName);
+    shell.SetStatusRight(DocStatusLabel(welcomeDoc));
 
     // Wire the find bar to the editor (enables Find/Replace to search in editor)
     shell.findBar.BindEditor(engine.editor);
@@ -124,6 +128,7 @@ func main() {
     // ========================================================================
     var loopCount = 0;
     var cpSelected = "";   // command palette selection for this frame
+    var ctxDir = "";       // directory targeted by the last tree right-click
 
     while shell != null and shell.ShouldClose() == false {
         loopCount = loopCount + 1;
@@ -145,6 +150,19 @@ func main() {
         // ====================================================================
         if Input.Mouse.WasClicked(1) {
             if shell.sidebarTree.IsHovered() != 0 {
+                // Determine which directory to use for New File / New Folder.
+                // Default to root; override from the currently selected tree node.
+                ctxDir = projMgr.project.rootPath;
+                var ctxNode = shell.sidebarTree.GetSelected();
+                if ctxNode != null {
+                    var nodePath = GUI.TreeView.Node.GetData(ctxNode);
+                    var nodeLabel = GUI.TreeView.Node.GetText(ctxNode);
+                    if Str.IndexOf(nodeLabel, "[D] ") == 1 {
+                        ctxDir = nodePath;   // directory node — use it directly
+                    } else {
+                        ctxDir = Path.Dir(nodePath);  // file node — use its parent
+                    }
+                }
                 shell.treeContextMenu.Show(Input.Mouse.X, Input.Mouse.Y);
             }
         }
@@ -155,6 +173,28 @@ func main() {
             var revealDoc = docMgr.GetActive();
             if revealDoc != null and revealDoc.isNew == false {
                 Exec.Shell("open -R \"" + revealDoc.filePath + "\"");
+            }
+        }
+        if shell.ctxNewFile.WasClicked() != 0 {
+            if ctxDir != "" {
+                var newName = GUI.MessageBox.Prompt("New File", "Enter file name:");
+                if newName != "" {
+                    var newFilePath = Path.Join(ctxDir, newName);
+                    IO.File.Touch(newFilePath);
+                    projMgr.RefreshTree();
+                    GUI.Toast.Success("Created: " + newName);
+                }
+            }
+        }
+        if shell.ctxNewFolder.WasClicked() != 0 {
+            if ctxDir != "" {
+                var folderName = GUI.MessageBox.Prompt("New Folder", "Enter folder name:");
+                if folderName != "" {
+                    var newFolderPath = Path.Join(ctxDir, folderName);
+                    Dir.Make(newFolderPath);
+                    projMgr.RefreshTree();
+                    GUI.Toast.Success("Created folder: " + folderName);
+                }
             }
         }
 
@@ -181,7 +221,7 @@ func main() {
 
             shell.breadcrumb.SetPath("", "/");
             shell.SetStatusLeft("New file created");
-            shell.SetStatusRight(newDoc.fileName);
+            shell.SetStatusRight(DocStatusLabel(newDoc));
             pendingReload = false;
         }
 
@@ -214,7 +254,7 @@ func main() {
 
                 shell.breadcrumb.SetPath(openDoc.filePath, "/");
                 shell.SetStatusLeft("Opened: " + openDoc.fileName);
-                shell.SetStatusRight(openDoc.fileName);
+                shell.SetStatusRight(DocStatusLabel(openDoc));
                 pendingReload = false;
             }
         }
@@ -248,7 +288,7 @@ func main() {
 
             shell.breadcrumb.SetPath(treeOpenDoc.filePath, "/");
             shell.SetStatusLeft("Opened: " + treeOpenDoc.fileName);
-            shell.SetStatusRight(treeOpenDoc.fileName);
+            shell.SetStatusRight(DocStatusLabel(treeOpenDoc));
             pendingReload = false;
         }
 
@@ -279,7 +319,7 @@ func main() {
                         engine.ClearModified();
                         shell.breadcrumb.SetPath(saveDoc.filePath, "/");
                         shell.SetStatusLeft("Saved: " + saveDoc.fileName);
-                        shell.SetStatusRight(saveDoc.fileName);
+                        shell.SetStatusRight(DocStatusLabel(saveDoc));
                         GUI.Toast.Success("Saved: " + saveDoc.fileName);
                     }
                 } else {
@@ -309,7 +349,7 @@ func main() {
                     engine.ClearModified();
                     shell.breadcrumb.SetPath(saveAsDoc.filePath, "/");
                     shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
-                    shell.SetStatusRight(saveAsDoc.fileName);
+                    shell.SetStatusRight(DocStatusLabel(saveAsDoc));
                 }
             }
         }
@@ -411,7 +451,7 @@ func main() {
                     tabs.SetActive(docMgr.activeIndex);
                     engine.LoadDocument(nextDoc);
                     shell.breadcrumb.SetPath(nextDoc.filePath, "/");
-                    shell.SetStatusRight(nextDoc.fileName);
+                    shell.SetStatusRight(DocStatusLabel(nextDoc));
                 } else {
                     engine.SetText("");
                     engine.ClearModified();
@@ -503,6 +543,24 @@ func main() {
             } else {
                 shell.findBar.SetVisible(1);
                 shell.findBar.Focus();
+            }
+        }
+
+        // ====================================================================
+        // Handle Go To Line (Ctrl+G or CommandPalette)
+        // ====================================================================
+        var doGoto = Shortcuts.WasTriggered("goto") != 0;
+        if doGoto == false {
+            doGoto = cpSelected == "goto";
+        }
+        if doGoto {
+            var lineStr = GUI.MessageBox.Prompt("Go To Line", "Enter line number:");
+            if lineStr != "" {
+                var lineNum = Convert.ToInt(lineStr);
+                if lineNum > 0 {
+                    engine.GoToLine(lineNum);
+                    shell.SetStatusLeft("Jumped to line " + lineNum);
+                }
             }
         }
 
@@ -686,7 +744,7 @@ func main() {
                     } else {
                         shell.breadcrumb.SetPath(switchDoc.filePath, "/");
                     }
-                    shell.SetStatusRight(switchDoc.fileName);
+                    shell.SetStatusRight(DocStatusLabel(switchDoc));
                     shell.SetStatusLeft("Switched to: " + switchDoc.fileName);
                     pendingReload = false;
                 }
@@ -773,7 +831,7 @@ func SaveEditorState(docMgr: document_manager.DocumentManager,
     }
 }
 
-// Refresh the diagnostics panel and minimap markers after a build.
+// Refresh the diagnostics panel, minimap markers, and build output after a build.
 // Error lines are marked red (16711680) and warnings yellow (16776960).
 func UpdateDiagnostics(shell: app_shell.AppShell,
                        buildSys: build_system.BuildSystem,
@@ -802,4 +860,21 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
     } else {
         shell.diagListBox.SetVisible(0);
     }
+
+    // Show raw build output so the user can always see compiler stdout/stderr.
+    shell.SetBuildOutput(buildSys.GetOutput());
+}
+
+// Build the status bar right-zone label for a document.
+// Returns e.g. "Zia  |  LF" or "Basic  |  CRLF".
+// Shown in the status bar right zone; the breadcrumb already shows the file path.
+func DocStatusLabel(doc: document.Document) -> String {
+    var lang = "Text";
+    if doc.language == "zia"   { lang = "Zia"; }
+    if doc.language == "basic" { lang = "Basic"; }
+
+    var eol = "LF";
+    if Str.IndexOf(doc.content, "\r\n") != 0 { eol = "CRLF"; }
+
+    return lang + "  |  " + eol;
 }
