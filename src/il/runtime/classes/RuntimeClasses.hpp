@@ -396,12 +396,17 @@ enum class ILScalarType : std::uint8_t
 };
 
 /// @brief Parsed signature with structured type information.
-/// @details Extracted from signature strings like "str(i64,i64)".
+/// @details Extracted from signature strings like "str(i64,i64)" or "seq<str>(str,str)".
 struct ParsedSignature
 {
     ILScalarType returnType{ILScalarType::Unknown};
     bool isOptionalReturn{false};
     std::vector<ILScalarType> params;
+
+    /// @brief Element type name for parameterized seq/list returns (e.g. "str" from "seq<str>").
+    /// @details Empty for plain obj/ptr returns. When non-empty, frontends should produce
+    /// a typed sequence/collection type instead of an opaque pointer.
+    std::string elementTypeName;
 
     /// @brief Check if the signature was parsed successfully.
     [[nodiscard]] bool isValid() const

@@ -756,6 +756,14 @@ TypeRef result(TypeRef successType);
 /// @details Creates a dynamic array type.
 TypeRef list(TypeRef element);
 
+/// @brief Create a typed Seq (lazy sequence) type for rt_seq-returning runtime functions.
+/// @param element The element type T.
+/// @return A Ptr type carrying the element type, representing an rt_seq.
+/// @details Represented as Ptr{name="Viper.Collections.Seq", typeArgs=[T]}.
+/// This allows the lowerer to use kSeqLen/kSeqGet instead of kListCount/kListGet,
+/// since rt_seq and rt_list have incompatible internal structures.
+TypeRef seqOf(TypeRef element);
+
 /// @brief Create a Set[T] type.
 /// @param element The element type T.
 /// @return A new Set type.

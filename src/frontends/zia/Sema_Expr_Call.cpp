@@ -619,6 +619,21 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             }
         }
 
+        // Emit a diagnostic for method calls on an untyped opaque pointer (plain 'obj').
+        // This occurs when a runtime function that returns obj/ptr without a typed seq
+        // annotation is used as a method receiver. The typed Seq API (Seq.Get, Seq.get_Len)
+        // must be used instead, or the runtime.def entry should be annotated with seq<T>.
+        if (baseType && baseType->kind == TypeKindSem::Ptr && baseType->name.empty())
+        {
+            error(expr->loc,
+                  "Cannot call method on an untyped object reference. "
+                  "Use Seq.Get/Seq.get_Len for sequence results, or check the runtime.def "
+                  "annotation for the function returning this value.");
+            for (auto &arg : expr->args)
+                analyzeExpr(arg.value.get());
+            return types::unknown();
+        }
+
         // Handle runtime class method calls (e.g., canvas.Poll(), canvas.Clear())
         // Runtime classes have names starting with "Viper." and are registered in typeRegistry_
         if (baseType && baseType->name.find("Viper.") == 0)

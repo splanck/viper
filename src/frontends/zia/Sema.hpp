@@ -410,7 +410,15 @@ class Sema
     TypeRef functionReturnType(const std::string &name)
     {
         Symbol *sym = lookupSymbol(name);
-        return sym && sym->kind == Symbol::Kind::Function ? sym->type : nullptr;
+        if (!sym || sym->kind != Symbol::Kind::Function)
+            return nullptr;
+        TypeRef t = sym->type;
+        // When registered with param types, sym->type is a full function type.
+        // Unwrap it to return the actual return type so callers can decide
+        // between emitCall (void) and emitCallRet (non-void).
+        if (t && t->kind == TypeKindSem::Function)
+            return t->returnType();
+        return t;
     }
 
     /// @brief Find an extern (runtime) function by name.

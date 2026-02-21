@@ -279,17 +279,26 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
         const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
         if (info && info->totalSize > 0)
         {
-            // Allocate heap memory via runtime
+            // Read all field values BEFORE allocating heap memory. The source
+            // pointer (val) may point into a callee's C stack frame that was
+            // just returned from; in native code that frame is freed on return
+            // and will be overwritten by the very next function call
+            // (rt_box_value_type → rt_heap_alloc). Reading first keeps all
+            // fields in IL temporaries (vregs) that survive the call via
+            // callee-save registers or spills into the current frame.
+            std::vector<Value> fieldValues;
+            fieldValues.reserve(info->fields.size());
+            for (const auto &field : info->fields)
+                fieldValues.push_back(emitFieldLoad(&field, val));
+
+            // Now it is safe to allocate heap memory
             Value heapPtr = emitCallRet(Type(Type::Kind::Ptr),
                                         kBoxValueType,
                                         {Value::constInt(static_cast<int64_t>(info->totalSize))});
 
-            // Copy all fields from stack to heap
-            for (const auto &field : info->fields)
-            {
-                Value srcValue = emitFieldLoad(&field, val);
-                emitFieldStore(&field, heapPtr, srcValue);
-            }
+            // Write the pre-read field values into the heap object
+            for (size_t i = 0; i < info->fields.size(); ++i)
+                emitFieldStore(&info->fields[i], heapPtr, fieldValues[i]);
 
             return heapPtr;
         }

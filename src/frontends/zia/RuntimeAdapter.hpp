@@ -178,6 +178,19 @@ TypeRef toZiaType(il::runtime::ILScalarType t);
 ///
 std::vector<TypeRef> toZiaParamTypes(const il::runtime::ParsedSignature &sig);
 
+/// @brief Convert a parsed signature's return type to Zia, handling typed seq returns.
+///
+/// @details Extends toZiaType() for signatures that carry element type information
+/// (e.g. "seq<str>" in runtime.def). When `sig.elementTypeName` is non-empty, this
+/// function returns a typed Seq type (types::seqOf) so the lowerer can emit the correct
+/// kSeqLen/kSeqGet opcodes for rt_seq objects. Without this, seq-returning functions
+/// would produce an untyped Ptr that could cause "store void" errors in the IL verifier.
+///
+/// @param sig The parsed signature (may have elementTypeName set from "seq<str>" syntax).
+/// @return The corresponding Zia TypeRef, with proper collection typing when available.
+///
+TypeRef toZiaReturnType(const il::runtime::ParsedSignature &sig);
+
 /// @}
 
 } // namespace il::frontends::zia

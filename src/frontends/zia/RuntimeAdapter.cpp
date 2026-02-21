@@ -116,4 +116,17 @@ std::vector<TypeRef> toZiaParamTypes(const il::runtime::ParsedSignature &sig)
     return result;
 }
 
+TypeRef toZiaReturnType(const il::runtime::ParsedSignature &sig)
+{
+    // When the signature carries an element type (e.g. "seq<str>"), produce a typed
+    // Seq type so the lowerer can use kSeqLen/kSeqGet for safe rt_seq iteration.
+    if (!sig.elementTypeName.empty())
+    {
+        auto elemScalar = il::runtime::mapILToken(sig.elementTypeName);
+        TypeRef elemType = toZiaType(elemScalar);
+        return types::seqOf(elemType);
+    }
+    return toZiaType(sig.returnType);
+}
+
 } // namespace il::frontends::zia

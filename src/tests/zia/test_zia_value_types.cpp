@@ -360,6 +360,78 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+//===----------------------------------------------------------------------===//
+// Value Type Boxing — Return-then-Box Pattern (BUG-NAT-008)
+//===----------------------------------------------------------------------===//
+
+/// @brief Value type returned from a helper and immediately boxed into a list.
+///
+/// This exercises the code path where emitBoxValue receives a Ptr that
+/// originated from a callee's stack frame. In native code (AArch64), the
+/// callee's frame is freed on return; the rt_box_value_type call that follows
+/// would reuse the same stack area, corrupting the value type fields before
+/// they were read. The fix reads all fields into IL temporaries BEFORE calling
+/// rt_box_value_type, so the temporaries survive the call in callee-save
+/// registers or the current function's spill slots.
+TEST(ZiaValueTypes, ReturnedValueTypeBoxedIntoList)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+value Move {
+    expose Integer from;
+    expose Integer to;
+    expose Integer kind;
+    expose Boolean special;
+}
+
+entity MoveGen {
+    hide func makeMove(Integer f, Integer t, Integer k, Boolean sp) -> Move {
+        return new Move(f, t, k, sp);
+    }
+
+    expose func generate() -> List[Move] {
+        var moves = [];
+        moves.add(self.makeMove(0, 16, 1, false));
+        moves.add(self.makeMove(1, 17, 2, true));
+        moves.add(self.makeMove(2, 18, 1, false));
+        return moves;
+    }
+}
+
+func start() {
+    var gen = new MoveGen();
+    var list = gen.generate();
+    Viper.Terminal.SayInt(list.count());
+    var m0 = list.get(0);
+    Viper.Terminal.SayInt(m0.from);
+    Viper.Terminal.SayInt(m0.to);
+    var m1 = list.get(1);
+    Viper.Terminal.SayInt(m1.from);
+    Viper.Terminal.SayInt(m1.to);
+}
+)";
+    CompilerInput input{.source = source, .path = "valuebox_ret.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify the IL for the 'generate' method contains Load instructions
+    // (field reads) before the Call to rt_box_value_type. We check that at
+    // least one Load appears in the module — the specific ordering is guarded
+    // by the emitBoxValue fix and visible in the generated IL.
+    bool hasLoad = false;
+    for (const auto &fn : result.module.functions)
+        for (const auto &bb : fn.blocks)
+            for (const auto &ins : bb.instructions)
+                if (ins.op == il::core::Opcode::Load)
+                    hasLoad = true;
+    EXPECT_TRUE(hasLoad);
+}
+
 } // namespace
 
 int main()

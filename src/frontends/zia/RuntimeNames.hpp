@@ -220,8 +220,12 @@ inline constexpr const char *kMapValues = kCollectionsMapValues;
 
 /// @brief Get the number of elements in the Seq. O(1).
 inline constexpr const char *kSeqLen = kCollectionsSeqGetLen;
-/// @brief Get the element at a given index in the Seq. O(1).
+/// @brief Get the element at a given index in the Seq. O(1). Returns obj (Ptr).
 inline constexpr const char *kSeqGet = kCollectionsSeqGet;
+/// @brief Get a string element at a given index in a seq<str> Seq. Returns Str directly.
+/// @details seq<str> sequences store raw rt_string pointers (not boxed). This function
+///          casts the void* element to rt_string without boxing/unboxing overhead.
+inline constexpr const char *kSeqGetStr = "Viper.Collections.Seq.GetStr";
 /// @}
 
 //=============================================================================

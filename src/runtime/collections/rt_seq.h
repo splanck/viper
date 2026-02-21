@@ -49,6 +49,14 @@ extern "C"
     /// @return Element at the index; traps if out of bounds.
     void *rt_seq_get(void *obj, int64_t idx);
 
+    /// @brief Get a string element at the specified index from a string sequence.
+    /// @details For seq<str> sequences (e.g. from Viper.String.Split), elements are
+    ///          stored as raw rt_string pointers (not boxed). This casts directly.
+    /// @param obj Opaque Seq object pointer.
+    /// @param idx Index of element to retrieve.
+    /// @return String element at the index; traps if out of bounds.
+    struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx);
+
     /// @brief Set the element at the specified index.
     /// @param obj Opaque Seq object pointer.
     /// @param idx Index of element to set.

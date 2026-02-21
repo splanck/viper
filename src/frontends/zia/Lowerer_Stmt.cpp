@@ -633,9 +633,10 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         // Load keys sequence and index from slot for cross-block SSA
         Value keysLoaded = loadFromSlot(keysVar, Type(Type::Kind::Ptr));
         Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        // kSeqGet returns a boxed value (Ptr), so we need to unbox it
-        Value boxedKey = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {keysLoaded, idxInBody});
-        auto keyVal = emitUnbox(boxedKey, keyIlType);
+        // Map keys are always strings stored as raw rt_string pointers in the seq
+        // (rt_map_keys pushes raw rt_string, not boxed rt_box_t). Use kSeqGetStr.
+        Value keyStrVal = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {keysLoaded, idxInBody});
+        LowerResult keyVal = {keyStrVal, Type(Type::Kind::Str)};
         storeToSlot(stmt->variable, keyVal.value, keyIlType);
 
         if (stmt->isTuple)
@@ -670,6 +671,95 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         removeSlot(lenVar);
         removeSlot(keysVar);
         removeSlot(mapVar);
+
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
+        return;
+    }
+
+    // Seq iteration: typed rt_seq result from seq<T>-annotated runtime functions.
+    // Uses kSeqLen / kSeqGet (not kListCount / kListGet) since rt_seq and rt_list
+    // have incompatible internal layouts.
+    if (iterableType->kind == TypeKindSem::Ptr &&
+        iterableType->name == "Viper.Collections.Seq" &&
+        !iterableType->typeArgs.empty())
+    {
+        TypeRef elemType = iterableType->typeArgs[0];
+        if (stmt->variableType)
+            elemType = sema_.resolveType(stmt->variableType.get());
+
+        Type elemIlType = mapType(elemType);
+
+        createSlot(stmt->variable, elemIlType);
+        localTypes_[stmt->variable] = elemType;
+
+        auto seqValue = lowerExpr(stmt->iterable.get());
+
+        std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
+        std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+        std::string seqVar = "__forin_seq_" + std::to_string(nextTempId());
+
+        createSlot(indexVar, Type(Type::Kind::I64));
+        createSlot(lenVar, Type(Type::Kind::I64));
+        createSlot(seqVar, Type(Type::Kind::Ptr));
+        storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+        storeToSlot(seqVar, seqValue.value, Type(Type::Kind::Ptr));
+        Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {seqValue.value});
+        storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
+
+        size_t condIdx = createBlock("forin_seq_cond");
+        size_t bodyIdx = createBlock("forin_seq_body");
+        size_t updateIdx = createBlock("forin_seq_update");
+        size_t endIdx = createBlock("forin_seq_end");
+
+        loopStack_.push(endIdx, updateIdx);
+        emitBr(condIdx);
+
+        setBlock(condIdx);
+        Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
+        Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
+        emitCBr(cond, bodyIdx, endIdx);
+
+        setBlock(bodyIdx);
+        Value seqLoaded = loadFromSlot(seqVar, Type(Type::Kind::Ptr));
+        Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        // seq<str> sequences store raw rt_string pointers directly (not boxed).
+        // Use kSeqGetStr which reinterprets void* as rt_string, avoiding rt_unbox_str.
+        // For non-string element types, kSeqGet returns a boxed Ptr that needs unboxing.
+        if (elemIlType.kind == Type::Kind::Str)
+        {
+            Value elem = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {seqLoaded, idxInBody});
+            storeToSlot(stmt->variable, elem, Type(Type::Kind::Str));
+        }
+        else
+        {
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {seqLoaded, idxInBody});
+            auto elemValue = emitUnbox(boxed, elemIlType);
+            storeToSlot(stmt->variable, elemValue.value, elemIlType);
+        }
+
+        lowerStmt(stmt->body.get());
+        if (!isTerminated())
+        {
+            emitBr(updateIdx);
+        }
+
+        setBlock(updateIdx);
+        Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
+        Value idxNext = emitBinary(addOp, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+        storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
+        emitBr(condIdx);
+
+        loopStack_.pop();
+        setBlock(endIdx);
+
+        removeSlot(stmt->variable);
+        removeSlot(indexVar);
+        removeSlot(lenVar);
+        removeSlot(seqVar);
 
         locals_ = std::move(localsBackup);
         slots_ = std::move(slotsBackup);

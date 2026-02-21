@@ -360,7 +360,34 @@ ParsedSignature parseRuntimeSignature(std::string_view sig)
         retTok.remove_suffix(1);
     }
 
-    result.returnType = mapILToken(retTok);
+    // Check for parameterized collection type: "seq<str>", "list<str>", etc.
+    // These indicate a typed sequence return where the element type is known.
+    auto langle = retTok.find('<');
+    if (langle != std::string_view::npos)
+    {
+        auto rangle = retTok.rfind('>');
+        if (rangle != std::string_view::npos && rangle > langle)
+        {
+            // Extract element type name (e.g. "str" from "seq<str>")
+            result.elementTypeName =
+                std::string(retTok.substr(langle + 1, rangle - langle - 1));
+            // Trim any whitespace from element type name
+            while (!result.elementTypeName.empty() &&
+                   std::isspace(static_cast<unsigned char>(result.elementTypeName.front())))
+                result.elementTypeName.erase(result.elementTypeName.begin());
+            while (!result.elementTypeName.empty() &&
+                   std::isspace(static_cast<unsigned char>(result.elementTypeName.back())))
+                result.elementTypeName.pop_back();
+            // The collection prefix ("seq", "list") maps to Object at IL level
+            retTok = retTok.substr(0, langle);
+        }
+    }
+
+    // "seq" and "list" prefixes map to Object (opaque pointer at IL level)
+    if (retTok == "seq" || retTok == "list")
+        result.returnType = ILScalarType::Object;
+    else
+        result.returnType = mapILToken(retTok);
 
     // Extract the parameter list (everything between parentheses)
     std::string_view args = sig.substr(lparen + 1, rparen - lparen - 1);

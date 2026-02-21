@@ -356,6 +356,20 @@ void *rt_seq_get(void *obj, int64_t idx)
     return seq->items[idx];
 }
 
+/// @brief Get string element at index from a string sequence.
+///
+/// All seq<str>-returning runtime functions store raw rt_string pointers
+/// directly in the sequence (not boxed). This helper casts the void* element
+/// to rt_string without any boxing/unboxing, for use in for-in iteration.
+///
+/// @param obj Opaque Seq object pointer.
+/// @param idx Index of element to retrieve.
+/// @return String element at the index (raw rt_string pointer).
+struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx)
+{
+    return (struct rt_string_impl *)rt_seq_get(obj, idx);
+}
+
 /// @brief Replaces the element at the specified index.
 ///
 /// Provides O(1) random modification of any element in the Seq. The index
