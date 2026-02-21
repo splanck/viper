@@ -683,6 +683,9 @@ int64_t rt_messagebox_info(rt_string title, rt_string message)
         free(cmsg);
     if (!dlg)
         return 0;
+    rt_gui_ensure_default_font();
+    if (s_current_app)
+        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
     vg_dialog_show(dlg);
     rt_gui_set_active_dialog(dlg);
     return 0;
@@ -700,6 +703,9 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message)
         free(cmsg);
     if (!dlg)
         return 0;
+    rt_gui_ensure_default_font();
+    if (s_current_app)
+        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
     vg_dialog_show(dlg);
     rt_gui_set_active_dialog(dlg);
     return 0;
@@ -716,6 +722,9 @@ int64_t rt_messagebox_error(rt_string title, rt_string message)
         free(cmsg);
     if (!dlg)
         return 0;
+    rt_gui_ensure_default_font();
+    if (s_current_app)
+        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
     vg_dialog_show(dlg);
     rt_gui_set_active_dialog(dlg);
     return 0;

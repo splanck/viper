@@ -624,9 +624,6 @@ void rt_gui_app_render(void *app_ptr)
             vg_widget_arrange(&g_active_dialog->base,
                               (dlg_win_w - dw) / 2.0f, (dlg_win_h - dh) / 2.0f, dw, dh);
 
-            // Dim the content behind the dialog
-            vgfx_fill_rect(app->window, 0, 0, dlg_win_w, dlg_win_h, 0x80000000);
-
             // Paint the dialog
             if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->paint)
             {
