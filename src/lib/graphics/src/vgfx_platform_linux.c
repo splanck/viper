@@ -137,6 +137,74 @@ static vgfx_key_t translate_keysym(KeySym keysym)
 // Platform API Implementation
 //===----------------------------------------------------------------------===//
 
+/// @brief Query the HiDPI backing scale factor for the X11 display.
+/// @details Tries three sources in priority order:
+///
+///   1. GDK_SCALE env var — set by GNOME/Mutter on both Wayland and X11.
+///      Example: GDK_SCALE=2 on a HiDPI GNOME desktop.
+///
+///   2. QT_SCALE_FACTOR env var — set by KDE Plasma.
+///      Example: QT_SCALE_FACTOR=1.5 on a KDE 150% display.
+///
+///   3. Xft.dpi from the X11 resource database (XResourceManagerString).
+///      Standard 96 DPI → scale 1.0; 192 DPI → scale 2.0.
+///
+///   4. Fallback: 1.0 (standard 96 DPI display).
+///
+/// @note X11 always reports physical pixel coordinates in events and
+///       XConfigureNotify, so no additional scaling is needed in the
+///       event handlers or resize handler on Linux.
+///
+/// @return Scale factor ≥ 1.0
+float vgfx_platform_get_display_scale(void)
+{
+    /* Priority 1: GDK_SCALE env var (GNOME/Mutter on Wayland and X11) */
+    const char *gdk = getenv("GDK_SCALE");
+    if (gdk)
+    {
+        float s = strtof(gdk, NULL);
+        if (s >= 1.0f)
+            return s;
+    }
+
+    /* Priority 2: QT_SCALE_FACTOR (KDE Plasma) */
+    const char *qt = getenv("QT_SCALE_FACTOR");
+    if (qt)
+    {
+        float s = strtof(qt, NULL);
+        if (s >= 1.0f)
+            return s;
+    }
+
+    /* Priority 3: Xft.dpi from the X11 resource database.
+     * Open a temporary display connection just for this query so we don't
+     * interfere with the window's own Display connection (opened later). */
+    Display *dpy = XOpenDisplay(NULL);
+    if (dpy)
+    {
+        float    scale = 1.0f;
+        const char *rms = XResourceManagerString(dpy);
+        if (rms)
+        {
+            /* Search for "Xft.dpi:\t96" or "Xft.dpi: 192" etc. */
+            const char *pos = strstr(rms, "Xft.dpi:");
+            if (pos)
+            {
+                pos += 8; /* skip "Xft.dpi:" */
+                while (*pos == ' ' || *pos == '\t')
+                    pos++;
+                float dpi = strtof(pos, NULL);
+                if (dpi >= 96.0f)
+                    scale = dpi / 96.0f;
+            }
+        }
+        XCloseDisplay(dpy);
+        return scale;
+    }
+
+    return 1.0f; /* fallback: assume standard 96 DPI */
+}
+
 /// @brief Initialize platform-specific window resources for X11.
 /// @details Opens connection to X server, creates X11 window with appropriate
 ///          attributes, sets up WM_DELETE_WINDOW protocol for close button,

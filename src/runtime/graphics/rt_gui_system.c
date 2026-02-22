@@ -551,11 +551,9 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h)
     if (!gui_app->window)
         return;
     vgfx_set_window_size(gui_app->window, (int32_t)w, (int32_t)h);
-    if (gui_app->root)
-    {
-        gui_app->root->width  = (float)w;
-        gui_app->root->height = (float)h;
-    }
+    // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
+    // rt_gui_app_render — do not set root->width/height here with the logical
+    // dimensions passed from Zia, as that would corrupt the layout geometry.
 }
 
 double rt_app_get_font_size(void *app)

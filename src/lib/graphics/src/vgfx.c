@@ -686,9 +686,16 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params)
     }
 
     /* Initialize window properties */
-    win->width = actual_params.width;
-    win->height = actual_params.height;
     win->resizable = actual_params.resizable;
+
+    /* Query HiDPI scale once and store it.  Scale up the requested logical
+     * dimensions to physical pixels so the framebuffer is allocated at the
+     * native display resolution.  win->width / win->height are PHYSICAL after
+     * this point; divide by scale_factor to recover logical (point) dimensions. */
+    float dpi_scale = vgfx_platform_get_display_scale();
+    win->scale_factor = (dpi_scale >= 1.0f) ? dpi_scale : 1.0f;
+    win->width  = (int32_t)(actual_params.width  * win->scale_factor);
+    win->height = (int32_t)(actual_params.height * win->scale_factor);
     win->stride = win->width * 4;
 
     /* Set FPS (apply default if params.fps == 0, clamp if positive) */
@@ -882,6 +889,31 @@ int32_t vgfx_get_size(vgfx_window_t window, int32_t *width, int32_t *height)
     if (height)
         *height = window->height;
     return 1;
+}
+
+/// @brief Query the HiDPI backing scale factor for a window.
+/// @details Returns the ratio set in win->scale_factor by vgfx_create_window().
+///          On a 2× macOS Retina display this is 2.0; on 96 DPI it is 1.0.
+float vgfx_window_get_scale(vgfx_window_t window)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return 1.0f;
+    return win->scale_factor > 0.0f ? win->scale_factor : 1.0f;
+}
+
+/// @brief Get the physical pixel width of the window framebuffer.
+int32_t vgfx_window_get_width(vgfx_window_t window)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    return win ? win->width : 0;
+}
+
+/// @brief Get the physical pixel height of the window framebuffer.
+int32_t vgfx_window_get_height(vgfx_window_t window)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    return win ? win->height : 0;
 }
 
 //===----------------------------------------------------------------------===//

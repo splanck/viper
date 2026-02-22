@@ -477,6 +477,30 @@ extern "C"
     /// @param h New window height in pixels (must be > 0)
     void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h);
 
+    /// @brief Query the HiDPI backing scale factor for a window.
+    /// @details Returns the ratio of physical pixels to logical points that was
+    ///          applied when the window was created.  On a 2× macOS Retina display
+    ///          this returns 2.0; on a standard 96 DPI display it returns 1.0.
+    ///          Use this value to scale logical coordinates to physical pixels or
+    ///          to adjust font/UI element sizes for crisp rendering.
+    /// @param window Window handle (may be NULL → returns 1.0)
+    /// @return Scale factor (≥ 1.0)
+    float vgfx_window_get_scale(vgfx_window_t window);
+
+    /// @brief Get the physical pixel width of the window framebuffer.
+    /// @details Returns win->width, which equals (logical_width × scale_factor)
+    ///          after vgfx_create_window().  Use for framebuffer operations.
+    /// @param window Window handle
+    /// @return Physical width in pixels, or 0 if window is NULL
+    int32_t vgfx_window_get_width(vgfx_window_t window);
+
+    /// @brief Get the physical pixel height of the window framebuffer.
+    /// @details Returns win->height, which equals (logical_height × scale_factor)
+    ///          after vgfx_create_window().  Use for framebuffer operations.
+    /// @param window Window handle
+    /// @return Physical height in pixels, or 0 if window is NULL
+    int32_t vgfx_window_get_height(vgfx_window_t window);
+
     /// @brief Get direct access to the framebuffer.
     /// @details Returns a descriptor with pointers to the raw RGBA pixel data.
     ///          The framebuffer is always stored in row-major order with 4 bytes

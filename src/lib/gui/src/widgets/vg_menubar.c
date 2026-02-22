@@ -117,10 +117,13 @@ vg_menubar_t *vg_menubar_create(vg_widget_t *parent)
     menubar->font = NULL;
     menubar->font_size = theme->typography.size_normal;
 
-    // Appearance
-    menubar->height = 28.0f;
-    menubar->menu_padding = 10.0f;
-    menubar->item_padding = 8.0f;
+    // Appearance — scale pixel constants by ui_scale so the menubar is the
+    // correct visual size on HiDPI displays (e.g. 56px physical = 28pt visual
+    // on a 2× Retina when ui_scale = 2.0).
+    float s = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+    menubar->height = 28.0f * s;
+    menubar->menu_padding = 10.0f * s;
+    menubar->item_padding =  8.0f * s;
     menubar->bg_color = theme->colors.bg_secondary;
     menubar->text_color = theme->colors.fg_primary;
     menubar->highlight_bg = theme->colors.bg_selected;
@@ -187,7 +190,7 @@ static void menubar_paint(vg_widget_t *widget, void *canvas)
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(menubar->font, menubar->font_size, &font_metrics);
 
-    float text_y = widget->y + (widget->height + font_metrics.ascent - font_metrics.descent) / 2.0f;
+    float text_y = widget->y + (widget->height + font_metrics.ascent + font_metrics.descent) / 2.0f;
     float menu_x = widget->x;
 
     // Draw each menu title
@@ -254,10 +257,12 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
         }
     }
 
-    // Calculate dropdown dimensions
+    // Calculate dropdown dimensions — scale by ui_scale for HiDPI.
     float dropdown_y = widget->y + widget->height;
-    float dropdown_width = 200.0f;
-    float item_height = 28.0f;
+    float _ds = vg_theme_get_current()->ui_scale;
+    if (_ds <= 0.0f) _ds = 1.0f;
+    float dropdown_width = 200.0f * _ds;
+    float item_height = 28.0f * _ds;
     float dropdown_height = menubar->open_menu->item_count * item_height;
 
     // Get theme for colors
@@ -327,7 +332,7 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
             if (item->text)
             {
                 float item_text_y =
-                    item_y + (item_height + font_metrics.ascent - font_metrics.descent) / 2.0f;
+                    item_y + (item_height + font_metrics.ascent + font_metrics.descent) / 2.0f;
                 uint32_t color = item->enabled ? menubar->text_color : menubar->disabled_color;
                 vg_font_draw_text(canvas,
                                   menubar->font,
@@ -443,8 +448,10 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
             else if (menubar->open_menu)
             {
-                // Check if in dropdown area
-                float item_height = 28.0f;
+                // Check if in dropdown area — scale item_height by ui_scale.
+                float _hs = vg_theme_get_current()->ui_scale;
+                if (_hs <= 0.0f) _hs = 1.0f;
+                float item_height = 28.0f * _hs;
                 int item_index = (int)((local_y - menubar->height) / item_height);
 
                 vg_menu_item_t *old_highlight = menubar->highlighted;

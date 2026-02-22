@@ -8,6 +8,7 @@ bind "core/project_manager";
 bind "core/settings";
 bind "editor/editor_engine";
 bind "editor/editor_tabs";
+bind "editor/completion";
 bind "services/file_utils";
 bind "build/build_system";
 
@@ -18,6 +19,7 @@ bind Dir = Viper.IO.Dir;
 bind Input = Viper.Input;
 bind Exec = Viper.Exec;
 bind Convert = Viper.Core.Convert;
+bind Str = Viper.String;
 
 // ============================================================================
 // ViperIDE — main entry point
@@ -49,6 +51,10 @@ func main() {
 
     // Setup editor inside editorRow (the HBox for editor + minimap side by side)
     engine.Setup(shell.editorRow);
+
+    // Setup IntelliSense completion controller
+    var completer = new completion.CompletionController();
+    completer.Setup(engine.editor, shell.app);
 
     // Create minimap in the right side of editorRow and bind it to the editor
     shell.minimap = GUI.Minimap.New(shell.editorRow);
@@ -84,6 +90,11 @@ func main() {
     Shortcuts.Register("fullscreen",  "F11",          "Toggle Fullscreen");
     Shortcuts.Register("minimap",     "Ctrl+Shift+M", "Toggle Minimap");
     Shortcuts.Register("settings",    "Ctrl+,",       "Settings");
+    Shortcuts.Register("completion_trigger",  "Ctrl+Space", "Trigger Completion");
+    Shortcuts.Register("completion_accept",   "Tab",        "Accept Completion");
+    Shortcuts.Register("completion_dismiss",  "Escape",     "Dismiss Completion");
+    Shortcuts.Register("completion_down",     "Down",       "Next Completion Item");
+    Shortcuts.Register("completion_up",       "Up",         "Prev Completion Item");
 
     // ========================================================================
     // Register command palette commands
@@ -161,9 +172,51 @@ func main() {
     var ctxDir = "";       // directory targeted by the last tree right-click
     var minimapVisible = appSettings.minimapVisible;   // tracks minimap panel visibility
 
+    // Cursor tracking for dot-trigger and completion auto-dismiss
+    var prevCursorLine = 1;
+    var prevCursorCol  = 1;
+
     while shell != null and shell.ShouldClose() == false {
         loopCount = loopCount + 1;
         shell.Poll();
+
+        // ====================================================================
+        // Code Completion — IntelliSense popup
+        // ====================================================================
+        completer.Update();
+
+        // Keyboard shortcuts for completion navigation
+        if completer.isVisible {
+            if Shortcuts.WasTriggered("completion_accept") != 0 {
+                completer.AcceptSelected();
+            } else if Shortcuts.WasTriggered("completion_dismiss") != 0 {
+                completer.Hide();
+            } else if Shortcuts.WasTriggered("completion_down") != 0 {
+                completer.NavigateDown();
+            } else if Shortcuts.WasTriggered("completion_up") != 0 {
+                completer.NavigateUp();
+            }
+        }
+
+        // Ctrl+Space always triggers (even when popup is open, to refresh)
+        if Shortcuts.WasTriggered("completion_trigger") != 0 {
+            completer.TriggerCompletion();
+        }
+
+        // Dot trigger: detect when '.' is typed (cursor advances 1 col, same line)
+        var curCursorLine = engine.GetCursorLine();
+        var curCursorCol  = engine.GetCursorCol();
+        if curCursorLine == prevCursorLine and curCursorCol == prevCursorCol + 1 {
+            if curCursorCol >= 2 {
+                var dotLineText = engine.editor.GetLine(curCursorLine - 1);
+                // Str.MidLen uses 1-based start; char just typed is at col curCursorCol-1
+                if Str.MidLen(dotLineText, curCursorCol - 1, 1) == "." {
+                    completer.TriggerCompletion();
+                }
+            }
+        }
+        prevCursorLine = curCursorLine;
+        prevCursorCol  = curCursorCol;
 
         // ====================================================================
         // Command Palette — check selection and show on Ctrl+Shift+P

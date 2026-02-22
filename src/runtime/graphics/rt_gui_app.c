@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "fonts/embedded_font.h"
 
 // Global pointer to the current app for widget constructors to access the default font.
 rt_gui_app_t *s_current_app = NULL;
@@ -62,18 +63,38 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     // the framebuffer stays black until the drag ends.
     vgfx_set_resize_callback(app->window, rt_gui_app_resize_render, app);
 
-    // Create root container
+    // Create root container. The root is sized dynamically every frame by
+    // vg_widget_layout(root, win_w, win_h) in rt_gui_app_render, which reads
+    // the current physical window dimensions from vgfx_get_size. Do NOT pin it
+    // with vg_widget_set_fixed_size — that creates hard min=max constraints that
+    // prevent the layout engine from resizing the root on window resize.
     app->root = vg_widget_create(VG_WIDGET_CONTAINER);
-    if (app->root)
-    {
-        vg_widget_set_fixed_size(app->root, (float)width, (float)height);
-        // Also set actual size (set_fixed_size only sets constraints)
-        app->root->width = (float)width;
-        app->root->height = (float)height;
-    }
 
-    // Set dark theme by default
+    // Set dark theme by default, then propagate the HiDPI scale factor so that
+    // widget creation functions can derive correctly-scaled pixel measurements.
     vg_theme_set_current(vg_theme_dark());
+    {
+        float _s = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
+        vg_theme_t *_t = vg_theme_get_current();
+        _t->ui_scale = _s;
+        // Scale typography so theme-derived font sizes render at the correct
+        // visual size on HiDPI displays (e.g. 13pt × 2 = 26pt physical on Retina).
+        _t->typography.size_small   *= _s;
+        _t->typography.size_normal  *= _s;
+        _t->typography.size_large   *= _s;
+        _t->typography.size_heading *= _s;
+        // Scale spacing presets and per-widget-class metrics.
+        _t->spacing.xs *= _s;
+        _t->spacing.sm *= _s;
+        _t->spacing.md *= _s;
+        _t->spacing.lg *= _s;
+        _t->spacing.xl *= _s;
+        _t->button.height    *= _s;
+        _t->button.padding_h *= _s;
+        _t->input.height     *= _s;
+        _t->input.padding_h  *= _s;
+        _t->scrollbar.width  *= _s;
+    }
 
     s_current_app = app;
     return app;
@@ -84,6 +105,21 @@ void rt_gui_ensure_default_font(void)
 {
     if (!s_current_app || s_current_app->default_font)
         return;
+
+    // Try the embedded JetBrains Mono Regular first (always available).
+    s_current_app->default_font =
+        vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
+    if (s_current_app->default_font)
+    {
+        // Scale the raster size by the HiDPI factor so glyphs are rendered at
+        // native resolution (e.g. 28 px on a 2× Retina display for 14 pt text).
+        float _scale = s_current_app->window
+                       ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+        s_current_app->default_font_size = 14.0f * _scale;
+        return;
+    }
+
+    // Fall back to system fonts if the embedded data somehow fails.
     const char *font_paths[] = {"/System/Library/Fonts/Menlo.ttc",
                                 "/System/Library/Fonts/SFNSMono.ttf",
                                 "/System/Library/Fonts/Monaco.dfont",
@@ -95,7 +131,9 @@ void rt_gui_ensure_default_font(void)
         s_current_app->default_font = vg_font_load_file(font_paths[i]);
         if (s_current_app->default_font)
         {
-            s_current_app->default_font_size = 14.0f;
+            float _scale = s_current_app->window
+                           ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+            s_current_app->default_font_size = 14.0f * _scale;
             break;
         }
     }
@@ -540,20 +578,30 @@ void rt_gui_app_render(void *app_ptr)
     // Try to load a default font if none is set
     if (!app->default_font)
     {
-        // Try common system font paths
-        const char *font_paths[] = {"/System/Library/Fonts/Menlo.ttc",
-                                    "/System/Library/Fonts/SFNSMono.ttf",
-                                    "/System/Library/Fonts/Monaco.dfont",
-                                    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-                                    "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
-                                    NULL};
-        for (int i = 0; font_paths[i]; i++)
+        // Try the embedded JetBrains Mono Regular first (always available).
+        app->default_font =
+            vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
+        if (app->default_font)
         {
-            app->default_font = vg_font_load_file(font_paths[i]);
-            if (app->default_font)
+            app->default_font_size = 14.0f;
+        }
+        else
+        {
+            // Fall back to system fonts if the embedded data somehow fails.
+            const char *font_paths[] = {"/System/Library/Fonts/Menlo.ttc",
+                                        "/System/Library/Fonts/SFNSMono.ttf",
+                                        "/System/Library/Fonts/Monaco.dfont",
+                                        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                                        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+                                        NULL};
+            for (int i = 0; font_paths[i]; i++)
             {
-                app->default_font_size = 14.0f;
-                break;
+                app->default_font = vg_font_load_file(font_paths[i]);
+                if (app->default_font)
+                {
+                    app->default_font_size = 14.0f;
+                    break;
+                }
             }
         }
     }
@@ -613,14 +661,16 @@ void rt_gui_app_render(void *app_ptr)
             int32_t dlg_win_w = 0, dlg_win_h = 0;
             vgfx_get_size(app->window, &dlg_win_w, &dlg_win_h);
 
-            // Measure on first render so we know the dialog size
-            if (g_active_dialog->base.width < 1.0f)
+            // Measure on first render so we know the dialog size.
+            // Always read measured_width/height (set by measure), not width/height
+            // (set by arrange). Reading width before the first arrange would return 0.
+            if (g_active_dialog->base.measured_width < 1.0f)
             {
                 vg_widget_measure(&g_active_dialog->base,
                                   (float)dlg_win_w, (float)dlg_win_h);
             }
-            float dw = g_active_dialog->base.width;
-            float dh = g_active_dialog->base.height;
+            float dw = g_active_dialog->base.measured_width;
+            float dh = g_active_dialog->base.measured_height;
             vg_widget_arrange(&g_active_dialog->base,
                               (dlg_win_w - dw) / 2.0f, (dlg_win_h - dh) / 2.0f, dw, dh);
 

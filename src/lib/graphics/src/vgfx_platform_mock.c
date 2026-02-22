@@ -165,6 +165,14 @@ void vgfx_platform_sleep_ms(int32_t ms)
     }
 }
 
+/// @brief Query HiDPI scale factor (mock version — always 1.0).
+/// @details Tests run at 1:1 scale so all existing tests continue to pass
+///          unchanged.  Physical == logical in the mock backend.
+float vgfx_platform_get_display_scale(void)
+{
+    return 1.0f;
+}
+
 /// @brief Get current time in milliseconds (mock version - returns mock time).
 /// @details Returns the global mock time, which is controlled by test code.
 ///          The epoch is arbitrary (typically starts at 0 when tests begin).

@@ -343,6 +343,8 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_MemoryGC,
     RTCLS_ThreadsChannel,
     RTCLS_ThreadsPool,
+    RTCLS_ZiaCompletion,
+    RTCLS_GuiFloatingPanel,
 };
 
 /// @brief Describes a property on a runtime class.

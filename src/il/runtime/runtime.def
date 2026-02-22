@@ -1745,6 +1745,29 @@ RT_FUNC(CodeEditorCopy,              rt_codeeditor_copy,                "Viper.G
 RT_FUNC(CodeEditorCut,               rt_codeeditor_cut,                 "Viper.GUI.CodeEditor.Cut",               "i64(obj)")
 RT_FUNC(CodeEditorPaste,             rt_codeeditor_paste,               "Viper.GUI.CodeEditor.Paste",             "i64(obj)")
 RT_FUNC(CodeEditorSelectAll,         rt_codeeditor_select_all,          "Viper.GUI.CodeEditor.SelectAll",         "void(obj)")
+RT_FUNC(CodeEditorGetCursorPixelX,   rt_codeeditor_get_cursor_pixel_x,  "Viper.GUI.CodeEditor.GetCursorPixelX",   "i64(obj)")
+RT_FUNC(CodeEditorGetCursorPixelY,   rt_codeeditor_get_cursor_pixel_y,  "Viper.GUI.CodeEditor.GetCursorPixelY",   "i64(obj)")
+RT_FUNC(CodeEditorInsertAtCursor,    rt_codeeditor_insert_at_cursor,    "Viper.GUI.CodeEditor.InsertAtCursor",    "void(obj,str)")
+RT_FUNC(CodeEditorGetWordAtCursor,   rt_codeeditor_get_word_at_cursor,  "Viper.GUI.CodeEditor.GetWordAtCursor",   "str(obj)")
+RT_FUNC(CodeEditorReplaceWordAtCursor,rt_codeeditor_replace_word_at_cursor,"Viper.GUI.CodeEditor.ReplaceWordAtCursor","void(obj,str)")
+RT_FUNC(CodeEditorGetLine,           rt_codeeditor_get_line,            "Viper.GUI.CodeEditor.GetLine",           "str(obj,i64)")
+
+//=============================================================================
+// Zia Language Completion (Phase 2 IDE)
+//=============================================================================
+
+RT_FUNC(ZiaComplete,                 rt_zia_complete,                   "Viper.Zia.Completion.Complete",  "str(str,i64,i64)")
+RT_FUNC(ZiaCompletionClearCache,     rt_zia_completion_clear_cache,     "Viper.Zia.Completion.ClearCache","void()")
+
+//=============================================================================
+// GUI - FLOATING PANEL (Overlay popup for IntelliSense)
+//=============================================================================
+
+RT_FUNC(GuiFloatingPanelNew,         rt_floatingpanel_new,         "Viper.GUI.FloatingPanel.New",         "obj(obj)")
+RT_FUNC(GuiFloatingPanelSetPosition, rt_floatingpanel_set_position,"Viper.GUI.FloatingPanel.SetPosition", "void(obj,f64,f64)")
+RT_FUNC(GuiFloatingPanelSetSize,     rt_floatingpanel_set_size,    "Viper.GUI.FloatingPanel.SetSize",     "void(obj,f64,f64)")
+RT_FUNC(GuiFloatingPanelSetVisible,  rt_floatingpanel_set_visible, "Viper.GUI.FloatingPanel.SetVisible",  "void(obj,i64)")
+RT_FUNC(GuiFloatingPanelAddChild,    rt_floatingpanel_add_child,   "Viper.GUI.FloatingPanel.AddChild",    "void(obj,obj)")
 
 //=============================================================================
 // GUI - MESSAGEBOX (Phase 5)
@@ -5446,6 +5469,12 @@ RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_METHOD("Cut", "i64()", CodeEditorCut)
     RT_METHOD("Paste", "i64()", CodeEditorPaste)
     RT_METHOD("SelectAll", "void()", CodeEditorSelectAll)
+    RT_METHOD("GetCursorPixelX",       "i64()",     CodeEditorGetCursorPixelX)
+    RT_METHOD("GetCursorPixelY",       "i64()",     CodeEditorGetCursorPixelY)
+    RT_METHOD("InsertAtCursor",        "void(str)", CodeEditorInsertAtCursor)
+    RT_METHOD("GetWordAtCursor",       "str()",     CodeEditorGetWordAtCursor)
+    RT_METHOD("ReplaceWordAtCursor",   "void(str)", CodeEditorReplaceWordAtCursor)
+    RT_METHOD("GetLine",               "str(i64)",  CodeEditorGetLine)
     RT_METHOD("SetFlex", "void(f64)", GuiWidgetSetFlex)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
     RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
@@ -7879,4 +7908,21 @@ RT_CLASS_BEGIN("Viper.Text.Html", Html, "obj", HtmlParse)
     RT_METHOD("StripTags", "str(str)", HtmlStripTags)
     RT_METHOD("ExtractLinks", "obj(str)", HtmlExtractLinks)
     RT_METHOD("ExtractText", "obj(str,str)", HtmlExtractText)
+RT_CLASS_END()
+
+//=============================================================================
+// Zia Language Completion (Phase 2 IDE) — static-only class
+//=============================================================================
+
+RT_CLASS_BEGIN("Viper.Zia.Completion", ZiaCompletion, "none", none)
+    RT_METHOD("Complete",    "str(str,i64,i64)", ZiaComplete)
+    RT_METHOD("ClearCache",  "void()",           ZiaCompletionClearCache)
+RT_CLASS_END()
+
+// Viper.GUI.FloatingPanel - floating overlay panel for popups/IntelliSense
+RT_CLASS_BEGIN("Viper.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPanelNew)
+    RT_METHOD("SetPosition", "void(f64,f64)", GuiFloatingPanelSetPosition)
+    RT_METHOD("SetSize",     "void(f64,f64)", GuiFloatingPanelSetSize)
+    RT_METHOD("SetVisible",  "void(i64)",     GuiFloatingPanelSetVisible)
+    RT_METHOD("AddChild",    "void(obj)",     GuiFloatingPanelAddChild)
 RT_CLASS_END()

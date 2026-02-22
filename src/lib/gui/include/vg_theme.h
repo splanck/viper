@@ -199,6 +199,8 @@ extern "C"
         vg_button_theme_t button;       ///< Button-specific style overrides.
         vg_input_theme_t input;         ///< Text-input-specific style overrides.
         vg_scrollbar_theme_t scrollbar; ///< Scrollbar style overrides.
+        float ui_scale; ///< HiDPI pixel scale factor (1.0 = standard, 2.0 = Retina).
+                        ///< Set by the app after vg_theme_set_current; treat 0.0 as 1.0.
     } vg_theme_t;
 
     //=============================================================================

@@ -157,9 +157,10 @@ vg_statusbar_t *vg_statusbar_create(vg_widget_t *parent)
     sb->right_count = 0;
     sb->right_capacity = 0;
 
-    // Styling
-    sb->height = STATUSBAR_DEFAULT_HEIGHT;
-    sb->item_padding = STATUSBAR_ITEM_PADDING;
+    // Styling — scale pixel constants by ui_scale for HiDPI displays.
+    float s = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+    sb->height = (int)(STATUSBAR_DEFAULT_HEIGHT * s);
+    sb->item_padding = (int)(STATUSBAR_ITEM_PADDING * s);
     sb->separator_width = STATUSBAR_SEPARATOR_WIDTH;
 
     // Font

@@ -1,4 +1,5 @@
 // vg_listbox.c - ListBox widget implementation
+#include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include "../../include/vg_event.h"
 #include "../../../graphics/include/vgfx.h"
@@ -195,9 +196,11 @@ vg_listbox_t *vg_listbox_create(vg_widget_t *parent)
 
     vg_widget_init(&listbox->base, VG_WIDGET_LISTBOX, &g_listbox_vtable);
 
-    // Default appearance
-    listbox->item_height = 24;
-    listbox->font_size = 14;
+    // Default appearance — scale pixel constants by ui_scale for HiDPI displays.
+    vg_theme_t *_lb_theme = vg_theme_get_current();
+    float _lb_s = _lb_theme && _lb_theme->ui_scale > 0.0f ? _lb_theme->ui_scale : 1.0f;
+    listbox->item_height = (int)(24 * _lb_s);
+    listbox->font_size = 14.0f * _lb_s;
     listbox->bg_color = 0xFF1E1E1E;
     listbox->item_bg = 0xFF1E1E1E;
     listbox->selected_bg = 0xFF094771;

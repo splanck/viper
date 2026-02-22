@@ -209,10 +209,11 @@ vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t or
     tb->item_count = 0;
     tb->item_capacity = 0;
 
-    // Configuration
+    // Configuration — scale pixel constants by ui_scale for HiDPI displays.
+    float s = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
     tb->orientation = orientation;
     tb->icon_size = VG_TOOLBAR_ICONS_MEDIUM;
-    tb->item_padding = TOOLBAR_DEFAULT_PADDING;
+    tb->item_padding = (int)(TOOLBAR_DEFAULT_PADDING * s);
     tb->item_spacing = TOOLBAR_DEFAULT_SPACING;
     tb->show_labels = false;
     tb->overflow_menu = true;
@@ -257,8 +258,12 @@ static void toolbar_measure(vg_widget_t *widget, float available_width, float av
 {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
 
-    uint32_t icon_px = get_icon_pixels(tb->icon_size);
-    float bar_thickness = (float)icon_px + tb->item_padding * 2 + 4; // Extra for borders
+    // Scale icon_px by the current ui_scale so the bar fills the correct visual
+    // height on HiDPI displays (item_padding was already scaled at creation time).
+    float _ms = vg_theme_get_current()->ui_scale;
+    if (_ms <= 0.0f) _ms = 1.0f;
+    uint32_t icon_px = (uint32_t)((float)get_icon_pixels(tb->icon_size) * _ms);
+    float bar_thickness = (float)icon_px + (float)tb->item_padding * 2 + 4.0f * _ms;
 
     if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
     {

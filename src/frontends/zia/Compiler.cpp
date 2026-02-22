@@ -49,6 +49,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/Parser.hpp"
 #include "frontends/zia/Sema.hpp"
+#include "frontends/zia/ZiaAnalysis.hpp"
 #include "il/transform/PassManager.hpp"
 #include <chrono>
 #include <fstream>
@@ -169,6 +170,55 @@ CompilerResult compileFile(const std::string &path,
     input.path = path;
 
     return compile(input, options, sm);
+}
+
+std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
+                                                const CompilerOptions &options,
+                                                il::support::SourceManager &sm)
+{
+    // Heap-allocate the result so DiagnosticEngine has a stable address.
+    // Sema holds a reference to it; moving a unique_ptr never relocates the
+    // pointed-to object, so the reference remains valid for the object's lifetime.
+    auto result = std::make_unique<AnalysisResult>();
+
+    // Register source file (matches the logic in compile()).
+    uint32_t fileId = input.fileId.has_value() ? *input.fileId
+                                               : sm.addFile(std::string(input.path));
+
+    // Phase 1: Lexing
+    Lexer lexer(std::string(input.source), fileId, result->diagnostics);
+
+    // Phase 2: Parsing — continue on errors for tolerance.
+    // Parser::parseModule() accumulates errors in result->diagnostics and
+    // attempts to return a partial AST via resync-after-error recovery.
+    Parser parser(lexer, result->diagnostics);
+    auto module = parser.parseModule();
+
+    if (!module)
+    {
+        // Complete parse failure — no AST to analyze.
+        return result;
+    }
+
+    result->ast = std::move(module);
+
+    // Phase 2.5: Import resolution (best-effort).
+    // Failures are accumulated in diagnostics but do not abort analysis.
+    if (!result->ast->binds.empty())
+    {
+        ImportResolver resolver(result->diagnostics, sm);
+        resolver.resolve(*result->ast, std::string(input.path));
+    }
+
+    // Phase 3: Semantic analysis.
+    // We always construct and run Sema — even when there were parse errors —
+    // because partial type resolution is still valuable for completions.
+    // DiagnosticEngine address is stable (heap-allocated in result).
+    result->sema = std::make_unique<Sema>(result->diagnostics);
+    result->sema->analyze(*result->ast);
+    // Ignore false return: partial Sema state is the desired output.
+
+    return result;
 }
 
 } // namespace il::frontends::zia

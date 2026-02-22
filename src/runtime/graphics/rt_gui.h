@@ -2491,6 +2491,77 @@ extern "C"
     /// @return File path string.
     rt_string rt_app_get_dropped_file(void *app, int64_t index);
 
+    //=========================================================================
+    // CodeEditor Completion Helpers
+    //=========================================================================
+
+    /// @brief Get the screen-absolute X pixel coordinate of the primary cursor.
+    /// @param editor CodeEditor handle.
+    /// @return X pixel coordinate (top-left of caret).
+    int64_t rt_codeeditor_get_cursor_pixel_x(void *editor);
+
+    /// @brief Get the screen-absolute Y pixel coordinate of the primary cursor.
+    /// @param editor CodeEditor handle.
+    /// @return Y pixel coordinate (top-left of caret).
+    int64_t rt_codeeditor_get_cursor_pixel_y(void *editor);
+
+    /// @brief Insert text at the primary cursor position.
+    /// @param editor CodeEditor handle.
+    /// @param text Text to insert.
+    void rt_codeeditor_insert_at_cursor(void *editor, rt_string text);
+
+    /// @brief Return the identifier word under the primary cursor.
+    /// @param editor CodeEditor handle.
+    /// @return Word string (may be empty if cursor is not on an identifier).
+    rt_string rt_codeeditor_get_word_at_cursor(void *editor);
+
+    /// @brief Replace the identifier word under the primary cursor.
+    /// @param editor CodeEditor handle.
+    /// @param new_text Replacement text.
+    void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text);
+
+    /// @brief Return the text of a single line by 0-based index.
+    /// @param editor CodeEditor handle.
+    /// @param line_index 0-based line index.
+    /// @return Line text string (empty if index out of range).
+    rt_string rt_codeeditor_get_line(void *editor, int64_t line_index);
+
+    //=========================================================================
+    // Zia Language Completion
+    //=========================================================================
+
+    /// @brief Run Zia code completion at the given source position.
+    /// @details Parses and analyses the source (with error tolerance), then
+    ///          returns completion items serialised as tab-delimited records:
+    ///          label\tinsertText\tkindInt\tdetail\n
+    /// @param source Zia source text (full file contents).
+    /// @param line   1-based line number of the cursor.
+    /// @param col    0-based column of the cursor.
+    /// @return Serialised completion items, or an empty string on failure.
+    rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
+
+    /// @brief Flush the cached parse result, forcing a fresh parse on the next call.
+    void rt_zia_completion_clear_cache(void);
+
+    //=========================================================================
+    // FloatingPanel bridge functions
+    //=========================================================================
+
+    /// @brief Create a floating overlay panel attached to @p root.
+    void *rt_floatingpanel_new(void *root);
+
+    /// @brief Set absolute screen position.
+    void rt_floatingpanel_set_position(void *panel, double x, double y);
+
+    /// @brief Set panel dimensions.
+    void rt_floatingpanel_set_size(void *panel, double w, double h);
+
+    /// @brief Show or hide the panel (1 = show, 0 = hide).
+    void rt_floatingpanel_set_visible(void *panel, int64_t visible);
+
+    /// @brief Add a widget as a private (overlay-only) child.
+    void rt_floatingpanel_add_child(void *panel, void *child);
+
 #ifdef __cplusplus
 }
 #endif

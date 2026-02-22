@@ -231,6 +231,14 @@ class Scope
         return false;
     }
 
+    /// @brief Get all symbols defined in this scope (not ancestors).
+    /// @return Const reference to the symbols map.
+    /// @details Used by completion tools to enumerate available symbols.
+    const std::unordered_map<std::string, Symbol> &getSymbols() const
+    {
+        return symbols_;
+    }
+
   private:
     /// @brief The enclosing scope.
     Scope *parent_{nullptr};
@@ -1033,6 +1041,66 @@ class Sema
     /// @param interfaceName The interface name.
     /// @return True if the type implements the interface.
     bool typeImplementsInterface(TypeRef type, const std::string &interfaceName) const;
+
+    /// @}
+
+    //=========================================================================
+    /// @name Completion / Tooling APIs
+    /// @brief Read-only queries into the analyzer's resolved symbol tables.
+    /// @details These APIs are designed for IDE tooling (code completion,
+    /// hover, go-to-definition). They are only valid after analyze() returns.
+    /// @{
+    //=========================================================================
+
+    /// @brief Get all symbols visible in the module-level (global) scope.
+    /// @return All symbols defined at module level (functions, top-level vars,
+    ///         entity constructors, and imported runtime identifiers).
+    /// @note Local variables inside function bodies are not included — they
+    ///       are popped from the scope stack when their block finishes.
+    std::vector<Symbol> getGlobalSymbols() const;
+
+    /// @brief Get all visible fields and methods of a user-defined type.
+    /// @param type An entity, value, or interface type reference.
+    /// @return Symbols for each exposed field and method.
+    ///         For runtime class pointer types (kind == Ptr, name non-empty),
+    ///         delegates to getRuntimeMembers(type->name).
+    ///         Returns an empty vector for primitive or unknown types.
+    std::vector<Symbol> getMembersOf(const TypeRef &type) const;
+
+    /// @brief Get all methods and properties of a runtime class.
+    /// @param className Fully-qualified runtime class name (e.g. "Viper.GUI.App").
+    /// @return Symbols for each RT_METHOD (Kind::Method) and RT_PROP (Kind::Field).
+    ///         Returns an empty vector if the class is not found in the registry.
+    std::vector<Symbol> getRuntimeMembers(const std::string &className) const;
+
+    /// @brief Get all user-defined type names declared in this module.
+    /// @return Names of all entity, value, and interface declarations.
+    std::vector<std::string> getTypeNames() const;
+
+    /// @brief Get all bound module aliases visible in this module.
+    /// @return Short names (aliases) from `bind Alias = Namespace;` declarations.
+    ///         These are the prefixes users can type before `.` to access members.
+    std::vector<std::string> getBoundModuleNames() const;
+
+    /// @brief Get all exported symbols of a bound file module.
+    /// @param moduleName The module name as declared in the bound file.
+    /// @return All exported symbols from the module, or empty if not found.
+    std::vector<Symbol> getModuleExports(const std::string &moduleName) const;
+
+    /// @brief Resolve a bound alias to its full namespace path.
+    /// @param alias Short alias name (e.g., "Math" from `bind Math = Viper.Math;`).
+    /// @return Full namespace string (e.g., "Viper.Math"), or empty if not found.
+    std::string resolveModuleAlias(const std::string &alias) const;
+
+    /// @brief Enumerate runtime class names that are direct children of a namespace.
+    /// @details Scans the RuntimeRegistry catalog for classes whose fully-qualified
+    ///          name starts with `nsPrefix + "."` and returns the immediate child
+    ///          identifier (the segment between the namespace and the next dot, or
+    ///          the full suffix when there is no further nesting).
+    ///          Example: nsPrefix="Viper.GUI" → ["Canvas","App","ListBox",...]
+    /// @param nsPrefix Full dotted namespace prefix (e.g. "Viper.GUI").
+    /// @return De-duplicated list of direct child class names.
+    std::vector<std::string> getNamespaceClasses(const std::string &nsPrefix) const;
 
     /// @}
 

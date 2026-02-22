@@ -12,6 +12,7 @@ set(ZIA_SOURCES
         Sema_Generics.cpp
         Sema_TypeResolution.cpp
         Sema_Runtime.cpp
+        Sema_Completion.cpp
         Sema_Decl.cpp
         Sema_Stmt.cpp
         Sema_Expr.cpp
@@ -32,6 +33,8 @@ set(ZIA_SOURCES
         Lowerer_Dispatch.cpp
         Lowerer_Emit.cpp
         Compiler.cpp
+        ZiaCompletion.cpp
+        rt_zia_completion.cpp
 )
 
 add_library(fe_zia ${ZIA_SOURCES})

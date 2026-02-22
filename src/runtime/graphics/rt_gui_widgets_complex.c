@@ -779,3 +779,36 @@ void rt_image_set_opacity(void *image, double opacity)
 }
 
 //=============================================================================
+// FloatingPanel Widget
+//=============================================================================
+
+void *rt_floatingpanel_new(void *root)
+{
+    return vg_floatingpanel_create((vg_widget_t *)root);
+}
+
+void rt_floatingpanel_set_position(void *panel, double x, double y)
+{
+    if (panel)
+        vg_floatingpanel_set_position((vg_floatingpanel_t *)panel, (float)x, (float)y);
+}
+
+void rt_floatingpanel_set_size(void *panel, double w, double h)
+{
+    if (panel)
+        vg_floatingpanel_set_size((vg_floatingpanel_t *)panel, (float)w, (float)h);
+}
+
+void rt_floatingpanel_set_visible(void *panel, int64_t visible)
+{
+    if (panel)
+        vg_floatingpanel_set_visible((vg_floatingpanel_t *)panel, (int)visible);
+}
+
+void rt_floatingpanel_add_child(void *panel, void *child)
+{
+    if (panel && child)
+        vg_floatingpanel_add_child((vg_floatingpanel_t *)panel, (vg_widget_t *)child);
+}
+
+//=============================================================================

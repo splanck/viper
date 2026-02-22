@@ -42,6 +42,7 @@ set(RT_BASE_SOURCES
         core/rt_log.c
         core/rt_msgbus.c
         core/rt_gc.c
+        core/rt_zia_completion_stub.c
 )
 
 set(RT_ARRAY_SOURCES
@@ -199,6 +200,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_tilemap.c
         graphics/rt_scene.c
         graphics/rt_spritebatch.c
+        graphics/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
 )
 
 set(RT_AUDIO_SOURCES

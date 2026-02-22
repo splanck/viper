@@ -255,21 +255,13 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     /* Get the view's Core Graphics context */
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
 
-    /* Use view bounds for the destination rect - may differ from framebuffer on Retina */
+    /* Use view bounds (logical points) for the destination rect.
+     * The framebuffer is allocated at PHYSICAL pixel dimensions (win->width ×
+     * win->height), which is larger than the view bounds on Retina.  CoreGraphics
+     * automatically maps each physical framebuffer pixel 1:1 to a physical screen
+     * pixel when drawing a physical-size CGImage into the logical view rect. */
     CGFloat view_height = self.bounds.size.height;
     CGFloat view_width = self.bounds.size.width;
-
-    /* Debug: log dimension mismatch once */
-    static int debug_logged = 0;
-    if (!debug_logged && (view_width != _vgfxWindow->width || view_height != _vgfxWindow->height))
-    {
-        NSLog(@ "vgfx: View bounds (%.0f x %.0f) differ from framebuffer (%d x %d)",
-              view_width,
-              view_height,
-              _vgfxWindow->width,
-              _vgfxWindow->height);
-        debug_logged = 1;
-    }
 
     /*
      * Note: We deliberately DON'T flip the coordinate system here.
@@ -362,10 +354,13 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     if (!platform || !platform->view)
         return;
 
-    /* Get new view dimensions */
-    NSRect contentRect = [platform->view bounds];
-    int32_t new_width = (int32_t)contentRect.size.width;
-    int32_t new_height = (int32_t)contentRect.size.height;
+    /* Get new view dimensions in logical points, then convert to physical pixels.
+     * The view bounds are always in logical (point) coordinates; multiplying by
+     * scale_factor gives the physical pixel dimensions for the framebuffer. */
+    NSRect  contentRect = [platform->view bounds];
+    float   sf          = _vgfxWindow->scale_factor;
+    int32_t new_width   = (int32_t)(contentRect.size.width  * sf);
+    int32_t new_height  = (int32_t)(contentRect.size.height * sf);
 
     /* Only handle if size actually changed (avoid redundant reallocation) */
     if (new_width == _vgfxWindow->width && new_height == _vgfxWindow->height)
@@ -450,6 +445,30 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 //===----------------------------------------------------------------------===//
 // Platform API Implementation
 //===----------------------------------------------------------------------===//
+
+/// @brief Query the HiDPI backing scale factor from the macOS screen.
+/// @details Queries [NSScreen mainScreen].backingScaleFactor, which returns
+///          2.0 on Retina displays and 1.0 on standard (96 DPI) displays.
+///          NSApplication is initialized first to ensure screen properties
+///          are fully available.
+///
+/// @return Scale factor ≥ 1.0 (2.0 on Retina, 1.0 on standard displays)
+float vgfx_platform_get_display_scale(void)
+{
+    @autoreleasepool
+    {
+        /* Ensure NSApp is initialized before querying screen properties.
+         * Calling sharedApplication multiple times is safe (singleton). */
+        [NSApplication sharedApplication];
+
+        NSScreen *main = [NSScreen mainScreen];
+        if (!main)
+            return 1.0f;
+
+        CGFloat s = [main backingScaleFactor];
+        return (s >= 1.0) ? (float)s : 1.0f;
+    }
+}
 
 /// @brief Initialize platform-specific window resources for macOS.
 /// @details Creates an NSWindow with a custom VGFXView for framebuffer display.
@@ -699,11 +718,13 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 case NSEventTypeOtherMouseDragged:
                 {
                     NSPoint location = [event locationInWindow];
-                    NSRect contentRect = [platform->view bounds];
+                    NSRect  contentRect = [platform->view bounds];
 
-                    /* Convert to ViperGFX coordinate system (top-left origin) */
-                    int32_t x = (int32_t)location.x;
-                    int32_t y = (int32_t)(contentRect.size.height - location.y - 1);
+                    /* Convert to ViperGFX coordinate system (top-left origin) and
+                     * scale logical points to physical pixels for the framebuffer. */
+                    float   sf = win->scale_factor;
+                    int32_t x  = (int32_t)(location.x * sf);
+                    int32_t y  = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     win->mouse_x = x; /* Update input state */
                     win->mouse_y = y;
@@ -720,10 +741,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 case NSEventTypeOtherMouseDown:
                 {
                     NSPoint location = [event locationInWindow];
-                    NSRect contentRect = [platform->view bounds];
+                    NSRect  contentRect = [platform->view bounds];
 
-                    int32_t x = (int32_t)location.x;
-                    int32_t y = (int32_t)(contentRect.size.height - location.y - 1);
+                    float   sf = win->scale_factor;
+                    int32_t x  = (int32_t)(location.x * sf);
+                    int32_t y  = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     /* Determine which button was pressed */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
@@ -754,10 +776,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 case NSEventTypeOtherMouseUp:
                 {
                     NSPoint location = [event locationInWindow];
-                    NSRect contentRect = [platform->view bounds];
+                    NSRect  contentRect = [platform->view bounds];
 
-                    int32_t x = (int32_t)location.x;
-                    int32_t y = (int32_t)(contentRect.size.height - location.y - 1);
+                    float   sf = win->scale_factor;
+                    int32_t x  = (int32_t)(location.x * sf);
+                    int32_t y  = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     /* Determine which button was released */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;

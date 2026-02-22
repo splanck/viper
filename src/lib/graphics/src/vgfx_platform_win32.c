@@ -220,18 +220,27 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_SIZE:
         {
-            /* Window resized */
-            int new_width = LOWORD(lparam);
-            int new_height = HIWORD(lparam);
+            /* Window resized.  With system DPI awareness, LOWORD/HIWORD give DIP
+             * (logical) client dimensions.  Multiply by scale_factor to get the
+             * physical pixel size for framebuffer operations. */
+            int dip_w = LOWORD(lparam);
+            int dip_h = HIWORD(lparam);
 
-            if (w32 && (new_width != w32->width || new_height != w32->height))
+            if (w32 && (dip_w != w32->width || dip_h != w32->height))
             {
-                w32->width = new_width;
-                w32->height = new_height;
+                w32->width  = dip_w;  /* keep logical for StretchBlt dest */
+                w32->height = dip_h;
+
+                /* Physical dimensions for the framebuffer */
+                int phys_w = (int)(dip_w * win->scale_factor);
+                int phys_h = (int)(dip_h * win->scale_factor);
+                win->width  = phys_w;
+                win->height = phys_h;
+                win->stride = phys_w * 4;
 
                 vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
                                       .time_ms = timestamp,
-                                      .data.resize = {.width = new_width, .height = new_height}};
+                                      .data.resize = {.width = phys_w, .height = phys_h}};
                 vgfx_internal_enqueue_event(win, &event);
             }
             return 0;
@@ -291,9 +300,10 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_MOUSEMOVE:
         {
-            /* Mouse moved */
-            int32_t x = (int32_t)(short)LOWORD(lparam); /* Signed 16-bit */
-            int32_t y = (int32_t)(short)HIWORD(lparam);
+            /* Mouse moved.  With system DPI awareness, lparam gives DIP coords.
+             * Scale to physical pixels so hit-testing matches the physical framebuffer. */
+            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
+            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
 
             win->mouse_x = x; /* Update input state */
             win->mouse_y = y;
@@ -307,9 +317,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_LBUTTONDOWN:
         {
-            /* Left mouse button pressed */
-            int32_t x = (int32_t)(short)LOWORD(lparam);
-            int32_t y = (int32_t)(short)HIWORD(lparam);
+            /* Left mouse button pressed — scale DIP coords to physical pixels */
+            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
+            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
 
             win->mouse_button_state[VGFX_MOUSE_LEFT] = 1;
 
@@ -322,9 +332,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_LBUTTONUP:
         {
-            /* Left mouse button released */
-            int32_t x = (int32_t)(short)LOWORD(lparam);
-            int32_t y = (int32_t)(short)HIWORD(lparam);
+            /* Left mouse button released — scale DIP coords to physical pixels */
+            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
+            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
 
             win->mouse_button_state[VGFX_MOUSE_LEFT] = 0;
 
@@ -337,9 +347,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_RBUTTONDOWN:
         {
-            /* Right mouse button pressed */
-            int32_t x = (int32_t)(short)LOWORD(lparam);
-            int32_t y = (int32_t)(short)HIWORD(lparam);
+            /* Right mouse button pressed — scale DIP coords to physical pixels */
+            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
+            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
 
             win->mouse_button_state[VGFX_MOUSE_RIGHT] = 1;
 
@@ -353,9 +363,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_RBUTTONUP:
         {
-            /* Right mouse button released */
-            int32_t x = (int32_t)(short)LOWORD(lparam);
-            int32_t y = (int32_t)(short)HIWORD(lparam);
+            /* Right mouse button released — scale DIP coords to physical pixels */
+            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
+            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
 
             win->mouse_button_state[VGFX_MOUSE_RIGHT] = 0;
 
@@ -369,9 +379,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_MBUTTONDOWN:
         {
-            /* Middle mouse button pressed */
-            int32_t x = (int32_t)(short)LOWORD(lparam);
-            int32_t y = (int32_t)(short)HIWORD(lparam);
+            /* Middle mouse button pressed — scale DIP coords to physical pixels */
+            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
+            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
 
             win->mouse_button_state[VGFX_MOUSE_MIDDLE] = 1;
 
@@ -385,9 +395,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_MBUTTONUP:
         {
-            /* Middle mouse button released */
-            int32_t x = (int32_t)(short)LOWORD(lparam);
-            int32_t y = (int32_t)(short)HIWORD(lparam);
+            /* Middle mouse button released — scale DIP coords to physical pixels */
+            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
+            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
 
             win->mouse_button_state[VGFX_MOUSE_MIDDLE] = 0;
 
@@ -417,6 +427,50 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 //===----------------------------------------------------------------------===//
 // Platform API Implementation
 //===----------------------------------------------------------------------===//
+
+/// @brief Query the HiDPI backing scale factor from the Win32 display system.
+/// @details Declares system DPI awareness (if not already set via manifest),
+///          then queries the primary monitor's logical pixels-per-inch via
+///          GetDeviceCaps.  Dividing by the standard 96 DPI gives the scale:
+///            96 DPI  → 1.0   (standard display)
+///           192 DPI  → 2.0   (200% scaling)
+///           144 DPI  → 1.5   (150% scaling)
+///
+///          DPI_AWARENESS_CONTEXT_SYSTEM_AWARE is loaded dynamically so the
+///          code compiles against older SDKs.  With system awareness active:
+///            - CreateWindowExW dimensions are in DIP (device-independent pixel)
+///            - Mouse/WM_SIZE coordinates are also in DIP
+///            - Windows does NOT auto-scale rendered content
+///          Multiply DIP coords by scale_factor to convert to physical pixels.
+///
+/// @note This must be called before any windows are created.
+/// @return Scale factor ≥ 1.0
+float vgfx_platform_get_display_scale(void)
+{
+    /* Declare system DPI awareness so GetDeviceCaps returns the real DPI.
+     * DPI_AWARENESS_CONTEXT_SYSTEM_AWARE = (HANDLE)(intptr_t)(-2).
+     * Loaded dynamically to avoid hard SDK version dependency. */
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32)
+    {
+        typedef BOOL (WINAPI *SPDA_fn)(HANDLE);
+        SPDA_fn fn = (SPDA_fn)(void *)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+        if (fn)
+            fn((HANDLE)(intptr_t)(-2)); /* DPI_AWARENESS_CONTEXT_SYSTEM_AWARE */
+    }
+
+    /* Query the primary monitor's DPI.  With awareness set, this returns the
+     * real system DPI rather than the virtualised 96 DPI given to unaware
+     * processes. */
+    HDC hdc = GetDC(NULL);
+    int dpi  = GetDeviceCaps(hdc, LOGPIXELSX);
+    ReleaseDC(NULL, hdc);
+
+    if (dpi < 96)
+        dpi = 96; /* clamp against bogus values */
+
+    return (float)dpi / 96.0f;
+}
 
 /// @brief Initialize platform-specific window resources for Win32.
 /// @details Registers window class (once), creates Win32 window, sets up DIB
@@ -555,11 +609,14 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         return 0;
     }
 
-    /* Create DIB section for framebuffer (32-bit BGRA, top-down) */
+    /* Create DIB section for framebuffer (32-bit BGRA, top-down).
+     * Use physical dimensions (win->width × win->height) so the bitmap
+     * holds one pixel per physical screen pixel on HiDPI displays.
+     * The present function uses StretchBlt to map it into the logical window. */
     BITMAPINFO bmi = {0};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = params->width;
-    bmi.bmiHeader.biHeight = -params->height; /* Negative = top-down */
+    bmi.bmiHeader.biWidth = win->width;
+    bmi.bmiHeader.biHeight = -win->height; /* Negative = top-down */
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
@@ -725,17 +782,20 @@ int vgfx_platform_present(struct vgfx_window *win)
         dst += 4;
     }
 
-    /* Blit from memory DC to window DC */
-    if (!BitBlt(w32->hdc, /* Destination DC (window) */
-                0,
-                0,           /* Destination x, y */
-                win->width,  /* Width */
-                win->height, /* Height */
-                w32->memdc,  /* Source DC (memory) */
-                0,
-                0,      /* Source x, y */
-                SRCCOPY /* Raster operation (copy) */
-                ))
+    /* Blit from memory DC (physical pixels) to window DC (logical DIP units).
+     * With system DPI awareness the window DC coordinate space is in DIP;
+     * StretchBlt maps the physical-size DIB (win->width × win->height pixels)
+     * into the logical window rect (w32->width × w32->height DIP).  On a
+     * 2× HiDPI display this renders 1 DIB pixel per physical screen pixel. */
+    if (!StretchBlt(w32->hdc,    /* Destination DC (window, DIP coords) */
+                    0, 0,
+                    w32->width,  /* Destination width in DIP */
+                    w32->height, /* Destination height in DIP */
+                    w32->memdc,  /* Source DC (physical DIB) */
+                    0, 0,
+                    win->width,  /* Source width in physical pixels */
+                    win->height, /* Source height in physical pixels */
+                    SRCCOPY))
     {
         return 0;
     }

@@ -196,7 +196,7 @@ vg_dialog_t *vg_dialog_create(const char *title)
     dlg->text_color = theme->colors.fg_primary;
     dlg->button_bg_color = theme->colors.bg_secondary;
     dlg->button_hover_color = theme->colors.bg_hover;
-    dlg->overlay_color = 0x80000000; // Semi-transparent black
+    dlg->overlay_color = 0x00101010; // Near-black dim overlay (vgfx has no alpha blend)
 
     // State
     dlg->result = VG_DIALOG_RESULT_NONE;
@@ -354,6 +354,18 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
         return;
 
     vgfx_window_t win = (vgfx_window_t)canvas;
+    vg_theme_t *theme = vg_theme_get_current();
+
+    // Draw full-screen dim overlay so the dialog floats above all other widgets
+    if (dlg->modal && dlg->overlay_color)
+    {
+        int32_t win_w = 0, win_h = 0;
+        if (vgfx_get_size(win, &win_w, &win_h) == 0)
+        {
+            vgfx_fill_rect(win, 0, 0, win_w, win_h, dlg->overlay_color);
+        }
+    }
+
     int32_t x = (int32_t)widget->x;
     int32_t y = (int32_t)widget->y;
     int32_t w = (int32_t)widget->width;
@@ -366,10 +378,10 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
     vgfx_fill_rect(win, x, y, w, DIALOG_TITLE_BAR_HEIGHT, dlg->title_bg_color);
 
     // Separator between title bar and content
-    vgfx_fill_rect(win, x, y + DIALOG_TITLE_BAR_HEIGHT - 1, w, 1, 0x00505050);
+    vgfx_fill_rect(win, x, y + DIALOG_TITLE_BAR_HEIGHT - 1, w, 1, theme->colors.border_primary);
 
     // Outer border
-    vgfx_rect(win, x, y, w, h, 0x00505050);
+    vgfx_rect(win, x, y, w, h, theme->colors.border_primary);
 
     // Title text
     if (dlg->title && dlg->font)
@@ -424,7 +436,7 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
     // Button bar background + separator
     int32_t btn_bar_y = y + h - DIALOG_BUTTON_BAR_HEIGHT;
     vgfx_fill_rect(win, x, btn_bar_y, w, DIALOG_BUTTON_BAR_HEIGHT, dlg->title_bg_color);
-    vgfx_fill_rect(win, x, btn_bar_y, w, 1, 0x00505050);
+    vgfx_fill_rect(win, x, btn_bar_y, w, 1, theme->colors.border_primary);
 
     float button_y = (float)btn_bar_y + (DIALOG_BUTTON_BAR_HEIGHT - DIALOG_BUTTON_HEIGHT) / 2.0f;
     float button_x = (float)x + (float)w - DIALOG_CONTENT_PADDING;
@@ -446,7 +458,7 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
             vgfx_fill_rect(win, (int32_t)button_x, (int32_t)button_y,
                            (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, btn_bg);
             vgfx_rect(win, (int32_t)button_x, (int32_t)button_y,
-                      (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, 0x00505050);
+                      (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, theme->colors.border_primary);
 
             if (btn->label && dlg->font)
             {
@@ -474,7 +486,7 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
             vgfx_fill_rect(win, (int32_t)button_x, (int32_t)button_y,
                            (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, btn_bg);
             vgfx_rect(win, (int32_t)button_x, (int32_t)button_y,
-                      (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, 0x00505050);
+                      (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, theme->colors.border_primary);
 
             if (btn->label && dlg->font)
             {

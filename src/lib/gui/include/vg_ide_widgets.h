@@ -2970,6 +2970,60 @@ extern "C"
                                           vg_font_t *font,
                                           float size);
 
+    //==========================================================================
+    // Floating Panel — absolute-positioned overlay widget
+    //==========================================================================
+
+    /// @brief Floating panel widget.
+    /// @details A lightweight overlay that draws at an absolute screen position
+    ///          regardless of the normal layout hierarchy.  Children added via
+    ///          vg_floatingpanel_add_child() are stored privately and painted
+    ///          during the paint_overlay pass so they appear above all normal
+    ///          widget content.
+    typedef struct vg_floatingpanel
+    {
+        vg_widget_t base; ///< Base widget (connected to root as last child).
+
+        float abs_x; ///< Absolute screen X position.
+        float abs_y; ///< Absolute screen Y position.
+        float abs_w; ///< Panel width in pixels.
+        float abs_h; ///< Panel height in pixels.
+
+        uint32_t bg_color;     ///< Background fill color (0xAARRGGBB).
+        uint32_t border_color; ///< Border color (0xAARRGGBB).
+        float    border_width; ///< Border width in pixels (0 = no border).
+
+        /// @brief Private child array (not part of the widget tree).
+        vg_widget_t **children;
+        int           child_count;
+        int           child_cap;
+    } vg_floatingpanel_t;
+
+    /// @brief Create a floating panel connected to @p root.
+    /// @param root Root widget of the application (may be NULL).
+    /// @return New floating panel (initially hidden), or NULL on OOM.
+    vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root);
+
+    /// @brief Destroy and free a floating panel.
+    /// @details Does NOT destroy the panel's private children.
+    void vg_floatingpanel_destroy(vg_floatingpanel_t *panel);
+
+    /// @brief Set the absolute screen position of the panel.
+    void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y);
+
+    /// @brief Set the panel dimensions.
+    void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h);
+
+    /// @brief Show or hide the floating panel.
+    /// @param visible Non-zero to show, zero to hide.
+    void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible);
+
+    /// @brief Add a widget as a private child of the floating panel.
+    /// @details The child is drawn by the panel in the overlay pass; it is NOT
+    ///          added to the normal widget tree and does not receive layout or
+    ///          event dispatch from the framework.
+    void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1725,3 +1725,119 @@ void rt_findbar_focus(void *bar)
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     vg_findreplacebar_focus(data->bar);
 }
+
+//=============================================================================
+// CodeEditor Completion Helpers
+//=============================================================================
+
+/// @brief Get the screen-absolute X pixel coordinate of the primary cursor.
+/// @details Combines the widget's screen-space origin, gutter width, and
+///          cursor column × character width.
+int64_t rt_codeeditor_get_cursor_pixel_x(void *editor)
+{
+    if (!editor)
+        return 0;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    float ax = 0, ay = 0;
+    vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
+    float px = ax + ce->gutter_width + (float)(ce->cursor_col) * ce->char_width;
+    return (int64_t)px;
+}
+
+/// @brief Get the screen-absolute Y pixel coordinate of the primary cursor.
+/// @details Combines the widget's screen-space origin with the cursor's
+///          visible line offset scaled by line height.
+int64_t rt_codeeditor_get_cursor_pixel_y(void *editor)
+{
+    if (!editor)
+        return 0;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    float ax = 0, ay = 0;
+    vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
+    float py = ay + (float)(ce->cursor_line - ce->visible_first_line) * ce->line_height;
+    return (int64_t)py;
+}
+
+/// @brief Insert text at the primary cursor position.
+void rt_codeeditor_insert_at_cursor(void *editor, rt_string text)
+{
+    if (!editor || !text)
+        return;
+    char *cstr = rt_string_to_cstr(text);
+    if (!cstr)
+        return;
+    vg_codeeditor_insert_text((vg_codeeditor_t *)editor, cstr);
+    free(cstr);
+}
+
+/// @brief Return the identifier word under the primary cursor.
+/// @details Scans left and right from cursor_col over [A-Za-z0-9_] characters.
+rt_string rt_codeeditor_get_word_at_cursor(void *editor)
+{
+    if (!editor)
+        return rt_str_empty();
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
+        return rt_str_empty();
+    const char *text = ce->lines[ce->cursor_line].text;
+    int         len  = (int)ce->lines[ce->cursor_line].length;
+    int         col  = ce->cursor_col < len ? ce->cursor_col : len;
+
+    /* scan left to find word start */
+    int start = col;
+    while (start > 0 && (isalnum((unsigned char)text[start - 1]) || text[start - 1] == '_'))
+        --start;
+
+    /* scan right to find word end */
+    int end = col;
+    while (end < len && (isalnum((unsigned char)text[end]) || text[end] == '_'))
+        ++end;
+
+    return rt_string_from_bytes(text + start, (size_t)(end - start));
+}
+
+/// @brief Replace the identifier word under the primary cursor with new_text.
+/// @details Selects the same word range that get_word_at_cursor() would return,
+///          then inserts the replacement via vg_codeeditor_insert_text.
+void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text)
+{
+    if (!editor)
+        return;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
+        return;
+    const char *text = ce->lines[ce->cursor_line].text;
+    int         len  = (int)ce->lines[ce->cursor_line].length;
+    int         col  = ce->cursor_col < len ? ce->cursor_col : len;
+
+    /* find word boundaries */
+    int start = col;
+    while (start > 0 && (isalnum((unsigned char)text[start - 1]) || text[start - 1] == '_'))
+        --start;
+    int end = col;
+    while (end < len && (isalnum((unsigned char)text[end]) || text[end] == '_'))
+        ++end;
+
+    /* select the word, then insert the replacement (replaces selection) */
+    vg_codeeditor_set_selection((vg_codeeditor_t *)editor,
+                                ce->cursor_line, start,
+                                ce->cursor_line, end);
+    char *cstr = rt_string_to_cstr(new_text);
+    if (cstr)
+    {
+        vg_codeeditor_insert_text((vg_codeeditor_t *)editor, cstr);
+        free(cstr);
+    }
+}
+
+/// @brief Return the text of a single line (0-based index).
+rt_string rt_codeeditor_get_line(void *editor, int64_t line_index)
+{
+    if (!editor)
+        return rt_str_empty();
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (line_index < 0 || line_index >= (int64_t)ce->line_count)
+        return rt_str_empty();
+    vg_code_line_t *line = &ce->lines[(int)line_index];
+    return rt_string_from_bytes(line->text, line->length);
+}

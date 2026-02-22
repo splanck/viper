@@ -80,6 +80,12 @@ struct vgfx_window
     /// @brief Window height in pixels (immutable after creation).
     int32_t height;
 
+    /// @brief HiDPI backing scale factor (e.g. 2.0 on Retina, 1.0 elsewhere).
+    /// @details Populated by vgfx_create_window via vgfx_platform_get_display_scale().
+    ///          win->width and win->height store PHYSICAL pixels after initialisation;
+    ///          divide by scale_factor to recover the logical (point) dimensions.
+    float scale_factor;
+
     /// @brief Target frame rate for this window.
     /// @details fps > 0: Target that specific FPS with frame limiting.
     ///          fps < 0: Unlimited (no frame rate limiting).
@@ -371,6 +377,12 @@ int32_t vgfx_platform_is_minimized(struct vgfx_window *win);
 /// @brief Check if the native window is currently maximized.
 /// @return 1 if maximized, 0 otherwise
 int32_t vgfx_platform_is_maximized(struct vgfx_window *win);
+
+/// @brief Query the HiDPI backing scale factor from the host display system.
+/// @details Called once in vgfx_create_window() before framebuffer allocation.
+///          Returns 1.0 on non-HiDPI displays; 2.0 on standard macOS Retina;
+///          varies on Linux (Xft.dpi / 96.0) and Windows (GetDeviceCaps / 96.0).
+float vgfx_platform_get_display_scale(void);
 
 /// @brief Get the native window's current screen position.
 void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y);

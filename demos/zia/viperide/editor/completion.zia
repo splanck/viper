@@ -1,0 +1,216 @@
+module completion;
+
+bind GUI = Viper.GUI;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+bind ZiaCompletion = Viper.Zia.Completion;
+
+// ============================================================================
+// CompletionController — IntelliSense-style code completion for ViperIDE
+// ============================================================================
+// Triggered by Ctrl+Space (explicit) or '.' typed (member access).
+// Shows a FloatingPanel overlay with a ListBox of ranked completion items.
+// Arrow keys navigate; Tab accepts; Escape dismisses.
+// ============================================================================
+
+entity CompletionController {
+    expose GUI.CodeEditor editor;
+    expose GUI.FloatingPanel popup;
+    expose GUI.ListBox listbox;
+
+    expose Boolean isVisible;
+    expose Integer selectedIndex;
+    expose Integer itemCount;
+
+    // Track cursor position to detect line changes (auto-dismiss)
+    expose Integer lastLine;
+    expose Integer lastCol;
+
+    // Parallel list of insertTexts (one entry per listbox item)
+    expose List insertTexts;
+
+    expose func init() {
+        isVisible      = false;
+        selectedIndex  = 0;
+        itemCount      = 0;
+        lastLine       = -1;
+        lastCol        = -1;
+        insertTexts    = new List();
+    }
+
+    // ------------------------------------------------------------------
+    // Setup — call once after creating the editor and app shell.
+    // ed: the CodeEditor widget
+    // appRoot: the top-level GUI.App widget (FloatingPanel must attach here)
+    // ------------------------------------------------------------------
+    expose func Setup(ed: GUI.CodeEditor, appRoot: GUI.App) {
+        editor = ed;
+
+        // Create floating overlay panel (initially hidden, 300x200 px)
+        popup = GUI.FloatingPanel.New(appRoot);
+        popup.SetSize(300.0, 200.0);
+
+        // Embed a ListBox inside the panel for the item list.
+        // Create with null parent — FloatingPanel owns it via AddChild, not the
+        // normal widget tree.  Using popup as parent would double-register the
+        // widget and corrupt layout/painting.
+        listbox = GUI.ListBox.New(null);
+        popup.AddChild(listbox);
+
+        popup.SetVisible(0);
+    }
+
+    // ------------------------------------------------------------------
+    // TriggerCompletion — query the engine and show the popup.
+    // ------------------------------------------------------------------
+    expose func TriggerCompletion() {
+        if editor == null {
+            return;
+        }
+
+        // Get current source and cursor position
+        var text    = editor.Text;
+        var curLine = editor.CursorLine + 1;  // convert to 1-based for engine
+        var curCol  = editor.CursorCol;       // 0-based column
+
+        // Ask the Zia completion engine (returns "" on failure/empty)
+        var result = ZiaCompletion.Complete(text, curLine, curCol);
+        if result == "" {
+            Hide();
+            return;
+        }
+
+        // Clear previous state
+        listbox.Clear();
+        insertTexts = new List();
+        itemCount   = 0;
+
+        // Parse serialised result: each line is   label\tinsertText\tkind\tdetail
+        // Manual forward-scan instead of Str.Split + Seq.get_Len (unreliable).
+        // Str.IndexOf and Str.MidLen are 1-based.
+        var pos      = 1;
+        var totalLen = Str.Length(result);
+        while pos <= totalLen {
+            var nlPos   = Str.IndexOf(Str.Mid(result, pos), "\n");
+            var lineStr = "";
+            if nlPos > 0 {
+                lineStr = Str.MidLen(result, pos, nlPos - 1);
+                pos     = pos + nlPos;
+            } else {
+                lineStr = Str.Mid(result, pos);
+                pos     = totalLen + 1;
+            }
+
+            if Str.Length(lineStr) > 0 {
+                // Extract label (before first tab) and insertText (after first tab)
+                var tabPos = Str.IndexOf(lineStr, "\t");
+                var label  = lineStr;
+                var ins    = lineStr;
+
+                if tabPos > 0 {
+                    label    = Str.Left(lineStr, tabPos - 1);
+                    var rest = Str.Mid(lineStr, tabPos + 1);
+                    var tab2 = Str.IndexOf(rest, "\t");
+                    if tab2 > 0 {
+                        ins = Str.Left(rest, tab2 - 1);
+                    } else {
+                        ins = rest;
+                    }
+                }
+
+                listbox.AddItem(label);
+                insertTexts.Push(ins);
+                itemCount = itemCount + 1;
+            }
+        }
+
+        if itemCount == 0 {
+            Hide();
+            return;
+        }
+
+        // Position popup just below the cursor caret
+        var px = editor.GetCursorPixelX();
+        var py = editor.GetCursorPixelY();
+        popup.SetPosition(px, py + 20);
+
+        // Select first item and show
+        selectedIndex = 0;
+        listbox.SelectIndex(0);
+        lastLine  = editor.CursorLine;
+        lastCol   = editor.CursorCol;
+        isVisible = true;
+        popup.SetVisible(1);
+    }
+
+    // ------------------------------------------------------------------
+    // AcceptSelected — insert the selected item at the cursor.
+    // ------------------------------------------------------------------
+    expose func AcceptSelected() {
+        if isVisible == false or itemCount == 0 {
+            return;
+        }
+        if selectedIndex >= 0 and selectedIndex < itemCount {
+            var ins = Obj.ToString(insertTexts.get(selectedIndex));
+            editor.ReplaceWordAtCursor(ins);
+        }
+        Hide();
+    }
+
+    // ------------------------------------------------------------------
+    // Keyboard navigation
+    // ------------------------------------------------------------------
+    expose func NavigateDown() {
+        if isVisible == false {
+            return;
+        }
+        var maxIdx = itemCount - 1;
+        if selectedIndex < maxIdx {
+            selectedIndex = selectedIndex + 1;
+            listbox.SelectIndex(selectedIndex);
+        }
+    }
+
+    expose func NavigateUp() {
+        if isVisible == false {
+            return;
+        }
+        if selectedIndex > 0 {
+            selectedIndex = selectedIndex - 1;
+            listbox.SelectIndex(selectedIndex);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Show / Hide
+    // ------------------------------------------------------------------
+    expose func Show() {
+        isVisible = true;
+        popup.SetVisible(1);
+    }
+
+    expose func Hide() {
+        isVisible = false;
+        popup.SetVisible(0);
+    }
+
+    // ------------------------------------------------------------------
+    // Update — call once per frame.  Returns true if an event was consumed.
+    // Auto-dismisses when cursor moves to a different line.
+    // ------------------------------------------------------------------
+    expose func Update() -> Boolean {
+        if isVisible == false {
+            return false;
+        }
+
+        // Auto-dismiss if the user moved to a different line
+        var curLine = editor.CursorLine;
+        if curLine != lastLine {
+            Hide();
+            return false;
+        }
+
+        return false;
+    }
+}
