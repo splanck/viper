@@ -519,6 +519,65 @@ int64_t rt_app_was_close_requested(void *app)
     return gui_app->should_close;
 }
 
+int64_t rt_app_get_monitor_width(void *app)
+{
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (!gui_app->window)
+        return 0;
+    int32_t w = 0, h = 0;
+    vgfx_get_monitor_size(gui_app->window, &w, &h);
+    return (int64_t)w;
+}
+
+int64_t rt_app_get_monitor_height(void *app)
+{
+    if (!app)
+        return 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (!gui_app->window)
+        return 0;
+    int32_t w = 0, h = 0;
+    vgfx_get_monitor_size(gui_app->window, &w, &h);
+    return (int64_t)h;
+}
+
+void rt_app_set_window_size(void *app, int64_t w, int64_t h)
+{
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (!gui_app->window)
+        return;
+    vgfx_set_window_size(gui_app->window, (int32_t)w, (int32_t)h);
+    if (gui_app->root)
+    {
+        gui_app->root->width  = (float)w;
+        gui_app->root->height = (float)h;
+    }
+}
+
+double rt_app_get_font_size(void *app)
+{
+    if (!app)
+        return 14.0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    return (double)gui_app->default_font_size;
+}
+
+void rt_app_set_font_size(void *app, double size)
+{
+    if (!app)
+        return;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (size < 6.0)
+        size = 6.0;
+    if (size > 72.0)
+        size = 72.0;
+    gui_app->default_font_size = (float)size;
+}
+
 //=============================================================================
 // Cursor Styles (Phase 1)
 //=============================================================================

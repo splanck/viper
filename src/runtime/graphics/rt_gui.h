@@ -492,6 +492,12 @@ extern "C"
     /// @param size Font size in pixels.
     void rt_codeeditor_set_font(void *editor, void *font, double size);
 
+    /// @brief Get the current font size of a code editor.
+    double rt_codeeditor_get_font_size(void *editor);
+
+    /// @brief Set only the font size of a code editor (font unchanged).
+    void rt_codeeditor_set_font_size(void *editor, double size);
+
     //=========================================================================
     // Dropdown Widget
     //=========================================================================
@@ -770,6 +776,9 @@ extern "C"
     /// @brief Set the current theme to light.
     void rt_theme_set_light(void);
 
+    /// @brief Get the current theme name ("dark" or "light").
+    rt_string rt_theme_get_name(void);
+
     //=========================================================================
     // Layout Functions
     //=========================================================================
@@ -951,6 +960,21 @@ extern "C"
     /// @param app GUI application handle.
     /// @return 1 if close was requested, 0 otherwise.
     int64_t rt_app_was_close_requested(void *app);
+
+    /// @brief Get the width of the monitor containing the window.
+    int64_t rt_app_get_monitor_width(void *app);
+
+    /// @brief Get the height of the monitor containing the window.
+    int64_t rt_app_get_monitor_height(void *app);
+
+    /// @brief Resize the OS window to the given dimensions.
+    void rt_app_set_window_size(void *app, int64_t w, int64_t h);
+
+    /// @brief Get the current default font size for the application.
+    double rt_app_get_font_size(void *app);
+
+    /// @brief Set the default font size for the application.
+    void rt_app_set_font_size(void *app, double size);
 
 //=========================================================================
 // Cursor Styles (Phase 1)

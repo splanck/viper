@@ -257,7 +257,7 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
     // Calculate dropdown dimensions
     float dropdown_y = widget->y + widget->height;
     float dropdown_width = 200.0f;
-    float item_height = 24.0f;
+    float item_height = 28.0f;
     float dropdown_height = menubar->open_menu->item_count * item_height;
 
     // Get theme for colors
@@ -444,7 +444,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
             else if (menubar->open_menu)
             {
                 // Check if in dropdown area
-                float item_height = 24.0f;
+                float item_height = 28.0f;
                 int item_index = (int)((local_y - menubar->height) / item_height);
 
                 vg_menu_item_t *old_highlight = menubar->highlighted;

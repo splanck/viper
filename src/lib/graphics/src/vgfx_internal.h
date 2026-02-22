@@ -395,6 +395,12 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type);
 /// @brief Show or hide the native mouse cursor.
 void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible);
 
+/// @brief Get the screen dimensions of the monitor containing the window.
+void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h);
+
+/// @brief Resize the native OS window.
+void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h);
+
 //===----------------------------------------------------------------------===//
 // Internal Helper Functions
 //===----------------------------------------------------------------------===//

@@ -1200,6 +1200,45 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
     }
 }
 
+void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h)
+{
+    if (out_w)
+        *out_w = 0;
+    if (out_h)
+        *out_h = 0;
+    @autoreleasepool
+    {
+        NSScreen *screen = nil;
+        if (win && win->platform_data)
+        {
+            vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+            screen = platform->window ? [platform->window screen] : nil;
+        }
+        if (!screen)
+            screen = [NSScreen mainScreen];
+        NSRect frame = [screen frame];
+        if (out_w)
+            *out_w = (int32_t)frame.size.width;
+        if (out_h)
+            *out_h = (int32_t)frame.size.height;
+    }
+}
+
+void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h)
+{
+    if (!win || !win->platform_data)
+        return;
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (!platform->window)
+            return;
+        NSRect frame = [platform->window frame];
+        frame.size = NSMakeSize((CGFloat)w, (CGFloat)h);
+        [platform->window setFrame:frame display:YES animate:NO];
+    }
+}
+
 #endif /* __APPLE__ */
 
 //===----------------------------------------------------------------------===//

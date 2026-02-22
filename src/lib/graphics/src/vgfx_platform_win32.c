@@ -1129,4 +1129,24 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
         ShowCursor(FALSE);
 }
 
+void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h)
+{
+    (void)win;
+    if (out_w)
+        *out_w = (int32_t)GetSystemMetrics(SM_CXSCREEN);
+    if (out_h)
+        *out_h = (int32_t)GetSystemMetrics(SM_CYSCREEN);
+}
+
+void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h)
+{
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *data = (vgfx_win32_data *)win->platform_data;
+    if (!data->hwnd)
+        return;
+    SetWindowPos(data->hwnd, NULL, 0, 0, w, h,
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 #endif /* _WIN32 */

@@ -582,6 +582,25 @@ void vgfx_set_cursor_visible(vgfx_window_t window, int32_t visible)
         vgfx_platform_set_cursor_visible(window, visible);
 }
 
+void vgfx_get_monitor_size(vgfx_window_t window, int32_t *out_w, int32_t *out_h)
+{
+    if (!window)
+    {
+        if (out_w)
+            *out_w = 0;
+        if (out_h)
+            *out_h = 0;
+        return;
+    }
+    vgfx_platform_get_monitor_size(window, out_w, out_h);
+}
+
+void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h)
+{
+    if (window && w > 0 && h > 0)
+        vgfx_platform_set_window_size(window, w, h);
+}
+
 //===----------------------------------------------------------------------===//
 // Window Management
 //===----------------------------------------------------------------------===//

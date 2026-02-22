@@ -459,6 +459,24 @@ extern "C"
     /// @param visible 1 to show, 0 to hide
     void vgfx_set_cursor_visible(vgfx_window_t window, int32_t visible);
 
+    /// @brief Get the primary monitor's screen dimensions.
+    /// @details Queries the size of the monitor containing the window.  Falls
+    ///          back to the primary monitor when the window is NULL.
+    /// @param window Window handle (may be NULL to query primary monitor)
+    /// @param out_w Pointer to receive monitor width (may be NULL)
+    /// @param out_h Pointer to receive monitor height (may be NULL)
+    void vgfx_get_monitor_size(vgfx_window_t window, int32_t *out_w, int32_t *out_h);
+
+    /// @brief Resize the native OS window.
+    /// @details Changes the window's client area dimensions.  On macOS the
+    ///          frame origin is preserved; the window may be clipped by the
+    ///          screen bounds.  A RESIZE event is NOT synthesized — the caller
+    ///          should update the root widget size after calling this function.
+    /// @param window Window handle
+    /// @param w New window width in pixels (must be > 0)
+    /// @param h New window height in pixels (must be > 0)
+    void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h);
+
     /// @brief Get direct access to the framebuffer.
     /// @details Returns a descriptor with pointers to the raw RGBA pixel data.
     ///          The framebuffer is always stored in row-major order with 4 bytes

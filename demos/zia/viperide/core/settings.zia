@@ -1,0 +1,103 @@
+module settings;
+
+bind Seq = Viper.Collections.Seq;
+bind IO = Viper.IO;
+bind Dir = Viper.IO.Dir;
+bind Path = Viper.IO.Path;
+bind Env = Viper.Environment;
+bind Convert = Viper.Core.Convert;
+bind Viper.GUI;
+
+// ============================================================================
+// SettingsManager — persistent IDE settings stored in ~/.viperide/settings.ini
+// ============================================================================
+// Format: one key=value pair per line.
+// If the file cannot be found, defaults are used.
+// Call Load() once at startup and Save() whenever settings change.
+// ============================================================================
+
+entity SettingsManager {
+    expose Integer fontSize;
+    expose String  theme;
+    expose Boolean minimapVisible;
+    expose String  settingsDir;
+    expose String  settingsPath;
+
+    expose func init() {
+        fontSize       = 14;
+        theme          = "dark";
+        minimapVisible = true;
+        settingsDir    = "";
+        settingsPath   = "";
+    }
+
+    // Resolve the settings file path from the user's HOME directory.
+    expose func SetupPath() {
+        var home = Env.GetVariable("HOME");
+        if home == "" {
+            home = ".";
+        }
+        settingsDir  = Path.Join(home, ".viperide");
+        settingsPath = Path.Join(settingsDir, "settings.ini");
+    }
+
+    // Load settings from disk. Missing or unrecognised keys keep their defaults.
+    expose func Load() {
+        if settingsPath == "" {
+            SetupPath();
+        }
+        if IO.File.Exists(settingsPath) == false {
+            return;
+        }
+        var lines = IO.File.ReadAllLines(settingsPath);
+        var n = Seq.get_Len(lines);
+        var i = 0;
+        while i < n {
+            var line = Seq.Get(lines, i);
+            var parts = Str.Split(line, "=");
+            if Seq.get_Len(parts) >= 2 {
+                var key = "" + Seq.Get(parts, 0);
+                var val = "" + Seq.Get(parts, 1);
+                if key == "fontSize" {
+                    var sz = Convert.ToInt(val);
+                    if sz >= 6 {
+                        fontSize = sz;
+                    }
+                }
+                if key == "theme" {
+                    theme = val;
+                }
+                if key == "minimap" {
+                    minimapVisible = val == "1";
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // Persist settings to disk. Creates ~/.viperide/ if it does not exist.
+    expose func Save() {
+        if settingsPath == "" {
+            SetupPath();
+        }
+        Dir.MakeAll(settingsDir);
+        var minimapVal = "0";
+        if minimapVisible {
+            minimapVal = "1";
+        }
+        var content = "fontSize=" + fontSize + "\n";
+        content = content + "theme=" + theme + "\n";
+        content = content + "minimap=" + minimapVal + "\n";
+        IO.File.WriteAllText(settingsPath, content);
+    }
+
+    // Apply the loaded theme setting. Font size must be applied by the caller
+    // using appSettings.fontSize directly (typed call avoids Object dispatch).
+    expose func ApplyTheme() {
+        if theme == "light" {
+            GUI.Theme.SetLight();
+        } else {
+            GUI.Theme.SetDark();
+        }
+    }
+}

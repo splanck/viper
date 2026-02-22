@@ -253,18 +253,45 @@ void rt_codeeditor_set_font(void *editor, void *font, double size)
     }
 }
 
+double rt_codeeditor_get_font_size(void *editor)
+{
+    if (!editor)
+        return 14.0;
+    vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
+    return (double)ed->font_size;
+}
+
+void rt_codeeditor_set_font_size(void *editor, double size)
+{
+    if (!editor)
+        return;
+    vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
+    if (size > 0.0)
+        ed->font_size = (float)size;
+}
+
 //=============================================================================
 // Theme Functions
 //=============================================================================
 
+static int s_theme_is_dark = 1; ///< Tracks current theme; 1 = dark, 0 = light.
+
 void rt_theme_set_dark(void)
 {
+    s_theme_is_dark = 1;
     vg_theme_set_current(vg_theme_dark());
 }
 
 void rt_theme_set_light(void)
 {
+    s_theme_is_dark = 0;
     vg_theme_set_current(vg_theme_light());
+}
+
+rt_string rt_theme_get_name(void)
+{
+    const char *name = s_theme_is_dark ? "dark" : "light";
+    return rt_string_from_bytes(name, strlen(name));
 }
 
 //=============================================================================

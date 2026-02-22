@@ -5,6 +5,7 @@ bind "core/document";
 bind "core/document_manager";
 bind "core/project";
 bind "core/project_manager";
+bind "core/settings";
 bind "editor/editor_engine";
 bind "editor/editor_tabs";
 bind "services/file_utils";
@@ -43,6 +44,9 @@ func main() {
     // Build the UI shell
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
 
+    // Resize window to 80% of the monitor and center it
+    shell.CenterAndSize(80);
+
     // Setup editor inside editorRow (the HBox for editor + minimap side by side)
     engine.Setup(shell.editorRow);
 
@@ -73,6 +77,13 @@ func main() {
     Shortcuts.Register("find",      "Ctrl+F",       "Find / Replace");
     Shortcuts.Register("goto",      "Ctrl+G",       "Go To Line");
     Shortcuts.Register("palette",   "Ctrl+Shift+P", "Command Palette");
+    Shortcuts.Register("zoomin",      "Ctrl+=",       "Zoom In");
+    Shortcuts.Register("zoomout",     "Ctrl+-",       "Zoom Out");
+    Shortcuts.Register("zoomreset",   "Ctrl+0",       "Reset Zoom");
+    Shortcuts.Register("toggletheme", "Ctrl+Shift+T", "Toggle Theme");
+    Shortcuts.Register("fullscreen",  "F11",          "Toggle Fullscreen");
+    Shortcuts.Register("minimap",     "Ctrl+Shift+M", "Toggle Minimap");
+    Shortcuts.Register("settings",    "Ctrl+,",       "Settings");
 
     // ========================================================================
     // Register command palette commands
@@ -90,6 +101,13 @@ func main() {
     shell.commandPalette.AddCommandWithShortcut("run",       "Run without Build", "Run without compiling first",     "Ctrl+F5");
     shell.commandPalette.AddCommandWithShortcut("sidebar",   "Toggle Sidebar",    "Show or hide the file tree",      "Ctrl+B");
     shell.commandPalette.AddCommandWithShortcut("statusbar", "Toggle Status Bar", "Show or hide the status bar",     "");
+    shell.commandPalette.AddCommandWithShortcut("zoomin",      "Zoom In",           "Increase editor font size",           "Ctrl+=");
+    shell.commandPalette.AddCommandWithShortcut("zoomout",     "Zoom Out",          "Decrease editor font size",           "Ctrl+-");
+    shell.commandPalette.AddCommandWithShortcut("zoomreset",   "Reset Zoom",        "Reset editor font size to default",   "Ctrl+0");
+    shell.commandPalette.AddCommandWithShortcut("toggletheme", "Toggle Theme",      "Switch between dark and light theme", "Ctrl+Shift+T");
+    shell.commandPalette.AddCommandWithShortcut("fullscreen",  "Toggle Fullscreen", "Enter or exit fullscreen mode",       "F11");
+    shell.commandPalette.AddCommandWithShortcut("minimap",     "Toggle Minimap",    "Show or hide the minimap panel",      "Ctrl+Shift+M");
+    shell.commandPalette.AddCommandWithShortcut("settings",    "Settings",          "View and adjust IDE settings",        "Ctrl+,");
 
     // ========================================================================
     // Create welcome document
@@ -114,6 +132,18 @@ func main() {
     // Wire the find bar to the editor (enables Find/Replace to search in editor)
     shell.findBar.BindEditor(engine.editor);
 
+    // ========================================================================
+    // Load persistent settings and apply them
+    // ========================================================================
+    var appSettings = new settings.SettingsManager();
+    appSettings.Load();
+    shell.app.SetFontSize(appSettings.fontSize);
+    engine.editor.SetFontSize(appSettings.fontSize);
+    appSettings.ApplyTheme();
+    if appSettings.minimapVisible == false {
+        shell.minimap.SetVisible(0);
+    }
+
     // File watcher — tracks whether the active file was modified externally.
     // hasWatcher is false until the first non-new document is active.
     var watchedPath = "";
@@ -129,6 +159,7 @@ func main() {
     var loopCount = 0;
     var cpSelected = "";   // command palette selection for this frame
     var ctxDir = "";       // directory targeted by the last tree right-click
+    var minimapVisible = appSettings.minimapVisible;   // tracks minimap panel visibility
 
     while shell != null and shell.ShouldClose() == false {
         loopCount = loopCount + 1;
@@ -604,6 +635,147 @@ func main() {
             } else {
                 shell.statusBar.SetVisible(1);
             }
+        }
+
+        // ====================================================================
+        // Handle Zoom In (View menu, Ctrl+=, or CommandPalette)
+        // ====================================================================
+        var doZoomIn = shell.miZoomIn.WasClicked() != 0;
+        if doZoomIn == false {
+            doZoomIn = Shortcuts.WasTriggered("zoomin") != 0;
+        }
+        if doZoomIn == false {
+            doZoomIn = cpSelected == "zoomin";
+        }
+        if doZoomIn {
+            appSettings.fontSize = appSettings.fontSize + 1;
+            shell.app.SetFontSize(appSettings.fontSize);
+            engine.editor.SetFontSize(appSettings.fontSize);
+            appSettings.Save();
+            shell.SetStatusLeft("Font size: " + appSettings.fontSize);
+        }
+
+        // ====================================================================
+        // Handle Zoom Out (View menu, Ctrl+-, or CommandPalette)
+        // ====================================================================
+        var doZoomOut = shell.miZoomOut.WasClicked() != 0;
+        if doZoomOut == false {
+            doZoomOut = Shortcuts.WasTriggered("zoomout") != 0;
+        }
+        if doZoomOut == false {
+            doZoomOut = cpSelected == "zoomout";
+        }
+        if doZoomOut {
+            appSettings.fontSize = appSettings.fontSize - 1;
+            shell.app.SetFontSize(appSettings.fontSize);
+            engine.editor.SetFontSize(appSettings.fontSize);
+            appSettings.Save();
+            shell.SetStatusLeft("Font size: " + appSettings.fontSize);
+        }
+
+        // ====================================================================
+        // Handle Reset Zoom (View menu, Ctrl+0, or CommandPalette)
+        // ====================================================================
+        var doZoomReset = shell.miZoomReset.WasClicked() != 0;
+        if doZoomReset == false {
+            doZoomReset = Shortcuts.WasTriggered("zoomreset") != 0;
+        }
+        if doZoomReset == false {
+            doZoomReset = cpSelected == "zoomreset";
+        }
+        if doZoomReset {
+            appSettings.fontSize = 14;
+            shell.app.SetFontSize(14.0);
+            engine.editor.SetFontSize(14.0);
+            appSettings.Save();
+            shell.SetStatusLeft("Font size reset to 14");
+        }
+
+        // ====================================================================
+        // Handle Toggle Theme (View menu, Ctrl+Shift+T, or CommandPalette)
+        // ====================================================================
+        var doToggleTheme = shell.miToggleTheme.WasClicked() != 0;
+        if doToggleTheme == false {
+            doToggleTheme = Shortcuts.WasTriggered("toggletheme") != 0;
+        }
+        if doToggleTheme == false {
+            doToggleTheme = cpSelected == "toggletheme";
+        }
+        if doToggleTheme {
+            if appSettings.theme == "dark" {
+                GUI.Theme.SetLight();
+                appSettings.theme = "light";
+                GUI.Toast.Info("Switched to light theme");
+            } else {
+                GUI.Theme.SetDark();
+                appSettings.theme = "dark";
+                GUI.Toast.Info("Switched to dark theme");
+            }
+            appSettings.Save();
+        }
+
+        // ====================================================================
+        // Handle Toggle Fullscreen (View menu, F11, or CommandPalette)
+        // ====================================================================
+        var doFullscreen = shell.miFullscreen.WasClicked() != 0;
+        if doFullscreen == false {
+            doFullscreen = Shortcuts.WasTriggered("fullscreen") != 0;
+        }
+        if doFullscreen == false {
+            doFullscreen = cpSelected == "fullscreen";
+        }
+        if doFullscreen {
+            if shell.app.IsFullscreen() {
+                shell.app.SetFullscreen(false);
+            } else {
+                shell.app.SetFullscreen(true);
+            }
+        }
+
+        // ====================================================================
+        // Handle Toggle Minimap (View menu, Ctrl+Shift+M, or CommandPalette)
+        // ====================================================================
+        var doMinimap = shell.miToggleMinimap.WasClicked() != 0;
+        if doMinimap == false {
+            doMinimap = Shortcuts.WasTriggered("minimap") != 0;
+        }
+        if doMinimap == false {
+            doMinimap = cpSelected == "minimap";
+        }
+        if doMinimap {
+            if minimapVisible {
+                minimapVisible = false;
+                shell.minimap.SetVisible(0);
+                appSettings.minimapVisible = false;
+            } else {
+                minimapVisible = true;
+                shell.minimap.SetVisible(1);
+                appSettings.minimapVisible = true;
+            }
+            appSettings.Save();
+        }
+
+        // ====================================================================
+        // Handle Settings / Preferences (Edit menu, Ctrl+,, or CommandPalette)
+        // ====================================================================
+        var doSettings = shell.miPreferences.WasClicked() != 0;
+        if doSettings == false {
+            doSettings = Shortcuts.WasTriggered("settings") != 0;
+        }
+        if doSettings == false {
+            doSettings = cpSelected == "settings";
+        }
+        if doSettings {
+            var settingsInfo = "Current Settings\n\n";
+            settingsInfo = settingsInfo + "Font Size:  " + appSettings.fontSize + "pt\n";
+            settingsInfo = settingsInfo + "Theme:      " + appSettings.theme + "\n";
+            settingsInfo = settingsInfo + "\nKeyboard shortcuts:\n";
+            settingsInfo = settingsInfo + "  Ctrl+=  /  Ctrl+-   Zoom In / Out\n";
+            settingsInfo = settingsInfo + "  Ctrl+0              Reset Font Size\n";
+            settingsInfo = settingsInfo + "  Ctrl+Shift+T        Toggle Theme\n";
+            settingsInfo = settingsInfo + "  F11                 Toggle Fullscreen\n";
+            settingsInfo = settingsInfo + "  Ctrl+Shift+M        Toggle Minimap";
+            GUI.MessageBox.Info("Settings", settingsInfo);
         }
 
         // ====================================================================

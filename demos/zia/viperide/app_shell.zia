@@ -46,10 +46,17 @@ entity AppShell {
     expose GUI.MenuItem miPaste;
     expose GUI.MenuItem miSelectAll;
     expose GUI.MenuItem miFind;
+    expose GUI.MenuItem miPreferences;
 
     // View menu items
     expose GUI.MenuItem miToggleSidebar;
     expose GUI.MenuItem miToggleStatusBar;
+    expose GUI.MenuItem miZoomIn;
+    expose GUI.MenuItem miZoomOut;
+    expose GUI.MenuItem miZoomReset;
+    expose GUI.MenuItem miToggleTheme;
+    expose GUI.MenuItem miFullscreen;
+    expose GUI.MenuItem miToggleMinimap;
 
     // Build menu
     expose GUI.Menu buildMenu;
@@ -167,12 +174,29 @@ entity AppShell {
         miSelectAll.SetShortcut("Ctrl+A");
         miFind = editMenu.AddItem("Find...");
         miFind.SetShortcut("Ctrl+F");
+        editMenu.AddSeparator();
+        miPreferences = editMenu.AddItem("Preferences...");
+        miPreferences.SetShortcut("Ctrl+,");
 
         // View menu
         viewMenu = menuBar.AddMenu("View");
         miToggleSidebar = viewMenu.AddItem("Toggle Sidebar");
         miToggleSidebar.SetShortcut("Ctrl+B");
         miToggleStatusBar = viewMenu.AddItem("Toggle Status Bar");
+        viewMenu.AddSeparator();
+        miZoomIn = viewMenu.AddItem("Zoom In");
+        miZoomIn.SetShortcut("Ctrl+=");
+        miZoomOut = viewMenu.AddItem("Zoom Out");
+        miZoomOut.SetShortcut("Ctrl+-");
+        miZoomReset = viewMenu.AddItem("Reset Zoom");
+        miZoomReset.SetShortcut("Ctrl+0");
+        viewMenu.AddSeparator();
+        miToggleTheme = viewMenu.AddItem("Toggle Theme");
+        miToggleTheme.SetShortcut("Ctrl+Shift+T");
+        miFullscreen = viewMenu.AddItem("Toggle Fullscreen");
+        miFullscreen.SetShortcut("F11");
+        miToggleMinimap = viewMenu.AddItem("Toggle Minimap");
+        miToggleMinimap.SetShortcut("Ctrl+Shift+M");
 
         // Build menu
         buildMenu = menuBar.AddMenu("Build");
@@ -334,5 +358,15 @@ entity AppShell {
             sidebarVisible = true;
             splitPane.SetPosition(0.20);
         }
+    }
+
+    // Resize the window to scalePct% of the monitor size and center it.
+    expose func CenterAndSize(scalePct: Integer) {
+        var mw = app.GetMonitorWidth();
+        var mh = app.GetMonitorHeight();
+        var w = (mw * scalePct) / 100;
+        var h = (mh * scalePct) / 100;
+        app.SetWindowSize(w, h);
+        app.SetPosition((mw - w) / 2, (mh - h) / 2);
     }
 }
