@@ -377,7 +377,12 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                    (int32_t)widget->height,
                    tb->bg_color);
 
-    uint32_t icon_px = get_icon_pixels(tb->icon_size);
+    // Scale icon_px by ui_scale so paint matches toolbar_measure (which already
+    // applies the scale).  Without this, items are measured at 48px on 2× Retina
+    // but painted with a 24px icon reference, misaligning icon/label positions.
+    float _ps = vg_theme_get_current()->ui_scale;
+    if (_ps <= 0.0f) _ps = 1.0f;
+    uint32_t icon_px = (uint32_t)((float)get_icon_pixels(tb->icon_size) * _ps);
 
     float pos = 0;
     int max_index = tb->overflow_start_index >= 0 ? tb->overflow_start_index : (int)tb->item_count;

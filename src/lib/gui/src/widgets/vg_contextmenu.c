@@ -312,7 +312,7 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas)
                 vg_font_metrics_t font_metrics;
                 vg_font_get_metrics(menu->font, menu->font_size, &font_metrics);
                 float text_y =
-                    item_y + (item_height + font_metrics.ascent - font_metrics.descent) / 2;
+                    item_y + (item_height + font_metrics.ascent + font_metrics.descent) / 2;
 
                 // Draw checkmark if checked
                 float text_x = x + ITEM_PADDING_X;

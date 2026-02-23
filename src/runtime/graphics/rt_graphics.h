@@ -564,6 +564,53 @@ extern "C"
     void rt_canvas_gradient_v(
         void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2);
 
+    // --- Window management (BINDING-001 + BINDING-002) ---
+
+    /// @brief Get the display scale factor (1.0 on standard, 2.0 on HiDPI/Retina).
+    double rt_canvas_get_scale(void *canvas);
+
+    /// @brief Get the window position in screen coordinates.
+    /// @param canvas Canvas handle.
+    /// @param out_x Receives X coordinate.
+    /// @param out_y Receives Y coordinate.
+    void rt_canvas_get_position(void *canvas, int64_t *out_x, int64_t *out_y);
+
+    /// @brief Set the window position in screen coordinates.
+    void rt_canvas_set_position(void *canvas, int64_t x, int64_t y);
+
+    /// @brief Get the current target FPS (-1 = unlimited).
+    int64_t rt_canvas_get_fps(void *canvas);
+
+    /// @brief Set the target FPS (<=0 = unlimited).
+    void rt_canvas_set_fps(void *canvas, int64_t fps);
+
+    /// @brief Return 1 if the window is maximized, 0 otherwise.
+    int64_t rt_canvas_is_maximized(void *canvas);
+
+    /// @brief Maximize the window.
+    void rt_canvas_maximize(void *canvas);
+
+    /// @brief Return 1 if the window is minimized, 0 otherwise.
+    int64_t rt_canvas_is_minimized(void *canvas);
+
+    /// @brief Minimize (iconify) the window.
+    void rt_canvas_minimize(void *canvas);
+
+    /// @brief Restore from minimized or maximized state.
+    void rt_canvas_restore(void *canvas);
+
+    /// @brief Return 1 if the window has keyboard focus, 0 otherwise.
+    int64_t rt_canvas_is_focused(void *canvas);
+
+    /// @brief Bring the window to the front and give it focus.
+    void rt_canvas_focus(void *canvas);
+
+    /// @brief Allow (0) or prevent (1) the window close button.
+    void rt_canvas_prevent_close(void *canvas, int64_t prevent);
+
+    /// @brief Get the monitor size in pixels.
+    void rt_canvas_get_monitor_size(void *canvas, int64_t *out_w, int64_t *out_h);
+
 #ifdef __cplusplus
 }
 #endif

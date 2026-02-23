@@ -373,14 +373,22 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     _vgfxWindow->height = new_height;
     _vgfxWindow->stride = new_width * 4;
 
-    /* Reallocate framebuffer to match new size */
+    /* Reallocate framebuffer to match new size.  Use posix_memalign (the same
+     * mechanism used at creation time via aligned_alloc_wrapper) to preserve
+     * the cache-line alignment guarantee.  posix_memalign memory is freed with
+     * regular free() — no separate aligned_free needed on POSIX platforms. */
     if (_vgfxWindow->pixels)
     {
         free(_vgfxWindow->pixels);
+        _vgfxWindow->pixels = NULL;
     }
 
     size_t buffer_size = (size_t)new_width * (size_t)new_height * 4;
-    _vgfxWindow->pixels = (uint8_t *)malloc(buffer_size);
+    void *aligned_buf = NULL;
+    if (posix_memalign(&aligned_buf, VGFX_FRAMEBUFFER_ALIGNMENT, buffer_size) == 0)
+    {
+        _vgfxWindow->pixels = (uint8_t *)aligned_buf;
+    }
 
     if (_vgfxWindow->pixels)
     {

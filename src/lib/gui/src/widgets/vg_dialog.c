@@ -3,6 +3,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "../../include/vg_widget.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -881,6 +882,10 @@ void vg_dialog_show(vg_dialog_t *dialog)
     dialog->result = VG_DIALOG_RESULT_NONE;
     dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;
+
+    // Register as modal root so event dispatch restricts input to this dialog
+    if (dialog->modal)
+        vg_widget_set_modal_root(&dialog->base);
 }
 
 void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to)
@@ -922,6 +927,10 @@ void vg_dialog_hide(vg_dialog_t *dialog)
     if (!dialog)
         return;
     dialog->is_open = false;
+
+    // Release modal lock if this dialog owned it
+    if (dialog->modal && vg_widget_get_modal_root() == &dialog->base)
+        vg_widget_set_modal_root(NULL);
 }
 
 void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result)
@@ -931,6 +940,10 @@ void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result)
 
     dialog->result = result;
     dialog->is_open = false;
+
+    // Release modal lock if this dialog owned it
+    if (dialog->modal && vg_widget_get_modal_root() == &dialog->base)
+        vg_widget_set_modal_root(NULL);
 
     if (dialog->on_result)
     {

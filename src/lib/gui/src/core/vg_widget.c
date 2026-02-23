@@ -12,6 +12,7 @@
 static uint32_t g_next_widget_id = 1;
 static vg_widget_t *g_focused_widget = NULL;
 static vg_widget_t *g_input_capture_widget = NULL;
+static vg_widget_t *g_modal_root = NULL;
 
 //=============================================================================
 // ID Generation
@@ -152,6 +153,7 @@ void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_
     widget->enabled = true;
     widget->needs_layout = true;
     widget->needs_paint = true;
+    widget->tab_index = -1; // -1 = natural traversal order
 }
 
 //=============================================================================
@@ -205,6 +207,12 @@ void vg_widget_destroy(vg_widget_t *widget)
     if (g_focused_widget == widget)
     {
         g_focused_widget = NULL;
+    }
+
+    // Clear modal root if this widget was the modal
+    if (g_modal_root == widget)
+    {
+        g_modal_root = NULL;
     }
 
     free(widget);
@@ -843,36 +851,103 @@ vg_widget_t *vg_widget_get_focused(vg_widget_t *root)
     return g_focused_widget;
 }
 
-static vg_widget_t *find_next_focusable(vg_widget_t *root, vg_widget_t *after, bool *found)
+// Maximum focusable widgets tracked for tab-order navigation.
+#define TAB_ORDER_MAX 512
+
+// Collect all focusable, visible, enabled descendants into arr[].
+// Returns the number of widgets collected.
+static int collect_focusable(vg_widget_t *root, vg_widget_t **arr, int max)
 {
     if (!root)
-        return NULL;
+        return 0;
 
+    int count = 0;
     for (vg_widget_t *child = root->first_child; child; child = child->next_sibling)
     {
         if (!child->visible || !child->enabled)
             continue;
 
-        if (*found)
+        if (child->vtable && child->vtable->can_focus && child->vtable->can_focus(child))
         {
-            // Looking for next focusable after the 'after' widget
-            if (child->vtable && child->vtable->can_focus && child->vtable->can_focus(child))
-            {
-                return child;
-            }
-        }
-        else if (child == after)
-        {
-            *found = true;
+            if (count < max)
+                arr[count++] = child;
         }
 
-        // Recurse into children
-        vg_widget_t *next = find_next_focusable(child, after, found);
-        if (next)
-            return next;
+        int sub = collect_focusable(child, arr + count, max - count);
+        count += sub;
+    }
+    return count;
+}
+
+// Compare for tab-order sort.
+// Widgets with tab_index >= 0 sort by ascending index first;
+// widgets with tab_index == -1 are placed after them in DFS order
+// (their relative position is their index in the DFS array, encoded
+// in the upper 16 bits of the sort key by the caller — not needed here
+// because qsort preserves relative order for equal keys when using a
+// stable sort, but stdlib qsort is not guaranteed stable so we use
+// the pointer's DFS index as a tiebreaker via the array position).
+// This comparator only compares by tab_index; callers rely on the array
+// being in DFS order already so that equal-tab_index items stay ordered.
+static int compare_tab_order(const void *a, const void *b)
+{
+    const vg_widget_t *wa = *(const vg_widget_t *const *)a;
+    const vg_widget_t *wb = *(const vg_widget_t *const *)b;
+
+    int ia = wa->tab_index;
+    int ib = wb->tab_index;
+
+    // Natural-order items (-1) always come after explicit ones
+    if (ia >= 0 && ib < 0)
+        return -1;
+    if (ia < 0 && ib >= 0)
+        return 1;
+
+    // Both explicit: sort by ascending index
+    if (ia >= 0 && ib >= 0)
+        return (ia < ib) ? -1 : (ia > ib) ? 1 : 0;
+
+    // Both natural-order: preserve DFS position (caller's array order)
+    return 0;
+}
+
+// Build sorted tab-order array for the widget tree rooted at root.
+// Returns the number of focusable widgets found (0..TAB_ORDER_MAX).
+static int build_tab_order(vg_widget_t *root, vg_widget_t **arr)
+{
+    int count = collect_focusable(root, arr, TAB_ORDER_MAX);
+
+    // Stable-sort by tab_index.
+    // stdlib qsort is not stable; use insertion sort for stability.
+    // With at most 512 items this is fast enough in practice.
+    for (int i = 1; i < count; i++)
+    {
+        vg_widget_t *key = arr[i];
+        int j = i - 1;
+        while (j >= 0)
+        {
+            const int ia = arr[j]->tab_index;
+            const int ib = key->tab_index;
+            bool before = false;
+            if (ia >= 0 && ib >= 0)
+                before = ia > ib;
+            else if (ia < 0 && ib >= 0)
+                before = true; // natural-order should move right of explicit
+            else
+                before = false;
+
+            if (before)
+            {
+                arr[j + 1] = arr[j];
+                j--;
+            }
+            else
+                break;
+        }
+        arr[j + 1] = key;
     }
 
-    return NULL;
+    return count;
 }
 
 void vg_widget_focus_next(vg_widget_t *root)
@@ -880,29 +955,74 @@ void vg_widget_focus_next(vg_widget_t *root)
     if (!root)
         return;
 
-    bool found = (g_focused_widget == NULL);
-    vg_widget_t *next = find_next_focusable(root, g_focused_widget, &found);
+    vg_widget_t *arr[TAB_ORDER_MAX];
+    int count = build_tab_order(root, arr);
+    if (count == 0)
+        return;
 
-    if (!next && g_focused_widget)
+    // Find current focused widget in the sorted list
+    int cur = -1;
+    for (int i = 0; i < count; i++)
     {
-        // Wrap around to beginning
-        found = true;
-        next = find_next_focusable(root, NULL, &found);
+        if (arr[i] == g_focused_widget)
+        {
+            cur = i;
+            break;
+        }
     }
 
-    if (next)
-    {
-        vg_widget_set_focus(next);
-    }
+    // Advance to next (with wraparound)
+    int next = (cur + 1) % count;
+    vg_widget_set_focus(arr[next]);
 }
 
 void vg_widget_focus_prev(vg_widget_t *root)
 {
-    // For simplicity, collect all focusable widgets and find previous
-    // A more efficient implementation would walk the tree backwards
     if (!root)
         return;
 
-    // For now, just focus next (proper implementation would be backwards)
-    vg_widget_focus_next(root);
+    vg_widget_t *arr[TAB_ORDER_MAX];
+    int count = build_tab_order(root, arr);
+    if (count == 0)
+        return;
+
+    // Find current focused widget in the sorted list
+    int cur = -1;
+    for (int i = 0; i < count; i++)
+    {
+        if (arr[i] == g_focused_widget)
+        {
+            cur = i;
+            break;
+        }
+    }
+
+    // Step back (with wraparound)
+    int prev = (cur <= 0) ? (count - 1) : (cur - 1);
+    vg_widget_set_focus(arr[prev]);
+}
+
+//=============================================================================
+// Tab Index
+//=============================================================================
+
+void vg_widget_set_tab_index(vg_widget_t *widget, int tab_index)
+{
+    if (!widget)
+        return;
+    widget->tab_index = tab_index;
+}
+
+//=============================================================================
+// Modal Root
+//=============================================================================
+
+void vg_widget_set_modal_root(vg_widget_t *widget)
+{
+    g_modal_root = widget;
+}
+
+vg_widget_t *vg_widget_get_modal_root(void)
+{
+    return g_modal_root;
 }

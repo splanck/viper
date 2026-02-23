@@ -1,6 +1,7 @@
 // vg_slider.c - Slider widget implementation
 #include "../../include/vg_widgets.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_theme.h"
 #include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 
@@ -12,6 +13,7 @@ static void slider_measure(vg_widget_t *widget, float available_width, float ava
 static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float h);
 static void slider_paint(vg_widget_t *widget, void *canvas);
 static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event);
+static bool slider_can_focus(vg_widget_t *widget);
 
 //=============================================================================
 // VTable
@@ -23,7 +25,7 @@ static vg_widget_vtable_t g_slider_vtable = {
     .arrange = slider_arrange,
     .paint = slider_paint,
     .handle_event = slider_handle_event,
-    .can_focus = NULL,
+    .can_focus = slider_can_focus,
     .on_focus = NULL,
 };
 
@@ -54,6 +56,11 @@ static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float
     widget->y = y;
     widget->width = w;
     widget->height = h;
+}
+
+static bool slider_can_focus(vg_widget_t *widget)
+{
+    return widget->enabled && widget->visible;
 }
 
 static void slider_paint(vg_widget_t *widget, void *canvas)
@@ -109,6 +116,13 @@ static void slider_paint(vg_widget_t *widget, void *canvas)
         int32_t thumb_r = (int32_t)(slider->thumb_size / 2.0f);
         uint32_t tc = slider->thumb_hovered ? slider->thumb_hover_color : slider->thumb_color;
         vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_r, tc);
+    }
+
+    /* Draw focus ring when the slider has keyboard focus */
+    if (widget->state & VG_STATE_FOCUSED)
+    {
+        vg_theme_t *theme = vg_theme_get_current();
+        vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, theme->colors.border_focus);
     }
 }
 
@@ -182,6 +196,40 @@ static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event)
         {
             slider->thumb_hovered = false;
             slider->dragging = false;
+            break;
+        }
+
+        case VG_EVENT_KEY_DOWN:
+        {
+            /* Arrow keys adjust the slider value by one step (or 1% of range
+             * when step == 0).  Home/End jump to the min/max extremes. */
+            float step = (slider->step > 0.0f)
+                             ? slider->step
+                             : (slider->max_value - slider->min_value) * 0.01f;
+            bool horiz = (slider->orientation == VG_SLIDER_HORIZONTAL);
+            switch (event->key.key)
+            {
+                case VG_KEY_RIGHT:
+                case VG_KEY_UP:
+                    vg_slider_set_value(slider, slider->value + (horiz ? step : step));
+                    event->handled = true;
+                    return true;
+                case VG_KEY_LEFT:
+                case VG_KEY_DOWN:
+                    vg_slider_set_value(slider, slider->value - (horiz ? step : step));
+                    event->handled = true;
+                    return true;
+                case VG_KEY_HOME:
+                    vg_slider_set_value(slider, slider->min_value);
+                    event->handled = true;
+                    return true;
+                case VG_KEY_END:
+                    vg_slider_set_value(slider, slider->max_value);
+                    event->handled = true;
+                    return true;
+                default:
+                    break;
+            }
             break;
         }
 

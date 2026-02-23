@@ -190,6 +190,8 @@ static void menubar_paint(vg_widget_t *widget, void *canvas)
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(menubar->font, menubar->font_size, &font_metrics);
 
+    // Correct vertical centering: descent is negative per vg_font.h contract,
+    // so +descent correctly subtracts the absolute descender depth from the centre.
     float text_y = widget->y + (widget->height + font_metrics.ascent + font_metrics.descent) / 2.0f;
     float menu_x = widget->x;
 

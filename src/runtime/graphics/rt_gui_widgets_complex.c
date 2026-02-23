@@ -153,6 +153,14 @@ void rt_splitpane_set_position(void *split, double position)
     }
 }
 
+// BINDING-006: SplitPane position query
+double rt_splitpane_get_position(void *split)
+{
+    if (!split)
+        return 0.5;
+    return (double)vg_splitpane_get_position((vg_splitpane_t *)split);
+}
+
 void *rt_splitpane_get_first(void *split)
 {
     if (!split)
@@ -200,6 +208,18 @@ rt_string rt_codeeditor_get_text(void *editor)
     if (!editor)
         return rt_str_empty();
     char *text = vg_codeeditor_get_text((vg_codeeditor_t *)editor);
+    if (!text)
+        return rt_str_empty();
+    rt_string result = rt_string_from_bytes(text, strlen(text));
+    free(text);
+    return result;
+}
+
+rt_string rt_codeeditor_get_selected_text(void *editor)
+{
+    if (!editor)
+        return rt_str_empty();
+    char *text = vg_codeeditor_get_selection((vg_codeeditor_t *)editor);
     if (!text)
         return rt_str_empty();
     rt_string result = rt_string_from_bytes(text, strlen(text));
@@ -258,7 +278,11 @@ double rt_codeeditor_get_font_size(void *editor)
     if (!editor)
         return 14.0;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
-    return (double)ed->font_size;
+    // Return logical pt size — divide stored physical pixels by HiDPI scale.
+    float _s = (s_current_app && s_current_app->window)
+                   ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+    if (_s <= 0.0f) _s = 1.0f;
+    return (double)(ed->font_size / _s);
 }
 
 void rt_codeeditor_set_font_size(void *editor, double size)
@@ -267,7 +291,13 @@ void rt_codeeditor_set_font_size(void *editor, double size)
         return;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
     if (size > 0.0)
-        ed->font_size = (float)size;
+    {
+        // Store physical pixels — multiply logical pt size by HiDPI scale.
+        float _s = (s_current_app && s_current_app->window)
+                       ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+        if (_s <= 0.0f) _s = 1.0f;
+        ed->font_size = (float)size * _s;
+    }
 }
 
 //=============================================================================

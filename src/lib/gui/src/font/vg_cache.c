@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Monotonic tick incremented on every cache hit — used for LRU eviction.
+static uint32_t g_cache_tick = 0;
+
 //=============================================================================
 // Hash Function
 //=============================================================================
@@ -144,30 +147,61 @@ static bool cache_resize(vg_glyph_cache_t *cache)
 }
 
 //=============================================================================
-// Cache Eviction (LRU would be better, but simple random eviction for now)
+// Cache Eviction — LRU: sort all entries by access_tick and free the 25% with
+// the smallest ticks (least recently used). New entries have access_tick = 0,
+// so they are the first candidates if they are never hit.
 //=============================================================================
+
+static int compare_ticks(const void *a, const void *b)
+{
+    uint32_t ta = (*(const vg_cache_entry_t **)a)->access_tick;
+    uint32_t tb = (*(const vg_cache_entry_t **)b)->access_tick;
+    return (ta < tb) ? -1 : (ta > tb) ? 1 : 0;
+}
 
 static void cache_evict_some(vg_glyph_cache_t *cache)
 {
-    // Simple eviction: remove entries from first non-empty buckets
-    int to_evict = cache->entry_count / 4; // Evict 25%
+    size_t count = cache->entry_count;
+    if (count == 0)
+        return;
+
+    // Collect all entry pointers into a flat array for sorting.
+    vg_cache_entry_t **all = malloc(count * sizeof(vg_cache_entry_t *));
+    if (!all)
+        return; // Fall back to no eviction rather than crash
+
+    size_t filled = 0;
+    for (size_t i = 0; i < cache->bucket_count && filled < count; i++)
+    {
+        for (vg_cache_entry_t *e = cache->buckets[i]; e; e = e->next)
+            all[filled++] = e;
+    }
+
+    // Sort by ascending access_tick (lowest = LRU = evict first)
+    qsort(all, filled, sizeof(vg_cache_entry_t *), compare_ticks);
+
+    // Evict the bottom 25%
+    size_t to_evict = filled / 4;
     if (to_evict < 1)
         to_evict = 1;
 
-    for (size_t i = 0; i < cache->bucket_count && to_evict > 0; i++)
+    for (size_t k = 0; k < to_evict; k++)
     {
-        while (cache->buckets[i] && to_evict > 0)
-        {
-            vg_cache_entry_t *entry = cache->buckets[i];
-            cache->buckets[i] = entry->next;
+        vg_cache_entry_t *victim = all[k];
+        // Remove from its bucket chain
+        size_t bi = hash_key(victim->key, cache->bucket_count);
+        vg_cache_entry_t **prev = &cache->buckets[bi];
+        while (*prev && *prev != victim)
+            prev = &(*prev)->next;
+        if (*prev == victim)
+            *prev = victim->next;
 
-            cache->memory_used -= entry->glyph.width * entry->glyph.height;
-            cache->entry_count--;
-            to_evict--;
-
-            free_entry(entry);
-        }
+        cache->memory_used -= victim->glyph.width * victim->glyph.height;
+        cache->entry_count--;
+        free_entry(victim);
     }
+
+    free(all);
 }
 
 //=============================================================================
@@ -187,6 +221,8 @@ const vg_glyph_t *vg_cache_get(vg_glyph_cache_t *cache, float size, uint32_t cod
     {
         if (entry->key == key)
         {
+            // Update LRU timestamp on every hit
+            entry->access_tick = ++g_cache_tick;
             return &entry->glyph;
         }
         entry = entry->next;

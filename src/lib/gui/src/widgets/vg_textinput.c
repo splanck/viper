@@ -13,6 +13,7 @@
 #define TEXTINPUT_INITIAL_CAPACITY 64
 #define TEXTINPUT_GROWTH_FACTOR 2
 #define CURSOR_BLINK_RATE 0.5f // Seconds
+#define TEXTINPUT_UNDO_CAPACITY 32
 
 //=============================================================================
 // Forward Declarations
@@ -123,6 +124,14 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent)
     input->cursor_blink_time = 0;
     input->cursor_visible = true;
 
+    // Initialize undo history with the initial empty-string snapshot at position 0.
+    // push_undo is called AFTER each edit, so undo_stack[0] is the "before any typing"
+    // baseline that Ctrl+Z can restore to.
+    input->undo_stack[0] = strdup("");
+    input->undo_cursors[0] = 0;
+    input->undo_count = 1;
+    input->undo_pos = 0;
+
     // Set minimum size
     input->base.constraints.min_height = theme->input.height;
     input->base.constraints.min_width = 100.0f;
@@ -149,6 +158,13 @@ static void textinput_destroy(vg_widget_t *widget)
     {
         free((void *)input->placeholder);
         input->placeholder = NULL;
+    }
+
+    // Free undo ring-buffer snapshots
+    for (int i = 0; i < TEXTINPUT_UNDO_CAPACITY; i++)
+    {
+        free(input->undo_stack[i]);
+        input->undo_stack[i] = NULL;
     }
 }
 
@@ -303,6 +319,115 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
+//=============================================================================
+// Undo / Redo — ring buffer of text snapshots
+//=============================================================================
+
+// textinput_push_undo — call AFTER each edit to record the new state.
+//
+// Design (linear array, push-after semantics):
+//   undo_stack[0]           = initial empty string (set at creation)
+//   undo_stack[1..undo_pos] = states after successive edits
+//   undo_pos                = index of the currently-displayed state (0-based)
+//   undo_count              = total valid entries (undo_pos + 1 after any push)
+//
+// Undo: undo_pos-- and restore undo_stack[undo_pos].
+// Redo: undo_pos++ and restore undo_stack[undo_pos].
+// New edit while redos are available: truncate entries above undo_pos, then push.
+static void textinput_push_undo(vg_textinput_t *input)
+{
+    if (!input)
+        return;
+
+    // Truncate redo future: free entries above the current position
+    while (input->undo_count > input->undo_pos + 1)
+    {
+        input->undo_count--;
+        free(input->undo_stack[input->undo_count]);
+        input->undo_stack[input->undo_count] = NULL;
+    }
+
+    // Deduplicate: skip if current text already matches the top snapshot
+    if (input->undo_stack[input->undo_pos] &&
+        strcmp(input->undo_stack[input->undo_pos], input->text) == 0)
+        return;
+
+    // Advance the write position
+    input->undo_pos++;
+
+    // Ring overflow: evict the oldest entry by shifting everything down by one
+    if (input->undo_pos >= TEXTINPUT_UNDO_CAPACITY)
+    {
+        free(input->undo_stack[0]);
+        memmove(input->undo_stack,
+                input->undo_stack + 1,
+                (TEXTINPUT_UNDO_CAPACITY - 1) * sizeof(char *));
+        memmove(input->undo_cursors,
+                input->undo_cursors + 1,
+                (TEXTINPUT_UNDO_CAPACITY - 1) * sizeof(size_t));
+        input->undo_stack[TEXTINPUT_UNDO_CAPACITY - 1] = NULL;
+        input->undo_pos  = TEXTINPUT_UNDO_CAPACITY - 1;
+        input->undo_count = TEXTINPUT_UNDO_CAPACITY;
+    }
+    else
+    {
+        input->undo_count = input->undo_pos + 1;
+    }
+
+    input->undo_stack[input->undo_pos]   = strdup(input->text);
+    input->undo_cursors[input->undo_pos] = input->cursor_pos;
+}
+
+static void textinput_undo(vg_textinput_t *input)
+{
+    if (!input || input->undo_pos <= 0)
+        return; // Already at the oldest snapshot
+
+    input->undo_pos--;
+
+    const char *snap = input->undo_stack[input->undo_pos];
+    if (!snap)
+        return;
+
+    size_t len = strlen(snap);
+    if (!ensure_capacity(input, len + 1))
+        return;
+    memcpy(input->text, snap, len + 1);
+    input->text_len = len;
+
+    size_t cur = input->undo_cursors[input->undo_pos];
+    if (cur > len)
+        cur = len;
+    input->cursor_pos = cur;
+    input->selection_start = input->selection_end = cur;
+    input->base.needs_paint = true;
+}
+
+static void textinput_redo(vg_textinput_t *input)
+{
+    if (!input || input->undo_pos >= input->undo_count - 1)
+        return; // Already at the newest snapshot
+
+    input->undo_pos++;
+
+    const char *snap = input->undo_stack[input->undo_pos];
+    if (!snap)
+        return;
+
+    size_t len = strlen(snap);
+    if (!ensure_capacity(input, len + 1))
+        return;
+    memcpy(input->text, snap, len + 1);
+    input->text_len = len;
+
+    size_t cur = input->undo_cursors[input->undo_pos];
+    if (cur > len)
+        cur = len;
+    input->cursor_pos = cur;
+    input->selection_start = input->selection_end = cur;
+    input->base.needs_paint = true;
+}
+
 static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
 {
     vg_textinput_t *input = (vg_textinput_t *)widget;
@@ -368,6 +493,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                                 vgfx_clipboard_set_text(selection);
                                 free(selection);
                                 vg_textinput_delete_selection(input);
+                                textinput_push_undo(input);
                             }
                         }
                         widget->needs_paint = true;
@@ -384,6 +510,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                                     vg_textinput_delete_selection(input);
                                 }
                                 vg_textinput_insert(input, text);
+                                textinput_push_undo(input);
                                 free(text);
                             }
                         }
@@ -397,10 +524,24 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                         widget->needs_paint = true;
                         return true;
 
+                    case VG_KEY_Z: // Undo
+                        if (!input->read_only)
+                            textinput_undo(input);
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_Y: // Redo
+                        if (!input->read_only)
+                            textinput_redo(input);
+                        widget->needs_paint = true;
+                        return true;
+
                     default:
                         break;
                 }
             }
+
+            bool has_shift = (mods & VG_MOD_SHIFT) != 0;
 
             if (input->read_only)
             {
@@ -428,6 +569,59 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                 return true;
             }
 
+            /* Ctrl+Left/Right: jump to next word boundary */
+            if (has_ctrl)
+            {
+                switch (event->key.key)
+                {
+                    case VG_KEY_LEFT:
+                    {
+                        size_t pos = input->cursor_pos;
+                        /* Skip leading spaces */
+                        while (pos > 0 && input->text[pos - 1] == ' ')
+                            pos--;
+                        /* Skip word characters */
+                        while (pos > 0 && input->text[pos - 1] != ' ')
+                            pos--;
+                        if (has_shift)
+                        {
+                            /* Extend / shrink selection toward cursor */
+                            input->selection_end = pos;
+                        }
+                        else
+                        {
+                            input->selection_start = input->selection_end = pos;
+                        }
+                        input->cursor_pos = pos;
+                        widget->needs_paint = true;
+                        return true;
+                    }
+                    case VG_KEY_RIGHT:
+                    {
+                        size_t pos = input->cursor_pos;
+                        /* Skip word characters */
+                        while (pos < input->text_len && input->text[pos] != ' ')
+                            pos++;
+                        /* Skip trailing spaces */
+                        while (pos < input->text_len && input->text[pos] == ' ')
+                            pos++;
+                        if (has_shift)
+                        {
+                            input->selection_end = pos;
+                        }
+                        else
+                        {
+                            input->selection_start = input->selection_end = pos;
+                        }
+                        input->cursor_pos = pos;
+                        widget->needs_paint = true;
+                        return true;
+                    }
+                    default:
+                        break;
+                }
+            }
+
             // Handle editing keys
             switch (event->key.key)
             {
@@ -435,6 +629,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     if (input->selection_start != input->selection_end)
                     {
                         vg_textinput_delete_selection(input);
+                        textinput_push_undo(input);
                     }
                     else if (input->cursor_pos > 0)
                     {
@@ -444,6 +639,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                                 input->text_len - input->cursor_pos + 1);
                         input->cursor_pos--;
                         input->text_len--;
+                        textinput_push_undo(input);
                         if (input->on_change)
                         {
                             input->on_change(widget, input->text, input->on_change_data);
@@ -455,6 +651,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     if (input->selection_start != input->selection_end)
                     {
                         vg_textinput_delete_selection(input);
+                        textinput_push_undo(input);
                     }
                     else if (input->cursor_pos < input->text_len)
                     {
@@ -463,6 +660,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                                 input->text + input->cursor_pos + 1,
                                 input->text_len - input->cursor_pos);
                         input->text_len--;
+                        textinput_push_undo(input);
                         if (input->on_change)
                         {
                             input->on_change(widget, input->text, input->on_change_data);
@@ -471,25 +669,65 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     break;
 
                 case VG_KEY_LEFT:
-                    if (input->cursor_pos > 0)
-                        input->cursor_pos--;
-                    input->selection_start = input->selection_end = input->cursor_pos;
+                    if (has_shift)
+                    {
+                        /* Extend selection: anchor is kept, end moves */
+                        if (input->cursor_pos > 0)
+                            input->cursor_pos--;
+                        input->selection_end = input->cursor_pos;
+                    }
+                    else
+                    {
+                        /* Plain Left: collapse selection or move */
+                        if (input->selection_start != input->selection_end)
+                            input->cursor_pos = input->selection_start;
+                        else if (input->cursor_pos > 0)
+                            input->cursor_pos--;
+                        input->selection_start = input->selection_end = input->cursor_pos;
+                    }
                     break;
 
                 case VG_KEY_RIGHT:
-                    if (input->cursor_pos < input->text_len)
-                        input->cursor_pos++;
-                    input->selection_start = input->selection_end = input->cursor_pos;
+                    if (has_shift)
+                    {
+                        if (input->cursor_pos < input->text_len)
+                            input->cursor_pos++;
+                        input->selection_end = input->cursor_pos;
+                    }
+                    else
+                    {
+                        if (input->selection_start != input->selection_end)
+                            input->cursor_pos = input->selection_end;
+                        else if (input->cursor_pos < input->text_len)
+                            input->cursor_pos++;
+                        input->selection_start = input->selection_end = input->cursor_pos;
+                    }
                     break;
 
                 case VG_KEY_HOME:
-                    input->cursor_pos = 0;
-                    input->selection_start = input->selection_end = 0;
+                    if (has_shift)
+                    {
+                        input->cursor_pos = 0;
+                        input->selection_end = 0;
+                    }
+                    else
+                    {
+                        input->cursor_pos = 0;
+                        input->selection_start = input->selection_end = 0;
+                    }
                     break;
 
                 case VG_KEY_END:
-                    input->cursor_pos = input->text_len;
-                    input->selection_start = input->selection_end = input->text_len;
+                    if (has_shift)
+                    {
+                        input->cursor_pos = input->text_len;
+                        input->selection_end = input->text_len;
+                    }
+                    else
+                    {
+                        input->cursor_pos = input->text_len;
+                        input->selection_start = input->selection_end = input->text_len;
+                    }
                     break;
 
                 case VG_KEY_ENTER:
@@ -534,6 +772,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     utf8[3] = (char)(0x80 | (cp & 0x3F));
                 }
                 vg_textinput_insert(input, utf8);
+                textinput_push_undo(input);
             }
             return true;
 

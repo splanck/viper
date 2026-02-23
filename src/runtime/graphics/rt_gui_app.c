@@ -583,7 +583,8 @@ void rt_gui_app_render(void *app_ptr)
             vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
         if (app->default_font)
         {
-            app->default_font_size = 14.0f;
+            float _s = vgfx_window_get_scale(app->window);
+            app->default_font_size = 14.0f * (_s > 0.0f ? _s : 1.0f);
         }
         else
         {
@@ -599,7 +600,8 @@ void rt_gui_app_render(void *app_ptr)
                 app->default_font = vg_font_load_file(font_paths[i]);
                 if (app->default_font)
                 {
-                    app->default_font_size = 14.0f;
+                    float _s = vgfx_window_get_scale(app->window);
+                    app->default_font_size = 14.0f * (_s > 0.0f ? _s : 1.0f);
                     break;
                 }
             }

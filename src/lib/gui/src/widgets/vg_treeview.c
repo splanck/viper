@@ -326,6 +326,17 @@ static void treeview_paint(vg_widget_t *widget, void *canvas)
     // Paint nodes
     float y = 0;
     paint_node(tree, canvas, tree->root, widget->x, &y, widget->width);
+
+    // Draw focus ring when the treeview has keyboard focus
+    if (widget->state & VG_STATE_FOCUSED)
+    {
+        vgfx_rect((vgfx_window_t)canvas,
+                  (int32_t)widget->x,
+                  (int32_t)widget->y,
+                  (int32_t)widget->width,
+                  (int32_t)widget->height,
+                  theme->colors.border_focus);
+    }
 }
 
 static vg_tree_node_t *find_node_at_y(vg_treeview_t *tree,

@@ -15,6 +15,7 @@ static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h);
 static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, float h);
 static void listbox_paint(vg_widget_t *widget, void *canvas);
 static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event);
+static bool listbox_can_focus(vg_widget_t *widget);
 
 //=============================================================================
 // VTable
@@ -26,7 +27,7 @@ static vg_widget_vtable_t g_listbox_vtable = {
     .arrange = listbox_arrange,
     .paint = listbox_paint,
     .handle_event = listbox_handle_event,
-    .can_focus = NULL,
+    .can_focus = listbox_can_focus,
     .on_focus = NULL,
 };
 
@@ -100,8 +101,10 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
         item_y += ih;
     }
 
-    /* Border */
-    vgfx_rect(win, x, y, w, h, lb->border_color);
+    /* Border: use focus color when the listbox has keyboard focus */
+    uint32_t border = (widget->state & VG_STATE_FOCUSED) ? vg_theme_get_current()->colors.border_focus
+                                                         : lb->border_color;
+    vgfx_rect(win, x, y, w, h, border);
 }
 
 static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
@@ -182,10 +185,82 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
             break;
         }
 
+        case VG_EVENT_KEY_DOWN:
+        {
+            /* Keyboard navigation for non-virtual mode only.  Virtual mode
+             * uses selected_index which follows the same logic below. */
+            if (lb->virtual_mode)
+                break;
+
+            int page_items = (lb->item_height > 0.0f)
+                                 ? (int)(widget->height / lb->item_height)
+                                 : 8;
+            if (page_items < 1)
+                page_items = 1;
+
+            int current_idx = (int)vg_listbox_get_selected_index(lb);
+            int new_idx = current_idx;
+
+            switch (event->key.key)
+            {
+                case VG_KEY_UP:
+                    new_idx = (current_idx > 0) ? current_idx - 1 : 0;
+                    break;
+                case VG_KEY_DOWN:
+                    new_idx = (current_idx < lb->item_count - 1) ? current_idx + 1
+                                                                  : lb->item_count - 1;
+                    break;
+                case VG_KEY_HOME:
+                    new_idx = 0;
+                    break;
+                case VG_KEY_END:
+                    new_idx = lb->item_count - 1;
+                    break;
+                case VG_KEY_PAGE_UP:
+                    new_idx = current_idx - page_items;
+                    if (new_idx < 0)
+                        new_idx = 0;
+                    break;
+                case VG_KEY_PAGE_DOWN:
+                    new_idx = current_idx + page_items;
+                    if (new_idx >= lb->item_count)
+                        new_idx = lb->item_count - 1;
+                    break;
+                case VG_KEY_ENTER:
+                    if (lb->selected && lb->on_activate)
+                        lb->on_activate(widget, lb->selected, lb->on_activate_data);
+                    event->handled = true;
+                    return true;
+                default:
+                    break;
+            }
+
+            if (new_idx != current_idx && new_idx >= 0 && new_idx < lb->item_count)
+            {
+                vg_listbox_select_index(lb, (size_t)new_idx);
+                /* Scroll the selected item into view */
+                float item_top = new_idx * lb->item_height;
+                float item_bot = item_top + lb->item_height;
+                if (item_top < lb->scroll_y)
+                    lb->scroll_y = item_top;
+                else if (item_bot > lb->scroll_y + widget->height)
+                    lb->scroll_y = item_bot - widget->height;
+                widget->needs_paint = true;
+                event->handled = true;
+                return true;
+            }
+            break;
+        }
+
         default:
             break;
     }
     return false;
+}
+
+static bool listbox_can_focus(vg_widget_t *widget)
+{
+    return widget->enabled && widget->visible;
 }
 
 vg_listbox_t *vg_listbox_create(vg_widget_t *parent)

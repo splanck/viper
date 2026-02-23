@@ -240,7 +240,7 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas)
 
             float text_x = tab_x + tabbar->tab_padding;
             float text_y =
-                widget->y + (widget->height + font_metrics.ascent - font_metrics.descent) / 2.0f;
+                widget->y + (widget->height + font_metrics.ascent + font_metrics.descent) / 2.0f;
 
             // Add modified indicator
             const char *title = tab->title;

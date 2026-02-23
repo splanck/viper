@@ -131,6 +131,31 @@ if (BUILD_TESTING)
     )
     add_test(NAME test_vg_widgets_new COMMAND test_vg_widgets_new)
     set_tests_properties(test_vg_widgets_new PROPERTIES LABELS "tui" TIMEOUT 15)
+
+    add_executable(test_vg_tier1_fixes tests/test_vg_tier1_fixes.c)
+    target_link_libraries(test_vg_tier1_fixes vipergui)
+    target_include_directories(test_vg_tier1_fixes PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_tier1_fixes COMMAND test_vg_tier1_fixes)
+    set_tests_properties(test_vg_tier1_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
+
+    add_executable(test_vg_tier2_fixes tests/test_vg_tier2_fixes.c)
+    target_link_libraries(test_vg_tier2_fixes vipergui)
+    target_include_directories(test_vg_tier2_fixes PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_tier2_fixes COMMAND test_vg_tier2_fixes)
+    set_tests_properties(test_vg_tier2_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
+
+    add_executable(test_vg_tier3_fixes tests/test_vg_tier3_fixes.c)
+    target_link_libraries(test_vg_tier3_fixes vipergui)
+    target_include_directories(test_vg_tier3_fixes PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/font
+    )
+    add_test(NAME test_vg_tier3_fixes COMMAND test_vg_tier3_fixes)
+    set_tests_properties(test_vg_tier3_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
 endif ()
 
 # Demo applications

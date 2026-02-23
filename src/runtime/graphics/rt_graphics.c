@@ -2123,6 +2123,153 @@ void rt_canvas_gradient_v(
     }
 }
 
+//=============================================================================
+// Canvas Window Management (BINDING-001 + BINDING-002)
+//=============================================================================
+
+double rt_canvas_get_scale(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return 1.0;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return 1.0;
+    return (double)vgfx_window_get_scale(canvas->gfx_win);
+}
+
+void rt_canvas_get_position(void *canvas_ptr, int64_t *out_x, int64_t *out_y)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+    int32_t x = 0, y = 0;
+    vgfx_get_position(canvas->gfx_win, &x, &y);
+    if (out_x)
+        *out_x = (int64_t)x;
+    if (out_y)
+        *out_y = (int64_t)y;
+}
+
+void rt_canvas_set_position(void *canvas_ptr, int64_t x, int64_t y)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas->gfx_win)
+        vgfx_set_position(canvas->gfx_win, (int32_t)x, (int32_t)y);
+}
+
+int64_t rt_canvas_get_fps(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return -1;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return -1;
+    return (int64_t)vgfx_get_fps(canvas->gfx_win);
+}
+
+void rt_canvas_set_fps(void *canvas_ptr, int64_t fps)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas->gfx_win)
+        vgfx_set_fps(canvas->gfx_win, (int32_t)fps);
+}
+
+int64_t rt_canvas_is_maximized(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return 0;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return 0;
+    return (int64_t)vgfx_is_maximized(canvas->gfx_win);
+}
+
+void rt_canvas_maximize(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas->gfx_win)
+        vgfx_maximize(canvas->gfx_win);
+}
+
+int64_t rt_canvas_is_minimized(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return 0;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return 0;
+    return (int64_t)vgfx_is_minimized(canvas->gfx_win);
+}
+
+void rt_canvas_minimize(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas->gfx_win)
+        vgfx_minimize(canvas->gfx_win);
+}
+
+void rt_canvas_restore(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas->gfx_win)
+        vgfx_restore(canvas->gfx_win);
+}
+
+int64_t rt_canvas_is_focused(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return 0;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return 0;
+    return (int64_t)vgfx_is_focused(canvas->gfx_win);
+}
+
+void rt_canvas_focus(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas->gfx_win)
+        vgfx_focus(canvas->gfx_win);
+}
+
+void rt_canvas_prevent_close(void *canvas_ptr, int64_t prevent)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas->gfx_win)
+        vgfx_set_prevent_close(canvas->gfx_win, (int32_t)(prevent != 0));
+}
+
+void rt_canvas_get_monitor_size(void *canvas_ptr, int64_t *out_w, int64_t *out_h)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+    int32_t w = 0, h = 0;
+    vgfx_get_monitor_size(canvas->gfx_win, &w, &h);
+    if (out_w)
+        *out_w = (int64_t)w;
+    if (out_h)
+        *out_h = (int64_t)h;
+}
+
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 /* Stub implementations when graphics library is not available */
@@ -2697,5 +2844,20 @@ void rt_canvas_gradient_v(
     (void)c1;
     (void)c2;
 }
+
+double rt_canvas_get_scale(void *canvas) { (void)canvas; return 1.0; }
+void rt_canvas_get_position(void *canvas, int64_t *x, int64_t *y) { (void)canvas; if (x) *x = 0; if (y) *y = 0; }
+void rt_canvas_set_position(void *canvas, int64_t x, int64_t y) { (void)canvas; (void)x; (void)y; }
+int64_t rt_canvas_get_fps(void *canvas) { (void)canvas; return -1; }
+void rt_canvas_set_fps(void *canvas, int64_t fps) { (void)canvas; (void)fps; }
+int64_t rt_canvas_is_maximized(void *canvas) { (void)canvas; return 0; }
+void rt_canvas_maximize(void *canvas) { (void)canvas; }
+int64_t rt_canvas_is_minimized(void *canvas) { (void)canvas; return 0; }
+void rt_canvas_minimize(void *canvas) { (void)canvas; }
+void rt_canvas_restore(void *canvas) { (void)canvas; }
+int64_t rt_canvas_is_focused(void *canvas) { (void)canvas; return 0; }
+void rt_canvas_focus(void *canvas) { (void)canvas; }
+void rt_canvas_prevent_close(void *canvas, int64_t prevent) { (void)canvas; (void)prevent; }
+void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h) { (void)canvas; if (w) *w = 0; if (h) *h = 0; }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

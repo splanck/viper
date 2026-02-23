@@ -587,6 +587,27 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                            editor->current_line_bg);
         }
 
+        // PARTIAL-002: Draw highlight spans on this line (search results, diagnostics)
+        for (int s = 0; s < editor->highlight_span_count; s++)
+        {
+            struct vg_highlight_span *span = &editor->highlight_spans[s];
+            if (i < span->start_line || i > span->end_line)
+                continue;
+            int col_start = (i == span->start_line) ? span->start_col : 0;
+            int col_end = (i == span->end_line) ? span->end_col
+                                                : (int)editor->lines[i].length;
+            if (col_end <= col_start)
+                col_end = col_start + 1; /* highlight at least one char width */
+            float span_x = content_x + col_start * editor->char_width - editor->scroll_x;
+            float span_w = (col_end - col_start) * editor->char_width;
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)span_x,
+                           (int32_t)line_y,
+                           (int32_t)span_w,
+                           (int32_t)editor->line_height,
+                           (vgfx_color_t)span->color);
+        }
+
         // Draw line number
         if (editor->show_line_numbers)
         {
@@ -605,6 +626,21 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                               num_y,
                               line_num,
                               editor->line_number_color);
+
+            // PARTIAL-001: Draw gutter icon for this line (breakpoints, errors, etc.)
+            for (int g = 0; g < editor->gutter_icon_count; g++)
+            {
+                struct vg_gutter_icon *icon = &editor->gutter_icons[g];
+                if (icon->line != i)
+                    continue;
+                int32_t icon_r = 4; /* 4px radius dot */
+                int32_t icon_cx = (int32_t)widget->x + icon_r + 2;
+                int32_t icon_cy = (int32_t)line_y + (int32_t)(editor->line_height / 2.0f);
+                vgfx_fill_circle((vgfx_window_t)canvas,
+                                 icon_cx, icon_cy, icon_r,
+                                 (vgfx_color_t)icon->color);
+                break; /* one icon per line */
+            }
         }
 
         // Draw selection on this line

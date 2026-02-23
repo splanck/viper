@@ -151,6 +151,10 @@ extern "C"
         uint32_t fg_color;     ///< Text color
         uint32_t border_color; ///< Border color
         float border_radius;   ///< Corner radius
+
+        // Icon
+        char *icon_text; ///< UTF-8 icon/emoji string (NULL = no icon, owned by button)
+        int   icon_pos;  ///< Icon position: 0 = left of text (default), 1 = right of text
     } vg_button_t;
 
     /// @brief Create a new button widget
@@ -182,6 +186,21 @@ extern "C"
     /// @param font Font to use
     /// @param size Font size in pixels
     void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size);
+
+    /// @brief Set the icon text shown on the button.
+    ///
+    /// @details The string is copied internally. Pass NULL to remove the icon.
+    ///          Common usage is to pass a UTF-8 emoji or icon font glyph.
+    ///
+    /// @param button Button widget.
+    /// @param icon   UTF-8 icon string (copied), or NULL to clear.
+    void vg_button_set_icon(vg_button_t *button, const char *icon);
+
+    /// @brief Set which side of the label the icon appears on.
+    ///
+    /// @param button Button widget.
+    /// @param pos    0 = left of label (default), 1 = right of label.
+    void vg_button_set_icon_position(vg_button_t *button, int pos);
 
     //=============================================================================
     // TextInput Widget
@@ -234,6 +253,13 @@ extern "C"
         // Internal state
         float cursor_blink_time; ///< Cursor blink timer
         bool cursor_visible;     ///< Cursor visibility state
+
+        // Undo/redo ring buffer (max 32 snapshots)
+        char   *undo_stack[32];   ///< strdup'd text snapshots; NULL = empty slot
+        size_t  undo_cursors[32]; ///< Cursor position at time of each snapshot
+        int     undo_head;        ///< Index of the most-recent (top) snapshot (0..31)
+        int     undo_count;       ///< Total number of valid snapshots
+        int     undo_pos;         ///< Current position in stack (for redo; equals undo_count after normal edits)
     } vg_textinput_t;
 
     /// @brief Create a new text input widget

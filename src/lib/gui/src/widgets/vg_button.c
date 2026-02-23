@@ -88,6 +88,8 @@ static void button_destroy(vg_widget_t *widget)
         free((void *)button->text);
         button->text = NULL;
     }
+    free(button->icon_text);
+    button->icon_text = NULL;
 }
 
 static void button_measure(vg_widget_t *widget, float available_width, float available_height)
@@ -103,15 +105,32 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
     float width = widget->constraints.min_width;
     float height = theme->button.height;
 
-    // If we have text and font, measure it
-    if (button->text && button->font)
+    // If we have a font, measure text and/or icon
+    if (button->font)
     {
-        vg_text_metrics_t metrics;
-        vg_font_measure_text(button->font, button->font_size, button->text, &metrics);
-        width = metrics.width + padding * 2;
-        if (width < widget->constraints.min_width)
+        float content_w = 0;
+
+        if (button->text && button->text[0])
         {
-            width = widget->constraints.min_width;
+            vg_text_metrics_t metrics;
+            vg_font_measure_text(button->font, button->font_size, button->text, &metrics);
+            content_w = metrics.width;
+        }
+
+        if (button->icon_text && button->icon_text[0])
+        {
+            vg_text_metrics_t icon_metrics;
+            vg_font_measure_text(button->font, button->font_size, button->icon_text, &icon_metrics);
+            content_w += icon_metrics.width;
+            if (button->text && button->text[0])
+                content_w += 4.0f; // gap between icon and label
+        }
+
+        if (content_w > 0)
+        {
+            width = content_w + padding * 2;
+            if (width < widget->constraints.min_width)
+                width = widget->constraints.min_width;
         }
     }
 
@@ -157,29 +176,78 @@ static void button_paint(vg_widget_t *widget, void *canvas)
     // Draw background
     draw_filled_rect(canvas, widget->x, widget->y, widget->width, widget->height, bg_color);
 
-    // Draw border
+    // Draw border; use focus color when the button has keyboard focus
+    uint32_t border = (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus
+                                                         : button->border_color;
     vgfx_rect((vgfx_window_t)canvas,
               (int32_t)widget->x,
               (int32_t)widget->y,
               (int32_t)widget->width,
               (int32_t)widget->height,
-              button->border_color);
+              border);
 
-    // Draw text
-    if (button->text && button->text[0] && button->font)
+    // Draw icon and/or text
+    if (button->font)
     {
-        vg_text_metrics_t metrics;
-        vg_font_measure_text(button->font, button->font_size, button->text, &metrics);
-
         vg_font_metrics_t font_metrics;
         vg_font_get_metrics(button->font, button->font_size, &font_metrics);
+        float baseline_y =
+            widget->y + (widget->height - (font_metrics.ascent - font_metrics.descent)) / 2.0f +
+            font_metrics.ascent;
 
-        // Center text
-        float text_x = widget->x + (widget->width - metrics.width) / 2.0f;
-        float text_y = widget->y + (widget->height - metrics.height) / 2.0f + font_metrics.ascent;
+        bool has_text = button->text && button->text[0];
+        bool has_icon = button->icon_text && button->icon_text[0];
 
-        vg_font_draw_text(
-            canvas, button->font, button->font_size, text_x, text_y, button->text, fg_color);
+        if (!has_icon)
+        {
+            // Text-only (original behaviour)
+            if (has_text)
+            {
+                vg_text_metrics_t metrics;
+                vg_font_measure_text(button->font, button->font_size, button->text, &metrics);
+                float text_x = widget->x + (widget->width - metrics.width) / 2.0f;
+                vg_font_draw_text(
+                    canvas, button->font, button->font_size, text_x, baseline_y,
+                    button->text, fg_color);
+            }
+        }
+        else
+        {
+            // Measure both pieces
+            vg_text_metrics_t icon_m = {0};
+            vg_text_metrics_t text_m = {0};
+            vg_font_measure_text(button->font, button->font_size, button->icon_text, &icon_m);
+            if (has_text)
+                vg_font_measure_text(button->font, button->font_size, button->text, &text_m);
+
+            float gap = has_text ? 4.0f : 0.0f;
+            float total_w = icon_m.width + gap + text_m.width;
+            float start_x = widget->x + (widget->width - total_w) / 2.0f;
+
+            if (button->icon_pos == 1)
+            {
+                // icon on the right
+                float text_x = start_x;
+                if (has_text)
+                    vg_font_draw_text(canvas, button->font, button->font_size,
+                                      text_x, baseline_y, button->text, fg_color);
+                float icon_x = start_x + text_m.width + gap;
+                vg_font_draw_text(canvas, button->font, button->font_size,
+                                  icon_x, baseline_y, button->icon_text, fg_color);
+            }
+            else
+            {
+                // icon on the left (default)
+                vg_font_draw_text(canvas, button->font, button->font_size,
+                                  start_x, baseline_y, button->icon_text, fg_color);
+                if (has_text)
+                {
+                    float text_x = start_x + icon_m.width + gap;
+                    vg_font_draw_text(canvas, button->font, button->font_size,
+                                      text_x, baseline_y, button->text, fg_color);
+                }
+            }
+        }
     }
 }
 
@@ -204,6 +272,19 @@ static bool button_handle_event(vg_widget_t *widget, vg_event_t *event)
             widget->on_click(widget, widget->callback_data);
         }
         return true;
+    }
+
+    if (event->type == VG_EVENT_KEY_DOWN)
+    {
+        if (event->key.key == VG_KEY_SPACE || event->key.key == VG_KEY_ENTER)
+        {
+            if (button->on_click)
+                button->on_click(widget, button->user_data);
+            if (widget->on_click)
+                widget->on_click(widget, widget->callback_data);
+            event->handled = true;
+            return true;
+        }
     }
 
     return false;
@@ -285,5 +366,25 @@ void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size)
     button->font = font;
     button->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
     button->base.needs_layout = true;
+    button->base.needs_paint = true;
+}
+
+void vg_button_set_icon(vg_button_t *button, const char *icon)
+{
+    if (!button)
+        return;
+
+    free(button->icon_text);
+    button->icon_text = icon ? strdup(icon) : NULL;
+    button->base.needs_layout = true;
+    button->base.needs_paint = true;
+}
+
+void vg_button_set_icon_position(vg_button_t *button, int pos)
+{
+    if (!button)
+        return;
+
+    button->icon_pos = pos;
     button->base.needs_paint = true;
 }

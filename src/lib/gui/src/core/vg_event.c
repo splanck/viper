@@ -207,8 +207,18 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
             return false;
         }
 
+        // When a modal root is active, restrict hit-testing to its subtree so
+        // that clicks on widgets behind the dialog are swallowed.
+        vg_widget_t *modal = vg_widget_get_modal_root();
+        vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
+
         vg_widget_t *target =
-            vg_widget_hit_test(root, event->mouse.screen_x, event->mouse.screen_y);
+            vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+        if (!target && modal && modal->visible)
+        {
+            // Click landed outside the modal dialog: swallow the event silently.
+            return true;
+        }
         if (target)
         {
             event->target = target;
@@ -242,6 +252,26 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
         }
 
         vg_widget_t *focused = vg_widget_get_focused(root);
+
+        // When a modal is active, redirect keyboard events to the modal if the
+        // focused widget is outside the modal's subtree.
+        vg_widget_t *modal_kb = vg_widget_get_modal_root();
+        if (modal_kb && modal_kb->visible && focused)
+        {
+            // Walk the parent chain to test if focused is inside the modal
+            bool inside = false;
+            for (vg_widget_t *w = focused; w; w = w->parent)
+            {
+                if (w == modal_kb)
+                {
+                    inside = true;
+                    break;
+                }
+            }
+            if (!inside)
+                focused = modal_kb;
+        }
+
         if (focused)
         {
             event->target = focused;

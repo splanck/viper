@@ -53,24 +53,35 @@
 | `EllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)`                    | Draws an ellipse outline                                   |
 | `Flip()`                              | `Void()`                              | Presents the back buffer and displays drawn content        |
 | `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected area starting at (x, y)              |
+| `Focus()`                             | `Void()`                              | Brings the window to the front and gives it focus          |
 | `Frame(x, y, w, h, color)`            | `Void(Integer...)`                    | Draws a rectangle outline                                  |
 | `Fullscreen()`                        | `Void()`                              | Enters fullscreen mode                                     |
+| `GetFps()`                            | `Integer()`                           | Returns the current target FPS (-1 = unlimited)            |
 | `GetPixel(x, y)`                      | `Integer(Integer, Integer)`           | Gets pixel color at (x, y)                                 |
+| `GetScale()`                          | `Double()`                            | Returns the HiDPI display scale factor (1.0 normal, 2.0 on Retina) |
 | `GradientH(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a horizontal gradient (left c1 to right c2)          |
 | `GradientV(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a vertical gradient (top c1 to bottom c2)            |
+| `IsFocused()`                         | `Integer()`                           | Returns 1 if the window has keyboard focus                 |
+| `IsMaximized()`                       | `Integer()`                           | Returns 1 if the window is maximized                       |
+| `IsMinimized()`                       | `Integer()`                           | Returns 1 if the window is minimized (iconified)           |
 | `KeyHeld(keycode)`                    | `Integer(Integer)`                    | Returns non-zero if the specified key is held down         |
 | `Line(x1, y1, x2, y2, color)`         | `Void(Integer...)`                    | Draws a line between two points                            |
+| `Maximize()`                          | `Void()`                              | Maximizes the window                                       |
+| `Minimize()`                          | `Void()`                              | Minimizes (iconifies) the window                           |
 | `Plot(x, y, color)`                   | `Void(Integer, Integer, Integer)`     | Sets a single pixel                                        |
 | `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none)      |
+| `PreventClose(prevent)`               | `Void(Integer)`                       | Blocks (1) or allows (0) the window close button           |
 | `Polygon(points, count, color)`       | `Void(Pointer, Integer, Integer)`     | Draws a filled polygon                                     |
 | `PolygonFrame(points, count, color)`  | `Void(Pointer, Integer, Integer)`     | Draws a polygon outline                                    |
 | `Polyline(points, count, color)`      | `Void(Pointer, Integer, Integer)`     | Draws connected line segments                              |
 | `Ring(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a circle outline                                     |
+| `Restore()`                           | `Void()`                              | Restores the window after minimize or maximize             |
 | `RoundBox(x, y, w, h, radius, color)` | `Void(Integer...)`                    | Draws a filled rectangle with rounded corners              |
 | `RoundFrame(x, y, w, h, radius, color)` | `Void(Integer...)`                  | Draws a rectangle outline with rounded corners             |
 | `SaveBmp(path)`                       | `Integer(String)`                     | Saves canvas to BMP file (returns 1 on success)            |
 | `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
+| `SetFps(fps)`                         | `Void(Integer)`                       | Set the target frame rate (-1 = unlimited)                 |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
 | `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
 | `TextBg(x, y, text, fg, bg)`          | `Void(Integer, Integer, String, Integer, Integer)` | Draws text with foreground and background colors |
@@ -302,7 +313,7 @@ canvas.Box(0, 0, 50, 50, &H0000FF00)  ' Visible
 
 ### Window Controls
 
-Change the window title or toggle fullscreen mode at runtime:
+Change the window title, toggle fullscreen, manage window state, and query display information at runtime:
 
 ```basic
 ' Create a canvas
@@ -311,25 +322,44 @@ canvas = NEW Viper.Graphics.Canvas("My Game", 800, 600)
 
 ' Update window title dynamically (e.g., show FPS or game state)
 canvas.SetTitle("My Game - Level 1")
-canvas.SetTitle("My Game - Score: 1000")
+
+' HiDPI / Retina: multiply logical coords by scale for sharp rendering
+DIM scale AS DOUBLE = canvas.GetScale()   ' 2.0 on Retina, 1.0 otherwise
+
+' Window state management
+canvas.Minimize()            ' Minimize (iconify) the window
+canvas.Maximize()            ' Maximize the window
+canvas.Restore()             ' Restore from minimize or maximize
+IF canvas.IsMinimized() = 1 THEN PRINT "minimized"
+IF canvas.IsMaximized() = 1 THEN PRINT "maximized"
+
+' Focus management
+canvas.Focus()               ' Bring window to front
+IF canvas.IsFocused() = 1 THEN PRINT "has focus"
+
+' Frame rate control
+canvas.SetFps(60)            ' Limit to 60 fps
+PRINT "FPS: "; canvas.GetFps()
+
+' Prevent accidental close (e.g., while saving)
+canvas.PreventClose(1)       ' Block the close button
+' ... save work ...
+canvas.PreventClose(0)       ' Re-enable close button
 
 ' Toggle fullscreen with F11 key
 DIM isFullscreen AS INTEGER = 0
 DO WHILE canvas.ShouldClose = 0
     canvas.Poll()
 
-    ' Toggle fullscreen on F11 press
     IF Viper.Input.Keyboard.Pressed(300) THEN  ' 300 = F11
         IF isFullscreen = 1 THEN
-            canvas.Windowed()      ' Exit fullscreen
+            canvas.Windowed()
             isFullscreen = 0
         ELSE
-            canvas.Fullscreen()    ' Enter fullscreen
+            canvas.Fullscreen()
             isFullscreen = 1
         END IF
     END IF
-
-    ' ... render game ...
 
     canvas.Flip()
 LOOP
@@ -344,6 +374,9 @@ LOOP
 - Fullscreen mode uses the display's native resolution
 - Window size (Width/Height) remains unchanged; content is scaled
 - Use `Fullscreen()` to enter and `Windowed()` to exit fullscreen mode
+- `GetScale()` returns 2.0 on HiDPI (Retina) displays — multiply pixel dimensions by this factor for sharp rendering
+- `SetFps(-1)` disables frame rate limiting (default); `GetFps()` returns the configured target
+- `PreventClose(1)` blocks the OS close button; the `ShouldClose` property will not become true until you call `PreventClose(0)`
 
 ---
 

@@ -229,17 +229,25 @@ All widgets share these common functions:
 | `ClearTooltip()`              | `Void()`                 | Remove tooltip from widget               |
 | `GetDropData()`               | `String()`               | Get the dropped data payload             |
 | `GetDropType()`               | `String()`               | Get the type of the dropped data         |
+| `GetFlex()`                   | `Double()`               | Get flex factor                          |
+| `GetHeight()`                 | `Integer()`              | Get widget height in pixels              |
+| `GetWidth()`                  | `Integer()`              | Get widget width in pixels               |
+| `GetX()`                      | `Integer()`              | Get widget X position in pixels          |
+| `GetY()`                      | `Integer()`              | Get widget Y position in pixels          |
 | `IsBeingDragged()`            | `Integer()`              | 1 if widget is being dragged             |
 | `IsDragOver()`                | `Integer()`              | 1 if a drag is hovering over widget      |
+| `IsEnabled()`                 | `Integer()`              | 1 if widget is enabled                   |
 | `IsFocused()`                 | `Integer()`              | 1 if widget has keyboard focus           |
 | `IsHovered()`                 | `Integer()`              | 1 if mouse is over widget                |
 | `IsPressed()`                 | `Integer()`              | 1 if widget is pressed                   |
+| `IsVisible()`                 | `Integer()`              | 1 if widget is visible                   |
 | `SetAcceptedDropTypes(types)` | `Void(String)`           | Set accepted drop type(s)                |
 | `SetDragData(type, data)`     | `Void(String, String)`   | Set drag data type and payload           |
 | `SetDraggable(enabled)`       | `Void(Integer)`          | Enable/disable drag source               |
 | `SetDropTarget(enabled)`      | `Void(Integer)`          | Enable/disable drop target               |
 | `SetEnabled(enabled)`         | `Void(Integer)`          | Set enabled state (1=enabled, 0=disabled)|
 | `SetFlex(flex)`               | `Void(Double)`           | Set flex factor for layout               |
+| `SetMargin(margin)`           | `Void(Integer)`          | Set uniform outer margin in pixels       |
 | `SetPosition(x, y)`          | `Void(Integer, Integer)` | Set position in pixels                   |
 | `SetSize(width, height)`      | `Void(Integer, Integer)` | Set fixed size in pixels                 |
 | `SetTooltip(text)`            | `Void(String)`           | Set tooltip text for this widget         |
@@ -833,8 +841,10 @@ Scrollable container for content larger than the viewport.
 
 | Method                         | Signature                  | Description                    |
 |--------------------------------|----------------------------|--------------------------------|
-| `SetScroll(x, y)`              | `Void(Double, Double)`     | Set scroll position            |
+| `GetScrollX()`                 | `Double()`                 | Get current horizontal scroll offset |
+| `GetScrollY()`                 | `Double()`                 | Get current vertical scroll offset   |
 | `SetContentSize(w, h)`         | `Void(Double, Double)`     | Set content size (0=auto)      |
+| `SetScroll(x, y)`              | `Void(Double, Double)`     | Set scroll position            |
 
 ### Example
 
@@ -861,6 +871,7 @@ Two-pane split view with draggable divider.
 
 | Method                     | Signature          | Description                              |
 |----------------------------|--------------------|------------------------------------------|
+| `GetPosition()`            | `Double()`         | Get current split position (0.0-1.0)     |
 | `SetPosition(pos)`         | `Void(Double)`     | Set split position (0.0-1.0)             |
 
 ```basic
@@ -1054,6 +1065,7 @@ Full-featured code editor with syntax highlighting.
 | `Fold(line)`                               | `Void(Integer)`                  | Fold region at line                      |
 | `GetCursorCount()`                         | `Integer()`                      | Get number of cursors (multi-cursor)     |
 | `GetGutterClickLine()`                     | `Integer()`                      | Get line of gutter click                 |
+| `GetSelectedText()`                        | `String()`                       | Get currently selected text (empty string if no selection) |
 | `IsFolded(line)`                           | `Integer(Integer)`               | Check if line is folded                  |
 | `IsModified()`                             | `Boolean()`                      | Check if modified                        |
 | `Paste()`                                  | `Integer()`                      | Paste from clipboard                     |

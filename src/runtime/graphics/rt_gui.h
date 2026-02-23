@@ -105,6 +105,23 @@ extern "C"
     /// @param flex Flex factor (0 = fixed size, >0 = expand proportionally).
     void rt_widget_set_flex(void *widget, double flex);
 
+    // API-005: SetMargin
+    void rt_widget_set_margin(void *widget, int64_t margin);
+
+    /// @brief Set the tab-stop index for keyboard focus navigation.
+    /// @param widget Widget handle.
+    /// @param idx Tab index >= 0 for explicit ordering, -1 for natural order.
+    void rt_widget_set_tab_index(void *widget, int64_t idx);
+
+    // BINDING-003: GuiWidget read accessors
+    int64_t rt_widget_is_visible(void *widget);
+    int64_t rt_widget_is_enabled(void *widget);
+    int64_t rt_widget_get_width(void *widget);
+    int64_t rt_widget_get_height(void *widget);
+    int64_t rt_widget_get_x(void *widget);
+    int64_t rt_widget_get_y(void *widget);
+    double rt_widget_get_flex(void *widget);
+
     /// @brief Add a child widget to a parent.
     /// @param parent Parent widget handle.
     /// @param child Child widget handle.
@@ -188,6 +205,16 @@ extern "C"
     /// @param style Button style (0=default, 1=primary, 2=secondary, 3=danger, 4=text).
     void rt_button_set_style(void *button, int64_t style);
 
+    /// @brief Set button icon text (UTF-8 emoji or icon glyph).
+    /// @param button Button widget handle.
+    /// @param icon Icon text (NULL or empty to remove).
+    void rt_button_set_icon(void *button, rt_string icon);
+
+    /// @brief Set icon position relative to label.
+    /// @param button Button widget handle.
+    /// @param pos 0 = left of label (default), 1 = right of label.
+    void rt_button_set_icon_pos(void *button, int64_t pos);
+
     //=========================================================================
     // TextInput Widget
     //=========================================================================
@@ -263,6 +290,10 @@ extern "C"
     /// @param width Content width (0 = auto).
     /// @param height Content height (0 = auto).
     void rt_scrollview_set_content_size(void *scroll, double width, double height);
+
+    // BINDING-004: ScrollView scroll position query
+    double rt_scrollview_get_scroll_x(void *scroll);
+    double rt_scrollview_get_scroll_y(void *scroll);
 
     //=========================================================================
     // TreeView Widget
@@ -432,6 +463,9 @@ extern "C"
     /// @param position Split position (0.0 to 1.0).
     void rt_splitpane_set_position(void *split, double position);
 
+    // BINDING-006: SplitPane position query
+    double rt_splitpane_get_position(void *split);
+
     /// @brief Get the first pane.
     /// @param split SplitPane widget handle.
     /// @return First pane widget handle.
@@ -460,6 +494,11 @@ extern "C"
     /// @param editor CodeEditor widget handle.
     /// @return Text content as runtime string.
     rt_string rt_codeeditor_get_text(void *editor);
+
+    /// @brief Get the currently selected text.
+    /// @param editor CodeEditor widget handle.
+    /// @return Selected text, or empty string if no selection.
+    rt_string rt_codeeditor_get_selected_text(void *editor);
 
     /// @brief Set cursor position.
     /// @param editor CodeEditor widget handle.

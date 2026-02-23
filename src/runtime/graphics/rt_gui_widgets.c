@@ -87,6 +87,69 @@ void rt_widget_add_child(void *parent, void *child)
     }
 }
 
+// API-005: SetMargin
+void rt_widget_set_margin(void *widget, int64_t margin)
+{
+    if (widget)
+        vg_widget_set_margin((vg_widget_t *)widget, (float)margin);
+}
+
+void rt_widget_set_tab_index(void *widget, int64_t idx)
+{
+    if (widget)
+        vg_widget_set_tab_index((vg_widget_t *)widget, (int)idx);
+}
+
+// BINDING-003: GuiWidget read accessors
+int64_t rt_widget_is_visible(void *widget)
+{
+    if (!widget)
+        return 0;
+    return ((vg_widget_t *)widget)->visible ? 1 : 0;
+}
+
+int64_t rt_widget_is_enabled(void *widget)
+{
+    if (!widget)
+        return 0;
+    return ((vg_widget_t *)widget)->enabled ? 1 : 0;
+}
+
+int64_t rt_widget_get_width(void *widget)
+{
+    if (!widget)
+        return 0;
+    return (int64_t)((vg_widget_t *)widget)->width;
+}
+
+int64_t rt_widget_get_height(void *widget)
+{
+    if (!widget)
+        return 0;
+    return (int64_t)((vg_widget_t *)widget)->height;
+}
+
+int64_t rt_widget_get_x(void *widget)
+{
+    if (!widget)
+        return 0;
+    return (int64_t)((vg_widget_t *)widget)->x;
+}
+
+int64_t rt_widget_get_y(void *widget)
+{
+    if (!widget)
+        return 0;
+    return (int64_t)((vg_widget_t *)widget)->y;
+}
+
+double rt_widget_get_flex(void *widget)
+{
+    if (!widget)
+        return 0.0;
+    return (double)((vg_widget_t *)widget)->layout.flex;
+}
+
 //=============================================================================
 // Label Widget
 //=============================================================================
@@ -159,6 +222,21 @@ void rt_button_set_style(void *button, int64_t style)
     {
         vg_button_set_style((vg_button_t *)button, (vg_button_style_t)style);
     }
+}
+
+void rt_button_set_icon(void *button, rt_string icon)
+{
+    if (!button)
+        return;
+    char *cicon = rt_string_to_cstr(icon);
+    vg_button_set_icon((vg_button_t *)button, cicon);
+    free(cicon);
+}
+
+void rt_button_set_icon_pos(void *button, int64_t pos)
+{
+    if (button)
+        vg_button_set_icon_position((vg_button_t *)button, (int)pos);
 }
 
 //=============================================================================
@@ -265,6 +343,25 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height)
     {
         vg_scrollview_set_content_size((vg_scrollview_t *)scroll, (float)width, (float)height);
     }
+}
+
+// BINDING-004: ScrollView scroll position query
+double rt_scrollview_get_scroll_x(void *scroll)
+{
+    if (!scroll)
+        return 0.0;
+    float x = 0.0f, y = 0.0f;
+    vg_scrollview_get_scroll((vg_scrollview_t *)scroll, &x, &y);
+    return (double)x;
+}
+
+double rt_scrollview_get_scroll_y(void *scroll)
+{
+    if (!scroll)
+        return 0.0;
+    float x = 0.0f, y = 0.0f;
+    vg_scrollview_get_scroll((vg_scrollview_t *)scroll, &x, &y);
+    return (double)y;
 }
 
 //=============================================================================

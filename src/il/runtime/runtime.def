@@ -1052,6 +1052,18 @@ RT_FUNC(CanvasFullscreen,  rt_canvas_fullscreen,    "Viper.Graphics.Canvas.Fulls
 RT_FUNC(CanvasWindowed,    rt_canvas_windowed,      "Viper.Graphics.Canvas.Windowed",      "void(obj)")
 RT_FUNC(CanvasGradientH,   rt_canvas_gradient_h,    "Viper.Graphics.Canvas.GradientH",     "void(obj,i64,i64,i64,i64,i64,i64)")
 RT_FUNC(CanvasGradientV,   rt_canvas_gradient_v,    "Viper.Graphics.Canvas.GradientV",     "void(obj,i64,i64,i64,i64,i64,i64)")
+// BINDING-001 + BINDING-002: Canvas window management
+RT_FUNC(CanvasGetScale,     rt_canvas_get_scale,     "Viper.Graphics.Canvas.GetScale",     "f64(obj)")
+RT_FUNC(CanvasGetFps,       rt_canvas_get_fps,       "Viper.Graphics.Canvas.GetFps",       "i64(obj)")
+RT_FUNC(CanvasSetFps,       rt_canvas_set_fps,       "Viper.Graphics.Canvas.SetFps",       "void(obj,i64)")
+RT_FUNC(CanvasIsMaximized,  rt_canvas_is_maximized,  "Viper.Graphics.Canvas.IsMaximized",  "i64(obj)")
+RT_FUNC(CanvasMaximize,     rt_canvas_maximize,      "Viper.Graphics.Canvas.Maximize",     "void(obj)")
+RT_FUNC(CanvasIsMinimized,  rt_canvas_is_minimized,  "Viper.Graphics.Canvas.IsMinimized",  "i64(obj)")
+RT_FUNC(CanvasMinimize,     rt_canvas_minimize,      "Viper.Graphics.Canvas.Minimize",     "void(obj)")
+RT_FUNC(CanvasRestore,      rt_canvas_restore,       "Viper.Graphics.Canvas.Restore",      "void(obj)")
+RT_FUNC(CanvasIsFocused,    rt_canvas_is_focused,    "Viper.Graphics.Canvas.IsFocused",    "i64(obj)")
+RT_FUNC(CanvasFocus,        rt_canvas_focus,         "Viper.Graphics.Canvas.Focus",        "void(obj)")
+RT_FUNC(CanvasPreventClose, rt_canvas_prevent_close, "Viper.Graphics.Canvas.PreventClose", "void(obj,i64)")
 
 //=============================================================================
 // GRAPHICS - COLOR
@@ -1352,6 +1364,16 @@ RT_FUNC(GuiWidgetIsPressed,   rt_widget_is_pressed,   "Viper.GUI.Widget.IsPresse
 RT_FUNC(GuiWidgetIsFocused,   rt_widget_is_focused,   "Viper.GUI.Widget.IsFocused",   "i64(obj)")
 RT_FUNC(GuiWidgetWasClicked,  rt_widget_was_clicked,  "Viper.GUI.Widget.WasClicked",  "i64(obj)")
 RT_FUNC(GuiWidgetSetPosition, rt_widget_set_position, "Viper.GUI.Widget.SetPosition", "void(obj,i64,i64)")
+// BINDING-003: GuiWidget read accessors
+RT_FUNC(GuiWidgetIsVisible,  rt_widget_is_visible,  "Viper.GUI.Widget.IsVisible",  "i64(obj)")
+RT_FUNC(GuiWidgetIsEnabled,  rt_widget_is_enabled,  "Viper.GUI.Widget.IsEnabled",  "i64(obj)")
+RT_FUNC(GuiWidgetGetWidth,   rt_widget_get_width,   "Viper.GUI.Widget.GetWidth",   "i64(obj)")
+RT_FUNC(GuiWidgetGetHeight,  rt_widget_get_height,  "Viper.GUI.Widget.GetHeight",  "i64(obj)")
+RT_FUNC(GuiWidgetGetX,       rt_widget_get_x,       "Viper.GUI.Widget.GetX",       "i64(obj)")
+RT_FUNC(GuiWidgetGetY,       rt_widget_get_y,       "Viper.GUI.Widget.GetY",       "i64(obj)")
+RT_FUNC(GuiWidgetGetFlex,    rt_widget_get_flex,    "Viper.GUI.Widget.GetFlex",    "f64(obj)")
+RT_FUNC(GuiWidgetSetMargin,    rt_widget_set_margin,    "Viper.GUI.Widget.SetMargin",    "void(obj,i64)")
+RT_FUNC(GuiWidgetSetTabIndex,  rt_widget_set_tab_index, "Viper.GUI.Widget.SetTabIndex",  "void(obj,i64)")
 
 //=============================================================================
 // GUI - LABEL
@@ -1366,11 +1388,13 @@ RT_FUNC(GuiLabelSetColor, rt_label_set_color, "Viper.GUI.Label.SetColor", "void(
 // GUI - BUTTON
 //=============================================================================
 
-RT_FUNC(GuiButtonNew,        rt_button_new,         "Viper.GUI.Button.New",        "obj(obj,str)")
-RT_FUNC(GuiButtonSetText,    rt_button_set_text,    "Viper.GUI.Button.SetText",    "void(obj,str)")
-RT_FUNC(GuiButtonSetFont,    rt_button_set_font,    "Viper.GUI.Button.SetFont",    "void(obj,obj,f64)")
-RT_FUNC(GuiButtonSetStyle,   rt_button_set_style,   "Viper.GUI.Button.SetStyle",   "void(obj,i64)")
-RT_FUNC(GuiButtonWasClicked, rt_widget_was_clicked, "Viper.GUI.Button.WasClicked", "i64(obj)")
+RT_FUNC(GuiButtonNew,             rt_button_new,              "Viper.GUI.Button.New",             "obj(obj,str)")
+RT_FUNC(GuiButtonSetText,         rt_button_set_text,         "Viper.GUI.Button.SetText",         "void(obj,str)")
+RT_FUNC(GuiButtonSetFont,         rt_button_set_font,         "Viper.GUI.Button.SetFont",         "void(obj,obj,f64)")
+RT_FUNC(GuiButtonSetStyle,        rt_button_set_style,        "Viper.GUI.Button.SetStyle",        "void(obj,i64)")
+RT_FUNC(GuiButtonSetIcon,         rt_button_set_icon,         "Viper.GUI.Button.SetIcon",         "void(obj,str)")
+RT_FUNC(GuiButtonSetIconPosition, rt_button_set_icon_pos,     "Viper.GUI.Button.SetIconPosition", "void(obj,i64)")
+RT_FUNC(GuiButtonWasClicked,      rt_widget_was_clicked,      "Viper.GUI.Button.WasClicked",      "i64(obj)")
 
 //=============================================================================
 // GUI - TEXTINPUT
@@ -1398,6 +1422,8 @@ RT_FUNC(GuiCheckboxSetText,    rt_checkbox_set_text,    "Viper.GUI.Checkbox.SetT
 RT_FUNC(GuiScrollViewNew,            rt_scrollview_new,              "Viper.GUI.ScrollView.New",            "obj(obj)")
 RT_FUNC(GuiScrollViewSetScroll,      rt_scrollview_set_scroll,       "Viper.GUI.ScrollView.SetScroll",      "void(obj,f64,f64)")
 RT_FUNC(GuiScrollViewSetContentSize, rt_scrollview_set_content_size, "Viper.GUI.ScrollView.SetContentSize", "void(obj,f64,f64)")
+RT_FUNC(GuiScrollViewGetScrollX,     rt_scrollview_get_scroll_x,    "Viper.GUI.ScrollView.GetScrollX",     "f64(obj)")
+RT_FUNC(GuiScrollViewGetScrollY,     rt_scrollview_get_scroll_y,    "Viper.GUI.ScrollView.GetScrollY",     "f64(obj)")
 
 //=============================================================================
 // GUI - TREEVIEW
@@ -1444,6 +1470,7 @@ RT_FUNC(GuiTabSetModified, rt_tab_set_modified, "Viper.GUI.Tab.SetModified", "vo
 
 RT_FUNC(GuiSplitPaneNew,         rt_splitpane_new,          "Viper.GUI.SplitPane.New",         "obj(obj,i64)")
 RT_FUNC(GuiSplitPaneSetPosition, rt_splitpane_set_position, "Viper.GUI.SplitPane.SetPosition", "void(obj,f64)")
+RT_FUNC(GuiSplitPaneGetPosition, rt_splitpane_get_position, "Viper.GUI.SplitPane.GetPosition", "f64(obj)")
 RT_FUNC(GuiSplitPaneGetFirst,    rt_splitpane_get_first,    "Viper.GUI.SplitPane.get_First",   "obj(obj)")
 RT_FUNC(GuiSplitPaneGetSecond,   rt_splitpane_get_second,   "Viper.GUI.SplitPane.get_Second",  "obj(obj)")
 
@@ -1453,7 +1480,8 @@ RT_FUNC(GuiSplitPaneGetSecond,   rt_splitpane_get_second,   "Viper.GUI.SplitPane
 
 RT_FUNC(GuiCodeEditorNew,           rt_codeeditor_new,            "Viper.GUI.CodeEditor.New",           "obj(obj)")
 RT_FUNC(GuiCodeEditorSetText,       rt_codeeditor_set_text,       "Viper.GUI.CodeEditor.SetText",       "void(obj,str)")
-RT_FUNC(GuiCodeEditorGetText,       rt_codeeditor_get_text,       "Viper.GUI.CodeEditor.get_Text",      "str(obj)")
+RT_FUNC(GuiCodeEditorGetText,           rt_codeeditor_get_text,          "Viper.GUI.CodeEditor.get_Text",         "str(obj)")
+RT_FUNC(GuiCodeEditorGetSelectedText,   rt_codeeditor_get_selected_text, "Viper.GUI.CodeEditor.GetSelectedText",  "str(obj)")
 RT_FUNC(GuiCodeEditorSetCursor,     rt_codeeditor_set_cursor,     "Viper.GUI.CodeEditor.SetCursor",     "void(obj,i64,i64)")
 RT_FUNC(GuiCodeEditorScrollToLine,  rt_codeeditor_scroll_to_line, "Viper.GUI.CodeEditor.ScrollToLine",  "void(obj,i64)")
 RT_FUNC(GuiCodeEditorGetLineCount,  rt_codeeditor_get_line_count, "Viper.GUI.CodeEditor.get_LineCount", "i64(obj)")
@@ -5076,6 +5104,18 @@ RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
     RT_METHOD("SaveBmp", "i64(str)", CanvasSaveBmp)
     RT_METHOD("GradientH", "void(i64,i64,i64,i64,i64,i64)", CanvasGradientH)
     RT_METHOD("GradientV", "void(i64,i64,i64,i64,i64,i64)", CanvasGradientV)
+    // Window management (BINDING-001 + BINDING-002)
+    RT_METHOD("GetScale",       "f64()",          CanvasGetScale)
+    RT_METHOD("GetFps",         "i64()",          CanvasGetFps)
+    RT_METHOD("SetFps",         "void(i64)",      CanvasSetFps)
+    RT_METHOD("IsMaximized",    "i64()",          CanvasIsMaximized)
+    RT_METHOD("Maximize",       "void()",         CanvasMaximize)
+    RT_METHOD("IsMinimized",    "i64()",          CanvasIsMinimized)
+    RT_METHOD("Minimize",       "void()",         CanvasMinimize)
+    RT_METHOD("Restore",        "void()",         CanvasRestore)
+    RT_METHOD("IsFocused",      "i64()",          CanvasIsFocused)
+    RT_METHOD("Focus",          "void()",         CanvasFocus)
+    RT_METHOD("PreventClose",   "void(i64)",      CanvasPreventClose)
 RT_CLASS_END()
 
 // Viper.Graphics.Color - color utilities
@@ -5321,6 +5361,16 @@ RT_CLASS_BEGIN("Viper.GUI.Widget", GuiWidget, "obj", none)
     RT_METHOD("IsPressed", "i64()", GuiWidgetIsPressed)
     RT_METHOD("IsFocused", "i64()", GuiWidgetIsFocused)
     RT_METHOD("WasClicked", "i64()", GuiWidgetWasClicked)
+    // BINDING-003: read accessors
+    RT_METHOD("IsVisible",  "i64()", GuiWidgetIsVisible)
+    RT_METHOD("IsEnabled",  "i64()", GuiWidgetIsEnabled)
+    RT_METHOD("GetWidth",   "i64()", GuiWidgetGetWidth)
+    RT_METHOD("GetHeight",  "i64()", GuiWidgetGetHeight)
+    RT_METHOD("GetX",       "i64()", GuiWidgetGetX)
+    RT_METHOD("GetY",       "i64()", GuiWidgetGetY)
+    RT_METHOD("GetFlex",      "f64()", GuiWidgetGetFlex)
+    RT_METHOD("SetMargin",    "void(i64)", GuiWidgetSetMargin)
+    RT_METHOD("SetTabIndex",  "void(i64)", GuiWidgetSetTabIndex)
 RT_CLASS_END()
 
 // Viper.GUI.Label - text label widget
@@ -5338,17 +5388,19 @@ RT_CLASS_END()
 
 // Viper.GUI.Button - clickable button widget
 RT_CLASS_BEGIN("Viper.GUI.Button", GuiButton, "obj", GuiButtonNew)
-    RT_METHOD("SetText", "void(str)", GuiButtonSetText)
-    RT_METHOD("SetFont", "void(obj,f64)", GuiButtonSetFont)
-    RT_METHOD("SetStyle", "void(i64)", GuiButtonSetStyle)
-    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
-    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
-    RT_METHOD("SetEnabled", "void(i64)", GuiWidgetSetEnabled)
-    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
-    RT_METHOD("SetPosition", "void(i64,i64)", GuiWidgetSetPosition)
-    RT_METHOD("WasClicked", "i64()", GuiWidgetWasClicked)
-    RT_METHOD("IsHovered", "i64()", GuiWidgetIsHovered)
-    RT_METHOD("IsPressed", "i64()", GuiWidgetIsPressed)
+    RT_METHOD("SetText",         "void(str)",   GuiButtonSetText)
+    RT_METHOD("SetFont",         "void(obj,f64)", GuiButtonSetFont)
+    RT_METHOD("SetStyle",        "void(i64)",   GuiButtonSetStyle)
+    RT_METHOD("SetIcon",         "void(str)",   GuiButtonSetIcon)
+    RT_METHOD("SetIconPosition", "void(i64)",   GuiButtonSetIconPosition)
+    RT_METHOD("Destroy",         "void()",      GuiWidgetDestroy)
+    RT_METHOD("SetVisible",      "void(i64)",   GuiWidgetSetVisible)
+    RT_METHOD("SetEnabled",      "void(i64)",   GuiWidgetSetEnabled)
+    RT_METHOD("SetSize",         "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("SetPosition",     "void(i64,i64)", GuiWidgetSetPosition)
+    RT_METHOD("WasClicked",      "i64()",       GuiWidgetWasClicked)
+    RT_METHOD("IsHovered",       "i64()",       GuiWidgetIsHovered)
+    RT_METHOD("IsPressed",       "i64()",       GuiWidgetIsPressed)
 RT_CLASS_END()
 
 // Viper.GUI.TextInput - text input field widget
@@ -5382,6 +5434,8 @@ RT_CLASS_END()
 RT_CLASS_BEGIN("Viper.GUI.ScrollView", GuiScrollView, "obj", GuiScrollViewNew)
     RT_METHOD("SetScroll", "void(f64,f64)", GuiScrollViewSetScroll)
     RT_METHOD("SetContentSize", "void(f64,f64)", GuiScrollViewSetContentSize)
+    RT_METHOD("GetScrollX", "f64()", GuiScrollViewGetScrollX)
+    RT_METHOD("GetScrollY", "f64()", GuiScrollViewGetScrollY)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
     RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
     RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
@@ -5441,6 +5495,7 @@ RT_CLASS_BEGIN("Viper.GUI.SplitPane", GuiSplitPane, "obj", GuiSplitPaneNew)
     RT_PROP("First", "obj", GuiSplitPaneGetFirst, none)
     RT_PROP("Second", "obj", GuiSplitPaneGetSecond, none)
     RT_METHOD("SetPosition", "void(f64)", GuiSplitPaneSetPosition)
+    RT_METHOD("GetPosition", "f64()", GuiSplitPaneGetPosition)
     RT_METHOD("SetFlex", "void(f64)", GuiWidgetSetFlex)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
     RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
@@ -5475,6 +5530,7 @@ RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_METHOD("GetWordAtCursor",       "str()",     CodeEditorGetWordAtCursor)
     RT_METHOD("ReplaceWordAtCursor",   "void(str)", CodeEditorReplaceWordAtCursor)
     RT_METHOD("GetLine",               "str(i64)",  CodeEditorGetLine)
+    RT_METHOD("GetSelectedText",       "str()",     GuiCodeEditorGetSelectedText)
     RT_METHOD("SetFlex", "void(f64)", GuiWidgetSetFlex)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
     RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)

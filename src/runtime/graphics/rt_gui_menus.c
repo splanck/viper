@@ -822,6 +822,9 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
         vg_toolbar_add_button((vg_toolbar_t *)toolbar, NULL, ctext, icon, NULL, NULL);
     if (item)
     {
+        // Force label visible — tb->show_labels defaults to false, so items
+        // created via AddButtonWithText would otherwise never show their label.
+        item->show_label = true;
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
     else if (cicon)

@@ -288,6 +288,11 @@ extern "C"
         bool needs_layout; ///< Dirty flag: layout must be recomputed before next paint.
         bool needs_paint;  ///< Dirty flag: widget must be repainted.
 
+        // Tab order
+        int tab_index; ///< Explicit tab-stop position. Widgets with tab_index >= 0 are visited in
+                       ///< ascending order before those with tab_index == -1 (natural order).
+                       ///< Defaults to -1 (use tree traversal order).
+
         // User data
         void *user_data; ///< Application-supplied opaque pointer (not touched by the framework).
 
@@ -755,6 +760,36 @@ extern "C"
     ///
     /// @param root The root of the widget tree.
     void vg_widget_focus_prev(vg_widget_t *root);
+
+    /// @brief Set the explicit tab-stop index for a widget.
+    ///
+    /// @details Widgets with tab_index >= 0 are visited in ascending order during
+    ///          Tab/Shift+Tab navigation before widgets with tab_index == -1, which
+    ///          are visited in natural tree-traversal order. Pass -1 to restore the
+    ///          default natural-order behaviour.
+    ///
+    /// @param widget    The widget to update.
+    /// @param tab_index The tab stop index (>= 0) or -1 for natural order.
+    void vg_widget_set_tab_index(vg_widget_t *widget, int tab_index);
+
+    //=============================================================================
+    // Modal Root
+    //=============================================================================
+
+    /// @brief Register a widget as the current modal root.
+    ///
+    /// @details When a modal root is active, mouse hit-testing is restricted to
+    ///          the modal widget's subtree, and keyboard events are redirected to
+    ///          the modal root if the focused widget lies outside it. Pass NULL to
+    ///          clear the modal root and restore normal event routing.
+    ///
+    /// @param widget The modal root widget, or NULL to clear.
+    void vg_widget_set_modal_root(vg_widget_t *widget);
+
+    /// @brief Retrieve the current modal root widget.
+    ///
+    /// @return The modal root, or NULL if no modal widget is active.
+    vg_widget_t *vg_widget_get_modal_root(void);
 
     //=============================================================================
     // ID Generation
