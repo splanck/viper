@@ -279,8 +279,33 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
         return;
 
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
+    int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
+    int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
+
+    /* Compute the first tile that is visible (partially or fully) on screen */
+    int64_t first_x = (-offset_x) / tw;
+    int64_t first_y = (-offset_y) / th;
+    if (first_x < 0)
+        first_x = 0;
+    if (first_y < 0)
+        first_y = 0;
+
+    /* Compute how many tiles fit in the canvas (plus two for partial edges) */
+    int64_t canvas_w = rt_canvas_width(canvas_ptr);
+    int64_t canvas_h = rt_canvas_height(canvas_ptr);
+    int64_t vis_w = canvas_w / tw + 2;
+    int64_t vis_h = canvas_h / th + 2;
+
+    /* Clamp to tilemap dimensions */
+    if (first_x + vis_w > tilemap->width)
+        vis_w = tilemap->width - first_x;
+    if (first_y + vis_h > tilemap->height)
+        vis_h = tilemap->height - first_y;
+    if (vis_w <= 0 || vis_h <= 0)
+        return;
+
     rt_tilemap_draw_region(
-        tilemap_ptr, canvas_ptr, offset_x, offset_y, 0, 0, tilemap->width, tilemap->height);
+        tilemap_ptr, canvas_ptr, offset_x, offset_y, first_x, first_y, vis_w, vis_h);
 }
 
 void rt_tilemap_draw_region(void *tilemap_ptr,

@@ -324,7 +324,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Note: XImage does NOT own the pixel data; it just wraps win->pixels */
     x11->ximage = XCreateImage(x11->display,
                                DefaultVisual(x11->display, x11->screen),
-                               24,                  /* depth (24-bit RGB, ignore alpha) */
+                               32,                  /* depth (32-bit RGBA) */
                                ZPixmap,             /* format */
                                0,                   /* offset */
                                (char *)win->pixels, /* data pointer (points to our framebuffer) */

@@ -4,6 +4,8 @@ A comprehensive plan for building a cross-platform GUI toolkit for Zia, designed
 
 > **Status Update (January 2026):** All phases (1–7) are complete. The `Viper.GUI.*` namespace is now available to Viper programs with 24 widget classes including App, Label, Button, TextInput, Checkbox, Dropdown, Slider, ProgressBar, ListBox, RadioButton, Spinner, Image, TreeView, TabBar, CodeEditor, and layout containers.
 
+> **Bug Fix Pass (February 2026):** A comprehensive audit and correctness pass was completed covering all widget implementations. Key changes: Dropdown and RadioButton widget vtables fully implemented (paint + event handling); ProgressBar indeterminate mode animated; TextInput cursor blink timer added; Grid layout engine implemented (`vg_grid_create`, `vg_grid_place`, `vg_grid_set_gap`); CodeEditor word-wrap rendering enabled; label word-wrap line cache added (eliminates redundant greedy-algorithm runs); alpha channel rendering fixed on Linux (X11 32-bit depth); ListBox virtual mode crash fixed; ScrollView divide-by-zero guards added; CodeEditor full Unicode input (previously ASCII-only); font cache NULL-bitmap guard; scene transform recursion converted to iterative.
+
 **Goals:**
 - Zero external dependencies (consistent with Viper philosophy)
 - Pixel-identical appearance across Windows, macOS, and Linux

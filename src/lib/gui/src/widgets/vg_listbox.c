@@ -187,11 +187,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
 
         case VG_EVENT_KEY_DOWN:
         {
-            /* Keyboard navigation for non-virtual mode only.  Virtual mode
-             * uses selected_index which follows the same logic below. */
-            if (lb->virtual_mode)
-                break;
-
+            int total = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
             int page_items = (lb->item_height > 0.0f)
                                  ? (int)(widget->height / lb->item_height)
                                  : 8;
@@ -207,14 +203,13 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
                     new_idx = (current_idx > 0) ? current_idx - 1 : 0;
                     break;
                 case VG_KEY_DOWN:
-                    new_idx = (current_idx < lb->item_count - 1) ? current_idx + 1
-                                                                  : lb->item_count - 1;
+                    new_idx = (current_idx < total - 1) ? current_idx + 1 : total - 1;
                     break;
                 case VG_KEY_HOME:
                     new_idx = 0;
                     break;
                 case VG_KEY_END:
-                    new_idx = lb->item_count - 1;
+                    new_idx = total - 1;
                     break;
                 case VG_KEY_PAGE_UP:
                     new_idx = current_idx - page_items;
@@ -223,21 +218,37 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
                     break;
                 case VG_KEY_PAGE_DOWN:
                     new_idx = current_idx + page_items;
-                    if (new_idx >= lb->item_count)
-                        new_idx = lb->item_count - 1;
+                    if (new_idx >= total)
+                        new_idx = total - 1;
                     break;
                 case VG_KEY_ENTER:
-                    if (lb->selected && lb->on_activate)
+                    if (lb->virtual_mode)
+                    {
+                        if (lb->selected_index >= 0 && lb->on_activate)
+                            lb->on_activate(widget, NULL, lb->on_activate_data);
+                    }
+                    else if (lb->selected && lb->on_activate)
+                    {
                         lb->on_activate(widget, lb->selected, lb->on_activate_data);
+                    }
                     event->handled = true;
                     return true;
                 default:
                     break;
             }
 
-            if (new_idx != current_idx && new_idx >= 0 && new_idx < lb->item_count)
+            if (new_idx != current_idx && new_idx >= 0 && new_idx < total)
             {
-                vg_listbox_select_index(lb, (size_t)new_idx);
+                if (lb->virtual_mode)
+                {
+                    lb->selected_index = (size_t)new_idx;
+                    if (lb->on_select)
+                        lb->on_select(widget, NULL, lb->on_select_data);
+                }
+                else
+                {
+                    vg_listbox_select_index(lb, (size_t)new_idx);
+                }
                 /* Scroll the selected item into view */
                 float item_top = new_idx * lb->item_height;
                 float item_bot = item_top + lb->item_height;
@@ -434,6 +445,12 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         listbox->selection_bitmap = calloc(total_count, sizeof(bool));
         listbox->selection_bitmap_size = total_count;
         listbox->selected_index = SIZE_MAX; // None selected
+
+        // Allocate visible-item cache (capped at 64 — enough for one viewport page)
+        size_t cap = total_count < 64 ? total_count : 64;
+        free(listbox->visible_cache);
+        listbox->visible_cache = calloc(cap, sizeof(vg_listbox_cache_entry_t));
+        listbox->cache_capacity = listbox->visible_cache ? cap : 0;
     }
 
     // Reset scroll and invalidate

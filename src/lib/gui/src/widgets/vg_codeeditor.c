@@ -134,7 +134,14 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx)
         size_t new_cap = line->length + 16;
         uint32_t *nc = (uint32_t *)realloc(line->colors, new_cap * sizeof(uint32_t));
         if (!nc)
+        {
+            // Realloc failed: discard stale buffer so the paint path falls back to
+            // monochrome rendering rather than reading past the old capacity.
+            free(line->colors);
+            line->colors = NULL;
+            line->colors_capacity = 0;
             return;
+        }
         line->colors = nc;
         line->colors_capacity = new_cap;
     }
@@ -684,42 +691,89 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         // Draw line text
         if (editor->lines[i].text && editor->lines[i].length > 0)
         {
-            float text_x = content_x - editor->scroll_x;
             float text_y = line_y + font_metrics.ascent;
 
             // Run syntax highlighter (no-op if none registered or colors up-to-date)
             highlight_line(editor, i);
 
-            // Apply syntax highlighting colors if available
-            if (editor->lines[i].colors)
+            if (editor->word_wrap && editor->char_width > 0.0f && content_width > 0.0f)
             {
-                // Draw character by character with colors
-                for (size_t c = 0; c < editor->lines[i].length; c++)
+                /* Word-wrap rendering: break the line into visual sub-rows of
+                 * chars_per_row characters each.  Scroll is disabled on the X axis
+                 * in wrap mode (horizontal scroll doesn't make sense when lines wrap).
+                 * Cursor position and scrolling are not adjusted; this is a display-
+                 * only feature. */
+                int chars_per_row = (int)(content_width / editor->char_width);
+                if (chars_per_row < 1) chars_per_row = 1;
+                size_t len = editor->lines[i].length;
+                size_t offset = 0;
+                float sub_y = text_y;
+                while (offset < len)
                 {
-                    char ch[2] = {editor->lines[i].text[c], '\0'};
-                    vg_font_draw_text(canvas,
-                                      editor->font,
-                                      editor->font_size,
-                                      text_x + c * editor->char_width,
-                                      text_y,
-                                      ch,
-                                      editor->lines[i].colors[c]);
+                    size_t seg_len = (len - offset < (size_t)chars_per_row)
+                                         ? (len - offset)
+                                         : (size_t)chars_per_row;
+                    if (editor->lines[i].colors)
+                    {
+                        for (size_t c = 0; c < seg_len; c++)
+                        {
+                            size_t gi = offset + c;
+                            uint32_t col = (gi < editor->lines[i].colors_capacity)
+                                               ? editor->lines[i].colors[gi]
+                                               : editor->text_color;
+                            char ch[2] = {editor->lines[i].text[gi], '\0'};
+                            vg_font_draw_text(canvas, editor->font, editor->font_size,
+                                              content_x + c * editor->char_width, sub_y,
+                                              ch, col);
+                        }
+                    }
+                    else
+                    {
+                        char seg_buf[256];
+                        size_t copy_len = seg_len < sizeof(seg_buf) - 1 ? seg_len : sizeof(seg_buf) - 1;
+                        memcpy(seg_buf, editor->lines[i].text + offset, copy_len);
+                        seg_buf[copy_len] = '\0';
+                        vg_font_draw_text(canvas, editor->font, editor->font_size,
+                                          content_x, sub_y, seg_buf, editor->text_color);
+                    }
+                    offset += seg_len;
+                    sub_y  += editor->line_height;
                 }
             }
             else
             {
-                // Draw entire line
-                vg_font_draw_text(canvas,
-                                  editor->font,
-                                  editor->font_size,
-                                  text_x,
-                                  text_y,
-                                  editor->lines[i].text,
-                                  editor->text_color);
+                float text_x = content_x - editor->scroll_x;
+                if (editor->lines[i].colors)
+                {
+                    // Draw character by character with colors
+                    for (size_t c = 0; c < editor->lines[i].length; c++)
+                    {
+                        uint32_t col = (c < editor->lines[i].colors_capacity)
+                                           ? editor->lines[i].colors[c]
+                                           : editor->text_color;
+                        char ch[2] = {editor->lines[i].text[c], '\0'};
+                        vg_font_draw_text(canvas,
+                                          editor->font,
+                                          editor->font_size,
+                                          text_x + c * editor->char_width,
+                                          text_y,
+                                          ch,
+                                          col);
+                    }
+                }
+                else
+                {
+                    // Draw entire line
+                    vg_font_draw_text(canvas,
+                                      editor->font,
+                                      editor->font_size,
+                                      text_x,
+                                      text_y,
+                                      editor->lines[i].text,
+                                      editor->text_color);
+                }
             }
         }
-
-        (void)content_width;
     }
 
     // Draw cursor
@@ -783,6 +837,63 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                        (int32_t)thumb_height,
                        thumb_color);
     }
+}
+
+// Encode a Unicode codepoint as UTF-8 into buf (must be at least 4 bytes).
+// Returns the number of bytes written, or 0 for invalid codepoints.
+static int encode_utf8(uint32_t cp, char *buf)
+{
+    if (cp < 0x80)
+    {
+        buf[0] = (char)cp;
+        return 1;
+    }
+    if (cp < 0x800)
+    {
+        buf[0] = (char)(0xC0 | (cp >> 6));
+        buf[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000)
+    {
+        // Reject UTF-16 surrogates (U+D800–U+DFFF)
+        if (cp >= 0xD800 && cp <= 0xDFFF)
+            return 0;
+        buf[0] = (char)(0xE0 | (cp >> 12));
+        buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        buf[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    if (cp <= 0x10FFFF)
+    {
+        buf[0] = (char)(0xF0 | (cp >> 18));
+        buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        buf[3] = (char)(0x80 | (cp & 0x3F));
+        return 4;
+    }
+    return 0; // Out-of-range
+}
+
+// Insert n raw bytes at the current cursor position and advance cursor_col by n.
+static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n)
+{
+    if (!n)
+        return;
+    vg_code_line_t *line = &editor->lines[editor->cursor_line];
+
+    if (!ensure_text_capacity(line, line->length + n + 1))
+        return;
+
+    memmove(line->text + editor->cursor_col + n,
+            line->text + editor->cursor_col,
+            line->length - editor->cursor_col + 1);
+
+    memcpy(line->text + editor->cursor_col, bytes, n);
+    line->length += n;
+    editor->cursor_col += n;
+    editor->modified = true;
+    line->modified = true;
 }
 
 static void insert_char(vg_codeeditor_t *editor, char c)
@@ -1258,17 +1369,32 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
         }
 
         case VG_EVENT_KEY_CHAR:
-            if (!editor->read_only && event->key.codepoint >= 32 && event->key.codepoint < 127)
+        {
+            uint32_t cp = event->key.codepoint;
+            // Accept all printable codepoints: U+0020–U+10FFFF excluding surrogates.
+            bool printable = (cp >= 0x20 && !(cp >= 0xD800 && cp <= 0xDFFF) && cp <= 0x10FFFF);
+            if (!editor->read_only && printable)
             {
                 if (editor->has_selection)
                 {
                     vg_codeeditor_delete_selection(editor);
                 }
-                insert_char(editor, (char)event->key.codepoint);
+                if (cp < 0x80)
+                {
+                    insert_char(editor, (char)cp);
+                }
+                else
+                {
+                    char utf8[4];
+                    int n = encode_utf8(cp, utf8);
+                    if (n > 0)
+                        insert_bytes(editor, utf8, (size_t)n);
+                }
                 ensure_cursor_visible(editor);
                 widget->needs_paint = true;
             }
             return true;
+        }
 
         case VG_EVENT_MOUSE_WHEEL:
             editor->scroll_y -= event->wheel.delta_y * editor->line_height * 3;

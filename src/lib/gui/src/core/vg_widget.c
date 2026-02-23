@@ -5,6 +5,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Minimal layout-compatible stub for vg_scrollview_t scroll fields.
+ * Avoids circular dependency on vg_widgets.h (which includes vg_widget.h).
+ * Valid per C99 §6.7.2.1: a pointer to a struct may be converted to a pointer
+ * to its first member, and these two structs share the same initial sequence. */
+typedef struct
+{
+    vg_widget_t base;
+    float scroll_x;
+    float scroll_y;
+} vg_scrollview_scroll_t;
+
 //=============================================================================
 // Global State
 //=============================================================================
@@ -225,6 +236,8 @@ void vg_widget_destroy(vg_widget_t *widget)
 void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child)
 {
     if (!parent || !child)
+        return;
+    if (parent == child)
         return;
 
     // Remove from previous parent if any
@@ -499,12 +512,22 @@ void vg_widget_get_screen_bounds(
     float sx = widget->x;
     float sy = widget->y;
 
-    // Walk up the parent chain to get screen coordinates
+    // Walk up the parent chain to get screen coordinates.
+    // ScrollView containers shift children by their scroll offset, so
+    // subtract scroll_x/scroll_y when passing through one.
     vg_widget_t *p = widget->parent;
     while (p)
     {
         sx += p->x + p->layout.padding_left;
         sy += p->y + p->layout.padding_top;
+
+        if (p->type == VG_WIDGET_SCROLLVIEW)
+        {
+            const vg_scrollview_scroll_t *sv = (const vg_scrollview_scroll_t *)p;
+            sx -= sv->scroll_x;
+            sy -= sv->scroll_y;
+        }
+
         p = p->parent;
     }
 
@@ -879,36 +902,43 @@ static int collect_focusable(vg_widget_t *root, vg_widget_t **arr, int max)
     return count;
 }
 
-// Compare for tab-order sort.
-// Widgets with tab_index >= 0 sort by ascending index first;
-// widgets with tab_index == -1 are placed after them in DFS order
-// (their relative position is their index in the DFS array, encoded
-// in the upper 16 bits of the sort key by the caller — not needed here
-// because qsort preserves relative order for equal keys when using a
-// stable sort, but stdlib qsort is not guaranteed stable so we use
-// the pointer's DFS index as a tiebreaker via the array position).
-// This comparator only compares by tab_index; callers rely on the array
-// being in DFS order already so that equal-tab_index items stay ordered.
-static int compare_tab_order(const void *a, const void *b)
+// Stable merge sort for tab order — O(n log n), preserves DFS order for equal keys.
+// Uses a temporary scratch buffer of the same size.
+static void tab_merge(vg_widget_t **arr, vg_widget_t **tmp, int lo, int mid, int hi)
 {
-    const vg_widget_t *wa = *(const vg_widget_t *const *)a;
-    const vg_widget_t *wb = *(const vg_widget_t *const *)b;
+    int i = lo, j = mid, k = lo;
+    while (i < mid && j < hi)
+    {
+        const int ia = arr[i]->tab_index;
+        const int ib = arr[j]->tab_index;
+        // Natural-order (-1) sorts after explicit (>=0)
+        bool left_wins;
+        if (ia >= 0 && ib < 0)
+            left_wins = true;
+        else if (ia < 0 && ib >= 0)
+            left_wins = false;
+        else if (ia >= 0 && ib >= 0)
+            left_wins = ia <= ib; // stable: equal goes left
+        else
+            left_wins = true; // both natural-order: preserve DFS
+        tmp[k++] = left_wins ? arr[i++] : arr[j++];
+    }
+    while (i < mid)
+        tmp[k++] = arr[i++];
+    while (j < hi)
+        tmp[k++] = arr[j++];
+    for (int m = lo; m < hi; m++)
+        arr[m] = tmp[m];
+}
 
-    int ia = wa->tab_index;
-    int ib = wb->tab_index;
-
-    // Natural-order items (-1) always come after explicit ones
-    if (ia >= 0 && ib < 0)
-        return -1;
-    if (ia < 0 && ib >= 0)
-        return 1;
-
-    // Both explicit: sort by ascending index
-    if (ia >= 0 && ib >= 0)
-        return (ia < ib) ? -1 : (ia > ib) ? 1 : 0;
-
-    // Both natural-order: preserve DFS position (caller's array order)
-    return 0;
+static void tab_merge_sort(vg_widget_t **arr, vg_widget_t **tmp, int lo, int hi)
+{
+    if (hi - lo <= 1)
+        return;
+    int mid = (lo + hi) / 2;
+    tab_merge_sort(arr, tmp, lo, mid);
+    tab_merge_sort(arr, tmp, mid, hi);
+    tab_merge(arr, tmp, lo, mid, hi);
 }
 
 // Build sorted tab-order array for the widget tree rooted at root.
@@ -917,34 +947,16 @@ static int build_tab_order(vg_widget_t *root, vg_widget_t **arr)
 {
     int count = collect_focusable(root, arr, TAB_ORDER_MAX);
 
-    // Stable-sort by tab_index.
-    // stdlib qsort is not stable; use insertion sort for stability.
-    // With at most 512 items this is fast enough in practice.
-    for (int i = 1; i < count; i++)
+    if (count > 1)
     {
-        vg_widget_t *key = arr[i];
-        int j = i - 1;
-        while (j >= 0)
+        // Stable merge sort by tab_index — O(n log n) vs previous O(n²) insertion sort.
+        vg_widget_t **tmp = malloc(count * sizeof(vg_widget_t *));
+        if (tmp)
         {
-            const int ia = arr[j]->tab_index;
-            const int ib = key->tab_index;
-            bool before = false;
-            if (ia >= 0 && ib >= 0)
-                before = ia > ib;
-            else if (ia < 0 && ib >= 0)
-                before = true; // natural-order should move right of explicit
-            else
-                before = false;
-
-            if (before)
-            {
-                arr[j + 1] = arr[j];
-                j--;
-            }
-            else
-                break;
+            tab_merge_sort(arr, tmp, 0, count);
+            free(tmp);
         }
-        arr[j + 1] = key;
+        // If malloc fails, order is preserved from DFS (still usable, just unsorted)
     }
 
     return count;

@@ -193,6 +193,13 @@ static int outline_to_polygon(float *points_x,
 // Edge Comparison for Sorting
 //=============================================================================
 
+static int raster_cmp_float(const void *a, const void *b)
+{
+    float fa = *(const float *)a;
+    float fb = *(const float *)b;
+    return (fa > fb) - (fa < fb);
+}
+
 static int compare_edges(const void *a, const void *b)
 {
     const raster_edge_t *ea = (const raster_edge_t *)a;
@@ -299,18 +306,11 @@ static void rasterize_scanlines(
                 }
             }
 
-            // Sort intersections
-            for (int i = 0; i < num_intersections - 1; i++)
+            // Sort intersections (qsort: O(n log n) vs previous O(n²) bubble sort)
+            if (num_intersections > 1)
             {
-                for (int j = i + 1; j < num_intersections; j++)
-                {
-                    if (intersections[j] < intersections[i])
-                    {
-                        float tmp = intersections[i];
-                        intersections[i] = intersections[j];
-                        intersections[j] = tmp;
-                    }
-                }
+                qsort(intersections, num_intersections, sizeof(float),
+                      raster_cmp_float);
             }
 
             // Fill between pairs (even-odd rule)

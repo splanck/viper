@@ -20,10 +20,12 @@
 ///          by all widget paint routines; changing it switches the look of the
 ///          entire UI in one call.
 ///
-///          Colour values are stored as packed 32-bit ARGB integers (0xAARRGGBB).
-///          Convenience functions and static-inline accessors are provided for
+///          Colour values are stored as 24-bit RGB integers (0x00RRGGBB), compatible
+///          with the vgfx drawing API which ignores the high byte.  Static theme
+///          defaults use this format directly.  Convenience functions are provided for
 ///          constructing colours from components, extracting channels, blending,
-///          lightening, and darkening.
+///          lightening, and darkening.  The `vg_color_rgba` helper accepts an optional
+///          alpha byte for future alpha-compositing support.
 ///
 /// Key invariants:
 ///   - There is always a valid current theme (defaults to the dark theme).
@@ -60,7 +62,7 @@ extern "C"
     /// @brief Complete colour palette for the GUI, covering backgrounds, text,
     ///        accents, borders, and syntax-highlighting tokens.
     ///
-    /// @details All colour values are packed ARGB (0xAARRGGBB). The scheme is
+    /// @details All colour values are 24-bit RGB (0x00RRGGBB). The scheme is
     ///          divided into logical groups so that widget code can pick the
     ///          semantically correct colour without hard-coding values.
     typedef struct vg_color_scheme

@@ -1020,3 +1020,17 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size)
     input->base.needs_layout = true;
     input->base.needs_paint = true;
 }
+
+void vg_textinput_tick(vg_textinput_t *input, float dt)
+{
+    if (!input || !(input->base.state & VG_STATE_FOCUSED))
+        return;
+
+    input->cursor_blink_time += dt;
+    if (input->cursor_blink_time >= CURSOR_BLINK_RATE)
+    {
+        input->cursor_blink_time -= CURSOR_BLINK_RATE;
+        input->cursor_visible = !input->cursor_visible;
+        input->base.needs_paint = true;
+    }
+}

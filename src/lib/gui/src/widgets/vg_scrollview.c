@@ -282,7 +282,8 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
             thumb_height = theme->scrollbar.min_thumb_size;
         }
 
-        float scroll_ratio = scroll->scroll_y / (scroll->content_height - content_area_height);
+        float denom_v = scroll->content_height - content_area_height;
+        float scroll_ratio = (denom_v > 0.0f) ? (scroll->scroll_y / denom_v) : 0.0f;
         float thumb_y = track_y + scroll_ratio * (track_height - thumb_height);
 
         // Draw thumb
@@ -325,7 +326,8 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
             thumb_width = theme->scrollbar.min_thumb_size;
         }
 
-        float scroll_ratio = scroll->scroll_x / (scroll->content_width - content_area_width);
+        float denom_h = scroll->content_width - content_area_width;
+        float scroll_ratio = (denom_h > 0.0f) ? (scroll->scroll_x / denom_h) : 0.0f;
         float thumb_x = track_x + scroll_ratio * (track_width - thumb_width);
 
         // Draw thumb

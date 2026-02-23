@@ -121,6 +121,18 @@ extern "C"
     /// @brief Clear camera bounds (allow unlimited movement).
     void rt_camera_clear_bounds(void *camera);
 
+    //=========================================================================
+    // Dirty Flag — Skip re-rendering when camera is stationary
+    //=========================================================================
+
+    /// @brief Check whether the camera has moved, zoomed, or rotated since the
+    ///        last call to rt_camera_clear_dirty.
+    /// @return 1 if dirty, 0 if clean.
+    int64_t rt_camera_is_dirty(void *camera);
+
+    /// @brief Clear the dirty flag after consuming the change.
+    void rt_camera_clear_dirty(void *camera);
+
 #ifdef __cplusplus
 }
 #endif

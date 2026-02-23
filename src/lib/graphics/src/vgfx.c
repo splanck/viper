@@ -1037,6 +1037,45 @@ void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
     window->pixels[offset + 3] = 0xFF;                 /* A (fully opaque) */
 }
 
+void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color)
+{
+    if (!vgfx_internal_in_bounds(window, x, y))
+        return;
+
+    uint8_t src_a = (uint8_t)((color >> 24) & 0xFF);
+
+    /* Fast path: fully opaque source avoids multiply/divide */
+    if (src_a == 0xFF)
+    {
+        int32_t offset = y * window->stride + x * 4;
+        window->pixels[offset + 0] = (uint8_t)((color >> 16) & 0xFF); /* R */
+        window->pixels[offset + 1] = (uint8_t)((color >> 8) & 0xFF);  /* G */
+        window->pixels[offset + 2] = (uint8_t)(color & 0xFF);          /* B */
+        window->pixels[offset + 3] = 0xFF;
+        return;
+    }
+
+    /* Fully transparent: no-op */
+    if (src_a == 0)
+        return;
+
+    /* Source-over composite */
+    uint8_t src_r = (uint8_t)((color >> 16) & 0xFF);
+    uint8_t src_g = (uint8_t)((color >> 8) & 0xFF);
+    uint8_t src_b = (uint8_t)(color & 0xFF);
+
+    int32_t offset = y * window->stride + x * 4;
+    uint8_t dst_r = window->pixels[offset + 0];
+    uint8_t dst_g = window->pixels[offset + 1];
+    uint8_t dst_b = window->pixels[offset + 2];
+
+    uint32_t inv_a = 255u - src_a;
+    window->pixels[offset + 0] = (uint8_t)((src_r * src_a + dst_r * inv_a) / 255u);
+    window->pixels[offset + 1] = (uint8_t)((src_g * src_a + dst_g * inv_a) / 255u);
+    window->pixels[offset + 2] = (uint8_t)((src_b * src_a + dst_b * inv_a) / 255u);
+    window->pixels[offset + 3] = 0xFF;
+}
+
 /// @brief Get the color of a single pixel.
 /// @details Reads the RGB color from the framebuffer at (x, y).  Alpha channel
 ///          is ignored (always fully opaque in ViperGFX v1).

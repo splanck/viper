@@ -340,10 +340,13 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event)
         }
     }
 
-    // Bubble up to parent if not handled
-    if (!event->handled && widget->parent)
+    // Bubble up the parent chain iteratively (avoids stack overflow on deep trees)
+    vg_widget_t *current = widget->parent;
+    while (!event->handled && current)
     {
-        return vg_event_send(widget->parent, event);
+        if (current->vtable && current->vtable->handle_event)
+            current->vtable->handle_event(current, event);
+        current = current->parent;
     }
 
     return event->handled;

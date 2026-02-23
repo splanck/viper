@@ -558,6 +558,18 @@ extern "C"
     /// @param color Pixel color (24-bit RGB)
     void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color);
 
+    /// @brief Plot a single pixel using source-over alpha blending.
+    /// @details Composites src_color (0xAARRGGBB) over the existing framebuffer
+    ///          pixel using the Porter-Duff source-over formula:
+    ///            dst.rgb = src.rgb * (src.a/255) + dst.rgb * (1 - src.a/255)
+    ///          If src_color is fully opaque (alpha == 0xFF), this is identical to
+    ///          vgfx_pset. Pixels outside window bounds are silently discarded.
+    /// @param window Window handle
+    /// @param x      X coordinate (pixels from left edge)
+    /// @param y      Y coordinate (pixels from top edge)
+    /// @param color  Source color with alpha (0xAARRGGBB)
+    void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color);
+
     /// @brief Read the color of a single pixel.
     /// @details Retrieves the current color at (x, y) from the framebuffer.
     ///          Returns 0 (failure) if coordinates are out of bounds or window is

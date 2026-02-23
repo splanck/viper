@@ -29,6 +29,7 @@ typedef struct rt_camera_impl
     int64_t min_y;      ///< Minimum Y bound
     int64_t max_x;      ///< Maximum X bound
     int64_t max_y;      ///< Maximum Y bound
+    int64_t dirty;      ///< 1 if position/zoom/rotation changed since last rt_camera_clear_dirty
 } rt_camera_impl;
 
 /// @brief Clamp camera position to bounds.
@@ -73,6 +74,7 @@ void *rt_camera_new(int64_t width, int64_t height)
     camera->min_y = 0;
     camera->max_x = 0;
     camera->max_y = 0;
+    camera->dirty = 1; /* newly created camera is always dirty */
 
     return camera;
 }
@@ -100,6 +102,7 @@ void rt_camera_set_x(void *camera_ptr, int64_t x)
     }
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->x = x;
+    camera->dirty = 1;
     camera_clamp_bounds(camera);
 }
 
@@ -122,6 +125,7 @@ void rt_camera_set_y(void *camera_ptr, int64_t y)
     }
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->y = y;
+    camera->dirty = 1;
     camera_clamp_bounds(camera);
 }
 
@@ -146,7 +150,9 @@ void rt_camera_set_zoom(void *camera_ptr, int64_t zoom)
         zoom = 10;
     if (zoom > 1000)
         zoom = 1000;
-    ((rt_camera_impl *)camera_ptr)->zoom = zoom;
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    camera->zoom = zoom;
+    camera->dirty = 1;
 }
 
 int64_t rt_camera_get_rotation(void *camera_ptr)
@@ -166,7 +172,9 @@ void rt_camera_set_rotation(void *camera_ptr, int64_t degrees)
         rt_trap("Camera.Rotation: null camera");
         return;
     }
-    ((rt_camera_impl *)camera_ptr)->rotation = degrees;
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    camera->rotation = degrees;
+    camera->dirty = 1;
 }
 
 int64_t rt_camera_get_width(void *camera_ptr)
@@ -304,4 +312,22 @@ void rt_camera_clear_bounds(void *camera_ptr)
         return;
     }
     ((rt_camera_impl *)camera_ptr)->has_bounds = 0;
+}
+
+//=============================================================================
+// Dirty Flag — Enables callers to skip re-rendering when camera is stationary
+//=============================================================================
+
+int64_t rt_camera_is_dirty(void *camera_ptr)
+{
+    if (!camera_ptr)
+        return 0;
+    return ((rt_camera_impl *)camera_ptr)->dirty;
+}
+
+void rt_camera_clear_dirty(void *camera_ptr)
+{
+    if (!camera_ptr)
+        return;
+    ((rt_camera_impl *)camera_ptr)->dirty = 0;
 }

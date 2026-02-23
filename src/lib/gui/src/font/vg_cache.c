@@ -281,11 +281,14 @@ void vg_cache_put(vg_glyph_cache_t *cache, float size, uint32_t codepoint, const
     {
         size_t bitmap_size = glyph->width * glyph->height;
         entry->glyph.bitmap = malloc(bitmap_size);
-        if (entry->glyph.bitmap)
+        if (!entry->glyph.bitmap)
         {
-            memcpy(entry->glyph.bitmap, glyph->bitmap, bitmap_size);
-            cache->memory_used += bitmap_size;
+            // Bitmap allocation failed — discard entry rather than caching a NULL bitmap
+            free(entry);
+            return;
         }
+        memcpy(entry->glyph.bitmap, glyph->bitmap, bitmap_size);
+        cache->memory_used += bitmap_size;
     }
 
     // Insert at head of bucket

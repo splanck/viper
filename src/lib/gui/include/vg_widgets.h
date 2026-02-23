@@ -81,6 +81,12 @@ extern "C"
         vg_v_align_t v_align; ///< Vertical text alignment
         bool word_wrap;       ///< Enable word wrapping
         int max_lines;        ///< Maximum lines (0 = unlimited)
+
+        /* Word-wrap line cache — populated by measure, consumed by paint.
+         * Private; do not access from outside vg_label.c. */
+        char  **wrap_line_bufs;  ///< malloc'd array of malloc'd line strings
+        int     wrap_line_count; ///< number of entries in wrap_line_bufs
+        float   wrap_cached_w;   ///< wrap_width for which cache is valid (-1 = invalid)
     } vg_label_t;
 
     /// @brief Create a new label widget
@@ -167,6 +173,11 @@ extern "C"
     /// @param button Button widget
     /// @param text New text (copied internally)
     void vg_button_set_text(vg_button_t *button, const char *text);
+
+    /// @brief Get the current label text of a button.
+    /// @param button Button widget
+    /// @return Pointer to internal text string (valid until next vg_button_set_text call), or NULL
+    const char *vg_button_get_text(vg_button_t *button);
 
     /// @brief Set button click callback
     /// @param button Button widget
@@ -328,6 +339,11 @@ extern "C"
     /// @param size Font size in pixels
     void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size);
 
+    /// @brief Advance cursor blink timer; call each frame with elapsed seconds
+    /// @param input Text input widget
+    /// @param dt Elapsed time in seconds since last call
+    void vg_textinput_tick(vg_textinput_t *input, float dt);
+
     //=============================================================================
     // Checkbox Widget
     //=============================================================================
@@ -390,6 +406,11 @@ extern "C"
     void vg_checkbox_set_on_change(vg_checkbox_t *checkbox,
                                    vg_checkbox_callback_t callback,
                                    void *user_data);
+
+    /// @brief Set the indeterminate (tri-state) state of a checkbox.
+    /// @param checkbox     Checkbox widget.
+    /// @param indeterminate true to show dash (indeterminate); false to clear it.
+    void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate);
 
     //=============================================================================
     // ScrollView Widget
@@ -821,6 +842,11 @@ extern "C"
 
     /// @brief Set whether to show percentage text
     void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show);
+
+    /// @brief Advance indeterminate animation; call each frame with elapsed seconds
+    /// @param progress Progress bar widget
+    /// @param dt Elapsed time in seconds since last call
+    void vg_progressbar_tick(vg_progressbar_t *progress, float dt);
 
     //=============================================================================
     // RadioButton Widget

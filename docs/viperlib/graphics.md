@@ -1188,6 +1188,8 @@ Tiles in the tileset image are arranged left-to-right, top-to-bottom:
 | `ToScreenY(worldY)`              | `Integer(Integer)`                     | Convert world Y to screen Y                      |
 | `ToWorldX(screenX)`              | `Integer(Integer)`                     | Convert screen X to world X                      |
 | `ToWorldY(screenY)`              | `Integer(Integer)`                     | Convert screen Y to world Y                      |
+| `IsDirty()`                      | `Integer()`                            | Returns 1 if position/zoom/rotation changed since last `ClearDirty` |
+| `ClearDirty()`                   | `Void()`                               | Reset the dirty flag (call after re-rendering)   |
 
 ### Zia Example
 
@@ -1771,6 +1773,82 @@ batch.End(canvas)
 - **Minimize Begin/End calls:** Each Begin/End pair flushes the batch
 - **Use depth sorting wisely:** Disable `SetSortByDepth` when not needed for faster rendering
 - **Pre-allocate batches:** Create SpriteBatch once with sufficient capacity, reuse each frame
+
+---
+
+## Viper.Game.SpriteAnimation
+
+Frame-based sprite animation controller. Use alongside `Viper.Graphics.Sprite` to drive animated sprites with configurable speed, looping, and ping-pong modes.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Game.SpriteAnimation()`
+
+### Properties
+
+| Property       | Type    | Access | Description                                              |
+|----------------|---------|--------|----------------------------------------------------------|
+| `Frame`        | Integer | R/W    | Current frame index                                      |
+| `FrameCount`   | Integer | Read   | Total number of frames (set via `Setup`)                 |
+| `FrameDuration`| Integer | R/W    | Duration of each frame in milliseconds                   |
+| `IsPlaying`    | Boolean | Read   | True if animation is currently playing                   |
+| `IsPaused`     | Boolean | Read   | True if animation is paused                              |
+| `IsFinished`   | Boolean | Read   | True if non-looping animation reached the last frame     |
+| `Progress`     | Integer | Read   | Playback progress 0–100 (percent complete)               |
+| `Speed`        | Double  | R/W    | Playback speed multiplier (1.0 = normal, 2.0 = double)   |
+| `Loop`         | Boolean | R/W    | Loop when last frame is reached (default: true)          |
+| `PingPong`     | Boolean | R/W    | Reverse direction at end instead of restarting           |
+| `FrameChanged` | Boolean | Read   | True if frame advanced on the last `Update()` call       |
+
+### Methods
+
+| Method                            | Signature                               | Description                                        |
+|-----------------------------------|-----------------------------------------|----------------------------------------------------|
+| `Setup(startFrame, endFrame, fps)` | `Void(Integer, Integer, Integer)`      | Configure frame range and playback speed            |
+| `Play()`                          | `Void()`                                | Start or resume playback                           |
+| `Stop()`                          | `Void()`                                | Stop and reset to first frame                      |
+| `Pause()`                         | `Void()`                                | Pause at the current frame                         |
+| `Resume()`                        | `Void()`                                | Resume from the paused frame                       |
+| `Reset()`                         | `Void()`                                | Reset to first frame without stopping              |
+| `Update()`                        | `Boolean()`                             | Advance animation by one frame tick; returns true if frame changed |
+| `Destroy()`                       | `Void()`                                | Free the animator                                  |
+
+### Zia Example
+
+```zia
+module AnimDemo;
+
+bind Viper.Terminal;
+bind Viper.Graphics.Sprite as Sprite;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Game.SpriteAnimation as Anim;
+
+func start() {
+    var canvas = Canvas.New("Sprite Animation", 400, 300);
+    var hero = Sprite.FromFile("hero_sheet.bmp");
+
+    var walk = Anim.New();
+    walk.Setup(0, 7, 12);  // frames 0-7 at 12 FPS
+    walk.set_Loop(true);
+    walk.Play();
+
+    while canvas.get_ShouldClose() == 0 {
+        canvas.Poll();
+        canvas.Clear(0x000000);
+
+        if walk.Update() == true {
+            hero.set_Frame(walk.get_Frame());
+        }
+        hero.Draw(canvas);
+        canvas.Flip();
+    }
+}
+```
+
+### Notes
+
+- Call `Update()` once per frame in your game loop; it advances the frame timer and returns `true` when the visible frame changes.
+- `FrameChanged` is a convenience flag — equivalent to the `Update()` return value — useful when calling `Update()` elsewhere but checking in a different location.
+- `PingPong` and `Loop` are independent: setting both causes the animation to reverse at the end and loop indefinitely; `PingPong` alone (no `Loop`) plays forward then backward once.
 
 ---
 

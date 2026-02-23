@@ -313,6 +313,11 @@ void vg_button_set_text(vg_button_t *button, const char *text)
     button->base.needs_paint = true;
 }
 
+const char *vg_button_get_text(vg_button_t *button)
+{
+    return button ? button->text : NULL;
+}
+
 void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, void *user_data)
 {
     if (!button)

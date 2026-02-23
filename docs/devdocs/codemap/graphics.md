@@ -2,7 +2,7 @@
 
 Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runtime graphics classes (`src/runtime/rt_*.c`).
 
-Last updated: 2026-01-15
+Last updated: 2026-02-22
 
 ## Runtime Classes (`src/runtime/`)
 
@@ -11,21 +11,21 @@ The Viper.Graphics.* namespace is implemented by these C runtime files:
 | File                | Purpose                                                                   |
 |---------------------|---------------------------------------------------------------------------|
 | `rt_camera.h`       | Camera class declaration                                                  |
-| `rt_camera.c`       | 2D viewport camera with zoom, bounds, coordinate transforms               |
+| `rt_camera.c`       | 2D viewport camera with zoom, bounds, coordinate transforms; dirty-flag API (`rt_camera_is_dirty`, `rt_camera_clear_dirty`) for skipping redundant matrix recalculation |
 | `rt_graphics.h`     | Canvas and Color class declarations                                       |
 | `rt_graphics.c`     | Canvas drawing, Color utilities (RGB, HSL, lerp, brighten/darken)         |
 | `rt_pixels.h`       | Pixels class declaration                                                  |
 | `rt_pixels.c`       | Software image buffer, image processing (invert, grayscale, blur, resize) |
 | `rt_sprite.h`       | Sprite class declaration                                                  |
-| `rt_sprite.c`       | Animated sprite with animation, scaling, collision detection              |
-| `rt_spriteanim.h`   | Sprite animation controller declaration                                   |
-| `rt_spriteanim.c`   | Frame-based sprite animation (play/pause/stop, looping, ping-pong)        |
+| `rt_sprite.c`       | Animated sprite with scaling, collision detection, and multi-frame support |
+| `rt_spriteanim.h`   | `Viper.Game.SpriteAnimation` class declaration                            |
+| `rt_spriteanim.c`   | Frame-based sprite animation state machine (play/pause/stop, looping, ping-pong, speed multiplier) — exposed as `Viper.Game.SpriteAnimation` |
 | `rt_spritebatch.h`  | SpriteBatch class declaration                                             |
 | `rt_spritebatch.c`  | Efficient batched sprite rendering                                        |
 | `rt_spritesheet.h`  | SpriteSheet class declaration                                             |
 | `rt_spritesheet.c`  | Sprite sheet/atlas for named region extraction from a single texture      |
 | `rt_tilemap.h`      | Tilemap class declaration                                                 |
-| `rt_tilemap.c`      | Tile-based map rendering with tileset support                             |
+| `rt_tilemap.c`      | Tile-based map rendering with tileset support; viewport culling renders only the tiles intersecting the current camera bounds |
 
 ## Low-Level C Library
 
@@ -50,10 +50,10 @@ The underlying ViperGFX library provides platform-specific window management and
 
 | File                    | Purpose                                |
 |-------------------------|----------------------------------------|
-| `vgfx_platform_linux.c` | Linux X11 backend (stub)               |
+| `vgfx_platform_linux.c` | Linux X11 backend — functional; 32-bit RGBA XImage (depth=32) preserves alpha channel correctly |
 | `vgfx_platform_macos.m` | macOS Cocoa backend (fully functional) |
 | `vgfx_platform_mock.c`  | Mock backend for deterministic testing |
-| `vgfx_platform_win32.c` | Windows Win32 backend (stub)           |
+| `vgfx_platform_win32.c` | Windows Win32 backend — functional; RGBA→BGRA conversion uses 4-pixel unrolled batch for reduced per-frame overhead |
 
 ## Tests (`tests/`)
 

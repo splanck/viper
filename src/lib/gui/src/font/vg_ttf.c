@@ -11,7 +11,16 @@
 static const uint8_t *ttf_find_table(vg_font_t *font, uint32_t tag, uint32_t *out_len)
 {
     const uint8_t *data = font->data;
+
+    /* Minimum header size: 12 bytes (sfVersion + numTables + searchRange + ...) */
+    if (font->data_size < 12)
+        return NULL;
+
     uint16_t num_tables = ttf_read_u16(data + 4);
+
+    /* Validate that the entire table directory fits within the file */
+    if ((uint32_t)(12 + (uint32_t)num_tables * 16) > font->data_size)
+        num_tables = (uint16_t)((font->data_size - 12) / 16);
 
     for (int i = 0; i < num_tables; i++)
     {
@@ -106,6 +115,14 @@ static bool ttf_parse_cmap_format4(vg_font_t *font, const uint8_t *subtable)
     if (!font->cmap4_end_codes || !font->cmap4_start_codes || !font->cmap4_id_deltas ||
         !font->cmap4_id_range_offsets)
     {
+        free(font->cmap4_end_codes);
+        free(font->cmap4_start_codes);
+        free(font->cmap4_id_deltas);
+        free(font->cmap4_id_range_offsets);
+        font->cmap4_end_codes = NULL;
+        font->cmap4_start_codes = NULL;
+        font->cmap4_id_deltas = NULL;
+        font->cmap4_id_range_offsets = NULL;
         return false;
     }
 
@@ -174,6 +191,13 @@ static bool ttf_parse_cmap_format12(vg_font_t *font, const uint8_t *subtable)
 
     if (!font->cmap12_start_codes || !font->cmap12_end_codes || !font->cmap12_start_glyph_ids)
     {
+        free(font->cmap12_start_codes);
+        free(font->cmap12_end_codes);
+        free(font->cmap12_start_glyph_ids);
+        font->cmap12_start_codes = NULL;
+        font->cmap12_end_codes = NULL;
+        font->cmap12_start_glyph_ids = NULL;
+        font->cmap12_num_groups = 0;
         return false;
     }
 
@@ -376,6 +400,15 @@ bool ttf_parse_name(vg_font_t *font, const uint8_t *data, uint32_t len)
 // Parse All Tables
 //=============================================================================
 
+static int ttf_kern_pair_cmp(const void *a, const void *b)
+{
+    const ttf_kern_pair_t *pa = (const ttf_kern_pair_t *)a;
+    const ttf_kern_pair_t *pb = (const ttf_kern_pair_t *)b;
+    uint32_t ka = ((uint32_t)pa->left << 16) | pa->right;
+    uint32_t kb = ((uint32_t)pb->left << 16) | pb->right;
+    return (ka > kb) - (ka < kb);
+}
+
 bool ttf_parse_tables(vg_font_t *font)
 {
     const uint8_t *data = font->data;
@@ -427,6 +460,14 @@ bool ttf_parse_tables(vg_font_t *font)
     {
         font->kern_offset = (uint32_t)(table - font->data);
         ttf_parse_kern(font, table, len);
+        // Sort kern pairs by (left<<16)|right so binary search works correctly
+        if (font->kern_pairs && font->kern_pair_count > 1)
+        {
+            qsort(font->kern_pairs,
+                  font->kern_pair_count,
+                  sizeof(ttf_kern_pair_t),
+                  ttf_kern_pair_cmp);
+        }
     }
 
     table = ttf_find_table(font, TTF_TAG_NAME, &len);

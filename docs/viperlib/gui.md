@@ -11,6 +11,7 @@
 - [Viper.GUI.Font](#vipergui-font)
 - [Common Widget Functions](#common-widget-functions)
 - [Layout Widgets](#layout-widgets)
+  - [Grid](#grid)
 - [Basic Widgets](#basic-widgets)
   - [Label](#label)
   - [Button](#button)
@@ -346,6 +347,52 @@ var l3 = Label.New(vbox, "Third");
 
 ---
 
+### Grid
+
+Fixed grid layout — arranges children in explicit column/row cells with optional spanning.
+
+**Constructor:** `NEW Viper.GUI.Grid(columns, rows)`
+
+| Method                                       | Signature                                         | Description                                     |
+|----------------------------------------------|---------------------------------------------------|-------------------------------------------------|
+| `SetColumns(n)`                              | `Void(Integer)`                                   | Change number of columns                        |
+| `SetRows(n)`                                 | `Void(Integer)`                                   | Change number of rows                           |
+| `SetGap(colGap, rowGap)`                     | `Void(Double, Double)`                            | Set gap between columns and rows                |
+| `SetColumnWidth(col, width)`                 | `Void(Integer, Double)`                           | Override a specific column's width              |
+| `SetRowHeight(row, height)`                  | `Void(Integer, Double)`                           | Override a specific row's height                |
+| `Place(child, col, row, colSpan, rowSpan)`   | `Void(Widget, Integer, Integer, Integer, Integer)` | Place a child in a specific cell (supports spanning) |
+
+```basic
+' 3-column, 2-row grid
+DIM grid AS Viper.GUI.Grid
+grid = NEW Viper.GUI.Grid(3, 2)
+grid.SetGap(8, 8)
+
+' Fixed first column width, others auto
+grid.SetColumnWidth(0, 120)
+
+' Place widgets in cells (col, row, colSpan, rowSpan)
+DIM lbl AS Viper.GUI.Label
+lbl = NEW Viper.GUI.Label(grid, "Name:")
+grid.Place(lbl, 0, 0, 1, 1)
+
+DIM input AS Viper.GUI.TextInput
+input = NEW Viper.GUI.TextInput(grid)
+grid.Place(input, 1, 0, 2, 1)  ' spans 2 columns
+
+DIM btn AS Viper.GUI.Button
+btn = NEW Viper.GUI.Button(grid, "Submit")
+grid.Place(btn, 2, 1, 1, 1)
+```
+
+### Notes
+
+- Unset column widths and row heights are distributed equally from the remaining space.
+- `SetColumnWidth` and `SetRowHeight` set fixed pixel sizes; use sparingly to keep layouts responsive.
+- Children must be added to the Grid as children before calling `Place`.
+
+---
+
 ## Basic Widgets
 
 ### Label
@@ -382,6 +429,7 @@ Clickable button widget.
 
 | Method                    | Signature                  | Description                              |
 |---------------------------|----------------------------|------------------------------------------|
+| `GetText()`               | `String()`                 | Get current button label text            |
 | `SetText(text)`           | `Void(String)`             | Set button text                          |
 | `SetFont(font, size)`     | `Void(Font, Double)`       | Set font and size                        |
 | `SetStyle(style)`         | `Void(Integer)`            | Set style (0=default, 1=primary, 2=secondary, 3=danger, 4=text) |
@@ -423,6 +471,7 @@ Single-line text input field.
 | `SetText(text)`              | `Void(String)`     | Set input text           |
 | `SetPlaceholder(text)`       | `Void(String)`     | Set placeholder text     |
 | `SetFont(font, size)`        | `Void(Font, Double)`| Set font and size       |
+| `Tick(dt)`                   | `Void(Double)`     | Advance cursor blink timer (call each frame with delta-time in seconds) |
 
 ```basic
 DIM nameInput AS Viper.GUI.TextInput
@@ -452,11 +501,12 @@ Toggle checkbox with label.
 
 **Constructor:** `NEW Viper.GUI.Checkbox(parent, text)`
 
-| Method                | Signature       | Description              |
-|-----------------------|-----------------|--------------------------|
-| `IsChecked()`         | `Boolean()`     | Get checked state        |
-| `SetChecked(checked)` | `Void(Integer)` | Set checked state        |
-| `SetText(text)`       | `Void(String)`  | Set label text           |
+| Method                        | Signature       | Description                                      |
+|-------------------------------|-----------------|--------------------------------------------------|
+| `IsChecked()`                 | `Boolean()`     | Get checked state                                |
+| `SetChecked(checked)`         | `Void(Integer)` | Set checked state                                |
+| `SetIndeterminate(state)`     | `Void(Boolean)` | Set indeterminate (tri-state) display — shown as dash instead of check mark |
+| `SetText(text)`               | `Void(String)`  | Set label text                                   |
 
 ```basic
 DIM rememberMe AS Viper.GUI.Checkbox
@@ -600,9 +650,11 @@ Progress indicator bar.
 |----------|--------|--------|------------------------------|
 | `Value`  | Double | Read   | Progress value (0.0 to 1.0)  |
 
-| Method                     | Signature          | Description              |
-|----------------------------|--------------------|--------------------------|
-| `SetValue(value)`          | `Void(Double)`     | Set progress (0.0-1.0)   |
+| Method                     | Signature          | Description                                              |
+|----------------------------|--------------------|----------------------------------------------------------|
+| `SetValue(value)`          | `Void(Double)`     | Set progress (0.0-1.0)                                   |
+| `SetIndeterminate(state)`  | `Void(Boolean)`    | Enable/disable indeterminate (animated spinner) mode     |
+| `Tick(dt)`                 | `Void(Double)`     | Advance indeterminate animation (call each frame with delta-time in seconds) |
 
 ```basic
 DIM progress AS Viper.GUI.ProgressBar
@@ -1043,12 +1095,13 @@ Full-featured code editor with syntax highlighting.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 
-| Property     | Type    | Access | Description                    |
-|--------------|---------|--------|--------------------------------|
-| `Text`       | String  | Read   | Editor content                 |
-| `LineCount`  | Integer | Read   | Number of lines                |
-| `CursorLine` | Integer | Read   | Current cursor line            |
-| `CursorCol`  | Integer | Read   | Current cursor column          |
+| Property     | Type    | Access | Description                                                    |
+|--------------|---------|--------|----------------------------------------------------------------|
+| `Text`       | String  | Read   | Editor content                                                 |
+| `LineCount`  | Integer | Read   | Number of lines                                                |
+| `CursorLine` | Integer | Read   | Current cursor line                                            |
+| `CursorCol`  | Integer | Read   | Current cursor column                                          |
+| `WordWrap`   | Boolean | R/W    | Enable visual word-wrap — long lines are split at the viewport edge (display-only; does not affect underlying text) |
 
 | Method                                     | Signature                        | Description                              |
 |--------------------------------------------|----------------------------------|------------------------------------------|

@@ -1,7 +1,141 @@
 // vg_radiobutton.c - RadioButton widget implementation
+#include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_event.h"
+#include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
 #include <string.h>
+
+//=============================================================================
+// Forward Declarations
+//=============================================================================
+
+static void radio_destroy(vg_widget_t *widget);
+static void radio_measure(vg_widget_t *widget, float avail_w, float avail_h);
+static void radio_paint(vg_widget_t *widget, void *canvas);
+static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event);
+static bool radio_can_focus(vg_widget_t *widget);
+
+//=============================================================================
+// RadioButton VTable
+//=============================================================================
+
+static vg_widget_vtable_t g_radio_vtable = {.destroy = radio_destroy,
+                                            .measure = radio_measure,
+                                            .arrange = NULL,
+                                            .paint = radio_paint,
+                                            .handle_event = radio_handle_event,
+                                            .can_focus = radio_can_focus,
+                                            .on_focus = NULL};
+
+static void radio_destroy(vg_widget_t *widget)
+{
+    vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
+    free((void *)radio->text);
+    radio->text = NULL;
+}
+
+static void radio_measure(vg_widget_t *widget, float avail_w, float avail_h)
+{
+    vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
+    (void)avail_w;
+    (void)avail_h;
+
+    float w = radio->circle_size;
+    float h = radio->circle_size;
+
+    if (radio->text && radio->text[0] && radio->font)
+    {
+        vg_text_metrics_t m;
+        vg_font_measure_text(radio->font, radio->font_size, radio->text, &m);
+        w += radio->gap + m.width;
+        if (m.height > h)
+            h = m.height;
+    }
+
+    widget->measured_width = w;
+    widget->measured_height = h;
+    if (widget->measured_height < widget->constraints.min_height)
+        widget->measured_height = widget->constraints.min_height;
+}
+
+static void radio_paint(vg_widget_t *widget, void *canvas)
+{
+    vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
+    vgfx_window_t win = (vgfx_window_t)canvas;
+
+    float r = radio->circle_size / 2.0f;
+    float cx = widget->x + r;
+    float cy = widget->y + widget->height / 2.0f;
+
+    uint32_t border_col = (widget->state & VG_STATE_DISABLED)
+                              ? theme->colors.fg_disabled
+                              : radio->circle_color;
+    uint32_t text_col = (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled
+                                                             : radio->text_color;
+
+    // Outer circle (border)
+    vgfx_fill_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)r, border_col);
+
+    // Inner background (slightly smaller)
+    vgfx_fill_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)(r - 1), theme->colors.bg_primary);
+
+    // Fill dot when selected
+    if (radio->selected)
+        vgfx_fill_circle(win,
+                         (int32_t)cx,
+                         (int32_t)cy,
+                         (int32_t)(r * 0.5f),
+                         radio->fill_color);
+
+    // Focus ring
+    if (widget->state & VG_STATE_FOCUSED)
+        vgfx_circle(win,
+                    (int32_t)cx,
+                    (int32_t)cy,
+                    (int32_t)(r + 2),
+                    theme->colors.border_focus);
+
+    // Label text
+    if (radio->text && radio->font)
+    {
+        float tx = widget->x + radio->circle_size + radio->gap;
+        float ty = cy + radio->font_size * 0.35f;
+        vg_font_draw_text(canvas, radio->font, radio->font_size, tx, ty, radio->text, text_col);
+    }
+}
+
+static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event)
+{
+    vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
+
+    if (!widget->enabled)
+        return false;
+
+    if (event->type == VG_EVENT_CLICK)
+    {
+        vg_radiobutton_set_selected(radio, true);
+        widget->needs_paint = true;
+        event->handled = true;
+        return true;
+    }
+
+    if (event->type == VG_EVENT_KEY_DOWN && event->key.key == VG_KEY_SPACE)
+    {
+        vg_radiobutton_set_selected(radio, true);
+        widget->needs_paint = true;
+        event->handled = true;
+        return true;
+    }
+
+    return false;
+}
+
+static bool radio_can_focus(vg_widget_t *widget)
+{
+    return widget->enabled && widget->visible;
+}
 
 vg_radiogroup_t *vg_radiogroup_create(void)
 {
@@ -32,9 +166,7 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
     if (!radio)
         return NULL;
 
-    radio->base.type = VG_WIDGET_RADIO;
-    radio->base.visible = true;
-    radio->base.enabled = true;
+    vg_widget_init(&radio->base, VG_WIDGET_RADIO, &g_radio_vtable);
     radio->text = text ? strdup(text) : NULL;
     radio->group = group;
 

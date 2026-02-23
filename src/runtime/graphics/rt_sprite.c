@@ -558,3 +558,145 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy)
     sprite->x += dx;
     sprite->y += dy;
 }
+
+//=============================================================================
+// Sprite Animator — Named Animation Clip State Machine
+//=============================================================================
+
+rt_sprite_animator_t *rt_sprite_animator_new(void)
+{
+    rt_sprite_animator_t *anim = calloc(1, sizeof(rt_sprite_animator_t));
+    if (!anim)
+        return NULL;
+    anim->current_clip = -1;
+    anim->playing = 0;
+    return anim;
+}
+
+void rt_sprite_animator_destroy(rt_sprite_animator_t *animator)
+{
+    free(animator);
+}
+
+int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
+                                const char *name,
+                                int64_t start_frame,
+                                int64_t frame_count,
+                                int64_t frame_delay_ms,
+                                int loop)
+{
+    if (!animator || !name)
+        return 0;
+    if (animator->clip_count >= RT_ANIM_MAX_CLIPS)
+        return 0;
+
+    rt_anim_clip_t *clip = &animator->clips[animator->clip_count++];
+    /* Safe string copy: name field is char[64], guarantee NUL termination */
+    int i = 0;
+    while (name[i] && i < 63)
+    {
+        clip->name[i] = name[i];
+        i++;
+    }
+    clip->name[i] = '\0';
+    clip->start_frame = start_frame;
+    clip->frame_count = frame_count > 0 ? frame_count : 1;
+    clip->frame_delay_ms = frame_delay_ms > 0 ? frame_delay_ms : 100;
+    clip->loop = loop;
+    return 1;
+}
+
+int rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
+{
+    if (!animator || !name)
+        return 0;
+
+    for (int i = 0; i < animator->clip_count; i++)
+    {
+        /* Simple string comparison (no strncmp dependency on all platforms) */
+        const char *a = animator->clips[i].name;
+        const char *b = name;
+        int match = 1;
+        while (*a || *b)
+        {
+            if (*a != *b)
+            {
+                match = 0;
+                break;
+            }
+            a++;
+            b++;
+        }
+        if (match)
+        {
+            /* Start the clip only if it differs from the currently playing one */
+            if (animator->current_clip != i || !animator->playing)
+            {
+                animator->current_clip = i;
+                animator->clip_frame = 0;
+                animator->last_update_ms = 0; /* reset on next update */
+                animator->playing = 1;
+            }
+            return 1;
+        }
+    }
+    return 0; /* clip not found */
+}
+
+void rt_sprite_animator_stop(rt_sprite_animator_t *animator)
+{
+    if (!animator)
+        return;
+    animator->playing = 0;
+}
+
+void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
+{
+    if (!animator || !animator->playing || animator->current_clip < 0 || !sprite_ptr)
+        return;
+
+    rt_anim_clip_t *clip = &animator->clips[animator->current_clip];
+    int64_t now = rt_timer_ms();
+
+    if (animator->last_update_ms == 0)
+        animator->last_update_ms = now;
+
+    int64_t elapsed = now - animator->last_update_ms;
+    if (elapsed >= clip->frame_delay_ms)
+    {
+        /* Advance one frame (may be multiple if behind) */
+        int64_t steps = elapsed / clip->frame_delay_ms;
+        animator->clip_frame += steps;
+        animator->last_update_ms += steps * clip->frame_delay_ms;
+
+        if (animator->clip_frame >= clip->frame_count)
+        {
+            if (clip->loop)
+            {
+                animator->clip_frame = animator->clip_frame % clip->frame_count;
+            }
+            else
+            {
+                /* Play-once: hold on last frame */
+                animator->clip_frame = clip->frame_count - 1;
+                animator->playing = 0;
+            }
+        }
+    }
+
+    /* Update the sprite's current frame */
+    int64_t abs_frame = clip->start_frame + animator->clip_frame;
+    rt_sprite_set_frame(sprite_ptr, abs_frame);
+}
+
+int rt_sprite_animator_is_playing(rt_sprite_animator_t *animator)
+{
+    return (animator && animator->playing) ? 1 : 0;
+}
+
+const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator)
+{
+    if (!animator || !animator->playing || animator->current_clip < 0)
+        return NULL;
+    return animator->clips[animator->current_clip].name;
+}

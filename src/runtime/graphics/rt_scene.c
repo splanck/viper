@@ -127,30 +127,18 @@ static void mark_transform_dirty(scene_node_impl *node)
     }
 }
 
-static void update_world_transform(scene_node_impl *node)
+// Compute the world transform for a single node, assuming its parent is already clean.
+static void apply_node_transform(scene_node_impl *node)
 {
-    if (!node || !node->transform_dirty)
-        return;
-
     if (node->parent)
     {
-        // Ensure parent is up-to-date
-        update_world_transform(node->parent);
-
-        // Combine transforms
-        // Scale
         node->world_scale_x = (node->parent->world_scale_x * node->scale_x) / 100;
         node->world_scale_y = (node->parent->world_scale_y * node->scale_y) / 100;
-
-        // Rotation
         node->world_rotation = node->parent->world_rotation + node->rotation;
 
-        // Position: rotate local position by parent rotation, scale by parent scale
         int64_t scaled_x = (node->x * node->parent->world_scale_x) / 100;
         int64_t scaled_y = (node->y * node->parent->world_scale_y) / 100;
 
-        // Simple rotation (integer approximation for performance)
-        // For precise rotation, we'd need fixed-point or floating-point math
         if (node->parent->world_rotation == 0)
         {
             node->world_x = node->parent->world_x + scaled_x;
@@ -158,28 +146,18 @@ static void update_world_transform(scene_node_impl *node)
         }
         else
         {
-            // Approximate rotation using integer math
-            // sin/cos lookup could be used for better precision
-            double rad = node->parent->world_rotation * 3.14159265359 / 180.0;
-            double cos_r = 1.0; // cos(rad)
-            double sin_r = 0.0; // sin(rad)
-
-            // Simple inline sin/cos approximation
             extern double cos(double);
             extern double sin(double);
-            cos_r = cos(rad);
-            sin_r = sin(rad);
+            double rad = node->parent->world_rotation * 3.14159265359 / 180.0;
+            double cos_r = cos(rad);
+            double sin_r = sin(rad);
 
-            int64_t rx = (int64_t)(scaled_x * cos_r - scaled_y * sin_r);
-            int64_t ry = (int64_t)(scaled_x * sin_r + scaled_y * cos_r);
-
-            node->world_x = node->parent->world_x + rx;
-            node->world_y = node->parent->world_y + ry;
+            node->world_x = node->parent->world_x + (int64_t)(scaled_x * cos_r - scaled_y * sin_r);
+            node->world_y = node->parent->world_y + (int64_t)(scaled_x * sin_r + scaled_y * cos_r);
         }
     }
     else
     {
-        // Root node: local = world
         node->world_x = node->x;
         node->world_y = node->y;
         node->world_scale_x = node->scale_x;
@@ -188,6 +166,50 @@ static void update_world_transform(scene_node_impl *node)
     }
 
     node->transform_dirty = 0;
+}
+
+// Iterative equivalent of the former recursive update_world_transform.
+// Walks UP the ancestor chain to find the highest dirty ancestor, then
+// applies transforms top-down so each node's parent is always clean first.
+static void update_world_transform(scene_node_impl *node)
+{
+    if (!node || !node->transform_dirty)
+        return;
+
+    // Collect the chain of dirty ancestors (including node itself).
+    // Use a small fixed inline buffer; spill to heap for deep hierarchies.
+    scene_node_impl *inline_buf[64];
+    scene_node_impl **chain = inline_buf;
+    int capacity = 64;
+    int depth = 0;
+    int heap_allocated = 0;
+
+    scene_node_impl *cur = node;
+    while (cur && cur->transform_dirty)
+    {
+        if (depth >= capacity)
+        {
+            int new_cap = capacity * 2;
+            scene_node_impl **grown = malloc((size_t)new_cap * sizeof(*grown));
+            if (!grown)
+                break; // OOM — process what we have (partial update, better than overflow)
+            memcpy(grown, chain, (size_t)depth * sizeof(*grown));
+            if (heap_allocated)
+                free(chain);
+            chain = grown;
+            capacity = new_cap;
+            heap_allocated = 1;
+        }
+        chain[depth++] = cur;
+        cur = cur->parent;
+    }
+
+    // Process top-down (root-most dirty node first)
+    for (int i = depth - 1; i >= 0; i--)
+        apply_node_transform(chain[i]);
+
+    if (heap_allocated)
+        free(chain);
 }
 
 //=============================================================================

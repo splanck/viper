@@ -242,17 +242,27 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas)
             float text_y =
                 widget->y + (widget->height + font_metrics.ascent + font_metrics.descent) / 2.0f;
 
-            // Add modified indicator
+            // Add modified indicator — allocate dynamically so long titles are
+            // never truncated silently.
             const char *title = tab->title;
-            char modified_title[256];
-            if (tab->modified)
+            char *modified_title = NULL;
+            if (tab->modified && tab->title)
             {
-                snprintf(modified_title, sizeof(modified_title), "%s *", tab->title);
-                title = modified_title;
+                size_t tlen = strlen(tab->title);
+                modified_title = (char *)malloc(tlen + 3); /* " *\0" */
+                if (modified_title)
+                {
+                    memcpy(modified_title, tab->title, tlen);
+                    modified_title[tlen]     = ' ';
+                    modified_title[tlen + 1] = '*';
+                    modified_title[tlen + 2] = '\0';
+                    title = modified_title;
+                }
             }
 
             vg_font_draw_text(
                 canvas, tabbar->font, tabbar->font_size, text_x, text_y, title, tabbar->text_color);
+            free(modified_title);
         }
 
         // Draw close button if closable

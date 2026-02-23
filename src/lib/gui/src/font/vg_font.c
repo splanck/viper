@@ -266,7 +266,10 @@ uint32_t vg_utf8_decode(const char **str)
     {
         // 2-byte sequence
         if ((s[1] & 0xC0) != 0x80)
-            return 0;
+        {
+            *str += 1; // Skip invalid leading byte so callers always advance
+            return 0xFFFD;
+        }
         cp = ((s[0] & 0x1F) << 6) | (s[1] & 0x3F);
         *str += 2;
     }
@@ -274,7 +277,10 @@ uint32_t vg_utf8_decode(const char **str)
     {
         // 3-byte sequence
         if ((s[1] & 0xC0) != 0x80 || (s[2] & 0xC0) != 0x80)
-            return 0;
+        {
+            *str += 1;
+            return 0xFFFD;
+        }
         cp = ((s[0] & 0x0F) << 12) | ((s[1] & 0x3F) << 6) | (s[2] & 0x3F);
         *str += 3;
     }
@@ -282,7 +288,10 @@ uint32_t vg_utf8_decode(const char **str)
     {
         // 4-byte sequence
         if ((s[1] & 0xC0) != 0x80 || (s[2] & 0xC0) != 0x80 || (s[3] & 0xC0) != 0x80)
-            return 0;
+        {
+            *str += 1;
+            return 0xFFFD;
+        }
         cp = ((s[0] & 0x07) << 18) | ((s[1] & 0x3F) << 12) | ((s[2] & 0x3F) << 6) | (s[3] & 0x3F);
         *str += 4;
     }

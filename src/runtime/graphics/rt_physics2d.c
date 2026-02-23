@@ -200,7 +200,7 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y)
 void rt_physics2d_world_step(void *obj, double dt)
 {
     rt_world_impl *w;
-    int64_t i, j;
+    int64_t i;
     if (!obj || dt <= 0.0)
         return;
     w = (rt_world_impl *)obj;
@@ -227,26 +227,99 @@ void rt_physics2d_world_step(void *obj, double dt)
         b->y += b->vy * dt;
     }
 
-    /* 3. Detect and resolve collisions (N^2 narrow phase) */
-    for (i = 0; i < w->body_count; i++)
+    /* 3. Detect and resolve collisions — broad phase + narrow phase.
+     *
+     * Broad phase: uniform 8×8 grid.  Each body is placed in every cell its
+     * AABB touches.  Only pairs that share at least one cell are tested in
+     * the narrow phase.  A 256×256 bit-matrix (8 KB, stack-local static)
+     * ensures each pair is tested at most once even when they share multiple
+     * cells.
+     */
+#define BPG_DIM      8
+#define BPG_CELL_MAX 32  /* max bodies stored per cell */
+
+    if (w->body_count >= 2)
     {
-        for (j = i + 1; j < w->body_count; j++)
+        /* --- 3a. Compute world AABB --- */
+        double wx0 = 1e18, wy0 = 1e18, wx1 = -1e18, wy1 = -1e18;
+        for (i = 0; i < w->body_count; i++)
         {
-            double nx, ny, pen;
-            rt_body_impl *bi = w->bodies[i];
-            rt_body_impl *bj = w->bodies[j];
-            if (!bi || !bj)
-                continue;
-            /* Check collision layer/mask compatibility */
-            if (!((bi->collision_layer & bj->collision_mask) &&
-                  (bj->collision_layer & bi->collision_mask)))
-                continue;
-            if (aabb_overlap(bi, bj, &nx, &ny, &pen))
+            rt_body_impl *b = w->bodies[i];
+            if (!b) continue;
+            if (b->x        < wx0) wx0 = b->x;
+            if (b->y        < wy0) wy0 = b->y;
+            if (b->x + b->w > wx1) wx1 = b->x + b->w;
+            if (b->y + b->h > wy1) wy1 = b->y + b->h;
+        }
+        if (wx1 <= wx0) wx1 = wx0 + 1.0;
+        if (wy1 <= wy0) wy1 = wy0 + 1.0;
+        double cell_w = (wx1 - wx0) / BPG_DIM;
+        double cell_h = (wy1 - wy0) / BPG_DIM;
+
+        /* --- 3b. Build grid (static scratch space; single-threaded) --- */
+        static uint8_t grid_bodies[BPG_DIM * BPG_DIM][BPG_CELL_MAX];
+        static int     grid_count [BPG_DIM * BPG_DIM];
+        memset(grid_count, 0, sizeof(grid_count));
+
+        for (i = 0; i < w->body_count; i++)
+        {
+            rt_body_impl *b = w->bodies[i];
+            if (!b) continue;
+            int cx0 = (int)((b->x        - wx0) / cell_w); if (cx0 < 0) cx0 = 0; if (cx0 >= BPG_DIM) cx0 = BPG_DIM - 1;
+            int cy0 = (int)((b->y        - wy0) / cell_h); if (cy0 < 0) cy0 = 0; if (cy0 >= BPG_DIM) cy0 = BPG_DIM - 1;
+            int cx1 = (int)((b->x + b->w - wx0) / cell_w); if (cx1 < 0) cx1 = 0; if (cx1 >= BPG_DIM) cx1 = BPG_DIM - 1;
+            int cy1 = (int)((b->y + b->h - wy0) / cell_h); if (cy1 < 0) cy1 = 0; if (cy1 >= BPG_DIM) cy1 = BPG_DIM - 1;
+            for (int cy = cy0; cy <= cy1; cy++)
             {
-                resolve_collision(bi, bj, nx, ny, pen);
+                for (int cx = cx0; cx <= cx1; cx++)
+                {
+                    int cell = cy * BPG_DIM + cx;
+                    int cnt = grid_count[cell];
+                    if (cnt < BPG_CELL_MAX)
+                    {
+                        grid_bodies[cell][cnt] = (uint8_t)i;
+                        grid_count[cell] = cnt + 1;
+                    }
+                }
+            }
+        }
+
+        /* --- 3c. Narrow phase: check candidate pairs from grid --- */
+        /* 256×256 bit-matrix: pair (i,j) with i<j stored at bit i*PH_MAX_BODIES+j */
+        static uint8_t pair_checked[PH_MAX_BODIES * PH_MAX_BODIES / 8 + 1];
+        memset(pair_checked, 0, sizeof(pair_checked));
+
+        for (int cell = 0; cell < BPG_DIM * BPG_DIM; cell++)
+        {
+            int cnt = grid_count[cell];
+            for (int a = 0; a < cnt; a++)
+            {
+                for (int b_idx = a + 1; b_idx < cnt; b_idx++)
+                {
+                    int ii = (int)grid_bodies[cell][a];
+                    int jj = (int)grid_bodies[cell][b_idx];
+                    if (ii > jj) { int tmp = ii; ii = jj; jj = tmp; }
+                    /* Skip if already tested */
+                    int bit = ii * PH_MAX_BODIES + jj;
+                    if (pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
+                        continue;
+                    pair_checked[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+
+                    double nx, ny, pen;
+                    rt_body_impl *bi = w->bodies[ii];
+                    rt_body_impl *bj = w->bodies[jj];
+                    if (!bi || !bj) continue;
+                    if (!((bi->collision_layer & bj->collision_mask) &&
+                          (bj->collision_layer & bi->collision_mask))) continue;
+                    if (aabb_overlap(bi, bj, &nx, &ny, &pen))
+                        resolve_collision(bi, bj, nx, ny, pen);
+                }
             }
         }
     }
+
+#undef BPG_DIM
+#undef BPG_CELL_MAX
 }
 
 void rt_physics2d_world_add(void *obj, void *body)

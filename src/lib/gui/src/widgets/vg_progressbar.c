@@ -88,7 +88,7 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas)
         snprintf(buf, sizeof(buf), "%d%%", pct);
         float cx = widget->x + widget->width / 2.0f;
         float cy = widget->y + widget->height / 2.0f + pb->font_size * 0.35f;
-        vg_font_draw_text(canvas, pb->font, pb->font_size, cx, cy, buf, 0x00FFFFFF);
+        vg_font_draw_text(canvas, pb->font, pb->font_size, cx, cy, buf, 0xFFFFFFFF);
     }
 }
 
@@ -146,4 +146,18 @@ void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show)
     if (!progress)
         return;
     progress->show_percentage = show;
+}
+
+void vg_progressbar_tick(vg_progressbar_t *progress, float dt)
+{
+    if (!progress)
+        return;
+    if (progress->style == VG_PROGRESS_INDETERMINATE)
+    {
+        // Advance animation phase at a moderate speed; wrap at 1.0
+        progress->animation_phase += dt * 0.7f;
+        if (progress->animation_phase >= 1.0f)
+            progress->animation_phase -= 1.0f;
+        progress->base.needs_paint = true;
+    }
 }

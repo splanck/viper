@@ -48,6 +48,9 @@ vg_label_t *vg_label_create(vg_widget_t *parent, const char *text)
     label->v_align = VG_ALIGN_V_CENTER;
     label->word_wrap = false;
     label->max_lines = 0;
+    label->wrap_line_bufs = NULL;
+    label->wrap_line_count = 0;
+    label->wrap_cached_w = -1.0f;
 
     // Add to parent
     if (parent)
@@ -58,6 +61,20 @@ vg_label_t *vg_label_create(vg_widget_t *parent, const char *text)
     return label;
 }
 
+/// @brief Free the word-wrap line cache.
+static void label_free_wrap_cache(vg_label_t *label)
+{
+    if (label->wrap_line_bufs)
+    {
+        for (int i = 0; i < label->wrap_line_count; i++)
+            free(label->wrap_line_bufs[i]);
+        free(label->wrap_line_bufs);
+        label->wrap_line_bufs = NULL;
+    }
+    label->wrap_line_count = 0;
+    label->wrap_cached_w = -1.0f;
+}
+
 static void label_destroy(vg_widget_t *widget)
 {
     vg_label_t *label = (vg_label_t *)widget;
@@ -66,81 +83,147 @@ static void label_destroy(vg_widget_t *widget)
         free((void *)label->text);
         label->text = NULL;
     }
+    label_free_wrap_cache(label);
 }
 
-/// @brief Measure the height of word-wrapped text capped at max_lines.
+/// @brief Build the word-wrap line cache and measure total height.
+///
+/// Runs the greedy algorithm once, storing each line as a heap-allocated
+/// string in label->wrap_line_bufs.  Subsequent calls with the same
+/// wrap_width return immediately using the cached results.
+///
 /// @return Number of lines produced.
 static int label_measure_wrapped(vg_label_t *label,
                                   float wrap_width,
                                   float line_height,
                                   float *out_total_height)
 {
-    const char *p = label->text;
-    float line_w = 0.0f;
-    int lines = 1;
-    char word_buf[1024];
+    /* Cache hit: same width as last measure — reuse stored lines. */
+    if (label->wrap_line_bufs && label->wrap_cached_w == wrap_width)
+    {
+        if (out_total_height)
+            *out_total_height = label->wrap_line_count * line_height;
+        return label->wrap_line_count;
+    }
+
+    /* Cache miss: invalidate old cache and rebuild. */
+    label_free_wrap_cache(label);
+
+    size_t text_len = strlen(label->text);
+    char *word_buf  = malloc(text_len + 1);
+    char *line_buf  = malloc(text_len + 1);
+    if (!word_buf || !line_buf)
+    {
+        free(word_buf);
+        free(line_buf);
+        if (out_total_height) *out_total_height = line_height;
+        return 1;
+    }
+
+    /* Measure space width once */
+    vg_text_metrics_t sm;
+    vg_font_measure_text(label->font, label->font_size, " ", &sm);
+    float space_w = sm.width;
+
+    /* Dynamic cache array */
+    int   cache_cap  = 8;
+    char **cache     = malloc((size_t)cache_cap * sizeof(char *));
+    int   line_count = 0;
+    if (!cache)
+    {
+        free(word_buf); free(line_buf);
+        if (out_total_height) *out_total_height = line_height;
+        return 1;
+    }
+
+    const char *p      = label->text;
+    size_t      line_pos = 0;
+    float       line_w   = 0.0f;
+
+    /* Helper lambda (inline): flush current line_buf to cache */
+#define FLUSH_LINE() do { \
+    if (line_count == cache_cap) { \
+        cache_cap *= 2; \
+        char **tmp = realloc(cache, (size_t)cache_cap * sizeof(char *)); \
+        if (!tmp) goto wrap_oom; \
+        cache = tmp; \
+    } \
+    line_buf[line_pos] = '\0'; \
+    cache[line_count] = strdup(line_buf); \
+    if (!cache[line_count]) goto wrap_oom; \
+    line_count++; \
+    line_pos = 0; line_w = 0.0f; \
+} while (0)
 
     while (*p)
     {
-        /* Collect next word (up to a space or newline) */
+        /* Collect next word */
         const char *start = p;
         while (*p && *p != ' ' && *p != '\n')
             p++;
         size_t word_len = (size_t)(p - start);
 
-        /* Measure the word */
-        if (word_len > 0 && word_len < sizeof(word_buf))
+        if (word_len > 0)
         {
             memcpy(word_buf, start, word_len);
             word_buf[word_len] = '\0';
             vg_text_metrics_t wm;
             vg_font_measure_text(label->font, label->font_size, word_buf, &wm);
 
-            /* Measure separator (space) */
-            float sep_w = 0.0f;
-            if (line_w > 0.0f)
-            {
-                vg_text_metrics_t sm;
-                vg_font_measure_text(label->font, label->font_size, " ", &sm);
-                sep_w = sm.width;
-            }
+            float sep_w = (line_w > 0.0f) ? space_w : 0.0f;
 
             if (line_w > 0.0f && line_w + sep_w + wm.width > wrap_width)
             {
-                /* Word wraps to next line */
-                lines++;
-                if (label->max_lines > 0 && lines > label->max_lines)
-                {
-                    lines = label->max_lines;
-                    break;
-                }
-                line_w = wm.width;
+                /* Wrap: flush line and start fresh */
+                FLUSH_LINE();
+                if (label->max_lines > 0 && line_count >= label->max_lines)
+                    goto wrap_done;
             }
-            else
+            else if (line_w > 0.0f)
             {
-                line_w += sep_w + wm.width;
+                line_buf[line_pos++] = ' ';
+                line_w += sep_w;
             }
+            memcpy(line_buf + line_pos, word_buf, word_len);
+            line_pos += word_len;
+            line_w   += wm.width;
         }
 
-        /* Handle newlines and spaces */
+        /* Skip spaces */
         while (*p == ' ')
             p++;
         if (*p == '\n')
         {
-            lines++;
-            if (label->max_lines > 0 && lines > label->max_lines)
-            {
-                lines = label->max_lines;
-                break;
-            }
-            line_w = 0.0f;
+            FLUSH_LINE();
+            if (label->max_lines > 0 && line_count >= label->max_lines)
+                goto wrap_done;
             p++;
         }
     }
+    /* Flush last line if non-empty */
+    if (line_pos > 0 || line_count == 0)
+        FLUSH_LINE();
+
+wrap_done:
+#undef FLUSH_LINE
+    free(word_buf);
+    free(line_buf);
+
+    label->wrap_line_bufs  = cache;
+    label->wrap_line_count = line_count;
+    label->wrap_cached_w   = wrap_width;
 
     if (out_total_height)
-        *out_total_height = lines * line_height;
-    return lines;
+        *out_total_height = line_count * line_height;
+    return line_count;
+
+wrap_oom:
+    free(word_buf);
+    free(line_buf);
+    for (int k = 0; k < line_count; k++) free(cache[k]);
+    free(cache);
+    if (out_total_height) *out_total_height = line_height;
+    return 1;
 }
 
 static void label_measure(vg_widget_t *widget, float available_width, float available_height)
@@ -227,159 +310,30 @@ static void label_paint(vg_widget_t *widget, void *canvas)
 
     if (label->word_wrap && widget->width > 0.0f)
     {
-        /* Word-wrap paint: re-run the same greedy algorithm used in measure,
-         * emitting each line as it fills up.  Vertical position starts at the
-         * widget top + ascent regardless of v_align (wrapping multi-line text
-         * is only meaningful in top-aligned mode). */
-        float text_y = widget->y + font_metrics.ascent;
+        /* Word-wrap paint: use the line cache populated during measure.
+         * If the cache is stale (different width or not yet built), rebuild it
+         * now before rendering.  This eliminates redundant greedy-algorithm
+         * execution every frame when the label size is stable. */
         float wrap_w = widget->width;
-        float line_w = 0.0f;
-        int lines = 0;
-        char line_buf[4096];
-        size_t line_pos = 0;
-        char word_buf[1024];
+        label_measure_wrapped(label, wrap_w, line_height, NULL);
 
-        vg_text_metrics_t space_m;
-        vg_font_measure_text(label->font, label->font_size, " ", &space_m);
-        float space_w = space_m.width;
-
-        const char *p = label->text;
-
-        while (*p)
+        float text_y = widget->y + font_metrics.ascent;
+        for (int ln = 0; ln < label->wrap_line_count; ln++)
         {
-            const char *word_start = p;
-            while (*p && *p != ' ' && *p != '\n')
-                p++;
-            size_t word_len = (size_t)(p - word_start);
-
-            if (word_len > 0 && word_len < sizeof(word_buf))
-            {
-                memcpy(word_buf, word_start, word_len);
-                word_buf[word_len] = '\0';
-                vg_text_metrics_t wm;
-                vg_font_measure_text(label->font, label->font_size, word_buf, &wm);
-
-                float needed = (line_w > 0.0f) ? (space_w + wm.width) : wm.width;
-
-                bool do_wrap = (line_w > 0.0f && line_w + needed > wrap_w);
-                bool max_hit = (label->max_lines > 0 && lines + 1 >= label->max_lines);
-
-                if (do_wrap || (*p == '\n' && line_pos > 0))
-                {
-                    /* Flush current line */
-                    line_buf[line_pos] = '\0';
-                    float tx = widget->x;
-                    switch (label->h_align)
-                    {
-                        case VG_ALIGN_H_CENTER:
-                        {
-                            vg_text_metrics_t lm;
-                            vg_font_measure_text(label->font, label->font_size, line_buf, &lm);
-                            tx += (widget->width - lm.width) / 2.0f;
-                            break;
-                        }
-                        case VG_ALIGN_H_RIGHT:
-                        {
-                            vg_text_metrics_t lm;
-                            vg_font_measure_text(label->font, label->font_size, line_buf, &lm);
-                            tx += widget->width - lm.width;
-                            break;
-                        }
-                        default:
-                            break;
-                    }
-                    vg_font_draw_text(canvas, label->font, label->font_size, tx, text_y, line_buf, color);
-                    lines++;
-                    text_y += line_height;
-                    line_pos = 0;
-                    line_w = 0.0f;
-
-                    if (max_hit)
-                        goto done_wrap;
-                }
-
-                if (!do_wrap && line_w > 0.0f && line_pos + 1 < sizeof(line_buf))
-                {
-                    line_buf[line_pos++] = ' ';
-                    line_w += space_w;
-                }
-
-                if (line_pos + word_len < sizeof(line_buf))
-                {
-                    memcpy(line_buf + line_pos, word_buf, word_len);
-                    line_pos += word_len;
-                    line_w += wm.width;
-                }
-            }
-
-            while (*p == ' ')
-                p++;
-            if (*p == '\n')
-            {
-                /* Flush line at explicit newline */
-                line_buf[line_pos] = '\0';
-                if (line_pos > 0)
-                {
-                    float tx = widget->x;
-                    switch (label->h_align)
-                    {
-                        case VG_ALIGN_H_CENTER:
-                        {
-                            vg_text_metrics_t lm;
-                            vg_font_measure_text(label->font, label->font_size, line_buf, &lm);
-                            tx += (widget->width - lm.width) / 2.0f;
-                            break;
-                        }
-                        case VG_ALIGN_H_RIGHT:
-                        {
-                            vg_text_metrics_t lm;
-                            vg_font_measure_text(label->font, label->font_size, line_buf, &lm);
-                            tx += widget->width - lm.width;
-                            break;
-                        }
-                        default:
-                            break;
-                    }
-                    vg_font_draw_text(canvas, label->font, label->font_size, tx, text_y, line_buf, color);
-                }
-                lines++;
-                text_y += line_height;
-                line_pos = 0;
-                line_w = 0.0f;
-                p++;
-
-                if (label->max_lines > 0 && lines >= label->max_lines)
-                    goto done_wrap;
-            }
-        }
-
-        /* Draw last (possibly partial) line */
-        if (line_pos > 0 && (label->max_lines == 0 || lines < label->max_lines))
-        {
-            line_buf[line_pos] = '\0';
+            const char *line_text = label->wrap_line_bufs[ln];
             float tx = widget->x;
-            switch (label->h_align)
+            if (label->h_align == VG_ALIGN_H_CENTER || label->h_align == VG_ALIGN_H_RIGHT)
             {
-                case VG_ALIGN_H_CENTER:
-                {
-                    vg_text_metrics_t lm;
-                    vg_font_measure_text(label->font, label->font_size, line_buf, &lm);
+                vg_text_metrics_t lm;
+                vg_font_measure_text(label->font, label->font_size, line_text, &lm);
+                if (label->h_align == VG_ALIGN_H_CENTER)
                     tx += (widget->width - lm.width) / 2.0f;
-                    break;
-                }
-                case VG_ALIGN_H_RIGHT:
-                {
-                    vg_text_metrics_t lm;
-                    vg_font_measure_text(label->font, label->font_size, line_buf, &lm);
+                else
                     tx += widget->width - lm.width;
-                    break;
-                }
-                default:
-                    break;
             }
-            vg_font_draw_text(canvas, label->font, label->font_size, tx, text_y, line_buf, color);
+            vg_font_draw_text(canvas, label->font, label->font_size, tx, text_y, line_text, color);
+            text_y += line_height;
         }
-done_wrap:;
     }
     else
     {
@@ -440,6 +394,7 @@ void vg_label_set_text(vg_label_t *label, const char *text)
         free((void *)label->text);
     }
     label->text = text ? strdup(text) : strdup("");
+    label_free_wrap_cache(label); /* text changed — cache stale */
     label->base.needs_layout = true;
     label->base.needs_paint = true;
 }
@@ -456,6 +411,7 @@ void vg_label_set_font(vg_label_t *label, vg_font_t *font, float size)
 
     label->font = font;
     label->font_size = size > 0 ? size : 13.0f;
+    label_free_wrap_cache(label); /* font metrics changed — cache stale */
     label->base.needs_layout = true;
     label->base.needs_paint = true;
 }

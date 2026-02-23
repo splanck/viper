@@ -149,6 +149,80 @@ extern "C"
     /// @param dy Delta Y.
     void rt_sprite_move(void *sprite, int64_t dx, int64_t dy);
 
+    //=========================================================================
+    // Sprite Animator (named animation clip state machine)
+    //=========================================================================
+
+    /// Maximum number of named animation clips per animator.
+#define RT_ANIM_MAX_CLIPS 32
+
+    /// @brief A single named animation clip.
+    typedef struct rt_anim_clip
+    {
+        char name[64];          ///< Clip name (NUL-terminated)
+        int64_t start_frame;    ///< First frame index in the sprite's frames[]
+        int64_t frame_count;    ///< Number of frames in this clip
+        int64_t frame_delay_ms; ///< Milliseconds between frames
+        int loop;               ///< 1 = loop, 0 = play once and stop
+    } rt_anim_clip_t;
+
+    /// @brief Named animation state machine for sprites.
+    /// @details Tracks which clip is playing, the position within that clip,
+    ///          and elapsed time. Call rt_sprite_animator_update() each frame
+    ///          to advance the animation and synchronize the sprite's frame.
+    typedef struct rt_sprite_animator
+    {
+        rt_anim_clip_t clips[RT_ANIM_MAX_CLIPS]; ///< Registered clips
+        int clip_count;                           ///< Number of registered clips
+        int current_clip;                         ///< Index of playing clip (-1 = idle)
+        int64_t clip_frame;                       ///< Frame index within current clip
+        int64_t last_update_ms;                   ///< Timestamp of last frame advance
+        int playing;                              ///< 1 if animation is running
+    } rt_sprite_animator_t;
+
+    /// @brief Allocate a new animator (caller owns; free with rt_sprite_animator_destroy).
+    rt_sprite_animator_t *rt_sprite_animator_new(void);
+
+    /// @brief Free an animator allocated with rt_sprite_animator_new.
+    void rt_sprite_animator_destroy(rt_sprite_animator_t *animator);
+
+    /// @brief Register a named animation clip.
+    /// @param animator   Animator to add clip to.
+    /// @param name       Clip name (max 63 chars).
+    /// @param start_frame First frame index in the sprite's frames[].
+    /// @param frame_count Number of frames in the clip.
+    /// @param frame_delay_ms Milliseconds between frames.
+    /// @param loop       1 = loop, 0 = play once then stop.
+    /// @return 1 on success, 0 if clip table is full or name is NULL.
+    int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
+                                    const char *name,
+                                    int64_t start_frame,
+                                    int64_t frame_count,
+                                    int64_t frame_delay_ms,
+                                    int loop);
+
+    /// @brief Start playing a named clip.
+    /// @param animator Animator.
+    /// @param name     Clip name (must match a registered clip).
+    /// @return 1 if clip found and started, 0 if not found.
+    int rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name);
+
+    /// @brief Stop the current animation (leaves sprite on its current frame).
+    void rt_sprite_animator_stop(rt_sprite_animator_t *animator);
+
+    /// @brief Advance the animation and update the sprite's current frame.
+    /// @details Must be called once per frame. Automatically advances clip_frame
+    ///          based on elapsed time and sets the sprite's frame accordingly.
+    /// @param animator Animator to advance.
+    /// @param sprite   Sprite whose frame will be updated.
+    void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite);
+
+    /// @brief Return 1 if the animator is currently playing a clip, 0 otherwise.
+    int rt_sprite_animator_is_playing(rt_sprite_animator_t *animator);
+
+    /// @brief Return the name of the currently playing clip, or NULL if idle.
+    const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator);
+
 #ifdef __cplusplus
 }
 #endif

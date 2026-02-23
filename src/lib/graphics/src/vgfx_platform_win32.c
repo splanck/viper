@@ -760,26 +760,39 @@ int vgfx_platform_present(struct vgfx_window *win)
     if (!w32->hwnd || !w32->hdc || !w32->memdc || !w32->dib_pixels)
         return 0;
 
-    /* Copy framebuffer to DIB with RGBA→BGRA conversion */
-    uint8_t *src = win->pixels;
+    /* Copy framebuffer to DIB with RGBA→BGRA conversion.
+     * Process 4 pixels per iteration: load as uint32_t (little-endian layout:
+     * bytes [R,G,B,A] → value 0xAABBGGRR), swap R↔B via bitmask, store.
+     * The remaining 0–3 pixels are handled by the scalar tail loop. */
+    const uint8_t *src = win->pixels;
     uint8_t *dst = (uint8_t *)w32->dib_pixels;
     int pixel_count = win->width * win->height;
+    int batch = pixel_count & ~3; /* round down to nearest multiple of 4 */
 
-    for (int i = 0; i < pixel_count; i++)
+    for (int i = 0; i < batch; i += 4, src += 16, dst += 16)
     {
-        uint8_t r = src[0];
-        uint8_t g = src[1];
-        uint8_t b = src[2];
-        uint8_t a = src[3];
-
-        /* Write as BGRA */
-        dst[0] = b;
-        dst[1] = g;
-        dst[2] = r;
-        dst[3] = a;
-
-        src += 4;
-        dst += 4;
+        uint32_t p0, p1, p2, p3;
+        memcpy(&p0, src,     4);
+        memcpy(&p1, src + 4, 4);
+        memcpy(&p2, src + 8, 4);
+        memcpy(&p3, src + 12, 4);
+        /* Swap R (bits 7:0) and B (bits 23:16), preserve G and A */
+        p0 = (p0 & 0xFF00FF00u) | ((p0 >> 16) & 0xFFu) | ((p0 & 0xFFu) << 16);
+        p1 = (p1 & 0xFF00FF00u) | ((p1 >> 16) & 0xFFu) | ((p1 & 0xFFu) << 16);
+        p2 = (p2 & 0xFF00FF00u) | ((p2 >> 16) & 0xFFu) | ((p2 & 0xFFu) << 16);
+        p3 = (p3 & 0xFF00FF00u) | ((p3 >> 16) & 0xFFu) | ((p3 & 0xFFu) << 16);
+        memcpy(dst,      &p0, 4);
+        memcpy(dst + 4,  &p1, 4);
+        memcpy(dst + 8,  &p2, 4);
+        memcpy(dst + 12, &p3, 4);
+    }
+    /* Scalar tail: handle remaining 0-3 pixels */
+    for (int i = batch; i < pixel_count; i++, src += 4, dst += 4)
+    {
+        dst[0] = src[2]; /* B */
+        dst[1] = src[1]; /* G */
+        dst[2] = src[0]; /* R */
+        dst[3] = src[3]; /* A */
     }
 
     /* Blit from memory DC (physical pixels) to window DC (logical DIP units).

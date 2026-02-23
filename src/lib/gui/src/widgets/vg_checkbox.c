@@ -272,6 +272,14 @@ void vg_checkbox_toggle(vg_checkbox_t *checkbox)
     vg_checkbox_set_checked(checkbox, !checkbox->checked);
 }
 
+void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate)
+{
+    if (!checkbox)
+        return;
+    checkbox->indeterminate = indeterminate;
+    checkbox->base.needs_paint = true;
+}
+
 void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text)
 {
     if (!checkbox)
