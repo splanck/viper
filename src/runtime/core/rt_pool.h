@@ -1,33 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_pool.h
+// Purpose: Slab allocator with four size classes (64, 128, 256, 512 bytes), reducing allocation overhead by reusing freed blocks without returning to the system allocator.
+//
+// Key invariants:
+//   - Size classes cover 1-64, 65-128, 129-256, and 257-512 byte allocations.
+//   - Allocations larger than 512 bytes fall back to malloc/free.
+//   - Freelist management uses atomic operations; multiple threads may allocate concurrently.
+//   - Pool memory is never returned to the OS; freed blocks stay in the freelist.
+//
+// Ownership/Lifetime:
+//   - Callers receive a pointer to the allocated block; no header is exposed.
+//   - rt_pool_free must be called with the same size class as rt_pool_alloc.
+//   - The pool is process-global; it is never explicitly destroyed.
+//
+// Links: src/runtime/core/rt_pool.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// This file declares a slab allocator for the Viper runtime. The pool allocator
-// reduces allocation overhead by pre-allocating blocks in size classes and reusing
-// freed blocks without returning to the system allocator.
-//
-// Size Classes:
-// - 64 bytes (for allocations 1-64 bytes)
-// - 128 bytes (for allocations 65-128 bytes)
-// - 256 bytes (for allocations 129-256 bytes)
-// - 512 bytes (for allocations 257-512 bytes)
-//
-// Allocations larger than 512 bytes fall back to malloc/free.
-//
-// Thread Safety:
-// The pool allocator uses atomic operations for thread-safe freelist management.
-// Multiple threads can allocate and free concurrently without external locking.
-//
-// Performance:
-// - Allocation: O(1) from freelist, O(slab_size) when allocating new slab
-// - Deallocation: O(1) push to freelist
-// - Memory overhead: ~1-2% for block headers and slab metadata
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

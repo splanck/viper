@@ -5,8 +5,33 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file rt_input_pad.c
-/// @brief Gamepad/controller input backends for Viper.Input.
+// File: src/runtime/graphics/rt_input_pad.c
+// Purpose: Gamepad and controller input backend for Viper.Input. Manages state
+//   for up to VIPER_PAD_MAX (4) simultaneously connected controllers, polling
+//   button press/release/held edges, analog stick axes, and triggers each frame.
+//   Provides platform-specific backends for macOS (IOKit HID), Linux (evdev),
+//   and Windows (XInput), with a vibration API for force-feedback motors.
+//
+// Key invariants:
+//   - rt_pad_poll_frame() must be called once per frame to latch pressed/released
+//     edges; edges are valid only for the frame they are read.
+//   - Analog stick values are in [-1.0, 1.0]; trigger values are in [0.0, 1.0].
+//   - A configurable deadzone (default 0.1) is applied to stick axes before
+//     returning values; inputs within the deadzone read as 0.0.
+//   - Controller indices are in [0, VIPER_PAD_MAX); out-of-range indices return
+//     safe zero/false values without trapping.
+//   - Button codes map to the VIPER_PAD_BUTTON_* enum; axis codes to
+//     VIPER_PAD_AXIS_*.
+//
+// Ownership/Lifetime:
+//   - All state is stored in static globals (g_pads, g_pad_deadzone,
+//     g_pad_initialized); no heap allocation is required for normal operation.
+//   - Platform HID resources (IOKit manager on macOS) are allocated at init and
+//     released by rt_pad_shutdown().
+//
+// Links: src/runtime/graphics/rt_input.h (keyboard/mouse layer, frame lifecycle),
+//        src/runtime/graphics/rt_action.c (action mapping layer),
+//        src/runtime/graphics/rt_inputmgr.h (high-level input manager)
 //
 //===----------------------------------------------------------------------===//
 

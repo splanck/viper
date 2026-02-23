@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_countmap.h
+// Purpose: Frequency counting map from string keys to non-negative integer counts, supporting increment, decrement, get, top-N queries, and iteration over counted items.
+//
+// Key invariants:
+//   - Counts are always >= 0; decrementing a count to 0 removes the entry.
+//   - rt_countmap_get returns 0 for keys not present.
+//   - All operations are O(1) average-case.
+//   - rt_countmap_top_n returns up to N keys with highest counts.
+//
+// Ownership/Lifetime:
+//   - CountMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - String keys are copied internally; caller retains ownership of input strings.
+//
+// Links: src/runtime/collections/rt_countmap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_countmap.h
-// Purpose: Runtime functions for a frequency counting map (string key -> count).
-// Key invariants: Counts are always >= 0. Decrement to 0 removes the entry.
-// Ownership/Lifetime: CountMap manages its own memory.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

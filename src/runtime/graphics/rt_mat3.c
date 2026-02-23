@@ -4,35 +4,49 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_mat3.c
-/// @brief 3x3 matrix math for 2D transformations.
-///
-/// This file implements a 3x3 matrix type used for 2D affine transformations.
-///
-/// **Matrix Layout (Row-Major):**
-/// ```
-/// | m00 m01 m02 |   | a b tx |
-/// | m10 m11 m12 | = | c d ty |
-/// | m20 m21 m22 |   | 0 0 1  |
-///
-/// For 2D affine transforms:
-/// - a, b, c, d: rotation/scale/shear
-/// - tx, ty: translation
-/// ```
-///
-/// **2D Point Transformation:**
-/// ```
-/// [x']   [a  b  tx] [x]
-/// [y'] = [c  d  ty] [y]
-/// [1 ]   [0  0  1 ] [1]
-///
-/// x' = a*x + b*y + tx
-/// y' = c*x + d*y + ty
-/// ```
-///
-/// **Thread Safety:** Mat3 objects are immutable after creation.
-///
+//
+// File: src/runtime/graphics/rt_mat3.c
+// Purpose: 3×3 matrix type for 2D affine transformations in Viper. Supports
+//   construction from rotation/scale/translation components, matrix–matrix
+//   multiplication (transform concatenation), matrix–vector multiplication
+//   (point/direction transform), inverse, transpose, and determinant. Used
+//   internally by the camera, scene graph, and sprite systems to compose and
+//   apply 2D spatial transforms.
+//
+// Key invariants:
+//   - Matrix layout is row-major in memory:
+//
+//       | m00 m01 m02 |   | a  b  tx |
+//       | m10 m11 m12 | = | c  d  ty |
+//       | m20 m21 m22 |   | 0  0  1  |
+//
+//     For a pure 2D affine transform:  a, b, c, d encode rotation/scale/shear;
+//     tx, ty encode translation. The bottom row is always [0, 0, 1].
+//
+//   - 2D point transformation (homogeneous coordinates):
+//
+//       x' = a*x + b*y + tx
+//       y' = c*x + d*y + ty
+//
+//   - Rotation by θ (CCW positive):
+//       a = cos θ,  b = -sin θ,  c = sin θ,  d = cos θ
+//
+//   - Transform concatenation: M_combined = M_parent × M_child (left-multiply).
+//     Callers must apply transforms in the correct order for their coordinate
+//     system convention.
+//
+//   - Mat3 objects are effectively immutable after creation: all operations
+//     return new Mat3 objects rather than mutating the receiver. This makes them
+//     safe to share across threads without locking.
+//
+// Ownership/Lifetime:
+//   - Mat3 objects are GC-managed (rt_obj_new_i64). They hold only the 9
+//     double fields inline (no external allocations) so no finalizer is needed.
+//
+// Links: src/runtime/graphics/rt_mat3.h (public API),
+//        src/runtime/graphics/rt_vec2.h, rt_vec3.h (operand types),
+//        src/runtime/graphics/rt_camera.c (consumer for viewport transforms)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_mat3.h"

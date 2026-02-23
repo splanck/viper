@@ -5,8 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_glob.c
-// Purpose: File glob pattern matching implementation.
+// File: src/runtime/io/rt_glob.c
+// Purpose: Implements glob-style wildcard pattern matching against filesystem
+//          paths for the Viper.IO.Glob class. Supports single-component '*',
+//          cross-directory '**', '?' wildcards, and character classes '[...]'.
+//
+// Key invariants:
+//   - '*' matches any characters within a single path component (no '/').
+//   - '**' matches any sequence of characters including directory separators.
+//   - '?' matches exactly one character but not '/'.
+//   - '[...]' character classes follow POSIX semantics including negation '[!'.
+//   - Pattern matching is case-sensitive on Unix and case-insensitive on Windows.
+//   - Directory traversal respects the current working directory of the process.
+//
+// Ownership/Lifetime:
+//   - Returned path strings are fresh rt_string allocations owned by the caller.
+//   - The returned sequence is a new rt_seq owned by the caller.
+//
+// Links: src/runtime/io/rt_glob.h (public API),
+//        src/runtime/io/rt_dir.h (directory enumeration used internally),
+//        src/runtime/io/rt_path.h (path component splitting)
 //
 //===----------------------------------------------------------------------===//
 

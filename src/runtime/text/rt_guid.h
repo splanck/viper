@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_guid.h
+// Purpose: UUID version 4 (random) generation and manipulation per RFC 4122, producing lowercase hex strings in standard 8-4-4-4-12 hyphenated format.
+//
+// Key invariants:
+//   - Generates RFC 4122 version 4 UUIDs with proper version and variant bits.
+//   - Output is always lowercase hex with hyphens: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx.
+//   - Uses a cryptographically secure random source where available.
+//   - rt_guid_is_valid validates the format but not the version/variant bits.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - No persistent state; each call generates an independent GUID.
+//
+// Links: src/runtime/text/rt_guid.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_guid.h
-// Purpose: UUID version 4 (random) generation and manipulation per RFC 4122.
-// Key invariants: GUIDs are formatted as lowercase hex with dashes;
-//                 version 4 and variant bits are properly set; uses
-//                 cryptographically secure random source where available.
-// Ownership/Lifetime: Returned strings are newly allocated.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

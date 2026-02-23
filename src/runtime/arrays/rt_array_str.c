@@ -5,18 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements dynamic string array helpers that back BASIC string array operations.
-// Each array element is a reference-counted string handle (rt_string), requiring
-// careful retain/release semantics when reading, writing, or releasing the array.
+// File: src/runtime/arrays/rt_array_str.c
+// Purpose: Implements dynamic string array helpers backing BASIC string array
+//          (DIM s$()) operations. Each element is a reference-counted rt_string
+//          handle; the array manages retain/release for every element as they
+//          are inserted, overwritten, or the array is freed.
+//
+// Key invariants:
+//   - Each rt_string element is independently reference-counted.
+//   - Writing to a slot releases the previous string and retains the new one.
+//   - Array teardown releases all string references exactly once.
+//   - The array itself is reference-counted through the heap allocator.
+//   - Out-of-bounds accesses trigger rt_arr_oob_panic and abort.
+//   - Empty/NULL string slots are treated as empty strings, not null pointers.
+//
+// Ownership/Lifetime:
+//   - The array holds strong references to all stored strings.
+//   - Callers that retrieve elements receive borrowed references and must not
+//     release them without first retaining.
+//   - The array is freed through the heap refcount API, which triggers element
+//     release in the finalizer.
+//
+// Links: src/runtime/arrays/rt_array_str.h (public API),
+//        src/runtime/arrays/rt_array.h (int32 base module, oob_panic),
+//        src/runtime/rt_string.h (rt_string retain/release)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Reference-counted runtime string array utilities.
-/// @details Supplies creation, access, mutation, and cleanup helpers for string
-///          arrays exposed through the BASIC runtime ABI. Each string element
-///          maintains an independent reference count, and the array itself is
-///          also reference-counted via the heap allocator.
 
 #include "rt_array_str.h"
 #include "rt_internal.h"

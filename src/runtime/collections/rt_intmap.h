@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_intmap.h
+// Purpose: Integer-keyed hash map mapping int64_t keys to object pointer values, providing O(1) average insertion, lookup, and removal.
+//
+// Key invariants:
+//   - Keys are int64_t stored directly without boxing.
+//   - Values are opaque object pointers; the map retains them.
+//   - All operations are O(1) average-case.
+//   - rt_intmap_get returns NULL for keys not present.
+//
+// Ownership/Lifetime:
+//   - IntMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - Values are retained by the map; caller manages external references separately.
+//
+// Links: src/runtime/collections/rt_intmap.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_intmap.h
-// Purpose: Runtime functions for integer-keyed map (hash map).
-// Key invariants: Keys are int64_t stored directly. Values are retained.
-// Ownership/Lifetime: Map manages its own memory. Caller manages values.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -4,10 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_compiled_pattern.c
-/// @brief Pre-compiled regular expression pattern implementation.
-///
+//
+// File: src/runtime/text/rt_compiled_pattern.c
+// Purpose: Implements pre-compiled regex patterns for the Viper.Text.Pattern
+//          class. Compiles a regex string once into an internal representation
+//          and supports IsMatch, Find, FindAll, Replace, and Split operations
+//          with better performance for repeated use on the same pattern.
+//
+// Key invariants:
+//   - Patterns are compiled exactly once at construction; compilation errors trap.
+//   - The compiled form is immutable after creation; all match operations are
+//     read-only and thread-safe on the same pattern object.
+//   - Find returns the first match start and length; FindAll returns all matches.
+//   - Replace substitutes all non-overlapping matches with the replacement string.
+//   - Split divides the input at each match position.
+//
+// Ownership/Lifetime:
+//   - Pattern objects are heap-allocated and managed by the runtime GC.
+//   - The internal compiled state is freed in the finalizer.
+//   - Returned match strings and sequences are fresh allocations owned by caller.
+//
+// Links: src/runtime/text/rt_compiled_pattern.h (public API),
+//        src/runtime/text/rt_regex.h (underlying regex engine)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_compiled_pattern.h"

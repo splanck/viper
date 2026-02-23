@@ -1,32 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_statemachine.h
+// Purpose: Finite state machine with up to RT_STATE_MAX (32) registered states, tracking current state, frame count, and one-frame enter/exit transition flags.
+//
+// Key invariants:
+//   - State IDs must be in [0, RT_STATE_MAX-1]; each ID may be registered once.
+//   - Transition flags (just_entered/just_exited) are set on transition and persist until cleared.
+//   - rt_statemachine_update must be called once per frame to advance the frame counter.
+//   - Initial state must be set before the first update call.
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_statemachine handle; destroy with rt_statemachine_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_statemachine.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_statemachine.h
-/// @brief State machine for game and application state management.
-///
-/// @details Provides a simple finite state machine abstraction for managing
-/// game states (menu, gameplay, pause, etc.) with transition tracking and
-/// frame counting. States are identified by integer IDs and must be
-/// registered before use. The machine tracks enter/exit edge flags that are
-/// valid for one frame after a transition, enabling game logic to run
-/// initialization or cleanup code exactly once per state change.
-///
-/// Key invariants: State IDs must be in the range [0, RT_STATE_MAX-1] (max
-///   32 states). Each state ID may be registered at most once. Transition
-///   flags (just_entered/just_exited) are set on transition and must be
-///   cleared with rt_statemachine_clear_flags() or they persist.
-///   rt_statemachine_update() must be called once per frame to advance the
-///   frame counter.
-/// Ownership/Lifetime: The caller owns the rt_statemachine handle and must
-///   free it with rt_statemachine_destroy().
-/// Links: rt_statemachine.c (implementation)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_STATEMACHINE_H
 #define VIPER_RT_STATEMACHINE_H
 

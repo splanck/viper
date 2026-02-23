@@ -5,10 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_bimap.c
-// Purpose: Implement a bidirectional string-to-string map using two hash tables
-//          (forward: key->value, inverse: value->key). O(1) average-case lookup
-//          in both directions.
+// File: src/runtime/collections/rt_bimap.c
+// Purpose: Implements a bidirectional string-to-string map (BiMap) using two
+//   parallel hash tables: a forward table (key -> value) and an inverse table
+//   (value -> key). Both directions support O(1) average-case lookup, insert,
+//   and remove. The invariant that each key maps to exactly one value AND each
+//   value maps to exactly one key is enforced at insert time.
+//
+// Key invariants:
+//   - Forward and inverse tables each start with BM_INITIAL_CAPACITY (16)
+//     buckets and use separate chaining with FNV-1a hashing.
+//   - Inserting a (key, value) pair where the key already maps to a different
+//     value removes the old pair first (old value loses its inverse mapping).
+//     Similarly, if the new value already maps to a different key, that old
+//     pair is removed. This preserves the bijection invariant.
+//   - Entry nodes are shared between the forward and inverse chain lists to
+//     avoid double allocation; each node stores both key and value strings.
+//   - Both forward and inverse tables resize independently at 75% load factor.
+//   - All operations are O(1) average case; O(n) worst case.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - BiMap objects are GC-managed (rt_obj_new_i64). All entry nodes, bucket
+//     arrays, and copied key/value strings are freed by the GC finalizer.
+//
+// Links: src/runtime/collections/rt_bimap.h (public API),
+//        src/runtime/collections/rt_hash_util.h (FNV-1a hash macro)
 //
 //===----------------------------------------------------------------------===//
 

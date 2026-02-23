@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
 // File: src/runtime/graphics/rt_zia_completion.h
-// Purpose: Zia language completion engine — runtime bridge declarations.
+// Purpose: Runtime bridge declarations for the Zia language completion engine, provided by fe_zia at link time via weak/strong symbol resolution.
 //
-// The implementations live in src/frontends/zia/rt_zia_completion.cpp (part of
-// fe_zia). Symbols are resolved at final link time when both fe_zia and
-// viper_runtime are linked into the same binary.
+// Key invariants:
+//   - Strong implementations live in src/frontends/zia/rt_zia_completion.cpp (fe_zia).
+//   - Weak stub implementations in viper_runtime allow linking without fe_zia.
+//   - Symbols are resolved at final link time when both fe_zia and viper_runtime are linked.
+//   - Completion API takes source text, cursor line (1-based), and column (0-based).
+//
+// Ownership/Lifetime:
+//   - Returned completion results are heap-allocated strings; caller must release them.
+//   - Source text string is borrowed for the duration of the call only.
+//
+// Links: src/frontends/zia/rt_zia_completion.cpp (strong implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

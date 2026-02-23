@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_unionfind.h
+// Purpose: Disjoint-set (Union-Find) data structure for efficient set merging and connectivity queries, using path compression and union by rank for near-constant-time operations.
+//
+// Key invariants:
+//   - Elements are identified by integers in [0, n-1] set at creation.
+//   - Uses path compression and union by rank for amortized O(alpha(n)) operations.
+//   - rt_unionfind_connected returns 1 if two elements share a root.
+//   - The number of sets starts at n and decreases by 1 per successful union.
+//
+// Ownership/Lifetime:
+//   - UnionFind objects are GC-managed opaque pointers.
+//   - Callers should not free unionfind objects directly.
+//
+// Links: src/runtime/collections/rt_unionfind.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_unionfind.h
-// Purpose: Disjoint set / Union-Find data structure.
-// Key invariants: Uses path compression and union by rank.
-// Ownership/Lifetime: UnionFind objects are GC-managed.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdbool.h>

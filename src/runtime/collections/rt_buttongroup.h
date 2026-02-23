@@ -1,25 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_buttongroup.h
+// Purpose: Button group manager for mutually exclusive selections (radio-button semantics), tracking which button in a group is currently selected and notifying on changes.
+//
+// Key invariants:
+//   - At most one button is selected at any time; selecting a new button deselects the previous.
+//   - Button IDs within a group are unique; duplicate IDs cause assertion failure.
+//   - Maximum group size is RT_BUTTONGROUP_MAX (256) buttons.
+//   - An empty group has no selected button (selected ID is -1).
+//
+// Ownership/Lifetime:
+//   - Caller owns the group handle; must destroy with rt_buttongroup_destroy.
+//   - Button label strings are copied into the group; caller retains ownership of inputs.
+//
+// Links: src/runtime/collections/rt_buttongroup.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_buttongroup.h
-/// @brief Button group manager for mutually exclusive selections.
-///
-/// Provides a container for managing groups of buttons where only one
-/// button can be selected at a time (like radio buttons or tool palettes).
-///
-/// Key invariants: At most one button is selected at any time. Button IDs
-///     within a group are unique. The group holds at most
-///     RT_BUTTONGROUP_MAX buttons.
-/// Ownership/Lifetime: Caller owns the group handle; destroy with
-///     rt_buttongroup_destroy().
-/// Links: Viper.ButtonGroup standard library module.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_BUTTONGROUP_H
 #define VIPER_RT_BUTTONGROUP_H
 

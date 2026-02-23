@@ -4,104 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_monitor.c
-/// @brief FIFO-fair, re-entrant monitor implementation for Viper.Threads.Monitor.
-///
-/// This file implements Java-style monitors for Viper programs, providing
-/// mutual exclusion and condition variable semantics. Monitors are associated
-/// with objects (any Viper reference type) and provide thread synchronization
-/// without explicit lock objects.
-///
-/// **What is a Monitor?**
-/// A monitor is a synchronization primitive that combines:
-/// 1. A mutex (for mutual exclusion)
-/// 2. A condition variable (for wait/notify semantics)
-/// 3. Re-entrancy (same thread can acquire multiple times)
-/// 4. FIFO fairness (threads acquire in order they requested)
-///
-/// **Monitor Operations:**
-/// ```
-/// ┌─────────────────────────────────────────────────────────────────────┐
-/// │ Operation       │ Description                                       │
-/// ├─────────────────────────────────────────────────────────────────────┤
-/// │ Enter(obj)      │ Acquire exclusive access (blocks if needed)       │
-/// │ TryEnter(obj)   │ Try to acquire without blocking (returns bool)    │
-/// │ TryEnterFor(ms) │ Try to acquire with timeout                       │
-/// │ Exit(obj)       │ Release exclusive access                          │
-/// │ Wait(obj)       │ Release lock and wait for Pause signal            │
-/// │ WaitFor(obj,ms) │ Wait with timeout                                 │
-/// │ Pause(obj)      │ Wake one waiting thread                           │
-/// │ PauseAll(obj)   │ Wake all waiting threads                          │
-/// └─────────────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Usage Example - Critical Section:**
-/// ```
-/// ' Thread-safe access to shared data
-/// Monitor.Enter(sharedList)
-/// Try
-///     sharedList.Add(item)
-/// Finally
-///     Monitor.Exit(sharedList)
-/// End Try
-/// ```
-///
-/// **Usage Example - Producer/Consumer:**
-/// ```
-/// ' Producer thread
-/// Monitor.Enter(queue)
-/// queue.Add(item)
-/// Monitor.Pause(queue)  ' Wake a consumer
-/// Monitor.Exit(queue)
-///
-/// ' Consumer thread
-/// Monitor.Enter(queue)
-/// While queue.IsEmpty()
-///     Monitor.Wait(queue)  ' Wait for items
-/// Wend
-/// Dim item = queue.Remove()
-/// Monitor.Exit(queue)
-/// ```
-///
-/// **Re-entrancy:**
-/// The same thread can call Enter() multiple times on the same object.
-/// Each Enter() must be balanced by a corresponding Exit().
-/// ```
-/// Monitor.Enter(obj)   ' recursion = 1
-/// Monitor.Enter(obj)   ' recursion = 2 (same thread, OK)
-/// DoWork()
-/// Monitor.Exit(obj)    ' recursion = 1
-/// Monitor.Exit(obj)    ' recursion = 0, released
-/// ```
-///
-/// **FIFO Fairness:**
-/// Threads acquire the monitor in the order they requested it. This prevents
-/// starvation where a frequently-releasing thread could monopolize access.
-/// ```
-/// Thread A: Enter()           → acquires immediately (no contention)
-/// Thread B: Enter()           → waits (A holds lock)
-/// Thread C: Enter()           → waits (queue: B, C)
-/// Thread A: Exit()            → B acquires (was first in queue)
-/// Thread B: Exit()            → C acquires (was next in queue)
-/// ```
-///
-/// **Implementation Notes:**
-/// - Monitors are stored in a global hash table keyed by object address
-/// - Uses pthreads mutex and condition variables internally
-/// - Each waiting thread has its own condition variable for fairness
-/// - Two wait queues: acq_queue (waiting for lock), wait_queue (called Wait)
-///
-/// **Platform Support:**
-/// | Platform | Status                     |
-/// |----------|----------------------------|
-/// | macOS    | Full support (pthreads)    |
-/// | Linux    | Full support (pthreads)    |
-/// | Windows  | Full support (Win32 API)   |
-///
-/// @see rt_threads.c For thread creation and joining
-/// @see rt_safe_i64.c For thread-safe integer operations using monitors
-///
+//
+// File: src/runtime/threads/rt_monitor.c
+// Purpose: Implements FIFO-fair, re-entrant Java-style monitors for the
+//          Viper.Threads.Monitor class. Monitors are keyed by object address in
+//          a global hash table. Provides Enter/Exit (mutual exclusion), Wait/
+//          WaitFor (condition wait), and Pause/PauseAll (condition signal).
+//
+// Key invariants:
+//   - Monitors are re-entrant: the same thread may call Enter multiple times;
+//     each Enter must be balanced by an Exit before the lock is truly released.
+//   - FIFO fairness: threads acquire the lock in the order they requested it.
+//   - Wait atomically releases the lock and sleeps until Pause/PauseAll signals.
+//   - Monitors are stored in a global table keyed by object pointer; the table
+//     entry is created on first Enter and remains until the object is finalized.
+//   - Win32 uses CRITICAL_SECTION + CONDITION_VARIABLE; POSIX uses pthreads.
+//   - Exit without a corresponding Enter traps immediately.
+//
+// Ownership/Lifetime:
+//   - Monitor table entries are allocated on first lock contention and freed
+//     when the owning object is garbage collected.
+//   - Callers do not own monitor objects; they are accessed by object address.
+//
+// Links: src/runtime/threads/rt_monitor.h (public API, via rt_threads.h),
+//        src/runtime/threads/rt_threads.h (thread ID query),
+//        src/runtime/threads/rt_safe_i64.h (uses monitors for thread-safety)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_threads.h"

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_bimap.h
+// Purpose: Bidirectional string-to-string map where every key maps to exactly one value and every value maps to exactly one key, supporting lookup in both directions.
+//
+// Key invariants:
+//   - Every key maps to exactly one value and every value maps to exactly one key.
+//   - Putting a key/value pair that conflicts with an existing mapping evicts the old entry.
+//   - Lookup by key and lookup by value are both O(1) average.
+//   - Keys and values must be distinct non-NULL strings.
+//
+// Ownership/Lifetime:
+//   - BiMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - String keys and values are copied internally.
+//
+// Links: src/runtime/collections/rt_bimap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_bimap.h
-// Purpose: Runtime functions for a bidirectional string-to-string map.
-// Key invariants: Every key maps to exactly one value, and every value maps to
-//                 exactly one key. Put operations may evict old mappings.
-// Ownership/Lifetime: BiMap manages its own memory.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

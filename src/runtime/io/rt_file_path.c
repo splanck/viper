@@ -5,26 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Purpose: Translate BASIC runtime file mode descriptors into platform
-//          specific strings and flag combinations while exposing borrowing
-//          helpers for runtime-managed string paths.
-// Key invariants: Mode conversion routines never return partially initialised
-//                 data—callers receive either a fully populated flag set or a
-//                 `false`/`NULL` result.  Borrowed string views remain valid only
-//                 for the lifetime of the originating @ref ViperString handle.
-// Ownership/Lifetime: The utilities borrow underlying string buffers without
-//                     copying; callers must manage reference counts on
-//                     @ref ViperString objects and respect the borrowed view
-//                     semantics.
+// File: src/runtime/io/rt_file_path.c
+// Purpose: Translates BASIC runtime file mode descriptors into platform-specific
+//          strings and open(2) flag combinations. Also exposes borrow helpers
+//          that provide C string views into runtime-managed ViperString handles
+//          without copying the underlying data.
+//
+// Key invariants:
+//   - Mode conversion routines return NULL or false on invalid input; no partial
+//     results are produced.
+//   - Borrowed string views are valid only for the lifetime of the ViperString
+//     handle they were derived from; callers must not cache the raw pointer.
+//   - O_CLOEXEC is defined to 0 on platforms that lack it, ensuring safe use.
+//   - Every RT_F_* mode enumerator maps to exactly one fopen mode string.
+//
+// Ownership/Lifetime:
+//   - Borrowed string views do not transfer ownership; callers retain the
+//     reference count on the originating ViperString objects.
+//   - Callers must release ViperString handles through the standard ref-count
+//     API; the borrow helpers here do not affect reference counts.
+//
+// Links: src/runtime/io/rt_file_path.h (public API),
+//        src/runtime/io/rt_file.h (RtFile type and RT_F_* mode enum)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief File path and mode string helpers for the Viper runtime.
-/// @details Offers conversions from BASIC runtime mode enumerations to C
-///          `fopen`-style strings, converts textual modes into `open` flag
-///          combinations, and surfaces view helpers that preserve the lifetime
-///          semantics of @ref ViperString handles.
 
 #include "rt_file_path.h"
 #include "rt_file.h"

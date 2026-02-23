@@ -5,13 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_stack.c
-// Purpose: Implement Viper.Collections.Stack - a LIFO (last-in-first-out) collection.
+// File: src/runtime/collections/rt_stack.c
+// Purpose: Implements Viper.Collections.Stack, a LIFO (last-in-first-out)
+//   dynamic collection backed by a contiguous dynamic array. Push and pop
+//   operate on the top (highest index), providing O(1) amortized push and O(1)
+//   pop with cache-friendly sequential memory layout.
 //
-// Structure:
-// - Internal representation uses a header structure with len, cap, and items[]
-// - Items are stored as void* (generic object pointers)
-// - Automatic growth when capacity is exceeded
+// Key invariants:
+//   - Initial capacity is STACK_DEFAULT_CAP (16); grows by STACK_GROWTH_FACTOR (2).
+//   - The "top" of the stack is items[len-1]; push writes to items[len] and
+//     increments len; pop reads items[len-1] and decrements len.
+//   - Pop on an empty stack traps with a descriptive error message.
+//   - Peek returns items[len-1] without removing it; returns NULL if empty.
+//   - The Stack does NOT retain element references; element lifetime is the
+//     caller's responsibility.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - Stack objects are GC-managed (rt_obj_new_i64). The items array is
+//     malloc-managed and freed by the GC finalizer (stack_finalizer).
+//
+// Links: src/runtime/collections/rt_stack.h (public API),
+//        src/runtime/collections/rt_deque.h (double-ended queue, superset)
 //
 //===----------------------------------------------------------------------===//
 

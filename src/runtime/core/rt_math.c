@@ -5,20 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the BASIC runtime's thin wrappers around standard math routines.
-// The helpers ensure consistent diagnostics and trap behaviour by delegating to
-// the C library while adding overflow checks where BASIC requires them.  Keeping
-// the wrappers isolated here allows both the VM and native toolchains to share a
-// single implementation of floating-point semantics.
+// File: src/runtime/core/rt_math.c
+// Purpose: Thin C-library wrappers providing the BASIC runtime's math ABI.
+//   Each function delegates to the corresponding IEEE-754 standard routine
+//   (sqrt, floor, ceil, sin, cos, etc.) to ensure consistent special-value
+//   behaviour (NaN, ±Inf) across VM and native execution paths. The one
+//   exception is rt_abs_i64, which adds an overflow check and fires rt_trap
+//   on INT64_MIN because abs(INT64_MIN) is undefined in two's complement.
+//
+// Key invariants:
+//   - All floating-point functions propagate NaN and ±Inf unchanged per
+//     IEEE-754; no extra trapping is added for these inputs.
+//   - rt_abs_i64(INT64_MIN) fires rt_trap("integer overflow in abs").
+//   - All functions are exposed with C linkage (extern "C") so C++ callers
+//     and both the VM and native backends can link them directly.
+//   - No global state — all functions are pure mathematical operations.
+//
+// Ownership/Lifetime:
+//   - No heap allocation. All functions are stateless wrappers.
+//
+// Links: src/runtime/core/rt_math.h (public API),
+//        src/runtime/core/rt_trap.h (rt_trap for abs overflow)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Math helper implementations for the BASIC runtime.
-/// @details Provides IEEE-754 compliant wrappers around the C math library and
-///          supplements them with BASIC-specific overflow handling (for example
-///          in @ref rt_abs_i64).  All functions are exposed with C linkage so
-///          native and VM runtimes can link them directly.
 
 #include "rt_math.h"
 #include "rt.hpp"

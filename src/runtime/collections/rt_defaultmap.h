@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_defaultmap.h
+// Purpose: String-keyed map that returns a configured default value for missing keys instead of NULL, providing safe access without explicit missing-key checks.
+//
+// Key invariants:
+//   - rt_defaultmap_get never returns NULL; it returns the configured default for missing keys.
+//   - The default value is set at creation time and cannot be changed.
+//   - Values are retained in the map; the default value is also retained.
+//   - All operations are O(1) average-case.
+//
+// Ownership/Lifetime:
+//   - DefaultMap objects are GC-managed opaque pointers.
+//   - Values stored in the map are retained; callers should not free them while stored.
+//
+// Links: src/runtime/collections/rt_defaultmap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_defaultmap.h
-// Purpose: Map with a default value returned for missing keys.
-// Key invariants: Get never returns NULL (returns default instead).
-// Ownership/Lifetime: Map objects are GC-managed; values are retained.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -1,26 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_objpool.h
+// Purpose: Fixed-capacity object pool for efficient reuse of integer slot IDs, eliminating allocation churn for frequently created and destroyed game objects.
+//
+// Key invariants:
+//   - Pool capacity is fixed at creation and cannot exceed RT_OBJPOOL_MAX.
+//   - Slot indices are stable across acquire/release cycles.
+//   - rt_objpool_acquire returns -1 when the pool is exhausted.
+//   - Released slots are immediately available for reacquisition.
+//
+// Ownership/Lifetime:
+//   - Caller owns the pool handle; destroy with rt_objpool_destroy.
+//   - Slots are logically owned by the caller while acquired; releasing returns them to the pool.
+//
+// Links: src/runtime/collections/rt_objpool.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_objpool.h
-/// @brief Object pool for efficient object reuse.
-///
-/// Provides a fixed-size pool of integer slots that can be acquired and
-/// released efficiently, avoiding allocation churn for frequently
-/// created/destroyed game objects like bullets, enemies, and particles.
-///
-/// Key invariants: Pool capacity is fixed at creation and cannot exceed
-///     RT_OBJPOOL_MAX. Slot indices are stable across acquire/release cycles.
-/// Ownership/Lifetime: Caller owns the pool handle; destroy with
-///     rt_objpool_destroy(). Slots are logically owned by the caller while
-///     acquired.
-/// Links: Viper.ObjectPool standard library module.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_OBJPOOL_H
 #define VIPER_RT_OBJPOOL_H
 

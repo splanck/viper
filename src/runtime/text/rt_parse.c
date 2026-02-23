@@ -5,14 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_parse.c
-// Purpose: Safe parsing functions for Viper.Parse namespace.
+// File: src/runtime/text/rt_parse.c
+// Purpose: Implements safe parsing utility functions for the Viper.Parse
+//          namespace. Provides TryParseInt, TryParseLong, TryParseFloat,
+//          TryParseBool, TryParseDate, and related functions that return
+//          false instead of trapping on invalid input.
 //
-// Key invariants: All functions handle invalid input gracefully without
-//                 trapping. NULL output pointers cause immediate false return.
-//                 Empty strings are considered invalid for all types.
-// Ownership/Lifetime: Functions operate purely on caller-supplied values;
-//                     no state is retained between calls.
+// Key invariants:
+//   - All TryParse* functions return false on invalid input; they never trap.
+//   - NULL output pointers cause immediate false return without side effects.
+//   - Empty strings are treated as invalid for all types.
+//   - Integer overflow causes false return; the output is not written.
+//   - Floating-point parsing uses the current locale's decimal separator.
+//   - Bool parsing accepts "true"/"false" case-insensitively.
+//
+// Ownership/Lifetime:
+//   - All functions are purely computational; no heap allocations or retained
+//     state exist between calls.
+//
+// Links: src/runtime/text/rt_parse.h (public API),
+//        src/runtime/text/rt_scanner.h (lower-level character scanning)
 //
 //===----------------------------------------------------------------------===//
 

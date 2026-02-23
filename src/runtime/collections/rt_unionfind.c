@@ -4,6 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_unionfind.c
+// Purpose: Implements a disjoint-set union-find data structure (also called
+//   Union-Find or Merge-Find Set). Supports near-O(1) amortized Union and
+//   Find operations using path compression and union by rank. Typical uses:
+//   connected-component labeling, Kruskal's MST, cycle detection in graphs,
+//   and dynamic connectivity queries.
+//
+// Key invariants:
+//   - Elements are integers in [0, n-1] where n is fixed at construction.
+//   - Three parallel arrays are allocated: parent[], rank[], and size[].
+//     Initially parent[i] = i (each element is its own root), rank[i] = 0,
+//     size[i] = 1.
+//   - Find uses full path compression: every node on the path to the root is
+//     directly linked to the root, making subsequent Finds O(1).
+//   - Union uses union by rank: the shorter tree is attached under the taller
+//     tree's root. Rank is incremented only when both trees have equal rank.
+//   - `sets` tracks the number of disjoint sets; decremented by 1 on each
+//     successful Union of two previously separate components.
+//   - Find on an invalid element (out of range) returns -1 as an error sentinel.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - UnionFind objects are GC-managed (rt_obj_new_i64). The parent, rank, and
+//     size arrays are freed by the GC finalizer (unionfind_finalizer).
+//
+// Links: src/runtime/collections/rt_unionfind.h (public API)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_unionfind.h"
 #include "rt_internal.h"

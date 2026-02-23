@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_orderedmap.h
+// Purpose: Insertion-order preserving string-keyed map where iteration yields entries in the order they were first inserted, with O(1) average access.
+//
+// Key invariants:
+//   - Iteration order matches the order of first insertion.
+//   - Updating an existing key does not change its position in iteration order.
+//   - All operations are O(1) average-case.
+//   - Values are retained while stored in the map.
+//
+// Ownership/Lifetime:
+//   - OrderedMap objects are GC-managed opaque pointers.
+//   - Callers should not free orderedmap objects directly.
+//
+// Links: src/runtime/collections/rt_orderedmap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_orderedmap.h
-// Purpose: Insertion-order preserving string-keyed map.
-// Key invariants: Iteration order matches insertion order.
-// Ownership/Lifetime: Map objects are GC-managed; values are retained.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

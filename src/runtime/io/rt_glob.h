@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_glob.h
+// Purpose: File glob pattern matching supporting *, **, and ? wildcards, returning matching file paths as a Seq.
+//
+// Key invariants:
+//   - Supports *, **, and ? wildcards with standard glob semantics.
+//   - ** matches across directory separators (recursive).
+//   - Patterns are matched against absolute or relative paths consistently.
+//   - Returns an empty Seq (not NULL) when no files match.
+//
+// Ownership/Lifetime:
+//   - Returned Seq objects are newly allocated; caller is responsible for releasing.
+//   - String paths within the Seq are also newly allocated.
+//
+// Links: src/runtime/io/rt_glob.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_glob.h
-// Purpose: File glob pattern matching (e.g., "*.txt", "src/**/*.cpp").
-// Key invariants: Glob patterns support *, **, and ? wildcards.
-// Ownership/Lifetime: Returned sequences are newly allocated.
-// Links: docs/viperlib/io.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_json_stream.h
+// Purpose: SAX-style streaming JSON parser for large or incremental JSON data, providing a pull-based token stream over a JSON string without building an in-memory tree.
+//
+// Key invariants:
+//   - Stateful, pull-based: call rt_json_stream_next to advance to the next token.
+//   - Token types: object_start, object_end, array_start, array_end, key, string, number, bool, null.
+//   - No memory allocation for the token stream itself; caller reads token data inline.
+//   - Returns an error token on malformed JSON; does not trap.
+//
+// Ownership/Lifetime:
+//   - Stream objects are heap-allocated; caller must free after use.
+//   - Input string is borrowed for the lifetime of the stream.
+//
+// Links: src/runtime/text/rt_json_stream.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_json_stream.h
-// Purpose: SAX-style streaming JSON parser for large or incremental data.
-// Key invariants: Stateful, pull-based token stream over a JSON string.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

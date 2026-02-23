@@ -5,8 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_tempfile.c
-// Purpose: Temporary file utilities implementation.
+// File: src/runtime/io/rt_tempfile.c
+// Purpose: Temporary file creation and management utilities for the
+//          Viper.IO.TempFile class. Creates uniquely named files in the
+//          system temporary directory using OS-provided entropy to generate
+//          unpredictable identifiers.
+//
+// Key invariants:
+//   - Temporary file names are generated using cryptographically random bytes
+//     (CryptGenRandom on Windows, /dev/urandom on Unix) to avoid collisions.
+//   - Files are created in the platform temp directory (GetTempPath on Windows,
+//     $TMPDIR or /tmp on Unix).
+//   - The optional auto-delete flag causes the file to be deleted on finalize.
+//   - Generated IDs are hex-encoded for filesystem compatibility.
+//   - All functions trap on allocation failure or file creation errors.
+//
+// Ownership/Lifetime:
+//   - TempFile objects are heap-allocated and managed by the runtime GC.
+//   - The path string is retained by the object and released on finalize.
+//   - If auto-delete is enabled, the underlying file is deleted at finalize time.
+//
+// Links: src/runtime/io/rt_tempfile.h (public API),
+//        src/runtime/io/rt_dir.h (used to resolve temp directory path),
+//        src/runtime/io/rt_path.h (path join for constructing temp file names)
 //
 //===----------------------------------------------------------------------===//
 

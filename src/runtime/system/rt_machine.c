@@ -5,8 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_machine.c
-// Purpose: Implement system information queries for Viper.Machine.
+// File: src/runtime/system/rt_machine.c
+// Purpose: Implements system information queries for the Viper.Machine class.
+//          Provides CPU count, hostname, OS name/version, architecture,
+//          total/available memory, and process ID using platform-specific APIs.
+//
+// Key invariants:
+//   - CPU count queries use GetSystemInfo (Win32), sysconf (POSIX), or fall
+//     back to 1 if the platform provides no API.
+//   - OS name strings are statically determined at compile time from predefined
+//     macros (_WIN32, __APPLE__, __linux__) and never change at runtime.
+//   - Hostname is queried fresh on each call; it is not cached.
+//   - Memory queries use GlobalMemoryStatusEx (Win32) or sysinfo (Linux) or
+//     host_statistics64 (macOS).
+//   - All functions return safe defaults (0, empty string) on query failure.
+//
+// Ownership/Lifetime:
+//   - All returned rt_string values are fresh allocations owned by the caller.
+//   - No state is retained between calls; all queries are stateless.
+//
+// Links: src/runtime/system/rt_machine.h (public API)
 //
 //===----------------------------------------------------------------------===//
 

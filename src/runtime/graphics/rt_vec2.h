@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_vec2.h
+// Purpose: 2D vector math utilities for Viper.Vec2 with immutable value semantics, providing arithmetic, dot product, magnitude, normalization, rotation, and lerp.
+//
+// Key invariants:
+//   - Vec2 objects are immutable; all operations return new Vec2 objects.
+//   - All operations are done in double-precision floating point.
+//   - Normalize traps on zero-length vectors.
+//   - Angle is measured in radians.
+//
+// Ownership/Lifetime:
+//   - Vec2 objects are runtime-managed (heap-allocated, GC'd via thread-local pool).
+//   - The thread-local pool (P2-3.6) resurrects Vec2 objects on finalization for reuse.
+//
+// Links: src/runtime/graphics/rt_vec2.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_vec2.h
-// Purpose: 2D vector math utilities for Viper.Vec2.
-// Key invariants: Vec2 objects are immutable; all operations return new vectors.
-// Ownership/Lifetime: Vec2 objects are runtime-managed (heap-allocated, GC'd).
-// Links: Viper.Vec2 standard library module.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

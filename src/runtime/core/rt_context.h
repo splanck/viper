@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_context.h
+// Purpose: Per-VM runtime context that isolates all global mutable state across concurrent VM instances, including module variables, file channels, argument stores, and type registry.
+//
+// Key invariants:
+//   - Thread-local binding ensures each thread accesses its active VM context.
+//   - A thread must call rt_context_set before invoking any stateful runtime function.
+//   - All runtime subsystems that use global state read from the active context pointer.
+//   - RtContext owns all sub-state structures; releasing the context releases all children.
+//
+// Ownership/Lifetime:
+//   - The VM owns the RtContext object and is responsible for its lifetime.
+//   - The thread-local pointer is a borrowed reference; the VM must not free the context while other threads reference it.
+//
+// Links: src/runtime/core/rt_context.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_context.h
-// Purpose: Per-VM runtime context to isolate global state across VM instances.
-// Key invariants: Thread-local binding ensures each thread accesses its active VM's context.
-// Ownership/Lifetime: VM owns RtContext; thread-local pointer is borrowed.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

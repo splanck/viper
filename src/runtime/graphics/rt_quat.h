@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_quat.h
+// Purpose: Quaternion math for 3D rotation (Viper.Quat), providing construction from axis/angle/Euler, conjugate, product, SLERP, and conversion to/from rotation matrices.
+//
+// Key invariants:
+//   - Quaternions are stored as (x, y, z, w) where w is the scalar part.
+//   - Unit quaternions represent 3D rotations; non-unit quaternions produce undefined rotation results.
+//   - All operations return new Quat objects; inputs are not modified.
+//   - SLERP correctly handles antipodal quaternions by negating one operand.
+//
+// Ownership/Lifetime:
+//   - Quat objects are runtime-managed (heap-allocated).
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_quat.c (implementation), src/runtime/graphics/rt_mat4.h, src/runtime/graphics/rt_vec3.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_quat.h
-// Purpose: Quaternion math utilities for Viper.Quat.
-// Key invariants: Quaternions are stored as (x, y, z, w) where w is the
-//                 scalar part. Unit quaternions represent 3D rotations.
-// Ownership/Lifetime: Quat objects are runtime-managed and immutable.
-// Links: Viper.Quat standard library module; see also rt_mat4.h, rt_vec3.h.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -4,84 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_safe_i64.c
-/// @brief Thread-safe integer cell for Viper.Threads.SafeI64 class.
-///
-/// This file implements a simple thread-safe container for a single 64-bit
-/// integer value. SafeI64 provides atomic-like operations using monitors for
-/// synchronization, making it safe to read and modify from multiple threads.
-///
-/// **What is SafeI64?**
-/// SafeI64 is a thread-safe wrapper around a 64-bit integer that provides:
-/// - Thread-safe get and set operations
-/// - Atomic add (increment/decrement)
-/// - Compare-and-exchange for lock-free algorithms
-///
-/// **Operations:**
-/// ```
-/// ┌──────────────────────────────────────────────────────────────────────────┐
-/// │ Operation                 │ Description                                  │
-/// ├──────────────────────────────────────────────────────────────────────────┤
-/// │ New(initial)              │ Create with initial value                    │
-/// │ Get()                     │ Read current value                           │
-/// │ Set(value)                │ Write new value                              │
-/// │ Add(delta)                │ Add delta and return new value               │
-/// │ CompareExchange(exp, des) │ If value==exp, set to des; return old value  │
-/// └──────────────────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Usage Examples:**
-/// ```
-/// ' Thread-safe counter
-/// Dim counter = SafeI64.New(0)
-///
-/// ' Multiple threads can increment safely
-/// counter.Add(1)  ' Atomic increment
-///
-/// ' Read the value
-/// Print "Count: " & counter.Get()
-///
-/// ' Conditional update (compare-and-swap)
-/// Dim old = counter.CompareExchange(100, 0)  ' If 100, reset to 0
-/// If old = 100 Then Print "Counter was reset"
-/// ```
-///
-/// **Compare-and-Exchange (CAS):**
-/// The CompareExchange operation is the building block for lock-free algorithms.
-/// It atomically:
-/// 1. Reads the current value
-/// 2. Compares it to the expected value
-/// 3. If equal, sets to the desired value
-/// 4. Returns the original value (for success checking)
-///
-/// ```
-/// ' CAS loop example (optimistic concurrency)
-/// Sub IncrementIfPositive(cell As SafeI64)
-///     Dim old, new As Long
-///     Do
-///         old = cell.Get()
-///         If old <= 0 Then Exit Sub  ' Don't increment non-positive
-///         new = old + 1
-///     Loop While cell.CompareExchange(old, new) <> old  ' Retry if changed
-/// End Sub
-/// ```
-///
-/// **Implementation:**
-/// SafeI64 uses monitors (from rt_monitor.c) for thread synchronization.
-/// This is simpler than true lock-free atomics but may have higher contention
-/// under heavy concurrent access.
-///
-/// **Platform Support:**
-/// | Platform | Status                     |
-/// |----------|----------------------------|
-/// | macOS    | Full support (via Monitor) |
-/// | Linux    | Full support (via Monitor) |
-/// | Windows  | Traps (not implemented)    |
-///
-/// @see rt_monitor.c For the underlying synchronization primitive
-/// @see rt_threads.c For thread creation
-///
+//
+// File: src/runtime/threads/rt_safe_i64.c
+// Purpose: Implements a thread-safe int64 cell for the Viper.Threads.SafeI64
+//          class. Provides Get, Set, Add (returns new value), and
+//          CompareExchange (CAS) operations synchronized via a monitor.
+//
+// Key invariants:
+//   - All operations acquire the monitor before reading or writing the value.
+//   - CompareExchange atomically reads, compares, conditionally writes, and
+//     returns the pre-operation value in a single monitor-protected section.
+//   - Add returns the value after the increment (post-increment semantics).
+//   - The Windows path traps on construction as monitor-based sync requires
+//     POSIX primitives; Win32 support is not yet implemented.
+//   - No busy-waiting; all blocking uses the monitor's condition variable.
+//
+// Ownership/Lifetime:
+//   - SafeI64 objects are heap-allocated and managed by the runtime GC.
+//   - The monitor is allocated alongside the cell and freed in the finalizer.
+//
+// Links: src/runtime/threads/rt_safe_i64.h (public API, via rt_threads.h),
+//        src/runtime/threads/rt_monitor.h (underlying synchronization primitive),
+//        src/runtime/threads/rt_threads.h (thread-related includes)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_threads.h"

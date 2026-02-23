@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_bytes.h
+// Purpose: Efficient byte array type for binary data manipulation, providing creation, element access, search, encoding/decoding, and conversion to/from strings and hex.
+//
+// Key invariants:
+//   - Byte values are stored as uint8_t; set operations clamp input to [0, 255].
+//   - Bytes are stored contiguously in memory.
+//   - String conversion produces a copy of the UTF-8 bytes; the original is not modified.
+//   - Hex encoding produces uppercase hex digits.
+//
+// Ownership/Lifetime:
+//   - Bytes objects are heap-allocated; caller is responsible for lifetime management.
+//   - rt_bytes_from_str and rt_bytes_from_hex allocate new objects; caller must free.
+//
+// Links: src/runtime/collections/rt_bytes.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_bytes.h
-// Purpose: Runtime functions for efficient byte array handling.
-// Key invariants: Bytes are stored contiguously. Values clamped to 0-255.
-// Ownership/Lifetime: Bytes object manages its own memory.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

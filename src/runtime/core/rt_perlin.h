@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_perlin.h
+// Purpose: Perlin noise generator for the Viper.Perlin runtime class, providing seeded 2D/3D noise and fractal octave noise with deterministic output per seed.
+//
+// Key invariants:
+//   - Output is deterministic: same seed and coordinates always produce the same value.
+//   - Noise values are in the range [-1.0, 1.0].
+//   - Octave noise amplitude is controlled by the persistence parameter (typically 0.5).
+//   - The permutation table is built once at creation time from the seed.
+//
+// Ownership/Lifetime:
+//   - PerlinNoise objects are heap-allocated opaque pointers.
+//   - Callers are responsible for lifetime management; no reference counting.
+//
+// Links: src/runtime/core/rt_perlin.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_perlin.h
-// Purpose: Runtime functions for Perlin noise generation.
-// Key invariants: Deterministic output for same seed+coordinates.
-// Ownership/Lifetime: PerlinNoise object manages its own permutation table.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

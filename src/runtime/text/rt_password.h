@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_password.h
+// Purpose: Secure password hashing with automatic salt generation using PBKDF2-SHA256 and constant-time verification to prevent timing attacks.
+//
+// Key invariants:
+//   - Hash output includes the salt encoded alongside the hash; no separate salt storage needed.
+//   - Verification uses constant-time comparison to prevent timing side-channels.
+//   - Default iteration count is 100,000; this can be increased for higher security.
+//   - Hash output format: base64(salt) + '$' + base64(hash).
+//
+// Ownership/Lifetime:
+//   - Returned hash strings are newly allocated; caller must release.
+//   - Password strings are borrowed for the duration of the call; not retained.
+//
+// Links: src/runtime/text/rt_password.c (implementation), src/runtime/text/rt_keyderive.h, src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_password.h
-// Purpose: Secure password hashing with auto-salt and verify (PBKDF2-SHA256).
-// Key invariants: Hash output includes salt; verify is constant-time.
-// Ownership/Lifetime: Returned strings are newly allocated.
-// Links: docs/viperlib/crypto.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

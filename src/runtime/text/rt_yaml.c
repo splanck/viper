@@ -4,39 +4,28 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_yaml.c
-/// @brief YAML parsing and formatting utilities.
-///
-/// This file implements YAML parsing and formatting following a practical
-/// subset of YAML 1.2 specification.
-///
-/// **Supported YAML Features:**
-///
-/// | Feature       | Support                            |
-/// |---------------|-----------------------------------|
-/// | Scalars       | strings, integers, floats, bools  |
-/// | Null          | null, ~, empty value              |
-/// | Sequences     | block style with - prefix         |
-/// | Mappings      | block style with key: value       |
-/// | Comments      | # to end of line                  |
-/// | Quoted        | single and double quotes          |
-/// | Multiline     | literal (|) and folded (>)        |
-///
-/// **YAML Types and Viper Mappings:**
-///
-/// | YAML Type   | Viper Type        |
-/// |-------------|-------------------|
-/// | null/~      | Box.I64(0) tagged |
-/// | true/false  | Box.I64(0/1)      |
-/// | integer     | Box.I64(n)        |
-/// | float       | Box.F64(n)        |
-/// | string      | String            |
-/// | sequence    | Seq               |
-/// | mapping     | Map               |
-///
-/// **Thread Safety:** All functions are thread-safe.
-///
+//
+// File: src/runtime/text/rt_yaml.c
+// Purpose: Implements a practical YAML 1.2 subset parser and formatter for the
+//          Viper.Text.Yaml class. Supports scalars (string, int, float, bool,
+//          null), block sequences (- item), block mappings (key: value),
+//          quoted strings, comments (#), and multiline strings (| and >).
+//
+// Key invariants:
+//   - YAML types map to: null→Box.I64(0), bool→Box.I64(0/1), int→Box.I64,
+//     float→Box.F64, string→String, sequence→Seq, mapping→Map.
+//   - Indentation determines nesting; tabs are not permitted as indentation.
+//   - Parse returns NULL on invalid YAML (not a trap).
+//   - Anchors (&) and aliases (*) are not supported in this implementation.
+//   - All functions are thread-safe with no global mutable state.
+//
+// Ownership/Lifetime:
+//   - Returned rt_map and rt_seq trees are fresh allocations owned by the caller.
+//   - Formatted YAML strings are fresh rt_string allocations owned by caller.
+//
+// Links: src/runtime/text/rt_yaml.h (public API),
+//        src/runtime/rt_map.h, rt_seq.h, rt_box.h (container types)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_yaml.h"

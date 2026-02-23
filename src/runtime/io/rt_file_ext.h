@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_file_ext.h
+// Purpose: High-level static file operations for Viper.IO.File, providing ReadAllText, WriteAllText, ReadAllLines, AppendText, Copy, Move, Delete, and Exists.
+//
+// Key invariants:
+//   - Operations are platform-independent and use UTF-8 for text encoding.
+//   - ReadAllLines returns a Seq of strings, one per line, stripping line terminators.
+//   - WriteAllText truncates any existing file content.
+//   - All returning-functions allocate new objects; caller must release them.
+//
+// Ownership/Lifetime:
+//   - All functions returning strings or objects allocate new instances that the caller must release.
+//   - Error conditions are reported via RtError out-parameters or NULL returns.
+//
+// Links: src/runtime/io/rt_file_ext.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_file_ext.h
-// Purpose: High-level file operations for Viper.IO.File static methods.
-// Key invariants: File operations are platform-independent, return proper
-//                 runtime types (rt_string, Bytes, Seq).
-// Ownership/Lifetime: Functions returning strings/objects allocate new
-//                     instances that the caller must release.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

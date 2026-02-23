@@ -5,10 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_multimap.c
-// Purpose: Implement a string-keyed multimap using a hash table where each
-//          entry stores a list (Seq) of values. O(1) average-case key lookup.
-// Structure: Reuses the hash table structure from rt_map but stores Seq values.
+// File: src/runtime/collections/rt_multimap.c
+// Purpose: Implements a string-keyed multimap where each key can map to
+//   multiple values. Internally backed by a hash table where each bucket entry
+//   holds a Seq of values for that key. Supports add (appending to a key's
+//   list), get (returning the Seq for a key), remove (removing one value from
+//   a key), and removeAll (removing an entire key and its Seq).
+//
+// Key invariants:
+//   - Backed by a hash table with initial capacity MM_INITIAL_CAPACITY (16)
+//     buckets and separate chaining using FNV-1a hashing.
+//   - Resizes (doubles) when key_count/capacity exceeds 75%.
+//   - `key_count` tracks distinct keys; `total_count` tracks total values added.
+//   - Each bucket entry stores a Seq (rt_seq); adding a value appends to that
+//     Seq. Removing the last value for a key removes the entry entirely.
+//   - Getting a non-existent key returns an empty Seq (not NULL) so callers can
+//     always iterate the result without a null-check.
+//   - All operations are O(1) average case for key lookup; O(k) for removing
+//     a specific value from a key with k values.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - MultiMap objects are GC-managed (rt_obj_new_i64). The bucket array, entry
+//     nodes, and per-key Seq objects are freed by the GC finalizer.
+//
+// Links: src/runtime/collections/rt_multimap.h (public API),
+//        src/runtime/collections/rt_seq.h (value list backing type)
 //
 //===----------------------------------------------------------------------===//
 

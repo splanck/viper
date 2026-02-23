@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/arrays/rt_list_i64.h
+// Purpose: Unboxed dynamic-append list of 64-bit integers (P2-3.7) avoiding the boxing overhead of the generic rt_list for hot integer collections.
+//
+// Key invariants:
+//   - len <= cap at all times; push is amortized O(1).
+//   - No boxing overhead: elements are stored as raw int64_t values.
+//   - Resize doubles capacity and transfers ownership of the old allocation.
+//
+// Ownership/Lifetime:
+//   - Reference-counted via rt_list_i64_retain/release.
+//   - The caller owns the initial reference from rt_list_i64_new.
+//   - Resize releases the old pointer; callers must not hold raw pointers across push.
+//
+// Links: src/runtime/arrays/rt_list_i64.c (implementation), src/runtime/arrays/rt_array_i64.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_list_i64.h
-// Purpose: Dynamic-append list of 64-bit integers without boxing (P2-3.7).
-// Key invariants: len <= cap; push is amortized O(1); no boxing overhead.
-// Ownership/Lifetime: Reference-counted via rt_list_i64_retain/release.
-//                     Caller owns the initial reference from rt_list_i64_new.
-//                     Resize transfers ownership: old pointer is released.
-// Links: rt_array_i64.h (underlying storage)
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_array_i64.h"

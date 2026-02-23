@@ -155,6 +155,9 @@ typedef struct
         vaud_music_t active_music[VAUD_MAX_MUSIC]; ///< Active music streams
         int32_t music_count;                       ///< Number of active music streams
 
+        // H-1: Pre-allocated mix accumulator — avoids malloc() inside the real-time audio callback.
+        int32_t accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< 32-bit mix accumulator (RT-safe)
+
         // Thread synchronization
         vaud_mutex_t mutex; ///< Protects voice and music state
         int running;        ///< Audio thread running flag

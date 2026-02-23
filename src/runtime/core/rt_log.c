@@ -4,91 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_log.c
-/// @brief Simple structured logging functions for the Viper.Log namespace.
-///
-/// This file implements a lightweight logging system for Viper programs. The
-/// logging functions output timestamped messages to stderr at configurable
-/// severity levels, enabling debugging and monitoring of program execution.
-///
-/// **Log Levels:**
-/// ```
-/// Level    Value   Description                     Color in terminals
-/// ───────────────────────────────────────────────────────────────────
-/// DEBUG      0     Detailed debugging information  (dim/gray)
-/// INFO       1     General information messages    (normal)
-/// WARN       2     Warning conditions              (yellow)
-/// ERROR      3     Error conditions                (red)
-/// OFF        4     Disable all logging             (none)
-/// ```
-///
-/// **Output Format:**
-/// All log messages follow a consistent format:
-/// ```
-/// [LEVEL] HH:MM:SS message text
-///
-/// Examples:
-/// [DEBUG] 14:30:45 Processing item 5 of 100
-/// [INFO]  14:30:46 Server started on port 8080
-/// [WARN]  14:30:47 Connection timeout, retrying...
-/// [ERROR] 14:30:48 Failed to open config file
-/// ```
-///
-/// **Level Filtering:**
-/// Messages below the current log level are silently discarded. This allows
-/// different verbosity levels in development vs production:
-///
-/// ```
-/// Log Level   DEBUG   INFO   WARN   ERROR
-/// ─────────────────────────────────────────
-/// DEBUG         ✓       ✓      ✓       ✓
-/// INFO          ✗       ✓      ✓       ✓
-/// WARN          ✗       ✗      ✓       ✓
-/// ERROR         ✗       ✗      ✗       ✓
-/// OFF           ✗       ✗      ✗       ✗
-/// ```
-///
-/// **Usage Examples:**
-/// ```
-/// ' Basic logging
-/// Log.Debug("Loading configuration...")
-/// Log.Info("Application started")
-/// Log.Warn("Memory usage high: " & memUsage & "%")
-/// Log.Error("Failed to connect: " & errorMsg)
-///
-/// ' Change log level
-/// Log.SetLevel(Log.LEVEL_DEBUG)  ' See all messages
-/// Log.SetLevel(Log.LEVEL_WARN)   ' Only warnings and errors
-/// Log.SetLevel(Log.LEVEL_OFF)    ' Suppress all output
-///
-/// ' Check if level is enabled (avoid expensive string formatting)
-/// If Log.IsEnabled(Log.LEVEL_DEBUG) Then
-///     Log.Debug("Object state: " & obj.DetailedDump())
-/// End If
-/// ```
-///
-/// **Thread Safety:**
-/// - Reading/writing the global log level is atomic
-/// - Individual log messages are written atomically (single fprintf call)
-/// - Multiple threads can log concurrently without message corruption
-/// - Message ordering across threads is not guaranteed
-///
-/// **Performance Considerations:**
-/// - Log level check is O(1) - just an integer comparison
-/// - Disabled log calls have minimal overhead (message argument is still evaluated)
-/// - Use Log.IsEnabled() to skip expensive string formatting for disabled levels
-/// - Output goes to stderr which is typically line-buffered
-///
-/// **Platform Notes:**
-/// - Output always goes to stderr (standard error stream)
-/// - Messages are flushed immediately after each write
-/// - Time is in local timezone (from system clock)
-/// - Works on all platforms (Windows, macOS, Linux)
-///
-/// @see rt_trap.c For fatal error reporting
-/// @see rt_debug.c For low-level debug printing
-///
+//
+// File: src/runtime/core/rt_log.c
+// Purpose: Implements the Viper.Log namespace — a lightweight structured
+//          logging system with five severity levels (DEBUG, INFO, WARN, ERROR,
+//          OFF). Log messages are written to stderr with a "[LEVEL] HH:MM:SS"
+//          timestamp prefix and are filtered by the active global log level.
+//
+// Key invariants:
+//   - The global log level is an atomic integer; reads and writes are
+//     thread-safe without a mutex.
+//   - Messages below the current level are discarded before any string
+//     processing; the level check is O(1).
+//   - Each log message is emitted as a single fprintf call followed by an
+//     immediate fflush; individual messages are atomic on most platforms.
+//   - Message ordering across concurrent threads is not guaranteed.
+//   - Output always goes to stderr; stdout is not touched.
+//   - Default log level is INFO (1); DEBUG messages are suppressed by default.
+//
+// Ownership/Lifetime:
+//   - The log level is a process-global integer; no heap allocation is
+//     associated with it.
+//   - Message strings are borrowed from the caller; they are not retained
+//     after the logging call returns.
+//
+// Links: src/runtime/core/rt_log.h (public API),
+//        src/runtime/core/rt_trap.c (fatal error reporting),
+//        src/runtime/core/rt_debug.c (low-level debug printing)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_log.h"

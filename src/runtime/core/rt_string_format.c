@@ -5,25 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_string_format.c
-// Purpose: Implement BASIC's numeric/string conversion pipeline for the native
-//          runtime.
-// Key invariants: Parsing honours the language's whitespace trimming and
-//                 overflow rules, formatting always produces locale-stable
-//                 output, and every allocation returns reference-counted runtime
-//                 strings that the caller must eventually release.  Errors are
-//                 surfaced through rt_trap so VM and native executions diverge
-//                 only at the diagnostic boundary.
-// Links: docs/runtime/strings.md#numeric-formatting
+// File: src/runtime/core/rt_string_format.c
+// Purpose: Implements BASIC's numeric/string conversion pipeline for the
+//          native runtime. Provides parsing helpers for INPUT-style statements
+//          and allocation routines that format numeric types (int, float) into
+//          fresh reference-counted runtime strings.
+//
+// Key invariants:
+//   - Parsing trims leading/trailing ASCII whitespace before conversion;
+//     trailing non-numeric characters after a valid number cause a trap.
+//   - Overflow (ERANGE from strtoll/strtod) is detected and trapped with a
+//     BASIC-style diagnostic rather than silently wrapping.
+//   - Formatting always produces locale-stable output (decimal separator is
+//     always '.'); locale-specific separators are rewritten post-format.
+//   - All allocation routines return reference-counted runtime strings that
+//     transfer ownership to the caller (caller must eventually rt_string_unref).
+//   - Errors surface through rt_trap so VM and native executions diverge only
+//     at the diagnostic boundary.
+//
+// Ownership/Lifetime:
+//   - Returned rt_string values are newly allocated; the caller owns the
+//     reference and must call rt_string_unref when done.
+//   - Intermediate scratch buffers are stack-allocated or freed before return.
+//
+// Links: src/runtime/core/rt_string.h (rt_string type),
+//        src/runtime/core/rt_format.c (double formatting helpers),
+//        src/runtime/core/rt_string_builder.c (growable buffer),
+//        docs/runtime/strings.md#numeric-formatting
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Numeric-to-string conversion helpers for the runtime.
-/// @details Supplies parsing helpers used by INPUT-style statements and a set
-///          of allocation routines that format numeric types into fresh runtime
-///          strings.  All functions trap on invalid arguments so host
-///          applications observe consistent failure behaviour.
 
 #include "rt_format.h"
 #include "rt_int_format.h"

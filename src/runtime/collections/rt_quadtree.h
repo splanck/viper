@@ -1,28 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_quadtree.h
+// Purpose: Quadtree spatial partition for efficient collision queries, reducing O(n^2) broad-phase checks to O(n log n) by subdividing 2D space into adaptive quad cells.
+//
+// Key invariants:
+//   - Items are identified by unique int64 IDs.
+//   - The tree subdivides up to RT_QUADTREE_MAX_DEPTH levels.
+//   - Leaf nodes hold at most RT_QUADTREE_MAX_ITEMS before splitting.
+//   - Query results remain valid until the next query or mutation.
+//
+// Ownership/Lifetime:
+//   - Caller owns the quadtree handle; destroy with rt_quadtree_destroy.
+//   - Internal query result buffers are owned by the quadtree.
+//
+// Links: src/runtime/collections/rt_quadtree.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_quadtree.h
-/// @brief Quadtree for spatial partitioning and efficient collision queries.
-///
-/// Provides a quadtree data structure for:
-/// - Fast spatial queries (find objects in a region)
-/// - Collision detection optimization
-/// - Reducing O(n^2) collision checks to ~O(n log n)
-///
-/// Key invariants: Items are identified by unique int64 IDs. The tree
-///     subdivides up to RT_QUADTREE_MAX_DEPTH levels, with at most
-///     RT_QUADTREE_MAX_ITEMS per leaf before splitting.
-/// Ownership/Lifetime: Caller owns the quadtree handle; destroy with
-///     rt_quadtree_destroy(). Query results are stored internally and
-///     remain valid until the next query or mutation.
-/// Links: Viper.Quadtree standard library module.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_QUADTREE_H
 #define VIPER_RT_QUADTREE_H
 

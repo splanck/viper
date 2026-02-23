@@ -4,35 +4,29 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_html.c
-/// @brief Tolerant HTML parser and utility functions for Viper.Text.Html.
-///
-/// This file implements a tolerant HTML parser and a suite of HTML utility
-/// functions for escaping, unescaping, tag stripping, and content extraction.
-///
-/// **Parser:**
-/// The parser builds a tree of rt_map nodes. Each node has:
-/// - "tag": tag name string (empty for root/text nodes)
-/// - "text": text content string
-/// - "attrs": rt_map of attribute key-value pairs
-/// - "children": rt_seq of child nodes
-///
-/// **Tolerant Parsing:**
-/// - Handles unclosed tags, self-closing tags, and malformed HTML gracefully.
-/// - Does not enforce strict HTML nesting rules.
-///
-/// **Utility Functions:**
-/// - escape/unescape: Handle the 5 standard HTML entities plus numeric refs.
-/// - strip_tags: Remove all tags, leaving raw text.
-/// - to_text: Strip tags and unescape entities.
-/// - extract_links: Find all href values in anchor tags.
-/// - extract_text: Get text content of elements matching a tag name.
-///
-/// **Thread Safety:** All functions are thread-safe (no global mutable state).
-///
-/// @see rt_xml.c For the full XML parser
-///
+//
+// File: src/runtime/text/rt_html.c
+// Purpose: Implements a tolerant HTML parser and utility functions for the
+//          Viper.Text.Html class. Builds a tree of rt_map nodes (tag, text,
+//          attrs, children). Also provides Escape, Unescape, StripTags, ToText,
+//          ExtractLinks, and ExtractText utilities.
+//
+// Key invariants:
+//   - Parsing is tolerant: unclosed tags, self-closing tags, and malformed HTML
+//     are handled gracefully without trapping.
+//   - Each node is an rt_map with keys "tag", "text", "attrs", "children".
+//   - Escape handles the 5 standard HTML entities (&, <, >, ", ') plus numerics.
+//   - StripTags removes all markup and returns only the concatenated text content.
+//   - ExtractLinks finds all href attribute values in anchor elements.
+//   - All functions are thread-safe with no global mutable state.
+//
+// Ownership/Lifetime:
+//   - The returned parse tree (rt_map/rt_seq nodes) is owned by the caller.
+//   - All returned strings are fresh allocations; input strings are borrowed.
+//
+// Links: src/runtime/text/rt_html.h (public API),
+//        src/runtime/text/rt_xml.h (strict XML parser, related)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_html.h"

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_frozenset.h
+// Purpose: Immutable string set created from a Seq or Bag, providing O(1) average membership testing with guaranteed read-only semantics after construction.
+//
+// Key invariants:
+//   - Once created, the set cannot be modified.
+//   - Membership testing is O(1) average.
+//   - Constructed from a Seq or Bag of strings; source is not consumed.
+//   - rt_frozenset_has returns 1 if element is present, 0 otherwise.
+//
+// Ownership/Lifetime:
+//   - FrozenSet retains its string elements.
+//   - FrozenSet objects are heap-allocated; caller is responsible for lifetime management.
+//
+// Links: src/runtime/collections/rt_frozenset.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_frozenset.h
-// Purpose: Runtime functions for immutable string set.
-// Key invariants: Once created, cannot be modified. O(1) average lookup.
-// Ownership/Lifetime: Retains strings. Created from Seq or Bag.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_physics2d.h
+// Purpose: 2D physics engine for game entities providing AABB rigid-body simulation, impulse-based collision resolution, bitmask collision filtering, and a simple world step loop.
+//
+// Key invariants:
+//   - Bodies are AABB only; no rotational physics.
+//   - A world holds at most PH_MAX_BODIES (256) bodies; exceeding this traps.
+//   - Bodies with mass == 0.0 are static (immovable).
+//   - Collision filtering: bodies collide only when (A.layer & B.mask) != 0 AND (B.layer & A.mask) != 0.
+//
+// Ownership/Lifetime:
+//   - World objects are GC-managed; body handles are reference-counted.
+//   - Adding a body to a world transfers logical ownership; removing it releases the world's reference.
+//
+// Links: src/runtime/graphics/rt_physics2d.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_physics2d.h
-// Purpose: Simple 2D physics engine with rigid body dynamics and AABB collision.
-// Key invariants: Fixed-timestep Euler integration, impulse-based resolution.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

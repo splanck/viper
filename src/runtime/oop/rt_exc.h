@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/oop/rt_exc.h
+// Purpose: Runtime exception support for structured exception handling, providing exception object creation, message access, and type checking for catch handlers.
+//
+// Key invariants:
+//   - Exception objects carry a class ID for type-based catch dispatch.
+//   - Exception objects are reference-counted and contain a message string.
+//   - rt_exc_class_id returns the class ID for use in EhEntry IL opcodes.
+//   - Exception objects follow normal refcount rules; callers must balance retain/release.
+//
+// Ownership/Lifetime:
+//   - Exception objects start with refcount 1; caller owns the initial reference.
+//   - Message strings are retained by the exception object.
+//
+// Links: src/runtime/oop/rt_exc.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: runtime/rt_exc.h
-// Purpose: Runtime exception support for structured exception handling.
-// Key invariants: Exception objects are ref-counted and contain a message string.
-// Ownership/Lifetime: Exception objects follow normal ref-counting rules.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -1,24 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_log.h
+// Purpose: Simple leveled logging for the Viper.Log namespace, writing timestamped messages to stderr with DEBUG/INFO/WARN/ERROR levels and a configurable minimum level filter.
+//
+// Key invariants:
+//   - Log levels are ordered: DEBUG(0) < INFO(1) < WARN(2) < ERROR(3) < OFF(4).
+//   - Messages below the current minimum level are silently discarded.
+//   - Output format is: [LEVEL] HH:MM:SS message, written to stderr.
+//   - The default minimum level is INFO (1).
+//
+// Ownership/Lifetime:
+//   - Log functions do not retain input strings; callers retain ownership.
+//   - The global minimum level is process-wide state with no thread safety guarantees.
+//
+// Links: src/runtime/core/rt_log.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_log.h
-// Purpose: Simple logging functions for Viper.Log namespace.
-//
-// Log Levels:
-//   DEBUG (0) - Detailed diagnostic information
-//   INFO  (1) - General informational messages (default)
-//   WARN  (2) - Warning conditions
-//   ERROR (3) - Error conditions
-//   OFF   (4) - Disable all logging
-//
-// Messages are written to stderr with format: [LEVEL] HH:MM:SS message
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

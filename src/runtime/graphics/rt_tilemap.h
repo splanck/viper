@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_tilemap.h
+// Purpose: Tile-based 2D map for efficient grid rendering, providing per-tile attribute storage, layer support, and optimized batch rendering to a canvas.
+//
+// Key invariants:
+//   - Tile IDs are non-negative integers; 0 conventionally means empty.
+//   - Multiple layers allow background/foreground separation.
+//   - Tile dimensions are fixed at creation time.
+//   - rt_tilemap_draw renders only visible tiles using viewport culling.
+//
+// Ownership/Lifetime:
+//   - Tilemap objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_tilemap.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_tilemap.h
-// Purpose: Tilemap class for efficient tile-based 2D rendering.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

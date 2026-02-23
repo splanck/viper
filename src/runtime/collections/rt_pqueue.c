@@ -5,14 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_heap.c
-// Purpose: Implement Viper.Collections.Heap - a priority queue using binary heap.
+// File: src/runtime/collections/rt_pqueue.c
+// Purpose: Implements a priority queue (min-heap or max-heap) backed by a
+//   dynamic array of (priority, value) pairs. The heap property ensures the
+//   element with the extreme priority (smallest for min-heap, largest for
+//   max-heap) is always at the root and can be peeked or dequeued in O(log n).
 //
-// Structure:
-// - Implemented as a binary heap stored in a dynamic array
-// - Each element is a (priority, value) pair
-// - Supports both min-heap (smallest priority first) and max-heap modes
-// - Automatic growth when capacity is exceeded
+// Key invariants:
+//   - Binary heap stored in a flat array: parent at index i has children at
+//     indices 2*i+1 (left) and 2*i+2 (right).
+//   - For min-heap: parent.priority <= child.priority (root = minimum).
+//     For max-heap: parent.priority >= child.priority (root = maximum).
+//   - Initial capacity is HEAP_DEFAULT_CAP (16); grows by HEAP_GROWTH_FACTOR (2).
+//   - Each element is a heap_entry { int64_t priority; void* value }.
+//     The value pointer is NOT retained; callers manage value lifetime.
+//   - Enqueue is O(log n) via sift-up; dequeue is O(log n) via sift-down.
+//   - Peek is O(1); returns NULL if the heap is empty.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - PQueue objects are GC-managed (rt_obj_new_i64). The entries array is
+//     realloc-managed and freed by the GC finalizer (heap_finalizer).
+//
+// Links: src/runtime/collections/rt_pqueue.h (public API)
 //
 //===----------------------------------------------------------------------===//
 

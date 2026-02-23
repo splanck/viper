@@ -1,21 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_printf_compat.h
+// Purpose: Overridable wrapper around libc snprintf that allows test code to interpose formatting behavior portably across platforms without modifying production code.
+//
+// Key invariants:
+//   - Default implementation forwards directly to the platform's snprintf.
+//   - Test code may define a strong symbol rt_snprintf to override behavior.
+//   - Return value semantics match C99 snprintf (would-write count or negative on error).
+//   - The weak symbol pattern works on ELF and Mach-O; MSVC requires different approach.
+//
+// Ownership/Lifetime:
+//   - No heap allocation; output is written into a caller-supplied buffer.
+//   - No ownership transfer; the function is purely a formatting utility.
+//
+// Links: src/runtime/core/rt_printf_compat.c (implementation), src/runtime/core/rt_string_builder.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_printf_compat.h
-// Purpose: Provide overridable wrappers around libc printf-family functions so
-//          tests can interpose behaviour portably across platforms.
-// Key invariants: Default implementation forwards to libc; tests may define a
-//                 strong symbol to override.
-// Ownership: Runtime C API header.
-// Lifetime: Stateless function; no managed resources.
-// Links: rt_string_builder.h
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef RT_PRINTF_COMPAT_H
 #define RT_PRINTF_COMPAT_H
 

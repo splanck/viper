@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
-//
-//===----------------------------------------------------------------------===//
-//
 // File: src/runtime/rt_internal.h
-// Purpose: Internal runtime helpers: buffer growth, alloc hooks, hex utils, array macros.
-// Key invariants: Implementation-only header; never included by IL-generated or user code.
-// Ownership/Lifetime: Callers own buffers passed to rt_input_try_grow; alloc hooks are global.
-// Links: docs/viperlib.md
+// Purpose: Internal runtime helpers for buffer growth, allocation hooks, hex utilities, and array macros. This header is implementation-only and must never be included by IL-generated or user code.
+//
+// Key invariants:
+//   - Implementation-only: must not be included from public-facing headers.
+//   - rt_input_try_grow doubles buffer capacity on each call; capacity never overflows size_t.
+//   - Allocation hooks are process-global; only one hook may be active at a time.
+//   - RT_ARRAY_SIZE macro operates on true C arrays, not pointers.
+//
+// Ownership/Lifetime:
+//   - Callers own the buffer passed to rt_input_try_grow; on success the old pointer is freed.
+//   - Allocation hook is installed globally; caller must restore NULL when done.
+//
+// Links: src/runtime/rt_heap.h (heap header), src/runtime/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt.hpp"

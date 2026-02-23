@@ -1,30 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_output.h
+// Purpose: Centralized output buffering layer for improved terminal rendering performance, accumulating stdout writes and flushing at strategic points to minimize system calls.
+//
+// Key invariants:
+//   - rt_output_init is idempotent; safe to call multiple times.
+//   - Batch mode accumulates output; rt_output_flush_batch sends all buffered data.
+//   - Auto-flush on newline is configurable; default matches BASIC's PRINT semantics.
+//   - Thread safety for batch mode control is provided by internal locking.
+//
+// Ownership/Lifetime:
+//   - No ownership transfer; functions accept null-terminated C string pointers.
+//   - The internal buffer is owned by the module; callers must not free it.
+//
+// Links: src/runtime/core/rt_output.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: runtime/rt_output.h
-// Purpose: Centralized output buffering for improved terminal rendering.
-//
-// This module provides a unified output buffering layer that dramatically
-// reduces system calls when rendering to the terminal. Instead of flushing
-// stdout after every PRINT, COLOR, or LOCATE operation, output is accumulated
-// in a buffer and flushed at strategic points.
-//
-// Key Features:
-// - Automatic stdout buffering initialization
-// - Batch mode for grouping multiple operations into a single flush
-// - Configurable flush behavior (auto-flush on newline, manual only, etc.)
-// - Thread-safe batch mode control
-//
-// Performance Impact:
-// Without buffering: ~3600 system calls per frame (60x20 viewport)
-// With buffering: ~10 system calls per frame (362x improvement)
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

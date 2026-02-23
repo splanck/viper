@@ -5,8 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_cipher.c
-// Purpose: High-level encryption/decryption using ChaCha20-Poly1305.
+// File: src/runtime/text/rt_cipher.c
+// Purpose: Implements high-level symmetric encryption/decryption for the
+//          Viper.Text.Cipher class using ChaCha20-Poly1305 AEAD. Provides
+//          Encrypt and Decrypt operations that handle nonce generation,
+//          authentication tag verification, and key derivation.
+//
+// Key invariants:
+//   - Nonces are 12 bytes (96-bit), randomly generated per call.
+//   - Authenticated encryption: any tampering with ciphertext or nonce is
+//     detected and Decrypt returns NULL (not a trap).
+//   - Keys must be exactly 32 bytes (256-bit); wrong size traps.
+//   - Output format: [12-byte nonce][16-byte tag][ciphertext bytes].
+//   - Decryption verifies the Poly1305 MAC before returning plaintext.
+//   - All functions are thread-safe; no global mutable cipher state.
+//
+// Ownership/Lifetime:
+//   - Returned ciphertext/plaintext rt_bytes buffers are fresh allocations
+//     owned by the caller.
+//   - Input key, plaintext, and ciphertext buffers are borrowed read-only.
+//
+// Links: src/runtime/text/rt_cipher.h (public API),
+//        src/runtime/text/rt_aes.h (AES-CBC cipher, alternative algorithm),
+//        src/runtime/text/rt_rand.h (nonce generation)
 //
 //===----------------------------------------------------------------------===//
 

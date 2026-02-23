@@ -5,11 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_audio.c
-// Purpose: Runtime bridge functions for ViperAUD audio library.
-// Key invariants: All functions check for NULL handles.
-// Ownership/Lifetime: Audio context is global; sounds/music are ref-counted.
-// Links: src/lib/audio/include/vaud.h
+// File: src/runtime/audio/rt_audio.c
+// Purpose: Implements the runtime bridge between the Viper audio API and the
+//          ViperAUD (vaud) library. Provides Init/Shutdown, LoadSound,
+//          LoadMusic, Play/Stop/Pause/Resume for sounds and music, volume
+//          control, and IsPlaying queries. When audio is disabled at compile
+//          time, all functions are no-ops that return safe defaults.
+//
+// Key invariants:
+//   - All functions guard against NULL handles and return silently if passed one.
+//   - The audio context is a module-level global; Init must be called once
+//     before any other audio function.
+//   - Shutdown releases all loaded sounds/music and destroys the context.
+//   - Sounds use ref-counting; the caller owns the reference from LoadSound.
+//   - Music is loaded as a single stream; only one music track plays at a time.
+//   - The VIPER_ENABLE_AUDIO compile flag controls whether real or stub impls
+//     are compiled; stubs are always safe no-ops.
+//
+// Ownership/Lifetime:
+//   - Sound objects are ref-counted via the runtime heap; callers must release.
+//   - The global audio context is owned by this module and freed on Shutdown.
+//
+// Links: src/runtime/audio/rt_audio.h (public API),
+//        src/lib/audio/include/vaud.h (ViperAUD low-level audio library)
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,33 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_string_builder.h
+// Purpose: Small-buffer-aware dynamic string builder for the C runtime, avoiding heap allocation for strings up to 128 bytes while growing automatically for longer output.
+//
+// Key invariants:
+//   - Inline buffer (128 bytes) avoids allocation for short strings.
+//   - len < cap invariant holds at all times; the NUL terminator is excluded from len.
+//   - All operations report errors via rt_sb_status; callers must check before using the result.
+//   - rt_sb_finish transfers the built string to an rt_string; the builder must then be freed.
+//
+// Ownership/Lifetime:
+//   - Builder owns its backing buffer (inline or heap-allocated).
+//   - Callers must call rt_sb_free after rt_sb_finish or on error to release heap memory.
+//   - Stack allocation of rt_string_builder is safe for local use.
+//
+// Links: src/runtime/core/rt_string_builder.c (implementation), src/runtime/core/rt_string.h, src/runtime/core/rt_printf_compat.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_string_builder.h
-// Purpose: Small-buffer-aware dynamic string builder for the C runtime.
-// Key invariants: Inline buffer avoids allocation for strings <= 128 bytes.
-//                 len < cap at all times (NUL terminator excluded from len).
-//                 All operations report errors via rt_sb_status.
-// Ownership: Builder owns its backing buffer (inline or heap).
-// Lifetime: Stack/local usage; caller calls rt_sb_free when done.
-// Links: rt_string.h, rt_printf_compat.h
-//
-// Provides a small-buffer string builder for the C runtime.  The helper
-// centralises the repeated grow-append logic used by printf-style formatting and
-// numeric conversions so runtime utilities can share predictable allocation and
-// error handling semantics.
-//
-//===----------------------------------------------------------------------===//
-
-/// @file rt_string_builder.h
-/// @brief Small-buffer-aware dynamic string builder for the runtime.
-/// @details Offers bounded inline storage, automatic growth, and helpers for
-///          appending numeric values with deterministic formatting.  All
-///          functions report allocation and overflow failures to the caller so
-///          runtime helpers can surface precise trap diagnostics.
-
 #ifndef RT_STRING_BUILDER_H
 #define RT_STRING_BUILDER_H
 

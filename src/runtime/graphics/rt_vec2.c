@@ -4,68 +4,43 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_vec2.c
-/// @brief Two-dimensional vector mathematics for the Viper.Vec2 class.
-///
-/// This file implements a 2D vector type commonly used in graphics, physics,
-/// and game development. Vec2 provides operations for vector arithmetic,
-/// geometric calculations, and transformations in 2D space.
-///
-/// **Coordinate System:**
-/// Vec2 uses a standard Cartesian coordinate system:
-/// ```
-///                    +Y
-///                     ^
-///                     |
-///                     |
-///        -----+-------+-------> +X
-///                     |
-///                     |
-///                     v
-///                    -Y
-/// ```
-///
-/// **Vector Representation:**
-/// A 2D vector represents both a direction and magnitude:
-/// ```
-/// Vec2(3, 4):
-///             *  (3, 4)
-///            /|
-///           / |
-///      len / 5|  4 (y)
-///         /   |
-///        /θ   |
-///       +-----+
-///          3 (x)
-///
-/// len = sqrt(3² + 4²) = 5
-/// θ = atan2(4, 3) ≈ 53.13°
-/// ```
-///
-/// **Common Use Cases:**
-/// - Position coordinates in 2D space
-/// - Velocity and acceleration in physics simulations
-/// - Direction vectors for movement and aiming
-/// - UV texture coordinates
-/// - Screen/window coordinates in UI systems
-///
-/// **Memory Layout:**
-/// ```
-/// ViperVec2 (16 bytes):
-/// ┌───────────────────────────┐
-/// │ x (double, 8 bytes)       │  X component
-/// ├───────────────────────────┤
-/// │ y (double, 8 bytes)       │  Y component
-/// └───────────────────────────┘
-/// ```
-///
-/// **Thread Safety:** Vec2 objects are immutable after creation. All operations
-/// return new Vec2 instances rather than modifying existing ones. This makes
-/// them inherently thread-safe for read operations.
-///
-/// @see rt_vec3.c For 3D vector operations
-///
+//
+// File: src/runtime/graphics/rt_vec2.c
+// Purpose: 2D vector mathematics (x, y doubles) for Viper games and graphics.
+//   Provides immutable Vec2 objects with arithmetic (+,-,×,÷), dot product,
+//   cross product magnitude, length/normalize, distance, linear interpolation,
+//   angle operations, and reflection. Used pervasively in physics, camera math,
+//   UI layout, and any API that exchanges 2D positions or directions.
+//
+// Key invariants:
+//   - A Vec2 stores two double fields (x, y); 16 bytes, no padding:
+//
+//       Vec2(3, 4):                     +Y
+//                    *  (3, 4)           ^
+//                   /|                  |
+//              len / |  4 (y)    -------+-------> +X
+//                 /  |                  |
+//                +---+
+//                 3 (x)    len = sqrt(3² + 4²) = 5
+//
+//   - Coordinate system: standard Cartesian (+X right, +Y up). Screen/Canvas
+//     space has +Y downward — callers may need to negate Y when mixing the two.
+//   - All operations return new Vec2 objects (no mutation after creation),
+//     making Vec2 inherently safe for concurrent reads across threads.
+//   - Vec2 uses a thread-local LIFO free-list pool (VEC2_POOL_CAPACITY = 32)
+//     to amortize GC pressure in hot inner loops (physics, particle systems).
+//     Pool objects are kept alive via rt_obj_resurrect() and returned to the
+//     pool by the finalizer.
+//
+// Ownership/Lifetime:
+//   - Vec2 objects are GC-managed. Pool slots are reclaimed by the pool's
+//     finalizer path; non-pooled Vec2s are collected by the standard GC.
+//     Callers must not free Vec2s manually.
+//
+// Links: src/runtime/graphics/rt_vec2.h (public API),
+//        src/runtime/graphics/rt_vec3.c (3D counterpart),
+//        src/runtime/graphics/rt_mat3.c (matrix–vector transform consumer)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_vec2.h"

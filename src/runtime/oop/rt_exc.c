@@ -5,10 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: runtime/rt_exc.c
-// Purpose: Runtime exception support implementation.
-// Key invariants: Exception objects follow ref-counting rules.
-// Ownership/Lifetime: Message string is retained by exception, released on free.
+// File: src/runtime/oop/rt_exc.c
+// Purpose: Implements the runtime exception object type for the Viper exception
+//          handling system. Provides rt_exception allocation, message access,
+//          and type-tag queries used by the VM and native EH instructions.
+//
+// Key invariants:
+//   - Exception objects are heap-allocated and reference-counted.
+//   - The message string is retained by the exception on creation and released
+//     when the exception object is freed.
+//   - Exception type tags are integer identifiers registered at startup.
+//   - Catch dispatch compares type tags for exact or subtype matching.
+//   - NULL message is coerced to an empty string; never stored as NULL.
+//
+// Ownership/Lifetime:
+//   - Callers that throw an exception transfer ownership to the EH machinery.
+//   - The EH machinery releases the exception after a catch handler returns.
+//   - The message string is owned by the exception object, not the caller.
+//
+// Links: src/runtime/oop/rt_exc.h (public API),
+//        src/runtime/oop/rt_type_registry.h (type tag registration)
 //
 //===----------------------------------------------------------------------===//
 

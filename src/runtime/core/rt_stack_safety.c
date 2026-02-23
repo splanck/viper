@@ -5,12 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements stack safety utilities for the Viper runtime.
+// File: src/runtime/core/rt_stack_safety.c
+// Purpose: Implements stack overflow detection and graceful error reporting for
+//          the Viper runtime. On POSIX systems, installs a SIGSEGV handler on
+//          an alternate signal stack to catch stack overflows. On Windows,
+//          registers a Vectored Exception Handler for EXCEPTION_STACK_OVERFLOW.
+//
+// Key invariants:
+//   - Initialization is idempotent; repeated calls to rt_init_stack_safety are
+//     safe and guarded by a volatile flag.
+//   - Signal/exception handlers write diagnostic messages using async-signal-
+//     safe methods (write/WriteFile) rather than fprintf, which is unsafe in
+//     low-stack conditions.
+//   - After detecting a stack overflow the process is terminated immediately
+//     via ExitProcess/exit(1); recovery is not attempted.
+//   - The alternate stack (POSIX) is a static char array of size SIGSTKSZ;
+//     no heap allocation is used for signal handling infrastructure.
+//   - On platforms without signal support (e.g., bare-metal) the functions
+//     are compiled as no-ops.
+//
+// Ownership/Lifetime:
+//   - All signal-handling state is in process-global static variables; no
+//     heap allocation is performed by this module.
+//   - The alternate signal stack buffer is statically allocated and valid for
+//     the entire process lifetime once rt_init_stack_safety is called.
+//
+// Links: src/runtime/core/rt_stack_safety.h (public API),
+//        src/runtime/core/rt_trap.c (general runtime trap/abort mechanism)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Stack overflow detection and graceful error handling.
 
 #include "rt_stack_safety.h"
 

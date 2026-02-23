@@ -5,25 +5,37 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_io.c
-// Purpose: Provide the native implementations of BASIC's PRINT/INPUT/file I/O
-//          intrinsics, mirroring the VM's behaviour exactly.
-// Key invariants: Trap handling always routes through rt_trap/vm_trap, newline
-//                 conventions stay consistent with historical BASIC (CRLF
-//                 tolerant input, LF output), channel bookkeeping preserves EOF
-//                 semantics across seeks, and helpers never assume ownership of
-//                 caller-supplied buffers.
-// Links: docs/runtime/io.md
+// File: src/runtime/core/rt_io.c
+// Purpose: Provides the native implementations of BASIC's PRINT/INPUT/file I/O
+//          intrinsics, mirroring the VM's behaviour exactly. Covers console
+//          output, line-oriented input, file channel management (open/close/
+//          seek/read/write), CSV field splitting, and trap recovery for I/O
+//          errors.
+//
+// Key invariants:
+//   - All traps route through rt_trap or vm_trap; callers can install a
+//     jmp_buf recovery point via rt_trap_set_recovery for recoverable errors.
+//   - Newline handling follows historical BASIC: CRLF is accepted on input,
+//     LF is emitted on output; raw binary reads are unmodified.
+//   - File channel EOF flags are preserved across seeks; explicit reset is
+//     required before rereading past EOF.
+//   - Helpers never take ownership of caller-supplied buffers; all writes into
+//     caller storage are bounded by explicit capacity parameters.
+//   - OS errors are converted to runtime error codes; errno is not exposed
+//     directly to BASIC programs.
+//
+// Ownership/Lifetime:
+//   - File channel descriptors are owned by the runtime channel table; callers
+//     use integer channel numbers, not FILE* pointers directly.
+//   - Returned rt_string values (e.g., from input routines) transfer a new
+//     reference to the caller, who must call rt_string_unref when done.
+//
+// Links: src/runtime/core/rt_io.h (public API — via rt_file.h),
+//        src/runtime/core/rt_output.c (buffered stdout wrapper),
+//        src/runtime/core/rt_string_format.c (numeric formatting),
+//        docs/runtime/io.md
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief BASIC runtime I/O primitives shared by the VM and native builds.
-/// @details Defines printing helpers, line-oriented input routines, CSV field
-///          splitting, and file-channel positioning utilities.  Each entry
-///          point validates arguments, converts OS errors into runtime error
-///          codes, and coordinates with the channel cache to keep EOF and
-///          position metadata coherent.
 
 #include "rt_file.h"
 #include "rt_format.h"

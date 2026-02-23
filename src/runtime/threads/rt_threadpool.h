@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_threadpool.h
+// Purpose: Thread pool for async task execution (Viper.Threads.Pool) with FIFO task dispatch, worker recycling, and configurable pool size.
+//
+// Key invariants:
+//   - Tasks are executed FIFO; worker threads are recycled after each task.
+//   - The default pool size equals the number of CPU cores.
+//   - rt_threadpool_wait_all blocks until all queued tasks are complete.
+//   - Pool objects are reference-counted; the last release destroys the pool.
+//
+// Ownership/Lifetime:
+//   - Pool objects are runtime-managed and reference-counted.
+//   - Submitted task function pointers must remain valid until the task executes.
+//
+// Links: src/runtime/threads/rt_threadpool.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_threadpool.h
-// Purpose: Thread pool for async task execution (Viper.Threads.Pool).
-// Key invariants: Tasks are executed FIFO, workers are recycled.
-// Ownership/Lifetime: Pool objects are runtime-managed and ref-counted.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -4,15 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_spline.c
-/// @brief Spline interpolation for the Viper.Spline class.
-///
-/// Supports Catmull-Rom, cubic Bezier, and linear splines over Vec2 control
-/// points.  All splines are parameterized on t in [0, 1].
-///
-/// Thread Safety: Spline objects are immutable after creation.
-///
+//
+// File: src/runtime/graphics/rt_spline.c
+// Purpose: Spline curve interpolation for the Viper.Spline class. Supports three
+//   curve types over Vec2 control points: linear (piecewise straight segments),
+//   Catmull-Rom (smooth curve through all control points), and cubic Bezier
+//   (curve guided by explicit tangent handles). All splines are parameterized on
+//   t in [0.0, 1.0] and return an interpolated Vec2 position or tangent.
+//
+// Key invariants:
+//   - Control point coordinates (x, y) are stored as separate double arrays xs
+//     and ys, extracted from the Vec2 sequence at construction time.
+//   - Catmull-Rom uses a centripetal parameterization and clamps end-point
+//     tangents using phantom points mirrored from the first/last segments.
+//   - Bezier evaluation uses De Casteljau's algorithm; for n control points it
+//     operates on a degree-(n-1) curve.
+//   - Spline objects are immutable after construction; the control point arrays
+//     are allocated with calloc and freed via the GC finalizer.
+//   - t values outside [0, 1] are clamped to the nearest valid segment.
+//
+// Ownership/Lifetime:
+//   - ViperSpline structs are allocated via rt_obj_new_i64 (GC heap); the xs
+//     and ys double arrays are malloc'd separately and freed in spline_finalizer,
+//     registered as the GC finalizer at construction.
+//
+// Links: src/runtime/graphics/rt_spline.h (public API),
+//        src/runtime/graphics/rt_vec2.h (Vec2 control point and return type),
+//        src/runtime/rt_seq.h (input sequence of Vec2 control points)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_spline.h"

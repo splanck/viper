@@ -5,8 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_result.c
-// Purpose: Result type implementation for error handling.
+// File: src/runtime/oop/rt_result.c
+// Purpose: Implements the Result<T,E> type (Ok/Err) for the Viper.Result class.
+//          Wraps either a success value or an error value as a heap-allocated
+//          object, providing an alternative to exceptions for error propagation.
+//
+// Key invariants:
+//   - Result.Ok(val) stores the value with is_ok=1; Err is not set.
+//   - Result.Err(err) stores the error with is_ok=0; value is not set.
+//   - IsOk() returns 1 for Ok results; IsErr() returns 1 for Err results.
+//   - Value() returns the ok value if IsOk; traps if called on Err.
+//   - Error() returns the error if IsErr; traps if called on Ok.
+//   - Exactly one of (value, error) is set; the other is NULL.
+//
+// Ownership/Lifetime:
+//   - The Result retains references to both the value and error slots.
+//   - The GC finalizer releases whichever reference is set.
+//   - Callers receive a fresh Result reference (refcount=1).
+//
+// Links: src/runtime/oop/rt_result.h (public API),
+//        src/runtime/oop/rt_option.h (Option<T>, related present/absent pattern)
 //
 //===----------------------------------------------------------------------===//
 

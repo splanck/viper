@@ -5,8 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_gui_features.c
-// Purpose: CommandPalette, Tooltip, Toast, Breadcrumb, Minimap, and Drag & Drop.
+// File: src/runtime/graphics/rt_gui_features.c
+// Purpose: Runtime bindings for advanced ViperGUI feature widgets: CommandPalette
+//   (fuzzy-searchable command list), Tooltip (hover annotation), Toast
+//   (transient notification), Breadcrumb (navigation path), Minimap (scaled
+//   document overview), and Drag & Drop. Each widget type wraps the corresponding
+//   vg_* C widget with a GC-safe state struct that captures selection/event data
+//   for polling by Zia code.
+//
+// Key invariants:
+//   - rt_commandpalette_on_execute callback fires synchronously inside the vg
+//     event loop; it strdup's the selected command id for later polling.
+//   - Toast messages are transient: they auto-dismiss after the configured
+//     duration; no explicit dismiss call is required.
+//   - Minimap content is updated via rt_minimap_set_content and rendered at
+//     reduced scale; the pixel buffer is owned by the vg_minimap_t widget.
+//   - Drag & Drop uses VGFX drag events; drag data is stored as C strings
+//     allocated by the platform and freed after the drop handler returns.
+//   - All widget constructors accept a parent void* and cast it to vg_widget_t*.
+//
+// Ownership/Lifetime:
+//   - Wrapper state structs (e.g. rt_commandpalette_data_t) are allocated via
+//     rt_obj_new_i64 (GC heap); their embedded vg_* pointers are manually freed
+//     in the corresponding destroy functions.
+//   - selected_command is strdup'd on selection and freed on next selection or
+//     at destroy time.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/runtime/rt_platform.h (platform detection helpers)
 //
 //===----------------------------------------------------------------------===//
 

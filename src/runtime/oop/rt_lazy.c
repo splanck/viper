@@ -5,8 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_lazy.c
-// Purpose: Lazy type implementation.
+// File: src/runtime/oop/rt_lazy.c
+// Purpose: Implements the Lazy<T> deferred initialization wrapper for the
+//          Viper.Lazy class. The wrapped factory function is called at most
+//          once on first Value access; subsequent accesses return the cached
+//          value without re-invoking the factory.
+//
+// Key invariants:
+//   - The factory function is called exactly once on the first call to Value.
+//   - After the first call, the cached value is returned without locking.
+//   - Thread-safety: initialization uses a double-checked flag; on platforms
+//     with weaker memory models an atomic/barrier is used.
+//   - If the factory returns NULL, NULL is cached and returned on all subsequent
+//     accesses.
+//   - IsInitialized returns 1 after the first successful Value call.
+//
+// Ownership/Lifetime:
+//   - The Lazy object retains a reference to the cached value once computed.
+//   - The GC finalizer releases the cached value reference.
+//   - The factory function pointer is not retained; callers own its lifetime.
+//
+// Links: src/runtime/oop/rt_lazy.h (public API),
+//        src/runtime/oop/rt_option.h (Option<T> for present/absent, related)
 //
 //===----------------------------------------------------------------------===//
 

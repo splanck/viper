@@ -1,20 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_fp.h
+// Purpose: Floating-point arithmetic helpers enforcing BASIC domain and overflow semantics via an out-parameter ok flag, wrapping IEEE-754 power operations with input validation for trap-based error handling.
 //
-//===----------------------------------------------------------------------===//
+// Key invariants:
+//   - When *ok is true the result matches the C99 math library pow().
+//   - When *ok is false the result is unspecified and the caller must trap.
+//   - Valid inputs (non-negative base, finite exponent) never set *ok to false.
+//   - rt_math_pow is the simple 2-arg form for IL calling convention; no domain checks.
 //
-// File: src/runtime/rt_fp.h
-// Purpose: Floating-point arithmetic helpers that enforce BASIC domain and
-//          overflow semantics via an out-parameter ok flag, wrapping IEEE-754
-//          operations with input validation for trap-based error handling.
-// Key invariants: When *ok is true the result matches the standard C math
-//                 library; when *ok is false the result is unspecified and the
-//                 caller must trap; valid inputs never set *ok to false.
-// Ownership/Lifetime: All parameters are plain values or pointers to caller-
-//                     owned booleans; no heap allocation occurs.
-// Links: docs/viperlib.md
+// Ownership/Lifetime:
+//   - All parameters are plain values or pointers to caller-owned booleans.
+//   - No heap allocation occurs.
+//
+// Links: src/runtime/core/rt_fp.c (implementation)
 //
 //===----------------------------------------------------------------------===//
 #pragma once

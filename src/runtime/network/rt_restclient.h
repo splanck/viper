@@ -1,21 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/network/rt_restclient.h
+// Purpose: REST API client with session management, persistent headers, base URL support, JSON convenience methods, and configurable timeouts.
+//
+// Key invariants:
+//   - Persistent headers (e.g., Authorization) are sent with every request.
+//   - Base URL is prepended to all relative request paths.
+//   - JSON helper methods automatically set Content-Type: application/json.
+//   - Timeout applies to connection establishment and data transfer.
+//
+// Ownership/Lifetime:
+//   - RestClient objects are heap-allocated; caller is responsible for lifetime management.
+//   - Returned response strings are newly allocated; caller must release.
+//
+// Links: src/runtime/network/rt_restclient.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_restclient.h
-/// @brief REST API client with session management and JSON convenience methods.
-///
-/// Provides a high-level HTTP client for REST APIs:
-/// - Persistent headers across requests (authorization, content-type)
-/// - Base URL support for API endpoints
-/// - JSON request/response helpers
-/// - Timeout configuration
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_RESTCLIENT_H
 #define VIPER_RT_RESTCLIENT_H
 

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_iter.h
+// Purpose: Unified stateful iterator protocol for all collection types, providing a common next/has_next interface over Seq, List, Deque, Map, Set, Stack, Queue, Ring, and Trie.
+//
+// Key invariants:
+//   - Iterators are lightweight handles wrapping a collection reference and a position.
+//   - Collections must remain valid and unmodified during iteration.
+//   - Modifying a collection during iteration yields undefined results.
+//   - rt_iter_has_next returns 1 while elements remain; 0 when exhausted.
+//
+// Ownership/Lifetime:
+//   - Iterator objects are heap-allocated; caller must free after use.
+//   - Iterators hold a borrowed reference to the underlying collection.
+//
+// Links: src/runtime/collections/rt_iter.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_iter.h
-// Purpose: Unified stateful iterator protocol for all collections.
-// Key invariants: Iterators are lightweight handles wrapping collection + index.
-//   Collections must remain valid during iteration. Modifying a collection
-//   during iteration yields undefined results.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -1,21 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_file_path.h
+// Purpose: Internal helpers for translating BASIC OPEN mode enumerations to fopen mode strings and POSIX flags, extracting validated UTF-8 paths from runtime strings.
 //
-//===----------------------------------------------------------------------===//
+// Key invariants:
+//   - rt_file_mode_string returns NULL for invalid mode enumerations.
+//   - rt_file_mode_to_flags sets flags_out only on success; it is not modified on failure.
+//   - Path extraction validates that the input is non-null and non-empty.
+//   - All returned pointers are views into existing data; no allocation occurs.
 //
-// File: src/runtime/rt_file_path.h
-// Purpose: Internal helpers for translating BASIC OPEN mode enumerations to
-//          fopen mode strings and POSIX flags, extracting validated UTF-8
-//          paths from runtime strings, and providing byte views for file I/O.
-// Key invariants: rt_file_mode_string returns NULL for invalid modes;
-//                 rt_file_mode_to_flags sets flags_out only on success;
-//                 path extraction validates non-null, non-empty input.
-// Ownership/Lifetime: All returned pointers are views into existing data (no
-//                     allocation); callers must not free mode strings or path
-//                     pointers; ViperString inputs are borrowed, not retained.
-// Links: docs/viperlib.md
+// Ownership/Lifetime:
+//   - All returned pointers are non-owning views; callers must not free them.
+//   - ViperString inputs are borrowed, not retained.
+//
+// Links: src/runtime/io/rt_file_path.c (implementation)
 //
 //===----------------------------------------------------------------------===//
 #pragma once

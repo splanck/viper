@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_pluralize.h
+// Purpose: English pluralization and singularization handling common rules, irregular forms, and uncountable nouns for the ~95% common case.
+//
+// Key invariants:
+//   - Handles common English pluralization rules (e.g., -s, -es, -ies, -ves).
+//   - Irregular forms (e.g., 'child'/'children', 'person'/'people') use a lookup table.
+//   - Uncountable nouns (e.g., 'information', 'water') are returned unchanged.
+//   - Not a full NLP engine; uncommon edge cases may be incorrect.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - Input strings are borrowed; callers retain ownership.
+//
+// Links: src/runtime/text/rt_pluralize.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_pluralize.h
-// Purpose: English pluralization and singularization.
-// Key invariants: Handles common English rules, irregular forms, and uncountable
-//                 nouns. Not a full NLP engine - covers the ~95% common case.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

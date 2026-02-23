@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_concqueue.h
+// Purpose: Thread-safe concurrent queue with blocking and non-blocking dequeue operations, using a mutex and condition variable for producer/consumer synchronization.
+//
+// Key invariants:
+//   - FIFO ordering; mutex-protected for thread safety.
+//   - rt_concqueue_dequeue blocks on a condition variable when the queue is empty.
+//   - rt_concqueue_try_dequeue returns NULL immediately if the queue is empty.
+//   - rt_concqueue_close wakes all blocked dequeue callers with NULL.
+//
+// Ownership/Lifetime:
+//   - ConcQueue objects are heap-allocated; caller is responsible for lifetime management.
+//   - Enqueued values are retained; dequeued values are returned with retained reference.
+//
+// Links: src/runtime/threads/rt_concqueue.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_concqueue.h
-// Purpose: Thread-safe concurrent queue with blocking/non-blocking operations.
-// Key invariants: FIFO order, mutex-protected. Blocking dequeue waits on CV.
-// Ownership/Lifetime: Retains enqueued values. Created empty.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

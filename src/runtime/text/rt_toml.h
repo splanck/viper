@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_toml.h
+// Purpose: TOML (Tom's Obvious Minimal Language) configuration file parser returning a nested Map structure representing keys, sections, and arrays.
+//
+// Key invariants:
+//   - Parses basic TOML: key-value pairs, sections ([table]), arrays, inline tables.
+//   - Returns a Map where section names are keys and values are Maps.
+//   - Top-level key-value pairs appear in the root Map.
+//   - Returns NULL on invalid TOML syntax.
+//
+// Ownership/Lifetime:
+//   - Returned Map objects are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of parsing.
+//
+// Links: src/runtime/text/rt_toml.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_toml.h
-// Purpose: TOML (Tom's Obvious Minimal Language) configuration parser.
-// Key invariants: Parses basic TOML key-value pairs, sections, arrays.
-//                 Returns nested Map structure.
-// Ownership/Lifetime: Returns new Map objects. Caller manages.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

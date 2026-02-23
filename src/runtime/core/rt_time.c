@@ -4,51 +4,31 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_time.c
-/// @brief Portable time helpers for sleep, timing, and clock operations.
-///
-/// This file provides cross-platform timing utilities for the Viper runtime,
-/// including sleep functions and high-resolution monotonic timers. These
-/// functions power BASIC statements like `SLEEP` and functions like `TIMER`.
-///
-/// **Monotonic Time:**
-/// The timing functions use monotonic clocks that are not affected by system
-/// time changes (NTP adjustments, daylight saving, manual changes). This makes
-/// them suitable for measuring elapsed time and intervals.
-///
-/// **Time Sources by Platform:**
-/// | Platform | Sleep Implementation   | Timer Source                |
-/// |----------|------------------------|-----------------------------|
-/// | Windows  | Sleep()                | QueryPerformanceCounter     |
-/// | macOS    | nanosleep()            | CLOCK_MONOTONIC             |
-/// | Linux    | nanosleep()            | CLOCK_MONOTONIC             |
-///
-/// **Time Units:**
-/// ```
-/// 1 second = 1,000 milliseconds (ms)
-///          = 1,000,000 microseconds (μs)
-///          = 1,000,000,000 nanoseconds (ns)
-/// ```
-///
-/// **Use Cases:**
-/// - Delaying program execution (`SLEEP`)
-/// - Measuring elapsed time for benchmarking
-/// - Game frame timing and animation
-/// - Implementing timeouts
-/// - Rate limiting operations
-///
-/// **Signal Handling (Unix):**
-/// The sleep function automatically retries if interrupted by a signal (EINTR),
-/// ensuring the full requested duration is slept.
-///
-/// **Thread Safety:** All functions are thread-safe and can be called from
-/// multiple threads simultaneously.
-///
-/// @see rt_stopwatch.c For high-level stopwatch class
-/// @see rt_countdown.c For countdown timer class
-/// @see rt_datetime.c For wall-clock date/time operations
-///
+//
+// File: src/runtime/core/rt_time.c
+// Purpose: Provides portable cross-platform timing utilities for the Viper
+//          runtime. Implements millisecond-precision sleep (rt_sleep_ms) and
+//          a high-resolution monotonic tick counter (rt_get_tick_count_ms)
+//          that powers BASIC SLEEP statements, TIMER functions, and game loops.
+//
+// Key invariants:
+//   - Sleep uses nanosleep() on POSIX and Sleep() on Windows; nanosleep is
+//     retried automatically on EINTR to sleep the full requested duration.
+//   - The tick counter uses CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter
+//     (Windows); it is unaffected by NTP adjustments or daylight saving.
+//   - Negative sleep durations are treated as 0 (no-op).
+//   - All functions are thread-safe; each call is independent with no shared
+//     mutable state.
+//
+// Ownership/Lifetime:
+//   - All functions operate on scalar integer values; no heap allocation is
+//     performed.
+//   - No state is retained between calls.
+//
+// Links: src/runtime/core/rt_stopwatch.c (high-level Stopwatch class),
+//        src/runtime/core/rt_countdown.c (Countdown timer class),
+//        src/runtime/core/rt_datetime.c (wall-clock date/time operations)
+//
 //===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"

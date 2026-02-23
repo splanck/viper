@@ -1,17 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_bigint.h
+// Purpose: Arbitrary-precision integer arithmetic for the Viper.Math.BigInt runtime class, providing creation, arithmetic, comparison, bitwise, and conversion operations on heap-allocated big integer objects.
+//
+// Key invariants:
+//   - All arithmetic operations produce normalized results with no leading zero limbs.
+//   - Division by zero traps; callers must guard divisor before calling rt_bigint_div.
+//   - Conversion rt_bigint_to_i64 truncates silently when the value exceeds int64 range.
+//   - String parsing accepts decimal or 0x-prefixed hexadecimal; returns NULL on invalid input.
+//
+// Ownership/Lifetime:
+//   - Returned BigInt objects are newly heap-allocated with refcount 1.
+//   - Callers are responsible for releasing BigInt objects when no longer needed.
+//   - Binary operations do not consume their input arguments.
+//
+// Links: src/runtime/core/rt_bigint.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_bigint.h
-// Purpose: Arbitrary precision integer arithmetic for Viper.Math.BigInt.
-// Key invariants: All operations produce normalized results (no leading zeros).
-// Ownership/Lifetime: Returned values are newly allocated, ref-counted objects.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

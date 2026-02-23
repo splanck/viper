@@ -4,10 +4,38 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_pathfollow.c
-/// @brief Implementation of path follower.
-///
+//
+// File: src/runtime/collections/rt_pathfollow.c
+// Purpose: Waypoint-based path follower for Viper games. Stores an ordered list
+//   of 2D waypoints and advances an entity along the path at a configurable
+//   speed. The follower interpolates linearly between consecutive waypoints,
+//   computing the entity's exact world-space position and direction at any
+//   point along the route. Typical uses: enemy patrol routes, projectile
+//   trajectories, cutscene camera paths, and conveyor belts.
+//
+// Key invariants:
+//   - IMPORTANT: All coordinates use a fixed-point scale of 1000 units = 1
+//     world unit. Pass pixel-scale positions multiplied by 1000. For example,
+//     a screen position of (320, 240) is stored as (320000, 240000). Failing
+//     to scale results in the follower appearing to advance by a factor of 1000
+//     too quickly.
+//   - Speed is also in the same fixed-point scale (units × 1000 per frame).
+//   - Progress is tracked as a floating-point accumulator of distance traveled.
+//     Segment lengths are computed from the Euclidean distance between adjacent
+//     waypoints (in fixed-point units).
+//   - When the follower reaches the last waypoint it either stops (one-shot) or
+//     wraps back to the first waypoint (looping), depending on the loop flag.
+//   - Waypoints are stored in a malloc'd array that grows (realloc) when the
+//     capacity is exceeded, doubling each time.
+//
+// Ownership/Lifetime:
+//   - PathFollower objects are GC-managed (rt_obj_new_i64). The waypoint array
+//     is malloc'd and freed by the GC finalizer. rt_pathfollow_destroy() is a
+//     documented no-op for API symmetry.
+//
+// Links: src/runtime/collections/rt_pathfollow.h (public API),
+//        docs/viperlib/game.md (PathFollower section — coordinate scale note)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_pathfollow.h"

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_sparsearray.h
+// Purpose: Memory-efficient sparse array mapping arbitrary int64_t indices to object pointer values, allocating storage only for non-null entries via a hash map.
+//
+// Key invariants:
+//   - Indices are arbitrary signed 64-bit integers; no range restriction.
+//   - Only non-null entries consume memory.
+//   - All operations are O(1) average-case via internal hash map.
+//   - rt_sparse_get returns NULL for indices not explicitly set.
+//
+// Ownership/Lifetime:
+//   - SparseArray objects are heap-allocated; caller is responsible for lifetime management.
+//   - Stored values are retained while in the array.
+//
+// Links: src/runtime/collections/rt_sparsearray.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_sparsearray.h
-// Purpose: Memory-efficient sparse array (only allocates for non-null slots).
-// Key invariants: O(1) average get/set via hash map. Indices are arbitrary i64.
-// Ownership/Lifetime: Retains stored values. Created empty.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

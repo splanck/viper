@@ -1,18 +1,20 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/audio/rt_audio.h
+// Purpose: Runtime bridge for the ViperAUD audio library, exposing sound effect and music playback controls (play, pause, stop, volume, loop) over opaque audio handles.
+//
+// Key invariants:
+//   - All sound and music pointers are opaque handles returned by rt_sound_new/rt_music_new.
+//   - Volume is in the range [0, 100]; values are clamped to this range.
+//   - Looping and channel multiplexing are managed by the underlying ViperAUD backend.
+//
+// Ownership/Lifetime:
+//   - Sounds must be freed via rt_sound_free; music via rt_music_free.
+//   - Caller owns all handles returned by factory functions.
+//
+// Links: src/lib/audio/include/vaud.h (underlying audio backend), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_audio.h
-// Purpose: Runtime bridge functions for ViperAUD audio library.
-// Key invariants: All sound/music pointers are opaque handles from rt_sound_new.
-// Ownership/Lifetime: Sounds/music must be freed via rt_sound_free/rt_music_free.
-// Links: src/lib/audio/include/vaud.h
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

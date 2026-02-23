@@ -4,100 +4,42 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_context.c
-/// @brief Per-VM runtime context management for Viper programs.
-///
-/// This file implements the runtime context system that enables multiple
-/// independent Viper VMs to coexist within a single process. Each context
-/// maintains its own isolated state for random number generation, file handles,
-/// command-line arguments, module variables, and type registration.
-///
-/// **What is a Runtime Context?**
-/// A runtime context (RtContext) is a container that holds all per-VM state
-/// that would otherwise be global. This isolation enables:
-/// - Multiple VMs running concurrently in separate threads
-/// - Embedding Viper in applications that need independent instances
-/// - Testing VMs without state pollution between test cases
-///
-/// **Context Architecture:**
-/// ```
-/// ┌──────────────────────────────────────────────────────────────────────────┐
-/// │                          Process                                         │
-/// │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐       │
-/// │  │   Thread A      │    │   Thread B      │    │   Thread C      │       │
-/// │  │                 │    │                 │    │                 │       │
-/// │  │  ┌───────────┐  │    │  ┌───────────┐  │    │  ┌───────────┐  │       │
-/// │  │  │ Context 1 │  │    │  │ Context 2 │  │    │  │ Context 1 │  │       │
-/// │  │  │ (VM 1)    │  │    │  │ (VM 2)    │  │    │  │ (shared)  │  │       │
-/// │  │  └───────────┘  │    │  └───────────┘  │    │  └───────────┘  │       │
-/// │  └─────────────────┘    └─────────────────┘    └─────────────────┘       │
-/// │                                                                          │
-/// │  ┌──────────────────────────────────────────────────────────────────┐    │
-/// │  │                    Legacy Context (fallback)                     │    │
-/// │  │              Used when no VM context is active                   │    │
-/// │  └──────────────────────────────────────────────────────────────────┘    │
-/// └──────────────────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Context Components:**
-/// | Component       | Purpose                                              |
-/// |-----------------|------------------------------------------------------|
-/// | rng_state       | Random number generator seed (per-VM determinism)    |
-/// | file_state      | Open file handles (OPEN/CLOSE/READ/WRITE)            |
-/// | args_state      | Command-line arguments (Environment.GetArgument)     |
-/// | modvar_entries  | Module-level variables (global variables per VM)     |
-/// | type_registry   | Registered classes and interfaces (OOP support)      |
-/// | bind_count      | Reference count tracking active thread bindings      |
-///
-/// **Thread-Local Binding:**
-/// ```
-/// ' Each thread has its own current context pointer
-/// _Thread_local RtContext *g_rt_context = NULL;
-///
-/// ' VM binds context before executing code
-/// rt_set_current_context(vm_context);
-/// ... execute Viper code ...
-/// rt_set_current_context(NULL);  ' Unbind when done
-/// ```
-///
-/// **Legacy Context:**
-/// For backward compatibility with native code that doesn't use contexts,
-/// a global legacy context is lazily initialized and used as a fallback:
-/// ```
-/// RtContext *ctx = rt_get_current_context();
-/// if (!ctx)
-///     ctx = rt_legacy_context();  // Use shared fallback
-/// ```
-///
-/// **State Handoff:**
-/// When the last thread unbinds from a context, important state (files,
-/// arguments, types) is transferred to the legacy context so that code
-/// running after VM exit continues to work:
-/// ```
-/// VM Thread                          Legacy Context
-/// ┌──────────┐                       ┌──────────────┐
-/// │ Context  │  ───── unbind ─────▶  │   Legacy     │
-/// │ (files)  │  (bind_count → 0)     │ (inherits    │
-/// │ (types)  │                       │   files,     │
-/// └──────────┘                       │   types)     │
-///                                    └──────────────┘
-/// ```
-///
-/// **Thread Safety:**
-/// | Operation               | Thread Safety                               |
-/// |-------------------------|---------------------------------------------|
-/// | rt_context_init         | Safe (operates on caller-owned memory)      |
-/// | rt_context_cleanup      | Safe (operates on caller-owned memory)      |
-/// | rt_set_current_context  | Safe (thread-local with atomic counters)    |
-/// | rt_get_current_context  | Safe (thread-local read)                    |
-/// | rt_legacy_context       | Safe (atomic lazy initialization)           |
-///
-/// @see rt_file.c For file handle state
-/// @see rt_args.c For command-line argument state
-/// @see rt_type_registry.c For OOP type registration
-/// @see rt_modvar.c For module variable storage
-///
+//
+// File: src/runtime/core/rt_context.c
+// Purpose: Per-VM runtime context management. Each Viper VM instance owns an
+//   RtContext that holds all per-VM state: RNG seed, open file handles,
+//   command-line arguments, module-level variables, and the OOP type registry.
+//   Multiple independent VMs can coexist in a single process because all
+//   mutable state is confined to the context rather than process-global vars.
+//
+// Key invariants:
+//   - A context is bound to a thread via a thread-local pointer
+//     (_Thread_local RtContext *g_rt_context). At most one context is active
+//     per thread at any time; VMs must bind before executing and unbind after.
+//   - bind_count is an atomic reference count incremented on bind and
+//     decremented on unbind. When it reaches 0, the context's open files and
+//     registered types are migrated to the legacy context so native post-VM
+//     code continues to work correctly.
+//   - A process-wide legacy context is lazily initialized exactly once (atomic
+//     compare-exchange) and used as a fallback when g_rt_context is NULL. It
+//     is never explicitly destroyed.
+//   - rt_context_init() zero-initializes all subsystems. Callers must call
+//     rt_context_cleanup() to free heap resources when done.
+//   - Contexts must not be shared across threads without external
+//     synchronization; the thread-local binding pattern is the intended idiom.
+//
+// Ownership/Lifetime:
+//   - The embedding application (VM or host) owns the RtContext struct storage.
+//     The runtime does not allocate or free the struct itself.
+//   - Internal heap allocations (file state, args, type registry) are freed
+//     by rt_context_cleanup().
+//
+// Links: src/runtime/core/rt_context.h (public API),
+//        src/runtime/core/rt_file.c (file handle state),
+//        src/runtime/core/rt_args.c (command-line argument state),
+//        src/runtime/core/rt_type_registry.c (OOP type registration),
+//        src/runtime/core/rt_modvar.c (module variable storage)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_context.h"

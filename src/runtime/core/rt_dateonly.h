@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_dateonly.h
+// Purpose: DateOnly type representing a calendar date without time or timezone components, providing creation, parsing, arithmetic, and formatting operations.
+//
+// Key invariants:
+//   - Month is 1-indexed (1=January, 12=December); day is 1-indexed.
+//   - Days since epoch are counted from 1970-01-01 (Unix epoch, day 0).
+//   - ISO format for parsing and formatting is YYYY-MM-DD.
+//   - Date arithmetic (add/subtract days) wraps correctly across month and year boundaries.
+//
+// Ownership/Lifetime:
+//   - DateOnly objects are heap-allocated opaque pointers.
+//   - Callers are responsible for managing object lifetime; no reference counting.
+//
+// Links: src/runtime/core/rt_dateonly.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_dateonly.h
-// Purpose: DateOnly type - represents a date without time components.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

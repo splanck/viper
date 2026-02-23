@@ -5,9 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_easing.c
-// Purpose: Standard easing functions for animation and interpolation.
-//          All functions map t in [0,1] to an eased output value.
+// File: src/runtime/core/rt_easing.c
+// Purpose: Implements the standard easing function library for animation and
+//          motion interpolation. Covers linear, polynomial (quad/cubic/quart/
+//          quint), sinusoidal, exponential, circular, elastic, back, and bounce
+//          families, each in ease-in, ease-out, and ease-in-out variants.
+//
+// Key invariants:
+//   - All functions accept t in [0.0, 1.0] and return values in the same
+//     domain for most easing types; elastic and back functions may return
+//     values slightly outside [0, 1] by design.
+//   - Functions are pure: no side effects, no global state, safe to call
+//     concurrently from multiple threads.
+//   - Input values outside [0, 1] produce extrapolated results; callers are
+//     responsible for clamping if strict domain adherence is required.
+//   - M_PI is defined locally if the math header does not provide it.
+//
+// Ownership/Lifetime:
+//   - All functions operate on scalar double values; no allocation is performed.
+//   - No state is retained between calls.
+//
+// Links: src/runtime/core/rt_easing.h (public API),
+//        src/runtime/core/rt_perlin.c (complementary procedural utilities)
 //
 //===----------------------------------------------------------------------===//
 

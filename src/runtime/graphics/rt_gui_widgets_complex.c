@@ -5,8 +5,36 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_gui_widgets_complex.c
-// Purpose: Complex widget implementations (TabBar, SplitPane, CodeEditor, etc.).
+// File: src/runtime/graphics/rt_gui_widgets_complex.c
+// Purpose: Runtime bindings for composite ViperGUI widgets: TabBar (tab strip
+//   with optional close buttons), SplitPane (resizable two-panel divider),
+//   TreeView (hierarchical node list), ScrollView (scrollable container),
+//   FloatingPanel (overlay panel drawn above all content), and CodeEditor (full
+//   source-editor widget with syntax highlighting, gutters, and selection).
+//   Each widget wraps the corresponding vg_* C widget with a Zia-callable API.
+//
+// Key invariants:
+//   - TabBar active-tab is tracked by the vg_tabbar_t; rt_tabbar_get_active()
+//     returns the raw vg_tab_t* pointer — callers must not free it.
+//   - SplitPane position is a float in [0,1] representing the divider fraction;
+//     clamped by the vg layout engine to [min_pos, max_pos].
+//   - TreeView nodes form a pointer-linked tree; removing a node frees its
+//     subtree recursively via vg_treeview_remove_node.
+//   - ScrollView scroll offsets are clamped to [0, content_size - viewport_size]
+//     by the vg layout engine; GetScrollX/Y may return 0 if content fits.
+//   - FloatingPanel children are in a private array (not the widget tree);
+//     they are drawn in paint_overlay to appear above all other content.
+//   - CodeEditor selection retrieval allocates a C string that the caller owns.
+//
+// Ownership/Lifetime:
+//   - All widget objects are vg_widget_t* (or subtype) owned by the vg widget
+//     tree; vg_widget_destroy() on the root frees the entire subtree.
+//   - Tab objects (vg_tab_t*) are owned by the TabBar; do not free them
+//     independently.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/runtime/graphics/rt_gui_codeeditor.c (CodeEditor enhancements)
 //
 //===----------------------------------------------------------------------===//
 

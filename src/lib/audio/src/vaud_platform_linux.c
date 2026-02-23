@@ -66,6 +66,8 @@ static void *audio_thread_func(void *arg)
     int16_t *buffer = (int16_t *)malloc(VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t));
     if (!buffer)
     {
+        /* H-5: signal that the thread failed so callers don't assume audio is active */
+        plat->running = 0;
         return NULL;
     }
 
@@ -91,10 +93,12 @@ static void *audio_thread_func(void *arg)
         if (frames_written < 0)
         {
             /* Handle underrun or other errors */
-            if (frames_written == -EPIPE)
+            if (frames_written == -EPIPE || frames_written == -ESTRPIPE)
             {
-                /* Underrun occurred - recover */
-                snd_pcm_prepare(plat->pcm);
+                /* Underrun/suspend — recover and retry the write so the frames aren't
+                 * silently dropped (H-6: previous code fell through to next iteration) */
+                snd_pcm_recover(plat->pcm, (int)frames_written, 0);
+                snd_pcm_writei(plat->pcm, buffer, VAUD_BUFFER_FRAMES);
             }
             else if (frames_written == -EAGAIN)
             {

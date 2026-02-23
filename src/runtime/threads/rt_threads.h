@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_threads.h
+// Purpose: Runtime thread and monitor primitives backing Viper.Threads, providing thread creation, join, Sleep, and re-entrant FIFO-fair monitor operations.
+//
+// Key invariants:
+//   - Monitor operations (Lock, Unlock, Wait, Notify, NotifyAll) are re-entrant.
+//   - Monitor waiting is FIFO-fair; threads are notified in the order they waited.
+//   - Thread handles and Safe* values are runtime-managed objects.
+//   - rt_thread_sleep accepts milliseconds; accuracy depends on OS scheduling.
+//
+// Ownership/Lifetime:
+//   - Thread handle objects are runtime-managed; join releases the OS thread handle.
+//   - Safe* values are reference-counted; multiple readers/writers share ownership.
+//
+// Links: src/runtime/threads/rt_threads.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_threads.h
-// Purpose: Runtime thread/monitor primitives backing Viper.Threads.
-// Key invariants: Monitor operations are re-entrant and FIFO-fair.
-// Ownership/Lifetime: Thread handles and Safe* values are runtime-managed objects.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

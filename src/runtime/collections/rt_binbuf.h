@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_binbuf.h
+// Purpose: Positioned binary read/write buffer providing sequential byte-level I/O with explicit position tracking, supporting creation from raw capacity or from existing Bytes objects.
+//
+// Key invariants:
+//   - Position advances on each read/write operation.
+//   - Reads past the current length trap immediately.
+//   - Writes past the current capacity trigger automatic growth.
+//   - Position is always in [0, len]; writes may extend len up to cap.
+//
+// Ownership/Lifetime:
+//   - BinaryBuffer objects are heap-allocated; caller is responsible for lifetime management.
+//   - Data is stored contiguously; the internal buffer may be reallocated on growth.
+//
+// Links: src/runtime/collections/rt_binbuf.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_binbuf.h
-// Purpose: Runtime functions for a positioned binary read/write buffer.
-// Key invariants: Position advances on read/write. Reads past len trap.
-// Ownership/Lifetime: BinaryBuffer manages its own memory.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

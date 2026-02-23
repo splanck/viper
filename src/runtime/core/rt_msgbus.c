@@ -4,6 +4,36 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/core/rt_msgbus.c
+// Purpose: Implements the Viper message bus (pub/sub event system) for the
+//          runtime. Topics are hashed into a fixed-size bucket array; each
+//          topic maintains a singly-linked list of subscriptions identified by
+//          unique integer IDs. Publishers dispatch to all matching subscribers.
+//
+// Key invariants:
+//   - Topic names are hashed with FNV-1a (64-bit) and stored in a bucket array
+//     sized at construction time; collisions are resolved by chaining.
+//   - Each subscription holds a retained reference to its topic string and an
+//     opaque callback pointer (managed by the GC).
+//   - Subscription IDs are monotonically increasing 64-bit integers; they are
+//     never reused within a bus instance.
+//   - Publishing delivers messages in subscription-insertion order per topic.
+//   - The bus finalizer releases all topic strings, callbacks, and subscription
+//     nodes; it is invoked by the GC when the bus object is collected.
+//
+// Ownership/Lifetime:
+//   - Bus instances are allocated via rt_obj_new_i64 and managed by the GC;
+//     callers do not need to free them explicitly.
+//   - Topic strings are retained on subscription and released in the finalizer
+//     or on explicit unsubscribe.
+//   - Callback pointers are reference-counted via rt_obj_release_check0.
+//
+// Links: src/runtime/core/rt_msgbus.h (public API),
+//        src/runtime/core/rt_seq.c (sequence helpers used for dispatch),
+//        src/runtime/core/rt_string.c (string reference counting)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_msgbus.h"
 

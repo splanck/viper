@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/network/rt_retry.h
+// Purpose: Retry policy with configurable backoff strategies (fixed, linear, exponential) for transient failure handling in network and I/O operations.
+//
+// Key invariants:
+//   - Tracks attempt count and computes the appropriate delay for each strategy.
+//   - Strategies: fixed (constant delay), linear (delay * attempt), exponential (delay * 2^attempt).
+//   - Maximum attempt count caps retries; after max, rt_retry_should_retry returns 0.
+//   - Jitter may be applied to prevent thundering-herd effects.
+//
+// Ownership/Lifetime:
+//   - Retry policy objects are heap-allocated; caller is responsible for lifetime management.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/network/rt_retry.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_retry.h
-// Purpose: Retry policy with configurable backoff strategies.
-// Key invariants: Tracks attempt count and computes delays.
-//                 Supports fixed, linear, and exponential backoff.
-// Ownership/Lifetime: Caller manages policy lifetime.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

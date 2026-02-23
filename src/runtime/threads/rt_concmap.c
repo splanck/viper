@@ -4,13 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_concmap.c
-/// @brief Thread-safe concurrent hash map implementation.
-///
-/// Uses FNV-1a hashing with separate chaining, protected by a single mutex.
-/// All public operations are thread-safe via lock/unlock around access.
-///
+//
+// File: src/runtime/threads/rt_concmap.c
+// Purpose: Implements a thread-safe concurrent hash map for the
+//          Viper.Threads.ConcMap class. Uses FNV-1a hashing with separate
+//          chaining and a single global mutex protecting all operations.
+//          Supports Get, Set, Delete, ContainsKey, Keys, Values, and Count.
+//
+// Key invariants:
+//   - All public operations acquire the mutex before reading or modifying state.
+//   - Initial capacity is CM_INITIAL_CAPACITY (16); rehashes at load > 3/4.
+//   - Rehash doubles capacity and redistributes all entries.
+//   - Keys are rt_string values compared by content, hashed with FNV-1a.
+//   - Stored values are void* object references; the map retains them.
+//   - Deletion releases the retained value reference for the removed entry.
+//
+// Ownership/Lifetime:
+//   - The map retains references to all stored values (via rt_object_retain).
+//   - Keys are copied into the chain nodes; the map owns the copies.
+//   - The finalizer releases all retained value references and frees all nodes.
+//
+// Links: src/runtime/threads/rt_concmap.h (public API),
+//        src/runtime/rt_hash_util.h (FNV-1a hash helper)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_concmap.h"

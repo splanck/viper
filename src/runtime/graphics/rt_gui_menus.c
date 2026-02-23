@@ -5,8 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_gui_menus.c
-// Purpose: MenuBar, Menu, StatusBar, Toolbar, and ContextMenu widgets.
+// File: src/runtime/graphics/rt_gui_menus.c
+// Purpose: Runtime bindings for ViperGUI menu-system widgets: MenuBar (top-level
+//   menu strip), Menu (drop-down with items and separators), StatusBar (bottom
+//   status strip with labeled sections), Toolbar (icon/label button strip), and
+//   ContextMenu (right-click popup). Each widget wraps its vg_* counterpart and
+//   exposes a Zia-callable API for item management, click detection, and styling.
+//
+// Key invariants:
+//   - MenuBar and its child Menus share ownership: removing a Menu from the
+//     MenuBar transfers ownership back to the caller.
+//   - MenuItem click state is edge-triggered and cleared each frame by the vg
+//     widget's internal update; callers must poll within the same frame.
+//   - ContextMenu must be shown explicitly (rt_contextmenu_show) at a screen
+//     coordinate; it auto-hides on any click outside its bounds.
+//   - Toolbar buttons can carry both an icon (as text/glyph) and a label; either
+//     may be NULL.
+//   - StatusBar sections are addressed by zero-based index; count is fixed after
+//     creation unless sections are explicitly added or removed.
+//
+// Ownership/Lifetime:
+//   - All widget objects are vg_widget_t* subtrees owned by the vg widget tree;
+//     vg_widget_destroy() recursively frees children.
+//   - C strings passed to add_menu / add_item are copied by the vg layer; the
+//     runtime frees temporary cstr allocations immediately after the call.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/runtime/graphics/rt_gui_app.c (default font used at construction)
 //
 //===----------------------------------------------------------------------===//
 

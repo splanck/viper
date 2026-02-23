@@ -1,31 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_spriteanim.h
+// Purpose: Frame-based sprite animation controller tracking frame index, timing, playback mode (loop/ping-pong), and speed for game sprite animations.
+//
+// Key invariants:
+//   - Frame indices are bounded by the range set in rt_spriteanim_setup.
+//   - Frame duration must be >= 1 tick.
+//   - Speed multiplier scales how quickly the internal timer advances.
+//   - rt_spriteanim_update must be called once per frame with the delta tick.
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_spriteanim handle; destroy with rt_spriteanim_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_spriteanim.c (implementation), src/runtime/collections/rt_tween.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_spriteanim.h
-/// @brief Frame-based sprite animation controller.
-///
-/// @details Provides animation management for sprites, tracking current frame,
-/// timing, looping, and animation state for games and applications. Supports
-/// play/pause/stop/resume lifecycle, looping and ping-pong playback modes,
-/// configurable frame duration and speed multiplier, and frame-change
-/// detection for triggering events on specific animation frames.
-///
-/// Key invariants: Frame indices are bounded by the range set in
-///   rt_spriteanim_setup(). Frame range is open-ended — there is no hard cap
-///   on the number of frames (end_frame and start_frame are plain integers).
-///   Frame duration must be >= 1. Speed multiplier affects how quickly the
-///   internal timer advances.
-/// Ownership/Lifetime: The caller owns the rt_spriteanim handle and must
-///   free it with rt_spriteanim_destroy().
-/// Links: rt_spriteanim.c (implementation), rt_tween.h (for eased animation
-///   timing)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_SPRITEANIM_H
 #define VIPER_RT_SPRITEANIM_H
 

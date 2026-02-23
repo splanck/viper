@@ -1,27 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_regex.h
+// Purpose: Regular expression pattern matching supporting literals, anchors, character classes, shorthand classes, quantifiers (greedy/non-greedy), grouping, and alternation.
+//
+// Key invariants:
+//   - Patterns are compiled and cached internally for repeated use.
+//   - Supported syntax: ., ^$, [...], \d\w\s, *, +, ?, *?+???, (), |.
+//   - Unsupported: backreferences, lookahead/lookbehind, named groups.
+//   - rt_regex_match returns 1 if the full string matches; rt_regex_find finds first match.
+//
+// Ownership/Lifetime:
+//   - Returned strings and Seqs from capture operations are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of matching.
+//
+// Links: src/runtime/text/rt_regex.c (implementation), src/runtime/text/rt_regex_internal.h, src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_regex.h
-// Purpose: Regular expression pattern matching.
-// Key invariants: Patterns are compiled and cached; results are newly allocated.
-// Ownership/Lifetime: Returned strings/objects are newly allocated.
-// Links: docs/viperlib/text.md
-//
-// Supported syntax:
-// - Literals, dot (.), anchors (^$), character classes ([abc], [a-z], [^abc])
-// - Shorthand classes: \d \D \w \W \s \S
-// - Quantifiers: * + ? with non-greedy variants *? +? ??
-// - Grouping: () and alternation: |
-//
-// NOT supported: backreferences, lookahead/lookbehind, named groups,
-//                unicode categories, possessive quantifiers
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

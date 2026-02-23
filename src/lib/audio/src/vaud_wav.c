@@ -167,6 +167,13 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
             info->sample_rate = (int32_t)read_u32_le(fmt + 4);
             info->bits_per_sample = read_u16_le(fmt + 14);
 
+            /* H-7: guard against division-by-zero in resampling (malformed file) */
+            if (info->sample_rate <= 0 || info->sample_rate > 384000)
+            {
+                vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV sample rate");
+                return 0;
+            }
+
             if (info->channels < 1 || info->channels > 2)
             {
                 vaud_set_error(VAUD_ERR_FORMAT, "Only mono and stereo supported");

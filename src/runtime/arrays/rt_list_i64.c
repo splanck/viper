@@ -5,11 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_list_i64.c
-// Purpose: Dynamic-append list of 64-bit integers without boxing (P2-3.7).
-// Key invariants: len <= cap; push is amortized O(1); refcount == 1 on new.
-// Ownership/Lifetime: Caller owns the initial reference from rt_list_i64_new.
-//                     Push may reallocate; callers must use the updated pointer.
+// File: src/runtime/arrays/rt_list_i64.c
+// Purpose: Implements a dynamic-append list of 64-bit integers without boxing
+//          (P2-3.7 optimization). Provides push, get, set, len, and clear
+//          operations backed by the runtime heap with amortized O(1) push.
+//
+// Key invariants:
+//   - len <= cap at all times; the heap header tracks both independently.
+//   - Push is amortized O(1): capacity doubles when exhausted.
+//   - Minimum initial capacity is RT_LIST_I64_MIN_CAP (8) elements.
+//   - Refcount is exactly 1 immediately after rt_list_i64_new.
+//   - No boxing overhead: values are stored as raw int64_t, not rt_object.
+//   - Out-of-bounds get/set delegate to rt_arr_oob_panic and abort.
+//
+// Ownership/Lifetime:
+//   - Caller owns the initial reference returned by rt_list_i64_new.
+//   - Push may reallocate the backing buffer; callers must use the pointer
+//     returned by push (or re-query after push) rather than caching the old one.
+//   - The heap allocator manages deallocation when the refcount reaches zero.
+//
+// Links: src/runtime/arrays/rt_list_i64.h (public API),
+//        src/runtime/arrays/rt_array.h (oob_panic helper),
+//        src/runtime/rt_heap.h (heap alloc, set_len, hdr)
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_archive.h
+// Purpose: ZIP archive support for Viper.IO.Archive, providing reading of existing archives and writing of new archives with per-entry compression.
+//
+// Key invariants:
+//   - Archives opened for reading are read-only; no modification is possible.
+//   - Write archives require rt_archive_finish before the output file is valid.
+//   - Entry names use forward-slash separators on all platforms.
+//   - rt_archive_open returns NULL if the file is not a valid ZIP archive.
+//
+// Ownership/Lifetime:
+//   - Archive objects are GC-managed opaque pointers.
+//   - Callers should not free archive objects directly.
+//
+// Links: src/runtime/io/rt_archive.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_archive.h
-// Purpose: ZIP archive support for Viper.IO.Archive.
-// Key invariants: Archives opened for reading are read-only.
-//                 Archives created for writing require Finish() before valid.
-// Ownership/Lifetime: Archive objects are managed by GC.
-// Links: docs/viperlib/io.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

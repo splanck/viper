@@ -1,26 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_stream.h
+// Purpose: Unified stream interface abstracting BinFile and MemStream, providing a common API for read/write/seek regardless of the backing storage type.
+//
+// Key invariants:
+//   - Stream type is one of STREAM_TYPE_BINFILE (0) or STREAM_TYPE_MEMSTREAM (1).
+//   - The stream wraps its underlying object and forwards all calls transparently.
+//   - Stream owns the wrapped object and closes it on finalization.
+//   - All primitive read/write operations use little-endian byte order.
+//
+// Ownership/Lifetime:
+//   - Stream objects are heap-allocated; caller is responsible for lifetime management.
+//   - Destroying the stream destroys the wrapped backing object.
+//
+// Links: src/runtime/io/rt_stream.c (implementation), src/runtime/io/rt_binfile.h, src/runtime/io/rt_memstream.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_stream.h
-// Purpose: Unified stream interface for composable I/O operations.
-// Key invariants: Stream wraps BinFile or MemStream transparently.
-// Ownership/Lifetime: Stream owns wrapped object and closes on finalize.
-// Links: docs/viperlib/io.md
-//
-// This provides a common abstraction over different stream types:
-// - BinFile (file I/O)
-// - MemStream (in-memory buffer)
-//
-// Stream types:
-//   0 - STREAM_TYPE_BINFILE
-//   1 - STREAM_TYPE_MEMSTREAM
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

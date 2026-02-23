@@ -1,33 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_hash_util.h
+// Purpose: Shared FNV-1a hash utility providing a deterministic 64-bit hash of arbitrary byte sequences, used by multiple runtime collection types.
+//
+// Key invariants:
+//   - Uses FNV-1a with fixed 64-bit offset basis and prime constants.
+//   - Output is deterministic for any given byte sequence.
+//   - This is a header-only utility; the function is declared static inline.
+//   - Used by rt_map, rt_bag, rt_countmap, rt_multimap, rt_bimap, rt_lrucache, and rt_box.
+//
+// Ownership/Lifetime:
+//   - No heap allocation; pure computation.
+//   - No ownership transfer; input pointer is borrowed for the duration of the call.
+//
+// Links: src/runtime/collections/rt_map.h, src/runtime/collections/rt_bag.h (users)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_hash_util.h
-// Purpose: Shared FNV-1a hash utility for the Viper runtime.
-// Key invariants: Deterministic output for any given byte sequence. FNV-1a
-//                 parameters are fixed (64-bit offset basis and prime).
-// Ownership: Header-only utility; no heap allocation.
-// Lifetime: Static inline function; no state.
-// Links: rt_map.h, rt_bag.h, rt_countmap.h, rt_multimap.h, rt_bimap.h,
-//        rt_lrucache.h, rt_box.h
-//
-// Provides a single implementation of the FNV-1a hash function used by
-// multiple runtime collection types (map, bag, countmap, multimap, bimap,
-// lrucache, box). Include this header instead of duplicating the hash
-// function in each translation unit.
-//
-//===----------------------------------------------------------------------===//
-
-/// @file rt_hash_util.h
-/// @brief Shared FNV-1a hash utility for the Viper runtime.
-/// @details Offers a single implementation of the FNV-1a hash function used by
-///          multiple runtime collection types (map, bag, countmap, multimap,
-///          bimap, lrucache, box). Include this header instead of duplicating
-///          the hash function in each translation unit.
-
 #ifndef RT_HASH_UTIL_H
 #define RT_HASH_UTIL_H
 

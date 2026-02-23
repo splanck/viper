@@ -4,24 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_archive.c
-/// @brief ZIP archive support for Viper.IO.Archive.
-///
-/// Implements reading and writing of standard ZIP files following the
-/// PKWARE APPNOTE specification. Supports:
-/// - Stored entries (method 0)
-/// - Deflated entries (method 8) via rt_compress
-/// - Directory entries
-/// - CRC32 validation
-///
-/// **ZIP Structure Overview:**
-/// - Local file headers followed by file data
-/// - Central directory at end with file metadata
-/// - End of central directory record
-///
-/// **Thread Safety:** All functions are thread-safe (no global mutable state).
-///
+//
+// File: src/runtime/io/rt_archive.c
+// Purpose: Implements ZIP archive reading and writing for the Viper.IO.Archive
+//          class. Follows the PKWARE APPNOTE specification, supporting stored
+//          entries (method 0), DEFLATE-compressed entries (method 8) via
+//          rt_compress, directory entries, and CRC32 validation.
+//
+// Key invariants:
+//   - Stored entries (method 0) are written verbatim; DEFLATE entries use
+//     rt_compress and are only used when they produce smaller output.
+//   - CRC32 is computed and validated for every entry on both read and write.
+//   - The central directory is always written at the end of the ZIP file.
+//   - Directory entries have zero data length and a trailing '/' in the name.
+//   - All functions are thread-safe; no global mutable state is used.
+//
+// Ownership/Lifetime:
+//   - Entry name strings and data buffers returned to callers are fresh
+//     rt_string / rt_bytes allocations owned by the caller.
+//   - The archive object retains no references to extracted entry data.
+//
+// Links: src/runtime/io/rt_archive.h (public API),
+//        src/runtime/io/rt_compress.h (DEFLATE compression used for method 8),
+//        src/runtime/rt_crc32.h (CRC32 checksum utility)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_archive.h"

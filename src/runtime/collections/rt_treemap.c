@@ -5,54 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_treemap.c
-// Purpose: Sorted key-value map using a sorted array with binary search.
+// File: src/runtime/collections/rt_treemap.c
+// Purpose: Implements a sorted string-keyed map (TreeMap) backed by a
+//   dynamically-resizing sorted array with binary search. Keys are maintained
+//   in ascending lexicographic order at all times, supporting ordered iteration
+//   and range queries (Floor, Ceiling, First, Last) not available in the
+//   unordered Map.
 //
-// TreeMap provides an ordered string-to-object mapping where keys are always
-// maintained in sorted (lexicographic) order. Unlike the hash-based Map,
-// TreeMap supports ordered iteration and range queries (floor, ceiling,
-// first, last).
+// Key invariants:
+//   - Entries array is sorted by key in ascending strcmp order at all times.
+//   - Binary search provides O(log n) lookup, Floor, and Ceiling queries.
+//   - Insertion uses binary search to find the insertion point, then memmove
+//     to shift the suffix right: O(n) per insert.
+//   - Removal uses binary search to find the entry, then memmove to shift the
+//     suffix left: O(n) per remove.
+//   - Capacity doubles when the array is full (starting from 8 entries).
+//   - Each entry stores a heap-copied key string (owned) and a void* value
+//     (not retained). Values must be kept alive by the caller.
+//   - Floor(k): largest key <= k; Ceiling(k): smallest key >= k; both O(log n).
+//   - Not thread-safe; external synchronization required.
 //
-// **Implementation:**
-// Uses a dynamically-resizing sorted array rather than a tree structure.
-// This provides:
-// - O(log n) lookup via binary search
-// - O(n) insertion/deletion (due to array shifting)
-// - O(n) iteration in sorted order
-// - Cache-friendly sequential memory access
-// - Low memory overhead compared to tree nodes
+// Ownership/Lifetime:
+//   - TreeMap objects are GC-managed (rt_obj_new_i64). The entries array and
+//     all heap-copied key strings are freed by the GC finalizer (treemap_finalizer).
 //
-// **When to use TreeMap vs Map:**
-// - Use TreeMap when you need sorted iteration or range queries
-// - Use Map when you need O(1) average-case operations and don't need ordering
-//
-// **Memory layout:**
-// ```
-// treemap_impl:
-// +--------+---------+----------+-------+
-// | vptr   | entries | capacity | count |
-// | (NULL) |    ---> | N        | n     |
-// +--------+----|----+----------+-------+
-//               |
-//               v
-// entries array (sorted by key):
-// +------------------+------------------+-----+
-// | entry[0]         | entry[1]         | ... |
-// | [key,keylen,val] | [key,keylen,val] |     |
-// +------------------+------------------+-----+
-// (sorted: key[0] < key[1] < key[2] < ...)
-// ```
-//
-// Thread safety: Not thread-safe. External synchronization required.
+// Links: src/runtime/collections/rt_treemap.h (public API),
+//        src/runtime/collections/rt_map.h (unordered hash map counterpart)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Sorted key-value map implementation using binary search.
-/// @details Provides an ordered map from string keys to object values,
-///          with support for range queries (floor, ceiling, first, last)
-///          and sorted iteration. Implemented as a sorted array for
-///          cache-friendly access and low memory overhead.
 
 #include "rt_treemap.h"
 

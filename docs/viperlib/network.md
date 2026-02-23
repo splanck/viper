@@ -719,7 +719,7 @@ PRINT "Content-Length: "; headers.Get("content-length")
 ### Features
 
 - **HTTP/1.1 support** - Standard HTTP/1.1 protocol
-- **HTTPS support** - TLS 1.3 encryption (certificate validation planned; see HTTPS/TLS note below)
+- **HTTPS support** - TLS 1.3 with full certificate chain validation, hostname verification, and CertificateVerify proof-of-key-possession (see HTTPS/TLS note below)
 - **Redirect handling** - Automatically follows 301, 302, 307, 308 redirects (up to 5)
 - **Content-Length** - Handles Content-Length bodies
 - **Chunked encoding** - Handles Transfer-Encoding: chunked responses
@@ -731,7 +731,8 @@ The HTTP client transparently supports HTTPS URLs using TLS 1.3:
 
 - **Automatic upgrade** - URLs starting with `https://` automatically use TLS
 - **Modern encryption** - TLS 1.3 with ChaCha20-Poly1305 cipher suite and X25519 key exchange
-- **Encryption without authentication** - Traffic is encrypted, but certificate chain validation is not yet implemented. Server identity is not verified. Do not use HTTPS connections for sensitive credentials in production until certificate validation is added.
+- **Certificate verification enabled by default** - Server certificates are validated against the OS trust store (macOS Security.framework, Windows CryptoAPI, Linux CA bundle at `/etc/ssl/certs/`). Hostname is verified against the certificate's SubjectAltName DNS names (with RFC 6125 wildcard support) or CommonName as fallback. The server's CertificateVerify signature over the handshake transcript is checked, proving possession of the private key.
+- **To disable verification (insecure):** Use `HttpReq` and call `.SetTlsVerify(false)` — not recommended for production.
 - **For custom TLS:** Use `Viper.Crypto.Tls` directly or use `HttpReq` with `SetTimeout()` for timeout control.
 
 ```basic
@@ -749,7 +750,7 @@ HTTP operations trap on errors:
 
 - Traps on invalid URL format
 - Traps on connection failure
-- Traps on TLS handshake failure (protocol errors; certificate chain is not validated)
+- Traps on TLS handshake failure (protocol errors, certificate chain validation failure, or hostname mismatch)
 - Traps on timeout
 - Traps on too many redirects (>5)
 
@@ -783,7 +784,7 @@ HTTP request builder for advanced requests with custom headers and options.
 | `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
 
-> **TLS configuration:** `HttpReq` is the recommended path for HTTPS requests that need custom timeouts. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
+> **TLS configuration:** Certificate verification is enabled by default (`verify_cert=1`). To disable verification (insecure, not recommended for production): call `.SetTlsVerify(false)` on the `HttpReq` before calling `Send()`. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
 
 ### Zia Example
 
@@ -1217,13 +1218,13 @@ END IF
 DIM ws AS OBJECT = Viper.Network.WebSocket.Connect("ws://example.com/stream")
 
 ' Receive with 5 second timeout
+' RecvFor returns null on timeout, so check IS NOT NULL (not <> "")
 DO WHILE ws.IsOpen
-    DIM msg AS STRING = ws.RecvFor(5000)
-    IF msg <> "" THEN
+    DIM msg AS OBJECT = ws.RecvFor(5000)
+    IF msg IS NOT NULL THEN
         PRINT "Message: "; msg
     ELSE
-        PRINT "No message within timeout"
-        ' Could send ping to keep connection alive
+        ' Timeout — send ping to keep connection alive
         ws.Ping()
     END IF
 LOOP
@@ -1698,5 +1699,5 @@ This allows:
 - [Input/Output](io/README.md) - File operations for saving downloaded content
 - [Cryptography](crypto.md) - `Tls` for secure connections
 
-> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports ChaCha20-Poly1305 encryption with X25519 key exchange. Documentation for this class is in `crypto.md`. Certificate chain validation is not yet implemented; connections are encrypted but unauthenticated.
+> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports ChaCha20-Poly1305 encryption with X25519 key exchange. When `verify_cert=1` (the default), it performs full TLS 1.3 authentication: certificate chain validation against the OS trust store, hostname verification against SubjectAltName/CommonName, and CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
 

@@ -427,7 +427,18 @@ static void add_header(rt_http_req_t *req, const char *name, const char *value)
     if (!h)
         return;
     h->name = strdup(name);
+    if (!h->name)
+    {
+        free(h);
+        return;
+    }
     h->value = strdup(value);
+    if (!h->value)
+    {
+        free(h->name);
+        free(h);
+        return;
+    }
     h->next = req->headers;
     req->headers = h;
 }
@@ -488,29 +499,57 @@ static char *build_request(rt_http_req_t *req)
         return NULL;
 
     char *p = request;
-    p += sprintf(p, "%s %s HTTP/1.1\r\n", req->method, req->url.path);
-    p += sprintf(p, "%s", host_header);
+    size_t remaining = size;
+    int written;
+
+#define SNPRINTF_OR_FAIL(fmt, ...)                                    \
+    do {                                                               \
+        written = snprintf(p, remaining, fmt, ##__VA_ARGS__);         \
+        if (written < 0 || (size_t)written >= remaining)              \
+        {                                                              \
+            free(request);                                             \
+            return NULL;                                               \
+        }                                                              \
+        p += written;                                                  \
+        remaining -= (size_t)written;                                  \
+    } while (0)
+
+    SNPRINTF_OR_FAIL("%s %s HTTP/1.1\r\n", req->method, req->url.path);
+    SNPRINTF_OR_FAIL("%s", host_header);
 
     if (content_len_header[0])
-        p += sprintf(p, "%s", content_len_header);
+        SNPRINTF_OR_FAIL("%s", content_len_header);
 
-    p += sprintf(p, "Connection: close\r\n");
+    SNPRINTF_OR_FAIL("Connection: close\r\n");
 
     // User headers
     for (http_header_t *h = req->headers; h; h = h->next)
     {
-        p += sprintf(p, "%s: %s\r\n", h->name, h->value);
+        SNPRINTF_OR_FAIL("%s: %s\r\n", h->name, h->value);
     }
 
-    p += sprintf(p, "\r\n");
+    SNPRINTF_OR_FAIL("\r\n");
+
+#undef SNPRINTF_OR_FAIL
 
     // Body
     if (req->body && req->body_len > 0)
     {
+        if (req->body_len >= remaining)
+        {
+            free(request);
+            return NULL;
+        }
         memcpy(p, req->body, req->body_len);
         p += req->body_len;
+        remaining -= req->body_len;
     }
 
+    if (remaining == 0)
+    {
+        free(request);
+        return NULL;
+    }
     *p = '\0';
     return request;
 }
@@ -611,7 +650,11 @@ static int parse_status_line(const char *line, char **status_text_out)
         p++;
 
     if (status_text_out)
+    {
         *status_text_out = strdup(p);
+        if (!*status_text_out)
+            return -1;
+    }
 
     return status;
 }
@@ -988,6 +1031,13 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
             while (*loc == ' ')
                 loc++;
             redirect_location = strdup(loc);
+            if (!redirect_location)
+            {
+                free(line);
+                http_conn_close(&conn);
+                rt_trap("HTTP: redirect location allocation failed");
+                return NULL;
+            }
         }
 
         parse_header_line(line, headers_map);

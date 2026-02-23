@@ -4,18 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_quat.c
-/// @brief Quaternion mathematics for the Viper.Quat class.
-///
-/// Implements Hamilton quaternions for 3D rotation representation.
-/// Quaternions avoid gimbal lock and provide smooth interpolation (SLERP)
-/// compared to Euler angles.
-///
-/// Memory layout: (x, y, z, w) where w is the scalar part.
-/// Unit quaternions represent rotations: |q| = 1.
-/// Thread Safety: Quaternion objects are immutable after creation.
-///
+//
+// File: src/runtime/graphics/rt_quat.c
+// Purpose: Quaternion mathematics for the Viper.Quat class. Implements Hamilton
+//   quaternions for 3D rotation: construction from axis-angle and Euler angles,
+//   multiplication (composition), conjugate/inverse, normalization, dot product,
+//   spherical linear interpolation (Slerp), Vec3 rotation, and conversion to/from
+//   Mat4. Quaternions avoid gimbal lock and provide smooth rotation blending.
+//
+// Key invariants:
+//   - Memory layout is (x, y, z, w) where w is the scalar part; unit quaternions
+//     satisfy |q| = 1.0 and represent valid 3D rotations.
+//   - All constructor functions call quat_alloc() which may trap on OOM; callers
+//     should not pass NULL results to further operations.
+//   - Slerp clamps the dot product to [-1, 1] to guard against acos domain errors
+//     from floating-point rounding; falls back to linear interpolation when the
+//     angle is near zero.
+//   - Quat objects are immutable after creation; all operations return new GC
+//     heap objects.
+//   - FromAxisAngle normalizes the axis vector; a zero-length axis returns the
+//     identity quaternion (0, 0, 0, 1).
+//
+// Ownership/Lifetime:
+//   - All Quat objects are allocated via rt_obj_new_i64 (GC heap); the struct
+//     contains only four doubles and requires no finalizer.
+//
+// Links: src/runtime/graphics/rt_quat.h (public API),
+//        src/runtime/graphics/rt_vec3.h (axis operand and rotation result type),
+//        src/runtime/graphics/rt_mat4.h (rotation matrix conversion)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_quat.h"

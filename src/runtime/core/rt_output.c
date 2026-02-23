@@ -5,24 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: runtime/rt_output.c
-// Purpose: Implementation of centralized output buffering.
+// File: src/runtime/core/rt_output.c
+// Purpose: Implements centralized stdout buffering for the Viper runtime to
+//          dramatically reduce syscall overhead during terminal rendering.
+//          Enables full buffering (setvbuf _IOFBF) and provides batch mode to
+//          defer flushes until natural frame boundaries.
 //
-// This module dramatically improves terminal rendering performance by:
-// 1. Enabling full buffering on stdout (reduces syscalls per write)
-// 2. Providing batch mode to group multiple operations
-// 3. Deferring flushes until natural boundaries (frame end, input, etc.)
+// Key invariants:
+//   - Initialization (rt_output_init) is idempotent and uses double-checked
+//     locking with acquire/release atomics; concurrent callers are safe.
+//   - Once initialized, stdout is set to fully-buffered mode with a 16 KB
+//     internal buffer; output is flushed only on explicit rt_output_flush or
+//     buffer-full conditions.
+//   - Batch mode is reference-counted (g_batch_mode_depth); nested begin/end
+//     calls work correctly — only the outermost end triggers a flush.
+//   - rt_output_str / rt_output_char / rt_output_bytes write to stdout without
+//     an implicit flush; callers must call rt_output_flush at frame boundaries.
 //
-// The key insight is that terminal rendering in games typically does:
-//   LOCATE y, x → fputs + fflush (2 syscalls)
-//   COLOR fg, bg → fputs + fflush (2 syscalls)
-//   PRINT char   → fwrite (1 syscall)
-// Per cell: 5 syscalls. For 60x20 = 1200 cells = 6000 syscalls/frame
+// Ownership/Lifetime:
+//   - The internal output buffer (g_output_buffer) is a process-global static
+//     array registered with setvbuf; it must remain valid for the process
+//     lifetime (guaranteed because it is static).
+//   - No heap allocation is performed by this module.
 //
-// With buffering:
-//   All operations → buffer accumulation
-//   End of frame → single fflush (1 syscall)
-// Result: 6000x reduction in syscalls, no visible flashing.
+// Links: src/runtime/core/rt_output.h (public API),
+//        src/runtime/core/rt_term.c (terminal control, uses rt_output),
+//        src/runtime/core/rt_io.c (higher-level PRINT/INPUT primitives)
 //
 //===----------------------------------------------------------------------===//
 

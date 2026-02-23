@@ -1,38 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/oop/rt_box.h
+// Purpose: Boxing and unboxing primitives for storing primitive types (i64, f64, i1, str) in heap-allocated objects for use in generic collections.
+//
+// Key invariants:
+//   - Boxed values carry a type tag: 0=i64, 1=f64, 2=i1, 3=str.
+//   - rt_unbox_* traps if the type tag does not match the requested type.
+//   - Boxed values participate in reference counting.
+//   - rt_box_value_type boxes a struct/entity by copying all fields into a heap object.
+//
+// Ownership/Lifetime:
+//   - Boxed objects are heap-allocated with refcount 1; callers own the initial reference.
+//   - Unboxing does not consume the boxed object; caller must release separately.
+//
+// Links: src/runtime/oop/rt_box.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: runtime/rt_box.h
-// Purpose: Boxing/unboxing primitives for ViperLang generic collections.
-// Key invariants: Boxed values are heap-allocated objects with type tags.
-// Ownership/Lifetime: Boxed values participate in reference counting.
-//
-//===----------------------------------------------------------------------===//
-//
-// Boxing converts primitive types (i64, f64, i1, str) into heap-allocated
-// objects that can be stored in generic collections like List[T], Map[K,V].
-//
-// Each boxed value has:
-// - A type tag (i64) indicating the boxed type
-// - The actual value stored inline
-//
-// Type Tags:
-//   0 = i64 (Integer)
-//   1 = f64 (Number)
-//   2 = i1 (Boolean)
-//   3 = str (String)
-//
-// Memory Layout:
-//   +--------+--------+
-//   | tag    | value  |
-//   | (i64)  | (8 B)  |
-//   +--------+--------+
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -4,6 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/core/rt_daterange.c
+// Purpose: Implements the DateRange type for the Viper runtime, representing
+//          a closed interval [start, end] of Unix timestamps (seconds since
+//          epoch). Provides construction, containment testing, overlap
+//          detection, duration computation, and string formatting.
+//
+// Key invariants:
+//   - The interval is always stored in normalised order: start <= end; if the
+//     caller passes start > end the constructor swaps them.
+//   - Timestamps are 64-bit signed integers (seconds since Unix epoch); there
+//     is no timezone conversion — all values are treated as UTC seconds.
+//   - Contains(t) is inclusive on both endpoints: t >= start && t <= end.
+//   - Overlaps(a, b) is true when a.start <= b.end && b.start <= a.end.
+//   - NULL pointers to range objects cause the corresponding query to return 0
+//     or false rather than trapping.
+//
+// Ownership/Lifetime:
+//   - DateRange instances are heap-allocated via rt_obj_new_i64 and managed
+//     by the runtime GC; callers do not free them explicitly.
+//   - Formatted strings returned by rt_daterange_to_string are newly allocated
+//     rt_string values; the caller owns the reference and must unref when done.
+//
+// Links: src/runtime/core/rt_daterange.h (public API),
+//        src/runtime/core/rt_datetime.c (DateTime type),
+//        src/runtime/core/rt_duration.c (Duration/TimeSpan type)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_daterange.h"
 #include "rt_internal.h"

@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/audio/rt_playlist.h
+// Purpose: Queue-based music playlist manager providing sequential track playback with shuffle, repeat, and queue manipulation (add, remove, skip) built on top of the audio bridge.
+//
+// Key invariants:
+//   - Track queue is FIFO by default; shuffle randomizes playback order.
+//   - Repeat modes: none (stop at end), one (replay current track), all (loop queue).
+//   - Skip and previous navigate relative to the current playback position.
+//   - Maximum playlist capacity is fixed at compile time.
+//
+// Ownership/Lifetime:
+//   - Caller owns the playlist handle; destroy with rt_playlist_destroy.
+//   - Track strings added to the playlist are copied; caller retains ownership of inputs.
+//
+// Links: src/runtime/audio/rt_playlist.c (implementation), src/runtime/audio/rt_audio.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_playlist.h
-/// @brief Playlist management for sequential music playback.
-///
-/// Provides a queue-based music player that:
-/// - Plays multiple tracks in sequence
-/// - Supports shuffle and repeat modes
-/// - Allows queue manipulation (add, remove, skip)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_PLAYLIST_H
 #define VIPER_RT_PLAYLIST_H
 

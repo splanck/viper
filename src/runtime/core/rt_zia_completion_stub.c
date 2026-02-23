@@ -6,17 +6,28 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_zia_completion_stub.c
-// Purpose: Weak-symbol stubs for the Zia completion bridge.
+// Purpose: Provides weak-symbol stub implementations for the Zia IntelliSense
+//          completion bridge. The real implementations live in
+//          src/frontends/zia/rt_zia_completion.cpp (part of fe_zia). When
+//          fe_zia is linked the linker prefers those strong symbols; test
+//          binaries that omit fe_zia fall back to these stubs, which return
+//          empty results rather than causing a link error.
 //
-// The real implementations live in src/frontends/zia/rt_zia_completion.cpp
-// (part of fe_zia).  When the executable links fe_zia, the linker prefers the
-// strong symbols there; unit-test binaries that omit fe_zia fall back to these
-// stubs, which return empty results rather than causing a link error.
+// Key invariants:
+//   - Stubs use __attribute__((weak)) on Clang/GCC (macOS, Linux); on MSVC
+//     the define expands to nothing (MSVC builds always link fe_zia).
+//   - rt_zia_complete stub returns rt_str_empty() — a valid, empty rt_string.
+//   - rt_zia_completion_clear_cache stub is a no-op.
+//   - If fe_zia is linked, none of these functions are called; the overriding
+//     strong symbols in rt_zia_completion.cpp take precedence.
 //
-// Weak symbols are supported by Clang and GCC (macOS, Linux).  On MSVC the
-// compiler-specific __declspec(selectany) only applies to data; function-level
-// weak linking is not needed in practice because Windows builds always link
-// the full fe_zia library.
+// Ownership/Lifetime:
+//   - rt_zia_complete returns a newly allocated empty string; the caller owns
+//     the reference and must call rt_string_unref when done.
+//   - No heap allocation is performed by rt_zia_completion_clear_cache.
+//
+// Links: src/frontends/zia/rt_zia_completion.cpp (strong-symbol overrides),
+//        src/runtime/core/rt_string.h (rt_str_empty, rt_string type)
 //
 //===----------------------------------------------------------------------===//
 

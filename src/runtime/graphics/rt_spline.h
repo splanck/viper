@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_spline.h
+// Purpose: Spline interpolation for smooth curved paths, providing Catmull-Rom splines from Vec2 control points with uniform and non-uniform parametrization.
+//
+// Key invariants:
+//   - At least 2 control points are required for a valid spline.
+//   - Catmull-Rom splines pass through all control points.
+//   - The parameter t is in [0, 1] over the full spline length.
+//   - Point evaluation is O(n) in the number of control points.
+//
+// Ownership/Lifetime:
+//   - Spline objects are heap-allocated opaque pointers.
+//   - Control point Seq is consumed at creation; the spline copies the data.
+//
+// Links: src/runtime/graphics/rt_spline.c (implementation), src/runtime/graphics/rt_vec2.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_spline.h
-// Purpose: Spline interpolation utilities for Viper.Spline.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

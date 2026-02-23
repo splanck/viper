@@ -5,24 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the deterministic pseudo-random number generator exposed through
-// the C runtime ABI.  The generator mirrors the BASIC `RND` semantics by using
-// a 64-bit linear congruential algorithm with a fixed multiplier and
-// increment.  Runtime clients can reseed the generator using signed or unsigned
-// inputs and retrieve uniform doubles in the half-open interval [0, 1).  The
-// state now lives in the per-VM RtContext so multiple VMs can maintain
-// independent RNG sequences.
+// File: src/runtime/core/rt_random.c
+// Purpose: Implements the deterministic pseudo-random number generator (PRNG)
+//          for the Viper runtime. Mirrors BASIC RND semantics using a 64-bit
+//          linear congruential generator (LCG) with fixed multiplier and
+//          increment. RNG state lives in the per-VM RtContext so multiple VMs
+//          maintain independent, isolated sequences.
+//
+// Key invariants:
+//   - The LCG uses multiplier 6364136223846793005 and increment 1 (Numerical
+//     Recipes constants); the same seed always produces the same sequence.
+//   - rt_rnd returns values in the half-open interval [0.0, 1.0) by extracting
+//     the top 53 bits of state and scaling to IEEE 754 double range.
+//   - State is stored per-RtContext; rt_get_current_context() is consulted
+//     first, falling back to rt_legacy_context() if no context is active.
+//   - VM and native builds share this implementation, ensuring identical
+//     sequences for a given seed across execution modes.
+//
+// Ownership/Lifetime:
+//   - The RNG state is a uint64_t field inside RtContext; no separate
+//     allocation is made.
+//   - No heap allocation is performed by any function in this file.
+//
+// Links: src/runtime/core/rt_random.h (public API),
+//        src/runtime/core/rt_context.h (RtContext definition, rng_state field)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Deterministic pseudo-random number generator for the runtime.
-/// @details Provides seeding helpers for both signed and unsigned integers and
-///          exposes the BASIC-compatible `rt_rnd` entry point that returns
-///          doubles in the range [0, 1).  The implementation uses a linear
-///          congruential generator so that the VM and native builds produce
-///          identical sequences for a given seed. RNG state is now stored in
-///          the per-VM RtContext for isolation.
 
 #include "rt_random.h"
 #include "rt_context.h"

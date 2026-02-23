@@ -1,32 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_binfile.h
+// Purpose: Binary file stream operations for Viper.IO.BinFile, providing seekable stream-based I/O with read/write modes, position queries, and EOF detection.
+//
+// Key invariants:
+//   - Open modes: 'r' (read-only), 'w' (write/truncate), 'rw' (read-write), 'a' (append).
+//   - Seek origins: 0=SEEK_SET, 1=SEEK_CUR, 2=SEEK_END.
+//   - rt_binfile_eof returns 1 only after a read that reached end-of-file.
+//   - Reads past EOF return 0 bytes and set the EOF flag.
+//
+// Ownership/Lifetime:
+//   - BinFile objects are heap-allocated; caller is responsible for closing and freeing.
+//   - rt_binfile_close releases the OS file handle; the object must still be freed separately.
+//
+// Links: src/runtime/io/rt_binfile.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_binfile.h
-// Purpose: Binary file stream operations for Viper.IO.BinFile.
-//
-// BinFile provides stream-based binary file I/O, allowing:
-// - Opening files with different modes (read, write, read/write, append)
-// - Reading/writing raw bytes and Bytes objects
-// - Seeking to arbitrary positions
-// - Querying position, size, and EOF status
-//
-// Open modes:
-//   "r"  - Read only (file must exist)
-//   "w"  - Write only (creates or truncates)
-//   "rw" - Read/write (file must exist)
-//   "a"  - Append (creates if needed, writes at end)
-//
-// Seek origins:
-//   0 - SEEK_SET (from beginning)
-//   1 - SEEK_CUR (from current position)
-//   2 - SEEK_END (from end of file)
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

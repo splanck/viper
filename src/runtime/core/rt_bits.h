@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_bits.h
+// Purpose: Bit manipulation utilities implementing the Viper.Bits runtime namespace, providing bitwise operations, shifts, population count, and bit scanning on 64-bit integer values.
+//
+// Key invariants:
+//   - All operations treat values as 64-bit two's complement integers.
+//   - Shift counts outside [0, 63] produce implementation-defined results; callers must validate.
+//   - rt_bits_popcount uses the platform's most efficient instruction when available.
+//   - rt_bits_clz/ctz return 64 for input value 0.
+//
+// Ownership/Lifetime:
+//   - All functions are pure with no heap allocation or side effects.
+//   - No ownership transfer; parameters and return values are plain int64_t.
+//
+// Links: src/runtime/core/rt_bits.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_bits.h
-// Purpose: Bit manipulation utilities for Viper.Bits.
-// Key invariants: All operations treat values as 64-bit two's complement.
-// Ownership/Lifetime: Pure functions; no heap allocations.
-// Links: Viper.Bits standard library module.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

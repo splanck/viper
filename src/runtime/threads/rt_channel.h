@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_channel.h
+// Purpose: Thread-safe channel for inter-thread communication providing FIFO bounded/unbounded send and receive with blocking semantics when empty or full.
+//
+// Key invariants:
+//   - FIFO ordering is guaranteed across all operations.
+//   - Bounded channels block senders when full until a receiver makes space.
+//   - Unbounded channels (capacity 0) never block senders.
+//   - rt_channel_recv blocks until a message is available or the channel is closed.
+//
+// Ownership/Lifetime:
+//   - Channel objects are runtime-managed and reference-counted.
+//   - Senders and receivers share the same reference-counted channel object.
+//
+// Links: src/runtime/threads/rt_channel.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_channel.h
-// Purpose: Thread-safe channel for inter-thread communication (Viper.Threads.Channel).
-// Key invariants: FIFO, bounded/unbounded, blocks when full/empty.
-// Ownership/Lifetime: Channel objects are runtime-managed and ref-counted.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

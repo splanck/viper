@@ -4,6 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_bloomfilter.c
+// Purpose: Implements a probabilistic set membership filter (Bloom filter) that
+//   uses multiple independent hash functions to map elements into a compact bit
+//   array. Supports only Add and MightContain — there is no Remove. The bit
+//   array size and hash function count are computed from the expected item count
+//   and the caller-supplied false-positive rate at construction time.
+//
+// Key invariants:
+//   - Optimal bit count: m = -n * ln(p) / (ln(2)^2), minimum 64 bits.
+//   - Optimal hash count: k = (m/n) * ln(2), clamped to [1, 20].
+//   - Hash functions are derived from a MurmurHash3-style mix seeded with
+//     different seed values per function index; no external hash table is used.
+//   - MightContain returns 1 if ALL k bits for a key are set; false positives
+//     are possible but false negatives are not (once added, always found).
+//   - False positive rate rises above the specified target if more items than
+//     `expected_items` are added.
+//   - Not thread-safe; external synchronization required for concurrent access.
+//
+// Ownership/Lifetime:
+//   - BloomFilter objects are GC-managed (rt_obj_new_i64). The bits array is
+//     heap-allocated and freed by the GC finalizer (bloomfilter_finalizer).
+//
+// Links: src/runtime/collections/rt_bloomfilter.h (public API)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_bloomfilter.h"
 #include "rt_internal.h"

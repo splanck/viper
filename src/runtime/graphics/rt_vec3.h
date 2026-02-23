@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_vec3.h
+// Purpose: 3D vector math utilities for Viper.Vec3 with immutable value semantics, providing arithmetic, dot product, cross product, magnitude, normalization, and lerp.
+//
+// Key invariants:
+//   - Vec3 objects are immutable; all operations return new Vec3 objects.
+//   - All operations are done in double-precision floating point.
+//   - Normalize traps on zero-length vectors.
+//   - Cross product follows the right-hand rule.
+//
+// Ownership/Lifetime:
+//   - Vec3 objects are runtime-managed (heap-allocated, GC'd via thread-local pool).
+//   - The thread-local pool (P2-3.6) resurrects Vec3 objects on finalization for reuse.
+//
+// Links: src/runtime/graphics/rt_vec3.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_vec3.h
-// Purpose: 3D vector math utilities for Viper.Vec3.
-// Key invariants: Vec3 objects are immutable; all operations return new vectors.
-// Ownership/Lifetime: Vec3 objects are runtime-managed (heap-allocated, GC'd).
-// Links: Viper.Vec3 standard library module.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

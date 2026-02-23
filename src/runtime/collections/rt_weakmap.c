@@ -4,6 +4,37 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_weakmap.c
+// Purpose: Implements a string-keyed map that holds weak (non-retaining)
+//   references to its values. The map stores value pointers without calling
+//   rt_obj_retain, so the GC may collect a value independently of the map's
+//   lifetime. Typical uses: caches where entries should be eligible for
+//   collection when no other strong reference exists, and observer tables.
+//
+// Key invariants:
+//   - Open-addressing hash table with initial capacity WM_INITIAL_CAP (16);
+//     linear probing on collision.
+//   - FNV-1a hash over the null-terminated C string of each key.
+//   - Load factor is kept below 2/3; table is grown (doubled) and rehashed
+//     when the threshold is exceeded.
+//   - Values are stored as raw void* pointers WITHOUT rt_obj_retain. If the
+//     GC collects the object, the stored pointer becomes a dangling reference.
+//     Callers must use a finalization or notification mechanism to remove stale
+//     entries before dereferencing.
+//   - Keys are stored as rt_string references (retained). Key strings are kept
+//     alive for the lifetime of the entry.
+//   - `occupied` flag distinguishes empty/tombstone slots from live entries.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - WeakMap objects are GC-managed (rt_obj_new_i64). The entries array is
+//     freed by the GC finalizer (weakmap_finalizer).
+//
+// Links: src/runtime/collections/rt_weakmap.h (public API),
+//        src/runtime/collections/rt_map.h (strong-reference map counterpart)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_weakmap.h"
 

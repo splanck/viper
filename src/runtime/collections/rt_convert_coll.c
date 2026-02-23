@@ -4,10 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_convert_coll.c
-/// @brief Implementation of collection conversion utilities.
-///
+//
+// File: src/runtime/collections/rt_convert_coll.c
+// Purpose: Implements conversion functions between Viper collection types.
+//   Provides rt_seq_to_list, rt_seq_to_set, rt_seq_to_stack, rt_seq_to_queue,
+//   rt_seq_to_ring, rt_seq_to_deque, and their reverse counterparts, allowing
+//   any collection to be converted to any other via a Seq intermediate form.
+//
+// Key invariants:
+//   - All conversions iterate the source using the source collection's public
+//     API (e.g., rt_seq_len + rt_seq_get for Seq, rt_stack_peek + pop for
+//     Stack). No internal structure of the source is accessed directly.
+//   - Conversion creates a new destination collection and pushes/inserts each
+//     element from the source in iteration order.
+//   - NULL source arguments return an empty (newly allocated) destination
+//     collection rather than NULL, so callers can always use the result.
+//   - Elements are not deep-copied; the destination holds the same object
+//     pointers as the source. Shared elements follow GC ownership rules.
+//   - Not thread-safe; do not convert a collection that is being modified
+//     concurrently.
+//
+// Ownership/Lifetime:
+//   - Returned collection objects are GC-managed. The caller receives a new
+//     GC root; no manual free is needed.
+//
+// Links: src/runtime/collections/rt_convert_coll.h (public API),
+//        src/runtime/collections/rt_seq.h, rt_list.h, rt_set.h, rt_stack.h,
+//        rt_queue.h, rt_ring.h, rt_deque.h (source/destination types)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_convert_coll.h"

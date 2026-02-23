@@ -5,17 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements dynamic arrays of object references (void*). Each element is an
-// object handle managed by the object runtime (retain/release/free). The array
-// itself is allocated through the shared heap and reference-counted.
+// File: src/runtime/arrays/rt_array_obj.c
+// Purpose: Implements dynamic arrays of object references (void* elements) for
+//          generic collections. Each element is a runtime-managed object handle;
+//          the array retains elements on insertion and releases them on overwrite
+//          or teardown.
+//
+// Key invariants:
+//   - The array retains a reference to each stored object; callers must not
+//     release objects after handing them to the array.
+//   - Overwriting an element releases the old object before storing the new one.
+//   - Array teardown releases all held object references exactly once.
+//   - The array itself is reference-counted through the heap allocator.
+//   - Out-of-bounds accesses trigger rt_arr_oob_panic and abort.
+//
+// Ownership/Lifetime:
+//   - The array holds strong references to all stored objects.
+//   - The array itself is heap-allocated and reference-counted.
+//   - On GC finalization, all element references are released and the heap
+//     allocation is freed.
+//
+// Links: src/runtime/arrays/rt_array_obj.h (public API),
+//        src/runtime/arrays/rt_array.h (int32 base module, oob_panic),
+//        src/runtime/oop/rt_object.h (object retain/release)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implements dynamic arrays of object references for the runtime.
-/// @details Each element is a runtime-managed object pointer. The array owns
-///          references to its elements and is responsible for retaining on
-///          insertion and releasing on overwrite or teardown.
 
 #include "rt_array_obj.h"
 

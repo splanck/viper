@@ -5,20 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the BASIC runtime's numeric parsing and formatting helpers.  The
-// routines in this translation unit provide locale-independent conversions,
-// recognise legacy "NaN"/"INF" tokens, and report domain errors using the
-// runtime trap facilities so VM and native backends behave identically.
-// Keeping these helpers self-contained ensures that floating-point quirks stay
-// encapsulated behind the public `rt_numeric.h` contract.
+// File: src/runtime/core/rt_numeric.c
+// Purpose: Locale-independent numeric parsing and formatting helpers for the
+//   BASIC runtime. Provides string-to-number (rt_parse_double, rt_parse_i64)
+//   and number-to-string (rt_format_double, rt_format_i64) routines that
+//   recognise BASIC-style tokens ("NaN", "INF", "#INF", "#NAN") and apply
+//   banker's rounding (round-half-to-even) for decimal formatting. Domain
+//   errors are reported via rt_trap so VM and native backends behave identically.
+//
+// Key invariants:
+//   - All conversions ignore the process locale; decimal point is always '.'.
+//   - "NaN", "#NAN", "INF", "#INF", "-INF" are recognised case-insensitively.
+//   - rt_parse_double returns NaN for unrecognised input (no trap).
+//   - rt_format_double applies banker's rounding (IEEE-754 round-half-to-even).
+//   - All functions are exposed with C linkage (extern "C").
+//
+// Ownership/Lifetime:
+//   - No persistent heap allocation. Formatting uses caller-provided buffers
+//     or returns rt_string objects whose lifetime follows normal GC rules.
+//
+// Links: src/runtime/core/rt_numeric.h (public API),
+//        src/runtime/core/rt_trap.h (rt_trap for domain errors)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Locale-stable numeric parsing and formatting for the runtime.
-/// @details Defines helper routines used by the BASIC runtime to translate
-///          between textual numbers and IEEE 754 representations while enforcing
-///          the language's banker-rounding and error-reporting rules.
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1

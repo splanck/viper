@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_dir.h
+// Purpose: Cross-platform directory operations for Viper.IO.Dir, providing listing, creation, deletion, existence checks, and current/home directory queries.
+//
+// Key invariants:
+//   - Directory listing returns Seq objects containing string paths.
+//   - rt_dir_files and rt_dir_dirs filter to files and directories respectively.
+//   - Paths use platform-native separators in all returned values.
+//   - Operations that modify the filesystem return an RtError out-parameter.
+//
+// Ownership/Lifetime:
+//   - All functions returning strings or sequences allocate new objects; caller must release.
+//   - RtError is a stack-allocated value type; no heap allocation for errors.
+//
+// Links: src/runtime/io/rt_dir.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_dir.h
-// Purpose: Cross-platform directory operations for Viper.IO.Dir.
-// Key invariants: Directory operations are platform-independent, List/Files/Dirs/Entries
-//                 return Seq objects that must be released by the caller.
-// Ownership/Lifetime: All functions returning strings or sequences allocate
-//                     new objects that the caller must release.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

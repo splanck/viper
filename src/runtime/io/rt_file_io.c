@@ -5,24 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the file I/O layer used by the BASIC runtime.  The functions in this
-// translation unit manage descriptor lifetimes, translate errno codes into the
-// runtime's structured diagnostics, and implement higher-level helpers such as
-// line reading and binary writes.  Centralising the logic keeps the VM and
-// native runtimes in sync when interacting with the host filesystem.
+// File: src/runtime/io/rt_file_io.c
+// Purpose: Provides the low-level file I/O layer used by the BASIC runtime.
+//          Manages descriptor lifetimes, translates errno codes into the
+//          runtime's structured RtError diagnostics, and implements buffered
+//          line reads and binary writes for both POSIX and Windows platforms.
 //
-// Platform support:
-//   - POSIX (Linux, macOS): Uses standard POSIX APIs (open, read, write, etc.)
-//   - Windows: Uses MSVC CRT APIs (_open, _read, _write, etc.)
+// Key invariants:
+//   - All RtFile handles are fully initialised before being returned to callers.
+//   - errno is always translated into an Err_* enumerator; raw errno never escapes.
+//   - Line reads handle CR, LF, and CRLF endings consistently across platforms.
+//   - File descriptors are closed exactly once; double-close is guarded by a flag.
+//   - POSIX APIs are used on Unix/macOS; MSVC CRT equivalents on Windows.
+//
+// Ownership/Lifetime:
+//   - RtFile handles are owned by the channel table managed in rt_file.c.
+//   - Callers must not retain raw file descriptors beyond the owning RtFile.
+//
+// Links: src/runtime/io/rt_file_io.h (public API),
+//        src/runtime/io/rt_file.h (channel table and RtFile type),
+//        src/runtime/io/rt_file_path.h (mode string helpers)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Cross-platform file I/O wrappers for the BASIC runtime.
-/// @details Offers safe descriptor management, buffered line reads, and error
-///          propagation utilities that convert errno into @ref RtError records.
-///          All routines maintain invariants around @ref RtFile handles so
-///          callers never observe partially-initialised state.
 
 #include "rt_file.h"
 

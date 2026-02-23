@@ -4,20 +4,28 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_watcher.c
-/// @brief Cross-platform file system watcher for Viper.IO.Watcher class.
-///
-/// This file provides file system watching capabilities that work across
-/// Windows, macOS, and Linux platforms.
-///
-/// **Platform Implementation:**
-/// | Platform | API                        |
-/// |----------|----------------------------|
-/// | Linux    | inotify                    |
-/// | macOS    | kqueue                     |
-/// | Windows  | ReadDirectoryChangesW      |
-///
+//
+// File: src/runtime/io/rt_watcher.c
+// Purpose: Cross-platform filesystem watcher for the Viper.IO.Watcher class.
+//          Watches directories or files for changes (create, modify, delete,
+//          rename) using native OS APIs: inotify on Linux, kqueue on macOS,
+//          and ReadDirectoryChangesW on Windows.
+//
+// Key invariants:
+//   - Each watcher instance holds exactly one OS watch handle/descriptor.
+//   - Events are delivered via a callback registered at construction time.
+//   - Watcher objects must be stopped before being freed to avoid use-after-free.
+//   - A stub implementation is provided for unsupported platforms (ViperDOS).
+//   - All public functions guard against NULL watcher handles.
+//
+// Ownership/Lifetime:
+//   - Watcher objects are heap-allocated and managed by the runtime GC.
+//   - The watcher holds a retained reference to the watched path string.
+//   - OS resources (inotify fd, kqueue fd, Win32 handle) are released on stop.
+//
+// Links: src/runtime/io/rt_watcher.h (public API),
+//        src/runtime/rt_platform.h (platform detection macros)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_watcher.h"

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_smoothvalue.h
+// Purpose: Smooth value interpolation for camera follow and UI animations, applying exponential smoothing each frame so the current value asymptotically approaches the target.
+//
+// Key invariants:
+//   - Smoothing factor must be in [0, 1); values >= 1 cause undefined behavior.
+//   - rt_smoothvalue_update must be called exactly once per frame.
+//   - The value never exactly reaches the target; it asymptotically approaches it.
+//   - Setting the value directly (rt_smoothvalue_set) snaps without smoothing.
+//
+// Ownership/Lifetime:
+//   - Caller owns the handle; destroy with rt_smoothvalue_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_smoothvalue.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_smoothvalue.h
-// Purpose: Smooth value interpolation for camera follow and UI animations.
-// Key invariants: Smoothing factor clamped to [0, 1); update must be called once per frame.
-// Ownership/Lifetime: Caller owns the handle; destroy with rt_smoothvalue_destroy().
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_SMOOTHVALUE_H
 #define VIPER_RT_SMOOTHVALUE_H
 

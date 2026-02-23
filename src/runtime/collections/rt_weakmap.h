@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_weakmap.h
+// Purpose: String-keyed map holding weak (non-retaining) references to values, so values may be collected; getting a collected value returns NULL.
+//
+// Key invariants:
+//   - Values are stored without retaining; the map does not prevent collection.
+//   - rt_weakmap_get returns NULL for both missing keys and collected values.
+//   - String keys are copied; the map owns its key copies.
+//   - Iterating a weakmap may skip entries whose values were collected.
+//
+// Ownership/Lifetime:
+//   - Caller manages weakmap lifetime; no reference counting on the map itself.
+//   - Values must not be freed while the weakmap holds a pointer to them unless the caller accounts for it.
+//
+// Links: src/runtime/collections/rt_weakmap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_weakmap.h
-// Purpose: Map with weak value references. Values may become NULL when
-//          their referent is collected. Uses string keys.
-// Key invariants: String-keyed. Values stored without retaining.
-//                 Getting a collected value returns NULL.
-// Ownership/Lifetime: Caller manages map lifetime.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

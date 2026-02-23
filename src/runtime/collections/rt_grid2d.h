@@ -1,24 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_grid2d.h
+// Purpose: 2D grid container for integer values with fixed dimensions, providing element access, fill, copy, and region operations for tile maps and pixel buffers.
+//
+// Key invariants:
+//   - Grid dimensions are fixed at creation time and cannot be changed.
+//   - Out-of-bounds accesses return 0 or are silently ignored rather than trapping.
+//   - Elements are stored in row-major order.
+//   - Coordinates are 0-based (row 0, col 0 is the top-left corner).
+//
+// Ownership/Lifetime:
+//   - Caller owns the grid handle; destroy with rt_grid2d_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_grid2d.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_grid2d.h
-/// @brief 2D grid container for integer values.
-///
-/// Provides a convenient abstraction for 2D arrays commonly used in games
-/// for tile maps, pixel buffers, and other grid-based data structures.
-///
-/// Key invariants: Grid dimensions are fixed at creation. Out-of-bounds
-///     accesses return 0 / are silently ignored rather than trapping.
-/// Ownership/Lifetime: Caller owns the grid handle; destroy with
-///     rt_grid2d_destroy().
-/// Links: Viper.Grid2D standard library module.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_GRID2D_H
 #define VIPER_RT_GRID2D_H
 

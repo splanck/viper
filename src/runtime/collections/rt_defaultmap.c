@@ -4,6 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_defaultmap.c
+// Purpose: Implements a string-keyed hash map with a configurable default value
+//   returned when a key is not present. DefaultMap behaves like a regular Map
+//   for Set/Remove/Contains, but Get returns the default_value (set at creation)
+//   instead of NULL for missing keys. Useful for counters, accumulators, and
+//   lookup tables where a "zero" or sentinel default is needed.
+//
+// Key invariants:
+//   - Backed by a hash table with initial capacity 16 buckets and separate
+//     chaining using FNV-1a hashing.
+//   - Resizes (doubles) when count/capacity exceeds 75%.
+//   - Get returns default_value (NOT a copy) for missing keys; callers must
+//     not mutate the returned default object.
+//   - The default_value pointer is stored at construction time and is NOT
+//     retained by the DefaultMap (caller must keep it alive).
+//   - Each entry owns a heap-copied key string; values are stored as raw
+//     pointers (not retained by the map).
+//   - All operations are O(1) average case; O(n) worst case.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - DefaultMap objects are GC-managed (rt_obj_new_i64). The bucket array
+//     and all entry nodes are freed by the GC finalizer.
+//
+// Links: src/runtime/collections/rt_defaultmap.h (public API),
+//        src/runtime/collections/rt_map.h (standard map without default value)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_defaultmap.h"
 #include "rt_internal.h"

@@ -4,82 +4,27 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_oop_dispatch.c
-/// @brief Virtual method dispatch for Viper's object-oriented runtime.
-///
-/// This file implements the virtual method dispatch mechanism that enables
-/// polymorphism in Viper programs. When a method is called on an object, the
-/// runtime looks up the correct implementation based on the object's actual
-/// type at runtime.
-///
-/// **What is Virtual Dispatch?**
-/// Virtual dispatch allows calling methods through a base class reference
-/// while executing the derived class's implementation:
-/// ```vb
-/// Class Animal
-///     Overridable Sub Speak()
-///         Print "..."
-///     End Sub
-/// End Class
-///
-/// Class Dog Inherits Animal
-///     Overrides Sub Speak()
-///         Print "Woof!"
-///     End Sub
-/// End Class
-///
-/// Dim pet As Animal = New Dog()
-/// pet.Speak()  ' Prints "Woof!" - Dog's implementation is called
-/// ```
-///
-/// **VTable Architecture:**
-/// Each class has a virtual table (vtable) containing pointers to its method
-/// implementations. Objects store a pointer to their class's vtable (vptr):
-/// ```
-/// ┌─────────────────────────────────────────────────────────────────────────┐
-/// │                         Virtual Dispatch                                │
-/// │                                                                         │
-/// │  ┌─────────────────┐           ┌─────────────────────────────────────┐  │
-/// │  │     Object      │           │          Dog VTable                 │  │
-/// │  │ ┌─────────────┐ │           │ ┌─────────────────────────────────┐ │  │
-/// │  │ │ vptr ───────┼─┼───────────┼▶│ slot 0: Dog_ToString           │ │  │
-/// │  │ │ field1      │ │           │ │ slot 1: Dog_Equals             │ │  │
-/// │  │ │ field2      │ │           │ │ slot 2: Dog_Speak  ◀── override │ │  │
-/// │  │ └─────────────┘ │           │ │ slot 3: Animal_Run             │ │  │
-/// │  └─────────────────┘           │ └─────────────────────────────────┘ │  │
-/// │                                └─────────────────────────────────────┘  │
-/// │                                                                         │
-/// │  Call sequence: obj.Speak()                                             │
-/// │    1. Load vptr from object                                             │
-/// │    2. Load slot 2 from vtable → Dog_Speak                               │
-/// │    3. Call Dog_Speak(obj)                                               │
-/// └─────────────────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Slot Assignment:**
-/// Virtual method slots are assigned during class lowering:
-/// | Slot | Method                                   |
-/// |------|------------------------------------------|
-/// | 0    | Object.ToString                          |
-/// | 1    | Object.Equals                            |
-/// | 2    | Object.GetHashCode                       |
-/// | 3+   | Class-specific virtual methods           |
-///
-/// **Safety Checks:**
-/// The dispatch function performs runtime validation:
-/// - NULL object check → returns NULL
-/// - NULL vptr check → returns NULL
-/// - Slot bounds check → returns NULL if out of range
-///
-/// **Thread Safety:**
-/// VTable lookups are read-only and thread-safe. The vtable contents are
-/// established at class registration and never modified.
-///
-/// @see rt_type_registry.c For class and vtable registration
-/// @see rt_object.c For object allocation and lifecycle
-/// @see rt_oop.h For OOP type definitions
-///
+//
+// File: src/runtime/oop/rt_oop_dispatch.c
+// Purpose: Implements virtual method dispatch (vtable lookup) for the Viper OOP
+//          runtime. Objects carry a vptr to their class vtable; dispatch reads
+//          the function pointer at the requested slot index and calls it.
+//
+// Key invariants:
+//   - Slot 0 is Object.ToString, slot 1 is Object.Equals, slot 2 is GetHashCode;
+//     class-specific overrides start at slot 3.
+//   - NULL object, NULL vptr, or out-of-range slot returns NULL (not a trap).
+//   - Vtable contents are set at class registration time and never modified.
+//   - Vtable lookups are read-only and fully thread-safe after registration.
+//
+// Ownership/Lifetime:
+//   - Vtables are global static data owned by the type registry.
+//   - Callers do not own the returned function pointer; they call it immediately.
+//
+// Links: src/runtime/oop/rt_oop_dispatch.h (public API, via rt_oop.h),
+//        src/runtime/oop/rt_type_registry.h (class and vtable registration),
+//        src/runtime/oop/rt_object.h (object allocation and vptr layout)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_oop.h"

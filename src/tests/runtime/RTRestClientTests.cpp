@@ -204,6 +204,40 @@ static void test_last_ok_null()
 }
 
 //=============================================================================
+// Lifecycle / Finalizer Tests
+//=============================================================================
+
+/// @brief Regression test for RC-1: finalizer must be registered for every client.
+///
+/// Creating many clients exercises the allocation path and ensures no crash
+/// occurs from missing or double-registered finalizers. Under ASAN, any
+/// finalizer bug surfaces as a leak or invalid-free report.
+static void test_restclient_many_instances()
+{
+    const int COUNT = 100;
+
+    for (int i = 0; i < COUNT; i++)
+    {
+        void *c = rt_restclient_new(rt_const_cstr("https://api.example.com"));
+        test_result(c != NULL, "many_instances: client created");
+
+        // Exercise all post-init paths that the finalizer must clean up
+        rt_restclient_set_header(c, rt_const_cstr("X-Index"), rt_const_cstr("val"));
+        rt_restclient_set_auth_bearer(c, rt_const_cstr("tok"));
+        rt_restclient_set_timeout(c, 5000);
+
+        // Verify state is coherent
+        rt_string base = rt_restclient_base_url(c);
+        test_result(strcmp(rt_string_cstr(base), "https://api.example.com") == 0,
+                    "many_instances: base URL preserved");
+        test_result(rt_restclient_last_status(c) == 0,
+                    "many_instances: last_status initially 0");
+    }
+
+    test_result(true, "many_instances: all 100 instances created without crash");
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -236,6 +270,9 @@ int main()
     test_last_status_null();
     test_last_response_null();
     test_last_ok_null();
+
+    // Lifecycle / finalizer regression (RC-1)
+    test_restclient_many_instances();
 
     printf("All RestClient tests passed!\n");
     return 0;

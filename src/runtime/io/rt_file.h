@@ -1,25 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_file.h
+// Purpose: File I/O API with BASIC OPEN/CLOSE/INPUT/PRINT# semantics, channel-based access, RtError integration, and POSIX file descriptor backing.
+//
+// Key invariants:
+//   - RtFile.fd == -1 means closed or uninitialized.
+//   - Channel numbers map to at most one open file at a time.
+//   - All operations report errors via RtError out-parameters.
+//   - Files are NOT automatically closed; callers must call rt_file_close.
+//
+// Ownership/Lifetime:
+//   - RtFile handles are stack-allocated by callers and initialized via rt_file_init.
+//   - OS resources are released by rt_file_close.
+//   - The channel-based API manages its own internal file table.
+//
+// Links: src/runtime/io/rt_file.c (implementation), src/runtime/core/rt_error.h, src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_file.h
-// Purpose: File I/O API wrapping POSIX file descriptors with BASIC OPEN/CLOSE/
-//          INPUT/PRINT# semantics, channel-based access, and RtError
-//          integration for read, write, seek, and EOF operations.
-// Key invariants: RtFile.fd == -1 means closed/uninitialized; channel numbers
-//                 map to at most one open file; all operations report errors
-//                 via RtError out-parameters; files are NOT auto-closed.
-// Ownership/Lifetime: RtFile handles are stack-allocated by callers and
-//                     initialized via rt_file_init; OS resources are released
-//                     by rt_file_close; channel-based API manages its own
-//                     internal file table.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_error.h"

@@ -4,64 +4,33 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_stopwatch.c
-/// @brief High-precision stopwatch for benchmarking and performance measurement.
-///
-/// This file implements a stopwatch that measures elapsed time with nanosecond
-/// resolution (where available). Unlike DateTime.NowMs(), the Stopwatch uses a
-/// monotonic clock that is not affected by system time changes, making it ideal
-/// for accurate performance measurement.
-///
-/// **Stopwatch vs DateTime:**
-/// - Stopwatch: Uses monotonic clock, immune to system time changes
-/// - DateTime: Uses wall clock, can jump forward/backward with system time
-///
-/// **Timer States:**
-/// ```
-/// ┌─────────────────────────────────────────────────────────────┐
-/// │                                                             │
-/// │  STOPPED ──────► RUNNING ──────► STOPPED                    │
-/// │     │    Start()    │    Stop()     │                       │
-/// │     │               │               │                       │
-/// │     └───────────────┴───────────────┘                       │
-/// │                 Reset()                                     │
-/// └─────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Time Units:**
-/// ```
-/// 1 second = 1,000 milliseconds (ms)
-///          = 1,000,000 microseconds (μs/us)
-///          = 1,000,000,000 nanoseconds (ns)
-/// ```
-///
-/// **Typical Usage Pattern:**
-/// ```
-/// Dim sw = Stopwatch.StartNew()    ' Create and start
-/// ' ... code to measure ...
-/// sw.Stop()
-/// Print "Elapsed: " & sw.ElapsedMs & " ms"
-///
-/// sw.Restart()                     ' Reset and start again
-/// ' ... more code ...
-/// Print "Elapsed: " & sw.ElapsedMs & " ms"
-/// ```
-///
-/// **Use Cases:**
-/// - Benchmarking code performance
-/// - Profiling function execution time
-/// - Game frame timing
-/// - Animation timing
-/// - Rate limiting
-/// - Timeout detection
-///
-/// **Thread Safety:** Stopwatch objects are not thread-safe. External
-/// synchronization is required for multi-threaded access.
-///
-/// @see rt_countdown.c For countdown timers (measuring time until expiration)
-/// @see rt_datetime.c For wall clock time operations
-///
+//
+// File: src/runtime/core/rt_stopwatch.c
+// Purpose: Implements the Stopwatch class for the Viper runtime. Measures
+//          elapsed time using a monotonic clock (immune to wall-clock
+//          adjustments). Supports Start/Stop/Restart/Reset and elapsed queries
+//          in milliseconds, microseconds, and nanoseconds.
+//
+// Key invariants:
+//   - Uses CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter (Windows) for
+//     nanosecond-resolution timing; the clock is not affected by NTP or DST.
+//   - Elapsed time accumulates correctly across multiple Start/Stop cycles;
+//     total elapsed = accumulated_ns + (current interval if running).
+//   - Stopwatch objects are not thread-safe; external synchronization is
+//     required for concurrent access to the same instance.
+//   - ElapsedMs/ElapsedUs/ElapsedNs queries are valid in both RUNNING and
+//     STOPPED states; they snapshot the current time if running.
+//
+// Ownership/Lifetime:
+//   - Stopwatch instances are heap-allocated via rt_obj_new_i64 and managed
+//     by the runtime GC; callers do not free them explicitly.
+//   - The internal ViperStopwatch struct contains no pointers to external
+//     resources; the finalizer is a no-op.
+//
+// Links: src/runtime/core/rt_stopwatch.h (public API),
+//        src/runtime/core/rt_countdown.c (counts down instead of up),
+//        src/runtime/core/rt_time.c (platform sleep and tick helpers)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_stopwatch.h"

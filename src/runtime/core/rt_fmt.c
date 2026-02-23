@@ -5,20 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_fmt.c
-// Purpose: Value formatting functions for Viper.Fmt namespace.
+// File: src/runtime/core/rt_fmt.c
+// Purpose: Implements the Viper.Fmt namespace — value-to-string formatting
+//          helpers for integers, floats, booleans, and radix-based encodings.
+//          All functions are defensive: invalid inputs produce empty strings
+//          or sensible defaults rather than trapping.
 //
-// Key invariants: All functions return valid strings, never trap.
-//                 Invalid inputs produce empty strings or sensible defaults.
-// Ownership/Lifetime: Returns newly allocated strings; caller owns result.
+// Key invariants:
+//   - No function in this file ever calls rt_trap; all error paths return an
+//     empty string or a defined fallback value.
+//   - Integer formatting uses PRId64/PRIu64 macros for locale-independent
+//     decimal output.
+//   - Radix formatting (rt_fmt_int_radix) supports bases 2-36; values outside
+//     this range return an empty string.
+//   - Float formatting (rt_fmt_float) uses snprintf with %g; NaN and infinity
+//     are formatted as their canonical string representations.
+//   - All functions return newly allocated rt_string values.
+//
+// Ownership/Lifetime:
+//   - All returned rt_string values are newly allocated and transfer ownership
+//     to the caller; the caller must call rt_string_unref when done.
+//   - Intermediate stack buffers (FMT_BUFFER_SIZE = 128) are used for most
+//     operations; no heap allocation occurs for formatting itself.
+//
+// Links: src/runtime/core/rt_fmt.h (public API),
+//        src/runtime/core/rt_format.c (floating-point and CSV formatting),
+//        src/runtime/core/rt_string.h (rt_string_from_bytes)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implements formatting helpers for the Viper.Fmt runtime namespace.
-/// @details Provides conversions from numeric and boolean values to runtime
-///          strings. Functions are defensive: invalid inputs or formatting
-///          failures yield empty strings rather than trapping.
 
 #include "rt_fmt.h"
 #include "rt_internal.h"

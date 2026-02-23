@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_keyderive.h
+// Purpose: Key derivation functions implementing PBKDF2-SHA256 for deriving cryptographic keys from passwords with configurable iteration counts.
+//
+// Key invariants:
+//   - Minimum 1000 iterations; higher iteration counts increase brute-force resistance.
+//   - Key length must be in [1, 1024] bytes.
+//   - The salt should be randomly generated per password and stored alongside the hash.
+//   - Output is a Bytes object containing the derived key.
+//
+// Ownership/Lifetime:
+//   - Returned objects are newly allocated; caller must release.
+//   - Password and salt strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_keyderive.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_keyderive.h
-// Purpose: Key derivation functions (PBKDF2-SHA256).
-// Key invariants: Minimum 1000 iterations, key length 1-1024 bytes.
-// Ownership/Lifetime: Returned objects are newly allocated.
-// Links: docs/viperlib/crypto.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

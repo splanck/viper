@@ -101,6 +101,27 @@ static void test_null_safety()
     rt_ratelimit_reset(NULL); // should not crash
 }
 
+/// @brief Regression test for RC-9: token count must never go negative.
+///
+/// After many acquire/refill cycles the floating-point token accumulator
+/// can drift slightly below zero due to rounding. The RC-9 fix clamps
+/// tokens to 0.0 after any subtraction so that rt_ratelimit_available()
+/// always returns a non-negative value.
+static void test_tokens_never_go_negative()
+{
+    // High refill rate creates many fractional-token scenarios in a tight loop.
+    void *rl = rt_ratelimit_new(5, 1000.0);
+    assert(rl != NULL);
+
+    for (int i = 0; i < 10000; i++)
+    {
+        rt_ratelimit_try_acquire(rl);
+        int64_t avail = rt_ratelimit_available(rl);
+        // RC-9: must be >= 0 regardless of floating-point drift
+        assert(avail >= 0 && "available() went negative — RC-9 regression");
+    }
+}
+
 int main()
 {
     test_new_limiter();
@@ -110,5 +131,6 @@ int main()
     test_defaults_for_invalid_params();
     test_acquire_n_invalid();
     test_null_safety();
+    test_tokens_never_go_negative();
     return 0;
 }

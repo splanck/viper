@@ -5,23 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_file.c
-// Purpose: Maintain the BASIC runtime's channel table and expose the legacy
-//          file I/O ABI in terms of runtime error codes.
-// Key invariants: Channel identifiers map 1:1 to table entries, each entry
-//                 tracks whether a file descriptor is open, EOF state is cached
-//                 eagerly to emulate the VM, and all failures are reported as
-//                 Err_* enumerators.  Table growth doubles capacity to amortise
-//                 allocations while keeping handles stable.
-// Links: docs/runtime/files.md#channels
+// File: src/runtime/io/rt_file.c
+// Purpose: Maintains the BASIC runtime's channel table that maps integer channel
+//          IDs to RtFile handles. Exposes the legacy file I/O ABI (open, close,
+//          read, write, EOF check) translating results into Err_* error codes.
+//
+// Key invariants:
+//   - Channel identifiers map 1:1 to entries in a growable table; no two
+//     channels share an entry.
+//   - EOF state is cached eagerly on each read to replicate VM interpreter
+//     behaviour.
+//   - All failures are reported as Err_* enumerators; errno never escapes.
+//   - Table growth doubles capacity to amortise allocations while keeping
+//     existing channel handles stable.
+//   - Channel 0 is reserved; valid user channels start at 1.
+//
+// Ownership/Lifetime:
+//   - The channel table is owned by the RtContext; rt_file_state_cleanup frees
+//     all open handles when the context is torn down.
+//   - RtFile handles stored in the table are not reference-counted; the table
+//     is their sole owner.
+//
+// Links: src/runtime/io/rt_file.h (public API and RtFile type),
+//        src/runtime/io/rt_file_io.h (low-level read/write primitives),
+//        src/runtime/io/rt_file_path.h (mode string helpers)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Channel management helpers for BASIC runtime file I/O.
-/// @details Provides allocation, resolution, and I/O utilities that convert
-///          between BASIC channel integers and the runtime's `RtFile`
-///          structures while keeping error signalling consistent.
 
 #include "rt_file.h"
 

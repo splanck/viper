@@ -1,24 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/arrays/rt_array_i64.h
+// Purpose: Dynamic array API for 64-bit integers (int64_t) supporting BASIC LONG typed collections, mirroring the i32 array interface with allocation, refcounting, bounds-checked access, and resize.
+//
+// Key invariants:
+//   - Payload pointers are preceded by an rt_heap_hdr_t header at a negative offset.
+//   - length <= capacity at all times; indexed access traps on out-of-bounds.
+//   - New arrays start with refcount 1.
+//   - Resize may reallocate and rebind the payload pointer.
+//
+// Ownership/Lifetime:
+//   - Reference-counted via rt_arr_i64_retain/release.
+//   - The caller owns the initial reference from rt_arr_i64_new.
+//   - Resize transfers ownership of the old allocation.
+//
+// Links: src/runtime/arrays/rt_array_i64.c (implementation), src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_array_i64.h
-// Purpose: Dynamic array API for 64-bit integers (int64_t), mirroring the i32
-//          array interface to support BASIC LONG typed collections with
-//          allocation, refcounting, bounds-checked access, and resize.
-// Key invariants: Payload pointers are preceded by an rt_heap_hdr_t header;
-//                 length <= capacity; indexed access traps on out-of-bounds;
-//                 new arrays start with refcount 1.
-// Ownership/Lifetime: Reference-counted via rt_arr_i64_retain/release; the
-//                     caller owns the initial reference from rt_arr_i64_new;
-//                     resize may reallocate and rebind the payload pointer.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_heap.h"

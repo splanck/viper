@@ -4,10 +4,40 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_objpool.c
-/// @brief Implementation of object pool for efficient object reuse.
-///
+//
+// File: src/runtime/collections/rt_objpool.c
+// Purpose: Fixed-capacity object pool for Viper games. Eliminates per-frame
+//   allocation churn for frequently created and destroyed game objects such as
+//   bullets, enemies, particles, and projectiles. Slots are acquired (checked
+//   out) and released (checked in) in O(1) time using an embedded free-list.
+//   Active slots are traversable in O(1) per step using an intrusive singly-
+//   linked active list maintained by acquire and release.
+//
+// Key invariants:
+//   - The pool owns a single calloc'd slot array of fixed capacity. Capacity is
+//     clamped to RT_OBJPOOL_MAX (4096) at creation and never changes.
+//   - Slot indices are stable across the pool's lifetime: an acquired slot keeps
+//     the same integer index from acquire until release. Games may store extra
+//     data per-slot via rt_objpool_set_data / rt_objpool_get_data (one int64).
+//   - The free list is a singly-linked chain through pool_slot.next_free.
+//     free_head is the index of the next available slot (-1 when pool is full).
+//   - The active list is a singly-linked chain through pool_slot.next_active.
+//     active_head is the index of the first acquired slot (-1 when empty).
+//     rt_objpool_first_active / rt_objpool_next_active run in O(1).
+//   - Release is O(active_count) in the worst case because the active list is
+//     singly-linked and removing a non-head element requires scanning for the
+//     predecessor. For typical game pool sizes (<= 512) this is negligible.
+//   - Releasing an already-free slot (double-release) is a safe no-op.
+//
+// Ownership/Lifetime:
+//   - The pool struct is GC-managed (rt_obj_new_i64). The slot array is
+//     malloc'd separately; the GC finalizer (objpool_finalizer) frees it when
+//     the pool is collected. rt_objpool_destroy() is a documented no-op for
+//     API symmetry — do not rely on it to free memory.
+//
+// Links: src/runtime/collections/rt_objpool.h (public API),
+//        docs/viperlib/game.md (ObjectPool section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_objpool.h"

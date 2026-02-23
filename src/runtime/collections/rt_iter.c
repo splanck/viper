@@ -4,15 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_iter.c
-/// @brief Unified stateful iterator for all collections.
-///
-/// Iterators wrap a collection pointer + position index. For heap-managed
-/// indexed collections (Seq, List, Ring) we iterate directly by retaining
-/// the source. For malloc-based collections (Deque) or unindexed collections
-/// (Map, Set, Stack) we snapshot to a Seq on creation and iterate that.
-///
+//
+// File: src/runtime/collections/rt_iter.c
+// Purpose: Implements a unified stateful iterator that works across all Viper
+//   collection types (Seq, List, Ring, Deque, Map, Set, Stack). Iterators wrap
+//   a collection pointer and a current position index; Next() advances the
+//   position and returns the element, HasNext() checks bounds.
+//
+// Key invariants:
+//   - For indexed GC-managed collections (Seq, List, Ring), the iterator retains
+//     a reference to the source collection and iterates by index directly.
+//   - For unindexed or malloc-managed collections (Deque, Map, Set, Stack), the
+//     iterator snapshots the collection into a Seq at creation time and iterates
+//     the snapshot. This means mutations to the source after iterator creation
+//     are NOT visible.
+//   - The `len` field is cached at creation from the source length; it does not
+//     update if the source is mutated after the iterator is created.
+//   - Calling Next() when HasNext() returns 0 returns NULL and does not advance
+//     past the end (pos stays at len).
+//   - The iterator holds a retained reference to the source/snapshot Seq; the
+//     finalizer (iter_finalizer) releases it when the iterator is collected.
+//
+// Ownership/Lifetime:
+//   - Iterator objects are GC-managed (rt_obj_new_i64). The iter_finalizer
+//     releases the source/snapshot reference when the iterator is collected.
+//
+// Links: src/runtime/collections/rt_iter.h (public API),
+//        src/runtime/collections/rt_seq.h, rt_list.h, rt_ring.h, rt_deque.h,
+//        rt_map.h, rt_set.h, rt_stack.h (iterable collections)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_iter.h"

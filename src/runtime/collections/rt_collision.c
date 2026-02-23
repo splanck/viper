@@ -4,10 +4,38 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_collision.c
-/// @brief Implementation of AABB collision detection helpers.
-///
+//
+// File: src/runtime/collections/rt_collision.c
+// Purpose: Stateless AABB and circle collision primitive library for Viper
+//   games. Provides GC-managed CollisionRect and CollisionCircle value objects
+//   alongside stand-alone overlap and containment test functions. Intended as
+//   a lightweight helper layer on top of Physics2D for game logic that needs
+//   simple hit tests without a full simulation world (e.g. trigger zones,
+//   projectile hit detection, UI hover regions).
+//
+// Key invariants:
+//   - CollisionRect is an axis-aligned bounding box (AABB) with integer x, y,
+//     width, height fields. x, y is the top-left corner.
+//   - CollisionCircle has integer cx, cy center and integer radius.
+//   - All overlap tests return int64: 1 = overlapping, 0 = separated.
+//     Tests are strict (touching edges count as overlapping unless noted).
+//   - rt_collision_rect_vs_rect: SAT test on both axes, returns 1 if any area
+//     overlaps (not just touches). Two rects sharing only an edge return 0.
+//   - rt_collision_circle_vs_circle: distance-squared comparison to avoid
+//     sqrt; returns 1 when distance < sum_of_radii.
+//   - rt_collision_point_in_rect / _circle: point containment, inclusive of
+//     the boundary.
+//   - Standalone functions (not methods on rect/circle objects) are also
+//     provided for callers that store geometry inline rather than in objects.
+//
+// Ownership/Lifetime:
+//   - CollisionRect and CollisionCircle objects are GC-managed (rt_obj_new_i64).
+//     They hold no external resources and require no finalizer.
+//
+// Links: src/runtime/collections/rt_collision.h (public API),
+//        src/runtime/graphics/rt_physics2d.h (full physics simulation),
+//        docs/viperlib/game.md (Collision section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_collision.h"

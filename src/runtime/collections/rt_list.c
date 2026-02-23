@@ -5,11 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_list.c
-// Purpose: Implement a simple object-backed list using rt_arr_obj as storage.
-// Structure: [vptr | arr]
-// - vptr: points to class vtable (not required for these helpers)
-// - arr:  dynamic array of void* managed by rt_arr_obj_*
+// File: src/runtime/collections/rt_list.c
+// Purpose: Implements a dynamic, mutable list of object references backed by
+//   rt_arr_obj (a managed object array). Provides push, pop, get, set, remove,
+//   insert, reverse, sort, and contains operations. Unlike Seq, List is designed
+//   for frequent mutation with stable GC-managed element references.
+//
+// Key invariants:
+//   - The List header contains only a vptr and an rt_arr_obj pointer; all
+//     element storage is delegated to rt_arr_obj which handles capacity growth.
+//   - rt_arr_obj growth strategy: doubles capacity when full, starting from 16.
+//   - Elements are stored as raw void* pointers; the list does not explicitly
+//     retain them (retention is the caller's responsibility or managed by GC).
+//   - Pop removes and returns the last element (LIFO semantics for stack use).
+//   - RemoveAt shifts elements left; Insert shifts elements right — both O(n).
+//   - Sort uses the standard C qsort with a string-comparison callback when
+//     elements are rt_string; otherwise falls back to pointer comparison.
+//   - Not thread-safe; external synchronization required for concurrent access.
+//
+// Ownership/Lifetime:
+//   - List objects are GC-managed (rt_obj_new_i64). The underlying rt_arr_obj
+//     is managed by the GC; no manual free is needed.
+//
+// Links: src/runtime/collections/rt_list.h (public API),
+//        src/runtime/rt_array_obj.h (backing storage implementation)
 //
 //===----------------------------------------------------------------------===//
 

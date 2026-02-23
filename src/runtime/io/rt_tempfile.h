@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_tempfile.h
+// Purpose: Temporary file utilities creating files in the system temp directory with automatic cleanup on process exit or explicit deletion.
+//
+// Key invariants:
+//   - Temp files are created in the OS-provided temporary directory.
+//   - File names include a random component to avoid collisions.
+//   - rt_tempfile_create_named returns both the path and an open file handle.
+//   - Temp files are not automatically deleted on object destruction; caller must delete.
+//
+// Ownership/Lifetime:
+//   - Returned path strings are newly allocated; caller must release.
+//   - File handles must be closed by the caller.
+//
+// Links: src/runtime/io/rt_tempfile.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_tempfile.h
-// Purpose: Temporary file utilities that auto-cleanup.
-// Key invariants: Temp files are created in system temp directory.
-// Ownership/Lifetime: Returned paths are newly allocated.
-// Links: docs/viperlib/io.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

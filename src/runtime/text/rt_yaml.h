@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_yaml.h
+// Purpose: YAML 1.2 subset parser and formatter for Viper.Data.Yaml, supporting scalars, sequences, mappings, and multi-document streams.
+//
+// Key invariants:
+//   - Supports YAML 1.2 subset: scalars (string/int/float/bool/null), sequences, mappings.
+//   - rt_yaml_parse returns NULL on invalid YAML syntax.
+//   - Multi-document streams separated by '---' return a Seq of documents.
+//   - Formatting uses block style by default; flow style is available for compact output.
+//
+// Ownership/Lifetime:
+//   - Returned values are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of parsing.
+//
+// Links: src/runtime/text/rt_yaml.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_yaml.h
-// Purpose: YAML parsing and formatting utilities for Viper.Data.Yaml.
-// Key invariants: Supports common YAML 1.2 subset (scalars, sequences, mappings).
-// Ownership/Lifetime: Returned values are newly allocated, ref-counted.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

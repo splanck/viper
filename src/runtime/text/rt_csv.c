@@ -4,64 +4,29 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_csv.c
-/// @brief CSV parsing and formatting utilities (RFC 4180 compliant).
-///
-/// This file implements CSV (Comma-Separated Values) parsing and formatting
-/// that complies with RFC 4180. It handles all standard CSV features including
-/// quoted fields, escaped quotes, and newlines within quoted fields.
-///
-/// **CSV Format Rules (RFC 4180):**
-///
-/// 1. Each record is on a separate line, delimited by a line break (CRLF/LF/CR)
-/// 2. Fields are separated by commas (or a custom delimiter)
-/// 3. Fields containing special characters must be enclosed in double-quotes:
-///    - The delimiter character (`,`)
-///    - Double-quote (`"`)
-///    - Newline (`\n` or `\r`)
-/// 4. Double-quotes within a quoted field are escaped by doubling: `""`
-///
-/// **Parsing Example:**
-/// ```
-/// Input:  name,age,"city, state"
-/// Result: ["name", "age", "city, state"]
-///
-/// Input:  "He said ""Hello""",42
-/// Result: ["He said \"Hello\"", "42"]
-/// ```
-///
-/// **Formatting Example:**
-/// ```
-/// Input:  ["name", "city, state", "say \"hi\""]
-/// Output: name,"city, state","say ""hi"""
-/// ```
-///
-/// **Data Structure:**
-/// - A single row is represented as a Seq of strings
-/// - Multiple rows are represented as a Seq of Seqs (Seq<Seq<String>>)
-///
-/// ```
-/// CSV Text                    Viper Structure
-/// ─────────────────────       ────────────────────────────────
-/// name,age,city               Seq [
-/// Alice,30,NYC                  Seq ["name", "age", "city"],
-/// Bob,25,LA                     Seq ["Alice", "30", "NYC"],
-///                               Seq ["Bob", "25", "LA"]
-///                             ]
-/// ```
-///
-/// **Use Cases:**
-/// - Importing data from spreadsheets
-/// - Exporting data for spreadsheet applications
-/// - Data interchange with other applications
-/// - Reading configuration files
-/// - Parsing log files in CSV format
-///
-/// **Thread Safety:** All functions are thread-safe (no global mutable state).
-///
-/// @see rt_seq.c For the Seq container used for rows and fields
-///
+//
+// File: src/runtime/text/rt_csv.c
+// Purpose: Implements CSV parsing and formatting for the Viper.Text.Csv class,
+//          compliant with RFC 4180. Handles quoted fields, doubled-quote escaping,
+//          and CRLF/LF/CR line endings. Supports a configurable field delimiter.
+//
+// Key invariants:
+//   - Fields containing the delimiter, a double-quote, or a newline must be
+//     quoted; double-quotes within are escaped by doubling ("").
+//   - ParseLine returns a Seq<String> for one row; Parse returns Seq<Seq<String>>.
+//   - FormatLine quotes fields that require quoting; FormatAll formats all rows.
+//   - Empty lines produce a single-element row containing an empty string.
+//   - The default delimiter is comma; alternative delimiters (e.g. tab) are
+//     accepted at construction time.
+//   - All functions are thread-safe with no global mutable state.
+//
+// Ownership/Lifetime:
+//   - All returned Seq and String objects are fresh allocations owned by caller.
+//   - Input strings are borrowed read-only for the duration of the call.
+//
+// Links: src/runtime/text/rt_csv.h (public API),
+//        src/runtime/rt_seq.h (Seq container used for rows and fields)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_csv.h"

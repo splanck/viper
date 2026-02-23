@@ -4,51 +4,29 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_codec.c
-/// @brief Base64, Hex, and URL encoding/decoding utilities for strings.
-///
-/// This file implements encoding and decoding functions for common text-safe
-/// representations of binary data. These codecs are essential for:
-/// - Transmitting binary data over text-only protocols
-/// - Embedding data in URLs and HTML
-/// - Creating human-readable representations of bytes
-///
-/// **Supported Encodings:**
-///
-/// | Encoding | Expansion | Characters Used              | Use Case                |
-/// |----------|-----------|------------------------------|-------------------------|
-/// | Base64   | ~33%      | A-Z, a-z, 0-9, +, /, =       | Email attachments, JWT  |
-/// | Hex      | 100%      | 0-9, a-f                     | Debug output, hashes    |
-/// | URL      | Variable  | A-Z, a-z, 0-9, -, _, ., ~    | Query strings, paths    |
-///
-/// **Base64 Encoding (RFC 4648):**
-/// ```
-/// Input:   "Man"                       (3 bytes)
-/// Binary:  01001101 01100001 01101110  (24 bits)
-/// Groups:  010011 010110 000101 101110 (4 x 6-bit groups)
-/// Indices: 19     22     5      46
-/// Output:  "TWFu"                      (4 characters)
-/// ```
-///
-/// **Hex Encoding:**
-/// ```
-/// Input:   "Hi"
-/// Bytes:   0x48 0x69
-/// Output:  "4869"
-/// ```
-///
-/// **URL Encoding (Percent Encoding):**
-/// ```
-/// Input:   "Hello World!"
-/// Output:  "Hello%20World%21"
-/// ```
-///
-/// **Thread Safety:** All functions are thread-safe (no global state).
-///
-/// @see rt_hash.c For hashing functions that produce hex output
-///
+//
+// File: src/runtime/text/rt_codec.c
+// Purpose: Implements encoding and decoding utilities for the Viper.Text.Codec
+//          class. Provides Base64 (RFC 4648), hexadecimal, and URL percent-
+//          encoding representations of strings and binary data.
+//
+// Key invariants:
+//   - Base64 encoding follows RFC 4648 with '=' padding; output is always a
+//     multiple of 4 characters.
+//   - Hex encoding produces lowercase hex pairs; decoding accepts upper or lower.
+//   - URL encoding percent-encodes all characters except A-Z, a-z, 0-9, -, _, ., ~.
+//   - Invalid Base64 or Hex input during decoding returns an empty string.
+//   - All functions are thread-safe with no global mutable state.
+//
+// Ownership/Lifetime:
+//   - All returned rt_string values are fresh allocations owned by the caller.
+//   - Input strings are borrowed read-only for the duration of the call.
+//
+// Links: src/runtime/text/rt_codec.h (public API),
+//        src/runtime/text/rt_hash.h (produces hex output, related codec)
+//
 //===----------------------------------------------------------------------===//
+
 
 #include "rt_codec.h"
 

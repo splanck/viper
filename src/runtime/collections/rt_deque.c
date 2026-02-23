@@ -5,8 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_deque.c
-// Purpose: Double-ended queue implementation using circular buffer.
+// File: src/runtime/collections/rt_deque.c
+// Purpose: Implements a double-ended queue (deque) using a circular buffer.
+//   Elements can be pushed and popped from both the front and back in O(1)
+//   amortized time. Random access by index is O(1). Provides a richer interface
+//   than Stack (LIFO only) or Queue (FIFO only) while retaining their
+//   performance characteristics.
+//
+// Key invariants:
+//   - Backed by a circular buffer of initial capacity DEFAULT_CAPACITY (16).
+//     Growth doubles the capacity and linearizes the elements into a new array.
+//   - `front` is the index of the logical element at position 0 (oldest for
+//     queue-like use; the "left" end for deque use).
+//   - Physical index of logical element i is (front + i) % cap.
+//   - Push-back: writes to (front + len) % cap; push-front: decrements front
+//     with wrap-around, then writes at the new front.
+//   - Out-of-bounds Get aborts via trap_with_message.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - Deque objects are GC-managed (rt_obj_new_i64). The data array is
+//     malloc-managed and freed by the GC finalizer (deque_finalizer).
+//
+// Links: src/runtime/collections/rt_deque.h (public API)
 //
 //===----------------------------------------------------------------------===//
 

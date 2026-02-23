@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_spritesheet.h
+// Purpose: Sprite sheet/atlas for named region extraction from a single Pixels texture, enabling efficient storage of multiple sprites in one image.
+//
+// Key invariants:
+//   - Regions are stored by name; duplicate names overwrite the previous region.
+//   - rt_spritesheet_get_region returns coordinates into the atlas; it does not copy pixels.
+//   - All regions must reference valid coordinates within the atlas bounds.
+//   - The atlas Pixels object must remain valid while the spritesheet is in use.
+//
+// Ownership/Lifetime:
+//   - Spritesheet objects are heap-allocated opaque pointers.
+//   - The atlas Pixels is not retained; caller must ensure its lifetime exceeds the spritesheet.
+//
+// Links: src/runtime/graphics/rt_spritesheet.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_spritesheet.h
-// Purpose: Sprite sheet/atlas for named region extraction from a single texture.
-// Key invariants: Object-based, regions stored by name, backed by single Pixels.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

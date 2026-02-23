@@ -4,72 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_datetime.c
-/// @brief Date and time operations for the Viper.DateTime class.
-///
-/// This file implements functions for working with dates and times, including
-/// getting the current time, extracting date/time components, formatting,
-/// and arithmetic operations.
-///
-/// **Time Representation:**
-/// Dates and times are represented as Unix timestamps - the number of seconds
-/// since the Unix epoch (January 1, 1970, 00:00:00 UTC). This provides a
-/// consistent, timezone-independent representation of moments in time.
-///
-/// ```
-/// Unix Epoch (0)        Now                   Far Future
-///     │                  │                        │
-///     ├──────────────────┼────────────────────────┤
-///     │                  │                        │
-///  Jan 1, 1970      Current Time           Jan 19, 2038
-///  00:00:00 UTC                           (32-bit limit)
-/// ```
-///
-/// **Component Extraction:**
-/// Timestamps can be decomposed into human-readable components:
-/// ```
-/// Timestamp: 1703001600
-///     │
-///     ├──► Year:   2023
-///     ├──► Month:  12 (December)
-///     ├──► Day:    19
-///     ├──► Hour:   16 (4 PM)
-///     ├──► Minute: 0
-///     ├──► Second: 0
-///     └──► DayOfWeek: 2 (Tuesday)
-/// ```
-///
-/// **Day of Week Values:**
-/// | Value | Day       |
-/// |-------|-----------|
-/// | 0     | Sunday    |
-/// | 1     | Monday    |
-/// | 2     | Tuesday   |
-/// | 3     | Wednesday |
-/// | 4     | Thursday  |
-/// | 5     | Friday    |
-/// | 6     | Saturday  |
-///
-/// **Time Zones:**
-/// - Component extraction (Year, Month, etc.) uses local time zone
-/// - ISO format output uses UTC (ends with 'Z')
-/// - Timestamps themselves are timezone-independent
-///
-/// **Common Use Cases:**
-/// - Displaying current date/time to users
-/// - Logging with timestamps
-/// - Calculating durations between events
-/// - Scheduling future events
-/// - Formatting dates for different locales
-///
-/// **Thread Safety:** All functions use thread-safe time conversion functions
-/// (rt_localtime_r/rt_gmtime_r) that store results in caller-provided buffers,
-/// making them safe for use from multiple threads concurrently.
-///
-/// @see rt_time.c For high-resolution timing and performance measurement
-/// @see rt_stopwatch.c For elapsed time measurement
-///
+//
+// File: src/runtime/core/rt_datetime.c
+// Purpose: Implements the Viper.DateTime class — wall-clock date/time
+//          operations backed by Unix timestamps (seconds since epoch). Provides
+//          current time query (NowMs/NowSec), component extraction (Year, Month,
+//          Day, Hour, Minute, Second, DayOfWeek), arithmetic (AddDays, AddHours,
+//          etc.), and ISO 8601 formatting.
+//
+// Key invariants:
+//   - Timestamps are int64_t seconds since the Unix epoch (1970-01-01 00:00 UTC).
+//   - Component extraction (Year, Month, Day, etc.) uses local time zone via
+//     localtime_r / rt_localtime_r; ISO format output uses UTC (gmtime_r).
+//   - rt_localtime_r and rt_gmtime_r are thread-safe wrappers storing results
+//     in caller-provided struct tm buffers.
+//   - DayOfWeek is 0-based starting from Sunday (0=Sun ... 6=Sat), matching
+//     tm_wday convention.
+//   - NowMs returns milliseconds since epoch (wall clock, may jump with NTP).
+//
+// Ownership/Lifetime:
+//   - Formatted strings are newly allocated rt_string values; the caller owns
+//     the reference and must call rt_string_unref when done.
+//   - No heap allocation is performed by scalar accessors.
+//
+// Links: src/runtime/core/rt_datetime.h (public API),
+//        src/runtime/core/rt_time.c (monotonic sleep and tick helpers),
+//        src/runtime/core/rt_stopwatch.c (elapsed time measurement),
+//        src/runtime/core/rt_dateonly.c (date-only type)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_datetime.h"

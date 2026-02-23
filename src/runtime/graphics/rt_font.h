@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_font.h
+// Purpose: Embedded 8x8 bitmap font providing per-character glyph bitmaps for software text rendering, where each glyph is 8 bytes (one byte per row).
+//
+// Key invariants:
+//   - ASCII characters 0-127 are supported; undefined chars use a fallback glyph.
+//   - Each glyph is exactly 8 bytes; bit 7 of each byte is the leftmost pixel.
+//   - Font width and height are always 8 pixels.
+//   - Glyph data is read-only; callers must not modify the returned pointer.
+//
+// Ownership/Lifetime:
+//   - Glyph pointers are into a static read-only table; no allocation or lifetime management.
+//   - Callers borrow the returned pointer; they must not free it.
+//
+// Links: src/runtime/graphics/rt_font.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_font.h
-// Purpose: Embedded 8x8 bitmap font for text rendering.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -4,13 +4,36 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_spritesheet.c
-/// @brief Sprite sheet/atlas implementation.
-///
-/// Stores a single atlas Pixels buffer and a map of named regions.
-/// Regions can be extracted as independent Pixels buffers.
-///
+//
+// File: src/runtime/graphics/rt_spritesheet.c
+// Purpose: Sprite atlas (sprite sheet) manager for Viper games. Wraps a single
+//   Pixels buffer representing a tiled atlas and maps integer frame indices to
+//   rectangular sub-regions. Supports uniform-tile sheets (all frames the same
+//   size, packed in row-major order) and named-region sheets (arbitrary rects
+//   stored by name). Callers extract individual frames as Pixels regions for
+//   use with Sprite, SpriteBatch, or direct Canvas blitting.
+//
+// Key invariants:
+//   - A uniform sheet divides the atlas into (atlas_width / frame_w) columns
+//     and (atlas_height / frame_h) rows. Frame N is at:
+//       col = N % cols,  row = N / cols
+//       src_x = col * frame_w,  src_y = row * frame_h
+//   - Named regions are stored in an associative array (string → rect). Lookup
+//     is linear in the number of regions unless a hash map is used internally.
+//   - The atlas Pixels buffer is retained by the sheet and released on destroy.
+//     Extracted frame Pixels objects are independent copies (or views, per
+//     implementation); they do not hold a reference back to the atlas.
+//   - Frame indices out of range return a 1×1 transparent fallback Pixels
+//     buffer rather than trapping, to avoid crashes on misspelled frame IDs.
+//
+// Ownership/Lifetime:
+//   - SpriteSheet objects are GC-managed (rt_obj_new_i64). The atlas Pixels
+//     buffer and the named-region array are freed by the GC finalizer.
+//
+// Links: src/runtime/graphics/rt_spritesheet.h (public API),
+//        src/runtime/graphics/rt_sprite.h (consumer of atlas frames),
+//        docs/viperlib/game.md (SpriteSheet section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_spritesheet.h"

@@ -1,29 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_easing.h
+// Purpose: Easing functions for animation and interpolation implementing Robert Penner conventions, providing linear, quadratic, cubic, quartic, quintic, sine, exponential, circular, back, elastic, and bounce variants.
+//
+// Key invariants:
+//   - Input t is expected in [0.0, 1.0]; behavior outside this range is unspecified.
+//   - f(0.0) = 0.0 and f(1.0) = 1.0 for all standard easing functions.
+//   - Back and elastic variants may produce output outside [0, 1] due to overshoot.
+//   - All functions use double precision IEEE-754 arithmetic.
+//
+// Ownership/Lifetime:
+//   - All functions are pure and stateless; no allocation or side effects.
+//   - Parameters and return values are plain double; no ownership transfer.
+//
+// Links: src/runtime/core/rt_easing.c (implementation), src/runtime/collections/rt_tween.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_easing.h
-/// @brief Easing functions for animation and interpolation.
-///
-/// @details Provides a comprehensive set of easing functions commonly used in
-/// game animations, UI transitions, and tweening systems. Each function maps a
-/// normalized time parameter to an eased output value, enabling smooth
-/// acceleration, deceleration, and bounce effects. The functions follow the
-/// Robert Penner easing conventions widely used in game development.
-///
-/// Key invariants: Input t is expected in [0,1]. f(0)=0 and f(1)=1 for all
-///   standard easing functions. Output may exceed [0,1] for back and elastic
-///   variants due to overshoot/oscillation.
-/// Ownership/Lifetime: All functions are pure and stateless; no allocation or
-///   side effects.
-/// Links: rt_tween.h (uses these functions via rt_ease_type enum),
-///   rt_easing.c (implementation)
-///
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_compress.h
+// Purpose: DEFLATE/GZIP compression and decompression (RFC 1951, RFC 1952) with no external dependencies, providing Bytes-in/Bytes-out API.
+//
+// Key invariants:
+//   - No external dependencies; implements DEFLATE internally.
+//   - Compression level is an integer in [0, 9]; 0 = no compression, 9 = maximum.
+//   - Decompression returns NULL on invalid or corrupt input.
+//   - GZIP adds a standard header/trailer; raw DEFLATE does not.
+//
+// Ownership/Lifetime:
+//   - Returned Bytes objects are GC-managed; callers should not free them directly.
+//   - Input Bytes are not consumed or modified.
+//
+// Links: src/runtime/io/rt_compress.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_compress.h
-// Purpose: DEFLATE/GZIP compression and decompression (RFC 1951, RFC 1952).
-// Key invariants: No external dependencies (zlib-free implementation).
-// Ownership/Lifetime: Returned Bytes objects are managed by GC.
-// Links: docs/viperlib/io.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -5,11 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_bitset.c
-// Purpose: Implement an arbitrary-size bit array backed by a uint64_t array.
-//          Provides set operations (AND, OR, XOR, NOT) and individual bit
-//          manipulation with automatic growth.
-// Structure: [vptr | words | word_count | bit_count]
+// File: src/runtime/collections/rt_bitset.c
+// Purpose: Implements an arbitrary-size bit array backed by a uint64_t word
+//   array. Provides individual bit get/set/clear/toggle operations, bitwise
+//   set operations (AND, OR, XOR, NOT), popcount, and automatic growth when
+//   accessing a bit index beyond the current capacity.
+//
+// Key invariants:
+//   - Each word stores BITS_PER_WORD (64) bits; word_count = ceil(bit_count/64).
+//   - Growth doubles the word array (or allocates the minimum required); newly
+//     added words are zero-filled.
+//   - Bit index `i` lives in words[i/64] at bit position i%64.
+//   - Set operations (AND, OR, XOR) require both operands to have the same
+//     bit_count; NOT operates in-place on all current words.
+//   - Popcount uses __builtin_popcountll on GCC/Clang; falls back to a portable
+//     Hamming-weight algorithm on other compilers.
+//   - Not thread-safe; external synchronization required for concurrent access.
+//
+// Ownership/Lifetime:
+//   - BitSet objects are GC-managed (rt_obj_new_i64). The words array is
+//     realloc-managed and freed by the GC finalizer (bitset_finalizer).
+//
+// Links: src/runtime/collections/rt_bitset.h (public API)
 //
 //===----------------------------------------------------------------------===//
 

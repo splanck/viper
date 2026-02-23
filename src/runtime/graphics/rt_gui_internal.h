@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_gui_internal.h
+// Purpose: Shared internal header for the split rt_gui implementation modules, declaring the global application pointer, default font state, and common helper functions.
+//
+// Key invariants:
+//   - s_current_app must be set before widget constructors run.
+//   - Default font is lazily initialized on first use.
+//   - This header is implementation-only; it is not part of the public runtime API.
+//   - App state persists for the duration of the GUI event loop.
+//
+// Ownership/Lifetime:
+//   - Internal module header; not included by user code or public headers.
+//   - All state declared here is owned by the GUI subsystem.
+//
+// Links: src/runtime/graphics/rt_gui.h, src/runtime/core/rt_string.h, src/runtime/oop/rt_object.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_gui_internal.h
-// Purpose: Shared internal header for the split rt_gui modules.
-// Key invariants: s_current_app is set before widget constructors run.
-//                 Default font is lazily initialized on first use.
-// Ownership: Internal header; not part of the public runtime API.
-// Lifetime: App state persists for the duration of the GUI event loop.
-// Links: rt_gui.h, rt_string.h
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef RT_GUI_INTERNAL_H
 #define RT_GUI_INTERNAL_H
 

@@ -5,11 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_lrucache.c
-// Purpose: Implement a string-keyed LRU cache using a hash table + doubly
-//          linked list. O(1) get/put/remove with automatic eviction of least
-//          recently used entries when capacity is exceeded.
-// Structure: [vptr | buckets | capacity | count | max_cap | head | tail]
+// File: src/runtime/collections/rt_lrucache.c
+// Purpose: Implements a string-keyed Least Recently Used (LRU) cache combining
+//   a hash table for O(1) key lookup with a doubly-linked list maintaining
+//   access order. When the cache is full and a new entry is inserted, the least
+//   recently accessed entry (tail of the list) is evicted automatically.
+//
+// Key invariants:
+//   - Hash table has initial LRU_INITIAL_BUCKETS (16) buckets with separate
+//     chaining; resizes at 75% load factor.
+//   - LRU order is maintained as a doubly-linked list: head = MRU (most
+//     recently used), tail = LRU (least recently used, next to evict).
+//   - Get promotes the accessed node to the head of the list (O(1)).
+//   - Put of an existing key updates the value and promotes to head (O(1)).
+//   - Put of a new key when count == max_cap evicts the tail node before insert.
+//   - max_cap is fixed at construction; a max_cap of 0 disables eviction (unbounded).
+//   - Each node owns a heap-copied key string; values are stored as raw pointers
+//     (not retained by the cache).
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - LRUCache objects are GC-managed (rt_obj_new_i64). The bucket array and
+//     all list nodes are freed by the GC finalizer (lrucache_finalizer).
+//
+// Links: src/runtime/collections/rt_lrucache.h (public API),
+//        src/runtime/collections/rt_hash_util.h (FNV-1a hash macro)
 //
 //===----------------------------------------------------------------------===//
 

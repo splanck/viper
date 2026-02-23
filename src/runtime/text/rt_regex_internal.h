@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_regex_internal.h
+// Purpose: Internal regex engine types and NFA/DFA state structures shared between rt_regex.c and rt_compiled_pattern.c, not part of the public API.
+//
+// Key invariants:
+//   - This header is internal; it must not be included by code outside the text/ directory.
+//   - Defines the compiled NFA state representation and matching engine entry points.
+//   - rt_regex_compile_internal is the shared compilation entry point.
+//   - rt_regex_exec_internal runs the NFA on a subject string.
+//
+// Ownership/Lifetime:
+//   - Compiled regex objects are owned by their enclosing rt_regex or rt_compiled_pattern.
+//   - No direct public ownership semantics; accessed only through the wrapper APIs.
+//
+// Links: src/runtime/text/rt_regex.c, src/runtime/text/rt_compiled_pattern.c (internal users)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_regex_internal.h
-/// @brief Internal regex engine types and functions shared between rt_regex.c
-///        and rt_compiled_pattern.c.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_REGEX_INTERNAL_H
 #define VIPER_RT_REGEX_INTERNAL_H
 

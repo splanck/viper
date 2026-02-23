@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_duration.h
+// Purpose: Duration/TimeSpan type for representing time intervals stored as milliseconds, with creation helpers for common units and arithmetic/formatting operations.
+//
+// Key invariants:
+//   - Duration is stored as a signed 64-bit integer in milliseconds.
+//   - Negative durations are valid and represent time in the past.
+//   - Conversion helpers (from_seconds, from_minutes, from_hours) never overflow for reasonable inputs.
+//   - Arithmetic operations on durations return value types, not heap objects.
+//
+// Ownership/Lifetime:
+//   - Duration values are plain int64_t; no heap allocation or lifetime management.
+//   - Formatted string results are newly allocated and must be released by the caller.
+//
+// Links: src/runtime/core/rt_duration.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_duration.h
-// Purpose: Duration/TimeSpan type for representing time intervals.
-// Key invariants: Duration is stored as milliseconds; can be negative.
-// Ownership/Lifetime: Functions return value types (int64_t).
-// Links: docs/viperlib/time.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

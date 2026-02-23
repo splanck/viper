@@ -5,14 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_binbuf.c
-// Purpose: Implement a positioned binary read/write buffer with dynamic growth.
-// Structure: [vptr | data* | len | capacity | position]
-// - vptr: placeholder for OOP compatibility
-// - data: heap-allocated byte storage
-// - len: logical length (highest byte written + 1)
-// - capacity: allocated capacity (doubles when full)
-// - position: read/write cursor
+// File: src/runtime/collections/rt_binbuf.c
+// Purpose: Implements a positioned binary read/write buffer with dynamic growth.
+//   BinaryBuffer maintains a heap-allocated byte array, a logical length (the
+//   highest byte written + 1), and a read/write cursor position. Supports typed
+//   reads and writes (i8, i16, i32, i64, f32, f64, bytes) at the cursor, with
+//   automatic capacity doubling when the buffer is too small.
+//
+// Key invariants:
+//   - Initial capacity is BINBUF_DEFAULT_CAPACITY (256) bytes.
+//   - Capacity doubles on each growth; overflow beyond INT64_MAX traps with
+//     "BinaryBuffer: capacity overflow".
+//   - Newly allocated bytes beyond the old capacity are zero-filled (memset).
+//   - `len` tracks the highest written byte index + 1; it does not shrink on
+//     seek-back writes but does grow forward on writes past the current `len`.
+//   - `position` is a free-seek cursor: Seek() can move it anywhere in [0, len].
+//     Writing past `len` extends `len` to position + bytes_written.
+//   - Read operations at or beyond `len` return 0/0.0 and do not advance cursor.
+//   - Not thread-safe; external synchronization required for concurrent access.
+//
+// Ownership/Lifetime:
+//   - BinaryBuffer objects are GC-managed (rt_obj_new_i64). The data array is
+//     realloc-managed and freed by the GC finalizer (binbuf_finalizer).
+//
+// Links: src/runtime/collections/rt_binbuf.h (public API),
+//        src/runtime/collections/rt_bytes.h (byte array type used for bulk I/O)
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,8 +40,21 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+
+/// @brief Internal bytes layout — must match rt_bytes.c (same as rt_binfile.c pattern).
+typedef struct
+{
+    int64_t len;
+    uint8_t *data;
+} binbuf_bytes_impl;
+
+static inline uint8_t *binbuf_bytes_data(void *obj)
+{
+    return obj ? ((binbuf_bytes_impl *)obj)->data : NULL;
+}
 
 /// Default initial capacity for new binary buffers.
 #define BINBUF_DEFAULT_CAPACITY 256
@@ -51,8 +81,13 @@ static void binbuf_ensure(rt_binbuf_impl *buf, int64_t needed)
     int64_t new_cap = buf->capacity;
     if (new_cap < 1)
         new_cap = 1;
+    // IO-H-3: guard against int64 overflow before doubling
     while (new_cap < required)
+    {
+        if (new_cap > (int64_t)(INT64_MAX / 2))
+            rt_trap("BinaryBuffer: capacity overflow");
         new_cap *= 2;
+    }
 
     uint8_t *new_data = (uint8_t *)realloc(buf->data, (size_t)new_cap);
     if (!new_data)
@@ -150,9 +185,10 @@ void *rt_binbuf_from_bytes(void *bytes_obj)
     buf->position = 0;
     rt_obj_set_finalizer(buf, binbuf_finalize);
 
-    // Copy bytes data
-    for (int64_t i = 0; i < blen; i++)
-        buf->data[i] = (uint8_t)rt_bytes_get(bytes_obj, i);
+    // IO-H-2: use memcpy via raw pointer instead of O(n) rt_bytes_get() calls
+    const uint8_t *src = binbuf_bytes_data(bytes_obj);
+    if (src && blen > 0)
+        memcpy(buf->data, src, (size_t)blen);
 
     return buf;
 }
@@ -284,13 +320,14 @@ void rt_binbuf_write_bytes(void *obj, void *data)
     // Write 4-byte LE length prefix
     rt_binbuf_write_i32le(obj, blen);
 
-    // Write raw bytes
+    // Write raw bytes — use memcpy via raw pointer (avoids O(n) rt_bytes_get calls)
     if (blen > 0)
     {
         rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
         binbuf_ensure(buf, blen);
-        for (int64_t i = 0; i < blen; i++)
-            buf->data[buf->position + i] = (uint8_t)rt_bytes_get(data, i);
+        const uint8_t *src = binbuf_bytes_data(data);
+        if (src)
+            memcpy(buf->data + buf->position, src, (size_t)blen);
         binbuf_advance_write(buf, blen);
     }
 }
@@ -464,8 +501,10 @@ void *rt_binbuf_to_bytes(void *obj)
 
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     void *result = rt_bytes_new(buf->len);
-    for (int64_t i = 0; i < buf->len; i++)
-        rt_bytes_set(result, i, buf->data[i]);
+    // IO-M-2: use memcpy via raw pointer instead of O(n) rt_bytes_set() calls
+    uint8_t *dst = binbuf_bytes_data(result);
+    if (dst && buf->len > 0)
+        memcpy(dst, buf->data, (size_t)buf->len);
 
     return result;
 }

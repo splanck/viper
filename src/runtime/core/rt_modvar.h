@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_modvar.h
+// Purpose: Runtime support for module-level (global) BASIC variables, providing stable address lookup by name and type for i64, f64, i1, pointer, and string variables.
+//
+// Key invariants:
+//   - The same (name, type) pair always yields the same stable address.
+//   - Addresses are allocated once per name+type combination and never moved.
+//   - Variable names must be non-empty; duplicate registrations return the existing address.
+//   - String variables store rt_string pointers; the slot is initialized to NULL.
+//
+// Ownership/Lifetime:
+//   - Storage is allocated once and owned by the runtime for the process lifetime.
+//   - Freed at process exit; callers must not free the returned pointers.
+//
+// Links: src/runtime/core/rt_modvar.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_modvar.h
-// Purpose: Runtime support for module-level (global) BASIC variables.
-// Key invariants: Returns stable addresses per variable name and type.
-//                 The same (name, type) pair always yields the same address.
-// Ownership: Allocated once per name+type; owned by the runtime.
-// Lifetime: Freed at process exit.
-// Links: rt_string.h
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -4,6 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_frozenmap.c
+// Purpose: Implements an immutable string-keyed map (FrozenMap) built once from
+//   a Seq of alternating key/value pairs or from a parallel keys/values Seq.
+//   After construction the map cannot be modified; all mutating operations are
+//   absent from the API. Uses open-addressing with FNV-1a hashing for O(1)
+//   average-case lookup.
+//
+// Key invariants:
+//   - Open-addressing hash table; load factor is kept below 50% by sizing the
+//     slot array to 2× the number of entries at construction time.
+//   - Slot key == NULL indicates an empty slot (tombstones are not used since
+//     the map is immutable after build).
+//   - FNV-1a hash over the raw string bytes; linear probing on collision.
+//   - Keys are stored as retained rt_string references (not copied); the FrozenMap
+//     keeps a reference to prevent GC collection of key strings.
+//   - Values are stored as raw void* pointers (not retained); callers must
+//     ensure value lifetime exceeds the FrozenMap lifetime.
+//   - Not thread-safe for construction; safe for concurrent read-only access
+//     after construction completes.
+//
+// Ownership/Lifetime:
+//   - FrozenMap objects are GC-managed (rt_obj_new_i64). The slots array is
+//     freed by the GC finalizer (frozenmap_finalizer).
+//
+// Links: src/runtime/collections/rt_frozenmap.h (public API),
+//        src/runtime/collections/rt_map.h (mutable map counterpart)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_frozenmap.h"
 

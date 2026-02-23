@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_numfmt.h
+// Purpose: Number formatting utilities for locale-aware numeric display including decimal, scientific, currency, percentage, and ordinal formats.
+//
+// Key invariants:
+//   - All returned strings are newly allocated; caller must release.
+//   - Decimal separators and grouping follow the format parameters, not system locale.
+//   - rt_numfmt_ordinal produces English ordinals (1st, 2nd, 3rd, etc.).
+//   - Scientific notation uses 'e' notation with a signed exponent.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - Input values are passed by value; no ownership transfer.
+//
+// Links: src/runtime/text/rt_numfmt.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_numfmt.h
-// Purpose: Number formatting utilities.
-// Key invariants: All returned strings are allocated and must be managed by caller.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -5,10 +5,33 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_trie.c
-// Purpose: Implement a prefix tree (Trie) for string keys. Each node stores
-//          up to 128 children (ASCII). Supports prefix queries, longest prefix
-//          matching, and lexicographic key enumeration.
+// File: src/runtime/collections/rt_trie.c
+// Purpose: Implements a prefix tree (Trie) for string keys with associated
+//   object values. Each trie node stores up to TRIE_ALPHABET_SIZE (128) child
+//   pointers indexed by ASCII byte value. Supports exact lookup, prefix search
+//   (all keys with a given prefix), longest-prefix-match, and lexicographic
+//   key enumeration.
+//
+// Key invariants:
+//   - Each node has a fixed 128-element children array; only ASCII input is
+//     supported (bytes >= 128 are rejected or treated as non-ASCII).
+//   - The root node is created lazily (on first insert) and freed recursively
+//     by the trie finalizer.
+//   - is_terminal marks nodes where a complete key ends. A node can be both
+//     terminal (a key ends here) and internal (a longer key passes through).
+//   - Values are retained (rt_obj_retain) on insert and released (rt_obj_free)
+//     on overwrite or node deletion in the recursive free_node function.
+//   - Deletion is recursive with pruning: leaf nodes that are not terminal are
+//     freed bottom-up to keep the trie compact.
+//   - KeysWithPrefix returns a Seq of all matching key strings (GC-managed).
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - Trie objects are GC-managed (rt_obj_new_i64). All trie nodes are
+//     malloc'd individually and freed recursively by the GC finalizer via
+//     free_node. Values stored in nodes are released on node free.
+//
+// Links: src/runtime/collections/rt_trie.h (public API)
 //
 //===----------------------------------------------------------------------===//
 

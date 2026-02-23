@@ -4,26 +4,30 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_aes.c
-/// @brief AES encryption/decryption implementation (FIPS-197).
-///
-/// This file implements AES-128 and AES-256 encryption in CBC mode with
-/// PKCS7 padding. The implementation is pure C with no external dependencies.
-///
-/// **Supported Key Sizes:**
-/// - AES-128: 16-byte key (128 bits)
-/// - AES-256: 32-byte key (256 bits)
-///
-/// **Mode of Operation:**
-/// - CBC (Cipher Block Chaining) with 16-byte IV
-/// - PKCS7 padding for non-block-aligned data
-///
-/// **Security Notes:**
-/// - Always use a unique random IV for each encryption
-/// - Key should be derived from password using PBKDF2 or similar
-/// - This implementation is not hardened against timing attacks
-///
+//
+// File: src/runtime/text/rt_aes.c
+// Purpose: Implements AES-128 and AES-256 block cipher in CBC mode with PKCS7
+//          padding (FIPS-197). Pure C implementation with no external
+//          dependencies. Used by rt_cipher.c as an alternative cipher algorithm.
+//
+// Key invariants:
+//   - Key sizes: 16 bytes (AES-128) or 32 bytes (AES-256); others trap.
+//   - IV is always 16 bytes (one AES block); callers must supply unique random IV.
+//   - PKCS7 padding is applied during encryption and stripped during decryption.
+//   - CBC mode XORs each plaintext block with the previous ciphertext block.
+//   - This implementation is NOT hardened against cache-timing attacks; do not
+//     use in contexts requiring constant-time cryptographic guarantees.
+//   - Ciphertext length is always a multiple of 16 bytes (due to PKCS7 padding).
+//
+// Ownership/Lifetime:
+//   - Returned ciphertext and plaintext rt_bytes are fresh allocations owned by
+//     the caller.
+//   - Input key, IV, and data buffers are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_aes.h (public API),
+//        src/runtime/text/rt_cipher.h (ChaCha20-Poly1305 cipher, preferred),
+//        src/runtime/text/rt_rand.h (IV generation)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_aes.h"

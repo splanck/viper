@@ -4,26 +4,33 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_bigint.c
-/// @brief Arbitrary precision integer implementation.
-///
-/// This implementation uses base 2^32 representation where each "digit"
-/// is a 32-bit unsigned integer stored in little-endian order (least
-/// significant digit first).
-///
-/// **Representation:**
-/// - Digits: array of uint32_t in little-endian order
-/// - Sign: separate sign flag (0 = non-negative, 1 = negative)
-/// - Zero is always non-negative with zero digits
-///
-/// **Key Operations:**
-/// - Grade-school algorithms for add/sub/mul
-/// - Knuth's Algorithm D for division
-/// - Binary GCD for gcd/lcm
-///
-/// **Thread Safety:** All functions are thread-safe (no shared state).
-///
+//
+// File: src/runtime/core/rt_bigint.c
+// Purpose: Implements arbitrary-precision integer arithmetic for the Viper
+//          runtime. Uses a base-2^32 little-endian digit array with a separate
+//          sign flag. Covers grade-school add/sub/mul, Knuth Algorithm D for
+//          division, binary GCD, and conversion to/from int64 and strings.
+//
+// Key invariants:
+//   - Digits are stored in little-endian order (index 0 = least significant).
+//   - Zero is always represented as non-negative with zero digits (len == 0).
+//   - The sign flag is 0 for non-negative and 1 for negative; -0 is normalised
+//     to +0 after every operation.
+//   - Digit arrays are heap-allocated via calloc and tracked separately from
+//     the GC-managed outer object; the finalizer frees them explicitly.
+//   - All arithmetic functions are pure with respect to their output objects;
+//     no shared mutable state — safe for concurrent use on distinct objects.
+//
+// Ownership/Lifetime:
+//   - BigInt objects are allocated via rt_obj_new_i64 (GC-managed); the
+//     finalizer (bigint_finalizer) frees the digit array via free().
+//   - Intermediate bigint_t values used during computation are owned by the
+//     function and freed before return or on error paths.
+//
+// Links: src/runtime/core/rt_bigint.h (public API),
+//        src/runtime/core/rt_object.c (rt_obj_new_i64, rt_obj_set_finalizer),
+//        src/runtime/core/rt_string.c (string output for to-string conversion)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_bigint.h"

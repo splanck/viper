@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_seq.h
+// Purpose: Runtime-backed dynamic sequence for Viper.Collections.Seq, providing O(1) amortized append, O(1) indexed access, and functional operations (map, filter, reduce).
+//
+// Key invariants:
+//   - Indices are 0-based; out-of-bounds access traps at runtime.
+//   - Append is amortized O(1) with capacity doubling.
+//   - Elements are not individually reference-counted in the base Seq.
+//   - Functional operations (map, filter) return new Seq objects.
+//
+// Ownership/Lifetime:
+//   - Seq objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/collections/rt_seq.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_seq.h
-// Purpose: Runtime-backed dynamic sequence for Viper.Collections.Seq.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

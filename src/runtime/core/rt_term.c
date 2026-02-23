@@ -5,21 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the BASIC runtime's terminal helpers.  These functions provide
-// portable console control for clearing the screen, changing colours, moving the
-// cursor, and reading single-key input in blocking and non-blocking modes.  The
-// implementation hides platform-specific quirks—such as enabling virtual
-// terminal processing on Windows—so higher-level runtime code can rely on a
-// single consistent behaviour.
+// File: src/runtime/core/rt_term.c
+// Purpose: Implements the BASIC runtime's terminal helpers for portable console
+//          control. Provides screen clearing (CLS), colour setting (COLOR),
+//          cursor positioning (LOCATE), blocking and non-blocking key input
+//          (GETKEY$, INKEY$), terminal size queries, and an alternate screen
+//          buffer for full-screen applications.
+//
+// Key invariants:
+//   - ANSI escape sequences are only emitted when stdout is attached to a
+//     terminal (isatty check); non-terminal output is silently skipped.
+//   - Raw mode is cached: once enabled, tcgetattr/tcsetattr are called only
+//     once per mode transition, not on every INKEY$ poll.
+//   - On Windows, ENABLE_VIRTUAL_TERMINAL_PROCESSING is set at init time so
+//     ANSI sequences work in cmd.exe and PowerShell consoles.
+//   - INKEY$ uses select() with a zero timeout for non-blocking key reads on
+//     POSIX; on Windows it uses _kbhit().
+//   - Terminal cleanup (raw mode restore, alt buffer exit) is registered via
+//     atexit so the terminal is always restored on normal program exit.
+//
+// Ownership/Lifetime:
+//   - Returned rt_string values from GETKEY$/INKEY$ are newly allocated;
+//     the caller owns the reference and must call rt_string_unref when done.
+//   - The saved termios state is a process-global stack variable; no heap
+//     allocation is needed for terminal state management.
+//
+// Links: src/runtime/core/rt_output.c (buffered stdout wrapper),
+//        src/runtime/core/rt_io.c (higher-level I/O primitives)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Terminal control and key-input helpers for the BASIC runtime.
-/// @details Exposes functions used by BASIC statements like `CLS`, `COLOR`,
-///          `LOCATE`, `GETKEY$`, and `INKEY$`.  The helpers only emit ANSI escape
-///          sequences when stdout is attached to a terminal and fall back to
-///          runtime traps for invalid usage.
 
 #include "rt.hpp"
 #include "rt_output.h"

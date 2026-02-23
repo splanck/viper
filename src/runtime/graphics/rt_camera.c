@@ -5,8 +5,37 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_camera.c
-// Purpose: 2D Camera class implementation.
+// File: src/runtime/graphics/rt_camera.c
+// Purpose: 2D camera transform for Viper game scenes. Maintains a world-space
+//   viewport defined by a position, an integer zoom percentage, and an optional
+//   rotation angle. Provides coordinate conversion (world↔screen), optional
+//   world-bounds clamping, viewport culling, and a dirty flag to let renderers
+//   skip unnecessary redraws when the camera hasn't moved.
+//
+// Key invariants:
+//   - All coordinates are integers (pixels). Zoom is an integer percentage:
+//     100 = 1× (no zoom), 200 = 2× (zoomed in), 50 = ½× (zoomed out).
+//     Zoom is clamped to [10, 1000] (10% – 10×) to prevent division by zero
+//     and absurdly small viewports.
+//   - The viewport in world-space has dimensions:
+//       world_width  = camera.width  × 100 / zoom
+//       world_height = camera.height × 100 / zoom
+//   - The dirty flag is set to 1 at creation and whenever x, y, zoom, or
+//     rotation change. It is cleared only by rt_camera_clear_dirty(). Renderers
+//     that cache the camera transform should check is_dirty() each frame.
+//   - If camera bounds are set, the camera position is clamped after every
+//     mutation that changes x or y (Follow, Move, SetX, SetY). Bounds are
+//     applied in world-space (no zoom scaling).
+//   - rt_camera_is_visible() uses a simple AABB overlap test in world-space.
+//     A NULL camera pointer is treated conservatively as always-visible.
+//
+// Ownership/Lifetime:
+//   - Camera objects are GC-managed via rt_obj_new_i64. They are freed
+//     automatically when the GC collects them; there is no explicit finalizer
+//     beyond the GC reclaiming the allocation.
+//
+// Links: src/runtime/graphics/rt_camera.h (public API),
+//        docs/viperlib/game.md (Camera section)
 //
 //===----------------------------------------------------------------------===//
 

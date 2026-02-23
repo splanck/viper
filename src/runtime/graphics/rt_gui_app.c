@@ -5,8 +5,37 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_gui_app.c
-// Purpose: App lifecycle, event handling, layout, and rendering.
+// File: src/runtime/graphics/rt_gui_app.c
+// Purpose: GUI application lifecycle management for Viper's GUI runtime layer.
+//   Creates and owns the ViperGFX window, the root vg_widget container, and the
+//   default font. Provides the main loop entry points: rt_gui_app_poll (event
+//   dispatch), rt_gui_app_render (layout + paint + present), and
+//   rt_gui_app_destroy. Also manages the active modal dialog and a resize
+//   callback so the window repaints during macOS live-resize.
+//
+// Key invariants:
+//   - s_current_app is a global pointer valid between app_new and app_destroy;
+//     widget constructors use it to inherit the default font.
+//   - The root widget must NOT have a fixed size set; layout is driven by the
+//     physical window dimensions on every render call.
+//   - g_active_dialog is at most one modal dialog; nested dialogs are rejected.
+//   - The default font is loaded lazily via rt_gui_ensure_default_font() and
+//     uses the embedded font if no file path is configured.
+//   - HiDPI scale is applied immediately after window creation; all widget
+//     sizes and font sizes are in physical pixels.
+//   - Dark theme is applied by default at app creation.
+//
+// Ownership/Lifetime:
+//   - rt_gui_app_t is allocated via rt_obj_new_i64 (GC heap) and zeroed;
+//     rt_gui_app_destroy must be called explicitly to release the window and
+//     widget tree before GC reclaims the struct.
+//   - The root widget and all its children are owned by the vg widget tree;
+//     vg_widget_destroy(root) frees the entire subtree.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/runtime/graphics/rt_gui_widgets.c (basic widget implementations),
+//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/lib/graphics/include/vgfx.h (window/event layer)
 //
 //===----------------------------------------------------------------------===//
 

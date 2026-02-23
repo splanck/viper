@@ -4,75 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_dir.c
-/// @brief Cross-platform directory operations for Viper.IO.Dir class.
-///
-/// This file provides directory manipulation functions that work consistently
-/// across Windows and Unix platforms. All path handling uses the Viper runtime
-/// string type and automatically handles platform-specific path separators.
-///
-/// **Directory Tree Visualization:**
-/// ```
-/// project/                      <-- Directory (can be created, listed, removed)
-/// ├── src/                      <-- Subdirectory
-/// │   ├── main.bas              <-- File
-/// │   └── utils.bas             <-- File
-/// ├── docs/                     <-- Subdirectory
-/// │   └── readme.txt            <-- File
-/// └── build/                    <-- Empty directory
-/// ```
-///
-/// **Path Separators by Platform:**
-/// | Platform | Separator | Example                    |
-/// |----------|-----------|----------------------------|
-/// | Windows  | `\`       | `C:\Users\docs\file.txt`   |
-/// | Unix     | `/`       | `/home/user/docs/file.txt` |
-///
-/// **Common Operations:**
-/// ```
-/// ' Check if directory exists
-/// If Dir.Exists("output") Then
-///     Print "Output directory found"
-/// End If
-///
-/// ' Create a directory (and parents)
-/// Dir.MakeAll("output/reports/2024")
-///
-/// ' List directory contents
-/// Dim files = Dir.Files("src")
-/// For Each file In files
-///     Print file
-/// Next
-///
-/// ' Clean up temporary files
-/// Dir.RemoveAll("temp")
-/// ```
-///
-/// **Error Handling:**
-/// Most functions trap (terminate with error) on failure:
-/// - Invalid paths (NULL, malformed)
-/// - Permission denied
-/// - Directory not found (for removal/listing)
-/// - Filesystem errors (disk full, read-only)
-///
-/// **Thread Safety:** Directory operations may not be thread-safe due to
-/// underlying OS limitations. External synchronization is recommended for
-/// multi-threaded access to the same directories.
-///
-/// **Platform Implementation:**
-/// | Operation    | Windows API          | Unix API      |
-/// |--------------|----------------------|---------------|
-/// | Exists       | stat() + _S_IFDIR    | stat() + S_ISDIR |
-/// | Create       | _mkdir()             | mkdir()       |
-/// | Remove       | _rmdir()             | rmdir()       |
-/// | List         | FindFirstFile/Next   | opendir/readdir |
-/// | Current      | _getcwd()            | getcwd()      |
-/// | Change       | _chdir()             | chdir()       |
-///
-/// @see rt_path.c For path manipulation (join, split, extension)
-/// @see rt_file.c For file operations (read, write, copy)
-///
+//
+// File: src/runtime/io/rt_dir.c
+// Purpose: Cross-platform directory operations for the Viper.IO.Dir class.
+//          Provides Exists, Make, MakeAll, Remove, RemoveAll, Files, Dirs,
+//          GetCurrent, SetCurrent, and related utilities that work on Windows
+//          (FindFirstFile/FindNextFile, _mkdir) and Unix (opendir/readdir, mkdir).
+//
+// Key invariants:
+//   - Most operations trap on invalid paths, permission errors, or I/O failures.
+//   - MakeAll creates all missing parent directories in a single call.
+//   - RemoveAll recursively deletes a directory tree including all contents.
+//   - Files() and Dirs() return only entries in the immediate directory, not recursive.
+//   - Platform-specific path separators are handled transparently.
+//   - Directory operations are not internally synchronized; callers must
+//     serialize concurrent access to the same directory from multiple threads.
+//
+// Ownership/Lifetime:
+//   - Path strings passed as arguments are borrowed; Dir operations do not retain them.
+//   - Returned sequences and strings are fresh allocations owned by the caller.
+//
+// Links: src/runtime/io/rt_dir.h (public API),
+//        src/runtime/io/rt_path.h (path component manipulation),
+//        src/runtime/io/rt_file_ext.h (file-level operations)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_dir.h"

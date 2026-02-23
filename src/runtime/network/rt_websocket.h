@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/network/rt_websocket.h
+// Purpose: WebSocket client implementing RFC 6455 for real-time bidirectional text and binary communication over persistent connections.
+//
+// Key invariants:
+//   - Implements the RFC 6455 WebSocket protocol including framing and masking.
+//   - Supports both text and binary message types.
+//   - Ping/pong keepalive is handled transparently.
+//   - Connection objects are GC-managed; send/receive are blocking.
+//
+// Ownership/Lifetime:
+//   - Connection objects are GC-managed opaque pointers.
+//   - Callers should not free connection objects directly.
+//
+// Links: src/runtime/network/rt_websocket.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_websocket.h
-// Purpose: WebSocket client for real-time bidirectional communication.
-// Key invariants: Implements RFC 6455 WebSocket protocol.
-// Ownership/Lifetime: Connection objects are managed by GC.
-// Links: docs/viperlib/network.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"
@@ -125,6 +128,20 @@ extern "C"
     /// @param code Close status code (1000 = normal).
     /// @param reason Close reason string.
     void rt_ws_close_with(void *obj, int64_t code, rt_string reason);
+
+    //=========================================================================
+    // WebSocket - Utilities (for testing)
+    //=========================================================================
+
+    /// @brief Compute the Sec-WebSocket-Accept header value for a given key.
+    ///
+    /// Returns Base64(SHA1(key + WS_MAGIC)) as a C string that the caller
+    /// must free. Returns NULL on allocation failure. This function is exposed
+    /// for use by test servers that need to produce a valid handshake response.
+    ///
+    /// @param key_cstr The Sec-WebSocket-Key header value (base64-encoded nonce).
+    /// @return Newly allocated Sec-WebSocket-Accept string, or NULL.
+    char *rt_ws_compute_accept_key(const char *key_cstr);
 
 #ifdef __cplusplus
 }

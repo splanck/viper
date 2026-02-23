@@ -1,24 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_compiled_pattern.h
+// Purpose: Pre-compiled regular expression pattern for efficient repeated matching without per-call recompilation overhead, supporting find, capture, replace, and split.
+//
+// Key invariants:
+//   - Pattern compilation traps on invalid syntax.
+//   - Compiled patterns are opaque objects managed by the runtime object system.
+//   - Match results use Seq containers for multi-capture returns.
+//   - rt_compiled_pattern_replace replaces the first or all occurrences based on the replace_all flag.
+//
+// Ownership/Lifetime:
+//   - CompiledPattern objects are runtime-managed; caller does not need to free them.
+//   - Returned strings and Seqs are newly allocated and owned by the caller.
+//
+// Links: src/runtime/text/rt_compiled_pattern.c (implementation), src/runtime/text/rt_regex_internal.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_compiled_pattern.h
-// Purpose: Pre-compiled regular expression pattern for efficient repeated
-//          matching, providing find, capture, replace, and split operations
-//          without per-call recompilation overhead.
-// Key invariants: Pattern compilation traps on invalid syntax; opaque object
-//                 pointers are non-null after creation; match results use
-//                 Seq containers for multi-value returns.
-// Ownership/Lifetime: Opaque CompiledPattern objects are managed by the
-//                     runtime object system; returned strings and Seqs are
-//                     newly allocated and owned by the caller.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_COMPILED_PATTERN_H
 #define VIPER_RT_COMPILED_PATTERN_H
 

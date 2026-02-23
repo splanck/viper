@@ -226,7 +226,11 @@ float vaud_get_master_volume(vaud_context_t ctx)
 {
     if (!ctx)
         return 0.0f;
-    return ctx->master_volume;
+    /* H-3: setter holds mutex; reader must too (torn read on ARM64 otherwise) */
+    vaud_mutex_lock(&ctx->mutex);
+    float vol = ctx->master_volume;
+    vaud_mutex_unlock(&ctx->mutex);
+    return vol;
 }
 
 void vaud_pause_all(vaud_context_t ctx)
@@ -594,13 +598,22 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path)
         vaud_wav_read_frames(file, music->buffers[0], VAUD_MUSIC_BUFFER_FRAMES, channels, bits);
     music->buffer_frames[0] = read;
 
-    /* Add to context's music list */
+    /* Add to context's music list (H-4: return NULL and free if list is full) */
     vaud_mutex_lock(&ctx->mutex);
     if (ctx->music_count < VAUD_MAX_MUSIC)
     {
         ctx->active_music[ctx->music_count++] = music;
+        vaud_mutex_unlock(&ctx->mutex);
     }
-    vaud_mutex_unlock(&ctx->mutex);
+    else
+    {
+        vaud_mutex_unlock(&ctx->mutex);
+        /* Music was never added to the active list — vaud_free_music's
+         * remove loop is a safe no-op, then it closes the file and frees buffers. */
+        vaud_free_music(music);
+        vaud_set_error(VAUD_ERR_INVALID_PARAM, "Maximum simultaneous music streams reached");
+        return NULL;
+    }
 
     return music;
 }
@@ -750,6 +763,14 @@ float vaud_music_get_volume(vaud_music_t music)
 {
     if (!music)
         return 0.0f;
+    /* H-3: read volume under mutex (setter holds it; torn read possible on ARM64) */
+    if (music->ctx)
+    {
+        vaud_mutex_lock(&music->ctx->mutex);
+        float vol = music->volume;
+        vaud_mutex_unlock(&music->ctx->mutex);
+        return vol;
+    }
     return music->volume;
 }
 

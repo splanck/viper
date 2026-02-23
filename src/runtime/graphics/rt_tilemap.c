@@ -5,8 +5,38 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_tilemap.c
-// Purpose: Tilemap class implementation for tile-based 2D rendering.
+// File: src/runtime/graphics/rt_tilemap.c
+// Purpose: Tile-based 2D map renderer for Viper games. Manages a 2D array of
+//   tile IDs, a corresponding SpriteSheet atlas, and draws the visible portion
+//   of the map to a Canvas each frame by blitting individual tile cells from
+//   the sheet. Supports scrolling via a camera offset, solid/passable tile
+//   classification for physics integration, and efficient viewport culling to
+//   skip tiles outside the visible region.
+//
+// Key invariants:
+//   - Tile dimensions (tile_w, tile_h) and map dimensions (cols, rows) are
+//     fixed at creation. The tile array is a flat row-major int64 array with
+//       index = row × cols + col
+//     Tile ID 0 conventionally means "empty" (not drawn).
+//   - The tilemap blits tiles using the associated SpriteSheet. Tile IDs map
+//     to sprite sheet frames in row-major order: tile N → frame N.
+//   - Solid tiles are tracked separately via a passability bitmask or boolean
+//     array. rt_tilemap_is_solid() enables the Physics2D integration to treat
+//     tile cells as static collision geometry.
+//   - Camera offset (scroll_x, scroll_y) is in world-pixel coordinates.
+//     During Draw(), the visible tile range is computed from the offset and
+//     viewport size to avoid drawing off-screen tiles.
+//   - No dirty-region tracking: the full visible tile range is redrawn every
+//     frame. For static maps this is efficient; for dynamic maps consider
+//     partial-update strategies externally.
+//
+// Ownership/Lifetime:
+//   - Tilemap objects are GC-managed (rt_obj_new_i64). The tile array and any
+//     solid-flag array are freed by the GC finalizer.
+//
+// Links: src/runtime/graphics/rt_tilemap.h (public API),
+//        src/runtime/graphics/rt_spritesheet.h (tile atlas),
+//        docs/viperlib/game.md (Tilemap section)
 //
 //===----------------------------------------------------------------------===//
 

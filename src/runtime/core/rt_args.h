@@ -1,24 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_args.h
+// Purpose: Process-wide command-line argument store and environment variable access, providing push/query semantics for argument strings and get/set/has helpers for environment variables.
+//
+// Key invariants:
+//   - Argument indices are zero-based and contiguous.
+//   - rt_args_get traps on out-of-range indices; callers must check rt_args_count first.
+//   - Environment variable names must be non-empty strings.
+//   - rt_cmdline returns all arguments joined by spaces without quoting.
+//
+// Ownership/Lifetime:
+//   - Pushed strings are retained by the store; rt_args_push retains a copy.
+//   - rt_args_get returns a retained reference that the caller must release.
+//   - rt_args_clear releases all stored references and resets the count to zero.
+//
+// Links: src/runtime/core/rt_args.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_args.h
-// Purpose: Process-wide command-line argument store and environment variable
-//          access, providing push/query semantics for arguments and get/set/
-//          has helpers for environment variables.
-// Key invariants: Argument indices are zero-based and contiguous; environment
-//                 variable names must be non-empty; rt_args_get traps on
-//                 out-of-range indices.
-// Ownership/Lifetime: Pushed strings are retained by the store; rt_args_get
-//                     returns a retained reference the caller must release;
-//                     rt_args_clear releases all stored references.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

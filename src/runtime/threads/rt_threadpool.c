@@ -4,32 +4,31 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_threadpool.c
-/// @brief Thread pool implementation for async task execution.
-///
-/// This file implements a fixed-size thread pool that executes tasks
-/// asynchronously using a pool of worker threads.
-///
-/// **Architecture:**
-///
-/// | Component     | Description                           |
-/// |---------------|---------------------------------------|
-/// | Task Queue    | FIFO queue of pending tasks           |
-/// | Worker        | Thread that dequeues and runs tasks   |
-/// | Monitor       | Synchronization for queue access      |
-///
-/// **Usage Example:**
-/// ```
-/// Dim pool = Pool.New(4)  ' Create pool with 4 workers
-/// pool.Submit(MyTask, arg1)
-/// pool.Submit(MyTask, arg2)
-/// pool.Wait()  ' Wait for all tasks
-/// pool.Shutdown()
-/// ```
-///
-/// **Thread Safety:** All operations are thread-safe.
-///
+//
+// File: src/runtime/threads/rt_threadpool.c
+// Purpose: Implements a fixed-size thread pool for the Viper.Threads.Pool class.
+//          Worker threads dequeue tasks from a FIFO linked-list queue protected
+//          by a monitor. Supports Submit, Wait (drain all pending tasks), and
+//          Shutdown.
+//
+// Key invariants:
+//   - Worker count is fixed at construction; it cannot change after creation.
+//   - Submit enqueues a (callback, arg) pair; workers dequeue and execute in FIFO.
+//   - Wait blocks until all submitted tasks have completed execution.
+//   - Shutdown signals workers to exit after draining the queue, then joins them.
+//   - Submitting to a shut-down pool traps immediately.
+//   - All queue and state access is serialized through the monitor.
+//
+// Ownership/Lifetime:
+//   - Task arguments (void*) are passed through without retain/release; callers
+//     must ensure argument lifetimes exceed task execution.
+//   - Worker thread handles are owned by the pool and joined on Shutdown.
+//   - The pool itself is heap-allocated and managed by the runtime GC.
+//
+// Links: src/runtime/threads/rt_threadpool.h (public API),
+//        src/runtime/threads/rt_threads.h (OS thread creation and joining),
+//        src/runtime/threads/rt_monitor.h (synchronization for task queue)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_threadpool.h"

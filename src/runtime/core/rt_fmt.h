@@ -1,23 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_fmt.h
+// Purpose: Value formatting functions for the Viper.Fmt namespace, providing decimal, radix, padded, fixed-precision, scientific, percentage, boolean, and human-readable byte-size string conversions.
+//
+// Key invariants:
+//   - All formatting functions return newly allocated rt_string objects.
+//   - Radix formatting accepts bases 2-36; invalid radix returns an empty string.
+//   - rt_fmt_size uses IEC binary prefixes (KiB, MiB, GiB) for byte counts.
+//   - Boolean formatting produces 'True'/'False' (rt_fmt_bool) or 'Yes'/'No' (rt_fmt_bool_yn).
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated with refcount 1; callers must release them.
+//   - Input rt_string parameters are not retained; callers retain ownership.
+//
+// Links: src/runtime/core/rt_fmt.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_fmt.h
-// Purpose: Value formatting functions for Viper.Fmt namespace.
-//
-// Formatting Philosophy:
-// - Int/Num: Basic decimal formatting
-// - IntRadix/Hex/Bin/Oct: Base-specific integer formatting
-// - IntPad/HexPad: Fixed-width with padding character
-// - NumFixed/NumSci/NumPct: Precision-controlled numeric formatting
-// - Bool/BoolYN: Boolean to string conversion
-// - Size: Human-readable byte sizes (KB, MB, GB, etc.)
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

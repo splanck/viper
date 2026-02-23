@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_path.h
+// Purpose: Cross-platform file path manipulation utilities for Viper.IO.Path, providing join, dirname, basename, extension, normalization, and existence queries.
+//
+// Key invariants:
+//   - All functions return newly allocated runtime strings.
+//   - Path separators are normalized to platform-native on all operations.
+//   - rt_path_join handles absolute and relative path combination correctly.
+//   - rt_path_normalize resolves . and .. components and removes redundant separators.
+//
+// Ownership/Lifetime:
+//   - Caller must release all returned strings.
+//   - Input strings are borrowed; they are not retained.
+//
+// Links: src/runtime/io/rt_path.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_path.h
-// Purpose: Cross-platform file path manipulation utilities for Viper.IO.Path.
-// Key invariants: All functions return newly allocated runtime strings.
-// Ownership/Lifetime: Caller must release returned strings.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

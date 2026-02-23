@@ -1,31 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_pathfollow.h
+// Purpose: Path follower for moving objects along waypoint paths with linear interpolation, supporting one-shot, looping, and ping-pong traversal modes.
+//
+// Key invariants:
+//   - Maximum waypoints per path is RT_PATHFOLLOW_MAX_POINTS (64).
+//   - At least two waypoints must be added before calling rt_pathfollow_start.
+//   - Progress is in range [0, 1000] representing the full path length.
+//   - Fixed-point convention: 1000 = 1.0 for coordinates, speed, and progress.
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_pathfollow handle; destroy with rt_pathfollow_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_pathfollow.c (implementation), src/runtime/collections/rt_tween.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_pathfollow.h
-/// @brief Path follower for moving objects along predefined waypoint paths.
-///
-/// @details Provides smooth movement along paths defined by waypoints with
-/// linear interpolation between points. Supports one-shot, looping, and
-/// ping-pong traversal modes, speed control, pause/resume, and progress
-/// tracking. Coordinates and speed use fixed-point representation where
-/// 1000 equals 1 unit, enabling sub-pixel precision without floating-point
-/// arithmetic.
-///
-/// Key invariants: The maximum number of waypoints per path is
-///   RT_PATHFOLLOW_MAX_POINTS (64). At least two waypoints must be added
-///   before starting. Progress is in the range [0, 1000]. Fixed-point
-///   convention: 1000 = 1.0 for coordinates, speed, and angles.
-/// Ownership/Lifetime: The caller owns the rt_pathfollow handle and must
-///   free it with rt_pathfollow_destroy().
-/// Links: rt_pathfollow.c (implementation), rt_tween.h (easing functions
-///   for curved paths)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_PATHFOLLOW_H
 #define VIPER_RT_PATHFOLLOW_H
 

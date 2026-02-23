@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/oop/rt_result.h
+// Purpose: Result type for error handling representing either Ok(value) or Err(error), with typed extraction, map, flat_map, and conversion to Option.
+//
+// Key invariants:
+//   - A Result is always exactly one of Ok or Err.
+//   - rt_result_unwrap traps on Err; use rt_result_unwrap_or for safe extraction.
+//   - rt_result_unwrap_err traps on Ok.
+//   - Values inside Result objects are retained while stored.
+//
+// Ownership/Lifetime:
+//   - Result objects are runtime-managed opaque pointers.
+//   - Values follow normal refcounting rules; releasing the Result releases its value.
+//
+// Links: src/runtime/oop/rt_result.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_result.h
-// Purpose: Result type for error handling - represents Ok(value) or Err(error).
-// Key invariants: A Result is always exactly one of Ok or Err; unwrap traps on wrong variant.
-// Ownership/Lifetime: Result objects are runtime-managed; values inside follow normal refcounting.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

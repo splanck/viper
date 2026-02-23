@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_stopwatch.h
+// Purpose: High-precision stopwatch for benchmarking and performance measurement, supporting start/stop/reset operations and elapsed-time queries in nanoseconds, microseconds, and milliseconds.
+//
+// Key invariants:
+//   - Accumulated time is monotonic; it never decreases across start/stop cycles.
+//   - Nanosecond resolution is used where the platform clock permits.
+//   - Elapsed queries while running include time since the last start call.
+//   - rt_stopwatch_restart resets elapsed to zero and immediately starts timing.
+//
+// Ownership/Lifetime:
+//   - Stopwatch objects are heap-allocated; caller is responsible for lifetime management.
+//   - No reference counting; caller must explicitly free the object when done.
+//
+// Links: src/runtime/core/rt_stopwatch.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_stopwatch.h
-// Purpose: High-precision stopwatch for benchmarking and performance measurement.
-// Key invariants: Accumulated time is monotonic; stopwatch state is consistent
-//                 across start/stop cycles; nanosecond resolution where available.
-// Ownership/Lifetime: Stopwatch objects are heap-allocated; caller responsible
-//                     for lifetime management.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -4,10 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_playlist.c
-/// @brief Playlist implementation for sequential music playback.
-///
+//
+// File: src/runtime/audio/rt_playlist.c
+// Purpose: Implements a music playlist for the Viper.Audio.Playlist class.
+//          Supports sequential and shuffle playback, repeat modes (none/all/one),
+//          volume control, and track navigation (Next, Prev, Seek). Delegates
+//          actual audio decoding and playback to rt_audio.
+//
+// Key invariants:
+//   - Track indices are zero-based; current == -1 means no track is loaded.
+//   - Shuffle mode generates a random permutation of indices at play-start.
+//   - Repeat=none stops at end; repeat=all wraps to track 0; repeat=one loops.
+//   - Poll must be called periodically to advance to the next track when done.
+//   - Volume range is 0-100; values outside this range are clamped.
+//   - The shuffle_order sequence is regenerated each time shuffle is toggled on.
+//
+// Ownership/Lifetime:
+//   - The playlist retains a reference to the current Music object while playing.
+//   - Track path strings in the tracks sequence are retained by the sequence.
+//   - The playlist object is heap-allocated and managed by the runtime GC.
+//
+// Links: src/runtime/audio/rt_playlist.h (public API),
+//        src/runtime/audio/rt_audio.h (music load/play/stop primitives)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_playlist.h"
@@ -47,10 +66,12 @@ static void generate_shuffle_order(playlist_impl *pl)
     if (count == 0)
         return;
 
-    // Clear old shuffle order
+    // Release old shuffle order before creating a new one (C-2)
     if (pl->shuffle_order)
     {
-        // Just create a new one
+        if (rt_obj_release_check0(pl->shuffle_order))
+            rt_obj_free(pl->shuffle_order);
+        pl->shuffle_order = NULL;
     }
     pl->shuffle_order = rt_seq_new();
 
@@ -126,6 +147,33 @@ static void load_current(playlist_impl *pl)
 // Creation
 //=============================================================================
 
+// C-1: Finalizer — releases all GC-tracked resources when a Playlist is collected.
+static void playlist_finalize(void *obj)
+{
+    playlist_impl *pl = (playlist_impl *)obj;
+
+    if (pl->music)
+    {
+        rt_music_stop(pl->music);
+        rt_music_free(pl->music);
+        pl->music = NULL;
+    }
+
+    if (pl->shuffle_order)
+    {
+        if (rt_obj_release_check0(pl->shuffle_order))
+            rt_obj_free(pl->shuffle_order);
+        pl->shuffle_order = NULL;
+    }
+
+    if (pl->tracks)
+    {
+        if (rt_obj_release_check0(pl->tracks))
+            rt_obj_free(pl->tracks);
+        pl->tracks = NULL;
+    }
+}
+
 void *rt_playlist_new(void)
 {
     playlist_impl *pl = (playlist_impl *)rt_obj_new_i64(0, (int64_t)sizeof(playlist_impl));
@@ -140,6 +188,8 @@ void *rt_playlist_new(void)
     pl->playing = 0;
     pl->paused = 0;
     pl->shuffle_order = NULL;
+
+    rt_obj_set_finalizer(pl, playlist_finalize);
 
     return pl;
 }
@@ -259,7 +309,14 @@ void rt_playlist_clear(void *obj)
     pl->current = -1;
     pl->playing = 0;
     pl->paused = 0;
-    pl->shuffle_order = NULL;
+
+    // C-3: Release shuffle_order instead of leaking it (C-3)
+    if (pl->shuffle_order)
+    {
+        if (rt_obj_release_check0(pl->shuffle_order))
+            rt_obj_free(pl->shuffle_order);
+        pl->shuffle_order = NULL;
+    }
 }
 
 int64_t rt_playlist_len(void *obj)

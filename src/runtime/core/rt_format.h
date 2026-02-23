@@ -1,25 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_format.h
+// Purpose: Deterministic, locale-independent formatting utilities providing f64-to-string conversion and CSV quoting for BASIC PRINT and WRITE# statement output.
+//
+// Key invariants:
+//   - rt_format_f64 output is identical across platforms and locales.
+//   - The caller supplies the output buffer and must ensure sufficient capacity.
+//   - rt_csv_quote_alloc always surrounds the value with double-quotes and doubles any internal quotes.
+//   - NULL input to rt_csv_quote_alloc is treated as empty string.
+//
+// Ownership/Lifetime:
+//   - rt_format_f64 writes into a caller-managed buffer with no heap allocation.
+//   - rt_csv_quote_alloc returns a new rt_string owned by the caller (must release).
+//
+// Links: src/runtime/core/rt_format.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_format.h
-// Purpose: Deterministic, locale-independent formatting utilities for runtime
-//          values, providing f64-to-string conversion and CSV quoting for
-//          BASIC PRINT and WRITE# statement output.
-// Key invariants: rt_format_f64 output is identical across platforms and
-//                 locales; the caller supplies the buffer and capacity;
-//                 rt_csv_quote_alloc returns a newly allocated string with
-//                 surrounding quotes and doubled internal quotes.
-// Ownership/Lifetime: rt_format_f64 writes into a caller-managed buffer with
-//                     no allocation; rt_csv_quote_alloc returns a new rt_string
-//                     owned by the caller.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

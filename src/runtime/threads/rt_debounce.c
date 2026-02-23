@@ -4,6 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/threads/rt_debounce.c
+// Purpose: Implements a debouncer for the Viper.Threads.Debounce class. A
+//          debouncer delays execution of a callback until a specified quiet
+//          period has elapsed since the last trigger call, coalescing rapid
+//          repeated calls into a single deferred execution.
+//
+// Key invariants:
+//   - The callback fires at most once per quiet period (delay_ms after last call).
+//   - Calling Trigger resets the timer; the callback only fires after silence.
+//   - Time is measured with a monotonic clock (CLOCK_MONOTONIC on POSIX,
+//     QueryPerformanceCounter on Win32) to avoid wall-clock skew.
+//   - Flush forces immediate execution of a pending callback.
+//   - Cancel discards any pending execution without calling the callback.
+//
+// Ownership/Lifetime:
+//   - Debouncer objects are heap-allocated and managed by the runtime GC.
+//   - The callback function pointer and its argument are not retained by the
+//     debouncer; callers must ensure their lifetimes exceed debouncer use.
+//
+// Links: src/runtime/threads/rt_debounce.h (public API),
+//        src/runtime/threads/rt_scheduler.h (timer-based scheduler, related concept)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_debounce.h"
 

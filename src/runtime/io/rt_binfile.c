@@ -5,14 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_binfile.c
-// Purpose: Implement binary file stream operations.
+// File: src/runtime/io/rt_binfile.c
+// Purpose: Implements binary file stream operations for the Viper.IO.BinFile
+//          class. Supports random-access read and write of raw bytes, integers,
+//          and floats at 64-bit precision, with multi-byte values in
+//          little-endian byte order.
 //
-// Open modes:
-//   "r"  - Read only (rb)
-//   "w"  - Write only (wb, truncates)
-//   "rw" - Read/write (r+b)
-//   "a"  - Append (ab)
+// Key invariants:
+//   - Open modes: "r" (read-only), "w" (write/truncate), "rw" (read-write),
+//     "a" (append). Invalid modes cause a trap.
+//   - 64-bit seek/tell are used (fseeko/ftello on POSIX, _fseeki64 on Win32)
+//     to support files larger than 2GB.
+//   - EOF flag is set after a read returns zero bytes; it is sticky until seek.
+//   - All multi-byte integer writes use little-endian byte order.
+//   - The closed flag prevents double-close; operations on a closed file trap.
+//
+// Ownership/Lifetime:
+//   - BinFile objects are heap-allocated; the GC calls the finalizer on collect.
+//   - The finalizer flushes and closes the FILE* if not already closed.
+//   - Returned rt_bytes from ReadBytes are fresh allocations owned by the caller.
+//
+// Links: src/runtime/io/rt_binfile.h (public API),
+//        src/runtime/io/rt_stream.h (wraps BinFile behind a generic stream),
+//        src/runtime/io/rt_memstream.h (in-memory counterpart)
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,6 +40,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// IO-C-2/C-3: Use 64-bit seek/tell to support files larger than 2GB.
+#if defined(_WIN32)
+#  define binfile_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#  define binfile_ftell(fp)              _ftelli64((fp))
+#else
+#  define binfile_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#  define binfile_ftell(fp)              ftello((fp))
+#endif
 
 /// @brief Bytes implementation structure (must match rt_bytes.c).
 typedef struct rt_bytes_impl
@@ -552,7 +576,7 @@ int64_t rt_binfile_seek(void *obj, int64_t offset, int64_t origin)
             return -1;
     }
 
-    if (fseek(bf->fp, (long)offset, whence) != 0)
+    if (binfile_fseek(bf->fp, offset, whence) != 0)
     {
         return -1;
     }
@@ -561,7 +585,7 @@ int64_t rt_binfile_seek(void *obj, int64_t offset, int64_t origin)
     bf->eof = 0;
     clearerr(bf->fp);
 
-    return (int64_t)ftell(bf->fp);
+    return (int64_t)binfile_ftell(bf->fp);
 }
 
 /// @brief Returns the current file position.
@@ -591,7 +615,7 @@ int64_t rt_binfile_pos(void *obj)
     if (!bf->fp || bf->closed)
         return -1;
 
-    return (int64_t)ftell(bf->fp);
+    return (int64_t)binfile_ftell(bf->fp);
 }
 
 /// @brief Returns the total size of the file in bytes.
@@ -634,21 +658,21 @@ int64_t rt_binfile_size(void *obj)
     if (!bf->fp || bf->closed)
         return -1;
 
-    // Save current position
-    long pos = ftell(bf->fp);
+    // Save current position (IO-C-3: use 64-bit tell/seek for >2GB files)
+    int64_t pos = (int64_t)binfile_ftell(bf->fp);
     if (pos < 0)
         return -1;
 
     // Seek to end
-    if (fseek(bf->fp, 0, SEEK_END) != 0)
+    if (binfile_fseek(bf->fp, 0, SEEK_END) != 0)
         return -1;
 
-    long size = ftell(bf->fp);
+    int64_t size = (int64_t)binfile_ftell(bf->fp);
 
     // Restore position
-    fseek(bf->fp, pos, SEEK_SET);
+    binfile_fseek(bf->fp, pos, SEEK_SET);
 
-    return (int64_t)size;
+    return size;
 }
 
 /// @brief Flushes buffered data to disk without closing the file.

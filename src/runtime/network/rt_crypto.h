@@ -1,24 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/network/rt_crypto.h
+// Purpose: Cryptographic primitives for TLS support: SHA-256, HMAC-SHA256, HKDF, ChaCha20-Poly1305 AEAD, and X25519 key exchange, implemented in pure C with no external dependencies.
+//
+// Key invariants:
+//   - All key material and digests are handled as raw byte arrays in caller-provided buffers.
+//   - Functions do not allocate heap memory for outputs.
+//   - ChaCha20-Poly1305 provides authenticated encryption with 16-byte tags.
+//   - X25519 computes a 32-byte shared secret from a private key and public key.
+//
+// Ownership/Lifetime:
+//   - Pure functions operating on caller-owned buffers; no ownership transfer.
+//   - Callers must provide output buffers of sufficient size (documented per function).
+//
+// Links: src/runtime/network/rt_crypto.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_crypto.h
-/// @brief Cryptographic primitives for TLS support.
-///
-/// Provides SHA-256, HMAC-SHA256, HKDF, ChaCha20-Poly1305 AEAD, and X25519.
-///
-/// Key invariants: All key material and digests are handled as raw byte
-///     arrays. Functions do not allocate heap memory for outputs; callers
-///     must provide sufficiently sized output buffers.
-/// Ownership/Lifetime: Pure functions operating on caller-owned buffers.
-/// Links: RFC 6234 (SHA-256), RFC 2104 (HMAC), RFC 5869 (HKDF),
-///     RFC 8439 (ChaCha20-Poly1305), RFC 7748 (X25519).
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_CRYPTO_H
 #define VIPER_RT_CRYPTO_H
 

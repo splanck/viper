@@ -4,17 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_crc32.c
-/// @brief CRC32 checksum implementation (IEEE 802.3 polynomial).
-///
-/// Provides a shared CRC32 implementation used by rt_hash, rt_compress,
-/// and rt_archive modules. Uses the IEEE polynomial (0xEDB88320) which is
-/// standard for Ethernet, ZIP, PNG, GZIP, and many other formats.
-///
-/// Thread Safety: The lookup table is initialized once on first use.
-/// Multiple threads may safely call rt_crc32_compute concurrently.
-///
+//
+// File: src/runtime/core/rt_crc32.c
+// Purpose: Implements the CRC32 checksum (IEEE 802.3 / Ethernet polynomial
+//          0xEDB88320) shared by the Viper runtime's hash, compress, and
+//          archive modules. Compatible with ZIP, PNG, GZIP, and other standard
+//          formats that use the same polynomial.
+//
+// Key invariants:
+//   - The 256-entry lookup table is computed once on first use via a double-
+//     checked lock (acquire/release atomics), matching the pattern in
+//     rt_context.c; concurrent callers spin until initialisation completes.
+//   - Once initialised, the table is read-only; rt_crc32_compute is safe to
+//     call from multiple threads concurrently.
+//   - The CRC is computed with XOR pre/post-conditioning (initial value
+//     0xFFFFFFFF, final XOR 0xFFFFFFFF) matching the IEEE standard.
+//   - Input may be NULL only if len == 0; passing NULL with a non-zero length
+//     produces undefined behaviour.
+//
+// Ownership/Lifetime:
+//   - The lookup table is a process-global static array; no heap allocation
+//     is performed at any point.
+//   - rt_crc32_compute operates on caller-supplied buffers; it does not retain
+//     the data pointer after returning.
+//
+// Links: src/runtime/core/rt_crc32.h (public API)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_crc32.h"

@@ -4,38 +4,29 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_scheduler.c
-/// @brief Simple poll-based task scheduler for named delayed tasks.
-///
-/// This file implements a lightweight task scheduler that manages named tasks
-/// with delayed execution times. Tasks are scheduled with a name and a delay
-/// in milliseconds. The scheduler does NOT use background threads; instead,
-/// the caller must poll for due tasks.
-///
-/// **Architecture:**
-/// - Tasks are stored as a singly-linked list of entries.
-/// - Each entry holds a retained rt_string name and a due timestamp (ms).
-/// - Timestamps use CLOCK_MONOTONIC for immunity to wall-clock changes.
-///
-/// **Usage Pattern:**
-/// ```
-/// Dim sched = Scheduler.New()
-/// sched.Schedule("cleanup", 5000)    ' Due in 5 seconds
-/// sched.Schedule("heartbeat", 1000)  ' Due in 1 second
-///
-/// ' In a game/event loop:
-/// Dim due = sched.Poll()
-/// For Each taskName In due
-///     HandleTask(taskName)
-/// Next
-/// ```
-///
-/// **Thread Safety:** Not thread-safe. External synchronization required.
-///
-/// @see rt_countdown.c For countdown timers
-/// @see rt_stopwatch.c For elapsed time measurement
-///
+//
+// File: src/runtime/threads/rt_scheduler.c
+// Purpose: Implements a poll-based task scheduler for the Viper.Threads.Scheduler
+//          class. Tasks are registered with a string name and a delay in
+//          milliseconds; Poll returns a sequence of names whose due times have
+//          elapsed. Does not use background threads.
+//
+// Key invariants:
+//   - Tasks are stored as a singly-linked list; Poll scans and removes due ones.
+//   - Due timestamps are computed from CLOCK_MONOTONIC to avoid wall-clock skew.
+//   - Scheduling the same name twice creates two separate entries.
+//   - Poll removes and returns all tasks due at or before the current time.
+//   - The scheduler is not thread-safe; external synchronization is required.
+//   - Task name strings are retained by the scheduler until the task fires.
+//
+// Ownership/Lifetime:
+//   - The scheduler object is heap-allocated and managed by the runtime GC.
+//   - Each task entry retains a reference to its name string; the reference is
+//     released when the task fires (transferred to the returned sequence).
+//
+// Links: src/runtime/threads/rt_scheduler.h (public API),
+//        src/runtime/threads/rt_debounce.h (related delayed-execution concept)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_scheduler.h"

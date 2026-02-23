@@ -86,9 +86,12 @@ static void calculate_pan_gains(float pan, float *left_gain, float *right_gain)
     if (pan > 1.0f)
         pan = 1.0f;
 
-    /* Simple linear pan for efficiency (close enough for games) */
-    *left_gain = 1.0f - (pan + 1.0f) * 0.5f * 0.5f;  /* 1.0 at left, 0.5 at right */
-    *right_gain = 0.5f + (pan + 1.0f) * 0.5f * 0.5f; /* 0.5 at left, 1.0 at right */
+    /* Linear pan law (C-5: previous formula gave 0.5 bleed on opposite channel at hard pan).
+     * pan=-1.0 → left=1.0, right=0.0   (full left)
+     * pan= 0.0 → left=0.5, right=0.5   (center)
+     * pan=+1.0 → left=0.0, right=1.0   (full right) */
+    *left_gain  = (1.0f - pan) * 0.5f;
+    *right_gain = (1.0f + pan) * 0.5f;
 }
 
 //===----------------------------------------------------------------------===//
@@ -196,8 +199,9 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
                 {
                     if (music->loop)
                     {
-                        /* Seek to beginning of data */
-                        fseek((FILE *)music->file, (long)music->position, SEEK_SET);
+                        /* Seek to beginning of PCM data (C-4: was incorrectly using
+                         * music->position which is a frame counter, not a byte offset) */
+                        fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
                         music->position = 0;
                         read = vaud_wav_read_frames(music->file,
                                                     buf,
@@ -251,14 +255,15 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames)
     if (!ctx || !output || frames <= 0)
         return;
 
-    /* Use 32-bit accumulator to prevent clipping during mixing */
-    int32_t *accum = (int32_t *)malloc((size_t)(frames * 2 * sizeof(int32_t)));
-    if (!accum)
+    /* H-1: Use pre-allocated 32-bit accumulator (no malloc in real-time audio callback).
+     * ctx->accum_buf holds VAUD_BUFFER_FRAMES * VAUD_CHANNELS int32s; guard against
+     * oversized requests that would overflow it. */
+    if (frames > VAUD_BUFFER_FRAMES)
     {
-        /* Fallback: output silence */
         memset(output, 0, (size_t)(frames * 2 * sizeof(int16_t)));
         return;
     }
+    int32_t *accum = ctx->accum_buf;
 
     /* Clear accumulator */
     memset(accum, 0, (size_t)(frames * 2 * sizeof(int32_t)));
@@ -292,8 +297,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames)
     {
         output[i] = soft_clip(accum[i]);
     }
-
-    free(accum);
+    /* H-1: accum is ctx->accum_buf — no free needed */
 }
 
 //===----------------------------------------------------------------------===//

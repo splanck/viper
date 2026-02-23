@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_frozenmap.h
+// Purpose: Immutable string-keyed map created from existing Map or parallel key/value Seqs, providing O(1) average lookup with guaranteed read-only semantics after construction.
+//
+// Key invariants:
+//   - Once created, the map cannot be modified; there are no put/remove operations.
+//   - Lookup is O(1) average using the same hash strategy as the mutable Map.
+//   - Constructed from an existing Map or from parallel key and value Seqs.
+//   - rt_frozenmap_has returns 1 if key exists, 0 otherwise.
+//
+// Ownership/Lifetime:
+//   - FrozenMap retains its keys and values; source collections are not consumed.
+//   - FrozenMap objects are heap-allocated; caller is responsible for lifetime management.
+//
+// Links: src/runtime/collections/rt_frozenmap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_frozenmap.h
-// Purpose: Runtime functions for immutable string-keyed map.
-// Key invariants: Once created, cannot be modified. O(1) average lookup.
-// Ownership/Lifetime: Retains keys and values. Created from existing Map or Seqs.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

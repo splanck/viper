@@ -4,34 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_channel.c
-/// @brief Thread-safe channel implementation for inter-thread communication.
-///
-/// This file implements a bounded channel similar to Go channels, allowing
-/// threads to communicate by sending and receiving values.
-///
-/// **Architecture:**
-///
-/// | Component     | Description                           |
-/// |---------------|---------------------------------------|
-/// | Ring Buffer   | Circular buffer for storing items     |
-/// | Monitor       | Synchronization for buffer access     |
-/// | Senders       | Blocked threads waiting to send       |
-/// | Receivers     | Blocked threads waiting to receive    |
-///
-/// **Usage Example:**
-/// ```
-/// Dim ch = Channel.New(10)  ' Buffered channel with capacity 10
-/// Thread.Start(Sub()
-///     ch.Send("Hello")
-/// End Sub)
-/// Print ch.Recv()  ' "Hello"
-/// ch.Close()
-/// ```
-///
-/// **Thread Safety:** All operations are thread-safe.
-///
+//
+// File: src/runtime/threads/rt_channel.c
+// Purpose: Implements a bounded, thread-safe channel for the Viper.Threads.Channel
+//          class, modelled after Go channels. Uses a ring buffer protected by a
+//          monitor; senders block when full, receivers block when empty.
+//
+// Key invariants:
+//   - Capacity is fixed at construction; Send blocks when count == capacity.
+//   - Recv blocks when count == 0; it returns NULL immediately if closed+empty.
+//   - Closing a channel unblocks all waiting senders and receivers.
+//   - Sending to a closed channel traps immediately.
+//   - The ring buffer is indexed by head/tail modulo capacity.
+//   - All public operations acquire the monitor before touching shared state.
+//
+// Ownership/Lifetime:
+//   - The channel retains references to all objects stored in the ring buffer.
+//   - The finalizer releases retained items and frees the buffer on GC collection.
+//   - Callers transfer ownership of sent objects to the channel; receivers own
+//     the returned objects.
+//
+// Links: src/runtime/threads/rt_channel.h (public API),
+//        src/runtime/threads/rt_monitor.h (monitor used for synchronization),
+//        src/runtime/threads/rt_threads.h (thread primitives)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_channel.h"

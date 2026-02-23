@@ -4,6 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/text/rt_toml.c
+// Purpose: Implements TOML v1.0 parsing and formatting for the Viper.Text.Toml
+//          class. Produces an rt_map tree from a TOML document supporting
+//          tables ([table]), arrays of tables ([[array]]), inline tables,
+//          string types (basic, literal, multi-line), integer, float, bool,
+//          datetime, and array values.
+//
+// Key invariants:
+//   - Section/key hierarchy maps to nested rt_map trees.
+//   - Integer values are stored as Box.I64; floats as Box.F64.
+//   - Booleans are Box.I64(0/1); arrays are rt_seq; datetime as rt_string.
+//   - Duplicate keys within the same table cause a parse error.
+//   - Parse returns NULL on invalid TOML input (not a trap).
+//   - Format output is valid TOML 1.0; nested tables use explicit [section] headers.
+//
+// Ownership/Lifetime:
+//   - Returned rt_map trees are fresh allocations owned by the caller.
+//   - Formatted TOML strings are fresh rt_string allocations owned by caller.
+//
+// Links: src/runtime/text/rt_toml.h (public API),
+//        src/runtime/rt_map.h, rt_seq.h, rt_box.h (container types)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_toml.h"
 

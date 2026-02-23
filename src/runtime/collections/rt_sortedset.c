@@ -4,12 +4,31 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_sortedset.c
-/// @brief Implementation of sorted set.
-///
-/// Uses a sorted dynamic array with binary search for O(log n) lookups.
-///
+//
+// File: src/runtime/collections/rt_sortedset.c
+// Purpose: Implements a sorted set of strings backed by a sorted dynamic array
+//   with binary search. All elements are maintained in lexicographic order at
+//   all times; insertion and removal use binary search to find the correct
+//   position, followed by memmove to shift elements.
+//
+// Key invariants:
+//   - Backed by a heap-allocated array of rt_string references, sorted in
+//     ascending lexicographic order (strcmp order).
+//   - Binary search provides O(log n) lookup (Contains, Floor, Ceiling).
+//   - Insertion is O(n) due to memmove of the suffix after the insert point.
+//   - Removal is O(n) due to memmove of the suffix before the remove point.
+//   - Each element is a copied rt_string (via rt_string_from_bytes); the set
+//     owns the string objects and frees them on removal or finalizer.
+//   - Duplicate keys are rejected: inserting an existing string is a no-op.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - SortedSet objects are GC-managed (rt_obj_new_i64). The data array and
+//     all contained rt_string copies are freed by the GC finalizer.
+//
+// Links: src/runtime/collections/rt_sortedset.h (public API),
+//        src/runtime/collections/rt_set.h (unordered set counterpart)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_sortedset.h"

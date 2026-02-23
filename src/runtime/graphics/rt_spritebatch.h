@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_spritebatch.h
+// Purpose: SpriteBatch for efficient batched sprite rendering, accumulating draw calls and submitting them to the GPU in a single batch to reduce render API overhead.
+//
+// Key invariants:
+//   - Begin must be called before any draw calls; End flushes the batch.
+//   - Draw calls are sorted by texture to minimize state changes.
+//   - Batch size is bounded by RT_SPRITEBATCH_MAX_SPRITES per begin/end pair.
+//   - Nested Begin/End pairs are not supported.
+//
+// Ownership/Lifetime:
+//   - SpriteBatch objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_spritebatch.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_spritebatch.h
-// Purpose: SpriteBatch for efficient batched sprite rendering.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

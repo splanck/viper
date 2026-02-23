@@ -4,69 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_args.c
-/// @brief Command-line arguments and environment variable handling.
-///
-/// This file provides access to command-line arguments passed to the program
-/// and environment variables from the operating system. It implements the
-/// Viper.Environment class functionality.
-///
-/// **Command-Line Arguments:**
-/// ```
-/// Program invocation: myprogram.exe arg1 arg2 arg3
-///
-/// Index:  0           1     2     3
-/// Value:  myprogram   arg1  arg2  arg3
-///         ^           ^
-///         |           +-- First real argument
-///         +-------------- Program name (index 0)
-/// ```
-///
-/// **Usage Examples:**
-/// ```
-/// ' Get argument count
-/// Dim count = Environment.GetArgumentCount()
-/// Print "Arguments: " & count
-///
-/// ' Get specific argument
-/// If count > 1 Then
-///     Dim firstArg = Environment.GetArgument(1)
-///     Print "First argument: " & firstArg
-/// End If
-///
-/// ' Get full command line
-/// Dim cmdLine = Environment.GetCommandLine()
-/// Print "Command: " & cmdLine
-///
-/// ' Work with environment variables
-/// Dim home = Environment.GetVariable("HOME")
-/// Print "Home directory: " & home
-///
-/// If Environment.HasVariable("DEBUG") Then
-///     Print "Debug mode enabled"
-/// End If
-///
-/// Environment.SetVariable("MY_VAR", "my value")
-/// ```
-///
-/// **Environment Variables:**
-/// | Function      | Description                              |
-/// |---------------|------------------------------------------|
-/// | GetVariable   | Get variable value (empty if not set)    |
-/// | HasVariable   | Check if variable exists                 |
-/// | SetVariable   | Set or create variable                   |
-///
-/// **Platform Notes:**
-/// - Environment variable names are case-sensitive on Unix, case-insensitive on Windows
-/// - Empty variable values are allowed
-/// - Setting a variable affects only the current process
-///
-/// **Thread Safety:** Argument access is thread-safe. Environment variable
-/// modification may not be thread-safe on all platforms.
-///
-/// @see rt_exec.c For executing external programs
-///
+//
+// File: src/runtime/core/rt_args.c
+// Purpose: Implements the Viper.Environment class — access to command-line
+//          arguments (argc/argv) and environment variables. Provides argument
+//          count/value queries, full command-line reconstruction, and
+//          getenv/setenv/hasenv wrappers for the BASIC runtime ABI.
+//
+// Key invariants:
+//   - argv[0] is the program name; argument indices start at 0 (matching C
+//     convention); out-of-range indices return an empty string rather than trap.
+//   - The RtContext stores argc/argv; rt_args_init must be called before any
+//     argument query function.
+//   - Environment variable names are case-sensitive on Unix and case-insensitive
+//     on Windows (platform behaviour is preserved transparently).
+//   - SetVariable (putenv/setenv) affects only the current process; changes are
+//     not propagated to child processes unless explicitly inherited.
+//   - Returned rt_string values are newly allocated; callers own the reference.
+//
+// Ownership/Lifetime:
+//   - The argc/argv pointers are borrowed from the caller of rt_args_init and
+//     must remain valid for the process lifetime.
+//   - Returned rt_string values transfer ownership to the caller; callers must
+//     call rt_string_unref when done.
+//
+// Links: src/runtime/core/rt_args.h (public API),
+//        src/runtime/core/rt_context.h (RtContext stores argc/argv),
+//        src/runtime/core/rt_string_builder.c (command-line reconstruction)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_args.h"

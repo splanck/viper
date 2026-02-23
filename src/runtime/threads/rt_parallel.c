@@ -4,10 +4,31 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_parallel.c
-/// @brief Parallel execution utilities implementation.
-///
+//
+// File: src/runtime/threads/rt_parallel.c
+// Purpose: Implements data-parallel execution utilities for the
+//          Viper.Threads.Parallel class. Provides ForEach (parallel iteration
+//          over a collection with a worker callback) and Invoke (run a fixed
+//          list of callbacks concurrently and wait for all to finish).
+//
+// Key invariants:
+//   - ForEach distributes elements across worker threads; element order of
+//     processing is non-deterministic.
+//   - Invoke launches all callbacks simultaneously and blocks until every one
+//     has returned.
+//   - Worker count defaults to the hardware thread count (or a user-supplied cap).
+//   - Errors thrown by workers are collected and re-raised after all finish.
+//   - All threads are joined before the parallel call returns; no dangling threads.
+//
+// Ownership/Lifetime:
+//   - Callback function pointers and arguments are not retained; callers must
+//     ensure lifetimes exceed the Parallel call.
+//   - Temporary thread handles are created and immediately joined within the call.
+//
+// Links: src/runtime/threads/rt_parallel.h (public API),
+//        src/runtime/threads/rt_threads.h (OS thread creation and joining),
+//        src/runtime/threads/rt_threadpool.h (persistent pool alternative)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_parallel.h"

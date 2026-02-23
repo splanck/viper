@@ -1,23 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_list.h
+// Purpose: Runtime-backed dynamic list of object references for Viper.Collections.List, providing append, insert, remove, sort, and indexed access with automatic growth.
+//
+// Key invariants:
+//   - Elements are reference-managed: retained on store, released on overwrite or removal.
+//   - Indices are 0-based; out-of-bounds access traps at runtime.
+//   - rt_ns_list_new returns a new empty list with refcount 1.
+//   - Sort operations use a stable algorithm preserving relative order of equal elements.
+//
+// Ownership/Lifetime:
+//   - List owns references to its elements and releases them on removal or destruction.
+//   - List lifetime is managed via reference counting; use retain/release to share.
+//   - Callers own the initial reference returned by rt_ns_list_new.
+//
+// Links: src/runtime/collections/rt_list.c (implementation), src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_list.h
-// Purpose: Runtime-backed dynamic list of object references for
-//          Viper.Collections.List.
-// Key invariants: Elements are reference-managed (retain on store, release on
-//                 overwrite/teardown). Indices are 0-based; out-of-bounds access
-//                 traps at runtime.
-// Ownership: List owns references to its elements and releases them on removal
-//            or destruction.
-// Lifetime: Heap-managed; reference counting determines lifetime.
-// Links: rt_heap.h, docs/runtime-arrays.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

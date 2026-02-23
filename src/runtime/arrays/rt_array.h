@@ -1,24 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/arrays/rt_array.h
+// Purpose: Dynamic array API for 32-bit integers (i32) backing BASIC DIM/REDIM statements, providing allocation, reference counting, bounds-checked access, and resize operations.
+//
+// Key invariants:
+//   - Payload pointers are preceded by an rt_heap_hdr_t header at a negative offset.
+//   - length <= capacity at all times; indexed access traps on out-of-bounds.
+//   - New arrays start with refcount 1.
+//   - Resize may reallocate and rebind the payload pointer.
+//
+// Ownership/Lifetime:
+//   - Reference-counted via rt_arr_i32_retain/release.
+//   - The caller owns the initial reference from rt_arr_i32_new.
+//   - Resize transfers ownership of the old allocation.
+//
+// Links: src/runtime/arrays/rt_array.c (implementation), src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_array.h
-// Purpose: Dynamic array API for 32-bit integers (i32), providing allocation,
-//          reference counting, bounds-checked access, and resize operations
-//          that back BASIC's DIM/REDIM statements.
-// Key invariants: Payload pointers are preceded by an rt_heap_hdr_t header at
-//                 negative offset; length <= capacity; all indexed access traps
-//                 on out-of-bounds; new arrays start with refcount 1.
-// Ownership/Lifetime: Reference-counted via rt_arr_i32_retain/release; the
-//                     caller owns the initial reference from rt_arr_i32_new;
-//                     resize may reallocate and rebind the payload pointer.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_heap.h"

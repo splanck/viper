@@ -4,10 +4,43 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_screenfx.c
-/// @brief Implementation of screen effects manager.
-///
+//
+// File: src/runtime/collections/rt_screenfx.c
+// Purpose: Screen effects manager for Viper games. Provides camera shake,
+//   color flash, fade-in, and fade-out effects that are composited each frame.
+//   Effects are stored in a small fixed-size slot array and updated with a
+//   delta-time value (milliseconds). Multiple effects of different types can
+//   run simultaneously; shake offsets are accumulated and the brightest
+//   overlay alpha wins (max-alpha compositing).
+//
+// Key invariants:
+//   - Up to RT_SCREENFX_MAX_EFFECTS simultaneous effects are supported. New
+//     effects that find no free slot are silently dropped (not an error).
+//   - Shake: uses per-instance LCG RNG (seeded from the object pointer) so
+//     concurrent ScreenFX instances on different threads produce independent
+//     random sequences without global state.
+//   - Shake decay model: decay parameter controls the exponent applied to the
+//     remaining-time factor (1 - progress):
+//       decay == 0      → no decay (constant amplitude throughout)
+//       decay == 1000   → linear decay: amplitude ∝ (1 - t)
+//       decay >= 1500   → quadratic decay: amplitude ∝ (1 - t)²
+//     The quadratic "trauma model" feels more natural for game camera shake.
+//   - Color format for all effects is 0xRRGGBBAA (32-bit, alpha in low byte).
+//     This differs from the Canvas drawing API which uses 0x00RRGGBB. Pass
+//     colors through the ScreenFX API using this format, not Canvas colors.
+//   - Flash alpha fades from base_alpha → 0 over the duration (starts bright).
+//   - FadeIn alpha fades from base_alpha → 0 (fades FROM the color TO clear).
+//   - FadeOut alpha fades from 0 → base_alpha (fades FROM clear TO the color).
+//   - Starting a new FadeIn or FadeOut cancels any currently running fade.
+//
+// Ownership/Lifetime:
+//   - ScreenFX objects are GC-managed via rt_obj_new_i64. rt_screenfx_destroy()
+//     calls rt_obj_free() for callers that manage lifetimes explicitly, but GC
+//     finalisation also reclaims the allocation automatically.
+//
+// Links: src/runtime/collections/rt_screenfx.h (public API),
+//        docs/viperlib/game.md (ScreenFX section, color format table)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_screenfx.h"

@@ -4,10 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_buttongroup.c
-/// @brief Implementation of button group manager.
-///
+//
+// File: src/runtime/collections/rt_buttongroup.c
+// Purpose: Exclusive radio-button selection manager for Viper game UIs and
+//   menus. A ButtonGroup tracks a set of registered button IDs and enforces
+//   the invariant that at most one is selected at any time (radio-button
+//   semantics). Selecting a new button automatically deselects the previous
+//   one. Typical uses: difficulty selection, game mode picker, weapon wheel,
+//   and any menu where exactly one option must be chosen.
+//
+// Key invariants:
+//   - Button IDs are arbitrary int64 values registered via rt_buttongroup_add().
+//     The group stores them in a flat array of capacity RT_BUTTONGROUP_MAX (256).
+//     Adding a 257th button fires rt_trap() with a descriptive message.
+//   - The selected button index is -1 (none selected) until the first call to
+//     rt_buttongroup_select(). Selecting an unregistered ID is silently ignored.
+//   - rt_buttongroup_is_selected() checks the currently selected ID against the
+//     given ID; it returns 1 only when there is an active selection AND it
+//     matches the given ID.
+//   - Removing a button does not automatically deselect it. If the selected
+//     button is removed, selected_index becomes stale. Callers should
+//     rt_buttongroup_deselect() or re-select before calling is_selected().
+//
+// Ownership/Lifetime:
+//   - ButtonGroup objects are GC-managed (rt_obj_new_i64). The button ID array
+//     is calloc'd and freed by the GC finalizer.
+//
+// Links: src/runtime/collections/rt_buttongroup.h (public API),
+//        docs/viperlib/game.md (ButtonGroup section — RT_BUTTONGROUP_MAX note)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_buttongroup.h"

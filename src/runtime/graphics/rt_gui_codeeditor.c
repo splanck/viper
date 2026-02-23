@@ -5,8 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_gui_codeeditor.c
-// Purpose: CodeEditor enhancements, MessageBox, FileDialog, and FindBar.
+// File: src/runtime/graphics/rt_gui_codeeditor.c
+// Purpose: Runtime bindings for the ViperGUI CodeEditor widget, plus
+//   MessageBox and FileDialog overlays, and a FindBar widget. Implements
+//   syntax highlighting (Zia and BASIC keyword/type color tables), gutter icon
+//   management, breakpoint and diagnostic annotations, selected-text retrieval,
+//   and scroll/cursor control. MessageBox and FileDialog wrap vg_dialog_t with
+//   GC-safe state structs that store the user's selection after dismiss.
+//
+// Key invariants:
+//   - Syntax highlight colors use ARGB 0xAARRGGBB format matching the VS Code
+//     dark-theme palette defined at the top of this file.
+//   - rt_codeeditor_set_syntax_highlight() overwrites the full per-character
+//     color array; callers must provide a buffer sized to the text length.
+//   - MessageBox and FileDialog objects are allocated via rt_obj_new_i64 (GC)
+//     and hold a pointer to the underlying vg_dialog_t; the dialog must be
+//     destroyed before the wrapper is GC'd.
+//   - rt_codeeditor_get_selected_text() returns a freshly allocated C string
+//     (from vg_codeeditor_get_selection); the caller must free it.
+//   - FindBar integration uses the vg_findbar_t widget parented to the editor.
+//
+// Ownership/Lifetime:
+//   - Wrapper structs (rt_messagebox_data_t, rt_filedialog_data_t) are GC heap
+//     objects; the embedded vg_dialog_t pointer is manually freed on destroy.
+//   - Selected-text C strings are malloc'd by the vg layer; the caller frees them.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/lib/gui/src/widgets/vg_codeeditor.c (underlying widget),
+//        src/lib/gui/src/widgets/vg_dialog.c (dialog widget)
 //
 //===----------------------------------------------------------------------===//
 

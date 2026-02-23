@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_countdown.h
+// Purpose: Countdown timer providing interval-based expiration detection with start, stop, reset, and query operations, suitable for game loops and timed events.
+//
+// Key invariants:
+//   - Remaining time is clamped to zero; it never goes negative.
+//   - Elapsed time accumulates only while the timer is running.
+//   - All times are measured in milliseconds.
+//   - Expired is true when elapsed >= interval; the timer continues running after expiry.
+//
+// Ownership/Lifetime:
+//   - Countdown objects are heap-allocated; the caller is responsible for lifetime management.
+//   - No reference counting; caller must explicitly free the object when done.
+//
+// Links: src/runtime/core/rt_countdown.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_countdown.h
-// Purpose: Countdown timer for interval timing with expiration detection.
-// Key invariants: Tracks elapsed time against interval; Remaining = max(0, interval - elapsed);
-//                 Expired = elapsed >= interval. All times in milliseconds.
-// Ownership/Lifetime: Countdown objects are heap-allocated; caller responsible
-//                     for lifetime management.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdbool.h>

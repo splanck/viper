@@ -5,13 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_linereader.c
-// Purpose: Implement line-by-line text file reading.
+// File: src/runtime/io/rt_linereader.c
+// Purpose: Implements line-by-line text file reading for the Viper.IO.LineReader
+//          class. Reads text files one line at a time with correct handling of
+//          all three common line ending styles: LF (Unix), CR (classic Mac),
+//          and CRLF (Windows).
 //
-// Handles CR, LF, and CRLF line endings:
-// - LF (\n): Unix/Linux/macOS
-// - CR (\r): Classic Mac
-// - CRLF (\r\n): Windows
+// Key invariants:
+//   - LF (\n), CR (\r), and CRLF (\r\n) are all recognized as line terminators.
+//   - Returned line strings do not include the line terminator character(s).
+//   - The EOF flag is set after the last line is consumed; subsequent reads
+//     return NULL.
+//   - A one-character peek buffer is used to detect CRLF without double-reads.
+//   - The closed flag prevents double-close and operations on a closed reader.
+//   - The GC finalizer closes the FILE* if the caller forgets to call Close.
+//
+// Ownership/Lifetime:
+//   - LineReader objects are heap-allocated; the GC calls the finalizer on free.
+//   - Each returned rt_string line is a fresh allocation owned by the caller.
+//
+// Links: src/runtime/io/rt_linereader.h (public API),
+//        src/runtime/io/rt_linewriter.h (complementary text file writer)
 //
 //===----------------------------------------------------------------------===//
 

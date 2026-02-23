@@ -1,22 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_string_intern.h
+// Purpose: Global string interning table providing O(1) equality comparison via pointer identity after interning, using FNV-1a hashing and a mutex for thread safety.
+//
+// Key invariants:
+//   - Each unique byte sequence maps to exactly one canonical rt_string pointer.
+//   - Interned strings are retained by the table and treated as immortal during normal operation.
+//   - rt_string_interned_eq is O(1) pointer comparison; only valid for interned strings.
+//   - Table uses open addressing with 5/8 load factor and power-of-two capacity.
+//
+// Ownership/Lifetime:
+//   - rt_string_intern returns a retained pointer; caller must call rt_string_unref when done.
+//   - The intern table retains its own reference to canonical strings; they are freed only at shutdown.
+//
+// Links: src/runtime/core/rt_string_intern.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_string_intern.h
-// Purpose: Global string interning table — O(1) equality via pointer identity (P2-3.8).
-// Key invariants: Each unique byte sequence maps to exactly one canonical rt_string.
-//                 Interned strings are retained by the table and never freed during
-//                 normal operation (immortal once interned).
-//                 Thread-safe: concurrent intern calls are serialised by a mutex.
-// Ownership/Lifetime: rt_string_intern() returns a retained pointer; caller must
-//                     call rt_string_unref() when done (same as any rt_string).
-// Links: rt_string.h (rt_string type and retain/release)
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

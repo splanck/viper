@@ -4,28 +4,28 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_template.c
-/// @brief Simple string templating with placeholder substitution.
-///
-/// Implements a lightweight template engine for string interpolation:
-///
-/// **Placeholder Syntax:**
-/// ```
-/// Template: "Hello {{name}}, you have {{count}} messages."
-/// Values:   { "name": "Alice", "count": "5" }
-/// Result:   "Hello Alice, you have 5 messages."
-/// ```
-///
-/// **Key Features:**
-/// - Map-based: {{key}} replaced with Map.Get(key)
-/// - Seq-based: {{0}} {{1}} replaced with Seq.Get(index)
-/// - Custom delimiters: RenderWith("$name$", map, "$", "$")
-/// - Missing keys left as-is (explicit, easy to debug)
-/// - Whitespace trimmed from keys: {{ name }} = {{name}}
-///
-/// **Thread Safety:** All functions are thread-safe (no global state).
-///
+//
+// File: src/runtime/text/rt_template.c
+// Purpose: Implements a lightweight string template engine for the
+//          Viper.Text.Template class. Replaces {{key}} placeholders using a
+//          map (key→string) or seq (index→string) of substitution values.
+//
+// Key invariants:
+//   - Default placeholder delimiters are "{{" and "}}".
+//   - RenderWith allows custom open/close delimiters for any character pair.
+//   - Keys are whitespace-trimmed before lookup: "{{ name }}" == "{{name}}".
+//   - Missing keys are left as-is in the output (not replaced with empty).
+//   - Seq-based rendering replaces "{{0}}", "{{1}}" with seq elements by index.
+//   - All functions are thread-safe with no global mutable state.
+//
+// Ownership/Lifetime:
+//   - The returned rendered string is a fresh allocation owned by the caller.
+//   - Input template and map/seq are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_template.h (public API),
+//        src/runtime/rt_map.h (map used for key→value substitutions),
+//        src/runtime/rt_seq.h (seq used for index→value substitutions)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_template.h"

@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_cancellation.h
+// Purpose: Cooperative cancellation token for async operations using atomic operations for thread-safe state management; once cancelled, the state is permanent.
+//
+// Key invariants:
+//   - Thread-safe via atomic compare-exchange operations.
+//   - Once cancelled, the token cannot be uncancelled.
+//   - Multiple tokens can share a single cancellation source.
+//   - rt_cancellation_is_cancelled can be polled from any thread.
+//
+// Ownership/Lifetime:
+//   - Caller manages token and source lifetime; no reference counting.
+//   - Token and source objects must outlive all code that reads from them.
+//
+// Links: src/runtime/threads/rt_cancellation.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_cancellation.h
-// Purpose: Cooperative cancellation token for async operations.
-// Key invariants: Thread-safe via atomic operations. Once cancelled, cannot
-//                 be uncancelled. Multiple tokens can share a source.
-// Ownership/Lifetime: Caller manages token lifetime.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

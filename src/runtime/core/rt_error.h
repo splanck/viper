@@ -1,24 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_error.h
+// Purpose: Structured runtime error system with categorized error codes (Err enum) and an RtError record propagated via out-parameters, mapping to BASIC ON ERROR handlers and IL trap instructions.
+//
+// Key invariants:
+//   - Err_None == 0 means success; all other values indicate failure.
+//   - RtError.kind provides portable classification across platforms.
+//   - RtError.code preserves platform-specific detail (e.g., errno).
+//   - rt_ok returns true only when kind == Err_None.
+//
+// Ownership/Lifetime:
+//   - RtError is a small value type intended for stack allocation by callers.
+//   - RT_ERROR_NONE is a global constant; no heap allocation is involved.
+//   - No ownership transfer; callers pass by value or pointer as needed.
+//
+// Links: src/runtime/core/rt_error.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_error.h
-// Purpose: Structured runtime error system with categorized error codes (Err
-//          enum) and an RtError record propagated via out-parameters, mapping
-//          to BASIC ON ERROR handlers and IL trap instructions.
-// Key invariants: Err_None == 0 means success; RtError.kind provides portable
-//                 classification; RtError.code preserves platform-specific
-//                 detail; rt_ok returns true only for Err_None.
-// Ownership/Lifetime: RtError is a small value type (stack-allocated by
-//                     callers); RT_ERROR_NONE is a global constant; no heap
-//                     allocation is involved.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

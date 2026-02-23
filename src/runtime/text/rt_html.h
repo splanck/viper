@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_html.h
+// Purpose: Tolerant HTML parser and utilities for Viper.Text.Html, providing parsing to a tree structure, text extraction, escaping, and unescaping of HTML entities.
+//
+// Key invariants:
+//   - Parser is tolerant of malformed HTML; it does not trap on invalid input.
+//   - HTML entity escaping handles the standard five entities (&, <, >, ', ").
+//   - Unescaping handles named entities and numeric character references.
+//   - Tree nodes use rt_map for attribute storage.
+//
+// Ownership/Lifetime:
+//   - Returned strings and objects are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of parsing.
+//
+// Links: src/runtime/text/rt_html.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_html.h
-// Purpose: Tolerant HTML parser and utility functions for Viper.Text.Html.
-// Key invariants: Parser is tolerant of malformed HTML; escape/unescape handle
-//                 standard HTML entities. Tree nodes use rt_map.
-// Ownership/Lifetime: Returned strings and objects are newly allocated.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

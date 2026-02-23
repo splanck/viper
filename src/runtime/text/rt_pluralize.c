@@ -5,9 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_pluralize.c
-// Purpose: English noun pluralization/singularization.
-//          Covers regular rules, common irregular forms, and uncountable nouns.
+// File: src/runtime/text/rt_pluralize.c
+// Purpose: Implements English noun pluralization and singularization for the
+//          Viper.Text.Pluralize class. Handles regular inflection rules
+//          (e.g. -s, -es, -ies), common irregular forms (child/children,
+//          mouse/mice), and uncountable nouns (sheep, fish).
+//
+// Key invariants:
+//   - Irregular forms are checked before applying regular suffix rules.
+//   - Uncountable nouns (mass nouns) return the input unchanged.
+//   - Pluralize(1, "cat") returns "1 cat"; Pluralize(2, "cat") returns "2 cats".
+//   - Rules are English-specific; other languages are not supported.
+//   - Case of the first letter is preserved in the output.
+//   - All lookups are case-insensitive for the irregular/uncountable tables.
+//
+// Ownership/Lifetime:
+//   - Returned strings are fresh rt_string allocations owned by the caller.
+//   - Input strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_pluralize.h (public API)
 //
 //===----------------------------------------------------------------------===//
 

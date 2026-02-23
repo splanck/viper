@@ -1,29 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_memstream.h
+// Purpose: In-memory binary stream backed by a growable byte buffer, providing seekable read/write of primitive types in little-endian encoding, strings, and raw byte arrays.
+//
+// Key invariants:
+//   - Primitive types use little-endian encoding for cross-platform compatibility.
+//   - Writing past the current end automatically grows the buffer.
+//   - Seek is supported with SEEK_SET, SEEK_CUR, and SEEK_END origins.
+//   - Reading past end returns 0 bytes and sets the EOF flag.
+//
+// Ownership/Lifetime:
+//   - MemStream objects are heap-allocated; caller is responsible for lifetime management.
+//   - rt_memstream_to_bytes returns a newly allocated Bytes object; caller must release.
+//
+// Links: src/runtime/io/rt_memstream.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_memstream.h
-// Purpose: In-memory binary stream operations for Viper.IO.MemStream.
-//
-// MemStream provides stream-based binary I/O backed by memory, allowing:
-// - Creating empty or pre-sized streams
-// - Creating streams from existing Bytes objects
-// - Reading/writing primitive types with little-endian encoding
-// - Reading/writing byte arrays and strings
-// - Seeking to arbitrary positions
-// - Automatic expansion when writing past end
-//
-// This is useful for:
-// - Serialization and deserialization
-// - Network protocol buffers
-// - Testing code that uses binary streams
-// - Building binary data structures in memory
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

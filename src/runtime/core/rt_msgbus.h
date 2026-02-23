@@ -1,19 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_msgbus.h
+// Purpose: Pub/sub message bus for decoupled event communication, providing topic-based publish/subscribe with integer subscription IDs for selective unsubscription.
+//
+// Key invariants:
+//   - Topics are string keys; each topic can have multiple subscribers.
+//   - Subscribers are identified by unique integer IDs returned from rt_msgbus_subscribe.
+//   - rt_msgbus_publish delivers to all current subscribers synchronously before returning.
+//   - Unsubscribing from within a callback is safe (deferred removal).
+//
+// Ownership/Lifetime:
+//   - MessageBus objects are heap-allocated; caller owns and must free when done.
+//   - The bus retains subscriber function pointers; callbacks must remain valid while subscribed.
+//   - Published data pointers are not retained; callers manage their own lifetime.
+//
+// Links: src/runtime/core/rt_msgbus.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_msgbus.h
-// Purpose: Pub/sub message bus for decoupled event communication.
-// Key invariants: String topics. Subscribers identified by integer IDs.
-//                 Publish delivers to all subscribers on that topic.
-// Ownership/Lifetime: Bus retains subscriber function pointers.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

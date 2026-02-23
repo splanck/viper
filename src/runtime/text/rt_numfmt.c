@@ -4,6 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/text/rt_numfmt.c
+// Purpose: Implements numeric formatting utilities for the Viper.Text.NumFmt
+//          class. Provides FormatInt (integer with thousands separators),
+//          FormatFloat (float with configurable decimal places), FormatPercent,
+//          FormatCurrency, FormatScientific, and FormatOrdinal.
+//
+// Key invariants:
+//   - Thousands separator defaults to ',' and decimal separator to '.'.
+//   - FormatPercent multiplies by 100 and appends the '%' symbol.
+//   - FormatCurrency prepends the currency symbol and applies thousands grouping.
+//   - FormatScientific uses standard IEEE notation (e.g. 1.23e+04).
+//   - FormatOrdinal appends "st", "nd", "rd", or "th" per English rules.
+//   - All functions handle negative values and zero correctly.
+//
+// Ownership/Lifetime:
+//   - All returned rt_string values are fresh allocations owned by the caller.
+//   - No state is retained between calls.
+//
+// Links: src/runtime/text/rt_numfmt.h (public API),
+//        src/runtime/rt_string_builder.h (used to accumulate formatted output)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_numfmt.h"
 #include "rt_internal.h"

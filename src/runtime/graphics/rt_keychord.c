@@ -4,16 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_keychord.c
-/// @brief Key chord (simultaneous) and combo (sequential) detection.
-///
-/// Chords: All specified keys must be held simultaneously. Triggered on the
-/// frame when the last key is pressed (edge detection).
-///
-/// Combos: Keys must be pressed sequentially within a timing window.
-/// Triggered on the frame when the last key in the sequence is pressed.
-///
+//
+// File: src/runtime/graphics/rt_keychord.c
+// Purpose: Key chord and sequential combo detection for the Viper input system.
+//   Chords require all specified keys held simultaneously; they trigger on the
+//   frame the last key is pressed (edge detection). Combos require keys pressed
+//   in order within a configurable frame window; they trigger when the final key
+//   in the sequence is pressed within the window. Both types are named and
+//   stored in a growable array within a GC-managed KeyChord object.
+//
+// Key invariants:
+//   - Chord trigger fires on exactly one frame (the press frame of the last key);
+//     it is cleared on the next rt_keychord_update() call.
+//   - Combo progress resets if any key in the sequence is pressed out of order
+//     or if the inter-key gap exceeds the configured window_frames.
+//   - Entry names must be unique within a KeyChord instance; duplicate AddChord/
+//     AddCombo calls with the same name are silently ignored.
+//   - KC_MAX_KEYS (16) is the maximum number of keys in a single chord or combo.
+//   - rt_keychord_update() increments the internal frame counter; it must be
+//     called once per frame before querying trigger state.
+//
+// Ownership/Lifetime:
+//   - rt_keychord_impl is allocated via rt_obj_new_i64 (GC heap); the entries
+//     array and per-entry name strings are malloc'd and freed in kc_finalizer,
+//     which is registered as the GC finalizer at creation.
+//
+// Links: src/runtime/graphics/rt_keychord.h (public API),
+//        src/runtime/graphics/rt_input.h (keyboard state queries),
+//        src/runtime/graphics/rt_action.c (action mapping uses BIND_CHORD)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_keychord.h"

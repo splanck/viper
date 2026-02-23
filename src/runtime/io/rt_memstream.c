@@ -5,14 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_memstream.c
-// Purpose: Implement in-memory binary stream operations.
+// File: src/runtime/io/rt_memstream.c
+// Purpose: Implements an in-memory binary stream for the Viper.IO.MemStream
+//          class. The buffer grows automatically on write, supports random
+//          seek/tell, and encodes multi-byte integers in little-endian order
+//          and floats in IEEE 754 format.
 //
-// MemStream provides a resizable in-memory buffer with stream semantics:
-// - Automatic growth when writing past end
-// - Little-endian encoding for multi-byte integers
-// - IEEE 754 encoding for floats
-// - Position can be set beyond length (gap filled with zeros on write)
+// Key invariants:
+//   - The buffer doubles in capacity when a write would exceed current capacity.
+//   - Writing at a position beyond the current length zero-fills the gap.
+//   - Position can be set to any non-negative value including beyond length.
+//   - Little-endian byte order is used for all multi-byte integer writes/reads.
+//   - Floats use IEEE 754 single precision; doubles use IEEE 754 double precision.
+//   - Initial buffer capacity is MEMSTREAM_INITIAL_CAPACITY (64) bytes.
+//
+// Ownership/Lifetime:
+//   - MemStream objects are heap-allocated; the GC finalizer frees the data buffer.
+//   - ToBytes returns a snapshot copy as a fresh rt_bytes owned by the caller.
+//
+// Links: src/runtime/io/rt_memstream.h (public API),
+//        src/runtime/io/rt_binfile.h (disk-backed counterpart),
+//        src/runtime/io/rt_stream.h (generic stream wrapping MemStream)
 //
 //===----------------------------------------------------------------------===//
 
@@ -636,13 +649,14 @@ void rt_memstream_write_str(void *obj, rt_string text)
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
 
+    // IO-C-1: use rt_str_len() not strlen() — Viper strings can contain embedded null bytes
+    int64_t len = rt_str_len(text);
     const char *cstr = rt_string_cstr(text);
-    size_t len = strlen(cstr);
-    if (len > 0)
+    if (cstr && len > 0)
     {
-        prepare_write(ms, (int64_t)len);
-        memcpy(ms->data + ms->pos, cstr, len);
-        ms->pos += (int64_t)len;
+        prepare_write(ms, len);
+        memcpy(ms->data + ms->pos, cstr, (size_t)len);
+        ms->pos += len;
     }
 }
 

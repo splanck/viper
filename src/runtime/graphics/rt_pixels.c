@@ -5,9 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_pixels.c
-// Purpose: Implement software image buffer for Viper.Graphics.Pixels.
-// Structure: width, height, uint32_t* data (RGBA, row-major)
+// File: src/runtime/graphics/rt_pixels.c
+// Purpose: Software image buffer (CPU-side bitmap) for Viper.Graphics.Pixels.
+//   Provides a mutable RGBA pixel array with GC-managed lifetime. Supports
+//   pixel-level read/write, drawing primitives (line, box, disc, ellipse,
+//   triangle, Bezier, flood-fill), alpha-blending blit onto a Canvas, and
+//   arbitrary region blitting from sprite sheets. Used as the primary off-
+//   screen drawing surface for game graphics, HiDPI canvases, and particle
+//   rendering.
+//
+// Key invariants:
+//   - Internal pixel format is 32-bit RGBA: R in bits [31:24], G in [23:16],
+//     B in [15:8], A in [7:0] — i.e. 0xRRGGBBAA stored as uint32_t in
+//     row-major order (row y starts at data + y * width).
+//   - Canvas drawing methods (Box, Disc, etc.) take colors as 0x00RRGGBB
+//     (alpha implicitly 0xFF). Pixels Set/Get use 0xRRGGBBAA. Helper
+//     rgb_to_rgba(color) = (color << 8) | 0xFF converts between the two.
+//   - Blit operations write pre-multiplied alpha or simple alpha-blend
+//     depending on the function (BlitAlpha blends; Blit overwrites).
+//   - Drawing primitives use integer coordinates. Sub-pixel rendering is not
+//     supported; callers should pre-scale to the physical (HiDPI) resolution.
+//   - Flood fill uses an iterative scanline algorithm with a malloc'd stack to
+//     avoid recursion depth limits on large images.
+//
+// Ownership/Lifetime:
+//   - Pixels objects are GC-managed (rt_obj_new_i64). The pixel data array is
+//     malloc'd separately and freed by the GC finalizer (pixels_finalizer).
+//
+// Links: src/runtime/graphics/rt_pixels.h (public API),
+//        docs/viperlib/graphics.md (Pixels section, drawing primitives table)
 //
 //===----------------------------------------------------------------------===//
 

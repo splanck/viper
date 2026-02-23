@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_stack.h
+// Purpose: Runtime-backed LIFO stack for Viper.Collections.Stack, providing push/pop/peek with automatic growth and O(1) operations.
+//
+// Key invariants:
+//   - LIFO ordering: push and pop both operate on the top.
+//   - Pop and peek on an empty stack trap immediately.
+//   - Internal array doubles capacity on overflow.
+//   - Elements are not individually retained by the stack.
+//
+// Ownership/Lifetime:
+//   - Stack objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/collections/rt_stack.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_stack.h
-// Purpose: Runtime-backed LIFO stack for Viper.Collections.Stack.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

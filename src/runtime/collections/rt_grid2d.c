@@ -4,10 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_grid2d.c
-/// @brief Implementation of 2D grid container.
-///
+//
+// File: src/runtime/collections/rt_grid2d.c
+// Purpose: Dense 2D array of int64 values for Viper game maps and grids.
+//   Provides O(1) get/set access by (column, row) index, fill and copy
+//   operations, and a row-major flat view for efficient bulk processing.
+//   Typical uses: tile maps, cellular automata, pathfinding cost grids,
+//   flood-fill canvas, and any fixed-width 2D board or level layout.
+//
+// Key invariants:
+//   - Grid dimensions (width, height) are fixed at creation and cannot change.
+//     The underlying storage is a single calloc'd row-major array of int64:
+//       index = row × width + col
+//   - Width and height are clamped to [1, RT_GRID2D_MAX_DIM] at creation.
+//     RT_GRID2D_MAX_DIM is defined in rt_grid2d.h.
+//   - All cells are initialised to 0 at creation (via calloc).
+//   - Out-of-bounds get returns 0; out-of-bounds set is silently ignored.
+//     No trap is fired for invalid accesses — callers are responsible for
+//     checking bounds if they need error detection.
+//   - The grid stores raw int64 values only. Semantic interpretation (tile IDs,
+//     passability, cost weights, etc.) is the caller's responsibility.
+//
+// Ownership/Lifetime:
+//   - Grid2D objects are GC-managed (rt_obj_new_i64). The cell array is
+//     calloc'd and freed by the GC finalizer. rt_grid2d_destroy() is a
+//     no-op for API symmetry.
+//
+// Links: src/runtime/collections/rt_grid2d.h (public API),
+//        docs/viperlib/game.md (Grid2D section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_grid2d.h"

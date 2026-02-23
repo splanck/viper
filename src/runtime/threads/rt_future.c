@@ -4,10 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_future.c
-/// @brief Future/Promise implementation using condition variables.
-///
+//
+// File: src/runtime/threads/rt_future.c
+// Purpose: Implements the Future/Promise async result pattern for the
+//          Viper.Threads.Future and Viper.Threads.Promise classes. A Promise
+//          is the write end; a Future is the read end. Completion is signalled
+//          via a condition variable; waiting is blocking until resolved.
+//
+// Key invariants:
+//   - A Promise can be resolved (value) or rejected (error string) exactly once.
+//   - Resolving or rejecting twice traps immediately.
+//   - Future.Await blocks until the promise is resolved or rejected.
+//   - Future.TryGet returns immediately: the value if done, NULL if pending.
+//   - The done flag is sticky; once set it is never cleared.
+//   - Win32 uses CRITICAL_SECTION + CONDITION_VARIABLE; POSIX uses pthreads.
+//
+// Ownership/Lifetime:
+//   - The promise_impl is shared between the Promise and Future objects.
+//   - The resolved value (void*) is retained by the promise until consumed.
+//   - The error string is retained by the promise and released on finalize.
+//   - Both Promise and Future hold a pointer to the shared promise_impl, which
+//     is freed when neither object is alive.
+//
+// Links: src/runtime/threads/rt_future.h (public API),
+//        src/runtime/threads/rt_async.h (higher-level async combinators),
+//        src/runtime/threads/rt_cancellation.h (cancellation integration)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_future.h"

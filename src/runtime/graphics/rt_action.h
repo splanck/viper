@@ -1,24 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_action.h
+// Purpose: Action mapping system abstracting raw input (keyboard, mouse, gamepad) into named actions with button and axis types, providing per-frame state queries.
+//
+// Key invariants:
+//   - Action names are unique across all registered actions.
+//   - Button and axis actions are disjoint; a name cannot be both.
+//   - Axis values are clamped to [-1.0, 1.0].
+//   - All state queries reflect the current frame after rt_action_update.
+//
+// Ownership/Lifetime:
+//   - The action system is globally initialized with rt_action_init and shutdown with rt_action_shutdown.
+//   - Action name strings follow runtime refcount rules; rt_action_init retains them.
+//
+// Links: src/runtime/graphics/rt_action.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_action.h
-// Purpose: Action mapping system that abstracts raw input devices into named
-//          actions with keyboard, mouse, and gamepad bindings for both button
-//          and axis input types.
-// Key invariants: Action names are unique; button actions and axis actions are
-//                 disjoint sets; axis values are clamped to -1.0..1.0; all
-//                 state queries reflect the current frame after rt_action_update.
-// Ownership/Lifetime: The action system is globally initialized/shutdown with
-//                     rt_action_init/rt_action_shutdown; action names are
-//                     rt_string values following runtime refcount rules.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

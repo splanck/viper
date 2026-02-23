@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// File: src/runtime/core/rt_stack_safety.h
+// Purpose: Stack overflow detection and graceful error handling for native code, registering platform-specific exception/signal handlers to produce a diagnostic message instead of a hard crash.
+//
+// Key invariants:
+//   - rt_init_stack_safety must be called once at program startup before user code runs.
+//   - On Unix, registers a signal handler with an alternate signal stack (SIGSTKSZ bytes).
+//   - On Windows, uses Vectored Exception Handling to catch EXCEPTION_STACK_OVERFLOW.
+//   - rt_trap_stack_overflow prints a diagnostic to stderr and exits with code 1.
+//
+// Ownership/Lifetime:
+//   - Handler registration has process-wide effect; only call once.
+//   - The alternate signal stack is allocated internally; caller does not manage it.
+//
+// Links: src/runtime/core/rt_stack_safety.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// Stack safety utilities for the Viper runtime. Provides stack overflow
-// detection and graceful error handling.
-//
-//===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Stack safety and overflow detection for native code.
-
 #ifndef RT_STACK_SAFETY_H
 #define RT_STACK_SAFETY_H
 

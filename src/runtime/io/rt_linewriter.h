@@ -1,22 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_linewriter.h
+// Purpose: Buffered text file writing for Viper.IO.LineWriter, supporting creation or appending with Write, WriteLn, WriteChar operations and configurable line endings.
+//
+// Key invariants:
+//   - Open mode 'append' preserves existing content; default mode truncates.
+//   - WriteLn appends the configured line ending (defaults to platform native).
+//   - The writer buffers output internally; Flush sends buffered data to disk.
+//   - WriteChar accepts a single-character string; only the first byte is used.
+//
+// Ownership/Lifetime:
+//   - LineWriter objects are heap-allocated; caller must close and free when done.
+//   - Returned strings from read operations are newly allocated; caller must release.
+//
+// Links: src/runtime/io/rt_linewriter.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_linewriter.h
-// Purpose: Buffered text file writing for Viper.IO.LineWriter.
-//
-// LineWriter provides convenient text file writing with:
-// - Open/Append: Create or append to files
-// - Write: Output string without newline
-// - WriteLn: Output string with newline
-// - WriteChar: Output single character
-// - NewLine: Configurable line ending (defaults to platform)
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

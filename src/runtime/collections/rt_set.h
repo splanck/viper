@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_set.h
+// Purpose: Generic hash set using object identity (pointer equality) for element comparison, providing O(1) average add, remove, and contains operations.
+//
+// Key invariants:
+//   - Elements are compared by pointer identity, not deep equality.
+//   - Storing the same object pointer twice is idempotent.
+//   - Elements are retained when added and released when removed.
+//   - rt_set_has returns 1 if the pointer is present, 0 otherwise.
+//
+// Ownership/Lifetime:
+//   - Set objects are heap-allocated; caller is responsible for lifetime management.
+//   - Elements are retained by the set while stored.
+//
+// Links: src/runtime/collections/rt_set.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_set.h
-// Purpose: Runtime functions for generic hash set using identity hashing.
-// Key invariants: Stores unique objects by reference equality. O(1) average.
-// Ownership/Lifetime: Set retains elements. Caller manages element creation.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

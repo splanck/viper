@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_keychord.h
+// Purpose: Key chord (simultaneous) and combo (sequential) detector that recognizes registered named input patterns and reports which pattern fired each frame.
+//
+// Key invariants:
+//   - Chord detection fires when all registered keys are pressed simultaneously.
+//   - Combo detection fires when keys are pressed in the registered sequence within a time window.
+//   - rt_keychord_update must be called once per frame with the current key state.
+//   - Named patterns are unique; registering the same name twice replaces the previous binding.
+//
+// Ownership/Lifetime:
+//   - Detector objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_keychord.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_keychord.h
-// Purpose: Key chord (simultaneous) and combo (sequential) detection.
-// Key invariants: Object-based detector, frame-driven update cycle.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

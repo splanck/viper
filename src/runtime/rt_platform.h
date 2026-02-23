@@ -1,23 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/rt_platform.h
+// Purpose: Cross-platform preprocessor abstractions for the Viper runtime, providing portable macros for thread-local storage, atomic operations, weak symbol linkage, and platform detection.
+//
+// Key invariants:
+//   - RT_THREAD_LOCAL expands to the correct TLS keyword for each compiler/platform.
+//   - RT_ATOMIC_* macros use C11 _Atomic on GCC/Clang and MSVC intrinsics on Windows.
+//   - RT_WEAK uses __attribute__((weak)) on ELF targets and is empty on Mach-O/MSVC.
+//   - Platform detection macros (RT_PLATFORM_WINDOWS etc.) are mutually exclusive.
+//
+// Ownership/Lifetime:
+//   - All macros are pure preprocessor definitions; no runtime state is introduced.
+//   - Including this header has no link-time side effects.
+//
+// Links: src/runtime/core/ (included by most runtime .c files)
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_platform.h
-/// @brief Cross-platform abstractions for the Viper runtime.
-///
-/// This header provides portable definitions for platform-specific features:
-/// - Thread-local storage (`RT_THREAD_LOCAL`)
-/// - Atomic operations (`RT_ATOMIC_*`)
-/// - Weak symbol linkage (`RT_WEAK`)
-/// - Common POSIX-like includes with Windows alternatives
-///
-/// Include this header in runtime .c files that need cross-platform support.
-///
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

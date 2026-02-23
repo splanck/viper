@@ -4,13 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_json_stream.c
-/// @brief SAX-style streaming JSON parser implementation.
-///
-/// Provides a pull-based token stream for parsing JSON incrementally.
-/// Tokens include: object/array start/end, key, string, number, bool, null.
-///
+//
+// File: src/runtime/text/rt_json_stream.c
+// Purpose: Implements a SAX-style pull-based streaming JSON parser for the
+//          Viper.Text.JsonStream class. Emits tokens one at a time: ObjectStart,
+//          ObjectEnd, ArrayStart, ArrayEnd, Key, String, Number, Bool, Null.
+//
+// Key invariants:
+//   - Maximum nesting depth is MAX_DEPTH (256); exceeding it returns an error token.
+//   - The parser advances by one token per call to Next; state is maintained in
+//     the stream object between calls.
+//   - String token values are unescaped (\\, \", \n etc. processed).
+//   - Number tokens are parsed as IEEE 754 double.
+//   - Invalid JSON causes an Error token; the stream is not recoverable after error.
+//   - Input is a borrowed char* with length; the caller must keep it alive.
+//
+// Ownership/Lifetime:
+//   - The stream object is heap-allocated and managed by the runtime GC.
+//   - An internal string buffer is grown dynamically and freed with the stream.
+//   - Key and String token values are returned as fresh rt_string allocations.
+//
+// Links: src/runtime/text/rt_json_stream.h (public API),
+//        src/runtime/text/rt_json.h (document-mode JSON parser for small inputs)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_json_stream.h"

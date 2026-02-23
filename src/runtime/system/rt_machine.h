@@ -1,32 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/system/rt_machine.h
+// Purpose: System information queries for Viper.Machine providing OS name, version, hostname, username, home/temp directories, CPU count, and memory statistics.
+//
+// Key invariants:
+//   - OS values: 'linux', 'macos', 'windows', 'unknown'.
+//   - All string-returning functions allocate new strings with refcount 1.
+//   - Integer values (Cores, MemTotal, MemFree) are returned directly as int64_t.
+//   - Queries are stateless; values may change between calls (e.g., MemFree).
+//
+// Ownership/Lifetime:
+//   - Returned strings are caller-owned (refcnt == 1); callers must release them.
+//   - No persistent state; all queries read from the OS on each call.
+//
+// Links: src/runtime/system/rt_machine.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_machine.h
-// Purpose: System information queries for Viper.Machine.
-// Key invariants: All functions return freshly allocated runtime strings or
-//                 integer values. String results must be released by the caller.
-// Ownership: Returned strings are caller-owned (refcnt == 1).
-// Lifetime: Stateless queries; no persistent state.
-// Links: rt_string.h
-//
-// Machine provides read-only properties for system information:
-// - OS: Operating system name ("linux", "macos", "windows", "unknown")
-// - OSVer: Operating system version string
-// - Host: Hostname
-// - User: Current username
-// - Home: Home directory path
-// - Temp: Temporary directory path
-// - Cores: Number of CPU cores
-// - MemTotal: Total RAM in bytes
-// - MemFree: Free RAM in bytes
-// - Endian: Byte order ("little" or "big")
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -5,10 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: runtime/rt_box.c
-// Purpose: Boxing/unboxing primitives for ViperLang generic collections.
-// Key invariants: Boxed values are heap-allocated objects with type tags.
-// Ownership/Lifetime: Boxed values participate in reference counting.
+// File: src/runtime/oop/rt_box.c
+// Purpose: Implements boxing and unboxing primitives that wrap scalar values
+//          (i64, f64, bool, string, pointer) into heap-allocated objects for
+//          use in generic collections (Seq, Map, List). Each boxed value
+//          carries a type tag for runtime type discrimination.
+//
+// Key invariants:
+//   - Boxed values are heap-allocated via rt_heap_alloc and reference-counted.
+//   - Type tags (BOX_TYPE_I64, BOX_TYPE_F64, BOX_TYPE_STR, etc.) uniquely
+//     identify the contained type.
+//   - Unboxing to the wrong type returns a safe default (0/NULL) not a trap.
+//   - The boxed string retains a reference to the rt_string and releases it
+//     when the box is freed.
+//   - Equality comparison for boxes compares type tags AND values.
+//
+// Ownership/Lifetime:
+//   - Callers receive a fresh reference (refcount=1) from Box constructors.
+//   - Boxed strings hold a retained reference to the rt_string.
+//   - The GC finalizer releases the contained string reference if applicable.
+//
+// Links: src/runtime/oop/rt_box.h (public API),
+//        src/runtime/rt_heap.h (allocation and refcount),
+//        src/runtime/rt_string.h (string retain/release for boxed strings)
 //
 //===----------------------------------------------------------------------===//
 

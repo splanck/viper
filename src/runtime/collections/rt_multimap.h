@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_multimap.h
+// Purpose: String-keyed multimap supporting multiple values per key, returning all values for a key as a Seq, with O(1) average access.
+//
+// Key invariants:
+//   - Each key maps to a sequence of values; duplicate keys are supported.
+//   - rt_multimap_get returns a Seq of all values for the key (empty Seq if absent).
+//   - Values are retained when added; released when removed.
+//   - Removing a key removes all its associated values.
+//
+// Ownership/Lifetime:
+//   - MultiMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - String keys are copied internally. Values are retained.
+//
+// Links: src/runtime/collections/rt_multimap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_multimap.h
-// Purpose: Runtime functions for a string-keyed multimap (one key -> many values).
-// Key invariants: Keys are copied. Values are retained. Each key maps to a Seq.
-// Ownership/Lifetime: MultiMap manages its own memory.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

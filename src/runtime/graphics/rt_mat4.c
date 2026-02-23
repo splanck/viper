@@ -4,27 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_mat4.c
-/// @brief 4x4 matrix math for 3D transformations.
-///
-/// This file implements a 4x4 matrix type used for 3D transformations,
-/// including translation, rotation, scaling, and projection matrices.
-///
-/// **Matrix Layout (Row-Major):**
-/// ```
-/// | m00 m01 m02 m03 |   | Xx Xy Xz Tx |
-/// | m10 m11 m12 m13 | = | Yx Yy Yz Ty |
-/// | m20 m21 m22 m23 |   | Zx Zy Zz Tz |
-/// | m30 m31 m32 m33 |   | 0  0  0  1  |
-///
-/// For 3D affine transforms:
-/// - X, Y, Z: basis vectors (rotation/scale)
-/// - T: translation
-/// ```
-///
-/// **Thread Safety:** Mat4 objects are immutable after creation.
-///
+//
+// File: src/runtime/graphics/rt_mat4.c
+// Purpose: 4x4 matrix mathematics for the Viper.Mat4 class. Implements 3D
+//   affine and projective transforms: translation, rotation (from quaternion or
+//   axis-angle), scale, matrix multiplication, transpose, determinant, inverse,
+//   perspective and orthographic projection, and Vec3/Vec4 transformation.
+//   Used by the 3D scene graph, camera, and skeletal animation systems.
+//
+// Key invariants:
+//   - Elements are stored in row-major order: m[r*4+c] accesses row r, column c.
+//   - The bottom row of affine transforms is always (0, 0, 0, 1).
+//   - Rotation basis vectors (X, Y, Z columns) represent the transformed axes;
+//     translation is stored in column 3 (Tx, Ty, Tz).
+//   - Mat4 objects are immutable after creation; all operations return new
+//     objects allocated from the GC heap.
+//   - Inverse is computed via cofactor expansion; degenerate matrices (det == 0)
+//     return the identity matrix with a runtime warning.
+//   - Perspective projection uses a right-handed coordinate system, depth range
+//     [-1, 1] (OpenGL convention), with near/far clip planes.
+//
+// Ownership/Lifetime:
+//   - All Mat4 objects are allocated via rt_obj_new_i64 (GC heap); no manual
+//     free is required. The mat4_impl struct contains only a double[16] array.
+//
+// Links: src/runtime/graphics/rt_mat4.h (public API),
+//        src/runtime/graphics/rt_vec3.h (Vec3 operand and result type),
+//        src/runtime/graphics/rt_quat.h (quaternion-to-matrix conversion)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_mat4.h"

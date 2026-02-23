@@ -5,17 +5,33 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_string_intern.c
-// Purpose: Global string interning table — O(1) equality via pointer identity (P2-3.8).
+// File: src/runtime/core/rt_string_intern.c
+// Purpose: Implements the global string interning table for the Viper runtime
+//          (P2-3.8). After interning, two equal strings share the same rt_string
+//          pointer, reducing equality tests from O(n) memcmp to O(1) pointer
+//          comparison.
 //
-// Design:
-//   Open-addressing hash table with linear probing.  Power-of-two capacity for
-//   fast modular arithmetic via bitwise AND.  Grows when load > 5/8 (62.5%).
-//   Strings held by the table are retained; they become effectively immortal
-//   (their refcount never reaches zero) until rt_string_intern_drain() is called.
+// Key invariants:
+//   - The table uses open-addressing with linear probing and FNV-1a (64-bit)
+//     hashing; capacity is always a power of two for fast modular arithmetic.
+//   - The table grows (doubles capacity, rehashes) when load > 5/8 (62.5%);
+//     on allocation failure the table remains at high load but stays correct.
+//   - Interned strings are retained (rt_string_ref) and become effectively
+//     immortal until rt_string_intern_drain() releases all entries.
+//   - rt_string_interned_eq(a, b) reduces to a == b (pointer equality) for
+//     any two strings that have been interned.
+//   - All operations are protected by g_lock_ (pthread_mutex); the table is
+//     safe for concurrent use from multiple threads.
 //
-//   After interning, two equal strings share the same rt_string pointer, so
-//   equality reduces from O(n) memcmp to O(1) pointer comparison.
+// Ownership/Lifetime:
+//   - The slot array is heap-allocated (calloc/free) and resized on growth;
+//     the old array is freed after rehashing.
+//   - Each interned rt_string has its refcount incremented by one; the table
+//     holds that reference until drain.
+//
+// Links: src/runtime/core/rt_string_intern.h (public API),
+//        src/runtime/core/rt_string.h (rt_string ref-counting),
+//        src/runtime/core/rt_string_ops.c (string operations)
 //
 //===----------------------------------------------------------------------===//
 

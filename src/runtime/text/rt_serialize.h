@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_serialize.h
+// Purpose: Unified serialization interface providing format-agnostic dispatch (JSON, TOML, YAML, INI, XML) via a format enum or auto-detection from file extension.
+//
+// Key invariants:
+//   - Format is selected by enum or auto-detected from file extension.
+//   - All serialize operations produce a string; deserialize produces a value.
+//   - rt_serialize_auto detects the format from the file extension.
+//   - Format-specific errors return NULL; no trapping on bad input.
+//
+// Ownership/Lifetime:
+//   - Returned values and strings are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_serialize.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_serialize.h
-// Purpose: Unified serialization interface for all data formats.
-// Key invariants: Format-agnostic dispatch via format enum or auto-detection.
-// Ownership/Lifetime: Returned values/strings are newly allocated.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

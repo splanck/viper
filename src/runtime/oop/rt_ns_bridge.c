@@ -5,14 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_ns_bridge.c
-// Purpose: Minimal helpers to bridge Viper.* namespaced types to runtime objects.
-// Key invariants: Object memory is managed by the runtime heap; returned
-//                 handles follow the same ownership model as other rt_object
-//                 instances (retain/release enforced by higher layers).
-// Ownership/Lifetime: Allocated objects live on the runtime heap and are
-//                     reclaimed via the object lifecycle (retain/release + GC).
-// Links: docs/codemap.md, src/runtime/rt_oop.h, src/runtime/rt_string_builder.h
+// File: src/runtime/oop/rt_ns_bridge.c
+// Purpose: Provides minimal bridge helpers that wrap Viper.* namespaced types
+//          (such as StringBuilder) as heap-allocated runtime objects compatible
+//          with the OOP object model. Enables Viper code to use these types
+//          through the standard retain/release interface.
+//
+// Key invariants:
+//   - All wrapped objects are allocated through the runtime heap (rt_heap_alloc).
+//   - Returned handles follow the same retain/release ownership model as
+//     other rt_object instances.
+//   - Each wrapped type embeds its data at a fixed offset after the vptr field.
+//   - The vptr field at offset 0 is set to a static vtable for the type.
+//
+// Ownership/Lifetime:
+//   - Callers receive a fresh reference (refcount=1) from bridge constructors.
+//   - The runtime GC handles deallocation when the refcount reaches zero.
+//
+// Links: src/runtime/oop/rt_ns_bridge.h (public API),
+//        src/runtime/rt_object.h (rt_object allocation and lifecycle),
+//        src/runtime/rt_string_builder.h (StringBuilder embedded in bridge object)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_object.h"
 #include "rt_string_builder.h"

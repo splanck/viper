@@ -5,13 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_bag.c
-// Purpose: Implement a string set (Bag) using FNV-1a hash with chaining.
-// Structure: [vptr | buckets | capacity | count]
-// - vptr: points to class vtable (placeholder for OOP compatibility)
-// - buckets: array of entry chain heads
-// - capacity: number of buckets
-// - count: number of entries
+// File: src/runtime/collections/rt_bag.c
+// Purpose: Implements a multiset (Bag) of strings using an FNV-1a hash table
+//   with separate chaining. A Bag tracks how many times each distinct string
+//   has been added, supporting add, remove, count, and membership queries.
+//   Distinct from a Set in that adding the same string multiple times keeps
+//   independent counts; remove decrements the count and only fully removes the
+//   entry when the count reaches zero.
+//
+// Key invariants:
+//   - Backed by a hash table with initial capacity BAG_INITIAL_CAPACITY (16)
+//     and separate chaining (linked list per bucket).
+//   - Resizes (doubles) when count/capacity exceeds 75% (BAG_LOAD_FACTOR 3/4).
+//   - Each entry owns a heap-allocated copy of the key string; the Bag is
+//     independent of the lifetime of the source rt_string objects.
+//   - Hash is FNV-1a over the raw key bytes for good distribution.
+//   - All operations are O(1) average case; O(n) worst case due to chaining.
+//   - Not thread-safe; external synchronization required for concurrent access.
+//
+// Ownership/Lifetime:
+//   - Bag objects are GC-managed (rt_obj_new_i64). The bucket array and all
+//     entry nodes are freed by the GC finalizer (bag_finalizer).
+//
+// Links: src/runtime/collections/rt_bag.h (public API),
+//        src/runtime/collections/rt_hash_util.h (FNV-1a hash macro)
 //
 //===----------------------------------------------------------------------===//
 

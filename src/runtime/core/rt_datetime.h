@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_datetime.h
+// Purpose: Runtime date/time functions providing Unix timestamp queries, component extraction (year, month, day, hour, minute, second), formatting, and arithmetic operations for the Viper.DateTime runtime class.
+//
+// Key invariants:
+//   - All timestamps are Unix timestamps in seconds since the UTC epoch (1970-01-01 00:00:00).
+//   - Component extraction functions use local time; UTC variants use the _utc suffix.
+//   - rt_datetime_now_ms returns milliseconds since epoch for high-resolution timing.
+//   - Formatting follows ISO 8601 conventions by default.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated and must be released by the caller.
+//   - Integer timestamps are value types; no heap allocation for arithmetic.
+//
+// Links: src/runtime/core/rt_datetime.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_datetime.h
-// Purpose: Runtime functions for date/time operations.
-// Key invariants: Timestamps are Unix timestamps in seconds since epoch (UTC).
-// Ownership/Lifetime: Returned strings are allocated and must be managed by caller.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

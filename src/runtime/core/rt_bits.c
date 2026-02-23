@@ -5,40 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_bits.c
-// Purpose: Implement bit manipulation utilities for Viper.Bits.
+// File: src/runtime/core/rt_bits.c
+// Purpose: Implements the Viper.Bits namespace — low-level bit manipulation
+//          operations on 64-bit integers. Covers bitwise AND/OR/XOR/NOT,
+//          left/arithmetic-right/logical-right shifts, rotations, population
+//          count, leading/trailing zero counts, bit-reverse, byte-swap, and
+//          single-bit get/set/clear/toggle.
 //
-// This module provides low-level bit manipulation operations on 64-bit integers.
-// All operations treat the integer as a sequence of 64 bits, numbered 0-63 where
-// bit 0 is the least significant bit (LSB) and bit 63 is the most significant
-// bit (MSB).
+// Key invariants:
+//   - Bit positions are numbered 0 (LSB) through 63 (MSB).
+//   - Shift counts are taken modulo 64 to avoid undefined behaviour; callers
+//     should pass values in [0, 63] for defined BASIC semantics.
+//   - Logical right shift treats the operand as unsigned (zero-fill from MSB).
+//   - Arithmetic right shift preserves the sign bit (sign-extends).
+//   - All functions are pure with no side effects; safe for concurrent use.
+//   - MSVC intrinsic headers (<intrin.h>) are included when available to
+//     enable hardware popcount and bit-scan instructions.
 //
-// **Bit numbering convention:**
-// ```
-// Bit:  63  62  61  ...  3   2   1   0
-//       ^                          ^
-//       |                          |
-//      MSB                        LSB
-// ```
+// Ownership/Lifetime:
+//   - All functions operate on scalar int64_t values; no allocation is performed.
+//   - No state is retained between calls.
 //
-// Categories of operations:
-// - Basic bitwise: AND, OR, XOR, NOT
-// - Shifts: left shift, arithmetic right shift, logical right shift
-// - Rotates: rotate left, rotate right
-// - Counting: population count, leading zeros, trailing zeros
-// - Manipulation: bit reverse, byte swap
-// - Single-bit: get, set, clear, toggle individual bits
-//
-// Thread safety: All operations are pure functions with no side effects.
+// Links: src/runtime/core/rt_bits.h (public API)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Bit manipulation utilities for 64-bit integers.
-/// @details Provides a comprehensive set of bitwise operations including
-///          shifts, rotates, counting, and single-bit manipulation. All
-///          operations work on 64-bit signed integers but treat them as
-///          bit patterns (unsigned where appropriate for well-defined behavior).
 
 #include "rt_bits.h"
 

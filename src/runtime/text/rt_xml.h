@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_xml.h
+// Purpose: XML parsing and formatting utilities for Viper.Data.Xml, handling elements, attributes, text nodes, comments, and CDATA with a reference-counted tree API.
+//
+// Key invariants:
+//   - Parses well-formed XML; returns NULL on malformed input.
+//   - Supports elements, attributes, text content, comments, and CDATA sections.
+//   - Tree nodes are reference-counted; children are retained by their parent.
+//   - rt_xml_serialize produces compact XML; rt_xml_serialize_pretty produces indented output.
+//
+// Ownership/Lifetime:
+//   - Returned node objects start with refcount 1; caller owns the root.
+//   - Child nodes are retained by their parent; releasing the root releases all children.
+//
+// Links: src/runtime/text/rt_xml.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_xml.h
-// Purpose: XML parsing and formatting utilities for Viper.Data.Xml.
-// Key invariants: Handles elements, attributes, text, comments, CDATA.
-// Ownership/Lifetime: Returned nodes are newly allocated, ref-counted.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

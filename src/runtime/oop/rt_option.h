@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/oop/rt_option.h
+// Purpose: Option type representing either Some(value) or None, with typed extraction, transformation (map, flat_map), and conversion to Result.
+//
+// Key invariants:
+//   - An Option is always exactly one of Some or None.
+//   - rt_option_unwrap traps on None; use rt_option_get_or for safe extraction.
+//   - Typed accessors (get_i64, get_f64, get_str, get_obj) must match the stored variant.
+//   - rt_option_map applies a function to Some's value; returns None for None.
+//
+// Ownership/Lifetime:
+//   - Option objects are GC-managed opaque pointers.
+//   - Values inside Option objects are retained while stored.
+//
+// Links: src/runtime/oop/rt_option.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_option.h
-// Purpose: Option type representing Some(value) or None with typed
-//   extraction, transformation, and conversion to Result.
-// Key invariants: An Option is either Some (holding a value) or None.
-//   Unwrap traps on None. Typed accessors must match the stored variant.
-// Ownership/Lifetime: Option objects are GC-managed. Values are retained.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

@@ -5,19 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_ring.c
-// Purpose: Implement a fixed-size circular buffer (ring buffer).
-// Structure: [vptr | items | capacity | head | count]
-// - vptr: points to class vtable (placeholder for OOP compatibility)
-// - items: array of element pointers
-// - capacity: fixed maximum size
-// - head: index of oldest element
-// - count: number of elements currently stored
+// File: src/runtime/collections/rt_ring.c
+// Purpose: Implements a fixed-capacity circular ring buffer. When the ring is
+//   full, pushing a new element overwrites the oldest element (the head
+//   advances). This gives constant-time push with bounded memory — ideal for
+//   sliding windows, input history, audio sample buffers, and recent-event logs.
 //
-// Behavior:
-// - Push adds to tail; if full, overwrites oldest (head advances)
-// - Pop removes from head (FIFO order)
-// - Get(0) returns oldest, Get(len-1) returns newest
+// Key invariants:
+//   - Capacity is fixed at construction and never changes.
+//   - head is the index of the oldest element (next to be overwritten or popped).
+//   - Logical element i maps to physical index (head + i) % capacity.
+//   - Get(0) is oldest, Get(count-1) is newest.
+//   - Push when full: overwrites the oldest element and advances head (no error).
+//   - Push when not full: writes to (head + count) % capacity and increments count.
+//   - Pop removes and returns the oldest element (head advances); returns NULL
+//     if empty.
+//   - The Ring does NOT retain element references; element lifetime is the
+//     caller's responsibility.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - Ring objects are GC-managed (rt_obj_new_i64). The items array is
+//     malloc-managed and freed by the GC finalizer (ring_finalizer).
+//
+// Links: src/runtime/collections/rt_ring.h (public API),
+//        src/runtime/collections/rt_queue.h (growing FIFO queue variant)
 //
 //===----------------------------------------------------------------------===//
 

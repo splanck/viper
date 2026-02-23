@@ -5,8 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_duration.c
-// Purpose: Duration/TimeSpan type implementation.
+// File: src/runtime/core/rt_duration.c
+// Purpose: Implements the Duration/TimeSpan type for the Viper runtime.
+//          A Duration is a signed 64-bit integer representing a time span in
+//          milliseconds. Provides factory functions (FromMillis, FromSeconds,
+//          FromMinutes, FromHours, FromDays), total-unit accessors, component
+//          extraction (Days/Hours/Minutes/Seconds/Millis parts), and formatting.
+//
+// Key invariants:
+//   - A Duration is represented as a plain int64_t (milliseconds); there is no
+//     wrapper struct or heap object — values are passed by value.
+//   - All factory and conversion functions are pure arithmetic; no validation
+//     is performed on overflow (callers are responsible).
+//   - Component extraction (e.g., rt_duration_hours_part) returns the whole-
+//     unit component after subtracting larger units, analogous to .NET TimeSpan.
+//   - Negative durations represent intervals in the past; component parts may
+//     be negative when the total duration is negative.
+//
+// Ownership/Lifetime:
+//   - Duration values are scalar int64_t; no heap allocation is performed.
+//   - Formatted strings returned by rt_duration_to_string are newly allocated
+//     rt_string values; the caller owns the reference and must unref when done.
+//
+// Links: src/runtime/core/rt_duration.h (public API),
+//        src/runtime/core/rt_daterange.c (uses Duration for span computation),
+//        src/runtime/core/rt_stopwatch.c (produces Duration-valued elapsed time)
 //
 //===----------------------------------------------------------------------===//
 

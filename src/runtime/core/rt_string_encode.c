@@ -5,20 +5,33 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Bridges BASIC runtime strings with raw byte buffers.  The helpers in this
-// translation unit construct single-character strings, expose ASCII conversion
-// utilities, and adapt literal C strings into the runtime's reference-counted
-// representation.  Centralising the logic keeps ownership rules and error
-// reporting consistent across VM and native integrations.
+// File: src/runtime/core/rt_string_encode.c
+// Purpose: Bridges BASIC runtime strings with raw byte values. Implements
+//          CHR$ (integer-to-single-character string), ASC (first-byte
+//          extraction), and helpers to borrow C string views or wrap C string
+//          literals into reference-counted rt_string handles.
+//
+// Key invariants:
+//   - CHR$ accepts byte codes in [0, 255]; values outside this range trap with
+//     a descriptive diagnostic including the offending code value.
+//   - ASC returns 0 for empty strings (matching legacy BASIC semantics) and
+//     traps on NULL input.
+//   - Borrowed C string views (rt_string_cstr) must not be mutated or freed by
+//     callers; the pointer is owned by the runtime string.
+//   - All conversion helpers trap rather than return NULL on invalid input.
+//
+// Ownership/Lifetime:
+//   - rt_str_chr returns a newly allocated rt_string (new reference); caller
+//     must call rt_string_unref when done.
+//   - rt_string_cstr returns a pointer into the string's internal buffer;
+//     the pointer is valid only while the rt_string is alive.
+//   - No heap allocation is performed by read-only accessors (ASC, cstr).
+//
+// Links: src/runtime/core/rt_string.h (rt_string type and allocation API),
+//        src/runtime/core/rt_string_ops.c (higher-level string operations),
+//        src/runtime/core/rt_int_format.c (integer formatting for diagnostics)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief String encoding helpers shared by the BASIC runtime.
-/// @details Defines utility functions that convert between integers and
-///          single-character strings, borrow C string views, and wrap literals
-///          into @ref rt_string handles while preserving the runtime's memory
-///          management conventions.
 
 #include "rt_int_format.h"
 #include "rt_internal.h"

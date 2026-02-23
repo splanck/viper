@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_textwrap.h
+// Purpose: Text wrapping utilities for formatting text to specified column widths, supporting word wrapping, hyphenation hints, and indentation.
+//
+// Key invariants:
+//   - Word wrapping breaks at whitespace; words longer than the width are not split.
+//   - rt_textwrap_fill returns a wrapped string with newlines inserted at word boundaries.
+//   - rt_textwrap_indent prepends a prefix string to each line.
+//   - Width is measured in bytes; multi-byte UTF-8 characters may cause visual misalignment.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of wrapping.
+//
+// Links: src/runtime/text/rt_textwrap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_textwrap.h
-// Purpose: Text wrapping utilities for formatting text to specified widths.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

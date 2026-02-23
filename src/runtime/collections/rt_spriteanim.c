@@ -4,10 +4,37 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_spriteanim.c
-/// @brief Implementation of frame-based sprite animation controller.
-///
+//
+// File: src/runtime/collections/rt_spriteanim.c
+// Purpose: Frame-index animation controller for Viper sprite sheets. Advances
+//   an integer frame index through a configurable sequence of frames at a
+//   specified frames-per-second rate relative to the game's frame rate.
+//   Supports looping, ping-pong (forward then reverse), one-shot (stops at
+//   last frame), and manual frame control. The controller does not draw
+//   anything — it only computes which frame to display each update, leaving
+//   rendering to the sprite/spritebatch layer.
+//
+// Key invariants:
+//   - Frames are identified by non-negative integers (indices into a sprite
+//     sheet row). The range [start_frame, end_frame] is inclusive. There is no
+//     compile-time cap on frame count — any integer range is valid.
+//   - Animation speed is expressed as `fps` (frames of animation per second).
+//     The controller accumulates fractional frame advances each Update() call
+//     based on `fps / game_fps`. Callers pass `game_fps` (e.g. 60) to Update.
+//   - Loop mode: wraps from end_frame back to start_frame automatically.
+//   - PingPong mode: plays start→end, then end→start, alternating direction.
+//   - OneShot mode: stops at end_frame; is_complete() returns 1 thereafter.
+//   - Calling Reset() returns to start_frame and clears the complete flag.
+//   - The current frame is always in [start_frame, end_frame].
+//
+// Ownership/Lifetime:
+//   - SpriteAnim objects are GC-managed (rt_obj_new_i64). They hold no external
+//     resources and require no finalizer beyond the GC reclaiming the struct.
+//
+// Links: src/runtime/collections/rt_spriteanim.h (public API),
+//        src/runtime/graphics/rt_spritebatch.h (rendering),
+//        docs/viperlib/game.md (SpriteAnim section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_spriteanim.h"

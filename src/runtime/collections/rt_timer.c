@@ -4,10 +4,36 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_timer.c
-/// @brief Implementation of frame-based timer.
-///
+//
+// File: src/runtime/collections/rt_timer.c
+// Purpose: Frame-counted countdown timer for Viper games. A Timer fires after a
+//   specified number of game frames and optionally repeats automatically.
+//   Frame-based timing is deterministic (independent of wall-clock drift) and
+//   integrates naturally with game loops that call Update() exactly once per
+//   rendered frame. Typical uses: cooldowns, enemy respawns, animation delays,
+//   and periodic events.
+//
+// Key invariants:
+//   - Duration and elapsed are both integer frame counts. Duration must be > 0;
+//     zero or negative durations are silently rejected by Start/StartRepeating.
+//   - rt_timer_update() must be called once per frame while the timer is
+//     running. It returns 1 on the frame the timer expires, 0 otherwise. For a
+//     repeating timer, it fires every `duration` frames and resets elapsed to 0
+//     on expiry (never stops automatically).
+//   - rt_timer_is_expired() returns 1 only if the timer ran to completion and
+//     is no longer running. It returns 0 for a timer that was stopped early.
+//   - rt_timer_progress() returns [0, 100] as an integer percentage of elapsed
+//     frames. At 0 frames elapsed it is 0; at or beyond duration it is 100.
+//   - rt_timer_remaining() returns the number of frames left until expiry, or 0
+//     if already expired or not started.
+//
+// Ownership/Lifetime:
+//   - Timer objects are GC-managed (rt_obj_new_i64). rt_timer_destroy() calls
+//     rt_obj_free() explicitly; the GC also reclaims them automatically.
+//
+// Links: src/runtime/collections/rt_timer.h (public API),
+//        docs/viperlib/game.md (Timer section — note: frame-based, not ms-based)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_timer.h"

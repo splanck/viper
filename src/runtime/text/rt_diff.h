@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_diff.h
+// Purpose: Line-based text difference computation using the Myers diff algorithm, producing a Seq of diff entries for added, removed, and unchanged lines.
+//
+// Key invariants:
+//   - Uses the Myers O(D) diff algorithm for minimal edit distance.
+//   - Diff entries include operation type (add/remove/equal) and line content.
+//   - Input texts are split on newlines; empty strings produce empty diffs.
+//   - The result Seq contains entries in document order.
+//
+// Ownership/Lifetime:
+//   - Returned Seq and string objects are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_diff.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_diff.h
-// Purpose: Text difference computation (line-based Myers diff).
-// Key invariants: Returned Seq objects contain diff entries.
-// Ownership/Lifetime: Returned strings and Seqs are allocated.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

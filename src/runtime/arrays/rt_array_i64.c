@@ -5,15 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the dynamic array helpers for 64-bit integer arrays (LONG).
-// This mirrors rt_array.c but uses int64_t elements.
+// File: src/runtime/arrays/rt_array_i64.c
+// Purpose: Implements dynamic array helpers for 64-bit integer (LONG) arrays,
+//          mirroring rt_array.c but using int64_t elements. Provides allocation,
+//          bounds-checked access, mutation, and resize logic through the shared
+//          runtime heap.
+//
+// Key invariants:
+//   - Array payloads are preceded by a rt_heap_hdr_t header in the heap layout.
+//   - Out-of-bounds accesses delegate to rt_arr_oob_panic which aborts.
+//   - Resize doubles capacity to amortise allocation cost.
+//   - All indices are zero-based; length and capacity are stored in the header.
+//   - Mirrors the same invariants as rt_array.c with int64_t element width.
+//
+// Ownership/Lifetime:
+//   - Arrays are reference-counted via the heap allocator.
+//   - Callers must not cache raw int64_t* pointers across calls that may resize.
+//
+// Links: src/runtime/arrays/rt_array_i64.h (public API),
+//        src/runtime/arrays/rt_array.h (int32 variant, provides oob_panic),
+//        src/runtime/arrays/rt_array_f64.h (double variant)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implements dynamic array helpers for 64-bit integer values.
-/// @details Provides allocation, bounds-checked access, and resize logic for
-///          arrays of int64_t stored in the runtime heap.
 
 #include "rt_array_i64.h"
 #include "rt_array.h" // for rt_arr_oob_panic

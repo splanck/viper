@@ -4,10 +4,50 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_quadtree.c
-/// @brief Implementation of quadtree for spatial partitioning.
-///
+//
+// File: src/runtime/collections/rt_quadtree.c
+// Purpose: Spatial quadtree for Viper games. Accelerates nearest-neighbour and
+//   rectangular-region queries from O(n) linear scans to approximately
+//   O(n log n) by recursively subdividing a 2D world region into four equal
+//   quadrants (NW, NE, SW, SE). Typical use cases: enemy radar, player
+//   proximity triggers, broad-phase collision detection, and line-of-sight
+//   culling over large open worlds.
+//
+// Key invariants:
+//   - Items are identified by unique int64 IDs and stored as (center x, center y,
+//     width, height) AABBs. All coordinates are in the same integer unit space
+//     as the world bounds given to rt_quadtree_new().
+//   - The tree subdivides a node when it would overflow RT_QUADTREE_MAX_ITEMS
+//     (8) items, up to a maximum depth of RT_QUADTREE_MAX_DEPTH (8) levels.
+//     Items that span a subdivision midpoint are kept in the parent node.
+//   - Nodes are heap-allocated individually via malloc(). The GC finalizer
+//     (quadtree_finalizer) recursively destroys the entire node tree when the
+//     root object is collected. This means the tree is NOT fully GC-transparent:
+//     node memory is invisible to the GC and is freed via the finalizer path
+//     rather than by GC tracing.
+//   - The flat item array (items[MAX_TOTAL_ITEMS]) lives inside the root struct
+//     which IS GC-managed. item_count is the high-water mark (never decrements);
+//     inactive items are marked with active == 0.
+//   - Duplicate-ID insert guard: rt_quadtree_insert() performs a linear scan of
+//     the flat array before insertion. Inserting the same ID twice is rejected
+//     (returns 0) to prevent ghost items after a single Remove().
+//   - Query results are stored in the root's results[] array (capacity
+//     RT_QUADTREE_MAX_RESULTS = 256). If more items match, query_truncated is
+//     set to 1. Callers that need all results must check
+//     rt_quadtree_query_was_truncated() after every query.
+//   - Pair collection (rt_quadtree_get_pairs) generates up to MAX_PAIRS (1024)
+//     candidate collision pairs by walking the tree recursively and testing
+//     items in each node against each other AND against all ancestor items.
+//
+// Ownership/Lifetime:
+//   - The root struct is GC-managed (rt_obj_new_i64). Node memory is freed by
+//     quadtree_finalizer via recursive destroy_node(). Callers may also call
+//     rt_quadtree_destroy() explicitly, but it is a documented no-op — rely on
+//     the finalizer for cleanup.
+//
+// Links: src/runtime/collections/rt_quadtree.h (public API),
+//        docs/viperlib/game.md (Quadtree section, truncation notes)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_quadtree.h"

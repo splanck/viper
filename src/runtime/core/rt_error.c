@@ -5,20 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Declares the canonical success sentinel used by the runtime error reporting
-// infrastructure.  Centralising the definition ensures both the VM and native
-// runtimes share a single representation, avoiding discrepancies when checking
-// for the absence of errors.  The constants in this translation unit live in
-// static storage and therefore never require explicit initialisation by
-// embedding applications.
+// File: src/runtime/core/rt_error.c
+// Purpose: Defines the canonical success sentinel RT_ERROR_NONE shared across
+//   the runtime error reporting infrastructure. Centralising the definition in
+//   a single translation unit ensures both VM and native runtimes observe the
+//   same storage address, avoiding discrepancies when checking for the absence
+//   of errors by pointer identity or atomic replacement.
+//
+// Key invariants:
+//   - RT_ERROR_NONE.kind == Err_None and RT_ERROR_NONE.payload == 0.
+//   - The object resides in static storage and is never modified at runtime.
+//   - All runtime subsystems that return RtError use {Err_None, 0} for success;
+//     any other kind value indicates a specific error category.
+//
+// Ownership/Lifetime:
+//   - Static storage — no allocation, no cleanup required.
+//   - Callers must treat RT_ERROR_NONE as a read-only constant.
+//
+// Links: src/runtime/core/rt_error.h (public API, RtError struct definition)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Provides the canonical success @ref RtError instance.
-/// @details Runtime subsystems treat @ref RT_ERROR_NONE as a universal "no
-///          error" token.  Defining it out-of-line guarantees a single storage
-///          location even when multiple components include @ref rt_error.h.
 
 #include "rt_error.h"
 

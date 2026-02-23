@@ -5,8 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_scanner.c
-// Purpose: String scanner implementation.
+// File: src/runtime/text/rt_scanner.c
+// Purpose: Implements a cursor-based string scanner for the Viper.Text.Scanner
+//          class. Provides character-by-character and token-level scanning
+//          with Peek, Read, SkipWhile, ReadWhile, Match, and Expect operations.
+//
+// Key invariants:
+//   - The scanner maintains a position cursor into the source string.
+//   - Peek returns the character at the current position without advancing.
+//   - Read returns the current character and advances the cursor by one.
+//   - AtEnd returns true when position >= length; Peek/Read at end return '\0'.
+//   - Match advances only if the current character equals the expected one.
+//   - Expect advances unconditionally and traps if the character is unexpected.
+//   - The source string is borrowed; the scanner does not retain or copy it.
+//
+// Ownership/Lifetime:
+//   - Scanner objects are heap-allocated and managed by the runtime GC.
+//   - The source string must outlive the scanner; it is not retained by the scanner.
+//
+// Links: src/runtime/text/rt_scanner.h (public API),
+//        src/runtime/text/rt_compiled_pattern.h (regex pattern, related scanning)
 //
 //===----------------------------------------------------------------------===//
 

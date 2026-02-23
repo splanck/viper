@@ -5,20 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Defines the minimal debug-printing surface used by the IL test harnesses and
-// integration tools.  The helpers write to stdout using the platform C runtime
-// and flush immediately so deterministic traces are available even when the
-// process terminates abruptly.  Centralising these entry points keeps the
-// low-level runtime ABI stable while still allowing embedders to override the
-// behaviour when necessary.
+// File: src/runtime/core/rt_debug.c
+// Purpose: Minimal debug-print helpers used by IL test harnesses, integration
+//   tools, and golden-output tests. Functions write to stdout via the C stdio
+//   layer and flush immediately, so deterministic traces are captured even when
+//   the process terminates abruptly. The ABI is kept small and stable so
+//   embedders can override the routines via linker substitution if needed.
+//
+// Key invariants:
+//   - All output goes to stdout (not stderr) to be captured by golden-test
+//     pipelines that redirect stdout.
+//   - fflush(stdout) is called after every print to guarantee visibility
+//     before any subsequent crash or trap.
+//   - NULL string arguments are normalized to "" — callers need not guard.
+//
+// Ownership/Lifetime:
+//   - No heap allocation. All functions are stateless wrappers.
+//
+// Links: src/runtime/core/rt_debug.h (public API)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Runtime helpers that print debug traces to stdout.
-/// @details Exposes thin wrappers that normalise optional inputs and flush the
-///          C stdio buffers eagerly.  The functions are used by diagnostics and
-///          golden tests to produce deterministic textual output.
 
 #include "rt_debug.h"
 

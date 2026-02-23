@@ -5,22 +5,36 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_string_ops.c
-// Purpose: Implement the BASIC runtime's intrinsic string operations and
-//          supporting allocation/retention helpers.
-// Key invariants: Runtime strings are reference-counted, literal handles are
-//                 immutable and may become immortal, and every intrinsic mirrors
-//                 the VM's slicing/trimming/case-conversion semantics exactly.
-// Links: docs/runtime/strings.md
+// File: src/runtime/core/rt_string_ops.c
+// Purpose: Implements the BASIC runtime's intrinsic string operations and
+//          supporting allocation/retention helpers. Covers slicing (Left, Mid,
+//          Right), trimming (LTrim, RTrim, Trim), case conversion (UCase,
+//          LCase), searching (InStr, IndexOf), and concatenation, all mirroring
+//          VM semantics exactly for deterministic VM/native equivalence.
+//
+// Key invariants:
+//   - Runtime strings are reference-counted; literal and embedded (SSO) strings
+//     may have immortal refcounts (SIZE_MAX-1) and are never freed.
+//   - All intrinsics trap on NULL or invalid arguments rather than returning
+//     error codes, matching VM behaviour precisely.
+//   - Slice operations (Left/Mid/Right) produce new heap-backed strings; they
+//     never alias into the source string's storage.
+//   - Case conversion is byte-level ASCII; multi-byte UTF-8 sequences are passed
+//     through unchanged.
+//   - String lengths are reported in bytes, not Unicode code points.
+//
+// Ownership/Lifetime:
+//   - Functions that return rt_string transfer a new reference to the caller;
+//     the caller must call rt_string_unref when finished.
+//   - Functions that accept rt_string borrow the reference; they do not retain
+//     or release the input.
+//
+// Links: src/runtime/core/rt_string.h (rt_string type and ref-counting API),
+//        src/runtime/core/rt_string_builder.c (growable buffer for concat),
+//        src/runtime/core/rt_string_encode.c (CHR$/ASC helpers),
+//        docs/runtime/strings.md
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Core string operations for the BASIC runtime.
-/// @details Provides allocation helpers, reference management utilities, and
-///          implementations of the intrinsic string-manipulation functions.  All
-///          routines trap on invalid arguments to produce consistent diagnostics
-///          across native and VM execution modes.
 
 #include "rt_int_format.h"
 #include "rt_internal.h"

@@ -4,10 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_inputmgr.c
-/// @brief Implementation of high-level input manager.
-///
+//
+// File: src/runtime/graphics/rt_inputmgr.c
+// Purpose: High-level input manager that aggregates keyboard, mouse, and gamepad
+//   state from the lower-level input layers. Provides per-key debounce filtering
+//   (configurable delay in frames) to suppress rapid re-trigger on held keys.
+//   Acts as a convenience wrapper: most methods delegate directly to the global
+//   rt_input / rt_pad state and apply debounce tracking on top.
+//
+// Key invariants:
+//   - rt_inputmgr_update() must be called once per frame to decrement debounce
+//     timers; failing to call it freezes debounce state.
+//   - Debounce tracking is limited to MAX_DEBOUNCE_KEYS (32) simultaneous keys;
+//     additional debounce requests beyond capacity are silently ignored.
+//   - Debounce delay defaults to 12 frames (~200 ms at 60 fps); configurable
+//     per instance via rt_inputmgr_set_debounce_delay().
+//   - Non-debounced query methods (key_pressed, key_held, etc.) pass through
+//     directly to the global input state without any filtering.
+//
+// Ownership/Lifetime:
+//   - rt_inputmgr instances are allocated via rt_obj_new_i64 (GC heap);
+//     rt_inputmgr_destroy is a no-op (GC handles reclamation).
+//
+// Links: src/runtime/graphics/rt_inputmgr.h (public API),
+//        src/runtime/graphics/rt_input.h (keyboard/mouse global state),
+//        src/runtime/graphics/rt_input_pad.h (gamepad global state)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_inputmgr.h"

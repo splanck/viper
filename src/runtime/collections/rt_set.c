@@ -5,17 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_set.c
-// Purpose: Implement a generic hash set with content-aware hashing.
-// Structure: [vptr | buckets | capacity | count]
-// - vptr: points to class vtable (placeholder for OOP compatibility)
-// - buckets: array of entry chain heads
-// - capacity: number of buckets
-// - count: number of entries
+// File: src/runtime/collections/rt_set.c
+// Purpose: Implements a generic hash set supporting heterogeneous element types.
+//   Uses content-aware hashing and equality: boxed integers, floats, booleans,
+//   and strings are compared by value; non-boxed objects fall back to pointer
+//   identity. Supports add, remove, contains, intersection, union, and
+//   difference operations.
 //
-// Uses content-aware hashing and equality for boxed values (RT_ELEM_BOX):
-// boxed integers, floats, booleans, and strings are compared by value.
-// Non-boxed objects fall back to pointer identity hashing.
+// Key invariants:
+//   - Backed by a hash table with initial capacity SET_INITIAL_CAPACITY (16)
+//     and separate chaining.
+//   - Resizes (doubles) at 75% load factor (SET_LOAD_FACTOR 3/4).
+//   - Hash dispatch: RT_ELEM_BOX elements use content hash (FNV-1a for strings,
+//     bit-mix for integers/floats); all other elements use pointer address.
+//   - Equality dispatch matches the hash dispatch to ensure correctness.
+//   - Elements are stored as raw void* pointers; the set does NOT retain them.
+//   - Contains, add, and remove are O(1) average case; O(n) worst case.
+//   - Set algebra (union, intersection, difference) iterates all buckets: O(n+m).
+//   - Not thread-safe; external synchronization required for concurrent access.
+//
+// Ownership/Lifetime:
+//   - Set objects are GC-managed (rt_obj_new_i64). The bucket array and all
+//     entry nodes are freed by the GC finalizer (set_finalizer).
+//
+// Links: src/runtime/collections/rt_set.h (public API),
+//        src/runtime/rt_box.h (boxed value type inspection)
 //
 //===----------------------------------------------------------------------===//
 

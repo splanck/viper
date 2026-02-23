@@ -1,26 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_template.h
+// Purpose: Simple string templating with {{key}} placeholder substitution from a Map or sequential Seq, supporting custom delimiters via RenderWith.
+//
+// Key invariants:
+//   - Placeholders have the form {{key}}; whitespace around key is trimmed.
+//   - Missing keys are left as literal placeholder text (not replaced).
+//   - Empty placeholders {{}} are left as-is.
+//   - Custom delimiters can be configured via rt_template_render_with.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - Input template and value strings are borrowed for the duration of rendering.
+//
+// Links: src/runtime/text/rt_template.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_template.h
-// Purpose: Simple string templating with placeholder substitution.
-// Key invariants: Placeholders {{key}} replaced with values from Map/Seq.
-// Ownership/Lifetime: Returned strings are newly allocated.
-// Links: docs/viperlib/text.md
-//
-// Placeholder syntax:
-// - {{key}} - replaced with values.Get(key)
-// - {{ key }} - whitespace around key is trimmed
-// - {{}} - empty key, left as literal
-// - Missing keys: left as-is (not replaced)
-//
-// Custom delimiters supported via RenderWith().
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

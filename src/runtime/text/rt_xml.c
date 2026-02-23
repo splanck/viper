@@ -4,45 +4,29 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_xml.c
-/// @brief XML parsing and formatting utilities.
-///
-/// This file implements XML parsing and formatting following the XML 1.0
-/// specification for common use cases.
-///
-/// **XML Node Types:**
-///
-/// | Type        | Description                       |
-/// |-------------|-----------------------------------|
-/// | Element     | Tag with attributes and children  |
-/// | Text        | Text content                      |
-/// | Comment     | <!-- comment -->                  |
-/// | CDATA       | <![CDATA[ raw text ]]>            |
-/// | Document    | Root container                    |
-///
-/// **Parsing Example:**
-/// ```
-/// Dim text = "<root><item id=\"1\">Hello</item></root>"
-/// Dim doc = Xml.Parse(text)
-/// Dim root = doc.Root
-/// Print root.Tag         ' "root"
-/// Print root.Child("item").Attr("id")  ' "1"
-/// Print root.Child("item").TextContent ' "Hello"
-/// ```
-///
-/// **Creating XML:**
-/// ```
-/// Dim root = Xml.Element("root")
-/// Dim item = Xml.Element("item")
-/// item.SetAttr("id", "1")
-/// item.SetText("Hello")
-/// root.Append(item)
-/// Print Xml.Format(root)  ' <root><item id="1">Hello</item></root>
-/// ```
-///
-/// **Thread Safety:** Not thread-safe. Use external synchronization if needed.
-///
+//
+// File: src/runtime/text/rt_xml.c
+// Purpose: Implements XML parsing and formatting for the Viper.Text.Xml class
+//          per XML 1.0. Builds a node tree supporting elements, text content,
+//          comments, and CDATA sections. Provides Parse, Format, FormatPretty,
+//          and node navigation (Tag, Attr, SetAttr, Children, TextContent).
+//
+// Key invariants:
+//   - Parse returns a document root node; invalid XML returns NULL.
+//   - Element nodes carry a tag name, attribute rt_map, and children rt_seq.
+//   - Text and CDATA nodes carry a text content string.
+//   - Attributes are stored as an rt_map<String, String>.
+//   - Format produces minimal XML (no added whitespace).
+//   - The parser is NOT thread-safe; external synchronization is required.
+//
+// Ownership/Lifetime:
+//   - The node tree is heap-allocated; all nodes are owned by their parent.
+//   - The caller owns the root node returned by Parse.
+//   - Formatted XML strings are fresh rt_string allocations owned by caller.
+//
+// Links: src/runtime/text/rt_xml.h (public API),
+//        src/runtime/text/rt_html.h (tolerant HTML parser, related)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_xml.h"

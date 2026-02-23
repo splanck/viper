@@ -1,15 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_numeric.h
+// Purpose: Numeric type conversions, formatting, and parsing with BASIC semantics, including float-to-integer rounding (banker's rounding), overflow detection, and checked arithmetic variants.
 //
-//===----------------------------------------------------------------------===//
+// Key invariants:
+//   - Float-to-integer conversion uses round-to-nearest-even (banker's rounding).
+//   - Overflow and NaN inputs set the error flag; they never produce undefined behavior.
+//   - Checked variants (rt_sqrt_chk_f64, etc.) trap on domain errors.
+//   - Integer division and modulo functions trap on zero divisor.
 //
-// File: src/runtime/rt_numeric.h
-// Purpose: Numeric type conversions, formatting, and parsing with BASIC semantics.
-// Key invariants: Float-to-int uses banker's rounding; overflow/NaN set error flags, never UB.
-// Ownership/Lifetime: Callers own output buffers for formatting functions.
-// Links: docs/viperlib.md
+// Ownership/Lifetime:
+//   - Callers own output buffers for formatting functions.
+//   - No heap allocation in pure arithmetic functions; formatting may allocate strings.
+//
+// Links: src/runtime/core/rt_numeric.c (implementation), src/runtime/core/rt_error.h, src/runtime/core/rt_math.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

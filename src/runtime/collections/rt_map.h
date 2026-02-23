@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_map.h
+// Purpose: String-keyed hash map providing O(1) average insertion, lookup, removal, and iteration for the Viper.Collections.Map runtime class.
+//
+// Key invariants:
+//   - Keys are copied by the map; the map owns its key copies.
+//   - Values are retained on insertion and released on removal or overwrite.
+//   - All operations are O(1) average-case using open-addressing.
+//   - rt_map_get returns NULL for keys not present.
+//
+// Ownership/Lifetime:
+//   - Map objects are heap-allocated; caller is responsible for lifetime management.
+//   - Values are retained while stored in the map.
+//
+// Links: src/runtime/collections/rt_map.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_map.h
-// Purpose: Runtime functions for string-keyed map (hash map).
-// Key invariants: Keys are copied (map owns copies). Values are retained.
-// Ownership/Lifetime: Map manages its own memory. Caller manages values.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

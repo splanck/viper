@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_async.h
+// Purpose: Async task combinators built on Future/Promise and threads, providing WhenAll, WhenAny, Delay, and Run wrappers for composing concurrent operations.
+//
+// Key invariants:
+//   - All functions return Future objects.
+//   - rt_async_when_all waits for all futures; rt_async_when_any waits for the first.
+//   - rt_async_run submits a function to the default thread pool.
+//   - All operations are thread-safe.
+//
+// Ownership/Lifetime:
+//   - Returned Future objects are GC-managed opaque pointers.
+//   - Callers should not free Future objects directly.
+//
+// Links: src/runtime/threads/rt_async.c (implementation), src/runtime/threads/rt_future.h, src/runtime/threads/rt_threadpool.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_async.h
-// Purpose: Async task combinators built on Future/Promise + threads.
-// Key invariants: All functions return Futures. Thread-safe.
-// Ownership/Lifetime: Returned Futures are GC-managed.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

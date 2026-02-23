@@ -5,11 +5,33 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_graphics.c
-// Purpose: Runtime bridge functions for ViperGFX graphics library.
-// Key invariants: All functions check for NULL canvas handles.
-// Ownership/Lifetime: Canvases are allocated on creation and freed on destroy.
-// Links: src/lib/graphics/include/vgfx.h
+// File: src/runtime/graphics/rt_graphics.c
+// Purpose: Runtime bridge for the ViperGFX canvas graphics library. Implements
+//   the Zia Canvas class: window creation/destruction, frame presentation,
+//   2D drawing primitives (lines, boxes, discs, polygons, text, bezier curves),
+//   pixel blit/alpha-blit, flood fill, mouse and keyboard input polling, color
+//   helpers, and window management accessors (FPS, scale, focus state).
+//
+// Key invariants:
+//   - All rt_canvas_* functions guard against NULL canvas_ptr and NULL gfx_win.
+//   - Colors use 0x00RRGGBB format (alpha ignored by most primitives).
+//   - rt_canvas_flip() presents the back-buffer and must be called each frame.
+//   - rt_canvas_poll() drives the event loop; returns 0 when window closes.
+//   - VIPER_ENABLE_GRAPHICS guards all real implementations; stub functions are
+//     provided in the #else block so non-graphics builds link cleanly.
+//   - The rt_canvas struct is GC-managed with a finalizer that destroys gfx_win.
+//   - Coordinate origin is top-left; x increases right, y increases down.
+//
+// Ownership/Lifetime:
+//   - rt_canvas objects are allocated via rt_obj_new_i64 (GC heap); gfx_win is
+//     released in rt_canvas_finalize when the GC collects the canvas.
+//   - String arguments (title, text) are converted to C strings with
+//     rt_string_to_cstr; the caller retains ownership of the rt_string.
+//
+// Links: src/runtime/graphics/rt_graphics.h (public API),
+//        src/lib/graphics/include/vgfx.h (ViperGFX C API),
+//        src/runtime/graphics/rt_pixels.h (Pixels blit source),
+//        src/runtime/graphics/rt_font.h (font rendering)
 //
 //===----------------------------------------------------------------------===//
 

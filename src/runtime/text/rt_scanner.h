@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_scanner.h
+// Purpose: String scanner for lexing and parsing providing character-by-character access, lookahead, match/expect helpers, and token extraction from runtime strings.
+//
+// Key invariants:
+//   - Scanner maintains a position within the source string.
+//   - rt_scanner_peek returns the current character without advancing.
+//   - rt_scanner_expect traps if the current character does not match.
+//   - rt_scanner_at_end returns 1 when all characters have been consumed.
+//
+// Ownership/Lifetime:
+//   - Scanner objects are heap-allocated; caller must free after use.
+//   - The source string is borrowed; it must remain valid for the scanner's lifetime.
+//
+// Links: src/runtime/text/rt_scanner.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_scanner.h
-// Purpose: String scanner for lexing and parsing strings.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

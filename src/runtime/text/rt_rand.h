@@ -1,22 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_rand.h
+// Purpose: Cryptographically secure random number generation using the OS-provided CSPRNG (/dev/urandom on Unix, BCryptGenRandom on Windows).
+//
+// Key invariants:
+//   - Uses OS-provided CSPRNG; output is suitable for security-sensitive applications.
+//   - rt_rand_bytes returns a Bytes object of the requested length.
+//   - rt_rand_i64 returns a uniformly distributed 64-bit integer.
+//   - rt_rand_range returns a value in [min, max]; traps when min > max.
+//
+// Ownership/Lifetime:
+//   - Returned Bytes objects are newly allocated; caller must release.
+//   - No persistent state; each call reads fresh randomness from the OS.
+//
+// Links: src/runtime/text/rt_rand.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_rand.h
-// Purpose: Cryptographically secure random number generation.
-// Key invariants: Uses OS-provided CSPRNG; traps on invalid parameters.
-// Ownership/Lifetime: Returned Bytes objects are newly allocated.
-// Links: docs/viperlib/crypto.md
-//
-// Platform backends:
-// - Unix/Linux/macOS: /dev/urandom
-// - Windows: BCryptGenRandom (Vista+) or CryptGenRandom fallback
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

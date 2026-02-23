@@ -1,22 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_timer.h
+// Purpose: Frame-based countdown timer using frame counts rather than wall-clock time, with expiration as a one-shot edge flag and progress as an integer percentage.
+//
+// Key invariants:
+//   - Duration is measured in frames; must be >= 1.
+//   - rt_timer_update must be called once per frame.
+//   - Expiration is a one-shot edge: returns 1 only on the expiring frame.
+//   - Progress is reported as an integer percentage in [0, 100].
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_timer handle; destroy with rt_timer_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_timer.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_timer.h
-// Purpose: Frame-based timer utilities for countdown, repeating, and elapsed
-//   time tracking based on frame counts rather than wall-clock time.
-// Key invariants: Duration >= 1 frame. rt_timer_update() called once per
-//   frame. Expiration is a one-shot edge (returns 1 only on the expiring
-//   frame). Progress reported as integer percentage [0, 100].
-// Ownership/Lifetime: Caller owns the rt_timer handle and must free it with
-//   rt_timer_destroy().
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_TIMER_H
 #define VIPER_RT_TIMER_H
 

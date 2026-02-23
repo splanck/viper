@@ -5,8 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_gui_system.c
-// Purpose: Clipboard, keyboard shortcuts, window management, and cursor styles.
+// File: src/runtime/graphics/rt_gui_system.c
+// Purpose: System-level GUI services for the Viper runtime: clipboard read/write,
+//   keyboard shortcut registration and frame-based polling, window management
+//   helpers (title, opacity, always-on-top, position, maximise/minimise), and
+//   cursor style control. These are global services not tied to a specific widget.
+//
+// Key invariants:
+//   - Shortcuts are stored in a fixed-size static table (MAX_SHORTCUTS = 256);
+//     registering beyond that limit is silently ignored.
+//   - Shortcut trigger state (g_triggered_shortcut_id) is edge-triggered per
+//     frame: it is set when polled and cleared on the next frame update.
+//   - g_shortcuts_global_enabled can disable all shortcut processing at once
+//     (e.g. when a text input widget has focus).
+//   - Clipboard operations delegate directly to vgfx_clipboard_*; text is
+//     converted to/from rt_string via rt_string_to_cstr / rt_string_from_bytes.
+//   - Cursor style constants map 1:1 to VGFX_CURSOR_* enum values.
+//
+// Ownership/Lifetime:
+//   - Shortcut id/keys/description strings are strdup'd into the static table
+//     and freed by rt_shortcuts_destroy_all().
+//   - Clipboard text returned by vgfx_clipboard_get_text is malloc'd by the
+//     platform; this file frees it after converting to rt_string.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/lib/graphics/include/vgfx.h (clipboard and window management API),
+//        src/runtime/rt_platform.h (platform detection)
 //
 //===----------------------------------------------------------------------===//
 

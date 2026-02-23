@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_pixels.h
+// Purpose: Software image buffer manipulation for Viper.Graphics.Pixels, providing pixel-level read/write, drawing primitives, image loading/saving, and blitting operations.
+//
+// Key invariants:
+//   - Pixel format is 0xRRGGBBAA (big-endian RGBA); drawing helpers use 0x00RRGGBB.
+//   - Coordinates are 0-based from the top-left corner.
+//   - All bounds checks trap on out-of-range pixel access.
+//   - Drawing primitives (box, disc, line, etc.) render directly into the pixel buffer.
+//
+// Ownership/Lifetime:
+//   - Pixels objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_pixels.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_pixels.h
-// Purpose: Software image buffer manipulation for Viper.Graphics.Pixels.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -1,30 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_gc.h
+// Purpose: Cycle-detecting garbage collector supplementing atomic reference counting, using a trial-deletion mark-sweep algorithm to find and break unreachable reference cycles among tracked objects.
+//
+// Key invariants:
+//   - Only objects with RT_MAGIC headers may be registered via rt_gc_track.
+//   - The collector does not move objects; heap addresses remain stable.
+//   - rt_gc_collect is synchronous and must not be called from within a finalizer.
+//   - Weak references registered via rt_gc_weak_ref are zeroed when their target is freed.
+//
+// Ownership/Lifetime:
+//   - Tracked objects are owned by their reference counts; the GC only breaks cycles.
+//   - rt_gc_track retains a weak internal reference; it does not increment the object's refcount.
+//   - Caller must call rt_gc_untrack before manually freeing a tracked object.
+//
+// Links: src/runtime/core/rt_gc.c (implementation), src/runtime/oop/rt_object.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_gc.h
-/// @brief Cycle-detecting garbage collector for reference-counted objects.
-///
-/// Supplements the existing atomic reference counting with a cycle collector
-/// that detects and breaks unreachable reference cycles.  Uses a trial
-/// deletion algorithm (synchronous mark-sweep on tracked objects).
-///
-/// Objects that may participate in cycles (e.g. containers with back-pointers)
-/// register with rt_gc_track().  Periodically calling rt_gc_collect() finds
-/// and frees cycles that simple refcounting cannot reclaim.
-///
-/// Key invariants: Only objects with RT_MAGIC headers may be tracked.
-///     The collector does not move objects; addresses remain stable.
-/// Ownership/Lifetime: Tracked objects are owned by their reference counts;
-///     the GC only breaks cycles among unreachable objects. Weak references
-///     are zeroed automatically when their target is freed.
-/// Links: Viper runtime memory management; see also rt_object.h.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef RT_GC_H
 #define RT_GC_H
 

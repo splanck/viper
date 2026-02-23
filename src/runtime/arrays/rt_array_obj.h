@@ -1,22 +1,20 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/arrays/rt_array_obj.h
+// Purpose: Dynamic array of opaque object references with element retain/release lifecycle, backing collections that store boxed Viper values.
+//
+// Key invariants:
+//   - Elements are reference-managed: stored elements are retained on write and released on overwrite or teardown.
+//   - Indices are bounds-checked by callers before passing to array primitives.
+//   - Length is always tracked; the array owns references to all live elements.
+//
+// Ownership/Lifetime:
+//   - Heap-allocated; caller manages the container via retain/release or explicit free.
+//   - The array owns references to its elements and releases them on resize or free.
+//
+// Links: src/runtime/arrays/rt_array_obj.c (implementation), src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_array_obj.h
-// Purpose: Runtime support for arrays of object references (opaque pointers).
-// Key invariants: Length is tracked; elements are reference-managed via retain
-//                 on store and release on overwrite/teardown; indices are
-//                 bounds-checked by callers.
-// Ownership: The array object owns references to its elements and is
-//            responsible for releasing them when resized or freed.
-// Lifetime: Heap-allocated; caller manages via retain/release or explicit free.
-// Links: docs/runtime-arrays.md, rt_heap.h
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 #include <stddef.h>
 #ifdef __cplusplus

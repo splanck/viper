@@ -5,13 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_seq.c
-// Purpose: Implement Viper.Collections.Seq - a dynamic sequence (growable array).
+// File: src/runtime/collections/rt_seq.c
+// Purpose: Implements Viper.Collections.Seq, the primary dynamic growable array
+//   for the Viper runtime. Seq is the most general and widely-used collection:
+//   it stores heterogeneous object references, supports O(1) amortized append,
+//   O(1) random access, O(n) insert/remove, and a rich functional API (map,
+//   filter, reduce, sort, reverse, zip).
 //
-// Structure:
-// - Internal representation uses a header structure with len, cap, and items[]
-// - Items are stored as void* (generic object pointers)
-// - Automatic growth when capacity is exceeded
+// Key invariants:
+//   - Initial capacity is SEQ_DEFAULT_CAP (16); grows by SEQ_GROWTH_FACTOR (2).
+//   - The items array is a separate malloc allocation; the header is GC-managed.
+//   - len is the number of valid elements; cap is the allocated array size.
+//     Accessing index >= len is always an error (returns NULL or traps).
+//   - Seq does NOT retain elements (no rt_obj_retain on append); it stores raw
+//     void* pointers. Element lifetime is the caller's responsibility.
+//   - Sorting uses qsort with a comparator appropriate to element type
+//     (string lexicographic order is the default).
+//   - rt_seq_get returns NULL for out-of-bounds indices (no trap for read).
+//   - Not thread-safe; external synchronization required for concurrent writes.
+//
+// Ownership/Lifetime:
+//   - Seq objects are GC-managed (rt_obj_new_i64). The items array is
+//     malloc-managed and freed by the GC finalizer (seq_finalizer).
+//
+// Links: src/runtime/collections/rt_seq.h (public API),
+//        src/runtime/collections/rt_seq_functional.c (map/filter/reduce wrappers)
 //
 //===----------------------------------------------------------------------===//
 

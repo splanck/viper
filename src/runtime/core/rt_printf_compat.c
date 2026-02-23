@@ -5,16 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_printf_compat.c
-// Purpose: Default definitions for printf-style wrappers used by the runtime.
-//          Marked weak so tests can provide overrides without linker errors.
+// File: src/runtime/core/rt_printf_compat.c
+// Purpose: Provides weak-linked printf-style wrappers used throughout the
+//          runtime for formatted output. The symbols carry weak linkage so
+//          test harnesses can interpose custom implementations (e.g., to
+//          capture or suppress output) without modifying production code.
+//
+// Key invariants:
+//   - rt_snprintf forwards to vsnprintf; return semantics match vsnprintf
+//     (returns number of characters that would have been written, negative
+//     on encoding error).
+//   - Weak linkage allows test binaries to override with strong symbols; the
+//     default implementation is never called when a strong override is linked.
+//   - The function is not thread-unsafe by itself; underlying vsnprintf is
+//     reentrant, but stdout/stderr access is not serialized here.
+//
+// Ownership/Lifetime:
+//   - Writes into a caller-supplied buffer; no heap allocation is performed.
+//   - No state is retained between calls.
+//
+// Links: src/runtime/core/rt_printf_compat.h (public API),
+//        src/runtime/core/rt_int_format.c (uses rt_snprintf),
+//        src/runtime/core/rt_output.c (higher-level output buffering)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Default implementations for printf-compatible runtime wrappers.
-/// @details The symbols are marked weak so test harnesses can provide stronger
-///          overrides without modifying production code.
 
 #include "rt_printf_compat.h"
 #include "rt_platform.h"

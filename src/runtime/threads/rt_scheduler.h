@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_scheduler.h
+// Purpose: Poll-based task scheduler for named delayed tasks using the monotonic clock, where duplicate task names replace the previous registration.
+//
+// Key invariants:
+//   - Poll-based, not thread-based; rt_scheduler_poll must be called regularly.
+//   - Uses the monotonic clock; immune to wall-clock adjustments.
+//   - Task names are unique; registering a duplicate name replaces the previous task.
+//   - Tasks fire at most once per registration; use rt_scheduler_schedule to re-queue.
+//
+// Ownership/Lifetime:
+//   - Scheduler objects are heap-allocated; caller is responsible for lifetime management.
+//   - Task callback function pointers must remain valid until the task fires.
+//
+// Links: src/runtime/threads/rt_scheduler.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_scheduler.h
-// Purpose: Simple task scheduler for named delayed tasks.
-// Key invariants: Poll-based, not thread-based. Uses monotonic clock.
-//                 Tasks identified by name; duplicate names replace previous.
-// Ownership/Lifetime: Scheduler objects are heap-allocated; caller responsible
-//                     for lifetime management.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

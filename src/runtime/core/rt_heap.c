@@ -5,22 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the reference-counted heap allocator shared by the runtime string
-// and array primitives.  The helpers in this file provide the canonical
-// metadata layout, pointer conversions, and lifetime management operations so
-// every subsystem (VM, native runtime, and host embedding) shares the exact same
-// semantics.  Keeping the implementation here prevents subtle mismatches in
-// ref-counting or header validation across translation units.
+// File: src/runtime/core/rt_heap.c
+// Purpose: Reference-counted heap allocator used by runtime string, array,
+//   and object payloads. Defines the canonical metadata header layout
+//   (magic tag, ref count, heap kind, len, cap), pointer arithmetic helpers
+//   (payload_to_hdr / rt_heap_data), and lifetime management operations
+//   (rt_heap_alloc, rt_heap_retain, rt_heap_release, rt_heap_realloc).
+//   VM, native, and host embedding paths share this single implementation.
+//
+// Key invariants:
+//   - Every heap allocation is preceded by an rt_heap_hdr_t carrying
+//     magic==RT_MAGIC. Passing a non-heap pointer to any helper asserts in
+//     debug builds (sentinel checked in payload_to_hdr).
+//   - refcnt==0 is the freed state; refcnt==SIZE_MAX is the immortal/static
+//     sentinel (never freed). All atomic inc/dec use __ATOMIC_RELAXED.
+//   - rt_heap_release() calls free() only when refcnt drops to 0.
+//   - The kind field (RT_HEAP_KIND_*) disambiguates string vs array vs raw.
+//   - len/cap are logical element counts for string/array payloads; raw
+//     (opaque) payloads leave len=0, cap=byte size.
+//
+// Ownership/Lifetime:
+//   - Callers own the payload pointer returned by rt_heap_alloc.
+//   - Call rt_heap_retain before sharing a pointer; rt_heap_release when done.
+//     The final release frees the entire block (header + payload).
+//
+// Links: src/runtime/core/rt_heap.h (public API),
+//        src/runtime/core/rt_pool.h (slab pool for small allocations)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Reference-counted heap utilities for runtime payloads.
-/// @details Defines the header layout used for dynamically allocated runtime
-///          objects and supplies helpers for allocation, validation, and
-///          reference management.  Callers interact solely with payload
-///          pointers; this module performs the header bookkeeping behind the
-///          scenes.
 
 #include "rt_heap.h"
 #include "rt_internal.h"

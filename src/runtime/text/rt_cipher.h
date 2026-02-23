@@ -1,24 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_cipher.h
+// Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD with automatic nonce generation and PBKDF2 key derivation from passwords.
+//
+// Key invariants:
+//   - Password-based format: [16 bytes salt][12 bytes nonce][ciphertext][16 bytes tag].
+//   - Key-based format: [12 bytes nonce][ciphertext][16 bytes tag].
+//   - Nonces are generated automatically from a secure random source.
+//   - Decryption returns NULL for invalid/corrupt ciphertext (authentication failure).
+//
+// Ownership/Lifetime:
+//   - Returned Bytes objects are newly allocated; caller must release.
+//   - Password and key strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_cipher.c (implementation), src/runtime/network/rt_crypto.h, src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_cipher.h
-// Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD.
-// Key invariants: Automatic nonce generation, key derivation from passwords.
-// Ownership/Lifetime: Returned Bytes objects are newly allocated.
-// Links: docs/viperlib/crypto.md
-//
-// Ciphertext format (for password-based encryption):
-//   [16 bytes salt] [12 bytes nonce] [ciphertext] [16 bytes tag]
-//
-// For key-based encryption (EncryptWithKey/DecryptWithKey):
-//   [12 bytes nonce] [ciphertext] [16 bytes tag]
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

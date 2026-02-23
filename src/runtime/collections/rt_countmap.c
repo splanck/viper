@@ -5,9 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_countmap.c
-// Purpose: Implement a frequency counting map (string key -> i64 count) using
-//          a hash table. O(1) average-case operations.
+// File: src/runtime/collections/rt_countmap.c
+// Purpose: Implements a frequency-counting map from string keys to int64 counts.
+//   Provides increment, decrement, set, get, and "top-N by count" operations.
+//   Maintains a running total of all counts for efficient average/total queries.
+//   Typical uses: word frequency, event tallying, histogram building, and any
+//   scenario where distinct string occurrences need to be counted.
+//
+// Key invariants:
+//   - Backed by a hash table with initial capacity CM_INITIAL_CAPACITY (16)
+//     buckets and separate chaining with FNV-1a hashing.
+//   - Resizes (doubles) when distinct-key count/capacity exceeds 75%.
+//   - `total` tracks the sum of all stored counts and is updated atomically
+//     with every increment, decrement, and set operation.
+//   - Decrementing below zero is allowed; negative counts are valid states.
+//   - Removing an entry (count set to 0 via Remove) frees the entry node and
+//     adjusts both `count` (distinct keys) and `total`.
+//   - All operations are O(1) average case; O(n) worst case due to chaining.
+//   - Not thread-safe; external synchronization required for concurrent access.
+//
+// Ownership/Lifetime:
+//   - CountMap objects are GC-managed (rt_obj_new_i64). The bucket array and
+//     all entry nodes are freed by the GC finalizer.
+//
+// Links: src/runtime/collections/rt_countmap.h (public API),
+//        src/runtime/collections/rt_hash_util.h (FNV-1a hash macro)
 //
 //===----------------------------------------------------------------------===//
 

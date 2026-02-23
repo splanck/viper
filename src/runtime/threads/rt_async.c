@@ -4,13 +4,31 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_async.c
-/// @brief Async task combinators built on Future/Promise + threads.
-///
-/// Provides high-level async patterns by composing the existing
-/// Future/Promise, Thread, and Cancellation primitives.
-///
+//
+// File: src/runtime/threads/rt_async.c
+// Purpose: Implements high-level async task combinators for the Viper.Threads.Async
+//          class by composing Future/Promise, Thread, and Cancellation primitives.
+//          Provides Run (start async task), WhenAll (await all), WhenAny (await
+//          first), and Delay (async sleep).
+//
+// Key invariants:
+//   - Run spins up a new OS thread; the thread resolves or rejects the promise.
+//   - WhenAll blocks until every future in the list is resolved or any is rejected.
+//   - WhenAny returns the first settled future; others continue running.
+//   - Delay resolves after a wall-clock sleep with no associated value.
+//   - Cancellation tokens are checked before and after the callback; a cancelled
+//     token causes the promise to be rejected with a cancellation error.
+//
+// Ownership/Lifetime:
+//   - Run transfers ownership of the argument to the async thread; the caller
+//     must not access the argument after passing it.
+//   - The async thread releases its promise reference after resolving/rejecting.
+//   - Returned Future objects are owned by the caller.
+//
+// Links: src/runtime/threads/rt_async.h (public API),
+//        src/runtime/threads/rt_future.h (Promise/Future primitives),
+//        src/runtime/threads/rt_cancellation.h (cancellation token)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_async.h"

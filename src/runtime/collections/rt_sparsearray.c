@@ -4,6 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_sparsearray.c
+// Purpose: Implements a sparse integer-indexed array using open-addressing
+//   hash map semantics (int64_t key -> void* value). Only indices that have
+//   been explicitly set occupy memory; unset indices return NULL. Suitable for
+//   large, sparsely populated index spaces where most indices are absent.
+//
+// Key invariants:
+//   - Open-addressing hash table with 64-bit mix hash on the integer key to
+//     avoid clustering from sequential indices.
+//   - Initial capacity is configurable; probing is linear (index + i) % cap.
+//   - Load factor kept below 2/3 via resize; capacity always power-of-two is
+//     not required but capacity is doubled on resize.
+//   - `occupied` flag distinguishes empty slots from slots holding a NULL value.
+//   - Get returns NULL for missing indices; no error is raised.
+//   - Set with NULL value removes the entry (slot becomes unoccupied).
+//   - Tombstones are not used; the entire table is rehashed on remove during
+//     resize, or a swap-with-probe approach is used to maintain probe chains.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - SparseArray objects are GC-managed (rt_obj_new_i64). The slots array is
+//     freed by the GC finalizer (sa_finalizer), which also releases retained
+//     value references via rt_obj_release_check0.
+//
+// Links: src/runtime/collections/rt_sparsearray.h (public API),
+//        src/runtime/collections/rt_intmap.h (similar integer-keyed map)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_sparsearray.h"
 

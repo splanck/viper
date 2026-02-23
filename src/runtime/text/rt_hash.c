@@ -4,51 +4,29 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_hash.c
-/// @brief Cryptographic hash functions (MD5, SHA1, SHA256) and checksums (CRC32).
-///
-/// This file implements various hashing algorithms for data integrity checking,
-/// content addressing, and cryptographic applications. All hash functions
-/// return lowercase hexadecimal strings for easy display and comparison.
-///
-/// **Available Hash Functions:**
-///
-/// | Algorithm | Output Size | Security | Speed    | Use Case              |
-/// |-----------|-------------|----------|----------|-----------------------|
-/// | MD5       | 128 bits    | Broken   | Fast     | Legacy, checksums     |
-/// | SHA-1     | 160 bits    | Broken   | Medium   | Legacy, git (moving)  |
-/// | SHA-256   | 256 bits    | Strong   | Medium   | Security, blockchain  |
-/// | CRC32     | 32 bits     | None     | V. Fast  | Error detection       |
-///
-/// **Security Warnings:**
-/// - **MD5**: Cryptographically broken. Collisions can be generated in seconds.
-///   Do NOT use for security. Acceptable for checksums and content addressing.
-/// - **SHA-1**: Cryptographically broken. Chosen-prefix collisions demonstrated.
-///   Do NOT use for new security applications.
-/// - **SHA-256**: Currently secure. Recommended for all security applications.
-/// - **CRC32**: NOT a cryptographic hash. Only suitable for error detection.
-///
-/// **Output Format:**
-/// ```
-/// Hash.MD5("Hello")    → "8b1a9953c4611296a827abf8c47804d7"  (32 chars)
-/// Hash.SHA1("Hello")   → "f7ff9e8b7bb2e09b70935a5d785e0cc5d9d0abf0" (40 chars)
-/// Hash.SHA256("Hello") → "185f8db32271fe25f561a6fc938b2e26..." (64 chars)
-/// Hash.CRC32("Hello")  → 4157704578 (integer)
-/// ```
-///
-/// **Common Use Cases:**
-/// - File integrity verification (download checksums)
-/// - Content-addressable storage (deduplication)
-/// - Password hashing (with proper salting and key stretching)
-/// - Digital signatures (as part of a larger scheme)
-/// - Cache keys and ETags
-///
-/// **Thread Safety:** All functions are thread-safe (no global mutable state
-/// except CRC32 table which is initialized once).
-///
-/// @see rt_codec.c For hex encoding/decoding utilities
-///
+//
+// File: src/runtime/text/rt_hash.c
+// Purpose: Implements cryptographic hash functions (MD5, SHA-1, SHA-256) and
+//          CRC32 checksum for the Viper.Text.Hash class. All hash functions
+//          return lowercase hex-encoded strings. SHA-256 is the recommended
+//          function for security applications.
+//
+// Key invariants:
+//   - MD5 and SHA-1 are included for legacy compatibility only; they are
+//     cryptographically broken and must not be used for security.
+//   - All hash functions produce lowercase hex output.
+//   - CRC32 lookup table is initialized once on first use (safe in practice;
+//     callers must externally synchronize if called concurrently before init).
+//   - Input may be a string or rt_bytes; both paths produce identical digests.
+//   - All hash state is stack-allocated; no per-call heap allocation.
+//
+// Ownership/Lifetime:
+//   - Returned hex strings are fresh rt_string allocations owned by the caller.
+//   - Input strings and bytes buffers are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_hash.h (public API),
+//        src/runtime/text/rt_codec.h (hex encoding used to format output)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_hash.h"

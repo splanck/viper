@@ -4,15 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_regex.c
-/// @brief Regular expression pattern matching using backtracking.
-///
-/// Implements a subset of regex: literals, dot, anchors, character classes,
-/// shorthand classes, quantifiers (greedy and non-greedy), groups, alternation.
-///
-/// NOT supported: backreferences, lookahead/lookbehind, named groups.
-///
+//
+// File: src/runtime/text/rt_regex.c
+// Purpose: Implements regular expression pattern matching for the Viper.Text.Regex
+//          class using a backtracking NFA approach. Supports literals, '.', '^',
+//          '$', character classes '[...]', shorthand classes (\d \w \s),
+//          quantifiers (*, +, ?, {n,m}), non-greedy quantifiers (*?, +?, ??),
+//          groups '()', and alternation '|'.
+//
+// Key invariants:
+//   - Backreferences, lookahead, lookbehind, and named groups are NOT supported.
+//   - Pattern compilation is cached (lock-protected) to amortize repeat use.
+//   - FindAll returns all non-overlapping matches left-to-right.
+//   - Replace replaces all non-overlapping matches with the replacement string.
+//   - Anchors (^ $) are applied relative to the full input string.
+//   - Character classes are byte-level; Unicode codepoints are not decomposed.
+//
+// Ownership/Lifetime:
+//   - Compiled patterns are cached in a global table; entries are not freed.
+//   - Returned match strings and sequences are fresh allocations owned by caller.
+//
+// Links: src/runtime/text/rt_regex.h (public API),
+//        src/runtime/text/rt_regex_internal.h (compiled NFA node definitions),
+//        src/runtime/text/rt_compiled_pattern.h (cached pre-compiled wrapper)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_regex.h"

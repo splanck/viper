@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_bag.h
+// Purpose: String set (Bag) backed by a hash table, providing O(1) average membership testing, insertion, and removal of unique string values.
+//
+// Key invariants:
+//   - Stores unique strings only; duplicate insertions are silently ignored.
+//   - All operations are O(1) average-case using an open-addressing hash table.
+//   - Iteration order is unspecified and may change after insertions.
+//   - rt_bag_contains returns 1 if present, 0 if absent.
+//
+// Ownership/Lifetime:
+//   - Bag objects are heap-allocated; caller is responsible for lifetime management.
+//   - String values are copied into the bag; caller retains ownership of input strings.
+//
+// Links: src/runtime/collections/rt_bag.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_bag.h
-// Purpose: Runtime functions for string set (Bag) using hash table.
-// Key invariants: Stores unique strings only. All operations are O(1) average.
-// Ownership/Lifetime: Bag manages its own memory. Strings are copied.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

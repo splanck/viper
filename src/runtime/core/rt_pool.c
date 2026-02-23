@@ -5,21 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements a slab allocator for the Viper runtime. This allocator reduces
-// malloc/free overhead by pooling allocations into size classes and reusing
-// freed blocks via freelists.
+// File: src/runtime/core/rt_pool.c
+// Purpose: Implements a slab allocator for the Viper runtime. Reduces
+//          malloc/free overhead by pooling fixed-size allocations into
+//          four size classes (64, 128, 256, 512 bytes) and reusing freed
+//          blocks via lock-free intrusive freelists.
 //
-// Architecture:
-// - Each size class maintains a linked list of slabs
-// - Each slab is a large allocation subdivided into fixed-size blocks
-// - Free blocks are tracked via an intrusive linked list (freelist)
-// - Thread safety is achieved via lock-free atomic CAS on freelists
+// Key invariants:
+//   - Each size class maintains a singly-linked list of slabs; each slab holds
+//     BLOCKS_PER_SLAB (64) fixed-size blocks.
+//   - Free blocks are tracked via tagged pointers that embed a 16-bit version
+//     counter in the upper bits to prevent ABA races on CAS operations.
+//   - Slab list insertion uses atomic CAS; no mutex is held during allocation.
+//   - Allocation requests larger than the largest size class (512 bytes) fall
+//     through to the system allocator.
+//   - Blocks are not zeroed on recycling; callers must initialise before use.
 //
-// Thread Safety Notes:
-// - The freelist uses tagged pointers to prevent ABA problems. The upper 16
-//   bits of the 64-bit tagged pointer contain a version counter that increments
-//   on each modification, ensuring CAS operations detect intervening changes.
-// - The slab list uses atomic CAS for thread-safe insertion.
+// Ownership/Lifetime:
+//   - Slabs are allocated from the system heap and never freed individually;
+//     they persist until the process exits.
+//   - Freed blocks are returned to the per-class freelist and owned by the pool
+//     until the next allocation of the same class.
+//
+// Links: src/runtime/core/rt_pool.h (public API),
+//        src/runtime/core/rt_heap.c (heap layer above pool),
+//        src/runtime/core/rt_memory.c (low-level allocation primitives)
 //
 //===----------------------------------------------------------------------===//
 

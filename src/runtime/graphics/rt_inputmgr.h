@@ -1,31 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_inputmgr.h
+// Purpose: High-level input manager with debouncing and action mapping, providing edge detection, held-state queries, analog readings, and unified directional/confirm/cancel abstractions.
+//
+// Key invariants:
+//   - Must be updated exactly once per frame with rt_inputmgr_update after polling events.
+//   - Edge-detection results (pressed/released) are valid only for the frame they occur.
+//   - Gamepad indices are in [0, 3]; passing -1 queries any connected gamepad.
+//   - Debounce state is per-key and independent of analog input.
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_inputmgr handle; destroy with rt_inputmgr_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/graphics/rt_inputmgr.c (implementation), src/runtime/graphics/rt_input.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_inputmgr.h
-/// @brief High-level input manager with debouncing and action mapping.
-///
-/// @details Provides a unified interface for handling keyboard, mouse, and
-/// gamepad input with built-in debouncing support for menu navigation and
-/// similar use cases where rapid repeated inputs are not desired. Includes
-/// edge detection (just-pressed/just-released), held-state queries, analog
-/// stick and trigger readings, and unified directional/confirm/cancel
-/// abstractions that combine all input sources.
-///
-/// Key invariants: The manager must be updated exactly once per frame via
-///   rt_inputmgr_update() after polling platform events. Edge-detection
-///   results (pressed/released) are valid only for the frame in which they
-///   occur. Gamepad indices are in [0,3]; passing -1 queries any gamepad.
-/// Ownership/Lifetime: The caller owns the rt_inputmgr handle and must
-///   destroy it with rt_inputmgr_destroy() when no longer needed.
-/// Links: rt_inputmgr.c (implementation), rt_input.c (low-level platform
-///   input layer)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_INPUTMGR_H
 #define VIPER_RT_INPUTMGR_H
 

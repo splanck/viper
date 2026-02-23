@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_bloomfilter.h
+// Purpose: Probabilistic set membership structure using multiple hash functions, guaranteeing no false negatives while allowing configurable false positive rates.
+//
+// Key invariants:
+//   - False positives are possible; false negatives are not.
+//   - The filter cannot remove elements once added.
+//   - Optimal bit array size and hash count are computed from expected_items and false_positive_rate.
+//   - rt_bloomfilter_contains returns 1 for possible membership, 0 for definite absence.
+//
+// Ownership/Lifetime:
+//   - Filter objects are GC-managed opaque pointers.
+//   - Callers must not free filter objects directly.
+//
+// Links: src/runtime/collections/rt_bloomfilter.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_bloomfilter.h
-// Purpose: Probabilistic set membership data structure.
-// Key invariants: False positives are possible; false negatives are not.
-// Ownership/Lifetime: Filter objects are GC-managed.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

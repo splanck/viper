@@ -4,26 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_compress.c
-/// @brief DEFLATE/GZIP compression and decompression implementation.
-///
-/// Implements RFC 1951 (DEFLATE) and RFC 1952 (GZIP) without external
-/// dependencies. The implementation focuses on correctness and reasonable
-/// performance for typical use cases.
-///
-/// **DEFLATE Algorithm Overview:**
-/// 1. LZ77 compression: Find repeated sequences using sliding window
-/// 2. Huffman coding: Encode literals/lengths and distances efficiently
-/// 3. Block structure: Data split into blocks, each with its own codes
-///
-/// **Block Types:**
-/// - Type 0 (Stored): No compression, raw bytes
-/// - Type 1 (Fixed): Predefined Huffman codes
-/// - Type 2 (Dynamic): Custom Huffman codes in stream
-///
-/// **Thread Safety:** All functions are thread-safe (no global mutable state).
-///
+//
+// File: src/runtime/io/rt_compress.c
+// Purpose: Implements RFC 1951 DEFLATE and RFC 1952 GZIP compression and
+//          decompression without external dependencies. Uses LZ77 with a 32KB
+//          sliding window and Huffman coding (fixed or dynamic) to compress
+//          data at configurable levels (1-9).
+//
+// Key invariants:
+//   - Compression level 6 is the default; levels 1-9 are supported.
+//   - Decompression accepts both raw DEFLATE and GZIP-wrapped streams.
+//   - Block type 0 (stored), type 1 (fixed Huffman), and type 2 (dynamic) are
+//     all produced and consumed correctly.
+//   - CRC32 is computed and validated for GZIP streams.
+//   - All functions are thread-safe (no global mutable state).
+//
+// Ownership/Lifetime:
+//   - Compressed and decompressed output is returned as a fresh rt_bytes
+//     allocation owned by the caller.
+//   - Input rt_bytes buffers are read-only and not retained by the functions.
+//
+// Links: src/runtime/io/rt_compress.h (public API),
+//        src/runtime/rt_crc32.h (CRC32 used for GZIP footer validation),
+//        src/runtime/io/rt_archive.c (consumes this for ZIP DEFLATE entries)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_compress.h"

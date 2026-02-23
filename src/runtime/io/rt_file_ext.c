@@ -5,10 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_file_ext.c
-// Purpose: High-level file helpers backing Viper.IO.File static methods.
-//          These thin wrappers bridge OOP-style calls to the existing runtime
+// File: src/runtime/io/rt_file_ext.c
+// Purpose: High-level file helpers backing the Viper.IO.File static methods.
+//          Implements ReadAllText, WriteAllText, ReadAllBytes, WriteAllBytes,
+//          ReadAllLines, AppendAllText, Copy, Move, Delete, Exists, GetSize,
+//          and related operations by bridging OOP-style calls to the runtime
 //          file and string utilities.
+//
+// Key invariants:
+//   - ReadAllText/ReadAllBytes read the entire file into memory in one call.
+//   - WriteAllText/WriteAllBytes create or truncate the file atomically.
+//   - Exists returns false for directories; use Dir.Exists for those.
+//   - Copy does not overwrite the destination unless explicitly requested.
+//   - All functions handle both POSIX and Windows file APIs transparently.
+//   - Internal bytes layout is accessed directly to avoid per-byte overhead.
+//
+// Ownership/Lifetime:
+//   - Returned strings and bytes buffers are fresh allocations owned by callers.
+//   - Input strings are borrowed; this module does not retain string references.
+//
+// Links: src/runtime/io/rt_file_ext.h (public API),
+//        src/runtime/io/rt_file.h (low-level RtFile handle and channel table),
+//        src/runtime/io/rt_file_path.h (mode string conversion)
 //
 //===----------------------------------------------------------------------===//
 
@@ -301,23 +319,17 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes)
     if (fd < 0)
         rt_trap("Viper.IO.File.WriteAllBytes: failed to open file");
 
+    /* IO-H-1: use raw data pointer instead of per-byte rt_bytes_get() —
+       eliminates O(n) function calls in favour of a single write() */
     int64_t len = rt_bytes_len(bytes);
-    uint8_t chunk[4096];
-    int64_t pos = 0;
-    while (pos < len)
-    {
-        int64_t remaining = len - pos;
-        int64_t to_copy = remaining > (int64_t)sizeof(chunk) ? (int64_t)sizeof(chunk) : remaining;
-        for (int64_t i = 0; i < to_copy; ++i)
-        {
-            chunk[i] = (uint8_t)rt_bytes_get(bytes, pos + i);
-        }
+    const uint8_t *src = file_bytes_data(bytes);
 
+    if (src && len > 0)
+    {
         size_t written = 0;
-        size_t chunk_len = (size_t)to_copy;
-        while (written < chunk_len)
+        while (written < (size_t)len)
         {
-            ssize_t n = write(fd, chunk + written, chunk_len - written);
+            ssize_t n = write(fd, src + written, (size_t)len - written);
             if (n < 0)
             {
                 if (errno == EINTR)
@@ -332,8 +344,6 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes)
             }
             written += (size_t)n;
         }
-
-        pos += to_copy;
     }
 
     (void)close(fd);
@@ -447,13 +457,22 @@ void rt_file_copy(rt_string src, rt_string dst)
 
     int src_fd = open(src_path, O_RDONLY);
     if (src_fd < 0)
-        return;
+    {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "File.Copy: cannot open source '%s': %s",
+                 src_path, strerror(errno));
+        rt_trap(msg);
+    }
 
     int dst_fd = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (dst_fd < 0)
     {
+        // IO-H-4: destination open failure was previously silent — now traps
         close(src_fd);
-        return;
+        char msg[512];
+        snprintf(msg, sizeof(msg), "File.Copy: cannot open destination '%s': %s",
+                 dst_path, strerror(errno));
+        rt_trap(msg);
     }
 
     char buf[8192];
@@ -470,7 +489,7 @@ void rt_file_copy(rt_string src, rt_string dst)
                     continue;
                 close(src_fd);
                 close(dst_fd);
-                return;
+                rt_trap("File.Copy: write error (disk full or I/O error)");
             }
             written += (size_t)w;
         }

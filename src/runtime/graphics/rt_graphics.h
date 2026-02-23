@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_graphics.h
+// Purpose: Runtime bridge functions for the ViperGFX graphics library, providing canvas creation/destruction, drawing operations, pixel manipulation, image loading, and window management.
+//
+// Key invariants:
+//   - All canvas pointers are opaque handles returned by rt_canvas_new.
+//   - Drawing coordinates are in logical pixels; HiDPI scaling is applied internally.
+//   - rt_canvas_poll must be called each frame to process window events.
+//   - rt_canvas_flip presents the completed frame to the display.
+//
+// Ownership/Lifetime:
+//   - Canvas handles must be destroyed with rt_canvas_destroy when no longer needed.
+//   - Graphics system resources are cleaned up on destruction.
+//
+// Links: src/runtime/graphics/rt_graphics.c (implementation), src/lib/graphics/include/vgfx.h, src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_graphics.h
-// Purpose: Runtime bridge functions for ViperGFX graphics library.
-// Key invariants: All canvas pointers are opaque handles from rt_canvas_new.
-// Ownership/Lifetime: Canvases must be destroyed with rt_canvas_destroy.
-// Links: src/lib/graphics/include/vgfx.h
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

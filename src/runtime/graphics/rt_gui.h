@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_gui.h
+// Purpose: Runtime bridge functions for the ViperGUI widget library, providing widget creation, layout, event handling, and rendering for GUI application development.
+//
+// Key invariants:
+//   - All widget pointers are opaque handles from widget constructor functions.
+//   - Widgets are organized in a parent-child hierarchy; destroying a parent destroys children.
+//   - Event callbacks must remain valid while the widget exists.
+//   - Layout is computed automatically after the widget tree is assembled.
+//
+// Ownership/Lifetime:
+//   - Widget objects must be destroyed with their respective destroy functions.
+//   - The root widget is owned by the GUI application; leaf widgets are owned by their parents.
+//
+// Links: src/runtime/graphics/rt_gui.c (implementation), src/lib/gui/include/vg_widget.h, src/lib/gui/include/vg_widgets.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_gui.h
-// Purpose: Runtime bridge functions for ViperGUI widget library.
-// Key invariants: All widget pointers are opaque handles.
-// Ownership/Lifetime: Widgets must be destroyed with their destroy functions.
-// Links: src/lib/gui/include/vg_widget.h, src/lib/gui/include/vg_widgets.h
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

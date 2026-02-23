@@ -4,86 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_exec.c
-/// @brief External command execution for Viper.Exec class.
-///
-/// This file provides functions for executing external programs and shell
-/// commands. It supports both direct program execution (with arguments) and
-/// shell command execution for more complex pipelines.
-///
-/// **Execution Methods:**
-/// ```
-/// ┌─────────────────────────────────────────────────────────────────────┐
-/// │ Viper.Exec                                                          │
-/// ├─────────────────┬───────────────────────────────────────────────────┤
-/// │ Method          │ Description                                       │
-/// ├─────────────────┼───────────────────────────────────────────────────┤
-/// │ Run(prog)       │ Execute program, wait for completion              │
-/// │ RunArgs(p,args) │ Execute program with arguments                    │
-/// │ Capture(prog)   │ Execute and capture stdout                        │
-/// │ CaptureArgs()   │ Execute with args and capture stdout              │
-/// │ Shell(cmd)      │ Execute via system shell                          │
-/// │ ShellCapture()  │ Execute via shell and capture output              │
-/// │ ShellFull(cmd)  │ Execute via shell, capture output, store exit code│
-/// │ LastExitCode()  │ Return exit code from most recent ShellFull()     │
-/// └─────────────────┴───────────────────────────────────────────────────┘
-/// ```
-///
-/// **Direct Execution vs Shell:**
-/// | Feature              | Run/RunArgs    | Shell           |
-/// |----------------------|----------------|-----------------|
-/// | Argument handling    | Direct array   | String parsing  |
-/// | Shell features       | No             | Yes (pipes, etc)|
-/// | Security risk        | Lower          | Higher          |
-/// | Performance          | Better         | Overhead        |
-/// | Cross-platform       | Consistent     | Shell-dependent |
-///
-/// **Usage Examples:**
-/// ```
-/// ' Run a simple program
-/// Dim code = Exec.Run("/usr/bin/ls")
-///
-/// ' Run with arguments (safer)
-/// Dim args = Seq.New()
-/// args.Push("-l")
-/// args.Push("-a")
-/// code = Exec.RunArgs("/usr/bin/ls", args)
-///
-/// ' Capture output
-/// Dim output = Exec.Capture("/usr/bin/date")
-/// Print "Current date: " & output
-///
-/// ' Use shell for pipelines
-/// output = Exec.ShellCapture("ls -la | grep .txt")
-/// ```
-///
-/// **⚠️ SECURITY WARNING:**
-/// Shell functions (Shell, ShellCapture) pass commands directly to the
-/// system shell. **NEVER** pass unsanitized user input to these functions
-/// as this creates shell injection vulnerabilities:
-/// ```
-/// ' DANGEROUS - shell injection vulnerability!
-/// Dim userInput = GetUserInput()
-/// Exec.Shell("rm " & userInput)  ' User could input: "; rm -rf /"
-///
-/// ' SAFER - use direct execution with args
-/// Dim args = Seq.New()
-/// args.Push(userInput)
-/// Exec.RunArgs("/bin/rm", args)  ' Arguments are not shell-interpreted
-/// ```
-///
-/// **Platform Implementation:**
-/// | Operation   | Unix                | Windows              |
-/// |-------------|---------------------|----------------------|
-/// | Run         | posix_spawn()       | CreateProcess()      |
-/// | Shell       | /bin/sh -c          | cmd.exe /c           |
-/// | Capture     | pipe + fork         | CreatePipe + Process |
-///
-/// **Thread Safety:** All functions are thread-safe.
-///
-/// @see rt_args.c For command-line argument handling
-///
+//
+// File: src/runtime/system/rt_exec.c
+// Purpose: Implements external command execution for the Viper.Exec class.
+//          Provides Run (fire-and-forget), Capture (capture stdout),
+//          Shell (via system shell), and ShellFull (capture + exit code)
+//          variants using posix_spawn (Unix) or CreateProcess (Win32).
+//
+// Key invariants:
+//   - Direct execution (Run, RunArgs) bypasses the shell; arguments are passed
+//     as an array, preventing shell injection.
+//   - Shell execution (Shell, ShellCapture, ShellFull) runs via /bin/sh -c or
+//     cmd.exe /c; the caller is responsible for input sanitization.
+//   - Capture functions return stdout as a string; stderr is not captured.
+//   - ShellFull stores the exit code in a per-context slot for LastExitCode().
+//   - A NULL or empty program path causes a trap.
+//   - All functions are thread-safe; the per-context exit code is stored in
+//     the calling thread's RtContext, not in global state.
+//
+// Ownership/Lifetime:
+//   - Returned stdout capture strings are fresh rt_string allocations owned
+//     by the caller.
+//   - No persistent state is held across calls except the last exit code in
+//     the calling thread's context.
+//
+// Links: src/runtime/system/rt_exec.h (public API)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_exec.h"

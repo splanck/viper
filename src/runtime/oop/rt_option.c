@@ -5,8 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_option.c
-// Purpose: Option type implementation.
+// File: src/runtime/oop/rt_option.c
+// Purpose: Implements the Option<T> type (Some/None) for the Viper.Option class.
+//          Wraps an optional value as a heap-allocated object with a presence
+//          flag, allowing functions to return "no value" without using NULL.
+//
+// Key invariants:
+//   - Option.None() creates an option with no value (has_value == 0).
+//   - Option.Some(val) creates an option holding the given void* value.
+//   - IsSome() returns 1 if a value is present; IsNone() returns 0.
+//   - Get() returns the stored value if present; traps if called on None.
+//   - TryGet(out) writes to *out and returns 1 if present; returns 0 if None.
+//   - The contained value is retained on creation and released on finalize.
+//
+// Ownership/Lifetime:
+//   - The Option retains a reference to the wrapped value (if any).
+//   - The GC finalizer releases the wrapped value reference.
+//   - Callers receive a fresh Option reference (refcount=1).
+//
+// Links: src/runtime/oop/rt_option.h (public API),
+//        src/runtime/oop/rt_result.h (Result<T,E> type, related pattern)
 //
 //===----------------------------------------------------------------------===//
 

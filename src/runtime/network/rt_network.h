@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/network/rt_network.h
+// Purpose: TCP and UDP networking for Viper.Network, providing blocking connection management, data transfer, server listening, and DNS resolution.
+//
+// Key invariants:
+//   - TCP connections use blocking I/O with optional timeouts.
+//   - TCP_NODELAY is enabled by default to minimize latency.
+//   - UDP packets are discrete messages; partial sends are not guaranteed.
+//   - DNS resolution is synchronous; it may block for the DNS timeout duration.
+//
+// Ownership/Lifetime:
+//   - Connection objects are GC-managed opaque pointers.
+//   - Callers should not free connection objects directly.
+//
+// Links: src/runtime/network/rt_network.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_network.h
-// Purpose: TCP and UDP networking support for Viper.Network.
-// Key invariants: Connections are blocking I/O with optional timeouts.
-//                 TCP_NODELAY is enabled by default.
-//                 UDP packets are discrete messages (not streams).
-// Ownership/Lifetime: Connection objects are managed by GC.
-// Links: docs/viperlib/network.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

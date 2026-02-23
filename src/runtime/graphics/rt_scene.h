@@ -1,21 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_scene.h
+// Purpose: Scene graph for hierarchical sprite management with local and world transforms computed by composing ancestor transforms.
+//
+// Key invariants:
+//   - Each scene node has at most one parent; the root has no parent.
+//   - World transform is derived by composing all ancestor local transforms.
+//   - Adding a child transfers logical ownership to the parent node.
+//   - Removing or destroying a node also destroys all its descendants.
+//
+// Ownership/Lifetime:
+//   - Scene and SceneNode objects are runtime-managed.
+//   - The scene owns the node tree; callers should not free individual nodes directly.
+//
+// Links: src/runtime/graphics/rt_scene.c (implementation), src/runtime/graphics/rt_camera.h, src/runtime/graphics/rt_graphics.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_scene.h
-// Purpose: Scene graph for hierarchical sprite management.
-// Key invariants: Each node has at most one parent; the scene root has no
-//     parent. World transforms are derived by composing ancestor transforms.
-// Ownership/Lifetime: Scene and SceneNode objects are runtime-managed.
-//     Adding a child transfers logical ownership to the parent node.
-// Links: Viper.Scene standard library module; see also rt_camera.h,
-//     rt_graphics.h.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

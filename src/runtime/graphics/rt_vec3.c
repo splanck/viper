@@ -4,67 +4,37 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_vec3.c
-/// @brief Three-dimensional vector mathematics for the Viper.Vec3 class.
-///
-/// This file implements a 3D vector type commonly used in graphics, physics,
-/// game development, and 3D simulations. Vec3 provides operations for vector
-/// arithmetic, geometric calculations, and transformations in 3D space.
-///
-/// **Coordinate System:**
-/// Vec3 uses a right-handed Cartesian coordinate system (OpenGL convention):
-/// ```
-///           +Y (up)
-///            |
-///            |
-///            |_______ +X (right)
-///           /
-///          /
-///         +Z (toward viewer)
-/// ```
-///
-/// **Vector Representation:**
-/// A 3D vector represents a point or direction in 3D space:
-/// ```
-/// Vec3(3, 4, 0):          Vec3(1, 1, 1):
-///
-///     +Y                      +Y
-///     |   * (3,4,0)           |     * (1,1,1)
-///     |  /                    |    /
-///     | /                     |   /
-///     |/_______ +X            |  /
-///    /                        | /
-///   +Z                        +------+X
-///                            /
-///                           +Z
-/// ```
-///
-/// **Common Use Cases:**
-/// - 3D position coordinates (world space, object space, camera space)
-/// - Velocity and acceleration vectors in physics
-/// - Surface normals for lighting calculations
-/// - Direction vectors for rays and movement
-/// - RGB color representation (r=x, g=y, b=z)
-/// - Euler angles for rotation (though quaternions are preferred)
-///
-/// **Memory Layout:**
-/// ```
-/// ViperVec3 (24 bytes):
-/// ┌───────────────────────────┐
-/// │ x (double, 8 bytes)       │  X component (right/left)
-/// ├───────────────────────────┤
-/// │ y (double, 8 bytes)       │  Y component (up/down)
-/// ├───────────────────────────┤
-/// │ z (double, 8 bytes)       │  Z component (forward/back)
-/// └───────────────────────────┘
-/// ```
-///
-/// **Thread Safety:** Vec3 objects are immutable after creation. All operations
-/// return new Vec3 instances rather than modifying existing ones.
-///
-/// @see rt_vec2.c For 2D vector operations
-///
+//
+// File: src/runtime/graphics/rt_vec3.c
+// Purpose: 3D vector mathematics (x, y, z doubles) for Viper graphics and
+//   simulation. Provides immutable Vec3 objects with arithmetic (+,-,×,÷), dot
+//   product, cross product, length/normalize, distance, linear interpolation,
+//   reflection, and angle operations. Used for 3D positions, surface normals,
+//   lighting directions, and RGB color triples (r=x, g=y, b=z).
+//
+// Key invariants:
+//   - Vec3 stores three doubles (x, y, z); 24 bytes, no padding.
+//   - Coordinate system: right-handed Cartesian (OpenGL convention):
+//       +X = right,  +Y = up,  +Z = toward the viewer (out of screen).
+//   - Cross product: v × w gives a vector perpendicular to both, following the
+//     right-hand rule: curl fingers from v to w, thumb points in result direction.
+//   - Normalize returns a unit vector (length 1). Normalizing a zero vector
+//     returns Vec3(0,0,0) — no trap or NaN.
+//   - All operations return new Vec3 objects (no mutation), making Vec3 safe
+//     for concurrent reads without locking.
+//   - Vec3 uses a thread-local LIFO free-list pool (VEC3_POOL_CAPACITY = 32)
+//     identical in design to the Vec2 pool, to amortize GC pressure in
+//     lighting and physics inner loops.
+//
+// Ownership/Lifetime:
+//   - Vec3 objects are GC-managed. Pool slots are reclaimed by the pool's
+//     finalizer path; non-pooled Vec3s are collected by the standard GC.
+//     Callers must not free Vec3s manually.
+//
+// Links: src/runtime/graphics/rt_vec3.h (public API),
+//        src/runtime/graphics/rt_vec2.c (2D counterpart),
+//        src/runtime/graphics/rt_mat3.c (matrix–vector transform consumer)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_vec3.h"

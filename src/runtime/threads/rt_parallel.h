@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_parallel.h
+// Purpose: High-level parallel execution patterns (ForEach, Map, Invoke, Reduce) using the thread pool, preserving output order and supporting custom pool injection.
+//
+// Key invariants:
+//   - Output order matches input order for Map; ForEach has no defined result order.
+//   - NULL pool argument falls back to the default global thread pool.
+//   - All patterns wait for all tasks to complete before returning.
+//   - Reduce uses a binary combine function with an initial accumulator value.
+//
+// Ownership/Lifetime:
+//   - Returned sequences are caller-owned; caller must release.
+//   - Thread pools are shared; caller must not destroy a pool in use by parallel operations.
+//
+// Links: src/runtime/threads/rt_parallel.c (implementation), src/runtime/threads/rt_threadpool.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_parallel.h
-// Purpose: High-level parallel execution patterns (ForEach, Map, Invoke, Reduce).
-// Key invariants: Output order matches input order; NULL pool falls back to default.
-// Ownership/Lifetime: Returned sequences are caller-owned; thread pools are shared.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_PARALLEL_H
 #define VIPER_RT_PARALLEL_H
 

@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/network/rt_ratelimit.h
+// Purpose: Token bucket rate limiter for network and API operations, continuously refilling tokens based on elapsed time up to a maximum capacity.
+//
+// Key invariants:
+//   - Tokens refill continuously based on elapsed wall-clock time.
+//   - Available tokens never exceed max capacity.
+//   - rt_ratelimit_acquire blocks until the requested tokens are available.
+//   - rt_ratelimit_try_acquire returns immediately; returns 1 if tokens available, 0 otherwise.
+//
+// Ownership/Lifetime:
+//   - Rate limiter objects are heap-allocated; caller is responsible for lifetime management.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/network/rt_ratelimit.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_ratelimit.h
-// Purpose: Token bucket rate limiter for network/API operations.
-// Key invariants: Tokens refill continuously based on elapsed time.
-//                 Available tokens never exceed max capacity.
-// Ownership/Lifetime: Rate limiter objects are heap-allocated; caller
-//                     responsible for lifetime management.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

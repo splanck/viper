@@ -4,6 +4,34 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_orderedmap.c
+// Purpose: Implements an insertion-ordered string-keyed map that preserves the
+//   order in which keys were first inserted. Combines a hash table for O(1)
+//   key lookup with a doubly-linked list maintaining insertion order. Iteration
+//   always visits entries in the order they were inserted, not hash order.
+//
+// Key invariants:
+//   - Hash table starts at capacity 16 and resizes (doubles) at 75% load.
+//   - Each entry node belongs to both a hash bucket chain (hash_next) and the
+//     insertion-order doubly-linked list (prev/next). head = first inserted,
+//     tail = last inserted.
+//   - Updating an existing key's value preserves its position in the insertion
+//     order; the node is not moved to the tail.
+//   - Removing an entry unlinks it from both the bucket chain and the list.
+//   - Key strings are heap-copied into entry nodes; the OrderedMap is
+//     independent of the source rt_string lifetime.
+//   - Values are stored as raw void* pointers (not retained by the map).
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - OrderedMap objects are GC-managed (rt_obj_new_i64). The bucket array and
+//     all entry nodes are freed by the GC finalizer (orderedmap_finalizer).
+//
+// Links: src/runtime/collections/rt_orderedmap.h (public API),
+//        src/runtime/collections/rt_map.h (unordered map counterpart)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_orderedmap.h"
 #include "rt_internal.h"

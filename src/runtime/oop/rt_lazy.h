@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/oop/rt_lazy.h
+// Purpose: Lazy type providing deferred computation until first access, evaluating a factory function once and caching the result for subsequent accesses.
+//
+// Key invariants:
+//   - The factory function is called exactly once, on first access.
+//   - The computed value is cached; subsequent accesses return the cached value.
+//   - Thread-safe initialization uses atomic compare-exchange to ensure single evaluation.
+//   - rt_lazy_get returns the cached value after initialization.
+//
+// Ownership/Lifetime:
+//   - Lazy objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/oop/rt_lazy.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_lazy.h
-// Purpose: Lazy type - deferred computation until first access.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

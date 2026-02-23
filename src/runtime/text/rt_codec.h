@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_codec.h
+// Purpose: Base64, Hex, and URL encoding/decoding utilities for string-based transformations used in network protocols, configuration, and data serialization.
+//
+// Key invariants:
+//   - Base64 encoding uses the standard alphabet (A-Z, a-z, 0-9, +, /); output includes padding.
+//   - URL encoding uses percent-encoding for reserved characters.
+//   - Hex encoding uses lowercase hexadecimal digits.
+//   - Decoding functions return NULL on invalid input.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - Input strings are borrowed; callers retain ownership.
+//
+// Links: src/runtime/text/rt_codec.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_codec.h
-// Purpose: Base64, Hex, and URL encoding/decoding utilities for strings.
-// Key invariants: All functions operate on strings; encoding is reversible.
-// Ownership/Lifetime: Returned strings are newly allocated.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

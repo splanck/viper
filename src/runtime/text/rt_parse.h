@@ -1,22 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_parse.h
+// Purpose: Safe parsing functions for Viper.Parse providing TryXxx, XxxOr, and IsXxx variants that never trap on invalid input and handle all edge cases gracefully.
+//
+// Key invariants:
+//   - TryXxx functions store the parsed value at a pointer and return true on success.
+//   - XxxOr functions return the parsed value or a caller-specified default on failure.
+//   - IsXxx functions return true when the string is a valid representation of the type.
+//   - None of these functions trap or have undefined behavior on invalid input.
+//
+// Ownership/Lifetime:
+//   - No heap allocation; all functions are pure parsing utilities.
+//   - Input strings are borrowed; callers retain ownership.
+//
+// Links: src/runtime/text/rt_parse.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_parse.h
-// Purpose: Safe parsing functions for Viper.Parse namespace.
-//
-// Safe Parsing Philosophy:
-// - TryXxx: Parse and store result at pointer, return true/false
-// - XxxOr: Return parsed value or default on failure
-// - IsXxx: Return true if string is valid for type
-//
-// These functions never trap or throw - they handle invalid input gracefully.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

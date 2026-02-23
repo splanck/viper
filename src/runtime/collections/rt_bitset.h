@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_bitset.h
+// Purpose: Arbitrary-size bit array (BitSet) with 0-based indexing that auto-grows when bits are set beyond the current size, supporting population count, set/clear/toggle, and bitwise operations.
+//
+// Key invariants:
+//   - Bit indices are 0-based; the bitset auto-grows when setting beyond current size.
+//   - All bits start as 0 on allocation.
+//   - Bitwise AND/OR/XOR operations require both operands to have the same size.
+//   - rt_bitset_count returns the population count (number of set bits).
+//
+// Ownership/Lifetime:
+//   - BitSet objects are heap-allocated; caller is responsible for lifetime management.
+//   - Internal backing array may be reallocated on auto-grow.
+//
+// Links: src/runtime/collections/rt_bitset.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_bitset.h
-// Purpose: Runtime functions for an arbitrary-size bit array (BitSet).
-// Key invariants: Bit indices are 0-based. Auto-grows when setting beyond size.
-// Ownership/Lifetime: BitSet manages its own memory.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_csv.h
+// Purpose: CSV parsing and formatting utilities compliant with RFC 4180, handling quoted fields, embedded newlines, escaped double-quotes, and custom delimiters.
+//
+// Key invariants:
+//   - Handles quoted fields, escaped quotes (double-quote inside quotes), and newlines in fields.
+//   - Default delimiter is comma; custom delimiters are supported.
+//   - ParseLine returns a Seq of strings for one CSV row.
+//   - Format escapes strings containing the delimiter or quote character automatically.
+//
+// Ownership/Lifetime:
+//   - Returned Seq and string objects are newly allocated; caller must release.
+//   - Input strings are borrowed; callers retain ownership.
+//
+// Links: src/runtime/text/rt_csv.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_csv.h
-// Purpose: CSV parsing and formatting utilities (RFC 4180 compliant).
-// Key invariants: Handles quoted fields, escaped quotes, newlines in quotes.
-// Ownership/Lifetime: Returned Seq and strings are newly allocated.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

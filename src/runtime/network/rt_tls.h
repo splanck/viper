@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/network/rt_tls.h
+// Purpose: TLS 1.3 client for secure HTTPS connections using ChaCha20-Poly1305 AEAD and X25519 key exchange, implemented in pure C without external TLS libraries.
+//
+// Key invariants:
+//   - Implements TLS 1.3 handshake with X25519 key exchange.
+//   - Uses ChaCha20-Poly1305 for all record encryption.
+//   - Certificate verification is performed against the system trust store.
+//   - Only client mode is supported; server-side TLS is not implemented.
+//
+// Ownership/Lifetime:
+//   - TLS connection objects are heap-allocated; caller must close and free.
+//   - Returned data buffers are newly allocated; caller must release.
+//
+// Links: src/runtime/network/rt_tls.c (implementation), src/runtime/network/rt_crypto.h, src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-/// @file rt_tls.h
-/// @brief TLS 1.3 client for secure HTTPS connections.
-///
-/// Implements TLS 1.3 using ChaCha20-Poly1305 AEAD and X25519 key exchange.
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_TLS_H
 #define VIPER_RT_TLS_H
 
@@ -121,6 +125,23 @@ extern "C"
 
     /// @brief Get last error message.
     rt_string rt_viper_tls_error(void *obj);
+
+    //=========================================================================
+    // Internal functions exposed for unit testing (CS-1/CS-2/CS-3)
+    //=========================================================================
+
+    /// @brief Match a hostname pattern against a target hostname (RFC 6125).
+    /// @return 1 if match, 0 otherwise.
+    int tls_match_hostname(const char *pattern, const char *hostname);
+
+    /// @brief Extract SubjectAltName DNS names from a certificate DER.
+    /// @return Number of names found.
+    int tls_extract_san_names(const uint8_t *der, size_t der_len,
+                               char san_out[][256], int max_names);
+
+    /// @brief Extract CommonName from a certificate DER Subject.
+    /// @return 1 if found, 0 otherwise.
+    int tls_extract_cn(const uint8_t *der, size_t der_len, char cn_out[256]);
 
 #ifdef __cplusplus
 }

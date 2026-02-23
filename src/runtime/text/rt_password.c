@@ -5,8 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_password.c
-// Purpose: Secure password hashing with auto-salt and verify (PBKDF2-SHA256).
+// File: src/runtime/text/rt_password.c
+// Purpose: Implements secure password hashing and verification for the
+//          Viper.Text.Password class using PBKDF2-SHA256 with an automatically
+//          generated random salt. Provides Hash (returns encoded string) and
+//          Verify (constant-time comparison against stored hash).
+//
+// Key invariants:
+//   - Salts are 16 bytes of CSPRNG output, unique per hash call.
+//   - Hash output format: "pbkdf2-sha256$<iterations>$<hex-salt>$<hex-key>".
+//   - Verification uses constant-time comparison to prevent timing attacks.
+//   - Default iteration count is 100,000; minimum enforced by rt_keyderive.
+//   - Verify returns false (not trap) for mismatched passwords or invalid format.
+//   - The stored hash string is self-describing (includes algorithm and params).
+//
+// Ownership/Lifetime:
+//   - The returned hash string is a fresh rt_string allocation owned by caller.
+//   - Input password strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_password.h (public API),
+//        src/runtime/text/rt_keyderive.h (PBKDF2-SHA256 implementation),
+//        src/runtime/text/rt_rand.h (salt generation)
 //
 //===----------------------------------------------------------------------===//
 

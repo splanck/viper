@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_trie.h
+// Purpose: Prefix tree (Trie) for string keys supporting insertion, lookup, prefix search, and auto-complete queries with O(k) operations where k is the key length.
+//
+// Key invariants:
+//   - Keys are stored as sequences of ASCII characters.
+//   - Prefix search returns all keys with the given prefix.
+//   - rt_trie_contains returns 1 only for exact key matches, not just prefixes.
+//   - Values are retained while stored in the trie.
+//
+// Ownership/Lifetime:
+//   - Trie objects are heap-allocated; caller is responsible for lifetime management.
+//   - String keys are used as-is; internal nodes store individual characters.
+//
+// Links: src/runtime/collections/rt_trie.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_trie.h
-// Purpose: Runtime functions for a prefix tree (Trie) for string keys.
-// Key invariants: Keys are ASCII. Values are retained.
-// Ownership/Lifetime: Trie manages its own memory.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

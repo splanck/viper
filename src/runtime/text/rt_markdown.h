@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_markdown.h
+// Purpose: Basic Markdown to HTML conversion and text extraction supporting common Markdown syntax: headers, bold, italic, links, code blocks, lists, and paragraphs.
+//
+// Key invariants:
+//   - Supports ATX-style headers (#, ##, ..., ######), bold (**), italic (*), inline code (`).
+//   - Supports fenced code blocks (```), unordered lists (-/*), ordered lists (1.).
+//   - Not a full CommonMark implementation; edge cases may differ.
+//   - rt_markdown_extract_links returns a Seq of [text, url] pairs.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of conversion.
+//
+// Links: src/runtime/text/rt_markdown.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_markdown.h
-// Purpose: Basic Markdown to HTML conversion and text extraction.
-// Key invariants: Supports common Markdown: headers, bold, italic, links, code,
-//                 lists, paragraphs. Not a full CommonMark implementation.
-// Ownership/Lifetime: Returns new strings. Caller manages.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

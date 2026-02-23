@@ -5,7 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Keyboard input handling implementation.
+// File: src/runtime/graphics/rt_input.c
+// Purpose: Keyboard and mouse input state manager for Viper games. Buffers the
+//   platform window's raw key/mouse events between frames and exposes a
+//   snapshot API (IsDown, WasPressed, WasReleased, WasClicked) that is stable
+//   for the entire duration of a frame update. Callers poll state once per
+//   frame after rt_input_begin_frame() and before rt_input_end_frame().
+//
+// Key invariants:
+//   - State is double-buffered: rt_input_begin_frame() captures the current
+//     event queue into the "current frame" snapshot. WasPressed/WasReleased
+//     compare current and previous snapshots (edge detection). IsDown reflects
+//     the current snapshot (level detection).
+//   - Key codes use the platform's native integer key codes (forwarded from
+//     the windowing backend). There is no re-mapping layer here.
+//   - Mouse button indices: 1 = left, 2 = right, 3 = middle (matches SDL/X11
+//     conventions). WasClicked is a shorthand for WasPressed && WasReleased
+//     in the same frame (single-frame tap detection for quick presses).
+//   - Mouse position (X, Y) is in canvas-pixel coordinates (top-left origin,
+//     +Y downward), already scaled by the HiDPI scale factor so callers always
+//     work in logical canvas pixels.
+//   - All state is stored in a GC-managed input context object; there is one
+//     context per Canvas window.
+//
+// Ownership/Lifetime:
+//   - Input context objects are GC-managed (rt_obj_new_i64). They are created
+//     by rt_graphics.c alongside the Canvas and freed by the GC finalizer.
+//
+// Links: src/runtime/graphics/rt_input.h (public API),
+//        src/runtime/graphics/rt_graphics.c (Canvas event pump integration)
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_json.h
+// Purpose: JSON parsing and formatting utilities for Viper.Data.Json, handling all JSON types (null, bool, number, string, array, object) and producing pretty-printed or compact output.
+//
+// Key invariants:
+//   - Parses all standard JSON types: null, boolean, number, string, array, object.
+//   - Numbers are stored as f64; integer parsing preserves exact values up to 53 bits.
+//   - rt_json_parse returns NULL on invalid JSON input.
+//   - rt_json_format produces compact JSON; rt_json_pretty produces indented output.
+//
+// Ownership/Lifetime:
+//   - Returned Seq, Map, and string objects are newly allocated; caller must release.
+//   - Input strings are borrowed for the duration of parsing.
+//
+// Links: src/runtime/text/rt_json.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_json.h
-// Purpose: JSON parsing and formatting utilities.
-// Key invariants: Handles all JSON types (null, bool, number, string, array, object).
-// Ownership/Lifetime: Returned Seq/Map and strings are newly allocated.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

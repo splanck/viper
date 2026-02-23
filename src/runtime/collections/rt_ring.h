@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_ring.h
+// Purpose: Fixed-capacity circular buffer (Ring) with FIFO ordering that overwrites the oldest entry when full, useful for rolling logs and event histories.
+//
+// Key invariants:
+//   - Fixed capacity set at creation; cannot be resized.
+//   - When full, push overwrites the oldest element (no trap).
+//   - Peek returns the oldest (front) element without removing it.
+//   - Elements are retained when pushed and released when overwritten or popped.
+//
+// Ownership/Lifetime:
+//   - Ring objects are heap-allocated; caller is responsible for lifetime management.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_ring.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_ring.h
-// Purpose: Runtime functions for fixed-size circular buffer (Ring).
-// Key invariants: Fixed capacity, FIFO order, overwrites oldest when full.
-// Ownership/Lifetime: Ring manages its own memory. Elements are retained.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -4,6 +4,33 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/collections/rt_frozenset.c
+// Purpose: Implements an immutable string set (FrozenSet) built once from a Seq
+//   of strings. After construction no elements can be added or removed. Uses
+//   open-addressing with FNV-1a hashing for O(1) average-case membership tests.
+//   Typical uses: constant keyword tables, stop-word lists, and any membership
+//   query where the set contents are known at build time.
+//
+// Key invariants:
+//   - Open-addressing hash table; slot array is sized to 2× the element count
+//     at construction so load factor stays below 50%.
+//   - Slot key == NULL indicates an empty slot; no tombstones needed since the
+//     set is immutable after build.
+//   - FNV-1a hash over the raw string bytes; linear probing on collision.
+//   - Keys are stored as retained rt_string references (not copied); the
+//     FrozenSet keeps references to prevent GC collection of key strings.
+//   - Contains returns 1 if the string is present, 0 otherwise.
+//   - Safe for concurrent read-only access after construction completes.
+//
+// Ownership/Lifetime:
+//   - FrozenSet objects are GC-managed (rt_obj_new_i64). The slots array is
+//     freed by the GC finalizer (frozenset_finalizer).
+//
+// Links: src/runtime/collections/rt_frozenset.h (public API),
+//        src/runtime/collections/rt_set.h (mutable set counterpart)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_frozenset.h"
 

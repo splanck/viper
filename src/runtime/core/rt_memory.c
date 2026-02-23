@@ -5,11 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the BASIC runtime's heap allocation shim.  The helper validates
-// requested sizes, enforces non-negative limits, and guarantees that callers
-// receive zero-initialised buffers even when they request zero bytes.  The
-// routine intentionally mirrors the VM's allocation behaviour so diagnostics and
-// trap semantics remain aligned between native and interpreted execution.
+// File: src/runtime/core/rt_memory.c
+// Purpose: Heap allocation shim for the Viper runtime C ABI. Validates
+//   requested sizes, enforces non-negative limits, and guarantees that callers
+//   receive zero-initialised buffers even for zero-byte requests. Mirrors the
+//   VM's allocation semantics so that diagnostics and trap conditions remain
+//   consistent between interpreted (VM) and native (AOT) execution paths.
+//
+// Key invariants:
+//   - rt_alloc(n_bytes) always returns a zero-initialised buffer. Callers must
+//     not assume undefined content in freshly allocated memory.
+//   - Requesting a negative or overflow-inducing size fires rt_trap() rather
+//     than returning NULL, keeping error handling uniform with other runtime
+//     limit violations.
+//   - rt_free(ptr) is a thin wrapper around free(). Passing NULL is safe (no-op,
+//     matching standard C free() semantics).
+//   - All allocations go through this shim (not direct malloc) so that future
+//     allocator instrumentation or custom allocators can be plugged in at a
+//     single point.
+//
+// Ownership/Lifetime:
+//   - No internal state. All functions are stateless wrappers. Callers own
+//     the returned memory and must free it via rt_free() or rt_obj_free().
+//
+// Links: src/runtime/core/rt_memory.h (public API),
+//        src/runtime/core/rt_trap.h (rt_trap for invalid sizes)
 //
 //===----------------------------------------------------------------------===//
 

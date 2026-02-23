@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_mat3.h
+// Purpose: 3x3 matrix math for 2D transformations (Viper.Mat3), supporting translation, rotation, scaling, and composition in row-major layout.
+//
+// Key invariants:
+//   - Matrices are stored in row-major order; right-multiply with column vectors.
+//   - Mat3 objects are immutable; all operations return new matrices.
+//   - Identity, translate, rotate, scale, and multiply operations are provided.
+//   - Determinant and inverse operations trap on singular matrices.
+//
+// Ownership/Lifetime:
+//   - Mat3 objects are runtime-managed (heap-allocated).
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_mat3.c (implementation), src/runtime/graphics/rt_vec2.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_mat3.h
-// Purpose: 3x3 matrix math for 2D transformations (Viper.Mat3).
-// Key invariants: Row-major order, right-multiply with column vectors.
-// Ownership/Lifetime: Mat3 objects are runtime-managed and immutable.
-// Links: Viper.Mat3 standard library module; see also rt_vec2.h.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

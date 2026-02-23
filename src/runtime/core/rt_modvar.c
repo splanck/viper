@@ -5,10 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_modvar.c
-// Purpose: Provide runtime-managed addresses for module-level BASIC variables.
-// Notes: Uses a simple linear table keyed by name+kind; zero-initialized.
-//        Uses per-VM RtContext instead of global state for isolation.
+// File: src/runtime/core/rt_modvar.c
+// Purpose: Provides runtime-managed storage for module-level BASIC variables.
+//          Each VM instance holds an independent linear table keyed by variable
+//          name and kind tag, enabling multiple VMs to maintain isolated global
+//          variable namespaces without shared state.
+//
+// Key invariants:
+//   - Variables are keyed by (name, kind) pairs; the same name with different
+//     kind tags (I64, F64, I1, PTR, STR) is stored as a separate entry.
+//   - The backing table doubles in capacity when full (initial capacity 16).
+//   - Storage for each variable is zero-initialized at creation time.
+//   - Table entries are never removed; once created, a variable persists for
+//     the lifetime of the RtContext.
+//   - All operations require an active RtContext; passing NULL traps.
+//
+// Ownership/Lifetime:
+//   - Storage blocks and the entry table are allocated via rt_alloc and are
+//     owned by the RtContext; they are freed when the context is destroyed.
+//   - Variable names are compared by value (strcmp); no ownership of the
+//     name pointer is taken beyond the duration of the lookup call.
+//
+// Links: src/runtime/core/rt_modvar.h (public API),
+//        src/runtime/core/rt_context.h (RtContext definition),
+//        src/runtime/core/rt_memory.c (rt_alloc)
+//
 
 #include "rt_modvar.h"
 #include "rt_context.h"

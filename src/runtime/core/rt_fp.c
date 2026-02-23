@@ -5,18 +5,33 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements floating-point domain helpers required by the BASIC runtime.  The
-// routines encapsulate rule-of-thumb behaviour (such as rejecting fractional
-// exponents for negative bases) so the VM and native runtimes report identical
-// error conditions when evaluating `^` expressions.
+// File: src/runtime/core/rt_fp.c
+// Purpose: Implements floating-point domain helpers required by the BASIC
+//          runtime. Provides exponentiation with BASIC-specific domain checks
+//          (rejecting negative bases raised to non-integer exponents), a plain
+//          two-argument pow wrapper for Viper.Math.Pow, and trap-on-error
+//          variants used by the BASIC ^ operator in native codegen.
+//
+// Key invariants:
+//   - rt_pow_f64_chkdom rejects negative bases with fractional exponents by
+//     setting *ok=false and returning NaN; it does not trap.
+//   - rt_pow_f64_basic_native traps directly on domain errors or non-finite
+//     results using the standard BASIC diagnostic messages.
+//   - rt_math_pow is an unchecked pass-through to pow(); domain errors are
+//     the caller's responsibility.
+//   - All functions are linkage-compatible with C++ builds via extern "C".
+//   - VM and native builds use the same implementation, ensuring identical
+//     error conditions when evaluating ^ expressions.
+//
+// Ownership/Lifetime:
+//   - All functions operate on scalar double values; no allocation is performed.
+//   - The ok pointer in rt_pow_f64_chkdom is borrowed; it must be non-NULL
+//     (null causes a trap).
+//
+// Links: src/runtime/core/rt_fp.h (public API),
+//        src/runtime/core/rt_math.c (trigonometric and other math helpers)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Floating-point domain helpers for the BASIC runtime.
-/// @details Provides the `rt_pow_f64_chkdom` implementation that enforces
-///          language-specific constraints around exponentiation while reusing
-///          the runtime's trap and status reporting facilities.
 
 #include "rt_fp.h"
 #include "rt.hpp"

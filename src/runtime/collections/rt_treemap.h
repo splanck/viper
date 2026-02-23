@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_treemap.h
+// Purpose: Sorted key-value map with string keys maintained in lexicographic order, providing floor/ceil/first/last navigation and ordered range iteration.
+//
+// Key invariants:
+//   - Keys are maintained in sorted lexicographic order at all times.
+//   - rt_treemap_floor returns the largest key <= query; rt_treemap_ceil returns the smallest >= query.
+//   - rt_treemap_first/last return the minimum/maximum keys.
+//   - All mutation operations maintain the sort-order invariant.
+//
+// Ownership/Lifetime:
+//   - TreeMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - Keys are copied; values are retained while stored.
+//
+// Links: src/runtime/collections/rt_treemap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_treemap.h
-// Purpose: Sorted key-value map with string keys, ordered by key comparison.
-// Key invariants: Keys are maintained in sorted order; Floor/Ceil/First/Last
-//                 provide ordered access; all operations maintain sort order.
-// Ownership/Lifetime: TreeMap objects are heap-allocated; caller responsible
-//                     for lifetime management.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

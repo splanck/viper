@@ -5,8 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_dateonly.c
-// Purpose: DateOnly type implementation.
+// File: src/runtime/core/rt_dateonly.c
+// Purpose: Implements the DateOnly type for the Viper runtime, representing a
+//          calendar date (year, month, day) without a time component. Provides
+//          construction from components or Unix day offsets, arithmetic
+//          (AddDays, DiffDays), comparison, formatting, and leap-year handling.
+//
+// Key invariants:
+//   - Dates are represented internally as (year, month, day) tuples with no
+//     timezone or time information.
+//   - Internal conversion between dates and "days since Unix epoch" uses the
+//     Julian Day Number algorithm for correctness across the Gregorian calendar.
+//   - Month values are 1-based (January = 1, December = 12).
+//   - Leap years follow the Gregorian rule: divisible by 4, except centuries
+//     unless also divisible by 400.
+//   - Out-of-range month/day inputs produce 0 from days_in_month_impl rather
+//     than trapping; validation responsibility lies with the caller.
+//
+// Ownership/Lifetime:
+//   - DateOnly instances are heap-allocated via rt_obj_new_i64 and managed by
+//     the runtime GC; callers do not free them explicitly.
+//   - Formatted strings are newly allocated rt_string values; the caller owns
+//     the reference and must call rt_string_unref when done.
+//
+// Links: src/runtime/core/rt_dateonly.h (public API),
+//        src/runtime/core/rt_datetime.c (full DateTime with time components),
+//        src/runtime/core/rt_daterange.c (DateRange spanning two timestamps)
 //
 //===----------------------------------------------------------------------===//
 

@@ -4,24 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_keyderive.c
-/// @brief Key derivation functions (PBKDF2-SHA256).
-///
-/// Implements RFC 2898 / RFC 8018 PBKDF2 (Password-Based Key Derivation
-/// Function 2) using HMAC-SHA256 as the pseudorandom function.
-///
-/// **Security Recommendations:**
-/// - Use at least 1000 iterations (enforced minimum)
-/// - For password hashing, use 100,000+ iterations
-/// - Use a unique random salt for each password (at least 16 bytes)
-/// - Store the salt alongside the derived key
-///
-/// **Common Use Cases:**
-/// - Password hashing and verification
-/// - Encryption key derivation from passwords
-/// - Token generation
-///
+//
+// File: src/runtime/text/rt_keyderive.c
+// Purpose: Implements PBKDF2-SHA256 key derivation (RFC 2898 / RFC 8018) for
+//          the Viper.Text.KeyDerive class. Derives cryptographic keys from
+//          passwords using HMAC-SHA256 as the pseudorandom function with a
+//          configurable iteration count and salt.
+//
+// Key invariants:
+//   - Minimum iteration count is PBKDF2_MIN_ITERATIONS (1000); requests below
+//     this threshold are silently raised to the minimum.
+//   - Salt must be non-empty; a NULL or empty salt causes a trap.
+//   - Output key length is specified in bytes; any positive length is supported.
+//   - HMAC-SHA256 block size is 64 bytes; key padding follows RFC 2104.
+//   - The derived key is returned as a hex-encoded rt_string for portability.
+//
+// Ownership/Lifetime:
+//   - The returned rt_string key is a fresh allocation owned by the caller.
+//   - Input password and salt strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_keyderive.h (public API),
+//        src/runtime/text/rt_hash.h (SHA256 used as PRF base),
+//        src/runtime/text/rt_password.h (higher-level password hashing)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_keyderive.h"

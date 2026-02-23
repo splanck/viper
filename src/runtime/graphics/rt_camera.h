@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_camera.h
+// Purpose: 2D camera for viewport and scrolling, providing world-to-screen and screen-to-world coordinate transforms, zoom, and shake offset application.
+//
+// Key invariants:
+//   - Camera tracks a viewport rectangle in world space.
+//   - World-to-screen transforms apply offset and zoom.
+//   - Screen-to-world is the inverse transform for mouse picking.
+//   - Shake offsets (from rt_screenfx) are applied separately to avoid accumulating into the base position.
+//
+// Ownership/Lifetime:
+//   - Camera objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_camera.c (implementation), src/runtime/collections/rt_screenfx.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_camera.h
-// Purpose: 2D Camera class for viewport and scrolling.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

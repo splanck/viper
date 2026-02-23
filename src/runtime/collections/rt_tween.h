@@ -1,23 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_tween.h
+// Purpose: Frame-based tweening system with configurable easing functions for smooth animations, supporting double and int64 value types, play/pause/stop lifecycle, and static lerp helpers.
+//
+// Key invariants:
+//   - Duration must be >= 1 frame; easing type must be a valid rt_ease_type.
+//   - Progress is in [0, 100]; value equals 'from' at start and 'to' at completion.
+//   - rt_tween_update must be called once per frame.
+//   - Static lerp and easing functions are pure and allocation-free.
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_tween handle; destroy with rt_tween_destroy.
+//   - Static functions require no allocation and have no ownership semantics.
+//
+// Links: src/runtime/collections/rt_tween.c (implementation), src/runtime/core/rt_easing.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_tween.h
-// Purpose: Frame-based tweening and interpolation with various easing
-//   functions for smooth animations. Supports double and int64 endpoints,
-//   play/pause/stop/resume lifecycle, and static lerp/easing helpers.
-// Key invariants: Duration >= 1 frame. Easing type must be a valid
-//   rt_ease_type (0..RT_EASE_COUNT-1). Progress is [0, 100]. Tween value
-//   equals 'from' at start and 'to' upon completion.
-// Ownership/Lifetime: Caller owns the rt_tween handle and must free it with
-//   rt_tween_destroy(). Static functions are pure and allocation-free.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_TWEEN_H
 #define VIPER_RT_TWEEN_H
 

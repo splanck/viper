@@ -5,9 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_perlin.c
-// Purpose: Implement Perlin noise using the improved algorithm (2002).
-//          Supports 2D and 3D noise with octave/fractal layering.
+// File: src/runtime/core/rt_perlin.c
+// Purpose: Implements Ken Perlin's improved noise algorithm (2002) for the
+//          Viper runtime. Supports 2D and 3D noise evaluation and octave/fractal
+//          layering (fBm) for procedural terrain, textures, and animations.
+//
+// Key invariants:
+//   - The permutation table is seeded from the caller-supplied integer seed
+//     using a Fisher-Yates shuffle; different seeds produce uncorrelated noise.
+//   - The doubled permutation table (perm[512]) avoids modular arithmetic in
+//     the inner loop; indices are masked with 0xFF before lookup.
+//   - Noise values are in the range approximately [-1, 1] for 3D and [-0.7, 0.7]
+//     for 2D; callers should normalise if a [0, 1] range is required.
+//   - All noise functions are pure (no side effects); concurrent calls on
+//     different objects are safe without synchronization.
+//
+// Ownership/Lifetime:
+//   - Perlin instances are heap-allocated via rt_obj_new_i64 and managed by
+//     the runtime GC; the finalizer is a no-op (no dynamic sub-allocations).
+//   - Caller does not need to free instances explicitly.
+//
+// Links: src/runtime/core/rt_perlin.h (public API),
+//        src/runtime/core/rt_easing.c (complementary interpolation utilities)
 //
 //===----------------------------------------------------------------------===//
 

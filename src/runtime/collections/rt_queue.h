@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_queue.h
+// Purpose: Runtime-backed FIFO queue for Viper.Collections.Queue, providing enqueue/dequeue/peek with automatic growth and O(1) operations.
+//
+// Key invariants:
+//   - FIFO ordering: enqueue at back, dequeue from front.
+//   - Dequeue and peek on empty queue trap immediately.
+//   - Internal ring buffer doubles capacity on overflow.
+//   - Elements are not retained; callers manage element lifetimes.
+//
+// Ownership/Lifetime:
+//   - Queue objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/collections/rt_queue.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_queue.h
-// Purpose: Runtime-backed FIFO queue for Viper.Collections.Queue.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

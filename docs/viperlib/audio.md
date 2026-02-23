@@ -11,6 +11,8 @@
 - [Viper.Sound.Voice](#vipersoundvoice)
 - [Viper.Sound.Audio (Static)](#vipersoundaudio-static)
 - [Viper.Sound.Playlist](#vipersoundplaylist)
+- [Audio File Format](#audio-file-format)
+- [Limits and Behaviors](#limits-and-behaviors)
 
 ---
 
@@ -25,26 +27,31 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 
 | Method       | Signature        | Description                                       |
 |--------------|------------------|---------------------------------------------------|
-| `Load(path)` | `Sound(String)`  | Load a sound from a WAV file. Returns NULL on failure |
+| `Load(path)` | `Sound(String)`  | Load a sound from a WAV file. Returns `null` on failure |
 
 ### Methods
 
 | Method                   | Signature                          | Description                                              |
 |--------------------------|------------------------------------|----------------------------------------------------------|
 | `Play()`                 | `Integer()`                        | Play the sound once. Returns voice ID for control        |
-| `PlayEx(volume, pan)`    | `Integer(Integer, Integer)`        | Play with volume (0-100) and pan (-100 to 100)           |
+| `PlayEx(volume, pan)`    | `Integer(Integer, Integer)`        | Play with volume (0–100) and pan (−100 to +100)          |
 | `PlayLoop(volume, pan)`  | `Integer(Integer, Integer)`        | Play looped with volume and pan. Returns voice ID        |
+
+> **Voice limit:** Up to 32 sounds may play simultaneously. A 33rd `Play()` call stops
+> the **oldest** playing (non-looping) sound to make room — called LRU eviction. The
+> evicted sound stops with no error or notification. Looping sounds are evicted only
+> when all 32 voices are looping.
 
 ### Voice Control
 
 After playing a sound, you receive a voice ID that can be used with `Viper.Sound.Voice`:
 
-| Method                              | Description                                    |
-|-------------------------------------|------------------------------------------------|
-| `Viper.Sound.Voice.IsPlaying(id)`   | Returns 1 if voice is still playing            |
-| `Viper.Sound.Voice.SetPan(id, pan)` | Set voice pan (-100 left, 0 center, 100 right) |
-| `Viper.Sound.Voice.SetVolume(id, vol)` | Set voice volume (0-100)                    |
-| `Viper.Sound.Voice.Stop(id)`        | Stop a playing voice                           |
+| Method                                 | Description                                       |
+|----------------------------------------|---------------------------------------------------|
+| `Viper.Sound.Voice.IsPlaying(id)`      | Returns 1 if voice is still playing               |
+| `Viper.Sound.Voice.SetPan(id, pan)`    | Set pan: −100 = hard left, 0 = center, 100 = right |
+| `Viper.Sound.Voice.SetVolume(id, vol)` | Set voice volume (0–100)                          |
+| `Viper.Sound.Voice.Stop(id)`           | Stop a playing voice                              |
 
 ### Zia Example
 
@@ -66,7 +73,7 @@ func start() {
         var id = snd.Play();
 
         // Play with volume and pan
-        var id2 = snd.PlayEx(80, -50);
+        var id2 = snd.PlayEx(80, -50);  // 80% volume, panned left
 
         // Control the playing voice
         Voice.SetVolume(id2, 50);
@@ -120,11 +127,19 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 **Type:** Instance (obj)
 **Constructor:** `Viper.Sound.Music.Load(path)`
 
+> **Concurrent limit:** Up to **4** music streams may be loaded at the same time.
+> `Music.Load()` returns `null` if this limit is exceeded. Stop and free unused
+> streams before loading new ones.
+
+> **Sample rate:** Music files must be **44100 Hz**. Files at other sample rates
+> (e.g., 48000 Hz) will play at incorrect pitch and speed. Sound effects are
+> automatically resampled at load time; music streams are not.
+
 ### Static Methods
 
 | Method       | Signature        | Description                                       |
 |--------------|------------------|---------------------------------------------------|
-| `Load(path)` | `Music(String)`  | Load music from a WAV file. Returns NULL on failure |
+| `Load(path)` | `Music(String)`  | Load music from a WAV file. Returns `null` on failure or when the 4-stream limit is reached |
 
 ### Properties
 
@@ -132,7 +147,7 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 |------------|---------|--------|------------------------------------|
 | `Duration` | Integer | Read   | Total duration in milliseconds     |
 | `Position` | Integer | Read   | Current position in milliseconds   |
-| `Volume`   | Integer | R/W    | Playback volume (0-100)            |
+| `Volume`   | Integer | R/W    | Playback volume (0–100)            |
 
 ### Methods
 
@@ -160,7 +175,7 @@ func start() {
     Audio.Init();
     var c = Canvas.New("Music Player", 400, 200);
 
-    var mus = Music.Load("background.wav");
+    var mus = Music.Load("background.wav");  // Must be 44100 Hz WAV
     if mus != null {
         mus.set_Volume(70);
         mus.Play(1);  // Looped
@@ -183,7 +198,7 @@ func start() {
 ### Example
 
 ```basic
-' Load background music
+' Load background music (must be 44100 Hz WAV)
 DIM bgMusic AS Viper.Sound.Music
 bgMusic = Viper.Sound.Music.Load("background.wav")
 
@@ -231,12 +246,19 @@ Static class for controlling individual playing voices (sound instances).
 
 ### Methods
 
-| Method                     | Signature                      | Description                                    |
-|----------------------------|--------------------------------|------------------------------------------------|
-| `IsPlaying(id)`            | `Integer(Integer)`             | Check if voice is playing (returns 1 or 0)     |
-| `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Set pan for a voice (-100 to 100)              |
-| `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0-100)                 |
-| `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                           |
+| Method                     | Signature                      | Description                                              |
+|----------------------------|--------------------------------|----------------------------------------------------------|
+| `IsPlaying(id)`            | `Integer(Integer)`             | Check if voice is playing (returns 1 or 0)               |
+| `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Pan: −100 = hard left, 0 = center, +100 = hard right     |
+| `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0–100)                           |
+| `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                                     |
+
+> **Pan law:** At `pan=0` (center) the signal is equal in both channels. `pan=100`
+> routes the full signal to the right channel with zero output on the left. The
+> gain is applied linearly: `left = (100 − pan) / 200`, `right = (100 + pan) / 200`.
+
+> **Invalid IDs:** All voice functions are safe to call with any integer ID. If the
+> voice has already stopped or the ID was never valid, the call is a no-op.
 
 ### Zia Example
 
@@ -254,7 +276,7 @@ func start() {
     SayInt(Voice.IsPlaying(0));  // 0
     Voice.Stop(0);               // safe no-op
     Voice.SetVolume(0, 50);      // safe no-op
-    Voice.SetPan(0, -50);        // safe no-op
+    Voice.SetPan(0, -50);        // safe no-op (panned left)
 
     // Master volume
     Audio.SetMasterVolume(80);
@@ -280,15 +302,15 @@ Global audio system control functions.
 
 ### Methods
 
-| Method                          | Signature                      | Description                                    |
-|---------------------------------|--------------------------------|------------------------------------------------|
-| `GetMasterVolume()`             | `Integer()`                    | Get current master volume                      |
+| Method                          | Signature                      | Description                                       |
+|---------------------------------|--------------------------------|---------------------------------------------------|
+| `GetMasterVolume()`             | `Integer()`                    | Get current master volume (0–100)                 |
 | `Init()`                        | `Integer()`                    | Initialize the audio system. Returns 1 on success |
-| `PauseAll()`                    | `Void()`                       | Pause all audio playback                       |
-| `ResumeAll()`                   | `Void()`                       | Resume all audio playback                      |
-| `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0-100)        |
-| `Shutdown()`                    | `Void()`                       | Shut down the audio system                     |
-| `StopAllSounds()`               | `Void()`                       | Stop all playing sounds (not music)            |
+| `PauseAll()`                    | `Void()`                       | Pause all audio playback                          |
+| `ResumeAll()`                   | `Void()`                       | Resume all audio playback                         |
+| `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0–100)           |
+| `Shutdown()`                    | `Void()`                       | Shut down the audio system                        |
+| `StopAllSounds()`               | `Void()`                       | Stop all playing sounds (does not affect music)   |
 
 ### Zia Example
 
@@ -364,27 +386,31 @@ Music playlist with queue management for sequential track playback.
 
 ### Playback Control Methods
 
-| Method       | Signature       | Description                                        |
-|--------------|-----------------|----------------------------------------------------|
-| `Jump(index)`| `Void(Integer)` | Jump to a specific track by index                  |
-| `Next()`     | `Void()`        | Skip to the next track                             |
-| `Pause()`    | `Void()`        | Pause playback                                     |
-| `Play()`     | `Void()`        | Start playing from the beginning or resume         |
-| `Prev()`     | `Void()`        | Go back to the previous track                      |
-| `Stop()`     | `Void()`        | Stop playback and reset to beginning               |
-| `Update()`   | `Void()`        | Update playlist state (call each frame for auto-advance) |
+| Method        | Signature       | Description                                                   |
+|---------------|-----------------|---------------------------------------------------------------|
+| `Jump(index)` | `Void(Integer)` | Jump to a specific track by index                             |
+| `Next()`      | `Void()`        | Skip to the next track                                        |
+| `Pause()`     | `Void()`        | Pause playback                                                |
+| `Play()`      | `Void()`        | Start playing from the beginning or resume                    |
+| `Prev()`      | `Void()`        | Go back to the previous track                                 |
+| `Stop()`      | `Void()`        | Stop playback and reset to beginning                          |
+| `Update()`    | `Void()`        | **Required — call once per tick for automatic track advance** |
+
+> ⚠️ **`Update()` is required for automatic track advancement.** Call it once per
+> game or app tick (inside your main loop). If omitted, the playlist will stop
+> after each track finishes and never advance to the next one.
 
 ### Properties
 
-| Property    | Type    | Access | Description                                         |
-|-------------|---------|--------|-----------------------------------------------------|
-| `Current`   | Integer | Read   | Current track index (-1 if empty)                   |
-| `IsPaused`  | Boolean | Read   | True if the playlist is paused                      |
-| `IsPlaying` | Boolean | Read   | True if the playlist is currently playing           |
-| `Len`       | Integer | Read   | Number of tracks in the playlist                    |
-| `Repeat`    | Integer | R/W    | Repeat mode: 0 = none, 1 = repeat all, 2 = repeat one |
-| `Shuffle`   | Boolean | R/W    | Enable/disable shuffle mode                         |
-| `Volume`    | Integer | R/W    | Playback volume (0-100)                             |
+| Property    | Type    | Access | Description                                            |
+|-------------|---------|--------|--------------------------------------------------------|
+| `Current`   | Integer | Read   | Current track index (−1 if empty or not started)       |
+| `IsPaused`  | Boolean | Read   | True if the playlist is paused                         |
+| `IsPlaying` | Boolean | Read   | True if the playlist is currently playing              |
+| `Len`       | Integer | Read   | Number of tracks in the playlist                       |
+| `Repeat`    | Integer | R/W    | 0 = no repeat, 1 = repeat all, 2 = repeat one track   |
+| `Shuffle`   | Boolean | R/W    | Enable/disable shuffle mode                            |
+| `Volume`    | Integer | R/W    | Playback volume (0–100)                                |
 
 ### Zia Example
 
@@ -412,7 +438,7 @@ func start() {
 
     while c.get_ShouldClose() == 0 {
         c.Poll();
-        pl.Update();
+        pl.Update();  // Required — call every tick
 
         Say("Track " + Fmt.Int(pl.get_Current()) + " of " + Fmt.Int(pl.get_Len()));
 
@@ -469,19 +495,41 @@ pl.Stop()
 
 ## Audio File Format
 
-Currently, Viper Audio supports **WAV files** only:
+Viper Audio supports **WAV (PCM) files only**. MP3, OGG, FLAC, and other
+compressed formats are not supported.
 
-- **Format:** PCM (uncompressed)
-- **Bit depth:** 8-bit or 16-bit
-- **Channels:** Mono or Stereo
-- **Sample rate:** Any (44100 Hz recommended)
+| Property    | Supported values                           |
+|-------------|---------------------------------------------|
+| Format      | PCM (uncompressed) only                    |
+| Bit depth   | 8-bit or 16-bit                            |
+| Channels    | Mono or Stereo                             |
+| Sample rate | **44100 Hz required for Music**; any rate accepted for Sound (resampled at load time) |
 
 ### Tips
 
-1. **Sound Effects**: Use short, mono WAV files for best performance
-2. **Music**: Use stereo WAV files at 44100 Hz for best quality
-3. **Memory**: Sounds are loaded entirely into memory; keep them short
-4. **Streaming**: Music is streamed, so longer tracks are memory-efficient
+1. **Sound effects:** Any sample rate works — the engine resamples to 44100 Hz at load time.
+2. **Music streams:** Must be encoded at exactly **44100 Hz**. Files at 48000 Hz or other rates will play at the wrong pitch and speed.
+3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short.
+4. **Streaming:** Music is streamed from disk, so long tracks use very little memory.
+5. **Encoding:** Use a tool such as ffmpeg to convert audio to the correct format:
+   ```
+   ffmpeg -i input.mp3 -ar 44100 -ac 2 -f wav output.wav      # music
+   ffmpeg -i input.mp3 -ar 44100 -ac 1 -f wav sfx.wav         # mono sound effect
+   ```
+
+---
+
+## Limits and Behaviors
+
+| Limit | Value | Notes |
+|-------|-------|-------|
+| Max simultaneous Sound voices | **32** | Oldest non-looping voice is evicted (LRU) when full |
+| Max simultaneous Music streams | **4** | `Music.Load()` returns `null` when exceeded |
+| Supported audio format | **WAV PCM only** | 8/16-bit, mono/stereo |
+| Music sample rate | **44100 Hz** | Other rates play at incorrect pitch |
+| Sound sample rate | Any | Resampled to 44100 Hz at load time |
+| Pan range | −100 to +100 | −100 = hard left, 0 = center, +100 = hard right |
+| Volume range | 0 to 100 | Applies to Sound, Music, Voice, and Playlist |
 
 ---
 

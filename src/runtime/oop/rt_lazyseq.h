@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/oop/rt_lazyseq.h
+// Purpose: Lazy sequence type for on-demand element generation and transformation, supporting map/filter/take/drop/zip functional operations on potentially infinite sequences.
+//
+// Key invariants:
+//   - Sequences are single-pass; calling reset restarts generation from the beginning.
+//   - Collector operations (ToList, Count) may not terminate on infinite sequences.
+//   - Functional operations (Map/Filter) return new lazy sequences; they do not materialize.
+//   - rt_lazyseq_next returns NULL to signal exhaustion.
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_lazyseq handle; destroy with rt_lazyseq_destroy.
+//   - Internal generator state is owned by the lazy sequence object.
+//
+// Links: src/runtime/oop/rt_lazyseq.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_lazyseq.h
-// Purpose: Lazy sequence type for on-demand element generation and transformation.
-// Key invariants: Sequences are single-pass unless reset; collectors may not terminate on infinite
-// sequences. Ownership/Lifetime: Caller owns the handle; destroy with rt_lazyseq_destroy(). Links:
-// docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_LAZYSEQ_H
 #define VIPER_RT_LAZYSEQ_H
 

@@ -4,105 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_type_registry.c
-/// @brief Runtime type system for Viper's object-oriented features.
-///
-/// This file implements the type registry that enables Viper's OOP features
-/// at runtime. The registry maintains metadata about classes and interfaces,
-/// supporting operations like type casting, inheritance checks, interface
-/// dispatch, and Object.ToString().
-///
-/// **What is the Type Registry?**
-/// The type registry is a per-VM database of class and interface metadata
-/// that enables:
-/// - Runtime type identification (typeof, is-a checks)
-/// - Virtual method dispatch via vtables
-/// - Interface method dispatch via itables
-/// - Object.ToString() default implementation
-/// - Safe type casting (TryCast, DirectCast)
-///
-/// **Type System Architecture:**
-/// ```
-/// ┌─────────────────────────────────────────────────────────────────────────┐
-/// │                         Type Registry                                   │
-/// │                                                                         │
-/// │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────┐     │
-/// │  │ Classes Array  │  │ Interfaces     │  │ Bindings               │     │
-/// │  │                │  │ Array          │  │ (Class→Interface)      │     │
-/// │  │ ┌────────────┐ │  │ ┌────────────┐ │  │ ┌──────────────────┐   │     │
-/// │  │ │ type_id    │ │  │ │ iface_id   │ │  │ │ type_id          │   │     │
-/// │  │ │ ci (meta)  │ │  │ │ name       │ │  │ │ iface_id         │   │     │
-/// │  │ │ base_type  │ │  │ │ slot_count │ │  │ │ itable (methods) │   │     │
-/// │  │ └────────────┘ │  │ └────────────┘ │  │ └──────────────────┘   │     │
-/// │  └────────────────┘  └────────────────┘  └────────────────────────┘     │
-/// └─────────────────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Class Info Structure (rt_class_info):**
-/// ```
-/// ┌─────────────────────────────────────────────────────┐
-/// │ rt_class_info                                       │
-/// │   type_id: 42        ← Unique identifier            │
-/// │   qname: "MyClass"   ← Qualified name for ToString  │
-/// │   vtable: [...]      ← Virtual method pointers      │
-/// │   vtable_len: 5      ← Number of virtual methods    │
-/// │   base: *ParentInfo  ← Pointer to base class info   │
-/// └─────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Registration Order:**
-/// Classes must be registered before their derived classes so that base
-/// class pointers can be resolved:
-/// ```
-/// 1. rt_register_class_with_base(Animal, vtable, "Animal", 2, -1)
-/// 2. rt_register_class_with_base(Dog, vtable, "Dog", 3, Animal_id)
-///    ↑ Dog's base is resolved by looking up Animal in registry
-/// ```
-///
-/// **Type Operations:**
-/// | Operation             | Description                                    |
-/// |-----------------------|------------------------------------------------|
-/// | rt_register_class     | Add class metadata to registry                 |
-/// | rt_register_interface | Add interface metadata to registry             |
-/// | rt_bind_interface     | Associate itable with class for interface      |
-/// | rt_typeid_of          | Get type ID from object instance               |
-/// | rt_type_is_a          | Check inheritance relationship                 |
-/// | rt_type_implements    | Check if class implements interface            |
-/// | rt_cast_as            | Safe downcast to class type                    |
-/// | rt_cast_as_iface      | Safe cast to interface type                    |
-/// | rt_itable_lookup      | Get interface method table for object          |
-///
-/// **Inheritance Walk:**
-/// Type checks walk the inheritance chain by following base_type_id links:
-/// ```
-/// rt_type_is_a(Dog, Animal):
-///   Dog.base_type_id → Animal.type_id → match! return true
-///
-/// rt_type_is_a(Dog, Vehicle):
-///   Dog.base_type_id → Animal.type_id → no match
-///   Animal.base_type_id → -1 → end of chain, return false
-/// ```
-///
-/// **Interface Dispatch:**
-/// When calling an interface method, the runtime:
-/// 1. Gets the object's type_id from its vptr
-/// 2. Looks up the binding (type_id, iface_id) → itable
-/// 3. Calls the method at the appropriate itable slot
-///
-/// **Per-VM Isolation:**
-/// Each VM context has its own type registry, enabling multiple independent
-/// Viper programs to run in the same process without type ID conflicts.
-///
-/// **Thread Safety:**
-/// - Registration functions should be called during VM initialization
-/// - Query functions (typeid_of, is_a, etc.) are thread-safe for reads
-/// - Concurrent registration is not supported
-///
-/// @see rt_oop.h For OOP type definitions
-/// @see rt_oop_dispatch.c For virtual method dispatch
-/// @see rt_context.c For per-VM isolation
-///
+//
+// File: src/runtime/oop/rt_type_registry.c
+// Purpose: Implements the runtime type registry that stores class and interface
+//          metadata for Viper's OOP features. Supports class registration with
+//          vtables, interface registration with slot counts, interface binding
+//          (itable association), and type-ID-based inheritance checks.
+//
+// Key invariants:
+//   - Classes are registered before their derived classes; base lookups succeed
+//     only when the base has already been registered.
+//   - Virtual method slots 0-2 are reserved for Object.ToString/Equals/GetHashCode.
+//   - Type IDs are unique non-negative integers assigned at registration time.
+//   - Interface binding associates an itable (function pointer array) with a
+//     class-interface pair; dispatch uses this for interface method calls.
+//   - The registry is a process-global singleton; all threads share it.
+//
+// Ownership/Lifetime:
+//   - Registered class_info and interface metadata are globally allocated and
+//     never freed (registry lives for the process lifetime).
+//   - Vtable and itable arrays are caller-owned static data; the registry
+//     stores pointers without copying.
+//
+// Links: src/runtime/oop/rt_type_registry.h (public API, via rt_oop.h),
+//        src/runtime/oop/rt_oop_dispatch.h (vtable lookup using registry data),
+//        src/runtime/oop/rt_object.h (object type-tag layout)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_context.h"

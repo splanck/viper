@@ -5,15 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_linewriter.c
-// Purpose: Implement buffered text file writing.
+// File: src/runtime/io/rt_linewriter.c
+// Purpose: Implements buffered text file writing for the Viper.IO.LineWriter
+//          class. Supports creating or overwriting files, appending to existing
+//          files, writing text with or without newlines, and writing single
+//          characters. The newline string is configurable and defaults to the
+//          platform-native line ending.
 //
-// LineWriter supports:
-// - Open: Create/overwrite file for writing
-// - Append: Open for appending
-// - Write/WriteLn: Output text with optional newline
-// - WriteChar: Output single character
-// - Configurable newline string (defaults to platform)
+// Key invariants:
+//   - Open mode creates or truncates; Append mode opens for append-only writes.
+//   - The newline string defaults to CRLF on Windows and LF elsewhere.
+//   - WriteLn appends the configured newline string after each piece of text.
+//   - The closed flag prevents double-close; writing to a closed writer traps.
+//   - The GC finalizer flushes and closes the FILE* if the caller forgets Close.
+//   - The newline rt_string is retained by the writer and released on finalize.
+//
+// Ownership/Lifetime:
+//   - LineWriter objects are heap-allocated; the GC calls the finalizer on free.
+//   - The writer retains a reference to its newline string for its full lifetime.
+//
+// Links: src/runtime/io/rt_linewriter.h (public API),
+//        src/runtime/io/rt_linereader.h (complementary text file reader)
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,6 +35,7 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -115,7 +128,11 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode)
     FILE *fp = fopen(path_str, mode);
     if (!fp)
     {
-        rt_trap("LineWriter: failed to open file");
+        // IO-H-7: include filename and OS error for actionable diagnostics
+        char msg[512];
+        snprintf(msg, sizeof(msg), "LineWriter: failed to open '%s': %s",
+                 path_str, strerror(errno));
+        rt_trap(msg);
         return NULL;
     }
 
@@ -300,7 +317,10 @@ void rt_linewriter_write(void *obj, rt_string text)
     int64_t len = rt_str_len(text);
     if (data && len > 0)
     {
-        fwrite(data, 1, (size_t)len, lw->fp);
+        // IO-C-4: check fwrite return to detect disk-full / I/O errors
+        size_t written = fwrite(data, 1, (size_t)len, lw->fp);
+        if (written != (size_t)len)
+            rt_trap("LineWriter.Write: short write (disk full or I/O error)");
     }
 }
 
@@ -361,7 +381,10 @@ void rt_linewriter_write_ln(void *obj, rt_string text)
         int64_t len = rt_str_len(text);
         if (data && len > 0)
         {
-            fwrite(data, 1, (size_t)len, lw->fp);
+            // IO-C-4: check fwrite return to detect disk-full / I/O errors
+            size_t written = fwrite(data, 1, (size_t)len, lw->fp);
+            if (written != (size_t)len)
+                rt_trap("LineWriter.WriteLn: short write (disk full or I/O error)");
         }
     }
 
@@ -372,7 +395,10 @@ void rt_linewriter_write_ln(void *obj, rt_string text)
         int64_t nl_len = rt_str_len(lw->newline);
         if (nl && nl_len > 0)
         {
-            fwrite(nl, 1, (size_t)nl_len, lw->fp);
+            // IO-C-4: check fwrite return for newline write too
+            size_t written = fwrite(nl, 1, (size_t)nl_len, lw->fp);
+            if (written != (size_t)nl_len)
+                rt_trap("LineWriter.WriteLn: short write on newline (disk full or I/O error)");
         }
     }
 }

@@ -1,20 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_deque.h
+// Purpose: Double-ended queue (deque) providing O(1) push/pop at both front and back with O(1) random access by index, implemented as a ring buffer.
+//
+// Key invariants:
+//   - Indices are 0-based with front at index 0.
+//   - Pop and peek operations on an empty deque trap immediately.
+//   - Capacity is always >= 1; the ring buffer doubles on overflow.
+//   - Element equality for rt_deque_has uses pointer comparison.
+//
+// Ownership/Lifetime:
+//   - Deque objects are GC-managed; elements are retained on insertion and released on removal.
+//   - Callers should not free deque objects directly.
+//
+// Links: src/runtime/collections/rt_deque.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_deque.h
-// Purpose: Double-ended queue (deque) for efficient push/pop at both ends
-//   with random access by index.
-// Key invariants: Indices are 0-based (front=0). Pop/peek on empty deque
-//   traps. Capacity >= 1. Elements compared by pointer equality in has().
-// Ownership/Lifetime: Deque objects are GC-managed. Elements are retained.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

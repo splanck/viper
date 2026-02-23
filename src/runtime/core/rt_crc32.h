@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_crc32.h
+// Purpose: CRC32 checksum computation using the IEEE 802.3 polynomial (0xEDB88320), compatible with Ethernet, ZIP, and PNG checksums.
+//
+// Key invariants:
+//   - Uses the bit-reversed IEEE 802.3 polynomial, producing the same output as zlib crc32.
+//   - The lookup table is initialized lazily on first call to rt_crc32_compute.
+//   - Initialization is idempotent but not thread-safe for concurrent first calls.
+//   - Input NULL with len 0 returns 0xFFFFFFFF XOR 0xFFFFFFFF = 0.
+//
+// Ownership/Lifetime:
+//   - All functions are stateless except for the global lookup table (initialized once).
+//   - No heap allocation; caller provides input buffer.
+//
+// Links: src/runtime/core/rt_crc32.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_crc32.h
-// Purpose: CRC32 checksum computation (IEEE 802.3 polynomial).
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

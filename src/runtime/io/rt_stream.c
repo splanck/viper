@@ -5,8 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_stream.c
-// Purpose: Unified stream interface implementation.
+// File: src/runtime/io/rt_stream.c
+// Purpose: Implements the unified stream abstraction that wraps either a BinFile
+//          (disk-backed) or a MemStream (in-memory buffer) behind a common
+//          read/write/seek/tell interface used by the Viper.IO.Stream class.
+//
+// Key invariants:
+//   - A stream wraps exactly one underlying object (BinFile or MemStream).
+//   - The type tag (RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM) is set
+//     at construction and never changes.
+//   - When owns==1, the stream holds a reference and releases it on close.
+//   - All operations trap on NULL handles rather than silently succeeding.
+//   - Seek positions are byte offsets; negative offsets from SEEK_END are valid.
+//
+// Ownership/Lifetime:
+//   - If the stream owns the wrapped object, it releases it when the stream is
+//     closed or garbage collected.
+//   - Callers that pass an existing BinFile/MemStream with owns=0 retain
+//     responsibility for closing the underlying object.
+//
+// Links: src/runtime/io/rt_stream.h (public API),
+//        src/runtime/io/rt_binfile.h (disk-backed binary file),
+//        src/runtime/io/rt_memstream.h (in-memory binary stream)
 //
 //===----------------------------------------------------------------------===//
 

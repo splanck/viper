@@ -1,32 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_particle.h
+// Purpose: Particle emitter for visual effects (explosions, sparks, smoke) managing a pool of particles with configurable lifetime, velocity, gravity, color, size, fade, and shrink.
+//
+// Key invariants:
+//   - Maximum particle count is RT_PARTICLE_MAX (1024) per emitter.
+//   - rt_particle_emitter_update must be called once per frame.
+//   - Particle indices returned by rt_particle_emitter_get are valid only until the next update.
+//   - Emission rate is fractional particles-per-frame; sub-integer amounts accumulate.
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_particle_emitter handle; destroy with rt_particle_emitter_destroy.
+//   - Output pointers written by rt_particle_emitter_get are not retained.
+//
+// Links: src/runtime/collections/rt_particle.c (implementation), src/runtime/collections/rt_screenfx.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_particle.h
-/// @brief Simple particle system for visual effects.
-///
-/// @details Provides a particle emitter for creating effects like explosions,
-/// sparks, smoke, and other visual elements in games. Each emitter manages a
-/// pool of particles with configurable lifetime, velocity, gravity, color,
-/// size, fade-out, and shrink behaviors. Supports both continuous emission at
-/// a configurable rate and one-shot burst emission. Rendering data for each
-/// live particle can be retrieved per-frame for drawing.
-///
-/// Key invariants: The maximum particle count per emitter is capped at
-///   RT_PARTICLE_MAX (1024). Particle indices returned by
-///   rt_particle_emitter_get() are valid only until the next update call.
-///   Emission rate is in particles per frame (fractional values accumulate).
-/// Ownership/Lifetime: The caller owns the rt_particle_emitter handle and
-///   must free it with rt_particle_emitter_destroy(). Output pointers passed
-///   to rt_particle_emitter_get() are written but not retained.
-/// Links: rt_particle.c (implementation), rt_screenfx.h (screen-level
-///   effects)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_PARTICLE_H
 #define VIPER_RT_PARTICLE_H
 

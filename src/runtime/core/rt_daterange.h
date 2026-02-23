@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_daterange.h
+// Purpose: Date interval type representing a range between two Unix timestamps, with containment testing, overlap detection, and duration queries.
+//
+// Key invariants:
+//   - Start and end are Unix timestamps in seconds since epoch (UTC).
+//   - Start must be <= End; violating this constraint produces undefined behavior.
+//   - Contains check is inclusive on both ends.
+//   - Duration returns end - start in seconds; may be zero for point ranges.
+//
+// Ownership/Lifetime:
+//   - DateRange objects are GC-managed opaque pointers.
+//   - Callers must not free range objects directly.
+//
+// Links: src/runtime/core/rt_daterange.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_daterange.h
-// Purpose: Date interval type representing a range between two timestamps.
-// Key invariants: Start <= End; timestamps are Unix timestamps in seconds.
-// Ownership/Lifetime: Range objects are GC-managed.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

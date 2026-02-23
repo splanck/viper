@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_seq_functional.h
+// Purpose: IL-compatible wrapper functions for Seq functional operations (filter, reject, map, reduce, each, find) accepting function pointers as void* for IL calling convention.
+//
+// Key invariants:
+//   - Function pointers are passed as void* and cast internally to the correct type.
+//   - Predicate callbacks must be of type int8_t (*)(void *) for filter/reject/find.
+//   - Map callbacks must be of type void *(*)(void *) for element transformation.
+//   - These wrappers bridge the IL calling convention to the typed Seq API.
+//
+// Ownership/Lifetime:
+//   - Returned Seq objects are newly allocated; caller is responsible for lifetime management.
+//   - Source sequences are not modified or consumed.
+//
+// Links: src/runtime/collections/rt_seq_functional.c (implementation), src/runtime/collections/rt_seq.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_seq_functional.h
-// Purpose: Wrapper functions for Seq functional operations with IL-compatible
-//          signatures (function pointers passed as void*).
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

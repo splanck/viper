@@ -4,6 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/text/rt_markdown.c
+// Purpose: Implements Markdown parsing utilities for the Viper.Text.Markdown
+//          class. Provides ExtractLinks (href + text pairs), ExtractHeadings
+//          (level + text), ToHtml (basic Markdown to HTML conversion), and
+//          StripMarkdown (remove formatting, return plain text).
+//
+// Key invariants:
+//   - ExtractLinks returns a Seq<Seq<String>> where each inner seq is [href, text].
+//   - ExtractHeadings returns a Seq<Seq> where each inner seq is [level, text].
+//   - ToHtml converts headings, bold, italic, links, code, and lists; does not
+//     implement the full CommonMark spec.
+//   - StripMarkdown removes **, *, _, `, and link syntax leaving plain text.
+//   - All functions return empty sequences for empty or whitespace-only input.
+//
+// Ownership/Lifetime:
+//   - All returned sequences and strings are fresh allocations owned by caller.
+//   - Input strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_markdown.h (public API),
+//        src/runtime/text/rt_html.h (HTML generation for ToHtml output)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_markdown.h"
 

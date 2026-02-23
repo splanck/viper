@@ -4,10 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_lazyseq.c
-/// @brief Implementation of lazy sequence type.
-///
+//
+// File: src/runtime/oop/rt_lazyseq.c
+// Purpose: Implements the lazy sequence (LazySeq) type for the Viper collections
+//          runtime. A LazySeq wraps a source sequence and a pipeline of
+//          functional transformations (Map, Filter, TakeWhile, SkipWhile, etc.)
+//          that are applied only when elements are materialized.
+//
+// Key invariants:
+//   - Transformations are chained by wrapping a LazySeq in another LazySeq.
+//   - Materialization (ToList, Count, ForEach) applies the full pipeline once.
+//   - The source sequence is borrowed; the LazySeq does not retain it.
+//   - Map and Filter callback function pointers are not retained; callers
+//     must ensure their lifetimes exceed the LazySeq's use.
+//   - Wrapper functions (rt_lazyseq_w_*) adapt Zia-style fn pointers to C
+//     function pointer types expected by the LazySeq API.
+//
+// Ownership/Lifetime:
+//   - LazySeq objects are heap-allocated and managed by the runtime GC.
+//   - The source sequence is retained by the LazySeq for its lifetime.
+//
+// Links: src/runtime/oop/rt_lazyseq.h (public API),
+//        src/runtime/rt_seq.h (eager sequence used as source and output)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_lazyseq.h"

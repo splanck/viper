@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_sprite.h
+// Purpose: 2D sprite with transform (position, rotation, scale), animation frame tracking, and canvas-based rendering for game development.
+//
+// Key invariants:
+//   - Position is in logical pixels; rotation is in degrees.
+//   - Scale is a multiplier applied to the source frame dimensions.
+//   - rt_sprite_draw renders the current frame to the canvas.
+//   - Frame index wraps when set beyond the frame count.
+//
+// Ownership/Lifetime:
+//   - Sprite objects are heap-allocated opaque pointers.
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_sprite.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_sprite.h
-// Purpose: Sprite class for 2D game development with transform and animation.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdbool.h>

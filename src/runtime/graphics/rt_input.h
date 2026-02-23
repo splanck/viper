@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_input.h
+// Purpose: Keyboard, mouse, and gamepad input handling for the Viper.Input runtime namespace, providing per-frame key state, mouse position/button, and gamepad queries.
+//
+// Key invariants:
+//   - Input state is frame-coherent; pressed/released edge lists reset each rt_input_poll call.
+//   - Key code constants are GLFW-compatible integer values.
+//   - Mouse coordinates are in logical pixels relative to the window top-left.
+//   - Gamepad axes are in [-1.0, 1.0]; triggers are in [0.0, 1.0].
+//
+// Ownership/Lifetime:
+//   - Canvas owns the input subsystem; input callbacks are non-owning function pointers.
+//   - No heap allocation in state query functions.
+//
+// Links: src/runtime/graphics/rt_input.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_input.h
-// Purpose: Keyboard, mouse, and gamepad input handling for Viper.Input.
-// Key invariants: State is frame-coherent; pressed/released lists reset each poll.
-// Ownership/Lifetime: Canvas owns the input subsystem; callbacks are non-owning.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

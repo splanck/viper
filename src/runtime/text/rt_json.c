@@ -4,46 +4,29 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_json.c
-/// @brief JSON parsing and formatting utilities.
-///
-/// This file implements JSON (JavaScript Object Notation) parsing and formatting
-/// following the ECMA-404 / RFC 8259 specification.
-///
-/// **JSON Types and Viper Mappings:**
-///
-/// | JSON Type | Viper Type        | Notes                          |
-/// |-----------|-------------------|--------------------------------|
-/// | null      | Box.I64(0)        | Boxed zero with null tag       |
-/// | boolean   | Box.I64(0 or 1)   | Boxed 0 or 1 with bool tag     |
-/// | number    | Box.F64(n)        | All numbers as f64             |
-/// | string    | String            | UTF-8 strings                  |
-/// | array     | Seq               | Ordered sequence               |
-/// | object    | Map               | String-keyed map               |
-///
-/// **Parsing Example:**
-/// ```
-/// Dim text = "{\"name\": \"Alice\", \"age\": 30}"
-/// Dim obj = Json.Parse(text)
-/// Print obj.Get("name")  ' "Alice"
-/// Print obj.Get("age")   ' 30.0
-/// ```
-///
-/// **Formatting Example:**
-/// ```
-/// Dim obj = Map.New()
-/// obj.Set("name", "Bob")
-/// obj.Set("active", Box.I64(1))
-/// Print Json.Format(obj)  ' {"name":"Bob","active":true}
-/// ```
-///
-/// **Thread Safety:** All functions are thread-safe (no global mutable state).
-///
-/// @see rt_map.c For the Map container used for objects
-/// @see rt_seq.c For the Seq container used for arrays
-/// @see rt_box.c For boxing/unboxing primitive values
-///
+//
+// File: src/runtime/text/rt_json.c
+// Purpose: Implements JSON parsing and formatting for the Viper.Text.Json class
+//          per ECMA-404 / RFC 8259. Maps JSON types to Viper runtime types:
+//          null→Box.I64(0), bool→Box.I64, number→Box.F64, string→String,
+//          array→Seq, object→Map<String,*>.
+//
+// Key invariants:
+//   - All JSON numbers are parsed as IEEE 754 double (Box.F64).
+//   - Unicode escape sequences (\uXXXX) are decoded during parsing.
+//   - JSON null is represented as Box.I64(0) with a null type tag.
+//   - Format produces compact JSON (no whitespace); FormatPretty indents.
+//   - Parse returns NULL on invalid JSON input (not a trap).
+//   - All functions are thread-safe with no global mutable state.
+//
+// Ownership/Lifetime:
+//   - Returned Map and Seq trees are fresh allocations owned by the caller.
+//   - Formatted JSON strings are fresh rt_string allocations owned by caller.
+//
+// Links: src/runtime/text/rt_json.h (public API),
+//        src/runtime/text/rt_json_stream.h (streaming SAX parser for large JSON),
+//        src/runtime/rt_map.h, rt_seq.h, rt_box.h (container types)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_json.h"

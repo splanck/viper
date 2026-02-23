@@ -1,29 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_collision.h
+// Purpose: AABB and circle collision detection helpers for game physics, providing overlap testing, depth queries, and distance calculations for both object handles and stateless free functions.
+//
+// Key invariants:
+//   - Width and height values should be non-negative for meaningful results.
+//   - Overlap depth functions return 0 when no overlap exists.
+//   - Static free functions are pure with no side effects or allocation.
+//   - rt_collision_rect handles support mutable position and size updates.
+//
+// Ownership/Lifetime:
+//   - rt_collision_rect handles are caller-owned; destroy with rt_collision_rect_destroy.
+//   - Static helper functions require no allocation and have no ownership semantics.
+//
+// Links: src/runtime/collections/rt_collision.c (implementation), src/runtime/graphics/rt_camera.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_collision.h
-/// @brief AABB and circle collision detection helpers for games.
-///
-/// @details Provides axis-aligned bounding box (AABB) collision detection,
-/// circle collision, point containment, overlap depth queries, and distance
-/// calculations. Includes both an object-oriented CollisionRect handle with
-/// mutable position/size, and a set of static free functions that operate on
-/// raw coordinate values without requiring an allocated instance.
-///
-/// Key invariants: Width and height values should be non-negative. Overlap
-///   depth functions return 0 when no overlap exists. Static helpers are pure
-///   functions with no side effects.
-/// Ownership/Lifetime: rt_collision_rect handles are caller-owned and must be
-///   freed with rt_collision_rect_destroy(). Static functions require no
-///   allocation.
-/// Links: rt_collision.c (implementation), rt_camera.h (viewport collision)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_COLLISION_H
 #define VIPER_RT_COLLISION_H
 

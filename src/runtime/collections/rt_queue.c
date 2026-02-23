@@ -5,13 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_queue.c
-// Purpose: Implement Viper.Collections.Queue - a FIFO (first-in-first-out) collection.
+// File: src/runtime/collections/rt_queue.c
+// Purpose: Implements a FIFO (first-in-first-out) queue backed by a circular
+//   buffer. Elements are added (enqueued) at the tail and removed (dequeued)
+//   from the head. Both operations are O(1) amortized; the circular buffer
+//   avoids element shifting on dequeue.
 //
-// Structure:
-// - Implemented as a circular buffer for O(1) add/take operations
-// - Internal representation uses head/tail indices with wrap-around
-// - Automatic growth when capacity is exceeded
+// Key invariants:
+//   - Backed by a circular buffer with initial capacity QUEUE_DEFAULT_CAP (16).
+//     Growth factor is QUEUE_GROWTH_FACTOR (2); elements are linearized into
+//     the new array during resize.
+//   - head is the index of the next element to dequeue (oldest element).
+//   - tail is computed as (head + count) % capacity (next write position).
+//   - When head == (head + count) % capacity the buffer is full and must grow.
+//   - Dequeue on an empty queue traps with an error message.
+//   - Peek returns the head element without removing it; returns NULL if empty.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - Queue objects are GC-managed (rt_obj_new_i64). The items array is
+//     realloc-managed and freed by the GC finalizer (queue_finalizer).
+//
+// Links: src/runtime/collections/rt_queue.h (public API),
+//        src/runtime/collections/rt_deque.h (double-ended queue variant)
 //
 //===----------------------------------------------------------------------===//
 

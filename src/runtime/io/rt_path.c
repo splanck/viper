@@ -4,72 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_path.c
-/// @brief Cross-platform file path manipulation for Viper.IO.Path class.
-///
-/// This file provides platform-independent path manipulation functions. All
-/// operations handle both Unix (/) and Windows (\) path separators and work
-/// correctly with Windows drive letters and UNC paths.
-///
-/// **Path Anatomy:**
-/// ```
-/// /home/user/documents/report.txt
-/// |----|----|---------|----------|
-///   |    |      |          |
-///   |    |      |          +-- Name (with extension): "report.txt"
-///   |    |      +------------- Parent directories
-///   |    +-------------------- User home
-///   +------------------------- Root (absolute path marker)
-///
-/// Components:
-///   Dir:  /home/user/documents    (rt_path_dir)
-///   Name: report.txt              (rt_path_name)
-///   Stem: report                  (rt_path_stem)
-///   Ext:  .txt                    (rt_path_ext)
-/// ```
-///
-/// **Windows Path Types:**
-/// ```
-/// C:\Users\name\file.txt     Drive-letter path
-/// \\server\share\file.txt    UNC (Universal Naming Convention) path
-/// \path\to\file.txt          Root-relative path
-/// path\to\file.txt           Relative path
-/// ```
-///
-/// **Common Operations:**
-/// ```
-/// ' Join path components
-/// Dim path = Path.Join("src", "utils", "helper.bas")
-/// ' Result: "src/utils/helper.bas" (Unix) or "src\utils\helper.bas" (Windows)
-///
-/// ' Extract parts
-/// Dim dir = Path.Dir("/home/user/file.txt")    ' "/home/user"
-/// Dim name = Path.Name("/home/user/file.txt")  ' "file.txt"
-/// Dim ext = Path.Ext("/home/user/file.txt")    ' ".txt"
-/// Dim stem = Path.Stem("/home/user/file.txt")  ' "file"
-///
-/// ' Change extension
-/// Dim newPath = Path.WithExt("document.txt", ".md")  ' "document.md"
-///
-/// ' Normalize path
-/// Dim clean = Path.Norm("./src/../src/./file.txt")  ' "src/file.txt"
-/// ```
-///
-/// **Separator Handling:**
-/// | Platform | Native | Also Accepted |
-/// |----------|--------|---------------|
-/// | Unix     | `/`    | (none)        |
-/// | Windows  | `\`    | `/`           |
-///
-/// **Thread Safety:** All functions are thread-safe and reentrant.
-///
-/// **Memory:** All functions return newly allocated strings. The caller is
-/// responsible for memory management (handled by Viper's garbage collector).
-///
-/// @see rt_dir.c For directory operations (create, list, remove)
-/// @see rt_file.c For file operations (read, write, copy)
-///
+//
+// File: src/runtime/io/rt_path.c
+// Purpose: Cross-platform path manipulation utilities backing the Viper.IO.Path
+//          class. Provides Join, Dir, Name, Stem, Ext, Norm, IsAbs, WithExt,
+//          and related operations that work correctly on Unix and Windows,
+//          including drive-letter paths and UNC paths.
+//
+// Key invariants:
+//   - Both '/' and '\' are accepted as separators on all platforms.
+//   - Norm removes redundant '.' and '..' components without filesystem access.
+//   - Join always produces a path using the native platform separator.
+//   - Ext returns the final '.' suffix including the dot, or "" if absent.
+//   - All returned strings are newly allocated runtime strings; none borrow.
+//   - All functions are thread-safe and reentrant (no global mutable state).
+//
+// Ownership/Lifetime:
+//   - Every returned rt_string is a fresh allocation owned by the caller.
+//   - Viper's garbage collector manages returned string lifetimes.
+//
+// Links: src/runtime/io/rt_path.h (public API),
+//        src/runtime/io/rt_dir.c (directory create/list/remove operations),
+//        src/runtime/io/rt_file_ext.c (file-level read/write/copy helpers)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_path.h"

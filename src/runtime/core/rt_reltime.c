@@ -4,6 +4,33 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/core/rt_reltime.c
+// Purpose: Implements relative-time (human-readable elapsed/remaining time)
+//          formatting for the Viper runtime. Converts a pair of Unix timestamps
+//          into natural-language descriptions such as "3 minutes ago",
+//          "in 2 hours", or "just now".
+//
+// Key invariants:
+//   - Differences smaller than 10 seconds are reported as "just now".
+//   - Unit thresholds: <60s=seconds, <3600s=minutes, <86400s=hours,
+//     <2592000s=days, <31536000s=months, else=years.
+//   - Future timestamps produce "in N <unit>"; past timestamps produce
+//     "N <unit> ago"; singular/plural is chosen correctly.
+//   - INT64_MIN negation is saturated to INT64_MAX to avoid undefined behaviour.
+//   - The reference timestamp is explicit (not hardcoded to time(NULL)) so
+//     callers can pass a fixed reference for deterministic tests.
+//
+// Ownership/Lifetime:
+//   - Returned rt_string values are newly allocated; the caller owns the
+//     reference and must call rt_string_unref when done.
+//   - No heap allocation is performed beyond the returned string.
+//
+// Links: src/runtime/core/rt_reltime.h (public API),
+//        src/runtime/core/rt_datetime.c (wall-clock time operations),
+//        src/runtime/core/rt_string_builder.c (string construction helper)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_reltime.h"
 #include "rt_internal.h"

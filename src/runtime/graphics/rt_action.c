@@ -5,7 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Action Mapping System Implementation
+// File: src/runtime/graphics/rt_action.c
+// Purpose: Input action mapping system for Viper games. Provides named logical
+//   actions (e.g. "jump", "fire") that are bound to one or more physical input
+//   sources: keyboard keys, mouse buttons, mouse axes, scroll axes, gamepad
+//   buttons, gamepad axes, or multi-key chords. Actions are polled once per
+//   frame and expose pressed/released/held states and a normalized axis value.
+//
+// Key invariants:
+//   - Actions are stored as a global singly-linked list; names must be unique.
+//   - Each action may have multiple Binding records (any matching binding wins).
+//   - Chord bindings (BIND_CHORD) require all keys held simultaneously; trigger
+//     fires on the frame the last key is pressed.
+//   - Axis actions accumulate contributions from all matching bindings each
+//     frame; button-style bindings contribute a fixed `value` field.
+//   - rt_action_update() must be called once per frame before any query.
+//   - rt_action_destroy_all() resets global state; safe to call at shutdown.
+//
+// Ownership/Lifetime:
+//   - Action and Binding nodes are heap-allocated with malloc/strdup; freed by
+//     rt_action_destroy() or rt_action_destroy_all().
+//   - Not GC-managed — caller is responsible for cleanup.
+//
+// Links: src/runtime/graphics/rt_action.h (public API),
+//        src/runtime/graphics/rt_input.h (keyboard/mouse query layer),
+//        src/runtime/graphics/rt_input_pad.h (gamepad query layer),
+//        src/runtime/graphics/rt_keychord.h (chord detection primitives)
 //
 //===----------------------------------------------------------------------===//
 

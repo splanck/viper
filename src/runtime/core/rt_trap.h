@@ -1,37 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_trap.h
+// Purpose: Runtime trap handlers for unrecoverable error conditions in IL programs, providing immediate-termination functions for division by zero, bounds violations, and assertion failures.
+//
+// Key invariants:
+//   - Trap functions never return to their caller (noreturn).
+//   - Each trap prints a descriptive diagnostic message to stderr before calling exit(1).
+//   - rt_diag_assert accepts an int8_t condition; non-zero means the assertion passed.
+//   - The ABI of these functions is stable; codegen backends depend on their signatures.
+//
+// Ownership/Lifetime:
+//   - No heap allocation or cleanup is performed beyond printing the diagnostic.
+//   - These functions are designed for terminal error conditions only.
+//
+// Links: src/runtime/core/rt_trap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// This file declares runtime trap handlers for unrecoverable error conditions
-// in IL programs. When a program violates fundamental invariants (division by zero,
-// array bounds violations, null dereference), execution must terminate immediately
-// with a diagnostic message.
-//
-// The IL uses an explicit error-handling model without exceptions. Instructions
-// that can fail (division, array access, file operations) either return error codes
-// or trap immediately for unrecoverable conditions. This file provides trap handlers
-// for the latter category.
-//
-// Trap handlers print diagnostic messages to stderr and terminate the process with
-// a non-zero exit code. They are designed to be called from IL-generated code and
-// runtime library implementations when continuing execution would be unsafe or
-// meaningless.
-//
-// Key Properties:
-// - Immediate termination: Trap functions never return to caller
-// - Diagnostic output: Each trap prints a descriptive error message before exit
-// - Process-wide scope: No attempt at recovery or cleanup beyond basic message printing
-// - ABI stability: These functions are part of the runtime's stable C interface
-//
-// Integration: The IL verifier ensures that paths calling trap functions are properly
-// marked as terminating. The codegen backends can optimize subsequent code knowing
-// that trap calls do not return.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -5,14 +5,38 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_font.c
-// Purpose: Embedded 8x8 bitmap font for text rendering.
-// Description: Classic 8x8 monospace bitmap font covering ASCII 32-126.
-//              Each character is 8 bytes, one byte per row, MSB on left.
+// File: src/runtime/graphics/rt_font.c
+// Purpose: Embedded 8×8 bitmap font for software text rendering in Viper.
+//   Provides a statically compiled monospace glyph table covering printable
+//   ASCII (code points 32–126). Glyphs are drawn by rt_pixels_draw_text() and
+//   the Canvas.Text() API by reading bit patterns from this table and setting
+//   individual pixels in a Pixels buffer or Canvas framebuffer.
+//
+// Key invariants:
+//   - Glyph encoding: each character occupies exactly 8 bytes, one byte per
+//     row (top row first). Within each byte, bit 7 (MSB) is the leftmost pixel
+//     and bit 0 (LSB) is the rightmost:
+//
+//       Row byte:  7  6  5  4  3  2  1  0
+//                  └──────────────────────┘
+//                  left pixel             right pixel
+//
+//   - Font dimensions: 8×8 pixels per glyph (fixed — no scaling at the font
+//     level; callers scale by repeating pixels or using a zoom factor).
+//   - Coverage: ASCII 32 (space) through 126 (~). Glyphs outside this range
+//     map to the space glyph (all-zero bytes) to avoid out-of-bounds access.
+//   - The font table is a plain C array with internal linkage (not exported).
+//     It is the only content of this file — all rendering logic lives in
+//     rt_pixels.c and rt_graphics.c.
+//
+// Ownership/Lifetime:
+//   - Static read-only data (no allocation, no cleanup needed).
+//
+// Links: src/runtime/graphics/rt_font.h (extern declaration of the table),
+//        src/runtime/graphics/rt_pixels.c (rt_pixels_draw_text consumer),
+//        src/runtime/graphics/rt_graphics.c (Canvas.Text implementation)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
 /// @brief Embedded 8x8 bitmap font data and accessors.
 /// @details Supplies a fixed monospace font for runtime text rendering. Glyphs
 ///          cover ASCII 32-126 inclusive, with a zero glyph returned for out-

@@ -162,6 +162,53 @@ static rt_string generate_ws_key(void)
     return result;
 }
 
+/// @brief Compute the Sec-WebSocket-Accept header value for a given key.
+///
+/// Returns Base64(SHA1(key + WS_MAGIC)) as a malloc'd C string.
+/// The caller is responsible for freeing the returned string.
+/// Returns NULL on allocation failure.
+char *rt_ws_compute_accept_key(const char *key_cstr)
+{
+    if (!key_cstr)
+        return NULL;
+
+    static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    size_t key_len = strlen(key_cstr);
+    size_t magic_len = sizeof(WS_MAGIC) - 1;
+
+    char *concat = (char *)malloc(key_len + magic_len + 1);
+    if (!concat)
+        return NULL;
+
+    memcpy(concat, key_cstr, key_len);
+    memcpy(concat + key_len, WS_MAGIC, magic_len);
+    concat[key_len + magic_len] = '\0';
+
+    uint8_t sha1_digest[20];
+    ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest);
+    free(concat);
+
+    // Base64-encode using rt_bytes_to_base64
+    void *digest_bytes = rt_bytes_new(20);
+    if (!digest_bytes)
+        return NULL;
+
+    for (int i = 0; i < 20; i++)
+        rt_bytes_set(digest_bytes, i, sha1_digest[i]);
+
+    rt_string accept_str = rt_bytes_to_base64(digest_bytes);
+    if (rt_obj_release_check0(digest_bytes))
+        rt_obj_free(digest_bytes);
+
+    if (!accept_str)
+        return NULL;
+
+    const char *accept_cstr = rt_string_cstr(accept_str);
+    char *result = accept_cstr ? strdup(accept_cstr) : NULL;
+    rt_string_unref(accept_str);
+    return result;
+}
+
 /// @brief Parse URL into components.
 /// @return 1 on success, 0 on failure.
 static int parse_ws_url(const char *url, int *is_secure, char **host, int *port, char **path)

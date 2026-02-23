@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/graphics/rt_mat4.h
+// Purpose: 4x4 matrix math for 3D transformations (Viper.Mat4), supporting perspective/orthographic projection, translation, rotation, scaling, and composition.
+//
+// Key invariants:
+//   - Matrices are stored in row-major order; right-multiply with column vectors.
+//   - Mat4 objects are immutable; all operations return new matrices.
+//   - Perspective and orthographic projection matrices are provided.
+//   - Determinant and inverse operations trap on singular matrices.
+//
+// Ownership/Lifetime:
+//   - Mat4 objects are runtime-managed (heap-allocated).
+//   - Caller is responsible for lifetime management.
+//
+// Links: src/runtime/graphics/rt_mat4.c (implementation), src/runtime/graphics/rt_vec3.h, src/runtime/graphics/rt_quat.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_mat4.h
-// Purpose: 4x4 matrix math for 3D transformations (Viper.Mat4).
-// Key invariants: Row-major order, right-multiply with column vectors.
-// Ownership/Lifetime: Mat4 objects are runtime-managed and immutable.
-// Links: Viper.Mat4 standard library module; see also rt_vec3.h, rt_quat.h.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

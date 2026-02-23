@@ -4,6 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/text/rt_jsonpath.c
+// Purpose: Implements a JSONPath query engine for the Viper.Text.JsonPath class.
+//          Evaluates JSONPath expressions against a parsed rt_map/rt_seq JSON
+//          tree (from rt_json.c), supporting dot notation, bracket notation,
+//          wildcard (*), recursive descent (..), and array slices.
+//
+// Key invariants:
+//   - Input JSON must be pre-parsed by rt_json into an rt_map tree.
+//   - Query returns a Seq of all matched nodes; empty Seq if no match.
+//   - '$' is the root selector; '.' and '..' navigate child/descendant nodes.
+//   - Array indices in brackets are zero-based; negative indices from the end.
+//   - Wildcard '*' matches all children of the current node.
+//   - Invalid JSONPath expressions cause a trap with a descriptive error.
+//
+// Ownership/Lifetime:
+//   - The input JSON tree is borrowed; the query engine does not retain it.
+//   - Matched nodes in the returned Seq are borrowed from the input tree.
+//   - The returned Seq itself is a fresh allocation owned by the caller.
+//
+// Links: src/runtime/text/rt_jsonpath.h (public API),
+//        src/runtime/text/rt_json.h (JSON parser producing the input tree)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_jsonpath.h"
 

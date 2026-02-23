@@ -5,11 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_bytes.c
-// Purpose: Implement efficient byte array storage for binary data.
-// Structure: [len | data*]
-// - len: number of bytes
-// - data: contiguous byte storage
+// File: src/runtime/collections/rt_bytes.c
+// Purpose: Implements an immutable-length byte array for binary data storage.
+//   The Bytes type provides O(1) random access to raw bytes, base64 encode/
+//   decode, hex encode/decode, and bulk copy operations. Unlike strings, Bytes
+//   are mutable (individual bytes may be set) and hold arbitrary binary content
+//   with no encoding constraints.
+//
+// Key invariants:
+//   - The data array is allocated inline immediately after the rt_bytes_impl
+//     header for cache locality; a single allocation covers header + data.
+//   - Length is fixed at construction time and cannot change (no resize).
+//   - Byte values are in [0, 255]; get returns 0 for out-of-bounds indices.
+//   - Set ignores out-of-bounds indices silently (no trap).
+//   - Base64 and hex conversions produce rt_string results allocated via the
+//     Viper string allocator; the Bytes object is not modified.
+//   - Not thread-safe; external synchronization required for concurrent writes.
+//
+// Ownership/Lifetime:
+//   - Bytes objects are GC-managed (rt_obj_new_i64). The data array is inline
+//     in the same allocation as the header and freed with the object by the GC.
+//
+// Links: src/runtime/collections/rt_bytes.h (public API),
+//        src/runtime/rt_codec.h (base64/hex codec utilities)
 //
 //===----------------------------------------------------------------------===//
 

@@ -4,10 +4,38 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_scene.c
-/// @brief Scene graph implementation for hierarchical sprite management.
-///
+//
+// File: src/runtime/graphics/rt_scene.c
+// Purpose: Hierarchical scene graph for Viper games. Manages a tree of named
+//   nodes (entities), each with a 2D transform (position, scale, rotation)
+//   that accumulates parent transforms. Provides name-based lookup, child
+//   iteration, and batched Draw(canvas, camera) that traverses the tree in
+//   order and renders each visible node's sprite or custom draw callback.
+//
+// Key invariants:
+//   - Each node has a unique name (string, owned by the node). Node lookup
+//     (FindByName) does a depth-first search — O(n) in the worst case.
+//   - Transforms are accumulated: a child's world position = its local position
+//     + parent's world position (similarly for rotation and scale). Rotations
+//     are additive (degrees), scales are multiplicative.
+//   - The root node has no parent. Adding a child increments the child's
+//     reference count; removing or destroying the parent decrements it.
+//   - Nodes are reference-counted. A node destroyed while still attached to
+//     a parent is detached first (its parent pointer is cleared) before the
+//     reference count reaches zero.
+//   - Draw order follows insertion order within each parent. There is no
+//     automatic Z-sort; callers must manage insertion order or use SpriteBatch
+//     with depth sorting for Z-ordered rendering.
+//
+// Ownership/Lifetime:
+//   - Scene (root) objects are GC-managed (rt_obj_new_i64). Nodes are
+//     reference-counted. The scene holds a retained reference to the root
+//     node; destroying the scene triggers a cascade destroy of the tree.
+//
+// Links: src/runtime/graphics/rt_scene.h (public API),
+//        src/runtime/graphics/rt_sprite.h (node sprite payload),
+//        docs/viperlib/game.md (Scene section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_scene.h"

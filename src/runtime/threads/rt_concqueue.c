@@ -4,6 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/threads/rt_concqueue.c
+// Purpose: Implements a thread-safe concurrent FIFO queue for the
+//          Viper.Threads.ConcQueue class. Uses a linked-list of nodes protected
+//          by a mutex and condition variable. Supports Enqueue, Dequeue
+//          (blocking), TryDequeue (non-blocking), Count, and Clear.
+//
+// Key invariants:
+//   - Enqueue always succeeds; the queue is unbounded.
+//   - Dequeue blocks until an item is available or a timeout expires.
+//   - TryDequeue returns false immediately if the queue is empty.
+//   - Count reflects the number of items currently in the queue.
+//   - All operations acquire the mutex before touching the head/tail/count.
+//   - Win32 uses CRITICAL_SECTION + CONDITION_VARIABLE; POSIX uses pthreads.
+//
+// Ownership/Lifetime:
+//   - Enqueued void* values are not retained; callers manage object lifetimes.
+//   - Node allocations are freed on Dequeue or during Clear/finalize.
+//   - The queue object is heap-allocated and managed by the runtime GC.
+//
+// Links: src/runtime/threads/rt_concqueue.h (public API),
+//        src/runtime/threads/rt_channel.h (bounded channel, related concept)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_concqueue.h"
 

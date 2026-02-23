@@ -1,32 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_random.h
+// Purpose: Deterministic pseudo-random number generator implementing BASIC's RND and RANDOMIZE functions using a 64-bit LCG algorithm producing identical sequences across all platforms for a given seed.
 //
-//===----------------------------------------------------------------------===//
+// Key invariants:
+//   - Uses the Knuth MMIX LCG multiplier/increment constants for good statistical properties.
+//   - Floating-point output uses the high 53 bits of state for maximum double precision.
+//   - Generator state is process-global; BASIC's random functions are inherently single-stream.
+//   - rt_random_range traps when min > max.
 //
-// This file declares the runtime's deterministic pseudo-random number generator,
-// implementing BASIC's RND and RANDOMIZE functions. The generator uses a 64-bit
-// linear congruential generator (LCG) that produces identical sequences across
-// all platforms for a given seed.
+// Ownership/Lifetime:
+//   - Generator state is a single global variable; not thread-safe.
+//   - No heap allocation; all functions are value-returning.
 //
-// BASIC programs depend on reproducible random number sequences for testing and
-// deterministic simulation. Unlike C's rand() which varies across implementations,
-// Viper's RNG uses a fixed algorithm that generates the same sequence on all
-// platforms given the same seed value.
-//
-// Implementation Design:
-// - 64-bit LCG: Uses the multiplier and increment constants from Knuth's MMIX
-//   for full period and good statistical properties
-// - Floating-point output: Maps the 64-bit state to [0, 1) using the high 53 bits
-//   for maximum precision in double representation
-// - Global state: Maintains a single generator state for the entire program
-//   (BASIC's random functions are inherently global, not per-thread)
-// - Deterministic seeding: RANDOMIZE sets the state explicitly, enabling
-//   reproducible sequences in tests and simulations
-//
-// The generator is designed for BASIC compatibility and determinism, not
-// cryptographic security or advanced statistical applications.
+// Links: src/runtime/core/rt_random.c (implementation)
 //
 //===----------------------------------------------------------------------===//
 #pragma once

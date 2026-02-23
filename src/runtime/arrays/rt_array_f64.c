@@ -5,15 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the dynamic array helpers for 64-bit floating-point arrays.
-// This mirrors rt_array_i64.c but uses double elements.
+// File: src/runtime/arrays/rt_array_f64.c
+// Purpose: Implements dynamic array helpers for 64-bit floating-point (double)
+//          arrays, mirroring rt_array_i64.c but using double elements. Provides
+//          allocation, bounds-checked access, mutation, and resize logic through
+//          the shared runtime heap.
+//
+// Key invariants:
+//   - Array payloads are preceded by a rt_heap_hdr_t header in the heap layout.
+//   - Out-of-bounds accesses delegate to rt_arr_oob_panic which aborts.
+//   - Resize doubles capacity to amortise allocation cost.
+//   - IEEE 754 double precision semantics are preserved for all stored values.
+//   - All indices are zero-based; length and capacity are stored in the header.
+//
+// Ownership/Lifetime:
+//   - Arrays are reference-counted via the heap allocator.
+//   - Callers must not cache raw double* pointers across calls that may resize.
+//
+// Links: src/runtime/arrays/rt_array_f64.h (public API),
+//        src/runtime/arrays/rt_array.h (int32 variant, provides oob_panic),
+//        src/runtime/arrays/rt_array_i64.h (int64 variant)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implements dynamic array helpers for 64-bit floating-point values.
-/// @details Provides allocation, bounds-checked access, and resize logic for
-///          arrays of doubles stored in the runtime heap.
 
 #include "rt_array_f64.h"
 #include "rt_array.h" // for rt_arr_oob_panic

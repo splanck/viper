@@ -5,28 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Purpose: Implement numeric and CSV formatting helpers that mirror the BASIC
-//          runtime semantics.  The routines encapsulate locale-sensitive
-//          behaviour, handle special floating-point values deterministically,
-//          and generate quoted CSV strings without leaking heap ownership
-//          conventions across the runtime.
-// Key invariants: Callers must provide valid output buffers when the API
-//                 expects them; helper functions trap on invalid inputs or
-//                 truncation rather than returning partial results.  Locale
-//                 normalisation always rewrites decimal separators to '.' so
-//                 textual output remains stable across host environments.
-// Ownership/Lifetime: CSV helpers allocate fresh runtime strings that transfer
-//                     ownership to the caller; buffer-based helpers borrow the
-//                     provided storage and never retain pointers.
+// File: src/runtime/core/rt_format.c
+// Purpose: Implements numeric and CSV formatting helpers that mirror BASIC
+//          runtime semantics. Provides deterministic double-to-string
+//          conversion with locale-normalised decimal separators, special-value
+//          handling (NaN, infinity), and CSV string quoting.
+//
+// Key invariants:
+//   - Caller-provided output buffers must be non-NULL and non-zero in capacity;
+//     invalid parameters cause an immediate trap via rt_trap.
+//   - Locale-specific decimal separators are rewritten to '.' post-format so
+//     output is stable across host environments.
+//   - Truncation during formatting is treated as a fatal error; callers must
+//     provide buffers large enough for the expected value range.
+//   - NaN and infinity are formatted as their canonical string representations
+//     ("nan", "inf", "-inf") rather than locale-dependent variants.
+//   - CSV quoting doubles internal double-quotes and wraps the result in
+//     double-quote delimiters.
+//
+// Ownership/Lifetime:
+//   - CSV helpers (rt_format_csv_string) return newly allocated rt_string
+//     values that transfer ownership to the caller; caller must unref when done.
+//   - Buffer-based helpers (rt_format_f64) write into caller-supplied storage
+//     and do not retain any pointers.
+//
+// Links: src/runtime/core/rt_format.h (public API),
+//        src/runtime/core/rt_fmt.c (higher-level Viper.Fmt namespace),
+//        src/runtime/core/rt_string_format.c (numeric parsing and conversion)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Floating-point and CSV formatting utilities for the runtime.
-/// @details Provides deterministic double formatting with consistent decimal
-///          separators and exposes an allocator that quotes runtime strings for
-///          CSV emission.  Helpers trap on invalid buffer parameters so that
-///          misuse fails fast during runtime development.
 
 #include "rt_format.h"
 #include "rt_internal.h"

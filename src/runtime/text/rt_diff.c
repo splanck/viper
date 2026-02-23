@@ -4,6 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/text/rt_diff.c
+// Purpose: Implements line-level text diff for the Viper.Text.Diff class.
+//          Computes the Myers LCS-based edit script between two multiline
+//          strings, producing added/removed/unchanged line annotations.
+//
+// Key invariants:
+//   - Input strings are split on '\n' into line arrays before diffing.
+//   - The diff produces a minimal edit script (fewest insertions + deletions).
+//   - Each output record carries a tag: "=" (unchanged), "+" (added), "-" (removed).
+//   - Context lines (unchanged lines adjacent to changes) are included in output.
+//   - Empty input produces an empty diff, not a null result.
+//   - All returned strings are fresh allocations; the diff holds no live refs.
+//
+// Ownership/Lifetime:
+//   - Returned Seq of diff records is a fresh allocation owned by the caller.
+//   - Input strings are borrowed for the duration of the call; not retained.
+//
+// Links: src/runtime/text/rt_diff.h (public API),
+//        src/runtime/rt_seq.h (Seq container used for diff output),
+//        src/runtime/rt_string.h (string split for line arrays)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_diff.h"
 #include "rt_internal.h"

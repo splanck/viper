@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_version.h
+// Purpose: Semantic version parsing and comparison (SemVer 2.0.0) supporting MAJOR.MINOR.PATCH with optional pre-release labels and build metadata.
+//
+// Key invariants:
+//   - Version format: MAJOR.MINOR.PATCH[-pre-release][+build].
+//   - Pre-release identifiers are compared lexicographically.
+//   - Build metadata is ignored in comparisons.
+//   - rt_version_compare returns negative/zero/positive for less/equal/greater.
+//
+// Ownership/Lifetime:
+//   - Version objects are heap-allocated opaque pointers.
+//   - Returned strings are newly allocated; caller must release.
+//
+// Links: src/runtime/text/rt_version.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_version.h
-// Purpose: Semantic version parsing and comparison (SemVer 2.0.0 compatible).
-// Key invariants: Versions follow MAJOR.MINOR.PATCH format with optional
-//                 pre-release and build metadata.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

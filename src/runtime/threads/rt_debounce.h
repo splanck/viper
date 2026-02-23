@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_debounce.h
+// Purpose: Debouncer and Throttler utilities for rate-limiting operations: Debouncer delays execution until a quiet period elapses; Throttler limits to at most once per interval.
+//
+// Key invariants:
+//   - Debouncer resets its timer on each call; fires only after quiet_ms have passed.
+//   - Throttler fires at most once per interval_ms regardless of call frequency.
+//   - Both utilities are time-based using the monotonic clock.
+//   - Callback functions are invoked synchronously from the polling thread.
+//
+// Ownership/Lifetime:
+//   - Debouncer and Throttler objects are heap-allocated; caller manages lifetime.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/threads/rt_debounce.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_debounce.h
-// Purpose: Debouncer and Throttler utilities for rate-limiting operations.
-// Key invariants: Time-based. Debouncer delays until quiet period.
-//                 Throttler limits to at most once per interval.
-// Ownership/Lifetime: Caller manages objects.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

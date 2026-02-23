@@ -5,13 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_intmap.c
-// Purpose: Implement an integer-keyed hash map using FNV-1a hash with chaining.
-// Structure: [vptr | buckets | capacity | count]
-// - vptr: points to class vtable (placeholder for OOP compatibility)
-// - buckets: array of entry chain heads
-// - capacity: number of buckets
-// - count: number of entries
+// File: src/runtime/collections/rt_intmap.c
+// Purpose: Implements an integer-keyed hash map (IntMap) mapping int64 keys to
+//   arbitrary object values. Uses a mix-hash on the integer key to distribute
+//   it into a hash table with separate chaining. Supports get, put, remove,
+//   contains, and key/value enumeration. Typical uses: entity ID lookup tables,
+//   sparse index-to-object mappings, and cache tables keyed by integer handle.
+//
+// Key invariants:
+//   - Backed by a hash table with initial capacity MAP_INITIAL_CAPACITY (16)
+//     buckets and separate chaining.
+//   - Resizes (doubles) when count/capacity exceeds 75% (MAP_LOAD_FACTOR 3/4).
+//   - Integer keys are hashed by multiplying with a Knuth multiplicative
+//     constant (or similar mix) rather than direct modulo to avoid clustering.
+//   - Values are stored as raw void* pointers; the map does not retain them
+//     (no rt_obj_retain call on insert). Caller manages value lifetime.
+//   - All operations are O(1) average case; O(n) worst case.
+//   - Not thread-safe; external synchronization required.
+//
+// Ownership/Lifetime:
+//   - IntMap objects are GC-managed (rt_obj_new_i64). The bucket array and all
+//     entry nodes are freed by the GC finalizer.
+//
+// Links: src/runtime/collections/rt_intmap.h (public API),
+//        src/runtime/collections/rt_map.h (string-keyed map counterpart)
 //
 //===----------------------------------------------------------------------===//
 

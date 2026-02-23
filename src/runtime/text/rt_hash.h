@@ -1,23 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_hash.h
+// Purpose: Cryptographic hash functions (MD5, SHA-1, SHA-256) and CRC32 checksum computation, returning lowercase hex strings or integer checksums.
+//
+// Key invariants:
+//   - MD5 and SHA-1 are cryptographically broken; use only for checksums or legacy compatibility.
+//   - SHA-256 is suitable for security-sensitive applications.
+//   - Hash outputs are lowercase hex strings.
+//   - rt_hash_crc32 returns the CRC32 as an integer, not a string.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated; caller must release.
+//   - Input strings are borrowed; callers retain ownership.
+//
+// Links: src/runtime/text/rt_hash.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_hash.h
-// Purpose: Cryptographic hash functions (MD5, SHA1, SHA256) and checksums (CRC32).
-// Key invariants: Hash outputs are lowercase hex strings; CRC32 returns integer.
-// Ownership/Lifetime: Returned strings are newly allocated.
-// Links: docs/viperlib.md
-//
-// Security Note: MD5 and SHA1 are cryptographically broken and should NOT be
-//                used for security-sensitive applications. Use SHA256 or better
-//                for security purposes. These are provided for checksums,
-//                fingerprinting, and legacy compatibility.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

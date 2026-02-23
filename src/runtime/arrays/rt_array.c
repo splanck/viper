@@ -5,21 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the dynamic array helpers that back BASIC's `DIM` and collection
-// operations.  The routines here coordinate with the shared runtime heap to
-// provide reference-counted storage, bounds checking, and copy-on-write
-// semantics that match the behaviour of the VM interpreter.  Keeping the logic
-// centralised avoids divergence between the native runtime and the VM helpers
-// when resizing or sharing arrays across procedures.
+// File: src/runtime/arrays/rt_array.c
+// Purpose: Implements the dynamic generic array helpers (int32_t elements) that
+//          back BASIC's DIM statement and collection operations. Provides
+//          reference-counted storage, bounds checking, copy-on-write semantics,
+//          and resize logic through the shared runtime heap.
+//
+// Key invariants:
+//   - Array payloads are preceded in memory by a rt_heap_hdr_t header.
+//   - Out-of-bounds accesses call rt_arr_oob_panic which prints a diagnostic
+//     and aborts; no partial reads or writes are performed.
+//   - Copy-on-write: mutating a shared array triggers a full copy before write.
+//   - Resize doubles capacity to amortise allocation cost.
+//   - VM and native runtimes share this module to avoid behavioural divergence.
+//   - All indices are zero-based int32_t values.
+//
+// Ownership/Lifetime:
+//   - Arrays are reference-counted via the heap allocator.
+//   - Callers must retain/release arrays through the heap API; raw pointers are
+//     not safe to cache across any call that may trigger a resize.
+//
+// Links: src/runtime/arrays/rt_array.h (public API),
+//        src/runtime/arrays/rt_array_i64.h (int64 variant),
+//        src/runtime/arrays/rt_array_str.h (string variant)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Reference-counted runtime array utilities.
-/// @details Supplies creation, retention, mutation, and resize helpers for the
-///          integer arrays exposed through the BASIC runtime ABI.  All
-///          operations validate metadata emitted by the shared heap allocator to
-///          guard against memory corruption and incorrect sharing semantics.
 
 #include "rt_array.h"
 #include "rt_internal.h"

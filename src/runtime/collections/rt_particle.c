@@ -4,10 +4,44 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_particle.c
-/// @brief Implementation of particle system.
-///
+//
+// File: src/runtime/collections/rt_particle.c
+// Purpose: CPU particle emitter for Viper games. Spawns, simulates, and renders
+//   disc-shaped particles with configurable lifetime, speed, angle range,
+//   gravity, size, per-particle color, optional fade-out, and optional shrink.
+//   Designed for effects like dust, sparks, smoke, blood splatter, and
+//   explosions at scales up to RT_PARTICLE_MAX active particles per emitter.
+//
+// Key invariants:
+//   - Each emitter owns a fixed-size particle array (calloc'd at creation,
+//     freed on destroy). Capacity is clamped to RT_PARTICLE_MAX.
+//   - Emission is rate-based (particles per frame) accumulated with a fractional
+//     accumulator, so fractional rates like 0.5 work correctly (one particle
+//     every two frames). rt_particle_emitter_burst() ignores the accumulator
+//     and fires a fixed count immediately.
+//   - Velocity is initialized in polar form (speed, angle in degrees measured
+//     counter-clockwise from +X) and converted to Cartesian on spawn. Note that
+//     Y velocity is negated because screen Y increases downward.
+//   - Per-particle RNG uses a 64-bit LCG (Knuth multiplier) seeded from the
+//     emitter's pointer XOR'd with a constant to spread across the hash space.
+//     This produces independent sequences per emitter with no global state.
+//   - Color format is 0xAARRGGBB (alpha in high byte). Fade-out linearly scales
+//     the alpha channel toward zero as the particle approaches end-of-life.
+//   - rt_particle_emitter_draw_to_pixels() renders directly to a Pixels canvas
+//     via rt_pixels_draw_disc(), avoiding the per-particle dispatch overhead of
+//     calling rt_particle_emitter_get() from Zia for every particle.
+//
+// Ownership/Lifetime:
+//   - The emitter struct is GC-managed (rt_obj_new_i64). The particle array is
+//     malloc'd separately and freed in rt_particle_emitter_destroy(). The
+//     destructor must be called explicitly (it is not a GC finalizer) unless
+//     the caller knows the GC will not collect the emitter before the program
+//     exits.
+//
+// Links: src/runtime/collections/rt_particle.h (public API),
+//        src/runtime/graphics/rt_pixels.h (rt_pixels_draw_disc for batch draw),
+//        docs/viperlib/game.md (Particle section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_particle.h"

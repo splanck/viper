@@ -5,24 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_string_builder.c
-// Purpose: Provide the growable string buffer used by the BASIC runtime's
-//          formatting helpers.
-// Key invariants: Builders always keep their buffers null-terminated, respect
-//                 a fixed in-struct inline capacity before allocating on the
-//                 heap, and surface allocation/overflow failures via explicit
-//                 status codes instead of trapping.
-// Ownership/Lifetime: Callers own the builder object and are responsible for
-//                     eventually releasing any heap storage via rt_sb_free.
-// Links: docs/runtime/strings.md#string-builder
+// File: src/runtime/core/rt_string_builder.c
+// Purpose: Implements the growable string buffer (rt_string_builder) used by
+//          the BASIC runtime's formatting helpers. Starts with a fixed inline
+//          buffer (RT_SB_INLINE_CAP bytes) to avoid heap allocation for short
+//          strings, then promotes to heap when growth is needed.
+//
+// Key invariants:
+//   - Builders always keep their buffers null-terminated at data[len].
+//   - The inline buffer (embedded in the struct) is used until capacity is
+//     exceeded; data pointer is redirected to heap storage on promotion.
+//   - Allocation and overflow failures are reported via explicit rt_sb_status_t
+//     return codes rather than trapping; callers decide how to handle errors.
+//   - rt_sb_restore_on_overflow reverts a builder to a prior state, freeing
+//     any heap allocation made during a failed append.
+//   - rt_sb_free releases heap storage if the builder promoted beyond inline;
+//     calling it on an inline builder is safe (no-op for the pointer).
+//
+// Ownership/Lifetime:
+//   - Callers own the rt_string_builder struct (typically stack-allocated) and
+//     are responsible for calling rt_sb_free when done to release heap storage.
+//   - rt_sb_finish transfers the accumulated bytes into a new rt_string; the
+//     returned value is owned by the caller (must be unref'd when done).
+//
+// Links: src/runtime/core/rt_string_builder.h (public API),
+//        src/runtime/core/rt_string.h (rt_string allocation),
+//        docs/runtime/strings.md#string-builder
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implementation of the runtime string builder helper.
-/// @details Provides reserve and append helpers that keep the buffer
-///          null-terminated and surface allocation/overflow failures back to
-///          callers instead of trapping directly.
 
 #include "rt_string_builder.h"
 

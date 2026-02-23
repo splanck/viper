@@ -4,10 +4,41 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_tween.c
-/// @brief Implementation of tweening and interpolation utilities.
-///
+//
+// File: src/runtime/collections/rt_tween.c
+// Purpose: Frame-counted value interpolation ("tweening") for Viper games and
+//   UIs. A Tween smoothly animates a scalar value from a start to an end over
+//   a specified number of frames, optionally applying one of 19 easing curves
+//   (linear, quad, cubic, sine, exponential, back-overshoot, and bounced
+//   variants). Typical uses: moving UI panels, fading colors, scaling entities,
+//   and any animation that must complete in a predictable number of frames.
+//
+// Key invariants:
+//   - Time is measured in integer frames (not wall-clock milliseconds).
+//     Duration must be >= 1; zero or negative durations are clamped to 1.
+//   - The tween progresses by calling rt_tween_update() once per frame.
+//     Update returns 1 on the frame the tween completes, 0 otherwise.
+//     After completion, is_complete() returns 1 and the value is pinned to `to`.
+//   - Easing functions operate on a normalized progress t ∈ [0.0, 1.0]:
+//       Linear:  f(t) = t
+//       In-Quad: f(t) = t²     (starts slow, ends fast)
+//       Back:    overshoots the target slightly before settling (c1 = 1.70158)
+//       Bounce:  simulates a physical bounce using piecewise polynomials
+//     The `ease_type` parameter is one of the RT_EASE_* constants defined in
+//     rt_tween.h. Unknown types fall back to linear.
+//   - Pause/Resume halt and resume update progression without resetting elapsed.
+//   - rt_tween_reset() rewinds to frame 0 and resumes from the original `from`.
+//   - rt_tween_value_i64() rounds to the nearest integer (round-half-up for
+//     positive values, round-half-down for negative) — suitable for pixel coords.
+//
+// Ownership/Lifetime:
+//   - Tween objects are GC-managed (rt_obj_new_i64). rt_tween_destroy() calls
+//     rt_obj_free() for callers that manage lifetimes explicitly; the GC also
+//     collects them automatically.
+//
+// Links: src/runtime/collections/rt_tween.h (public API, easing constants),
+//        docs/viperlib/game.md (Tween and TweenChain sections)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_tween.h"

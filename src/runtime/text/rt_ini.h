@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/text/rt_ini.h
+// Purpose: INI/config file parsing and formatting returning a map-of-maps structure (section -> key -> value), with sectionless entries under the empty string key.
+//
+// Key invariants:
+//   - Returns a Map where keys are section names and values are Maps of key-value pairs.
+//   - Sectionless entries at the top of the file are stored under the empty string key ('').
+//   - Comment lines starting with ';' or '#' are ignored.
+//   - Values are stored as strings; no type inference is performed.
+//
+// Ownership/Lifetime:
+//   - Returned map objects are owned by the caller.
+//   - Input strings are borrowed for the duration of parsing.
+//
+// Links: src/runtime/text/rt_ini.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_ini.h
-// Purpose: INI/config file parsing and formatting.
-// Key invariants: Returns Map of Maps (section -> key -> value as string).
-//                 Default (sectionless) entries go under empty string key "".
-// Ownership/Lifetime: Returned maps are owned by the caller.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

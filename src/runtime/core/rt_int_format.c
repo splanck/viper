@@ -5,17 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the BASIC runtime helpers that format 64-bit integers into caller
-// supplied buffers.  The routines guarantee locale-independent output and
-// explicit null termination so callers can safely use the generated strings when
-// emitting diagnostics or serialising values to text streams.
+// File: src/runtime/core/rt_int_format.c
+// Purpose: Implements locale-independent 64-bit integer-to-string formatting
+//          helpers for the BASIC runtime. Routines write into caller-supplied
+//          buffers, guarantee null termination even on truncation, and report
+//          the number of characters produced so callers can chain buffers.
+//
+// Key invariants:
+//   - Output is always null-terminated, even when the buffer is smaller than
+//     the formatted value; the returned length excludes the terminator.
+//   - Formatting is locale-independent: PRId64 / PRIu64 macros are used so
+//     decimal output is stable across all host environments.
+//   - Negative capacity or NULL buffer causes an early return of 0 without
+//     writing; callers should treat a 0 return as a formatting failure.
+//   - rt_snprintf is used instead of snprintf to allow test interposition.
+//
+// Ownership/Lifetime:
+//   - Writes into caller-supplied buffers; no heap allocation is performed.
+//   - No state is retained between calls; functions are pure utilities.
+//
+// Links: src/runtime/core/rt_int_format.h (public API),
+//        src/runtime/core/rt_printf_compat.c (rt_snprintf implementation),
+//        src/runtime/core/rt_string_format.c (higher-level string conversion)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Integer-to-string helpers shared by the runtime.
-/// @details Provides thin wrappers over `snprintf` that clamp truncation and
-///          preserve deterministic formatting regardless of the host locale.
 
 #include "rt_int_format.h"
 #include "rt_printf_compat.h"

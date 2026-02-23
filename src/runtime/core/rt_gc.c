@@ -4,16 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_gc.c
-/// @brief Cycle-detecting garbage collector implementation.
-///
-/// Uses a trial deletion (synchronous mark-sweep) algorithm:
-///   1. For each tracked object, trial-decrement refcounts of its children.
-///   2. Objects whose trial refcount reaches zero are potential cycle members.
-///   3. Restore trial refcounts for objects reachable from outside the set.
-///   4. Objects still at zero trial refcount are unreachable cycles — free them.
-///
+//
+// File: src/runtime/core/rt_gc.c
+// Purpose: Implements the cycle-detecting garbage collector for the Viper
+//          runtime. Uses a trial-deletion (synchronous mark-sweep) algorithm:
+//          trial-decrement child refcounts, identify zero-trial-refcount
+//          candidates as potential cycle members, restore reachable objects,
+//          then free confirmed cycles.
+//
+// Key invariants:
+//   - Objects must be registered via rt_gc_track before cycles can be detected;
+//     untracked objects rely solely on reference counting for collection.
+//   - Trial refcounts are temporary; they are computed per-pass and do not
+//     modify the actual reference counts stored in heap headers.
+//   - Weak references to collected objects are zeroed before the finalizer runs,
+//     ensuring no dangling weak-ref reads after collection.
+//   - The GC table lock (pthread_mutex / CRITICAL_SECTION) protects the tracked-
+//     object list and weak reference registry; finalizers run outside the lock.
+//   - Pass statistics (total_collected, pass_count) are updated atomically.
+//
+// Ownership/Lifetime:
+//   - The global GC state (entries table, weak ref registry) is heap-allocated
+//     lazily and lives for the process lifetime.
+//   - Tracked object pointers are borrowed; the GC does not retain a reference
+//     — it relies on the object's own refcount to stay alive until collection.
+//
+// Links: src/runtime/core/rt_gc.h (public API),
+//        src/runtime/core/rt_heap.c (heap header layout, refcount fields),
+//        src/runtime/core/rt_object.c (object allocation and finalizer registry)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_gc.h"

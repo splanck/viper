@@ -4,54 +4,32 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_countdown.c
-/// @brief Countdown timer for interval timing with expiration detection.
-///
-/// This file implements a countdown timer that tracks elapsed time against a
-/// target interval. The Countdown class is useful for implementing timeouts,
-/// cooldowns, delays, and rate limiting in applications and games.
-///
-/// **Countdown vs Stopwatch:**
-/// - Stopwatch: Measures elapsed time (counts up from 0)
-/// - Countdown: Tracks time until expiration (counts down to 0)
-///
-/// **Timer States:**
-/// ```
-/// ┌─────────────────────────────────────────────────────────────┐
-/// │                                                             │
-/// │  STOPPED ─────► RUNNING ─────► EXPIRED                      │
-/// │     │              │              │                         │
-/// │     │              │              │                         │
-/// │     ◄──────────────┴──────────────┘                         │
-/// │           Reset()                                           │
-/// └─────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Time Tracking:**
-/// ```
-/// Start      Now                    Interval End
-///   │         │                          │
-///   ▼         ▼                          ▼
-///   ├─────────┼──────────────────────────┤
-///   │ Elapsed │       Remaining          │
-///   └─────────┴──────────────────────────┘
-///            ◄──────────────────────────►
-///                     Interval
-/// ```
-///
-/// **Use Cases:**
-/// - Game cooldowns (ability cooldowns, spawn timers)
-/// - Timeouts (network requests, user input)
-/// - Rate limiting (API calls, actions per minute)
-/// - Delays (screen transitions, animations)
-/// - Turn timers (chess clocks, quiz timers)
-///
-/// **Thread Safety:** Countdown objects are not thread-safe. External
-/// synchronization is required for multi-threaded access.
-///
-/// @see rt_stopwatch.c For measuring elapsed time (counting up)
-///
+//
+// File: src/runtime/core/rt_countdown.c
+// Purpose: Implements the Countdown timer class for the Viper runtime.
+//          A countdown tracks elapsed time against a fixed target interval and
+//          exposes HasExpired/Remaining/Reset semantics for timeouts, cooldowns,
+//          rate limiters, and game turn timers.
+//
+// Key invariants:
+//   - Time is measured in milliseconds using the platform monotonic clock.
+//   - A countdown in the STOPPED state accumulates no elapsed time.
+//   - Elapsed time is the sum of accumulated milliseconds from completed
+//     intervals plus the current running interval (if any).
+//   - HasExpired returns true when elapsed >= interval_ms and the timer was
+//     started; a stopped, never-started countdown is not considered expired.
+//   - Countdown objects are not thread-safe; callers must synchronize externally.
+//
+// Ownership/Lifetime:
+//   - Countdown instances are heap-allocated via rt_obj_new_i64 and managed
+//     by the runtime GC; no manual free is required by callers.
+//   - The internal ViperCountdown struct contains no pointers to external
+//     resources; finalizer is a no-op.
+//
+// Links: src/runtime/core/rt_countdown.h (public API),
+//        src/runtime/core/rt_stopwatch.c (counts up instead of down),
+//        src/runtime/core/rt_time.c (platform clock helpers)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_countdown.h"

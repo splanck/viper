@@ -1,24 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/system/rt_exec.h
+// Purpose: External command execution for Viper.Exec, providing Run, Capture, and Shell variants with argument arrays and exit code capture.
+//
+// Key invariants:
+//   - Run/RunArgs wait for process completion and return the exit code.
+//   - Capture/CaptureArgs capture stdout as a string; stderr is discarded.
+//   - Shell/ShellCapture pass the command string directly to the platform shell.
+//   - SECURITY: Never pass unsanitized user input to Shell functions; shell injection risk.
+//
+// Ownership/Lifetime:
+//   - Returned strings from Capture functions are newly allocated; caller must release.
+//   - No heap allocation for Run/RunArgs; exit code returned directly.
+//
+// Links: src/runtime/system/rt_exec.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_exec.h
-// Purpose: External command execution for Viper.Exec.
-//
-// Exec provides functions to run external programs:
-// - Run/RunArgs: Execute program and wait, return exit code
-// - Capture/CaptureArgs: Execute and capture stdout
-// - Shell/ShellCapture: Run through system shell
-//
-// SECURITY NOTE: Shell functions pass commands directly to the shell.
-// Never pass unsanitized user input to Shell/ShellCapture as this
-// creates shell injection vulnerabilities.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

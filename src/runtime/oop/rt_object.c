@@ -4,92 +4,31 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_object.c
-/// @brief Object allocation and lifetime management for Viper.
-///
-/// This file implements the core object allocation and reference counting
-/// system for Viper's runtime. All heap-allocated objects (class instances,
-/// collections, etc.) use these functions for memory management.
-///
-/// **What is an Object?**
-/// In Viper's runtime, an "object" is any heap-allocated value that:
-/// - Has a header with reference count and type metadata
-/// - Participates in automatic memory management
-/// - May have a vtable pointer for polymorphism (class instances)
-///
-/// **Memory Layout:**
-/// ```
-/// ┌─────────────────────────────────────────────────────────────────────────┐
-/// │                         Heap Allocation                                 │
-/// │                                                                         │
-/// │  ┌──────────────────────┐  ┌────────────────────────────────────────┐   │
-/// │  │   rt_heap_hdr_t      │  │         Payload (user data)            │   │
-/// │  │ ┌──────────────────┐ │  │ ┌────────────────────────────────────┐ │   │
-/// │  │ │ refcnt: 1        │ │  │ │ vptr: *vtable (class instances)   │ │   │
-/// │  │ │ kind: OBJECT     │ │  │ │ field1: ...                       │ │   │
-/// │  │ │ class_id: 42     │ │  │ │ field2: ...                       │ │   │
-/// │  │ │ finalizer: fn    │ │  │ │ ...                               │ │   │
-/// │  │ └──────────────────┘ │  │ └────────────────────────────────────┘ │   │
-/// │  └──────────────────────┘  └────────────────────────────────────────┘   │
-/// │           ▲                              ▲                              │
-/// │           │                              │                              │
-/// │      Hidden from user             Returned to user                      │
-/// └─────────────────────────────────────────────────────────────────────────┘
-/// ```
-///
-/// **Reference Counting:**
-/// Objects use reference counting for automatic memory management:
-/// ```
-/// Dim obj = New MyClass()   ' refcnt = 1
-/// Dim other = obj           ' refcnt = 2 (retain)
-/// other = Nothing           ' refcnt = 1 (release)
-/// obj = Nothing             ' refcnt = 0 → finalizer runs, memory freed
-/// ```
-///
-/// **Object Lifecycle:**
-/// ```
-///   rt_obj_new_i64()
-///        │
-///        ▼
-///   ┌─────────┐     rt_obj_retain_maybe()     ┌─────────┐
-///   │ refcnt  │ ◀────────────────────────────▶│ refcnt  │
-///   │   = 1   │     rt_obj_release_check0()   │   > 1   │
-///   └────┬────┘                               └─────────┘
-///        │
-///        │ rt_obj_release_check0() when refcnt → 0
-///        ▼
-///   ┌─────────┐
-///   │ refcnt  │ ─── rt_obj_free() ───▶ [freed]
-///   │   = 0   │     (runs finalizer)
-///   └─────────┘
-/// ```
-///
-/// **Finalizers:**
-/// Objects can have custom finalizers that run when the reference count
-/// reaches zero. This enables cleanup of external resources:
-/// ```
-/// rt_obj_set_finalizer(obj, my_cleanup_fn);
-/// ```
-///
-/// **System.Object Methods:**
-/// This file also implements the default behavior for System.Object methods:
-/// | Method            | Implementation                                    |
-/// |-------------------|---------------------------------------------------|
-/// | ReferenceEquals   | Pointer comparison                                |
-/// | Equals            | Default: pointer comparison (can be overridden)   |
-/// | GetHashCode       | Default: pointer value as hash                    |
-/// | ToString          | Default: class qualified name from type registry  |
-///
-/// **Thread Safety:**
-/// Reference counting uses atomic operations, making retain/release safe
-/// to call from multiple threads. However, the object's fields are not
-/// automatically synchronized.
-///
-/// @see rt_heap.c For the underlying memory allocator
-/// @see rt_type_registry.c For class metadata and vtables
-/// @see rt_oop.h For OOP type definitions
-///
+//
+// File: src/runtime/oop/rt_object.c
+// Purpose: Implements the core object allocation and reference-counted lifetime
+//          management system. All heap objects (class instances, collections,
+//          etc.) are allocated through rt_object_alloc and managed by
+//          rt_object_retain / rt_object_release.
+//
+// Key invariants:
+//   - Every allocated object has a rt_heap_hdr_t header directly preceding
+//     the user-visible payload pointer.
+//   - refcnt starts at 1 on allocation; release to 0 invokes the finalizer.
+//   - Finalizers are optional; if provided, they are called before freeing.
+//   - rt_object_retain on NULL is a safe no-op; same for release.
+//   - Class instances store a vtable pointer (vptr) as the first field of
+//     their payload; this layout is fixed and must not change.
+//
+// Ownership/Lifetime:
+//   - Callers receive a fresh reference (refcount=1) from rt_object_alloc.
+//   - Callers must call rt_object_release when done; the GC does not
+//     automatically track objects not reachable via the heap graph.
+//
+// Links: src/runtime/oop/rt_object.h (public API),
+//        src/runtime/rt_heap.h (underlying allocator),
+//        src/runtime/oop/rt_type_registry.h (class ID and vtable metadata)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_object.h"

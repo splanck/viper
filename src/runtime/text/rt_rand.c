@@ -4,27 +4,28 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_rand.c
-/// @brief Cryptographically secure random number generation.
-///
-/// This file implements secure random byte and integer generation using
-/// platform-specific cryptographic random number generators:
-///
-/// | Platform | Primary Source       | Fallback          |
-/// |----------|----------------------|-------------------|
-/// | Linux    | /dev/urandom         | getrandom()       |
-/// | macOS    | /dev/urandom         | arc4random_buf()  |
-/// | Windows  | BCryptGenRandom      | CryptGenRandom    |
-///
-/// **Security Guarantees:**
-/// - Uses OS-provided CSPRNG (Cryptographically Secure PRNG)
-/// - Suitable for cryptographic key generation
-/// - Suitable for nonces, IVs, and salts
-/// - Unpredictable output even with partial state disclosure
-///
-/// **Thread Safety:** All functions are thread-safe.
-///
+//
+// File: src/runtime/text/rt_rand.c
+// Purpose: Implements cryptographically secure random generation for the
+//          Viper.Text.Rand class. Uses OS-provided CSPRNGs: /dev/urandom on
+//          Linux/macOS, BCryptGenRandom on Windows. Provides RandomBytes,
+//          RandomInt (range), RandomString (alphanumeric), and Token (hex).
+//
+// Key invariants:
+//   - All random output is sourced from the OS CSPRNG; never from rand() or srand().
+//   - RandomInt(min, max) is inclusive on both ends; bias is eliminated via
+//     rejection sampling.
+//   - RandomString produces characters from the base62 alphabet (A-Za-z0-9).
+//   - Token produces a lowercase hex string of the requested byte length * 2 chars.
+//   - Failure to read from the CSPRNG traps with a descriptive error.
+//   - All functions are thread-safe.
+//
+// Ownership/Lifetime:
+//   - All returned rt_string and rt_bytes values are fresh allocations.
+//
+// Links: src/runtime/text/rt_rand.h (public API),
+//        src/runtime/text/rt_guid.h (UUID generation uses the same CSPRNG)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_rand.h"

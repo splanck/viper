@@ -1,19 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_lrucache.h
+// Purpose: String-keyed LRU (Least Recently Used) cache evicting the least-recently-accessed entry when capacity is exceeded, providing O(1) average get/put operations.
+//
+// Key invariants:
+//   - Keys are string-keyed; each key maps to one value at a time.
+//   - The least-recently-used entry is evicted when capacity is exceeded.
+//   - All access operations (get, put, has) count as use and update recency.
+//   - Capacity must be > 0; creating with capacity 0 is undefined.
+//
+// Ownership/Lifetime:
+//   - Cache objects are heap-allocated; caller is responsible for lifetime management.
+//   - String keys are copied into the cache. Values are retained by the cache.
+//
+// Links: src/runtime/collections/rt_lrucache.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_lrucache.h
-// Purpose: Runtime functions for a string-keyed LRU (Least Recently Used) cache.
-// Key invariants: Keys are copied (cache owns copies). Values are retained.
-//                 Evicts least-recently-used entries when capacity is exceeded.
-// Ownership/Lifetime: Cache manages its own memory. Caller manages values.
-// Links: src/il/runtime/classes/RuntimeClasses.inc
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

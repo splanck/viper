@@ -4,10 +4,28 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_serialize.c
-/// @brief Unified serialization interface dispatching to format-specific parsers.
-///
+//
+// File: src/runtime/text/rt_serialize.c
+// Purpose: Implements a unified serialization facade for the Viper.Text.Serialize
+//          class. Dispatches Serialize/Deserialize calls to format-specific
+//          implementations based on the requested format tag (json, xml, toml, yaml).
+//
+// Key invariants:
+//   - Supported formats: "json", "xml", "toml", "yaml" (case-insensitive).
+//   - Unknown format tags cause a trap with a descriptive error message.
+//   - Serialization produces a string; deserialization parses a string into
+//     an rt_map tree.
+//   - The facade validates format names before dispatching; callers never see
+//     partial state from a failed dispatch.
+//   - All dispatched functions are thread-safe.
+//
+// Ownership/Lifetime:
+//   - Returned serialized strings and deserialized rt_map trees are owned by caller.
+//   - Input strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_serialize.h (public API),
+//        src/runtime/text/rt_json.h, rt_xml.h, rt_toml.h, rt_yaml.h (backends)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_serialize.h"

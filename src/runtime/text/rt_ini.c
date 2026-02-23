@@ -5,9 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_ini.c
-// Purpose: INI/config file parsing and formatting.
-//          Supports [sections], key=value, comments (; and #).
+// File: src/runtime/text/rt_ini.c
+// Purpose: Implements INI/config file parsing and formatting for the
+//          Viper.Text.Ini class. Supports [sections], key=value pairs,
+//          and line comments starting with ';' or '#'.
+//
+// Key invariants:
+//   - Section names are case-sensitive; keys within a section are case-sensitive.
+//   - Keys before any section header belong to the implicit root section "".
+//   - Comment lines (starting with ';' or '#') are discarded during parsing.
+//   - Leading and trailing whitespace is stripped from keys and values.
+//   - Duplicate keys in the same section keep the last value seen.
+//   - Formatting writes sections in insertion order, keys in insertion order.
+//
+// Ownership/Lifetime:
+//   - The parsed INI object is heap-allocated and managed by the runtime GC.
+//   - Section and key strings stored internally are fresh copies owned by the object.
+//
+// Links: src/runtime/text/rt_ini.h (public API),
+//        src/runtime/rt_map.h (used internally to store section/key/value data)
 //
 //===----------------------------------------------------------------------===//
 

@@ -4,6 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/threads/rt_cancellation.c
+// Purpose: Implements a cooperative cancellation token for the
+//          Viper.Threads.Cancellation class. Tokens can be cancelled, checked,
+//          and linked in a parent-child hierarchy so that cancelling a parent
+//          propagates to all linked child tokens.
+//
+// Key invariants:
+//   - Cancellation state is stored as an atomic_int (POSIX) or volatile LONG
+//     (Win32) to allow lock-free reads from any thread.
+//   - A token can only transition from not-cancelled to cancelled, never back.
+//   - Linked parent tokens propagate cancellation down to children on cancel.
+//   - IsCancelled is always safe to call from any thread without locking.
+//   - The finalizer is a no-op; atomic fields require no special cleanup.
+//
+// Ownership/Lifetime:
+//   - Cancellation token objects are heap-allocated and managed by the GC.
+//   - Parent pointers are weak references; the parent is not retained by the child.
+//
+// Links: src/runtime/threads/rt_cancellation.h (public API),
+//        src/runtime/threads/rt_future.h (futures accept a cancellation token),
+//        src/runtime/threads/rt_async.h (async tasks use cancellation tokens)
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_cancellation.h"
 

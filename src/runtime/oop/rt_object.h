@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/oop/rt_object.h
+// Purpose: Reference-counted object allocation, retain/release, and System.Object surface providing the foundational object model for all Viper heap objects.
+//
+// Key invariants:
+//   - Refcounts never underflow; retain and release calls must be balanced.
+//   - Objects start at refcount 1; freed when the count reaches zero.
+//   - Finalizer callbacks are invoked from rt_obj_free before releasing heap storage.
+//   - rt_obj_resurrect re-arms a finalizer for pool-managed objects (e.g., Vec2/Vec3 pools).
+//
+// Ownership/Lifetime:
+//   - Objects start with refcount 1; caller owns the initial reference.
+//   - rt_obj_retain increments; rt_obj_release decrements and frees at zero.
+//
+// Links: src/runtime/oop/rt_object.c (implementation), src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_object.h
-// Purpose: Reference-counted object allocation, retain/release, and System.Object surface.
-// Key invariants: Refcounts never underflow; retain/release calls must be balanced.
-// Ownership/Lifetime: Objects start at refcount 1; freed when count reaches zero.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>

@@ -5,8 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_textwrap.c
-// Purpose: Text wrapping utilities implementation.
+// File: src/runtime/text/rt_textwrap.c
+// Purpose: Implements text word-wrapping utilities for the Viper.Text.TextWrap
+//          class. Wraps long lines at word boundaries within a specified column
+//          width, with options for initial indent, subsequent indent, and hard
+//          wrapping of words that exceed the width.
+//
+// Key invariants:
+//   - Wrapping occurs at whitespace boundaries; words are never split unless
+//     hard_wrap is enabled and the word itself exceeds the column width.
+//   - Initial indent is prepended to the first line only.
+//   - Subsequent indent is prepended to all continuation lines.
+//   - Tab characters are expanded to spaces based on a configurable tab width.
+//   - Empty input returns an empty string; a zero width disables wrapping.
+//
+// Ownership/Lifetime:
+//   - The returned wrapped string is a fresh rt_string allocation owned by caller.
+//   - Input strings are borrowed for the duration of the call.
+//
+// Links: src/runtime/text/rt_textwrap.h (public API),
+//        src/runtime/rt_string_builder.h (used to accumulate output lines)
 //
 //===----------------------------------------------------------------------===//
 

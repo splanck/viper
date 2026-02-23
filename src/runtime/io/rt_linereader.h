@@ -1,21 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/io/rt_linereader.h
+// Purpose: Line-by-line text file reading for Viper.IO.LineReader, stripping newline characters (CR, LF, CRLF) and providing character-level peek/read access.
+//
+// Key invariants:
+//   - Read strips the line terminator (CR, LF, or CRLF) from each line.
+//   - ReadChar returns the raw character as i64, or -1 at EOF.
+//   - PeekChar views the next character without advancing the position.
+//   - The reader buffers input internally for efficiency.
+//
+// Ownership/Lifetime:
+//   - LineReader objects are heap-allocated; caller must close and free when done.
+//   - Returned strings from Read are newly allocated; caller must release them.
+//
+// Links: src/runtime/io/rt_linereader.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_linereader.h
-// Purpose: Line-by-line text file reading for Viper.IO.LineReader.
-//
-// LineReader provides convenient text file reading with:
-// - Read(): Read one line, strips newline (handles CR, LF, CRLF)
-// - ReadChar(): Read single character as i64, -1 on EOF
-// - PeekChar(): View next character without consuming it
-// - ReadAll(): Read all remaining content as a string
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

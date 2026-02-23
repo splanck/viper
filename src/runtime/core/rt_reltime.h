@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_reltime.h
+// Purpose: Human-readable relative time formatting producing strings like '2 hours ago', 'in 3 days', and '45s' from Unix timestamps or millisecond durations.
+//
+// Key invariants:
+//   - Input timestamps are Unix timestamps in seconds since epoch (UTC).
+//   - rt_reltime_format computes relative to the current wall-clock time.
+//   - rt_reltime_format_from uses an explicit reference timestamp for deterministic output.
+//   - Short variants produce compact representations suitable for UI labels.
+//
+// Ownership/Lifetime:
+//   - Returned strings are newly allocated and must be released by the caller.
+//   - Input timestamps are plain int64_t values with no ownership transfer.
+//
+// Links: src/runtime/core/rt_reltime.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_reltime.h
-// Purpose: Human-readable relative time formatting.
-// Key invariants: Timestamps are Unix timestamps in seconds since epoch (UTC).
-// Ownership/Lifetime: Returned strings are allocated and must be managed by caller.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

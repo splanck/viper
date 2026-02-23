@@ -4,10 +4,37 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_spritebatch.c
-/// @brief SpriteBatch implementation for efficient batched sprite rendering.
-///
+//
+// File: src/runtime/graphics/rt_spritebatch.c
+// Purpose: Batched sprite renderer for Viper games. Accumulates a list of
+//   draw commands (sprite + position + optional transform) each frame and
+//   submits them to the Canvas in a single pass. Reduces per-sprite overhead
+//   compared to individual canvas.Blit() calls from Zia, and enables sorting
+//   by depth (Z-order) before submission. Typical use: rendering dozens to
+//   hundreds of sprites per frame (enemies, projectiles, particles).
+//
+// Key invariants:
+//   - The batch accumulates draw calls until rt_spritebatch_flush() (or the
+//     equivalent of an end-of-frame reset) is called. Commands are stored in
+//     a dynamic array that grows as needed.
+//   - Draw commands contain: Pixels reference, destination x/y, optional
+//     source region (for sprite sheets), and optional Z-order integer.
+//   - If depth-sort is enabled, commands are sorted by Z ascending before
+//     blitting, so lower Z values appear behind higher Z values.
+//   - The batch holds retained references to Pixels objects. All references
+//     are released when the batch is cleared or destroyed.
+//   - After flushing, the command list is cleared (count reset to 0) but the
+//     backing array is NOT freed — it is reused next frame to avoid repeated
+//     allocation. Call rt_spritebatch_destroy() to fully free.
+//
+// Ownership/Lifetime:
+//   - SpriteBatch objects are GC-managed (rt_obj_new_i64). The command array
+//     is freed by the GC finalizer. Any retained Pixels refs are also released.
+//
+// Links: src/runtime/graphics/rt_spritebatch.h (public API),
+//        src/runtime/graphics/rt_sprite.h (single-sprite API),
+//        docs/viperlib/game.md (SpriteBatch section)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_spritebatch.h"

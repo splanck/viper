@@ -5,24 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Purpose: Provide scalar numeric conversion routines that emulate BASIC
-//          semantics for rounding, truncation, and parsing.
-// Key invariants: All conversion APIs validate input pointers, communicate
-//                 failure through explicit flags or error codes, and never leave
-//                 outputs partially initialised.  Banker rounding is applied
-//                 consistently so the VM and native runtimes agree on results.
-// Ownership/Lifetime: Functions operate purely on caller-supplied values and
-//                     buffers; no state is retained between calls.
+// File: src/runtime/core/rt_numeric_conv.c
+// Purpose: Provides scalar numeric conversion routines that emulate BASIC
+//          semantics for rounding, truncation, and safe floating-point to
+//          integer casts. Covers banker's rounding (round-half-to-even),
+//          range-checked casts to I32/I64, and string-to-number parsing.
+//
+// Key invariants:
+//   - All conversion APIs validate input pointers; null ok-pointer causes a
+//     trap with a descriptive message rather than a null dereference.
+//   - Conversion failures are communicated through explicit bool* flags; the
+//     output value is set to 0 and the flag to false on failure.
+//   - Banker's rounding (nearbyint) is applied consistently to match the VM.
+//   - Range bounds are checked after NaN/infinity rejection; out-of-range
+//     values set the flag to false without trapping.
+//   - No outputs are left partially initialised; on failure the output is
+//     always set to a defined value (0 or 0.0).
+//
+// Ownership/Lifetime:
+//   - Functions operate purely on caller-supplied values and buffers; no heap
+//     allocation is performed and no state is retained between calls.
+//
+// Links: src/runtime/core/rt_numeric.h (public API),
+//        src/runtime/core/rt_numeric.c (complementary numeric utilities),
+//        src/runtime/core/rt_fp.c (floating-point domain checking)
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Numeric conversion primitives for the runtime ABI.
-/// @details Implements rounding helpers, safe casts from floating-point to
-///          integral types, and parsing utilities that validate input according
-///          to BASIC's conversion rules.  All functions update caller-provided
-///          status flags rather than raising exceptions so the runtime can
-///          propagate errors uniformly.
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1

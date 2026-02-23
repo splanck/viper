@@ -1,22 +1,20 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/arrays/rt_array_str.h
+// Purpose: Dynamic string array API for BASIC DIM'd string collections, providing two-level reference counting over both the array container and each individual string element.
 //
-//===----------------------------------------------------------------------===//
+// Key invariants:
+//   - Slots are initialized to NULL on allocation.
+//   - rt_arr_str_put retains the new value and releases the old slot.
+//   - rt_arr_str_get returns a retained reference; caller must release it.
+//   - rt_arr_str_release frees all non-null elements before freeing the container.
 //
-// File: src/runtime/rt_array_str.h
-// Purpose: Dynamic string array API providing allocation, element access, and
-//          release for BASIC DIM'd string collections with two-level reference
-//          counting (array container and individual string elements).
-// Key invariants: Slots are initialized to NULL on allocation; rt_arr_str_put
-//                 retains the new value and releases the old; rt_arr_str_get
-//                 returns a retained reference; rt_arr_str_release frees all
-//                 non-null elements before freeing the container.
-// Ownership/Lifetime: Array container is refcounted via the heap header; each
-//                     element is independently refcounted; callers must release
-//                     references obtained from rt_arr_str_get.
-// Links: docs/viperlib.md
+// Ownership/Lifetime:
+//   - Array container is refcounted via the heap header.
+//   - Each element is independently refcounted.
+//   - Callers must release references obtained from rt_arr_str_get.
+//
+// Links: src/runtime/arrays/rt_array_str.c (implementation), src/runtime/core/rt_string.h, src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

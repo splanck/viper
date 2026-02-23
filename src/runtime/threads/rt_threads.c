@@ -4,109 +4,30 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_threads.c
-/// @brief OS thread helpers backing Viper.Threads.Thread class.
-///
-/// This file implements the threading primitives for Viper programs, providing
-/// an abstraction over platform-specific threading APIs. On Unix/macOS it uses
-/// POSIX threads (pthreads), while Windows uses the native Win32 threading API
-/// (CreateThread, CRITICAL_SECTION, CONDITION_VARIABLE).
-///
-/// **Thread Lifecycle:**
-/// ```
-///                    ┌─────────────┐
-///                    │  Thread.    │
-///                    │  Start()    │
-///                    └──────┬──────┘
-///                           │
-///                           ▼
-///            ┌──────────────────────────────┐
-///            │         RUNNING              │
-///            │  (IsAlive = true)            │
-///            │                              │
-///            │  Entry function executing    │
-///            └──────────────┬───────────────┘
-///                           │
-///                           │ Entry function returns
-///                           ▼
-///            ┌──────────────────────────────┐
-///            │         FINISHED             │
-///            │  (IsAlive = false)           │
-///            │                              │
-///            │  Thread resources released   │
-///            │  Join() returns immediately  │
-///            └──────────────────────────────┘
-/// ```
-///
-/// **Synchronization Operations:**
-///
-/// | Method       | Blocks? | Returns                          |
-/// |--------------|---------|----------------------------------|
-/// | Join()       | Yes     | When thread finishes             |
-/// | TryJoin()    | No      | True if finished, false if not   |
-/// | JoinFor(ms)  | Up to ms| True if joined, false on timeout |
-///
-/// **Usage Examples:**
-/// ```
-/// ' Start a worker thread
-/// Dim worker = Thread.Start(Sub() ProcessData())
-///
-/// ' Wait for completion
-/// worker.Join()
-/// Print "Worker finished"
-///
-/// ' Non-blocking check
-/// If worker.TryJoin() Then
-///     Print "Done!"
-/// Else
-///     Print "Still working..."
-/// End If
-///
-/// ' Wait with timeout (5 seconds)
-/// If worker.JoinFor(5000) Then
-///     Print "Completed within 5 seconds"
-/// Else
-///     Print "Timed out"
-/// End If
-/// ```
-///
-/// **Thread ID:**
-/// Each thread is assigned a unique, monotonically increasing ID when started.
-/// Thread IDs are never reused during the program's lifetime and can be used
-/// for logging, debugging, or correlating thread activities.
-///
-/// **Memory Management:**
-/// Threads are garbage-collected objects. The thread object holds a self-reference
-/// while running, preventing premature collection. When the entry function returns:
-/// 1. The thread marks itself as finished
-/// 2. Waiting Join() calls are signaled
-/// 3. The self-reference is released
-/// 4. The object becomes eligible for GC when no longer referenced
-///
-/// **Thread Safety:**
-/// - Thread.Start() is thread-safe - can be called from any thread
-/// - Join operations use mutexes for safe state access
-/// - Multiple threads can wait on the same thread (all will be notified)
-/// - A thread cannot join itself (traps with error)
-/// - Joining a thread that was already joined traps with error
-///
-/// **Context Inheritance:**
-/// New threads inherit the RtContext from their parent thread. This allows:
-/// - Access to the same random number generator state
-/// - Shared command-line arguments
-/// - Consistent runtime environment
-///
-/// **Platform Support:**
-/// | Platform | Status                               |
-/// |----------|--------------------------------------|
-/// | macOS    | Full support (pthreads)              |
-/// | Linux    | Full support (pthreads)              |
-/// | Windows  | Full support (Win32 API)             |
-///
-/// @see rt_monitor.c For synchronization primitives (mutexes, condition vars)
-/// @see rt_context.c For runtime context management
-///
+//
+// File: src/runtime/threads/rt_threads.c
+// Purpose: Implements OS thread creation and lifecycle management for the
+//          Viper.Threads.Thread class. Abstracts pthreads (Unix/macOS) and
+//          Win32 CreateThread. Supports Start, Join, TryJoin, JoinFor, IsAlive,
+//          GetId, Sleep, and Yield.
+//
+// Key invariants:
+//   - Thread IDs are unique, monotonically increasing, and never reused.
+//   - A running thread holds a self-reference to prevent premature GC.
+//   - The self-reference is released when the entry function returns.
+//   - A thread cannot join itself; attempting to do so traps.
+//   - Multiple threads may wait on the same thread via Join; all are notified.
+//   - New threads inherit the RtContext from their parent.
+//
+// Ownership/Lifetime:
+//   - Thread objects are heap-allocated and GC-managed.
+//   - The running thread holds a retained self-reference for its lifetime.
+//   - The entry function argument is not retained; callers own its lifetime.
+//
+// Links: src/runtime/threads/rt_threads.h (public API),
+//        src/runtime/threads/rt_monitor.h (synchronization primitives),
+//        src/runtime/rt_context.h (RtContext inheritance)
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_threads.h"

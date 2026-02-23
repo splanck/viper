@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_int_format.h
+// Purpose: Portable, locale-independent 64-bit integer to decimal string formatting, providing signed and unsigned variants that write into caller-supplied buffers.
+//
+// Key invariants:
+//   - Always null-terminates the output buffer when capacity > 0.
+//   - Returns 0 on buffer overflow (capacity too small) rather than truncating.
+//   - Output is identical across platforms regardless of locale settings.
+//   - Minimum buffer size for int64 is 21 bytes (20 digits + NUL).
+//
+// Ownership/Lifetime:
+//   - Callers provide and own the destination buffer.
+//   - No heap allocation occurs; functions are safe to call from interrupt context.
+//
+// Links: src/runtime/core/rt_int_format.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_int_format.h
-// Purpose: Portable, locale-independent 64-bit integer to decimal string formatting.
-// Key invariants: Always null-terminates; returns 0 on buffer overflow; no locale deps.
-// Ownership/Lifetime: Callers provide and own the destination buffer.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

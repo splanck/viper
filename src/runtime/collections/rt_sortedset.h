@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_sortedset.h
+// Purpose: Sorted set of unique strings maintained in lexicographic order, enabling range queries (floor, ceil, between) and ordered forward/backward iteration.
+//
+// Key invariants:
+//   - Elements are unique strings maintained in sorted order.
+//   - All operations maintain the sorted invariant.
+//   - rt_sortedset_floor returns the largest element <= key; rt_sortedset_ceil returns the smallest >= key.
+//   - Returned subsets from range queries are newly allocated.
+//
+// Ownership/Lifetime:
+//   - SortedSet objects are heap-allocated; caller is responsible for lifetime management.
+//   - String elements are copied into the set; caller retains ownership of input strings.
+//
+// Links: src/runtime/collections/rt_sortedset.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_sortedset.h
-/// @brief Sorted set of unique strings maintained in sorted order.
-///
-/// Provides a set data structure where elements are kept in sorted order,
-/// enabling efficient range queries and ordered iteration.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_SORTEDSET_H
 #define VIPER_RT_SORTEDSET_H
 

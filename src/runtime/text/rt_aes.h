@@ -1,18 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// File: src/runtime/text/rt_aes.h
+// Purpose: AES-128 and AES-256 encryption in CBC mode with PKCS7 padding, implemented in pure C with no external dependencies.
+//
+// Key invariants:
+//   - Supports AES-128 (16-byte key) and AES-256 (32-byte key).
+//   - CBC mode requires a 16-byte initialization vector (IV).
+//   - PKCS7 padding is applied automatically; output is always a multiple of 16 bytes.
+//   - Decryption validates and removes PKCS7 padding; returns NULL on invalid padding.
+//
+// Ownership/Lifetime:
+//   - Returned strings/Bytes objects are newly allocated; caller must release.
+//   - Key and IV buffers are borrowed; callers retain ownership.
+//
+// Links: src/runtime/text/rt_aes.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_aes.h
-/// @brief AES encryption/decryption functions for the Viper runtime.
-///
-/// Provides AES-128 and AES-256 encryption in CBC mode with PKCS7 padding.
-/// All functions are implemented in pure C with no external dependencies.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef RT_AES_H
 #define RT_AES_H
 

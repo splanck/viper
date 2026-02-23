@@ -5,8 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_gui_widgets.c
-// Purpose: Font, base widget, and basic widget implementations.
+// File: src/runtime/graphics/rt_gui_widgets.c
+// Purpose: Runtime bindings for the ViperGUI base widget API and fundamental
+//   widgets: font loading/destroy, widget visibility/enabled/size/flex/margin,
+//   Container, Label, Button (with icon support), TextInput (with undo/redo),
+//   Checkbox, RadioButton, Slider, ProgressBar, Image, ListBox, ComboBox,
+//   and the tab-order focus system. This file is the foundational widget layer
+//   on which all other GUI runtime files depend.
+//
+// Key invariants:
+//   - All widget functions guard against NULL widget pointer before delegating
+//     to vg_widget_* or the specific widget's vg_* API.
+//   - Tab order is built lazily by vg_build_tab_order; explicit tab_index values
+//     sort before default (-1) entries in DFS order.
+//   - TextInput undo stack uses a "push after edit" model: the initial empty
+//     string is pushed at creation; each insert/delete pushes the new state.
+//   - Button icon is stored as an owned char* (icon_text) in the vg_button_t;
+//     icon_pos 0 = left, 1 = right; drawn 4 px gap from the label.
+//   - ListBox and ComboBox item indices are zero-based; out-of-range indices
+//     return -1 / NULL from get_selected calls.
+//
+// Ownership/Lifetime:
+//   - All widget objects are vg_widget_t* (or subtype) owned by the vg widget
+//     tree; vg_widget_destroy() on any ancestor frees the full subtree.
+//   - Font objects (vg_font_t*) are manually managed: load with rt_font_load,
+//     free with rt_font_destroy; widget references do not extend font lifetime.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/runtime/graphics/rt_gui_app.c (default font, s_current_app)
 //
 //===----------------------------------------------------------------------===//
 

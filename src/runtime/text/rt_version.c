@@ -5,9 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_version.c
-// Purpose: Semantic version parsing, comparison, and constraint checking.
-//          Implements SemVer 2.0.0 spec (https://semver.org/).
+// File: src/runtime/text/rt_version.c
+// Purpose: Implements semantic version parsing, comparison, and constraint
+//          checking for the Viper.Text.Version class per SemVer 2.0.0
+//          (https://semver.org/). Supports major.minor.patch with optional
+//          pre-release identifiers and build metadata.
+//
+// Key invariants:
+//   - Parses MAJOR.MINOR.PATCH[-prerelease][+build] per SemVer 2.0.0.
+//   - Comparison follows SemVer precedence: major > minor > patch > pre-release.
+//   - Pre-release versions have lower precedence than the release they extend.
+//   - Build metadata is ignored for comparison purposes.
+//   - Constraint checking supports the operators: =, !=, <, <=, >, >=, ^, ~.
+//   - Invalid version strings cause Parse to return a zero version (0.0.0).
+//
+// Ownership/Lifetime:
+//   - Parsed version objects are heap-allocated and managed by the runtime GC.
+//   - Pre-release and build-metadata strings within the version are fresh copies.
+//
+// Links: src/runtime/text/rt_version.h (public API)
 //
 //===----------------------------------------------------------------------===//
 

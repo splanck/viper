@@ -5,8 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: rt_sprite.c
-// Purpose: Sprite class implementation for 2D game development.
+// File: src/runtime/graphics/rt_sprite.c
+// Purpose: 2D sprite object for Viper games. Wraps a Pixels (or SpriteSheet
+//   region) reference with position, scale, rotation, color tint, and
+//   visibility attributes. Provides an Anchor system for offset-based
+//   placement (e.g. center the sprite on the entity position rather than
+//   placing its top-left corner there). Sprites are drawn by blitting their
+//   pixel data to a Canvas, optionally transformed by a Camera.
+//
+// Key invariants:
+//   - A sprite holds a reference to a Pixels buffer or SpriteSheet frame. The
+//     Pixels buffer is retained by the sprite and released on destroy.
+//   - Position (x, y) is the world-space anchor point in integer pixels.
+//     The actual blit origin is offset by (anchor_x * width, anchor_y * height)
+//     where anchor values are in [0.0, 1.0]: 0.0 = top-left, 0.5 = center,
+//     1.0 = bottom-right.
+//   - Scale is an integer percentage (100 = 1×, 200 = 2×). It is applied to
+//     the destination blit rectangle; the source Pixels buffer is unchanged.
+//   - Rotation is an integer degree value. Rotation is performed by the
+//     Canvas/Pixels layer — the sprite stores only the requested angle.
+//   - A sprite with visible == 0 is skipped during Draw() calls.
+//
+// Ownership/Lifetime:
+//   - Sprite objects are GC-managed (rt_obj_new_i64). The Pixels reference is
+//     retained on assignment and released in the finalizer.
+//
+// Links: src/runtime/graphics/rt_sprite.h (public API),
+//        src/runtime/graphics/rt_spritesheet.h (atlas frames),
+//        docs/viperlib/game.md (Sprite section)
 //
 //===----------------------------------------------------------------------===//
 

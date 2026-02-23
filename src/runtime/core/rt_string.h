@@ -1,18 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/core/rt_string.h
+// Purpose: Reference-counted UTF-8 string API providing creation, manipulation, comparison, search, and conversion operations for the primary Viper runtime string type.
+//
+// Key invariants:
+//   - Strings are null-terminated UTF-8; the null terminator is not counted in length.
+//   - Reference counting uses atomic increments/decrements for thread safety.
+//   - Immortal string literals created by rt_string_literal are never freed.
+//   - Empty string is represented as NULL or a zero-length allocated string; both are valid.
+//
+// Ownership/Lifetime:
+//   - New strings start with refcount 1; callers own the initial reference.
+//   - rt_string_ref increments refcount; rt_string_unref decrements and frees at zero.
+//   - Callers must balance every retain with exactly one release.
+//
+// Links: src/runtime/core/rt_string.c (implementation), src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_string.h
-// Purpose: Reference-counted UTF-8 string API for creation, manipulation, and comparison.
-// Key invariants: Strings are null-terminated UTF-8; atomic refcount; immortal literals never
-// freed. Ownership/Lifetime: New strings start at refcount 1; callers must balance retain/release.
-// Links: docs/viperlib.md
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stddef.h>

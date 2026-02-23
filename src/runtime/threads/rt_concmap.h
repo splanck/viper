@@ -1,17 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/threads/rt_concmap.h
+// Purpose: Thread-safe concurrent hash map with string keys using a mutex and separate chaining, providing safe concurrent get/put/remove from multiple threads.
+//
+// Key invariants:
+//   - All operations are protected by a single mutex; thread-safe for concurrent access.
+//   - Uses FNV-1a hash with separate chaining for collision resolution.
+//   - Keys are copied into the map; values are retained on insertion.
+//   - rt_concmap_get_or_default returns a default value for missing keys without trapping.
+//
+// Ownership/Lifetime:
+//   - ConcMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - Values are retained while stored; caller manages external references separately.
+//
+// Links: src/runtime/threads/rt_concmap.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-//
-// File: rt_concmap.h
-// Purpose: Thread-safe concurrent hash map with string keys.
-// Key invariants: Mutex-protected, FNV-1a hash, separate chaining.
-// Ownership/Lifetime: Keys are copied. Values are retained.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include "rt_string.h"

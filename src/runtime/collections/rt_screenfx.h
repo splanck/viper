@@ -1,32 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_screenfx.h
+// Purpose: Screen effects manager for camera shake, color flash, and screen fades, with up to RT_SCREENFX_MAX_EFFECTS (8) concurrent effects outputting shake offsets and overlay colors per frame.
+//
+// Key invariants:
+//   - Time values use fixed-point milliseconds; 1000 = 1 pixel for shake offsets.
+//   - Colors are packed as 0xRRGGBBAA.
+//   - rt_screenfx_update must be called once per frame with the elapsed delta time.
+//   - Maximum concurrent effects is RT_SCREENFX_MAX_EFFECTS (8).
+//
+// Ownership/Lifetime:
+//   - Caller owns the rt_screenfx handle; destroy with rt_screenfx_destroy.
+//   - No reference counting; explicit destruction is required.
+//
+// Links: src/runtime/collections/rt_screenfx.c (implementation), src/runtime/graphics/rt_camera.h, src/runtime/collections/rt_particle.h
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_screenfx.h
-/// @brief Screen effects manager for camera shake, color flash, and fades.
-///
-/// @details Provides common screen-wide visual effects used in games,
-/// including camera shake with configurable intensity and decay, color flash
-/// effects (damage flash, pickup flash, etc.), and screen fades (fade-in
-/// from color, fade-out to color). Multiple effects can run concurrently up
-/// to RT_SCREENFX_MAX_EFFECTS (8). The manager outputs shake offsets and
-/// overlay color/alpha values that the renderer should apply each frame.
-///
-/// Key invariants: Time values use fixed-point milliseconds. Color values
-///   are packed as 0xRRGGBBAA. Shake intensity and offsets use fixed-point
-///   where 1000 = 1 pixel. The maximum number of concurrent effects is
-///   RT_SCREENFX_MAX_EFFECTS (8). rt_screenfx_update() must be called once
-///   per frame with the elapsed delta time.
-/// Ownership/Lifetime: The caller owns the rt_screenfx handle and must free
-///   it with rt_screenfx_destroy().
-/// Links: rt_screenfx.c (implementation), rt_camera.h (applies shake
-///   offsets), rt_particle.h (complementary visual effects)
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef VIPER_RT_SCREENFX_H
 #define VIPER_RT_SCREENFX_H
 

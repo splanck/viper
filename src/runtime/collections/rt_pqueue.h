@@ -1,15 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
-// See LICENSE for license information.
+// File: src/runtime/collections/rt_pqueue.h
+// Purpose: Runtime-backed priority queue (heap) for Viper.Collections.Heap, supporting min-heap and max-heap ordering with push/pop/peek operations.
+//
+// Key invariants:
+//   - Default is a min-heap; rt_pqueue_new_max creates a max-heap.
+//   - rt_pqueue_peek returns the top element without removing it.
+//   - Pop on empty queue traps immediately.
+//   - Heap property is maintained after every push and pop operation.
+//
+// Ownership/Lifetime:
+//   - Heap objects are heap-allocated opaque pointers.
+//   - Elements stored in the heap are not retained; callers manage element lifetimes.
+//
+// Links: src/runtime/collections/rt_pqueue.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_pqueue.h
-// Purpose: Runtime-backed priority queue for Viper.Collections.Heap.
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
 #include <stdint.h>
