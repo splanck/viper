@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_statemachine.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 
 #include <stdlib.h>
@@ -51,7 +52,10 @@ int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id)
     if (!sm)
         return 0;
     if (state_id < 0 || state_id >= RT_STATE_MAX)
+    {
+        rt_trap("StateMachine.AddState: state_id out of range [0, RT_STATE_MAX-1]");
         return 0;
+    }
     if (sm->states[state_id])
         return 0; // Already exists
 

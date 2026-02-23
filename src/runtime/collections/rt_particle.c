@@ -12,6 +12,7 @@
 
 #include "rt_particle.h"
 #include "rt_object.h"
+#include "rt_pixels.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -432,4 +433,46 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
         found++;
     }
     return 0;
+}
+
+int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
+                                            void *pixels,
+                                            int64_t offset_x,
+                                            int64_t offset_y)
+{
+    if (!emitter || !pixels)
+        return 0;
+
+    int64_t drawn = 0;
+
+    for (int64_t i = 0; i < emitter->max_particles; i++)
+    {
+        struct particle *p = &emitter->particles[i];
+        if (!p->active)
+            continue;
+
+        // Compute color with optional fade-out
+        int64_t color = p->color;
+        if (emitter->fade_out && p->max_life > 0)
+        {
+            double life_ratio = (double)p->life / (double)p->max_life;
+            int64_t base_alpha = (color >> 24) & 0xFF;
+            int64_t new_alpha = (int64_t)(base_alpha * life_ratio);
+            color = (color & 0x00FFFFFF) | (new_alpha << 24);
+        }
+
+        // Convert ARGB (0xAARRGGBB) to Canvas RGB (0x00RRGGBB) — drop alpha for now
+        int64_t canvas_color = color & 0x00FFFFFF;
+
+        int64_t px = (int64_t)p->x + offset_x;
+        int64_t py = (int64_t)p->y + offset_y;
+        int64_t radius = (int64_t)(p->size * 0.5);
+        if (radius < 1)
+            radius = 1;
+
+        rt_pixels_draw_disc(pixels, px, py, radius, canvas_color);
+        drawn++;
+    }
+
+    return drawn;
 }

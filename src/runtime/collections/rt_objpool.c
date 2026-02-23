@@ -19,9 +19,10 @@
 /// Internal slot structure.
 struct pool_slot
 {
-    int64_t data;      ///< User data.
-    int64_t next_free; ///< Next free slot index (-1 if end).
-    int8_t active;     ///< 1 if acquired, 0 if free.
+    int64_t data;        ///< User data.
+    int64_t next_free;   ///< Next free slot index (-1 if end).
+    int64_t next_active; ///< Next active slot index (-1 if tail of active list).
+    int8_t active;       ///< 1 if acquired, 0 if free.
 };
 
 /// Internal pool structure.
@@ -31,6 +32,7 @@ struct rt_objpool_impl
     int64_t capacity;        ///< Total capacity.
     int64_t active_count;    ///< Number of active slots.
     int64_t free_head;       ///< Head of free list.
+    int64_t active_head;     ///< Head of active list (-1 if none). O(1) iteration.
 };
 
 static void objpool_finalizer(void *obj)
@@ -60,6 +62,7 @@ rt_objpool rt_objpool_new(int64_t capacity)
     pool->capacity = capacity;
     pool->active_count = 0;
     pool->free_head = 0;
+    pool->active_head = -1;
 
     // Initialize free list
     for (int64_t i = 0; i < capacity; i++)
@@ -67,6 +70,7 @@ rt_objpool rt_objpool_new(int64_t capacity)
         pool->slots[i].data = 0;
         pool->slots[i].active = 0;
         pool->slots[i].next_free = (i + 1 < capacity) ? i + 1 : -1;
+        pool->slots[i].next_active = -1;
     }
 
     rt_obj_set_finalizer(pool, objpool_finalizer);
@@ -91,6 +95,9 @@ int64_t rt_objpool_acquire(rt_objpool pool)
     pool->slots[slot].active = 1;
     pool->slots[slot].next_free = -1;
     pool->slots[slot].data = 0;
+    // Prepend to active list (O(1))
+    pool->slots[slot].next_active = pool->active_head;
+    pool->active_head = slot;
     pool->active_count++;
 
     return slot;
@@ -107,6 +114,21 @@ int8_t rt_objpool_release(rt_objpool pool, int64_t slot)
 
     pool->slots[slot].active = 0;
     pool->slots[slot].data = 0;
+    // Remove from active list (O(active_count))
+    if (pool->active_head == slot)
+    {
+        pool->active_head = pool->slots[slot].next_active;
+    }
+    else
+    {
+        int64_t prev = pool->active_head;
+        while (prev >= 0 && pool->slots[prev].next_active != slot)
+            prev = pool->slots[prev].next_active;
+        if (prev >= 0)
+            pool->slots[prev].next_active = pool->slots[slot].next_active;
+    }
+    pool->slots[slot].next_active = -1;
+    // Return to free list
     pool->slots[slot].next_free = pool->free_head;
     pool->free_head = slot;
     pool->active_count--;
@@ -155,37 +177,29 @@ void rt_objpool_clear(rt_objpool pool)
 
     pool->active_count = 0;
     pool->free_head = 0;
+    pool->active_head = -1;
 
     for (int64_t i = 0; i < pool->capacity; i++)
     {
         pool->slots[i].data = 0;
         pool->slots[i].active = 0;
         pool->slots[i].next_free = (i + 1 < pool->capacity) ? i + 1 : -1;
+        pool->slots[i].next_active = -1;
     }
 }
 
 int64_t rt_objpool_first_active(rt_objpool pool)
 {
-    if (!pool)
-        return -1;
-    for (int64_t i = 0; i < pool->capacity; i++)
-    {
-        if (pool->slots[i].active)
-            return i;
-    }
-    return -1;
+    // O(1): return head of the maintained active list
+    return pool ? pool->active_head : -1;
 }
 
 int64_t rt_objpool_next_active(rt_objpool pool, int64_t after)
 {
-    if (!pool)
+    // O(1): follow the intrusive next_active pointer
+    if (!pool || after < 0 || after >= pool->capacity)
         return -1;
-    for (int64_t i = after + 1; i < pool->capacity; i++)
-    {
-        if (pool->slots[i].active)
-            return i;
-    }
-    return -1;
+    return pool->slots[after].next_active;
 }
 
 int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data)

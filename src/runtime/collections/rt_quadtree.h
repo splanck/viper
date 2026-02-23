@@ -120,6 +120,16 @@ extern "C"
     /// @return Number of results from the most recent query.
     int64_t rt_quadtree_result_count(rt_quadtree tree);
 
+    /// @brief Check whether the last query was silently truncated.
+    ///
+    /// Returns 1 if the most recent rt_quadtree_query_rect() or
+    /// rt_quadtree_query_point() hit the RT_QUADTREE_MAX_RESULTS cap and
+    /// dropped items. Callers that rely on "all overlapping entities" MUST
+    /// check this flag and subdivide the query or increase the cap.
+    /// @param tree The quadtree.
+    /// @return 1 if the last query was truncated, 0 otherwise.
+    int8_t rt_quadtree_query_was_truncated(rt_quadtree tree);
+
     /// @brief Get the total number of items in the tree.
     /// @param tree The quadtree.
     /// @return Total item count.

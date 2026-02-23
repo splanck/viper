@@ -224,6 +224,23 @@ extern "C"
                                    double *out_size,
                                    int64_t *out_color);
 
+    /// @brief Batch-render all live particles directly into a Pixels buffer.
+    ///
+    /// Iterates all live particles in a single pass and draws each as a disc
+    /// via rt_pixels_draw_disc(). This eliminates the O(n²) overhead of calling
+    /// rt_particle_emitter_get() n times per frame: the cost is now O(n) with a
+    /// single tight loop and no per-particle VM dispatch overhead.
+    ///
+    /// @param emitter The particle emitter to render.
+    /// @param pixels  A Pixels object to draw into (must not be NULL).
+    /// @param offset_x X offset added to all particle world positions.
+    /// @param offset_y Y offset added to all particle world positions.
+    /// @return The number of particles drawn.
+    int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
+                                               void *pixels,
+                                               int64_t offset_x,
+                                               int64_t offset_y);
+
 #ifdef __cplusplus
 }
 #endif

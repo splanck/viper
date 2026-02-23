@@ -122,6 +122,25 @@ extern "C"
     void rt_camera_clear_bounds(void *camera);
 
     //=========================================================================
+    // Visibility Culling
+    //=========================================================================
+
+    /// @brief Test whether a world-space AABB overlaps the camera's viewport.
+    ///
+    /// Converts the viewport to world space using the camera's current
+    /// position and zoom, then performs an AABB overlap test. Use this to
+    /// skip drawing off-screen entities each frame.
+    /// @param camera Camera object. Passing NULL conservatively returns 1
+    ///   (visible).
+    /// @param x   Left edge of the AABB in world coordinates.
+    /// @param y   Top edge of the AABB in world coordinates.
+    /// @param w   Width of the AABB in world coordinates.
+    /// @param h   Height of the AABB in world coordinates.
+    /// @return 1 if any part of the AABB is visible through the viewport,
+    ///   0 if entirely outside.
+    int64_t rt_camera_is_visible(void *camera, int64_t x, int64_t y, int64_t w, int64_t h);
+
+    //=========================================================================
     // Dirty Flag — Skip re-rendering when camera is stationary
     //=========================================================================
 

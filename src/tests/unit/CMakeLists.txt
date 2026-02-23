@@ -701,6 +701,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_websocket PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_websocket test_rt_websocket)
 
+    viper_add_test(test_rt_tls_cert ${VIPER_TESTS_DIR}/runtime/RTTlsCertTests.cpp)
+    target_link_libraries(test_rt_tls_cert PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_tls_cert test_rt_tls_cert)
+
     viper_add_test(test_rt_restclient ${VIPER_TESTS_DIR}/runtime/RTRestClientTests.cpp)
     target_link_libraries(test_rt_restclient PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_restclient test_rt_restclient)
@@ -1113,6 +1117,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_buttongroup PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_buttongroup test_rt_buttongroup)
 
+    viper_add_test(test_rt_camera ${VIPER_TESTS_DIR}/unit/runtime/RTCameraTests.cpp)
+    target_link_libraries(test_rt_camera PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_camera test_rt_camera)
+
     viper_add_test(test_rt_smoothvalue ${VIPER_TESTS_DIR}/unit/runtime/RTSmoothValueTests.cpp)
     target_link_libraries(test_rt_smoothvalue PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_smoothvalue test_rt_smoothvalue)
@@ -1260,6 +1268,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_retry ${VIPER_TESTS_DIR}/runtime/RTRetryTests.cpp)
     target_link_libraries(test_rt_retry PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_retry test_rt_retry)
+
+    viper_add_test(test_rt_binbuf ${VIPER_TESTS_DIR}/runtime/RTBinaryBufferTests.cpp)
+    target_link_libraries(test_rt_binbuf PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_binbuf test_rt_binbuf)
 
     viper_add_test(test_rt_weakmap ${VIPER_TESTS_DIR}/runtime/RTWeakMapTests.cpp)
     target_link_libraries(test_rt_weakmap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

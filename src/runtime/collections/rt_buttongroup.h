@@ -31,7 +31,8 @@ extern "C"
 #endif
 
 /// Maximum number of buttons in a group.
-#define RT_BUTTONGROUP_MAX 64
+#define RT_BUTTONGROUP_MAX 256
+#define RT_BUTTONGROUP_MAX_STR "256"
 
     /// Opaque handle to a ButtonGroup instance.
     typedef struct rt_buttongroup_impl *rt_buttongroup;
@@ -47,8 +48,8 @@ extern "C"
     /// @brief Add a button to the group.
     /// @param group The button group.
     /// @param button_id Unique identifier for the button.
-    /// @return 1 on success, 0 if @p button_id already exists or the group
-    ///         has reached RT_BUTTONGROUP_MAX.
+    /// @return 1 on success, 0 if @p button_id already exists.
+    /// @note Traps if the group already contains RT_BUTTONGROUP_MAX buttons.
     int8_t rt_buttongroup_add(rt_buttongroup group, int64_t button_id);
 
     /// @brief Remove a button from the group.

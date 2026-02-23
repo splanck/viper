@@ -89,6 +89,11 @@ extern "C"
     ///
     /// The overlay appears instantly at the given color and fades out over the
     /// duration. Useful for damage indicators, pickups, or impact feedback.
+    ///
+    /// @note Color format: packed @b 0xRRGGBBAA (alpha in the least-significant
+    ///   byte). This differs from the @c 0x00RRGGBB format used by Canvas
+    ///   drawing methods. Example: a full-opacity white flash is @c 0xFFFFFFFF;
+    ///   a half-opacity red flash is @c 0xFF000080.
     /// @param fx The effects manager.
     /// @param color Flash color in packed 0xRRGGBBAA format.
     /// @param duration Duration of the flash in milliseconds.
@@ -99,6 +104,9 @@ extern "C"
     ///
     /// Commonly used for scene transitions where the screen starts covered
     /// and gradually reveals the scene.
+    ///
+    /// @note Color format: packed @b 0xRRGGBBAA — alpha in the least-significant
+    ///   byte. Example: fade in from opaque black: @c 0x000000FF.
     /// @param fx The effects manager.
     /// @param color Starting overlay color in packed 0xRRGGBBAA format.
     /// @param duration Duration of the fade in milliseconds.
@@ -109,6 +117,9 @@ extern "C"
     ///
     /// Commonly used for scene transitions where the screen gradually becomes
     /// covered before switching scenes.
+    ///
+    /// @note Color format: packed @b 0xRRGGBBAA — alpha in the least-significant
+    ///   byte. Example: fade to opaque black: @c 0x000000FF.
     /// @param fx The effects manager.
     /// @param color Target overlay color in packed 0xRRGGBBAA format.
     /// @param duration Duration of the fade in milliseconds.

@@ -315,6 +315,29 @@ void rt_camera_clear_bounds(void *camera_ptr)
 }
 
 //=============================================================================
+// Visibility Culling
+//=============================================================================
+
+int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, int64_t h)
+{
+    if (!camera_ptr)
+        return 1; // Null camera — conservatively treat as visible
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+
+    // Viewport in world space: top-left = (cam_x, cam_y),
+    // size = (viewport_w * 100 / zoom, viewport_h * 100 / zoom).
+    int64_t vx = camera->x;
+    int64_t vy = camera->y;
+    int64_t vw = camera->width * 100 / camera->zoom;
+    int64_t vh = camera->height * 100 / camera->zoom;
+
+    // AABB overlap test: return 0 if separated on any axis.
+    if (x + w <= vx || x >= vx + vw || y + h <= vy || y >= vy + vh)
+        return 0;
+    return 1;
+}
+
+//=============================================================================
 // Dirty Flag — Enables callers to skip re-rendering when camera is stationary
 //=============================================================================
 

@@ -16,13 +16,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Simple pseudo-random number generator for shake effect.
-static int64_t screenfx_rand_state = 12345;
-
-static int64_t screenfx_rand(void)
+/// Per-instance LCG state for shake offset — avoids global state thread hazard.
+static int64_t screenfx_rand(int64_t *state)
 {
-    screenfx_rand_state = screenfx_rand_state * 1103515245 + 12345;
-    return (screenfx_rand_state >> 16) & 0x7FFF;
+    *state = (*state) * 1103515245 + 12345;
+    return ((*state) >> 16) & 0x7FFF;
 }
 
 /// Internal effect structure.
@@ -40,10 +38,11 @@ struct screenfx_effect
 struct rt_screenfx_impl
 {
     struct screenfx_effect effects[RT_SCREENFX_MAX_EFFECTS];
-    int64_t shake_x;       ///< Current shake offset X.
-    int64_t shake_y;       ///< Current shake offset Y.
-    int64_t overlay_color; ///< Current overlay color (RGB).
-    int64_t overlay_alpha; ///< Current overlay alpha (0-255).
+    int64_t shake_x;        ///< Current shake offset X.
+    int64_t shake_y;        ///< Current shake offset Y.
+    int64_t overlay_color;  ///< Current overlay color (RGB).
+    int64_t overlay_alpha;  ///< Current overlay alpha (0-255).
+    int64_t rand_state;     ///< Per-instance LCG state for shake RNG (thread-safe).
 };
 
 rt_screenfx rt_screenfx_new(void)
@@ -54,6 +53,7 @@ rt_screenfx rt_screenfx_new(void)
         return NULL;
 
     memset(fx, 0, sizeof(struct rt_screenfx_impl));
+    fx->rand_state = (int64_t)(uintptr_t)fx ^ 0xDEADBEEF; // per-instance seed
     return fx;
 }
 
@@ -121,18 +121,35 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
         {
             case RT_SCREENFX_SHAKE:
             {
-                // Apply decay to intensity
-                int64_t decay_factor = 1000 - (progress * e->decay / 1000);
-                if (decay_factor < 0)
-                    decay_factor = 0;
-                int64_t current_intensity = (e->intensity * decay_factor) / 1000;
+                // Exponential decay: intensity falls as (1 - progress/1000)^decay_exp
+                // where decay_exp is controlled by e->decay (higher = faster decay).
+                // When decay == 0 → no decay (constant intensity).
+                // When decay == 1000 → approximately linear decay.
+                // When decay == 2000 → quadratic (trauma model: natural feel).
+                int64_t current_intensity;
+                if (e->decay <= 0)
+                {
+                    current_intensity = e->intensity;
+                }
+                else
+                {
+                    // Use integer approximation of (1 - t)^2 for decay==2000 default
+                    // General form: factor = (1000 - progress)^(decay/1000) / 1000
+                    int64_t remaining = 1000 - progress; // 0..1000
+                    if (remaining < 0) remaining = 0;
+                    // decay stored as 1000×exponent; apply once for linear, twice for quadratic
+                    int64_t decay_factor = remaining; // always at least one factor
+                    if (e->decay >= 1500)             // >= 1.5 exponent → apply twice
+                        decay_factor = (remaining * remaining) / 1000;
+                    current_intensity = (e->intensity * decay_factor) / 1000;
+                }
 
                 if (current_intensity > max_shake_intensity)
                     max_shake_intensity = current_intensity;
 
-                // Random offset based on intensity
-                int64_t rx = (screenfx_rand() % 2001) - 1000; // -1000 to 1000
-                int64_t ry = (screenfx_rand() % 2001) - 1000;
+                // Random offset based on intensity (per-instance state)
+                int64_t rx = (screenfx_rand(&fx->rand_state) % 2001) - 1000;
+                int64_t ry = (screenfx_rand(&fx->rand_state) % 2001) - 1000;
                 fx->shake_x += (current_intensity * rx) / 1000;
                 fx->shake_y += (current_intensity * ry) / 1000;
                 break;

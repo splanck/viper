@@ -3,20 +3,53 @@
 //===----------------------------------------------------------------------===//
 
 #include <cmath>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
 extern "C"
 {
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_physics2d.h"
-
-    void vm_trap(const char *msg)
-    {
-        fprintf(stderr, "TRAP: %s\n", msg);
-    }
 }
+
+//=============================================================================
+// Trap infrastructure (same pattern as RTBinaryBufferTests)
+//=============================================================================
+
+namespace
+{
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg)
+{
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    fprintf(stderr, "TRAP: %s\n", msg);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0)                                                              \
+        {                                                                                          \
+            (void)(expr);                                                                          \
+            fprintf(stderr, "FAIL [%s:%d]: Expected trap did not fire\n", __FILE__, __LINE__);    \
+            tests_run++;                                                                           \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_run++;                                                                           \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -385,6 +418,107 @@ static void test_zero_dt()
     rt_obj_release_check0(world);
 }
 
+//=============================================================================
+// GAME-H-6: collision_mask default should include bit 31 (0xFFFFFFFF)
+//=============================================================================
+
+static void test_collision_mask_default_full()
+{
+    // Default mask must be 0xFFFFFFFF so layer 31 is reachable.
+    // Before fix: default was 0x7FFFFFFF (bit 31 excluded) and layer-31 bodies
+    // would never collide with default-masked bodies.
+    void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    int64_t mask = rt_physics2d_body_collision_mask(body);
+    ASSERT((mask & (int64_t)0x80000000LL) != 0, "default mask covers bit 31 (GAME-H-6 fix)");
+    ASSERT(mask == (int64_t)0xFFFFFFFFLL, "default mask is 0xFFFFFFFF");
+    rt_obj_release_check0(body);
+}
+
+static void test_collision_layer31_collides_with_default_mask()
+{
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+
+    // Body A on layer 31 — before fix it was excluded from the default mask
+    void *a = rt_physics2d_body_new(0, 0, 20, 20, 1.0);
+    rt_physics2d_body_set_collision_layer(a, (int64_t)1 << 31);
+    // keep default mask (0xFFFFFFFF)
+
+    // Body B on layer 1 with default mask
+    void *b = rt_physics2d_body_new(10, 0, 20, 20, 1.0);
+
+    rt_physics2d_body_set_vel(a, 5.0, 0.0);
+    rt_physics2d_body_set_vel(b, -5.0, 0.0);
+
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+
+    double va_before = rt_physics2d_body_vx(a);
+    rt_physics2d_world_step(world, 0.001);
+    double va_after = rt_physics2d_body_vx(a);
+
+    // Collision must have changed velocity (bodies overlap, masks allow collision)
+    ASSERT(fabs(va_after - va_before) > EPSILON,
+           "layer-31 body collides with default-mask body (GAME-H-6 fix)");
+
+    rt_obj_release_check0(a);
+    rt_obj_release_check0(b);
+    rt_obj_release_check0(world);
+}
+
+static void test_collision_mask_filtering_works()
+{
+    // Bodies on incompatible layers should NOT collide
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+
+    void *a = rt_physics2d_body_new(0, 0, 20, 20, 1.0);
+    rt_physics2d_body_set_collision_layer(a, 1);
+    rt_physics2d_body_set_collision_mask(a, 2); // only collides with layer 2
+
+    void *b = rt_physics2d_body_new(10, 0, 20, 20, 1.0);
+    rt_physics2d_body_set_collision_layer(b, 4); // layer 4, not in A's mask
+    rt_physics2d_body_set_collision_mask(b, 1);
+
+    rt_physics2d_body_set_vel(a, 10.0, 0.0);
+    rt_physics2d_body_set_vel(b, -10.0, 0.0);
+
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+    rt_physics2d_world_step(world, 0.001);
+
+    // Velocities must be unchanged — no collision between incompatible layers
+    ASSERT_NEAR(rt_physics2d_body_vx(a), 10.0, "layer-filtered A vx unchanged");
+    ASSERT_NEAR(rt_physics2d_body_vx(b), -10.0, "layer-filtered B vx unchanged");
+
+    rt_obj_release_check0(a);
+    rt_obj_release_check0(b);
+    rt_obj_release_check0(world);
+}
+
+//=============================================================================
+// GAME-C-4: PH_MAX_BODIES exceeded should trap
+//=============================================================================
+
+static void test_body_limit_traps()
+{
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+
+    // Fill to the limit (256 bodies)
+    for (int i = 0; i < 256; i++)
+    {
+        void *body = rt_physics2d_body_new((double)i, 0, 1, 1, 1.0);
+        rt_physics2d_world_add(world, body);
+        rt_obj_release_check0(body);
+    }
+    ASSERT(rt_physics2d_world_body_count(world) == 256, "256 bodies at limit");
+
+    // Adding one more must trap (GAME-C-4 fix)
+    void *extra = rt_physics2d_body_new(0, 0, 1, 1, 1.0);
+    EXPECT_TRAP(rt_physics2d_world_add(world, extra));
+    rt_obj_release_check0(extra);
+
+    rt_obj_release_check0(world);
+}
+
 int main()
 {
     // World tests
@@ -415,6 +549,14 @@ int main()
     // Safety tests
     test_null_safety();
     test_zero_dt();
+
+    // GAME-H-6: collision_mask default covers all 32 layers
+    test_collision_mask_default_full();
+    test_collision_layer31_collides_with_default_mask();
+    test_collision_mask_filtering_works();
+
+    // GAME-C-4: body limit traps
+    test_body_limit_traps();
 
     printf("Physics2D tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

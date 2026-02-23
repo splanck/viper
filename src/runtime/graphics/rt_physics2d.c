@@ -24,6 +24,7 @@
 #include <string.h>
 
 #define PH_MAX_BODIES 256
+#define RT_PH_MAX_BODIES_STR "256"
 
 //=============================================================================
 // Internal types
@@ -256,9 +257,9 @@ void rt_physics2d_world_step(void *obj, double dt)
         double cell_w = (wx1 - wx0) / BPG_DIM;
         double cell_h = (wy1 - wy0) / BPG_DIM;
 
-        /* --- 3b. Build grid (static scratch space; single-threaded) --- */
-        static uint8_t grid_bodies[BPG_DIM * BPG_DIM][BPG_CELL_MAX];
-        static int     grid_count [BPG_DIM * BPG_DIM];
+        /* --- 3b. Build grid (stack-local scratch; safe for concurrent worlds) --- */
+        uint8_t grid_bodies[BPG_DIM * BPG_DIM][BPG_CELL_MAX];
+        int     grid_count [BPG_DIM * BPG_DIM];
         memset(grid_count, 0, sizeof(grid_count));
 
         for (i = 0; i < w->body_count; i++)
@@ -286,7 +287,7 @@ void rt_physics2d_world_step(void *obj, double dt)
 
         /* --- 3c. Narrow phase: check candidate pairs from grid --- */
         /* 256×256 bit-matrix: pair (i,j) with i<j stored at bit i*PH_MAX_BODIES+j */
-        static uint8_t pair_checked[PH_MAX_BODIES * PH_MAX_BODIES / 8 + 1];
+        uint8_t pair_checked[PH_MAX_BODIES * PH_MAX_BODIES / 8 + 1];
         memset(pair_checked, 0, sizeof(pair_checked));
 
         for (int cell = 0; cell < BPG_DIM * BPG_DIM; cell++)
@@ -329,7 +330,11 @@ void rt_physics2d_world_add(void *obj, void *body)
         return;
     w = (rt_world_impl *)obj;
     if (w->body_count >= PH_MAX_BODIES)
+    {
+        rt_trap("Physics2D.World.Add: body limit exceeded (max " RT_PH_MAX_BODIES_STR
+                "); increase PH_MAX_BODIES and recompile");
         return;
+    }
     rt_obj_retain_maybe(body);
     w->bodies[w->body_count++] = (rt_body_impl *)body;
 }
@@ -394,8 +399,8 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->inv_mass = (mass > 0.0) ? (1.0 / mass) : 0.0;
     b->restitution = 0.5;
     b->friction = 0.3;
-    b->collision_layer = 1;         // Default: layer 1
-    b->collision_mask = 0x7FFFFFFF; // Default: collide with all layers (bits 0-30)
+    b->collision_layer = 1;          // Default: layer 1
+    b->collision_mask = 0xFFFFFFFF; // Default: collide with all 32 layers
     return b;
 }
 

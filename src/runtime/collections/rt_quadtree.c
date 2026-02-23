@@ -58,6 +58,7 @@ struct rt_quadtree_impl
     int64_t item_count;
     int64_t results[RT_QUADTREE_MAX_RESULTS];
     int64_t result_count;
+    int8_t  query_truncated; ///< 1 if last query hit RT_QUADTREE_MAX_RESULTS cap.
     struct qt_pair pairs[MAX_PAIRS];
     int64_t pair_count;
 };
@@ -252,14 +253,25 @@ static int8_t insert_into_node(struct rt_quadtree_impl *tree,
 static void query_node(
     struct rt_quadtree_impl *tree, struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
 {
-    if (!node || tree->result_count >= RT_QUADTREE_MAX_RESULTS)
+    if (!node)
         return;
+    // When result_count is already at the cap, more matching items may exist in
+    // this subtree (the caller only invokes us when the subtree intersects the
+    // query rect).  Mark truncation so the caller can detect partial results.
+    if (tree->result_count >= RT_QUADTREE_MAX_RESULTS)
+    {
+        tree->query_truncated = 1;
+        return;
+    }
 
     // Check items in this node
     for (int64_t i = 0; i < node->item_count; i++)
     {
         if (tree->result_count >= RT_QUADTREE_MAX_RESULTS)
+        {
+            tree->query_truncated = 1; // Mark truncation for caller detection
             break;
+        }
 
         struct qt_item *item = &tree->items[node->items[i]];
         if (!item->active)
@@ -441,6 +453,14 @@ int8_t rt_quadtree_insert(
     if (!tree || tree->item_count >= MAX_TOTAL_ITEMS)
         return 0;
 
+    // Guard against duplicate IDs — inserting the same ID twice leaves a ghost
+    // after the first Remove(), producing phantom collision responses.
+    for (int64_t i = 0; i < tree->item_count; i++)
+    {
+        if (tree->items[i].active && tree->items[i].id == id)
+            return 0; // Already present; caller should use rt_quadtree_update()
+    }
+
     // Check bounds
     int64_t left = x - width / 2;
     int64_t top = y - height / 2;
@@ -515,8 +535,14 @@ int64_t rt_quadtree_query_rect(
         return 0;
 
     tree->result_count = 0;
+    tree->query_truncated = 0;
     query_node(tree, tree->root, x, y, width, height);
     return tree->result_count;
+}
+
+int8_t rt_quadtree_query_was_truncated(rt_quadtree tree)
+{
+    return tree ? tree->query_truncated : 0;
 }
 
 int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius)

@@ -163,6 +163,20 @@ TEST(cancel_type)
     rt_screenfx_destroy(fx);
 }
 
+TEST(shake_quadratic_decay)
+{
+    rt_screenfx fx = rt_screenfx_new();
+    // Large intensity, long duration, quadratic decay (decay >= 1500 triggers x^2 model).
+    // At 99% progress (elapsed=9900 of 10000ms):
+    //   remaining = 10, decay_factor = 10*10/1000 = 0  →  current_intensity = 0.
+    // Both shake offsets must be exactly zero regardless of random seed.
+    rt_screenfx_shake(fx, 100000, 10000, 2000);
+    rt_screenfx_update(fx, 9900);
+    ASSERT(rt_screenfx_get_shake_x(fx) == 0);
+    ASSERT(rt_screenfx_get_shake_y(fx) == 0);
+    rt_screenfx_destroy(fx);
+}
+
 TEST(multiple_effects)
 {
     rt_screenfx fx = rt_screenfx_new();
@@ -190,6 +204,7 @@ int main()
     RUN_TEST(fade_out);
     RUN_TEST(cancel_all);
     RUN_TEST(cancel_type);
+    RUN_TEST(shake_quadratic_decay);
     RUN_TEST(multiple_effects);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);

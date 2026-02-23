@@ -5,10 +5,44 @@
 
 #include "rt_buttongroup.h"
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
+#include <cstdlib>
 
 static int tests_passed = 0;
 static int tests_failed = 0;
+
+//=============================================================================
+// Trap infrastructure — intercepts rt_trap() for EXPECT_TRAP tests
+//=============================================================================
+
+static jmp_buf g_trap_jmp;
+static bool    g_trap_expected = false;
+
+extern "C" void vm_trap(const char *msg)
+{
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    fprintf(stderr, "TRAP: %s\n", msg);
+    ::abort();
+}
+
+/// Assert that evaluating @p expr causes a trap. Increments tests_failed and
+/// returns early from the current test function if no trap fires.
+#define EXPECT_TRAP(expr)                                                          \
+    do                                                                             \
+    {                                                                              \
+        g_trap_expected = true;                                                    \
+        if (setjmp(g_trap_jmp) == 0)                                              \
+        {                                                                          \
+            (void)(expr);                                                          \
+            printf(" FAILED at line %d: expected trap did not fire\n", __LINE__); \
+            tests_failed++;                                                        \
+            g_trap_expected = false;                                               \
+            return;                                                                \
+        }                                                                          \
+        g_trap_expected = false;                                                   \
+    } while (0)
 
 #define TEST(name) static void test_##name()
 #define RUN_TEST(name)                                                                             \
@@ -133,6 +167,18 @@ TEST(remove)
     rt_buttongroup_destroy(bg);
 }
 
+TEST(add_overflow_traps)
+{
+    rt_buttongroup bg = rt_buttongroup_new();
+    // Fill the group to the maximum capacity
+    for (int64_t i = 0; i < RT_BUTTONGROUP_MAX; i++)
+        rt_buttongroup_add(bg, i);
+    ASSERT(rt_buttongroup_count(bg) == RT_BUTTONGROUP_MAX);
+    // Adding one more button beyond the limit must trap
+    EXPECT_TRAP(rt_buttongroup_add(bg, RT_BUTTONGROUP_MAX));
+    rt_buttongroup_destroy(bg);
+}
+
 TEST(get_at)
 {
     rt_buttongroup bg = rt_buttongroup_new();
@@ -157,6 +203,7 @@ int main()
     RUN_TEST(select_next_prev);
     RUN_TEST(remove);
     RUN_TEST(get_at);
+    RUN_TEST(add_overflow_traps);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

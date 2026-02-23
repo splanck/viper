@@ -15,9 +15,10 @@
 /// detection for triggering events on specific animation frames.
 ///
 /// Key invariants: Frame indices are bounded by the range set in
-///   rt_spriteanim_setup(). The maximum frame count per animation is
-///   RT_SPRITEANIM_MAX_FRAMES (64). Frame duration must be >= 1. Speed
-///   multiplier affects how quickly the internal timer advances.
+///   rt_spriteanim_setup(). Frame range is open-ended — there is no hard cap
+///   on the number of frames (end_frame and start_frame are plain integers).
+///   Frame duration must be >= 1. Speed multiplier affects how quickly the
+///   internal timer advances.
 /// Ownership/Lifetime: The caller owns the rt_spriteanim handle and must
 ///   free it with rt_spriteanim_destroy().
 /// Links: rt_spriteanim.c (implementation), rt_tween.h (for eased animation
@@ -34,9 +35,6 @@
 extern "C"
 {
 #endif
-
-/// Maximum frames per animation.
-#define RT_SPRITEANIM_MAX_FRAMES 64
 
     /// Opaque handle to a SpriteAnimation instance.
     typedef struct rt_spriteanim_impl *rt_spriteanim;
@@ -56,8 +54,7 @@ extern "C"
     /// @param start_frame Index of the first frame in the sprite sheet. Must
     ///   be >= 0.
     /// @param end_frame Index of the last frame (inclusive). Must be >=
-    ///   start_frame. The total frame count (end - start + 1) must not exceed
-    ///   RT_SPRITEANIM_MAX_FRAMES.
+    ///   start_frame. No upper limit is imposed on the frame range.
     /// @param frame_duration Number of game frames to display each animation
     ///   frame before advancing. Must be >= 1.
     void rt_spriteanim_setup(rt_spriteanim anim,

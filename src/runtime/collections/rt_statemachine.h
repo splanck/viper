@@ -38,7 +38,9 @@ extern "C"
 #endif
 
 /// Maximum number of states a state machine can hold.
-#define RT_STATE_MAX 32
+/// State IDs are used as direct indices, so this is also the maximum valid
+/// state_id + 1. Increase as needed for complex AI graphs.
+#define RT_STATE_MAX 256
 
     /// Opaque handle to a StateMachine instance.
     typedef struct rt_statemachine_impl *rt_statemachine;

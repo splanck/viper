@@ -205,6 +205,71 @@ TEST(invalid_result_index)
     rt_quadtree_destroy(tree);
 }
 
+// GAME-H-5: Duplicate ID guard — inserting same ID twice must return 0 on second call
+// and must NOT create a ghost item that persists in query results.
+TEST(duplicate_id_rejected)
+{
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
+
+    ASSERT(rt_quadtree_insert(tree, 42, 500000, 500000, 10000, 10000) == 1);
+    ASSERT(rt_quadtree_insert(tree, 42, 600000, 600000, 10000, 10000) == 0); // rejected
+    ASSERT(rt_quadtree_item_count(tree) == 1);                               // still 1
+
+    // After remove, the same ID can be reinserted
+    rt_quadtree_remove(tree, 42);
+    ASSERT(rt_quadtree_insert(tree, 42, 700000, 700000, 10000, 10000) == 1);
+
+    rt_quadtree_destroy(tree);
+}
+
+// GAME-C-3: Truncation flag — dense query capped at RT_QUADTREE_MAX_RESULTS must
+// set the truncation flag so callers can detect partial results.
+//
+// Items are spread on a 17×16 grid with spacing 5500 and half-size 2 so that
+// no item straddles any quadrant boundary at any subdivision depth, guaranteeing
+// all N items land in the node tree and are reachable by the query.
+TEST(query_truncation_detected)
+{
+    const int N = RT_QUADTREE_MAX_RESULTS + 10; // 266 > 256
+
+    // World 100000×100000; grid spacing 5500 starting at offset 2750 keeps
+    // every item center away from the binary-subdivision midpoints (50000,
+    // 25000, 12500, ...) so get_quadrant() never returns -1 for any item.
+    rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
+
+    for (int i = 0; i < N; i++)
+    {
+        int64_t cx = (int64_t)(i % 17) * 5500 + 2750; // 2750..90750
+        int64_t cy = (int64_t)(i / 17) * 5500 + 2750; // 2750..85250 (row 15 max)
+        rt_quadtree_insert(tree, (int64_t)(i + 1), cx, cy, 4, 4);
+    }
+
+    // Query entire world — all N items should be found, but result is capped.
+    int64_t count = rt_quadtree_query_rect(tree, 0, 0, 100000, 100000);
+    ASSERT(count == RT_QUADTREE_MAX_RESULTS);
+    ASSERT(rt_quadtree_query_was_truncated(tree) == 1);
+
+    rt_quadtree_destroy(tree);
+}
+
+// GAME-C-3 complement: small result sets must NOT set the truncation flag.
+TEST(query_no_truncation_small_result)
+{
+    rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
+
+    for (int i = 0; i < 10; i++)
+    {
+        int64_t cx = (int64_t)(i + 1) * 8000; // well-spaced, no boundary straddling
+        rt_quadtree_insert(tree, (int64_t)(i + 1), cx, 50000, 100, 100);
+    }
+
+    int64_t count = rt_quadtree_query_rect(tree, 0, 0, 100000, 100000);
+    ASSERT(count <= RT_QUADTREE_MAX_RESULTS);
+    ASSERT(rt_quadtree_query_was_truncated(tree) == 0);
+
+    rt_quadtree_destroy(tree);
+}
+
 int main()
 {
     printf("RTQuadtreeTests:\n");
@@ -219,6 +284,9 @@ int main()
     RUN_TEST(get_pairs);
     RUN_TEST(many_items);
     RUN_TEST(invalid_result_index);
+    RUN_TEST(duplicate_id_rejected);
+    RUN_TEST(query_truncation_detected);
+    RUN_TEST(query_no_truncation_small_result);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

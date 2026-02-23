@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_buttongroup.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 
 #include <stdlib.h>
@@ -60,7 +61,11 @@ int8_t rt_buttongroup_add(rt_buttongroup group, int64_t button_id)
     if (!group)
         return 0;
     if (group->count >= RT_BUTTONGROUP_MAX)
+    {
+        rt_trap("ButtonGroup.Add: button limit (" RT_BUTTONGROUP_MAX_STR
+                ") exceeded — increase RT_BUTTONGROUP_MAX and recompile");
         return 0;
+    }
     if (find_button_index(group, button_id) >= 0)
         return 0; // Already exists
 
