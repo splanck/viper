@@ -81,7 +81,7 @@ Set/Clear/Toggle) or false (for Get).
 
 ### Zia Example
 
-```zia
+```rust
 module BitsDemo;
 
 bind Viper.Terminal;
@@ -227,7 +227,7 @@ Mathematical functions and constants.
 
 ### Zia Example
 
-```zia
+```rust
 module MathDemo;
 
 bind Viper.Terminal;
@@ -315,7 +315,7 @@ Random number generation with uniform and distribution-based functions.
 
 ### Zia Example
 
-```zia
+```rust
 module RandomDemo;
 
 bind Viper.Terminal;
@@ -443,7 +443,7 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 
 ### Zia Example
 
-```zia
+```rust
 module Vec2Demo;
 
 bind Viper.Terminal;
@@ -555,7 +555,7 @@ END IF
 
 ### Zia Example
 
-```zia
+```rust
 module Vec3Demo;
 
 bind Viper.Terminal;
@@ -671,7 +671,7 @@ smooth interpolation via SLERP.
 
 ### Zia Example
 
-```zia
+```rust
 module QuaternionDemo;
 
 bind Viper.Math;
@@ -775,7 +775,7 @@ Standard easing functions for smooth animation and interpolation. Each function 
 
 ### Zia Example
 
-```zia
+```rust
 module EasingDemo;
 
 bind Viper.Math;
@@ -866,7 +866,7 @@ Curve interpolation for smooth paths. Supports Catmull-Rom, Bezier, and linear s
 
 ### Zia Example
 
-```zia
+```rust
 module SplineDemo;
 
 bind Viper.Math;
@@ -985,7 +985,7 @@ Perlin noise generator for procedural content generation. Produces smooth, conti
 
 ### Zia Example
 
-```zia
+```rust
 module PerlinDemo;
 
 bind Viper.Terminal;
@@ -1124,7 +1124,7 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
 
 ### Zia Example
 
-```zia
+```rust
 module BigIntDemo;
 
 bind Viper.Terminal;
@@ -1260,7 +1260,7 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 
 ### Zia Example
 
-```zia
+```rust
 module Mat3Demo;
 
 bind Viper.Terminal;
@@ -1395,7 +1395,7 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 
 ### Zia Example
 
-```zia
+```rust
 module Mat4Demo;
 
 bind Viper.Terminal;
@@ -1477,6 +1477,6 @@ DIM rotAxis AS OBJECT = Viper.Math.Mat4.RotateAxis(axis, Viper.Math.Rad(45.0))
 
 ## See Also
 
-- [Graphics](graphics.md) - Use `Vec2`, `Vec3`, `Mat3`, `Mat4`, and `Quaternion` with `Canvas` and `Pixels` for 2D/3D graphics
+- [Graphics](graphics/README.md) - Use `Vec2`, `Vec3`, `Mat3`, `Mat4`, and `Quaternion` with `Canvas` and `Pixels` for 2D/3D graphics
 - [Cryptography](crypto.md) - `Rand` for cryptographically secure randomness
 

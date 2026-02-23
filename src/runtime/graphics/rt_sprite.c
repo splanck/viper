@@ -292,7 +292,10 @@ void rt_sprite_set_frame(void *sprite_ptr, int64_t frame)
     }
     rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
     if (frame >= 0 && frame < sprite->frame_count)
+    {
         sprite->current_frame = frame;
+        sprite->last_frame_time = 0; // Reset timer so animation resumes cleanly
+    }
 }
 
 int64_t rt_sprite_get_frame_count(void *sprite_ptr)
@@ -403,7 +406,7 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
             new_w = 1;
         if (new_h < 1)
             new_h = 1;
-        void *scaled = rt_pixels_scale(frame, new_w, new_h);
+        void *scaled = rt_pixels_scale(transformed, new_w, new_h);
         if (scaled)
             transformed = scaled;
     }
@@ -425,13 +428,11 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     int64_t blit_x = sprite->x - tw / 2;
     int64_t blit_y = sprite->y - th / 2;
 
-    // If origin is set, use it as the center point relative to original size
+    // If origin is set, place origin point at (x, y) instead of centering
     if (sprite->origin_x != 0 || sprite->origin_y != 0)
     {
-        // The sprite position should be at the original origin point
-        // which is now at the center of the rotated image
-        blit_x = sprite->x - tw / 2;
-        blit_y = sprite->y - th / 2;
+        blit_x = sprite->x - sprite->origin_x;
+        blit_y = sprite->y - sprite->origin_y;
     }
 
     rt_canvas_blit_alpha(canvas_ptr, blit_x, blit_y, transformed);

@@ -168,7 +168,7 @@ PRINT result  ' Outputs: 25
 ```
 
 **Zia:**
-```zia
+```rust
 var result = Viper.Math.Square(5)
 print(result)  // Outputs: 25
 ```
@@ -751,7 +751,7 @@ PRINT "Value: "; c.Value   ' Output: Value: 0
 ```
 
 **Zia:**
-```zia
+```rust
 // Create a counter
 var c = Counter.New()
 

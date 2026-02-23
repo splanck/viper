@@ -391,6 +391,12 @@ extern "C"
     /// @return 1 on success, 0 on failure.
     int64_t rt_canvas_save_bmp(void *canvas, rt_string path);
 
+    /// @brief Save the canvas contents to a PNG file.
+    /// @param canvas Canvas handle.
+    /// @param path File path to save to.
+    /// @return 1 on success, 0 on failure.
+    int64_t rt_canvas_save_png(void *canvas, rt_string path);
+
     //=========================================================================
     // Color Functions
     //=========================================================================

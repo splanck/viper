@@ -735,15 +735,41 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                 comp_contours[i] += total_points;
             }
 
-            // Expand arrays
-            all_points_x = realloc(all_points_x, (total_points + comp_num_points) * sizeof(float));
-            all_points_y = realloc(all_points_y, (total_points + comp_num_points) * sizeof(float));
-            all_flags = realloc(all_flags, (total_points + comp_num_points) * sizeof(uint8_t));
-            all_contour_ends =
-                realloc(all_contour_ends, (total_contours + comp_num_contours) * sizeof(int));
-
-            if (all_points_x && all_points_y && all_flags && all_contour_ends)
+            // Expand arrays — use temporaries so a partial failure doesn't orphan
+            // allocations. realloc success frees the old pointer, so checking all four
+            // results after the fact can miss already-freed buffers.
             {
+                size_t np = (size_t)(total_points + comp_num_points);
+                size_t nc = (size_t)(total_contours + comp_num_contours);
+                float   *tmp_x = (float   *)realloc(all_points_x,    np * sizeof(float));
+                float   *tmp_y = (float   *)realloc(all_points_y,    np * sizeof(float));
+                uint8_t *tmp_f = (uint8_t *)realloc(all_flags,       np * sizeof(uint8_t));
+                int     *tmp_c = (int     *)realloc(all_contour_ends, nc * sizeof(int));
+
+                if (!tmp_x || !tmp_y || !tmp_f || !tmp_c)
+                {
+                    // Free whichever allocations succeeded (on success the old pointer is freed
+                    // and tmp_* holds the only valid reference; on failure the original is still valid).
+                    free(tmp_x ? tmp_x : all_points_x);
+                    free(tmp_y ? tmp_y : all_points_y);
+                    free(tmp_f ? tmp_f : all_flags);
+                    free(tmp_c ? tmp_c : all_contour_ends);
+                    all_points_x = all_points_y = NULL;
+                    all_flags = NULL;
+                    all_contour_ends = NULL;
+                    total_points = total_contours = 0;
+                    free(comp_x);
+                    free(comp_y);
+                    free(comp_flags);
+                    free(comp_contours);
+                    break;
+                }
+
+                all_points_x     = tmp_x;
+                all_points_y     = tmp_y;
+                all_flags        = tmp_f;
+                all_contour_ends = tmp_c;
+
                 memcpy(all_points_x + total_points, comp_x, comp_num_points * sizeof(float));
                 memcpy(all_points_y + total_points, comp_y, comp_num_points * sizeof(float));
                 memcpy(all_flags + total_points, comp_flags, comp_num_points * sizeof(uint8_t));
@@ -751,7 +777,7 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                        comp_contours,
                        comp_num_contours * sizeof(int));
 
-                total_points += comp_num_points;
+                total_points  += comp_num_points;
                 total_contours += comp_num_contours;
             }
 

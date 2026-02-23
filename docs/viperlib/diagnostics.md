@@ -43,7 +43,7 @@ Runtime assertion helpers that terminate execution when a condition fails.
 
 ### Zia Example
 
-```zia
+```rust
 module DiagDemo;
 
 bind Viper.Terminal;

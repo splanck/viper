@@ -67,7 +67,7 @@ Bitwise operations for low-level integer manipulation. All functions work with 6
 
 ### Examples
 
-```zia
+```rust
 // Bitwise operations
 var flags = Viper.Math.Bits.Or(0x01, 0x04);  // flags = 0x05
 var masked = Viper.Math.Bits.And(flags, 0x0F);
@@ -115,7 +115,7 @@ Boxing and unboxing of primitive values to/from objects. Used for storing primit
 
 ### Examples
 
-```zia
+```rust
 // Boxing values for heterogeneous collections
 var boxedInt = Viper.Core.Box.I64(42);
 var boxedStr = Viper.Core.Box.Str("hello");
@@ -146,7 +146,7 @@ Type conversion functions between strings and numeric types.
 
 ### Examples
 
-```zia
+```rust
 var n = Viper.Core.Convert.ToInt("42");        // 42
 var f = Viper.Core.Convert.ToDouble("3.14");   // 3.14
 var s = Viper.Core.Convert.ToString_Int(100);  // "100"
@@ -194,7 +194,7 @@ Date and time operations using Unix timestamps (seconds since epoch).
 
 ### Examples
 
-```zia
+```rust
 var now = Viper.Time.DateTime.Now();
 var year = Viper.Time.DateTime.Year(now);
 var formatted = Viper.Time.DateTime.Format(now, "%Y-%m-%d %H:%M:%S");
@@ -230,7 +230,7 @@ Assertion functions and debugging utilities. Stopwatch (timing) is in `Viper.Tim
 
 ### Examples
 
-```zia
+```rust
 // Assertions
 Viper.Core.Diagnostics.Assert(x > 0, "x must be positive");
 Viper.Core.Diagnostics.AssertEq(result, expected, "result mismatch");
@@ -259,7 +259,7 @@ Execute external processes and capture output.
 
 ### Examples
 
-```zia
+```rust
 // Run command
 var exitCode = Viper.Exec.Run("ls");
 
@@ -308,7 +308,7 @@ Number formatting utilities.
 
 ### Examples
 
-```zia
+```rust
 var hex = Viper.Fmt.IntRadix(255, 16);      // "ff"
 var bin = Viper.Fmt.IntRadix(10, 2);        // "1010"
 var padded = Viper.Fmt.IntPad(42, 5, "0");  // "00042"
@@ -394,7 +394,7 @@ Binary file operations with random access.
 
 ### Examples
 
-```zia
+```rust
 // File operations
 if (Viper.IO.File.Exists("data.txt")) {
     var content = Viper.IO.File.ReadAllText("data.txt");
@@ -443,7 +443,7 @@ Logging utilities with configurable log levels.
 
 ### Examples
 
-```zia
+```rust
 // Set log level
 Viper.Log.set_Level(Viper.Log.get_DEBUG);
 
@@ -477,7 +477,7 @@ System and hardware information.
 
 ### Examples
 
-```zia
+```rust
 Viper.Terminal.Say("OS: " + Viper.Machine.get_OS);
 Viper.Terminal.Say("Cores: " + Viper.Core.Convert.ToString_Int(Viper.Machine.get_Cores));
 Viper.Terminal.Say("Memory: " + Viper.Core.Convert.ToString_Int(Viper.Machine.get_MemTotal / 1048576) + " MB");
@@ -505,7 +505,7 @@ Safe string parsing with error handling.
 
 ### Examples
 
-```zia
+```rust
 // Safe parsing with defaults
 var port = Viper.Core.Parse.IntOr(portStr, 8080);
 var timeout = Viper.Core.Parse.NumOr(timeoutStr, 30.0);
@@ -543,7 +543,7 @@ Deterministic pseudo-random number generation using a 64-bit LCG (Knuth MMIX con
 
 ### Examples
 
-```zia
+```rust
 // Seed for reproducibility
 Viper.Math.Random.Seed(12345);
 
@@ -610,7 +610,7 @@ Audio playback for sound effects and music.
 
 ### Examples
 
-```zia
+```rust
 // Initialize audio
 Viper.Sound.Audio.Init();
 
@@ -666,7 +666,7 @@ Core string manipulation functions.
 
 ### Examples
 
-```zia
+```rust
 var s = "  Hello, World!  ";
 var trimmed = Viper.String.Trim(s);        // "Hello, World!"
 var upper = Viper.String.ToUpper(trimmed); // "HELLO, WORLD!"
@@ -779,7 +779,7 @@ Simple string templating with `{{key}}` placeholders.
 
 ### Examples
 
-```zia
+```rust
 // Base64 encoding
 var encoded = Viper.Text.Codec.Base64Enc("Hello, World!");
 var decoded = Viper.Text.Codec.Base64Dec(encoded);
@@ -841,7 +841,7 @@ var message = Viper.Text.Template.Render(template, vars);
 
 ### Examples
 
-```zia
+```rust
 var pos = Viper.Math.Vec2.New(100.0, 200.0);
 var vel = Viper.Math.Vec2.New(5.0, -3.0);
 
@@ -891,7 +891,7 @@ var midpoint = Viper.Math.Vec2.Lerp(pos, target, 0.5);
 
 ### Examples
 
-```zia
+```rust
 var pos = Viper.Math.Vec3.New(10.0, 20.0, 30.0);
 var forward = Viper.Math.Vec3.New(0.0, 0.0, 1.0);
 var up = Viper.Math.Vec3.New(0.0, 1.0, 0.0);
@@ -1145,7 +1145,7 @@ Sorted map with string keys (red-black tree).
 
 ### Collection Examples
 
-```zia
+```rust
 // Bytes for binary data
 var data = Viper.Collections.Bytes.New(1024);
 Viper.Collections.Bytes.Set(data, 0, 0xFF);
@@ -1217,7 +1217,7 @@ High-precision timing for performance measurement. Stopwatch objects are heap-al
 
 ### Examples
 
-```zia
+```rust
 // Measure execution time
 var sw = Viper.Time.Stopwatch.StartNew();
 // ... code to measure ...

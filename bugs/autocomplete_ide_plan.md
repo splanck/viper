@@ -364,7 +364,7 @@ Key methods:
 ### Integration in `main.zia`
 
 Add after engine.Setup():
-```zia
+```rust
 bind "editor/completion";
 var completer = new completion.CompletionController();
 completer.Setup(engine.editor, shell.app);
@@ -377,7 +377,7 @@ Shortcuts.Register("trigger_completion", "Ctrl+Space","Trigger Completion");
 ```
 
 In main loop after `shell.Poll()`:
-```zia
+```rust
 var completionConsumed = completer.Update();
 if Shortcuts.WasTriggered("trigger_completion") != 0 {
     completer.TriggerCompletion();

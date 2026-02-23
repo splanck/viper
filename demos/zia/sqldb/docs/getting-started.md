@@ -60,7 +60,7 @@ Type SQL statements at the `sql>` prompt. Type `exit` or `quit` to leave.
 
 You can embed ViperSQL in any Zia program. Create a file `my_app.zia`:
 
-```zia
+```rust
 module main;
 
 bind Terminal = Viper.Terminal;

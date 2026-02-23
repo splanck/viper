@@ -519,8 +519,11 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path)
     int row_size = ((width * 3 + 3) / 4) * 4;
     int padding = row_size - width * 3;
 
-    // Calculate file size
-    uint32_t data_size = (uint32_t)row_size * (uint32_t)height;
+    // Calculate file size (guard against uint32 overflow for very large images)
+    uint64_t data_size_u64 = (uint64_t)row_size * (uint64_t)height;
+    if (data_size_u64 > (uint64_t)0xFFFFFFC9u) // UINT32_MAX - 54
+        return 0;
+    uint32_t data_size = (uint32_t)data_size_u64;
     uint32_t file_size = 54 + data_size; // 14 + 40 + data
 
     FILE *f = fopen(filepath, "wb");
@@ -706,6 +709,13 @@ void *rt_pixels_load_png(void *path)
         else if (memcmp(chunk_type, "IDAT", 4) == 0)
         {
             // Accumulate IDAT data
+            if (chunk_len > SIZE_MAX - idat_len) // overflow guard
+            {
+                free(file_data);
+                if (idat_buf)
+                    free(idat_buf);
+                return NULL;
+            }
             if (idat_len + chunk_len > idat_cap)
             {
                 idat_cap = (idat_len + chunk_len) * 2;
@@ -785,7 +795,11 @@ void *rt_pixels_load_png(void *path)
     bytes_t *raw = (bytes_t *)raw_bytes;
 
     int channels = (color_type == 6) ? 4 : 3; // RGBA vs RGB
+    if ((size_t)width > SIZE_MAX / (size_t)channels) // overflow guard
+        return NULL;
     size_t stride = (size_t)width * (size_t)channels;
+    if (height > 0 && (stride + 1) > SIZE_MAX / (size_t)height) // overflow guard
+        return NULL;
     size_t expected = (stride + 1) * (size_t)height; // +1 for filter byte per row
 
     if ((size_t)raw->len < expected)
@@ -1551,45 +1565,69 @@ void *rt_pixels_blur(void *pixels, int64_t radius)
     int64_t w = p->width;
     int64_t h = p->height;
 
-    // Simple box blur - format is 0xAARRGGBB
+    // Separable box blur: horizontal pass → temp, then vertical pass → result.
+    // Reduces O(w×h×(2r+1)²) to O(w×h×(2r+1)×2).  Format: 0xRRGGBBAA.
+    uint32_t *tmp = (uint32_t *)malloc((size_t)(w * h) * sizeof(uint32_t));
+    if (!tmp)
+        return result; // return zero-filled result on OOM
+
+    // Horizontal pass: blur each row independently into tmp
     for (int64_t y = 0; y < h; y++)
     {
         for (int64_t x = 0; x < w; x++)
         {
             int64_t sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
             int64_t count = 0;
-
-            for (int64_t dy = -radius; dy <= radius; dy++)
+            for (int64_t kdx = -radius; kdx <= radius; kdx++)
             {
-                for (int64_t dx = -radius; dx <= radius; dx++)
+                int64_t sx = x + kdx;
+                if (sx >= 0 && sx < w)
                 {
-                    int64_t sx = x + dx;
-                    int64_t sy = y + dy;
-
-                    if (sx >= 0 && sx < w && sy >= 0 && sy < h)
-                    {
-                        uint32_t px = p->data[sy * w + sx];
-                        sum_a += (px >> 24) & 0xFF;
-                        sum_r += (px >> 16) & 0xFF;
-                        sum_g += (px >> 8) & 0xFF;
-                        sum_b += px & 0xFF;
-                        count++;
-                    }
+                    uint32_t pixel = p->data[y * w + sx];
+                    sum_a += (pixel >> 24) & 0xFF;
+                    sum_r += (pixel >> 16) & 0xFF;
+                    sum_g += (pixel >> 8) & 0xFF;
+                    sum_b += pixel & 0xFF;
+                    count++;
                 }
             }
-
             if (count > 0)
-            {
-                uint8_t a = (uint8_t)(sum_a / count);
-                uint8_t r = (uint8_t)(sum_r / count);
-                uint8_t g = (uint8_t)(sum_g / count);
-                uint8_t b = (uint8_t)(sum_b / count);
-                result->data[y * w + x] =
-                    ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-            }
+                tmp[y * w + x] = ((uint32_t)(sum_a / count) << 24)
+                               | ((uint32_t)(sum_r / count) << 16)
+                               | ((uint32_t)(sum_g / count) << 8)
+                               |  (uint32_t)(sum_b / count);
         }
     }
 
+    // Vertical pass: blur each column from tmp into result
+    for (int64_t x = 0; x < w; x++)
+    {
+        for (int64_t y = 0; y < h; y++)
+        {
+            int64_t sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
+            int64_t count = 0;
+            for (int64_t kdy = -radius; kdy <= radius; kdy++)
+            {
+                int64_t sy = y + kdy;
+                if (sy >= 0 && sy < h)
+                {
+                    uint32_t pixel = tmp[sy * w + x];
+                    sum_a += (pixel >> 24) & 0xFF;
+                    sum_r += (pixel >> 16) & 0xFF;
+                    sum_g += (pixel >> 8) & 0xFF;
+                    sum_b += pixel & 0xFF;
+                    count++;
+                }
+            }
+            if (count > 0)
+                result->data[y * w + x] = ((uint32_t)(sum_a / count) << 24)
+                                        | ((uint32_t)(sum_r / count) << 16)
+                                        | ((uint32_t)(sum_g / count) << 8)
+                                        |  (uint32_t)(sum_b / count);
+        }
+    }
+
+    free(tmp);
     return result;
 }
 
@@ -2213,6 +2251,7 @@ void rt_pixels_draw_bezier(void *pixels,
     if (acy > steps) steps = acy;
     steps = steps * 2 + 1;
     if (steps < 2) steps = 2;
+    if (steps > 10000) steps = 10000; // Cap to prevent excessive loops
 
     // Integer de Casteljau: P(t) via linear interpolation at t = i/steps
     for (int64_t i = 0; i <= steps; i++)

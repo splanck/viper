@@ -4,7 +4,8 @@
 #include <string.h>
 
 // Monotonic tick incremented on every cache hit — used for LRU eviction.
-static uint32_t g_cache_tick = 0;
+// uint64_t prevents wrap-around after 4B+ hits in long-running applications.
+static uint64_t g_cache_tick = 0;
 
 //=============================================================================
 // Hash Function
@@ -154,8 +155,8 @@ static bool cache_resize(vg_glyph_cache_t *cache)
 
 static int compare_ticks(const void *a, const void *b)
 {
-    uint32_t ta = (*(const vg_cache_entry_t **)a)->access_tick;
-    uint32_t tb = (*(const vg_cache_entry_t **)b)->access_tick;
+    uint64_t ta = (*(const vg_cache_entry_t **)a)->access_tick;
+    uint64_t tb = (*(const vg_cache_entry_t **)b)->access_tick;
     return (ta < tb) ? -1 : (ta > tb) ? 1 : 0;
 }
 

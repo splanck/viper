@@ -515,7 +515,7 @@ App
 
 Language support follows a plugin architecture:
 
-```zia
+```rust
 entity LanguageService {
     String id;           // "zia", "basic", "il"
     String name;         // "Zia", "BASIC", "Viper IL"

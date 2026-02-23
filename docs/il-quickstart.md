@@ -32,7 +32,7 @@ debugging.
 
 Create a file `hello.il`:
 
-```il
+```llvm
 il 0.1
 
 extern @Viper.Terminal.PrintStr(str) -> void
@@ -79,7 +79,7 @@ Hello, Viper IL!
 
 Every IL file starts with a version declaration:
 
-```il
+```llvm
 il 0.1
 ```
 
@@ -89,7 +89,7 @@ Use `il 0.1.2` for experimental features.
 
 Declare runtime functions you'll call:
 
-```il
+```llvm
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.String.Concat(str, str) -> str
 ```
@@ -98,7 +98,7 @@ extern @Viper.String.Concat(str, str) -> str
 
 Define immutable data:
 
-```il
+```llvm
 global const str @.hello = "Hello!"
 global const i64 @.answer = 42
 ```
@@ -107,7 +107,7 @@ global const i64 @.answer = 42
 
 Functions contain basic blocks and instructions:
 
-```il
+```llvm
 func @square(i64 %x) -> i64 {
 entry:
   %result = mul %x, %x
@@ -128,7 +128,7 @@ entry:
 
 ### Arithmetic
 
-```il
+```llvm
 func @add(i64 %a, i64 %b) -> i64 {
 entry:
   %sum = add %a, %b
@@ -138,7 +138,7 @@ entry:
 
 ### Control Flow
 
-```il
+```llvm
 func @max(i64 %a, i64 %b) -> i64 {
 entry:
   %cond = scmp_gt %a, %b
@@ -154,7 +154,7 @@ less_or_equal:
 
 ### Calling Functions
 
-```il
+```llvm
 func @square(i64 %x) -> i64 {
 entry:
   %result = mul %x, %x
@@ -170,7 +170,7 @@ entry:
 
 ### Switch Statements
 
-```il
+```llvm
 func @classify(i64 %n) -> i64 {
 entry:
   %n32:i32 = cast.si_narrow.chk %n

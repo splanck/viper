@@ -236,17 +236,18 @@ void rt_net_init_wsa(void) {}
 //=============================================================================
 
 /// @brief Set socket to non-blocking mode.
-static void set_nonblocking(socket_t sock, bool nonblocking)
+/// @return true on success, false if the syscall failed.
+static bool set_nonblocking(socket_t sock, bool nonblocking)
 {
 #ifdef _WIN32
     u_long mode = nonblocking ? 1 : 0;
-    ioctlsocket(sock, FIONBIO, &mode);
+    return ioctlsocket(sock, FIONBIO, &mode) == 0;
 #else
     int flags = fcntl(sock, F_GETFL, 0);
-    if (nonblocking)
-        fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-    else
-        fcntl(sock, F_SETFL, flags & ~O_NONBLOCK);
+    if (flags < 0)
+        return false;
+    int new_flags = nonblocking ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
+    return fcntl(sock, F_SETFL, new_flags) == 0;
 #endif
 }
 
@@ -368,7 +369,13 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     if (timeout_ms > 0)
     {
         // Non-blocking connect with timeout
-        set_nonblocking(sock, true);
+        if (!set_nonblocking(sock, true))
+        {
+            CLOSE_SOCKET(sock);
+            freeaddrinfo(res);
+            free(host_cstr);
+            rt_trap("Network: failed to set non-blocking mode");
+        }
 
         connect_result = connect(sock, res->ai_addr, (int)res->ai_addrlen);
 
@@ -417,7 +424,13 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
         }
 
         // Switch back to blocking mode
-        set_nonblocking(sock, false);
+        if (!set_nonblocking(sock, false))
+        {
+            CLOSE_SOCKET(sock);
+            freeaddrinfo(res);
+            free(host_cstr);
+            rt_trap("Network: failed to restore blocking mode");
+        }
     }
     else
     {
@@ -638,10 +651,14 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
         if (errno == EAGAIN || errno == EWOULDBLOCK)
 #endif
         {
-            // Timeout - return empty bytes
+            // Timeout - release over-allocated buffer and return empty bytes
+            if (rt_obj_release_check0(result))
+                rt_obj_free(result);
             return rt_bytes_new(0);
         }
         tcp->is_open = false;
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
         rt_trap("Network: receive failed");
     }
 
@@ -649,14 +666,18 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
     {
         // Connection closed by peer
         tcp->is_open = false;
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
         return rt_bytes_new(0);
     }
 
-    // Return exact size received
+    // Return exact size received (release over-allocated buffer)
     if (received < max_bytes)
     {
         void *exact = rt_bytes_new(received);
         memcpy(bytes_data(exact), buf, received);
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
         return exact;
     }
 
@@ -692,11 +713,15 @@ void *rt_tcp_recv_exact(void *obj, int64_t count)
         if (received == SOCK_ERROR)
         {
             tcp->is_open = false;
+            if (rt_obj_release_check0(result))
+                rt_obj_free(result);
             rt_trap("Network: receive failed");
         }
         if (received == 0)
         {
             tcp->is_open = false;
+            if (rt_obj_release_check0(result))
+                rt_obj_free(result);
             rt_trap("Network: connection closed before receiving all data");
         }
         total_received += received;

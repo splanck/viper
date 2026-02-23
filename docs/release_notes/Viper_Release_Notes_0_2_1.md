@@ -39,7 +39,7 @@ Full parsing and serialization for all common structured data formats:
 
 Example — parse JSON and query with JSONPath:
 
-```zia
+```rust
 bind Viper.Text;
 
 func start() {
@@ -80,7 +80,7 @@ New specialized collections join the existing `List`, `Map`, `Queue`, `Stack`, `
 
 Functional sequence operations are now available on `Seq`:
 
-```zia
+```rust
 var evens = Seq.Of(1, 2, 3, 4, 5, 6)
     .Filter(x => x % 2 == 0)
     .Map(x => x * x)
@@ -124,7 +124,7 @@ A complete toolkit for 2D game logic:
 
 Example — sprite animation with easing:
 
-```zia
+```rust
 var tween = Tween.New(0.0, 100.0, 0.5, Easing.ElasticOut);
 var timer = Timer.New(2.0);  // fires every 2 seconds
 
@@ -141,7 +141,7 @@ Device-agnostic input abstraction: bind logical actions (Jump, Fire, MoveLeft) t
 combination of keyboard keys, mouse buttons, or gamepad buttons. Bindings are hot-reloadable
 at runtime.
 
-```zia
+```rust
 var actions = ActionMap.New();
 actions.Bind("Jump", Key.Space, PadButton.A);
 actions.Bind("Fire", Mouse.Left, PadButton.RightTrigger);
@@ -162,7 +162,7 @@ high-frequency object creation (particles, projectiles, UI elements).
 
 Full parametric polymorphism with type inference and interface constraints:
 
-```zia
+```rust
 func max<T: Comparable>(a: T, b: T) -> T {
     return a > b ? a : b;
 }
@@ -188,7 +188,7 @@ each instantiation and emits stable mangled names (`List$I64`, `Pair$String$Inte
 
 First-class function values using the `&` operator:
 
-```zia
+```rust
 func double(x: Integer) -> Integer { return x * 2; }
 
 func apply(f: &(Integer) -> Integer, v: Integer) -> Integer {
@@ -205,7 +205,7 @@ func start() {
 `and` / `or` operators now short-circuit. The right operand is only evaluated when the left
 does not determine the result — essential for safe nil guards:
 
-```zia
+```rust
 if user != null and user.IsActive() { ... }      // IsActive() not called if user is null
 if cache.Has(key) or loadFromDisk(key) { ... }   // loadFromDisk() skipped on cache hit
 ```
@@ -215,7 +215,7 @@ if cache.Has(key) or loadFromDisk(key) { ... }   // loadFromDisk() skipped on ca
 Flow-sensitive type narrowing for optional values. After a null check, the type of the
 variable is automatically narrowed within the truthy branch:
 
-```zia
+```rust
 func greet(name: String?) {
     if name != null {
         Terminal.Say("Hello, " + name);  // name is String here, not String?
@@ -228,7 +228,7 @@ func greet(name: String?) {
 The module import keyword is now `bind` (renamed from `import`). All demos, tests, and
 documentation have been updated:
 
-```zia
+```rust
 bind Viper.Terminal;
 bind Viper.Collections;
 bind Viper.Math.BigInt;
@@ -510,7 +510,7 @@ in the ViperDOS-specific changelog.
 
 1. **`bind` replaces `import` in Zia**
 
-   ```zia
+   ```rust
    // Old
    import Viper.Terminal;
    // New
@@ -519,7 +519,7 @@ in the ViperDOS-specific changelog.
 
 2. **`Viper.Strings` renamed to `Viper.String`**
 
-   ```zia
+   ```rust
    // Old
    bind Viper.Strings;
    // New
@@ -657,7 +657,7 @@ The ViperLang frontend has been renamed to **Zia**. This includes:
 
 Example:
 
-```zia
+```rust
 module Hello;
 
 func start() {
@@ -698,7 +698,7 @@ A new cross-platform GUI widget library (~26,000 lines):
 
 Example:
 
-```zia
+```rust
 func main() {
     var app = Viper.GUI.App.New("My App", 800, 600);
     Viper.GUI.Theme.SetDark();

@@ -1,7 +1,7 @@
 # ViperGFX Implementation Status
 
-**Date:** 2025-11-21
-**Version:** 1.0.0
+**Date:** 2026-02-23
+**Version:** 1.1.0
 
 ## Completed Components
 
@@ -202,6 +202,54 @@ C++ Compatible: ✅ Yes
 3. **Additional Platforms**: Implement remaining platform backends (Linux/X11, Windows/Win32).
 
 4. **Performance Optimization**: Profile drawing operations and optimize hotspots if needed.
+
+## Runtime Layer Improvements (2026-02-23)
+
+The following improvements were made in the Viper runtime layer (`src/runtime/graphics/`):
+
+### Bug Fixes
+
+| ID | Component | Fix |
+|----|-----------|-----|
+| C-2 | Sprite | Flip + scale: scale now applied to flipped buffer, not original |
+| C-3 | Sprite | `SetOrigin` pivot point now correctly applied during draw |
+| C-4 | Tilemap | Tileset memory leak on `SetTileset` replacement fixed |
+| C-5 | GUI | `g_input_capture_widget` cleared when owning widget is destroyed |
+| H-1 | Canvas | `Poll()` now drains all queued events per call (was dropping all but first) |
+| H-3 | Pixels | PNG IDAT accumulation: integer overflow guard added |
+| H-4 | Pixels | BMP save: 32-bit file-size overflow guard added |
+| H-5 | Pixels | PNG stride: overflow guard for wide images added |
+| H-6 | Particle | rt_obj leak on calloc failure in emitter constructor fixed |
+| H-7 | Tilemap | One-way platform: frame-rate-independent body-top check replaces `bvy*0.017` |
+| H-2 | TTF | Composite glyph realloc chain: use temporaries; partial failure no longer leaks |
+| M-1 | Sprite | `SetFrame` resets animation timer to prevent immediate frame advance |
+| M-4 | SpriteSheet | `ensure_cap` uses malloc+memcpy so partial failure can be rolled back |
+| M-5 | Glyph cache | `g_cache_tick` promoted to `uint64_t`; no longer wraps after 4B hits |
+| M-7 | GUI | Nested modal dialog attempt is now rejected (first dialog stays active) |
+| C-1 | Scene | `AddChild` cycle detection added; prevents infinite loop in world-transform update |
+
+### API Additions
+
+| Method | Description |
+|--------|-------------|
+| `Canvas.SavePng(path)` | Save canvas contents to a PNG file |
+| `Canvas.Screenshot()` | (was missing RT_METHOD) capture canvas to Pixels |
+| `Canvas.SetClipRect()`, `Canvas.ClearClipRect()` | Clip region control (now accessible from Zia/BASIC) |
+| `Canvas.SetTitle()`, `Canvas.Fullscreen()`, `Canvas.Windowed()` | Window management (now accessible) |
+| `Canvas.TextWidth()`, `Canvas.TextHeight()` | Text metrics (now accessible) |
+| `Canvas.GetFps()`, `Canvas.GetScale()`, `Canvas.SetFps()` | FPS / scale (now accessible) |
+| `Canvas.Focus()`, `Canvas.IsFocused()` | Window focus (now accessible) |
+| `Color.GetH()`, `Color.GetS()`, `Color.GetL()` | HSL extraction (now accessible) |
+| `Pixels.LoadBmp()`, `Pixels.LoadPng()` | Image loading from disk (now accessible) |
+
+### Performance Improvements
+
+| ID | Component | Change |
+|----|-----------|--------|
+| H-8 | Canvas.CopyRect | Direct framebuffer reads replace per-pixel `vgfx_point()` calls |
+| L-3 | Canvas.GradientH/V | Framebuffer direct writes; `memcpy` per row for horizontal gradient |
+| L-4 | Canvas.ThickLine | Parallelogram scanline fill + endcaps — O((len+r)·r) vs O(len·r²) |
+| L-5 | Pixels.Blur | Separable horizontal+vertical passes — ~10× faster at r=10 |
 
 ## Notes
 

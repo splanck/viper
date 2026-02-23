@@ -69,7 +69,11 @@ static double current_time_sec(void)
     static LARGE_INTEGER freq = {0};
     LARGE_INTEGER counter;
     if (freq.QuadPart == 0)
-        QueryPerformanceFrequency(&freq);
+    {
+        // RC-10: check return value — fall back to GetTickCount64 if QPC is unavailable
+        if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0)
+            return (double)GetTickCount64() / 1000.0;
+    }
     QueryPerformanceCounter(&counter);
     return (double)counter.QuadPart / (double)freq.QuadPart;
 #else
@@ -166,6 +170,9 @@ int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n)
     if (data->tokens >= (double)n)
     {
         data->tokens -= (double)n;
+        // RC-9: clamp to 0 to guard against floating-point precision underflow
+        if (data->tokens < 0.0)
+            data->tokens = 0.0;
         return 1;
     }
     return 0;

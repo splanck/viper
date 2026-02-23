@@ -135,7 +135,7 @@ signatures.
 
 Example:
 
-```il
+```llvm
 il 0.1
 func @main() -> i64 {
 entry:

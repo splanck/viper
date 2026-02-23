@@ -35,7 +35,7 @@ Command-line arguments and environment access.
 
 ### Zia Example
 
-```zia
+```rust
 module EnvDemo;
 
 bind Viper.Terminal;
@@ -129,7 +129,7 @@ Viper.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
 
 ### Zia Example
 
-```zia
+```rust
 module ExecDemo;
 
 bind Viper.Terminal;
@@ -225,7 +225,7 @@ System information queries providing read-only access to machine properties.
 
 ### Zia Example
 
-```zia
+```rust
 module MachineDemo;
 
 bind Viper.Terminal;
@@ -322,7 +322,7 @@ Low-level garbage collector diagnostics. Provides visibility into the reference-
 
 ### Zia Example
 
-```zia
+```rust
 module GCDemo;
 
 bind Viper.Terminal;
@@ -409,7 +409,7 @@ Terminal input and output operations.
 
 ### Zia Example
 
-```zia
+```rust
 module TerminalDemo;
 
 bind Viper.Terminal;
@@ -438,5 +438,5 @@ explicit control or are working at the IL level.
 
 ## See Also
 
-- [Input/Output](io.md) - File system operations and stream I/O
+- [Input/Output](io/README.md) - File system operations and stream I/O
 - [Network](network.md) - Network operations and DNS resolution

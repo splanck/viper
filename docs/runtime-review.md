@@ -72,7 +72,7 @@ These findings represent exploitable bugs, data-loss risks, or correctness-break
 | R-15 | `rt_graphics.c` | `rt_canvas_flip` | Calls `exit(0)` inside a library function — unacceptable for embedded use |
 | R-16 | `rt_scene.c` | `rt_scene_draw` | `rt_seq_new()` nodes sequence created each frame, never freed → unbounded memory leak |
 | R-17 | `rt_spritebatch.c` | `ensure_capacity` | `rt_trap()` called with `batch->items` not updated → use-after-free if trap returns |
-| R-18 | `rt_spritesheet.c` | `ensure_cap` | Two separate `realloc` calls; second failure corrupts parallel array capacities |
+| R-18 | `rt_spritesheet.c` | `ensure_cap` | ~~Two separate `realloc` calls; second failure corrupts parallel array capacities~~ **✅ FIXED 2026-02-23** — replaced with malloc+memcpy so both allocations can be rolled back independently |
 | R-19 | `rt_tilemap.c` | `rt_tilemap_collide_body` | Unchecked ABI cast to locally-defined struct with hardcoded offsets |
 | R-20 | `rt_fmt.c` | `rt_fmt_to_words` | `value = -value` for `INT64_MIN` is signed overflow UB |
 | R-21 | `rt_pixels.c` | `rt_pixels_resize` | OOB read when source is exactly 1 pixel wide |
@@ -1033,7 +1033,7 @@ These findings represent exploitable bugs, data-loss risks, or correctness-break
 #### `rt_canvas_gradient_h(canvas, x, y, w, h, c1, c2) → void`, `rt_canvas_gradient_v(...) → void`
 - **Robustness:** ✅
 - **Security:** ✅
-- **Optimization:** ⚠️ — One API call per row/column; should directly write to pixel buffer
+- **Optimization:** ~~⚠️ — One API call per row/column; should directly write to pixel buffer~~ **✅ FIXED 2026-02-23** — now uses `vgfx_get_framebuffer` + direct writes; horizontal gradient precomputes one row then `memcpy` per scanline.
 
 #### `rt_canvas_ellipse(canvas, cx, cy, rx, ry, color) → void`
 - **Robustness:** ⚠️ WARNING — `rx2 * ry2` intermediate product can overflow `int32_t` for radii >46340
@@ -1074,7 +1074,7 @@ These findings represent exploitable bugs, data-loss risks, or correctness-break
 ### `rt_spritesheet.c`
 
 #### `ensure_cap(ss) → void`
-- **Robustness:** ❌ CRITICAL — Performs two separate `realloc` calls for `ss->frames` and `ss->rects`; if the second fails, `ss->cap` has already been updated to reflect the first → corrupted inconsistent state
+- **Robustness:** ~~❌ CRITICAL — Performs two separate `realloc` calls for `ss->frames` and `ss->rects`; if the second fails, `ss->cap` has already been updated to reflect the first → corrupted inconsistent state~~ **✅ FIXED 2026-02-23** — replaced with malloc+memcpy so partial failure can be fully rolled back.
 - **Security:** ✅ · **Optimization:** ✅
 
 #### All other `rt_spritesheet_*` — ✅✅✅
@@ -2403,7 +2403,7 @@ Appears in `rt_file_ext.c` (write) and `rt_file_ext.c` (read bytes). Both should
 - **Optimization:** ⚠️ — O(r²) pixel tests per call (tests all pixels in bounding box); Bresenham's circle algorithm is O(r).
 
 #### `rt_canvas_gradient_h(void *obj, ...) → void`, `rt_canvas_gradient_v(void *obj, ...) → void`
-- **Optimization:** ⚠️ — One `vgfx_line` API call per column/row; direct pixel buffer write would be O(1) system calls vs. O(width/height).
+- **Optimization:** ~~⚠️ — One `vgfx_line` API call per column/row; direct pixel buffer write would be O(1) system calls vs. O(width/height).~~ **✅ FIXED 2026-02-23** — uses `vgfx_get_framebuffer` for direct writes; horizontal precomputes one row then `memcpy` per scanline.
 
 #### `rt_canvas_ellipse(void *obj, ...) → void`
 - **Robustness:** ⚠️ — `rx2 * ry2` intermediate can overflow `int64_t` for large radii.
@@ -2440,7 +2440,7 @@ Appears in `rt_file_ext.c` (write) and `rt_file_ext.c` (read bytes). Both should
 - **Robustness:** ⚠️ — `width * height` multiplication before `memset` lacks overflow check.
 
 #### `rt_pixels_blur(void *obj, int64_t radius) → void *`
-- **Optimization:** ⚠️ — O(w×h×r²) box blur; separable two-pass approach would reduce to O(w×h×r), 10–50× faster for radius > 3.
+- **Optimization:** ~~⚠️ — O(w×h×r²) box blur; separable two-pass approach would reduce to O(w×h×r), 10–50× faster for radius > 3.~~ **✅ FIXED 2026-02-23** — now uses separable horizontal+vertical passes with a malloc'd temp buffer, reducing complexity to O(w×h×(2r+1)×2).
 
 #### All other `rt_pixels_*` functions
 - ✅✅✅

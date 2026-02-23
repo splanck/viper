@@ -98,7 +98,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 
 ### Zia Example
 
-```zia
+```rust
 module BoxDemo;
 
 bind Viper.Terminal;
@@ -165,7 +165,7 @@ Assertion and trap utilities for program correctness checks. All methods trap (a
 
 ### Zia Example
 
-```zia
+```rust
 module DiagnosticsDemo;
 
 bind Viper.Terminal;
@@ -239,7 +239,7 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 
 ### Zia Example
 
-```zia
+```rust
 module ParseDemo;
 
 bind Viper.Terminal;
@@ -420,7 +420,7 @@ for multi-byte UTF-8 characters.
 
 ### Zia Example
 
-```zia
+```rust
 module StringDemo;
 
 bind Viper.Terminal;
@@ -458,7 +458,7 @@ code = s.Trim().Asc()   ' code = 72 (ASCII for 'H')
 
 ### Extended Methods Zia Example
 
-```zia
+```rust
 module StringExtDemo;
 
 bind Viper.Terminal;
@@ -554,7 +554,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 
 ### Zia Example
 
-```zia
+```rust
 module MessageBusDemo;
 
 bind Viper.Terminal;
@@ -587,6 +587,6 @@ PRINT "Subscribers for 'test': "; bus.SubscriberCount("test")  ' Output: 0
 
 ## See Also
 
-- [Text Processing](text.md) - `StringBuilder` for efficient string building, `Pattern` for regex
+- [Text Processing](text/README.md) - `StringBuilder` for efficient string building, `Pattern` for regex
 - [Utilities](utilities.md) - `Fmt` for string formatting, `Parse` for string parsing
-- [Collections](collections.md) - `Seq` for string lists, `Map` for string-keyed data
+- [Collections](collections/README.md) - `Seq` for string lists, `Map` for string-keyed data

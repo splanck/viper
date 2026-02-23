@@ -102,7 +102,7 @@ demos/zia/chess/
 
 ### `config.zia`
 
-```zia
+```rust
 module config;
 
 // Piece IDs (positive = white, negative = black, 0 = empty)

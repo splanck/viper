@@ -42,7 +42,7 @@ The method doesn't exist; the runtime crashes with a null pointer error.
 Use `canvas.Flip()` instead. This is the correct method name for presenting the frame buffer.
 
 **Code Change:**
-```zia
+```rust
 // Before (broken)
 canvas.Show();
 
@@ -65,7 +65,7 @@ Calling `canvas.Close()` to close the graphics window causes a null pointer erro
 Don't call Close(). The window closes automatically when the program terminates.
 
 **Code Change:**
-```zia
+```rust
 // Before (broken)
 canvas.Close();
 
@@ -100,7 +100,7 @@ In `Lowerer_Stmt.cpp`, the `lowerVarStmt()` function mapped value types to `Type
 - `src/frontends/zia/Lowerer_Stmt.cpp` - Modified default initialization to handle value types
 
 **Code Now Works:**
-```zia
+```rust
 value Vec2 {
     Integer x;
     Integer y;
@@ -126,7 +126,7 @@ Zia uses different syntax for field declarations vs function parameters, which c
 **Correct Syntax:**
 
 Entity/Value fields:
-```zia
+```rust
 entity Example {
     Integer fieldName;           // Type first, then name
     hide Integer privateField;   // With visibility modifier
@@ -135,7 +135,7 @@ entity Example {
 ```
 
 Function parameters:
-```zia
+```rust
 func example(paramName: Integer, anotherParam: String) -> Boolean {
     // ...
 }
@@ -162,7 +162,7 @@ List and other collection methods use lowercase method names, not PascalCase.
 - `Viper.String.Substring(str, start, length)` - Get substring
 
 **Incorrect (will fail):**
-```zia
+```rust
 list.Add(item);    // Wrong - capital A
 list.Get(index);   // Wrong - capital G
 list.Length();     // Wrong - capital L
@@ -209,7 +209,7 @@ for (const auto &transitiveBind : boundModule->binds)
 **File Changed:** `src/frontends/zia/ImportResolver.cpp`
 
 **Code Now Works:**
-```zia
+```rust
 // main.zia - now works with minimal bindings
 bind "./config";
 bind "./game";  // game's transitive deps (utils, maze, etc.) are automatically available

@@ -75,16 +75,35 @@ int64_t rt_retry_next_delay(void *policy)
     int64_t delay;
     if (data->exponential)
     {
-        // Exponential backoff: base * 2^attempt
+        // Exponential backoff: base * 2^attempt, capped at max_delay_ms.
+        // Overflow guard: check before multiplying to avoid wrapping past INT64_MAX.
         delay = data->base_delay_ms;
         for (int64_t i = 0; i < data->current_attempt; i++)
         {
-            delay *= 2;
-            if (delay > data->max_delay_ms)
+            if (delay >= data->max_delay_ms)
             {
                 delay = data->max_delay_ms;
                 break;
             }
+            // Avoid overflow: if doubling would exceed INT64_MAX, clamp to max_delay_ms
+            if (delay > (INT64_MAX / 2))
+            {
+                delay = data->max_delay_ms;
+                break;
+            }
+            delay *= 2;
+            if (delay > data->max_delay_ms)
+                delay = data->max_delay_ms;
+        }
+
+        // Add ±25% jitter to prevent thundering-herd on coordinated retries
+        if (delay > 0)
+        {
+            int64_t jitter_range = delay / 4 + 1;
+            delay += (int64_t)(rand() % (int)jitter_range);
+            // Keep within max_delay_ms (jitter may push slightly over)
+            if (delay > data->max_delay_ms)
+                delay = data->max_delay_ms;
         }
     }
     else

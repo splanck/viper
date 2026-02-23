@@ -48,7 +48,7 @@ The third argument is `rt_string` (which is `char*`), not `rt_string*`.
 
 ### IL Generated (Wrong)
 
-```il
+```llvm
 %t44 = alloca 8
 store str, %t44, %t32    ; Store string to temp
 call @rt_arr_str_put(%t35, %t36, %t44)  ; Pass &temp instead of temp contents
@@ -168,7 +168,7 @@ because loads/stores happen under the interpreter’s typed slots.
 - The minimal IL counter test confirms native `rt_modvar_addr_i64` correctness; failures correlate with type selection,
   not the runtime itself.
 
-```il
+```llvm
 %t172 = call @rt_modvar_addr_i64("CLR_WHITE")
 %t173 = load i64, %t172
 ```

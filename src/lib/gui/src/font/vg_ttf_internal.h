@@ -205,7 +205,7 @@ typedef struct vg_cache_entry
     struct vg_glyph glyph; ///< The rasterised glyph data (including the alpha-coverage bitmap).
     struct vg_cache_entry *
         next; ///< Next entry in the collision chain (NULL if this is the last entry in the bucket).
-    uint32_t access_tick; ///< Monotonic counter value at last cache hit; 0 = never accessed (LRU).
+    uint64_t access_tick; ///< Monotonic counter value at last cache hit; 0 = never accessed (LRU).
 } vg_cache_entry_t;
 
 //=============================================================================

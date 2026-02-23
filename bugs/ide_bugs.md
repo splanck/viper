@@ -25,7 +25,7 @@ app_shell.zia:12:12: error[V3000]: Unknown type: obj
 At startup, `Sema::initRuntimeFunctions()` (`Sema_Runtime.cpp:131-207`) registers all runtime classes from RuntimeRegistry into `typeRegistry_`. This includes entries like `"Viper.Graphics.Canvas"`, `"Viper.GUI.App"`, etc. These resolve to `types::runtimeClass(qname)` which are Ptr types with a name tag.
 
 **Fix:** Replace all `obj` with the actual fully-qualified Viper.GUI type from `runtime.def`:
-```zia
+```rust
 // Before (WRONG):
 expose obj app;
 
@@ -63,7 +63,7 @@ The empty literal `[]` compiles to a `Viper.Collections.List.New()` call (`Lower
 We incorrectly used `Viper.Collections.List.New()` explicitly with `.Item[i]` and `.Count` property syntax, which the compiler does not support for direct use. `.Item[i]` is a property getter that the compiler only invokes through the `.get()` dispatch.
 
 **Fix:** Use built-in syntax:
-```zia
+```rust
 // Before (WRONG):
 documents = Viper.Collections.List.New();
 var doc = documents.Item[activeIndex];
@@ -86,7 +86,7 @@ var n = documents.count();
 
 **Root cause:** `Parser_Type.cpp:22-34` parses the `?` suffix and wraps the base type in an `OptionalType`. `Types.cpp:94-108` `isAssignableFrom()` accepts either the inner type or `null` (Unit type). Since runtime classes resolve to Ptr types, `Optional[Ptr]` works the same as `Optional[Entity]`.
 
-```zia
+```rust
 // This IS valid Zia:
 expose Viper.GUI.App? app;
 
@@ -220,7 +220,7 @@ The type checker doesn't narrow nullable types after null guards. Even with `if 
 
 **Fix:** Use non-nullable types for all widget fields. Initialize via Build/Setup before any method calls, matching the pattern used by existing projects (paint, sqldb).
 
-```zia
+```rust
 // Before (FAILS — can't call methods on nullable type):
 expose Viper.GUI.TabBar? tabBar;
 // ...
@@ -240,7 +240,7 @@ expose Viper.GUI.TabBar tabBar;
 **Root cause:** When a runtime property returns `obj` (generic pointer), calling methods on the result fails. The compiler can't resolve methods because it doesn't know the concrete type. Example: `app.Root` returns `obj`, so `root.AddChild(...)` generates `call.indirect` with a null callee.
 
 **Fix:** Use explicit type annotations on variables holding untyped returns:
-```zia
+```rust
 // Before (FAILS):
 var root = app.Root;
 root.AddChild(mainVBox);  // call.indirect 0 — method not resolved
@@ -262,7 +262,7 @@ root.AddChild(mainVBox);  // call @Viper.GUI.Widget.AddChild
 This affects any `List[Viper.GUI.*]` where the element type is a C-allocated widget rather than a Zia entity.
 
 **Fix:** Don't store widget handles in Lists. Use the widget's own index-based API instead:
-```zia
+```rust
 // Before (CRASHES — Tab handles are C-allocated, no RT_MAGIC header):
 expose List[Viper.GUI.Tab] tabHandles;
 tabHandles.add(tab);

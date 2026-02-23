@@ -91,7 +91,7 @@ failure, etc.), the trap is captured instead of crashing the process.
 
 After the thread finishes, check `HasError` and `Error` on the returned handle:
 
-```zia
+```rust
 var t = Viper.Threads.Thread.StartSafe(&worker, 0);
 Viper.Threads.Thread.Sleep(500);   // wait for thread
 if (t.HasError) {
@@ -247,7 +247,7 @@ FIFO-serialized “safe variable” for shared counters and flags.
 
 ### Zia Example
 
-```zia
+```rust
 module SafeI64Demo;
 
 bind Viper.Terminal;
@@ -333,7 +333,7 @@ FIFO-fair permit gate (semaphore concept).
 
 ### Zia Example
 
-```zia
+```rust
 module GateDemo;
 
 bind Viper.Terminal;
@@ -414,7 +414,7 @@ Reusable N-party barrier.
 
 ### Zia Example
 
-```zia
+```rust
 module BarrierDemo;
 
 bind Viper.Terminal;
@@ -490,7 +490,7 @@ Writer-preference reader-writer lock.
 
 ### Zia Example
 
-```zia
+```rust
 module RwLockDemo;
 
 bind Viper.Terminal;
@@ -1305,7 +1305,7 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 
 ### Zia Example
 
-```zia
+```rust
 module ConcMapDemo;
 
 bind Viper.Terminal;
@@ -1407,7 +1407,7 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 
 ### Zia Example
 
-```zia
+```rust
 module ConcQueueDemo;
 
 bind Viper.Terminal;
@@ -1520,7 +1520,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 
 ### Zia Example
 
-```zia
+```rust
 module ChannelDemo;
 
 bind Viper.Terminal;
@@ -1609,5 +1609,5 @@ PRINT "IsClosed: "; ch.IsClosed  ' Output: 1
 
 ## See Also
 
-- [Collections](collections.md) - Thread-safe access to shared data structures
+- [Collections](collections/README.md) - Thread-safe access to shared data structures
 - [Time & Timing](time.md) - `Clock.Sleep()` and timing utilities

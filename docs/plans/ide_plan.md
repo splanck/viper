@@ -115,7 +115,7 @@ palette, find/replace, minimap, and a fully themeable UI.
 The entire application is driven by a single polling loop in `main.zia`, following
 the pattern established by VEdit:
 
-```zia
+```rust
 func main() {
     var app = Viper.GUI.App.New("ViperIDE", 1280, 800);
     Viper.GUI.Theme.SetDark();
@@ -198,7 +198,7 @@ results from worker threads.
 
 Every major component follows this pattern:
 
-```zia
+```rust
 entity ComponentName {
     // State fields
     expose ...
@@ -339,7 +339,7 @@ demos/zia/viperide/
 
 `main.zia` is the compilation entry point:
 
-```zia
+```rust
 module viperide;
 
 bind "./app_shell";
@@ -476,7 +476,7 @@ App ("ViperIDE", 1280, 800)
 
 ### 4.2 Layout Construction (Zia Pseudocode)
 
-```zia
+```rust
 entity AppShell {
     expose app: obj;          // Viper.GUI.App handle
     expose mainVBox: obj;
@@ -620,7 +620,7 @@ Default dark token colors:
 
 Represents a single open file in the editor.
 
-```zia
+```rust
 entity Document {
     expose filePath: String;      // Absolute path ("" for untitled)
     expose fileName: String;      // Display name
@@ -642,7 +642,7 @@ entity Document {
 
 Represents a workspace/folder.
 
-```zia
+```rust
 entity Project {
     expose rootPath: String;       // Absolute path to project root
     expose name: String;           // Folder name
@@ -654,7 +654,7 @@ entity Project {
 
 ### 5.3 BuildConfig
 
-```zia
+```rust
 entity BuildConfig {
     expose compilerPath: String;   // "zia" or "vbasic" (or absolute path)
     expose mainFile: String;       // Entry point file
@@ -667,7 +667,7 @@ entity BuildConfig {
 
 ### 5.4 Diagnostic (compiler error/warning)
 
-```zia
+```rust
 entity Diagnostic {
     expose filePath: String;
     expose line: Int;
@@ -680,7 +680,7 @@ entity Diagnostic {
 
 ### 5.5 Breakpoint
 
-```zia
+```rust
 entity Breakpoint {
     expose filePath: String;
     expose line: Int;
@@ -692,7 +692,7 @@ entity Breakpoint {
 
 ### 5.6 SymbolEntry (for autocomplete / go-to-definition)
 
-```zia
+```rust
 entity SymbolEntry {
     expose name: String;
     expose kind: Int;          // 0=func, 1=entity, 2=var, 3=field, 4=method, 5=value, 6=interface
@@ -705,7 +705,7 @@ entity SymbolEntry {
 
 ### 5.7 GitFileStatus
 
-```zia
+```rust
 entity GitFileStatus {
     expose filePath: String;   // Relative to project root
     expose status: String;     // "M", "A", "D", "?", "R", "C", "U"
@@ -715,7 +715,7 @@ entity GitFileStatus {
 
 ### 5.8 SearchResult
 
-```zia
+```rust
 entity SearchResult {
     expose filePath: String;
     expose line: Int;
@@ -727,7 +727,7 @@ entity SearchResult {
 
 ### 5.9 Command
 
-```zia
+```rust
 entity Command {
     expose id: String;         // "file.save", "edit.undo", etc.
     expose label: String;      // "Save File"
@@ -738,7 +738,7 @@ entity Command {
 
 ### 5.10 Settings
 
-```zia
+```rust
 entity Settings {
     // Editor
     expose tabSize: Int;              // Default: 4
@@ -796,7 +796,7 @@ entity Settings {
 features: syntax highlighting, code folding, bracket matching, and gutter icon
 management.
 
-```zia
+```rust
 entity EditorEngine {
     expose editor: obj;        // Viper.GUI.CodeEditor widget handle
     expose currentDoc: Document;
@@ -859,7 +859,7 @@ entity EditorEngine {
 **Responsibility:** Manages the collection of open documents, synchronizes with the
 tab bar, handles file open/close/save operations.
 
-```zia
+```rust
 entity DocumentManager {
     expose documents: obj;     // Seq of Document
     expose activeIndex: Int;   // Index of active document (-1 if none)
@@ -918,7 +918,7 @@ entity DocumentManager {
 built-in tokenization via `SetLanguage()` — our job is to set the language and
 configure token colors.
 
-```zia
+```rust
 // syntax_theme.zia — token color application
 
 // Token type constants (match the CodeEditor's built-in token IDs)
@@ -957,7 +957,7 @@ func ApplyLightTheme(editor: obj) {
 }
 ```
 
-```zia
+```rust
 // syntax_zia.zia — Zia language configuration
 
 func SetupZiaLanguage(editor: obj) {
@@ -967,7 +967,7 @@ func SetupZiaLanguage(editor: obj) {
 }
 ```
 
-```zia
+```rust
 // syntax_basic.zia — BASIC language configuration
 
 func SetupBasicLanguage(editor: obj) {
@@ -985,7 +985,7 @@ completion suggestions based on cursor context.
 by parsing source files textually. We scan for `func`, `entity`, `value`,
 `interface`, `var`, `expose`, and `hide` declarations using pattern matching.
 
-```zia
+```rust
 entity SymbolIndex {
     expose symbols: obj;       // Seq of SymbolEntry
     expose fileTimestamps: obj; // Map<String, Int> — path → last indexed timestamp
@@ -1045,7 +1045,7 @@ loaded from a static data table compiled into the symbol index at startup.
 **Responsibility:** Manages the project file tree, handles folder open/close,
 creates/deletes/renames files and folders, monitors for external changes.
 
-```zia
+```rust
 entity ProjectManager {
     expose project: Project;
     expose treeView: obj;          // Viper.GUI.TreeView widget
@@ -1103,7 +1103,7 @@ entity ProjectManager {
 **Responsibility:** Compile and run Zia/BASIC programs, parse compiler output for
 diagnostics, display build output.
 
-```zia
+```rust
 entity BuildSystem {
     expose isBuilding: Bool;
     expose isRunning: Bool;
@@ -1136,7 +1136,7 @@ entity BuildSystem {
 
 **Build execution (on worker thread):**
 
-```zia
+```rust
 // Simplified build worker
 func buildWorker(config: BuildConfig, projectRoot: String, channel: obj) {
     var args = Viper.Collections.Seq.New();
@@ -1169,7 +1169,7 @@ support in the Viper VM. The initial implementation provides:
 
 Future versions will add step-by-step execution when the VM exposes a debug protocol.
 
-```zia
+```rust
 entity Debugger {
     expose isDebugging: Bool;
     expose breakpoints: obj;        // Seq of Breakpoint
@@ -1204,7 +1204,7 @@ entity Debugger {
 **Responsibility:** Execute git commands via subprocess, parse output, provide
 status/diff/branch/commit/log functionality.
 
-```zia
+```rust
 entity GitIntegration {
     expose isGitRepo: Bool;
     expose currentBranch: String;
@@ -1255,7 +1255,7 @@ entity GitIntegration {
 
 **Git command execution:**
 
-```zia
+```rust
 func RunGit(args: String, projectRoot: String) -> String {
     var cmd = self.gitPath + " -C " + projectRoot + " " + args;
     return Viper.Exec.ShellCapture(cmd);
@@ -1277,7 +1277,7 @@ Parse each line: first two chars → status, rest → file path.
 **Responsibility:** Display build output, program stdout/stderr, and diagnostic
 messages in the bottom panel.
 
-```zia
+```rust
 entity OutputPanel {
     expose outputEditor: obj;   // CodeEditor widget used as read-only output
     expose content: String;     // Accumulated output text
@@ -1307,7 +1307,7 @@ to display output with syntax coloring for error messages.
 **Responsibility:** In-editor find/replace using the FindBar widget, and
 project-wide file search.
 
-```zia
+```rust
 entity FindReplace {
     expose findBar: obj;       // Viper.GUI.FindBar widget
 
@@ -1347,7 +1347,7 @@ entity FindReplace {
 
 **Find in files (background thread):**
 
-```zia
+```rust
 entity FindInFiles {
     expose results: obj;          // Seq of SearchResult
     expose searchChannel: obj;    // Channel for results from worker
@@ -1380,7 +1380,7 @@ regex mode.
 ID, label, category, and optional keyboard shortcut. The command palette and
 keyboard shortcuts both resolve to command IDs.
 
-```zia
+```rust
 entity CommandSystem {
     expose commands: obj;      // Map<String, Command> — id → Command
     expose palette: obj;       // Viper.GUI.CommandPalette widget
@@ -1408,27 +1408,27 @@ entity CommandSystem {
 ```
 
 **Shortcut registration:**
-```zia
+```rust
 Viper.GUI.Shortcuts.Register("file.save", "Ctrl+S", "Save File");
 Viper.GUI.Shortcuts.Register("file.new", "Ctrl+N", "New File");
 // ...
 ```
 
 **Shortcut polling:**
-```zia
+```rust
 if Viper.GUI.Shortcuts.WasTriggered("file.save") != 0 {
     // Handle save
 }
 ```
 
 **Command palette registration:**
-```zia
+```rust
 palette.AddCommandWithShortcut("file.save", "Save File", "File", "Ctrl+S");
 palette.AddCommand("file.saveAll", "Save All Files", "File");
 ```
 
 **Palette polling:**
-```zia
+```rust
 if palette.WasSelected() != 0 {
     var cmdId = palette.GetSelected();
     commands.Execute(cmdId);
@@ -1440,7 +1440,7 @@ if palette.WasSelected() != 0 {
 **Files:** `core/settings.zia`, `core/settings_manager.zia`
 **Responsibility:** Load/save IDE settings from a JSON configuration file.
 
-```zia
+```rust
 entity SettingsManager {
     expose settings: Settings;
     expose configPath: String;     // Path to settings.json
@@ -1479,7 +1479,7 @@ See Section 4.2 for the full entity definition.
 
 Additional responsibilities:
 
-```zia
+```rust
 // Handle menu item clicks (call each frame)
 func HandleMenus(commands: CommandSystem) {
     if self.miFileNew.WasClicked() != 0 { commands.Execute("file.new"); }

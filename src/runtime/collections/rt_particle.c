@@ -97,6 +97,7 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
     e->particles = calloc((size_t)max_particles, sizeof(struct particle));
     if (!e->particles)
     {
+        rt_obj_free(e);
         return NULL;
     }
 

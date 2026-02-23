@@ -21,6 +21,7 @@
 #include "rt_pixels.h"
 #include "rt_string.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -261,7 +262,7 @@ int64_t rt_canvas_poll(void *canvas_ptr)
     vgfx_mouse_pos(canvas->gfx_win, &mx, &my);
     rt_mouse_update_pos((int64_t)mx, (int64_t)my);
 
-    if (vgfx_poll_event(canvas->gfx_win, &canvas->last_event))
+    while (vgfx_poll_event(canvas->gfx_win, &canvas->last_event))
     {
         if (canvas->last_event.type == VGFX_EVENT_CLOSE)
             canvas->should_close = 1;
@@ -286,11 +287,9 @@ int64_t rt_canvas_poll(void *canvas_ptr)
         {
             rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
         }
-
-        return (int64_t)canvas->last_event.type;
     }
 
-    return 0;
+    return (int64_t)canvas->last_event.type;
 }
 
 int64_t rt_canvas_key_held(void *canvas_ptr, int64_t key)
@@ -702,24 +701,83 @@ void rt_canvas_thick_line(void *canvas_ptr,
         return;
     }
 
-    // Draw thick line using filled circles along the line (round caps)
-    int64_t dx = abs64(x2 - x1);
-    int64_t dy = abs64(y2 - y1);
-    int64_t steps = dx > dy ? dx : dy;
+    // Draw thick line as a filled parallelogram body + two round endcap circles.
+    // This is O((length + r) * r) vs O(length * r²) for circle-per-step,
+    // which is a factor-of-r speedup for large thickness values.
+    int64_t half = thickness / 2;
 
-    if (steps == 0)
+    if (x1 == x2 && y1 == y2)
     {
-        // Just draw a filled circle at the point
-        vgfx_fill_circle(canvas->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)(thickness / 2), col);
+        vgfx_fill_circle(canvas->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)half, col);
         return;
     }
 
-    int64_t half = thickness / 2;
-    for (int64_t i = 0; i <= steps; i++)
+    // Round endcaps
+    vgfx_fill_circle(canvas->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)half, col);
+    vgfx_fill_circle(canvas->gfx_win, (int32_t)x2, (int32_t)y2, (int32_t)half, col);
+
+    // Parallelogram body: four corners offset by perpendicular half-width.
+    double ldx = (double)(x2 - x1);
+    double ldy = (double)(y2 - y1);
+    double len = sqrt(ldx * ldx + ldy * ldy);
+    // Perpendicular unit vector (rotated 90 degrees)
+    double px = (-ldy / len) * (double)half;
+    double py = ( ldx / len) * (double)half;
+
+    // Four corners of the parallelogram
+    double ax = (double)x1 + px, ay = (double)y1 + py;
+    double bx = (double)x1 - px, by = (double)y1 - py;
+    double cx = (double)x2 + px, cy = (double)y2 + py;
+    double dx = (double)x2 - px, dy_c = (double)y2 - py;
+
+    // Scanline fill the parallelogram (convex 4-vertex polygon).
+    int32_t y_lo = (int32_t)floor(fmin(fmin(ay, by), fmin(cy, dy_c)));
+    int32_t y_hi = (int32_t)ceil(fmax(fmax(ay, by), fmax(cy, dy_c)));
+
+    for (int32_t scan_y = y_lo; scan_y <= y_hi; scan_y++)
     {
-        int64_t px = x1 + (x2 - x1) * i / steps;
-        int64_t py = y1 + (y2 - y1) * i / steps;
-        vgfx_fill_circle(canvas->gfx_win, (int32_t)px, (int32_t)py, (int32_t)half, col);
+        double sv = (double)scan_y;
+        double x_min = 1e18, x_max = -1e18;
+        double xi;
+
+        // Edge A→C
+        if (fmin(ay, cy) <= sv && sv <= fmax(ay, cy) && ay != cy)
+        {
+            xi = ax + (cx - ax) * (sv - ay) / (cy - ay);
+            if (xi < x_min) x_min = xi;
+            if (xi > x_max) x_max = xi;
+        }
+        // Edge C→D
+        if (fmin(cy, dy_c) <= sv && sv <= fmax(cy, dy_c) && cy != dy_c)
+        {
+            xi = cx + (dx - cx) * (sv - cy) / (dy_c - cy);
+            if (xi < x_min) x_min = xi;
+            if (xi > x_max) x_max = xi;
+        }
+        // Edge D→B
+        if (fmin(dy_c, by) <= sv && sv <= fmax(dy_c, by) && dy_c != by)
+        {
+            xi = dx + (bx - dx) * (sv - dy_c) / (by - dy_c);
+            if (xi < x_min) x_min = xi;
+            if (xi > x_max) x_max = xi;
+        }
+        // Edge B→A
+        if (fmin(by, ay) <= sv && sv <= fmax(by, ay) && by != ay)
+        {
+            xi = bx + (ax - bx) * (sv - by) / (ay - by);
+            if (xi < x_min) x_min = xi;
+            if (xi > x_max) x_max = xi;
+        }
+
+        if (x_max >= x_min)
+        {
+            vgfx_line(canvas->gfx_win,
+                      (int32_t)floor(x_min),
+                      scan_y,
+                      (int32_t)ceil(x_max),
+                      scan_y,
+                      col);
+        }
     }
 }
 
@@ -1651,18 +1709,39 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
     if (!pixels)
         return NULL;
 
-    // Copy pixels from canvas to buffer
+    // Copy pixels from canvas to buffer via direct framebuffer access — avoids
+    // O(w×h) vgfx_point() calls (each involves clipping + bounds checking).
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
+    {
+        // Framebuffer unavailable (mock/headless); fall back to empty buffer.
+        return pixels;
+    }
+
+    rt_pixels_impl *pix = (rt_pixels_impl *)pixels;
+
     for (int64_t py = 0; py < h; py++)
     {
+        int64_t src_y = y + py;
+        if (src_y < 0 || src_y >= fb.height)
+            continue;
+
+        uint8_t *src_row = &fb.pixels[(size_t)(src_y * fb.stride)];
+        uint32_t *dst_row = &pix->data[(size_t)(py * w)];
+
         for (int64_t px = 0; px < w; px++)
         {
-            vgfx_color_t color;
-            if (vgfx_point(canvas->gfx_win, (int32_t)(x + px), (int32_t)(y + py), &color) == 0)
+            int64_t src_x = x + px;
+            if (src_x < 0 || src_x >= fb.width)
             {
-                // Convert from 0x00RRGGBB to 0xRRGGBBAA (full alpha)
-                int64_t rgba = ((int64_t)color << 8) | 0xFF;
-                rt_pixels_set(pixels, px, py, rgba);
+                dst_row[px] = 0;
+                continue;
             }
+            uint8_t r = src_row[(size_t)(src_x * 4 + 0)];
+            uint8_t g = src_row[(size_t)(src_x * 4 + 1)];
+            uint8_t b = src_row[(size_t)(src_x * 4 + 2)];
+            // Force full alpha, matching original vgfx_point-based behaviour.
+            dst_row[px] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
         }
     }
 
@@ -1693,6 +1772,26 @@ int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path)
     // Note: pixels is managed by runtime, will be GC'd
 
     return result;
+}
+
+int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path)
+{
+    if (!canvas_ptr || !path)
+        return 0;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return 0;
+
+    int32_t w, h;
+    if (vgfx_get_size(canvas->gfx_win, &w, &h) != 0)
+        return 0;
+
+    void *pixels = rt_canvas_copy_rect(canvas_ptr, 0, 0, w, h);
+    if (!pixels)
+        return 0;
+
+    return rt_pixels_save_png(pixels, path);
 }
 
 //=============================================================================
@@ -2087,17 +2186,54 @@ void rt_canvas_gradient_h(
     if (!canvas->gfx_win)
         return;
 
-    // Draw gradient by drawing vertical lines with interpolated colors
-    for (int64_t col = 0; col < w; col++)
+    // Precompute gradient colours for each column, then blit each row of height h
+    // with a single memcpy-equivalent pass — avoids w*vgfx_line() call overhead.
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
     {
-        int64_t color = rt_color_lerp(c1, c2, col * 100 / (w - 1 > 0 ? w - 1 : 1));
-        vgfx_line(canvas->gfx_win,
-                  (int32_t)(x + col),
-                  (int32_t)y,
-                  (int32_t)(x + col),
-                  (int32_t)(y + h - 1),
-                  (vgfx_color_t)color);
+        // Fallback: per-column vgfx_line for mock/headless contexts.
+        for (int64_t col = 0; col < w; col++)
+        {
+            int64_t color = rt_color_lerp(c1, c2, col * 100 / (w - 1 > 0 ? w - 1 : 1));
+            vgfx_line(canvas->gfx_win,
+                      (int32_t)(x + col),
+                      (int32_t)y,
+                      (int32_t)(x + col),
+                      (int32_t)(y + h - 1),
+                      (vgfx_color_t)color);
+        }
+        return;
     }
+
+    // Build a single gradient row (clamped to framebuffer bounds).
+    int64_t x0 = x < 0 ? 0 : x;
+    int64_t x1_clip = x + w > fb.width ? fb.width : x + w;
+    int64_t y0 = y < 0 ? 0 : y;
+    int64_t y1_clip = y + h > fb.height ? fb.height : y + h;
+
+    if (x1_clip <= x0 || y1_clip <= y0)
+        return;
+
+    int64_t draw_w = x1_clip - x0;
+    uint8_t *row_buf = (uint8_t *)malloc((size_t)(draw_w * 4));
+    if (!row_buf)
+        return;
+
+    int64_t w_minus1 = w > 1 ? w - 1 : 1;
+    for (int64_t i = 0; i < draw_w; i++)
+    {
+        int64_t col = (x0 - x) + i;
+        int64_t color = rt_color_lerp(c1, c2, col * 100 / w_minus1);
+        row_buf[i * 4 + 0] = (uint8_t)((color >> 16) & 0xFF); // R
+        row_buf[i * 4 + 1] = (uint8_t)((color >> 8) & 0xFF);  // G
+        row_buf[i * 4 + 2] = (uint8_t)(color & 0xFF);         // B
+        row_buf[i * 4 + 3] = 0xFF;                            // A
+    }
+
+    for (int64_t row = y0; row < y1_clip; row++)
+        memcpy(&fb.pixels[(size_t)(row * fb.stride + x0 * 4)], row_buf, (size_t)(draw_w * 4));
+
+    free(row_buf);
 }
 
 void rt_canvas_gradient_v(
@@ -2110,16 +2246,50 @@ void rt_canvas_gradient_v(
     if (!canvas->gfx_win)
         return;
 
-    // Draw gradient by drawing horizontal lines with interpolated colors
-    for (int64_t row = 0; row < h; row++)
+    // Write each row directly into the framebuffer — one colour per row, no per-row
+    // vgfx_line() overhead.
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
     {
-        int64_t color = rt_color_lerp(c1, c2, row * 100 / (h - 1 > 0 ? h - 1 : 1));
-        vgfx_line(canvas->gfx_win,
-                  (int32_t)x,
-                  (int32_t)(y + row),
-                  (int32_t)(x + w - 1),
-                  (int32_t)(y + row),
-                  (vgfx_color_t)color);
+        for (int64_t row = 0; row < h; row++)
+        {
+            int64_t color = rt_color_lerp(c1, c2, row * 100 / (h - 1 > 0 ? h - 1 : 1));
+            vgfx_line(canvas->gfx_win,
+                      (int32_t)x,
+                      (int32_t)(y + row),
+                      (int32_t)(x + w - 1),
+                      (int32_t)(y + row),
+                      (vgfx_color_t)color);
+        }
+        return;
+    }
+
+    int64_t x0 = x < 0 ? 0 : x;
+    int64_t x1_clip = x + w > fb.width ? fb.width : x + w;
+    int64_t y0 = y < 0 ? 0 : y;
+    int64_t y1_clip = y + h > fb.height ? fb.height : y + h;
+
+    if (x1_clip <= x0 || y1_clip <= y0)
+        return;
+
+    int64_t draw_w = x1_clip - x0;
+    int64_t h_minus1 = h > 1 ? h - 1 : 1;
+
+    for (int64_t row = y0; row < y1_clip; row++)
+    {
+        int64_t r_idx = (y0 - y) + (row - y0); // = row - y
+        int64_t color = rt_color_lerp(c1, c2, r_idx * 100 / h_minus1);
+        uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
+        uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
+        uint8_t cb = (uint8_t)(color & 0xFF);
+        uint8_t *dst = &fb.pixels[(size_t)(row * fb.stride + x0 * 4)];
+        for (int64_t i = 0; i < draw_w; i++)
+        {
+            dst[i * 4 + 0] = cr;
+            dst[i * 4 + 1] = cg;
+            dst[i * 4 + 2] = cb;
+            dst[i * 4 + 3] = 0xFF;
+        }
     }
 }
 
@@ -2649,6 +2819,13 @@ void *rt_canvas_copy_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t
 }
 
 int64_t rt_canvas_save_bmp(void *canvas, rt_string path)
+{
+    (void)canvas;
+    (void)path;
+    return 0;
+}
+
+int64_t rt_canvas_save_png(void *canvas, rt_string path)
 {
     (void)canvas;
     (void)path;

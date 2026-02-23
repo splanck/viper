@@ -25,7 +25,7 @@ END CLASS
 
 **Generated IL** (incorrect):
 
-```il
+```llvm
 func @TEST.SETITEM(ptr %ME, i64 %IDX, str %VAL) -> void {
 entry_TEST.SETITEM(%ME:ptr, %IDX:i64, %VAL:str):
   ...
@@ -362,7 +362,7 @@ Ensure `isFieldInScope` uses case-insensitive lookup (similar to the `findField`
 
 Should see:
 
-```il
+```llvm
 call @rt_arr_str_put(%base, %index, %tmp)
 ```
 

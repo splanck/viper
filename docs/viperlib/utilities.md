@@ -33,7 +33,7 @@ Type conversion utilities.
 
 ### Zia Example
 
-```zia
+```rust
 module ConvertDemo;
 
 bind Viper.Terminal;
@@ -106,7 +106,7 @@ String formatting utilities for converting values to formatted strings.
 
 ### Zia Example
 
-```zia
+```rust
 module FmtDemo;
 
 bind Viper.Terminal;
@@ -206,7 +206,7 @@ Structured logging with configurable log levels.
 
 ### Zia Example
 
-```zia
+```rust
 module LogDemo;
 
 bind Viper.Terminal;
@@ -286,7 +286,7 @@ graceful error handling.
 
 ### Zia Example
 
-```zia
+```rust
 module ParseDemo;
 
 bind Viper.Terminal;
@@ -356,4 +356,4 @@ PRINT enabled  ' Output: 1 (true)
 ## See Also
 
 - [Core Types](core.md) - `String` manipulation methods
-- [Text Processing](text.md) - `Codec` for encoding, `StringBuilder` for building strings
+- [Text Processing](text/README.md) - `Codec` for encoding, `StringBuilder` for building strings

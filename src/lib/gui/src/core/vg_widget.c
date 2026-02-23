@@ -220,6 +220,12 @@ void vg_widget_destroy(vg_widget_t *widget)
         g_focused_widget = NULL;
     }
 
+    // Clear input capture if this widget holds it
+    if (g_input_capture_widget == widget)
+    {
+        g_input_capture_widget = NULL;
+    }
+
     // Clear modal root if this widget was the modal
     if (g_modal_root == widget)
     {

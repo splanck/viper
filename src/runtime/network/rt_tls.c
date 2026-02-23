@@ -172,16 +172,26 @@ static uint32_t read_u24(const uint8_t *p)
     return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 }
 
-// Update transcript hash
-static void transcript_update(rt_tls_session_t *session, const uint8_t *data, size_t len)
+// Update transcript hash.
+// Returns 0 on success, -1 if the buffer overflows (H-10 fix: abort instead of
+// silently hashing a truncated transcript which corrupts all key derivation).
+static int transcript_update(rt_tls_session_t *session, const uint8_t *data, size_t len)
 {
-    if (session->transcript_len + len <= sizeof(session->transcript_buffer))
+    if (session->error)
+        return -1; // Already in error state
+
+    if (session->transcript_len + len > sizeof(session->transcript_buffer))
     {
-        memcpy(session->transcript_buffer + session->transcript_len, data, len);
-        session->transcript_len += len;
+        session->error = "TLS: handshake transcript buffer overflow "
+                         "(certificate chain too large)";
+        return -1;
     }
+
+    memcpy(session->transcript_buffer + session->transcript_len, data, len);
+    session->transcript_len += len;
     // Compute running hash
     rt_sha256(session->transcript_buffer, session->transcript_len, session->transcript_hash);
+    return 0;
 }
 
 // Derive handshake traffic keys
@@ -318,7 +328,12 @@ static int send_record(rt_tls_session_t *session,
         write_u16(record + 3, (uint16_t)ciphertext_len);
         record_len = 5 + ciphertext_len;
 
-        session->write_keys.seq_num++;
+        // H-8: RFC 8446 §5.5 — close before sequence number wraps (nonce uniqueness)
+        if (++session->write_keys.seq_num == 0)
+        {
+            session->error = "TLS: write sequence number overflow; connection must be re-established";
+            return RT_TLS_ERROR;
+        }
     }
     else
     {
@@ -422,7 +437,12 @@ static int recv_record(rt_tls_session_t *session,
             return RT_TLS_ERROR;
         }
 
-        session->read_keys.seq_num++;
+        // H-8: RFC 8446 §5.5 — close before sequence number wraps (nonce uniqueness)
+        if (++session->read_keys.seq_num == 0)
+        {
+            session->error = "TLS: read sequence number overflow; connection must be re-established";
+            return RT_TLS_ERROR;
+        }
 
         // Remove padding and get inner content type
         while (plaintext_len > 0 && data[plaintext_len - 1] == 0)
@@ -648,6 +668,15 @@ static int send_finished(rt_tls_session_t *session)
     return send_record(session, TLS_CONTENT_HANDSHAKE, msg, 36);
 }
 
+// Constant-time memory comparison (H-9 fix: prevent timing attacks on Finished MAC)
+static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    uint8_t diff = 0;
+    for (size_t i = 0; i < n; i++)
+        diff |= a[i] ^ b[i];
+    return diff != 0; // non-zero means unequal
+}
+
 // Verify server Finished
 static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len)
 {
@@ -664,7 +693,7 @@ static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_
     uint8_t expected[32];
     rt_hmac_sha256(finished_key, 32, session->transcript_hash, 32, expected);
 
-    if (memcmp(data, expected, 32) != 0)
+    if (ct_memcmp(data, expected, 32))
     {
         session->error = "Finished verification failed";
         return RT_TLS_ERROR_HANDSHAKE;
@@ -680,7 +709,13 @@ static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_
 void rt_tls_config_init(rt_tls_config_t *config)
 {
     memset(config, 0, sizeof(*config));
-    config->verify_cert = 1;
+    /* CS-6: X.509 certificate validation is not yet implemented (CS-1/CS-2/CS-3).
+     * Setting verify_cert=1 causes every HTTPS connection to fail immediately with
+     * "certificate validation not implemented". Until the X.509 chain verifier is
+     * written, default to 0 (encryption without authentication) so that HTTPS
+     * connections work. Note: this means the connection is encrypted but vulnerable
+     * to man-in-the-middle attacks. See docs/viperlib/network.md for details. */
+    config->verify_cert = 0;
     config->timeout_ms = 30000;
 }
 
@@ -755,8 +790,9 @@ int rt_tls_handshake(rt_tls_session_t *session)
                 return RT_TLS_ERROR_HANDSHAKE;
             }
 
-            // Update transcript before processing
-            transcript_update(session, data + pos, 4 + hs_len);
+            // Update transcript before processing (H-10: abort on overflow)
+            if (transcript_update(session, data + pos, 4 + hs_len) != 0)
+                return RT_TLS_ERROR_HANDSHAKE;
 
             const uint8_t *hs_data = data + pos + 4;
 
@@ -858,7 +894,8 @@ long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len)
         return (long)copy;
     }
 
-    // Receive new record
+    // Receive new record (retry_recv: loop label for skipping non-application records)
+retry_recv:;
     uint8_t content_type;
     size_t data_len;
 
@@ -874,8 +911,10 @@ long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len)
 
     if (content_type != TLS_CONTENT_APPLICATION)
     {
-        // Handle other content types (e.g., post-handshake messages)
-        return rt_tls_recv(session, buffer, len); // Retry
+        // Skip non-application records (e.g., NewSessionTicket post-handshake messages).
+        // M-13 fix: use an iterative loop instead of recursion to prevent stack overflow
+        // when a misbehaving server sends many consecutive non-application records.
+        goto retry_recv;
     }
 
     session->app_buffer_len = data_len;

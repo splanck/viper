@@ -236,7 +236,7 @@ Compatibility:
 
 **Common extern patterns:**
 
-```il
+```llvm
 # Console I/O (canonical)
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void

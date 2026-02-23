@@ -279,7 +279,7 @@ static int parse_url(const char *url_str, parsed_url_t *result)
     result->port = 80;
     result->use_tls = 0;
 
-    // Check for http:// or https:// prefix
+    // Check for http:// or https:// prefix; reject any other scheme
     if (strncmp(url_str, "http://", 7) == 0)
     {
         url_str += 7;
@@ -291,6 +291,12 @@ static int parse_url(const char *url_str, parsed_url_t *result)
         url_str += 8;
         result->use_tls = 1;
         result->port = 443;
+    }
+    else if (strstr(url_str, "://") != NULL)
+    {
+        // An unrecognized scheme (e.g. ftp://, ws://) — reject rather than
+        // silently defaulting to HTTP on port 80.
+        return -1;
     }
 
     // Find end of host (either ':', '/', or end of string)
@@ -546,7 +552,15 @@ static char *read_line_conn(http_conn_t *conn)
 
         if (len + 1 >= cap)
         {
+            // Cap at 64 KB to prevent unbounded realloc from malicious servers
+            if (cap >= 65536)
+            {
+                free(line);
+                return NULL;
+            }
             cap *= 2;
+            if (cap > 65536)
+                cap = 65536;
             char *new_line = (char *)realloc(line, cap);
             if (!new_line)
             {
@@ -688,27 +702,45 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len)
         if (!size_line)
             break;
 
-        // Parse hex chunk size
+        // Parse hex chunk size — guard against overflow before each multiply (M-6)
         size_t chunk_size = 0;
+        int overflow = 0;
         for (char *p = size_line; *p; p++)
         {
             char c = *p;
+            unsigned digit;
             if (c >= '0' && c <= '9')
-                chunk_size = chunk_size * 16 + (c - '0');
+                digit = (unsigned)(c - '0');
             else if (c >= 'a' && c <= 'f')
-                chunk_size = chunk_size * 16 + (c - 'a' + 10);
+                digit = (unsigned)(c - 'a' + 10);
             else if (c >= 'A' && c <= 'F')
-                chunk_size = chunk_size * 16 + (c - 'A' + 10);
+                digit = (unsigned)(c - 'A' + 10);
             else
                 break;
+            if (chunk_size > (SIZE_MAX - digit) / 16)
+            {
+                overflow = 1;
+                break;
+            }
+            chunk_size = chunk_size * 16 + digit;
         }
         free(size_line);
 
+        if (overflow)
+        {
+            free(body);
+            *out_len = 0;
+            return NULL;
+        }
+
         if (chunk_size == 0)
         {
-            // Last chunk - read trailing CRLF
-            char *trailer = read_line_conn(conn);
-            free(trailer);
+            // Last chunk — drain all trailer headers until empty line (RC-13 / RFC 7230 §4.1.2)
+            char *trailer;
+            while ((trailer = read_line_conn(conn)) != NULL && trailer[0] != '\0')
+                free(trailer);
+            if (trailer)
+                free(trailer);
             break;
         }
 
@@ -788,7 +820,16 @@ static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len)
         if (len <= 0)
             break;
 
-        body_len += len;
+        body_len += (size_t)len;
+
+        /* Reject bodies that exceed the limit to prevent server-driven OOM (mirrors
+           the chunked path guard using HTTP_MAX_BODY_SIZE). */
+        if (body_len > HTTP_MAX_BODY_SIZE)
+        {
+            free(body);
+            *out_len = 0;
+            return NULL;
+        }
     }
 
     *out_len = body_len;
@@ -914,18 +955,31 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         return NULL;
     }
 
-    // Read headers
+    // Read headers (cap at 256 to prevent server-driven allocation loops)
     void *headers_map = rt_map_new();
     char *redirect_location = NULL;
+    int header_count = 0;
 
     while (1)
     {
+        if (header_count >= 256)
+        {
+            // Drain remaining headers without storing them
+            char *line;
+            while ((line = read_line_conn(&conn)) != NULL && line[0] != '\0')
+                free(line);
+            free(line);
+            break;
+        }
+
         char *line = read_line_conn(&conn);
         if (!line || line[0] == '\0')
         {
             free(line);
             break;
         }
+
+        header_count++;
 
         // Check for Location header (for redirects)
         if (strncasecmp(line, "location:", 9) == 0)
@@ -1009,7 +1063,9 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     }
     else if (content_length_val)
     {
-        size_t content_len = (size_t)atoll(rt_string_cstr(content_length_val));
+        // M-5: atoll returns -1 on parse error; guard against negative cast to SIZE_MAX
+        long long parsed_len = atoll(rt_string_cstr(content_length_val));
+        size_t content_len = parsed_len > 0 ? (size_t)parsed_len : 0;
         body = read_body_content_length_conn(&conn, content_len, &body_len);
     }
     else
@@ -1056,7 +1112,7 @@ rt_string rt_http_get(rt_string url)
 
     // Create request
     rt_http_req_t req = {0};
-    req.method = "GET";
+    req.method = strdup("GET");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
@@ -1064,6 +1120,7 @@ rt_string rt_http_get(rt_string url)
 
     // Execute request
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
     free_parsed_url(&req.url);
 
     if (!res)
@@ -1084,13 +1141,14 @@ void *rt_http_get_bytes(rt_string url)
         rt_trap("HTTP: invalid URL");
 
     rt_http_req_t req = {0};
-    req.method = "GET";
+    req.method = strdup("GET");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
         rt_trap("HTTP: invalid URL format");
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
     free_parsed_url(&req.url);
 
     if (!res)
@@ -1116,7 +1174,7 @@ rt_string rt_http_post(rt_string url, rt_string body)
         rt_trap("HTTP: invalid URL");
 
     rt_http_req_t req = {0};
-    req.method = "POST";
+    req.method = strdup("POST");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
@@ -1124,8 +1182,12 @@ rt_string rt_http_post(rt_string url, rt_string body)
 
     if (body_str)
     {
-        req.body = (uint8_t *)body_str;
+        // Copy body so the request owns the data independently of the GC-managed string
         req.body_len = strlen(body_str);
+        req.body = (uint8_t *)malloc(req.body_len);
+        if (!req.body)
+            rt_trap("HTTP: memory allocation failed");
+        memcpy(req.body, body_str, req.body_len);
     }
 
     // Add Content-Type if not empty body
@@ -1133,6 +1195,8 @@ rt_string rt_http_post(rt_string url, rt_string body)
         add_header(&req, "Content-Type", "text/plain; charset=utf-8");
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
+    free(req.body);
     free_parsed_url(&req.url);
     free_headers(req.headers);
 
@@ -1155,7 +1219,7 @@ void *rt_http_post_bytes(rt_string url, void *body)
         rt_trap("HTTP: invalid URL");
 
     rt_http_req_t req = {0};
-    req.method = "POST";
+    req.method = strdup("POST");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
@@ -1173,6 +1237,7 @@ void *rt_http_post_bytes(rt_string url, void *body)
         add_header(&req, "Content-Type", "application/octet-stream");
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
     free_parsed_url(&req.url);
     free_headers(req.headers);
 
@@ -1201,13 +1266,17 @@ int8_t rt_http_download(rt_string url, rt_string dest_path)
         return 0;
 
     rt_http_req_t req = {0};
-    req.method = "GET";
+    req.method = strdup("GET");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
+    {
+        free(req.method);
         return 0;
+    }
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
     free_parsed_url(&req.url);
 
     if (!res)
@@ -1229,14 +1298,20 @@ int8_t rt_http_download(rt_string url, rt_string dest_path)
         return 0;
     }
 
-    size_t written = fwrite(res->body, 1, res->body_len, f);
+    size_t expected = res->body_len;
+    size_t written = fwrite(res->body, 1, expected, f);
     fclose(f);
 
-    size_t expected = res->body_len;
     if (rt_obj_release_check0(res))
         rt_obj_free(res);
 
-    return written == expected ? 1 : 0;
+    // RC-14: if fwrite wrote fewer bytes (disk full, etc.), remove the partial file
+    if (written != expected)
+    {
+        remove(path_str);
+        return 0;
+    }
+    return 1;
 }
 
 void *rt_http_head(rt_string url)
@@ -1246,13 +1321,14 @@ void *rt_http_head(rt_string url)
         rt_trap("HTTP: invalid URL");
 
     rt_http_req_t req = {0};
-    req.method = "HEAD";
+    req.method = strdup("HEAD");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
         rt_trap("HTTP: invalid URL format");
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
     free_parsed_url(&req.url);
 
     if (!res)

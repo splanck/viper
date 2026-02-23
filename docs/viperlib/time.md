@@ -41,7 +41,7 @@ Basic timing utilities for sleeping and measuring elapsed time.
 
 ### Zia Example
 
-```zia
+```rust
 module ClockDemo;
 
 bind Viper.Terminal;
@@ -228,7 +228,7 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 
 ### Zia Example
 
-```zia
+```rust
 module DateTimeDemo;
 
 bind Viper.Terminal;
@@ -441,7 +441,7 @@ Date-only type for working with calendar dates without time components. Represen
 
 ### Zia Example
 
-```zia
+```rust
 module DateOnlyDemo;
 
 bind Viper.Terminal;
@@ -567,7 +567,7 @@ Duration type for representing and manipulating time spans. Duration is a static
 
 ### Zia Example
 
-```zia
+```rust
 module DurationDemo;
 
 bind Viper.Terminal;
@@ -652,7 +652,7 @@ A time range defined by start and end timestamps (in seconds). Useful for repres
 
 ### Zia Example
 
-```zia
+```rust
 module DateRangeDemo;
 
 bind Viper.Terminal;
@@ -724,7 +724,7 @@ Formats time durations and timestamps into human-readable relative descriptions.
 
 ### Zia Example
 
-```zia
+```rust
 module RelativeTimeDemo;
 
 bind Viper.Terminal;
@@ -757,4 +757,4 @@ PRINT Viper.Time.RelativeTime.FormatFrom(past, now)
 ## See Also
 
 - [Threads](threads.md) - `Thread.Sleep()` and synchronization with timeouts
-- [Graphics](graphics.md) - Frame timing with `Canvas` game loops
+- [Graphics](graphics/README.md) - Frame timing with `Canvas` game loops

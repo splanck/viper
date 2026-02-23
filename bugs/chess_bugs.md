@@ -99,7 +99,7 @@ Both the workaround and the direct `Int()` call now work.
 moves.zia:293:26: error[V3000]: Invalid operands for arithmetic operation
 ```
 Triggered when:
-```zia
+```rust
 var items: List[Integer] = [];
 items.add(someInt);
 var x = items.get(0) + 1;   // ERROR: items.get() returns Unknown type
@@ -144,7 +144,7 @@ Replaced dynamically-built direction lists (built with `[]` + `.add()`) with:
 board.zia:268:29: error[V3000]: expected expression
 ```
 Triggered by:
-```zia
+```rust
 var promPiece = if isWhite { move.promotePiece } else { -move.promotePiece };
 ```
 
@@ -167,7 +167,7 @@ Two-file fix:
 
 **Workaround in chess demo:**
 All `var x = if cond { a } else { b }` patterns converted to two-statement form:
-```zia
+```rust
 var x = a;
 if !cond { x = b; }
 ```
@@ -187,7 +187,7 @@ Potentially incorrect behavior when using negative start values in range loops.
 The Zia parser's `parseRange()` function sits above `parseUnary()` in the precedence
 chain, so unary minus correctly binds tighter than `..`. A test was added:
 
-```zia
+```rust
 // ZIA003_NegativeRangeForLoop in test_zia_bugfixes.cpp
 var sum = 0;
 for x in -1..2 { sum = sum + x; }
@@ -211,7 +211,7 @@ Direction arrays (`var kDR = [-1, -1, ...]`) remain since they work fine and are
 board.zia:211:29: error[V2000]: expected ;, got {
 ```
 Triggered by:
-```zia
+```rust
 var undo = UndoInfo { enPassantFile = self.enPassantFile, ... };
 ```
 

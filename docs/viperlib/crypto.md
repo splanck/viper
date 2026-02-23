@@ -39,7 +39,7 @@ AES-128/256 symmetric encryption with CBC mode and PKCS7 padding.
 
 ### Zia Example
 
-```zia
+```rust
 module AesDemo;
 
 bind Viper.Terminal;
@@ -132,7 +132,7 @@ Key-based encryption produces:
 
 ### Zia Example
 
-```zia
+```rust
 module CipherDemo;
 
 bind Viper.Terminal;
@@ -308,7 +308,7 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 
 The `Fast`, `FastBytes`, and `FastInt` methods use the FNV-1a (Fowler-Noll-Vo) hash algorithm. These are **non-cryptographic** hashes designed for speed in hash tables, checksums, and data partitioning. They are NOT suitable for security purposes.
 
-```zia
+```rust
 module FastHashDemo;
 
 bind Viper.Terminal;
@@ -345,7 +345,7 @@ PRINT "Int hash:"; h3
 
 ### Zia Example
 
-```zia
+```rust
 module HashDemo;
 
 bind Viper.Terminal;
@@ -438,7 +438,7 @@ Key derivation functions for deriving cryptographic keys from passwords.
 
 ### Zia Example
 
-```zia
+```rust
 module KeyDeriveDemo;
 
 bind Viper.Terminal;
@@ -548,7 +548,7 @@ Cryptographically secure random number generation.
 
 ### Zia Example
 
-```zia
+```rust
 module CryptoRandDemo;
 
 bind Viper.Terminal;
@@ -821,7 +821,7 @@ This format stores everything needed for verification: the algorithm identifier,
 
 ### Zia Example
 
-```zia
+```rust
 module PasswordDemo;
 
 bind Viper.Terminal;
@@ -880,6 +880,6 @@ PRINT "Verify: "; Viper.Crypto.Password.Verify("secret123", strongHash)  ' Outpu
 
 ## See Also
 
-- [Collections](collections.md) - `Bytes` for binary data handling
-- [Text Processing](text.md) - `Codec` for Base64/Hex encoding of hashes and keys
+- [Collections](collections/README.md) - `Bytes` for binary data handling
+- [Text Processing](text/README.md) - `Codec` for Base64/Hex encoding of hashes and keys
 - [Network](network.md) - `Tcp` for unencrypted connections, `Http` for HTTPS, `WebSocket` for WSS

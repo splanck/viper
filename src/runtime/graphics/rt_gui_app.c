@@ -22,6 +22,9 @@ static vg_dialog_t *g_active_dialog = NULL;
 
 void rt_gui_set_active_dialog(void *dlg)
 {
+    // Reject nested dialogs — overwriting g_active_dialog would orphan the first.
+    if (dlg && g_active_dialog)
+        return;
     g_active_dialog = (vg_dialog_t *)dlg;
 }
 

@@ -202,7 +202,7 @@ Frontends lower to a typed IL that is compact, explicit, and inspectable.
 
 **Zia Source:**
 
-```zia
+```rust
 module Hello;
 
 bind Viper.Terminal;
@@ -218,7 +218,7 @@ func start() {
 
 **Viper IL Output:**
 
-```il
+```llvm
 il 0.2.0
 extern @Viper.Fmt.Int(i64) -> str
 extern @Viper.Terminal.Say(str) -> void

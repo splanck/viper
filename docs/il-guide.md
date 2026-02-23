@@ -79,7 +79,7 @@ debugging.
 
 Create a file `first.il` with the contents:
 
-```il
+```llvm
 # Print the number 4 and exit.
 il 0.1
 extern @Viper.Terminal.PrintI64(i64) -> void
@@ -130,7 +130,7 @@ with a terminator such as `ret` giving the program's exit code.
 IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...). Primitive types include `i1` (bool),
 `i16`, `i32`, `i64`, `f64`, `ptr`, and `str`, plus specialized types `error` and `resumetok` for exception handling.
 
-```il
+```llvm
 il 0.1
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
@@ -159,7 +159,7 @@ entry:
 
 Functions declare typed parameters. Values are passed and returned explicitly.
 
-```il
+```llvm
 il 0.1
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @add(i64 %a, i64 %b) -> i64 {
@@ -191,7 +191,7 @@ entry:
 
 ### Arithmetic and comparisons
 
-```il
+```llvm
 il 0.1
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
@@ -218,7 +218,7 @@ entry:
 
 Blocks end with a terminator. `cbr` chooses a target based on an `i1` value.
 
-```il
+```llvm
 il 0.1
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
@@ -258,7 +258,7 @@ done:
 
 Strings live in globals and use `Viper.Terminal.PrintStr` for output.
 
-```il
+```llvm
 il 0.1
 extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "hello"  # immutable global
@@ -286,7 +286,7 @@ entry:
 
 Returning a non-zero `i64` sets the process exit code. `trap` reports an error and aborts.
 
-```il
+```llvm
 il 0.1
 func @main() -> i64 {
 entry:
@@ -317,7 +317,7 @@ A tiny BASIC program:
 
 Lowered IL:
 
-```il
+```llvm
 il 0.1
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
@@ -746,7 +746,7 @@ IL provides a structured error handling system with error values, handler stacks
 
 **Example:**
 
-```il
+```llvm
 func @divide(i64 %a, i64 %b) -> i64 {
 entry:
   eh.push ^handler
@@ -1013,7 +1013,7 @@ by allocating stack slots and storing the incoming values. Array parameters
 (`i64[]` or `str[]`) are passed as pointers/handles and stored directly without
 copying.
 
-```il
+```llvm
 func @F(i64 %X) -> i64 {
   entry_F:
     br ret_F
@@ -1022,7 +1022,7 @@ func @F(i64 %X) -> i64 {
 }
 ```
 
-```il
+```llvm
 func @S(i64 %X) -> void {
   entry_S:
     br ret_S
@@ -1119,7 +1119,7 @@ reused, the front end materializes it in a temporary stack slot sized for an
 `NOT expr` flips the operand and stores the inverted constant into the `i1`
 slot:
 
-```il
+```llvm
   %cond = ...            ; operand lowered earlier, yields i1
   %not_slot = alloca 1   ; temporary for the result (i1)
   cbr %cond, label not_true_0, label not_false_0
@@ -1138,7 +1138,7 @@ not_join_0:
 `A ANDALSO B` only evaluates `B` when `A` is true. The slot defaults to `FALSE`
 and updates with `B`'s value when the right-hand side is visited:
 
-```il
+```llvm
   %lhs = ...               ; first operand (i1)
   %and_slot = alloca 1
   store i1, %and_slot, 0
@@ -1156,7 +1156,7 @@ and_join_0:
 `A ORELSE B` skips `B` when `A` is true. The `TRUE` branch writes `1` and the
 `FALSE` branch lowers `B` and stores that value:
 
-```il
+```llvm
   %lhs = ...               ; first operand (i1)
   %or_slot = alloca 1
   cbr %lhs, label or_true_0, label or_rhs_0
@@ -1266,7 +1266,7 @@ block parameters and passing values along edges.
 
 Input IL:
 
-```il
+```llvm
 il 0.1
 func @main() -> i64 {
 entry:
@@ -1287,7 +1287,7 @@ Join:
 
 After `mem2reg`:
 
-```il
+```llvm
 il 0.1
 func @main() -> i64 {
 entry:
@@ -1309,7 +1309,7 @@ the value from each predecessor via branch arguments.
 
 Input IL:
 
-```il
+```llvm
 il 0.1
 func @main() -> i64 {
 entry:
@@ -1330,7 +1330,7 @@ Exit:
 
 After `mem2reg`:
 
-```il
+```llvm
 il 0.1
 func @main() -> i64 {
 entry:
@@ -1387,7 +1387,7 @@ the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). Ne
 
 **IL**
 
-```il
+```llvm
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
@@ -1443,7 +1443,7 @@ done:
 
 **IL**
 
-```il
+```llvm
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
@@ -1501,7 +1501,7 @@ done:
 
 **IL**
 
-```il
+```llvm
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
@@ -1567,7 +1567,7 @@ outer_done:
 
 **IL**
 
-```il
+```llvm
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
@@ -1630,7 +1630,7 @@ done:
 
 **IL**
 
-```il
+```llvm
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
@@ -1703,7 +1703,7 @@ exit:
 
 **IL**
 
-```il
+```llvm
 il 0.1
 extern @rt_alloc(i64) -> ptr
 extern @rt_print_f64(f64) -> void

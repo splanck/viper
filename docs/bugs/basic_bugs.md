@@ -494,7 +494,7 @@ Trap @main#2 line 33: Overflow (code=0): stack overflow in alloca
 
 Each string concatenation `s = s + "X"` generates the following IL:
 
-```il
+```llvm
 for_body:
   %t10 = load str, %s
   %t11 = const_str @.L1       ; "X"
@@ -1223,7 +1223,7 @@ field instead of the return value slot.
     - Returns **field storage** instead of return value
 
 6. **IL Generation** (observed in `/tmp/bug_testing/frogger_test02d_isalive.bas`):
-   ```il
+   ```llvm
    func @FROG.ISALIVE(ptr %ME) -> i64 {
      %t3 = gep %t2, 8        ; Get field at offset 8
      %t4 = load i64, %t3     ; Load field value
@@ -2212,7 +2212,7 @@ Fix direction:
 - Alternatively, pre-create and label the target blocks and capture their indices, then reload pointers after the
   condition lowering (post array bounds-check block insertions) before emitting `emitCBr`.
 
-```il
+```llvm
 %t23 = trunc1 %t22
 .loc 1 40 21
 cbr %t23, bb_0, bb_1

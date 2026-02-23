@@ -63,7 +63,7 @@ Lazy evaluation wrapper that defers computation until the value is first accesse
 
 ### Zia Example
 
-```zia
+```rust
 module LazyDemo;
 
 bind Viper.Terminal;
@@ -164,7 +164,7 @@ Optional value type representing a value that may or may not be present. Use `So
 
 ### Zia Example
 
-```zia
+```rust
 module OptionDemo;
 
 bind Viper.Terminal;
@@ -300,7 +300,7 @@ Result type for operations that can succeed or fail. Wraps either an `Ok` value 
 
 ### Zia Example
 
-```zia
+```rust
 module ResultDemo;
 
 bind Viper.Terminal;
@@ -398,5 +398,5 @@ DIM safeValue AS INTEGER = result.UnwrapOrI64(-1)
 ## See Also
 
 - [Core Types](core.md) - `Object`, `Box`, `String` -- foundational types
-- [Collections](collections.md) - `Seq`, `Map` for structured data
+- [Collections](collections/README.md) - `Seq`, `Map` for structured data
 - [Diagnostics](diagnostics.md) - `Assert`, `Trap` for assertion checking

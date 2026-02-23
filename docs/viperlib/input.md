@@ -163,7 +163,7 @@ All key codes are accessed as read-only properties on the Keyboard class.
 
 ### Zia Example: Basic Game Input
 
-```zia
+```rust
 module GameInput;
 
 bind Viper.Terminal;
@@ -370,7 +370,7 @@ configurable timing windows.
 
 ### Zia Example
 
-```zia
+```rust
 module KeyChordDemo;
 
 bind Viper.Input;
@@ -529,7 +529,7 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 
 ### Zia Example: Mouse Drawing
 
-```zia
+```rust
 module MouseDraw;
 
 bind Viper.Graphics.Canvas as Canvas;
@@ -843,7 +843,7 @@ Standard gamepad layout compatible with Xbox and PlayStation controllers:
 
 ### Zia Example: Controller Movement
 
-```zia
+```rust
 module PadDemo;
 
 bind Viper.Terminal;
@@ -1195,7 +1195,7 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 
 ### Zia Example: Action Mapping
 
-```zia
+```rust
 module ActionDemo;
 
 bind Viper.Terminal;
@@ -1478,7 +1478,7 @@ These properties check ALL input sources (keyboard, D-pad, analog sticks) and re
 
 ### Zia Example: Menu Navigation
 
-```zia
+```rust
 module MenuDemo;
 
 bind Viper.Terminal;
@@ -1657,6 +1657,6 @@ LOOP
 
 ## See Also
 
-- [Graphics](graphics.md) - `Canvas` class for windowing and rendering that drives input polling
-- [Collections](collections.md) - `Seq` type returned by `GetPressed()` and `GetReleased()` methods
+- [Graphics](graphics/README.md) - `Canvas` class for windowing and rendering that drives input polling
+- [Collections](collections/README.md) - `Seq` type returned by `GetPressed()` and `GetReleased()` methods
 - [Time](time.md) - `Timer` class for frame-based timing that pairs well with InputManager

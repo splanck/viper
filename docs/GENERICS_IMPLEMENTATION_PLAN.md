@@ -170,7 +170,7 @@ TypeRef Sema::resolveTypeNode(TypeNode* node)
 
 ### 3.3 Test Cases
 
-```zia
+```rust
 // test_generics_substitution.zia
 
 // Test 1: Simple type parameter substitution
@@ -353,7 +353,7 @@ case TypeKind::Generic:
 
 ### 4.3 Test Cases
 
-```zia
+```rust
 // test_generics_instantiation.zia
 
 // Test 1: Simple generic value type
@@ -540,7 +540,7 @@ std::vector<TypeRef> Sema::inferTypeArguments(FunctionDecl* genericDecl,
 
 ### 5.3 Test Cases
 
-```zia
+```rust
 // test_generics_functions.zia
 
 // Test 1: Simple generic function with inference
@@ -777,7 +777,7 @@ Methods:       Box[T].get()     → Box$Integer.get
 
 ### 6.3 Test Cases
 
-```zia
+```rust
 // test_generics_lowering.zia
 
 // Test 1: Value type monomorphization
@@ -920,7 +920,7 @@ void Sema::analyzeVarDecl(VarStmt* stmt)
 
 ### 7.3 Test Cases
 
-```zia
+```rust
 // test_generics_inference.zia
 
 // Test 1: Constructor inference from arguments
@@ -1020,7 +1020,7 @@ TEST_CASE("Monomorphization generates correct IL", "[generics]") {
 
 ### 9.2 Integration Tests
 
-```zia
+```rust
 // Comprehensive end-to-end tests
 module TestGenericsComprehensive;
 
@@ -1067,7 +1067,7 @@ Add IL output verification for:
 
 ### 10.1 Generic Constraints (v0.2)
 
-```zia
+```rust
 // Syntax extension
 interface Comparable[T] {
     func compare(other: T) -> Integer;
@@ -1086,7 +1086,7 @@ func max[T: Comparable[T]](a: T, b: T) -> T {
 
 ### 10.2 Variance Annotations (v0.2)
 
-```zia
+```rust
 // Covariance: List[+T] - can use List[Dog] where List[Animal] expected
 // Contravariance: Consumer[-T] - can use Consumer[Animal] where Consumer[Dog] expected
 
@@ -1101,7 +1101,7 @@ interface Consumer[-T] {
 
 ### 10.3 Higher-Kinded Types (v0.3+)
 
-```zia
+```rust
 // Type constructors as parameters
 interface Functor[F[_]] {
     func map[A, B](fa: F[A], f: func(A) -> B) -> F[B];

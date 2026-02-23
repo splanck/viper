@@ -24,7 +24,7 @@ The ViperLang frontend has been renamed to **Zia**. This includes:
 
 Example:
 
-```zia
+```rust
 module Hello;
 
 func start() {
@@ -65,7 +65,7 @@ A new cross-platform GUI widget library (~26,000 lines):
 
 Example:
 
-```zia
+```rust
 func main() {
     var app = Viper.GUI.App.New("My App", 800, 600);
     Viper.GUI.Theme.SetDark();

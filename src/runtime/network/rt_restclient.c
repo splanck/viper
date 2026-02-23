@@ -37,6 +37,26 @@ typedef struct
 } rest_client;
 
 //=============================================================================
+// Finalizer
+//=============================================================================
+
+static void rest_client_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rest_client *client = (rest_client *)obj;
+    // Release base_url string
+    if (client->base_url)
+        rt_string_unref(client->base_url);
+    // Release headers map
+    if (client->headers && rt_obj_release_check0(client->headers))
+        rt_obj_free(client->headers);
+    // Release last response
+    if (client->last_response && rt_obj_release_check0(client->last_response))
+        rt_obj_free(client->last_response);
+}
+
+//=============================================================================
 // Helper Functions
 //=============================================================================
 
@@ -110,7 +130,12 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
 static void *execute_request(rest_client *client, void *req)
 {
     void *res = rt_http_req_send(req);
-    client->last_response = res;
+
+    // Release the previous response before taking ownership of the new one (RC-2 fix)
+    if (client->last_response && rt_obj_release_check0(client->last_response))
+        rt_obj_free(client->last_response);
+
+    client->last_response = res; // Takes ownership (refcount = 1 from rt_http_req_send)
     client->last_status = rt_http_res_status(res);
     return res;
 }
@@ -131,6 +156,7 @@ void *rt_restclient_new(rt_string base_url)
     client->last_response = NULL;
     client->last_status = 0;
 
+    rt_obj_set_finalizer(client, rest_client_finalize);
     return client;
 }
 

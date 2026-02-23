@@ -560,7 +560,7 @@ Static utility class for DNS resolution and IP address validation.
 
 ### Zia Example
 
-```zia
+```rust
 module DnsDemo;
 
 bind Viper.Terminal;
@@ -648,6 +648,10 @@ DNS operations trap on errors:
 - `Reverse()` traps if reverse lookup fails
 - All methods trap on NULL/empty input
 
+There is no way to distinguish between a non-existent domain (NXDOMAIN), a DNS server failure (SERVFAIL), or a network timeout — all result in a trap with the same message.
+
+> **Blocking behavior:** DNS resolution is synchronous and may block the calling thread for up to ~10 seconds on unresponsive servers (OS-level retry behavior). There is no programmatic timeout for DNS operations.
+
 Validation methods (`IsIPv4`, `IsIPv6`, `IsIP`) never trap and return `False` for invalid input.
 
 ### Address Formats
@@ -681,8 +685,8 @@ Static HTTP client utilities for simple HTTP requests.
 | `Get(url)`                     | String  | GET request, return response body as string  |
 | `GetBytes(url)`                | Bytes   | GET request, return response body as bytes   |
 | `Head(url)`                    | Map     | HEAD request, return headers as Map          |
-| `Post(url, body)`              | String  | POST request with string body                |
-| `PostBytes(url, body)`         | Bytes   | POST request with Bytes body                 |
+| `Post(url, body)`              | String  | POST request with string body (`Content-Type: text/plain; charset=utf-8`) |
+| `PostBytes(url, body)`         | Bytes   | POST request with Bytes body (`Content-Type: application/octet-stream`) |
 
 ### Zia Example
 
@@ -715,7 +719,7 @@ PRINT "Content-Length: "; headers.Get("content-length")
 ### Features
 
 - **HTTP/1.1 support** - Standard HTTP/1.1 protocol
-- **HTTPS support** - TLS 1.3 with automatic certificate verification
+- **HTTPS support** - TLS 1.3 encryption (certificate validation planned; see HTTPS/TLS note below)
 - **Redirect handling** - Automatically follows 301, 302, 307, 308 redirects (up to 5)
 - **Content-Length** - Handles Content-Length bodies
 - **Chunked encoding** - Handles Transfer-Encoding: chunked responses
@@ -726,9 +730,9 @@ PRINT "Content-Length: "; headers.Get("content-length")
 The HTTP client transparently supports HTTPS URLs using TLS 1.3:
 
 - **Automatic upgrade** - URLs starting with `https://` automatically use TLS
-- **Certificate verification** - Server certificates are validated by default
-- **Modern security** - Uses TLS 1.3 with ChaCha20-Poly1305 cipher suite
-- **X25519 key exchange** - Secure elliptic curve Diffie-Hellman
+- **Modern encryption** - TLS 1.3 with ChaCha20-Poly1305 cipher suite and X25519 key exchange
+- **Encryption without authentication** - Traffic is encrypted, but certificate chain validation is not yet implemented. Server identity is not verified. Do not use HTTPS connections for sensitive credentials in production until certificate validation is added.
+- **For custom TLS:** Use `Viper.Crypto.Tls` directly or use `HttpReq` with `SetTimeout()` for timeout control.
 
 ```basic
 ' HTTPS works exactly like HTTP
@@ -745,7 +749,7 @@ HTTP operations trap on errors:
 
 - Traps on invalid URL format
 - Traps on connection failure
-- Traps on TLS handshake failure (certificate errors, protocol errors)
+- Traps on TLS handshake failure (protocol errors; certificate chain is not validated)
 - Traps on timeout
 - Traps on too many redirects (>5)
 
@@ -755,6 +759,7 @@ HTTP operations trap on errors:
 - **No cookies** - Cookie handling not included
 - **No auth** - Use `HttpReq` for custom headers including Authorization
 - **No client certificates** - Client-side TLS certificates not supported
+- **Fixed Content-Type on Post** - `Http.Post()` always sends `Content-Type: text/plain; charset=utf-8`. For JSON or other content types, use `HttpReq` with `.SetHeader("Content-Type", "application/json")`
 
 ---
 
@@ -777,6 +782,8 @@ HTTP request builder for advanced requests with custom headers and options.
 | `SetBodyStr(text)`        | HttpReq | Set request body as string (chainable)       |
 | `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
+
+> **TLS configuration:** `HttpReq` is the recommended path for HTTPS requests that need custom timeouts. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
 
 ### Zia Example
 
@@ -976,7 +983,7 @@ All properties are read/write.
 
 ### Zia Example
 
-```zia
+```rust
 module UrlDemo;
 
 bind Viper.Terminal;
@@ -1154,7 +1161,7 @@ binary messages following RFC 6455.
 | `Recv()`             | String  | Receive text message (blocks)                        |
 | `RecvBytes()`        | Bytes   | Receive binary message (blocks)                      |
 | `RecvBytesFor(ms)`   | Bytes   | Receive binary with timeout (null on timeout)        |
-| `RecvFor(ms)`        | String  | Receive text with timeout (empty string on timeout)  |
+| `RecvFor(ms)`        | String  | Receive text with timeout (returns `null` on timeout; traps on error)  |
 
 ### Close Methods
 
@@ -1482,11 +1489,13 @@ DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
 ### Features
 
 - **Base URL:** All request paths are relative to the configured base URL
-- **Persistent headers:** Headers set with `SetHeader` are sent with every request
+- **Persistent headers:** Headers set with `SetHeader` are sent with every request until removed with `DelHeader` or `ClearAuth`
 - **Authentication:** Built-in support for Bearer tokens and HTTP Basic auth
 - **Timeout:** Configurable timeout (default 30 seconds)
 - **JSON helpers:** Automatic serialization/deserialization for JSON APIs
-- **Last request tracking:** Access status and response of the most recent request
+- **Last request tracking:** `LastResponse()` returns the most recent response object; it is replaced on every new request. `LastStatus()` returns the HTTP status code; `LastOk()` returns true for 2xx responses.
+
+> **Lifecycle note:** The RestClient owns its headers map and last response. Resources are released automatically when the client object is garbage-collected. `LastResponse()` is only valid until the next request is made — do not cache the pointer across requests.
 
 ### RestClient vs HttpReq
 
@@ -1533,7 +1542,9 @@ Configurable retry policy with backoff strategies for handling transient failure
 | Strategy     | Constructor     | Delay Pattern                                    |
 |--------------|-----------------|--------------------------------------------------|
 | Fixed        | `New()`         | Same delay every time: `base, base, base, ...`   |
-| Exponential  | `Exponential()` | Doubles each time: `base, 2*base, 4*base, ...` (capped at max) |
+| Exponential  | `Exponential()` | Doubles each time: `base, 2*base, 4*base, ...` (capped at max, with ±25% jitter) |
+
+> **Attempt count semantics:** `RetryPolicy.New(n)` allows up to `n` calls to `NextDelay()` before the policy is exhausted. `Attempt` is 0-based and reflects how many `NextDelay()` calls have been made. The first `NextDelay()` call returns the initial delay (attempt 0); after `n` total calls the policy is exhausted and `NextDelay()` returns -1.
 
 ### Zia Example
 
@@ -1623,6 +1634,8 @@ Token bucket rate limiter for controlling the rate of operations. Tokens refill 
 3. Each operation consumes one or more tokens
 4. If insufficient tokens are available, the operation is denied (returns false)
 
+> **Token precision:** Tokens refill as a floating-point value internally. The `Available` property returns the floor of the current token count. `TryAcquire` and `TryAcquireN` consume whole tokens only. Not thread-safe — external synchronization required for concurrent use.
+
 ### Zia Example
 
 > **Note:** RateLimiter is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug affecting newer instance classes.
@@ -1681,7 +1694,9 @@ This allows:
 
 ## See Also
 
-- [Collections](collections.md) - `Bytes`, `Map`, `Seq` types used by network classes
-- [Input/Output](io.md) - File operations for saving downloaded content
+- [Collections](collections/README.md) - `Bytes`, `Map`, `Seq` types used by network classes
+- [Input/Output](io/README.md) - File operations for saving downloaded content
 - [Cryptography](crypto.md) - `Tls` for secure connections
+
+> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports ChaCha20-Poly1305 encryption with X25519 key exchange. Documentation for this class is in `crypto.md`. Certificate chain validation is not yet implemented; connections are encrypted but unauthenticated.
 

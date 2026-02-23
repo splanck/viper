@@ -279,13 +279,13 @@ These need to be fixed in the platform itself.
 - **Symptom**: Local variables holding concatenated strings (e.g., `var tbl = "prefix_" + Fmt.Int(i)`) become corrupted after calling functions that do heavy string operations internally (e.g., `executeSql()`). The variable's string pointer ends up pointing to overwritten memory, producing empty strings or fragments of other strings (like SQL column definitions).
 - **Root cause**: The native codegen does not properly retain concatenated string results stored in local variables. The concatenation creates a temporary string, and while the variable holds a pointer to it, subsequent function calls that create their own temporary strings can reuse the same memory region. The VM's reference-counting keeps the string alive, but the native codegen's retain/release logic misses this case.
 - **Reproduction**:
-  ```zia
+  ```rust
   var tbl = "sv_" + Fmt.Int(i);          // tbl = "sv_0" (correct)
   exec.executeSql("CREATE TABLE " + tbl); // works, but corrupts tbl
   Terminal.Say(tbl);                       // prints "" or garbage
   ```
 - **Workaround**: Rebuild concatenated strings inline at each use site instead of storing in a variable:
-  ```zia
+  ```rust
   exec.executeSql("CREATE TABLE sv_" + Fmt.Int(i) + " ...");
   exec.executeSql("INSERT INTO sv_" + Fmt.Int(i) + " ...");
   ```
@@ -389,7 +389,7 @@ These need to be fixed in the platform itself.
 - **Symptom**: Binary data containing null bytes (0x00) cannot survive a `WriteAllText` + `ReadAllText` round-trip. The data is silently truncated or corrupted at the first null byte. This prevents WAL files from being read back after writing, since the first serialized field (lsn.fileNumber) is often 0, producing null bytes at the start of the file.
 - **Root cause**: `File.ReadAllText` and `File.WriteAllText` operate on Zia `String` values, which are null-terminated C strings internally. Any null byte in the data acts as a premature string terminator, truncating the content. The `String.Chr(0)` function can create a string containing a null byte, but it cannot be safely stored/retrieved through the string-based file I/O API.
 - **Reproduction**:
-  ```zia
+  ```rust
   var buf = new BinaryBuffer();
   buf.init();
   buf.writeInt32(0);       // Writes 4 null bytes
@@ -431,7 +431,7 @@ These need to be fixed in the platform itself.
 - **Symptom**: When a `final` constant is defined in module A and used in module B via `bind`, equality comparisons (`==`, `!=`) against the constant always evaluate to false. The constant's value appears correct when used in arithmetic or as a function argument, but `if (x == MY_CONSTANT)` fails even when x holds the expected value.
 - **Root cause**: Unknown. Possibly the cross-module constant binding creates a different representation that fails the equality comparison.
 - **Reproduction**:
-  ```zia
+  ```rust
   // module_a.zia
   final MY_SENTINEL = 0 - 2147483647;
 

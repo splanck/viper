@@ -415,7 +415,7 @@ Strongly-typed, SSA-inspired intermediate representation:
 
 Example:
 
-```il
+```llvm
 il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void

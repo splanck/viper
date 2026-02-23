@@ -434,6 +434,66 @@ Status: ✅ All shapes render correctly
 - Octant/symmetry diagrams in comments
 - Edge cases documented
 
+## Higher-Level Primitives (in rt_graphics.c / rt_pixels.c)
+
+These richer primitives are implemented in the Viper runtime layer above vgfx and use the
+framebuffer direct-access API (`vgfx_get_framebuffer`).
+
+### 4. Thick Line (Parallelogram Scanline Fill + Round Endcaps)
+
+**Function:** `rt_canvas_thick_line()` / `rt_pixels_draw_thick_line()`
+
+**Algorithm:**
+
+1. Draw a filled circle at each endpoint with radius `thickness/2` (round caps).
+2. Compute the perpendicular unit vector to the line direction.
+3. Offset both endpoints by ±`thickness/2` along that perpendicular to get four corners A, B, C, D of a parallelogram.
+4. Scanline-fill the parallelogram: for each integer y between `y_min` and `y_max`, intersect with each of the four edges and draw a horizontal span.
+
+**Complexity:** O((length + r) × r) — a factor of *r* improvement over the naïve O(length × r²) circle-per-step approach, significant for large thickness values.
+
+**Key geometry:**
+
+```c
+double px = (-ldy / len) * half;   // perpendicular x offset
+double py = ( ldx / len) * half;   // perpendicular y offset
+
+// Four parallelogram corners
+A = (x1+px, y1+py);  B = (x1-px, y1-py);
+C = (x2+px, y2+py);  D = (x2-px, y2-py);
+```
+
+Each scanline intersects exactly two of the four edges (convex polygon), so a simple min/max scan suffices.
+
+### 5. Box Blur — Separable Passes (in rt_pixels.c)
+
+**Function:** `rt_pixels_blur(pixels, radius)`
+
+**Algorithm:**
+
+Two-pass separable box blur:
+1. **Horizontal pass:** for each row, blur all columns with a (2r+1)-wide kernel → store in a temporary buffer.
+2. **Vertical pass:** for each column, blur all rows from the temporary buffer with a (2r+1)-tall kernel → store in result.
+
+**Complexity:** O(w × h × (2r+1) × 2) — vs O(w × h × (2r+1)²) for the naïve 2D convolution. At r=10 this is a ~10× speedup.
+
+**Note:** `radius` is clamped to [1, 10].
+
+### 6. Gradient Direct Framebuffer Write (in rt_graphics.c)
+
+**Functions:** `rt_canvas_gradient_h()`, `rt_canvas_gradient_v()`
+
+**Algorithm (horizontal):**
+1. Precompute one row of `w` RGBA pixels with linearly interpolated colours.
+2. `memcpy` that row into each of the `h` destination rows in the framebuffer.
+
+**Algorithm (vertical):**
+1. For each of the `h` rows, compute the interpolated colour once, then write `w` pixels inline.
+
+Both approaches avoid per-column/row `vgfx_line()` overhead and operate directly on the framebuffer via `vgfx_get_framebuffer()`. A mock/headless fallback using `vgfx_line()` is provided when the framebuffer is unavailable.
+
+---
+
 ## Future Enhancements (Out of Scope for v1.0)
 
 ### Possible Optimizations
@@ -449,7 +509,7 @@ Status: ✅ All shapes render correctly
 - [ ] Bezier curves (quadratic and cubic)
 - [ ] Filled polygons (scanline conversion)
 - [ ] Anti-aliased lines (Wu's algorithm)
-- [ ] Thick lines (Bresenham with width)
+- [x] Thick lines — parallelogram scanline fill + endcap circles (implemented in rt_graphics.c)
 
 ### Advanced Features
 

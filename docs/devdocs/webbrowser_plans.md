@@ -1340,7 +1340,7 @@ void rt_webbrowser_set_element_text(void* browser, rt_string selector, rt_string
 
 ### 8.4 Zia API Example
 
-```zia
+```rust
 module WebDemo;
 
 import Viper.GUI.*;

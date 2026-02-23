@@ -48,7 +48,7 @@ After playing a sound, you receive a voice ID that can be used with `Viper.Sound
 
 ### Zia Example
 
-```zia
+```rust
 module SoundDemo;
 
 bind Viper.Terminal;
@@ -147,7 +147,7 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 
 ### Zia Example
 
-```zia
+```rust
 module MusicDemo;
 
 bind Viper.Terminal;
@@ -240,7 +240,7 @@ Static class for controlling individual playing voices (sound instances).
 
 ### Zia Example
 
-```zia
+```rust
 module VoiceDemo;
 
 bind Viper.Terminal;
@@ -292,7 +292,7 @@ Global audio system control functions.
 
 ### Zia Example
 
-```zia
+```rust
 module AudioDemo;
 
 bind Viper.Terminal;
@@ -388,7 +388,7 @@ Music playlist with queue management for sequential track playback.
 
 ### Zia Example
 
-```zia
+```rust
 module PlaylistDemo;
 
 bind Viper.Terminal;
@@ -487,6 +487,6 @@ Currently, Viper Audio supports **WAV files** only:
 
 ## See Also
 
-- [Graphics](graphics.md) - Canvas and visual rendering
+- [Graphics](graphics/README.md) - Canvas and visual rendering
 - [Input](input.md) - Keyboard and mouse input
 - [Time](time.md) - Timing for audio synchronization

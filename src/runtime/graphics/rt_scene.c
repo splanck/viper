@@ -425,6 +425,13 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr)
     scene_node_impl *node = (scene_node_impl *)node_ptr;
     scene_node_impl *child = (scene_node_impl *)child_ptr;
 
+    // Guard against cycles: walk node's ancestor chain and reject if child is found
+    for (scene_node_impl *anc = node; anc; anc = anc->parent)
+    {
+        if (anc == child)
+            return; // Would create a cycle — silently reject
+    }
+
     // Detach from previous parent if any
     if (child->parent)
     {

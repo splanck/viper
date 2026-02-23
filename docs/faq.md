@@ -97,7 +97,7 @@ Zia is Viper's primary language, designed as a modern, clean systems programming
 
 ### 9. How do I write a simple Zia program?
 
-```zia
+```rust
 module Main;
 
 func start() {
@@ -115,7 +115,7 @@ Run it with:
 
 Entities are Zia's object-oriented construct, similar to classes:
 
-```zia
+```rust
 entity Counter {
     expose Integer value;
 
@@ -135,7 +135,7 @@ Use `expose` to make fields and methods visible outside the entity.
 
 Use modules and binds:
 
-```zia
+```rust
 module MyModule;
 
 bind "./OtherModule";

@@ -82,20 +82,29 @@ static void ensure_cap(rt_spritesheet_impl *ss)
     if (ss->count < ss->capacity)
         return;
     int64_t new_cap = ss->capacity * 2;
-    ss_region *new_regions = (ss_region *)realloc(ss->regions, (size_t)new_cap * sizeof(ss_region));
-    if (!new_regions)
+
+    // Use malloc+memcpy so both arrays can be freed independently on partial failure.
+    // realloc cannot be rolled back after success, so sequential reallocs risk leaving
+    // the struct with mismatched array sizes if the second call fails.
+    ss_region *tmp_regions = (ss_region *)malloc((size_t)new_cap * sizeof(ss_region));
+    if (!tmp_regions)
     {
         rt_trap("SpriteSheet: memory allocation failed");
         return;
     }
-    ss->regions = new_regions;
-    char **new_names = (char **)realloc(ss->names, (size_t)new_cap * sizeof(char *));
-    if (!new_names)
+    char **tmp_names = (char **)malloc((size_t)new_cap * sizeof(char *));
+    if (!tmp_names)
     {
+        free(tmp_regions);
         rt_trap("SpriteSheet: memory allocation failed");
         return;
     }
-    ss->names = new_names;
+    memcpy(tmp_regions, ss->regions, (size_t)ss->count * sizeof(ss_region));
+    memcpy(tmp_names, ss->names, (size_t)ss->count * sizeof(char *));
+    free(ss->regions);
+    free(ss->names);
+    ss->regions = tmp_regions;
+    ss->names = tmp_names;
     ss->capacity = new_cap;
 }
 

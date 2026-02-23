@@ -50,7 +50,7 @@ Viper IL supports the following primitive types:
 
 Functions are the primary unit of IL code:
 
-```il
+```llvm
 func @name(<typed args>) -> <type> {
 entry:
   ; instructions
@@ -72,125 +72,125 @@ entry:
 
 **`add`** — Integer addition (no overflow check).
 
-```il
+```llvm
 %sum = add %a, %b
 %t0 = add 10, 20
 ```
 
 **`fadd`** — Floating-point addition.
 
-```il
+```llvm
 %t1 = fadd 1.2345678901234567, 2.5
 %t13 = fadd 1.0, 2.5
 ```
 
 **`fdiv`** — Floating-point division.
 
-```il
+```llvm
 %avg = fdiv %fsum, %fn
 %t16 = fdiv %t15, 2.0
 ```
 
 **`fmul`** — Floating-point multiplication.
 
-```il
+```llvm
 %t15 = fmul %t14, 4.0
 ```
 
 **`fsub`** — Floating-point subtraction.
 
-```il
+```llvm
 %t14 = fsub %t13, 1.25
 %t10 = fsub %t8, %t9
 ```
 
 **`iadd.ovf`** — Integer addition with overflow check (traps on overflow).
 
-```il
+```llvm
 %t0 = iadd.ovf 1, 2
 %sum = iadd.ovf %a, %b
 ```
 
 **`imul.ovf`** — Integer multiplication with overflow check (traps on overflow).
 
-```il
+```llvm
 %t1 = imul.ovf %t0, 3
 %prod = imul.ovf %a, %b
 ```
 
 **`isub.ovf`** — Integer subtraction with overflow check (traps on overflow).
 
-```il
+```llvm
 %n2 = isub.ovf %n1, 1
 %diff = isub.ovf %lhs, %rhs
 ```
 
 **`mul`** — Integer multiplication (no overflow check).
 
-```il
+```llvm
 %prod = mul %a, %b
 %t0 = mul 3, 7
 ```
 
 **`sdiv`** — Signed integer division (no divide-by-zero check; undefined behavior on zero).
 
-```il
+```llvm
 %quot = sdiv %a, %b
 %t0 = sdiv 20, 4
 ```
 
 **`sdiv.chk0`** — Signed integer division with divide-by-zero check (traps if divisor is zero).
 
-```il
+```llvm
 %t0 = sdiv.chk0 %a, %b
 %t3 = sdiv.chk0 %t2, 5
 ```
 
 **`srem`** — Signed integer remainder (no divide-by-zero check; undefined behavior on zero).
 
-```il
+```llvm
 %rem = srem %a, %b
 %t0 = srem 17, 5
 ```
 
 **`srem.chk0`** — Signed integer remainder with divide-by-zero check (traps if divisor is zero).
 
-```il
+```llvm
 %rem = srem.chk0 %a, %b
 %t0 = srem.chk0 17, 5
 ```
 
 **`sub`** — Integer subtraction (no overflow check).
 
-```il
+```llvm
 %diff = sub %a, %b
 %t0 = sub 10, 5
 ```
 
 **`udiv`** — Unsigned integer division (no divide-by-zero check; undefined behavior on zero).
 
-```il
+```llvm
 %quot = udiv %a, %b
 %t0 = udiv 20, 4
 ```
 
 **`udiv.chk0`** — Unsigned integer division with divide-by-zero check (traps if divisor is zero).
 
-```il
+```llvm
 %t2 = udiv.chk0 %a, %b
 %t4 = udiv.chk0 10, 2
 ```
 
 **`urem`** — Unsigned integer remainder (no divide-by-zero check; undefined behavior on zero).
 
-```il
+```llvm
 %rem = urem %a, %b
 %t0 = urem 17, 5
 ```
 
 **`urem.chk0`** — Unsigned integer remainder with divide-by-zero check (traps if divisor is zero).
 
-```il
+```llvm
 %rem = urem.chk0 %a, %b
 %t0 = urem.chk0 17, 5
 ```
@@ -199,117 +199,117 @@ entry:
 
 **`fcmp_eq`** — Floating-point comparison.
 
-```il
+```llvm
 %t27 = fcmp_eq 1, 1
 ```
 
 **`fcmp_ge`** — Floating-point comparison.
 
-```il
+```llvm
 %t32 = fcmp_ge 3, 3
 ```
 
 **`fcmp_gt`** — Floating-point comparison.
 
-```il
+```llvm
 %t31 = fcmp_gt 3, 2
 ```
 
 **`fcmp_le`** — Floating-point comparison.
 
-```il
+```llvm
 %t30 = fcmp_le 2, 2
 %t4 = fcmp_le %t2, %t3
 ```
 
 **`fcmp_lt`** — Floating-point comparison.
 
-```il
+```llvm
 %t29 = fcmp_lt 1, 2
 ```
 
 **`fcmp_ne`** — Floating-point comparison.
 
-```il
+```llvm
 %t28 = fcmp_ne 1, 2
 %t20 = fcmp_ne %t18, %t18
 ```
 
 **`fcmp_ord`** — Floating-point ordered comparison; returns 1 (true) if both operands are non-NaN.
 
-```il
+```llvm
 %t0 = fcmp_ord %a, %b
 ```
 
 **`fcmp_uno`** — Floating-point unordered comparison; returns 1 (true) if either operand is NaN.
 
-```il
+```llvm
 %t0 = fcmp_uno %a, %b
 ```
 
 **`icmp_eq`** — Integer comparison; suffix indicates predicate.
 
-```il
+```llvm
 %t17 = icmp_eq 1, 1
 %c1 = icmp_eq 0, 0
 ```
 
 **`icmp_ne`** — Integer comparison; suffix indicates predicate.
 
-```il
+```llvm
 %t18 = icmp_ne 1, 0
 %t6 = icmp_ne %t5, 0
 ```
 
 **`scmp_ge`** — Signed integer greater-than-or-equal comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %cond = scmp_ge %i, 3
 %cond = scmp_ge %i, 10
 ```
 
 **`scmp_gt`** — Signed integer greater-than comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %c = scmp_gt %n1, 1
 %cond = scmp_gt %yv1, 8
 ```
 
 **`scmp_le`** — Signed integer less-than-or-equal comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %c = scmp_le %i0, 10
 %oc = scmp_le %i0, %n0
 ```
 
 **`scmp_lt`** — Signed integer less-than comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %c = scmp_lt %i0, %n1
 %c = scmp_lt %i, 10
 ```
 
 **`ucmp_ge`** — Unsigned integer greater-than-or-equal comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %t26 = ucmp_ge 3, 3
 ```
 
 **`ucmp_gt`** — Unsigned integer greater-than comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %t25 = ucmp_gt 3, 2
 ```
 
 **`ucmp_le`** — Unsigned integer less-than-or-equal comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %t24 = ucmp_le 2, 2
 ```
 
 **`ucmp_lt`** — Unsigned integer less-than comparison; returns i1 (0 or 1).
 
-```il
+```llvm
 %t23 = ucmp_lt 1, 2
 ```
 
@@ -317,41 +317,41 @@ entry:
 
 **`addr_of`** — Take address of global variable or constant.
 
-```il
+```llvm
 %t41 = addr_of @.Lstr
 ```
 
 **`alloca`** — Allocate stack memory; operand is size in bytes; returns pointer.
 
-```il
+```llvm
 %a_slot = alloca 8
 %b_slot = alloca 8
 ```
 
 **`gaddr`** — Address of a mutable module-level global (modvar).
 
-```il
+```llvm
 %p = gaddr @.Counter        # pointer to module variable storage
 store i64, %p, 1            # write 1 into the counter
 ```
 
 **`gep`** — Get element pointer; compute address offset from base pointer (base + offset).
 
-```il
+```llvm
 %elem_ptr = gep %a0, %off
 %t39 = gep %t38, 1
 ```
 
 **`load`** — Load from memory.
 
-```il
+```llvm
 %a0 = load str, %a_slot
 %c1 = load str, %c_slot
 ```
 
 **`store`** — Store to memory.
 
-```il
+```llvm
 store str, %a_slot, %sA
 store str, %b_slot, %sB
 ```
@@ -360,42 +360,42 @@ store str, %b_slot, %sB
 
 **`br`** — Unconditional branch to a target label.
 
-```il
+```llvm
 br exit
 br loop_header(%i)
 ```
 
 **`call`** — Call a function; arguments must match parameter types.
 
-```il
+```llvm
 %c0 = call @Viper.String.Concat(%a0, %sSp)
 %c2 = call @Viper.String.Concat(%c1, %b0)
 ```
 
 **`call.indirect`** — Call through a function pointer; first operand is the function pointer, followed by arguments.
 
-```il
+```llvm
 %result = call.indirect %fn_ptr(%arg1, %arg2)
 %val = call.indirect %callback(%data)
 ```
 
 **`cbr`** — Conditional branch; takes a boolean condition and two target labels.
 
-```il
+```llvm
 cbr %eq, then1, else0
 cbr %c, loop_body, done
 ```
 
 **`ret`** — Return from function.
 
-```il
+```llvm
 ret 0
 ret 0
 ```
 
 **`switch.i32`** — Multi-way branch.
 
-```il
+```llvm
 switch.i32 %sel, ^default(%sel), 0 -> ^case0(%sel)
 switch.i32 %arg, ^default(%arg), 0 -> ^case0(%arg), 1 -> ^case1(%arg)
 ```
@@ -404,49 +404,49 @@ switch.i32 %arg, ^default(%arg), 0 -> ^case0(%arg), 1 -> ^case1(%arg)
 
 **`eh.entry`** — Mark entry point of an error handler block.
 
-```il
+```llvm
 eh.entry
 eh.entry
 ```
 
 **`eh.pop`** — Pop error handler from stack; restores previous error handler.
 
-```il
+```llvm
 eh.pop
 eh.pop
 ```
 
 **`eh.push`** — Push error handler onto stack; specifies label to branch to on error.
 
-```il
+```llvm
 eh.push ^bad
 eh.push ^handler
 ```
 
 **`trap`** — Unconditional trap; immediately terminates execution with error.
 
-```il
+```llvm
 trap
 trap
 ```
 
 **`trap.err`** — Create an error value from error code (i32) and message string.
 
-```il
+```llvm
 %err0 = trap.err 7, %msg0
 %err1 = trap.err 9, %msg1
 ```
 
 **`trap.from_err`** — Trap from error code; terminates with specified error type and code.
 
-```il
+```llvm
 trap.from_err i32 7
 trap.from_err i32 6
 ```
 
 **`trap.kind`** — Read current trap kind from most recent error.
 
-```il
+```llvm
 %kind = trap.kind
 %k0 = trap.kind
 ```
@@ -455,106 +455,106 @@ trap.from_err i32 6
 
 **`and`** — Bitwise AND operation on integer values.
 
-```il
+```llvm
 %t7 = and 240, 15
 %t24 = and %t21, %t23
 ```
 
 **`ashr`** — Arithmetic shift right; preserves sign bit for signed integers.
 
-```il
+```llvm
 %t12 = ashr -8, 1
 ```
 
 **`cast.fp_to_si.rte.chk`** — Cast float to signed integer with round-to-even and overflow check (traps on overflow).
 
-```il
+```llvm
 %t0 = cast.fp_to_si.rte.chk %fp
 %t35 = cast.fp_to_si.rte.chk 5.5
 ```
 
 **`cast.fp_to_ui.rte.chk`** — Cast float to unsigned integer with round-to-even and overflow check (traps on overflow).
 
-```il
+```llvm
 %t1 = cast.fp_to_ui.rte.chk %fp
 ```
 
 **`cast.si_narrow.chk`** — Narrow signed integer with overflow check (i64 to i32 or i16; traps on overflow). The result type must be declared on the register: `%name:i32 = cast.si_narrow.chk %val`.
 
-```il
+```llvm
 %t2:i32 = cast.si_narrow.chk %si
 ```
 
 **`cast.si_to_fp`** — Cast signed integer to floating-point.
 
-```il
+```llvm
 %t4 = cast.si_to_fp %si
 ```
 
 **`cast.ui_narrow.chk`** — Narrow unsigned integer with overflow check (i64 to i32 or i16; traps on overflow). The result type must be declared on the register: `%name:i32 = cast.ui_narrow.chk %val`.
 
-```il
+```llvm
 %t3:i32 = cast.ui_narrow.chk %ui
 ```
 
 **`cast.ui_to_fp`** — Cast unsigned integer to floating-point.
 
-```il
+```llvm
 %t5 = cast.ui_to_fp %ui
 ```
 
 **`const.f64`** — Load a 64-bit floating-point constant.
 
-```il
+```llvm
 %pi = const.f64 3.141592653589793
 %t0 = const.f64 0.0
 ```
 
 **`const_null`** — Create null pointer constant.
 
-```il
+```llvm
 %t43 = const_null
 %p = const_null
 ```
 
 **`const_str`** — Load string constant from global string literal.
 
-```il
+```llvm
 %sA = const_str @.L0
 %sB = const_str @.L1
 ```
 
 **`err.get_code`** — Extract error code from error value; returns `i32`.
 
-```il
+```llvm
 %code = err.get_code %err
 %c = err.get_code %e
 ```
 
 **`err.get_ip`** — Extract instruction pointer from error value; returns `i64`.
 
-```il
+```llvm
 %ip = err.get_ip %err
 %ptr = err.get_ip %e
 ```
 
 **`err.get_kind`** — Extract error kind from error value; returns `i32`.
 
-```il
+```llvm
 %k = err.get_kind %e
 %k = err.get_kind %err
 ```
 
 **`err.get_line`** — Extract line number from error value; returns `i32`.
 
-```il
+```llvm
 %ln = err.get_line %e
 %line = err.get_line %err
 ```
 
 **`extern`** — Declare external function signature (from runtime or other modules).
 
-```il
+```llvm
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 ```
@@ -566,111 +566,111 @@ Compatibility:
 
 **`fptosi`** — Convert floating-point to signed integer (no check; undefined on NaN or overflow; use `cast.fp_to_si.rte.chk` for checked conversion).
 
-```il
+```llvm
 %i = fptosi %f
 %t0 = fptosi 3.7
 ```
 
 **`func`** — Begin function definition with signature.
 
-```il
+```llvm
 func @main() -> i64 {
 func @add(i64 %a, i64 %b) -> i64 {
 ```
 
 **`global`** — Define global constant or variable.
 
-```il
+```llvm
 global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
 ```
 
 **`idx.chk`** — Check array index bounds; traps if index is out of range [lo, hi).
 
-```il
+```llvm
 %t0 = idx.chk %idx16, %lo16, %hi16
 %t1 = idx.chk %idx32, %lo32, %hi32
 ```
 
 **`il`** — Specify IL version (header directive at top of file).
 
-```il
+```llvm
 il 0.1
 il 0.1.2
 ```
 
 **`lshr`** — Logical shift right; fills with zeros (unsigned shift).
 
-```il
+```llvm
 %t11 = lshr %t10, 2
 ```
 
 **`or`** — Bitwise OR operation on integer values.
 
-```il
+```llvm
 %t8 = or %t7, 1
 %t16 = or %t13, %t15
 ```
 
 **`resume.label`** — Resume execution at specified label after error; used with ON ERROR GOTO/RESUME.
 
-```il
+```llvm
 resume.label %tok, ^after(%err)
 resume.label %tok, ^target(%err)
 ```
 
 **`resume.next`** — Resume execution at next statement after error; used with RESUME NEXT.
 
-```il
+```llvm
 resume.next %tok
 resume.next %token
 ```
 
 **`resume.same`** — Resume execution at same statement that caused error; used with RESUME 0.
 
-```il
+```llvm
 resume.same %tok
 resume.same %tok
 ```
 
 **`shl`** — Shift left; fills with zeros.
 
-```il
+```llvm
 %off = shl %i0, 3
 %t10 = shl %t9, 1
 ```
 
 **`sitofp`** — Convert signed integer to floating-point.
 
-```il
+```llvm
 %fsum = sitofp %sum2
 %fn = sitofp %n2
 ```
 
 **`target`** — Specify target architecture or platform.
 
-```il
+```llvm
 target wasm32-unknown-unknown
 target "wasm32-unknown-unknown"
 ```
 
 **`trunc1`** — Truncate integer to i1 (single bit boolean).
 
-```il
+```llvm
 %t37 = trunc1 255
 %t1 = trunc1 0
 ```
 
 **`xor`** — Bitwise exclusive-OR.
 
-```il
+```llvm
 %t9 = xor %t8, 3
 %t6 = xor %t5, 0
 ```
 
 **`zext1`** — Zero-extend i1 (single bit) to i64 (0 becomes 0, 1 becomes 1).
 
-```il
+```llvm
 %t36 = zext1 %t18
 %t7 = zext1 %t6
 ```

@@ -158,10 +158,13 @@ void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels)
 
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
 
-    // Clone the pixels and store
+    // Clone the pixels and store, releasing the old tileset first
     void *cloned = rt_pixels_clone(pixels);
     if (!cloned)
         return;
+
+    if (tilemap->tileset)
+        rt_heap_release(tilemap->tileset);
 
     tilemap->tileset = cloned;
     rt_heap_retain(cloned);
@@ -529,10 +532,12 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
             if (bx2 <= tile_x1 || bx1 >= tile_x2 || by2 <= tile_y1 || by1 >= tile_y2)
                 continue;
 
-            // One-way platform: only collide if body is above tile and moving down
+            // One-way platform: only collide if body is moving down AND came from above.
+            // by1 > tile_y1 + 2.0 means the body's top is already below the tile surface —
+            // it entered from below and should pass through. Frame-rate independent.
             if (ctype == TILE_COLLISION_ONE_WAY)
             {
-                if (bvy <= 0.0 || (by2 - bvy * 0.017) > tile_y1 + 2.0)
+                if (bvy <= 0.0 || by1 > tile_y1 + 2.0)
                     continue;
             }
 

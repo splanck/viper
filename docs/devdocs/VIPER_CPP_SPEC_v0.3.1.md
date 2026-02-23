@@ -713,7 +713,7 @@ automatic cleanup.
 
 **Primary mechanism: `cleanup.push/pop/done`**
 
-```il
+```llvm
 # Register cleanup handler for current scope
 cleanup.push ^cleanupBlock
 
@@ -742,7 +742,7 @@ cleanupBlock:
 
 **Alternative: `invoke` instruction**
 
-```il
+```llvm
 %result = invoke @mayThrow(%arg) to ^continue unwind ^cleanup
 ```
 
@@ -757,7 +757,7 @@ It is OPTIONAL; implementors MAY choose to support only `cleanup.*` instructions
 
 **Proposed extension:**
 
-```il
+```llvm
 # Throw with type ID and exception object pointer
 throw.typed %typeId, %exceptionObj
 
@@ -794,7 +794,7 @@ rethrow:
 
 **Proposed IL additions:**
 
-```il
+```llvm
 # Get runtime type ID of object (concrete type, not static type)
 %typeId = typeof.obj %obj
 
@@ -825,7 +825,7 @@ rethrow:
 
 **Proposed IL additions:**
 
-```il
+```llvm
 # Module-level initialization registration
 module.init @MyGlobal_ctor priority=100
 
@@ -851,7 +851,7 @@ func @MyGlobal_ctor() -> void {
 
 **Approach:** Convention-based, no IL change needed.
 
-```il
+```llvm
 # Convention: destructor functions named @TypeName_dtor
 func @MyClass_dtor(ptr %this) -> void nothrow {
   # cleanup members, call base destructors
