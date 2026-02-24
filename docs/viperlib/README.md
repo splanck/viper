@@ -338,7 +338,7 @@ implemented in C and exposed through the IL runtime system.
 | 2D tile maps/grids          | `Grid2D`    | Efficient (x,y) access, bounds checking     |
 | Binary data                 | `Bytes`     | Efficient byte manipulation                 |
 | Both ends access            | `Deque`     | Push/pop from front and back, indexed       |
-| FIFO (first-in-first-out)   | `Queue`     | Enqueue/dequeue interface                   |
+| FIFO (first-in-first-out)   | `Queue`     | Push/Pop interface                   |
 | Fixed-size buffer           | `Ring`      | Overwrites oldest when full                 |
 | Indexed array               | `Seq`       | Fast random access, push/pop                |
 | Key-value pairs             | `Map`       | O(1) lookup by string key                   |

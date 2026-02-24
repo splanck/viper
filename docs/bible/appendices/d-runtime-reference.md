@@ -84,34 +84,6 @@ Terminal.Say(" done!");  // Output: Loading..... done!
 
 ---
 
-#### SayError
-
-```rust
-func SayError(message: String) -> void
-```
-
-> **Note:** `SayError` is planned but not yet available in all runtime configurations. For error output today, use `Terminal.Say` with an error prefix.
-
-Prints a message to standard error (stderr) with a newline. Error messages go to a separate stream that can be redirected independently from normal output.
-
-**Parameters:**
-- `message` - The error message to display
-
-**Example:**
-```rust
-bind Viper.IO;
-bind Viper.Terminal;
-
-if IO.File.Exists(filename) == false {
-    Terminal.Say("Error: File not found: " + filename);
-    Viper.Environment.EndProgram(1);
-}
-```
-
-**When to use:** Use for error messages, warnings, and diagnostic output.
-
----
-
 ### Input Functions
 
 #### Ask
@@ -1555,7 +1527,7 @@ map.Get(key)            // -> value? (nil if not found)
 map.Has(key)            // -> Boolean
 map.Delete(key)         // Remove a key
 map.Clear()             // Remove all entries
-map.size                // -> Integer (number of entries)
+map.Len                 // -> Integer (number of entries)
 map.Keys()              // -> [KeyType]
 map.Values()            // -> [ValueType]
 ```
@@ -1567,11 +1539,12 @@ func countWords(text: String) -> Map[String, Integer] {
     var counts = new Map[String, Integer]();
 
     for word in text.Split(" ") {
-        var lower = word.ToLower();
-        if counts.Has(lower) {
-            counts.Set(lower, counts.Get(lower) + 1);
+        // Note: String.ToLower does not exist in the runtime.
+        // Use the word directly or implement case normalization manually.
+        if counts.Has(word) {
+            counts.Set(word, counts.Get(word) + 1);
         } else {
-            counts.Set(lower, 1);
+            counts.Set(word, 1);
         }
     }
 
@@ -1605,12 +1578,12 @@ set.Add(item)           // Add an item
 set.Contains(item)      // -> Boolean
 set.remove(item)        // Remove an item
 set.Clear()             // Remove all items
-set.size                // -> Integer
+set.Len                 // -> Integer
 
 // Set operations
-set.union(other)        // -> Set (items in either)
-set.intersection(other) // -> Set (items in both)
-set.difference(other)   // -> Set (items in this but not other)
+set.Merge(other)        // -> Set (items in either set)
+set.Common(other)       // -> Set (items in both sets)
+set.Diff(other)         // -> Set (items in this set but not other)
 ```
 
 **Example:**
@@ -1622,15 +1595,15 @@ visitors.Add("alice");
 visitors.Add("bob");
 visitors.Add("alice");  // Duplicate ignored
 
-Terminal.Say("Unique visitors: " + visitors.size);  // 2
+Terminal.Say("Unique visitors: " + visitors.Len);  // 2
 
 // Set operations
 var admins = new Set[String]();
 admins.Add("alice");
 admins.Add("charlie");
 
-var adminVisitors = visitors.intersection(admins);  // {"alice"}
-var nonAdminVisitors = visitors.difference(admins); // {"bob"}
+var adminVisitors = visitors.Common(admins);  // {"alice"}
+var nonAdminVisitors = visitors.Diff(admins); // {"bob"}
 ```
 
 **When to use:** Use Set when you only care about unique membership, not values or counts.
@@ -1648,11 +1621,11 @@ var queue = new Queue[String]();
 #### Methods
 
 ```rust
-queue.enqueue(item)     // Add to back
-queue.dequeue()         // -> item? (remove from front, nil if empty)
-queue.peek()            // -> item? (see front without removing)
+queue.Push(item)        // Add to back
+queue.Pop()             // -> item? (remove from front, nil if empty)
+queue.Peek()            // -> item? (see front without removing)
 queue.IsEmpty()         // -> Boolean
-queue.size              // -> Integer
+queue.Len               // -> Integer
 ```
 
 **Example:**
@@ -1660,12 +1633,12 @@ queue.size              // -> Integer
 // Task queue
 var tasks = new Queue[String]();
 
-tasks.enqueue("Send email");
-tasks.enqueue("Update database");
-tasks.enqueue("Generate report");
+tasks.Push("Send email");
+tasks.Push("Update database");
+tasks.Push("Generate report");
 
 while !tasks.IsEmpty() {
-    var task = tasks.dequeue();
+    var task = tasks.Pop();
     Terminal.Say("Processing: " + task);
     // Process task...
 }
@@ -1688,9 +1661,9 @@ var stack = new Stack[String]();
 ```rust
 stack.Push(item)        // Add to top
 stack.Pop()             // -> item? (remove from top, nil if empty)
-stack.peek()            // -> item? (see top without removing)
+stack.Peek()            // -> item? (see top without removing)
 stack.IsEmpty()         // -> Boolean
-stack.size              // -> Integer
+stack.Len               // -> Integer
 ```
 
 **Example:**
@@ -1721,44 +1694,37 @@ undo();  // Undoing: Type ' World'
 
 ---
 
-### PriorityQueue
+### Heap
 
-A queue where items are dequeued by priority, not arrival order.
+A priority-ordered collection where items are removed by priority, not arrival order. Namespace: `Viper.Collections.Heap`.
 
 ```rust
-var pq = new PriorityQueue[Task](compareFn);
+var heap = new Heap[String]();
 ```
 
 #### Methods
 
 ```rust
-pq.enqueue(item)        // Add item (sorted by priority)
-pq.dequeue()            // -> item? (highest priority)
-pq.peek()               // -> item? (see highest priority)
-pq.IsEmpty()            // -> Boolean
-pq.size                 // -> Integer
+heap.Push(priority, item)  // Add item with an Integer priority (lower number = higher priority)
+heap.Pop()                 // -> item? (remove highest-priority item, nil if empty)
+heap.Peek()                // -> item? (see highest-priority item without removing)
+heap.IsEmpty()             // -> Boolean
+heap.Len                   // -> Integer
 ```
+
+**Note:** `Push` requires a priority integer as the **first** parameter, followed by the item.
 
 **Example:**
 ```rust
-struct Task {
-    name: String,
-    priority: Integer  // Lower number = higher priority
-}
+var taskHeap = new Heap[String]();
 
-func compareTasks(a: Task, b: Task) -> Integer {
-    return a.priority - b.priority;
-}
+taskHeap.Push(10, "Low priority task");
+taskHeap.Push(1, "Critical bug fix");    // priority=1, item="Critical bug fix"
+taskHeap.Push(5, "Medium task");
 
-var taskQueue = new PriorityQueue[Task](compareTasks);
-
-taskQueue.enqueue(Task { name: "Low priority task", priority: 10 });
-taskQueue.enqueue(Task { name: "Critical bug fix", priority: 1 });
-taskQueue.enqueue(Task { name: "Medium task", priority: 5 });
-
-while !taskQueue.IsEmpty() {
-    var task = taskQueue.dequeue();
-    Terminal.Say("Processing: " + task.name);
+while !taskHeap.IsEmpty() {
+    var task = taskHeap.Pop();
+    Terminal.Say("Processing: " + task);
 }
 // Output:
 // Processing: Critical bug fix
@@ -1766,7 +1732,7 @@ while !taskQueue.IsEmpty() {
 // Processing: Low priority task
 ```
 
-**When to use:** Use PriorityQueue for task scheduling, Dijkstra's algorithm, event simulation, or any situation where priority matters.
+**When to use:** Use Heap for task scheduling, Dijkstra's algorithm, event simulation, or any situation where priority matters.
 
 ---
 
@@ -3505,8 +3471,6 @@ Bind with `bind Viper.String;` and call as `String.FunctionName(str, ...)`.
 
 ```rust
 str.Length                        // Property -> Integer (built-in, no bind needed)
-String.ToLower(str)               // -> String
-String.ToUpper(str)               // -> String
 String.Trim(str)                  // -> String
 String.TrimStart(str)             // -> String
 String.TrimEnd(str)               // -> String
@@ -3526,7 +3490,9 @@ String.PadRight(str, width, ch)   // -> String
 String.Length(str)                // -> Integer (same as .Length)
 ```
 
-For numeric conversion: `bind Viper.Convert as Convert;` then `Convert.ToInt64(str)` / `ToDouble(str)`.
+> **Not available:** `String.ToLower`, `String.ToUpper`, and `String.Contains` do **not** exist in the runtime. Use manual character iteration or third-party libraries for case conversion and substring containment checks. The methods that DO exist on strings are: `Split`, `StartsWith`, `EndsWith`, and the `.Length` property.
+
+For numeric conversion: `bind Viper.Core.Convert as Convert;` then `Convert.ToInt64(str)` / `ToDouble(str)`.
 
 ### Array Properties (Built-in)
 

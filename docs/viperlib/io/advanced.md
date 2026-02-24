@@ -500,6 +500,19 @@ watcher.Stop()
 ---
 
 
+## Viper.IO.JsonStream
+
+Streaming JSON processor for incremental JSON parsing and generation.
+
+**Type:** Instance class
+
+**Constructor:** `Viper.IO.JsonStream.New()`
+
+**Note:** The full method API for `JsonStream` depends on the runtime implementation. Refer to the runtime source (`rt_json_stream.c`) for the complete interface. This class is documented here for discoverability.
+
+---
+
+
 ## See Also
 
 - [Files & Directories](files.md)

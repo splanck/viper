@@ -105,6 +105,31 @@ Main application class that manages the window and widget tree.
 | `SetFont(font, size)`   | `Void(Font, Double)` | Set default font for all widgets         |
 | `WasFileDropped()`      | `Integer()`          | 1 if a file was dropped on the window    |
 
+### Window Management
+
+| Method                    | Signature         | Description                                          |
+|---------------------------|-------------------|------------------------------------------------------|
+| `GetWidth()`              | `Integer()`       | Get window width in pixels                           |
+| `GetHeight()`             | `Integer()`       | Get window height in pixels                          |
+| `Minimize()`              | `Void()`          | Minimize the window                                  |
+| `Maximize()`              | `Void()`          | Maximize the window                                  |
+| `Restore()`               | `Void()`          | Restore from minimized or maximized state            |
+| `IsMaximized()`           | `Boolean()`       | Check if the window is maximized                     |
+| `IsMinimized()`           | `Boolean()`       | Check if the window is minimized                     |
+| `IsFullscreen()`          | `Boolean()`       | Check if the window is in fullscreen mode            |
+| `SetFullscreen(enabled)`  | `Void(Integer)`   | Enter or exit fullscreen mode                        |
+| `Focus()`                 | `Void()`          | Bring the window to the front and focus it           |
+| `IsFocused()`             | `Boolean()`       | Check if the window has focus                        |
+| `PreventClose()`          | `Void()`          | Prevent the window close button from closing the app |
+| `GetFps()`                | `Number()`        | Get current frames per second                        |
+| `SetFps(fps)`             | `Void(Number)`    | Set target frames per second                         |
+| `GetScale()`              | `Number()`        | Get display scale factor (e.g. 2.0 for HiDPI)        |
+| `GetMonitorWidth()`       | `Integer()`       | Get monitor width in pixels                          |
+| `GetMonitorHeight()`      | `Integer()`       | Get monitor height in pixels                         |
+| `SetWindowSize(w, h)`     | `Void(Integer, Integer)` | Resize the window                           |
+| `GetFontSize()`           | `Integer()`       | Get current UI font size                             |
+| `SetFontSize(size)`       | `Void(Integer)`   | Set UI font size                                     |
+
 ### Example
 
 ```basic
@@ -206,6 +231,20 @@ All widgets share these common functions:
 | `SetVisible(visible)`         | `Void(Integer)`          | Set visibility (1=visible, 0=hidden)     |
 | `WasClicked()`                | `Integer()`              | 1 if widget was clicked this frame       |
 | `WasDropped()`                | `Integer()`              | 1 if something was dropped this frame    |
+
+### Drag and Drop
+
+| Method                        | Signature              | Description                                              |
+|-------------------------------|------------------------|----------------------------------------------------------|
+| `SetDraggable(enabled)`       | `Void(Integer)`        | Enable or disable dragging this widget                   |
+| `SetDragData(type, data)`     | `Void(String, String)` | Set the type and data payload for drag operations        |
+| `IsBeingDragged()`            | `Integer()`            | 1 if this widget is currently being dragged              |
+| `SetDropTarget(enabled)`      | `Void(Integer)`        | Mark this widget as a drop target                        |
+| `SetAcceptedDropTypes(types)` | `Void(String)`         | Specify which drag data types are accepted               |
+| `IsDragOver()`                | `Integer()`            | 1 if a dragged item is hovering over this widget         |
+| `WasDropped()`                | `Integer()`            | 1 if a drop occurred on this widget this frame           |
+| `GetDropType()`               | `String()`             | Get the type of the dropped data                         |
+| `GetDropData()`               | `String()`             | Get the data payload that was dropped                    |
 
 ### Example
 

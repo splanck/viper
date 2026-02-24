@@ -236,7 +236,7 @@ DIM sum AS INTEGER = numbers.Fold(0, FUNCTION(acc, n) RETURN acc + n)
 ### Use Cases
 
 - **Stack:** Use `Push()` and `Pop()` for LIFO operations
-- **Queue:** Use `Push()` to add and `Remove(0)` to dequeue (FIFO)
+- **Queue:** Use `Push()` to add and `Pop()` to remove from the front (FIFO)
 - **Dynamic Array:** Use `Get()`/`Set()` for random access
 - **Slicing:** Use `Slice()` to extract sub-sequences
 - **Filtering:** Use `Keep()` and `Reject()` to filter by condition

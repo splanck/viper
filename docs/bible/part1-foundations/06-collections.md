@@ -444,7 +444,7 @@ var userInputs: [Integer] = [];
 Say("Enter numbers (0 to stop):");
 
 while true {
-    var num = Viper.Convert.ToInt64(ReadLine());
+    var num = Viper.Core.Convert.ToInt64(ReadLine());
     if num == 0 {
         break;
     }
@@ -837,7 +837,7 @@ for i in 0..arr.Length {   // Correct! 0.. excludes the endpoint
 bind Viper.Terminal;
 
 var arr = [10, 20, 30];
-var userInput = Viper.Convert.ToInt64(ReadLine());
+var userInput = Viper.Core.Convert.ToInt64(ReadLine());
 var value = arr[userInput];  // Dangerous! User might enter 999
 ```
 
@@ -1179,7 +1179,7 @@ func start() {
             }
         } else if input == "done" {
             Print("Task number to mark done: ");
-            var num = Viper.Convert.ToInt64(ReadLine());
+            var num = Viper.Core.Convert.ToInt64(ReadLine());
             if num >= 1 && num <= tasks.Length {
                 completed[num - 1] = true;  // Convert to zero-based index
                 Say("Marked done: " + tasks[num - 1]);
@@ -1188,7 +1188,7 @@ func start() {
             }
         } else if input == "remove" {
             Print("Task number to remove: ");
-            var num = Viper.Convert.ToInt64(ReadLine());
+            var num = Viper.Core.Convert.ToInt64(ReadLine());
             if num >= 1 && num <= tasks.Length {
                 // Rebuild arrays without this task
                 var newTasks: [String] = [];
@@ -1283,14 +1283,14 @@ func start() {
             Print("Item name: ");
             var item = ReadLine();
             Print("Quantity: ");
-            var qty = Viper.Convert.ToInt64(ReadLine());
+            var qty = Viper.Core.Convert.ToInt64(ReadLine());
 
             pickupItem(items, quantities, item, qty, maxSlots);
         } else if cmd == "drop" {
             Print("Item name: ");
             var item = ReadLine();
             Print("Quantity: ");
-            var qty = Viper.Convert.ToInt64(ReadLine());
+            var qty = Viper.Core.Convert.ToInt64(ReadLine());
 
             dropItem(items, quantities, item, qty);
         } else if cmd == "use" {
@@ -1416,7 +1416,7 @@ func start() {
     Print("Enter your name: ");
     var playerName = ReadLine();
     Print("Enter your score: ");
-    var playerScore = Viper.Convert.ToInt64(ReadLine());
+    var playerScore = Viper.Core.Convert.ToInt64(ReadLine());
 
     // Find where to insert
     var insertPos = -1;
@@ -1619,7 +1619,7 @@ bind Viper.Terminal;
 
 var items = ["Sword", "Shield", "Potion"];
 Print("Choose item (1-3): ");
-var choice = Viper.Convert.ToInt64(ReadLine());
+var choice = Viper.Core.Convert.ToInt64(ReadLine());
 
 // WRONG: User might enter 0, 99, or -5
 var item = items[choice - 1];
@@ -1653,7 +1653,7 @@ func start() {
     // Collect grades with validation
     while true {
         Print("Grade: ");
-        var input = Viper.Convert.ToInt64(ReadLine());
+        var input = Viper.Core.Convert.ToInt64(ReadLine());
 
         if input == -1 {
             break;

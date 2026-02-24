@@ -702,7 +702,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Type**: A classification defining what values a variable can hold and what operations are valid. Every value and expression has a type. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Data type*, *Static typing*, *Type inference*.
 
-**Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Convert.ToInt64("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
+**Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Core.Convert.ToInt64("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
 
 **Type inference**: The compiler automatically determining types from context, so you don't have to write them explicitly. `var x = 5` infers that x is an integer. See [Appendix A](a-zia-reference.md). See also *Implicit*, *Static typing*.
 

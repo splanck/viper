@@ -11,7 +11,7 @@
 - [Viper.Game.Tilemap](#vipergametilemap)
 - [Viper.Game.Physics2D](#vipergamephysics2d)
 - [Viper.Game.Quadtree](#vipergamequadtree)
-- [Viper.Game.Particle](#vipergameparticle)
+- [Viper.Game.ParticleEmitter](#vipergameparticleemitter)
 - [Viper.Game.SpriteBatch](#vipergamespritebatch)
 - [Viper.Game.SpriteAnim](#vipergamespriteanim)
 - [Viper.Game.StateMachine](#vipergamestatemachine)
@@ -140,7 +140,7 @@ A 2D rigid-body physics engine. Bodies can be static (immovable) or dynamic. Col
 detection uses an axis-aligned broad phase followed by AABB narrow-phase resolution.
 
 **Type:** Instance (obj — world handle)
-**Constructor:** `Physics2D.NewWorld(gravityX, gravityY)`
+**Constructor:** `Physics2D.World.New(gravityX, gravityY)`
 
 ### World Methods
 
@@ -240,13 +240,13 @@ Inserting the same ID twice returns 0 and leaves the tree unchanged. Use distinc
 
 ---
 
-## Viper.Game.Particle
+## Viper.Game.ParticleEmitter
 
 A particle emitter that manages a pool of particles with position, velocity, lifetime,
 and color.
 
 **Type:** Instance (obj)
-**Constructor:** `Particle.NewEmitter(maxParticles)`
+**Constructor:** `ParticleEmitter.NewEmitter(maxParticles)`
 
 ### Methods
 
@@ -360,13 +360,13 @@ between waypoints with a fixed-point coordinate scale of **1000 = 1 world unit**
 **Constructor:** `PathFollower.New()`
 
 > **Coordinate scale:** PathFollower uses fixed-point coordinates where 1000 = 1 unit.
-> To place a waypoint at world position (200, 150), use `AddWaypoint(200000, 150000)`.
+> To place a waypoint at world position (200, 150), use `AddPoint(200000, 150000)`.
 
 ### Methods
 
 | Method | Signature | Description |
 |---|---|---|
-| `AddWaypoint(x, y)` | `none(Integer, Integer)` | Append a waypoint (×1000 scale) |
+| `AddPoint(x, y)` | `none(Integer, Integer)` | Append a waypoint (×1000 scale) |
 | `SetSpeed(speed)` | `none(Integer)` | Movement speed in units/second (×1000 scale) |
 | `Update(dt)` | `none(Integer)` | Advance along the path |
 | `GetX()` | `Integer()` | Current X position (×1000 scale) |

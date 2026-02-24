@@ -308,6 +308,7 @@ FIFO-fair permit gate (semaphore concept).
 | `Enter()`          | `Void()`             | Acquire one permit (blocks, FIFO)                    |
 | `Leave()`          | `Void()`             | Release one permit; wakes one waiter if present      |
 | `Leave(count)`     | `Void(Integer)`      | Release `count` permits; wakes up to `count` waiters |
+| `LeaveMany(count)` | `Void(Integer)`      | Signal `count` waiting goroutines to proceed (bulk signal); equivalent to calling Leave() count times but more efficient |
 | `TryEnter()`       | `Boolean()`          | Try to acquire immediately                           |
 | `TryEnterFor(ms)`  | `Boolean(Integer)`   | Try to acquire with timeout in milliseconds          |
 

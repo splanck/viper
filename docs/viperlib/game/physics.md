@@ -347,6 +347,7 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 - `Step(dt)` performs integration and AABB collision detection/resolution
 - Collision response uses impulse-based resolution with restitution and friction
 - Fixed timestep recommended (e.g., `Step(1.0 / 60.0)` for 60 FPS)
+- **Limit:** A world supports at most **256 bodies**. Bodies added beyond this limit are silently ignored and the returned body handle will be 0 (invalid). Check the returned handle before using it.
 
 ### Zia Example
 
@@ -460,6 +461,10 @@ Spatial partitioning data structure for efficient collision detection and spatia
 | `QueryRect(x, y, w, h)`   | `Integer(4×Int)`   | Find items in rectangle; returns count           |
 | `Remove(id)`               | `Boolean(Integer)` | Remove item by ID                                |
 | `Update(id, x, y, w, h)`  | `Boolean(5×Int)`   | Update item position/size                        |
+
+### Notes
+
+- Query() returns at most 256 results. When more items match, results are silently truncated. Design queries to avoid exceeding this limit (use smaller query regions if needed).
 
 ### Zia Example
 

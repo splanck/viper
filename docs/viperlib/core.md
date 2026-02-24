@@ -144,17 +144,17 @@ Assertion and trap utilities for program correctness checks. All methods trap (a
 | Method                      | Signature                          | Description                                               |
 |-----------------------------|------------------------------------|-----------------------------------------------------------|
 | `Assert(cond, msg)`         | `Void(Boolean, String)`            | Trap with `msg` if `cond` is false                        |
-| `AssertEq(a, b, msg)`       | `Void(Object, Object, String)`     | Trap if `a` and `b` are not equal (generic)               |
-| `AssertNeq(a, b, msg)`      | `Void(Object, Object, String)`     | Trap if `a` and `b` are equal (generic)                   |
+| `AssertEq(a, b, msg)`       | `Void(Integer, Integer, String)`   | Trap if `a` and `b` are not equal                         |
+| `AssertNeq(a, b, msg)`      | `Void(Integer, Integer, String)`   | Trap if `a` and `b` are equal                             |
 | `AssertEqNum(a, b, msg)`    | `Void(Double, Double, String)`     | Trap if two numbers are not equal                         |
 | `AssertEqStr(a, b, msg)`    | `Void(String, String, String)`     | Trap if two strings are not equal                         |
 | `AssertNull(obj, msg)`      | `Void(Object, String)`             | Trap if `obj` is not null                                 |
 | `AssertNotNull(obj, msg)`   | `Void(Object, String)`             | Trap if `obj` is null                                     |
 | `AssertFail(msg)`           | `Void(String)`                     | Unconditional trap with `msg`                             |
-| `AssertGt(a, b, msg)`       | `Void(Double, Double, String)`     | Trap if `a` is not greater than `b`                       |
-| `AssertLt(a, b, msg)`       | `Void(Double, Double, String)`     | Trap if `a` is not less than `b`                          |
-| `AssertGte(a, b, msg)`      | `Void(Double, Double, String)`     | Trap if `a` is not greater than or equal to `b`           |
-| `AssertLte(a, b, msg)`      | `Void(Double, Double, String)`     | Trap if `a` is not less than or equal to `b`              |
+| `AssertGt(a, b, msg)`       | `Void(Integer, Integer, String)`   | Trap if `a` is not greater than `b`                       |
+| `AssertLt(a, b, msg)`       | `Void(Integer, Integer, String)`   | Trap if `a` is not less than `b`                          |
+| `AssertGte(a, b, msg)`      | `Void(Integer, Integer, String)`   | Trap if `a` is not greater than or equal to `b`           |
+| `AssertLte(a, b, msg)`      | `Void(Integer, Integer, String)`   | Trap if `a` is not less than or equal to `b`              |
 | `Trap(msg)`                 | `Void(String)`                     | Trigger a runtime trap with the given message             |
 
 ### Notes
@@ -184,7 +184,7 @@ func start() {
     Diag.AssertNotNull(obj, "box must not be null");
 
     Diag.AssertEqStr("hello", "hello", "strings must match");
-    Diag.AssertGt(5.0, 3.0, "5 must be > 3");
+    Diag.AssertGt(5, 3, "5 must be > 3");
 }
 ```
 
@@ -200,8 +200,8 @@ DIM obj AS OBJECT = GetSomething()
 Viper.Core.Diagnostics.AssertNotNull(obj, "GetSomething returned null")
 
 ' Ordering assertions
-Viper.Core.Diagnostics.AssertGte(score, 0.0, "score out of range")
-Viper.Core.Diagnostics.AssertLte(score, 100.0, "score out of range")
+Viper.Core.Diagnostics.AssertGte(score, 0, "score out of range")
+Viper.Core.Diagnostics.AssertLte(score, 100, "score out of range")
 
 ' Unconditional trap
 IF unrecoverableError THEN
@@ -230,12 +230,28 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
 | `IntRadix(s, radix, default)` | `Integer(String, Integer, Integer)` | Parse `s` in the given radix (2–36); return `default` on failure |
+| `Double(text)`              | `Number?(String)`                   | Parse string to floating-point; returns null if invalid            |
+| `Int64(text)`               | `Integer?(String)`                  | Parse string to integer; returns null if invalid                   |
 
 ### Notes
 
 - `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are most useful from IL or advanced Zia/BASIC code. For typical use, prefer `IntOr`/`NumOr`/`BoolOr`.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary).
 - Leading/trailing whitespace is rejected; the input must be a clean numeric string.
+- `Parse.Double` and `Parse.Int64` return optional (nullable) values, unlike `Convert.ToDouble`/`Convert.ToInt64` which trap on failure. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.
+
+### Parse.Double and Parse.Int64 Example
+
+```zia
+var n = Parse.Double("3.14")    // returns 3.14
+var bad = Parse.Double("abc")   // returns null
+if bad == null then
+    Say("Not a number")
+end if
+
+var i = Parse.Int64("42")       // returns 42
+var badInt = Parse.Int64("xyz") // returns null
+```
 
 ### Zia Example
 
@@ -412,8 +428,11 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 |------------------------------------------------|----------------------------|------------------------------------------|
 | `Viper.Convert.ToString_Int(value)`            | `String(Integer)`          | Convert integer to string                |
 | `Viper.Convert.ToString_Double(value)`         | `String(Double)`           | Convert double to string                 |
-| `Viper.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer                  |
-| `Viper.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double                   |
+| `Viper.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer (traps on failure) |
+| `Viper.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double (traps on failure)  |
+| `Viper.Convert.NumToInt(value)`                | `Integer(Number)`          | Convert floating-point Number to Integer (truncates toward zero) |
+
+**Note:** `Convert.NumToInt(3.7)` returns `3`. This is distinct from `Convert.ToInt64(str)` which parses from a string.
 
 **Note:** `Flip()` performs byte-level reversal. It works correctly for ASCII strings but may produce invalid results
 for multi-byte UTF-8 characters.

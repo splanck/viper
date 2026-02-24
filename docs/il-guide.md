@@ -50,7 +50,7 @@ decouples frontends from backends:
 **Why a separate IL?**
 
 - **Decoupling**: Frontends evolve independently from the VM
-- **Stability**: IL version headers (`il 0.1`) ensure compatibility
+- **Stability**: IL version headers (`il 0.2.0`) ensure compatibility
 - **Inspectability**: Textual format is easy to read and debug
 - **Optimization**: Centralized place for analysis and transforms
 - **Multi-language**: Multiple frontends share one runtime
@@ -59,7 +59,7 @@ decouples frontends from backends:
 
 An IL module is plain text. Its top‑level layout is:
 
-1. **Version line** – `il 0.1` (or `il 0.1.2` for experimental features) pins the expected IL grammar.
+1. **Version line** – `il 0.2.0` pins the expected IL grammar version.
 2. **Extern declarations** – `extern @name(signature) -> ret` describes functions provided by the runtime or other
    modules.
 3. **Global constants** – `global const str @.msg = "hi"` defines immutable data.
@@ -81,7 +81,7 @@ Create a file `first.il` with the contents:
 
 ```llvm
 # Print the number 4 and exit.
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -105,7 +105,7 @@ Expected output:
 **Line by line**
 
 - `# Print the number 4 and exit.` – comments start with `#` and are ignored by the VM.
-- `il 0.1` – required version header (use `il 0.1.2` for experimental features).
+- `il 0.2.0` – required version header that pins the expected IL grammar version.
 - `extern @Viper.Terminal.PrintI64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
 - `func @main() -> i64 {` – define the `@main` function that returns an `i64` exit code.
 - `entry:` – the initial basic block label.
@@ -123,7 +123,7 @@ Compatibility:
 **What just happened?** `Viper.Terminal.PrintI64` is supplied by the runtime and prints its argument. Every function ends
 with a terminator such as `ret` giving the program's exit code.
 
-**Gotcha:** Every module must start with a version line (e.g., `il 0.1`).
+**Gotcha:** Every module must start with a version line (e.g., `il 0.2.0`).
 
 ### Values and types
 
@@ -131,7 +131,7 @@ IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...).
 `i16`, `i32`, `i64`, `f64`, `ptr`, and `str`, plus specialized types `error` and `resumetok` for exception handling.
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -160,7 +160,7 @@ entry:
 Functions declare typed parameters. Values are passed and returned explicitly.
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @add(i64 %a, i64 %b) -> i64 {
 entry:
@@ -192,7 +192,7 @@ entry:
 ### Arithmetic and comparisons
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -219,7 +219,7 @@ entry:
 Blocks end with a terminator. `cbr` chooses a target based on an `i1` value.
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -259,7 +259,7 @@ done:
 Strings live in globals and use `Viper.Terminal.PrintStr` for output.
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "hello"  # immutable global
 func @main() -> i64 {
@@ -287,7 +287,7 @@ entry:
 Returning a non-zero `i64` sets the process exit code. `trap` reports an error and aborts.
 
 ```llvm
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
   trap                    # aborts execution
@@ -318,7 +318,7 @@ A tiny BASIC program:
 Lowered IL:
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -356,7 +356,7 @@ entry:
 
 ### Common mistakes
 
-- Forgetting the version line (`il 0.1`; use `il 0.1.2` for experimental features).
+- Forgetting the version line (`il 0.2.0`).
 - Missing terminators at the end of blocks.
 - Mismatched types in instructions or extern calls.
 
@@ -398,14 +398,14 @@ patterns described in [BASIC lowering](#lowering).
 An IL module is a set of declarations and function definitions. It starts with a version line:
 
 ```text
-il 0.1
+il 0.2.0
 ```
 
 An optional `target "..."` metadata line may follow. The VM ignores it, but native back ends can use it as advisory
 information.
 
 ```text
-il 0.1
+il 0.2.0
 target "x86_64-sysv"
 ```
 
@@ -423,7 +423,7 @@ entry:
 ##### Minimal Function
 
 ```text
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
   ret 0
@@ -435,7 +435,7 @@ entry:
 External functions are declared with `extern` and may be called like normal functions.
 
 ```text
-il 0.1
+il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -449,7 +449,7 @@ entry:
 Module-level constants bind a symbol to immutable data such as strings.
 
 ```text
-il 0.1
+il 0.2.0
 global const str @.msg = "hi"
 func @main() -> i64 {
 entry:
@@ -486,7 +486,7 @@ parameters; each predecessor must supply matching arguments. Omitting the argume
 values (for example, `br next` is the same as `br next()`).
 
 ```text
-il 0.1
+il 0.2.0
 func @loop(i64 %n) -> i64 {
 entry:
   br body(%n, 0)
@@ -570,7 +570,7 @@ Neither checks for division by zero; use `sdiv.chk0` or `srem.chk0` for checked 
 Front ends such as BASIC map `\` to `sdiv.chk0` and `MOD` to `srem.chk0`.
 
 ```text
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
   %t0 = add 2, 3
@@ -1267,7 +1267,7 @@ block parameters and passing values along edges.
 Input IL:
 
 ```llvm
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -1288,7 +1288,7 @@ Join:
 After `mem2reg`:
 
 ```llvm
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
   %t1 = icmp_eq 0, 0
@@ -1310,7 +1310,7 @@ the value from each predecessor via branch arguments.
 Input IL:
 
 ```llvm
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -1331,7 +1331,7 @@ Exit:
 After `mem2reg`:
 
 ```llvm
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
   br L1(0)
@@ -1358,7 +1358,7 @@ removed loads/stores when the pass runs.
 ### BASIC to IL Examples
 
 The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 lines each) with their fully lowered IL
-modules. The examples below update that material to IL v0.1.2 while preserving the original teaching intent.
+modules. The examples below update that material to IL v0.2.0 while preserving the original teaching intent.
 
 **Legacy Notation:** The examples in this section use legacy `@rt_*` function names for compatibility. These work when
 the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). New code should use the canonical
@@ -1388,7 +1388,7 @@ the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). Ne
 **IL**
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 global const str @.L0 = "HELLO"
@@ -1444,7 +1444,7 @@ done:
 **IL**
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 global const str @.L0 = "SUM 1..10"
@@ -1502,7 +1502,7 @@ done:
 **IL**
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 global const str @.L0 = "TABLE 5x5"
@@ -1568,7 +1568,7 @@ outer_done:
 **IL**
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_input_line() -> str
@@ -1631,7 +1631,7 @@ done:
 **IL**
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_str_len(str) -> i64
@@ -1704,7 +1704,7 @@ exit:
 **IL**
 
 ```llvm
-il 0.1
+il 0.2.0
 extern @rt_alloc(i64) -> ptr
 extern @rt_print_f64(f64) -> void
 extern @rt_print_str(str) -> void

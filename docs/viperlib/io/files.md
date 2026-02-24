@@ -22,11 +22,11 @@ File system operations.
 | `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst                                                             |
 | `Move(src, dst)`              | `Void(String, String)` | Moves/renames a file from src to dst                                                      |
 | `Size(path)`                  | `Integer(String)`      | Returns file size in bytes, or -1 if not found                                            |
-| `ReadBytes(path)`             | `Bytes(String)`        | Reads the entire file as binary data                                                      |
-| `WriteBytes(path, bytes)`     | `Void(String, Bytes)`  | Writes binary data to a file                                                              |
+| `ReadBytes(path)`             | `ptr(String)`          | Reads the entire file as a raw runtime buffer                                             |
+| `WriteBytes(path, data)`      | `Void(String, ptr)`    | Writes a raw runtime buffer to a file                                                     |
 | `ReadAllBytes(path)`          | `Bytes(String)`        | Reads the entire file as binary data (traps on I/O errors)                                |
 | `WriteAllBytes(path, bytes)`  | `Void(String, Bytes)`  | Writes binary data to a file (overwrites; traps on I/O errors)                            |
-| `ReadLines(path)`             | `Seq(String)`          | Reads the file as a sequence of lines                                                     |
+| `ReadLines(path)`             | `ptr(String)`          | Reads the file as a raw runtime buffer of lines                                           |
 | `WriteLines(path, lines)`     | `Void(String, Seq)`    | Writes a sequence of strings as lines                                                     |
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file                                                                    |
 | `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
@@ -40,6 +40,7 @@ File system operations.
 - `ReadAllLines` splits on `\n` and `\r\n` and does not include line endings in returned strings; a trailing line ending
   does not add an extra empty final line.
 - `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.
+- `ReadBytes` and `ReadLines` return raw `ptr` values representing internal runtime buffer objects. They are intended for use with other low-level runtime functions and are not strongly-typed Zia objects. Similarly, `WriteBytes` accepts a raw `ptr` for the data parameter. For strongly-typed binary and line I/O, prefer `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines`.
 
 ### Zia Example
 

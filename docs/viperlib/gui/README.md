@@ -10,7 +10,7 @@
 | File | Contents |
 |------|----------|
 | [Core & Application](core.md) | App, Font, and common widget functions |
-| [Layout Widgets](layout.md) | VBox, HBox, Grid, and other layout containers |
+| [Layout Widgets](layout.md) | VBox, HBox, and other layout containers |
 | [Basic Widgets](widgets.md) | Label, Button, TextInput, Checkbox, Slider, RadioButton, and more |
 | [Containers & Advanced](containers.md) | ScrollView, SplitPane, TabBar, TreeView, CodeEditor, Minimap |
 | [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes |

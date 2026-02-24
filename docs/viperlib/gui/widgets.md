@@ -41,7 +41,6 @@ Clickable button widget.
 
 | Method                    | Signature                  | Description                              |
 |---------------------------|----------------------------|------------------------------------------|
-| `GetText()`               | `String()`                 | Get current button label text            |
 | `SetText(text)`           | `Void(String)`             | Set button text                          |
 | `SetFont(font, size)`     | `Void(Font, Double)`       | Set font and size                        |
 | `SetStyle(style)`         | `Void(Integer)`            | Set style (0=default, 1=primary, 2=secondary, 3=danger, 4=text) |
@@ -83,7 +82,6 @@ Single-line text input field.
 | `SetText(text)`              | `Void(String)`     | Set input text           |
 | `SetPlaceholder(text)`       | `Void(String)`     | Set placeholder text     |
 | `SetFont(font, size)`        | `Void(Font, Double)`| Set font and size       |
-| `Tick(dt)`                   | `Void(Double)`     | Advance cursor blink timer (call each frame with delta-time in seconds) |
 
 ```basic
 DIM nameInput AS Viper.GUI.TextInput
@@ -117,7 +115,6 @@ Toggle checkbox with label.
 |-------------------------------|-----------------|--------------------------------------------------|
 | `IsChecked()`                 | `Boolean()`     | Get checked state                                |
 | `SetChecked(checked)`         | `Void(Integer)` | Set checked state                                |
-| `SetIndeterminate(state)`     | `Void(Boolean)` | Set indeterminate (tri-state) display — shown as dash instead of check mark |
 | `SetText(text)`               | `Void(String)`  | Set label text                                   |
 
 ```basic
@@ -265,8 +262,6 @@ Progress indicator bar.
 | Method                     | Signature          | Description                                              |
 |----------------------------|--------------------|----------------------------------------------------------|
 | `SetValue(value)`          | `Void(Double)`     | Set progress (0.0-1.0)                                   |
-| `SetIndeterminate(state)`  | `Void(Boolean)`    | Enable/disable indeterminate (animated spinner) mode     |
-| `Tick(dt)`                 | `Void(Double)`     | Advance indeterminate animation (call each frame with delta-time in seconds) |
 
 ```basic
 DIM progress AS Viper.GUI.ProgressBar

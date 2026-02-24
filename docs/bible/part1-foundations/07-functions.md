@@ -88,7 +88,7 @@ Now imagine your requirements change. Instead of simple rectangles, you need to 
 
 ## What Is a Function?
 
-You've already used functions. `Viper.Terminal.Say()` is a function. `Viper.Convert.ToInt64()` is a function. Someone else wrote the code that makes them work; you just use them by name.
+You've already used functions. `Viper.Terminal.Say()` is a function. `Viper.Core.Convert.ToInt64()` is a function. Someone else wrote the code that makes them work; you just use them by name.
 
 A function is a named, reusable block of code. You define it once, then *call* it whenever you need that behavior. Think of a function like a recipe in a cookbook. The recipe has a name ("Chocolate Cake"), a list of ingredients you need to provide (flour, eggs, sugar), and a series of steps. When you want a chocolate cake, you don't invent the process from scratch --- you follow the recipe. You can make the cake multiple times, with slightly different ingredients (more sugar for a sweeter cake), and you always get a cake back.
 
@@ -1247,7 +1247,7 @@ bind Viper.Terminal;
 // Returns -1 if user wants to finish
 func readGrade() -> Integer {
     Print("Grade: ");
-    return Viper.Convert.ToInt64(ReadLine());
+    return Viper.Core.Convert.ToInt64(ReadLine());
 }
 
 // Check if a grade is within valid range

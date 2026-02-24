@@ -2040,7 +2040,7 @@ if input.Trim() == "yes" {  // Works
 - `replace` substitutes text
 - `split` breaks into arrays; `join` combines arrays
 - String comparison is case-sensitive and uses character codes
-- `Viper.Convert.ToInt64/ToDouble` convert strings to numbers
+- `Viper.Core.Convert.ToInt64/ToDouble` convert strings to numbers
 - `Viper.Fmt.format` creates formatted strings
 - Always check for empty strings and off-by-one errors
 - Use `trim()` on user input before processing

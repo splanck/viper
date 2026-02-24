@@ -10,7 +10,6 @@
 - [Viper.Sound.Music](#vipersoundmusic)
 - [Viper.Sound.Voice](#vipersoundvoice)
 - [Viper.Sound.Audio (Static)](#vipersoundaudio-static)
-- [Viper.Sound.Playlist](#vipersoundplaylist)
 - [Audio File Format](#audio-file-format)
 - [Limits and Behaviors](#limits-and-behaviors)
 
@@ -367,129 +366,7 @@ Viper.Sound.Audio.Shutdown()
 
 ---
 
-## Viper.Sound.Playlist
-
-Music playlist with queue management for sequential track playback.
-
-**Type:** Instance (obj)
-**Constructor:** `Viper.Sound.Playlist.New()`
-
-### Track Management Methods
-
-| Method              | Signature              | Description                                       |
-|---------------------|------------------------|---------------------------------------------------|
-| `Add(path)`         | `Void(String)`         | Add a music file to the end of the playlist       |
-| `Clear()`           | `Void()`               | Remove all tracks from the playlist               |
-| `Get(index)`        | `String(Integer)`      | Get the file path of a track at the given index   |
-| `Insert(index, path)` | `Void(Integer, String)` | Insert a music file at a specific position      |
-| `Remove(index)`     | `Void(Integer)`        | Remove a track by index                           |
-
-### Playback Control Methods
-
-| Method        | Signature       | Description                                                   |
-|---------------|-----------------|---------------------------------------------------------------|
-| `Jump(index)` | `Void(Integer)` | Jump to a specific track by index                             |
-| `Next()`      | `Void()`        | Skip to the next track                                        |
-| `Pause()`     | `Void()`        | Pause playback                                                |
-| `Play()`      | `Void()`        | Start playing from the beginning or resume                    |
-| `Prev()`      | `Void()`        | Go back to the previous track                                 |
-| `Stop()`      | `Void()`        | Stop playback and reset to beginning                          |
-| `Update()`    | `Void()`        | **Required — call once per tick for automatic track advance** |
-
-> ⚠️ **`Update()` is required for automatic track advancement.** Call it once per
-> game or app tick (inside your main loop). If omitted, the playlist will stop
-> after each track finishes and never advance to the next one.
-
-### Properties
-
-| Property    | Type    | Access | Description                                            |
-|-------------|---------|--------|--------------------------------------------------------|
-| `Current`   | Integer | Read   | Current track index (−1 if empty or not started)       |
-| `IsPaused`  | Boolean | Read   | True if the playlist is paused                         |
-| `IsPlaying` | Boolean | Read   | True if the playlist is currently playing              |
-| `Len`       | Integer | Read   | Number of tracks in the playlist                       |
-| `Repeat`    | Integer | R/W    | 0 = no repeat, 1 = repeat all, 2 = repeat one track   |
-| `Shuffle`   | Boolean | R/W    | Enable/disable shuffle mode                            |
-| `Volume`    | Integer | R/W    | Playback volume (0–100)                                |
-
-### Zia Example
-
-```rust
-module PlaylistDemo;
-
-bind Viper.Terminal;
-bind Viper.Sound.Audio as Audio;
-bind Viper.Sound.Playlist as Playlist;
-bind Viper.Graphics.Canvas as Canvas;
-bind Viper.Fmt as Fmt;
-
-func start() {
-    Audio.Init();
-    var c = Canvas.New("Playlist", 400, 200);
-
-    var pl = Playlist.New();
-    pl.Add("track1.wav");
-    pl.Add("track2.wav");
-    pl.Add("track3.wav");
-    pl.set_Volume(80);
-    pl.set_Shuffle(0);
-    pl.set_Repeat(1);  // Repeat all
-    pl.Play();
-
-    while c.get_ShouldClose() == 0 {
-        c.Poll();
-        pl.Update();  // Required — call every tick
-
-        Say("Track " + Fmt.Int(pl.get_Current()) + " of " + Fmt.Int(pl.get_Len()));
-
-        c.Flip();
-    }
-
-    pl.Stop();
-    Audio.Shutdown();
-}
-```
-
-### Example
-
-```basic
-' Create and populate a playlist
-DIM pl AS OBJECT = Viper.Sound.Playlist.New()
-
-pl.Add("track1.wav")
-pl.Add("track2.wav")
-pl.Add("track3.wav")
-
-' Configure playback
-pl.Volume = 80
-pl.Shuffle = 0
-pl.Repeat = 1  ' Repeat all
-
-' Start playing
-pl.Play()
-
-' In game loop
-DO WHILE canvas.ShouldClose = 0
-    canvas.Poll()
-    pl.Update()  ' Required for auto-advance
-
-    PRINT "Track "; pl.Current; " of "; pl.Len
-
-    ' Skip to next track
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_RIGHT) THEN
-        pl.Next()
-    END IF
-
-    ' Previous track
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_LEFT) THEN
-        pl.Prev()
-    END IF
-
-    canvas.Flip()
-LOOP
-
-pl.Stop()
-```
+**Note:** Playlist management is not provided by the runtime. To play multiple tracks in sequence, manually call `Sound.Stop()` and `Sound.Play()` in response to game events or timers.
 
 ---
 
@@ -529,7 +406,7 @@ compressed formats are not supported.
 | Music sample rate | **44100 Hz** | Other rates play at incorrect pitch |
 | Sound sample rate | Any | Resampled to 44100 Hz at load time |
 | Pan range | −100 to +100 | −100 = hard left, 0 = center, +100 = hard right |
-| Volume range | 0 to 100 | Applies to Sound, Music, Voice, and Playlist |
+| Volume range | 0 to 100 | Applies to Sound, Music, and Voice |
 
 ---
 

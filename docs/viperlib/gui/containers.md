@@ -69,6 +69,36 @@ var rightPane = split.get_Second();
 
 ---
 
+### FloatingPanel
+
+A floating overlay panel that appears above all other content. Unlike regular widgets, FloatingPanels are not part of the widget tree and are rendered last, making them suitable for popups, tooltips, and floating toolbars.
+
+**Constructor:** `NEW Viper.GUI.FloatingPanel()`
+
+| Method                  | Signature                  | Description                                |
+|-------------------------|----------------------------|--------------------------------------------|
+| `SetTitle(text)`        | `Void(String)`             | Set the panel title bar text               |
+| `SetPosition(x, y)`     | `Void(Integer, Integer)`   | Set panel position in window coordinates   |
+| `SetSize(w, h)`         | `Void(Integer, Integer)`   | Set panel dimensions                       |
+| `Show()`                | `Void()`                   | Make the panel visible                     |
+| `Hide()`                | `Void()`                   | Hide the panel                             |
+| `IsVisible()`           | `Integer()`                | 1 if the panel is visible                  |
+| `Add(widget)`           | `Void(Object)`             | Add a child widget to the panel            |
+| `Remove(widget)`        | `Void(Object)`             | Remove a child widget from the panel       |
+
+```rust
+// Zia
+var panel = FloatingPanel.New();
+panel.SetTitle("Tools");
+panel.SetPosition(100, 100);
+panel.SetSize(200, 300);
+panel.Show();
+
+var btn = Button.New(panel, "Action");
+```
+
+---
+
 ### TabBar
 
 Tab strip for switching between views.
@@ -257,6 +287,17 @@ Full-featured code editor with syntax highlighting.
 | `Unfold(line)`                             | `Void(Integer)`                  | Unfold region at line                    |
 | `Undo()`                                   | `Void()`                         | Undo last edit                           |
 | `WasGutterClicked()`                       | `Integer()`                      | 1 if gutter was clicked                  |
+
+### Advanced Methods
+
+| Method                       | Signature          | Description                                      |
+|------------------------------|--------------------|--------------------------------------------------|
+| `CanUndo()`                  | `Boolean()`        | Check if undo is available                       |
+| `CanRedo()`                  | `Boolean()`        | Check if redo is available                       |
+| `SetTabSize(size)`           | `Void(Integer)`    | Set tab width in spaces                          |
+| `GetTabSize()`               | `Integer()`        | Get current tab width in spaces                  |
+| `SetWordWrap(enabled)`       | `Void(Integer)`    | Enable or disable word wrapping                  |
+| `GetWordWrap()`              | `Boolean()`        | Check if word wrap is enabled                    |
 
 ```basic
 DIM editor AS Viper.GUI.CodeEditor

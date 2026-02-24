@@ -170,7 +170,7 @@ func start() {
     Say("ShakeY: " + Fmt.Int(fx.get_ShakeY()));
 
     // Flash effect
-    fx.Flash(16711680, 200);     // Red flash
+    fx.Flash(0xFF0000FF, 200);   // Red flash (0xRRGGBBAA: opaque red)
     fx.Update(16);
     Say("Overlay alpha: " + Fmt.Int(fx.get_OverlayAlpha()));
 
@@ -188,12 +188,12 @@ DIM fx AS OBJECT = Viper.Game.ScreenFX.New()
 ' On player damage
 SUB OnDamage()
     fx.Shake(5000, 300, 500)        ' Shake for 300ms
-    fx.Flash(&HFFFF0000, 200)       ' Red flash for 200ms
+    fx.Flash(&HFF0000FF, 200)       ' Red flash for 200ms (0xRRGGBBAA: opaque red)
 END SUB
 
 ' On level transition
 SUB TransitionToLevel()
-    fx.FadeOut(&HFF000000, 500)     ' Fade to black over 500ms
+    fx.FadeOut(&H000000FF, 500)     ' Fade to black over 500ms (0xRRGGBBAA: opaque black)
 END SUB
 
 ' In game loop

@@ -434,6 +434,10 @@ Path following for moving objects along predefined waypoint paths.
 | `PATHFOLLOW_LOOP`     | 1     | Loop back to start         |
 | `PATHFOLLOW_PINGPONG` | 2     | Reverse at endpoints       |
 
+### Coordinate Scale
+
+PathFollower uses a 1000:1 coordinate scale — 1000 units equals 1 world unit. Waypoint coordinates should be specified in this scale.
+
 ### Zia Example
 
 ```rust

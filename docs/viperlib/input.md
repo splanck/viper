@@ -137,6 +137,8 @@ All key codes are accessed as read-only properties on the Keyboard class.
 |               |       | `KEY_LALT`    | 342   |
 |               |       | `KEY_RALT`    | 346   |
 
+**Note:** KEY_SHIFT (340) is an alias for KEY_LSHIFT (340) — they refer to the same physical key. Similarly, KEY_CTRL (341) is an alias for KEY_LCTRL (341).
+
 #### Punctuation
 
 | Property         | Value | Property         | Value |

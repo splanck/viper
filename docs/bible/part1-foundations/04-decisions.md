@@ -887,7 +887,7 @@ bind Viper.Terminal;
 
 func start() {
     Print("Enter the score (0-100): ");
-    var score = Viper.Convert.ToInt64(ReadLine());
+    var score = Viper.Core.Convert.ToInt64(ReadLine());
 
     // First, validate the input
     if score < 0 || score > 100 {
@@ -942,7 +942,7 @@ bind Viper.Terminal;
 
 func start() {
     Print("Enter your age: ");
-    var age = Viper.Convert.ToInt64(ReadLine());
+    var age = Viper.Core.Convert.ToInt64(ReadLine());
 
     Say("");  // Blank line for readability
 
@@ -1016,7 +1016,7 @@ func start() {
     Say("3. Defend (reduce incoming damage by half)");
 
     Print("Your choice: ");
-    var choice = Viper.Convert.ToInt64(ReadLine());
+    var choice = Viper.Core.Convert.ToInt64(ReadLine());
 
     var damage = 0;
     var defended = false;
@@ -1092,7 +1092,7 @@ func start() {
 
     // Get age
     Print("Age: ");
-    var age = Viper.Convert.ToInt64(ReadLine());
+    var age = Viper.Core.Convert.ToInt64(ReadLine());
 
     // Validation
     var isValid = true;
@@ -1244,7 +1244,7 @@ func start() {
     Say("5. Quit");
     Print("Choose an option: ");
 
-    var choice = Viper.Convert.ToInt64(ReadLine());
+    var choice = Viper.Core.Convert.ToInt64(ReadLine());
 
     match choice {
         1 => {
@@ -1671,7 +1671,7 @@ func start() {
     Say("");
 
     Print("Your guess: ");
-    var guess = Viper.Convert.ToInt64(ReadLine());
+    var guess = Viper.Core.Convert.ToInt64(ReadLine());
     guessesRemaining = guessesRemaining - 1;
 
     // Validate input
