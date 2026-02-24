@@ -537,9 +537,22 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 {
                     button = VGFX_MOUSE_RIGHT;
                 }
+                else if (event.xbutton.button == Button4 ||
+                         event.xbutton.button == Button5)
+                {
+                    /* X11 scroll wheel: Button4 = up, Button5 = down */
+                    float dy = (event.xbutton.button == Button4) ? -1.0f : 1.0f;
+                    vgfx_event_t scroll_event = {
+                        .type    = VGFX_EVENT_SCROLL,
+                        .time_ms = timestamp,
+                        .data.scroll = {.delta_x = 0.0f, .delta_y = dy,
+                                        .x = x, .y = y}};
+                    vgfx_internal_enqueue_event(win, &scroll_event);
+                    break;
+                }
                 else
                 {
-                    break; /* Ignore scroll wheel and extra buttons */
+                    break; /* Ignore extra buttons */
                 }
 
                 if (button < 8)

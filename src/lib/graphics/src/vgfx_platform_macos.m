@@ -814,8 +814,38 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                     break;
                 }
 
+                case NSEventTypeScrollWheel:
+                {
+                    NSPoint location    = [event locationInWindow];
+                    NSRect  contentRect = [platform->view bounds];
+                    float   sf          = win->scale_factor;
+                    int32_t x           = (int32_t)(location.x * sf);
+                    int32_t y           = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+
+                    float dx, dy;
+                    if ([event hasPreciseScrollingDeltas])
+                    {
+                        /* Trackpad: values are in points — convert to pixels */
+                        dx =  (float)[event scrollingDeltaX] * sf;
+                        dy = -(float)[event scrollingDeltaY] * sf;
+                    }
+                    else
+                    {
+                        /* Traditional scroll wheel: deltaY is in lines (typically ±1/3) */
+                        dx =  (float)[event deltaX];
+                        dy = -(float)[event deltaY];
+                    }
+
+                    vgfx_event_t vgfx_event = {
+                        .type    = VGFX_EVENT_SCROLL,
+                        .time_ms = timestamp,
+                        .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y}};
+                    vgfx_internal_enqueue_event(win, &vgfx_event);
+                    break;
+                }
+
                 default:
-                    /* Ignore unhandled event types (scroll, gestures, etc.) */
+                    /* Ignore remaining unhandled event types (gestures, etc.) */
                     break;
             }
         }

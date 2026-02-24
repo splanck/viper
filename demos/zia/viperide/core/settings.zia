@@ -65,7 +65,11 @@ entity SettingsManager {
                     }
                 }
                 if key == "theme" {
-                    theme = val;
+                    if val == "light" {
+                        theme = "light";
+                    } else {
+                        theme = "dark";
+                    }
                 }
                 if key == "minimap" {
                     minimapVisible = val == "1";
@@ -86,7 +90,11 @@ entity SettingsManager {
             minimapVal = "1";
         }
         var content = "fontSize=" + fontSize + "\n";
-        content = content + "theme=" + theme + "\n";
+        var themeOut = "dark";
+        if theme == "light" {
+            themeOut = "light";
+        }
+        content = content + "theme=" + themeOut + "\n";
         content = content + "minimap=" + minimapVal + "\n";
         IO.File.WriteAllText(settingsPath, content);
     }

@@ -531,8 +531,10 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                 // Draw label if shown
                 if (item->show_label && item->label && tb->font)
                 {
-                    float label_x = icon_x + icon_px + tb->item_padding;
-                    float label_y = item_y + item_height / 2 + tb->font_size / 2;
+                    float label_x = (item->icon.type == VG_ICON_NONE)
+                                        ? item_x + tb->item_padding
+                                        : icon_x + icon_px + tb->item_padding;
+                    float label_y = item_y + item_height / 2 + (tb->font_size * _ps) / 2;
                     vg_font_draw_text(
                         canvas, tb->font, tb->font_size, label_x, label_y, item->label, txt_color);
                 }

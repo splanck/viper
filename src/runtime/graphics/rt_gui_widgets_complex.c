@@ -324,7 +324,9 @@ void rt_codeeditor_set_font_size(void *editor, double size)
         float _s = (s_current_app && s_current_app->window)
                        ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
         if (_s <= 0.0f) _s = 1.0f;
-        ed->font_size = (float)size * _s;
+        ed->font_size   = (float)size * _s;
+        ed->line_height = ed->font_size * 1.4f; /* keep line spacing proportional to font */
+        ((vg_widget_t *)ed)->needs_paint = true;
     }
 }
 

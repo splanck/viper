@@ -135,7 +135,14 @@ vg_event_t vg_event_from_platform(void *platform_event)
             event.mouse.button = (vg_mouse_button_t)pe->data.mouse_button.button;
             break;
 
-            // Note: vgfx doesn't have scroll events yet - will be added later
+        case VGFX_EVENT_SCROLL:
+            event.type          = VG_EVENT_MOUSE_WHEEL;
+            event.wheel.delta_x = pe->data.scroll.delta_x;
+            event.wheel.delta_y = pe->data.scroll.delta_y;
+            /* Also populate mouse.screen_x/y for hit-test routing in vg_event_dispatch */
+            event.mouse.screen_x = (float)pe->data.scroll.x;
+            event.mouse.screen_y = (float)pe->data.scroll.y;
+            break;
 
         case VGFX_EVENT_RESIZE:
             event.type = VG_EVENT_RESIZE;

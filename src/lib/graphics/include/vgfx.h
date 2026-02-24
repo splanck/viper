@@ -143,7 +143,8 @@ extern "C"
         VGFX_EVENT_RESIZE,       ///< Window resized (framebuffer reallocated)
         VGFX_EVENT_CLOSE,        ///< Window close requested by user
         VGFX_EVENT_FOCUS_GAINED, ///< Window gained keyboard focus
-        VGFX_EVENT_FOCUS_LOST    ///< Window lost keyboard focus
+        VGFX_EVENT_FOCUS_LOST,   ///< Window lost keyboard focus
+        VGFX_EVENT_SCROLL        ///< Scroll wheel or trackpad scroll
     } vgfx_event_type_t;
 
     /// @brief Keyboard key codes.
@@ -270,6 +271,15 @@ extern "C"
                 int32_t width;  ///< New window width
                 int32_t height; ///< New window height
             } resize;
+
+            /// @brief Scroll event data (SCROLL).
+            struct
+            {
+                float   delta_x; ///< Horizontal scroll delta (positive = right)
+                float   delta_y; ///< Vertical scroll delta (positive = down)
+                int32_t x;       ///< Cursor X at time of scroll (physical pixels)
+                int32_t y;       ///< Cursor Y at time of scroll (physical pixels)
+            } scroll;
         } data;
     } vgfx_event_t;
 
