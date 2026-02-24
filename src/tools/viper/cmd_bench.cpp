@@ -306,6 +306,7 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
     {
         viper::bytecode::BytecodeVM vm;
         vm.setThreadedDispatch(useThreaded);
+        vm.setRuntimeBridgeEnabled(true);
         vm.load(&bcModule);
 
         auto retSlot = vm.exec("main", {});
