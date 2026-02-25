@@ -74,11 +74,14 @@ Expected<void> verifyBranchArgs(const Function &fn,
 
     for (size_t i = 0; i < argCount; ++i)
     {
-        if (types.valueType((*args)[i]).kind != target.params[i].type.kind)
+        auto argType = types.valueType((*args)[i]);
+        if (argType.kind != target.params[i].type.kind)
+        {
             return Expected<void>{
                 makeError(instr.loc,
                           formatInstrDiag(
                               fn, bb, instr, "arg type mismatch for label " + std::string(label)))};
+        }
     }
     return {};
 }

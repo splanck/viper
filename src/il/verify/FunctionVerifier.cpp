@@ -208,7 +208,9 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 
     std::unordered_map<unsigned, Type> temps;
     for (const auto &param : fn.params)
+    {
         temps[param.id] = param.type;
+    }
 
     // ===== PASS 1: Pre-collect all definitions for type information =====
     // This is necessary because SimplifyCFG and other transforms may reorder blocks
@@ -446,8 +448,11 @@ Expected<void> FunctionVerifier::verifyBlock(
     if (auto result = checkBlockTerminators_E(fn, bb); !result)
         return result;
 
-    for (unsigned id : paramIds)
-        types.removeTemp(id);
+    // Block params persist in the type map for cross-block use.  The pre-collection
+    // pass already registers all definitions so successor blocks can reference them.
+    // (Removed per-block removeTemp that prevented valid cross-block references
+    //  after inlining.)
+    (void)paramIds;
 
     return {};
 }

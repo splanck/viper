@@ -530,6 +530,7 @@ class AsmEmitter
     // Mutable state used during emitFunction to pass frame plan to Ret instructions
     mutable const FramePlan *currentPlan_{nullptr};
     mutable bool currentPlanValid_{false};
+    mutable bool skipFrame_{false}; ///< True for leaf functions with no frame.
 
     /// @brief Return the canonical assembly name for a physical register.
     [[nodiscard]] static const char *rn(PhysReg r) noexcept

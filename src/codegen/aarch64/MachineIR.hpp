@@ -242,6 +242,12 @@ struct MFunction
     std::string name;                ///< Function symbol name.
     std::vector<MBasicBlock> blocks; ///< Basic blocks in layout order.
 
+    /// True when the function contains no Bl or Blr instructions (no calls).
+    /// Leaf functions can skip saving/restoring the link register (x30) and
+    /// frame pointer (x29) when no callee-saved registers are used and the
+    /// local frame is empty.
+    bool isLeaf{true};
+
     /// Callee-saved GPRs that must be preserved across calls.
     std::vector<PhysReg> savedGPRs;
 

@@ -121,6 +121,56 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 {
     return x64::makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(reg));
 }
+/// @brief Return log2(v) if v is a positive power of 2, else -1.
+[[nodiscard]] int log2IfPowerOf2(int64_t v)
+{
+    if (v <= 0 || (v & (v - 1)) != 0)
+        return -1;
+    int log = 0;
+    while ((1LL << log) != v)
+        ++log;
+    return log;
+}
+
+/// @brief Scan backward in a block for a MOVri that loads into the given vreg.
+/// @return The immediate value, or nullopt if not found.
+[[nodiscard]] std::optional<int64_t> findVRegConstant(const MBasicBlock &block,
+                                                      std::size_t beforeIdx,
+                                                      const Operand &regOp)
+{
+    if (!std::holds_alternative<OpReg>(regOp))
+        return std::nullopt;
+    const auto &target = std::get<OpReg>(regOp);
+    // Only look for non-physical vregs
+    if (target.isPhys)
+        return std::nullopt;
+
+    for (std::size_t i = beforeIdx; i > 0; --i)
+    {
+        const auto &instr = block.instructions[i - 1];
+        if (instr.opcode == MOpcode::MOVri && instr.operands.size() >= 2)
+        {
+            if (std::holds_alternative<OpReg>(instr.operands[0]))
+            {
+                const auto &dst = std::get<OpReg>(instr.operands[0]);
+                if (dst.cls == target.cls && dst.idOrPhys == target.idOrPhys && !dst.isPhys)
+                {
+                    if (std::holds_alternative<OpImm>(instr.operands[1]))
+                        return std::get<OpImm>(instr.operands[1]).val;
+                }
+            }
+        }
+        // If the vreg is redefined by another instruction, stop looking.
+        if (instr.operands.size() >= 1 && std::holds_alternative<OpReg>(instr.operands[0]))
+        {
+            const auto &dst = std::get<OpReg>(instr.operands[0]);
+            if (dst.cls == target.cls && dst.idOrPhys == target.idOrPhys && !dst.isPhys)
+                break;
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 /// @brief Rewrite division and remainder pseudos into explicit guarded sequences.
@@ -214,6 +264,65 @@ void lowerSignedDivRem(MFunction &fn)
             if (!std::holds_alternative<OpReg>(divisorOp))
             {
                 continue; // Phase A: divisor must be a register operand.
+            }
+
+            // ── Power-of-2 fast path for unsigned division/remainder ──────
+            // Unsigned div by constant power-of-2: replace IDIV with SHR.
+            // Unsigned rem by constant power-of-2: replace IDIV with AND mask.
+            // This avoids the expensive IDIV (20-40 cycle latency).
+            if (isUnsignedDiv || isUnsignedRem)
+            {
+                auto constVal = findVRegConstant(block, instrIdx, divisorOp);
+                if (constVal)
+                {
+                    int log = log2IfPowerOf2(*constVal);
+                    if (log >= 0 && log <= 63)
+                    {
+                        const Operand destClone = cloneOperand(candidate.operands[0]);
+                        const Operand dividendClone = cloneOperand(dividendOp);
+
+                        // Move dividend to dest first (SHR/AND are in-place).
+                        if (std::holds_alternative<OpImm>(dividendClone))
+                        {
+                            block.instructions[instrIdx] = MInstr::make(
+                                MOpcode::MOVri,
+                                std::vector<Operand>{cloneOperand(destClone),
+                                                     cloneOperand(dividendClone)});
+                        }
+                        else
+                        {
+                            block.instructions[instrIdx] = MInstr::make(
+                                MOpcode::MOVrr,
+                                std::vector<Operand>{cloneOperand(destClone),
+                                                     cloneOperand(dividendClone)});
+                        }
+
+                        if (isUnsignedDiv)
+                        {
+                            // udiv x, 2^k  ->  shr x, k
+                            block.instructions.insert(
+                                block.instructions.begin() +
+                                    static_cast<std::ptrdiff_t>(instrIdx + 1),
+                                MInstr::make(
+                                    MOpcode::SHRri,
+                                    std::vector<Operand>{cloneOperand(destClone),
+                                                         makeImmOperand(log)}));
+                        }
+                        else
+                        {
+                            // urem x, 2^k  ->  and x, (2^k - 1)
+                            block.instructions.insert(
+                                block.instructions.begin() +
+                                    static_cast<std::ptrdiff_t>(instrIdx + 1),
+                                MInstr::make(
+                                    MOpcode::ANDri,
+                                    std::vector<Operand>{cloneOperand(destClone),
+                                                         makeImmOperand(*constVal - 1)}));
+                        }
+                        instrIdx += 1; // skip the inserted instruction
+                        continue;
+                    }
+                }
             }
 
             MInstr pseudo = std::move(block.instructions[instrIdx]);

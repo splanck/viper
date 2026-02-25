@@ -4,8 +4,8 @@ set -euo pipefail
 # ============================================================================
 # Viper Unified Benchmark Suite
 # ============================================================================
-# Benchmarks all 12 execution modes across IL stress programs and compares
-# against C (-O0/-O2/-O3), Python, and Java reference implementations.
+# Benchmarks all execution modes across IL stress programs and compares
+# against C (-O0/-O2/-O3), Rust, Lua, Python, and Java reference implementations.
 #
 # Usage: scripts/benchmark.sh [options]
 #
@@ -14,6 +14,8 @@ set -euo pipefail
 #   bc-switch, bc-threaded              Bytecode VM dispatch strategies
 #   native-arm64, native-x86_64        Native codegen backends
 #   c-O0, c-O2, c-O3                   C reference at optimization levels
+#   rust-O                              Rust reference (rustc -O)
+#   lua                                 Lua reference (lua 5.4)
 #   python3                             Python 3 reference
 #   java                                Java reference
 # ============================================================================
@@ -55,7 +57,7 @@ Options:
   --set-baseline         Save this run as benchmarks/baseline.jsonl
   --no-native            Skip native codegen benchmarks
   --no-vm                Skip VM benchmarks
-  --no-reference         Skip C/Python/Java reference benchmarks
+  --no-reference         Skip C/Rust/Lua/Python/Java reference benchmarks
   --programs GLOB        Only run programs matching this glob (e.g. "fib*")
   -q, --quiet            Suppress progress output
   -h, --help             Show this help message
@@ -102,6 +104,8 @@ HAS_NATIVE_X86_64=0
 HAS_CC=0
 HAS_PYTHON3=0
 HAS_JAVA=0
+HAS_LUA=0
+HAS_RUSTC=0
 
 if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
     HAS_NATIVE_ARM64=1
@@ -114,6 +118,21 @@ if command -v cc >/dev/null 2>&1; then
 fi
 if command -v python3 >/dev/null 2>&1; then
     HAS_PYTHON3=1
+fi
+if command -v lua >/dev/null 2>&1; then
+    HAS_LUA=1
+fi
+# Rust: check both PATH and cargo env
+RUSTC="rustc"
+if command -v rustc >/dev/null 2>&1; then
+    HAS_RUSTC=1
+elif [[ -f "$HOME/.cargo/env" ]]; then
+    # shellcheck disable=SC1091
+    . "$HOME/.cargo/env"
+    if command -v rustc >/dev/null 2>&1; then
+        HAS_RUSTC=1
+        RUSTC="rustc"
+    fi
 fi
 JAVAC="javac"
 JAVA="java"
@@ -299,6 +318,8 @@ log "  Available modes:"
 [[ "$NO_NATIVE" != "1" && "$HAS_NATIVE_X86_64" == "1" ]] && log "    Native:    x86_64"
 if [[ "$NO_REFERENCE" != "1" ]]; then
     [[ "$HAS_CC" == "1" ]] && log "    C:         -O0, -O2, -O3"
+    [[ "$HAS_RUSTC" == "1" ]] && log "    Rust:      rustc -O"
+    [[ "$HAS_LUA" == "1" ]] && log "    Lua:       lua"
     [[ "$HAS_PYTHON3" == "1" ]] && log "    Python:    python3"
     [[ "$HAS_JAVA" == "1" ]] && log "    Java:      javac + java"
 fi
@@ -326,6 +347,8 @@ for prog in "${PROGRAMS[@]}"; do
     fi
     if [[ "$NO_REFERENCE" != "1" ]]; then
         [[ "$HAS_CC" == "1" && -f "$REF_DIR/c/$prog.c" ]] && ((total_benchmarks += 3)) || true
+        [[ "$HAS_RUSTC" == "1" && -f "$REF_DIR/rust/$prog.rs" ]] && ((total_benchmarks++)) || true
+        [[ "$HAS_LUA" == "1" && -f "$REF_DIR/lua/$prog.lua" ]] && ((total_benchmarks++)) || true
         local_java_class=$(snake_to_pascal "$prog")
         [[ "$HAS_PYTHON3" == "1" && -f "$REF_DIR/python/$prog.py" ]] && ((total_benchmarks++)) || true
         [[ "$HAS_JAVA" == "1" && -f "$REF_DIR/java/$local_java_class.java" ]] && ((total_benchmarks++)) || true
@@ -375,7 +398,7 @@ print(','.join(parts))
         if [[ "$HAS_NATIVE_ARM64" == "1" ]]; then
             log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: native-arm64...                "
             native_exe="$TMPDIR_BENCH/native_arm64_$prog"
-            if "$VIPER" codegen arm64 "$il_file" -o "$native_exe" >/dev/null 2>&1; then
+            if "$VIPER" codegen arm64 "$il_file" -O2 -o "$native_exe" >/dev/null 2>&1; then
                 result=$(time_executable "$native_exe" "$ITERATIONS" "$WARMUP")
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"native-arm64\":$result"
@@ -390,7 +413,7 @@ print(','.join(parts))
         if [[ "$HAS_NATIVE_X86_64" == "1" ]]; then
             log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: native-x86_64...               "
             native_exe="$TMPDIR_BENCH/native_x64_$prog"
-            if "$VIPER" codegen x64 "$il_file" -o "$native_exe" >/dev/null 2>&1; then
+            if "$VIPER" codegen x64 "$il_file" -O2 -o "$native_exe" >/dev/null 2>&1; then
                 result=$(time_executable "$native_exe" "$ITERATIONS" "$WARMUP")
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"native-x86_64\":$result"
@@ -417,6 +440,31 @@ print(','.join(parts))
             fi
             ((completed_benchmarks++)) || true
         done
+    fi
+
+    # --- Rust reference ---
+    if [[ "$NO_REFERENCE" != "1" && "$HAS_RUSTC" == "1" && -f "$REF_DIR/rust/$prog.rs" ]]; then
+        log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: rust-O...                       "
+        rust_exe="$TMPDIR_BENCH/rust_$prog"
+        if "$RUSTC" -O -o "$rust_exe" "$REF_DIR/rust/$prog.rs" 2>/dev/null; then
+            result=$(time_executable "$rust_exe" "$ITERATIONS" "$WARMUP")
+            [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+            modes_json="$modes_json\"rust-O\":$result"
+        else
+            [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+            modes_json="$modes_json\"rust-O\":{\"success\":false,\"skip_reason\":\"compilation failed\"}"
+        fi
+        ((completed_benchmarks++)) || true
+    fi
+
+    # --- Lua reference ---
+    if [[ "$NO_REFERENCE" != "1" && "$HAS_LUA" == "1" && -f "$REF_DIR/lua/$prog.lua" ]]; then
+        log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: lua...                          "
+        # Lua scripts exit via os.exit(); capture exit code just like executables.
+        result=$(time_executable lua "$ITERATIONS" "$WARMUP" "$REF_DIR/lua/$prog.lua")
+        [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+        modes_json="$modes_json\"lua\":$result"
+        ((completed_benchmarks++)) || true
     fi
 
     # --- Python reference ---
@@ -512,6 +560,7 @@ mode_order = [
     'bc-switch', 'bc-threaded',
     'native-arm64', 'native-x86_64',
     'c-O0', 'c-O2', 'c-O3',
+    'rust-O', 'lua',
     'python3', 'java'
 ]
 

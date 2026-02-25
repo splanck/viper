@@ -85,6 +85,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
             test_emit_aarch64_mir_branches
             test_emit_aarch64_mir_frameplan
             test_codegen_arm64_peephole
+            test_codegen_arm64_div_strength
             test_aarch64_rodata_pool
             test_codegen_review_fixes
             test_aarch64_frame_spill_reuse
@@ -158,6 +159,8 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
             test_codegen_arm64_mixed_call_f64
             test_aarch64_phi_coalescer
             test_aarch64_global_liveness
+            test_codegen_arm64_il_opt
+            test_codegen_arm64_leaf_func
     )
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_test(${_test}

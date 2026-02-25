@@ -453,7 +453,10 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
     auto shape = validateShape_E(in, st);
     if (!shape)
         return shape;
+    const bool isTerm = il::core::getOpcodeInfo(in.op).isTerminator;
     st.curBB->instructions.push_back(std::move(in));
+    if (isTerm)
+        st.curBB->terminated = true;
     return {};
 }
 

@@ -607,6 +607,44 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
     return true;
 }
 
+/// @brief Apply strength reduction: unsigned division by power of 2 -> logical shift right.
+///
+/// Patterns:
+/// - udiv xN, xM, xK where xK is a power of 2 -> lsr xN, xM, #log2(xK)
+///
+/// Signed division is NOT optimized because sdiv truncates toward zero while
+/// asr rounds toward negative infinity (e.g., -7/4=-1 vs -7>>2=-2).
+///
+/// @param instr Instruction to check and potentially rewrite.
+/// @param knownConsts Map of registers to known constant values.
+/// @param stats Statistics to update.
+/// @return true if reduction was applied.
+[[nodiscard]] bool tryDivStrengthReduction(MInstr &instr,
+                                           const RegConstMap &knownConsts,
+                                           PeepholeStats &stats)
+{
+    if (instr.opc != MOpcode::UDivRRR)
+        return false;
+    if (instr.ops.size() != 3)
+        return false;
+
+    // Check if the divisor (ops[2]) is a known power-of-2 constant.
+    auto rhsConst = getConstValue(instr.ops[2], knownConsts);
+    if (!rhsConst || *rhsConst <= 0)
+        return false;
+
+    int log = log2IfPowerOf2(*rhsConst);
+    if (log < 0 || log > 63)
+        return false;
+
+    // Rewrite: udiv dst, lhs, rhs -> lsr dst, lhs, #log2(rhs)
+    instr.opc = MOpcode::LsrRI;
+    // ops[0] = dst (unchanged), ops[1] = lhs (unchanged)
+    instr.ops[2] = MOperand::immOp(log);
+    ++stats.strengthReductions;
+    return true;
+}
+
 /// @brief Check if an instruction is an unconditional branch to a specific label.
 [[nodiscard]] bool isBranchTo(const MInstr &instr, const std::string &label) noexcept
 {
@@ -1760,8 +1798,9 @@ PeepholeStats runPeephole(MFunction &fn)
             if (tryArithmeticIdentity(instr, stats))
                 continue;
 
-            // Try strength reduction (mul power-of-2 -> shift)
+            // Try strength reduction (mul power-of-2 -> shift, udiv power-of-2 -> lsr)
             (void)tryStrengthReduction(instr, knownConsts, stats);
+            (void)tryDivStrengthReduction(instr, knownConsts, stats);
 
             // Try immediate folding (add/sub RRR -> RI when operand is known const)
             (void)tryImmediateFolding(instr, knownConsts, stats);

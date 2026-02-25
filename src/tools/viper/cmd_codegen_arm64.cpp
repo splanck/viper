@@ -30,6 +30,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "tools/common/ArgvView.hpp"
+#include "il/transform/PassManager.hpp"
 #include "tools/common/module_loader.hpp"
 
 #include <filesystem>
@@ -77,6 +78,7 @@ struct Options
     bool run_native = false;             ///< True when -run-native requests execution.
     bool dump_mir_before_ra = false;     ///< Emit MIR before register allocation to stderr.
     bool dump_mir_after_ra = false;      ///< Emit MIR after register allocation to stderr.
+    int optimize = 0;                    ///< IL optimization level: 0=none, 1=O1, 2=O2.
 };
 
 /// @brief Parse argv-style arguments into a structured @ref Options instance.
@@ -141,6 +143,21 @@ std::optional<Options> parseArgs(const ArgvView &args)
         {
             opts.dump_mir_before_ra = true;
             opts.dump_mir_after_ra = true;
+            continue;
+        }
+        if (tok == "-O" || tok == "--optimize")
+        {
+            if (i + 1 >= args.argc)
+            {
+                std::cerr << "error: -O requires a level (0, 1, or 2)\n" << kUsage;
+                return std::nullopt;
+            }
+            opts.optimize = std::atoi(std::string(args.at(++i)).c_str());
+            continue;
+        }
+        if (tok.size() == 3 && tok[0] == '-' && tok[1] == 'O' && tok[2] >= '0' && tok[2] <= '2')
+        {
+            opts.optimize = tok[2] - '0';
             continue;
         }
         std::cerr << "error: unknown flag '" << tok << "'\n" << kUsage;
@@ -265,6 +282,32 @@ int emitAndMaybeLink(const Options &opts)
         return 1;
     }
 
+    // Run IL optimizations before lowering to MIR.
+    // Codegen-safe pipelines omit LICM and check-opt (known correctness
+    // issues).  SCCP and inlining are safe and enabled.
+    if (opts.optimize >= 1)
+    {
+        il::transform::PassManager ilpm;
+        if (opts.optimize >= 2)
+        {
+            ilpm.registerPipeline("codegen-O2",
+                                  {"simplify-cfg", "mem2reg",  "simplify-cfg",
+                                   "sccp",         "dce",      "simplify-cfg",
+                                   "inline",       "simplify-cfg", "dce",
+                                   "sccp",         "gvn",      "earlycse", "dse",
+                                   "peephole",     "dce",      "late-cleanup"});
+            ilpm.runPipeline(mod, "codegen-O2");
+        }
+        else
+        {
+            ilpm.registerPipeline("codegen-O1",
+                                  {"simplify-cfg", "mem2reg", "simplify-cfg",
+                                   "sccp",         "dce",     "simplify-cfg",
+                                   "peephole",     "dce"});
+            ilpm.runPipeline(mod, "codegen-O1");
+        }
+    }
+
     using namespace viper::codegen::aarch64;
 
     // Host gating for --run-native: only allow on macOS arm64
@@ -370,6 +413,23 @@ int emitAndMaybeLink(const Options &opts)
                 }
             }
         }
+        // Detect leaf functions: scan for Bl/Blr instructions.
+        mir.isLeaf = true;
+        for (const auto &bb : mir.blocks)
+        {
+            for (const auto &mi : bb.instrs)
+            {
+                if (mi.opc == viper::codegen::aarch64::MOpcode::Bl ||
+                    mi.opc == viper::codegen::aarch64::MOpcode::Blr)
+                {
+                    mir.isLeaf = false;
+                    break;
+                }
+            }
+            if (!mir.isLeaf)
+                break;
+        }
+
         // Dump MIR before register allocation if requested
         if (opts.dump_mir_before_ra)
         {

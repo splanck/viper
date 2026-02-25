@@ -847,6 +847,15 @@ void AsmEmitter::emitFRintN(std::ostream &os, PhysReg dstFPR, PhysReg srcFPR) co
 void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 {
     emitFunctionHeader(os, fn.name);
+
+    // Leaf function optimization: skip frame setup entirely when the function
+    // makes no calls, uses no callee-saved registers, and has no local frame.
+    // Exclude @main because emitFunction injects bl calls to rt_legacy_context
+    // and rt_set_current_context at the assembly level (not in MIR).
+    const bool skipFrame =
+        fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() && fn.localFrameSize == 0 &&
+        fn.name != "main";
+
     const bool usePlan = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;
     if (usePlan)
@@ -855,10 +864,13 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
         plan.saveFPRs = fn.savedFPRs;
         plan.localFrameSize = fn.localFrameSize;
     }
-    if (usePlan)
-        emitPrologue(os, plan);
-    else
-        emitPrologue(os);
+    if (!skipFrame)
+    {
+        if (usePlan)
+            emitPrologue(os, plan);
+        else
+            emitPrologue(os);
+    }
 
     // For the main function, initialize the runtime context before executing user code.
     // This is required because runtime functions expect an active RtContext.
@@ -873,12 +885,14 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
     // Store the plan for use by Ret instructions
     currentPlan_ = &plan;
     currentPlanValid_ = usePlan;
+    skipFrame_ = skipFrame;
 
     for (const auto &bb : fn.blocks)
         emitBlock(os, bb);
 
     currentPlan_ = nullptr;
     currentPlanValid_ = false;
+    skipFrame_ = false;
 
     // On Linux ELF, emit .size after the function body so the linker and
     // profilers can determine the function's byte extent.
@@ -913,8 +927,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     // Handle Ret specially since it needs the epilogue
     if (mi.opc == MOpcode::Ret)
     {
-        // Emit epilogue using the stored frame plan from emitFunction
-        if (currentPlanValid_ && currentPlan_)
+        if (skipFrame_)
+        {
+            // Leaf function with no frame: just emit ret, no epilogue needed.
+            os << "  ret\n";
+        }
+        else if (currentPlanValid_ && currentPlan_)
             emitEpilogue(os, *currentPlan_);
         else
             emitEpilogue(os);

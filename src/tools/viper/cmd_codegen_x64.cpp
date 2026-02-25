@@ -103,6 +103,22 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
             opts.run_native = true;
             continue;
         }
+        if (arg == "-O" || arg == "--optimize")
+        {
+            if (index + 1 >= args.argc)
+            {
+                diag << "error: -O requires a level (0, 1, 2, or 3)\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.optimize = std::atoi(std::string(args.at(++index)).c_str());
+            continue;
+        }
+        if (arg.size() == 3 && arg[0] == '-' && arg[1] == 'O' && arg[2] >= '0' && arg[2] <= '3')
+        {
+            opts.optimize = arg[2] - '0';
+            continue;
+        }
         if (arg.substr(0, 13) == "--stack-size=")
         {
             const std::string sizeStr = std::string(arg.substr(13));

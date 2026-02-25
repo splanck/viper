@@ -28,7 +28,8 @@ set(_viper_codegen_x86_64_tests
         select_cmov
         shifts
         string_literal
-        regalloc_consistency)
+        regalloc_consistency
+        udiv_pow2)
 
 list(APPEND _viper_codegen_x86_64_tests
         e2e_bitwise_cli

@@ -30,6 +30,7 @@
 #include "codegen/x86_64/passes/PassManager.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 #include "common/RunProcess.hpp"
+#include "il/transform/PassManager.hpp"
 #include "tools/common/module_loader.hpp"
 
 #include <cstdint>
@@ -501,6 +502,32 @@ PipelineResult CodegenPipeline::run()
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
+    }
+
+    // Run IL optimizations before lowering to MIR.
+    // Codegen-safe pipelines omit LICM and check-opt (known correctness
+    // issues).  SCCP and inlining are safe and enabled.
+    if (opts_.optimize >= 2)
+    {
+        il::transform::PassManager ilpm;
+        if (opts_.optimize >= 3)
+        {
+            ilpm.registerPipeline("codegen-O2",
+                                  {"simplify-cfg", "mem2reg",  "simplify-cfg",
+                                   "sccp",         "dce",      "simplify-cfg",
+                                   "inline",       "simplify-cfg", "dce",
+                                   "sccp",         "gvn",      "earlycse", "dse",
+                                   "peephole",     "dce",      "late-cleanup"});
+            ilpm.runPipeline(module, "codegen-O2");
+        }
+        else
+        {
+            ilpm.registerPipeline("codegen-O1",
+                                  {"simplify-cfg", "mem2reg", "simplify-cfg",
+                                   "sccp",         "dce",     "simplify-cfg",
+                                   "peephole",     "dce"});
+            ilpm.runPipeline(module, "codegen-O1");
+        }
     }
 
     passes::Module pipelineModule{};

@@ -253,8 +253,8 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
         return cost;
     }
 
-    if (!fn.blocks.front().params.empty())
-        cost.unsupportedCFG = true; // entry params unsupported
+    // Entry-block params are handled: we pass call arguments as branch args
+    // when jumping to the cloned entry block (see inlineCallSite).
 
     for (const auto &B : fn.blocks)
     {
@@ -392,12 +392,21 @@ bool inlineCallSite(Function &caller,
     BasicBlock &callBlock = caller.blocks[callBlockIdx];
     if (callIndex >= callBlock.instructions.size())
         return false;
-    const Instr &callInstr = callBlock.instructions[callIndex];
+    // Copy the call instruction — the reference becomes dangling after the
+    // block is resized below.
+    const Instr callInstr = callBlock.instructions[callIndex];
 
     if (callInstr.operands.size() != callee.params.size())
         return false;
 
-    if (callee.retType.kind != callInstr.type.kind)
+    // The parser leaves call instruction type as Void for non-f64 returns
+    // (only f64 is recorded for register-class selection).  Use the callee's
+    // declared retType instead of the call instruction's type for the match.
+    // Bail out only when the callee genuinely returns void but the call has a
+    // result, or vice versa.
+    if (callee.retType.kind == Type::Kind::Void && callInstr.result)
+        return false;
+    if (callee.retType.kind != Type::Kind::Void && !callInstr.result)
         return false;
 
     bool returnsValue = callee.retType.kind != Type::Kind::Void;
@@ -449,6 +458,111 @@ bool inlineCallSite(Function &caller,
         replaceUsesInBlock(continuation, *callInstr.result, repl);
     }
 
+    // Thread external caller values through the continuation as extra params.
+    // The continuation's instructions may reference temps defined in the caller's
+    // call block (or earlier blocks).  After SimplifyCFG merges/removes blocks
+    // those cross-block references would dangle.  Instead we add explicit params
+    // for each external value and pass them through the bridge instructions.
+    std::unordered_set<unsigned> contDefined;
+    for (const auto &p : continuation.params)
+        contDefined.insert(p.id);
+    for (const auto &instr : continuation.instructions)
+    {
+        if (instr.result)
+            contDefined.insert(*instr.result);
+    }
+
+    std::unordered_set<unsigned> contUsed;
+    for (const auto &instr : continuation.instructions)
+    {
+        for (const auto &op : instr.operands)
+        {
+            if (op.kind == Value::Kind::Temp)
+                contUsed.insert(op.id);
+        }
+        for (const auto &argList : instr.brArgs)
+        {
+            for (const auto &v : argList)
+            {
+                if (v.kind == Value::Kind::Temp)
+                    contUsed.insert(v.id);
+            }
+        }
+    }
+
+    // escapedIds: temps used in continuation but not defined there.
+    std::vector<unsigned> escapedIds;
+    for (unsigned id : contUsed)
+    {
+        if (contDefined.find(id) == contDefined.end())
+            escapedIds.push_back(id);
+    }
+
+    // Sort for determinism.
+    std::sort(escapedIds.begin(), escapedIds.end());
+
+    // Map from original caller temp → new continuation param.
+    std::unordered_map<unsigned, unsigned> escapedMap;
+    for (unsigned origId : escapedIds)
+    {
+        Param p;
+        p.name = lookupValueName(caller, origId, "ext");
+        p.id = nextId++;
+        // Look up the type from the caller's definitions.
+        p.type = Type(Type::Kind::I64); // safe default
+        for (const auto &bb : caller.blocks)
+        {
+            for (const auto &bp : bb.params)
+            {
+                if (bp.id == origId)
+                    p.type = bp.type;
+            }
+            for (const auto &ins : bb.instructions)
+            {
+                if (ins.result && *ins.result == origId)
+                    p.type = ins.type;
+            }
+        }
+        // Also check function params.
+        for (const auto &fp : caller.params)
+        {
+            if (fp.id == origId)
+                p.type = fp.type;
+        }
+        continuation.params.push_back(p);
+        ensureValueName(caller, p.id, p.name);
+        escapedMap[origId] = p.id;
+    }
+
+    // Remap continuation instructions to use the new params.
+    if (!escapedMap.empty())
+    {
+        for (auto &instr : continuation.instructions)
+        {
+            for (auto &op : instr.operands)
+            {
+                if (op.kind == Value::Kind::Temp)
+                {
+                    auto it = escapedMap.find(op.id);
+                    if (it != escapedMap.end())
+                        op = Value::temp(it->second);
+                }
+            }
+            for (auto &argList : instr.brArgs)
+            {
+                for (auto &v : argList)
+                {
+                    if (v.kind == Value::Kind::Temp)
+                    {
+                        auto it = escapedMap.find(v.id);
+                        if (it != escapedMap.end())
+                            v = Value::temp(it->second);
+                    }
+                }
+            }
+        }
+    }
+
     // Clone callee blocks.
     std::vector<BasicBlock> clonedBlocks;
     clonedBlocks.reserve(callee.blocks.size());
@@ -483,8 +597,12 @@ bool inlineCallSite(Function &caller,
                 if (!continuation.params.empty())
                 {
                     bridge.brArgs.emplace_back();
+                    // Pass the return value as the continuation block's first parameter.
                     if (!CI.operands.empty())
                         bridge.brArgs.back().push_back(remapValue(CI.operands.front(), valueMap));
+                    // Pass escaped caller values as extra parameters.
+                    for (unsigned origId : escapedIds)
+                        bridge.brArgs.back().push_back(Value::temp(origId));
                 }
 
                 clone.instructions.push_back(std::move(bridge));
@@ -539,6 +657,17 @@ bool inlineCallSite(Function &caller,
     jump.op = Opcode::Br;
     jump.type = Type(Type::Kind::Void);
     jump.labels.push_back(labelMap.at(callee.blocks.front().label));
+
+    // Pass call arguments as branch args when the entry block has params.
+    if (!callee.blocks.front().params.empty())
+    {
+        std::vector<Value> args;
+        args.reserve(callInstr.operands.size());
+        for (const auto &op : callInstr.operands)
+            args.push_back(op);
+        jump.brArgs.push_back(std::move(args));
+    }
+
     callBlock.instructions.push_back(std::move(jump));
     callBlock.terminated = true;
 
@@ -661,6 +790,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
 
     if (!changed)
         return PreservedAnalyses::all();
+
     return PreservedAnalyses{}; // invalidate all analyses for simplicity
 }
 

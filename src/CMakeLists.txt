@@ -333,7 +333,7 @@ add_dependencies(il_codegen_x86_64 generate_runtime_registry)
 
 add_library(viper_cmd_arm64 STATIC
         tools/viper/cmd_codegen_arm64.cpp)
-target_link_libraries(viper_cmd_arm64 PRIVATE viper_common_opts viper_common viper_codegen_common il_tools_common il_codegen_aarch64 viper::il_full)
+target_link_libraries(viper_cmd_arm64 PRIVATE viper_common_opts viper_common viper_codegen_common il_tools_common il_codegen_aarch64 il_transform viper::il_full)
 
 add_library(viper_native_compiler STATIC
         tools/common/native_compiler.cpp)

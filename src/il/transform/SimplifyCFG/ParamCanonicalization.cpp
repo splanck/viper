@@ -159,6 +159,42 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx,
                 continue;
             }
 
+            // Do not substitute cross-block temporaries.  When the common value
+            // is a Temp defined in a different block (e.g. a predecessor's
+            // parameter), substituting it here creates an implicit cross-block
+            // reference.  Later passes such as dropUnusedParams may then
+            // incorrectly remove the defining parameter, leaving dangling uses.
+            // Constants and non-temp values are always safe to substitute.
+            if (commonValue.kind == il::core::Value::Kind::Temp)
+            {
+                // Check if the common value is defined within this block
+                bool definedLocally = false;
+                for (const auto &p : block.params)
+                {
+                    if (p.id == commonValue.id)
+                    {
+                        definedLocally = true;
+                        break;
+                    }
+                }
+                if (!definedLocally)
+                {
+                    for (const auto &instr : block.instructions)
+                    {
+                        if (instr.result && *instr.result == commonValue.id)
+                        {
+                            definedLocally = true;
+                            break;
+                        }
+                    }
+                }
+                if (!definedLocally)
+                {
+                    ++paramIdx;
+                    continue;
+                }
+            }
+
             auto replaceUses = [&](il::core::Value &value)
             {
                 if (value.kind == il::core::Value::Kind::Temp && value.id == paramId)

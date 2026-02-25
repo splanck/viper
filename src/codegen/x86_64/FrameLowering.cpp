@@ -376,6 +376,28 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
 
     (void)target;
 
+    // Leaf function frame elimination: skip prologue/epilogue entirely when
+    // the function makes no calls, uses no callee-saved registers, and has
+    // no frame allocation. This saves 3-5 instructions per leaf function.
+    {
+        bool hasCall = false;
+        for (const auto &block : func.blocks)
+        {
+            for (const auto &instr : block.instructions)
+            {
+                if (instr.opcode == MOpcode::CALL)
+                {
+                    hasCall = true;
+                    break;
+                }
+            }
+            if (hasCall)
+                break;
+        }
+        if (!hasCall && frame.usedCalleeSaved.empty() && frame.frameSize == 0)
+            return; // Leaf function with no frame — skip prologue/epilogue.
+    }
+
     const auto rspOperand = makePhysOperand(RegClass::GPR, PhysReg::RSP);
     const auto rbpOperand = makePhysOperand(RegClass::GPR, PhysReg::RBP);
     const auto rspBase = makePhysBase(PhysReg::RSP);

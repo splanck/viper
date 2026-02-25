@@ -38,6 +38,7 @@ TEST(AArch64MIR, PrologueAddEpilogue)
 
     MFunction fn{};
     fn.name = "mir_add";
+    fn.isLeaf = false; // Force prologue emission (this test checks prologue output)
     fn.blocks.push_back(MBasicBlock{});
     auto &bb = fn.blocks.back();
     // x0 = x0 + x1

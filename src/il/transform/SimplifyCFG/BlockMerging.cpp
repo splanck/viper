@@ -135,15 +135,18 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
 
     if (!substitution.empty())
     {
-        for (auto &instr : block.instructions)
+        for (auto &bb : F.blocks)
         {
-            for (auto &operand : instr.operands)
-                operand = substituteValue(operand, substitution);
-
-            for (auto &argList : instr.brArgs)
+            for (auto &instr : bb.instructions)
             {
-                for (auto &value : argList)
-                    value = substituteValue(value, substitution);
+                for (auto &operand : instr.operands)
+                    operand = substituteValue(operand, substitution);
+
+                for (auto &argList : instr.brArgs)
+                {
+                    for (auto &value : argList)
+                        value = substituteValue(value, substitution);
+                }
             }
         }
     }

@@ -37,7 +37,7 @@ target_include_directories(viper_codegen_x86_64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
 )
 
-target_link_libraries(viper_codegen_x86_64 PUBLIC viper_common viper_codegen_common)
+target_link_libraries(viper_codegen_x86_64 PUBLIC viper_common viper_codegen_common il_transform)
 
 set_target_properties(viper_codegen_x86_64 PROPERTIES
         CXX_STANDARD 20

@@ -125,10 +125,10 @@ TEST(X64FrameLowering, ZeroFrameNoPrologue)
     const auto &target = sysvTarget();
     insertPrologueEpilogue(func, target, frame);
 
-    // The prologue should not contain frame allocation sub for zero frames
-    // but should still have push rbp / mov rbp, rsp
+    // Leaf functions with no frame, no calls, and no callee-saved registers
+    // should skip the prologue entirely (leaf frame elimination).
     int movCount = countOpcode(func, MOpcode::MOVrr);
-    EXPECT_TRUE(movCount >= 1); // At least the mov rbp, rsp
+    EXPECT_EQ(movCount, 0); // No prologue for leaf functions
 }
 
 int main(int argc, char **argv)
