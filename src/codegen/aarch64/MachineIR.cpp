@@ -249,6 +249,24 @@ namespace viper::codegen::aarch64
             return "LdpFprFpImm";
         case MOpcode::StpFprFpImm:
             return "StpFprFpImm";
+        case MOpcode::AddsRRR:
+            return "AddsRRR";
+        case MOpcode::SubsRRR:
+            return "SubsRRR";
+        case MOpcode::AddsRI:
+            return "AddsRI";
+        case MOpcode::SubsRI:
+            return "SubsRI";
+        case MOpcode::AddOvfRRR:
+            return "AddOvfRRR";
+        case MOpcode::SubOvfRRR:
+            return "SubOvfRRR";
+        case MOpcode::AddOvfRI:
+            return "AddOvfRI";
+        case MOpcode::SubOvfRI:
+            return "SubOvfRI";
+        case MOpcode::MulOvfRRR:
+            return "MulOvfRRR";
     }
     return "<unknown>";
 }

@@ -102,11 +102,11 @@ struct UnaryOpMapping
 ///       lookups, use lookupBinaryOp() which provides O(1) access via switch.
 constexpr BinaryOpMapping kBinaryIntOps[] = {
     {il::core::Opcode::Add, MOpcode::AddRRR, true, MOpcode::AddRI},
-    {il::core::Opcode::IAddOvf, MOpcode::AddRRR, true, MOpcode::AddRI},
+    {il::core::Opcode::IAddOvf, MOpcode::AddOvfRRR, true, MOpcode::AddOvfRI},
     {il::core::Opcode::Sub, MOpcode::SubRRR, true, MOpcode::SubRI},
-    {il::core::Opcode::ISubOvf, MOpcode::SubRRR, true, MOpcode::SubRI},
+    {il::core::Opcode::ISubOvf, MOpcode::SubOvfRRR, true, MOpcode::SubOvfRI},
     {il::core::Opcode::Mul, MOpcode::MulRRR, false, MOpcode::MulRRR},
-    {il::core::Opcode::IMulOvf, MOpcode::MulRRR, false, MOpcode::MulRRR},
+    {il::core::Opcode::IMulOvf, MOpcode::MulOvfRRR, false, MOpcode::MulOvfRRR},
     {il::core::Opcode::And, MOpcode::AndRRR, true, MOpcode::AndRI},
     {il::core::Opcode::Or, MOpcode::OrrRRR, true, MOpcode::OrrRI},
     {il::core::Opcode::Xor, MOpcode::EorRRR, true, MOpcode::EorRI},
@@ -170,21 +170,36 @@ inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
     {
         // Integer operations
         case Opc::Add:
-        case Opc::IAddOvf:
         {
             static constexpr BinaryOpMapping m{Opc::Add, MOpcode::AddRRR, true, MOpcode::AddRI};
             return &m;
         }
+        case Opc::IAddOvf:
+        {
+            static constexpr BinaryOpMapping m{
+                Opc::IAddOvf, MOpcode::AddOvfRRR, true, MOpcode::AddOvfRI};
+            return &m;
+        }
         case Opc::Sub:
-        case Opc::ISubOvf:
         {
             static constexpr BinaryOpMapping m{Opc::Sub, MOpcode::SubRRR, true, MOpcode::SubRI};
             return &m;
         }
+        case Opc::ISubOvf:
+        {
+            static constexpr BinaryOpMapping m{
+                Opc::ISubOvf, MOpcode::SubOvfRRR, true, MOpcode::SubOvfRI};
+            return &m;
+        }
         case Opc::Mul:
-        case Opc::IMulOvf:
         {
             static constexpr BinaryOpMapping m{Opc::Mul, MOpcode::MulRRR, false, MOpcode::MulRRR};
+            return &m;
+        }
+        case Opc::IMulOvf:
+        {
+            static constexpr BinaryOpMapping m{
+                Opc::IMulOvf, MOpcode::MulOvfRRR, false, MOpcode::MulOvfRRR};
             return &m;
         }
         case Opc::And:

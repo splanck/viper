@@ -69,4 +69,11 @@ struct PeepholeStats
 /// @return Statistics about optimizations applied.
 [[nodiscard]] PeepholeStats runPeephole(MFunction &fn);
 
+/// @brief Re-scan MIR after peephole to remove callee-saved registers that are
+///        no longer referenced.  Peephole may fold away uses of callee-saved
+///        registers (e.g., compute-into-target fold), but the savedGPRs/savedFPRs
+///        lists still include them from regalloc.  This function prunes any
+///        entries that no longer appear as operands in the MIR.
+void pruneUnusedCalleeSaved(MFunction &fn);
+
 } // namespace viper::codegen::aarch64

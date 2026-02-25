@@ -15,6 +15,7 @@ add_library(il_codegen_aarch64 STATIC
         fastpaths/FastPaths_Cast.cpp
         fastpaths/FastPaths_Memory.cpp
         fastpaths/FastPaths_Return.cpp
+        LowerOvf.cpp
         RegAllocLinear.cpp
         Peephole.cpp
         # Modular PassManager passes (Priority 2F)

@@ -50,11 +50,12 @@ TEST(Arm64CLI, OverflowVariantsRR)
     struct Case
     {
         const char *op;
-        const char *expect;
+        const char *expect;      // primary instruction
+        const char *expectTrap;  // trap branch (nullptr if no trap expected)
     } cases[] = {
-        {"iadd.ovf", "add x0, x0, x1"},
-        {"isub.ovf", "sub x0, x0, x1"},
-        {"imul.ovf", "mul x0, x0, x1"},
+        {"iadd.ovf", "adds x0, x0, x1", "b.vs"},
+        {"isub.ovf", "subs x0, x0, x1", "b.vs"},
+        {"imul.ovf", "mul x0, x0, x1", nullptr},
     };
 
     for (const auto &c : cases)
@@ -73,6 +74,11 @@ TEST(Arm64CLI, OverflowVariantsRR)
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
         EXPECT_NE(asmText.find(c.expect), std::string::npos);
+        if (c.expectTrap)
+        {
+            EXPECT_NE(asmText.find(c.expectTrap), std::string::npos);
+            EXPECT_NE(asmText.find("rt_trap"), std::string::npos);
+        }
     }
 }
 

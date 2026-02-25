@@ -776,6 +776,13 @@ function(viper_add_il_utils_test)
             test_il_inline_threshold PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_inline_threshold test_il_inline_threshold)
 
+    viper_add_test(
+            test_il_sibling_recursion
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_sibling_recursion.cpp)
+    target_link_libraries(
+            test_il_sibling_recursion PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_sibling_recursion test_il_sibling_recursion)
+
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_opcode_info test_il_opcode_info)

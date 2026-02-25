@@ -26,6 +26,7 @@ bool PeepholePass::run(AArch64Module &module, Diagnostics & /*diags*/)
     for (auto &fn : module.mir)
     {
         [[maybe_unused]] auto stats = runPeephole(fn);
+        pruneUnusedCalleeSaved(fn);
     }
     return true;
 }

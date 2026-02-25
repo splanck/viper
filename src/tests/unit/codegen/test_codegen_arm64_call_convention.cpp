@@ -123,7 +123,8 @@ TEST(Arm64CallConv, CallResultStoredAndReused)
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find(blSym("twice")), std::string::npos);
     EXPECT_NE(asmText.find("str x"), std::string::npos);
-    EXPECT_NE(asmText.find("ldr x"), std::string::npos);
+    // After store-load forwarding, the load may be replaced with a mov.
+    EXPECT_TRUE(asmText.find("ldr x") != std::string::npos || asmText.find("mov x") != std::string::npos);
 }
 
 // Test 4: Multiple calls in sequence

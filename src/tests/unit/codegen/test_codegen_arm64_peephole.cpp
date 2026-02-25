@@ -278,37 +278,45 @@ TEST(AArch64Peephole, CmpZeroToTst)
     MFunction fn{};
     fn.name = "test_cmp_zero";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
-    auto &bb = fn.blocks.back();
+    fn.blocks.push_back(MBasicBlock{"target", {}});
+    fn.blocks.back().instrs.push_back(MInstr{MOpcode::Ret, {}});
+    auto &bb = fn.blocks.front();
 
     // cmp x0, #0 (should become tst x0, x0)
     bb.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    // b.gt target  — reads flags (use gt, not eq/ne, to avoid cbz fusion)
+    bb.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("gt"), MOperand::labelOp("target")}});
     // cmp x1, #5 (should NOT be changed - not zero)
     bb.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(5)}});
+    // b.lt target  — reads flags
+    bb.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp("target")}});
     // cmp x2, #0 (should become tst x2, x2)
     bb.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X2), MOperand::immOp(0)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
-    EXPECT_EQ(bb.instrs.size(), 4U);
+    EXPECT_EQ(bb.instrs.size(), 6U);
 
     auto stats = runPeephole(fn);
 
     // Should have converted 2 cmp #0 to tst
     EXPECT_EQ(stats.cmpZeroToTst, 2);
-    EXPECT_EQ(bb.instrs.size(), 4U);
+    EXPECT_EQ(bb.instrs.size(), 6U);
 
     // First instruction should now be TstRR
     EXPECT_EQ(bb.instrs[0].opc, MOpcode::TstRR);
     EXPECT_EQ(static_cast<PhysReg>(bb.instrs[0].ops[0].reg.idOrPhys), PhysReg::X0);
     EXPECT_EQ(static_cast<PhysReg>(bb.instrs[0].ops[1].reg.idOrPhys), PhysReg::X0);
 
-    // Second instruction should still be CmpRI (not zero)
-    EXPECT_EQ(bb.instrs[1].opc, MOpcode::CmpRI);
+    // Third instruction should still be CmpRI (not zero)
+    EXPECT_EQ(bb.instrs[2].opc, MOpcode::CmpRI);
 
-    // Third instruction should now be TstRR
-    EXPECT_EQ(bb.instrs[2].opc, MOpcode::TstRR);
-    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[2].ops[0].reg.idOrPhys), PhysReg::X2);
-    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[2].ops[1].reg.idOrPhys), PhysReg::X2);
+    // Fifth instruction should now be TstRR
+    EXPECT_EQ(bb.instrs[4].opc, MOpcode::TstRR);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[4].ops[0].reg.idOrPhys), PhysReg::X2);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[4].ops[1].reg.idOrPhys), PhysReg::X2);
 }
 
 /// @brief Test that add/sub with #0 are converted to mov.

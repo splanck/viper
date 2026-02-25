@@ -193,6 +193,7 @@ add_library(il_transform STATIC
         il/transform/GVN.cpp
         il/transform/ValueKey.cpp
         il/transform/SCCP.cpp
+        il/transform/SiblingRecursion.cpp
         il/transform/SimplifyCFG.cpp
         il/transform/SimplifyCFG/BlockMerging.cpp
         il/transform/SimplifyCFG/BranchFolding.cpp

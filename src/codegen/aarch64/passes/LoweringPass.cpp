@@ -20,6 +20,7 @@
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 
 #include "codegen/aarch64/LowerILToMIR.hpp"
+#include "codegen/aarch64/LowerOvf.hpp"
 #include "codegen/common/LabelUtil.hpp"
 
 #include <unordered_map>
@@ -48,6 +49,9 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
     for (const auto &fn : ilMod.functions)
     {
         MFunction mir = lowerer.lowerFunction(fn);
+
+        // --- Expand overflow-checked arithmetic pseudo-ops ----
+        lowerOverflowOps(mir);
 
         // --- Label sanitization: hyphens → underscores, optional suffix ----
         using viper::codegen::common::sanitizeLabel;

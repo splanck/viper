@@ -33,6 +33,7 @@
 #include "il/transform/LateCleanup.hpp"
 #include "il/transform/LoopUnroll.hpp"
 #include "il/transform/PipelineExecutor.hpp"
+#include "il/transform/SiblingRecursion.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
@@ -118,6 +119,7 @@ PassManager::PassManager()
     registerCheckOptPass(passRegistry_);
     registerLateCleanupPass(passRegistry_);
     registerLoopUnrollPass(passRegistry_);
+    registerSiblingRecursionPass(passRegistry_);
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
@@ -139,7 +141,8 @@ PassManager::PassManager()
                      {"loop-simplify", "indvars",  "loop-unroll",  "simplify-cfg", "mem2reg",
                       "simplify-cfg",
                       "sccp", // Pre-inline SCCP: simplify callees
-                      "check-opt",     "dce",      "simplify-cfg", "inline",       "simplify-cfg",
+                      "check-opt",     "dce",      "simplify-cfg", "sibling-recursion",
+                      "inline",       "simplify-cfg",
                       "sccp", // Post-inline SCCP: propagate call-site constants
                       "dce",  // Clean up after second SCCP
                       "simplify-cfg",  "licm",     "simplify-cfg", "gvn",          "earlycse",

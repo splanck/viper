@@ -272,4 +272,7 @@ void registerCheckOptPass(PassRegistry &registry);
 /// @brief Register the late cleanup pass.
 void registerLateCleanupPass(PassRegistry &registry);
 
+/// @brief Register the sibling recursion pass.
+void registerSiblingRecursionPass(PassRegistry &registry);
+
 } // namespace il::transform

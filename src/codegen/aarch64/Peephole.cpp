@@ -150,6 +150,15 @@ namespace
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
         case MOpcode::Csel:
+        case MOpcode::AddsRRR:
+        case MOpcode::SubsRRR:
+        case MOpcode::AddsRI:
+        case MOpcode::SubsRI:
+        case MOpcode::AddOvfRRR:
+        case MOpcode::SubOvfRRR:
+        case MOpcode::AddOvfRI:
+        case MOpcode::SubOvfRI:
+        case MOpcode::MulOvfRRR:
             if (!instr.ops.empty() && samePhysReg(instr.ops[0], reg))
                 return true;
             break;
@@ -228,6 +237,11 @@ namespace
         case MOpcode::LslvRRR:
         case MOpcode::LsrvRRR:
         case MOpcode::AsrvRRR:
+        case MOpcode::AddsRRR:
+        case MOpcode::SubsRRR:
+        case MOpcode::AddOvfRRR:
+        case MOpcode::SubOvfRRR:
+        case MOpcode::MulOvfRRR:
             // dst, lhs, rhs - check lhs and rhs (indices 1, 2)
             if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
@@ -240,6 +254,10 @@ namespace
         case MOpcode::LslRI:
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
+        case MOpcode::AddsRI:
+        case MOpcode::SubsRI:
+        case MOpcode::AddOvfRI:
+        case MOpcode::SubOvfRI:
             // dst, src, imm - check src (index 1)
             if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
@@ -1768,6 +1786,272 @@ std::size_t reorderBlocks(MFunction &fn)
     return true;
 }
 
+/// @brief Store-load forwarding: str Rx, [fp, #off]; ...; ldr Ry, [fp, #off]
+///        → replace the load with mov Ry, Rx (if no intervening store to the same offset).
+///
+/// Also handles the case where the str and ldr are adjacent — the most common
+/// pattern from IL parameter spills.
+///
+/// @param instrs Instructions in the basic block.
+/// @param stats Statistics to update.
+/// @return Number of loads forwarded.
+std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
+{
+    std::size_t forwarded = 0;
+    for (std::size_t i = 0; i < instrs.size(); ++i)
+    {
+        // Look for StrRegFpImm  Rx, #off
+        if (instrs[i].opc != MOpcode::StrRegFpImm)
+            continue;
+        if (instrs[i].ops.size() < 2)
+            continue;
+        if (!isPhysReg(instrs[i].ops[0]))
+            continue;
+        if (instrs[i].ops[1].kind != MOperand::Kind::Imm)
+            continue;
+
+        const int64_t storeOff = instrs[i].ops[1].imm;
+        const MOperand storeReg = instrs[i].ops[0];
+
+        // Scan forward for a matching load from the same FP offset.
+        for (std::size_t j = i + 1; j < instrs.size(); ++j)
+        {
+            const auto &next = instrs[j];
+
+            // If we hit another store to the same offset, the forwarding
+            // source changes — stop searching for THIS store.
+            if (next.opc == MOpcode::StrRegFpImm && next.ops.size() >= 2 &&
+                next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff)
+                break;
+
+            // If the stored register is redefined before the load, stop.
+            if (definesReg(next, storeReg))
+                break;
+
+            // Calls clobber caller-saved registers — if the stored register
+            // is caller-saved we can't forward past a call.
+            if (next.opc == MOpcode::Bl || next.opc == MOpcode::Blr)
+                break;
+
+            // Control flow breaks the basic block scope.
+            if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond || next.opc == MOpcode::Ret ||
+                next.opc == MOpcode::Cbz || next.opc == MOpcode::Cbnz)
+                break;
+
+            // Found a matching load?
+            if (next.opc == MOpcode::LdrRegFpImm && next.ops.size() >= 2 &&
+                next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff &&
+                isPhysReg(next.ops[0]))
+            {
+                // Replace load with mov Ry, Rx.
+                instrs[j] = MInstr{MOpcode::MovRR, {next.ops[0], storeReg}};
+                ++forwarded;
+                ++stats.deadInstructionsRemoved;
+                break; // only forward the first matching load per store
+            }
+        }
+    }
+    return forwarded;
+}
+
+/// @brief Remove dead flag-setting instructions (cmp/tst) whose flags are
+///        clobbered by a subsequent flag-setter before any flag-reading instruction.
+///
+/// Pattern: cmp x8, #1; ...; cmp x0, #1; b.cond ...
+///   → remove the first cmp if nothing between them reads flags.
+///
+/// @param instrs Instructions in the basic block.
+/// @param stats Statistics to update.
+/// @return Number of dead flag-setters removed.
+std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &stats)
+{
+    auto setsFlags = [](MOpcode opc) -> bool
+    {
+        switch (opc)
+        {
+            case MOpcode::CmpRR:
+            case MOpcode::CmpRI:
+            case MOpcode::TstRR:
+            case MOpcode::FCmpRR:
+            case MOpcode::AddsRRR:
+            case MOpcode::SubsRRR:
+            case MOpcode::AddsRI:
+            case MOpcode::SubsRI:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    auto readsFlags = [](MOpcode opc) -> bool
+    {
+        switch (opc)
+        {
+            case MOpcode::BCond:
+            case MOpcode::Cset:
+            case MOpcode::Csel:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    std::vector<bool> toRemove(instrs.size(), false);
+    std::size_t removed = 0;
+
+    for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
+    {
+        if (!setsFlags(instrs[i].opc))
+            continue;
+
+        // Scan forward: if we hit another flag-setter before any flag-reader,
+        // this instruction is dead.
+        bool isDead = false;
+        for (std::size_t j = i + 1; j < instrs.size(); ++j)
+        {
+            if (readsFlags(instrs[j].opc))
+                break; // flags are read — this setter is live
+            if (setsFlags(instrs[j].opc))
+            {
+                // However, if this is an Adds/Subs (which also defines a register),
+                // we can only remove it if it's a pure flag-setter (CmpRI/CmpRR/TstRR).
+                if (instrs[i].opc == MOpcode::CmpRI || instrs[i].opc == MOpcode::CmpRR ||
+                    instrs[i].opc == MOpcode::TstRR || instrs[i].opc == MOpcode::FCmpRR)
+                {
+                    isDead = true;
+                }
+                break;
+            }
+        }
+        if (isDead)
+        {
+            toRemove[i] = true;
+            ++removed;
+        }
+    }
+
+    if (removed > 0)
+    {
+        removeMarkedInstructions(instrs, toRemove);
+        stats.deadInstructionsRemoved += static_cast<int>(removed);
+    }
+    return removed;
+}
+
+/// @brief Fold compute-then-move patterns where an ALU result is immediately
+///        moved to another register and the original destination is dead.
+///
+/// Pattern: op Rd, Rn, Rm/imm; mov Rt, Rd  →  op Rt, Rn, Rm/imm
+///   (when Rd has no other uses after the mov)
+///
+/// Also handles: op Rd, Rn, Rm/imm; b.vs ...; mov Rt, Rd  →  op Rt, Rn, Rm/imm; b.vs ...
+///   (flag-checking branch between compute and move is fine — it doesn't read Rd)
+///
+/// @param instrs Instructions in the basic block.
+/// @param stats Statistics to update.
+/// @return Number of folds applied.
+std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &stats)
+{
+    auto isSimpleALU = [](MOpcode opc) -> bool
+    {
+        switch (opc)
+        {
+            case MOpcode::AddRRR:
+            case MOpcode::SubRRR:
+            case MOpcode::AddRI:
+            case MOpcode::SubRI:
+            case MOpcode::AddsRRR:
+            case MOpcode::SubsRRR:
+            case MOpcode::AddsRI:
+            case MOpcode::SubsRI:
+            case MOpcode::MulRRR:
+            case MOpcode::AndRRR:
+            case MOpcode::OrrRRR:
+            case MOpcode::EorRRR:
+            case MOpcode::LslRI:
+            case MOpcode::LsrRI:
+            case MOpcode::AsrRI:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    std::size_t folded = 0;
+    for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
+    {
+        if (!isSimpleALU(instrs[i].opc))
+            continue;
+        if (instrs[i].ops.empty() || !isPhysReg(instrs[i].ops[0]))
+            continue;
+
+        const MOperand aluDst = instrs[i].ops[0];
+
+        // Find the next mov that reads aluDst — allow skipping b.vs/b.cond in between
+        // (they read flags, not registers).
+        std::size_t movIdx = i + 1;
+        while (movIdx < instrs.size() && instrs[movIdx].opc == MOpcode::BCond)
+            ++movIdx;
+
+        if (movIdx >= instrs.size())
+            continue;
+        if (instrs[movIdx].opc != MOpcode::MovRR)
+            continue;
+        if (instrs[movIdx].ops.size() != 2)
+            continue;
+        if (!samePhysReg(instrs[movIdx].ops[1], aluDst))
+            continue;
+        if (!isPhysReg(instrs[movIdx].ops[0]))
+            continue;
+
+        const MOperand movDst = instrs[movIdx].ops[0];
+
+        // Safety checks:
+        // 1. movDst must not be used by any instruction between the ALU and the
+        //    mov (exclusive).  ARM64 reads sources before writing the destination
+        //    within a single instruction, so the ALU itself is fine — but
+        //    intervening instructions would see the new (wrong) value.
+        // 2. aluDst must be dead after the mov.
+        bool interveningUse = false;
+        for (std::size_t k = i + 1; k < movIdx; ++k)
+        {
+            if (usesReg(instrs[k], movDst))
+            {
+                interveningUse = true;
+                break;
+            }
+        }
+        if (interveningUse)
+            continue;
+
+        // Check aluDst is dead after the mov.
+        bool aluDstDead = true;
+        for (std::size_t j = movIdx + 1; j < instrs.size(); ++j)
+        {
+            if (usesReg(instrs[j], aluDst))
+            {
+                aluDstDead = false;
+                break;
+            }
+            if (definesReg(instrs[j], aluDst))
+                break; // redefined, old value is dead
+        }
+        if (!aluDstDead)
+            continue;
+
+        // Fold: change ALU destination to movDst, remove the mov.
+        instrs[i].ops[0] = movDst;
+        instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(movIdx));
+        ++folded;
+        ++stats.deadInstructionsRemoved;
+
+        // Re-check from same position since we erased an instruction.
+        if (i > 0)
+            --i;
+    }
+    return folded;
+}
+
 } // namespace
 
 PeepholeStats runPeephole(MFunction &fn)
@@ -1840,6 +2124,12 @@ PeepholeStats runPeephole(MFunction &fn)
             }
         }
 
+        // Pass 1.9: Store-load forwarding (str+ldr at same FP offset → mov)
+        forwardStoreLoads(instrs, stats);
+
+        // Pass 1.97: Compute-into-target fold (op Rd, ...; mov Rt, Rd → op Rt, ...)
+        foldComputeIntoTarget(instrs, stats);
+
         // Pass 2: Try to fold consecutive moves
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
         {
@@ -1871,6 +2161,11 @@ PeepholeStats runPeephole(MFunction &fn)
 
         // Pass 4.5: Dead code elimination - remove instructions with unused results
         removeDeadInstructions(instrs, stats);
+
+        // Pass 4.6: Dead flag-setter elimination — must run AFTER general DCE
+        // so that dead Cset/Csel instructions (which read flags) are removed
+        // first, exposing flag-setters whose results are truly unused.
+        removeDeadFlagSetters(instrs, stats);
     }
 
     // Pass 5: Branch inversion and branch-to-next removal.
@@ -1923,6 +2218,35 @@ PeepholeStats runPeephole(MFunction &fn)
     }
 
     return stats;
+}
+
+void pruneUnusedCalleeSaved(MFunction &fn)
+{
+    // Build a set of all physical registers actually referenced in the MIR.
+    std::unordered_set<uint16_t> usedRegs;
+    for (const auto &bb : fn.blocks)
+    {
+        for (const auto &mi : bb.instrs)
+        {
+            for (const auto &op : mi.ops)
+            {
+                if (op.kind == MOperand::Kind::Reg && op.reg.isPhys)
+                    usedRegs.insert(op.reg.idOrPhys);
+            }
+        }
+    }
+
+    // Prune savedGPRs: remove any callee-saved register not referenced.
+    fn.savedGPRs.erase(
+        std::remove_if(fn.savedGPRs.begin(), fn.savedGPRs.end(),
+                        [&](PhysReg r) { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
+        fn.savedGPRs.end());
+
+    // Prune savedFPRs: same logic.
+    fn.savedFPRs.erase(
+        std::remove_if(fn.savedFPRs.begin(), fn.savedFPRs.end(),
+                        [&](PhysReg r) { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
+        fn.savedFPRs.end());
 }
 
 } // namespace viper::codegen::aarch64

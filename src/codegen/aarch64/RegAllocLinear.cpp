@@ -195,6 +195,11 @@ static bool isThreeAddrRRR(MOpcode opc)
         case MOpcode::LslvRRR:
         case MOpcode::LsrvRRR:
         case MOpcode::AsrvRRR:
+        case MOpcode::AddsRRR:
+        case MOpcode::SubsRRR:
+        case MOpcode::AddOvfRRR:
+        case MOpcode::SubOvfRRR:
+        case MOpcode::MulOvfRRR:
             return true;
         default:
             return false;
@@ -216,6 +221,10 @@ static bool isUseDefImmLike(MOpcode opc)
         case MOpcode::AndRI:
         case MOpcode::OrrRI:
         case MOpcode::EorRI:
+        case MOpcode::AddsRI:
+        case MOpcode::SubsRI:
+        case MOpcode::AddOvfRI:
+        case MOpcode::SubOvfRI:
             return true;
         default:
             return false;
@@ -700,22 +709,38 @@ class LinearAllocator
         }
     }
 
-    /// @brief Check if a vreg's next use is after the next call.
+    /// @brief Check if a vreg has ANY use after a call instruction.
     ///
-    /// If a vreg is used after the next call instruction, it should be
-    /// allocated to a callee-saved register to avoid spilling.
+    /// If a vreg is used anywhere after a call instruction (not just the
+    /// next use), it should be allocated to a callee-saved register to
+    /// avoid spilling.  The old implementation only checked the *next* use,
+    /// missing cases where the first use is before a call but a later use
+    /// is after one (e.g., fib's `n` parameter used both before and after
+    /// recursive calls).
     bool nextUseAfterCall(uint16_t vreg, RegClass cls) const
     {
-        unsigned nextUse = getNextUseDistance(vreg, cls);
-        if (nextUse == UINT_MAX)
-            return false; // No next use in this block
+        const auto &map = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
+        auto it = map.find(vreg);
+        if (it == map.end() || it->second.empty())
+            return false;
 
-        unsigned nextUseIdx = currentInstrIdx_ + nextUse;
+        // Find the last use position after the current instruction.
+        unsigned lastUse = 0;
+        for (auto posIt = it->second.rbegin(); posIt != it->second.rend(); ++posIt)
+        {
+            if (*posIt > currentInstrIdx_)
+            {
+                lastUse = *posIt;
+                break;
+            }
+        }
+        if (lastUse == 0)
+            return false; // No future use
 
-        // Find if there's a call between current position and next use
+        // Check if any call sits between current position and the last use.
         for (unsigned callIdx : callPositions_)
         {
-            if (callIdx > currentInstrIdx_ && callIdx < nextUseIdx)
+            if (callIdx > currentInstrIdx_ && callIdx < lastUse)
                 return true;
         }
         return false;
@@ -1277,16 +1302,43 @@ class LinearAllocator
         // Spill only caller-saved registers before the call.
         // Callee-saved registers (x19-x28, d8-d15) don't need spilling because
         // the callee is required to preserve them.
+        //
+        // Optimisation: if a vreg in a caller-saved register has no future use,
+        // just evict it without storing — the value is dead and need not be
+        // preserved across the call.
         std::vector<MInstr> preCall;
         for (auto &kv : gprStates_)
         {
             if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::GPR))
-                spillVictim(RegClass::GPR, kv.first, preCall);
+            {
+                unsigned dist = getNextUseDistance(kv.first, RegClass::GPR);
+                if (dist == UINT_MAX)
+                {
+                    // Dead — evict without storing.
+                    pools_.releaseGPR(kv.second.phys, ti_);
+                    kv.second.hasPhys = false;
+                }
+                else
+                {
+                    spillVictim(RegClass::GPR, kv.first, preCall);
+                }
+            }
         }
         for (auto &kv : fprStates_)
         {
             if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::FPR))
-                spillVictim(RegClass::FPR, kv.first, preCall);
+            {
+                unsigned dist = getNextUseDistance(kv.first, RegClass::FPR);
+                if (dist == UINT_MAX)
+                {
+                    pools_.releaseFPR(kv.second.phys, ti_);
+                    kv.second.hasPhys = false;
+                }
+                else
+                {
+                    spillVictim(RegClass::FPR, kv.first, preCall);
+                }
+            }
         }
         for (auto &mi : preCall)
             rewritten.push_back(std::move(mi));

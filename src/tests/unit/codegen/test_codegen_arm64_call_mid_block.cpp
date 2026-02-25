@@ -76,7 +76,8 @@ TEST(Arm64CLI, CallMidFunction_ResultReused)
     // Store to FP-relative local (may be from x0 directly or via a vreg)
     EXPECT_NE(asmText.find("str x"), std::string::npos);
     EXPECT_NE(asmText.find("[x29, #"), std::string::npos);
-    EXPECT_NE(asmText.find("ldr x"), std::string::npos);
+    // After store-load forwarding, the load may be replaced with a mov.
+    EXPECT_TRUE(asmText.find("ldr x") != std::string::npos || asmText.find("mov x") != std::string::npos);
     EXPECT_NE(asmText.find("add x"), std::string::npos);
 }
 

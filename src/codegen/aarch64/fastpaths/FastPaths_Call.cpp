@@ -101,12 +101,18 @@ bool computeTempTo(const il::core::Instr &prod,
                 static_cast<std::size_t>(i1) < kMaxGPRArgs)
             {
                 MOpcode opc = MOpcode::AddRRR;
-                if (prod.op == Opcode::Add || prod.op == Opcode::IAddOvf)
+                if (prod.op == Opcode::Add)
                     opc = MOpcode::AddRRR;
-                else if (prod.op == Opcode::Sub || prod.op == Opcode::ISubOvf)
+                else if (prod.op == Opcode::IAddOvf)
+                    opc = MOpcode::AddOvfRRR;
+                else if (prod.op == Opcode::Sub)
                     opc = MOpcode::SubRRR;
-                else if (prod.op == Opcode::Mul || prod.op == Opcode::IMulOvf)
+                else if (prod.op == Opcode::ISubOvf)
+                    opc = MOpcode::SubOvfRRR;
+                else if (prod.op == Opcode::Mul)
                     opc = MOpcode::MulRRR;
+                else if (prod.op == Opcode::IMulOvf)
+                    opc = MOpcode::MulOvfRRR;
                 else if (prod.op == Opcode::And)
                     opc = MOpcode::AndRRR;
                 else if (prod.op == Opcode::Or)
@@ -139,10 +145,14 @@ bool computeTempTo(const il::core::Instr &prod,
                     ri_emit(MOpcode::LsrRI, static_cast<unsigned>(ip), o1.i64);
                 else if (prod.op == Opcode::AShr)
                     ri_emit(MOpcode::AsrRI, static_cast<unsigned>(ip), o1.i64);
-                else if (prod.op == Opcode::Add || prod.op == Opcode::IAddOvf)
+                else if (prod.op == Opcode::Add)
                     ri_emit(MOpcode::AddRI, static_cast<unsigned>(ip), o1.i64);
-                else if (prod.op == Opcode::Sub || prod.op == Opcode::ISubOvf)
+                else if (prod.op == Opcode::IAddOvf)
+                    ri_emit(MOpcode::AddOvfRI, static_cast<unsigned>(ip), o1.i64);
+                else if (prod.op == Opcode::Sub)
                     ri_emit(MOpcode::SubRI, static_cast<unsigned>(ip), o1.i64);
+                else if (prod.op == Opcode::ISubOvf)
+                    ri_emit(MOpcode::SubOvfRI, static_cast<unsigned>(ip), o1.i64);
                 return true;
             }
         }
@@ -158,8 +168,10 @@ bool computeTempTo(const il::core::Instr &prod,
             int ip = indexOfParam(bb, o1.id);
             if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs)
             {
-                if (prod.op == Opcode::Add || prod.op == Opcode::IAddOvf)
+                if (prod.op == Opcode::Add)
                     ri_emit(MOpcode::AddRI, static_cast<unsigned>(ip), o0.i64);
+                else if (prod.op == Opcode::IAddOvf)
+                    ri_emit(MOpcode::AddOvfRI, static_cast<unsigned>(ip), o0.i64);
                 return true;
             }
         }

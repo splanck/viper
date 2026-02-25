@@ -81,22 +81,37 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                     switch (opI.op)
                     {
                         case Opcode::Add:
-                        case Opcode::IAddOvf:
                             bbMir.instrs.push_back(MInstr{MOpcode::AddRRR,
                                                           {MOperand::regOp(PhysReg::X0),
                                                            MOperand::regOp(PhysReg::X0),
                                                            MOperand::regOp(PhysReg::X1)}});
                             break;
+                        case Opcode::IAddOvf:
+                            bbMir.instrs.push_back(MInstr{MOpcode::AddOvfRRR,
+                                                          {MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(PhysReg::X1)}});
+                            break;
                         case Opcode::Sub:
-                        case Opcode::ISubOvf:
                             bbMir.instrs.push_back(MInstr{MOpcode::SubRRR,
                                                           {MOperand::regOp(PhysReg::X0),
                                                            MOperand::regOp(PhysReg::X0),
                                                            MOperand::regOp(PhysReg::X1)}});
                             break;
+                        case Opcode::ISubOvf:
+                            bbMir.instrs.push_back(MInstr{MOpcode::SubOvfRRR,
+                                                          {MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(PhysReg::X1)}});
+                            break;
                         case Opcode::Mul:
-                        case Opcode::IMulOvf:
                             bbMir.instrs.push_back(MInstr{MOpcode::MulRRR,
+                                                          {MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(PhysReg::X1)}});
+                            break;
+                        case Opcode::IMulOvf:
+                            bbMir.instrs.push_back(MInstr{MOpcode::MulOvfRRR,
                                                           {MOperand::regOp(PhysReg::X0),
                                                            MOperand::regOp(PhysReg::X0),
                                                            MOperand::regOp(PhysReg::X1)}});
@@ -155,15 +170,18 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
     {
         const auto &binI = bb.instructions[bb.instructions.size() - 2];
         const auto &retI = bb.instructions.back();
-        const bool isAdd = (binI.op == Opcode::Add || binI.op == Opcode::IAddOvf);
-        const bool isSub = (binI.op == Opcode::Sub || binI.op == Opcode::ISubOvf);
+        const bool isAdd = (binI.op == Opcode::Add);
+        const bool isAddOvf = (binI.op == Opcode::IAddOvf);
+        const bool isSub = (binI.op == Opcode::Sub);
+        const bool isSubOvf = (binI.op == Opcode::ISubOvf);
         const bool isShl = (binI.op == Opcode::Shl);
         const bool isLShr = (binI.op == Opcode::LShr);
         const bool isAShr = (binI.op == Opcode::AShr);
         const bool isICmpImm = (lookupCondition(binI.op) != nullptr);
 
-        if ((isAdd || isSub || isShl || isLShr || isAShr) && retI.op == Opcode::Ret &&
-            binI.result && !retI.operands.empty() && binI.operands.size() == 2)
+        if ((isAdd || isAddOvf || isSub || isSubOvf || isShl || isLShr || isAShr) &&
+            retI.op == Opcode::Ret && binI.result && !retI.operands.empty() &&
+            binI.operands.size() == 2)
         {
             const auto &retV = retI.operands[0];
             if (retV.kind == il::core::Value::Kind::Temp && retV.id == *binI.result)
@@ -180,8 +198,18 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                                                       {MOperand::regOp(PhysReg::X0),
                                                        MOperand::regOp(PhysReg::X0),
                                                        MOperand::immOp(imm)}});
+                    else if (isAddOvf)
+                        bbMir.instrs.push_back(MInstr{MOpcode::AddOvfRI,
+                                                      {MOperand::regOp(PhysReg::X0),
+                                                       MOperand::regOp(PhysReg::X0),
+                                                       MOperand::immOp(imm)}});
                     else if (isSub)
                         bbMir.instrs.push_back(MInstr{MOpcode::SubRI,
+                                                      {MOperand::regOp(PhysReg::X0),
+                                                       MOperand::regOp(PhysReg::X0),
+                                                       MOperand::immOp(imm)}});
+                    else if (isSubOvf)
+                        bbMir.instrs.push_back(MInstr{MOpcode::SubOvfRI,
                                                       {MOperand::regOp(PhysReg::X0),
                                                        MOperand::regOp(PhysReg::X0),
                                                        MOperand::immOp(imm)}});
@@ -217,7 +245,7 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                 {
                     // Only commutative operations can swap operands.
                     // Shifts (shl, lshr, ashr) are NOT commutative: `5 << x` != `x << 5`.
-                    if (isAdd)
+                    if (isAdd || isAddOvf)
                     {
                         for (size_t i = 0; i < bb.params.size(); ++i)
                             if (bb.params[i].id == o1.id && i < kMaxGPRArgs)

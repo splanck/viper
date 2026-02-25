@@ -127,6 +127,17 @@ enum class MOpcode
     StpRegFpImm, // stp reg1, reg2, [fp, #offset]
     LdpFprFpImm, // ldp d1, d2, [fp, #offset]
     StpFprFpImm, // stp d1, d2, [fp, #offset]
+    // --- Flag-setting arithmetic (for overflow detection) ---
+    AddsRRR, // adds dst, lhs, rhs (sets NZCV flags)
+    SubsRRR, // subs dst, lhs, rhs (sets NZCV flags)
+    AddsRI,  // adds dst, lhs, #imm (sets NZCV flags)
+    SubsRI,  // subs dst, lhs, #imm (sets NZCV flags)
+    // --- Overflow-checked pseudo-opcodes (expanded by LowerOvf pass) ---
+    AddOvfRRR, // pseudo: overflow-checked add (expanded to AddsRRR + b.vs)
+    SubOvfRRR, // pseudo: overflow-checked sub (expanded to SubsRRR + b.vs)
+    AddOvfRI,  // pseudo: overflow-checked add immediate (expanded to AddsRI + b.vs)
+    SubOvfRI,  // pseudo: overflow-checked sub immediate (expanded to SubsRI + b.vs)
+    MulOvfRRR, // pseudo: overflow-checked mul (expanded to mul + smulh + cmp + b.ne)
 };
 
 /// @brief Represents a machine register (physical or virtual).

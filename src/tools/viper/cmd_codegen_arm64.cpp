@@ -20,6 +20,7 @@
 
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/LowerILToMIR.hpp"
+#include "codegen/aarch64/LowerOvf.hpp"
 #include "codegen/aarch64/Peephole.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/RodataPool.hpp"
@@ -337,6 +338,8 @@ int emitAndMaybeLink(const Options &opts)
     for (const auto &fn : mod.functions)
     {
         MFunction mir = lowerer.lowerFunction(fn);
+        // 0) Expand overflow-checked arithmetic pseudo-ops before RA
+        lowerOverflowOps(mir);
         // 1) Sanitize basic block labels and (optionally) uniquify across module
         {
             using viper::codegen::common::sanitizeLabel;
@@ -445,6 +448,8 @@ int emitAndMaybeLink(const Options &opts)
         }
         // Run peephole optimizations after RA
         [[maybe_unused]] auto peepholeStats = runPeephole(mir);
+        // Prune callee-saved registers that peephole eliminated.
+        pruneUnusedCalleeSaved(mir);
         // Debug: dump MIR after peephole
         if (opts.dump_mir_after_ra)
         {

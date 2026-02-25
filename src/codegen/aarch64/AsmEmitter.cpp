@@ -1014,6 +1014,22 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             os << "  cbnz " << rn(getReg(mi.ops[0])) << ", " << sanitizeLabel(mi.ops[1].label)
                << "\n";
             return;
+        case MOpcode::AddsRRR:
+            os << "  adds " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
+               << rn(getReg(mi.ops[2])) << "\n";
+            return;
+        case MOpcode::SubsRRR:
+            os << "  subs " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
+               << rn(getReg(mi.ops[2])) << "\n";
+            return;
+        case MOpcode::AddsRI:
+            os << "  adds " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", #"
+               << getImm(mi.ops[2]) << "\n";
+            return;
+        case MOpcode::SubsRI:
+            os << "  subs " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", #"
+               << getImm(mi.ops[2]) << "\n";
+            return;
         case MOpcode::MAddRRRR:
             os << "  madd " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
                << rn(getReg(mi.ops[2])) << ", " << rn(getReg(mi.ops[3])) << "\n";
