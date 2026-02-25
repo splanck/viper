@@ -1,0 +1,148 @@
+// pickups.zia — Coins, health, power-ups, collectible logic
+module pickups;
+
+bind Viper.Graphics;
+bind "./config";
+bind "./level";
+bind "./physics";
+bind "./sprites";
+
+entity PickupManager {
+    hide List[Integer] ptype;
+    hide List[Integer] px;       // world pixel x
+    hide List[Integer] py;       // world pixel y
+    hide List[Integer] pactive;
+    hide List[Integer] pframe;   // animation frame
+    hide Integer pickupCount;
+    hide Integer animTimer;
+
+    hide PhysicsHelper phys;
+
+    expose func init() {
+        ptype = [];
+        px = [];
+        py = [];
+        pactive = [];
+        pframe = [];
+        pickupCount = 0;
+        animTimer = 0;
+        phys = new PhysicsHelper();
+    }
+
+    expose func reset() {
+        ptype = [];
+        px = [];
+        py = [];
+        pactive = [];
+        pframe = [];
+        pickupCount = 0;
+        animTimer = 0;
+    }
+
+    expose func spawnPickup(t: Integer, wx: Integer, wy: Integer) {
+        ptype.add(t);
+        px.add(wx);
+        py.add(wy);
+        pactive.add(1);
+        pframe.add(0);
+        pickupCount = pickupCount + 1;
+    }
+
+    expose func spawnFromLevel(level: Level) {
+        var i = 0;
+        while i < level.pickupTypes.length() {
+            spawnPickup(level.pickupTypes.get(i),
+                        level.pickupX.get(i),
+                        level.pickupY.get(i));
+            i = i + 1;
+        }
+    }
+
+    expose func updateAll() {
+        // Animate coins
+        animTimer = animTimer + 1;
+        if animTimer >= 12 {
+            animTimer = 0;
+            var i = 0;
+            while i < pickupCount {
+                if pactive.get(i) == 1 {
+                    if ptype.get(i) == PICKUP_COIN {
+                        var f = pframe.get(i) + 1;
+                        if f >= 4 { f = 0; }
+                        pframe.set(i, f);
+                    }
+                }
+                i = i + 1;
+            }
+        }
+    }
+
+    // Check collection against player. Returns pickup type if collected, or -1.
+    expose func checkCollection(playerPx: Integer, playerPy: Integer) -> Integer {
+        var i = 0;
+        while i < pickupCount {
+            if pactive.get(i) == 1 {
+                var t = ptype.get(i);
+                var size = COIN_SIZE;
+                if t != PICKUP_COIN {
+                    size = POWERUP_SIZE;
+                }
+
+                if phys.rectOverlapPx(playerPx, playerPy, PLAYER_W, PLAYER_H,
+                                      px.get(i), py.get(i), size, size) {
+                    pactive.set(i, 0);
+                    return t;
+                }
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer,
+                        sprites: SpriteFactory) {
+        var i = 0;
+        while i < pickupCount {
+            if pactive.get(i) == 1 {
+                var sx = px.get(i) - camX;
+                var sy = py.get(i) - camY;
+
+                // Skip if off screen
+                if sx > -48 {
+                    if sx < SCREEN_W + 48 {
+                        if sy > -48 {
+                            if sy < SCREEN_H + 48 {
+                                var t = ptype.get(i);
+                                var f = pframe.get(i);
+
+                                // Bobbing animation (up/down by 2 pixels)
+                                var bob = animTimer / 6;
+                                if animTimer >= 6 {
+                                    bob = 2 - (animTimer - 6) / 6;
+                                }
+                                sy = sy + bob;
+
+                                if t == PICKUP_COIN {
+                                    canvas.BlitAlpha(sx, sy, sprites.getCoinFrame(f));
+                                }
+                                if t == PICKUP_HEALTH {
+                                    canvas.BlitAlpha(sx, sy, sprites.getHealthOrb());
+                                }
+                                if t == PICKUP_SPEED {
+                                    canvas.BlitAlpha(sx, sy, sprites.getSpeedPickup());
+                                }
+                                if t == PICKUP_SHIELD {
+                                    canvas.BlitAlpha(sx, sy, sprites.getShieldPickup());
+                                }
+                                if t == PICKUP_RAPIDFIRE {
+                                    canvas.BlitAlpha(sx, sy, sprites.getRapidPickup());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+}

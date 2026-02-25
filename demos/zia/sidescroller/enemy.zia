@@ -1,0 +1,719 @@
+// enemy.zia — Enemy types: slime (walker), bat (flyer), turret (shooter), boss
+// Uses parallel arrays for pooled enemy management
+module enemy;
+
+bind Viper.Graphics;
+bind Viper.Math;
+bind "./config";
+bind "./level";
+bind "./physics";
+bind "./sprites";
+
+entity EnemyManager {
+    // Parallel arrays for enemy pool
+    hide List[Integer] etype;
+    hide List[Integer] ex;       // position x100
+    hide List[Integer] ey;       // position x100
+    hide List[Integer] evx;      // velocity x100
+    hide List[Integer] evy;
+    hide List[Integer] ehp;
+    hide List[Integer] estate;   // 0=active, 1=hurt, 2=dead
+    hide List[Integer] edir;     // facing: -1 or 1
+    hide List[Integer] eframe;   // animation frame
+    hide List[Integer] etimer;   // generic timer (AI, animation, cooldown)
+    hide List[Integer] etimer2;  // secondary timer (shoot cooldown, etc.)
+    hide List[Integer] eactive;
+    hide Integer enemyCount;
+
+    // Physics helper
+    hide PhysicsHelper phys;
+
+    // Output buffers for moveAndCollide
+    hide List[Integer] outX;
+    hide List[Integer] outY;
+    hide List[Integer] outVx;
+    hide List[Integer] outVy;
+
+    // Boss state
+    expose Integer bossIndex;    // index into pool, or -1
+    expose Integer bossPhase;    // 0, 1, 2
+    expose Integer bossMaxHp;
+
+    // Enemy bullets (turret/boss projectiles)
+    hide List[Integer] ebx;      // bullet x (pixels)
+    hide List[Integer] eby;      // bullet y (pixels)
+    hide List[Integer] ebvx;     // bullet vx (pixels/frame)
+    hide List[Integer] ebvy;
+    hide List[Integer] ebactive;
+    hide Integer ebCount;
+
+    expose func init() {
+        etype = [];
+        ex = [];
+        ey = [];
+        evx = [];
+        evy = [];
+        ehp = [];
+        estate = [];
+        edir = [];
+        eframe = [];
+        etimer = [];
+        etimer2 = [];
+        eactive = [];
+        enemyCount = 0;
+
+        phys = new PhysicsHelper();
+        outX = [0];
+        outY = [0];
+        outVx = [0];
+        outVy = [0];
+
+        bossIndex = -1;
+        bossPhase = 0;
+        bossMaxHp = BOSS_HP;
+
+        ebx = [];
+        eby = [];
+        ebvx = [];
+        ebvy = [];
+        ebactive = [];
+        ebCount = 0;
+    }
+
+    expose func reset() {
+        enemyCount = 0;
+        etype = [];
+        ex = [];
+        ey = [];
+        evx = [];
+        evy = [];
+        ehp = [];
+        estate = [];
+        edir = [];
+        eframe = [];
+        etimer = [];
+        etimer2 = [];
+        eactive = [];
+        bossIndex = -1;
+        bossPhase = 0;
+        ebCount = 0;
+        ebx = [];
+        eby = [];
+        ebvx = [];
+        ebvy = [];
+        ebactive = [];
+    }
+
+    expose func spawnEnemy(t: Integer, wx: Integer, wy: Integer) {
+        etype.add(t);
+        ex.add(wx * 100);
+        ey.add(wy * 100);
+        evx.add(0);
+        evy.add(0);
+        edir.add(1);
+        eframe.add(0);
+        etimer.add(0);
+        etimer2.add(0);
+        eactive.add(1);
+        estate.add(0);
+
+        if t == ENEMY_SLIME {
+            ehp.add(SLIME_HP);
+            evx.set(enemyCount, SLIME_SPEED);
+        }
+        if t == ENEMY_BAT {
+            ehp.add(BAT_HP);
+        }
+        if t == ENEMY_TURRET {
+            ehp.add(TURRET_HP);
+        }
+        if t == ENEMY_BOSS {
+            ehp.add(BOSS_HP);
+            bossIndex = enemyCount;
+            bossPhase = 0;
+        }
+
+        enemyCount = enemyCount + 1;
+    }
+
+    expose func spawnFromLevel(level: Level) {
+        var i = 0;
+        while i < level.enemyTypes.length() {
+            spawnEnemy(level.enemyTypes.get(i),
+                       level.enemyX.get(i),
+                       level.enemyY.get(i));
+            i = i + 1;
+        }
+
+        if level.hasBoss {
+            spawnEnemy(ENEMY_BOSS, level.bossX, level.bossY);
+        }
+    }
+
+    expose func updateAll(level: Level, playerPx: Integer, playerPy: Integer) {
+        var i = 0;
+        while i < enemyCount {
+            if eactive.get(i) == 1 {
+                var t = etype.get(i);
+
+                // Handle hurt timer
+                if estate.get(i) == 1 {
+                    var tm = etimer.get(i) - 1;
+                    etimer.set(i, tm);
+                    if tm <= 0 {
+                        estate.set(i, 0);
+                    }
+                }
+
+                if t == ENEMY_SLIME {
+                    updateSlime(i, level);
+                }
+                if t == ENEMY_BAT {
+                    updateBat(i, playerPx, playerPy);
+                }
+                if t == ENEMY_TURRET {
+                    updateTurret(i, playerPx, playerPy);
+                }
+                if t == ENEMY_BOSS {
+                    updateBoss(i, level, playerPx, playerPy);
+                }
+            }
+            i = i + 1;
+        }
+
+        // Update enemy bullets
+        updateEnemyBullets(level);
+    }
+
+    // =========================================================================
+    // Slime AI — patrol on ground, reverse at edges/walls
+    // =========================================================================
+
+    hide func updateSlime(i: Integer, level: Level) {
+        // Animation
+        var tm = etimer.get(i) + 1;
+        if tm >= 20 {
+            tm = 0;
+            var f = eframe.get(i);
+            eframe.set(i, 1 - f);
+        }
+        etimer.set(i, tm);
+
+        // Apply gravity
+        var curVy = evy.get(i) + GRAVITY;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+
+        // Move
+        var curX = ex.get(i);
+        var curY = ey.get(i);
+        var curVx = evx.get(i);
+
+        outX.set(0, curX);
+        outY.set(0, curY);
+        outVx.set(0, curVx);
+        outVy.set(0, curVy);
+
+        var flags = phys.moveAndCollide(curX, curY, curVx, curVy,
+                                         SLIME_W, SLIME_H, level,
+                                         outX, outY, outVx, outVy);
+
+        ex.set(i, outX.get(0));
+        ey.set(i, outY.get(0));
+        evx.set(i, outVx.get(0));
+        evy.set(i, outVy.get(0));
+
+        // Reverse on wall hit
+        var hitLeft = (flags / 4) % 2 == 1;
+        var hitRight = (flags / 8) % 2 == 1;
+        if hitLeft {
+            evx.set(i, SLIME_SPEED);
+            edir.set(i, 1);
+        }
+        if hitRight {
+            evx.set(i, 0 - SLIME_SPEED);
+            edir.set(i, -1);
+        }
+
+        // Check if at edge of platform (reverse before falling)
+        var onFloor = (flags % 2) == 1;
+        if onFloor {
+            var px = outX.get(0) / 100;
+            var py = outY.get(0) / 100;
+            var d = edir.get(i);
+            var checkX = px;
+            if d > 0 {
+                checkX = px + SLIME_W;
+            }
+            var tileX = checkX / TILE_SIZE;
+            var tileY = (py + SLIME_H + 2) / TILE_SIZE;
+            if level.isSolid(tileX, tileY) == false {
+                // Edge detected — reverse
+                evx.set(i, 0 - evx.get(i));
+                edir.set(i, 0 - d);
+            }
+        }
+    }
+
+    // =========================================================================
+    // Bat AI — sine wave patrol, chase player when nearby
+    // =========================================================================
+
+    hide func updateBat(i: Integer, playerPx: Integer, playerPy: Integer) {
+        // Animation — wing flap
+        var tm = etimer.get(i) + 1;
+        if tm >= 10 {
+            tm = 0;
+            var f = eframe.get(i) + 1;
+            if f >= 3 { f = 0; }
+            eframe.set(i, f);
+        }
+        etimer.set(i, tm);
+
+        var cx = ex.get(i) / 100;
+        var cy = ey.get(i) / 100;
+
+        // Distance to player
+        var dx = playerPx - cx;
+        var dy = playerPy - cy;
+
+        // Approximate distance (Manhattan-ish)
+        var adx = dx;
+        if adx < 0 { adx = 0 - adx; }
+        var ady = dy;
+        if ady < 0 { ady = 0 - ady; }
+        var dist = adx + ady;
+
+        if dist < BAT_DETECT_RANGE * 2 {
+            // Chase player
+            var moveX = 0;
+            var moveY = 0;
+            if dx > 0 { moveX = BAT_SPEED; }
+            if dx < 0 { moveX = 0 - BAT_SPEED; }
+            if dy > 0 { moveY = BAT_SPEED / 2; }
+            if dy < 0 { moveY = 0 - BAT_SPEED / 2; }
+
+            evx.set(i, moveX);
+            evy.set(i, moveY);
+
+            if dx > 0 { edir.set(i, 1); }
+            if dx < 0 { edir.set(i, -1); }
+        } else {
+            // Idle hover — sine wave using timer
+            var wave = etimer2.get(i) + 1;
+            etimer2.set(i, wave);
+            // Simple up/down oscillation
+            if wave % 60 < 30 {
+                evy.set(i, -60);
+            } else {
+                evy.set(i, 60);
+            }
+            evx.set(i, 0);
+        }
+
+        // Apply velocity directly (bats don't collide with tiles)
+        var newX = ex.get(i) + evx.get(i);
+        var newY = ey.get(i) + evy.get(i);
+        ex.set(i, newX);
+        ey.set(i, newY);
+    }
+
+    // =========================================================================
+    // Turret AI — static, shoots at player periodically when in range
+    // =========================================================================
+
+    hide func updateTurret(i: Integer, playerPx: Integer, playerPy: Integer) {
+        var cx = ex.get(i) / 100;
+        var cy = ey.get(i) / 100;
+
+        var dx = playerPx - cx;
+        var dy = playerPy - cy;
+        var adx = dx;
+        if adx < 0 { adx = 0 - adx; }
+        var ady = dy;
+        if ady < 0 { ady = 0 - ady; }
+
+        // Face player
+        if dx > 0 { edir.set(i, 1); }
+        if dx < 0 { edir.set(i, -1); }
+
+        // Shoot timer
+        var tm = etimer.get(i) + 1;
+        etimer.set(i, tm);
+
+        if adx < TURRET_RANGE {
+            if ady < TURRET_RANGE / 2 {
+                if tm >= TURRET_FIRE_RATE {
+                    etimer.set(i, 0);
+                    // Fire bullet
+                    var bdir = edir.get(i);
+                    var bx2 = cx + TURRET_W / 2;
+                    var by2 = cy + TURRET_H / 2 - 3;
+                    spawnEnemyBullet(bx2, by2, bdir * 4, 0);
+                }
+            }
+        }
+
+        // Animate warning light
+        var tm2 = etimer2.get(i) + 1;
+        if tm2 >= 30 { tm2 = 0; }
+        etimer2.set(i, tm2);
+    }
+
+    // =========================================================================
+    // Boss AI — 3 phases with different attack patterns
+    // =========================================================================
+
+    hide func updateBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer) {
+        var hp = ehp.get(i);
+
+        // Determine phase based on HP
+        if hp > BOSS_HP * 2 / 3 {
+            bossPhase = 0;
+        } else {
+            if hp > BOSS_HP / 3 {
+                bossPhase = 1;
+            } else {
+                bossPhase = 2;
+            }
+        }
+
+        var cx = ex.get(i) / 100;
+        var cy = ey.get(i) / 100;
+        var dx = playerPx - cx;
+
+        // Face player
+        if dx > 0 { edir.set(i, 1); }
+        if dx < 0 { edir.set(i, -1); }
+
+        // Animation frame based on phase
+        eframe.set(i, bossPhase);
+
+        // Apply gravity
+        var curVy = evy.get(i) + GRAVITY;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+
+        // Movement AI based on phase
+        var tm = etimer.get(i) + 1;
+        etimer.set(i, tm);
+
+        if bossPhase == 0 {
+            // Phase 0: Slow patrol, shoot periodically
+            var d = edir.get(i);
+            evx.set(i, d * BOSS_SPEED / 2);
+
+            if tm % 60 == 0 {
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 8, 0);
+            }
+        }
+
+        if bossPhase == 1 {
+            // Phase 1: Faster, shoots more, jumps occasionally
+            var d = edir.get(i);
+            evx.set(i, d * BOSS_SPEED);
+
+            if tm % 40 == 0 {
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 9, 0);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 8, -3);
+            }
+
+            // Jump every 120 frames
+            if tm % 120 == 0 {
+                curVy = -900;
+            }
+        }
+
+        if bossPhase == 2 {
+            // Phase 2: Aggressive — charge at player, rapid fire
+            var adx = dx;
+            if adx < 0 { adx = 0 - adx; }
+
+            if adx > 150 {
+                // Charge
+                if dx > 0 {
+                    evx.set(i, BOSS_SPEED * 3 / 2);
+                } else {
+                    evx.set(i, 0 - BOSS_SPEED * 3 / 2);
+                }
+            } else {
+                evx.set(i, 0);
+            }
+
+            if tm % 25 == 0 {
+                var d = edir.get(i);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 10, 0);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 9, -5);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 45, d * 9, 3);
+            }
+
+            if tm % 90 == 0 {
+                curVy = -1050;
+            }
+        }
+
+        evy.set(i, curVy);
+
+        // Move with collision
+        outX.set(0, ex.get(i));
+        outY.set(0, ey.get(i));
+        outVx.set(0, evx.get(i));
+        outVy.set(0, curVy);
+
+        var flags = phys.moveAndCollide(ex.get(i), ey.get(i), evx.get(i), curVy,
+                                         BOSS_W, BOSS_H, level,
+                                         outX, outY, outVx, outVy);
+
+        ex.set(i, outX.get(0));
+        ey.set(i, outY.get(0));
+        evx.set(i, outVx.get(0));
+        evy.set(i, outVy.get(0));
+
+        // Reverse on wall
+        var hitLeft = (flags / 4) % 2 == 1;
+        var hitRight = (flags / 8) % 2 == 1;
+        if hitLeft { edir.set(i, 1); }
+        if hitRight { edir.set(i, -1); }
+    }
+
+    // =========================================================================
+    // Enemy bullets
+    // =========================================================================
+
+    hide func spawnEnemyBullet(bx2: Integer, by2: Integer, vx2: Integer, vy2: Integer) {
+        // Reuse inactive slot
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 0 {
+                ebx.set(i, bx2);
+                eby.set(i, by2);
+                ebvx.set(i, vx2);
+                ebvy.set(i, vy2);
+                ebactive.set(i, 1);
+                return;
+            }
+            i = i + 1;
+        }
+
+        // Add new
+        ebx.add(bx2);
+        eby.add(by2);
+        ebvx.add(vx2);
+        ebvy.add(vy2);
+        ebactive.add(1);
+        ebCount = ebCount + 1;
+    }
+
+    hide func updateEnemyBullets(level: Level) {
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                var bx2 = ebx.get(i) + ebvx.get(i);
+                var by2 = eby.get(i) + ebvy.get(i);
+                ebx.set(i, bx2);
+                eby.set(i, by2);
+
+                // Deactivate if off screen or hitting solid
+                var tileX = bx2 / TILE_SIZE;
+                var tileY = by2 / TILE_SIZE;
+                if level.isSolid(tileX, tileY) {
+                    ebactive.set(i, 0);
+                }
+                if bx2 < -20 { ebactive.set(i, 0); }
+                if bx2 > level.levelWidth * TILE_SIZE + 20 {
+                    ebactive.set(i, 0);
+                }
+                if by2 < -20 { ebactive.set(i, 0); }
+                if by2 > level.levelHeight * TILE_SIZE + 20 {
+                    ebactive.set(i, 0);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Damage / collision
+    // =========================================================================
+
+    expose func damageEnemy(i: Integer, amount: Integer) {
+        if i < 0 { return; }
+        if i >= enemyCount { return; }
+        if eactive.get(i) == 0 { return; }
+
+        var hp = ehp.get(i) - amount;
+        ehp.set(i, hp);
+        estate.set(i, 1);
+        etimer.set(i, 10);
+
+        if hp <= 0 {
+            eactive.set(i, 0);
+            estate.set(i, 2);
+        }
+    }
+
+    // Check if player overlaps any active enemy. Returns enemy index or -1.
+    expose func checkPlayerHit(px: Integer, py: Integer) -> Integer {
+        var i = 0;
+        while i < enemyCount {
+            if eactive.get(i) == 1 {
+                var epx = ex.get(i) / 100;
+                var epy = ey.get(i) / 100;
+                var ew = getEnemyW(etype.get(i));
+                var eh = getEnemyH(etype.get(i));
+
+                if phys.rectOverlapPx(px, py, PLAYER_W, PLAYER_H,
+                                      epx, epy, ew, eh) {
+                    return i;
+                }
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    // Check if enemy bullet overlaps player. Returns true if hit.
+    expose func checkEnemyBulletHit(px: Integer, py: Integer) -> Boolean {
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                if phys.rectOverlapPx(px, py, PLAYER_W, PLAYER_H,
+                                      ebx.get(i), eby.get(i), 9, 9) {
+                    ebactive.set(i, 0);
+                    return true;
+                }
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // Check if player bullet overlaps any enemy. Returns enemy index or -1.
+    expose func checkBulletHit(bx2: Integer, by2: Integer, bw: Integer, bh: Integer) -> Integer {
+        var i = 0;
+        while i < enemyCount {
+            if eactive.get(i) == 1 {
+                var epx = ex.get(i) / 100;
+                var epy = ey.get(i) / 100;
+                var ew = getEnemyW(etype.get(i));
+                var eh = getEnemyH(etype.get(i));
+
+                if phys.rectOverlapPx(bx2, by2, bw, bh, epx, epy, ew, eh) {
+                    return i;
+                }
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    hide func getEnemyW(t: Integer) -> Integer {
+        if t == ENEMY_SLIME { return SLIME_W; }
+        if t == ENEMY_BAT { return BAT_W; }
+        if t == ENEMY_TURRET { return TURRET_W; }
+        if t == ENEMY_BOSS { return BOSS_W; }
+        return 36;
+    }
+
+    hide func getEnemyH(t: Integer) -> Integer {
+        if t == ENEMY_SLIME { return SLIME_H; }
+        if t == ENEMY_BAT { return BAT_H; }
+        if t == ENEMY_TURRET { return TURRET_H; }
+        if t == ENEMY_BOSS { return BOSS_H; }
+        return 36;
+    }
+
+    // =========================================================================
+    // Drawing
+    // =========================================================================
+
+    expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer, sprites: SpriteFactory) {
+        var i = 0;
+        while i < enemyCount {
+            if eactive.get(i) == 1 {
+                var sx = ex.get(i) / 100 - camX;
+                var sy = ey.get(i) / 100 - camY;
+
+                // Skip if off screen
+                if sx > -96 {
+                    if sx < SCREEN_W + 96 {
+                        if sy > -96 {
+                            if sy < SCREEN_H + 96 {
+                                var t = etype.get(i);
+                                var f = eframe.get(i);
+
+                                // Flash when hurt
+                                if estate.get(i) == 1 {
+                                    if etimer.get(i) % 4 < 2 {
+                                        // Skip drawing (flash effect)
+                                        i = i + 1;
+                                        // Use continue-like pattern
+                                        // We need to not draw — handled below
+                                    }
+                                }
+
+                                if estate.get(i) != 1 {
+                                    drawEnemy(canvas, t, f, sx, sy, sprites);
+                                } else {
+                                    if etimer.get(i) % 4 >= 2 {
+                                        drawEnemy(canvas, t, f, sx, sy, sprites);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            i = i + 1;
+        }
+
+        // Draw enemy bullets
+        drawEnemyBullets(canvas, camX, camY, sprites);
+    }
+
+    hide func drawEnemy(canvas: Canvas, t: Integer, f: Integer,
+                        sx: Integer, sy: Integer, sprites: SpriteFactory) {
+        if t == ENEMY_SLIME {
+            canvas.BlitAlpha(sx, sy, sprites.getSlimeFrame(f));
+        }
+        if t == ENEMY_BAT {
+            canvas.BlitAlpha(sx, sy, sprites.getBatFrame(f));
+        }
+        if t == ENEMY_TURRET {
+            canvas.BlitAlpha(sx, sy, sprites.getTurretBase());
+        }
+        if t == ENEMY_BOSS {
+            canvas.BlitAlpha(sx, sy, sprites.getBossFrame(f));
+        }
+    }
+
+    hide func drawEnemyBullets(canvas: Canvas, camX: Integer, camY: Integer,
+                                sprites: SpriteFactory) {
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                var sx = ebx.get(i) - camX;
+                var sy = eby.get(i) - camY;
+                if sx > -15 {
+                    if sx < SCREEN_W + 15 {
+                        canvas.BlitAlpha(sx, sy, sprites.getEnemyBullet());
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // Accessors
+    expose func getEnemyType(i: Integer) -> Integer { return etype.get(i); }
+    expose func isActive(i: Integer) -> Integer { return eactive.get(i); }
+    expose func getEnemyHp(i: Integer) -> Integer { return ehp.get(i); }
+    expose func isBossAlive() -> Boolean {
+        if bossIndex < 0 { return false; }
+        if eactive.get(bossIndex) == 1 { return true; }
+        return false;
+    }
+    expose func getBossHp() -> Integer {
+        if bossIndex < 0 { return 0; }
+        return ehp.get(bossIndex);
+    }
+}

@@ -185,6 +185,13 @@ struct VMAccess
         vm.transferBlockParams(fr, bb);
     }
 
+    /// @brief Obtain (or lazily build) the block label map for a function.
+    /// @details Delegates to @c VM::getOrBuildBlockMap.
+    static inline const VM::BlockMap &getOrBuildBlockMap(VM &vm, const il::core::Function &fn)
+    {
+        return vm.getOrBuildBlockMap(fn);
+    }
+
     /// @brief Compute or retrieve the cached maximum SSA ID for a function.
     ///
     /// @details The maximum SSA ID determines the required register file size.

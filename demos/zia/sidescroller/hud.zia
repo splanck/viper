@@ -1,0 +1,147 @@
+// hud.zia — HUD rendering: health, score, lives, power-ups, boss bar
+module hud;
+
+bind Viper.Graphics;
+bind Viper.Fmt;
+bind "./config";
+
+entity HUD {
+    hide Integer displayScore;   // Animated score (rolls toward target)
+    hide Integer displayCoins;
+
+    expose func init() {
+        displayScore = 0;
+        displayCoins = 0;
+    }
+
+    expose func update(targetScore: Integer, targetCoins: Integer) {
+        // Smoothly roll score display toward target
+        if displayScore < targetScore {
+            var diff = targetScore - displayScore;
+            var step = diff / 4;
+            if step < 1 { step = 1; }
+            displayScore = displayScore + step;
+            if displayScore > targetScore {
+                displayScore = targetScore;
+            }
+        }
+        displayCoins = targetCoins;
+    }
+
+    expose func drawHUD(canvas: Canvas, hp: Integer, maxHp: Integer,
+                        score: Integer, lives: Integer, coins: Integer,
+                        levelNum: Integer, speedTimer: Integer,
+                        shieldHits: Integer, rapidTimer: Integer) {
+        // HUD background bar
+        canvas.BoxAlpha(0, 0, SCREEN_W, 48, COL_HUD_BG, 180);
+
+        // Health hearts
+        drawHearts(canvas, 12, 8, hp, maxHp);
+
+        // Score
+        var scoreStr = Int(displayScore);
+        canvas.TextScaled(180, 12, "SCORE", 2, COL_HUD_GRAY);
+        canvas.TextScaled(300, 12, scoreStr, 2, COL_WHITE);
+
+        // Coins
+        canvas.TextScaled(540, 12, "x", 2, COL_COIN_GOLD);
+        var coinStr = Int(coins);
+        canvas.TextScaled(570, 12, coinStr, 2, COL_COIN_GOLD);
+
+        // Lives
+        canvas.TextScaled(SCREEN_W - 200, 12, "LIVES", 2, COL_HUD_GRAY);
+        var livesStr = Int(lives);
+        canvas.TextScaled(SCREEN_W - 90, 12, livesStr, 2, COL_WHITE);
+
+        // Level name
+        var levelName = "GRASSLANDS";
+        if levelNum == 2 {
+            levelName = "CRYSTAL CAVE";
+        }
+        canvas.TextScaled(580, 12, levelName, 2, COL_HUD_BLUE);
+
+        // Active power-up indicators
+        var pxStart = 12;
+        var pyStart = 34;
+        if speedTimer > 0 {
+            drawPowerupIndicator(canvas, pxStart, pyStart, "SPD", COL_SPEED, speedTimer, SPEED_DURATION);
+            pxStart = pxStart + 90;
+        }
+        if shieldHits > 0 {
+            drawPowerupIndicator(canvas, pxStart, pyStart, "SHD", COL_SHIELD, 1, 1);
+            pxStart = pxStart + 90;
+        }
+        if rapidTimer > 0 {
+            drawPowerupIndicator(canvas, pxStart, pyStart, "RPD", COL_RAPIDFIRE, rapidTimer, RAPIDFIRE_DURATION);
+        }
+    }
+
+    hide func drawHearts(canvas: Canvas, x: Integer, y: Integer,
+                         hp: Integer, maxHp: Integer) {
+        var i = 0;
+        while i < maxHp {
+            var hx = x + i * 32;
+            if i < hp {
+                // Full heart
+                canvas.Disc(hx + 7, y + 7, 7, COL_HUD_RED);
+                canvas.Disc(hx + 19, y + 7, 7, COL_HUD_RED);
+                canvas.Box(hx + 1, y + 7, 25, 12, COL_HUD_RED);
+                // Point at bottom
+                canvas.Box(hx + 4, y + 16, 19, 5, COL_HUD_RED);
+                canvas.Box(hx + 7, y + 19, 13, 3, COL_HUD_RED);
+                canvas.Box(hx + 10, y + 21, 7, 3, COL_HUD_RED);
+            } else {
+                // Empty heart (outline only)
+                canvas.Ring(hx + 7, y + 7, 7, COL_HUD_GRAY);
+                canvas.Ring(hx + 19, y + 7, 7, COL_HUD_GRAY);
+                canvas.Frame(hx + 1, y + 7, 25, 12, COL_HUD_GRAY);
+            }
+            i = i + 1;
+        }
+    }
+
+    hide func drawPowerupIndicator(canvas: Canvas, x: Integer, y: Integer,
+                                    label: String, col: Integer,
+                                    remaining: Integer, maxDur: Integer) {
+        // Small bar showing remaining duration
+        var barW = 75;
+        var filled = remaining * barW / maxDur;
+        if filled < 1 { filled = 1; }
+
+        canvas.Box(x, y, barW, 8, COL_HUD_GRAY);
+        canvas.Box(x, y, filled, 8, col);
+        canvas.TextScaled(x + 2, y - 2, label, 2, COL_WHITE);
+    }
+
+    expose func drawBossBar(canvas: Canvas, bossHp: Integer, bossMaxHp: Integer) {
+        if bossHp <= 0 { return; }
+
+        var barW = 400;
+        var barH = 20;
+        var x = (SCREEN_W - barW) / 2;
+        var y = 56;
+
+        // Background
+        canvas.BoxAlpha(x - 2, y - 2, barW + 4, barH + 4, COL_BLACK, 200);
+
+        // Label
+        canvas.TextScaled(x, y - 18, "MECH GUARDIAN", 2, COL_BOSS_EYE);
+
+        // HP bar
+        canvas.Box(x, y, barW, barH, COL_HUD_GRAY);
+        var filled = bossHp * barW / bossMaxHp;
+        if filled < 1 { filled = 1; }
+
+        // Color changes based on HP
+        var barCol = COL_HUD_GREEN;
+        if bossHp * 3 < bossMaxHp * 2 {
+            barCol = COL_COIN_GOLD;
+        }
+        if bossHp * 3 < bossMaxHp {
+            barCol = COL_HUD_RED;
+        }
+
+        canvas.Box(x, y, filled, barH, barCol);
+        canvas.Frame(x, y, barW, barH, COL_WHITE);
+    }
+}

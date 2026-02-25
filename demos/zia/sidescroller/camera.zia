@@ -1,0 +1,141 @@
+// camera.zia — Camera follow + parallax background system
+module camera;
+
+bind Viper.Graphics;
+bind Viper.Math;
+bind "./config";
+bind "./sprites";
+
+entity GameCamera {
+    expose Integer x;        // Camera world position (top-left pixel)
+    expose Integer y;
+    hide Integer targetX;
+    hide Integer targetY;
+    hide Integer levelPixelW;
+    hide Integer levelPixelH;
+
+    // Parallax cloud positions
+    hide List[Integer] cloudX;
+    hide List[Integer] cloudY;
+    hide List[Integer] cloudType;  // 0 or 1
+
+    expose func init() {
+        x = 0;
+        y = 0;
+        targetX = 0;
+        targetY = 0;
+        levelPixelW = 0;
+        levelPixelH = 0;
+
+        // Generate random cloud positions
+        cloudX = [];
+        cloudY = [];
+        cloudType = [];
+        var i = 0;
+        while i < 14 {
+            cloudX.add((i * 173 + 47) % SCREEN_W);
+            cloudY.add(30 + (i * 67) % 160);
+            cloudType.add(i % 2);
+            i = i + 1;
+        }
+    }
+
+    expose func setLevelSize(w: Integer, h: Integer) {
+        levelPixelW = w * TILE_SIZE;
+        levelPixelH = h * TILE_SIZE;
+    }
+
+    expose func follow(playerCX: Integer, playerCY: Integer) {
+        targetX = playerCX - HALF_W;
+        targetY = playerCY - HALF_H + 80; // Slight downward bias
+
+        // Smooth follow (lerp towards target)
+        x = x + (targetX - x) / 8;
+        y = y + (targetY - y) / 12;
+
+        // Clamp to level bounds
+        if x < 0 { x = 0; }
+        if y < 0 { y = 0; }
+        var maxX = levelPixelW - SCREEN_W;
+        var maxY = levelPixelH - SCREEN_H;
+        if maxX < 0 { maxX = 0; }
+        if maxY < 0 { maxY = 0; }
+        if x > maxX { x = maxX; }
+        if y > maxY { y = maxY; }
+    }
+
+    expose func drawBackground(canvas: Canvas, theme: Integer, sprites: SpriteFactory) {
+        if theme == THEME_GRASSLANDS {
+            drawGrasslandsBg(canvas, sprites);
+        } else {
+            drawCaveBg(canvas);
+        }
+    }
+
+    hide func drawGrasslandsBg(canvas: Canvas, sprites: SpriteFactory) {
+        // Night sky gradient
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_SKY_TOP, COL_SKY_BOT);
+
+        // Stars (static, pseudo-random)
+        var si = 0;
+        while si < 60 {
+            var starX = (si * 137 + 29) % SCREEN_W;
+            var starY = (si * 97 + 13) % (SCREEN_H / 2);
+            var brightness = 80 + (si * 31) % 176;
+            var starCol = brightness * 0x010101;
+            canvas.Box(starX, starY, 2, 2, starCol);
+            si = si + 1;
+        }
+
+        // Far mountains (0.15x parallax)
+        // Mountain sprite is 180×120, tile seamlessly, anchored near ground
+        var mtn = sprites.getMountainBg();
+        var mtnScroll = x * 15 / 100;
+        var mx = 0 - (mtnScroll % 180);
+        while mx < SCREEN_W {
+            canvas.BlitAlpha(mx, SCREEN_H - 150, mtn);
+            mx = mx + 180;
+        }
+
+        // Mid trees (0.4x parallax)
+        // Tree sprite is 48×72, tile every 60px for slight overlap
+        var tree = sprites.getTreeBg();
+        var treeScroll = x * 40 / 100;
+        var tx = 0 - (treeScroll % 60);
+        while tx < SCREEN_W {
+            canvas.BlitAlpha(tx, SCREEN_H - 140, tree);
+            tx = tx + 60;
+        }
+
+        // Moon
+        canvas.Disc(SCREEN_W - 180, 80, 40, 0xEEEECC);
+        canvas.Disc(SCREEN_W - 170, 75, 35, COL_SKY_TOP);
+    }
+
+    hide func drawCaveBg(canvas: Canvas) {
+        // Dark cave gradient
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_CAVE_BG, COL_CAVE_MID);
+
+        // Ambient crystal glow spots (static)
+        var i = 0;
+        while i < 10 {
+            var gx = (i * 137 + 23) % SCREEN_W;
+            var gy = (i * 89 + 41) % SCREEN_H;
+            var glowCol = COL_CRYSTAL_BLUE;
+            if i % 3 == 0 {
+                glowCol = COL_CRYSTAL_PINK;
+            }
+            canvas.DiscAlpha(gx, gy, 30 + i * 4, glowCol, 15 + i * 2);
+            i = i + 1;
+        }
+    }
+
+    // Convert world coordinates to screen coordinates
+    expose func toScreenX(wx: Integer) -> Integer {
+        return wx - x;
+    }
+
+    expose func toScreenY(wy: Integer) -> Integer {
+        return wy - y;
+    }
+}

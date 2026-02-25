@@ -95,9 +95,15 @@
 // -----------------------------------------------------------------------------
 /// @brief Compile-time toggle for opcode execution counters.
 /// @details When enabled, `VIPER_VM_DISPATCH_BEFORE` increments per-opcode
-///          counters if the runtime config requests it.
+///          counters if the runtime config requests it. Disabled in release
+///          builds by default to eliminate a conditional branch per instruction
+///          from the dispatch hot path.
 #ifndef VIPER_VM_OPCOUNTS
+#ifdef NDEBUG
+#define VIPER_VM_OPCOUNTS 0
+#else
 #define VIPER_VM_OPCOUNTS 1
+#endif
 #endif
 
 #if VIPER_VM_OPCOUNTS

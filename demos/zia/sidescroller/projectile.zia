@@ -1,0 +1,104 @@
+// projectile.zia — Player bullet/projectile entity pool
+module projectile;
+
+bind Viper.Graphics;
+bind "./config";
+bind "./level";
+bind "./sprites";
+
+entity ProjectilePool {
+    hide List[Integer] bx;       // position x (pixels)
+    hide List[Integer] by;       // position y (pixels)
+    hide List[Integer] bvx;      // velocity x (pixels/frame)
+    hide List[Integer] bactive;
+    hide Integer bulletCount;
+
+    expose func init() {
+        bx = [];
+        by = [];
+        bvx = [];
+        bactive = [];
+        bulletCount = 0;
+    }
+
+    expose func reset() {
+        bx = [];
+        by = [];
+        bvx = [];
+        bactive = [];
+        bulletCount = 0;
+    }
+
+    expose func fire(wx: Integer, wy: Integer, dir: Integer) {
+        var speed = BULLET_SPEED / 100;  // Convert x100 to pixels/frame
+
+        // Reuse inactive slot
+        var i = 0;
+        while i < bulletCount {
+            if bactive.get(i) == 0 {
+                bx.set(i, wx);
+                by.set(i, wy);
+                bvx.set(i, dir * speed);
+                bactive.set(i, 1);
+                return;
+            }
+            i = i + 1;
+        }
+
+        // Add new if under limit
+        if bulletCount < MAX_BULLETS {
+            bx.add(wx);
+            by.add(wy);
+            bvx.add(dir * speed);
+            bactive.add(1);
+            bulletCount = bulletCount + 1;
+        }
+    }
+
+    expose func updateAll(level: Level) {
+        var i = 0;
+        while i < bulletCount {
+            if bactive.get(i) == 1 {
+                var nx = bx.get(i) + bvx.get(i);
+                bx.set(i, nx);
+
+                // Deactivate if off level or hitting solid
+                var tileX = nx / TILE_SIZE;
+                var tileY = by.get(i) / TILE_SIZE;
+                if level.isSolid(tileX, tileY) {
+                    bactive.set(i, 0);
+                }
+                if nx < -20 { bactive.set(i, 0); }
+                if nx > level.levelWidth * TILE_SIZE + 20 {
+                    bactive.set(i, 0);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer, sprites: SpriteFactory) {
+        var i = 0;
+        while i < bulletCount {
+            if bactive.get(i) == 1 {
+                var sx = bx.get(i) - camX;
+                var sy = by.get(i) - camY;
+                if sx > -BULLET_W {
+                    if sx < SCREEN_W + BULLET_W {
+                        var dir = 1;
+                        if bvx.get(i) < 0 { dir = -1; }
+                        canvas.BlitAlpha(sx, sy, sprites.getBullet(dir));
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // Get bullet position for hit checking
+    expose func getBulletX(i: Integer) -> Integer { return bx.get(i); }
+    expose func getBulletY(i: Integer) -> Integer { return by.get(i); }
+    expose func isActive(i: Integer) -> Integer { return bactive.get(i); }
+    expose func deactivate(i: Integer) { bactive.set(i, 0); }
+    expose func getCount() -> Integer { return bulletCount; }
+}

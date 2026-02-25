@@ -1,0 +1,198 @@
+// physics.zia — Tile collision resolution, gravity, AABB helpers
+// All coordinates are in x100 scale (sub-pixel precision)
+module physics;
+
+bind Viper.Math;
+bind "./config";
+bind "./level";
+
+entity PhysicsHelper {
+
+    expose func init() {
+        // No state needed — pure utility
+    }
+
+    // Move an entity by (vx, vy) and resolve collisions against the tile grid.
+    // The out* lists are single-element lists used to return multiple values.
+    // Returns collision flags: bit 0=floor, bit 1=ceiling, bit 2=left, bit 3=right
+    expose func moveAndCollide(
+        x: Integer, y: Integer, vx: Integer, vy: Integer,
+        w: Integer, h: Integer, level: Level,
+        outX: List[Integer], outY: List[Integer],
+        outVx: List[Integer], outVy: List[Integer]
+    ) -> Integer {
+        var flags = 0;
+        var newX = x + vx;
+        var newY = y + vy;
+        var newVx = vx;
+        var newVy = vy;
+
+        // Convert pixel dimensions to x100
+        var w100 = w * 100;
+        var h100 = h * 100;
+
+        // =====================================================================
+        // Resolve X axis first
+        // =====================================================================
+        if vx != 0 {
+            // Check the leading edge
+            var leadX = newX;
+            if vx > 0 {
+                leadX = newX + w100 - 1;
+            }
+
+            var tileX = toTileCoord(leadX);
+            var topTile = toTileCoord(y);
+            var botTile = toTileCoord(y + h100 - 1);
+
+            var ty = topTile;
+            while ty <= botTile {
+                if level.isSolid(tileX, ty) {
+                    if vx > 0 {
+                        // Snap to left edge of tile
+                        newX = tileX * TILE_SIZE * 100 - w100;
+                        flags = flags + 8; // right wall
+                    } else {
+                        // Snap to right edge of tile
+                        newX = (tileX + 1) * TILE_SIZE * 100;
+                        flags = flags + 4; // left wall
+                    }
+                    newVx = 0;
+                    ty = botTile + 1; // break
+                }
+                ty = ty + 1;
+            }
+        }
+
+        // =====================================================================
+        // Resolve Y axis
+        // =====================================================================
+        if vy != 0 {
+            var leadY = newY;
+            if vy > 0 {
+                leadY = newY + h100 - 1;
+            }
+
+            var tileY = toTileCoord(leadY);
+            var leftTile = toTileCoord(newX);
+            var rightTile = toTileCoord(newX + w100 - 1);
+
+            var tx = leftTile;
+            while tx <= rightTile {
+                if level.isSolid(tx, tileY) {
+                    if vy > 0 {
+                        // Landing on floor
+                        newY = tileY * TILE_SIZE * 100 - h100;
+                        flags = flags + 1; // floor
+                    } else {
+                        // Hit ceiling
+                        newY = (tileY + 1) * TILE_SIZE * 100;
+                        flags = flags + 2; // ceiling
+                    }
+                    newVy = 0;
+                    tx = rightTile + 1; // break
+                }
+                tx = tx + 1;
+            }
+        }
+
+        outX.set(0, newX);
+        outY.set(0, newY);
+        outVx.set(0, newVx);
+        outVy.set(0, newVy);
+        return flags;
+    }
+
+    // Check if a point (x100) is on solid ground (one pixel below feet)
+    expose func isOnGround(x: Integer, y: Integer, w: Integer, h: Integer, level: Level) -> Boolean {
+        var w100 = w * 100;
+        var h100 = h * 100;
+        var feetY = y + h100 + 50; // slightly below feet
+        var tileY = toTileCoord(feetY);
+        var leftTile = toTileCoord(x);
+        var rightTile = toTileCoord(x + w100 - 1);
+
+        var tx = leftTile;
+        while tx <= rightTile {
+            if level.isSolid(tx, tileY) {
+                return true;
+            }
+            tx = tx + 1;
+        }
+        return false;
+    }
+
+    // Check if touching a wall on the given side (-1 = left, 1 = right)
+    expose func isTouchingWall(x: Integer, y: Integer, w: Integer, h: Integer,
+                               dir: Integer, level: Level) -> Boolean {
+        var w100 = w * 100;
+        var h100 = h * 100;
+        var checkX = x - 50;
+        if dir > 0 {
+            checkX = x + w100 + 50;
+        }
+
+        var tileX = toTileCoord(checkX);
+        var topTile = toTileCoord(y);
+        var botTile = toTileCoord(y + h100 - 1);
+
+        var ty = topTile;
+        while ty <= botTile {
+            if level.isSolid(tileX, ty) {
+                return true;
+            }
+            ty = ty + 1;
+        }
+        return false;
+    }
+
+    // Check if standing on a hazard tile (spikes, lava)
+    expose func isOnHazard(x: Integer, y: Integer, w: Integer, h: Integer, level: Level) -> Boolean {
+        var w100 = w * 100;
+        var h100 = h * 100;
+        var feetY = y + h100 + 50;
+        var tileY = toTileCoord(feetY);
+        var leftTile = toTileCoord(x + 200);
+        var rightTile = toTileCoord(x + w100 - 200);
+
+        var tx = leftTile;
+        while tx <= rightTile {
+            if level.isHazard(tx, tileY) {
+                return true;
+            }
+            // Also check one row up for lava surface
+            if level.isHazard(tx, tileY - 1) {
+                return true;
+            }
+            tx = tx + 1;
+        }
+        return false;
+    }
+
+    // AABB overlap test (all in x100 coordinates)
+    expose func rectOverlap(ax: Integer, ay: Integer, aw: Integer, ah: Integer,
+                            bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Boolean {
+        if ax + aw <= bx { return false; }
+        if bx + bw <= ax { return false; }
+        if ay + ah <= by { return false; }
+        if by + bh <= ay { return false; }
+        return true;
+    }
+
+    // AABB overlap test with pixel coordinates (not x100)
+    expose func rectOverlapPx(ax: Integer, ay: Integer, aw: Integer, ah: Integer,
+                              bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Boolean {
+        return rectOverlap(ax * 100, ay * 100, aw * 100, ah * 100,
+                          bx * 100, by * 100, bw * 100, bh * 100);
+    }
+
+    // Convert x100 coordinate to tile coordinate
+    hide func toTileCoord(pos100: Integer) -> Integer {
+        var px = pos100 / 100;
+        if pos100 < 0 {
+            // Handle negative coordinates properly
+            return (px - TILE_SIZE + 1) / TILE_SIZE;
+        }
+        return px / TILE_SIZE;
+    }
+}

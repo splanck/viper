@@ -178,7 +178,7 @@ class FnTableStrategy final : public DispatchStrategy
     {
         // Delegates to VM::executeOpcode() which indexes into the handler table
         // (vm/ops/generated/HandlerTable.hpp) and calls the corresponding handler.
-        return vm.executeOpcode(state.fr, instr, state.blocks, state.bb, state.ip);
+        return vm.executeOpcode(state.fr, instr, *state.blocks, state.bb, state.ip);
     }
 };
 
@@ -291,7 +291,7 @@ class ThreadedStrategy final : public DispatchStrategy
         // which contains the actual computed goto loop with labels from
         // vm/ops/generated/ThreadedLabels.inc and ThreadedCases.inc.
         // This fallback uses function table dispatch for compatibility.
-        return vm.executeOpcode(state.fr, instr, state.blocks, state.bb, state.ip);
+        return vm.executeOpcode(state.fr, instr, *state.blocks, state.bb, state.ip);
     }
 };
 #endif // VIPER_THREADING_SUPPORTED

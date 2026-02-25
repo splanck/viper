@@ -490,20 +490,36 @@ void VM::releaseFrameBuffers(Frame &fr)
 // Frame Setup
 //===----------------------------------------------------------------------===//
 
+/// @brief Obtain (or lazily build) the block label→BasicBlock* map for @p fn.
+/// @details The map is built once per function and cached for the VM's lifetime.
+///          IL is immutable after parsing so the cached map remains valid.
+/// @param fn Function whose blocks should be mapped.
+/// @return Const reference to the cached BlockMap.
+const VM::BlockMap &VM::getOrBuildBlockMap(const Function &fn)
+{
+    auto it = fnBlockMapCache_.find(&fn);
+    if (it != fnBlockMapCache_.end())
+        return it->second;
+    auto &map = fnBlockMapCache_[&fn];
+    map.reserve(fn.blocks.size());
+    for (const auto &b : fn.blocks)
+        map[b.label] = &b;
+    return map;
+}
+
 /// @brief Initialise a fresh frame for executing @p fn.
 ///
-/// Prepares the block lookup map, seeds parameter slots, verifies the argument
-/// count, and selects the entry block so the interpreter loop can begin without
-/// additional bookkeeping.
+/// Seeds parameter slots, verifies the argument count, and selects the entry
+/// block so the interpreter loop can begin without additional bookkeeping.
+/// The block label map is obtained from the VM-level cache (see
+/// getOrBuildBlockMap) to avoid repeated hash-map construction.
 ///
 /// @param fn     Function to execute.
 /// @param args   Argument slots for the function's entry block.
-/// @param blocks Output mapping from block labels to blocks for fast branch resolution.
 /// @param bb     Set to the entry basic block of @p fn.
 /// @return Fully initialised frame ready to run.
 Frame VM::setupFrame(const Function &fn,
                      std::span<const Slot> args,
-                     BlockMap &blocks,
                      const BasicBlock *&bb)
 {
     Frame fr;
@@ -546,10 +562,7 @@ Frame VM::setupFrame(const Function &fn,
     fr.ehStack.clear();
     fr.activeError = {};
     fr.resumeState = {};
-    // Reserve to avoid rehashing while populating the per-call label map
-    blocks.reserve(fn.blocks.size());
-    for (const auto &b : fn.blocks)
-        blocks[b.label] = &b;
+    // Block map is cached at VM level (getOrBuildBlockMap) — no per-call rebuild.
     bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
     if (bb)
     {
@@ -599,7 +612,8 @@ VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> arg
 {
     ExecState st{};
     st.owner = this;
-    st.fr = setupFrame(fn, args, st.blocks, st.bb);
+    st.blocks = &getOrBuildBlockMap(fn);
+    st.fr = setupFrame(fn, args, st.bb);
     // Transfer block parameters immediately after frame setup.
     // This ensures parameters are copied to registers before the first instruction
     // executes, regardless of which dispatch path is taken. The transfer is

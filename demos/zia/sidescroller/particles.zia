@@ -1,0 +1,231 @@
+// particles.zia — Simple particle system for dust, sparks, coin collect, death effects
+// Uses parallel arrays for a fixed pool of particles
+module particles;
+
+bind Viper.Graphics;
+bind "./config";
+
+entity ParticleSystem {
+    hide List[Integer] ppx;      // pixel x
+    hide List[Integer] ppy;      // pixel y
+    hide List[Integer] pvx;      // velocity x (x10 for sub-pixel)
+    hide List[Integer] pvy;      // velocity y (x10)
+    hide List[Integer] plife;    // frames remaining
+    hide List[Integer] pcol;     // color
+    hide List[Integer] psize;    // size in pixels
+    hide List[Integer] pactive;
+    hide Integer pCount;
+    hide Integer maxParticles;
+
+    expose func init() {
+        ppx = [];
+        ppy = [];
+        pvx = [];
+        pvy = [];
+        plife = [];
+        pcol = [];
+        psize = [];
+        pactive = [];
+        pCount = 0;
+        maxParticles = 256;
+    }
+
+    expose func reset() {
+        ppx = [];
+        ppy = [];
+        pvx = [];
+        pvy = [];
+        plife = [];
+        pcol = [];
+        psize = [];
+        pactive = [];
+        pCount = 0;
+    }
+
+    hide func spawn(x: Integer, y: Integer, vx: Integer, vy: Integer,
+                    life: Integer, col: Integer, size: Integer) {
+        // Reuse inactive slot
+        var i = 0;
+        while i < pCount {
+            if pactive.get(i) == 0 {
+                ppx.set(i, x * 10);
+                ppy.set(i, y * 10);
+                pvx.set(i, vx);
+                pvy.set(i, vy);
+                plife.set(i, life);
+                pcol.set(i, col);
+                psize.set(i, size);
+                pactive.set(i, 1);
+                return;
+            }
+            i = i + 1;
+        }
+
+        if pCount >= maxParticles { return; }
+
+        ppx.add(x * 10);
+        ppy.add(y * 10);
+        pvx.add(vx);
+        pvy.add(vy);
+        plife.add(life);
+        pcol.add(col);
+        psize.add(size);
+        pactive.add(1);
+        pCount = pCount + 1;
+    }
+
+    expose func updateAll() {
+        var i = 0;
+        while i < pCount {
+            if pactive.get(i) == 1 {
+                // Move
+                ppx.set(i, ppx.get(i) + pvx.get(i));
+                ppy.set(i, ppy.get(i) + pvy.get(i));
+
+                // Gravity on particles
+                pvy.set(i, pvy.get(i) + 1);
+
+                // Decrease life
+                var life = plife.get(i) - 1;
+                plife.set(i, life);
+                if life <= 0 {
+                    pactive.set(i, 0);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer) {
+        var i = 0;
+        while i < pCount {
+            if pactive.get(i) == 1 {
+                var sx = ppx.get(i) / 10 - camX;
+                var sy = ppy.get(i) / 10 - camY;
+                var size = psize.get(i);
+                var col = pcol.get(i);
+
+                // Fade: reduce alpha based on remaining life
+                var life = plife.get(i);
+                var alpha = life * 255 / 30;
+                if alpha > 255 { alpha = 255; }
+                if alpha < 30 { alpha = 30; }
+
+                if sx > -size {
+                    if sx < SCREEN_W + size {
+                        if size <= 2 {
+                            canvas.BoxAlpha(sx, sy, size, size, col, alpha);
+                        } else {
+                            canvas.DiscAlpha(sx, sy, size / 2, col, alpha);
+                        }
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Effect presets
+    // =========================================================================
+
+    // Dust puff (landing, running)
+    expose func burstDust(x: Integer, y: Integer) {
+        var i = 0;
+        while i < 6 {
+            var vx = (i * 7 - 18);
+            var vy = 0 - (5 + i * 2);
+            spawn(x + i * 3 - 8, y, vx, vy, 15 + i * 2, COL_DUST, 2);
+            i = i + 1;
+        }
+    }
+
+    // Spark burst (bullet hit, enemy hurt)
+    expose func burstSpark(x: Integer, y: Integer, col: Integer) {
+        var i = 0;
+        while i < 8 {
+            var angle = i * 45;
+            var vx = 0;
+            var vy = 0;
+            // Simple directional spread
+            if i == 0 { vx = 20; vy = 0; }
+            if i == 1 { vx = 14; vy = -14; }
+            if i == 2 { vx = 0; vy = -20; }
+            if i == 3 { vx = -14; vy = -14; }
+            if i == 4 { vx = -20; vy = 0; }
+            if i == 5 { vx = -14; vy = 14; }
+            if i == 6 { vx = 0; vy = 20; }
+            if i == 7 { vx = 14; vy = 14; }
+            spawn(x, y, vx, vy, 12, col, 2);
+            i = i + 1;
+        }
+    }
+
+    // Coin collect sparkle
+    expose func burstCoinCollect(x: Integer, y: Integer) {
+        var i = 0;
+        while i < 10 {
+            var vx = (i * 11 - 50) / 3;
+            var vy = 0 - (10 + i * 3);
+            var col = COL_COIN_GOLD;
+            if i % 2 == 0 { col = COL_SPARK_YELLOW; }
+            spawn(x, y, vx, vy, 20, col, 2);
+            i = i + 1;
+        }
+    }
+
+    // Death explosion
+    expose func burstDeath(x: Integer, y: Integer) {
+        var i = 0;
+        while i < 16 {
+            var vx = (i * 13 - 100) / 3;
+            var vy = 0 - (15 + (i * 7) % 20);
+            var col = COL_DEATH_RED;
+            if i % 3 == 0 { col = COL_SPARK_WHITE; }
+            if i % 3 == 1 { col = COL_SPARK_YELLOW; }
+            spawn(x, y, vx, vy, 25 + i, col, 3);
+            i = i + 1;
+        }
+    }
+
+    // Jump burst (small upward puff)
+    expose func burstJump(x: Integer, y: Integer) {
+        var i = 0;
+        while i < 4 {
+            var vx = (i * 9 - 14);
+            var vy = 5 + i * 2;
+            spawn(x + i * 4 - 6, y, vx, vy, 10, COL_DUST, 2);
+            i = i + 1;
+        }
+    }
+
+    // Double jump burst (ring effect)
+    expose func burstDoubleJump(x: Integer, y: Integer) {
+        var i = 0;
+        while i < 8 {
+            var vx = 0;
+            var vy = 0;
+            if i == 0 { vx = 15; }
+            if i == 1 { vx = 10; vy = -10; }
+            if i == 2 { vy = -15; }
+            if i == 3 { vx = -10; vy = -10; }
+            if i == 4 { vx = -15; }
+            if i == 5 { vx = -10; vy = 10; }
+            if i == 6 { vy = 15; }
+            if i == 7 { vx = 10; vy = 10; }
+            spawn(x, y, vx, vy, 15, COL_PLAYER_VISOR, 2);
+            i = i + 1;
+        }
+    }
+
+    // Enemy death
+    expose func burstEnemyDeath(x: Integer, y: Integer, col: Integer) {
+        var i = 0;
+        while i < 12 {
+            var vx = (i * 11 - 60) / 3;
+            var vy = 0 - (12 + (i * 5) % 15);
+            spawn(x, y, vx, vy, 20, col, 3);
+            i = i + 1;
+        }
+    }
+}

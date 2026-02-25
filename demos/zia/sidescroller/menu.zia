@@ -1,0 +1,436 @@
+// menu.zia — Title screen, pause, game over, level complete, high scores, controls
+module menu;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Fmt;
+bind "./config";
+bind "./sprites";
+
+entity MenuSystem {
+    hide Integer selected;
+    hide Integer titleTimer;     // for title animation
+    hide Integer bgScroll;       // background scroll
+    hide List[Integer] highScores;
+    hide List[String] highNames;
+
+    expose func init() {
+        selected = 0;
+        titleTimer = 0;
+        bgScroll = 0;
+
+        // Default high scores
+        highScores = [];
+        highNames = [];
+        var i = 0;
+        while i < 10 {
+            highScores.add((10 - i) * 1000);
+            highNames.add("AAA");
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Title Screen — returns game state to transition to, or -1 for none
+    // =========================================================================
+
+    expose func updateTitle() -> Integer {
+        titleTimer = titleTimer + 1;
+        bgScroll = bgScroll + 1;
+
+        // Navigation
+        if Keyboard.WasPressed(KEY_UP) {
+            selected = selected - 1;
+            if selected < 0 { selected = 3; }
+        }
+        if Keyboard.WasPressed(KEY_W) {
+            selected = selected - 1;
+            if selected < 0 { selected = 3; }
+        }
+        if Keyboard.WasPressed(KEY_DOWN) {
+            selected = selected + 1;
+            if selected > 3 { selected = 0; }
+        }
+        if Keyboard.WasPressed(KEY_S) {
+            selected = selected + 1;
+            if selected > 3 { selected = 0; }
+        }
+
+        // Selection
+        var pressed = Keyboard.WasPressed(KEY_ENTER);
+        if pressed == false {
+            pressed = Keyboard.WasPressed(KEY_SPACE);
+        }
+
+        if pressed {
+            if selected == MENU_PLAY { return STATE_PLAYING; }
+            if selected == MENU_HIGHSCORES { return STATE_HIGHSCORES; }
+            if selected == MENU_CONTROLS { return STATE_CONTROLS; }
+            if selected == MENU_QUIT { return -2; }
+        }
+
+        return -1;
+    }
+
+    expose func drawTitle(canvas: Canvas) {
+        // Starfield background
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
+        drawStarfield(canvas);
+
+        // Title text with bounce
+        var bounce = titleTimer % 60;
+        var titleY = 100;
+        if bounce < 30 {
+            titleY = titleY - bounce / 5;
+        } else {
+            titleY = titleY - (60 - bounce) / 5;
+        }
+
+        // Title: "NOVA RUN"
+        canvas.TextScaled(340, titleY, "NOVA", 6, COL_TITLE_ORANGE);
+        canvas.TextScaled(640, titleY, "RUN", 6, COL_TITLE_YELLOW);
+
+        // Subtitle
+        canvas.TextScaled(420, titleY + 56, "A Platformer Adventure", 2, COL_HUD_GRAY);
+
+        // Menu options
+        var menuY = 300;
+        drawMenuOption(canvas, "PLAY", 0, menuY);
+        drawMenuOption(canvas, "HIGH SCORES", 1, menuY + 50);
+        drawMenuOption(canvas, "CONTROLS", 2, menuY + 100);
+        drawMenuOption(canvas, "QUIT", 3, menuY + 150);
+
+        // Footer
+        canvas.TextScaled(440, SCREEN_H - 30, "Made with Viper + Zia", 2, COL_HUD_GRAY);
+    }
+
+    hide func drawMenuOption(canvas: Canvas, label: String, index: Integer, y: Integer) {
+        var x = 520;
+        var col = COL_MENU_TEXT;
+
+        if index == selected {
+            // Highlight
+            canvas.BoxAlpha(x - 20, y - 4, 280, 32, COL_MENU_HIGHLIGHT, 150);
+            col = COL_WHITE;
+            // Arrow indicator
+            canvas.TextScaled(x - 30, y, ">", 3, COL_TITLE_ORANGE);
+        }
+
+        canvas.TextScaled(x, y, label, 3, col);
+    }
+
+    hide func drawStarfield(canvas: Canvas) {
+        // Simple pseudo-random stars
+        var i = 0;
+        while i < 80 {
+            var sx = (i * 137 + bgScroll * (1 + i % 3)) % SCREEN_W;
+            var sy = (i * 97 + 23) % SCREEN_H;
+            var brightness = 100 + (i * 31) % 156;
+            var col = brightness * 0x010101;
+            canvas.Box(sx, sy, 2, 2, col);
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Pause Screen
+    // =========================================================================
+
+    expose func updatePause() -> Integer {
+        if Keyboard.WasPressed(KEY_ESCAPE) {
+            return STATE_PLAYING;
+        }
+
+        if Keyboard.WasPressed(KEY_UP) {
+            selected = 1 - selected;
+        }
+        if Keyboard.WasPressed(KEY_W) {
+            selected = 1 - selected;
+        }
+        if Keyboard.WasPressed(KEY_DOWN) {
+            selected = 1 - selected;
+        }
+        if Keyboard.WasPressed(KEY_S) {
+            selected = 1 - selected;
+        }
+
+        var pressed = Keyboard.WasPressed(KEY_ENTER);
+        if pressed == false {
+            pressed = Keyboard.WasPressed(KEY_SPACE);
+        }
+
+        if pressed {
+            if selected == 0 { return STATE_PLAYING; }
+            if selected == 1 { return STATE_MENU; }
+        }
+
+        return STATE_PAUSED;
+    }
+
+    expose func drawPause(canvas: Canvas) {
+        // Dim overlay
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
+
+        // Title
+        canvas.TextScaled(510, 240, "PAUSED", 4, COL_WHITE);
+
+        // Options
+        var y = 340;
+        drawMenuOption(canvas, "RESUME", 0, y);
+        drawMenuOption(canvas, "QUIT TO MENU", 1, y + 50);
+    }
+
+    // =========================================================================
+    // Game Over
+    // =========================================================================
+
+    expose func updateGameOver() -> Integer {
+        if Keyboard.WasPressed(KEY_UP) {
+            selected = 1 - selected;
+        }
+        if Keyboard.WasPressed(KEY_W) {
+            selected = 1 - selected;
+        }
+        if Keyboard.WasPressed(KEY_DOWN) {
+            selected = 1 - selected;
+        }
+        if Keyboard.WasPressed(KEY_S) {
+            selected = 1 - selected;
+        }
+
+        var pressed = Keyboard.WasPressed(KEY_ENTER);
+        if pressed == false {
+            pressed = Keyboard.WasPressed(KEY_SPACE);
+        }
+
+        if pressed {
+            if selected == 0 { return STATE_PLAYING; }
+            if selected == 1 { return STATE_MENU; }
+        }
+
+        return STATE_GAMEOVER;
+    }
+
+    expose func drawGameOver(canvas: Canvas, score: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 180);
+
+        canvas.TextScaled(430, 180, "GAME OVER", 5, COL_HUD_RED);
+
+        var scoreStr = Int(score);
+        canvas.TextScaled(450, 260, "FINAL SCORE:", 3, COL_HUD_GRAY);
+        canvas.TextScaled(480, 300, scoreStr, 4, COL_COIN_GOLD);
+
+        var y = 380;
+        drawMenuOption(canvas, "TRY AGAIN", 0, y);
+        drawMenuOption(canvas, "MAIN MENU", 1, y + 50);
+    }
+
+    // =========================================================================
+    // Level Complete
+    // =========================================================================
+
+    expose func updateLevelComplete() -> Integer {
+        titleTimer = titleTimer + 1;
+
+        var pressed = Keyboard.WasPressed(KEY_ENTER);
+        if pressed == false {
+            pressed = Keyboard.WasPressed(KEY_SPACE);
+        }
+
+        if pressed {
+            return STATE_PLAYING;
+        }
+
+        return STATE_LEVELCOMPLETE;
+    }
+
+    expose func drawLevelComplete(canvas: Canvas, score: Integer,
+                                   timeBonus: Integer, levelNum: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
+
+        canvas.TextScaled(390, 140, "LEVEL COMPLETE!", 4, COL_HUD_GREEN);
+
+        var levelName = "GRASSLANDS";
+        if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
+        canvas.TextScaled(500, 200, levelName, 2, COL_HUD_BLUE);
+
+        // Score breakdown (reveal over time)
+        var revealFrames = titleTimer;
+
+        if revealFrames > 30 {
+            var scoreStr = Int(score);
+            canvas.TextScaled(420, 260, "SCORE:", 3, COL_HUD_GRAY);
+            canvas.TextScaled(580, 260, scoreStr, 3, COL_WHITE);
+        }
+
+        if revealFrames > 60 {
+            var bonusStr = Int(timeBonus);
+            canvas.TextScaled(420, 305, "TIME BONUS:", 3, COL_HUD_GRAY);
+            canvas.TextScaled(580, 305, bonusStr, 3, COL_COIN_GOLD);
+        }
+
+        if revealFrames > 90 {
+            var total = score + timeBonus;
+            var totalStr = Int(total);
+            canvas.TextScaled(420, 360, "TOTAL:", 3, COL_HUD_GRAY);
+            canvas.TextScaled(580, 360, totalStr, 3, COL_TITLE_ORANGE);
+        }
+
+        if revealFrames > 120 {
+            canvas.TextScaled(430, 460, "Press ENTER to continue", 2, COL_HUD_GRAY);
+        }
+    }
+
+    // =========================================================================
+    // Victory (after beating boss)
+    // =========================================================================
+
+    expose func updateVictory() -> Integer {
+        titleTimer = titleTimer + 1;
+
+        var pressed = Keyboard.WasPressed(KEY_ENTER);
+        if pressed == false {
+            pressed = Keyboard.WasPressed(KEY_SPACE);
+        }
+
+        if pressed {
+            return STATE_MENU;
+        }
+
+        return STATE_VICTORY;
+    }
+
+    expose func drawVictory(canvas: Canvas, score: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 180);
+
+        // Animated colors
+        var flash = titleTimer % 30;
+        var titleCol = COL_TITLE_ORANGE;
+        if flash < 15 { titleCol = COL_TITLE_YELLOW; }
+
+        canvas.TextScaled(400, 120, "VICTORY!", 6, titleCol);
+
+        canvas.TextScaled(370, 230, "You defeated the Mech Guardian!", 2, COL_WHITE);
+        canvas.TextScaled(420, 270, "The crystals are safe.", 2, COL_CRYSTAL_BLUE);
+
+        var scoreStr = Int(score);
+        canvas.TextScaled(450, 350, "FINAL SCORE:", 3, COL_HUD_GRAY);
+        canvas.TextScaled(480, 390, scoreStr, 4, COL_COIN_GOLD);
+
+        if titleTimer > 60 {
+            canvas.TextScaled(440, 490, "Press ENTER for menu", 2, COL_HUD_GRAY);
+        }
+    }
+
+    // =========================================================================
+    // High Scores
+    // =========================================================================
+
+    expose func updateHighScores() -> Integer {
+        if Keyboard.WasPressed(KEY_ESCAPE) {
+            return STATE_MENU;
+        }
+        if Keyboard.WasPressed(KEY_ENTER) {
+            return STATE_MENU;
+        }
+        return STATE_HIGHSCORES;
+    }
+
+    expose func drawHighScores(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
+        drawStarfield(canvas);
+
+        canvas.TextScaled(430, 40, "HIGH SCORES", 4, COL_TITLE_YELLOW);
+
+        var i = 0;
+        while i < 10 {
+            var y = 130 + i * 42;
+            var rankStr = Int(i + 1);
+            var scoreStr = Int(highScores.get(i));
+            var name = highNames.get(i);
+
+            var col = COL_MENU_TEXT;
+            if i == 0 { col = COL_COIN_GOLD; }
+            if i == 1 { col = COL_STONE_LIGHT; }
+            if i == 2 { col = COL_BOSS_ARMOR; }
+
+            canvas.TextScaled(380, y, rankStr, 2, COL_HUD_GRAY);
+            canvas.TextScaled(420, y, name, 2, col);
+            canvas.TextScaled(600, y, scoreStr, 2, col);
+            i = i + 1;
+        }
+
+        canvas.TextScaled(440, SCREEN_H - 40, "Press ENTER to return", 2, COL_HUD_GRAY);
+    }
+
+    expose func addHighScore(score: Integer, name: String) {
+        // Insert in sorted position
+        var i = 0;
+        while i < 10 {
+            if score > highScores.get(i) {
+                // Shift down
+                var j = 9;
+                while j > i {
+                    highScores.set(j, highScores.get(j - 1));
+                    highNames.set(j, highNames.get(j - 1));
+                    j = j - 1;
+                }
+                highScores.set(i, score);
+                highNames.set(i, name);
+                return;
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func isHighScore(score: Integer) -> Boolean {
+        return score > highScores.get(9);
+    }
+
+    // =========================================================================
+    // Controls Screen
+    // =========================================================================
+
+    expose func updateControls() -> Integer {
+        if Keyboard.WasPressed(KEY_ESCAPE) {
+            return STATE_MENU;
+        }
+        if Keyboard.WasPressed(KEY_ENTER) {
+            return STATE_MENU;
+        }
+        return STATE_CONTROLS;
+    }
+
+    expose func drawControls(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
+
+        canvas.TextScaled(470, 40, "CONTROLS", 4, COL_TITLE_ORANGE);
+
+        var y = 150;
+        var gap = 44;
+        drawControlRow(canvas, y, "MOVE LEFT", "LEFT / A");
+        drawControlRow(canvas, y + gap, "MOVE RIGHT", "RIGHT / D");
+        drawControlRow(canvas, y + gap * 2, "JUMP", "UP / W / SPACE");
+        drawControlRow(canvas, y + gap * 3, "SHOOT", "Z / X");
+        drawControlRow(canvas, y + gap * 4, "PAUSE", "ESCAPE");
+
+        canvas.TextScaled(430, y + gap * 6, "TIPS:", 3, COL_TITLE_YELLOW);
+        canvas.TextScaled(370, y + gap * 7, "Hold jump for higher jumps", 2, COL_MENU_TEXT);
+        canvas.TextScaled(370, y + gap * 7 + 28, "Slide on walls and wall-jump", 2, COL_MENU_TEXT);
+        canvas.TextScaled(370, y + gap * 7 + 56, "Double-jump in mid-air", 2, COL_MENU_TEXT);
+
+        canvas.TextScaled(440, SCREEN_H - 40, "Press ENTER to return", 2, COL_HUD_GRAY);
+    }
+
+    hide func drawControlRow(canvas: Canvas, y: Integer,
+                              action: String, keys: String) {
+        canvas.TextScaled(360, y, action, 2, COL_HUD_GRAY);
+        canvas.TextScaled(620, y, keys, 2, COL_WHITE);
+    }
+
+    // Reset selected option (useful when transitioning to a menu)
+    expose func resetSelection() {
+        selected = 0;
+        titleTimer = 0;
+    }
+}

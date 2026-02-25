@@ -421,7 +421,7 @@ class VM
     struct ExecState
     {
         Frame fr;                                 ///< Current frame
-        BlockMap blocks;                          ///< Basic block lookup
+        const BlockMap *blocks = nullptr;         ///< Cached block lookup (owned by VM)
         const il::core::BasicBlock *bb = nullptr; ///< Active basic block
         size_t ip = 0;                            ///< Instruction pointer within @p bb
         bool skipBreakOnce = false;               ///< Whether to skip next breakpoint
@@ -692,6 +692,22 @@ class VM
                            size_t ip,
                            const il::core::Instr &in);
 
+    /// @brief Captures instruction context for trap diagnostics.
+    struct TrapContext
+    {
+        const il::core::Function *function = nullptr; ///< Active function
+        const il::core::BasicBlock *block = nullptr;  ///< Active basic block
+        size_t instructionIndex = 0;                  ///< Instruction index within block
+        bool hasInstruction = false;                  ///< Whether instruction metadata is valid
+        il::support::SourceLoc loc{};                 ///< Source location of the instruction
+    };
+
+    /// @brief Reconstruct instruction context from the execution stack.
+    /// @details Prefers execStack (always up-to-date) over currentContext
+    ///          (may be stale when fast-path dispatch skips setCurrentContext).
+    ///          Used by trap-raising and diagnostic paths.
+    TrapContext currentTrapContext() const;
+
     // dispatchOpcodeSwitch is declared via generated include file
 
     /// @brief Exception type for non-local trap dispatch control flow.
@@ -715,15 +731,6 @@ class VM
     };
 
   private:
-    /// @brief Captures instruction context for trap diagnostics.
-    struct TrapContext
-    {
-        const il::core::Function *function = nullptr; ///< Active function
-        const il::core::BasicBlock *block = nullptr;  ///< Active basic block
-        size_t instructionIndex = 0;                  ///< Instruction index within block
-        bool hasInstruction = false;                  ///< Whether instruction metadata is valid
-        il::support::SourceLoc loc{};                 ///< Source location of the instruction
-    };
 
     /// @brief Last trap recorded by the VM for diagnostic reporting.
     struct TrapState
@@ -874,6 +881,17 @@ class VM
                        std::unordered_map<const il::core::BasicBlock *, BlockExecCache>>
         fnExecCache_;
 
+    /// @brief Per-function block label → BasicBlock* maps, built once per function.
+    /// @details Eliminates repeated hash-map construction on every function call.
+    ///          IL is immutable after parsing so cached maps remain valid for the
+    ///          lifetime of the VM.
+    std::unordered_map<const il::core::Function *, BlockMap> fnBlockMapCache_;
+
+    /// @brief Obtain (or lazily build) the block label map for @p fn.
+    /// @param fn Function whose blocks should be mapped.
+    /// @return Reference to the cached BlockMap.
+    const BlockMap &getOrBuildBlockMap(const il::core::Function &fn);
+
     /// @brief Obtain (or lazily build) the pre-resolved operand cache for @p bb.
     /// @param fn Function owning the block (used as the cache key).
     /// @param bb Basic block whose operands should be pre-resolved.
@@ -918,11 +936,9 @@ class VM
     /// @brief Initialize a frame for @p fn with arguments.
     /// @param fn Function to execute.
     /// @param args Argument slots for entry block parameters.
-    /// @param blocks Map populated with basic block labels.
     /// @param bb Set to point at the entry block.
     Frame setupFrame(const il::core::Function &fn,
                      std::span<const Slot> args,
-                     BlockMap &blocks,
                      const il::core::BasicBlock *&bb);
 
     /// @brief Handle pending debug breaks at block entry or instruction boundaries.

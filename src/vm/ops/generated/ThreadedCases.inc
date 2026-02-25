@@ -498,7 +498,7 @@ LBL_ConstStr:
 LBL_GAddr:
 {
     auto exec =
-        il::vm::detail::handleGAddr(vm, state.fr, *currentInstr, state.blocks, state.bb, state.ip);
+        il::vm::detail::handleGAddr(vm, state.fr, *currentInstr, *state.blocks, state.bb, state.ip);
     vm.handleInlineResult(state, exec);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;

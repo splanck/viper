@@ -592,20 +592,21 @@ static void test_flip_h()
     rt_pixels_set(p, 1, 1, 0x55555555); // bottom-middle
     rt_pixels_set(p, 2, 1, 0x66666666); // bottom-right
 
-    void *flipped = rt_pixels_flip_h(p);
-    assert(flipped != nullptr);
-    assert(rt_pixels_width(flipped) == 3);
-    assert(rt_pixels_height(flipped) == 2);
+    // FlipH mutates in place and returns self
+    void *result = rt_pixels_flip_h(p);
+    assert(result == p); // returns same pointer
+    assert(rt_pixels_width(p) == 3);
+    assert(rt_pixels_height(p) == 2);
 
     // After horizontal flip:
     // [B G R]
     // [Y M C]
-    assert(rt_pixels_get(flipped, 0, 0) == 0x33333333); // was top-right
-    assert(rt_pixels_get(flipped, 1, 0) == 0x22222222); // middle unchanged
-    assert(rt_pixels_get(flipped, 2, 0) == 0x11111111); // was top-left
-    assert(rt_pixels_get(flipped, 0, 1) == 0x66666666); // was bottom-right
-    assert(rt_pixels_get(flipped, 1, 1) == 0x55555555); // middle unchanged
-    assert(rt_pixels_get(flipped, 2, 1) == 0x44444444); // was bottom-left
+    assert(rt_pixels_get(p, 0, 0) == 0x33333333); // was top-right
+    assert(rt_pixels_get(p, 1, 0) == 0x22222222); // middle unchanged
+    assert(rt_pixels_get(p, 2, 0) == 0x11111111); // was top-left
+    assert(rt_pixels_get(p, 0, 1) == 0x66666666); // was bottom-right
+    assert(rt_pixels_get(p, 1, 1) == 0x55555555); // middle unchanged
+    assert(rt_pixels_get(p, 2, 1) == 0x44444444); // was bottom-left
 
     printf("test_flip_h: PASSED\n");
 }
@@ -621,18 +622,19 @@ static void test_flip_v()
     rt_pixels_set(p, 0, 2, 0x55555555); // row 2
     rt_pixels_set(p, 1, 2, 0x66666666);
 
-    void *flipped = rt_pixels_flip_v(p);
-    assert(flipped != nullptr);
-    assert(rt_pixels_width(flipped) == 2);
-    assert(rt_pixels_height(flipped) == 3);
+    // FlipV mutates in place and returns self
+    void *result = rt_pixels_flip_v(p);
+    assert(result == p); // returns same pointer
+    assert(rt_pixels_width(p) == 2);
+    assert(rt_pixels_height(p) == 3);
 
     // After vertical flip, row 0 becomes row 2, row 2 becomes row 0
-    assert(rt_pixels_get(flipped, 0, 0) == 0x55555555); // was row 2
-    assert(rt_pixels_get(flipped, 1, 0) == 0x66666666);
-    assert(rt_pixels_get(flipped, 0, 1) == 0x33333333); // row 1 unchanged
-    assert(rt_pixels_get(flipped, 1, 1) == 0x44444444);
-    assert(rt_pixels_get(flipped, 0, 2) == 0x11111111); // was row 0
-    assert(rt_pixels_get(flipped, 1, 2) == 0x22222222);
+    assert(rt_pixels_get(p, 0, 0) == 0x55555555); // was row 2
+    assert(rt_pixels_get(p, 1, 0) == 0x66666666);
+    assert(rt_pixels_get(p, 0, 1) == 0x33333333); // row 1 unchanged
+    assert(rt_pixels_get(p, 1, 1) == 0x44444444);
+    assert(rt_pixels_get(p, 0, 2) == 0x11111111); // was row 0
+    assert(rt_pixels_get(p, 1, 2) == 0x22222222);
 
     printf("test_flip_v: PASSED\n");
 }

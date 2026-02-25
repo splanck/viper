@@ -75,7 +75,8 @@ PRINT "--- FlipH ---"
 DIM src AS OBJECT = Viper.Graphics.Pixels.New(4, 2)
 src.Set(0, 0, red)
 src.Set(3, 0, blue)
-DIM fh AS OBJECT = src.FlipH()
+DIM fh AS OBJECT = src.Clone()
+fh.FlipH()
 PRINT "FlipH Width: "; fh.Width
 PRINT "FlipH(0,0): "; fh.Get(0, 0)
 PRINT "FlipH(3,0): "; fh.Get(3, 0)
@@ -85,7 +86,8 @@ PRINT "--- FlipV ---"
 DIM src2 AS OBJECT = Viper.Graphics.Pixels.New(2, 4)
 src2.Set(0, 0, red)
 src2.Set(0, 3, green)
-DIM fv AS OBJECT = src2.FlipV()
+DIM fv AS OBJECT = src2.Clone()
+fv.FlipV()
 PRINT "FlipV Height: "; fv.Height
 PRINT "FlipV(0,0): "; fv.Get(0, 0)
 PRINT "FlipV(0,3): "; fv.Get(0, 3)

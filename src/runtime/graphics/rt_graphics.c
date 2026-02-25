@@ -437,6 +437,168 @@ int64_t rt_canvas_text_height(void)
 }
 
 //=============================================================================
+// Scaled Text Rendering
+//=============================================================================
+
+void rt_canvas_text_scaled(void *canvas_ptr, int64_t x, int64_t y,
+                           rt_string text, int64_t scale, int64_t color)
+{
+    if (!canvas_ptr || !text || scale < 1)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+
+    const char *str = rt_string_cstr(text);
+    if (!str)
+        return;
+
+    int64_t cx = x;
+    vgfx_color_t col = (vgfx_color_t)color;
+
+    for (size_t i = 0; str[i] != '\0'; i++)
+    {
+        int c = (unsigned char)str[i];
+        const uint8_t *glyph = rt_font_get_glyph(c);
+
+        for (int row = 0; row < 8; row++)
+        {
+            uint8_t bits = glyph[row];
+            for (int col_idx = 0; col_idx < 8; col_idx++)
+            {
+                if (bits & (0x80 >> col_idx))
+                {
+                    vgfx_fill_rect(canvas->gfx_win,
+                                   (int32_t)(cx + col_idx * scale),
+                                   (int32_t)(y + row * scale),
+                                   (int32_t)scale,
+                                   (int32_t)scale,
+                                   col);
+                }
+            }
+        }
+        cx += 8 * scale;
+    }
+}
+
+void rt_canvas_text_scaled_bg(void *canvas_ptr, int64_t x, int64_t y,
+                              rt_string text, int64_t scale, int64_t fg, int64_t bg)
+{
+    if (!canvas_ptr || !text || scale < 1)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+
+    const char *str = rt_string_cstr(text);
+    if (!str)
+        return;
+
+    int64_t cx = x;
+    vgfx_color_t fg_col = (vgfx_color_t)fg;
+    vgfx_color_t bg_col = (vgfx_color_t)bg;
+
+    for (size_t i = 0; str[i] != '\0'; i++)
+    {
+        int c = (unsigned char)str[i];
+        const uint8_t *glyph = rt_font_get_glyph(c);
+
+        for (int row = 0; row < 8; row++)
+        {
+            uint8_t bits = glyph[row];
+            for (int col_idx = 0; col_idx < 8; col_idx++)
+            {
+                vgfx_fill_rect(canvas->gfx_win,
+                               (int32_t)(cx + col_idx * scale),
+                               (int32_t)(y + row * scale),
+                               (int32_t)scale,
+                               (int32_t)scale,
+                               (bits & (0x80 >> col_idx)) ? fg_col : bg_col);
+            }
+        }
+        cx += 8 * scale;
+    }
+}
+
+int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
+{
+    if (!text || scale < 1)
+        return 0;
+    return rt_str_len(text) * 8 * scale;
+}
+
+//=============================================================================
+// Alpha-Blended Shapes
+//=============================================================================
+
+void rt_canvas_box_alpha(void *canvas_ptr, int64_t x, int64_t y,
+                         int64_t w, int64_t h, int64_t color, int64_t alpha)
+{
+    if (!canvas_ptr || w <= 0 || h <= 0)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+
+    if (alpha <= 0)
+        return;
+    if (alpha >= 255)
+    {
+        vgfx_fill_rect(canvas->gfx_win, (int32_t)x, (int32_t)y,
+                        (int32_t)w, (int32_t)h, (vgfx_color_t)color);
+        return;
+    }
+
+    uint32_t argb = ((uint32_t)(alpha & 0xFF) << 24) | ((uint32_t)color & 0x00FFFFFF);
+
+    for (int64_t py = y; py < y + h; py++)
+    {
+        for (int64_t px = x; px < x + w; px++)
+        {
+            vgfx_pset_alpha(canvas->gfx_win, (int32_t)px, (int32_t)py, argb);
+        }
+    }
+}
+
+void rt_canvas_disc_alpha(void *canvas_ptr, int64_t cx, int64_t cy,
+                          int64_t radius, int64_t color, int64_t alpha)
+{
+    if (!canvas_ptr || radius <= 0)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+
+    if (alpha <= 0)
+        return;
+    if (alpha >= 255)
+    {
+        vgfx_fill_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy,
+                          (int32_t)radius, (vgfx_color_t)color);
+        return;
+    }
+
+    uint32_t argb = ((uint32_t)(alpha & 0xFF) << 24) | ((uint32_t)color & 0x00FFFFFF);
+    int64_t r2 = radius * radius;
+
+    for (int64_t dy = -radius; dy <= radius; dy++)
+    {
+        for (int64_t dx = -radius; dx <= radius; dx++)
+        {
+            if (dx * dx + dy * dy <= r2)
+            {
+                vgfx_pset_alpha(canvas->gfx_win,
+                                (int32_t)(cx + dx), (int32_t)(cy + dy), argb);
+            }
+        }
+    }
+}
+
+//=============================================================================
 // Pixel Blitting
 //=============================================================================
 
@@ -2605,6 +2767,59 @@ int64_t rt_canvas_text_width(rt_string text)
 int64_t rt_canvas_text_height(void)
 {
     return 8;
+}
+
+void rt_canvas_text_scaled(void *canvas, int64_t x, int64_t y,
+                           rt_string text, int64_t scale, int64_t color)
+{
+    (void)canvas;
+    (void)x;
+    (void)y;
+    (void)text;
+    (void)scale;
+    (void)color;
+}
+
+void rt_canvas_text_scaled_bg(void *canvas, int64_t x, int64_t y,
+                              rt_string text, int64_t scale, int64_t fg, int64_t bg)
+{
+    (void)canvas;
+    (void)x;
+    (void)y;
+    (void)text;
+    (void)scale;
+    (void)fg;
+    (void)bg;
+}
+
+int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
+{
+    (void)text;
+    (void)scale;
+    return 0;
+}
+
+void rt_canvas_box_alpha(void *canvas, int64_t x, int64_t y,
+                         int64_t w, int64_t h, int64_t color, int64_t alpha)
+{
+    (void)canvas;
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+    (void)color;
+    (void)alpha;
+}
+
+void rt_canvas_disc_alpha(void *canvas, int64_t cx, int64_t cy,
+                          int64_t radius, int64_t color, int64_t alpha)
+{
+    (void)canvas;
+    (void)cx;
+    (void)cy;
+    (void)radius;
+    (void)color;
+    (void)alpha;
 }
 
 void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels)

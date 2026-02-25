@@ -1,0 +1,863 @@
+// sprites.zia — Procedural sprite generation for all game entities
+// All art is drawn using Pixels primitives: SetRGB, DrawBox, DrawDisc, DrawLine, etc.
+module sprites;
+
+bind Viper.Graphics;
+bind "./config";
+
+entity SpriteFactory {
+    // Cached sprites — created once, reused every frame
+    // Player (4 idle frames, 4 run frames, 2 jump, 2 fall, 1 wallslide, 1 hurt, 1 dead)
+    hide List[Pixels] playerRight;
+    hide List[Pixels] playerLeft;
+
+    // Enemies
+    hide List[Pixels] slimeFrames;
+    hide List[Pixels] batFrames;
+    hide Pixels turretBase;
+    hide Pixels turretBarrel;
+    hide List[Pixels] bossFrames;
+
+    // Tiles
+    hide Pixels tileGrassTop;
+    hide Pixels tileDirt;
+    hide Pixels tileStone;
+    hide Pixels tileBrick;
+    hide Pixels tilePlatform;
+    hide Pixels tileLava1;
+    hide Pixels tileLava2;
+    hide Pixels tileCrystal;
+    hide Pixels tileCaveTop;
+    hide Pixels tileCaveWall;
+    hide Pixels tileBridge;
+    hide Pixels tileSpike;
+    hide Pixels tileCheckpoint;
+
+    // Pickups
+    hide List[Pixels] coinFrames;
+    hide Pixels healthOrb;
+    hide Pixels speedPickup;
+    hide Pixels shieldPickup;
+    hide Pixels rapidPickup;
+
+    // Bullet
+    hide Pixels bulletRight;
+    hide Pixels bulletLeft;
+    hide Pixels enemyBullet;
+
+    // Background elements
+    hide Pixels cloud1;
+    hide Pixels cloud2;
+    hide Pixels treeBg;
+    hide Pixels mountainBg;
+
+    expose func init() {
+        playerRight = [];
+        playerLeft = [];
+        slimeFrames = [];
+        batFrames = [];
+        bossFrames = [];
+        coinFrames = [];
+
+        buildPlayerSprites();
+        buildEnemySprites();
+        buildTileSprites();
+        buildPickupSprites();
+        buildBulletSprites();
+        buildBackgroundElements();
+    }
+
+    // =========================================================================
+    // Helper drawing functions
+    // =========================================================================
+
+    hide func fillRect(px: Pixels, x: Integer, y: Integer, w: Integer, h: Integer, col: Integer) {
+        px.DrawBox(x, y, w, h, col);
+    }
+
+    hide func fillCircle(px: Pixels, cx: Integer, cy: Integer, r: Integer, col: Integer) {
+        px.DrawDisc(cx, cy, r, col);
+    }
+
+    hide func setPixel(px: Pixels, x: Integer, y: Integer, col: Integer) {
+        px.SetRGB(x, y, col);
+    }
+
+    hide func drawOutline(px: Pixels, x: Integer, y: Integer, w: Integer, h: Integer, col: Integer) {
+        px.DrawFrame(x, y, w, h, col);
+    }
+
+    // =========================================================================
+    // Player Sprites (36x48 each)
+    // =========================================================================
+
+    hide func buildPlayerSprites() {
+        // Build right-facing frames, then flip for left
+        // Frame 0-1: Idle (slight breathing animation)
+        var idle0 = buildPlayerFrame(0, 0);
+        var idle1 = buildPlayerFrame(0, 1);
+        playerRight.add(idle0);
+        playerRight.add(idle1);
+
+        // Frame 2-3: Run (leg animation)
+        var run0 = buildPlayerFrame(1, 0);
+        var run1 = buildPlayerFrame(1, 1);
+        playerRight.add(run0);
+        playerRight.add(run1);
+
+        // Frame 4: Jump
+        var jump0 = buildPlayerFrame(2, 0);
+        playerRight.add(jump0);
+
+        // Frame 5: Fall
+        var fall0 = buildPlayerFrame(3, 0);
+        playerRight.add(fall0);
+
+        // Frame 6: Double jump
+        var djump = buildPlayerFrame(4, 0);
+        playerRight.add(djump);
+
+        // Frame 7: Wall slide
+        var wslide = buildPlayerFrame(5, 0);
+        playerRight.add(wslide);
+
+        // Frame 8: Hurt
+        var hurt = buildPlayerFrame(6, 0);
+        playerRight.add(hurt);
+
+        // Frame 9: Dead
+        var dead = buildPlayerFrame(7, 0);
+        playerRight.add(dead);
+
+        // Create left-facing versions by flipping
+        // FlipH() mutates in place and returns self — Clone first to preserve original
+        var i = 0;
+        while i < playerRight.length() {
+            var flipped = playerRight.get(i).Clone();
+            flipped.FlipH();
+            playerLeft.add(flipped);
+            i = i + 1;
+        }
+    }
+
+    hide func buildPlayerFrame(state: Integer, frame: Integer) -> Pixels {
+        var px = Pixels.New(PLAYER_SPRITE_W, PLAYER_SPRITE_H);
+
+        // Jetpack on back — LEFT side (drawn first, behind body)
+        fillRect(px, 1, 14, 7, 18, COL_PLAYER_JETPACK);
+        fillRect(px, 0, 28, 9, 6, COL_PLAYER_JETPACK);
+        // Jetpack exhaust nozzles
+        fillRect(px, 2, 34, 3, 3, 0xFF6622);
+        fillRect(px, 6, 34, 3, 3, 0xFF6622);
+
+        // Body
+        fillRect(px, 8, 12, 20, 21, COL_PLAYER_BODY);
+        fillRect(px, 10, 14, 16, 18, COL_PLAYER_BODY_DARK);
+
+        // Helmet
+        fillRect(px, 8, 0, 22, 15, COL_PLAYER_HELMET);
+        fillRect(px, 11, 1, 18, 13, COL_PLAYER_HELMET);
+
+        // Visor — RIGHT side, large and prominent
+        fillRect(px, 22, 3, 12, 8, COL_PLAYER_VISOR);
+        fillRect(px, 24, 4, 9, 6, 0x60F0E0);
+        // Visor highlight
+        fillRect(px, 25, 5, 3, 2, 0xAAFFFF);
+
+        // Gun arm — RIGHT side, clearly extends forward
+        fillRect(px, 27, 16, 8, 5, COL_PLAYER_BODY);
+        fillRect(px, 30, 17, 6, 3, 0x666666);
+        // Gun barrel tip
+        fillRect(px, 33, 17, 3, 3, 0x444444);
+
+        // Boots
+        var bootOffset = 0;
+        if state == 1 {
+            // Running: alternate leg positions
+            if frame == 0 {
+                bootOffset = 3;
+            } else {
+                bootOffset = -2;
+            }
+        }
+
+        // Left boot
+        fillRect(px, 9, 36 + bootOffset, 9, 12 - bootOffset, COL_PLAYER_BOOTS);
+        // Right boot
+        fillRect(px, 20, 36 - bootOffset, 9, 12 + bootOffset, COL_PLAYER_BOOTS);
+
+        // Boot soles
+        fillRect(px, 8, 45 + bootOffset, 11, 3 - bootOffset, 0x993311);
+        fillRect(px, 19, 45 - bootOffset, 11, 3 + bootOffset, 0x993311);
+
+        if state == 0 {
+            // Idle: slight body shift for breathing
+            if frame == 1 {
+                setPixel(px, 15, 12, COL_PLAYER_BODY);
+            }
+        }
+
+        if state == 2 {
+            // Jump: back arm up, gun arm stays
+            fillRect(px, 4, 8, 5, 12, COL_PLAYER_BODY);
+        }
+
+        if state == 3 {
+            // Fall: back arm out
+            fillRect(px, 3, 18, 5, 9, COL_PLAYER_BODY);
+        }
+
+        if state == 4 {
+            // Double jump: spin effect
+            fillRect(px, 3, 15, 30, 3, COL_PLAYER_VISOR);
+        }
+
+        if state == 5 {
+            // Wall slide: reaching arm toward wall
+            fillRect(px, 27, 6, 6, 15, COL_PLAYER_BODY);
+        }
+
+        if state == 6 {
+            // Hurt: red flash tint
+            fillRect(px, 12, 4, 14, 10, 0xFF4444);
+        }
+
+        if state == 7 {
+            // Dead: X eyes on visor
+            setPixel(px, 24, 5, 0xFF0000);
+            setPixel(px, 28, 5, 0xFF0000);
+            setPixel(px, 26, 7, 0xFF0000);
+            setPixel(px, 24, 9, 0xFF0000);
+            setPixel(px, 28, 9, 0xFF0000);
+        }
+
+        return px;
+    }
+
+    // =========================================================================
+    // Enemy Sprites
+    // =========================================================================
+
+    hide func buildEnemySprites() {
+        // Slime (2 frames: normal, squished)
+        slimeFrames.add(buildSlimeFrame(0));
+        slimeFrames.add(buildSlimeFrame(1));
+
+        // Bat (3 frames: wings up, mid, down)
+        batFrames.add(buildBatFrame(0));
+        batFrames.add(buildBatFrame(1));
+        batFrames.add(buildBatFrame(2));
+
+        // Turret parts
+        turretBase = buildTurretBase();
+        turretBarrel = buildTurretBarrel();
+
+        // Boss (3 frames)
+        bossFrames.add(buildBossFrame(0));
+        bossFrames.add(buildBossFrame(1));
+        bossFrames.add(buildBossFrame(2));
+    }
+
+    hide func buildSlimeFrame(frame: Integer) -> Pixels {
+        var px = Pixels.New(SLIME_W, SLIME_H);
+        var squish = 0;
+        if frame == 1 {
+            squish = 5;
+        }
+
+        // Body blob
+        var bodyH = 21 - squish;
+        var bodyY = 9 + squish;
+        fillRect(px, 5, bodyY, 27, bodyH, COL_SLIME);
+        fillRect(px, 8, bodyY - 3, 21, bodyH, COL_SLIME);
+        fillRect(px, 2, bodyY + 6, 33, bodyH - 9, COL_SLIME);
+
+        // Darker underside
+        fillRect(px, 5, bodyY + bodyH - 6, 27, 6, COL_SLIME_DARK);
+
+        // Eyes
+        fillRect(px, 11, bodyY + 3, 5, 6, COL_SLIME_EYE);
+        fillRect(px, 21, bodyY + 3, 5, 6, COL_SLIME_EYE);
+        // Pupils
+        fillRect(px, 12, bodyY + 6, 3, 3, COL_SLIME_PUPIL);
+        fillRect(px, 23, bodyY + 6, 3, 3, COL_SLIME_PUPIL);
+
+        // Slime drip
+        if frame == 0 {
+            setPixel(px, 9, bodyY + bodyH, COL_SLIME);
+            setPixel(px, 26, bodyY + bodyH, COL_SLIME);
+        }
+
+        return px;
+    }
+
+    hide func buildBatFrame(frame: Integer) -> Pixels {
+        var px = Pixels.New(BAT_W, BAT_H);
+
+        // Body
+        fillRect(px, 15, 9, 12, 15, COL_BAT_BODY);
+        fillCircle(px, 21, 12, 8, COL_BAT_BODY);
+
+        // Wings based on frame
+        if frame == 0 {
+            // Wings up
+            fillRect(px, 0, 3, 15, 6, COL_BAT_WING);
+            fillRect(px, 27, 3, 15, 6, COL_BAT_WING);
+            fillRect(px, 3, 0, 9, 5, COL_BAT_WING);
+            fillRect(px, 30, 0, 9, 5, COL_BAT_WING);
+        }
+        if frame == 1 {
+            // Wings mid
+            fillRect(px, 0, 9, 15, 6, COL_BAT_WING);
+            fillRect(px, 27, 9, 15, 6, COL_BAT_WING);
+        }
+        if frame == 2 {
+            // Wings down
+            fillRect(px, 0, 15, 15, 6, COL_BAT_WING);
+            fillRect(px, 27, 15, 15, 6, COL_BAT_WING);
+            fillRect(px, 3, 21, 9, 5, COL_BAT_WING);
+            fillRect(px, 30, 21, 9, 5, COL_BAT_WING);
+        }
+
+        // Eyes
+        setPixel(px, 17, 11, COL_BAT_EYE);
+        setPixel(px, 24, 11, COL_BAT_EYE);
+        setPixel(px, 18, 11, COL_BAT_EYE);
+        setPixel(px, 26, 11, COL_BAT_EYE);
+
+        // Ears
+        setPixel(px, 15, 5, COL_BAT_BODY);
+        setPixel(px, 17, 3, COL_BAT_BODY);
+        setPixel(px, 26, 5, COL_BAT_BODY);
+        setPixel(px, 24, 3, COL_BAT_BODY);
+
+        return px;
+    }
+
+    hide func buildTurretBase() -> Pixels {
+        var px = Pixels.New(TURRET_W, TURRET_H);
+
+        // Base box
+        fillRect(px, 3, 18, 36, 24, COL_TURRET_BASE);
+        fillRect(px, 6, 15, 30, 6, COL_TURRET_BASE);
+
+        // Dark accents
+        fillRect(px, 6, 30, 30, 3, 0x555555);
+        fillRect(px, 9, 21, 24, 3, 0x999999);
+
+        // Warning light
+        fillCircle(px, 21, 24, 3, COL_TURRET_LIGHT);
+
+        return px;
+    }
+
+    hide func buildTurretBarrel() -> Pixels {
+        var px = Pixels.New(30, 9);
+        fillRect(px, 0, 2, 27, 6, COL_TURRET_BARREL);
+        fillRect(px, 24, 0, 6, 9, COL_TURRET_BARREL);
+        fillRect(px, 3, 3, 21, 3, 0x666666);
+        return px;
+    }
+
+    hide func buildBossFrame(frame: Integer) -> Pixels {
+        var px = Pixels.New(BOSS_W, BOSS_H);
+
+        // Main body armor
+        fillRect(px, 12, 12, 60, 60, COL_BOSS_ARMOR);
+        fillRect(px, 18, 6, 48, 12, COL_BOSS_ARMOR);
+
+        // Darker inner armor
+        fillRect(px, 18, 18, 48, 48, COL_BOSS_DARK);
+
+        // Metal trim
+        fillRect(px, 12, 12, 60, 5, COL_BOSS_METAL);
+        fillRect(px, 12, 68, 60, 5, COL_BOSS_METAL);
+
+        // Eye
+        var eyeW = 18;
+        if frame == 1 {
+            eyeW = 12;
+        }
+        if frame == 2 {
+            eyeW = 21;
+        }
+        fillRect(px, 33, 24, eyeW, 9, COL_BOSS_EYE);
+        fillRect(px, 36, 27, eyeW - 6, 3, 0xFFAAAA);
+
+        // Arms
+        fillRect(px, 0, 24, 15, 12, COL_BOSS_METAL);
+        fillRect(px, 69, 24, 15, 12, COL_BOSS_METAL);
+
+        // Fists
+        fillRect(px, 0, 36, 15, 15, COL_BOSS_ARMOR);
+        fillRect(px, 69, 36, 15, 15, COL_BOSS_ARMOR);
+
+        if frame == 2 {
+            // Attack pose — arms forward
+            fillRect(px, 0, 30, 18, 9, COL_BOSS_METAL);
+            fillRect(px, 66, 30, 18, 9, COL_BOSS_METAL);
+        }
+
+        // Legs
+        fillRect(px, 21, 72, 15, 12, COL_BOSS_METAL);
+        fillRect(px, 48, 72, 15, 12, COL_BOSS_METAL);
+
+        return px;
+    }
+
+    // =========================================================================
+    // Tile Sprites (48x48 each)
+    // =========================================================================
+
+    hide func buildTileSprites() {
+        tileGrassTop = buildGrassTile();
+        tileDirt = buildDirtTile();
+        tileStone = buildStoneTile();
+        tileBrick = buildBrickTile();
+        tilePlatform = buildPlatformTile();
+        tileLava1 = buildLavaTile(0);
+        tileLava2 = buildLavaTile(1);
+        tileCrystal = buildCrystalTile();
+        tileCaveTop = buildCaveTopTile();
+        tileCaveWall = buildCaveWallTile();
+        tileBridge = buildBridgeTile();
+        tileSpike = buildSpikeTile();
+        tileCheckpoint = buildCheckpointTile();
+    }
+
+    hide func buildGrassTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        // Dirt base
+        fillRect(px, 0, 0, 48, 48, COL_DIRT);
+        // Grass top layer
+        fillRect(px, 0, 0, 48, 15, COL_GRASS);
+        fillRect(px, 0, 0, 48, 9, COL_GRASS_DARK);
+        // Grass blades
+        var i = 0;
+        while i < 48 {
+            var h = 3 + (i * 7) % 6;
+            setPixel(px, i, 15 - h, COL_GRASS);
+            if h > 5 {
+                setPixel(px, i, 15 - h + 1, COL_GRASS);
+            }
+            i = i + 4;
+        }
+        // Dirt texture
+        setPixel(px, 8, 24, COL_DIRT_DARK);
+        setPixel(px, 23, 30, COL_DIRT_DARK);
+        setPixel(px, 38, 21, COL_DIRT_DARK);
+        setPixel(px, 15, 36, COL_DIRT_DARK);
+        setPixel(px, 30, 42, COL_DIRT_DARK);
+        return px;
+    }
+
+    hide func buildDirtTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_DIRT);
+        // Texture spots
+        var i = 0;
+        while i < 8 {
+            var tx = (i * 13 + 5) % 45;
+            var ty = (i * 17 + 3) % 45;
+            setPixel(px, tx, ty, COL_DIRT_DARK);
+            setPixel(px, tx + 1, ty, COL_DIRT_DARK);
+            i = i + 1;
+        }
+        return px;
+    }
+
+    hide func buildStoneTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_STONE);
+        // Stone pattern — horizontal lines
+        fillRect(px, 0, 0, 48, 2, COL_STONE_DARK);
+        fillRect(px, 0, 23, 48, 2, COL_STONE_DARK);
+        fillRect(px, 0, 47, 48, 1, COL_STONE_DARK);
+        // Vertical lines
+        fillRect(px, 23, 0, 2, 24, COL_STONE_DARK);
+        fillRect(px, 0, 23, 2, 25, COL_STONE_DARK);
+        // Highlights
+        fillRect(px, 2, 2, 21, 2, COL_STONE_LIGHT);
+        fillRect(px, 24, 24, 23, 2, COL_STONE_LIGHT);
+        return px;
+    }
+
+    hide func buildBrickTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_BRICK);
+        // Mortar lines
+        fillRect(px, 0, 11, 48, 3, COL_BRICK_DARK);
+        fillRect(px, 0, 23, 48, 3, COL_BRICK_DARK);
+        fillRect(px, 0, 35, 48, 3, COL_BRICK_DARK);
+        // Vertical mortar (offset per row)
+        fillRect(px, 23, 0, 3, 12, COL_BRICK_DARK);
+        fillRect(px, 11, 12, 3, 12, COL_BRICK_DARK);
+        fillRect(px, 35, 12, 3, 12, COL_BRICK_DARK);
+        fillRect(px, 23, 24, 3, 12, COL_BRICK_DARK);
+        fillRect(px, 11, 36, 3, 12, COL_BRICK_DARK);
+        fillRect(px, 35, 36, 3, 12, COL_BRICK_DARK);
+        return px;
+    }
+
+    hide func buildPlatformTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_PLATFORM);
+        // Top edge
+        fillRect(px, 0, 0, 48, 6, COL_PLATFORM_DARK);
+        fillRect(px, 0, 0, 48, 3, 0x8B6830);
+        // Wood grain
+        fillRect(px, 0, 15, 48, 2, COL_PLATFORM_DARK);
+        fillRect(px, 0, 30, 48, 2, COL_PLATFORM_DARK);
+        // Nail dots
+        setPixel(px, 6, 9, 0x555555);
+        setPixel(px, 42, 9, 0x555555);
+        setPixel(px, 24, 24, 0x555555);
+        return px;
+    }
+
+    hide func buildLavaTile(frame: Integer) -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_LAVA);
+        // Bright spots (animated)
+        if frame == 0 {
+            fillRect(px, 6, 6, 12, 9, COL_LAVA_BRIGHT);
+            fillRect(px, 30, 18, 9, 12, COL_LAVA_BRIGHT);
+            fillRect(px, 15, 33, 15, 6, COL_LAVA_BRIGHT);
+        } else {
+            fillRect(px, 18, 3, 12, 9, COL_LAVA_BRIGHT);
+            fillRect(px, 3, 21, 9, 12, COL_LAVA_BRIGHT);
+            fillRect(px, 27, 36, 15, 6, COL_LAVA_BRIGHT);
+        }
+        // Surface glow
+        fillRect(px, 0, 0, 48, 5, 0xFFAA22);
+        return px;
+    }
+
+    hide func buildCrystalTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_CAVE_ROCK);
+        // Crystal formations
+        // Blue crystal
+        fillRect(px, 9, 12, 6, 24, COL_CRYSTAL_BLUE);
+        fillRect(px, 6, 18, 12, 12, COL_CRYSTAL_BLUE);
+        setPixel(px, 11, 9, COL_CRYSTAL_BLUE);
+        setPixel(px, 12, 11, COL_CRYSTAL_BLUE);
+        // Pink crystal
+        fillRect(px, 30, 15, 6, 21, COL_CRYSTAL_PINK);
+        fillRect(px, 27, 21, 12, 9, COL_CRYSTAL_PINK);
+        // Glow highlights
+        setPixel(px, 11, 15, 0x80E0FF);
+        setPixel(px, 32, 18, 0xFFA0E0);
+        return px;
+    }
+
+    hide func buildCaveTopTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_CAVE_ROCK);
+        fillRect(px, 0, 33, 48, 15, COL_CAVE_ROCK_DARK);
+        // Stalactites
+        fillRect(px, 9, 36, 6, 12, COL_CAVE_ROCK);
+        fillRect(px, 11, 42, 3, 6, COL_CAVE_ROCK);
+        fillRect(px, 30, 39, 6, 9, COL_CAVE_ROCK);
+        fillRect(px, 32, 45, 3, 3, COL_CAVE_ROCK);
+        return px;
+    }
+
+    hide func buildCaveWallTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        fillRect(px, 0, 0, 48, 48, COL_CAVE_ROCK);
+        // Rock texture
+        fillRect(px, 3, 6, 18, 15, COL_CAVE_ROCK_DARK);
+        fillRect(px, 27, 24, 15, 18, COL_CAVE_ROCK_DARK);
+        setPixel(px, 12, 30, COL_CAVE_ROCK_DARK);
+        setPixel(px, 36, 9, COL_CAVE_ROCK_DARK);
+        return px;
+    }
+
+    hide func buildBridgeTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        // Planks
+        fillRect(px, 0, 0, 48, 12, COL_BRIDGE);
+        fillRect(px, 0, 0, 48, 3, 0x5A4320);
+        // Plank lines
+        fillRect(px, 15, 0, 2, 12, 0x5A4320);
+        fillRect(px, 32, 0, 2, 12, 0x5A4320);
+        // Rope supports
+        fillRect(px, 0, 12, 3, 36, 0x8B7355);
+        fillRect(px, 45, 12, 3, 36, 0x8B7355);
+        return px;
+    }
+
+    hide func buildSpikeTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        // Spike triangles
+        var col = 0xCCCCCC;
+        var dark = 0x999999;
+        // 4 spikes
+        var i = 0;
+        while i < 4 {
+            var baseX = i * 12;
+            var tipY = 3 + (i % 2) * 6;
+            fillRect(px, baseX + 2, tipY, 9, 48 - tipY, col);
+            fillRect(px, baseX + 3, tipY, 6, 48 - tipY, dark);
+            // Point
+            fillRect(px, baseX + 5, tipY, 3, 3, 0xEEEEEE);
+            i = i + 1;
+        }
+        return px;
+    }
+
+    hide func buildCheckpointTile() -> Pixels {
+        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        // Flag pole
+        fillRect(px, 21, 0, 6, 48, 0x888888);
+        // Flag
+        fillRect(px, 27, 3, 15, 12, COL_CHECKPOINT);
+        fillRect(px, 27, 3, 15, 3, 0x22CC22);
+        return px;
+    }
+
+    // =========================================================================
+    // Pickup Sprites
+    // =========================================================================
+
+    hide func buildPickupSprites() {
+        // Coins (4 frames for rotation effect)
+        coinFrames.add(buildCoinFrame(0));
+        coinFrames.add(buildCoinFrame(1));
+        coinFrames.add(buildCoinFrame(2));
+        coinFrames.add(buildCoinFrame(3));
+
+        healthOrb = buildHealthOrb();
+        speedPickup = buildPowerupIcon(COL_SPEED);
+        shieldPickup = buildPowerupIcon(COL_SHIELD);
+        rapidPickup = buildPowerupIcon(COL_RAPIDFIRE);
+    }
+
+    hide func buildCoinFrame(frame: Integer) -> Pixels {
+        var px = Pixels.New(COIN_SIZE, COIN_SIZE);
+        // Coin rotation: vary width to simulate spinning
+        var w = 18;
+        if frame == 1 {
+            w = 12;
+        }
+        if frame == 2 {
+            w = 6;
+        }
+        if frame == 3 {
+            w = 12;
+        }
+        var x = (COIN_SIZE - w) / 2;
+        fillRect(px, x, 3, w, 18, COL_COIN_GOLD);
+        fillRect(px, x + 2, 2, w - 3, 21, COL_COIN_GOLD);
+        // Shine highlight
+        if w > 6 {
+            fillRect(px, x + 2, 5, 3, 6, 0xFFEE88);
+        }
+        // Dark edge
+        fillRect(px, x, 3, 2, 18, COL_COIN_DARK);
+        return px;
+    }
+
+    hide func buildHealthOrb() -> Pixels {
+        var px = Pixels.New(POWERUP_SIZE, POWERUP_SIZE);
+        fillCircle(px, 15, 15, 12, COL_HEALTH);
+        fillCircle(px, 15, 15, 8, 0xFF6677);
+        // Cross
+        fillRect(px, 12, 9, 6, 12, COL_WHITE);
+        fillRect(px, 9, 12, 12, 6, COL_WHITE);
+        return px;
+    }
+
+    hide func buildPowerupIcon(col: Integer) -> Pixels {
+        var px = Pixels.New(POWERUP_SIZE, POWERUP_SIZE);
+        fillCircle(px, 15, 15, 12, col);
+        fillCircle(px, 15, 15, 8, 0xFFFFFF);
+        // Arrow up
+        fillRect(px, 14, 8, 3, 12, col);
+        fillRect(px, 11, 11, 9, 3, col);
+        return px;
+    }
+
+    // =========================================================================
+    // Bullet Sprites
+    // =========================================================================
+
+    hide func buildBulletSprites() {
+        bulletRight = Pixels.New(BULLET_W, BULLET_H);
+        fillRect(bulletRight, 0, 0, BULLET_W, BULLET_H, COL_BULLET);
+        fillRect(bulletRight, 0, 2, BULLET_W, 3, COL_BULLET_GLOW);
+        fillRect(bulletRight, BULLET_W - 3, 0, 3, BULLET_H, 0xAAEEFF);
+
+        bulletLeft = bulletRight.Clone();
+        bulletLeft.FlipH();
+
+        enemyBullet = Pixels.New(9, 9);
+        fillCircle(enemyBullet, 5, 5, 5, COL_ENEMY_BULLET);
+        fillCircle(enemyBullet, 5, 5, 2, 0xFF8888);
+    }
+
+    // =========================================================================
+    // Background Elements
+    // =========================================================================
+
+    hide func buildBackgroundElements() {
+        cloud1 = buildCloud(90, 30);
+        cloud2 = buildCloud(60, 24);
+        treeBg = buildTreeBg();
+        mountainBg = buildMountainBg();
+    }
+
+    hide func buildCloud(w: Integer, h: Integer) -> Pixels {
+        var px = Pixels.New(w, h);
+        var col = 0xFFFFFF;
+        // Main body
+        fillRect(px, 6, h / 2, w - 12, h / 2, col);
+        // Puffs
+        fillCircle(px, w / 4, h / 2, h / 3, col);
+        fillCircle(px, w / 2, h / 3, h / 2, col);
+        fillCircle(px, w * 3 / 4, h / 2, h / 3, col);
+        return px;
+    }
+
+    hide func buildTreeBg() -> Pixels {
+        var px = Pixels.New(48, 72);
+        // Trunk (darker for night)
+        fillRect(px, 18, 42, 12, 30, 0x3A2808);
+        fillRect(px, 21, 45, 6, 27, 0x2A1A06);
+        // Canopy (dark silhouette greens)
+        fillCircle(px, 24, 21, 21, 0x143A16);
+        fillCircle(px, 15, 27, 15, 0x1A4A1E);
+        fillCircle(px, 33, 27, 15, 0x1A4A1E);
+        fillCircle(px, 24, 15, 15, 0x205A24);
+        return px;
+    }
+
+    hide func buildMountainBg() -> Pixels {
+        var px = Pixels.New(180, 120);
+        var col = 0x2A3366;
+        var dark = 0x1E2548;
+        // Mountain triangle — wide at bottom (y=119), narrow at top (y=0)
+        var y = 119;
+        while y >= 0 {
+            var halfW = y * 90 / 120;
+            if halfW > 0 {
+                fillRect(px, 90 - halfW, y, halfW * 2, 1, col);
+                if 90 - halfW + halfW > 90 {
+                    fillRect(px, 90, y, halfW, 1, dark);
+                }
+            }
+            y = y - 1;
+        }
+        // Snow cap (bright against dark mountain)
+        fillRect(px, 83, 0, 15, 6, 0xCCCCDD);
+        fillRect(px, 86, 6, 9, 5, 0xAAAABB);
+        return px;
+    }
+
+    // =========================================================================
+    // Public accessors
+    // =========================================================================
+
+    expose func getPlayerFrame(facing: Integer, frameIdx: Integer) -> Pixels {
+        if facing >= 0 {
+            if frameIdx >= 0 {
+                if frameIdx < playerRight.length() {
+                    return playerRight.get(frameIdx);
+                }
+            }
+            return playerRight.get(0);
+        }
+        if frameIdx >= 0 {
+            if frameIdx < playerLeft.length() {
+                return playerLeft.get(frameIdx);
+            }
+        }
+        return playerLeft.get(0);
+    }
+
+    expose func getSlimeFrame(frame: Integer) -> Pixels {
+        if frame >= 0 {
+            if frame < slimeFrames.length() {
+                return slimeFrames.get(frame);
+            }
+        }
+        return slimeFrames.get(0);
+    }
+
+    expose func getBatFrame(frame: Integer) -> Pixels {
+        if frame >= 0 {
+            if frame < batFrames.length() {
+                return batFrames.get(frame);
+            }
+        }
+        return batFrames.get(0);
+    }
+
+    expose func getTurretBase() -> Pixels {
+        return turretBase;
+    }
+
+    expose func getTurretBarrel() -> Pixels {
+        return turretBarrel;
+    }
+
+    expose func getBossFrame(frame: Integer) -> Pixels {
+        if frame >= 0 {
+            if frame < bossFrames.length() {
+                return bossFrames.get(frame);
+            }
+        }
+        return bossFrames.get(0);
+    }
+
+    expose func getTile(id: Integer) -> Pixels {
+        if id == TILE_GRASS_TOP { return tileGrassTop; }
+        if id == TILE_GROUND { return tileDirt; }
+        if id == TILE_DIRT { return tileDirt; }
+        if id == TILE_STONE { return tileStone; }
+        if id == TILE_BRICK { return tileBrick; }
+        if id == TILE_PLATFORM { return tilePlatform; }
+        if id == TILE_LAVA { return tileLava1; }
+        if id == TILE_CRYSTAL { return tileCrystal; }
+        if id == TILE_CAVE_TOP { return tileCaveTop; }
+        if id == TILE_CAVE_WALL { return tileCaveWall; }
+        if id == TILE_BRIDGE { return tileBridge; }
+        if id == TILE_SPIKE { return tileSpike; }
+        if id == TILE_CHECKPOINT { return tileCheckpoint; }
+        return tileDirt;
+    }
+
+    expose func getLavaTile(frame: Integer) -> Pixels {
+        if frame == 0 {
+            return tileLava1;
+        }
+        return tileLava2;
+    }
+
+    expose func getCoinFrame(frame: Integer) -> Pixels {
+        if frame >= 0 {
+            if frame < coinFrames.length() {
+                return coinFrames.get(frame);
+            }
+        }
+        return coinFrames.get(0);
+    }
+
+    expose func getHealthOrb() -> Pixels { return healthOrb; }
+    expose func getSpeedPickup() -> Pixels { return speedPickup; }
+    expose func getShieldPickup() -> Pixels { return shieldPickup; }
+    expose func getRapidPickup() -> Pixels { return rapidPickup; }
+
+    expose func getBullet(facing: Integer) -> Pixels {
+        if facing >= 0 { return bulletRight; }
+        return bulletLeft;
+    }
+
+    expose func getEnemyBullet() -> Pixels { return enemyBullet; }
+
+    expose func getCloud1() -> Pixels { return cloud1; }
+    expose func getCloud2() -> Pixels { return cloud2; }
+    expose func getTreeBg() -> Pixels { return treeBg; }
+    expose func getMountainBg() -> Pixels { return mountainBg; }
+}

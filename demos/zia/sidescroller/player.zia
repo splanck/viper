@@ -1,0 +1,450 @@
+// player.zia — Player entity: physics, states, input, shooting
+// All positions/velocities use x100 scale for sub-pixel precision
+module player;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Math;
+bind "./config";
+bind "./level";
+bind "./physics";
+
+entity Player {
+    // Position/velocity (x100 scale)
+    expose Integer x;
+    expose Integer y;
+    expose Integer vx;
+    expose Integer vy;
+
+    // State
+    expose Integer state;
+    expose Integer facing;    // 1=right, -1=left
+    expose Boolean onGround;
+    expose Boolean onWall;
+    expose Integer wallDir;   // which wall (-1 or 1)
+
+    // Health
+    expose Integer hp;
+    expose Integer maxHp;
+    expose Integer lives;
+    expose Integer iframes;
+
+    // Jump mechanics
+    expose Boolean canDoubleJump;
+    expose Integer coyoteTimer;
+    expose Integer jumpBufferTimer;
+    hide Boolean jumpHeld;
+
+    // Animation
+    expose Integer animFrame;
+    hide Integer animTimer;
+
+    // Power-ups
+    expose Integer speedTimer;
+    expose Integer shieldHits;
+    expose Integer rapidFireTimer;
+
+    // Shooting
+    expose Integer shootCooldown;
+
+    // Physics helper (shared)
+    hide PhysicsHelper phys;
+
+    // Output buffers for moveAndCollide (single-element lists)
+    hide List[Integer] outX;
+    hide List[Integer] outY;
+    hide List[Integer] outVx;
+    hide List[Integer] outVy;
+
+    expose func init() {
+        phys = new PhysicsHelper();
+        outX = [0];
+        outY = [0];
+        outVx = [0];
+        outVy = [0];
+        reset();
+    }
+
+    expose func reset() {
+        x = 0;
+        y = 0;
+        vx = 0;
+        vy = 0;
+        state = PS_IDLE;
+        facing = 1;
+        onGround = false;
+        onWall = false;
+        wallDir = 0;
+        hp = PLAYER_MAX_HP;
+        maxHp = PLAYER_MAX_HP;
+        lives = PLAYER_START_LIVES;
+        iframes = 0;
+        canDoubleJump = true;
+        coyoteTimer = 0;
+        jumpBufferTimer = 0;
+        jumpHeld = false;
+        animFrame = 0;
+        animTimer = 0;
+        speedTimer = 0;
+        shieldHits = 0;
+        rapidFireTimer = 0;
+        shootCooldown = 0;
+    }
+
+    expose func spawn(sx: Integer, sy: Integer) {
+        x = sx * 100;
+        y = sy * 100;
+        vx = 0;
+        vy = 0;
+        state = PS_IDLE;
+        iframes = 60;
+        canDoubleJump = true;
+        coyoteTimer = 0;
+        jumpBufferTimer = 0;
+    }
+
+    expose func update(level: Level) {
+        if state == PS_DEAD {
+            return;
+        }
+
+        // Decrement timers
+        if iframes > 0 { iframes = iframes - 1; }
+        if speedTimer > 0 { speedTimer = speedTimer - 1; }
+        if rapidFireTimer > 0 { rapidFireTimer = rapidFireTimer - 1; }
+        if shootCooldown > 0 { shootCooldown = shootCooldown - 1; }
+        if coyoteTimer > 0 { coyoteTimer = coyoteTimer - 1; }
+        if jumpBufferTimer > 0 { jumpBufferTimer = jumpBufferTimer - 1; }
+
+        handleInput();
+        applyPhysics(level);
+        updateAnimation();
+    }
+
+    hide func handleInput() {
+        var moveDir = 0;
+        if Keyboard.IsDown(KEY_LEFT) { moveDir = moveDir - 1; }
+        if Keyboard.IsDown(KEY_A) { moveDir = moveDir - 1; }
+        if Keyboard.IsDown(KEY_RIGHT) { moveDir = moveDir + 1; }
+        if Keyboard.IsDown(KEY_D) { moveDir = moveDir + 1; }
+
+        // Clamp moveDir
+        if moveDir > 1 { moveDir = 1; }
+        if moveDir < -1 { moveDir = -1; }
+
+        // Update facing
+        if moveDir != 0 {
+            facing = moveDir;
+        }
+
+        // Speed power-up
+        var speed = PLAYER_SPEED;
+        var accel = PLAYER_ACCEL;
+        if speedTimer > 0 {
+            speed = speed * 3 / 2;
+            accel = accel * 3 / 2;
+        }
+
+        // Horizontal movement
+        if onGround {
+            if moveDir != 0 {
+                // Accelerate
+                vx = vx + moveDir * accel;
+                if vx > speed { vx = speed; }
+                if vx < 0 - speed { vx = 0 - speed; }
+            } else {
+                // Decelerate
+                if vx > 0 {
+                    vx = vx - PLAYER_DECEL;
+                    if vx < 0 { vx = 0; }
+                }
+                if vx < 0 {
+                    vx = vx + PLAYER_DECEL;
+                    if vx > 0 { vx = 0; }
+                }
+            }
+        } else {
+            // Air control (reduced)
+            if moveDir != 0 {
+                vx = vx + moveDir * PLAYER_AIR_ACCEL;
+                if vx > speed { vx = speed; }
+                if vx < 0 - speed { vx = 0 - speed; }
+            }
+        }
+
+        // Jump input
+        var jumpPressed = Keyboard.WasPressed(KEY_UP);
+        if jumpPressed == false {
+            jumpPressed = Keyboard.WasPressed(KEY_W);
+        }
+        if jumpPressed == false {
+            jumpPressed = Keyboard.WasPressed(KEY_SPACE);
+        }
+
+        var jumpDown = Keyboard.IsDown(KEY_UP);
+        if jumpDown == false {
+            jumpDown = Keyboard.IsDown(KEY_W);
+        }
+        if jumpDown == false {
+            jumpDown = Keyboard.IsDown(KEY_SPACE);
+        }
+
+        if jumpPressed {
+            jumpBufferTimer = JUMP_BUFFER;
+        }
+
+        // Process jump
+        if jumpBufferTimer > 0 {
+            if onGround {
+                // Normal jump
+                vy = PLAYER_JUMP;
+                onGround = false;
+                canDoubleJump = true;
+                coyoteTimer = 0;
+                jumpBufferTimer = 0;
+                jumpHeld = true;
+                state = PS_JUMP;
+            } else {
+                if coyoteTimer > 0 {
+                    // Coyote time jump
+                    vy = PLAYER_JUMP;
+                    coyoteTimer = 0;
+                    jumpBufferTimer = 0;
+                    jumpHeld = true;
+                    state = PS_JUMP;
+                } else {
+                    if onWall {
+                        // Wall jump
+                        vy = WALL_JUMP_VY;
+                        vx = 0 - wallDir * WALL_JUMP_VX;
+                        facing = 0 - wallDir;
+                        onWall = false;
+                        canDoubleJump = true;
+                        jumpBufferTimer = 0;
+                        jumpHeld = true;
+                        state = PS_JUMP;
+                    } else {
+                        if canDoubleJump {
+                            // Double jump
+                            vy = PLAYER_DJUMP;
+                            canDoubleJump = false;
+                            jumpBufferTimer = 0;
+                            jumpHeld = true;
+                            state = PS_DJUMP;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Variable jump height — release early for short jump
+        if jumpDown == false {
+            jumpHeld = false;
+        }
+        if jumpHeld == false {
+            if vy < PLAYER_JUMP / 2 {
+                vy = PLAYER_JUMP / 2;
+            }
+        }
+
+        // Shoot input
+        var shootPressed = Keyboard.WasPressed(KEY_Z);
+        if shootPressed == false {
+            shootPressed = Keyboard.WasPressed(KEY_X);
+        }
+        if shootPressed {
+            if shootCooldown <= 0 {
+                shootCooldown = SHOOT_COOLDOWN;
+                if rapidFireTimer > 0 {
+                    shootCooldown = SHOOT_COOLDOWN / 2;
+                }
+            }
+        }
+    }
+
+    hide func applyPhysics(level: Level) {
+        // Gravity
+        vy = vy + GRAVITY;
+        if vy > MAX_FALL { vy = MAX_FALL; }
+
+        // Wall slide — slow descent when touching wall and falling
+        if onWall {
+            if vy > WALL_SLIDE_SPEED {
+                vy = WALL_SLIDE_SPEED;
+            }
+        }
+
+        // Move and collide
+        outX.set(0, x);
+        outY.set(0, y);
+        outVx.set(0, vx);
+        outVy.set(0, vy);
+
+        var flags = phys.moveAndCollide(x, y, vx, vy,
+                                         PLAYER_W, PLAYER_H, level,
+                                         outX, outY, outVx, outVy);
+
+        x = outX.get(0);
+        y = outY.get(0);
+        vx = outVx.get(0);
+        vy = outVy.get(0);
+
+        // Detect floor contact
+        var wasOnGround = onGround;
+        onGround = (flags % 2) == 1; // bit 0
+
+        if wasOnGround {
+            if onGround == false {
+                // Just left ground — start coyote timer
+                coyoteTimer = COYOTE_FRAMES;
+            }
+        }
+
+        if onGround {
+            canDoubleJump = true;
+            coyoteTimer = 0;
+        }
+
+        // Detect wall contact
+        var leftWall = (flags / 4) % 2 == 1;  // bit 2
+        var rightWall = (flags / 8) % 2 == 1; // bit 3
+        onWall = false;
+        wallDir = 0;
+        if onGround == false {
+            if leftWall {
+                onWall = true;
+                wallDir = -1;
+            }
+            if rightWall {
+                onWall = true;
+                wallDir = 1;
+            }
+        }
+
+        // Update state based on movement
+        if state != PS_HURT {
+            if onGround {
+                if vx == 0 {
+                    state = PS_IDLE;
+                } else {
+                    state = PS_RUN;
+                }
+            } else {
+                if onWall {
+                    state = PS_WALLSLIDE;
+                } else {
+                    if vy < 0 {
+                        if state != PS_DJUMP {
+                            state = PS_JUMP;
+                        }
+                    } else {
+                        state = PS_FALL;
+                    }
+                }
+            }
+        }
+
+        // Fall off bottom of level = death
+        if y > levelHeight() * TILE_SIZE * 100 {
+            die();
+        }
+    }
+
+    hide func levelHeight() -> Integer {
+        return LEVEL_HEIGHT;
+    }
+
+    hide func updateAnimation() {
+        animTimer = animTimer + 1;
+        if state == PS_IDLE {
+            if animTimer >= 30 {
+                animTimer = 0;
+                animFrame = 1 - animFrame;
+            }
+        }
+        if state == PS_RUN {
+            if animTimer >= 8 {
+                animTimer = 0;
+                animFrame = 1 - animFrame;
+            }
+        }
+    }
+
+    // Return true if player just fired (caller should spawn bullet)
+    expose func wantsToShoot() -> Boolean {
+        if shootCooldown == SHOOT_COOLDOWN {
+            return true;
+        }
+        if rapidFireTimer > 0 {
+            if shootCooldown == SHOOT_COOLDOWN / 2 {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    expose func takeDamage(amount: Integer) {
+        if iframes > 0 { return; }
+        if state == PS_DEAD { return; }
+
+        // Shield absorbs hit
+        if shieldHits > 0 {
+            shieldHits = shieldHits - 1;
+            iframes = 30;
+            return;
+        }
+
+        hp = hp - amount;
+        iframes = IFRAMES_MAX;
+        state = PS_HURT;
+        vy = -450; // Knockback up
+
+        if hp <= 0 {
+            die();
+        }
+    }
+
+    hide func die() {
+        state = PS_DEAD;
+        hp = 0;
+        vx = 0;
+        vy = -600;
+    }
+
+    expose func collectPowerUp(ptype: Integer) {
+        if ptype == PICKUP_HEALTH {
+            hp = hp + 1;
+            if hp > maxHp { hp = maxHp; }
+        }
+        if ptype == PICKUP_SPEED {
+            speedTimer = SPEED_DURATION;
+        }
+        if ptype == PICKUP_SHIELD {
+            shieldHits = 1;
+        }
+        if ptype == PICKUP_RAPIDFIRE {
+            rapidFireTimer = RAPIDFIRE_DURATION;
+        }
+    }
+
+    // Get sprite frame index for current state
+    expose func getSpriteFrame() -> Integer {
+        if state == PS_IDLE { return animFrame; }
+        if state == PS_RUN { return 2 + animFrame; }
+        if state == PS_JUMP { return 4; }
+        if state == PS_FALL { return 5; }
+        if state == PS_DJUMP { return 6; }
+        if state == PS_WALLSLIDE { return 7; }
+        if state == PS_HURT { return 8; }
+        if state == PS_DEAD { return 9; }
+        return 0;
+    }
+
+    // Pixel position (from x100)
+    expose func pixelX() -> Integer { return x / 100; }
+    expose func pixelY() -> Integer { return y / 100; }
+
+    // Center position for camera/collision
+    expose func centerX() -> Integer { return x / 100 + PLAYER_W / 2; }
+    expose func centerY() -> Integer { return y / 100 + PLAYER_H / 2; }
+}

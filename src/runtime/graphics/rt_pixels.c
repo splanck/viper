@@ -1122,22 +1122,20 @@ void *rt_pixels_flip_h(void *pixels)
     }
 
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
-    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
-    if (!result)
-        return NULL;
 
-    // Mirror each row: src[x] -> dst[width-1-x]
+    // Flip in place: swap pixels symmetrically within each row
     for (int64_t y = 0; y < p->height; y++)
     {
-        uint32_t *src_row = p->data + y * p->width;
-        uint32_t *dst_row = result->data + y * p->width;
-        for (int64_t x = 0; x < p->width; x++)
+        uint32_t *row = p->data + y * p->width;
+        for (int64_t x = 0; x < p->width / 2; x++)
         {
-            dst_row[p->width - 1 - x] = src_row[x];
+            uint32_t tmp = row[x];
+            row[x] = row[p->width - 1 - x];
+            row[p->width - 1 - x] = tmp;
         }
     }
 
-    return result;
+    return pixels; // Return self for chaining
 }
 
 void *rt_pixels_flip_v(void *pixels)
@@ -1149,19 +1147,24 @@ void *rt_pixels_flip_v(void *pixels)
     }
 
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
-    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
-    if (!result)
-        return NULL;
 
-    // Mirror rows: src[y] -> dst[height-1-y]
-    for (int64_t y = 0; y < p->height; y++)
+    // Flip in place: swap rows symmetrically
+    size_t row_bytes = (size_t)p->width * sizeof(uint32_t);
+    uint32_t *tmp_row = (uint32_t *)malloc(row_bytes);
+    if (!tmp_row)
+        return pixels;
+
+    for (int64_t y = 0; y < p->height / 2; y++)
     {
-        uint32_t *src_row = p->data + y * p->width;
-        uint32_t *dst_row = result->data + (p->height - 1 - y) * p->width;
-        memcpy(dst_row, src_row, (size_t)p->width * sizeof(uint32_t));
+        uint32_t *top = p->data + y * p->width;
+        uint32_t *bot = p->data + (p->height - 1 - y) * p->width;
+        memcpy(tmp_row, top, row_bytes);
+        memcpy(top, bot, row_bytes);
+        memcpy(bot, tmp_row, row_bytes);
     }
 
-    return result;
+    free(tmp_row);
+    return pixels; // Return self for chaining
 }
 
 void *rt_pixels_rotate_cw(void *pixels)

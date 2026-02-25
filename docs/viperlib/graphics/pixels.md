@@ -32,8 +32,8 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
 | `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with a color                                                   |
-| `FlipH()`                         | `Pixels()`                                                           | Return a horizontally flipped copy (mirror left-right)                            |
-| `FlipV()`                         | `Pixels()`                                                           | Return a vertically flipped copy (mirror top-bottom)                              |
+| `FlipH()`                         | `Pixels()`                                                           | Flip horizontally in place (mirror left-right), returns self                      |
+| `FlipV()`                         | `Pixels()`                                                           | Flip vertically in place (mirror top-bottom), returns self                        |
 | `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
 | `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
 | `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
@@ -155,8 +155,9 @@ func start() {
     var clone = p.Clone();
     Say("Clone: " + Fmt.Int(clone.get_Width()) + "x" + Fmt.Int(clone.get_Height()));
 
-    // Transform operations (return new Pixels)
-    var flipped = p.FlipH();
+    // Transform operations (FlipH/FlipV mutate in place, return self)
+    var flipped = p.Clone();
+    flipped.FlipH();
     var rotated = p.RotateCW();
     var scaled = p.Scale(128, 128);
     Say("Scaled: " + Fmt.Int(scaled.get_Width()) + "x" + Fmt.Int(scaled.get_Height()));
@@ -207,8 +208,8 @@ END IF
 
 ' Transform operations (all return new Pixels objects)
 DIM flipped AS Viper.Graphics.Pixels
-flipped = pixels.FlipH()     ' Mirror horizontally
-flipped = pixels.FlipV()     ' Mirror vertically
+pixels.FlipH()               ' Mirror horizontally (in place)
+pixels.FlipV()               ' Mirror vertically (in place)
 
 DIM rotated AS Viper.Graphics.Pixels
 rotated = pixels.RotateCW()  ' Rotate 90 degrees clockwise

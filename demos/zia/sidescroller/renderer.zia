@@ -1,0 +1,237 @@
+// renderer.zia — Master render pipeline: draw order, tile rendering, screen effects
+module renderer;
+
+bind Viper.Graphics;
+bind "./config";
+bind "./level";
+bind "./player";
+bind "./enemy";
+bind "./projectile";
+bind "./pickups";
+bind "./camera";
+bind "./particles";
+bind "./hud";
+bind "./sprites";
+
+entity Renderer {
+    // Screen effects
+    hide Integer shakeTimer;
+    hide Integer shakeIntensity;
+    hide Integer flashTimer;
+    hide Integer flashColor;
+    hide Integer fadeAlpha;       // 0 = no fade, 255 = fully black
+    hide Integer fadeTarget;
+    hide Integer fadeSpeed;
+
+    // Lava animation timer
+    hide Integer lavaFrame;
+    hide Integer lavaTimer;
+
+    expose func init() {
+        shakeTimer = 0;
+        shakeIntensity = 0;
+        flashTimer = 0;
+        flashColor = COL_WHITE;
+        fadeAlpha = 0;
+        fadeTarget = 0;
+        fadeSpeed = 5;
+        lavaFrame = 0;
+        lavaTimer = 0;
+    }
+
+    // Trigger screen shake
+    expose func shake(duration: Integer, intensity: Integer) {
+        shakeTimer = duration;
+        shakeIntensity = intensity;
+    }
+
+    // Trigger screen flash
+    expose func flash(color: Integer, duration: Integer) {
+        flashColor = color;
+        flashTimer = duration;
+    }
+
+    // Start fade to black
+    expose func fadeOut(speed: Integer) {
+        fadeTarget = 255;
+        fadeSpeed = speed;
+    }
+
+    // Start fade from black
+    expose func fadeIn(speed: Integer) {
+        fadeTarget = 0;
+        fadeSpeed = speed;
+    }
+
+    expose func isFading() -> Boolean {
+        return fadeAlpha != fadeTarget;
+    }
+
+    expose func update() {
+        if shakeTimer > 0 { shakeTimer = shakeTimer - 1; }
+        if flashTimer > 0 { flashTimer = flashTimer - 1; }
+
+        // Fade
+        if fadeAlpha < fadeTarget {
+            fadeAlpha = fadeAlpha + fadeSpeed;
+            if fadeAlpha > fadeTarget { fadeAlpha = fadeTarget; }
+        }
+        if fadeAlpha > fadeTarget {
+            fadeAlpha = fadeAlpha - fadeSpeed;
+            if fadeAlpha < fadeTarget { fadeAlpha = fadeTarget; }
+        }
+
+        // Lava animation
+        lavaTimer = lavaTimer + 1;
+        if lavaTimer >= 20 {
+            lavaTimer = 0;
+            lavaFrame = 1 - lavaFrame;
+        }
+    }
+
+    // =========================================================================
+    // Main render pass for gameplay
+    // =========================================================================
+
+    expose func renderPlaying(canvas: Canvas, camera: GameCamera,
+                               level: Level, player: Player,
+                               enemies: EnemyManager, bullets: ProjectilePool,
+                               pickups: PickupManager, particles: ParticleSystem,
+                               hudObj: HUD, sprites: SpriteFactory,
+                               score: Integer, coins: Integer, levelNum: Integer) {
+        // Calculate shake offset
+        var shakeX = 0;
+        var shakeY = 0;
+        if shakeTimer > 0 {
+            shakeX = (shakeTimer * 7) % (shakeIntensity * 2) - shakeIntensity;
+            shakeY = (shakeTimer * 11) % (shakeIntensity * 2) - shakeIntensity;
+        }
+
+        var camX = camera.x + shakeX;
+        var camY = camera.y + shakeY;
+
+        // 1. Background (parallax)
+        camera.drawBackground(canvas, level.levelTheme, sprites);
+
+        // 2. Tile map
+        drawTiles(canvas, camX, camY, level, sprites);
+
+        // 3. Pickups
+        pickups.drawAll(canvas, camX, camY, sprites);
+
+        // 4. Enemies
+        enemies.drawAll(canvas, camX, camY, sprites);
+
+        // 5. Player
+        drawPlayer(canvas, camX, camY, player, sprites);
+
+        // 6. Projectiles
+        bullets.drawAll(canvas, camX, camY, sprites);
+
+        // 7. Particles (on top of world)
+        particles.drawAll(canvas, camX, camY);
+
+        // 8. HUD (screen-space)
+        hudObj.drawHUD(canvas, player.hp, player.maxHp,
+                       score, player.lives, coins, levelNum,
+                       player.speedTimer, player.shieldHits,
+                       player.rapidFireTimer);
+
+        // Boss health bar — only show when player is in boss arena
+        if enemies.isBossAlive() {
+            if player.pixelX() > 180 * TILE_SIZE {
+                hudObj.drawBossBar(canvas, enemies.getBossHp(), enemies.bossMaxHp);
+            }
+        }
+
+        // 9. Screen flash
+        if flashTimer > 0 {
+            var flashAlpha = flashTimer * 30;
+            if flashAlpha > 200 { flashAlpha = 200; }
+            canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, flashColor, flashAlpha);
+        }
+
+        // 10. Fade overlay
+        if fadeAlpha > 0 {
+            canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, fadeAlpha);
+        }
+    }
+
+    // =========================================================================
+    // Tile rendering — only visible tiles
+    // =========================================================================
+
+    hide func drawTiles(canvas: Canvas, camX: Integer, camY: Integer,
+                        level: Level, sprites: SpriteFactory) {
+        // Calculate visible tile range
+        var startCol = camX / TILE_SIZE;
+        if startCol < 0 { startCol = 0; }
+        var endCol = (camX + SCREEN_W) / TILE_SIZE + 1;
+        if endCol >= level.levelWidth { endCol = level.levelWidth - 1; }
+
+        var startRow = camY / TILE_SIZE;
+        if startRow < 0 { startRow = 0; }
+        var endRow = (camY + SCREEN_H) / TILE_SIZE + 1;
+        if endRow >= level.levelHeight { endRow = level.levelHeight - 1; }
+
+        var row = startRow;
+        while row <= endRow {
+            var col = startCol;
+            while col <= endCol {
+                var tile = level.getTile(col, row);
+                if tile != TILE_EMPTY {
+                    var sx = col * TILE_SIZE - camX;
+                    var sy = row * TILE_SIZE - camY;
+
+                    if tile == TILE_LAVA {
+                        canvas.BlitAlpha(sx, sy, sprites.getLavaTile(lavaFrame));
+                    } else {
+                        canvas.BlitAlpha(sx, sy, sprites.getTile(tile));
+                    }
+                }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+    }
+
+    // =========================================================================
+    // Player rendering
+    // =========================================================================
+
+    hide func drawPlayer(canvas: Canvas, camX: Integer, camY: Integer,
+                         player: Player, sprites: SpriteFactory) {
+        if player.state == PS_DEAD {
+            // Don't draw dead player (death particles handle it)
+            return;
+        }
+
+        // Invincibility flash
+        if player.iframes > 0 {
+            if player.iframes % 6 < 3 {
+                return;  // Blink effect
+            }
+        }
+
+        var sx = player.pixelX() - camX;
+        var sy = player.pixelY() - camY;
+        var frame = player.getSpriteFrame();
+        var facing = player.facing;
+
+        // Draw sprite
+        var spr = sprites.getPlayerFrame(facing, frame);
+        canvas.BlitAlpha(sx - 3, sy - 2, spr);
+
+        // Shield glow effect
+        if player.shieldHits > 0 {
+            canvas.DiscAlpha(sx + PLAYER_W / 2, sy + PLAYER_H / 2,
+                            PLAYER_H / 2 + 4, COL_SHIELD, 60);
+        }
+
+        // Speed aura
+        if player.speedTimer > 0 {
+            canvas.DiscAlpha(sx + PLAYER_W / 2, sy + PLAYER_H / 2,
+                            PLAYER_H / 2 + 2, COL_SPEED, 30);
+        }
+    }
+}

@@ -1,0 +1,616 @@
+// game.zia — Main game entity: loop, state machine, orchestration
+module game;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Time;
+bind Viper.Fmt;
+bind "./config";
+bind "./sprites";
+bind "./player";
+bind "./enemy";
+bind "./projectile";
+bind "./level";
+bind "./physics";
+bind "./camera";
+bind "./particles";
+bind "./pickups";
+bind "./hud";
+bind "./menu";
+bind "./renderer";
+
+entity Game {
+    hide Canvas canvas;
+    hide Integer gameState;
+
+    // Subsystems
+    hide Player player;
+    hide EnemyManager enemies;
+    hide Level level;
+    hide GameCamera camera;
+    hide ParticleSystem particles;
+    hide PickupManager pickups;
+    hide ProjectilePool bullets;
+    hide HUD hudObj;
+    hide MenuSystem menus;
+    hide SpriteFactory sprites;
+    hide Renderer renderObj;
+    hide PhysicsHelper phys;
+
+    // Game state
+    hide Integer score;
+    hide Integer coins;
+    hide Integer currentLevel;
+    hide Integer levelTimer;     // frames elapsed in level
+    hide Boolean reachedCheckpoint;
+
+    // Level complete state
+    hide Integer levelCompleteTimer;
+    hide Integer timeBonus;
+
+    // Death/respawn
+    hide Integer deathTimer;
+
+    expose func init() {
+        gameState = STATE_MENU;
+        score = 0;
+        coins = 0;
+        currentLevel = 1;
+        levelTimer = 0;
+        reachedCheckpoint = false;
+        levelCompleteTimer = 0;
+        timeBonus = 0;
+        deathTimer = 0;
+
+        // Create subsystems
+        sprites = new SpriteFactory();
+        player = new Player();
+        enemies = new EnemyManager();
+        level = new Level();
+        camera = new GameCamera();
+        particles = new ParticleSystem();
+        pickups = new PickupManager();
+        bullets = new ProjectilePool();
+        hudObj = new HUD();
+        menus = new MenuSystem();
+        renderObj = new Renderer();
+        phys = new PhysicsHelper();
+    }
+
+    // =========================================================================
+    // Main game loop
+    // =========================================================================
+
+    expose func run() {
+        canvas = Canvas.New("Nova Run", SCREEN_W, SCREEN_H);
+
+        while canvas.get_ShouldClose() == 0 {
+            canvas.Poll();
+
+            if gameState == STATE_MENU {
+                updateMenu();
+            } else {
+            if gameState == STATE_PLAYING {
+                updatePlaying();
+            } else {
+            if gameState == STATE_PAUSED {
+                updatePaused();
+            } else {
+            if gameState == STATE_GAMEOVER {
+                updateGameOver();
+            } else {
+            if gameState == STATE_LEVELCOMPLETE {
+                updateLevelComplete();
+            } else {
+            if gameState == STATE_HIGHSCORES {
+                updateHighScores();
+            } else {
+            if gameState == STATE_CONTROLS {
+                updateControls();
+            } else {
+            if gameState == STATE_VICTORY {
+                updateVictory();
+            }
+            }}}}}}}
+
+            canvas.Flip();
+            Viper.Time.SleepMs(FPS_MS);
+        }
+    }
+
+    // =========================================================================
+    // State: Menu
+    // =========================================================================
+
+    hide func updateMenu() {
+        var result = menus.updateTitle();
+        menus.drawTitle(canvas);
+
+        if result == STATE_PLAYING {
+            startNewGame();
+        }
+        if result == STATE_HIGHSCORES {
+            gameState = STATE_HIGHSCORES;
+            menus.resetSelection();
+        }
+        if result == STATE_CONTROLS {
+            gameState = STATE_CONTROLS;
+        }
+        if result == -2 {
+            // Quit — close window by breaking out of loop
+            // (canvas.get_ShouldClose will handle it)
+            return;
+        }
+    }
+
+    // =========================================================================
+    // State: Playing
+    // =========================================================================
+
+    hide func updatePlaying() {
+        // Pause check
+        if Keyboard.WasPressed(KEY_ESCAPE) {
+            gameState = STATE_PAUSED;
+            menus.resetSelection();
+            // Still render the game underneath the pause overlay
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            menus.drawPause(canvas);
+            return;
+        }
+
+        // Update player
+        player.update(level);
+
+        // Check if player wants to shoot
+        if player.wantsToShoot() {
+            var bx = player.pixelX() + PLAYER_W / 2;
+            var by = player.pixelY() + PLAYER_H / 2 - 2;
+            if player.facing > 0 {
+                bx = player.pixelX() + PLAYER_W;
+            } else {
+                bx = player.pixelX() - BULLET_W;
+            }
+            bullets.fire(bx, by, player.facing);
+        }
+
+        // Update camera
+        camera.follow(player.centerX(), player.centerY());
+
+        // Update enemies
+        enemies.updateAll(level, player.pixelX(), player.pixelY());
+
+        // Update bullets
+        bullets.updateAll(level);
+
+        // Update pickups
+        pickups.updateAll();
+
+        // Update particles
+        particles.updateAll();
+
+        // Update renderer effects
+        renderObj.update();
+
+        // Update HUD
+        hudObj.update(score, coins);
+
+        // Level timer
+        levelTimer = levelTimer + 1;
+
+        // --- Collision checks ---
+        checkPlayerEnemyCollision();
+        checkPlayerPickupCollision();
+        checkBulletEnemyCollision();
+        checkPlayerEnemyBullets();
+        checkHazards();
+        checkCheckpoint();
+        checkLevelEnd();
+
+        // Handle player death
+        if player.state == PS_DEAD {
+            handleDeath();
+            return;
+        }
+
+        // Render
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+    }
+
+    // =========================================================================
+    // Collision: Player vs Enemies
+    // =========================================================================
+
+    hide func checkPlayerEnemyCollision() {
+        if player.iframes > 0 { return; }
+        if player.state == PS_DEAD { return; }
+
+        var hit = enemies.checkPlayerHit(player.pixelX(), player.pixelY());
+        if hit >= 0 {
+            var etype = enemies.getEnemyType(hit);
+
+            // Check if stomping (player falling onto enemy)
+            if player.vy > 0 {
+                if etype != ENEMY_TURRET {
+                    // Stomp kill
+                    enemies.damageEnemy(hit, 10);
+                    player.vy = PLAYER_JUMP / 2;
+                    score = score + ENEMY_SCORE;
+
+                    particles.burstEnemyDeath(player.pixelX() + PLAYER_W / 2,
+                                              player.pixelY() + PLAYER_H,
+                                              COL_SLIME);
+                    renderObj.shake(6, 3);
+                    return;
+                }
+            }
+
+            // Take damage
+            player.takeDamage(1);
+            renderObj.shake(8, 4);
+            renderObj.flash(COL_HUD_RED, 6);
+        }
+    }
+
+    // =========================================================================
+    // Collision: Player vs Pickups
+    // =========================================================================
+
+    hide func checkPlayerPickupCollision() {
+        var collected = pickups.checkCollection(player.pixelX(), player.pixelY());
+
+        while collected >= 0 {
+            if collected == PICKUP_COIN {
+                coins = coins + 1;
+                score = score + COIN_SCORE;
+                particles.burstCoinCollect(player.centerX(), player.centerY());
+            } else {
+                player.collectPowerUp(collected);
+                particles.burstSpark(player.centerX(), player.centerY(),
+                                     COL_SPARK_YELLOW);
+            }
+
+            // Check for more
+            collected = pickups.checkCollection(player.pixelX(), player.pixelY());
+        }
+    }
+
+    // =========================================================================
+    // Collision: Bullets vs Enemies
+    // =========================================================================
+
+    hide func checkBulletEnemyCollision() {
+        var i = 0;
+        while i < bullets.getCount() {
+            if bullets.isActive(i) == 1 {
+                var bx = bullets.getBulletX(i);
+                var by = bullets.getBulletY(i);
+
+                var hit = enemies.checkBulletHit(bx, by, BULLET_W, BULLET_H);
+                if hit >= 0 {
+                    bullets.deactivate(i);
+                    enemies.damageEnemy(hit, 1);
+                    particles.burstSpark(bx, by, COL_BULLET);
+
+                    if enemies.isActive(hit) == 0 {
+                        // Enemy killed
+                        var etype = enemies.getEnemyType(hit);
+                        if etype == ENEMY_BOSS {
+                            score = score + BOSS_SCORE;
+                            renderObj.shake(15, 8);
+                            particles.burstDeath(bx, by);
+                        } else {
+                            score = score + ENEMY_SCORE;
+                            particles.burstEnemyDeath(bx, by, COL_SPARK_YELLOW);
+                            renderObj.shake(6, 3);
+                        }
+                    } else {
+                        renderObj.shake(3, 2);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Collision: Enemy bullets vs Player
+    // =========================================================================
+
+    hide func checkPlayerEnemyBullets() {
+        if player.iframes > 0 { return; }
+        if player.state == PS_DEAD { return; }
+
+        if enemies.checkEnemyBulletHit(player.pixelX(), player.pixelY()) {
+            player.takeDamage(1);
+            renderObj.shake(8, 4);
+            renderObj.flash(COL_HUD_RED, 6);
+        }
+    }
+
+    // =========================================================================
+    // Hazard check (spikes, lava)
+    // =========================================================================
+
+    hide func checkHazards() {
+        if player.iframes > 0 { return; }
+        if player.state == PS_DEAD { return; }
+
+        if phys.isOnHazard(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            player.takeDamage(2);
+            renderObj.shake(10, 5);
+            renderObj.flash(COL_LAVA_BRIGHT, 8);
+        }
+    }
+
+    // =========================================================================
+    // Checkpoint
+    // =========================================================================
+
+    hide func checkCheckpoint() {
+        if level.hasCheckpoint == false { return; }
+        if reachedCheckpoint { return; }
+
+        var cpx = level.checkpointX;
+        var cpy = level.checkpointY;
+        var px = player.pixelX();
+        var py = player.pixelY();
+
+        var dx = px - cpx;
+        if dx < 0 { dx = 0 - dx; }
+        var dy = py - cpy;
+        if dy < 0 { dy = 0 - dy; }
+
+        if dx < TILE_SIZE * 2 {
+            if dy < TILE_SIZE * 2 {
+                reachedCheckpoint = true;
+                particles.burstSpark(cpx + 16, cpy + 16, COL_CHECKPOINT);
+            }
+        }
+    }
+
+    // =========================================================================
+    // Level end check
+    // =========================================================================
+
+    hide func checkLevelEnd() {
+        var px = player.pixelX();
+
+        // Check for end sign
+        var tileX = px / TILE_SIZE;
+        var tileY = GROUND_ROW - 1;
+
+        if level.getTile(tileX, tileY) == TILE_SIGN_END {
+            // Boss level check
+            if level.hasBoss {
+                if enemies.isBossAlive() {
+                    return;  // Can't complete until boss is dead
+                }
+            }
+
+            // Level complete
+            timeBonus = (600 - levelTimer / 60) * TIME_BONUS_PER_SEC;
+            if timeBonus < 0 { timeBonus = 0; }
+            levelCompleteTimer = 0;
+            menus.resetSelection();
+            gameState = STATE_LEVELCOMPLETE;
+
+            // Add to high scores
+            var totalScore = score + timeBonus;
+            if menus.isHighScore(totalScore) {
+                menus.addHighScore(totalScore, "PLR");
+            }
+
+            // If this was the last level (with boss), go to victory
+            if currentLevel == 2 {
+                gameState = STATE_VICTORY;
+            }
+        }
+    }
+
+    // =========================================================================
+    // Death handling
+    // =========================================================================
+
+    hide func handleDeath() {
+        deathTimer = deathTimer + 1;
+
+        if deathTimer == 1 {
+            particles.burstDeath(player.centerX(), player.centerY());
+            renderObj.shake(12, 6);
+            renderObj.flash(COL_HUD_RED, 10);
+        }
+
+        // Still update particles and render during death
+        particles.updateAll();
+        renderObj.update();
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+
+        if deathTimer >= 90 {
+            deathTimer = 0;
+            var lives = player.lives - 1;
+
+            if lives <= 0 {
+                // Game over
+                var totalScore = score;
+                if menus.isHighScore(totalScore) {
+                    menus.addHighScore(totalScore, "PLR");
+                }
+                menus.resetSelection();
+                gameState = STATE_GAMEOVER;
+                return;
+            }
+
+            // Respawn
+            player.reset();
+            player.lives = lives;
+
+            if reachedCheckpoint {
+                player.spawn(level.checkpointX, level.checkpointY);
+            } else {
+                player.spawn(level.playerStartX, level.playerStartY);
+            }
+
+            bullets.reset();
+            renderObj.fadeIn(10);
+        }
+    }
+
+    // =========================================================================
+    // State: Paused
+    // =========================================================================
+
+    hide func updatePaused() {
+        var result = menus.updatePause();
+
+        // Render game underneath
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+        menus.drawPause(canvas);
+
+        if result == STATE_PLAYING {
+            gameState = STATE_PLAYING;
+        }
+        if result == STATE_MENU {
+            gameState = STATE_MENU;
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: Game Over
+    // =========================================================================
+
+    hide func updateGameOver() {
+        var result = menus.updateGameOver();
+        menus.drawGameOver(canvas, score);
+
+        if result == STATE_PLAYING {
+            startNewGame();
+        }
+        if result == STATE_MENU {
+            gameState = STATE_MENU;
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: Level Complete
+    // =========================================================================
+
+    hide func updateLevelComplete() {
+        levelCompleteTimer = levelCompleteTimer + 1;
+
+        var result = menus.updateLevelComplete();
+
+        // Render game underneath
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+        menus.drawLevelComplete(canvas, score, timeBonus, currentLevel);
+
+        if result == STATE_PLAYING {
+            score = score + timeBonus;
+            currentLevel = currentLevel + 1;
+            if currentLevel > LEVEL_COUNT {
+                currentLevel = 1;
+            }
+            loadLevel(currentLevel);
+            levelCompleteTimer = 0;
+            gameState = STATE_PLAYING;
+            renderObj.fadeIn(8);
+        }
+    }
+
+    // =========================================================================
+    // State: Victory
+    // =========================================================================
+
+    hide func updateVictory() {
+        var result = menus.updateVictory();
+        menus.drawVictory(canvas, score + timeBonus);
+
+        if result == STATE_MENU {
+            gameState = STATE_MENU;
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: High Scores
+    // =========================================================================
+
+    hide func updateHighScores() {
+        var result = menus.updateHighScores();
+        menus.drawHighScores(canvas);
+
+        if result == STATE_MENU {
+            gameState = STATE_MENU;
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: Controls
+    // =========================================================================
+
+    hide func updateControls() {
+        var result = menus.updateControls();
+        menus.drawControls(canvas);
+
+        if result == STATE_MENU {
+            gameState = STATE_MENU;
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // Game initialization helpers
+    // =========================================================================
+
+    hide func startNewGame() {
+        score = 0;
+        coins = 0;
+        currentLevel = 1;
+        levelTimer = 0;
+        reachedCheckpoint = false;
+        deathTimer = 0;
+
+        player.reset();
+        loadLevel(1);
+
+        renderObj.fadeIn(8);
+        gameState = STATE_PLAYING;
+    }
+
+    hide func loadLevel(num: Integer) {
+        level.loadLevel(num);
+        camera.setLevelSize(level.levelWidth, level.levelHeight);
+
+        // Spawn player
+        player.spawn(level.playerStartX, level.playerStartY);
+
+        // Spawn enemies from level data
+        enemies.reset();
+        enemies.spawnFromLevel(level);
+
+        // Spawn pickups
+        pickups.reset();
+        pickups.spawnFromLevel(level);
+
+        // Reset bullets and particles
+        bullets.reset();
+        particles.reset();
+
+        // Reset level state
+        levelTimer = 0;
+        reachedCheckpoint = false;
+        deathTimer = 0;
+    }
+}

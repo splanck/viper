@@ -82,7 +82,8 @@ func start() {
     var src = Pixels.New(4, 2);
     src.Set(0, 0, red);
     src.Set(3, 0, blue);
-    var fh = src.FlipH();
+    var fh = src.Clone();
+    fh.FlipH();
     Say("FlipH Width: " + Fmt.Int(fh.get_Width()));
     Say("FlipH(0,0): " + Fmt.Int(fh.Get(0, 0)));
     Say("FlipH(3,0): " + Fmt.Int(fh.Get(3, 0)));
@@ -92,7 +93,8 @@ func start() {
     var src2 = Pixels.New(2, 4);
     src2.Set(0, 0, red);
     src2.Set(0, 3, green);
-    var fv = src2.FlipV();
+    var fv = src2.Clone();
+    fv.FlipV();
     Say("FlipV Height: " + Fmt.Int(fv.get_Height()));
     Say("FlipV(0,0): " + Fmt.Int(fv.Get(0, 0)));
     Say("FlipV(0,3): " + Fmt.Int(fv.Get(0, 3)));

@@ -71,10 +71,8 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
         return false;
     auto &st = *stPtr;
 
-    // Prepare new block map and entry block
-    st.blocks.clear();
-    for (const auto &b : callee->blocks)
-        st.blocks[b.label] = &b;
+    // Point to the VM-cached block map for the callee function.
+    st.blocks = &detail::VMAccess::getOrBuildBlockMap(vm, *callee);
     const il::core::BasicBlock *entry = callee->blocks.empty() ? nullptr : &callee->blocks.front();
     if (entry == nullptr)
         return false;

@@ -94,17 +94,20 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
 {
     FrameInfo frame{};
 
-    // Function name: prefer current context, then runtime context, then cached
-    if (currentContext.function)
-        frame.function = currentContext.function->name;
+    // Reconstruct context from execStack (always current) with currentContext fallback.
+    const auto ctx = currentTrapContext();
+
+    // Function name: prefer live context, then runtime context, then cached
+    if (ctx.function)
+        frame.function = ctx.function->name;
     else if (!runtimeContext.function.empty())
         frame.function = runtimeContext.function;
     else if (!lastTrap.frame.function.empty())
         frame.function = lastTrap.frame.function;
 
-    // Block label: prefer current execution state, then runtime context, then cached
-    if (!execStack.empty() && execStack.back() && execStack.back()->bb)
-        frame.block = execStack.back()->bb->label;
+    // Block label: prefer live context, then runtime context, then cached
+    if (ctx.block)
+        frame.block = ctx.block->label;
     else if (!runtimeContext.block.empty())
         frame.block = runtimeContext.block;
     else if (!lastTrap.frame.block.empty())
@@ -112,15 +115,15 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
 
     // Instruction pointer
     frame.ip = error.ip;
-    if (frame.ip == 0 && currentContext.hasInstruction)
-        frame.ip = static_cast<uint64_t>(currentContext.instructionIndex);
+    if (frame.ip == 0 && ctx.hasInstruction)
+        frame.ip = static_cast<uint64_t>(ctx.instructionIndex);
     else if (frame.ip == 0 && lastTrap.frame.ip != 0)
         frame.ip = lastTrap.frame.ip;
 
     // Source line
     frame.line = error.line;
-    if (frame.line < 0 && currentContext.loc.hasLine())
-        frame.line = static_cast<int32_t>(currentContext.loc.line);
+    if (frame.line < 0 && ctx.loc.hasLine())
+        frame.line = static_cast<int32_t>(ctx.loc.line);
     else if (frame.line < 0 && runtimeContext.loc.hasLine())
         frame.line = static_cast<int32_t>(runtimeContext.loc.line);
     else if (frame.line < 0 && lastTrap.frame.line >= 0)

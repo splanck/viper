@@ -1,0 +1,9 @@
+// main.zia — Entry point for the sidescroller game
+module main;
+
+bind "./game";
+
+func start() {
+    var g = new Game();
+    g.run();
+}

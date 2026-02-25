@@ -1,0 +1,276 @@
+// config.zia — All game constants, colors, tile IDs, entity IDs, physics params
+module config;
+
+// =============================================================================
+// Screen & Window
+// =============================================================================
+final SCREEN_W = 1280;
+final SCREEN_H = 720;
+final TILE_SIZE = 48;
+final FPS_MS = 16;
+final HALF_W = 640;
+final HALF_H = 360;
+
+// =============================================================================
+// Physics (values x100 for sub-pixel precision where noted)
+// =============================================================================
+final GRAVITY = 78;           // vy += GRAVITY per frame (x100 units)
+final MAX_FALL = 1350;        // terminal fall speed (x100)
+final PLAYER_SPEED = 525;     // max run speed (x100)
+final PLAYER_JUMP = -1500;    // jump impulse (x100, negative = up)
+final PLAYER_DJUMP = -1200;   // double jump impulse (x100)
+final PLAYER_ACCEL = 68;      // ground acceleration per frame (x100)
+final PLAYER_DECEL = 83;      // ground deceleration per frame (x100)
+final PLAYER_AIR_ACCEL = 38;  // air acceleration per frame (x100)
+final WALL_SLIDE_SPEED = 225; // max wall slide speed (x100)
+final WALL_JUMP_VX = 750;     // wall jump horizontal impulse (x100)
+final WALL_JUMP_VY = -1125;   // wall jump vertical impulse (x100)
+final COYOTE_FRAMES = 6;      // frames after leaving edge where jump still works
+final JUMP_BUFFER = 8;        // frames of early jump press remembered
+final IFRAMES_MAX = 60;       // invincibility frames after taking damage
+
+// =============================================================================
+// Player
+// =============================================================================
+final PLAYER_W = 30;          // collision width (pixels, not x100)
+final PLAYER_H = 44;          // collision height
+final PLAYER_MAX_HP = 5;
+final PLAYER_START_LIVES = 3;
+final PLAYER_SPRITE_W = 36;
+final PLAYER_SPRITE_H = 48;
+
+// Shooting
+final BULLET_SPEED = 1200;    // x100
+final BULLET_W = 12;
+final BULLET_H = 6;
+final SHOOT_COOLDOWN = 12;    // frames between shots
+final MAX_BULLETS = 16;
+
+// =============================================================================
+// Player States
+// =============================================================================
+final PS_IDLE = 0;
+final PS_RUN = 1;
+final PS_JUMP = 2;
+final PS_FALL = 3;
+final PS_DJUMP = 4;
+final PS_WALLSLIDE = 5;
+final PS_HURT = 6;
+final PS_DEAD = 7;
+
+// =============================================================================
+// Tile IDs
+// =============================================================================
+final TILE_EMPTY = 0;
+final TILE_GROUND = 1;
+final TILE_GRASS_TOP = 2;
+final TILE_PLATFORM = 3;
+final TILE_SPIKE = 4;
+final TILE_LAVA = 5;
+final TILE_CRYSTAL = 6;
+final TILE_STONE = 7;
+final TILE_DIRT = 8;
+final TILE_BRICK = 9;
+final TILE_CAVE_TOP = 10;
+final TILE_CAVE_WALL = 11;
+final TILE_BRIDGE = 12;
+final TILE_SIGN_START = 13;
+final TILE_SIGN_END = 14;
+final TILE_CHECKPOINT = 15;
+
+// =============================================================================
+// Enemy Types
+// =============================================================================
+final ENEMY_SLIME = 0;
+final ENEMY_BAT = 1;
+final ENEMY_TURRET = 2;
+final ENEMY_BOSS = 3;
+final MAX_ENEMIES = 64;
+
+// Enemy stats
+final SLIME_HP = 1;
+final SLIME_SPEED = 120;       // x100
+final SLIME_W = 36;
+final SLIME_H = 30;
+
+final BAT_HP = 2;
+final BAT_SPEED = 180;        // x100
+final BAT_W = 42;
+final BAT_H = 30;
+final BAT_DETECT_RANGE = 300; // pixels
+
+final TURRET_HP = 3;
+final TURRET_W = 42;
+final TURRET_H = 42;
+final TURRET_FIRE_RATE = 90;  // frames between shots
+final TURRET_RANGE = 450;     // pixels
+
+final BOSS_HP = 20;
+final BOSS_W = 84;
+final BOSS_H = 84;
+final BOSS_SPEED = 300;       // x100
+
+// =============================================================================
+// Pickup Types
+// =============================================================================
+final PICKUP_COIN = 0;
+final PICKUP_HEALTH = 1;
+final PICKUP_SPEED = 2;
+final PICKUP_SHIELD = 3;
+final PICKUP_RAPIDFIRE = 4;
+final MAX_PICKUPS = 128;
+final COIN_SIZE = 24;
+final POWERUP_SIZE = 30;
+
+// Scoring
+final COIN_SCORE = 100;
+final ENEMY_SCORE = 250;
+final BOSS_SCORE = 5000;
+final TIME_BONUS_PER_SEC = 10;
+
+// Power-up durations (frames)
+final SPEED_DURATION = 300;   // 5 seconds
+final SHIELD_DURATION = 1;    // absorbs 1 hit (not time-based, but flag)
+final RAPIDFIRE_DURATION = 300;
+
+// =============================================================================
+// Game States
+// =============================================================================
+final STATE_MENU = 0;
+final STATE_PLAYING = 1;
+final STATE_PAUSED = 2;
+final STATE_GAMEOVER = 3;
+final STATE_LEVELCOMPLETE = 4;
+final STATE_HIGHSCORES = 5;
+final STATE_CONTROLS = 6;
+final STATE_BOSSFIGHT = 7;
+final STATE_VICTORY = 8;
+
+// Menu selection IDs
+final MENU_PLAY = 0;
+final MENU_HIGHSCORES = 1;
+final MENU_CONTROLS = 2;
+final MENU_QUIT = 3;
+
+// =============================================================================
+// Level Config
+// =============================================================================
+final LEVEL_COUNT = 2;
+final LEVEL1_WIDTH = 200;     // tiles wide
+final LEVEL2_WIDTH = 220;     // tiles wide
+final LEVEL_HEIGHT = 17;      // tiles tall (17 * 48 = 816 pixels)
+final GROUND_ROW = 15;        // default ground tile row
+final FLOOR_ROW = 16;         // bottom row (below ground)
+
+// Themes
+final THEME_GRASSLANDS = 0;
+final THEME_CAVE = 1;
+
+// =============================================================================
+// Key Codes
+// =============================================================================
+final KEY_LEFT = 263;
+final KEY_RIGHT = 262;
+final KEY_UP = 265;
+final KEY_DOWN = 264;
+final KEY_SPACE = 32;
+final KEY_A = 65;
+final KEY_D = 68;
+final KEY_W = 87;
+final KEY_S = 83;
+final KEY_Z = 90;
+final KEY_X = 88;
+final KEY_ENTER = 257;
+final KEY_ESCAPE = 256;
+
+// =============================================================================
+// Colors (0x00RRGGBB for Canvas)
+// =============================================================================
+
+// Sky / backgrounds (night theme)
+final COL_SKY_TOP = 0x0A0A2E;
+final COL_SKY_BOT = 0x1A1A4A;
+final COL_CAVE_BG = 0x1A1A3A;
+final COL_CAVE_MID = 0x2A2A4E;
+
+// Ground / tiles
+final COL_GRASS = 0x4CAF50;
+final COL_GRASS_DARK = 0x388E3C;
+final COL_DIRT = 0x8B6914;
+final COL_DIRT_DARK = 0x6B4F12;
+final COL_STONE = 0x808080;
+final COL_STONE_DARK = 0x606060;
+final COL_STONE_LIGHT = 0xA0A0A0;
+final COL_BRICK = 0xB05030;
+final COL_BRICK_DARK = 0x8B3A20;
+final COL_PLATFORM = 0x9E7744;
+final COL_PLATFORM_DARK = 0x7A5B30;
+final COL_CAVE_ROCK = 0x5A5A7E;
+final COL_CAVE_ROCK_DARK = 0x44446A;
+final COL_CRYSTAL_BLUE = 0x60D0FF;
+final COL_CRYSTAL_PINK = 0xFF80D0;
+final COL_LAVA = 0xFF4400;
+final COL_LAVA_BRIGHT = 0xFF8800;
+final COL_BRIDGE = 0x7A5B30;
+
+// Player
+final COL_PLAYER_HELMET = 0x2266CC;
+final COL_PLAYER_VISOR = 0x40E0D0;
+final COL_PLAYER_BODY = 0x888888;
+final COL_PLAYER_BODY_DARK = 0x666666;
+final COL_PLAYER_BOOTS = 0xDD6622;
+final COL_PLAYER_JETPACK = 0x555555;
+
+// Enemies
+final COL_SLIME = 0x44BB44;
+final COL_SLIME_DARK = 0x228822;
+final COL_SLIME_EYE = 0xFFFFFF;
+final COL_SLIME_PUPIL = 0x111111;
+final COL_BAT_BODY = 0x8844AA;
+final COL_BAT_WING = 0x6633AA;
+final COL_BAT_EYE = 0xFF2222;
+final COL_TURRET_BASE = 0x777777;
+final COL_TURRET_BARREL = 0x555555;
+final COL_TURRET_LIGHT = 0xFF0000;
+final COL_BOSS_ARMOR = 0xAA2222;
+final COL_BOSS_DARK = 0x661111;
+final COL_BOSS_EYE = 0xFF4444;
+final COL_BOSS_METAL = 0x444444;
+
+// Pickups
+final COL_COIN_GOLD = 0xFFD700;
+final COL_COIN_DARK = 0xDAA520;
+final COL_HEALTH = 0xFF3344;
+final COL_SPEED = 0x3399FF;
+final COL_SHIELD = 0xFFDD00;
+final COL_RAPIDFIRE = 0xFF8800;
+
+// HUD / UI
+final COL_WHITE = 0xFFFFFF;
+final COL_BLACK = 0x000000;
+final COL_HUD_BG = 0x222222;
+final COL_HUD_RED = 0xEE3333;
+final COL_HUD_GREEN = 0x33EE33;
+final COL_HUD_BLUE = 0x3388EE;
+final COL_HUD_GRAY = 0x888888;
+final COL_MENU_BG = 0x111122;
+final COL_MENU_HIGHLIGHT = 0x4466CC;
+final COL_MENU_TEXT = 0xDDDDDD;
+final COL_TITLE_ORANGE = 0xFF8844;
+final COL_TITLE_YELLOW = 0xFFDD44;
+final COL_SHADOW = 0x333333;
+
+// Particles
+final COL_DUST = 0xC8B898;
+final COL_SPARK_YELLOW = 0xFFEE44;
+final COL_SPARK_WHITE = 0xFFFFEE;
+final COL_DEATH_RED = 0xFF4444;
+
+// Bullet
+final COL_BULLET = 0x44DDFF;
+final COL_BULLET_GLOW = 0x88EEFF;
+final COL_ENEMY_BULLET = 0xFF4444;
+
+// Misc
+final COL_CHECKPOINT = 0x44FF44;
+final COL_SIGN = 0xBB9955;

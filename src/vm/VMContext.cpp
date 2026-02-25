@@ -195,7 +195,7 @@ std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const
 #endif
 
     vmInstance->traceInstruction(*instr, state.fr);
-    auto result = vmInstance->executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
+    auto result = vmInstance->executeOpcode(state.fr, *instr, *state.blocks, state.bb, state.ip);
     if (vmInstance->finalizeDispatch(state, result))
         return state.hasPendingResult ? std::optional<Slot>(state.pendingResult) : std::nullopt;
 
@@ -252,16 +252,13 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
 /// @param opcode Opcode lacking an implementation.
 [[noreturn]] void VMContext::trapUnimplemented(il::core::Opcode opcode) const
 {
-    const std::string funcName = vmInstance->currentContext.function
-                                     ? vmInstance->currentContext.function->name
-                                     : std::string("<unknown>");
-    const std::string blockLabel =
-        vmInstance->currentContext.block ? vmInstance->currentContext.block->label : std::string();
+    const auto ctx = vmInstance->currentTrapContext();
+    const std::string funcName = ctx.function ? ctx.function->name : std::string("<unknown>");
+    const std::string blockLabel = ctx.block ? ctx.block->label : std::string();
     std::string detail = "unimplemented opcode: " + opcodeMnemonic(opcode);
     if (!blockLabel.empty())
         detail += " (block " + blockLabel + ')';
-    RuntimeBridge::trap(
-        TrapKind::InvalidOperation, detail, vmInstance->currentContext.loc, funcName, blockLabel);
+    RuntimeBridge::trap(TrapKind::InvalidOperation, detail, ctx.loc, funcName, blockLabel);
     std::terminate();
 }
 
@@ -370,10 +367,11 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             return fr.regs[value.id];
 
         // Cold path: out-of-range register access - report detailed error
+        const auto ctx = currentTrapContext();
         const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
-        const il::core::BasicBlock *block = currentContext.block;
+        const il::core::BasicBlock *block = ctx.block;
         const std::string blockLabel = block ? block->label : std::string();
-        const auto loc = currentContext.loc;
+        const auto loc = ctx.loc;
 
         std::string message =
             detail::formatRegisterRangeError(value.id, fr.regs.size(), fnName, blockLabel);

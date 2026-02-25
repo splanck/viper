@@ -217,10 +217,11 @@ void vm_raise_from_error(const VmError &input)
 
     if (auto *vm = VM::activeInstance())
     {
-        if (error.ip == 0 && vm->currentContext.hasInstruction)
-            error.ip = static_cast<uint64_t>(vm->currentContext.instructionIndex);
-        if (error.line < 0 && vm->currentContext.loc.hasLine())
-            error.line = static_cast<int32_t>(vm->currentContext.loc.line);
+        const auto ctx = vm->currentTrapContext();
+        if (error.ip == 0 && ctx.hasInstruction)
+            error.ip = static_cast<uint64_t>(ctx.instructionIndex);
+        if (error.line < 0 && ctx.loc.hasLine())
+            error.line = static_cast<int32_t>(ctx.loc.line);
 
         if (vm->prepareTrap(error))
             return;
@@ -271,10 +272,11 @@ void vm_raise(TrapKind kind, int32_t code)
 
     if (vm)
     {
-        if (vm->currentContext.hasInstruction)
-            error.ip = static_cast<uint64_t>(vm->currentContext.instructionIndex);
-        if (vm->currentContext.loc.hasLine())
-            error.line = static_cast<int32_t>(vm->currentContext.loc.line);
+        const auto ctx = vm->currentTrapContext();
+        if (ctx.hasInstruction)
+            error.ip = static_cast<uint64_t>(ctx.instructionIndex);
+        if (ctx.loc.hasLine())
+            error.line = static_cast<int32_t>(ctx.loc.line);
 
         if (vm->prepareTrap(error))
             return;

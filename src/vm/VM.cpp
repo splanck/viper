@@ -273,17 +273,26 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
 
         // Fast-path: dispatch next instruction inline
         // Note: ip is already incremented by handleInlineResult->finalizeDispatch
-        // Only falls through to slow path on block exhaustion or exit
+        // Only falls through to slow path on block exhaustion, exit, or active tracing/debug.
+        //
+        // Optimizations vs slow path:
+        //   - No setCurrentContext (reconstructed lazily from ExecState on traps)
+        //   - No traceInstruction (only counts/traces on slow path or block transitions)
+        //   - Minimal work: fetch, classify opcode, goto
+        //
+        // When tracingActive_ is set, we fall through to the slow path which
+        // handles setCurrentContext, traceInstruction, and shouldPause.
 #define DISPATCH_NEXT_FAST()                                                                       \
     do                                                                                             \
     {                                                                                              \
         if (state.ip < state.bb->instructions.size()) [[likely]]                                   \
         {                                                                                          \
+            if (vm.tracingActive_) [[unlikely]]                                                    \
+                goto LBL_SLOW_PATH;                                                                \
+            ++vm.instrCount;                                                                       \
             currentInstr = &state.bb->instructions[state.ip];                                      \
             state.currentInstr = currentInstr;                                                     \
-            vm.setCurrentContext(state.fr, state.bb, state.ip, *currentInstr);                     \
             opcode = currentInstr->op;                                                             \
-            vm.traceInstruction(*currentInstr, state.fr);                                          \
             VIPER_VM_DISPATCH_BEFORE(state, opcode);                                               \
             DISPATCH_TO(opcode);                                                                   \
         }                                                                                          \
@@ -626,12 +635,18 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
     else [[likely]]
         ++state.ip;
 
-    if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]
+    // Only check debug pause when step-mode is active (stepBudget > 0).
+    // This avoids the function-call overhead of shouldPause on every instruction
+    // during normal (non-debug) execution.
+    if (stepBudget > 0) [[unlikely]]
     {
-        state.pendingResult = *pause;
-        state.hasPendingResult = true;
-        state.exitRequested = true;
-        return true;
+        if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]
+        {
+            state.pendingResult = *pause;
+            state.hasPendingResult = true;
+            state.exitRequested = true;
+            return true;
+        }
     }
 
     // Note: exitRequested and hasPendingResult will be reset by beginDispatch
@@ -853,9 +868,25 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
     }
 
     auto st = prepareExecution(fn, args);
-    st.callSiteBlock = currentContext.block;
-    st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
-    st.callSiteLoc = currentContext.loc;
+    // Reconstruct call-site info from the active execution state on the stack
+    // rather than currentContext, which may be stale when the fast-path dispatch
+    // skips setCurrentContext() for performance.
+    if (!execStack.empty())
+    {
+        const ExecState *caller = execStack.back();
+        st.callSiteBlock = caller->bb;
+        st.callSiteIp = caller->ip;
+        if (caller->bb && caller->ip < caller->bb->instructions.size())
+            st.callSiteLoc = caller->bb->instructions[caller->ip].loc;
+        else
+            st.callSiteLoc = {};
+    }
+    else
+    {
+        st.callSiteBlock = currentContext.block;
+        st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
+        st.callSiteLoc = currentContext.loc;
+    }
 
     // Use the shared ExecStackGuard from VM.hpp (pre-allocated stack avoids heap allocs)
     ExecStackGuard guardStack(*this, st);
@@ -945,6 +976,27 @@ void VM::clearCurrentContext()
     currentContext.loc = {};
 }
 
+VM::TrapContext VM::currentTrapContext() const
+{
+    // Prefer execStack (always current) over currentContext (may be stale
+    // when fast-path dispatch skips setCurrentContext).
+    if (!execStack.empty())
+    {
+        const ExecState *st = execStack.back();
+        TrapContext ctx{};
+        ctx.function = st->fr.func;
+        ctx.block = st->bb;
+        ctx.instructionIndex = st->ip;
+        if (st->bb && st->ip < st->bb->instructions.size())
+        {
+            ctx.hasInstruction = true;
+            ctx.loc = st->bb->instructions[st->ip].loc;
+        }
+        return ctx;
+    }
+    return currentContext;
+}
+
 //===----------------------------------------------------------------------===//
 // Section 6: TRAP HANDLING
 //===----------------------------------------------------------------------===//
@@ -1030,9 +1082,7 @@ bool VM::prepareTrap(VmError &error)
                     fr.regs.resize(maxSsaId + 1);
                     fr.params.assign(fr.regs.size(), Slot{});
                     fr.paramsSet.assign(fr.regs.size(), 0);
-                    st->blocks.clear();
-                    for (const auto &b : ownerFn->blocks)
-                        st->blocks[b.label] = &b;
+                    st->blocks = &getOrBuildBlockMap(*ownerFn);
                 }
             }
 

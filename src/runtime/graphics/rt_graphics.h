@@ -155,6 +155,54 @@ extern "C"
     /// @return Height in pixels (always 8 for the built-in font).
     int64_t rt_canvas_text_height(void);
 
+    /// @brief Draw text at an integer scale factor.
+    /// @param canvas Canvas handle.
+    /// @param x X coordinate (left edge).
+    /// @param y Y coordinate (top edge).
+    /// @param text Text string to draw.
+    /// @param scale Integer scale factor (1=8px, 2=16px, 3=24px, etc.).
+    /// @param color Text color (0x00RRGGBB).
+    void rt_canvas_text_scaled(void *canvas, int64_t x, int64_t y,
+                               rt_string text, int64_t scale, int64_t color);
+
+    /// @brief Draw scaled text with foreground and background colors.
+    /// @param canvas Canvas handle.
+    /// @param x X coordinate (left edge).
+    /// @param y Y coordinate (top edge).
+    /// @param text Text string to draw.
+    /// @param scale Integer scale factor.
+    /// @param fg Foreground (text) color (0x00RRGGBB).
+    /// @param bg Background color (0x00RRGGBB).
+    void rt_canvas_text_scaled_bg(void *canvas, int64_t x, int64_t y,
+                                  rt_string text, int64_t scale, int64_t fg, int64_t bg);
+
+    /// @brief Get the width of scaled text in pixels.
+    /// @param text Text string to measure.
+    /// @param scale Integer scale factor.
+    /// @return Width in pixels (8 * scale * character count).
+    int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale);
+
+    /// @brief Draw a filled rectangle with alpha blending.
+    /// @param canvas Canvas handle.
+    /// @param x Left edge X coordinate.
+    /// @param y Top edge Y coordinate.
+    /// @param w Rectangle width.
+    /// @param h Rectangle height.
+    /// @param color Fill color (0x00RRGGBB).
+    /// @param alpha Alpha value (0=transparent, 255=opaque).
+    void rt_canvas_box_alpha(void *canvas, int64_t x, int64_t y,
+                             int64_t w, int64_t h, int64_t color, int64_t alpha);
+
+    /// @brief Draw a filled circle with alpha blending.
+    /// @param canvas Canvas handle.
+    /// @param cx Center X coordinate.
+    /// @param cy Center Y coordinate.
+    /// @param radius Circle radius in pixels.
+    /// @param color Fill color (0x00RRGGBB).
+    /// @param alpha Alpha value (0=transparent, 255=opaque).
+    void rt_canvas_disc_alpha(void *canvas, int64_t cx, int64_t cy,
+                              int64_t radius, int64_t color, int64_t alpha);
+
     /// @brief Blit a Pixels buffer to the canvas.
     /// @param canvas Canvas handle.
     /// @param x Destination X coordinate.

@@ -1,0 +1,483 @@
+// level.zia — Level data, tile map builder, level loading
+// All levels are built procedurally in code (no external data files)
+module level;
+
+bind Viper.Game;
+bind Viper.Math;
+bind "./config";
+
+entity Level {
+    hide Grid2D tileGrid;
+    expose Integer levelWidth;
+    expose Integer levelHeight;
+    expose Integer levelTheme;
+
+    // Spawn points (world pixel coordinates)
+    expose Integer playerStartX;
+    expose Integer playerStartY;
+    expose Integer checkpointX;
+    expose Integer checkpointY;
+    expose Boolean hasCheckpoint;
+
+    // Enemy spawn data (parallel arrays)
+    expose List[Integer] enemyTypes;
+    expose List[Integer] enemyX;
+    expose List[Integer] enemyY;
+
+    // Pickup spawn data
+    expose List[Integer] pickupTypes;
+    expose List[Integer] pickupX;
+    expose List[Integer] pickupY;
+
+    // Boss spawn
+    expose Integer bossX;
+    expose Integer bossY;
+    expose Boolean hasBoss;
+
+    expose func init() {
+        levelWidth = 0;
+        levelHeight = 0;
+        levelTheme = 0;
+        playerStartX = 0;
+        playerStartY = 0;
+        checkpointX = 0;
+        checkpointY = 0;
+        hasCheckpoint = false;
+        enemyTypes = [];
+        enemyX = [];
+        enemyY = [];
+        pickupTypes = [];
+        pickupX = [];
+        pickupY = [];
+        bossX = 0;
+        bossY = 0;
+        hasBoss = false;
+    }
+
+    expose func loadLevel(num: Integer) {
+        // Reset spawn arrays
+        enemyTypes = [];
+        enemyX = [];
+        enemyY = [];
+        pickupTypes = [];
+        pickupX = [];
+        pickupY = [];
+        hasCheckpoint = false;
+        hasBoss = false;
+
+        if num == 1 {
+            buildGrasslands();
+        } else {
+            buildCrystalCave();
+        }
+    }
+
+    expose func isSolid(col: Integer, row: Integer) -> Boolean {
+        if col < 0 { return true; }
+        if row < 0 { return false; }
+        if col >= levelWidth { return true; }
+        if row >= levelHeight { return true; }
+        var t = tileGrid.Get(col, row);
+        if t == TILE_GROUND { return true; }
+        if t == TILE_GRASS_TOP { return true; }
+        if t == TILE_STONE { return true; }
+        if t == TILE_DIRT { return true; }
+        if t == TILE_BRICK { return true; }
+        if t == TILE_PLATFORM { return true; }
+        if t == TILE_CAVE_TOP { return true; }
+        if t == TILE_CAVE_WALL { return true; }
+        return false;
+    }
+
+    expose func isHazard(col: Integer, row: Integer) -> Boolean {
+        if col < 0 { return false; }
+        if row < 0 { return false; }
+        if col >= levelWidth { return false; }
+        if row >= levelHeight { return false; }
+        var t = tileGrid.Get(col, row);
+        if t == TILE_SPIKE { return true; }
+        if t == TILE_LAVA { return true; }
+        return false;
+    }
+
+    expose func getTile(col: Integer, row: Integer) -> Integer {
+        if col < 0 { return TILE_EMPTY; }
+        if row < 0 { return TILE_EMPTY; }
+        if col >= levelWidth { return TILE_EMPTY; }
+        if row >= levelHeight { return TILE_EMPTY; }
+        return tileGrid.Get(col, row);
+    }
+
+    // Add enemy spawn
+    hide func addEnemy(etype: Integer, col: Integer, row: Integer) {
+        enemyTypes.add(etype);
+        enemyX.add(col * TILE_SIZE);
+        enemyY.add(row * TILE_SIZE);
+    }
+
+    // Add pickup spawn
+    hide func addPickup(ptype: Integer, col: Integer, row: Integer) {
+        pickupTypes.add(ptype);
+        pickupX.add(col * TILE_SIZE + TILE_SIZE / 4);
+        pickupY.add(row * TILE_SIZE + TILE_SIZE / 4);
+    }
+
+    // Fill a row range with a tile
+    hide func fillRow(row: Integer, startCol: Integer, endCol: Integer, tile: Integer) {
+        var c = startCol;
+        while c <= endCol {
+            tileGrid.Set(c, row, tile);
+            c = c + 1;
+        }
+    }
+
+    // Fill a rectangular area with a tile
+    hide func fillArea(startCol: Integer, startRow: Integer, endCol: Integer, endRow: Integer, tile: Integer) {
+        var r = startRow;
+        while r <= endRow {
+            fillRow(r, startCol, endCol, tile);
+            r = r + 1;
+        }
+    }
+
+    // =========================================================================
+    // Level 1: Grasslands
+    // =========================================================================
+
+    hide func buildGrasslands() {
+        levelWidth = LEVEL1_WIDTH;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_GRASSLANDS;
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        // Ground: grass top at row 15, dirt at row 16
+        fillRow(GROUND_ROW, 0, levelWidth - 1, TILE_GRASS_TOP);
+        fillRow(FLOOR_ROW, 0, levelWidth - 1, TILE_DIRT);
+
+        // Player start
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // --- Section 1: Intro area (cols 0-30) ---
+        // Small step platforms
+        addPlatform(8, 12, 4);
+        addPlatform(14, 10, 3);
+        addPlatform(19, 12, 3);
+
+        // Coins on platforms
+        addPickup(PICKUP_COIN, 9, 11);
+        addPickup(PICKUP_COIN, 10, 11);
+        addPickup(PICKUP_COIN, 15, 9);
+        addPickup(PICKUP_COIN, 20, 11);
+
+        // Ground coins
+        addPickup(PICKUP_COIN, 5, 14);
+        addPickup(PICKUP_COIN, 7, 14);
+        addPickup(PICKUP_COIN, 12, 14);
+
+        // First enemy: slime patrol
+        addEnemy(ENEMY_SLIME, 25, 14);
+
+        // --- Section 2: First gap + platforms (cols 30-60) ---
+        // Gap in ground (3 tiles — jumpable)
+        clearGround(33, 35);
+        addPlatform(33, 13, 3);
+
+        // Elevated platforms
+        addPlatform(38, 11, 5);
+        addPlatform(44, 9, 4);
+        addPlatform(50, 11, 4);
+
+        // Coins along path
+        addPickup(PICKUP_COIN, 39, 10);
+        addPickup(PICKUP_COIN, 41, 10);
+        addPickup(PICKUP_COIN, 45, 8);
+        addPickup(PICKUP_COIN, 47, 8);
+        addPickup(PICKUP_COIN, 51, 10);
+
+        addEnemy(ENEMY_SLIME, 40, 10);
+        addEnemy(ENEMY_SLIME, 55, 14);
+
+        // --- Section 3: Wall jump section (cols 60-85) ---
+        // Walls (ground-level doorway at rows 13-14)
+        fillArea(62, 8, 63, 12, TILE_STONE);
+        fillArea(66, 6, 67, 12, TILE_STONE);
+        fillArea(70, 4, 71, 12, TILE_STONE);
+
+        // Platform to help approach first wall
+        addPlatform(59, 12, 3);
+
+        // Coins between walls (reward wall jumping)
+        addPickup(PICKUP_COIN, 64, 8);
+        addPickup(PICKUP_COIN, 64, 6);
+        addPickup(PICKUP_COIN, 68, 5);
+        addPickup(PICKUP_COIN, 68, 3);
+
+        // Health orb at top of wall section
+        addPickup(PICKUP_HEALTH, 70, 3);
+
+        // Bat enemy in this section
+        addEnemy(ENEMY_BAT, 65, 5);
+        addEnemy(ENEMY_BAT, 69, 3);
+
+        // Landing platform after walls
+        addPlatform(73, 10, 3);
+
+        // --- Section 4: Platform challenge (cols 85-120) ---
+        clearGround(89, 91);
+        addPlatform(89, 13, 3);
+        clearGround(95, 97);
+        addPlatform(95, 11, 3);
+        addPlatform(98, 9, 3);
+        clearGround(101, 103);
+        addPlatform(101, 12, 3);
+
+        // Speed boost pickup
+        addPickup(PICKUP_SPEED, 96, 10);
+
+        // Coin trail
+        var i = 88;
+        while i < 105 {
+            addPickup(PICKUP_COIN, i, 14);
+            i = i + 3;
+        }
+
+        addEnemy(ENEMY_SLIME, 107, 14);
+        addEnemy(ENEMY_SLIME, 112, 14);
+
+        // --- Section 5: Checkpoint + turret gauntlet (cols 120-155) ---
+        // Checkpoint
+        tileGrid.Set(122, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 122 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // Turrets on raised platforms
+        addPlatform(128, 11, 3);
+        addEnemy(ENEMY_TURRET, 129, 10);
+
+        addPlatform(138, 10, 3);
+        addEnemy(ENEMY_TURRET, 139, 9);
+
+        // Shield pickup between turrets
+        addPickup(PICKUP_SHIELD, 134, 14);
+
+        // Brick structure
+        fillArea(145, 10, 150, 14, TILE_BRICK);
+        fillArea(146, 8, 149, 9, TILE_BRICK);
+        addPickup(PICKUP_COIN, 147, 7);
+        addPickup(PICKUP_COIN, 148, 7);
+
+        addEnemy(ENEMY_BAT, 143, 6);
+        addEnemy(ENEMY_SLIME, 152, 14);
+
+        // --- Section 6: Final run to goal (cols 155-195) ---
+        // Spike pit (4 tiles with wide bridge)
+        clearGround(158, 161);
+        fillRow(FLOOR_ROW, 158, 161, TILE_SPIKE);
+
+        // Bridge over spike pit
+        fillRow(13, 158, 161, TILE_BRIDGE);
+
+        addPlatform(165, 11, 4);
+        addPlatform(171, 9, 3);
+        addPlatform(176, 11, 4);
+
+        // Rapid fire pickup
+        addPickup(PICKUP_RAPIDFIRE, 172, 8);
+
+        // Coin bonus row
+        i = 165;
+        while i < 180 {
+            addPickup(PICKUP_COIN, i, 14);
+            i = i + 2;
+        }
+
+        addEnemy(ENEMY_BAT, 168, 5);
+        addEnemy(ENEMY_SLIME, 175, 14);
+        addEnemy(ENEMY_TURRET, 182, 14);
+
+        // End sign
+        tileGrid.Set(195, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // =========================================================================
+    // Level 2: Crystal Cave
+    // =========================================================================
+
+    hide func buildCrystalCave() {
+        levelWidth = LEVEL2_WIDTH;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_CAVE;
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        // Cave floor and ceiling
+        fillRow(0, 0, levelWidth - 1, TILE_CAVE_TOP);
+        fillRow(1, 0, levelWidth - 1, TILE_CAVE_WALL);
+        fillRow(GROUND_ROW, 0, levelWidth - 1, TILE_CAVE_WALL);
+        fillRow(FLOOR_ROW, 0, levelWidth - 1, TILE_CAVE_WALL);
+
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // --- Section 1: Cave entrance (cols 0-35) ---
+        // Crystal decorations
+        tileGrid.Set(5, 2, TILE_CRYSTAL);
+        tileGrid.Set(12, 2, TILE_CRYSTAL);
+        tileGrid.Set(20, 2, TILE_CRYSTAL);
+
+        addPlatform(8, 12, 4);
+        addPlatform(14, 10, 3);
+        addPlatform(20, 8, 3);
+
+        addPickup(PICKUP_COIN, 9, 11);
+        addPickup(PICKUP_COIN, 10, 11);
+        addPickup(PICKUP_COIN, 15, 9);
+        addPickup(PICKUP_COIN, 21, 7);
+
+        addEnemy(ENEMY_SLIME, 18, 14);
+        addEnemy(ENEMY_BAT, 25, 6);
+
+        // --- Section 2: Lava pits (cols 35-70) ---
+        clearGround(39, 41);
+        fillRow(FLOOR_ROW, 39, 41, TILE_LAVA);
+        addPlatform(39, 12, 3);
+
+        clearGround(49, 52);
+        fillRow(FLOOR_ROW, 49, 52, TILE_LAVA);
+        addPlatform(49, 11, 3);
+        addPlatform(52, 13, 2);
+
+        addPickup(PICKUP_HEALTH, 50, 10);
+        addPickup(PICKUP_COIN, 40, 11);
+        addPickup(PICKUP_COIN, 53, 12);
+
+        addEnemy(ENEMY_BAT, 44, 5);
+        addEnemy(ENEMY_BAT, 55, 4);
+        addEnemy(ENEMY_SLIME, 60, 14);
+
+        // Crystal pillars
+        fillArea(58, 6, 59, 14, TILE_CRYSTAL);
+        fillArea(65, 4, 66, 14, TILE_CRYSTAL);
+
+        addPickup(PICKUP_COIN, 62, 5);
+        addPickup(PICKUP_COIN, 62, 8);
+
+        // --- Section 3: Turret corridor (cols 70-105) ---
+        // Narrow corridor with ceiling
+        fillArea(72, 4, 100, 5, TILE_CAVE_WALL);
+
+        addEnemy(ENEMY_TURRET, 78, 14);
+        addEnemy(ENEMY_TURRET, 88, 14);
+        addEnemy(ENEMY_TURRET, 96, 14);
+
+        addPickup(PICKUP_SHIELD, 83, 14);
+        addPickup(PICKUP_RAPIDFIRE, 93, 14);
+
+        // Coins in corridor
+        var i = 74;
+        while i < 100 {
+            addPickup(PICKUP_COIN, i, 8);
+            i = i + 3;
+        }
+
+        addEnemy(ENEMY_SLIME, 80, 14);
+        addEnemy(ENEMY_SLIME, 90, 14);
+
+        // --- Section 4: Vertical challenge (cols 105-140) ---
+        // Checkpoint
+        tileGrid.Set(107, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 107 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // Ascending platforms with wall jumps (ground-level doorway at rows 13-14)
+        fillArea(112, 10, 113, 12, TILE_CAVE_WALL);
+        fillArea(116, 7, 117, 12, TILE_CAVE_WALL);
+        fillArea(120, 4, 121, 12, TILE_CAVE_WALL);
+
+        addPlatform(114, 12, 2);
+        addPlatform(118, 9, 2);
+        addPlatform(122, 6, 3);
+
+        addPickup(PICKUP_COIN, 114, 11);
+        addPickup(PICKUP_COIN, 118, 8);
+        addPickup(PICKUP_COIN, 123, 5);
+        addPickup(PICKUP_HEALTH, 123, 4);
+
+        addEnemy(ENEMY_BAT, 115, 4);
+        addEnemy(ENEMY_BAT, 119, 3);
+        addEnemy(ENEMY_BAT, 122, 2);
+
+        // --- Section 5: Lava gauntlet (cols 140-175) ---
+        clearGround(142, 170);
+        fillRow(FLOOR_ROW, 142, 170, TILE_LAVA);
+
+        // Stepping stone platforms over lava (wider, closer together)
+        addPlatform(142, 13, 4);
+        addPlatform(148, 11, 4);
+        addPlatform(154, 13, 4);
+        addPlatform(160, 10, 4);
+        addPlatform(166, 12, 4);
+
+        addPickup(PICKUP_SPEED, 161, 9);
+
+        addPickup(PICKUP_COIN, 143, 12);
+        addPickup(PICKUP_COIN, 149, 10);
+        addPickup(PICKUP_COIN, 155, 12);
+        addPickup(PICKUP_COIN, 161, 9);
+        addPickup(PICKUP_COIN, 167, 11);
+
+        addEnemy(ENEMY_BAT, 150, 5);
+        addEnemy(ENEMY_BAT, 160, 4);
+
+        // --- Section 6: Boss arena (cols 175-215) ---
+        // Flat arena floor restored
+        fillRow(GROUND_ROW, 175, 215, TILE_CAVE_WALL);
+        fillRow(FLOOR_ROW, 175, 215, TILE_CAVE_WALL);
+
+        // Arena walls (left wall has doorway at ground level)
+        fillArea(175, 2, 176, 12, TILE_CAVE_WALL);
+        fillArea(213, 2, 214, 14, TILE_CAVE_WALL);
+
+        // Platforms inside arena for dodging
+        addPlatform(185, 10, 3);
+        addPlatform(195, 8, 3);
+        addPlatform(205, 10, 3);
+
+        // Health pickup before boss
+        addPickup(PICKUP_HEALTH, 178, 14);
+        addPickup(PICKUP_SHIELD, 180, 14);
+
+        // Boss spawn
+        bossX = 195 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+
+        // End sign (after boss)
+        tileGrid.Set(215, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // =========================================================================
+    // Level builder helpers
+    // =========================================================================
+
+    hide func addPlatform(col: Integer, row: Integer, width: Integer) {
+        var c = col;
+        while c < col + width {
+            tileGrid.Set(c, row, TILE_PLATFORM);
+            c = c + 1;
+        }
+    }
+
+    hide func clearGround(startCol: Integer, endCol: Integer) {
+        var c = startCol;
+        while c <= endCol {
+            tileGrid.Set(c, GROUND_ROW, TILE_EMPTY);
+            tileGrid.Set(c, FLOOR_ROW, TILE_EMPTY);
+            c = c + 1;
+        }
+    }
+}
