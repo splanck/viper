@@ -154,6 +154,17 @@ bool reflexiveCmpReplacedWith(const Module &module, long long expectedVal)
     return false;
 }
 
+// After peephole, check that the reflexive cmp was NOT folded (still uses temp)
+bool reflexiveCmpSurvived(const Module &module)
+{
+    const Function &fn = module.functions.front();
+    const BasicBlock &entry = fn.blocks.front();
+    const Instr &ret = entry.instructions.back();
+    if (ret.op == Opcode::Ret && !ret.operands.empty())
+        return ret.operands[0].kind == Value::Kind::Temp;
+    return false;
+}
+
 } // namespace
 
 // --- Unsigned comparison folding in CBr ---
@@ -287,47 +298,55 @@ TEST(Peephole, UCmpGE_ReflexiveFoldsToTrue)
 }
 
 // --- Reflexive float comparison rules ---
+// Float reflexive comparisons must NOT be folded because NaN != NaN (IEEE 754).
+// The operand could be NaN at runtime; we can't statically prove otherwise.
 
-TEST(Peephole, FCmpEQ_ReflexiveFoldsToTrue)
+TEST(Peephole, FCmpEQ_ReflexiveNotFolded)
 {
+    // NaN == NaN is false, so fcmp.eq %x, %x cannot fold to true
     Module m = buildReflexiveCmpModule(Opcode::FCmpEQ);
     il::transform::peephole(m);
-    EXPECT_TRUE(reflexiveCmpReplacedWith(m, 1));
+    EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpNE_ReflexiveFoldsToFalse)
+TEST(Peephole, FCmpNE_ReflexiveNotFolded)
 {
+    // NaN != NaN is true, so fcmp.ne %x, %x cannot fold to false
     Module m = buildReflexiveCmpModule(Opcode::FCmpNE);
     il::transform::peephole(m);
-    EXPECT_TRUE(reflexiveCmpReplacedWith(m, 0));
+    EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpLT_ReflexiveFoldsToFalse)
+TEST(Peephole, FCmpLT_ReflexiveNotFolded)
 {
+    // NaN < NaN is false, but we can't prove x is not NaN
     Module m = buildReflexiveCmpModule(Opcode::FCmpLT);
     il::transform::peephole(m);
-    EXPECT_TRUE(reflexiveCmpReplacedWith(m, 0));
+    EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpLE_ReflexiveFoldsToTrue)
+TEST(Peephole, FCmpLE_ReflexiveNotFolded)
 {
+    // NaN <= NaN is false, so fcmp.le %x, %x cannot fold to true
     Module m = buildReflexiveCmpModule(Opcode::FCmpLE);
     il::transform::peephole(m);
-    EXPECT_TRUE(reflexiveCmpReplacedWith(m, 1));
+    EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpGT_ReflexiveFoldsToFalse)
+TEST(Peephole, FCmpGT_ReflexiveNotFolded)
 {
+    // NaN > NaN is false, but we can't prove x is not NaN
     Module m = buildReflexiveCmpModule(Opcode::FCmpGT);
     il::transform::peephole(m);
-    EXPECT_TRUE(reflexiveCmpReplacedWith(m, 0));
+    EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpGE_ReflexiveFoldsToTrue)
+TEST(Peephole, FCmpGE_ReflexiveNotFolded)
 {
+    // NaN >= NaN is false, so fcmp.ge %x, %x cannot fold to true
     Module m = buildReflexiveCmpModule(Opcode::FCmpGE);
     il::transform::peephole(m);
-    EXPECT_TRUE(reflexiveCmpReplacedWith(m, 1));
+    EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
 int main(int argc, char **argv)

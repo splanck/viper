@@ -27,6 +27,7 @@
 #include "codegen/x86_64/Unsupported.hpp"
 #include "common/IntegerHelpers.hpp"
 #include "il/core/Global.hpp"
+#include "il/core/Instr.hpp"
 
 #include <cassert>
 #include <optional>
@@ -452,19 +453,38 @@ class ModuleAdapter
                 adaptIntCompare(instr, out);
                 break;
 
-            // Float comparisons
+            // Float comparisons — emit as fcmp_{suffix} for Phase B prefix matching
             case il::core::Opcode::FCmpEQ:
+                adaptFloatCompareAs(instr, out, "fcmp_eq");
+                break;
             case il::core::Opcode::FCmpNE:
+                adaptFloatCompareAs(instr, out, "fcmp_ne");
+                break;
             case il::core::Opcode::FCmpLT:
+                adaptFloatCompareAs(instr, out, "fcmp_lt");
+                break;
             case il::core::Opcode::FCmpLE:
+                adaptFloatCompareAs(instr, out, "fcmp_le");
+                break;
             case il::core::Opcode::FCmpGT:
+                adaptFloatCompareAs(instr, out, "fcmp_gt");
+                break;
             case il::core::Opcode::FCmpGE:
-                adaptFloatCompare(instr, out);
+                adaptFloatCompareAs(instr, out, "fcmp_ge");
+                break;
+            case il::core::Opcode::FCmpOrd:
+                adaptFloatCompareAs(instr, out, "fcmp_ord");
+                break;
+            case il::core::Opcode::FCmpUno:
+                adaptFloatCompareAs(instr, out, "fcmp_uno");
                 break;
 
             // Call
             case il::core::Opcode::Call:
                 adaptCall(instr, out);
+                break;
+            case il::core::Opcode::CallIndirect:
+                adaptCallIndirect(instr, out);
                 break;
 
             // Exception handling
@@ -501,6 +521,12 @@ class ModuleAdapter
             case il::core::Opcode::Fptosi:
                 adaptFpToSi(instr, out);
                 break;
+            case il::core::Opcode::CastFpToUiRteChk:
+                adaptFpToUi(instr, out);
+                break;
+            case il::core::Opcode::CastUiToFp:
+                adaptUiToFp(instr, out);
+                break;
             case il::core::Opcode::CastSiNarrowChk:
             case il::core::Opcode::CastUiNarrowChk:
                 adaptNarrowCast(instr, out);
@@ -530,6 +556,20 @@ class ModuleAdapter
                 adaptConstStr(instr, out);
                 break;
 
+            // Constants and addresses
+            case il::core::Opcode::ConstNull:
+                adaptConstNull(instr, out);
+                break;
+            case il::core::Opcode::ConstF64:
+                adaptConstF64(instr, out);
+                break;
+            case il::core::Opcode::GAddr:
+                adaptGAddr(instr, out);
+                break;
+            case il::core::Opcode::AddrOf:
+                adaptAddrOf(instr, out);
+                break;
+
             // Memory allocation
             case il::core::Opcode::Alloca:
                 adaptAlloca(instr, out);
@@ -537,6 +577,32 @@ class ModuleAdapter
             case il::core::Opcode::GEP:
                 adaptGEP(instr, out);
                 break;
+
+            // Bounds checking
+            case il::core::Opcode::IdxChk:
+                adaptIdxChk(instr, out);
+                break;
+
+            // Switch
+            case il::core::Opcode::SwitchI32:
+                adaptSwitchI32(instr, out, block);
+                break;
+
+            // === Structured Error Handling (not yet supported in native codegen) ===
+            case il::core::Opcode::TrapKind:
+            case il::core::Opcode::TrapErr:
+            case il::core::Opcode::ErrGetKind:
+            case il::core::Opcode::ErrGetCode:
+            case il::core::Opcode::ErrGetIp:
+            case il::core::Opcode::ErrGetLine:
+            case il::core::Opcode::ResumeSame:
+            case il::core::Opcode::ResumeNext:
+            case il::core::Opcode::ResumeLabel:
+                reportUnsupported(
+                    std::string{"Native codegen does not yet support structured "
+                                "error handling (opcode: "} +
+                    il::core::toString(instr.op) +
+                    "). Use VM execution for programs using try/catch.");
 
             default:
                 reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +
@@ -602,12 +668,11 @@ class ModuleAdapter
         out.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
     }
 
-    void adaptFloatCompare(const il::core::Instr &instr, ILInstr &out)
+    void adaptFloatCompareAs(const il::core::Instr &instr, ILInstr &out, const char *opcode)
     {
-        out.opcode = "fcmp";
+        out.opcode = opcode;
         setFixedResultKind(out, instr, ILValue::Kind::I1);
         convertOperands(instr, {ILValue::Kind::F64, ILValue::Kind::F64}, out);
-        out.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
     }
 
     //-------------------------------------------------------------------------
@@ -637,6 +702,95 @@ class ModuleAdapter
         {
             out.ops.push_back(convertValue(operand, std::nullopt));
         }
+    }
+
+    void adaptCallIndirect(const il::core::Instr &instr, ILInstr &out)
+    {
+        if (instr.type.kind != il::core::Type::Kind::Void)
+        {
+            setResultKind(out, instr, instr.type);
+        }
+        else if (instr.result)
+        {
+            out.resultId = static_cast<int>(*instr.result);
+            out.resultKind = ILValue::Kind::PTR;
+            valueKinds_[*instr.result] = ILValue::Kind::PTR;
+        }
+        out.opcode = "call.indirect";
+        for (const auto &operand : instr.operands)
+        {
+            out.ops.push_back(convertValue(operand, std::nullopt));
+        }
+    }
+
+    //-------------------------------------------------------------------------
+    // Constants and Addresses
+    //-------------------------------------------------------------------------
+
+    void adaptConstNull(const il::core::Instr &instr, ILInstr &out)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::PTR);
+        out.opcode = "const_null";
+    }
+
+    void adaptConstF64(const il::core::Instr &instr, ILInstr &out)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::F64);
+        out.opcode = "const_f64";
+        convertOperands(instr, {ILValue::Kind::F64}, out);
+    }
+
+    void adaptGAddr(const il::core::Instr &instr, ILInstr &out)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::PTR);
+        out.opcode = "gaddr";
+        convertOperands(instr, {std::nullopt}, out);
+    }
+
+    void adaptAddrOf(const il::core::Instr &instr, ILInstr &out)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::PTR);
+        out.opcode = "addr_of";
+        convertOperands(instr, {ILValue::Kind::PTR}, out);
+    }
+
+    //-------------------------------------------------------------------------
+    // Bounds Check and Switch
+    //-------------------------------------------------------------------------
+
+    void adaptIdxChk(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "idx_chk";
+        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64}, out);
+    }
+
+    void adaptSwitchI32(const il::core::Instr &instr, ILInstr &out, ILBlock &block)
+    {
+        using namespace il::core;
+        out.opcode = "switch_i32";
+        // Operand 0: scrutinee
+        if (!instr.operands.empty())
+        {
+            out.ops.push_back(convertValue(instr.operands[0], ILValue::Kind::I64));
+        }
+        // Case values and labels interleaved: [value0, label0, value1, label1, ...]
+        const std::size_t ncases = switchCaseCount(instr);
+        for (std::size_t ci = 0; ci < ncases; ++ci)
+        {
+            const Value &cval = switchCaseValue(instr, ci);
+            out.ops.push_back(convertValue(cval, ILValue::Kind::I64));
+            out.ops.push_back(
+                makeBlockLabelValue(currentFunc_->name, switchCaseLabel(instr, ci)));
+        }
+        // Default label as last operand
+        const std::string &defLabel = switchDefaultLabel(instr);
+        if (!defLabel.empty())
+        {
+            out.ops.push_back(makeBlockLabelValue(currentFunc_->name, defLabel));
+        }
+        // Add terminator edges for block argument passing
+        addTerminatorEdges(instr, block);
     }
 
     //-------------------------------------------------------------------------
@@ -738,6 +892,20 @@ class ModuleAdapter
         setResultKind(out, instr, instr.type);
         out.opcode = "fptosi";
         convertOperands(instr, {ILValue::Kind::F64}, out);
+    }
+
+    void adaptFpToUi(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "fptoui";
+        convertOperands(instr, {ILValue::Kind::F64}, out);
+    }
+
+    void adaptUiToFp(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "uitofp";
+        convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 
     /// @brief Adapt narrowing cast (i64 -> i32 etc).

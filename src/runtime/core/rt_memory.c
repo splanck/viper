@@ -62,6 +62,8 @@ static void *rt_alloc_impl(int64_t bytes)
     return p;
 }
 
+// g_rt_alloc_hook: Set once during startup before any threads are created.
+// No synchronization needed — stores happen-before thread creation.
 static rt_alloc_hook_fn g_rt_alloc_hook = NULL;
 
 /// @brief Install a hook that can override @ref rt_alloc for testing.

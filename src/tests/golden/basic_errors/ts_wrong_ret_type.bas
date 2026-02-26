@@ -1,0 +1,6 @@
+10 FUNCTION F$()
+20   F$ = "hello"
+30 END FUNCTION
+40 DIM A%
+50 LET A% = F$()
+60 END

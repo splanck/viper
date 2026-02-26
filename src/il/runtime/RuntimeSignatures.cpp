@@ -36,6 +36,8 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
+#include <atomic>
+
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
@@ -2659,41 +2661,43 @@ bool selfCheckRuntimeDescriptors()
 namespace
 {
 /// @brief Current mode for handling invariant violations.
-InvariantViolationMode g_violationMode = InvariantViolationMode::Abort;
+static std::atomic<InvariantViolationMode> g_violationMode{InvariantViolationMode::Abort};
 
 /// @brief Registered trap handler for invariant violations.
-InvariantTrapHandler g_trapHandler = nullptr;
+static std::atomic<InvariantTrapHandler> g_trapHandler{nullptr};
 } // namespace
 
 void setInvariantViolationMode(InvariantViolationMode mode)
 {
-    g_violationMode = mode;
+    g_violationMode.store(mode, std::memory_order_relaxed);
 }
 
 InvariantViolationMode getInvariantViolationMode()
 {
-    return g_violationMode;
+    return g_violationMode.load(std::memory_order_relaxed);
 }
 
 void setInvariantTrapHandler(InvariantTrapHandler handler)
 {
-    g_trapHandler = handler;
+    g_trapHandler.store(handler, std::memory_order_relaxed);
 }
 
 InvariantTrapHandler getInvariantTrapHandler()
 {
-    return g_trapHandler;
+    return g_trapHandler.load(std::memory_order_relaxed);
 }
 
 [[noreturn]] void reportInvariantViolation(const char *message)
 {
     // In Trap mode with a registered handler, attempt to route through the VM.
-    if (g_violationMode == InvariantViolationMode::Trap && g_trapHandler != nullptr)
+    if (g_violationMode.load(std::memory_order_relaxed) == InvariantViolationMode::Trap &&
+        g_trapHandler.load(std::memory_order_relaxed) != nullptr)
     {
         // Handler returns true if the trap was processed (e.g., caught by an exception
         // handler in the VM). In this case, the handler should not return at all.
         // If it returns false, we fall through to abort.
-        if (g_trapHandler(message))
+        auto handler = g_trapHandler.load(std::memory_order_relaxed);
+        if (handler(message))
         {
             // Handler claimed success but returned - this is a logic error.
             // The trap mechanism should not allow normal return.

@@ -42,6 +42,7 @@
 
 void rt_clipboard_set_text(rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     if (ctext)
     {
@@ -52,6 +53,7 @@ void rt_clipboard_set_text(rt_string text)
 
 rt_string rt_clipboard_get_text(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *text = vgfx_clipboard_get_text();
     if (!text)
         return rt_str_empty();
@@ -62,11 +64,13 @@ rt_string rt_clipboard_get_text(void)
 
 int64_t rt_clipboard_has_text(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT) ? 1 : 0;
 }
 
 void rt_clipboard_clear(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     vgfx_clipboard_clear();
 }
 
@@ -155,6 +159,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
 
 void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_shortcut_count >= MAX_SHORTCUTS)
         return;
 
@@ -190,6 +195,7 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
 
 void rt_shortcuts_unregister(rt_string id)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
@@ -217,6 +223,7 @@ void rt_shortcuts_unregister(rt_string id)
 
 void rt_shortcuts_clear(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_shortcut_count; i++)
     {
         free(g_shortcuts[i].id);
@@ -229,6 +236,7 @@ void rt_shortcuts_clear(void)
 
 int64_t rt_shortcuts_was_triggered(rt_string id)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!g_shortcuts_global_enabled)
         return 0;
 
@@ -252,6 +260,7 @@ int64_t rt_shortcuts_was_triggered(rt_string id)
 // Clear all shortcut triggered flags (call at start of each frame)
 void rt_shortcuts_clear_triggered(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_shortcut_count; i++)
     {
         g_shortcuts[i].triggered = 0;
@@ -263,6 +272,7 @@ void rt_shortcuts_clear_triggered(void)
 // Returns 1 if a shortcut was triggered, 0 otherwise.
 int rt_shortcuts_check_key(int key, int mods)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!g_shortcuts_global_enabled)
         return 0;
 
@@ -300,6 +310,7 @@ int rt_shortcuts_check_key(int key, int mods)
 
 rt_string rt_shortcuts_get_triggered(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_triggered_shortcut_id)
     {
         return rt_string_from_bytes(g_triggered_shortcut_id, strlen(g_triggered_shortcut_id));
@@ -309,6 +320,7 @@ rt_string rt_shortcuts_get_triggered(void)
 
 void rt_shortcuts_set_enabled(rt_string id, int64_t enabled)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
@@ -327,6 +339,7 @@ void rt_shortcuts_set_enabled(rt_string id, int64_t enabled)
 
 int64_t rt_shortcuts_is_enabled(rt_string id)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return 0;
@@ -346,11 +359,13 @@ int64_t rt_shortcuts_is_enabled(rt_string id)
 
 void rt_shortcuts_set_global_enabled(int64_t enabled)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_shortcuts_global_enabled = enabled != 0;
 }
 
 int64_t rt_shortcuts_get_global_enabled(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_shortcuts_global_enabled ? 1 : 0;
 }
 
@@ -360,6 +375,7 @@ int64_t rt_shortcuts_get_global_enabled(void)
 
 void rt_app_set_title(void *app, rt_string title)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -375,12 +391,14 @@ void rt_app_set_title(void *app, rt_string title)
 
 rt_string rt_app_get_title(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     (void)app;
     return rt_str_empty();
 }
 
 void rt_app_set_size(void *app, int64_t width, int64_t height)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -394,6 +412,7 @@ void rt_app_set_size(void *app, int64_t width, int64_t height)
 
 int64_t rt_app_get_width(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -406,6 +425,7 @@ int64_t rt_app_get_width(void *app)
 
 int64_t rt_app_get_height(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -418,6 +438,7 @@ int64_t rt_app_get_height(void *app)
 
 void rt_app_set_position(void *app, int64_t x, int64_t y)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -427,6 +448,7 @@ void rt_app_set_position(void *app, int64_t x, int64_t y)
 
 int64_t rt_app_get_x(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -439,6 +461,7 @@ int64_t rt_app_get_x(void *app)
 
 int64_t rt_app_get_y(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -451,6 +474,7 @@ int64_t rt_app_get_y(void *app)
 
 void rt_app_minimize(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -460,6 +484,7 @@ void rt_app_minimize(void *app)
 
 void rt_app_maximize(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -469,6 +494,7 @@ void rt_app_maximize(void *app)
 
 void rt_app_restore(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -478,6 +504,7 @@ void rt_app_restore(void *app)
 
 int64_t rt_app_is_minimized(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -486,6 +513,7 @@ int64_t rt_app_is_minimized(void *app)
 
 int64_t rt_app_is_maximized(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -494,6 +522,7 @@ int64_t rt_app_is_maximized(void *app)
 
 void rt_app_set_fullscreen(void *app, int64_t fullscreen)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -503,6 +532,7 @@ void rt_app_set_fullscreen(void *app, int64_t fullscreen)
 
 int64_t rt_app_is_fullscreen(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -511,6 +541,7 @@ int64_t rt_app_is_fullscreen(void *app)
 
 void rt_app_focus(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -520,6 +551,7 @@ void rt_app_focus(void *app)
 
 int64_t rt_app_is_focused(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -528,6 +560,7 @@ int64_t rt_app_is_focused(void *app)
 
 void rt_app_set_prevent_close(void *app, int64_t prevent)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -537,6 +570,7 @@ void rt_app_set_prevent_close(void *app, int64_t prevent)
 
 int64_t rt_app_was_close_requested(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -545,6 +579,7 @@ int64_t rt_app_was_close_requested(void *app)
 
 int64_t rt_app_get_monitor_width(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -557,6 +592,7 @@ int64_t rt_app_get_monitor_width(void *app)
 
 int64_t rt_app_get_monitor_height(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -569,6 +605,7 @@ int64_t rt_app_get_monitor_height(void *app)
 
 void rt_app_set_window_size(void *app, int64_t w, int64_t h)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -582,6 +619,7 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h)
 
 double rt_app_get_font_size(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 14.0;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -594,6 +632,7 @@ double rt_app_get_font_size(void *app)
 
 void rt_app_set_font_size(void *app, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -614,29 +653,34 @@ void rt_app_set_font_size(void *app, double size)
 
 void rt_cursor_set(int64_t type)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (s_current_app && s_current_app->window)
         vgfx_set_cursor(s_current_app->window, (int32_t)type);
 }
 
 void rt_cursor_reset(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     rt_cursor_set(0); /* VGFX_CURSOR_DEFAULT */
 }
 
 void rt_cursor_set_visible(int64_t visible)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (s_current_app && s_current_app->window)
         vgfx_set_cursor_visible(s_current_app->window, (int32_t)visible);
 }
 
 void rt_widget_set_cursor(void *widget, int64_t type)
 {
+    RT_ASSERT_MAIN_THREAD();
     (void)widget;
     rt_cursor_set(type);
 }
 
 void rt_widget_reset_cursor(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     (void)widget;
     rt_cursor_reset();
 }

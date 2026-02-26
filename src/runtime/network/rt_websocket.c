@@ -288,6 +288,13 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
         *path = strdup("/");
     }
 
+    if (!*path)
+    {
+        free(*host);
+        *host = NULL;
+        return 0;
+    }
+
     return 1;
 }
 
@@ -818,7 +825,12 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
     ws->tls = NULL;
     ws->url = strdup(url_cstr);
     if (!ws->url)
+    {
+        free(host);
+        free(path);
+        rt_obj_free(ws);
         return NULL;
+    }
     ws->is_open = 0;
     ws->close_code = 0;
     ws->close_reason = NULL;

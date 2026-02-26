@@ -219,6 +219,13 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
     // (e.g., after `if x != null`, x is narrowed from T? to T)
     if (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter)
     {
+        // Warn if variable used before initialization
+        if (sym->kind == Symbol::Kind::Variable && !isInitialized(expr->name))
+        {
+            warning(expr->loc,
+                    "Variable '" + expr->name + "' may be used before initialization");
+        }
+
         TypeRef narrowed = lookupVarType(expr->name);
         if (narrowed)
             return narrowed;

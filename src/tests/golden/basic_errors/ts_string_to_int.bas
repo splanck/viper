@@ -1,0 +1,3 @@
+10 DIM A AS INTEGER
+20 LET A = "hello"
+30 END

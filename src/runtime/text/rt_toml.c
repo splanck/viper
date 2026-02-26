@@ -140,8 +140,8 @@ static void *parse_array(const char **p)
     return seq;
 }
 
-// --- Internal parse error flag (S-14) ---
-static int g_toml_had_error = 0;
+// --- Internal parse error flag (S-14, thread-local to avoid concurrent parse clobbering) ---
+static _Thread_local int g_toml_had_error = 0;
 
 // --- Public API ---
 

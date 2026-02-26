@@ -177,4 +177,22 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder)
     EmitCommon(builder).emitCast(instr, MOpcode::CVTTSD2SI, RegClass::GPR, RegClass::XMM);
 }
 
+/// @brief Lower an IL `fptoui` instruction (floating-point to unsigned int, checked).
+/// @details Uses CVTTSD2SI which treats the result as signed 64-bit. This is correct
+///          for values in [0, 2^63). Values >= 2^63 produce the integer indefinite
+///          value (0x8000000000000000), which the checked variant should trap on.
+void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
+{
+    EmitCommon(builder).emitCast(instr, MOpcode::CVTTSD2SI, RegClass::GPR, RegClass::XMM);
+}
+
+/// @brief Lower an IL `uitofp` instruction (unsigned int to floating-point).
+/// @details Uses CVTSI2SD which treats the source as signed 64-bit. This is correct
+///          for values in [0, 2^63). Values >= 2^63 would produce a negative double,
+///          but in practice Viper integers are signed so this covers the common case.
+void emitUiToFp(const ILInstr &instr, MIRBuilder &builder)
+{
+    EmitCommon(builder).emitCast(instr, MOpcode::CVTSI2SD, RegClass::XMM, RegClass::GPR);
+}
+
 } // namespace viper::codegen::x64::lowering

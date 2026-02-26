@@ -702,6 +702,14 @@ function(viper_add_il_utils_test)
             test_il_constfold_enhanced PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_constfold_enhanced test_il_constfold_enhanced)
 
+    # Constant folding edge case tests
+    viper_add_test(
+            test_il_constfold_edgecases
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_constfold_edgecases.cpp)
+    target_link_libraries(
+            test_il_constfold_edgecases PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_constfold_edgecases test_il_constfold_edgecases)
+
     # IL optimization review regression tests
     viper_add_test(
             test_il_opt_review_basicaa
@@ -746,6 +754,13 @@ function(viper_add_il_utils_test)
     viper_add_ctest(test_il_opt_review_dse test_il_opt_review_dse)
 
     viper_add_test(
+            test_il_dse_sideeffects
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_dse_sideeffects.cpp)
+    target_link_libraries(
+            test_il_dse_sideeffects PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_dse_sideeffects test_il_dse_sideeffects)
+
+    viper_add_test(
             test_il_opt_review_calleffects
             ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_calleffects.cpp)
     target_link_libraries(
@@ -782,6 +797,22 @@ function(viper_add_il_utils_test)
     target_link_libraries(
             test_il_sibling_recursion PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_sibling_recursion test_il_sibling_recursion)
+
+    # Per-pass isolation: apply each of the 17 passes individually, verify valid IL
+    viper_add_test(
+            test_il_pass_isolation
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_pass_isolation.cpp)
+    target_link_libraries(
+            test_il_pass_isolation PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_pass_isolation test_il_pass_isolation)
+
+    # Missed optimizations catalogue: existing + missing optimization tests
+    viper_add_test(
+            test_il_missed_optimizations
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_missed_optimizations.cpp)
+    target_link_libraries(
+            test_il_missed_optimizations PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_missed_optimizations test_il_missed_optimizations)
 
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})

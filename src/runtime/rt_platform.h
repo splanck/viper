@@ -570,6 +570,41 @@ static inline char *rt_strtok_r(char *str, const char *delim, char **saveptr)
 }
 
 //===----------------------------------------------------------------------===//
+// Main-Thread Assertion
+//===----------------------------------------------------------------------===//
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/// @brief Record the current thread as the "main" thread.
+///
+/// Must be called once during runtime initialization, before any worker threads
+/// are spawned. GUI and input globals are only safe to access from this thread.
+void rt_set_main_thread(void);
+
+/// @brief Check whether the calling thread is the main thread.
+/// @return Non-zero if called from the main thread, zero otherwise.
+int rt_is_main_thread(void);
+
+/// @brief Internal assertion helper — do not call directly.
+/// @see RT_ASSERT_MAIN_THREAD
+void rt_assert_main_thread_(const char *file, int line);
+
+#ifdef __cplusplus
+}
+#endif
+
+/// @def RT_ASSERT_MAIN_THREAD()
+/// In debug builds, aborts with a diagnostic if called from a non-main thread.
+/// In release builds (NDEBUG) or on ViperDOS (no threading), compiles to nothing.
+#if defined(NDEBUG) || RT_PLATFORM_VIPERDOS
+#define RT_ASSERT_MAIN_THREAD() ((void)0)
+#else
+#define RT_ASSERT_MAIN_THREAD() rt_assert_main_thread_(__FILE__, __LINE__)
+#endif
+
+//===----------------------------------------------------------------------===//
 // Format Attribute
 //===----------------------------------------------------------------------===//
 

@@ -1365,4 +1365,20 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_string_intern ${VIPER_TESTS_DIR}/runtime/RTStringInternTests.cpp)
     target_link_libraries(test_rt_string_intern PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_intern test_rt_string_intern)
+
+    viper_add_test(test_rt_thread_safety ${VIPER_TESTS_DIR}/runtime/RTThreadSafetyTests.cpp)
+    target_link_libraries(test_rt_thread_safety PRIVATE ${VIPER_RUNTIME_TEST_LIBS} il_runtime)
+    viper_add_ctest(test_rt_thread_safety test_rt_thread_safety)
+
+    # Resource leak detection tests
+    viper_add_test(test_rt_resource_leak ${VIPER_TESTS_DIR}/runtime/RTResourceLeakTests.cpp)
+    target_link_libraries(test_rt_resource_leak PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_resource_leak test_rt_resource_leak)
+
+    # BASIC parser recursion depth limit tests
+    if (NOT TARGET test_basic_depth_limits)
+        viper_add_test(test_basic_depth_limits ${VIPER_TESTS_DIR}/unit/test_basic_depth_limits.cpp)
+        target_link_libraries(test_basic_depth_limits PRIVATE fe_basic)
+        viper_add_ctest(test_basic_depth_limits test_basic_depth_limits)
+    endif ()
 endfunction()

@@ -79,10 +79,15 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
 
         case BinaryOp::Assign:
             // Assignment - LHS must be assignable, types must be compatible
-            // For now, just check that the types are compatible
             if (!rightType->isConvertibleTo(*leftType))
             {
                 errorTypeMismatch(expr->loc, leftType, rightType);
+            }
+            // Track initialization for definite-assignment analysis
+            if (expr->left->kind == ExprKind::Ident)
+            {
+                auto *ident = static_cast<IdentExpr *>(expr->left.get());
+                markInitialized(ident->name);
             }
             // Assignment expression returns the assigned value
             return leftType;

@@ -1,0 +1,3 @@
+10 CONST PI = 3.14
+20 LET PI = 2.0
+30 END

@@ -182,6 +182,16 @@ class Parser
     /// @details Used to forbid USING directives inside namespaces per Phase 2 rules.
     int nsDepth_ = 0;
 
+    /// @brief Current expression nesting depth for recursion guard.
+    unsigned exprDepth_{0};
+    /// @brief Maximum allowed expression nesting depth.
+    static constexpr unsigned kMaxExprDepth = 512;
+
+    /// @brief Current statement nesting depth for recursion guard.
+    unsigned stmtDepth_{0};
+    /// @brief Maximum allowed statement nesting depth.
+    static constexpr unsigned kMaxStmtDepth = 512;
+
     /// @brief Current class being parsed (nullptr when not in a class).
     /// @details Used to detect intra-class method calls and rewrite them as method
     ///          calls on ME. Set when parsing class members; nullptr elsewhere.

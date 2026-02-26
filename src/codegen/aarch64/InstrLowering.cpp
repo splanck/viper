@@ -452,6 +452,23 @@ bool materializeValueToVReg(const il::core::Value &v,
                     tempVReg[v.id] = outVReg;
                     return true;
                 }
+                // AddrOf of a local alloca: compute FP + frame_offset
+                if (!prod.operands.empty() &&
+                    prod.operands[0].kind == il::core::Value::Kind::Temp)
+                {
+                    const int offset = fb.localOffset(prod.operands[0].id);
+                    if (offset != 0)
+                    {
+                        outVReg = nextVRegId++;
+                        outCls = RegClass::GPR;
+                        out.instrs.push_back(
+                            MInstr{MOpcode::AddFpImm,
+                                   {MOperand::vregOp(RegClass::GPR, outVReg),
+                                    MOperand::immOp(offset)}});
+                        tempVReg[v.id] = outVReg;
+                        return true;
+                    }
+                }
                 break;
             case Opcode::GEP:
                 if (prod.operands.size() >= 2)

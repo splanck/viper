@@ -364,4 +364,72 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder)
     }
 }
 
+/// @brief Lower a const_null instruction (null pointer constant).
+/// @details Produces a zero-valued pointer by moving immediate 0 into the result register.
+void emitConstNull(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.resultId < 0)
+    {
+        return;
+    }
+
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+    builder.append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{dest, makeImmOperand(0)}));
+}
+
+/// @brief Lower a const_f64 instruction (double-precision floating-point constant).
+/// @details Materialises the 64-bit constant by transferring the bit pattern through
+///          a GPR temporary into the XMM destination register.
+void emitConstF64(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.resultId < 0 || instr.ops.empty())
+    {
+        return;
+    }
+
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    EmitCommon emit(builder);
+    Operand src = builder.makeOperandForValue(instr.ops[0], RegClass::XMM);
+    src = emit.materialise(std::move(src), RegClass::XMM);
+    builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{dest, src}));
+}
+
+/// @brief Lower a gaddr instruction (global address).
+/// @details Loads the address of a global symbol into the result register using LEA.
+void emitGAddr(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.resultId < 0 || instr.ops.empty())
+    {
+        return;
+    }
+
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    EmitCommon emit(builder);
+    const Operand src = emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, src}));
+}
+
+/// @brief Lower an addr_of instruction (address of a local alloca).
+/// @details The alloca instruction already produces a pointer to the stack slot.
+///          AddrOf simply forwards that pointer to the result register.
+void emitAddrOf(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.resultId < 0 || instr.ops.empty())
+    {
+        return;
+    }
+
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    EmitCommon emit(builder);
+    const Operand src = emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, src}));
+}
+
 } // namespace viper::codegen::x64::lowering

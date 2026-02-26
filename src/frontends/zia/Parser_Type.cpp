@@ -21,9 +21,19 @@ namespace il::frontends::zia
 
 TypePtr Parser::parseType()
 {
+    if (++typeDepth_ > kMaxTypeDepth)
+    {
+        --typeDepth_;
+        error("type nesting too deep (limit: 256)");
+        return nullptr;
+    }
+
     TypePtr base = parseBaseType();
     if (!base)
+    {
+        --typeDepth_;
         return nullptr;
+    }
 
     // Check for optional suffix ?
     while (match(TokenKind::Question))
@@ -31,6 +41,7 @@ TypePtr Parser::parseType()
         base = std::make_unique<OptionalType>(base->loc, std::move(base));
     }
 
+    --typeDepth_;
     return base;
 }
 

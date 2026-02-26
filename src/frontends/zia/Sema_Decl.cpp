@@ -735,6 +735,7 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
         sym.type = paramType;
         sym.isFinal = true; // Parameters are immutable by default
         defineSymbol(param.name, sym);
+        markInitialized(param.name);
     }
 
     // Analyze body
@@ -815,6 +816,7 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
     selfSym.type = ownerType;
     selfSym.isFinal = true;
     defineSymbol("self", selfSym);
+    markInitialized("self");
 
     // Define explicit parameters
     for (const auto &param : decl.params)
@@ -827,6 +829,7 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
         sym.type = paramType;
         sym.isFinal = true;
         defineSymbol(param.name, sym);
+        markInitialized(param.name);
     }
 
     // Analyze body

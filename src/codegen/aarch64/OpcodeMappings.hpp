@@ -155,7 +155,7 @@ constexpr CompareMapping kCompareOps[] = {
 /// if the opcode is not a supported binary operation.
 ///
 /// @par Supported Operations:
-/// - Integer: Add, Sub, Mul (and overflow variants), And, Or, Xor, Shl, LShr, AShr
+/// - Integer: Add, Sub, Mul (and overflow variants), SDiv, UDiv, And, Or, Xor, Shl, LShr, AShr
 /// - Floating-point: FAdd, FSub, FMul, FDiv
 ///
 /// @param op The IL opcode to look up.
@@ -230,6 +230,17 @@ inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
         case Opc::AShr:
         {
             static constexpr BinaryOpMapping m{Opc::AShr, MOpcode::AsrvRRR, true, MOpcode::AsrRI};
+            return &m;
+        }
+        // Division (no immediate form on AArch64)
+        case Opc::SDiv:
+        {
+            static constexpr BinaryOpMapping m{Opc::SDiv, MOpcode::SDivRRR, false, MOpcode::SDivRRR};
+            return &m;
+        }
+        case Opc::UDiv:
+        {
+            static constexpr BinaryOpMapping m{Opc::UDiv, MOpcode::UDivRRR, false, MOpcode::UDivRRR};
             return &m;
         }
         // Floating-point operations

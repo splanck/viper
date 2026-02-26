@@ -25,18 +25,30 @@ namespace il::frontends::zia
 /// @return The parsed statement, or nullptr on error.
 StmtPtr Parser::parseStatement()
 {
+    if (++stmtDepth_ > kMaxStmtDepth)
+    {
+        --stmtDepth_;
+        error("statement nesting too deep (limit: 512)");
+        return nullptr;
+    }
+
     SourceLoc loc = peek().loc;
+    StmtPtr result;
 
     // Block
     if (check(TokenKind::LBrace))
     {
-        return parseBlock();
+        result = parseBlock();
+        --stmtDepth_;
+        return result;
     }
 
     // var/final variable declaration: var x = 5; final y: Integer = 10;
     if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
     {
-        return parseVarDecl();
+        result = parseVarDecl();
+        --stmtDepth_;
+        return result;
     }
 
     // Java-style variable declaration: Type name = expr;
@@ -47,6 +59,7 @@ StmtPtr Parser::parseStatement()
         if (StmtPtr decl = parseJavaStyleVarDecl())
         {
             speculative.commit();
+            --stmtDepth_;
             return decl;
         }
     }
@@ -54,31 +67,41 @@ StmtPtr Parser::parseStatement()
     // If statement
     if (check(TokenKind::KwIf))
     {
-        return parseIfStmt();
+        result = parseIfStmt();
+        --stmtDepth_;
+        return result;
     }
 
     // While statement
     if (check(TokenKind::KwWhile))
     {
-        return parseWhileStmt();
+        result = parseWhileStmt();
+        --stmtDepth_;
+        return result;
     }
 
     // For statement
     if (check(TokenKind::KwFor))
     {
-        return parseForStmt();
+        result = parseForStmt();
+        --stmtDepth_;
+        return result;
     }
 
     // Return statement
     if (check(TokenKind::KwReturn))
     {
-        return parseReturnStmt();
+        result = parseReturnStmt();
+        --stmtDepth_;
+        return result;
     }
 
     // Guard statement
     if (check(TokenKind::KwGuard))
     {
-        return parseGuardStmt();
+        result = parseGuardStmt();
+        --stmtDepth_;
+        return result;
     }
 
     // Match statement (only when followed by a scrutinee, not when used as identifier)
@@ -93,7 +116,9 @@ StmtPtr Parser::parseStatement()
              nextKind == TokenKind::KwSelf);
         if (isMatchStmt)
         {
-            return parseMatchStmt();
+            result = parseMatchStmt();
+            --stmtDepth_;
+            return result;
         }
         // else: fall through to expression statement parsing (e.g., match = 10;)
     }
@@ -102,7 +127,11 @@ StmtPtr Parser::parseStatement()
     if (match(TokenKind::KwBreak))
     {
         if (!expect(TokenKind::Semicolon, ";"))
+        {
+            --stmtDepth_;
             return nullptr;
+        }
+        --stmtDepth_;
         return std::make_unique<BreakStmt>(loc);
     }
 
@@ -110,18 +139,29 @@ StmtPtr Parser::parseStatement()
     if (match(TokenKind::KwContinue))
     {
         if (!expect(TokenKind::Semicolon, ";"))
+        {
+            --stmtDepth_;
             return nullptr;
+        }
+        --stmtDepth_;
         return std::make_unique<ContinueStmt>(loc);
     }
 
     // Expression statement
     ExprPtr expr = parseExpression();
     if (!expr)
+    {
+        --stmtDepth_;
         return nullptr;
+    }
 
     if (!expect(TokenKind::Semicolon, ";"))
+    {
+        --stmtDepth_;
         return nullptr;
+    }
 
+    --stmtDepth_;
     return std::make_unique<ExprStmt>(loc, std::move(expr));
 }
 

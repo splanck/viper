@@ -1,0 +1,2 @@
+10 PRINT X$
+20 END

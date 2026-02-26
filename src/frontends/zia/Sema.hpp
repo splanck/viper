@@ -803,6 +803,12 @@ class Sema
     /// @return The return type of the called function.
     TypeRef analyzeCall(CallExpr *expr);
 
+    /// @brief Validate call argument count and types against a function signature.
+    /// @param expr The call expression (for argument values and locations).
+    /// @param funcType The resolved function type with parameter types.
+    /// @param calleeName Name of the function for error messages.
+    void validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string &calleeName);
+
     /// @brief Analyze an index expression.
     /// @return The element type of the collection.
     TypeRef analyzeIndex(IndexExpr *expr);
@@ -930,6 +936,26 @@ class Sema
     /// @param name The variable name.
     /// @param narrowedType The narrowed (non-optional) type.
     void narrowType(const std::string &name, TypeRef narrowedType);
+
+    /// @brief Mark a variable as definitely initialized.
+    /// @param name The variable name.
+    void markInitialized(const std::string &name);
+
+    /// @brief Check if a variable has been definitely initialized.
+    /// @param name The variable name.
+    /// @return True if the variable has been initialized.
+    bool isInitialized(const std::string &name) const;
+
+    /// @brief Save the current initialization state (for branching analysis).
+    /// @return A snapshot of the currently initialized variables.
+    std::unordered_set<std::string> saveInitState() const;
+
+    /// @brief Restore initialization state (keep only variables initialized in both).
+    /// @param saved The saved state from before a branch.
+    /// @param branchA State after analyzing the then-branch.
+    /// @param branchB State after analyzing the else-branch.
+    void intersectInitState(const std::unordered_set<std::string> &branchA,
+                            const std::unordered_set<std::string> &branchB);
 
     /// @brief Try to extract a null check from a condition expression.
     /// @param cond The condition expression.
@@ -1111,6 +1137,11 @@ class Sema
     /// @{
     //=========================================================================
 
+    /// @brief Report a semantic warning.
+    /// @param loc Source location of the warning.
+    /// @param message Warning message.
+    void warning(SourceLoc loc, const std::string &message);
+
     /// @brief Report a semantic error.
     /// @param loc Source location of the error.
     /// @param message Error message.
@@ -1169,6 +1200,11 @@ class Sema
 
     /// @brief Current loop nesting depth for break/continue validation.
     int loopDepth_{0};
+
+    /// @brief Current type resolution nesting depth for recursion guard.
+    unsigned typeResolveDepth_{0};
+    /// @brief Maximum allowed type resolution depth.
+    static constexpr unsigned kMaxTypeResolveDepth = 256;
 
     /// @brief Current namespace prefix for qualified names.
     /// @details When inside a namespace block, this contains the namespace path.
@@ -1264,6 +1300,12 @@ class Sema
     /// we narrow `x` from `T?` to `T`. Each entry maps variable names to their
     /// narrowed types. Pushed/popped with narrowing scopes.
     std::vector<std::unordered_map<std::string, TypeRef>> narrowedTypes_;
+
+    /// @brief Set of variables that have been definitely initialized.
+    /// @details Tracks which variables have been assigned a value (either via
+    /// declaration initializer or explicit assignment). Used to warn about
+    /// use of potentially uninitialized variables.
+    std::unordered_set<std::string> initializedVars_;
 
     /// @brief Cache of instantiated generic types.
     /// @details Key: "TypeName$Arg1$Arg2", Value: Instantiated TypeRef.

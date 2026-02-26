@@ -1,0 +1,2 @@
+10 IF "hello" > 3 THEN PRINT 1
+20 END

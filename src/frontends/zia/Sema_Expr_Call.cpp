@@ -198,6 +198,53 @@ static bool extractDottedName(Expr *expr, std::string &out)
 } // anonymous namespace
 
 //=============================================================================
+// Call Argument Validation
+//=============================================================================
+
+void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string &calleeName)
+{
+    if (!funcType || funcType->kind != TypeKindSem::Function)
+        return;
+
+    const auto paramTys = funcType->paramTypes();
+    const size_t numParams = paramTys.size();
+    const size_t numArgs = expr->args.size();
+
+    // Check argument count
+    if (numArgs > numParams)
+    {
+        error(expr->loc,
+              "Too many arguments to '" + calleeName + "': expected " + std::to_string(numParams) +
+                  ", got " + std::to_string(numArgs));
+    }
+    else if (numArgs < numParams)
+    {
+        error(expr->loc,
+              "Too few arguments to '" + calleeName + "': expected " + std::to_string(numParams) +
+                  ", got " + std::to_string(numArgs));
+    }
+
+    // Check argument types (up to the shorter of the two lists)
+    const size_t checkCount = std::min(numArgs, numParams);
+    for (size_t i = 0; i < checkCount; ++i)
+    {
+        TypeRef argType = exprTypes_.count(expr->args[i].value.get())
+                              ? exprTypes_[expr->args[i].value.get()]
+                              : nullptr;
+        TypeRef paramType = paramTys[i];
+
+        if (!argType || !paramType || argType->kind == TypeKindSem::Unknown ||
+            paramType->kind == TypeKindSem::Unknown)
+            continue;
+
+        if (!paramType->isAssignableFrom(*argType))
+        {
+            errorTypeMismatch(expr->args[i].value->loc, paramType, argType);
+        }
+    }
+}
+
+//=============================================================================
 // Call Expression Analysis
 //=============================================================================
 
@@ -268,6 +315,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 {
                     analyzeExpr(arg.value.get());
                 }
+
+                validateCallArgs(expr, funcType, mangledName);
 
                 // Return the function's return type
                 if (funcType && funcType->kind == TypeKindSem::Function)
@@ -369,6 +418,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 // Store the instantiated function type
                 exprTypes_[expr->callee.get()] = funcType;
 
+                validateCallArgs(expr, funcType, mangledName);
+
                 // Return the function's return type
                 if (funcType && funcType->kind == TypeKindSem::Function)
                 {
@@ -401,6 +452,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 {
                     analyzeExpr(arg.value.get());
                 }
+
+                // Skip validation for extern/runtime functions — their signatures
+                // include implicit self parameters that don't appear in call syntax.
 
                 // Return the function's return type
                 if (sym->type && sym->type->kind == TypeKindSem::Function)
@@ -458,6 +512,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             {
                 analyzeExpr(arg.value.get());
             }
+
+            // Only validate user-defined functions — runtime externs have
+            // implicit self params that don't appear in Zia call syntax.
+            if (!sym->isExtern)
+            {
+                validateCallArgs(expr, funcType, dottedName);
+            }
+
             // For extern functions (runtime library), store the resolved call info
             // so the lowerer knows to emit an extern call
             if (sym->isExtern)
@@ -713,6 +775,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 {
                     analyzeExpr(arg.value.get());
                 }
+
+                // Skip validation for runtime class methods — their signatures
+                // include implicit self parameters.
+
                 // Store the resolved runtime call info for the lowerer
                 if (sym->isExtern)
                 {
@@ -736,9 +802,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         analyzeExpr(arg.value.get());
     }
 
-    // If callee is a function type, return its return type
+    // If callee is a function type, validate args and return its return type
     if (calleeType->kind == TypeKindSem::Function)
     {
+        validateCallArgs(expr, calleeType, "function");
         return calleeType->returnType();
     }
 

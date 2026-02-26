@@ -484,6 +484,13 @@ unsigned nextTempId();
 /// @return An ArrayAccess struct with the computed address and element type.
 ArrayAccess lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind);
 
+/// @brief Current expression lowering depth for recursion guard.
+unsigned exprLowerDepth_{0};
+/// @brief Current statement lowering depth for recursion guard.
+unsigned stmtLowerDepth_{0};
+/// @brief Maximum allowed lowering recursion depth.
+static constexpr unsigned kMaxLowerDepth = 512;
+
 /// @brief Emit the entire BASIC program as an IL module.
 /// @details This is the top-level entry point for lowering: it processes all
 ///          top-level statements, SUB/FUNCTION declarations, and DIM arrays,

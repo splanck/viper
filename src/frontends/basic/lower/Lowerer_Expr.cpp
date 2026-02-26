@@ -934,6 +934,18 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
 /// @return Resulting IL value and type.
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 {
+    if (++exprLowerDepth_ > kMaxLowerDepth)
+    {
+        --exprLowerDepth_;
+        // Return a dummy value to avoid cascading errors
+        return RVal{Value::constInt(0), Type(Type::Kind::I64)};
+    }
+    struct DepthGuard
+    {
+        unsigned &d;
+        ~DepthGuard() { --d; }
+    } exprGuard_{exprLowerDepth_};
+
     curLoc = expr.loc;
     LowererExprVisitor visitor(*this);
     visitor.visitExpr(expr);

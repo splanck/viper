@@ -38,6 +38,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_platform.h"
 
 //=============================================================================
 // Font Functions
@@ -45,6 +46,7 @@
 
 void *rt_font_load(rt_string path)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *cpath = rt_string_to_cstr(path);
     if (!cpath)
         return NULL;
@@ -56,6 +58,7 @@ void *rt_font_load(rt_string path)
 
 void rt_font_destroy(void *font)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (font)
     {
         vg_font_destroy((vg_font_t *)font);
@@ -68,6 +71,7 @@ void rt_font_destroy(void *font)
 
 void rt_widget_destroy(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
     {
         vg_widget_destroy((vg_widget_t *)widget);
@@ -76,6 +80,7 @@ void rt_widget_destroy(void *widget)
 
 void rt_widget_set_visible(void *widget, int64_t visible)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
     {
         vg_widget_set_visible((vg_widget_t *)widget, visible != 0);
@@ -84,6 +89,7 @@ void rt_widget_set_visible(void *widget, int64_t visible)
 
 void rt_widget_set_enabled(void *widget, int64_t enabled)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
     {
         vg_widget_set_enabled((vg_widget_t *)widget, enabled != 0);
@@ -92,6 +98,7 @@ void rt_widget_set_enabled(void *widget, int64_t enabled)
 
 void rt_widget_set_size(void *widget, int64_t width, int64_t height)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
     {
         vg_widget_set_fixed_size((vg_widget_t *)widget, (float)width, (float)height);
@@ -100,6 +107,7 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height)
 
 void rt_widget_set_flex(void *widget, double flex)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
     {
         vg_widget_set_flex((vg_widget_t *)widget, (float)flex);
@@ -108,6 +116,7 @@ void rt_widget_set_flex(void *widget, double flex)
 
 void rt_widget_add_child(void *parent, void *child)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (parent && child)
     {
         vg_widget_add_child((vg_widget_t *)parent, (vg_widget_t *)child);
@@ -117,12 +126,14 @@ void rt_widget_add_child(void *parent, void *child)
 // API-005: SetMargin
 void rt_widget_set_margin(void *widget, int64_t margin)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
         vg_widget_set_margin((vg_widget_t *)widget, (float)margin);
 }
 
 void rt_widget_set_tab_index(void *widget, int64_t idx)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
         vg_widget_set_tab_index((vg_widget_t *)widget, (int)idx);
 }
@@ -130,6 +141,7 @@ void rt_widget_set_tab_index(void *widget, int64_t idx)
 // BINDING-003: GuiWidget read accessors
 int64_t rt_widget_is_visible(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return ((vg_widget_t *)widget)->visible ? 1 : 0;
@@ -137,6 +149,7 @@ int64_t rt_widget_is_visible(void *widget)
 
 int64_t rt_widget_is_enabled(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return ((vg_widget_t *)widget)->enabled ? 1 : 0;
@@ -144,6 +157,7 @@ int64_t rt_widget_is_enabled(void *widget)
 
 int64_t rt_widget_get_width(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (int64_t)((vg_widget_t *)widget)->width;
@@ -151,6 +165,7 @@ int64_t rt_widget_get_width(void *widget)
 
 int64_t rt_widget_get_height(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (int64_t)((vg_widget_t *)widget)->height;
@@ -158,6 +173,7 @@ int64_t rt_widget_get_height(void *widget)
 
 int64_t rt_widget_get_x(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (int64_t)((vg_widget_t *)widget)->x;
@@ -165,6 +181,7 @@ int64_t rt_widget_get_x(void *widget)
 
 int64_t rt_widget_get_y(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (int64_t)((vg_widget_t *)widget)->y;
@@ -172,6 +189,7 @@ int64_t rt_widget_get_y(void *widget)
 
 double rt_widget_get_flex(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0.0;
     return (double)((vg_widget_t *)widget)->layout.flex;
@@ -183,6 +201,7 @@ double rt_widget_get_flex(void *widget)
 
 void *rt_label_new(void *parent, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_label_t *label = vg_label_create((vg_widget_t *)parent, ctext);
     free(ctext);
@@ -191,6 +210,7 @@ void *rt_label_new(void *parent, rt_string text)
 
 void rt_label_set_text(void *label, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!label)
         return;
     char *ctext = rt_string_to_cstr(text);
@@ -200,6 +220,7 @@ void rt_label_set_text(void *label, rt_string text)
 
 void rt_label_set_font(void *label, void *font, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (label)
     {
         vg_label_set_font((vg_label_t *)label, (vg_font_t *)font, (float)size);
@@ -208,6 +229,7 @@ void rt_label_set_font(void *label, void *font, double size)
 
 void rt_label_set_color(void *label, int64_t color)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (label)
     {
         vg_label_set_color((vg_label_t *)label, (uint32_t)color);
@@ -220,6 +242,7 @@ void rt_label_set_color(void *label, int64_t color)
 
 void *rt_button_new(void *parent, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_button_t *button = vg_button_create((vg_widget_t *)parent, ctext);
     free(ctext);
@@ -228,6 +251,7 @@ void *rt_button_new(void *parent, rt_string text)
 
 void rt_button_set_text(void *button, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!button)
         return;
     char *ctext = rt_string_to_cstr(text);
@@ -237,6 +261,7 @@ void rt_button_set_text(void *button, rt_string text)
 
 void rt_button_set_font(void *button, void *font, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button)
     {
         vg_button_set_font((vg_button_t *)button, (vg_font_t *)font, (float)size);
@@ -245,6 +270,7 @@ void rt_button_set_font(void *button, void *font, double size)
 
 void rt_button_set_style(void *button, int64_t style)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button)
     {
         vg_button_set_style((vg_button_t *)button, (vg_button_style_t)style);
@@ -253,6 +279,7 @@ void rt_button_set_style(void *button, int64_t style)
 
 void rt_button_set_icon(void *button, rt_string icon)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!button)
         return;
     char *cicon = rt_string_to_cstr(icon);
@@ -262,6 +289,7 @@ void rt_button_set_icon(void *button, rt_string icon)
 
 void rt_button_set_icon_pos(void *button, int64_t pos)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button)
         vg_button_set_icon_position((vg_button_t *)button, (int)pos);
 }
@@ -272,11 +300,13 @@ void rt_button_set_icon_pos(void *button, int64_t pos)
 
 void *rt_textinput_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_textinput_create((vg_widget_t *)parent);
 }
 
 void rt_textinput_set_text(void *input, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!input)
         return;
     char *ctext = rt_string_to_cstr(text);
@@ -286,6 +316,7 @@ void rt_textinput_set_text(void *input, rt_string text)
 
 rt_string rt_textinput_get_text(void *input)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!input)
         return rt_str_empty();
     const char *text = vg_textinput_get_text((vg_textinput_t *)input);
@@ -296,6 +327,7 @@ rt_string rt_textinput_get_text(void *input)
 
 void rt_textinput_set_placeholder(void *input, rt_string placeholder)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!input)
         return;
     char *ctext = rt_string_to_cstr(placeholder);
@@ -305,6 +337,7 @@ void rt_textinput_set_placeholder(void *input, rt_string placeholder)
 
 void rt_textinput_set_font(void *input, void *font, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (input)
     {
         vg_textinput_set_font((vg_textinput_t *)input, (vg_font_t *)font, (float)size);
@@ -317,6 +350,7 @@ void rt_textinput_set_font(void *input, void *font, double size)
 
 void *rt_checkbox_new(void *parent, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_checkbox_t *checkbox = vg_checkbox_create((vg_widget_t *)parent, ctext);
     free(ctext);
@@ -325,6 +359,7 @@ void *rt_checkbox_new(void *parent, rt_string text)
 
 void rt_checkbox_set_checked(void *checkbox, int64_t checked)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (checkbox)
     {
         vg_checkbox_set_checked((vg_checkbox_t *)checkbox, checked != 0);
@@ -333,6 +368,7 @@ void rt_checkbox_set_checked(void *checkbox, int64_t checked)
 
 int64_t rt_checkbox_is_checked(void *checkbox)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!checkbox)
         return 0;
     return vg_checkbox_is_checked((vg_checkbox_t *)checkbox) ? 1 : 0;
@@ -340,6 +376,7 @@ int64_t rt_checkbox_is_checked(void *checkbox)
 
 void rt_checkbox_set_text(void *checkbox, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!checkbox)
         return;
     char *ctext = rt_string_to_cstr(text);
@@ -353,11 +390,13 @@ void rt_checkbox_set_text(void *checkbox, rt_string text)
 
 void *rt_scrollview_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_scrollview_create((vg_widget_t *)parent);
 }
 
 void rt_scrollview_set_scroll(void *scroll, double x, double y)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (scroll)
     {
         vg_scrollview_set_scroll((vg_scrollview_t *)scroll, (float)x, (float)y);
@@ -366,6 +405,7 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y)
 
 void rt_scrollview_set_content_size(void *scroll, double width, double height)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (scroll)
     {
         vg_scrollview_set_content_size((vg_scrollview_t *)scroll, (float)width, (float)height);
@@ -375,6 +415,7 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height)
 // BINDING-004: ScrollView scroll position query
 double rt_scrollview_get_scroll_x(void *scroll)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!scroll)
         return 0.0;
     float x = 0.0f, y = 0.0f;
@@ -384,6 +425,7 @@ double rt_scrollview_get_scroll_x(void *scroll)
 
 double rt_scrollview_get_scroll_y(void *scroll)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!scroll)
         return 0.0;
     float x = 0.0f, y = 0.0f;
@@ -397,6 +439,7 @@ double rt_scrollview_get_scroll_y(void *scroll)
 
 void *rt_treeview_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv = vg_treeview_create((vg_widget_t *)parent);
     if (tv)
     {
@@ -409,6 +452,7 @@ void *rt_treeview_new(void *parent)
 
 void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tree)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -420,6 +464,7 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
 
 void rt_treeview_remove_node(void *tree, void *node)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tree && node)
     {
         vg_treeview_remove_node((vg_treeview_t *)tree, (vg_tree_node_t *)node);
@@ -428,6 +473,7 @@ void rt_treeview_remove_node(void *tree, void *node)
 
 void rt_treeview_clear(void *tree)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tree)
     {
         vg_treeview_clear((vg_treeview_t *)tree);
@@ -436,6 +482,7 @@ void rt_treeview_clear(void *tree)
 
 void rt_treeview_expand(void *tree, void *node)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tree && node)
     {
         vg_treeview_expand((vg_treeview_t *)tree, (vg_tree_node_t *)node);
@@ -444,6 +491,7 @@ void rt_treeview_expand(void *tree, void *node)
 
 void rt_treeview_collapse(void *tree, void *node)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tree && node)
     {
         vg_treeview_collapse((vg_treeview_t *)tree, (vg_tree_node_t *)node);
@@ -452,6 +500,7 @@ void rt_treeview_collapse(void *tree, void *node)
 
 void rt_treeview_select(void *tree, void *node)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tree)
     {
         vg_treeview_select((vg_treeview_t *)tree, (vg_tree_node_t *)node);
@@ -460,6 +509,7 @@ void rt_treeview_select(void *tree, void *node)
 
 void rt_treeview_set_font(void *tree, void *font, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tree)
     {
         vg_treeview_set_font((vg_treeview_t *)tree, (vg_font_t *)font, (float)size);
@@ -468,6 +518,7 @@ void rt_treeview_set_font(void *tree, void *font, double size)
 
 void *rt_treeview_get_selected(void *tree)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tree)
         return NULL;
     vg_treeview_t *tv = (vg_treeview_t *)tree;
@@ -480,6 +531,7 @@ static vg_treeview_t *g_last_treeview_checked = NULL;
 
 int64_t rt_treeview_was_selection_changed(void *tree)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tree)
         return 0;
     vg_treeview_t *tv = (vg_treeview_t *)tree;
@@ -502,6 +554,7 @@ int64_t rt_treeview_was_selection_changed(void *tree)
 
 rt_string rt_treeview_node_get_text(void *node)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!node)
         return rt_str_empty();
     vg_tree_node_t *n = (vg_tree_node_t *)node;
@@ -512,6 +565,7 @@ rt_string rt_treeview_node_get_text(void *node)
 
 void rt_treeview_node_set_data(void *node, rt_string data)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!node)
         return;
     vg_tree_node_t *n = (vg_tree_node_t *)node;
@@ -525,6 +579,7 @@ void rt_treeview_node_set_data(void *node, rt_string data)
 
 rt_string rt_treeview_node_get_data(void *node)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!node)
         return rt_str_empty();
     vg_tree_node_t *n = (vg_tree_node_t *)node;
@@ -536,6 +591,7 @@ rt_string rt_treeview_node_get_data(void *node)
 
 int64_t rt_treeview_node_is_expanded(void *node)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!node)
         return 0;
     vg_tree_node_t *n = (vg_tree_node_t *)node;

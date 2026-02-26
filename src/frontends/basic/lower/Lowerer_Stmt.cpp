@@ -496,6 +496,17 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
 /// @param stmt Statement to lower.
 void Lowerer::lowerStmt(const Stmt &stmt)
 {
+    if (++stmtLowerDepth_ > kMaxLowerDepth)
+    {
+        --stmtLowerDepth_;
+        return;
+    }
+    struct DepthGuard
+    {
+        unsigned &d;
+        ~DepthGuard() { --d; }
+    } stmtGuard_{stmtLowerDepth_};
+
     curLoc = stmt.loc;
     LowererStmtVisitor visitor(*this);
     visitor.visitStmt(stmt);

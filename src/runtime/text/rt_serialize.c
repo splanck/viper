@@ -49,8 +49,8 @@
 
 extern void rt_trap(const char *msg);
 
-/// Thread-local error message (static for simplicity).
-static rt_string g_last_error = NULL;
+/// Thread-local error message.
+static _Thread_local rt_string g_last_error = NULL;
 
 static void set_error(const char *msg)
 {

@@ -59,8 +59,8 @@ typedef struct xml_node
     struct xml_node *parent; ///< Parent node (weak reference)
 } xml_node;
 
-/// @brief Last parse error message (thread-local would be better).
-static char xml_last_error[256] = {0};
+/// @brief Last parse error message (thread-local to avoid concurrent parse clobbering).
+static _Thread_local char xml_last_error[256] = {0};
 
 //=============================================================================
 // Forward Declarations

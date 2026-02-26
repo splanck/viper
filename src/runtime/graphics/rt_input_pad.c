@@ -37,6 +37,7 @@
 
 #include "rt_box.h"
 #include "rt_input.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -1043,6 +1044,7 @@ static double clamp_axis(double value, double min_val, double max_val)
 
 void rt_pad_init(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_pad_initialized)
         return;
 
@@ -1074,6 +1076,7 @@ void rt_pad_init(void)
 
 void rt_pad_begin_frame(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event flags
     for (int i = 0; i < VIPER_PAD_MAX; i++)
     {
@@ -1087,6 +1090,7 @@ void rt_pad_begin_frame(void)
 
 void rt_pad_poll(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!g_pad_initialized)
         rt_pad_init();
 
@@ -1128,6 +1132,7 @@ void rt_pad_poll(void)
 
 int64_t rt_pad_count(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     int64_t count = 0;
     for (int i = 0; i < VIPER_PAD_MAX; i++)
     {
@@ -1139,6 +1144,7 @@ int64_t rt_pad_count(void)
 
 int8_t rt_pad_is_connected(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
     return g_pads[index].connected ? 1 : 0;
@@ -1146,6 +1152,7 @@ int8_t rt_pad_is_connected(int64_t index)
 
 rt_string rt_pad_name(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX || !g_pads[index].connected)
         return rt_string_from_bytes("", 0);
 
@@ -1158,6 +1165,7 @@ rt_string rt_pad_name(int64_t index)
 
 int8_t rt_pad_is_down(int64_t index, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
     if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
@@ -1170,6 +1178,7 @@ int8_t rt_pad_is_down(int64_t index, int64_t button)
 
 int8_t rt_pad_is_up(int64_t index, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 1;
     if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
@@ -1186,6 +1195,7 @@ int8_t rt_pad_is_up(int64_t index, int64_t button)
 
 int8_t rt_pad_was_pressed(int64_t index, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
     if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
@@ -1198,6 +1208,7 @@ int8_t rt_pad_was_pressed(int64_t index, int64_t button)
 
 int8_t rt_pad_was_released(int64_t index, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
     if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
@@ -1214,6 +1225,7 @@ int8_t rt_pad_was_released(int64_t index, int64_t button)
 
 double rt_pad_left_x(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
@@ -1224,6 +1236,7 @@ double rt_pad_left_x(int64_t index)
 
 double rt_pad_left_y(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
@@ -1234,6 +1247,7 @@ double rt_pad_left_y(int64_t index)
 
 double rt_pad_right_x(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
@@ -1244,6 +1258,7 @@ double rt_pad_right_x(int64_t index)
 
 double rt_pad_right_y(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
@@ -1254,6 +1269,7 @@ double rt_pad_right_y(int64_t index)
 
 double rt_pad_left_trigger(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
@@ -1264,6 +1280,7 @@ double rt_pad_left_trigger(int64_t index)
 
 double rt_pad_right_trigger(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
@@ -1278,11 +1295,13 @@ double rt_pad_right_trigger(int64_t index)
 
 void rt_pad_set_deadzone(double radius)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_pad_deadzone = clamp_axis(radius, 0.0, 1.0);
 }
 
 double rt_pad_get_deadzone(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_pad_deadzone;
 }
 
@@ -1292,6 +1311,7 @@ double rt_pad_get_deadzone(void)
 
 void rt_pad_vibrate(int64_t index, double left_motor, double right_motor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return;
     if (!g_pads[index].connected)
@@ -1308,6 +1328,7 @@ void rt_pad_vibrate(int64_t index, double left_motor, double right_motor)
 
 void rt_pad_stop_vibration(int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     rt_pad_vibrate(index, 0.0, 0.0);
 }
 

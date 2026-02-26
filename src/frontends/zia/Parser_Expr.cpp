@@ -91,6 +91,18 @@ MatchArm::Pattern Parser::parseMatchPattern()
 /// @return True if a valid non-expression pattern was parsed, false otherwise.
 bool Parser::parsePatternCore(MatchArm::Pattern &out)
 {
+    if (++patternDepth_ > kMaxPatternDepth)
+    {
+        --patternDepth_;
+        error("pattern nesting too deep (limit: 256)");
+        return false;
+    }
+    struct DepthGuard
+    {
+        unsigned &d;
+        ~DepthGuard() { --d; }
+    } patternGuard_{patternDepth_};
+
     if (check(TokenKind::Identifier))
     {
         Token nameTok = advance();

@@ -97,6 +97,9 @@
 #include "InstrLowering.hpp"
 #include "OpcodeMappings.hpp"
 
+#include "il/core/Opcode.hpp"
+
+#include <cstdio>
 #include <cstring>
 
 namespace viper::codegen::aarch64
@@ -1024,6 +1027,27 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::CBr:
             // Terminators are lowered in a separate pass after all instructions
             return true;
+
+        // === Structured Error Handling (not yet supported in native codegen) ===
+        case Opcode::TrapKind:
+        case Opcode::TrapErr:
+        case Opcode::ErrGetKind:
+        case Opcode::ErrGetCode:
+        case Opcode::ErrGetIp:
+        case Opcode::ErrGetLine:
+        case Opcode::EhPush:
+        case Opcode::EhPop:
+        case Opcode::EhEntry:
+        case Opcode::ResumeSame:
+        case Opcode::ResumeNext:
+        case Opcode::ResumeLabel:
+            fprintf(stderr,
+                    "ERROR: AArch64 native codegen does not yet support structured "
+                    "error handling (opcode: %s). Use VM execution for programs "
+                    "using try/catch.\n",
+                    il::core::toString(ins.op));
+            return true;
+
         default:
             // Opcode not handled - caller should process
             return false;

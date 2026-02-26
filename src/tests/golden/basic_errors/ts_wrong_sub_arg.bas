@@ -1,0 +1,5 @@
+10 SUB PrintNum(n AS INTEGER)
+20   PRINT n
+30 END SUB
+40 PrintNum("hi")
+50 END

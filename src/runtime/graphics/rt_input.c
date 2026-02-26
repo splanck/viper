@@ -39,6 +39,7 @@
 
 #include "rt_input.h"
 #include "rt_box.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -129,6 +130,7 @@ static bool g_initialized;
 
 void rt_keyboard_init(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_initialized)
         return;
 
@@ -144,6 +146,7 @@ void rt_keyboard_init(void)
 
 void rt_keyboard_begin_frame(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event lists
     g_pressed_count = 0;
     g_released_count = 0;
@@ -152,6 +155,7 @@ void rt_keyboard_begin_frame(void)
 
 void rt_keyboard_on_key_down(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     // Convert vgfx key to GLFW-style
     int64_t glfw_key = vgfx_to_glfw(key);
 
@@ -173,6 +177,7 @@ void rt_keyboard_on_key_down(int64_t key)
 
 void rt_keyboard_on_key_up(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     // Convert vgfx key to GLFW-style
     int64_t glfw_key = vgfx_to_glfw(key);
 
@@ -190,6 +195,7 @@ void rt_keyboard_on_key_up(int64_t key)
 
 void rt_keyboard_text_input(int32_t ch)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!g_text_input_enabled)
         return;
 
@@ -203,6 +209,7 @@ void rt_keyboard_text_input(int32_t ch)
 
 void rt_keyboard_set_canvas(void *canvas)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_active_canvas = canvas;
     if (canvas)
         rt_keyboard_init();
@@ -214,6 +221,7 @@ void rt_keyboard_set_canvas(void *canvas)
 
 int8_t rt_keyboard_is_down(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (key <= 0 || key >= VIPER_KEY_MAX)
         return 0;
 
@@ -222,6 +230,7 @@ int8_t rt_keyboard_is_down(int64_t key)
 
 int8_t rt_keyboard_is_up(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (key <= 0 || key >= VIPER_KEY_MAX)
         return 1;
 
@@ -230,6 +239,7 @@ int8_t rt_keyboard_is_up(int64_t key)
 
 int8_t rt_keyboard_any_down(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < VIPER_KEY_MAX; i++)
     {
         if (g_key_state[i])
@@ -240,6 +250,7 @@ int8_t rt_keyboard_any_down(void)
 
 int64_t rt_keyboard_get_down(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < VIPER_KEY_MAX; i++)
     {
         if (g_key_state[i])
@@ -254,6 +265,7 @@ int64_t rt_keyboard_get_down(void)
 
 int8_t rt_keyboard_was_pressed(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_pressed_count; i++)
     {
         if (g_pressed_keys[i] == key)
@@ -264,6 +276,7 @@ int8_t rt_keyboard_was_pressed(int64_t key)
 
 int8_t rt_keyboard_was_released(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_released_count; i++)
     {
         if (g_released_keys[i] == key)
@@ -274,6 +287,7 @@ int8_t rt_keyboard_was_released(int64_t key)
 
 void *rt_keyboard_get_pressed(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
     for (int i = 0; i < g_pressed_count; i++)
     {
@@ -284,6 +298,7 @@ void *rt_keyboard_get_pressed(void)
 
 void *rt_keyboard_get_released(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
     for (int i = 0; i < g_released_count; i++)
     {
@@ -298,6 +313,7 @@ void *rt_keyboard_get_released(void)
 
 rt_string rt_keyboard_get_text(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_text_length == 0)
         return rt_string_from_bytes("", 0);
 
@@ -306,11 +322,13 @@ rt_string rt_keyboard_get_text(void)
 
 void rt_keyboard_enable_text_input(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_text_input_enabled = true;
 }
 
 void rt_keyboard_disable_text_input(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_text_input_enabled = false;
 }
 
@@ -320,21 +338,25 @@ void rt_keyboard_disable_text_input(void)
 
 int8_t rt_keyboard_shift(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LSHIFT] || g_key_state[VIPER_KEY_RSHIFT]) ? 1 : 0;
 }
 
 int8_t rt_keyboard_ctrl(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LCTRL] || g_key_state[VIPER_KEY_RCTRL]) ? 1 : 0;
 }
 
 int8_t rt_keyboard_alt(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LALT] || g_key_state[VIPER_KEY_RALT]) ? 1 : 0;
 }
 
 int8_t rt_keyboard_caps_lock(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_caps_lock ? 1 : 0;
 }
 
@@ -344,6 +366,7 @@ int8_t rt_keyboard_caps_lock(void)
 
 rt_string rt_keyboard_key_name(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     const char *name = NULL;
 
     // Letters
@@ -1109,6 +1132,7 @@ static int64_t get_time_ms(void)
 
 void rt_mouse_init(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_mouse_initialized)
         return;
 
@@ -1140,6 +1164,7 @@ void rt_mouse_init(void)
 
 void rt_mouse_begin_frame(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     // Calculate delta from previous position
     g_mouse_delta_x = g_mouse_x - g_mouse_prev_x;
     g_mouse_delta_y = g_mouse_y - g_mouse_prev_y;
@@ -1162,12 +1187,14 @@ void rt_mouse_begin_frame(void)
 
 void rt_mouse_update_pos(int64_t x, int64_t y)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_x = x;
     g_mouse_y = y;
 }
 
 void rt_mouse_button_down(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return;
 
@@ -1181,6 +1208,7 @@ void rt_mouse_button_down(int64_t button)
 
 void rt_mouse_button_up(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return;
 
@@ -1209,12 +1237,14 @@ void rt_mouse_button_up(int64_t button)
 
 void rt_mouse_update_wheel(int64_t dx, int64_t dy)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_wheel_x += dx;
     g_mouse_wheel_y += dy;
 }
 
 void rt_mouse_set_canvas(void *canvas)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_canvas = canvas;
     if (canvas)
         rt_mouse_init();
@@ -1226,21 +1256,25 @@ void rt_mouse_set_canvas(void *canvas)
 
 int64_t rt_mouse_x(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_x;
 }
 
 int64_t rt_mouse_y(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_y;
 }
 
 int64_t rt_mouse_delta_x(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_delta_x;
 }
 
 int64_t rt_mouse_delta_y(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_delta_y;
 }
 
@@ -1250,6 +1284,7 @@ int64_t rt_mouse_delta_y(void)
 
 int8_t rt_mouse_is_down(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_state[button] ? 1 : 0;
@@ -1257,6 +1292,7 @@ int8_t rt_mouse_is_down(int64_t button)
 
 int8_t rt_mouse_is_up(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 1;
     return g_mouse_button_state[button] ? 0 : 1;
@@ -1264,16 +1300,19 @@ int8_t rt_mouse_is_up(int64_t button)
 
 int8_t rt_mouse_left(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return rt_mouse_is_down(VIPER_MOUSE_BUTTON_LEFT);
 }
 
 int8_t rt_mouse_right(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return rt_mouse_is_down(VIPER_MOUSE_BUTTON_RIGHT);
 }
 
 int8_t rt_mouse_middle(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return rt_mouse_is_down(VIPER_MOUSE_BUTTON_MIDDLE);
 }
 
@@ -1283,6 +1322,7 @@ int8_t rt_mouse_middle(void)
 
 int8_t rt_mouse_was_pressed(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_pressed[button] ? 1 : 0;
@@ -1290,6 +1330,7 @@ int8_t rt_mouse_was_pressed(int64_t button)
 
 int8_t rt_mouse_was_released(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_released[button] ? 1 : 0;
@@ -1297,6 +1338,7 @@ int8_t rt_mouse_was_released(int64_t button)
 
 int8_t rt_mouse_was_clicked(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_clicked[button] ? 1 : 0;
@@ -1304,6 +1346,7 @@ int8_t rt_mouse_was_clicked(int64_t button)
 
 int8_t rt_mouse_was_double_clicked(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_double_clicked[button] ? 1 : 0;
@@ -1315,11 +1358,13 @@ int8_t rt_mouse_was_double_clicked(int64_t button)
 
 int64_t rt_mouse_wheel_x(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_wheel_x;
 }
 
 int64_t rt_mouse_wheel_y(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_wheel_y;
 }
 
@@ -1329,6 +1374,7 @@ int64_t rt_mouse_wheel_y(void)
 
 void rt_mouse_show(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_hidden = false;
     // Platform-specific cursor show would go here
     // vgfx doesn't currently have cursor hide/show API
@@ -1336,34 +1382,40 @@ void rt_mouse_show(void)
 
 void rt_mouse_hide(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_hidden = true;
     // Platform-specific cursor hide would go here
 }
 
 int8_t rt_mouse_is_hidden(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_hidden ? 1 : 0;
 }
 
 void rt_mouse_capture(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_captured = true;
     // Platform-specific mouse capture would go here
 }
 
 void rt_mouse_release(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_captured = false;
     // Platform-specific mouse release would go here
 }
 
 int8_t rt_mouse_is_captured(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return g_mouse_captured ? 1 : 0;
 }
 
 void rt_mouse_set_pos(int64_t x, int64_t y)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_x = x;
     g_mouse_y = y;
     // Platform-specific cursor warp would go here

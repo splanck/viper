@@ -69,6 +69,7 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
 
 void *rt_commandpalette_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_commandpalette_t *palette = vg_commandpalette_create();
     if (!palette)
         return NULL;
@@ -87,6 +88,7 @@ void *rt_commandpalette_new(void *parent)
 
 void rt_commandpalette_destroy(void *palette)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -100,6 +102,7 @@ void rt_commandpalette_destroy(void *palette)
 
 void rt_commandpalette_add_command(void *palette, rt_string id, rt_string label, rt_string category)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -119,6 +122,7 @@ void rt_commandpalette_add_command(void *palette, rt_string id, rt_string label,
 void rt_commandpalette_add_command_with_shortcut(
     void *palette, rt_string id, rt_string label, rt_string category, rt_string shortcut)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -140,6 +144,7 @@ void rt_commandpalette_add_command_with_shortcut(
 
 void rt_commandpalette_remove_command(void *palette, rt_string id)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -151,6 +156,7 @@ void rt_commandpalette_remove_command(void *palette, rt_string id)
 
 void rt_commandpalette_clear(void *palette)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -159,6 +165,7 @@ void rt_commandpalette_clear(void *palette)
 
 void rt_commandpalette_show(void *palette)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -168,6 +175,7 @@ void rt_commandpalette_show(void *palette)
 
 void rt_commandpalette_hide(void *palette)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -176,6 +184,7 @@ void rt_commandpalette_hide(void *palette)
 
 int64_t rt_commandpalette_is_visible(void *palette)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return 0;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -184,6 +193,7 @@ int64_t rt_commandpalette_is_visible(void *palette)
 
 void rt_commandpalette_set_placeholder(void *palette, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -196,6 +206,7 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text)
 
 rt_string rt_commandpalette_get_selected_command(void *palette)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return rt_string_from_bytes("", 0);
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -208,6 +219,7 @@ rt_string rt_commandpalette_get_selected_command(void *palette)
 
 int64_t rt_commandpalette_was_command_selected(void *palette)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return 0;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -226,6 +238,7 @@ static uint32_t g_tooltip_delay_ms = 500;
 
 void rt_tooltip_show(rt_string text, int64_t x, int64_t y)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
 
     // Create tooltip if needed
@@ -246,6 +259,7 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y)
 
 void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_cstr(title);
     char *cbody = rt_string_to_cstr(body);
 
@@ -272,6 +286,7 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
 
 void rt_tooltip_hide(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_active_tooltip)
     {
         vg_tooltip_hide(g_active_tooltip);
@@ -280,6 +295,7 @@ void rt_tooltip_hide(void)
 
 void rt_tooltip_set_delay(int64_t delay_ms)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_tooltip_delay_ms = (uint32_t)delay_ms;
     if (g_active_tooltip)
     {
@@ -289,6 +305,7 @@ void rt_tooltip_set_delay(int64_t delay_ms)
 
 void rt_widget_set_tooltip(void *widget, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
     char *ctext = rt_string_to_cstr(text);
@@ -299,6 +316,7 @@ void rt_widget_set_tooltip(void *widget, rt_string text)
 
 void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
     // Combine title and body for basic tooltip support
@@ -317,6 +335,7 @@ void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body)
 
 void rt_widget_clear_tooltip(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
     vg_widget_set_tooltip_text((vg_widget_t *)widget, NULL);
@@ -387,6 +406,7 @@ static vg_notification_position_t rt_toast_position_to_vg(int64_t position)
 
 void rt_toast_info(rt_string message)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (!mgr)
         return;
@@ -399,6 +419,7 @@ void rt_toast_info(rt_string message)
 
 void rt_toast_success(rt_string message)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (!mgr)
         return;
@@ -411,6 +432,7 @@ void rt_toast_success(rt_string message)
 
 void rt_toast_warning(rt_string message)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (!mgr)
         return;
@@ -423,6 +445,7 @@ void rt_toast_warning(rt_string message)
 
 void rt_toast_error(rt_string message)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (!mgr)
         return;
@@ -435,6 +458,7 @@ void rt_toast_error(rt_string message)
 
 void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (!mgr)
         return NULL;
@@ -455,6 +479,7 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms)
 
 void rt_toast_set_action(void *toast, rt_string label)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toast)
         return;
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
@@ -464,6 +489,7 @@ void rt_toast_set_action(void *toast, rt_string label)
 
 int64_t rt_toast_was_action_clicked(void *toast)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toast)
         return 0;
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
@@ -474,6 +500,7 @@ int64_t rt_toast_was_action_clicked(void *toast)
 
 int64_t rt_toast_was_dismissed(void *toast)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toast)
         return 0;
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
@@ -484,6 +511,7 @@ int64_t rt_toast_was_dismissed(void *toast)
 
 void rt_toast_dismiss(void *toast)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toast)
         return;
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
@@ -497,6 +525,7 @@ void rt_toast_dismiss(void *toast)
 
 void rt_toast_set_position(int64_t position)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (mgr)
     {
@@ -506,6 +535,7 @@ void rt_toast_set_position(int64_t position)
 
 void rt_toast_set_max_visible(int64_t count)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (mgr)
     {
@@ -515,6 +545,7 @@ void rt_toast_set_max_visible(int64_t count)
 
 void rt_toast_dismiss_all(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (mgr)
     {
@@ -563,6 +594,7 @@ static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_da
 
 void *rt_breadcrumb_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     if (!bc)
         return NULL;
@@ -582,6 +614,7 @@ void *rt_breadcrumb_new(void *parent)
 
 void rt_breadcrumb_destroy(void *crumb)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -595,6 +628,7 @@ void rt_breadcrumb_destroy(void *crumb)
 
 void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -627,6 +661,7 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator)
 
 void rt_breadcrumb_set_items(void *crumb, rt_string items)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -661,6 +696,7 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items)
 
 void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -679,6 +715,7 @@ void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data)
 
 void rt_breadcrumb_clear(void *crumb)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -687,6 +724,7 @@ void rt_breadcrumb_clear(void *crumb)
 
 int64_t rt_breadcrumb_was_item_clicked(void *crumb)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return 0;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -697,6 +735,7 @@ int64_t rt_breadcrumb_was_item_clicked(void *crumb)
 
 int64_t rt_breadcrumb_get_clicked_index(void *crumb)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return -1;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -705,6 +744,7 @@ int64_t rt_breadcrumb_get_clicked_index(void *crumb)
 
 rt_string rt_breadcrumb_get_clicked_data(void *crumb)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return rt_string_from_bytes("", 0);
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -717,6 +757,7 @@ rt_string rt_breadcrumb_get_clicked_data(void *crumb)
 
 void rt_breadcrumb_set_separator(void *crumb, rt_string sep)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -730,6 +771,7 @@ void rt_breadcrumb_set_separator(void *crumb, rt_string sep)
 
 void rt_breadcrumb_set_max_items(void *crumb, int64_t max)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
@@ -749,6 +791,7 @@ typedef struct rt_minimap_data
 
 void *rt_minimap_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_minimap_t *minimap = vg_minimap_create(NULL);
     if (!minimap)
         return NULL;
@@ -764,6 +807,7 @@ void *rt_minimap_new(void *parent)
 
 void rt_minimap_destroy(void *minimap)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -775,6 +819,7 @@ void rt_minimap_destroy(void *minimap)
 
 void rt_minimap_bind_editor(void *minimap, void *editor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap || !editor)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -783,6 +828,7 @@ void rt_minimap_bind_editor(void *minimap, void *editor)
 
 void rt_minimap_unbind_editor(void *minimap)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -791,6 +837,7 @@ void rt_minimap_unbind_editor(void *minimap)
 
 void rt_minimap_set_width(void *minimap, int64_t width)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -800,6 +847,7 @@ void rt_minimap_set_width(void *minimap, int64_t width)
 
 int64_t rt_minimap_get_width(void *minimap)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return 0;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -808,6 +856,7 @@ int64_t rt_minimap_get_width(void *minimap)
 
 void rt_minimap_set_scale(void *minimap, double scale)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -816,6 +865,7 @@ void rt_minimap_set_scale(void *minimap, double scale)
 
 void rt_minimap_set_show_slider(void *minimap, int64_t show)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -824,6 +874,7 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show)
 
 void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -847,6 +898,7 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
 
 void rt_minimap_remove_markers(void *minimap, int64_t line)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -866,6 +918,7 @@ void rt_minimap_remove_markers(void *minimap, int64_t line)
 
 void rt_minimap_clear_markers(void *minimap)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -898,6 +951,7 @@ typedef struct rt_drag_drop_data
 
 void rt_widget_set_draggable(void *widget, int64_t draggable)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
     // Note: Would need to extend vg_widget to support drag/drop
@@ -907,6 +961,7 @@ void rt_widget_set_draggable(void *widget, int64_t draggable)
 
 void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
     // Note: Would need to extend vg_widget to support drag/drop
@@ -916,6 +971,7 @@ void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data)
 
 int64_t rt_widget_is_being_dragged(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     // Note: Would need to extend vg_widget to support drag/drop
@@ -924,6 +980,7 @@ int64_t rt_widget_is_being_dragged(void *widget)
 
 void rt_widget_set_drop_target(void *widget, int64_t target)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
     // Note: Would need to extend vg_widget to support drag/drop
@@ -932,6 +989,7 @@ void rt_widget_set_drop_target(void *widget, int64_t target)
 
 void rt_widget_set_accepted_drop_types(void *widget, rt_string types)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
     // Note: Would need to extend vg_widget to support drag/drop
@@ -940,6 +998,7 @@ void rt_widget_set_accepted_drop_types(void *widget, rt_string types)
 
 int64_t rt_widget_is_drag_over(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     // Note: Would need to extend vg_widget to support drag/drop
@@ -948,6 +1007,7 @@ int64_t rt_widget_is_drag_over(void *widget)
 
 int64_t rt_widget_was_dropped(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     // Note: Would need to extend vg_widget to support drag/drop
@@ -956,6 +1016,7 @@ int64_t rt_widget_was_dropped(void *widget)
 
 rt_string rt_widget_get_drop_type(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return rt_string_from_bytes("", 0);
     // Note: Would need to extend vg_widget to support drag/drop
@@ -964,6 +1025,7 @@ rt_string rt_widget_get_drop_type(void *widget)
 
 rt_string rt_widget_get_drop_data(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return rt_string_from_bytes("", 0);
     // Note: Would need to extend vg_widget to support drag/drop
@@ -982,6 +1044,7 @@ static rt_file_drop_data_t g_file_drop = {0};
 
 int64_t rt_app_was_file_dropped(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     (void)app;
     int64_t result = g_file_drop.was_dropped;
     g_file_drop.was_dropped = 0;
@@ -990,12 +1053,14 @@ int64_t rt_app_was_file_dropped(void *app)
 
 int64_t rt_app_get_dropped_file_count(void *app)
 {
+    RT_ASSERT_MAIN_THREAD();
     (void)app;
     return g_file_drop.file_count;
 }
 
 rt_string rt_app_get_dropped_file(void *app, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     (void)app;
     if (index >= 0 && index < g_file_drop.file_count && g_file_drop.files)
     {

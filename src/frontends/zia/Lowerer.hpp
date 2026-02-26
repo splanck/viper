@@ -510,6 +510,13 @@ class Lowerer
     /// Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, Value> globalInitializers_;
 
+    /// @brief Current expression lowering depth for recursion guard.
+    unsigned exprLowerDepth_{0};
+    /// @brief Current statement lowering depth for recursion guard.
+    unsigned stmtLowerDepth_{0};
+    /// @brief Maximum allowed lowering recursion depth.
+    static constexpr unsigned kMaxLowerDepth = 512;
+
     /// @}
     //=========================================================================
     /// @name Block Management

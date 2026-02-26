@@ -146,4 +146,14 @@ function(viper_add_zia_tests)
     viper_add_test(test_zia_completion_engine ${_VIPER_ZIA_DIR}/test_zia_completion_engine.cpp)
     target_link_libraries(test_zia_completion_engine PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_completion_engine test_zia_completion_engine)
+
+    # Recursion depth limit tests
+    viper_add_test(test_zia_depth_limits ${_VIPER_ZIA_DIR}/test_zia_depth_limits.cpp)
+    target_link_libraries(test_zia_depth_limits PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_depth_limits test_zia_depth_limits)
+
+    # Type system soundness tests
+    viper_add_test(test_zia_type_soundness ${_VIPER_ZIA_DIR}/test_zia_type_soundness.cpp)
+    target_link_libraries(test_zia_type_soundness PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_type_soundness test_zia_type_soundness)
 endfunction()

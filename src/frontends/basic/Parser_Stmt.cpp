@@ -88,6 +88,22 @@ void Parser::registerOopParsers(StatementParserRegistry &registry)
 /// @return Owned AST node on success; @c nullptr when recovery is required.
 StmtPtr Parser::parseStatement(int line)
 {
+    if (++stmtDepth_ > kMaxStmtDepth)
+    {
+        --stmtDepth_;
+        emitError("B0001", peek(), "statement nesting too deep (limit: 512)");
+        // Consume tokens to the next line boundary so the collectStatements
+        // loop can make progress instead of spinning on the same token.
+        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+            consume();
+        return nullptr;
+    }
+    struct DepthGuard
+    {
+        unsigned &d;
+        ~DepthGuard() { --d; }
+    } stmtGuard_{stmtDepth_};
+
     // 1. Diagnose unexpected leading line numbers before statement content.
     if (auto handled = parseLeadingLineNumberError())
         return std::move(*handled);

@@ -128,6 +128,14 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
     if (!node)
         return types::unknown();
 
+    if (++typeResolveDepth_ > kMaxTypeResolveDepth)
+    {
+        --typeResolveDepth_;
+        error(node->loc, "type nesting too deep during resolution (limit: 256)");
+        return types::unknown();
+    }
+    struct DepthGuard { unsigned &d; ~DepthGuard() { --d; } } typeGuard_{typeResolveDepth_};
+
     switch (node->kind)
     {
         case TypeKind::Named:

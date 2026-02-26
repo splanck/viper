@@ -318,6 +318,48 @@ void emitSIToFP(const ILInstr &instr, MIRBuilder &builder);
 /// @param builder The MIR builder to append instructions to.
 void emitFPToSI(const ILInstr &instr, MIRBuilder &builder);
 
+/// @brief Emits x86-64 MIR for IL `fptoui` instruction (float to unsigned int, checked).
+/// @param instr The IL fptoui instruction with F64 operand.
+/// @param builder The MIR builder to append instructions to.
+void emitFpToUi(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for IL `uitofp` instruction (unsigned int to float).
+/// @param instr The IL uitofp instruction with integer operand.
+/// @param builder The MIR builder to append instructions to.
+void emitUiToFp(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for IL `const_null` instruction (null pointer constant).
+/// @param instr The IL const_null instruction (no operands).
+/// @param builder The MIR builder to append instructions to.
+void emitConstNull(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for IL `const_f64` instruction (F64 constant).
+/// @param instr The IL const_f64 instruction with F64 value operand.
+/// @param builder The MIR builder to append instructions to.
+void emitConstF64(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for IL `gaddr` instruction (global address).
+/// @param instr The IL gaddr instruction with global reference operand.
+/// @param builder The MIR builder to append instructions to.
+void emitGAddr(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for IL `addr_of` instruction (address of local alloca).
+/// @param instr The IL addr_of instruction with alloca value operand.
+/// @param builder The MIR builder to append instructions to.
+void emitAddrOf(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for IL `idx_chk` instruction (bounds check).
+/// @details Emits inline CMP + JCC + UD2 sequences to trap on out-of-bounds access.
+/// @param instr The IL idx_chk instruction: index, lower bound, upper bound.
+/// @param builder The MIR builder to append instructions to.
+void emitIdxChk(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for IL `switch_i32` instruction (multi-way branch).
+/// @details Emits a chain of CMP + JCC pairs followed by a JMP to the default label.
+/// @param instr The IL switch_i32 instruction with scrutinee, case pairs, default.
+/// @param builder The MIR builder to append instructions to.
+void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder);
+
 /// @brief Emits x86-64 MIR for IL `eh.push` instruction (push exception handler).
 ///
 /// Pushes an exception handler onto the runtime exception handler stack. The operand
@@ -616,7 +658,7 @@ struct RuleSpec
 ///
 /// @see lookupRuleSpec() to find a rule for an instruction
 /// @see matchesRuleSpec() for the rule matching implementation
-inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 42>{
+inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 50>{
     // === Arithmetic Operations ===
     RuleSpec{"add",
              OperandShape{2U,
@@ -1061,6 +1103,95 @@ inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 42>{
              RuleFlags::None,
              &emitGEP,
              "gep"},
+    // === New opcodes: constants, addresses, casts, checks, control flow ===
+    RuleSpec{"const_null",
+             OperandShape{0U,
+                          0U,
+                          0U,
+                          {OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitConstNull,
+             "const_null"},
+    RuleSpec{"const_f64",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitConstF64,
+             "const_f64"},
+    RuleSpec{"gaddr",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitGAddr,
+             "gaddr"},
+    RuleSpec{"addr_of",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitAddrOf,
+             "addr_of"},
+    RuleSpec{"idx_chk",
+             OperandShape{3U,
+                          3U,
+                          3U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitIdxChk,
+             "idx_chk"},
+    RuleSpec{"switch_i32",
+             OperandShape{2U,
+                          std::numeric_limits<std::uint8_t>::max(),
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitSwitchI32,
+             "switch_i32"},
+    RuleSpec{"fptoui",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitFpToUi,
+             "fptoui"},
+    RuleSpec{"uitofp",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitUiToFp,
+             "uitofp"},
 };
 
 } // namespace lowering

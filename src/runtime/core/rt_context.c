@@ -47,8 +47,15 @@
 #include "rt_platform.h"
 #include "rt_string.h"
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if RT_PLATFORM_WINDOWS
+// GetCurrentThreadId() is available via windows.h (included from rt_platform.h)
+#elif !RT_PLATFORM_VIPERDOS
+#include <pthread.h>
+#endif
 
 void rt_file_state_cleanup(RtContext *ctx);
 void rt_type_registry_cleanup(RtContext *ctx);
@@ -116,6 +123,53 @@ static void rt_spin_unlock(int *lock)
     __atomic_clear(lock, __ATOMIC_RELEASE);
 }
 
+//===----------------------------------------------------------------------===//
+// Main-Thread Tracking
+//===----------------------------------------------------------------------===//
+
+#if RT_PLATFORM_WINDOWS
+static DWORD g_main_thread_id_;
+#elif RT_PLATFORM_VIPERDOS
+// ViperDOS is single-threaded; no tracking needed.
+#else
+static pthread_t g_main_thread_;
+#endif
+static int g_main_thread_set_ = 0;
+
+void rt_set_main_thread(void)
+{
+#if RT_PLATFORM_WINDOWS
+    g_main_thread_id_ = GetCurrentThreadId();
+#elif !RT_PLATFORM_VIPERDOS
+    g_main_thread_ = pthread_self();
+#endif
+    __atomic_store_n(&g_main_thread_set_, 1, __ATOMIC_RELEASE);
+}
+
+int rt_is_main_thread(void)
+{
+    if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
+        return 1; // Before init, assume main thread (avoids false positives)
+#if RT_PLATFORM_WINDOWS
+    return GetCurrentThreadId() == g_main_thread_id_;
+#elif RT_PLATFORM_VIPERDOS
+    return 1;
+#else
+    return pthread_equal(pthread_self(), g_main_thread_);
+#endif
+}
+
+void rt_assert_main_thread_(const char *file, int line)
+{
+    if (!rt_is_main_thread())
+    {
+        fprintf(stderr,
+                "%s:%d: GUI/input state accessed from non-main thread\n",
+                file, line);
+        abort();
+    }
+}
+
 /// @brief Ensure the legacy context is initialized (thread-safe).
 ///
 /// Implements a thread-safe double-checked locking pattern using atomics.
@@ -149,6 +203,9 @@ static void rt_legacy_ensure_init(void)
             &g_legacy_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
     {
         rt_context_init(&g_legacy_ctx);
+        // The first thread to reach here is the main thread.
+        if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
+            rt_set_main_thread();
         __atomic_store_n(&g_legacy_state, 2, __ATOMIC_RELEASE);
         return;
     }

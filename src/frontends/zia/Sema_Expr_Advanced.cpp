@@ -155,10 +155,14 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
 
     TypeRef baseType = analyzeExpr(expr->base.get());
 
-    // Unwrap Optional types for field/method access
-    // This handles variables assigned from optionals after null checks
+    // Unwrap Optional types for field/method access with null-safety warning.
+    // Without flow-sensitive null analysis, we cannot verify a null check
+    // precedes this access, so emit a warning for potential null dereference.
     if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
     {
+        warning(expr->loc,
+                "Accessing member '" + expr->field + "' on Optional type '" +
+                    baseType->toString() + "' without null check");
         baseType = baseType->innerType();
     }
 
@@ -244,6 +248,11 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         {
             return fieldIt->second;
         }
+
+        // Field/method not found on this entity or value type
+        error(expr->loc,
+              "Type '" + baseType->name + "' has no member '" + expr->field + "'");
+        return types::unknown();
     }
 
     // Handle built-in properties like .count on lists
@@ -283,6 +292,16 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         {
             return types::integer();
         }
+    }
+
+    // Reject field access on primitive types that have no members
+    if (baseType &&
+        (baseType->kind == TypeKindSem::Integer || baseType->kind == TypeKindSem::Number ||
+         baseType->kind == TypeKindSem::Boolean || baseType->kind == TypeKindSem::Byte))
+    {
+        error(expr->loc,
+              "Type '" + baseType->toString() + "' has no member '" + expr->field + "'");
+        return types::unknown();
     }
 
     // Handle runtime class property access (e.g., app.Root, editor.LineCount)
@@ -450,8 +469,39 @@ TypeRef Sema::analyzeIs(IsExpr *expr)
 /// @return The target type of the cast.
 TypeRef Sema::analyzeAs(AsExpr *expr)
 {
-    analyzeExpr(expr->value.get());
-    return resolveTypeNode(expr->type.get());
+    TypeRef sourceType = analyzeExpr(expr->value.get());
+    TypeRef targetType = resolveTypeNode(expr->type.get());
+
+    // Skip validation when types are unknown/unresolved
+    if (!sourceType || !targetType ||
+        sourceType->kind == TypeKindSem::Unknown ||
+        targetType->kind == TypeKindSem::Unknown)
+        return targetType;
+
+    // Check standard convertibility (numeric, string, assignment-compatible)
+    if (sourceType->isConvertibleTo(*targetType))
+        return targetType;
+
+    // Allow entity-to-entity casts (downcasts and cross-casts for runtime checking)
+    if (sourceType->kind == TypeKindSem::Entity &&
+        targetType->kind == TypeKindSem::Entity)
+        return targetType;
+
+    // Allow Ptr <-> Entity/Value interop (both are pointers at IL level)
+    if ((sourceType->kind == TypeKindSem::Ptr &&
+         (targetType->kind == TypeKindSem::Entity || targetType->kind == TypeKindSem::Value)) ||
+        ((sourceType->kind == TypeKindSem::Entity || sourceType->kind == TypeKindSem::Value) &&
+         targetType->kind == TypeKindSem::Ptr))
+        return targetType;
+
+    // Allow Optional[T] -> T (forced unwrap)
+    if (sourceType->kind == TypeKindSem::Optional && !sourceType->typeArgs.empty() &&
+        sourceType->typeArgs[0]->isConvertibleTo(*targetType))
+        return targetType;
+
+    error(expr->loc,
+          "Cannot cast '" + sourceType->toString() + "' to '" + targetType->toString() + "'");
+    return targetType;
 }
 
 /// @brief Analyze a range expression (start..end or start..<end).
@@ -855,6 +905,7 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr)
         sym.type = paramType;
         sym.isFinal = true;
         defineSymbol(param.name, sym);
+        markInitialized(param.name);
     }
 
     TypeRef bodyType = analyzeExpr(expr->body.get());

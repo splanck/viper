@@ -1006,6 +1006,13 @@ class Lowerer
 
     void emitProgram(const Program &prog);
 
+    /// @brief Current expression lowering depth for recursion guard.
+    unsigned exprLowerDepth_{0};
+    /// @brief Current statement lowering depth for recursion guard.
+    unsigned stmtLowerDepth_{0};
+    /// @brief Maximum allowed lowering recursion depth.
+    static constexpr unsigned kMaxLowerDepth = 512;
+
     void ensureGosubStack();
 
     std::unique_ptr<ProgramLowering> programLowering;

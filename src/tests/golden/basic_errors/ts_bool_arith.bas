@@ -1,0 +1,2 @@
+10 PRINT TRUE + 5
+20 END

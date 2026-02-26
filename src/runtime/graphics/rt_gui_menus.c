@@ -37,6 +37,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_platform.h"
 
 //=============================================================================
 // MenuBar Widget (Phase 2)
@@ -44,6 +45,7 @@
 
 void *rt_menubar_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_menubar_t *mb = vg_menubar_create((vg_widget_t *)parent);
     if (mb)
     {
@@ -56,6 +58,7 @@ void *rt_menubar_new(void *parent)
 
 void rt_menubar_destroy(void *menubar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menubar)
         return;
     vg_widget_destroy((vg_widget_t *)menubar);
@@ -63,6 +66,7 @@ void rt_menubar_destroy(void *menubar)
 
 void *rt_menubar_add_menu(void *menubar, rt_string title)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menubar)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
@@ -73,6 +77,7 @@ void *rt_menubar_add_menu(void *menubar, rt_string title)
 
 void rt_menubar_remove_menu(void *menubar, void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menubar || !menu)
         return;
     vg_menubar_remove_menu((vg_menubar_t *)menubar, (vg_menu_t *)menu);
@@ -80,6 +85,7 @@ void rt_menubar_remove_menu(void *menubar, void *menu)
 
 int64_t rt_menubar_get_menu_count(void *menubar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menubar)
         return 0;
     return ((vg_menubar_t *)menubar)->menu_count;
@@ -87,6 +93,7 @@ int64_t rt_menubar_get_menu_count(void *menubar)
 
 void *rt_menubar_get_menu(void *menubar, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menubar)
         return NULL;
     vg_menubar_t *mb = (vg_menubar_t *)menubar;
@@ -103,6 +110,7 @@ void *rt_menubar_get_menu(void *menubar, int64_t index)
 
 void rt_menubar_set_visible(void *menubar, int64_t visible)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menubar)
         return;
     vg_widget_set_visible(&((vg_menubar_t *)menubar)->base, visible != 0);
@@ -110,6 +118,7 @@ void rt_menubar_set_visible(void *menubar, int64_t visible)
 
 int64_t rt_menubar_is_visible(void *menubar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menubar)
         return 0;
     return ((vg_menubar_t *)menubar)->base.visible ? 1 : 0;
@@ -121,6 +130,7 @@ int64_t rt_menubar_is_visible(void *menubar)
 
 void *rt_menu_add_item(void *menu, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -131,6 +141,7 @@ void *rt_menu_add_item(void *menu, rt_string text)
 
 void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -143,6 +154,7 @@ void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string short
 
 void *rt_menu_add_separator(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     return vg_menu_add_separator((vg_menu_t *)menu);
@@ -150,6 +162,7 @@ void *rt_menu_add_separator(void *menu)
 
 void *rt_menu_add_submenu(void *menu, rt_string title)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
@@ -160,6 +173,7 @@ void *rt_menu_add_submenu(void *menu, rt_string title)
 
 void rt_menu_remove_item(void *menu, void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu || !item)
         return;
     vg_menu_remove_item((vg_menu_t *)menu, (vg_menu_item_t *)item);
@@ -167,6 +181,7 @@ void rt_menu_remove_item(void *menu, void *item)
 
 void rt_menu_clear(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return;
     vg_menu_clear((vg_menu_t *)menu);
@@ -174,6 +189,7 @@ void rt_menu_clear(void *menu)
 
 void rt_menu_set_title(void *menu, rt_string title)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return;
     vg_menu_t *m = (vg_menu_t *)menu;
@@ -183,6 +199,7 @@ void rt_menu_set_title(void *menu, rt_string title)
 
 rt_string rt_menu_get_title(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return rt_str_empty();
     const char *title = ((vg_menu_t *)menu)->title;
@@ -193,6 +210,7 @@ rt_string rt_menu_get_title(void *menu)
 
 int64_t rt_menu_get_item_count(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return 0;
     return ((vg_menu_t *)menu)->item_count;
@@ -200,6 +218,7 @@ int64_t rt_menu_get_item_count(void *menu)
 
 void *rt_menu_get_item(void *menu, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     vg_menu_t *m = (vg_menu_t *)menu;
@@ -216,6 +235,7 @@ void *rt_menu_get_item(void *menu, int64_t index)
 
 void rt_menu_set_enabled(void *menu, int64_t enabled)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return;
     // Menu enabled state not currently tracked in vg_menu struct
@@ -225,6 +245,7 @@ void rt_menu_set_enabled(void *menu, int64_t enabled)
 
 int64_t rt_menu_is_enabled(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return 0;
     // Menu enabled state not currently tracked in vg_menu struct
@@ -237,6 +258,7 @@ int64_t rt_menu_is_enabled(void *menu)
 
 void rt_menuitem_set_text(void *item, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
@@ -246,6 +268,7 @@ void rt_menuitem_set_text(void *item, rt_string text)
 
 rt_string rt_menuitem_get_text(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return rt_str_empty();
     const char *text = ((vg_menu_item_t *)item)->text;
@@ -256,6 +279,7 @@ rt_string rt_menuitem_get_text(void *item)
 
 void rt_menuitem_set_shortcut(void *item, rt_string shortcut)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
@@ -265,6 +289,7 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut)
 
 rt_string rt_menuitem_get_shortcut(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return rt_str_empty();
     const char *shortcut = ((vg_menu_item_t *)item)->shortcut;
@@ -275,6 +300,7 @@ rt_string rt_menuitem_get_shortcut(void *item)
 
 void rt_menuitem_set_icon(void *item, void *pixels)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     // Icon support would require extending vg_menu_item_t
@@ -283,6 +309,7 @@ void rt_menuitem_set_icon(void *item, void *pixels)
 
 void rt_menuitem_set_checkable(void *item, int64_t checkable)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     /* Mark the item as a toggle type by setting its checked state.
@@ -293,6 +320,7 @@ void rt_menuitem_set_checkable(void *item, int64_t checkable)
 
 int64_t rt_menuitem_is_checkable(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     /* An item is considered checkable if it has ever had a checked state set. */
     (void)item;
     return 1; /* All menu items support the checked field */
@@ -300,6 +328,7 @@ int64_t rt_menuitem_is_checkable(void *item)
 
 void rt_menuitem_set_checked(void *item, int64_t checked)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     ((vg_menu_item_t *)item)->checked = checked != 0;
@@ -307,6 +336,7 @@ void rt_menuitem_set_checked(void *item, int64_t checked)
 
 int64_t rt_menuitem_is_checked(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     return ((vg_menu_item_t *)item)->checked ? 1 : 0;
@@ -314,6 +344,7 @@ int64_t rt_menuitem_is_checked(void *item)
 
 void rt_menuitem_set_enabled(void *item, int64_t enabled)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     ((vg_menu_item_t *)item)->enabled = enabled != 0;
@@ -321,6 +352,7 @@ void rt_menuitem_set_enabled(void *item, int64_t enabled)
 
 int64_t rt_menuitem_is_enabled(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     return ((vg_menu_item_t *)item)->enabled ? 1 : 0;
@@ -328,6 +360,7 @@ int64_t rt_menuitem_is_enabled(void *item)
 
 int64_t rt_menuitem_is_separator(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     return ((vg_menu_item_t *)item)->separator ? 1 : 0;
@@ -338,11 +371,13 @@ static vg_menu_item_t *g_clicked_menuitem = NULL;
 
 void rt_gui_set_clicked_menuitem(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_clicked_menuitem = (vg_menu_item_t *)item;
 }
 
 int64_t rt_menuitem_was_clicked(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
@@ -360,11 +395,13 @@ int64_t rt_menuitem_was_clicked(void *item)
 
 void *rt_contextmenu_new(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_contextmenu_create();
 }
 
 void rt_contextmenu_destroy(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (menu)
     {
         vg_contextmenu_destroy((vg_contextmenu_t *)menu);
@@ -373,6 +410,7 @@ void rt_contextmenu_destroy(void *menu)
 
 void *rt_contextmenu_add_item(void *menu, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -384,6 +422,7 @@ void *rt_contextmenu_add_item(void *menu, rt_string text)
 
 void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -397,6 +436,7 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
 
 void *rt_contextmenu_add_separator(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     vg_contextmenu_add_separator((vg_contextmenu_t *)menu);
@@ -405,6 +445,7 @@ void *rt_contextmenu_add_separator(void *menu)
 
 void *rt_contextmenu_add_submenu(void *menu, rt_string title)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
@@ -416,6 +457,7 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title)
 
 void rt_contextmenu_clear(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (menu)
     {
         vg_contextmenu_clear((vg_contextmenu_t *)menu);
@@ -424,6 +466,7 @@ void rt_contextmenu_clear(void *menu)
 
 void rt_contextmenu_show(void *menu, int64_t x, int64_t y)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (menu)
     {
         vg_contextmenu_show_at((vg_contextmenu_t *)menu, (int)x, (int)y);
@@ -432,6 +475,7 @@ void rt_contextmenu_show(void *menu, int64_t x, int64_t y)
 
 void rt_contextmenu_hide(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (menu)
     {
         vg_contextmenu_dismiss((vg_contextmenu_t *)menu);
@@ -440,6 +484,7 @@ void rt_contextmenu_hide(void *menu)
 
 int64_t rt_contextmenu_is_visible(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return 0;
     return ((vg_contextmenu_t *)menu)->is_visible ? 1 : 0;
@@ -447,6 +492,7 @@ int64_t rt_contextmenu_is_visible(void *menu)
 
 void *rt_contextmenu_get_clicked_item(void *menu)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
     vg_contextmenu_t *cm = (vg_contextmenu_t *)menu;
@@ -463,6 +509,7 @@ void *rt_contextmenu_get_clicked_item(void *menu)
 
 void *rt_statusbar_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_statusbar_t *sb = vg_statusbar_create((vg_widget_t *)parent);
     if (sb)
     {
@@ -476,6 +523,7 @@ void *rt_statusbar_new(void *parent)
 
 void rt_statusbar_destroy(void *bar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (bar)
     {
         vg_widget_destroy((vg_widget_t *)bar);
@@ -514,6 +562,7 @@ static vg_statusbar_item_t *get_zone_text_item(vg_statusbar_t *sb, vg_statusbar_
 
 void rt_statusbar_set_left_text(void *bar, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return;
     vg_statusbar_t *sb = (vg_statusbar_t *)bar;
@@ -535,6 +584,7 @@ void rt_statusbar_set_left_text(void *bar, rt_string text)
 
 void rt_statusbar_set_center_text(void *bar, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return;
     vg_statusbar_t *sb = (vg_statusbar_t *)bar;
@@ -555,6 +605,7 @@ void rt_statusbar_set_center_text(void *bar, rt_string text)
 
 void rt_statusbar_set_right_text(void *bar, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return;
     vg_statusbar_t *sb = (vg_statusbar_t *)bar;
@@ -575,6 +626,7 @@ void rt_statusbar_set_right_text(void *bar, rt_string text)
 
 rt_string rt_statusbar_get_left_text(void *bar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return rt_str_empty();
     vg_statusbar_item_t *item = get_zone_text_item((vg_statusbar_t *)bar, VG_STATUSBAR_ZONE_LEFT);
@@ -587,6 +639,7 @@ rt_string rt_statusbar_get_left_text(void *bar)
 
 rt_string rt_statusbar_get_center_text(void *bar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return rt_str_empty();
     vg_statusbar_item_t *item = get_zone_text_item((vg_statusbar_t *)bar, VG_STATUSBAR_ZONE_CENTER);
@@ -599,6 +652,7 @@ rt_string rt_statusbar_get_center_text(void *bar)
 
 rt_string rt_statusbar_get_right_text(void *bar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return rt_str_empty();
     vg_statusbar_item_t *item = get_zone_text_item((vg_statusbar_t *)bar, VG_STATUSBAR_ZONE_RIGHT);
@@ -611,6 +665,7 @@ rt_string rt_statusbar_get_right_text(void *bar)
 
 void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -622,6 +677,7 @@ void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone)
 
 void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -633,6 +689,7 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone)
 
 void *rt_statusbar_add_progress(void *bar, int64_t zone)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return NULL;
     return vg_statusbar_add_progress((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
@@ -640,6 +697,7 @@ void *rt_statusbar_add_progress(void *bar, int64_t zone)
 
 void *rt_statusbar_add_separator(void *bar, int64_t zone)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return NULL;
     return vg_statusbar_add_separator((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
@@ -647,6 +705,7 @@ void *rt_statusbar_add_separator(void *bar, int64_t zone)
 
 void *rt_statusbar_add_spacer(void *bar, int64_t zone)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return NULL;
     return vg_statusbar_add_spacer((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
@@ -654,6 +713,7 @@ void *rt_statusbar_add_spacer(void *bar, int64_t zone)
 
 void rt_statusbar_remove_item(void *bar, void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar || !item)
         return;
     vg_statusbar_remove_item((vg_statusbar_t *)bar, (vg_statusbar_item_t *)item);
@@ -661,6 +721,7 @@ void rt_statusbar_remove_item(void *bar, void *item)
 
 void rt_statusbar_clear(void *bar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return;
     vg_statusbar_t *sb = (vg_statusbar_t *)bar;
@@ -671,6 +732,7 @@ void rt_statusbar_clear(void *bar)
 
 void rt_statusbar_set_visible(void *bar, int64_t visible)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return;
     vg_widget_set_visible(&((vg_statusbar_t *)bar)->base, visible != 0);
@@ -678,6 +740,7 @@ void rt_statusbar_set_visible(void *bar, int64_t visible)
 
 int64_t rt_statusbar_is_visible(void *bar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!bar)
         return 0;
     return ((vg_statusbar_t *)bar)->base.visible ? 1 : 0;
@@ -689,6 +752,7 @@ int64_t rt_statusbar_is_visible(void *bar)
 
 void rt_statusbaritem_set_text(void *item, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     char *ctext = rt_string_to_cstr(text);
@@ -698,6 +762,7 @@ void rt_statusbaritem_set_text(void *item, rt_string text)
 
 rt_string rt_statusbaritem_get_text(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return rt_str_empty();
     vg_statusbar_item_t *sbi = (vg_statusbar_item_t *)item;
@@ -710,6 +775,7 @@ rt_string rt_statusbaritem_get_text(void *item)
 
 void rt_statusbaritem_set_tooltip(void *item, rt_string tooltip)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     char *ctext = rt_string_to_cstr(tooltip);
@@ -719,6 +785,7 @@ void rt_statusbaritem_set_tooltip(void *item, rt_string tooltip)
 
 void rt_statusbaritem_set_progress(void *item, double value)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_statusbar_item_set_progress((vg_statusbar_item_t *)item, (float)value);
@@ -726,6 +793,7 @@ void rt_statusbaritem_set_progress(void *item, double value)
 
 double rt_statusbaritem_get_progress(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0.0;
     return (double)((vg_statusbar_item_t *)item)->progress;
@@ -733,6 +801,7 @@ double rt_statusbaritem_get_progress(void *item)
 
 void rt_statusbaritem_set_visible(void *item, int64_t visible)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_statusbar_item_set_visible((vg_statusbar_item_t *)item, visible != 0);
@@ -743,11 +812,13 @@ static vg_statusbar_item_t *g_clicked_statusbar_item = NULL;
 
 void rt_gui_set_clicked_statusbar_item(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_clicked_statusbar_item = (vg_statusbar_item_t *)item;
 }
 
 int64_t rt_statusbaritem_was_clicked(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     return (g_clicked_statusbar_item == item) ? 1 : 0;
@@ -759,6 +830,7 @@ int64_t rt_statusbaritem_was_clicked(void *item)
 
 void *rt_toolbar_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_toolbar_t *tb = vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_HORIZONTAL);
     if (tb)
     {
@@ -771,11 +843,13 @@ void *rt_toolbar_new(void *parent)
 
 void *rt_toolbar_new_vertical(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_VERTICAL);
 }
 
 void rt_toolbar_destroy(void *toolbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (toolbar)
     {
         vg_widget_destroy((vg_widget_t *)toolbar);
@@ -784,6 +858,7 @@ void rt_toolbar_destroy(void *toolbar)
 
 void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string tooltip)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
@@ -824,6 +899,7 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
                                       rt_string text,
                                       rt_string tooltip)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
@@ -866,6 +942,7 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
 
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
@@ -903,6 +980,7 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
 
 void *rt_toolbar_add_separator(void *toolbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return NULL;
     return vg_toolbar_add_separator((vg_toolbar_t *)toolbar);
@@ -910,6 +988,7 @@ void *rt_toolbar_add_separator(void *toolbar)
 
 void *rt_toolbar_add_spacer(void *toolbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return NULL;
     return vg_toolbar_add_spacer((vg_toolbar_t *)toolbar);
@@ -917,6 +996,7 @@ void *rt_toolbar_add_spacer(void *toolbar)
 
 void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return NULL;
     char *ctooltip = rt_string_to_cstr(tooltip);
@@ -937,6 +1017,7 @@ void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip)
 
 void rt_toolbar_remove_item(void *toolbar, void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar || !item)
         return;
     vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
@@ -948,6 +1029,7 @@ void rt_toolbar_remove_item(void *toolbar, void *item)
 
 void rt_toolbar_set_icon_size(void *toolbar, int64_t size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return;
     vg_toolbar_set_icon_size((vg_toolbar_t *)toolbar, (vg_toolbar_icon_size_t)size);
@@ -955,6 +1037,7 @@ void rt_toolbar_set_icon_size(void *toolbar, int64_t size)
 
 int64_t rt_toolbar_get_icon_size(void *toolbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return RT_TOOLBAR_ICON_MEDIUM;
     return ((vg_toolbar_t *)toolbar)->icon_size;
@@ -962,6 +1045,7 @@ int64_t rt_toolbar_get_icon_size(void *toolbar)
 
 void rt_toolbar_set_style(void *toolbar, int64_t style)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return;
     vg_toolbar_set_show_labels((vg_toolbar_t *)toolbar, style != RT_TOOLBAR_STYLE_ICON_ONLY);
@@ -969,6 +1053,7 @@ void rt_toolbar_set_style(void *toolbar, int64_t style)
 
 int64_t rt_toolbar_get_item_count(void *toolbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return 0;
     return ((vg_toolbar_t *)toolbar)->item_count;
@@ -976,6 +1061,7 @@ int64_t rt_toolbar_get_item_count(void *toolbar)
 
 void *rt_toolbar_get_item(void *toolbar, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return NULL;
     vg_toolbar_t *tb = (vg_toolbar_t *)toolbar;
@@ -986,6 +1072,7 @@ void *rt_toolbar_get_item(void *toolbar, int64_t index)
 
 void rt_toolbar_set_visible(void *toolbar, int64_t visible)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return;
     ((vg_toolbar_t *)toolbar)->base.visible = visible != 0;
@@ -993,6 +1080,7 @@ void rt_toolbar_set_visible(void *toolbar, int64_t visible)
 
 int64_t rt_toolbar_is_visible(void *toolbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return 0;
     return ((vg_toolbar_t *)toolbar)->base.visible ? 1 : 0;
@@ -1004,6 +1092,7 @@ int64_t rt_toolbar_is_visible(void *toolbar)
 
 void rt_toolbaritem_set_icon(void *item, rt_string icon_path)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     char *cicon = rt_string_to_cstr(icon_path);
@@ -1016,6 +1105,7 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path)
 
 void rt_toolbaritem_set_icon_pixels(void *item, void *pixels)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item || !pixels)
         return;
     // Would need to convert pixels to vg_icon_t
@@ -1025,6 +1115,7 @@ void rt_toolbaritem_set_icon_pixels(void *item, void *pixels)
 
 void rt_toolbaritem_set_text(void *item, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
@@ -1034,6 +1125,7 @@ void rt_toolbaritem_set_text(void *item, rt_string text)
 
 void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     char *ctooltip = rt_string_to_cstr(tooltip);
@@ -1043,6 +1135,7 @@ void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip)
 
 void rt_toolbaritem_set_enabled(void *item, int64_t enabled)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_toolbar_item_set_enabled((vg_toolbar_item_t *)item, enabled != 0);
@@ -1050,6 +1143,7 @@ void rt_toolbaritem_set_enabled(void *item, int64_t enabled)
 
 int64_t rt_toolbaritem_is_enabled(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     return ((vg_toolbar_item_t *)item)->enabled ? 1 : 0;
@@ -1057,6 +1151,7 @@ int64_t rt_toolbaritem_is_enabled(void *item)
 
 void rt_toolbaritem_set_toggled(void *item, int64_t toggled)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_toolbar_item_set_checked((vg_toolbar_item_t *)item, toggled != 0);
@@ -1064,6 +1159,7 @@ void rt_toolbaritem_set_toggled(void *item, int64_t toggled)
 
 int64_t rt_toolbaritem_is_toggled(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     return ((vg_toolbar_item_t *)item)->checked ? 1 : 0;
@@ -1074,11 +1170,13 @@ static vg_toolbar_item_t *g_clicked_toolbar_item = NULL;
 
 void rt_gui_set_clicked_toolbar_item(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_clicked_toolbar_item = (vg_toolbar_item_t *)item;
 }
 
 int64_t rt_toolbaritem_was_clicked(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
     vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;

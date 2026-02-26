@@ -126,6 +126,12 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
     sym.type = varType;
     sym.isFinal = stmt->isFinal;
     defineSymbol(stmt->name, sym);
+
+    // Track definite initialization
+    if (stmt->initializer)
+    {
+        markInitialized(stmt->name);
+    }
 }
 
 void Sema::analyzeIfStmt(IfStmt *stmt)
@@ -153,6 +159,9 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
         }
     }
 
+    // Save initialization state before branches for definite-assignment analysis
+    auto preIfState = saveInitState();
+
     // Analyze then-branch with narrowing if condition is "x != null"
     if (hasNullCheck && isNotNull && narrowedType)
     {
@@ -166,9 +175,14 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
         analyzeStmt(stmt->thenBranch.get());
     }
 
+    auto thenState = saveInitState();
+
     // Analyze else-branch with narrowing if condition is "x == null"
     if (stmt->elseBranch)
     {
+        // Restore pre-if state before analyzing else-branch
+        initializedVars_ = preIfState;
+
         if (hasNullCheck && !isNotNull && narrowedType)
         {
             // In else branch of "x == null", x is not null
@@ -181,6 +195,17 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
         {
             analyzeStmt(stmt->elseBranch.get());
         }
+
+        auto elseState = saveInitState();
+
+        // After if/else: only keep variables initialized in BOTH branches
+        intersectInitState(thenState, elseState);
+    }
+    else
+    {
+        // No else branch — conservatively restore pre-if state
+        // (the then-branch may not execute)
+        initializedVars_ = preIfState;
     }
 }
 
@@ -305,6 +330,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
     sym.type = elementType ? elementType : types::unknown();
     sym.isFinal = true;
     defineSymbol(stmt->variable, sym);
+    markInitialized(stmt->variable);
 
     if (stmt->isTuple)
     {
@@ -314,6 +340,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
         secondSym.type = secondType ? secondType : types::unknown();
         secondSym.isFinal = true;
         defineSymbol(stmt->secondVariable, secondSym);
+        markInitialized(stmt->secondVariable);
     }
 
     loopDepth_++;

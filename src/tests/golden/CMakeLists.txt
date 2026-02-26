@@ -1113,4 +1113,92 @@ function(viper_add_golden_suite_tests)
             -DBAS_FILE=${OOP_ERR_DIR}/base_not_found.bas
             "-DEXPECT=${EXPECT_OOP_ERR_BASE_NOT_FOUND}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # Type soundness golden tests
+    # GAP: BASIC allows string-to-integer assignment without error
+    viper_add_ctest(basic_error_ts_string_to_int
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_string_to_int.bas
+            -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_int_to_string.stderr EXPECT_TS_INT_TO_STRING)
+    string(STRIP "${EXPECT_TS_INT_TO_STRING}" EXPECT_TS_INT_TO_STRING)
+    viper_add_ctest(basic_error_ts_int_to_string
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_int_to_string.bas
+            "-DEXPECT=${EXPECT_TS_INT_TO_STRING}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_sub_arg.stderr EXPECT_TS_WRONG_SUB_ARG)
+    string(STRIP "${EXPECT_TS_WRONG_SUB_ARG}" EXPECT_TS_WRONG_SUB_ARG)
+    viper_add_ctest(basic_error_ts_wrong_sub_arg
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_sub_arg.bas
+            "-DEXPECT=${EXPECT_TS_WRONG_SUB_ARG}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_arity.stderr EXPECT_TS_WRONG_ARITY)
+    string(STRIP "${EXPECT_TS_WRONG_ARITY}" EXPECT_TS_WRONG_ARITY)
+    viper_add_ctest(basic_error_ts_wrong_arity
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_arity.bas
+            "-DEXPECT=${EXPECT_TS_WRONG_ARITY}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_string_comparison.stderr EXPECT_TS_STRING_CMP)
+    string(STRIP "${EXPECT_TS_STRING_CMP}" EXPECT_TS_STRING_CMP)
+    viper_add_ctest(basic_error_ts_string_comparison
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_string_comparison.bas
+            "-DEXPECT=${EXPECT_TS_STRING_CMP}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # GAP: BASIC allows float operands in MOD without error
+    viper_add_ctest(basic_error_ts_float_divmod
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_float_divmod.bas
+            -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # GAP: BASIC allows assigning string function return to integer variable
+    viper_add_ctest(basic_error_ts_wrong_ret_type
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_ret_type.bas
+            -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_undef_var.stderr EXPECT_TS_UNDEF_VAR)
+    string(STRIP "${EXPECT_TS_UNDEF_VAR}" EXPECT_TS_UNDEF_VAR)
+    viper_add_ctest(basic_error_ts_undef_var
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_undef_var.bas
+            "-DEXPECT=${EXPECT_TS_UNDEF_VAR}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_const_assign.stderr EXPECT_TS_CONST_ASSIGN)
+    string(STRIP "${EXPECT_TS_CONST_ASSIGN}" EXPECT_TS_CONST_ASSIGN)
+    viper_add_ctest(basic_error_ts_const_assign
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_const_assign.bas
+            "-DEXPECT=${EXPECT_TS_CONST_ASSIGN}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_bool_arith.stderr EXPECT_TS_BOOL_ARITH)
+    string(STRIP "${EXPECT_TS_BOOL_ARITH}" EXPECT_TS_BOOL_ARITH)
+    viper_add_ctest(basic_error_ts_bool_arith
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_bool_arith.bas
+            "-DEXPECT=${EXPECT_TS_BOOL_ARITH}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 endfunction()

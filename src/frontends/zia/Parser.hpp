@@ -688,6 +688,21 @@ class Parser
     /// @brief Maximum allowed expression nesting depth.
     static constexpr unsigned kMaxExprDepth = 256;
 
+    /// @brief Current statement/block nesting depth for recursion guard.
+    unsigned stmtDepth_{0};
+    /// @brief Maximum allowed statement nesting depth.
+    static constexpr unsigned kMaxStmtDepth = 512;
+
+    /// @brief Current type annotation nesting depth for recursion guard.
+    unsigned typeDepth_{0};
+    /// @brief Maximum allowed type nesting depth.
+    static constexpr unsigned kMaxTypeDepth = 256;
+
+    /// @brief Current match-pattern nesting depth for recursion guard.
+    unsigned patternDepth_{0};
+    /// @brief Maximum allowed pattern nesting depth.
+    static constexpr unsigned kMaxPatternDepth = 256;
+
     /// @brief Depth of speculative parsing scopes (suppresses diagnostics).
     int suppressionDepth_{0};
 

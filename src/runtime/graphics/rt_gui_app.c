@@ -41,6 +41,7 @@
 
 #include "fonts/embedded_font.h"
 #include "rt_gui_internal.h"
+#include "rt_platform.h"
 
 // Global pointer to the current app for widget constructors to access the default font.
 rt_gui_app_t *s_current_app = NULL;
@@ -51,6 +52,7 @@ static vg_dialog_t *g_active_dialog = NULL;
 
 void rt_gui_set_active_dialog(void *dlg)
 {
+    RT_ASSERT_MAIN_THREAD();
     // Reject nested dialogs — overwriting g_active_dialog would orphan the first.
     if (dlg && g_active_dialog)
         return;
@@ -68,6 +70,7 @@ static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h)
 
 void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 {
+    RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = (rt_gui_app_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_app_t));
     memset(app, 0, sizeof(rt_gui_app_t));
 
@@ -135,6 +138,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 // Ensure the default font is loaded (lazy init on first use).
 void rt_gui_ensure_default_font(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!s_current_app || s_current_app->default_font)
         return;
 
@@ -172,6 +176,7 @@ void rt_gui_ensure_default_font(void)
 
 void rt_gui_app_destroy(void *app_ptr)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
@@ -192,6 +197,7 @@ void rt_gui_app_destroy(void *app_ptr)
 
 int64_t rt_gui_app_should_close(void *app_ptr)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return 1;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
@@ -212,6 +218,7 @@ void rt_gui_set_last_clicked(void *widget);
 
 void rt_gui_app_poll(void *app_ptr)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
@@ -403,6 +410,7 @@ void rt_gui_app_poll(void *app_ptr)
 
 void rt_gui_app_render(void *app_ptr)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
@@ -528,6 +536,7 @@ void rt_gui_app_render(void *app_ptr)
 
 void *rt_gui_app_get_root(void *app_ptr)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return NULL;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
@@ -536,6 +545,7 @@ void *rt_gui_app_get_root(void *app_ptr)
 
 void rt_gui_app_set_font(void *app_ptr, void *font, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;

@@ -52,8 +52,10 @@
 #include "TargetAArch64.hpp"
 #include "TerminatorLowering.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 
+#include <cstdio>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -682,8 +684,12 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                        rhs,
                                                        rcls))
                             {
+                                // Use FPR register class for floating-point operations
+                                const RegClass rc =
+                                    isFloatingPointOp(ins.op) ? RegClass::FPR : RegClass::GPR;
                                 const uint16_t dst = nextVRegId++;
                                 tempVReg[*ins.result] = dst;
+                                tempRegClass[*ins.result] = rc;
                                 if (binOp)
                                 {
                                     // Check if we can use immediate form for this operation
@@ -720,10 +726,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     if (useImmediate)
                                     {
                                         // Emit with immediate operand - no need to materialize RHS
+                                        // Note: FP ops have supportsImmediate=false, so rc is always GPR here
                                         bbOutFn().instrs.push_back(
                                             MInstr{binOp->immOp,
-                                                   {MOperand::vregOp(RegClass::GPR, dst),
-                                                    MOperand::vregOp(RegClass::GPR, lhs),
+                                                   {MOperand::vregOp(rc, dst),
+                                                    MOperand::vregOp(rc, lhs),
                                                     MOperand::immOp(ins.operands[1].i64)}});
                                     }
                                     else
@@ -731,9 +738,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                         // Emit binary op with all register operands
                                         bbOutFn().instrs.push_back(
                                             MInstr{binOp->mirOp,
-                                                   {MOperand::vregOp(RegClass::GPR, dst),
-                                                    MOperand::vregOp(RegClass::GPR, lhs),
-                                                    MOperand::vregOp(RegClass::GPR, rhs)}});
+                                                   {MOperand::vregOp(rc, dst),
+                                                    MOperand::vregOp(rc, lhs),
+                                                    MOperand::vregOp(rc, rhs)}});
                                     }
                                 }
                                 else
@@ -765,6 +772,16 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 }
                             }
                         }
+                    }
+                    else
+                    {
+                        // Opcode not handled by any dispatch path — emit a diagnostic
+                        // so this doesn't silently produce wrong code.
+                        fprintf(stderr,
+                                "WARNING: AArch64 codegen: unhandled IL opcode '%s' "
+                                "(block '%s')\n",
+                                il::core::toString(ins.op),
+                                bbIn.label.c_str());
                     }
                     break;
             }

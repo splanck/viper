@@ -420,35 +420,26 @@ void *rt_pixels_load_bmp(void *path)
     if (!f)
         return NULL;
 
+    uint8_t *row_buf = NULL;
+    rt_pixels_impl *pixels = NULL;
+
     // Read file header
     bmp_file_header file_hdr;
     if (fread(&file_hdr, sizeof(file_hdr), 1, f) != 1)
-    {
-        fclose(f);
-        return NULL;
-    }
+        goto bmp_cleanup;
 
     // Check magic
     if (file_hdr.magic[0] != 'B' || file_hdr.magic[1] != 'M')
-    {
-        fclose(f);
-        return NULL;
-    }
+        goto bmp_cleanup;
 
     // Read info header
     bmp_info_header info_hdr;
     if (fread(&info_hdr, sizeof(info_hdr), 1, f) != 1)
-    {
-        fclose(f);
-        return NULL;
-    }
+        goto bmp_cleanup;
 
     // Only support 24-bit uncompressed
     if (info_hdr.bit_count != 24 || info_hdr.compression != 0)
-    {
-        fclose(f);
-        return NULL;
-    }
+        goto bmp_cleanup;
 
     int32_t width = info_hdr.width;
     int32_t height = info_hdr.height;
@@ -462,37 +453,26 @@ void *rt_pixels_load_bmp(void *path)
     }
 
     if (width <= 0 || height <= 0)
-    {
-        fclose(f);
-        return NULL;
-    }
+        goto bmp_cleanup;
 
     // Calculate row padding (rows must be 4-byte aligned)
     int row_size = ((width * 3 + 3) / 4) * 4;
 
     // Allocate row buffer
-    uint8_t *row_buf = (uint8_t *)malloc((size_t)row_size);
+    row_buf = (uint8_t *)malloc((size_t)row_size);
     if (!row_buf)
-    {
-        fclose(f);
-        return NULL;
-    }
+        goto bmp_cleanup;
 
     // Create pixels
-    rt_pixels_impl *pixels = pixels_alloc(width, height);
+    pixels = pixels_alloc(width, height);
     if (!pixels)
-    {
-        free(row_buf);
-        fclose(f);
-        return NULL;
-    }
+        goto bmp_cleanup;
 
     // Seek to pixel data
     if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0)
     {
-        free(row_buf);
-        fclose(f);
-        return NULL;
+        pixels = NULL; // signal failure; pixels_alloc object is GC-managed
+        goto bmp_cleanup;
     }
 
     // Read pixel data
@@ -500,9 +480,8 @@ void *rt_pixels_load_bmp(void *path)
     {
         if (fread(row_buf, 1, (size_t)row_size, f) != (size_t)row_size)
         {
-            free(row_buf);
-            fclose(f);
-            return NULL;
+            pixels = NULL;
+            goto bmp_cleanup;
         }
 
         // Determine destination row (bottom-up reverses row order)
@@ -520,6 +499,7 @@ void *rt_pixels_load_bmp(void *path)
         }
     }
 
+bmp_cleanup:
     free(row_buf);
     fclose(f);
     return pixels;
@@ -806,10 +786,15 @@ void *rt_pixels_load_png(void *path)
     }
     free(idat_buf);
 
-    // Decompress
-    void *raw_bytes = rt_compress_inflate(comp_bytes);
+    // Decompress — all error paths after this point must go through cleanup
+    // to release comp_bytes and raw_bytes (GC-managed, refcount=1).
+    void *raw_bytes = NULL;
+    uint8_t *img = NULL;
+    rt_pixels_impl *pixels = NULL;
+
+    raw_bytes = rt_compress_inflate(comp_bytes);
     if (!raw_bytes)
-        return NULL;
+        goto cleanup;
 
     // Access decompressed data
     typedef struct
@@ -822,21 +807,21 @@ void *rt_pixels_load_png(void *path)
 
     int channels = (color_type == 6) ? 4 : 3;        // RGBA vs RGB
     if ((size_t)width > SIZE_MAX / (size_t)channels) // overflow guard
-        return NULL;
+        goto cleanup;
     size_t stride = (size_t)width * (size_t)channels;
     if (height > 0 && (stride + 1) > SIZE_MAX / (size_t)height) // overflow guard
-        return NULL;
+        goto cleanup;
     size_t expected = (stride + 1) * (size_t)height; // +1 for filter byte per row
 
     if ((size_t)raw->len < expected)
-        return NULL;
+        goto cleanup;
 
     // Reconstruct filtered scanlines
     uint8_t *scanlines = raw->data;
     // Allocate temp buffer for reconstructed image data
-    uint8_t *img = (uint8_t *)malloc(stride * height);
+    img = (uint8_t *)malloc(stride * height);
     if (!img)
-        return NULL;
+        goto cleanup;
 
     for (uint32_t y = 0; y < height; y++)
     {
@@ -870,19 +855,15 @@ void *rt_pixels_load_png(void *path)
                     dst[i] = raw_byte + paeth_predict(a, b_val, c);
                     break;
                 default: // Unknown filter
-                    free(img);
-                    return NULL;
+                    goto cleanup;
             }
         }
     }
 
     // Create Pixels object and convert to our RGBA format (0xRRGGBBAA)
-    rt_pixels_impl *pixels = pixels_alloc((int64_t)width, (int64_t)height);
+    pixels = pixels_alloc((int64_t)width, (int64_t)height);
     if (!pixels)
-    {
-        free(img);
-        return NULL;
-    }
+        goto cleanup;
 
     for (uint32_t y = 0; y < height; y++)
     {
@@ -898,7 +879,18 @@ void *rt_pixels_load_png(void *path)
         }
     }
 
+cleanup:
     free(img);
+    if (raw_bytes)
+    {
+        rt_obj_release_check0(raw_bytes);
+        rt_obj_free(raw_bytes);
+    }
+    if (comp_bytes)
+    {
+        rt_obj_release_check0(comp_bytes);
+        rt_obj_free(comp_bytes);
+    }
     return pixels;
 }
 
@@ -936,7 +928,9 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         }
     }
 
-    // Compress the raw data using DEFLATE
+    // Compress the raw data using DEFLATE.
+    // All error paths after raw_bytes/comp_bytes allocation must go through
+    // cleanup to release these GC-managed objects (refcount=1).
     void *raw_bytes = rt_bytes_new((int64_t)raw_len);
     if (!raw_bytes)
     {
@@ -955,9 +949,14 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     }
     free(raw);
 
-    void *comp_bytes = rt_compress_deflate(raw_bytes);
+    void *comp_bytes = NULL;
+    uint8_t *zlib_data = NULL;
+    FILE *out = NULL;
+    int64_t result = 0;
+
+    comp_bytes = rt_compress_deflate(raw_bytes);
     if (!comp_bytes)
-        return 0;
+        goto save_cleanup;
 
     typedef struct
     {
@@ -970,9 +969,9 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     // Build zlib stream: 2-byte header + deflate data + 4-byte adler32
     // Zlib header: CMF=0x78 (deflate, window=32K), FLG=0x01 (no dict, check=1)
     size_t zlib_len = 2 + (size_t)comp->len + 4;
-    uint8_t *zlib_data = (uint8_t *)malloc(zlib_len);
+    zlib_data = (uint8_t *)malloc(zlib_len);
     if (!zlib_data)
-        return 0;
+        goto save_cleanup;
 
     zlib_data[0] = 0x78; // CMF
     zlib_data[1] = 0x01; // FLG
@@ -1019,12 +1018,9 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         chunk_crc = crc ^ 0xFFFFFFFF;                                                              \
     } while (0)
 
-    FILE *out = fopen(filepath, "wb");
+    out = fopen(filepath, "wb");
     if (!out)
-    {
-        free(zlib_data);
-        return 0;
-    }
+        goto save_cleanup;
 
     // Track write success — any fwrite failure produces a corrupt PNG.
     int write_ok = 1;
@@ -1085,11 +1081,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         size_t td_len = 4 + zlib_len;
         uint8_t *type_data = (uint8_t *)malloc(td_len);
         if (!type_data)
-        {
-            free(zlib_data);
-            fclose(out);
-            return 0;
-        }
+            goto save_cleanup;
         memcpy(type_data, "IDAT", 4);
         memcpy(type_data + 4, zlib_data, zlib_len);
         if (write_ok && fwrite(type_data, 1, td_len, out) != td_len)
@@ -1106,8 +1098,6 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         free(type_data);
     }
 
-    free(zlib_data);
-
     // Write IEND chunk
     if (write_ok)
     {
@@ -1116,11 +1106,27 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
             write_ok = 0;
     }
 
-#undef PNG_CRC
+    result = write_ok;
 
-    fflush(out);
-    fclose(out);
-    return write_ok;
+save_cleanup:
+#undef PNG_CRC
+    free(zlib_data);
+    if (out)
+    {
+        fflush(out);
+        fclose(out);
+    }
+    if (comp_bytes)
+    {
+        rt_obj_release_check0(comp_bytes);
+        rt_obj_free(comp_bytes);
+    }
+    if (raw_bytes)
+    {
+        rt_obj_release_check0(raw_bytes);
+        rt_obj_free(raw_bytes);
+    }
+    return result;
 }
 
 //=============================================================================

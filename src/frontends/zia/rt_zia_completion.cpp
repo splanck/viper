@@ -25,6 +25,7 @@ using namespace il::frontends::zia;
 
 namespace
 {
+// s_engine: Only accessed from the compiler thread. No synchronization needed.
 // One singleton CompletionEngine per process.  The engine maintains a single-
 // entry LRU parse cache keyed by source hash, so repeated calls for the same
 // file content do not re-parse.

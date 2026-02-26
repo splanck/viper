@@ -208,25 +208,9 @@ inline constexpr std::array<Rule, 57> kRules{{
      {Replace::Kind::Const, 0, 1, 0.0, true},
      "ucmp.ge-xx"},
 
-    // Float reflexive comparisons
-    {{core::Opcode::FCmpEQ, Match::Kind::SameOperands, 0, 0},
-     {Replace::Kind::Const, 0, 1, 0.0, true},
-     "fcmp.eq-xx"},
-    {{core::Opcode::FCmpNE, Match::Kind::SameOperands, 0, 0},
-     {Replace::Kind::Const, 0, 0, 0.0, true},
-     "fcmp.ne-xx"},
-    {{core::Opcode::FCmpLT, Match::Kind::SameOperands, 0, 0},
-     {Replace::Kind::Const, 0, 0, 0.0, true},
-     "fcmp.lt-xx"},
-    {{core::Opcode::FCmpLE, Match::Kind::SameOperands, 0, 0},
-     {Replace::Kind::Const, 0, 1, 0.0, true},
-     "fcmp.le-xx"},
-    {{core::Opcode::FCmpGT, Match::Kind::SameOperands, 0, 0},
-     {Replace::Kind::Const, 0, 0, 0.0, true},
-     "fcmp.gt-xx"},
-    {{core::Opcode::FCmpGE, Match::Kind::SameOperands, 0, 0},
-     {Replace::Kind::Const, 0, 1, 0.0, true},
-     "fcmp.ge-xx"},
+    // Float reflexive comparisons: REMOVED
+    // NaN == NaN is false, NaN != NaN is true, etc. (IEEE 754)
+    // Cannot fold fcmp.* %x, %x because %x might be NaN at runtime.
 
     // Float arithmetic identities: x * 1.0 = x
     {{core::Opcode::FMul, Match::Kind::ConstFloatOperand, 0, 0, 1.0},

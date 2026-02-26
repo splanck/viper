@@ -709,6 +709,18 @@ DeclPtr Parser::parseInterfaceDecl()
 /// @return The parsed NamespaceDecl, or nullptr on error.
 DeclPtr Parser::parseNamespaceDecl()
 {
+    if (++stmtDepth_ > kMaxStmtDepth)
+    {
+        --stmtDepth_;
+        error("namespace nesting too deep (limit: 512)");
+        return nullptr;
+    }
+    struct DepthGuard
+    {
+        unsigned &d;
+        ~DepthGuard() { --d; }
+    } nsGuard_{stmtDepth_};
+
     Token nsTok = advance(); // consume 'namespace'
     SourceLoc loc = nsTok.loc;
 

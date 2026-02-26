@@ -253,6 +253,9 @@ bool Sema::analyze(ModuleDecl &module)
                 sym.isFinal = gvar->isFinal;
                 sym.decl = gvar;
                 defineSymbol(gvar->name, sym);
+                // Global variables are always considered initialized
+                // (either explicitly or default-initialized)
+                markInitialized(gvar->name);
                 break;
             }
             case DeclKind::Namespace:
@@ -404,6 +407,38 @@ void Sema::narrowType(const std::string &name, TypeRef narrowedType)
     }
 }
 
+/// @brief Mark a variable as definitely initialized.
+void Sema::markInitialized(const std::string &name)
+{
+    initializedVars_.insert(name);
+}
+
+/// @brief Check if a variable has been definitely initialized.
+bool Sema::isInitialized(const std::string &name) const
+{
+    return initializedVars_.count(name) > 0;
+}
+
+/// @brief Save the current initialization state for branching analysis.
+std::unordered_set<std::string> Sema::saveInitState() const
+{
+    return initializedVars_;
+}
+
+/// @brief Intersect two branch initialization states.
+/// Only variables initialized in BOTH branches remain initialized.
+void Sema::intersectInitState(const std::unordered_set<std::string> &branchA,
+                              const std::unordered_set<std::string> &branchB)
+{
+    std::unordered_set<std::string> result;
+    for (const auto &name : branchA)
+    {
+        if (branchB.count(name) > 0)
+            result.insert(name);
+    }
+    initializedVars_ = std::move(result);
+}
+
 /// @brief Try to extract a null-check pattern from a condition expression.
 /// @details Recognizes patterns: x != null, x == null, null != x, null == x.
 /// @param[in] cond The condition expression to analyze.
@@ -442,6 +477,12 @@ bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull
 //=============================================================================
 // Error Reporting
 //=============================================================================
+
+/// @brief Report a semantic warning at a source location.
+void Sema::warning(SourceLoc loc, const std::string &message)
+{
+    diag_.report({il::support::Severity::Warning, message, loc, "V3001"});
+}
 
 /// @brief Report a semantic error at a source location.
 void Sema::error(SourceLoc loc, const std::string &message)

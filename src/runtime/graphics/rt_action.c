@@ -37,6 +37,7 @@
 #include "rt_action.h"
 #include "rt_input.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_json_stream.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -359,6 +360,7 @@ static double clamp_axis(double value)
 
 void rt_action_init(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (g_initialized)
         return;
     g_actions = NULL;
@@ -367,12 +369,14 @@ void rt_action_init(void)
 
 void rt_action_shutdown(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     rt_action_clear();
     g_initialized = 0;
 }
 
 void rt_action_update(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
         return;
 
@@ -503,6 +507,7 @@ void rt_action_update(void)
 
 void rt_action_clear(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
     while (a)
     {
@@ -519,6 +524,7 @@ void rt_action_clear(void)
 
 int8_t rt_action_define(rt_string name)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
         rt_action_init();
 
@@ -551,6 +557,7 @@ int8_t rt_action_define(rt_string name)
 
 int8_t rt_action_define_axis(rt_string name)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
         rt_action_init();
 
@@ -583,17 +590,20 @@ int8_t rt_action_define_axis(rt_string name)
 
 int8_t rt_action_exists(rt_string name)
 {
+    RT_ASSERT_MAIN_THREAD();
     return find_action_str(name) != NULL;
 }
 
 int8_t rt_action_is_axis(rt_string name)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(name);
     return a ? a->is_axis : 0;
 }
 
 int8_t rt_action_remove(rt_string name)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!name)
         return 0;
 
@@ -622,6 +632,7 @@ int8_t rt_action_remove(rt_string name)
 
 int8_t rt_action_bind_key(rt_string action, int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || a->is_axis)
         return 0;
@@ -634,6 +645,7 @@ int8_t rt_action_bind_key(rt_string action, int64_t key)
 
 int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
@@ -646,6 +658,7 @@ int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value)
 
 int8_t rt_action_unbind_key(rt_string action, int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
         return 0;
@@ -658,6 +671,7 @@ int8_t rt_action_unbind_key(rt_string action, int64_t key)
 
 int8_t rt_action_bind_chord(rt_string action, void *keys)
 {
+    RT_ASSERT_MAIN_THREAD();
     int64_t len, i;
     Binding *b;
     Action *a = find_action_str(action);
@@ -684,6 +698,7 @@ int8_t rt_action_bind_chord(rt_string action, void *keys)
 
 int8_t rt_action_unbind_chord(rt_string action, void *keys)
 {
+    RT_ASSERT_MAIN_THREAD();
     int64_t len, i;
     Binding **pp;
     Action *a = find_action_str(action);
@@ -723,6 +738,7 @@ int8_t rt_action_unbind_chord(rt_string action, void *keys)
 
 int64_t rt_action_chord_count(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     int64_t count = 0;
     Binding *b;
     Action *a = find_action_str(action);
@@ -745,6 +761,7 @@ int64_t rt_action_chord_count(rt_string action)
 
 int8_t rt_action_bind_mouse(rt_string action, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || a->is_axis)
         return 0;
@@ -757,6 +774,7 @@ int8_t rt_action_bind_mouse(rt_string action, int64_t button)
 
 int8_t rt_action_unbind_mouse(rt_string action, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
         return 0;
@@ -765,6 +783,7 @@ int8_t rt_action_unbind_mouse(rt_string action, int64_t button)
 
 int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
@@ -777,6 +796,7 @@ int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity)
 
 int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
@@ -789,6 +809,7 @@ int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity)
 
 int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
@@ -801,6 +822,7 @@ int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity)
 
 int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
@@ -817,6 +839,7 @@ int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity)
 
 int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || a->is_axis)
         return 0;
@@ -829,6 +852,7 @@ int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t bu
 
 int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
         return 0;
@@ -837,6 +861,7 @@ int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t 
 
 int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis, double scale)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
@@ -849,6 +874,7 @@ int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis
 
 int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t axis)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
         return 0;
@@ -860,6 +886,7 @@ int8_t rt_action_bind_pad_button_axis(rt_string action,
                                       int64_t button,
                                       double value)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
         return 0;
@@ -876,24 +903,28 @@ int8_t rt_action_bind_pad_button_axis(rt_string action,
 
 int8_t rt_action_pressed(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->pressed : 0;
 }
 
 int8_t rt_action_released(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->released : 0;
 }
 
 int8_t rt_action_held(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->held : 0;
 }
 
 double rt_action_strength(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a && a->held ? 1.0 : 0.0;
 }
@@ -904,12 +935,14 @@ double rt_action_strength(rt_string action)
 
 double rt_action_axis(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? clamp_axis(a->axis_value) : 0.0;
 }
 
 double rt_action_axis_raw(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->axis_value : 0.0;
 }
@@ -920,6 +953,7 @@ double rt_action_axis_raw(rt_string action)
 
 void *rt_action_list(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
     Action *a = g_actions;
     while (a)
@@ -933,6 +967,7 @@ void *rt_action_list(void)
 
 rt_string rt_action_bindings_str(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
         return rt_str_empty();
@@ -1117,6 +1152,7 @@ rt_string rt_action_bindings_str(rt_string action)
 
 int64_t rt_action_binding_count(rt_string action)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
         return 0;
@@ -1137,6 +1173,7 @@ int64_t rt_action_binding_count(rt_string action)
 
 rt_string rt_action_key_bound_to(int64_t key)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
     while (a)
     {
@@ -1154,6 +1191,7 @@ rt_string rt_action_key_bound_to(int64_t key)
 
 rt_string rt_action_mouse_bound_to(int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
     while (a)
     {
@@ -1171,6 +1209,7 @@ rt_string rt_action_mouse_bound_to(int64_t button)
 
 rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button)
 {
+    RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
     while (a)
     {
@@ -1312,6 +1351,7 @@ static void sb_append_json_string(rt_string_builder *sb, const char *str)
 
 rt_string rt_action_save(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     rt_string_builder sb;
     int8_t first_action;
     rt_sb_init(&sb);
@@ -1384,6 +1424,7 @@ rt_string rt_action_save(void)
 
 int8_t rt_action_load(rt_string json)
 {
+    RT_ASSERT_MAIN_THREAD();
     void *parser;
     int64_t tok;
 
