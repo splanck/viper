@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_serialize.h
-// Purpose: Unified serialization interface providing format-agnostic dispatch (JSON, TOML, YAML, INI, XML) via a format enum or auto-detection from file extension.
+// Purpose: Unified serialization interface providing format-agnostic dispatch (JSON, TOML, YAML,
+// INI, XML) via a format enum or auto-detection from file extension.
 //
 // Key invariants:
 //   - Format is selected by enum or auto-detected from file extension.

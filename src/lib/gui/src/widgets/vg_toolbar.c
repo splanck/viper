@@ -261,7 +261,8 @@ static void toolbar_measure(vg_widget_t *widget, float available_width, float av
     // Scale icon_px by the current ui_scale so the bar fills the correct visual
     // height on HiDPI displays (item_padding was already scaled at creation time).
     float _ms = vg_theme_get_current()->ui_scale;
-    if (_ms <= 0.0f) _ms = 1.0f;
+    if (_ms <= 0.0f)
+        _ms = 1.0f;
     uint32_t icon_px = (uint32_t)((float)get_icon_pixels(tb->icon_size) * _ms);
     float bar_thickness = (float)icon_px + (float)tb->item_padding * 2 + 4.0f * _ms;
 
@@ -381,7 +382,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
     // applies the scale).  Without this, items are measured at 48px on 2× Retina
     // but painted with a 24px icon reference, misaligning icon/label positions.
     float _ps = vg_theme_get_current()->ui_scale;
-    if (_ps <= 0.0f) _ps = 1.0f;
+    if (_ps <= 0.0f)
+        _ps = 1.0f;
     uint32_t icon_px = (uint32_t)((float)get_icon_pixels(tb->icon_size) * _ps);
 
     float pos = 0;

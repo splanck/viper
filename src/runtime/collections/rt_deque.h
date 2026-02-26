@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_deque.h
-// Purpose: Double-ended queue (deque) providing O(1) push/pop at both front and back with O(1) random access by index, implemented as a ring buffer.
+// Purpose: Double-ended queue (deque) providing O(1) push/pop at both front and back with O(1)
+// random access by index, implemented as a ring buffer.
 //
 // Key invariants:
 //   - Indices are 0-based with front at index 0.

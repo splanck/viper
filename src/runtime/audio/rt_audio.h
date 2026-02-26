@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/audio/rt_audio.h
-// Purpose: Runtime bridge for the ViperAUD audio library, exposing sound effect and music playback controls (play, pause, stop, volume, loop) over opaque audio handles.
+// Purpose: Runtime bridge for the ViperAUD audio library, exposing sound effect and music playback
+// controls (play, pause, stop, volume, loop) over opaque audio handles.
 //
 // Key invariants:
 //   - All sound and music pointers are opaque handles returned by rt_sound_new/rt_music_new.

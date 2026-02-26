@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_string_intern.h
-// Purpose: Global string interning table providing O(1) equality comparison via pointer identity after interning, using FNV-1a hashing and a mutex for thread safety.
+// Purpose: Global string interning table providing O(1) equality comparison via pointer identity
+// after interning, using FNV-1a hashing and a mutex for thread safety.
 //
 // Key invariants:
 //   - Each unique byte sequence maps to exactly one canonical rt_string pointer.
@@ -11,7 +12,8 @@
 //
 // Ownership/Lifetime:
 //   - rt_string_intern returns a retained pointer; caller must call rt_string_unref when done.
-//   - The intern table retains its own reference to canonical strings; they are freed only at shutdown.
+//   - The intern table retains its own reference to canonical strings; they are freed only at
+//   shutdown.
 //
 // Links: src/runtime/core/rt_string_intern.c (implementation), src/runtime/core/rt_string.h
 //

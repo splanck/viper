@@ -177,8 +177,8 @@ static void button_paint(vg_widget_t *widget, void *canvas)
     draw_filled_rect(canvas, widget->x, widget->y, widget->width, widget->height, bg_color);
 
     // Draw border; use focus color when the button has keyboard focus
-    uint32_t border = (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus
-                                                         : button->border_color;
+    uint32_t border =
+        (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus : button->border_color;
     vgfx_rect((vgfx_window_t)canvas,
               (int32_t)widget->x,
               (int32_t)widget->y,
@@ -191,9 +191,9 @@ static void button_paint(vg_widget_t *widget, void *canvas)
     {
         vg_font_metrics_t font_metrics;
         vg_font_get_metrics(button->font, button->font_size, &font_metrics);
-        float baseline_y =
-            widget->y + (widget->height - (font_metrics.ascent - font_metrics.descent)) / 2.0f +
-            font_metrics.ascent;
+        float baseline_y = widget->y +
+                           (widget->height - (font_metrics.ascent - font_metrics.descent)) / 2.0f +
+                           font_metrics.ascent;
 
         bool has_text = button->text && button->text[0];
         bool has_icon = button->icon_text && button->icon_text[0];
@@ -206,9 +206,13 @@ static void button_paint(vg_widget_t *widget, void *canvas)
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(button->font, button->font_size, button->text, &metrics);
                 float text_x = widget->x + (widget->width - metrics.width) / 2.0f;
-                vg_font_draw_text(
-                    canvas, button->font, button->font_size, text_x, baseline_y,
-                    button->text, fg_color);
+                vg_font_draw_text(canvas,
+                                  button->font,
+                                  button->font_size,
+                                  text_x,
+                                  baseline_y,
+                                  button->text,
+                                  fg_color);
             }
         }
         else
@@ -229,22 +233,42 @@ static void button_paint(vg_widget_t *widget, void *canvas)
                 // icon on the right
                 float text_x = start_x;
                 if (has_text)
-                    vg_font_draw_text(canvas, button->font, button->font_size,
-                                      text_x, baseline_y, button->text, fg_color);
+                    vg_font_draw_text(canvas,
+                                      button->font,
+                                      button->font_size,
+                                      text_x,
+                                      baseline_y,
+                                      button->text,
+                                      fg_color);
                 float icon_x = start_x + text_m.width + gap;
-                vg_font_draw_text(canvas, button->font, button->font_size,
-                                  icon_x, baseline_y, button->icon_text, fg_color);
+                vg_font_draw_text(canvas,
+                                  button->font,
+                                  button->font_size,
+                                  icon_x,
+                                  baseline_y,
+                                  button->icon_text,
+                                  fg_color);
             }
             else
             {
                 // icon on the left (default)
-                vg_font_draw_text(canvas, button->font, button->font_size,
-                                  start_x, baseline_y, button->icon_text, fg_color);
+                vg_font_draw_text(canvas,
+                                  button->font,
+                                  button->font_size,
+                                  start_x,
+                                  baseline_y,
+                                  button->icon_text,
+                                  fg_color);
                 if (has_text)
                 {
                     float text_x = start_x + icon_m.width + gap;
-                    vg_font_draw_text(canvas, button->font, button->font_size,
-                                      text_x, baseline_y, button->text, fg_color);
+                    vg_font_draw_text(canvas,
+                                      button->font,
+                                      button->font_size,
+                                      text_x,
+                                      baseline_y,
+                                      button->text,
+                                      fg_color);
                 }
             }
         }

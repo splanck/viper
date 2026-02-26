@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_modvar.h
-// Purpose: Runtime support for module-level (global) BASIC variables, providing stable address lookup by name and type for i64, f64, i1, pointer, and string variables.
+// Purpose: Runtime support for module-level (global) BASIC variables, providing stable address
+// lookup by name and type for i64, f64, i1, pointer, and string variables.
 //
 // Key invariants:
 //   - The same (name, type) pair always yields the same stable address.

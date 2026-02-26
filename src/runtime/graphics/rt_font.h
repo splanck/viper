@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_font.h
-// Purpose: Embedded 8x8 bitmap font providing per-character glyph bitmaps for software text rendering, where each glyph is 8 bytes (one byte per row).
+// Purpose: Embedded 8x8 bitmap font providing per-character glyph bitmaps for software text
+// rendering, where each glyph is 8 bytes (one byte per row).
 //
 // Key invariants:
 //   - ASCII characters 0-127 are supported; undefined chars use a fallback glyph.

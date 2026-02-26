@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_smoothvalue.h
-// Purpose: Smooth value interpolation for camera follow and UI animations, applying exponential smoothing each frame so the current value asymptotically approaches the target.
+// Purpose: Smooth value interpolation for camera follow and UI animations, applying exponential
+// smoothing each frame so the current value asymptotically approaches the target.
 //
 // Key invariants:
 //   - Smoothing factor must be in [0, 1); values >= 1 cause undefined behavior.

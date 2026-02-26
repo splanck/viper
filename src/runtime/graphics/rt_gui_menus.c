@@ -177,7 +177,7 @@ void rt_menu_set_title(void *menu, rt_string title)
     if (!menu)
         return;
     vg_menu_t *m = (vg_menu_t *)menu;
-    free((void *)m->title);
+    free((void *)(uintptr_t)m->title);
     m->title = rt_string_to_cstr(title);
 }
 
@@ -240,7 +240,7 @@ void rt_menuitem_set_text(void *item, rt_string text)
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
-    free((void *)mi->text);
+    free((void *)(uintptr_t)mi->text);
     mi->text = rt_string_to_cstr(text);
 }
 
@@ -259,7 +259,7 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut)
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
-    free((void *)mi->shortcut);
+    free((void *)(uintptr_t)mi->shortcut);
     mi->shortcut = rt_string_to_cstr(shortcut);
 }
 

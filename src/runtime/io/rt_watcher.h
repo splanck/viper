@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_watcher.h
-// Purpose: File system watcher for Viper.IO.Watcher, monitoring files and directories for changes (created, modified, deleted) and delivering events via callbacks.
+// Purpose: File system watcher for Viper.IO.Watcher, monitoring files and directories for changes
+// (created, modified, deleted) and delivering events via callbacks.
 //
 // Key invariants:
 //   - Events are delivered asynchronously via a callback registered at creation.

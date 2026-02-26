@@ -307,8 +307,7 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data)
     if (bc->max_items > 0 && (int)bc->item_count >= bc->max_items)
     {
         free_breadcrumb_item(&bc->items[0]);
-        memmove(&bc->items[0], &bc->items[1],
-                (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));
+        memmove(&bc->items[0], &bc->items[1], (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));
         bc->item_count--;
     }
 
@@ -418,8 +417,8 @@ void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max)
         while ((int)bc->item_count > max && bc->item_count > 0)
         {
             free_breadcrumb_item(&bc->items[0]);
-            memmove(&bc->items[0], &bc->items[1],
-                    (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));
+            memmove(
+                &bc->items[0], &bc->items[1], (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));
             bc->item_count--;
         }
     }

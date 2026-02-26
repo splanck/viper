@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_graphics.h
-// Purpose: Runtime bridge functions for the ViperGFX graphics library, providing canvas creation/destruction, drawing operations, pixel manipulation, image loading, and window management.
+// Purpose: Runtime bridge functions for the ViperGFX graphics library, providing canvas
+// creation/destruction, drawing operations, pixel manipulation, image loading, and window
+// management.
 //
 // Key invariants:
 //   - All canvas pointers are opaque handles returned by rt_canvas_new.
@@ -13,7 +15,8 @@
 //   - Canvas handles must be destroyed with rt_canvas_destroy when no longer needed.
 //   - Graphics system resources are cleaned up on destruction.
 //
-// Links: src/runtime/graphics/rt_graphics.c (implementation), src/lib/graphics/include/vgfx.h, src/runtime/core/rt_string.h
+// Links: src/runtime/graphics/rt_graphics.c (implementation), src/lib/graphics/include/vgfx.h,
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -162,8 +165,8 @@ extern "C"
     /// @param text Text string to draw.
     /// @param scale Integer scale factor (1=8px, 2=16px, 3=24px, etc.).
     /// @param color Text color (0x00RRGGBB).
-    void rt_canvas_text_scaled(void *canvas, int64_t x, int64_t y,
-                               rt_string text, int64_t scale, int64_t color);
+    void rt_canvas_text_scaled(
+        void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color);
 
     /// @brief Draw scaled text with foreground and background colors.
     /// @param canvas Canvas handle.
@@ -173,8 +176,8 @@ extern "C"
     /// @param scale Integer scale factor.
     /// @param fg Foreground (text) color (0x00RRGGBB).
     /// @param bg Background color (0x00RRGGBB).
-    void rt_canvas_text_scaled_bg(void *canvas, int64_t x, int64_t y,
-                                  rt_string text, int64_t scale, int64_t fg, int64_t bg);
+    void rt_canvas_text_scaled_bg(
+        void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg);
 
     /// @brief Get the width of scaled text in pixels.
     /// @param text Text string to measure.
@@ -190,8 +193,8 @@ extern "C"
     /// @param h Rectangle height.
     /// @param color Fill color (0x00RRGGBB).
     /// @param alpha Alpha value (0=transparent, 255=opaque).
-    void rt_canvas_box_alpha(void *canvas, int64_t x, int64_t y,
-                             int64_t w, int64_t h, int64_t color, int64_t alpha);
+    void rt_canvas_box_alpha(
+        void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha);
 
     /// @brief Draw a filled circle with alpha blending.
     /// @param canvas Canvas handle.
@@ -200,8 +203,8 @@ extern "C"
     /// @param radius Circle radius in pixels.
     /// @param color Fill color (0x00RRGGBB).
     /// @param alpha Alpha value (0=transparent, 255=opaque).
-    void rt_canvas_disc_alpha(void *canvas, int64_t cx, int64_t cy,
-                              int64_t radius, int64_t color, int64_t alpha);
+    void rt_canvas_disc_alpha(
+        void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha);
 
     /// @brief Blit a Pixels buffer to the canvas.
     /// @param canvas Canvas handle.

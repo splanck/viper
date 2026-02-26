@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_bigint.h
-// Purpose: Arbitrary-precision integer arithmetic for the Viper.Math.BigInt runtime class, providing creation, arithmetic, comparison, bitwise, and conversion operations on heap-allocated big integer objects.
+// Purpose: Arbitrary-precision integer arithmetic for the Viper.Math.BigInt runtime class,
+// providing creation, arithmetic, comparison, bitwise, and conversion operations on heap-allocated
+// big integer objects.
 //
 // Key invariants:
 //   - All arithmetic operations produce normalized results with no leading zero limbs.

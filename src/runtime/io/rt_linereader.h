@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_linereader.h
-// Purpose: Line-by-line text file reading for Viper.IO.LineReader, stripping newline characters (CR, LF, CRLF) and providing character-level peek/read access.
+// Purpose: Line-by-line text file reading for Viper.IO.LineReader, stripping newline characters
+// (CR, LF, CRLF) and providing character-level peek/read access.
 //
 // Key invariants:
 //   - Read strips the line terminator (CR, LF, or CRLF) from each line.

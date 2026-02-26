@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_oop.h
-// Purpose: Minimal runtime ABI for object-oriented features in BASIC including class metadata, vtable-based virtual dispatch, interface support, and the class registry.
+// Purpose: Minimal runtime ABI for object-oriented features in BASIC including class metadata,
+// vtable-based virtual dispatch, interface support, and the class registry.
 //
 // Key invariants:
 //   - vptr is always at offset 0 in every object; this is a stable ABI invariant.

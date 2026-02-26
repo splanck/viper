@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_websocket.h
-// Purpose: WebSocket client implementing RFC 6455 for real-time bidirectional text and binary communication over persistent connections.
+// Purpose: WebSocket client implementing RFC 6455 for real-time bidirectional text and binary
+// communication over persistent connections.
 //
 // Key invariants:
 //   - Implements the RFC 6455 WebSocket protocol including framing and masking.

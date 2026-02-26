@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_internal.h
-// Purpose: Internal runtime helpers for buffer growth, allocation hooks, hex utilities, and array macros. This header is implementation-only and must never be included by IL-generated or user code.
+// Purpose: Internal runtime helpers for buffer growth, allocation hooks, hex utilities, and array
+// macros. This header is implementation-only and must never be included by IL-generated or user
+// code.
 //
 // Key invariants:
 //   - Implementation-only: must not be included from public-facing headers.
@@ -121,7 +123,7 @@ static inline int rt_hex_digit_value(char c)
 #define RT_ARR_DEFINE_HDR_FN(fn_name, elem_type)                                                   \
     static inline rt_heap_hdr_t *fn_name(const elem_type *payload)                                 \
     {                                                                                              \
-        return payload ? rt_heap_hdr((void *)payload) : NULL;                                      \
+        return payload ? rt_heap_hdr((void *)(uintptr_t)payload) : NULL;                           \
     }
 
 /// @brief Generate an array header assertion function (static).

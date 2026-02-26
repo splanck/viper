@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_tempfile.h
-// Purpose: Temporary file utilities creating files in the system temp directory with automatic cleanup on process exit or explicit deletion.
+// Purpose: Temporary file utilities creating files in the system temp directory with automatic
+// cleanup on process exit or explicit deletion.
 //
 // Key invariants:
 //   - Temp files are created in the OS-provided temporary directory.

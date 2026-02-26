@@ -253,7 +253,7 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas)
                 if (modified_title)
                 {
                     memcpy(modified_title, tab->title, tlen);
-                    modified_title[tlen]     = ' ';
+                    modified_title[tlen] = ' ';
                     modified_title[tlen + 1] = '*';
                     modified_title[tlen + 2] = '\0';
                     title = modified_title;

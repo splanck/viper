@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_memstream.h
-// Purpose: In-memory binary stream backed by a growable byte buffer, providing seekable read/write of primitive types in little-endian encoding, strings, and raw byte arrays.
+// Purpose: In-memory binary stream backed by a growable byte buffer, providing seekable read/write
+// of primitive types in little-endian encoding, strings, and raw byte arrays.
 //
 // Key invariants:
 //   - Primitive types use little-endian encoding for cross-platform compatibility.

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_particle.h
-// Purpose: Particle emitter for visual effects (explosions, sparks, smoke) managing a pool of particles with configurable lifetime, velocity, gravity, color, size, fade, and shrink.
+// Purpose: Particle emitter for visual effects (explosions, sparks, smoke) managing a pool of
+// particles with configurable lifetime, velocity, gravity, color, size, fade, and shrink.
 //
 // Key invariants:
 //   - Maximum particle count is RT_PARTICLE_MAX (1024) per emitter.
@@ -13,7 +14,8 @@
 //   - Caller owns the rt_particle_emitter handle; destroy with rt_particle_emitter_destroy.
 //   - Output pointers written by rt_particle_emitter_get are not retained.
 //
-// Links: src/runtime/collections/rt_particle.c (implementation), src/runtime/collections/rt_screenfx.h
+// Links: src/runtime/collections/rt_particle.c (implementation),
+// src/runtime/collections/rt_screenfx.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef VIPER_RT_PARTICLE_H

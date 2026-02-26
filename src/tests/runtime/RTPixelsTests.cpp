@@ -861,7 +861,7 @@ static void test_blend_50_percent()
     int64_t rgba = rt_pixels_get(p, 2, 2);
     int r = (int)((rgba >> 24) & 0xFF);
     int g = (int)((rgba >> 16) & 0xFF);
-    int b = (int)((rgba >>  8) & 0xFF);
+    int b = (int)((rgba >> 8) & 0xFF);
     assert(r >= 125 && r <= 130);
     assert(g >= 125 && g <= 130);
     assert(b >= 125 && b <= 130);

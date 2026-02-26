@@ -168,7 +168,6 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
         return text;
 
     int64_t result_pos = 0;
-    int64_t line_start = 0;
     int at_line_start = 1;
 
     for (int64_t i = 0; i <= src_len; i++)

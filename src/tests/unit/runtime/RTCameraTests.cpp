@@ -60,10 +60,10 @@ TEST(is_visible_outside)
     void *cam = rt_camera_new(800, 600);
     // Viewport covers world [0,0,800,600].
     // Objects entirely off each edge must be invisible.
-    ASSERT(rt_camera_is_visible(cam, 800, 0, 50, 50) == 0);   // off right
-    ASSERT(rt_camera_is_visible(cam, 0, 600, 50, 50) == 0);   // off bottom
-    ASSERT(rt_camera_is_visible(cam, -100, 0, 50, 50) == 0);  // off left
-    ASSERT(rt_camera_is_visible(cam, 0, -100, 50, 50) == 0);  // off top
+    ASSERT(rt_camera_is_visible(cam, 800, 0, 50, 50) == 0);  // off right
+    ASSERT(rt_camera_is_visible(cam, 0, 600, 50, 50) == 0);  // off bottom
+    ASSERT(rt_camera_is_visible(cam, -100, 0, 50, 50) == 0); // off left
+    ASSERT(rt_camera_is_visible(cam, 0, -100, 50, 50) == 0); // off top
 }
 
 TEST(is_visible_partial_overlap)

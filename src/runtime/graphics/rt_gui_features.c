@@ -839,9 +839,9 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
         mm->marker_cap = new_cap;
     }
     struct vg_minimap_marker *m = &mm->markers[mm->marker_count++];
-    m->line  = (int)line;
+    m->line = (int)line;
     m->color = (uint32_t)color;
-    m->type  = (int)type;
+    m->type = (int)type;
     mm->base.needs_paint = true;
 }
 
@@ -895,9 +895,6 @@ typedef struct rt_drag_drop_data
     char *drop_type;
     char *drop_data;
 } rt_drag_drop_data_t;
-
-// Global drag state for simple implementation
-static rt_drag_drop_data_t *g_current_drag = NULL;
 
 void rt_widget_set_draggable(void *widget, int64_t draggable)
 {

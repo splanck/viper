@@ -130,8 +130,8 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode)
     {
         // IO-H-7: include filename and OS error for actionable diagnostics
         char msg[512];
-        snprintf(msg, sizeof(msg), "LineWriter: failed to open '%s': %s",
-                 path_str, strerror(errno));
+        snprintf(
+            msg, sizeof(msg), "LineWriter: failed to open '%s': %s", path_str, strerror(errno));
         rt_trap(msg);
         return NULL;
     }

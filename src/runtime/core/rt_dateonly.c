@@ -386,7 +386,7 @@ rt_string rt_dateonly_to_string(void *obj)
              (long long)d->year,
              (long long)d->month,
              (long long)d->day);
-    return rt_string_from_bytes(buf, (int64_t)strlen(buf));
+    return rt_string_from_bytes(buf, strlen(buf));
 }
 
 rt_string rt_dateonly_format(void *obj, rt_string fmt)

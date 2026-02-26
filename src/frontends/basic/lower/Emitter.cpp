@@ -512,11 +512,11 @@ void Emitter::releaseDeferredTemps()
         lowerer_.requestHelper(Lowerer::RuntimeFeature::ObjReleaseChk0);
         lowerer_.requestHelper(Lowerer::RuntimeFeature::ObjFree);
 
-        auto &ctx = lowerer_.context();
-        auto *func = ctx.function();
-        if (!func || !ctx.current())
+        auto &ctx2 = lowerer_.context();
+        auto *func = ctx2.function();
+        if (!func || !ctx2.current())
             continue;
-        std::size_t originIdx = static_cast<std::size_t>(ctx.current() - &func->blocks[0]);
+        std::size_t originIdx = static_cast<std::size_t>(ctx2.current() - &func->blocks[0]);
         auto *origin = &func->blocks[originIdx];
 
         // Create destroy and continue blocks.

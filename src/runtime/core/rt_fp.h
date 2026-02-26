@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_fp.h
-// Purpose: Floating-point arithmetic helpers enforcing BASIC domain and overflow semantics via an out-parameter ok flag, wrapping IEEE-754 power operations with input validation for trap-based error handling.
+// Purpose: Floating-point arithmetic helpers enforcing BASIC domain and overflow semantics via an
+// out-parameter ok flag, wrapping IEEE-754 power operations with input validation for trap-based
+// error handling.
 //
 // Key invariants:
 //   - When *ok is true the result matches the C99 math library pow().

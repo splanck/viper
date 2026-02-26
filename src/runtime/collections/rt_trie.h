@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_trie.h
-// Purpose: Prefix tree (Trie) for string keys supporting insertion, lookup, prefix search, and auto-complete queries with O(k) operations where k is the key length.
+// Purpose: Prefix tree (Trie) for string keys supporting insertion, lookup, prefix search, and
+// auto-complete queries with O(k) operations where k is the key length.
 //
 // Key invariants:
 //   - Keys are stored as sequences of ASCII characters.

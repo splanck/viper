@@ -84,7 +84,12 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
     if (label && dd->font)
     {
         float ty = widget->y + widget->height * 0.5f + dd->font_size * 0.35f;
-        vg_font_draw_text(canvas, dd->font, dd->font_size, widget->x + 6.0f, ty, label,
+        vg_font_draw_text(canvas,
+                          dd->font,
+                          dd->font_size,
+                          widget->x + 6.0f,
+                          ty,
+                          label,
                           label == dd->placeholder ? theme->colors.fg_secondary : dd->text_color);
     }
 
@@ -92,10 +97,18 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
     float ax = widget->x + widget->width - dd->arrow_size - 4.0f;
     float ay = widget->y + widget->height / 2.0f;
     float as2 = dd->arrow_size / 2.0f;
-    vgfx_line(win, (int32_t)(ax), (int32_t)(ay - as2 / 2),
-              (int32_t)(ax + as2), (int32_t)(ay + as2 / 2), dd->text_color);
-    vgfx_line(win, (int32_t)(ax + as2), (int32_t)(ay + as2 / 2),
-              (int32_t)(ax + dd->arrow_size), (int32_t)(ay - as2 / 2), dd->text_color);
+    vgfx_line(win,
+              (int32_t)(ax),
+              (int32_t)(ay - as2 / 2),
+              (int32_t)(ax + as2),
+              (int32_t)(ay + as2 / 2),
+              dd->text_color);
+    vgfx_line(win,
+              (int32_t)(ax + as2),
+              (int32_t)(ay + as2 / 2),
+              (int32_t)(ax + dd->arrow_size),
+              (int32_t)(ay - as2 / 2),
+              dd->text_color);
 
     // Draw open panel below header
     if (dd->open && dd->item_count > 0)
@@ -131,8 +144,13 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
             if (dd->items[i] && dd->font)
             {
                 float ty2 = iy + ih * 0.7f;
-                vg_font_draw_text(canvas, dd->font, dd->font_size, (float)(px + 6), ty2,
-                                  dd->items[i], dd->text_color);
+                vg_font_draw_text(canvas,
+                                  dd->font,
+                                  dd->font_size,
+                                  (float)(px + 6),
+                                  ty2,
+                                  dd->items[i],
+                                  dd->text_color);
             }
         }
     }

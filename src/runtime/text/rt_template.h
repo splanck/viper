@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_template.h
-// Purpose: Simple string templating with {{key}} placeholder substitution from a Map or sequential Seq, supporting custom delimiters via RenderWith.
+// Purpose: Simple string templating with {{key}} placeholder substitution from a Map or sequential
+// Seq, supporting custom delimiters via RenderWith.
 //
 // Key invariants:
 //   - Placeholders have the form {{key}}; whitespace around key is trimmed.

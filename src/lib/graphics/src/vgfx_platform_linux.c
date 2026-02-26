@@ -182,7 +182,7 @@ float vgfx_platform_get_display_scale(void)
     Display *dpy = XOpenDisplay(NULL);
     if (dpy)
     {
-        float    scale = 1.0f;
+        float scale = 1.0f;
         const char *rms = XResourceManagerString(dpy);
         if (rms)
         {
@@ -537,16 +537,14 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 {
                     button = VGFX_MOUSE_RIGHT;
                 }
-                else if (event.xbutton.button == Button4 ||
-                         event.xbutton.button == Button5)
+                else if (event.xbutton.button == Button4 || event.xbutton.button == Button5)
                 {
                     /* X11 scroll wheel: Button4 = up, Button5 = down */
                     float dy = (event.xbutton.button == Button4) ? -1.0f : 1.0f;
                     vgfx_event_t scroll_event = {
-                        .type    = VGFX_EVENT_SCROLL,
+                        .type = VGFX_EVENT_SCROLL,
                         .time_ms = timestamp,
-                        .data.scroll = {.delta_x = 0.0f, .delta_y = dy,
-                                        .x = x, .y = y}};
+                        .data.scroll = {.delta_x = 0.0f, .delta_y = dy, .x = x, .y = y}};
                     vgfx_internal_enqueue_event(win, &scroll_event);
                     break;
                 }
@@ -933,9 +931,18 @@ int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *data = NULL;
-    int status = XGetWindowProperty(x11->display, x11->window, wm_state_atom,
-                                    0, 1024, False, XA_ATOM, &actual_type,
-                                    &actual_format, &nitems, &bytes_after, &data);
+    int status = XGetWindowProperty(x11->display,
+                                    x11->window,
+                                    wm_state_atom,
+                                    0,
+                                    1024,
+                                    False,
+                                    XA_ATOM,
+                                    &actual_type,
+                                    &actual_format,
+                                    &nitems,
+                                    &bytes_after,
+                                    &data);
     if (status != Success || !data)
         return 0;
     int found = 0;
@@ -965,9 +972,18 @@ int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *data = NULL;
-    int status = XGetWindowProperty(x11->display, x11->window, wm_state_atom,
-                                    0, 1024, False, XA_ATOM, &actual_type,
-                                    &actual_format, &nitems, &bytes_after, &data);
+    int status = XGetWindowProperty(x11->display,
+                                    x11->window,
+                                    wm_state_atom,
+                                    0,
+                                    1024,
+                                    False,
+                                    XA_ATOM,
+                                    &actual_type,
+                                    &actual_format,
+                                    &nitems,
+                                    &bytes_after,
+                                    &data);
     if (status != Success || !data)
         return 0;
     int found = 0;
@@ -1057,12 +1073,24 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
     unsigned int shape;
     switch (cursor_type)
     {
-        case 1: shape = 58;  break; // XC_hand2
-        case 2: shape = 152; break; // XC_xterm
-        case 3: shape = 108; break; // XC_sb_h_double_arrow
-        case 4: shape = 116; break; // XC_sb_v_double_arrow
-        case 5: shape = 150; break; // XC_watch
-        default: shape = 68;  break; // XC_left_ptr (default arrow)
+        case 1:
+            shape = 58;
+            break; // XC_hand2
+        case 2:
+            shape = 152;
+            break; // XC_xterm
+        case 3:
+            shape = 108;
+            break; // XC_sb_h_double_arrow
+        case 4:
+            shape = 116;
+            break; // XC_sb_v_double_arrow
+        case 5:
+            shape = 150;
+            break; // XC_watch
+        default:
+            shape = 68;
+            break; // XC_left_ptr (default arrow)
     }
     Cursor cursor = XCreateFontCursor(x11->display, shape);
     XDefineCursor(x11->display, x11->window, cursor);

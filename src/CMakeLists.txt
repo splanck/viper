@@ -35,12 +35,14 @@ add_library(viper_common STATIC
 target_include_directories(viper_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+target_link_libraries(viper_common PRIVATE viper_common_opts)
 
 add_library(viper_pass STATIC
         pass/PassManager.cpp)
 target_include_directories(viper_pass PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+target_link_libraries(viper_pass PRIVATE viper_common_opts)
 
 add_subdirectory(codegen/common)
 add_subdirectory(codegen/x86_64)
@@ -63,7 +65,7 @@ target_include_directories(viper_il_core PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
 )
-target_link_libraries(viper_il_core PRIVATE viper_support)
+target_link_libraries(viper_il_core PRIVATE viper_support viper_common_opts)
 
 ## Runtime signatures: generated from runtime.def via rtgen
 
@@ -79,7 +81,7 @@ add_library(il_runtime STATIC
         il/runtime/signatures/Signatures_OOP.cpp
         il/runtime/classes/RuntimeClasses.cpp)
 add_dependencies(il_runtime generate_runtime_registry)
-target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime)
+target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime PRIVATE viper_common_opts)
 target_compile_definitions(il_runtime PUBLIC VIPER_RUNTIME_NS_DUAL=$<BOOL:${VIPER_RUNTIME_NS_DUAL}>)
 target_include_directories(il_runtime PUBLIC
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
@@ -100,7 +102,8 @@ target_link_libraries(il_build
         PUBLIC
         viper_il_core
         PRIVATE
-        viper_support)
+        viper_support
+        viper_common_opts)
 target_include_directories(il_build PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -133,7 +136,7 @@ add_library(viper_il_verify STATIC
         il/verify/ControlFlowChecker.cpp
         il/verify/VerifierTable.cpp
         il/verify/TypeInference.cpp)
-target_link_libraries(viper_il_verify PRIVATE viper_il_core il_runtime)
+target_link_libraries(viper_il_verify PRIVATE viper_il_core il_runtime viper_common_opts)
 target_include_directories(viper_il_verify PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -155,7 +158,8 @@ add_library(viper::il_full ALIAS viper_il_full)
 
 add_library(il_api STATIC il/api/expected_api.cpp)
 target_link_libraries(il_api
-        PUBLIC viper_il_full)
+        PUBLIC viper_il_full
+        PRIVATE viper_common_opts)
 target_include_directories(il_api PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -166,7 +170,7 @@ add_library(il_analysis STATIC
         il/analysis/CallGraph.cpp
         il/analysis/Dominators.cpp
         il/analysis/MemorySSA.cpp)
-target_link_libraries(il_analysis PUBLIC viper_il_core)
+target_link_libraries(il_analysis PUBLIC viper_il_core PRIVATE viper_common_opts)
 target_include_directories(il_analysis PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -212,7 +216,8 @@ target_link_libraries(il_transform
         PRIVATE
         viper_il_verify
         il_analysis
-        il_utils)
+        il_utils
+        viper_common_opts)
 target_include_directories(il_transform PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -222,7 +227,7 @@ target_include_directories(il_transform PUBLIC
 add_library(il_utils STATIC
         il/utils/Utils.cpp
         il/utils/UseDefInfo.cpp)
-target_link_libraries(il_utils PUBLIC viper_il_core)
+target_link_libraries(il_utils PUBLIC viper_il_core PRIVATE viper_common_opts)
 target_include_directories(il_utils PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -234,7 +239,7 @@ add_library(il_tools_common STATIC
         tools/common/project_loader.cpp
         tools/common/vm_executor.cpp
 )
-target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode)
+target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode PRIVATE viper_common_opts)
 target_include_directories(il_tools_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -283,8 +288,8 @@ target_link_libraries(il_vm
         il_runtime
         viper_runtime
         PRIVATE
-        viper_support)
-
+        viper_support
+        viper_common_opts)
 
 # Enable tail-call optimisation across the VM by default.
 option(IL_VM_ENABLE_TAILCALL "Enable VM tail-call optimization by default" ON)
@@ -306,7 +311,7 @@ target_include_directories(viper_bytecode PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 target_link_libraries(viper_bytecode
         PUBLIC viper_il_core
-        PRIVATE viper_support il_vm)
+        PRIVATE viper_support il_vm viper_common_opts)
 
 add_library(il_codegen_x86_64 STATIC
         codegen/x86_64/AsmEmitter.cpp
@@ -330,6 +335,7 @@ target_include_directories(il_codegen_x86_64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+target_link_libraries(il_codegen_x86_64 PRIVATE viper_common_opts)
 add_dependencies(il_codegen_x86_64 generate_runtime_registry)
 
 add_library(viper_cmd_arm64 STATIC

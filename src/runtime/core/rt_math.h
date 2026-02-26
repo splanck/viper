@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_math.h
-// Purpose: Runtime library mathematical functions for BASIC programs, including transcendental (sin, cos, tan, atan, exp, log), rounding (floor, ceil), and sign/absolute-value operations.
+// Purpose: Runtime library mathematical functions for BASIC programs, including transcendental
+// (sin, cos, tan, atan, exp, log), rounding (floor, ceil), and sign/absolute-value operations.
 //
 // Key invariants:
 //   - All floating-point operations use IEEE-754 double precision.

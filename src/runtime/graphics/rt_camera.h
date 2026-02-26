@@ -1,13 +1,15 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_camera.h
-// Purpose: 2D camera for viewport and scrolling, providing world-to-screen and screen-to-world coordinate transforms, zoom, and shake offset application.
+// Purpose: 2D camera for viewport and scrolling, providing world-to-screen and screen-to-world
+// coordinate transforms, zoom, and shake offset application.
 //
 // Key invariants:
 //   - Camera tracks a viewport rectangle in world space.
 //   - World-to-screen transforms apply offset and zoom.
 //   - Screen-to-world is the inverse transform for mouse picking.
-//   - Shake offsets (from rt_screenfx) are applied separately to avoid accumulating into the base position.
+//   - Shake offsets (from rt_screenfx) are applied separately to avoid accumulating into the base
+//   position.
 //
 // Ownership/Lifetime:
 //   - Camera objects are heap-allocated opaque pointers.

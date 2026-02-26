@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/arrays/rt_array_str.h
-// Purpose: Dynamic string array API for BASIC DIM'd string collections, providing two-level reference counting over both the array container and each individual string element.
+// Purpose: Dynamic string array API for BASIC DIM'd string collections, providing two-level
+// reference counting over both the array container and each individual string element.
 //
 // Key invariants:
 //   - Slots are initialized to NULL on allocation.
@@ -14,7 +15,8 @@
 //   - Each element is independently refcounted.
 //   - Callers must release references obtained from rt_arr_str_get.
 //
-// Links: src/runtime/arrays/rt_array_str.c (implementation), src/runtime/core/rt_string.h, src/runtime/core/rt_heap.h
+// Links: src/runtime/arrays/rt_array_str.c (implementation), src/runtime/core/rt_string.h,
+// src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

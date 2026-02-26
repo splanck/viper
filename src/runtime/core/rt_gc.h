@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_gc.h
-// Purpose: Cycle-detecting garbage collector supplementing atomic reference counting, using a trial-deletion mark-sweep algorithm to find and break unreachable reference cycles among tracked objects.
+// Purpose: Cycle-detecting garbage collector supplementing atomic reference counting, using a
+// trial-deletion mark-sweep algorithm to find and break unreachable reference cycles among tracked
+// objects.
 //
 // Key invariants:
 //   - Only objects with RT_MAGIC headers may be registered via rt_gc_track.

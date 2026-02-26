@@ -1,6 +1,6 @@
 // vg_progressbar.c - ProgressBar widget implementation
-#include "../../include/vg_widgets.h"
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_widgets.h"
 #include <stdio.h>
 #include <stdlib.h>
 

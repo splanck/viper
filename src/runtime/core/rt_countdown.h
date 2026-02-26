@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_countdown.h
-// Purpose: Countdown timer providing interval-based expiration detection with start, stop, reset, and query operations, suitable for game loops and timed events.
+// Purpose: Countdown timer providing interval-based expiration detection with start, stop, reset,
+// and query operations, suitable for game loops and timed events.
 //
 // Key invariants:
 //   - Remaining time is clamped to zero; it never goes negative.

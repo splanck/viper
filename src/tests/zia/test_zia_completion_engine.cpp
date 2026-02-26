@@ -47,13 +47,13 @@ namespace
 
 static bool hasLabel(const std::vector<CompletionItem> &items, const std::string &label)
 {
-    return std::any_of(items.begin(), items.end(),
-                       [&](const CompletionItem &it) { return it.label == label; });
+    return std::any_of(
+        items.begin(), items.end(), [&](const CompletionItem &it) { return it.label == label; });
 }
 
 static bool hasKind(const std::vector<CompletionItem> &items,
-                    const std::string                 &label,
-                    CompletionKind                     kind)
+                    const std::string &label,
+                    CompletionKind kind)
 {
     for (const auto &it : items)
         if (it.label == label && it.kind == kind)
@@ -79,7 +79,7 @@ TEST(CompletionEngine, CtrlSpace_ReturnsGlobalFunction)
 TEST(CompletionEngine, CtrlSpace_ReturnsKeywords)
 {
     const std::string source = "module Test;\n\n";
-    CompletionEngine  engine;
+    CompletionEngine engine;
     // maxResults=0 → unlimited. Keywords are priority=50; scope symbols priority=10.
     auto items = engine.complete(source, 2, 0, "<test>", 0);
     EXPECT_TRUE(hasLabel(items, "func"));
@@ -94,7 +94,7 @@ TEST(CompletionEngine, PrefixFiltering_NarrowsResults)
     // "fu" prefix — should match "func" but not "var"/"if" etc.
     // Source has "fu" on line 2; cursor at col 2 gives prefix="fu".
     const std::string srcWithPrefix = "module Test;\nfu\n";
-    CompletionEngine  engine;
+    CompletionEngine engine;
     auto items = engine.complete(srcWithPrefix, 2, 2, "<test>", 0);
     EXPECT_TRUE(hasLabel(items, "func"));
     EXPECT_FALSE(hasLabel(items, "var"));
@@ -171,17 +171,17 @@ TEST(CompletionEngine, Serialize_ProducesTabDelimited)
 {
     std::vector<CompletionItem> items;
     CompletionItem a;
-    a.label      = "foo";
+    a.label = "foo";
     a.insertText = "foo()";
-    a.kind       = CompletionKind::Function;
-    a.detail     = "() -> Integer";
+    a.kind = CompletionKind::Function;
+    a.detail = "() -> Integer";
     items.push_back(a);
 
     CompletionItem b;
-    b.label      = "bar";
+    b.label = "bar";
     b.insertText = "bar";
-    b.kind       = CompletionKind::Variable;
-    b.detail     = "Integer";
+    b.kind = CompletionKind::Variable;
+    b.detail = "Integer";
     items.push_back(b);
 
     std::string out = serialize(items);
@@ -207,7 +207,7 @@ TEST(CompletionEngine, Serialize_ProducesTabDelimited)
 TEST(CompletionEngine, Cache_SameSourceReusesResult)
 {
     const std::string source = "module Test;\n\nfunc myFn() {}\n";
-    CompletionEngine  engine;
+    CompletionEngine engine;
 
     // First call — populates cache.
     auto items1 = engine.complete(source, 1, 0, "<test>", 0);
@@ -223,7 +223,7 @@ TEST(CompletionEngine, Cache_SameSourceReusesResult)
 TEST(CompletionEngine, ClearCache_ForcesReparse)
 {
     const std::string source = "module Test;\n\nfunc alpha() {}\n";
-    CompletionEngine  engine;
+    CompletionEngine engine;
 
     auto items1 = engine.complete(source, 1, 0, "<test>", 0);
     EXPECT_FALSE(items1.empty());
@@ -241,7 +241,7 @@ TEST(CompletionEngine, ClearCache_ForcesReparse)
 TEST(CompletionEngine, MaxResults_LimitsOutput)
 {
     const std::string source = "module Test;\n";
-    CompletionEngine  engine;
+    CompletionEngine engine;
     auto items = engine.complete(source, 1, 0, "<test>", 3);
     EXPECT_TRUE(static_cast<int>(items.size()) <= 3);
 }

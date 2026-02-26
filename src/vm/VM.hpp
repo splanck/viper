@@ -731,7 +731,6 @@ class VM
     };
 
   private:
-
     /// @brief Last trap recorded by the VM for diagnostic reporting.
     struct TrapState
     {

@@ -30,7 +30,7 @@ target_include_directories(il_codegen_aarch64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
-target_link_libraries(il_codegen_aarch64 PUBLIC viper_codegen_common)
+target_link_libraries(il_codegen_aarch64 PUBLIC viper_codegen_common PRIVATE viper_common_opts)
 set_target_properties(il_codegen_aarch64 PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- Generate OpcodeDispatch from JSON (no Python dependency) ---

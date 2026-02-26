@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_numfmt.h
-// Purpose: Number formatting utilities for locale-aware numeric display including decimal, scientific, currency, percentage, and ordinal formats.
+// Purpose: Number formatting utilities for locale-aware numeric display including decimal,
+// scientific, currency, percentage, and ordinal formats.
 //
 // Key invariants:
 //   - All returned strings are newly allocated; caller must release.

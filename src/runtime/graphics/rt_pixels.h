@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_pixels.h
-// Purpose: Software image buffer manipulation for Viper.Graphics.Pixels, providing pixel-level read/write, drawing primitives, image loading/saving, and blitting operations.
+// Purpose: Software image buffer manipulation for Viper.Graphics.Pixels, providing pixel-level
+// read/write, drawing primitives, image loading/saving, and blitting operations.
 //
 // Key invariants:
 //   - Pixel format is 0xRRGGBBAA (big-endian RGBA); drawing helpers use 0x00RRGGBB.
@@ -207,62 +208,52 @@ extern "C"
     int64_t rt_pixels_get_rgb(void *pixels, int64_t x, int64_t y);
 
     /// @brief Draw a line between two points (Bresenham algorithm).
-    void rt_pixels_draw_line(void *pixels,
-                             int64_t x1, int64_t y1,
-                             int64_t x2, int64_t y2,
-                             int64_t color);
+    void rt_pixels_draw_line(
+        void *pixels, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color);
 
     /// @brief Draw a filled rectangle.
-    void rt_pixels_draw_box(void *pixels,
-                            int64_t x, int64_t y,
-                            int64_t w, int64_t h,
-                            int64_t color);
+    void rt_pixels_draw_box(
+        void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color);
 
     /// @brief Draw a rectangle outline.
-    void rt_pixels_draw_frame(void *pixels,
-                              int64_t x, int64_t y,
-                              int64_t w, int64_t h,
-                              int64_t color);
+    void rt_pixels_draw_frame(
+        void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color);
 
     /// @brief Draw a filled circle.
-    void rt_pixels_draw_disc(void *pixels,
-                             int64_t cx, int64_t cy,
-                             int64_t r, int64_t color);
+    void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color);
 
     /// @brief Draw a circle outline.
-    void rt_pixels_draw_ring(void *pixels,
-                             int64_t cx, int64_t cy,
-                             int64_t r, int64_t color);
+    void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color);
 
     /// @brief Draw a filled ellipse.
-    void rt_pixels_draw_ellipse(void *pixels,
-                                int64_t cx, int64_t cy,
-                                int64_t rx, int64_t ry,
-                                int64_t color);
+    void rt_pixels_draw_ellipse(
+        void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color);
 
     /// @brief Draw an ellipse outline.
-    void rt_pixels_draw_ellipse_frame(void *pixels,
-                                      int64_t cx, int64_t cy,
-                                      int64_t rx, int64_t ry,
-                                      int64_t color);
+    void rt_pixels_draw_ellipse_frame(
+        void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color);
 
     /// @brief Flood fill from a seed point (iterative scanline, any canvas size).
-    void rt_pixels_flood_fill(void *pixels,
-                              int64_t x, int64_t y,
-                              int64_t color);
+    void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color);
 
     /// @brief Draw a thick line (pen-radius approach).
     /// @param thickness Stroke width in pixels (pen diameter).
     void rt_pixels_draw_thick_line(void *pixels,
-                                   int64_t x1, int64_t y1,
-                                   int64_t x2, int64_t y2,
-                                   int64_t thickness, int64_t color);
+                                   int64_t x1,
+                                   int64_t y1,
+                                   int64_t x2,
+                                   int64_t y2,
+                                   int64_t thickness,
+                                   int64_t color);
 
     /// @brief Draw a filled triangle (scanline fill).
     void rt_pixels_draw_triangle(void *pixels,
-                                 int64_t x1, int64_t y1,
-                                 int64_t x2, int64_t y2,
-                                 int64_t x3, int64_t y3,
+                                 int64_t x1,
+                                 int64_t y1,
+                                 int64_t x2,
+                                 int64_t y2,
+                                 int64_t x3,
+                                 int64_t y3,
                                  int64_t color);
 
     /// @brief Draw a quadratic Bézier curve.
@@ -270,9 +261,12 @@ extern "C"
     /// @param cx,cy Control point.
     /// @param x2,y2 End point.
     void rt_pixels_draw_bezier(void *pixels,
-                               int64_t x1, int64_t y1,
-                               int64_t cx, int64_t cy,
-                               int64_t x2, int64_t y2,
+                               int64_t x1,
+                               int64_t y1,
+                               int64_t cx,
+                               int64_t cy,
+                               int64_t x2,
+                               int64_t y2,
                                int64_t color);
 
     /// @brief Alpha-composite a color onto a pixel (Porter-Duff over).
@@ -282,9 +276,7 @@ extern "C"
     /// @param color Source color in 0x00RRGGBB format (Canvas-compatible).
     /// @param alpha Source alpha 0–255 (0 = transparent, 255 = fully opaque).
     /// @note Coordinates outside the buffer are silently clipped.
-    void rt_pixels_blend_pixel(void *pixels,
-                               int64_t x, int64_t y,
-                               int64_t color, int64_t alpha);
+    void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, int64_t alpha);
 
 #ifdef __cplusplus
 }

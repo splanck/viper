@@ -136,7 +136,7 @@ vg_event_t vg_event_from_platform(void *platform_event)
             break;
 
         case VGFX_EVENT_SCROLL:
-            event.type          = VG_EVENT_MOUSE_WHEEL;
+            event.type = VG_EVENT_MOUSE_WHEEL;
             event.wheel.delta_x = pe->data.scroll.delta_x;
             event.wheel.delta_y = pe->data.scroll.delta_y;
             /* Also populate mouse.screen_x/y for hit-test routing in vg_event_dispatch */

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_ini.h
-// Purpose: INI/config file parsing and formatting returning a map-of-maps structure (section -> key -> value), with sectionless entries under the empty string key.
+// Purpose: INI/config file parsing and formatting returning a map-of-maps structure (section -> key
+// -> value), with sectionless entries under the empty string key.
 //
 // Key invariants:
 //   - Returns a Map where keys are section names and values are Maps of key-value pairs.

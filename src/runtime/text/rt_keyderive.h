@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_keyderive.h
-// Purpose: Key derivation functions implementing PBKDF2-SHA256 for deriving cryptographic keys from passwords with configurable iteration counts.
+// Purpose: Key derivation functions implementing PBKDF2-SHA256 for deriving cryptographic keys from
+// passwords with configurable iteration counts.
 //
 // Key invariants:
 //   - Minimum 1000 iterations; higher iteration counts increase brute-force resistance.

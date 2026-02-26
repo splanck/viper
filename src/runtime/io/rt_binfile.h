@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_binfile.h
-// Purpose: Binary file stream operations for Viper.IO.BinFile, providing seekable stream-based I/O with read/write modes, position queries, and EOF detection.
+// Purpose: Binary file stream operations for Viper.IO.BinFile, providing seekable stream-based I/O
+// with read/write modes, position queries, and EOF detection.
 //
 // Key invariants:
 //   - Open modes: 'r' (read-only), 'w' (write/truncate), 'rw' (read-write), 'a' (append).

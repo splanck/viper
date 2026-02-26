@@ -182,8 +182,8 @@ std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
     auto result = std::make_unique<AnalysisResult>();
 
     // Register source file (matches the logic in compile()).
-    uint32_t fileId = input.fileId.has_value() ? *input.fileId
-                                               : sm.addFile(std::string(input.path));
+    uint32_t fileId =
+        input.fileId.has_value() ? *input.fileId : sm.addFile(std::string(input.path));
 
     // Phase 1: Lexing
     Lexer lexer(std::string(input.source), fileId, result->diagnostics);

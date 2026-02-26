@@ -459,8 +459,8 @@ void rt_file_copy(rt_string src, rt_string dst)
     if (src_fd < 0)
     {
         char msg[512];
-        snprintf(msg, sizeof(msg), "File.Copy: cannot open source '%s': %s",
-                 src_path, strerror(errno));
+        snprintf(
+            msg, sizeof(msg), "File.Copy: cannot open source '%s': %s", src_path, strerror(errno));
         rt_trap(msg);
     }
 
@@ -470,8 +470,11 @@ void rt_file_copy(rt_string src, rt_string dst)
         // IO-H-4: destination open failure was previously silent — now traps
         close(src_fd);
         char msg[512];
-        snprintf(msg, sizeof(msg), "File.Copy: cannot open destination '%s': %s",
-                 dst_path, strerror(errno));
+        snprintf(msg,
+                 sizeof(msg),
+                 "File.Copy: cannot open destination '%s': %s",
+                 dst_path,
+                 strerror(errno));
         rt_trap(msg);
     }
 

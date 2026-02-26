@@ -98,7 +98,7 @@ struct rt_quadtree_impl
     int64_t item_count;
     int64_t results[RT_QUADTREE_MAX_RESULTS];
     int64_t result_count;
-    int8_t  query_truncated; ///< 1 if last query hit RT_QUADTREE_MAX_RESULTS cap.
+    int8_t query_truncated; ///< 1 if last query hit RT_QUADTREE_MAX_RESULTS cap.
     struct qt_pair pairs[MAX_PAIRS];
     int64_t pair_count;
 };
@@ -164,13 +164,6 @@ static int8_t intersects(struct qt_node *node, int64_t x, int64_t y, int64_t w, 
 {
     return !(x >= node->x + node->width || x + w <= node->x || y >= node->y + node->height ||
              y + h <= node->y);
-}
-
-/// Check if a rectangle is fully contained in a node.
-static int8_t contains(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
-{
-    return x >= node->x && x + w <= node->x + node->width && y >= node->y &&
-           y + h <= node->y + node->height;
 }
 
 /// Split a node into 4 children.

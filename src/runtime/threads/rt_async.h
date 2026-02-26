@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_async.h
-// Purpose: Async task combinators built on Future/Promise and threads, providing WhenAll, WhenAny, Delay, and Run wrappers for composing concurrent operations.
+// Purpose: Async task combinators built on Future/Promise and threads, providing WhenAll, WhenAny,
+// Delay, and Run wrappers for composing concurrent operations.
 //
 // Key invariants:
 //   - All functions return Future objects.
@@ -13,7 +14,8 @@
 //   - Returned Future objects are GC-managed opaque pointers.
 //   - Callers should not free Future objects directly.
 //
-// Links: src/runtime/threads/rt_async.c (implementation), src/runtime/threads/rt_future.h, src/runtime/threads/rt_threadpool.h
+// Links: src/runtime/threads/rt_async.c (implementation), src/runtime/threads/rt_future.h,
+// src/runtime/threads/rt_threadpool.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

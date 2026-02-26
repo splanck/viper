@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_dateonly.h
-// Purpose: DateOnly type representing a calendar date without time or timezone components, providing creation, parsing, arithmetic, and formatting operations.
+// Purpose: DateOnly type representing a calendar date without time or timezone components,
+// providing creation, parsing, arithmetic, and formatting operations.
 //
 // Key invariants:
 //   - Month is 1-indexed (1=January, 12=December); day is 1-indexed.

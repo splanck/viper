@@ -17,7 +17,9 @@
 //=============================================================================
 
 static void floatingpanel_destroy(vg_widget_t *widget);
-static void floatingpanel_measure(vg_widget_t *widget, float available_width, float available_height);
+static void floatingpanel_measure(vg_widget_t *widget,
+                                  float available_width,
+                                  float available_height);
 static void floatingpanel_paint(vg_widget_t *widget, void *canvas);
 static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas);
 
@@ -26,14 +28,14 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas);
 //=============================================================================
 
 static vg_widget_vtable_t g_floatingpanel_vtable = {
-    .destroy      = floatingpanel_destroy,
-    .measure      = floatingpanel_measure,
-    .arrange      = NULL,
-    .paint        = floatingpanel_paint,
+    .destroy = floatingpanel_destroy,
+    .measure = floatingpanel_measure,
+    .arrange = NULL,
+    .paint = floatingpanel_paint,
     .paint_overlay = floatingpanel_paint_overlay,
     .handle_event = NULL,
-    .can_focus    = NULL,
-    .on_focus     = NULL,
+    .can_focus = NULL,
+    .on_focus = NULL,
 };
 
 //=============================================================================
@@ -49,7 +51,7 @@ vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root)
     vg_widget_init(&panel->base, VG_WIDGET_CUSTOM, &g_floatingpanel_vtable);
 
     // Defaults — dark popup background matching IDE theme
-    panel->bg_color     = 0xFF252526u; // VS-Code-style dark panel
+    panel->bg_color = 0xFF252526u; // VS-Code-style dark panel
     panel->border_color = 0xFF454545u;
     panel->border_width = 1.0f;
 
@@ -68,9 +70,9 @@ static void floatingpanel_destroy(vg_widget_t *widget)
     vg_floatingpanel_t *panel = (vg_floatingpanel_t *)widget;
     // Free private child array (does NOT destroy children — caller owns them)
     free(panel->children);
-    panel->children   = NULL;
+    panel->children = NULL;
     panel->child_count = 0;
-    panel->child_cap   = 0;
+    panel->child_cap = 0;
 }
 
 void vg_floatingpanel_destroy(vg_floatingpanel_t *panel)
@@ -82,13 +84,13 @@ void vg_floatingpanel_destroy(vg_floatingpanel_t *panel)
 }
 
 static void floatingpanel_measure(vg_widget_t *widget,
-                                   float available_width,
-                                   float available_height)
+                                  float available_width,
+                                  float available_height)
 {
     // The panel takes zero space in the normal layout pass.
     (void)available_width;
     (void)available_height;
-    widget->measured_width  = 0.0f;
+    widget->measured_width = 0.0f;
     widget->measured_height = 0.0f;
 }
 
@@ -166,7 +168,7 @@ void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible)
 {
     if (!panel)
         return;
-    panel->base.visible     = (visible != 0);
+    panel->base.visible = (visible != 0);
     panel->base.needs_paint = true;
 }
 
@@ -182,7 +184,7 @@ void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child)
         vg_widget_t **new_arr = realloc(panel->children, (size_t)new_cap * sizeof(vg_widget_t *));
         if (!new_arr)
             return;
-        panel->children  = new_arr;
+        panel->children = new_arr;
         panel->child_cap = new_cap;
     }
 

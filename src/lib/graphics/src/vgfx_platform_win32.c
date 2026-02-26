@@ -228,13 +228,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
             if (w32 && (dip_w != w32->width || dip_h != w32->height))
             {
-                w32->width  = dip_w;  /* keep logical for StretchBlt dest */
+                w32->width = dip_w; /* keep logical for StretchBlt dest */
                 w32->height = dip_h;
 
                 /* Physical dimensions for the framebuffer */
                 int phys_w = (int)(dip_w * win->scale_factor);
                 int phys_h = (int)(dip_h * win->scale_factor);
-                win->width  = phys_w;
+                win->width = phys_w;
                 win->height = phys_h;
                 win->stride = phys_w * 4;
 
@@ -453,7 +453,7 @@ float vgfx_platform_get_display_scale(void)
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
     if (user32)
     {
-        typedef BOOL (WINAPI *SPDA_fn)(HANDLE);
+        typedef BOOL(WINAPI * SPDA_fn)(HANDLE);
         SPDA_fn fn = (SPDA_fn)(void *)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
         if (fn)
             fn((HANDLE)(intptr_t)(-2)); /* DPI_AWARENESS_CONTEXT_SYSTEM_AWARE */
@@ -463,7 +463,7 @@ float vgfx_platform_get_display_scale(void)
      * real system DPI rather than the virtualised 96 DPI given to unaware
      * processes. */
     HDC hdc = GetDC(NULL);
-    int dpi  = GetDeviceCaps(hdc, LOGPIXELSX);
+    int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
     ReleaseDC(NULL, hdc);
 
     if (dpi < 96)
@@ -772,7 +772,7 @@ int vgfx_platform_present(struct vgfx_window *win)
     for (int i = 0; i < batch; i += 4, src += 16, dst += 16)
     {
         uint32_t p0, p1, p2, p3;
-        memcpy(&p0, src,     4);
+        memcpy(&p0, src, 4);
         memcpy(&p1, src + 4, 4);
         memcpy(&p2, src + 8, 4);
         memcpy(&p3, src + 12, 4);
@@ -781,9 +781,9 @@ int vgfx_platform_present(struct vgfx_window *win)
         p1 = (p1 & 0xFF00FF00u) | ((p1 >> 16) & 0xFFu) | ((p1 & 0xFFu) << 16);
         p2 = (p2 & 0xFF00FF00u) | ((p2 >> 16) & 0xFFu) | ((p2 & 0xFFu) << 16);
         p3 = (p3 & 0xFF00FF00u) | ((p3 >> 16) & 0xFFu) | ((p3 & 0xFFu) << 16);
-        memcpy(dst,      &p0, 4);
-        memcpy(dst + 4,  &p1, 4);
-        memcpy(dst + 8,  &p2, 4);
+        memcpy(dst, &p0, 4);
+        memcpy(dst + 4, &p1, 4);
+        memcpy(dst + 8, &p2, 4);
         memcpy(dst + 12, &p3, 4);
     }
     /* Scalar tail: handle remaining 0-3 pixels */
@@ -800,12 +800,14 @@ int vgfx_platform_present(struct vgfx_window *win)
      * StretchBlt maps the physical-size DIB (win->width × win->height pixels)
      * into the logical window rect (w32->width × w32->height DIP).  On a
      * 2× HiDPI display this renders 1 DIB pixel per physical screen pixel. */
-    if (!StretchBlt(w32->hdc,    /* Destination DC (window, DIP coords) */
-                    0, 0,
+    if (!StretchBlt(w32->hdc, /* Destination DC (window, DIP coords) */
+                    0,
+                    0,
                     w32->width,  /* Destination width in DIP */
                     w32->height, /* Destination height in DIP */
                     w32->memdc,  /* Source DC (physical DIB) */
-                    0, 0,
+                    0,
+                    0,
                     win->width,  /* Source width in physical pixels */
                     win->height, /* Source height in physical pixels */
                     SRCCOPY))
@@ -1218,8 +1220,7 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     vgfx_win32_data *data = (vgfx_win32_data *)win->platform_data;
     if (!data->hwnd)
         return;
-    SetWindowPos(data->hwnd, NULL, 0, 0, w, h,
-                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(data->hwnd, NULL, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 #endif /* _WIN32 */

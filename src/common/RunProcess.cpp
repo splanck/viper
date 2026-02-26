@@ -548,7 +548,7 @@ RunResult run_process(const std::vector<std::string> &argv,
         rr.out += buffer;
     }
 
-    const int status = PCLOSE(pipe);
+    int status = PCLOSE(pipe);
 #ifdef _WIN32
     rr.exit_code = status;
 #else

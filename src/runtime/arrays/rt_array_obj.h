@@ -1,10 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/arrays/rt_array_obj.h
-// Purpose: Dynamic array of opaque object references with element retain/release lifecycle, backing collections that store boxed Viper values.
+// Purpose: Dynamic array of opaque object references with element retain/release lifecycle, backing
+// collections that store boxed Viper values.
 //
 // Key invariants:
-//   - Elements are reference-managed: stored elements are retained on write and released on overwrite or teardown.
+//   - Elements are reference-managed: stored elements are retained on write and released on
+//   overwrite or teardown.
 //   - Indices are bounds-checked by callers before passing to array primitives.
 //   - Length is always tracked; the array owns references to all live elements.
 //

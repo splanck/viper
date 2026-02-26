@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_string_builder.h
-// Purpose: Small-buffer-aware dynamic string builder for the C runtime, avoiding heap allocation for strings up to 128 bytes while growing automatically for longer output.
+// Purpose: Small-buffer-aware dynamic string builder for the C runtime, avoiding heap allocation
+// for strings up to 128 bytes while growing automatically for longer output.
 //
 // Key invariants:
 //   - Inline buffer (128 bytes) avoids allocation for short strings.
@@ -14,7 +15,8 @@
 //   - Callers must call rt_sb_free after rt_sb_finish or on error to release heap memory.
 //   - Stack allocation of rt_string_builder is safe for local use.
 //
-// Links: src/runtime/core/rt_string_builder.c (implementation), src/runtime/core/rt_string.h, src/runtime/core/rt_printf_compat.h
+// Links: src/runtime/core/rt_string_builder.c (implementation), src/runtime/core/rt_string.h,
+// src/runtime/core/rt_printf_compat.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef RT_STRING_BUILDER_H

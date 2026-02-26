@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_box.h
-// Purpose: Boxing and unboxing primitives for storing primitive types (i64, f64, i1, str) in heap-allocated objects for use in generic collections.
+// Purpose: Boxing and unboxing primitives for storing primitive types (i64, f64, i1, str) in
+// heap-allocated objects for use in generic collections.
 //
 // Key invariants:
 //   - Boxed values carry a type tag: 0=i64, 1=f64, 2=i1, 3=str.

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_ratelimit.h
-// Purpose: Token bucket rate limiter for network and API operations, continuously refilling tokens based on elapsed time up to a maximum capacity.
+// Purpose: Token bucket rate limiter for network and API operations, continuously refilling tokens
+// based on elapsed time up to a maximum capacity.
 //
 // Key invariants:
 //   - Tokens refill continuously based on elapsed wall-clock time.

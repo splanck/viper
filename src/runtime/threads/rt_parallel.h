@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_parallel.h
-// Purpose: High-level parallel execution patterns (ForEach, Map, Invoke, Reduce) using the thread pool, preserving output order and supporting custom pool injection.
+// Purpose: High-level parallel execution patterns (ForEach, Map, Invoke, Reduce) using the thread
+// pool, preserving output order and supporting custom pool injection.
 //
 // Key invariants:
 //   - Output order matches input order for Map; ForEach has no defined result order.

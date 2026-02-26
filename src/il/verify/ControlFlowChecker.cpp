@@ -367,7 +367,7 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
             fnRef, bbRef, instrRef, blockMapRef, externsRef, funcsRef, typesRef, capture);
         ParsedCapture parsed = parseCapturedLines(capture.str());
         for (const auto &msg : parsed.warnings)
-            warningSink.report(Diag{Severity::Warning, msg, instrRef.loc});
+            warningSink.report(Diag{Severity::Warning, msg, instrRef.loc, {}});
         if (!ok)
         {
             std::string message = joinMessages(parsed.errors);

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_frozenset.h
-// Purpose: Immutable string set created from a Seq or Bag, providing O(1) average membership testing with guaranteed read-only semantics after construction.
+// Purpose: Immutable string set created from a Seq or Bag, providing O(1) average membership
+// testing with guaranteed read-only semantics after construction.
 //
 // Key invariants:
 //   - Once created, the set cannot be modified.

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_file_path.h
-// Purpose: Internal helpers for translating BASIC OPEN mode enumerations to fopen mode strings and POSIX flags, extracting validated UTF-8 paths from runtime strings.
+// Purpose: Internal helpers for translating BASIC OPEN mode enumerations to fopen mode strings and
+// POSIX flags, extracting validated UTF-8 paths from runtime strings.
 //
 // Key invariants:
 //   - rt_file_mode_string returns NULL for invalid mode enumerations.

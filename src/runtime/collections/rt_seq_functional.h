@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_seq_functional.h
-// Purpose: IL-compatible wrapper functions for Seq functional operations (filter, reject, map, reduce, each, find) accepting function pointers as void* for IL calling convention.
+// Purpose: IL-compatible wrapper functions for Seq functional operations (filter, reject, map,
+// reduce, each, find) accepting function pointers as void* for IL calling convention.
 //
 // Key invariants:
 //   - Function pointers are passed as void* and cast internally to the correct type.
@@ -13,7 +14,8 @@
 //   - Returned Seq objects are newly allocated; caller is responsible for lifetime management.
 //   - Source sequences are not modified or consumed.
 //
-// Links: src/runtime/collections/rt_seq_functional.c (implementation), src/runtime/collections/rt_seq.h
+// Links: src/runtime/collections/rt_seq_functional.c (implementation),
+// src/runtime/collections/rt_seq.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

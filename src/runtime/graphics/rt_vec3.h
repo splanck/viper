@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_vec3.h
-// Purpose: 3D vector math utilities for Viper.Vec3 with immutable value semantics, providing arithmetic, dot product, cross product, magnitude, normalization, and lerp.
+// Purpose: 3D vector math utilities for Viper.Vec3 with immutable value semantics, providing
+// arithmetic, dot product, cross product, magnitude, normalization, and lerp.
 //
 // Key invariants:
 //   - Vec3 objects are immutable; all operations return new Vec3 objects.

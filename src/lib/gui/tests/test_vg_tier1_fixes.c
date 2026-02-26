@@ -47,7 +47,7 @@ static int g_failed = 0;
     {                                                                                              \
         if (!(cond))                                                                               \
         {                                                                                          \
-            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                           \
+            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
         }                                                                                          \
@@ -87,6 +87,7 @@ static vg_event_t make_click(void)
 //=============================================================================
 
 static int g_button_clicked = 0;
+
 static void button_click_cb(vg_widget_t *w, void *data)
 {
     (void)w;

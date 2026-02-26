@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_frozenmap.h
-// Purpose: Immutable string-keyed map created from existing Map or parallel key/value Seqs, providing O(1) average lookup with guaranteed read-only semantics after construction.
+// Purpose: Immutable string-keyed map created from existing Map or parallel key/value Seqs,
+// providing O(1) average lookup with guaranteed read-only semantics after construction.
 //
 // Key invariants:
 //   - Once created, the map cannot be modified; there are no put/remove operations.

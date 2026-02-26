@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_password.h
-// Purpose: Secure password hashing with automatic salt generation using PBKDF2-SHA256 and constant-time verification to prevent timing attacks.
+// Purpose: Secure password hashing with automatic salt generation using PBKDF2-SHA256 and
+// constant-time verification to prevent timing attacks.
 //
 // Key invariants:
 //   - Hash output includes the salt encoded alongside the hash; no separate salt storage needed.
@@ -13,7 +14,8 @@
 //   - Returned hash strings are newly allocated; caller must release.
 //   - Password strings are borrowed for the duration of the call; not retained.
 //
-// Links: src/runtime/text/rt_password.c (implementation), src/runtime/text/rt_keyderive.h, src/runtime/core/rt_string.h
+// Links: src/runtime/text/rt_password.c (implementation), src/runtime/text/rt_keyderive.h,
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

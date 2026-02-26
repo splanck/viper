@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/arrays/rt_array_i64.h
-// Purpose: Dynamic array API for 64-bit integers (int64_t) supporting BASIC LONG typed collections, mirroring the i32 array interface with allocation, refcounting, bounds-checked access, and resize.
+// Purpose: Dynamic array API for 64-bit integers (int64_t) supporting BASIC LONG typed collections,
+// mirroring the i32 array interface with allocation, refcounting, bounds-checked access, and
+// resize.
 //
 // Key invariants:
 //   - Payload pointers are preceded by an rt_heap_hdr_t header at a negative offset.

@@ -22,6 +22,9 @@
 //   - Case conversion is byte-level ASCII; multi-byte UTF-8 sequences are passed
 //     through unchanged.
 //   - String lengths are reported in bytes, not Unicode code points.
+//   - rt_str_flip() is the sole codepoint-aware operation: it walks the string
+//     using utf8_char_len() (1-4 byte sequences) and reverses whole codepoints.
+//   - See rt_string.h "Encoding & indexing" for the full byte-indexing contract.
 //
 // Ownership/Lifetime:
 //   - Functions that return rt_string transfer a new reference to the caller;
@@ -98,14 +101,6 @@ static int rt_string_is_immortal_hdr(const rt_heap_hdr_t *hdr)
     if (!hdr)
         return 0;
     return __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) >= kImmortalRefcnt;
-}
-
-/// @brief Check if a string uses embedded (SSO) storage.
-/// @param s Runtime string handle.
-/// @return Non-zero if string uses embedded storage.
-static int rt_string_is_embedded(rt_string s)
-{
-    return s && s->heap == RT_SSO_SENTINEL;
 }
 
 /// @brief Check if a string can be extended in-place for concatenation.

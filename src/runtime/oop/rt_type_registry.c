@@ -574,7 +574,7 @@ void rt_type_registry_cleanup(RtContext *ctx)
         for (size_t i = 0; i < len; ++i)
         {
             if (classes[i].owned_ci && classes[i].ci)
-                free((void *)classes[i].ci);
+                free((void *)(uintptr_t)classes[i].ci);
             classes[i].ci = NULL;
             classes[i].owned_ci = 0;
             classes[i].type_id = 0;

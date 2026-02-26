@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_hash_util.h
-// Purpose: Shared FNV-1a hash utility providing a deterministic 64-bit hash of arbitrary byte sequences, used by multiple runtime collection types.
+// Purpose: Shared FNV-1a hash utility providing a deterministic 64-bit hash of arbitrary byte
+// sequences, used by multiple runtime collection types.
 //
 // Key invariants:
 //   - Uses FNV-1a with fixed 64-bit offset basis and prime constants.

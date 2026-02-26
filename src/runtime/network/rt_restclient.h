@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_restclient.h
-// Purpose: REST API client with session management, persistent headers, base URL support, JSON convenience methods, and configurable timeouts.
+// Purpose: REST API client with session management, persistent headers, base URL support, JSON
+// convenience methods, and configurable timeouts.
 //
 // Key invariants:
 //   - Persistent headers (e.g., Authorization) are sent with every request.

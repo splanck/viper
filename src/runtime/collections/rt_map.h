@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_map.h
-// Purpose: String-keyed hash map providing O(1) average insertion, lookup, removal, and iteration for the Viper.Collections.Map runtime class.
+// Purpose: String-keyed hash map providing O(1) average insertion, lookup, removal, and iteration
+// for the Viper.Collections.Map runtime class.
 //
 // Key invariants:
 //   - Keys are copied by the map; the map owns its key copies.

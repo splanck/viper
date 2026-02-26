@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_stack.h
-// Purpose: Runtime-backed LIFO stack for Viper.Collections.Stack, providing push/pop/peek with automatic growth and O(1) operations.
+// Purpose: Runtime-backed LIFO stack for Viper.Collections.Stack, providing push/pop/peek with
+// automatic growth and O(1) operations.
 //
 // Key invariants:
 //   - LIFO ordering: push and pop both operate on the top.

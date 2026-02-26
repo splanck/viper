@@ -32,8 +32,8 @@
 
 #include "rt_list_i64.h"
 
-#include "rt_array.h"    // rt_arr_oob_panic
-#include "rt_heap.h"     // rt_heap_alloc, rt_heap_hdr, rt_heap_set_len
+#include "rt_array.h" // rt_arr_oob_panic
+#include "rt_heap.h"  // rt_heap_alloc, rt_heap_hdr, rt_heap_set_len
 
 #include <assert.h>
 #include <string.h>

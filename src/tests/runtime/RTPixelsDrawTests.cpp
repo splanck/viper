@@ -117,7 +117,7 @@ static void test_drawbox_clipped()
     void *p = rt_pixels_new(10, 10);
     rt_pixels_draw_box(p, 8, 8, 100, 100, 0x123456);
     assert(rt_pixels_get_rgb(p, 9, 9) == 0x123456); // corner inside
-    assert(rt_pixels_get_rgb(p, 7, 7) == 0);         // outside box
+    assert(rt_pixels_get_rgb(p, 7, 7) == 0);        // outside box
     printf("test_drawbox_clipped: PASSED\n");
 }
 
@@ -298,8 +298,8 @@ static void test_drawbezier_endpoints()
     void *p = rt_pixels_new(40, 40);
     // Bezier from (2,2) to (37,2) with control at (20,37)
     rt_pixels_draw_bezier(p, 2, 2, 20, 37, 37, 2, 0xCC0000);
-    assert(rt_pixels_get_rgb(p, 2, 2) == 0xCC0000);   // start
-    assert(rt_pixels_get_rgb(p, 37, 2) == 0xCC0000);  // end
+    assert(rt_pixels_get_rgb(p, 2, 2) == 0xCC0000);  // start
+    assert(rt_pixels_get_rgb(p, 37, 2) == 0xCC0000); // end
     printf("test_drawbezier_endpoints: PASSED\n");
 }
 

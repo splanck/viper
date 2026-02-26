@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_stack_safety.h
-// Purpose: Stack overflow detection and graceful error handling for native code, registering platform-specific exception/signal handlers to produce a diagnostic message instead of a hard crash.
+// Purpose: Stack overflow detection and graceful error handling for native code, registering
+// platform-specific exception/signal handlers to produce a diagnostic message instead of a hard
+// crash.
 //
 // Key invariants:
 //   - rt_init_stack_safety must be called once at program startup before user code runs.

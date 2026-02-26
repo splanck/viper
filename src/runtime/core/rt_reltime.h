@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_reltime.h
-// Purpose: Human-readable relative time formatting producing strings like '2 hours ago', 'in 3 days', and '45s' from Unix timestamps or millisecond durations.
+// Purpose: Human-readable relative time formatting producing strings like '2 hours ago', 'in 3
+// days', and '45s' from Unix timestamps or millisecond durations.
 //
 // Key invariants:
 //   - Input timestamps are Unix timestamps in seconds since epoch (UTC).

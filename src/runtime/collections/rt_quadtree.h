@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_quadtree.h
-// Purpose: Quadtree spatial partition for efficient collision queries, reducing O(n^2) broad-phase checks to O(n log n) by subdividing 2D space into adaptive quad cells.
+// Purpose: Quadtree spatial partition for efficient collision queries, reducing O(n^2) broad-phase
+// checks to O(n log n) by subdividing 2D space into adaptive quad cells.
 //
 // Key invariants:
 //   - Items are identified by unique int64 IDs.

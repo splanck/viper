@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_numeric.h
-// Purpose: Numeric type conversions, formatting, and parsing with BASIC semantics, including float-to-integer rounding (banker's rounding), overflow detection, and checked arithmetic variants.
+// Purpose: Numeric type conversions, formatting, and parsing with BASIC semantics, including
+// float-to-integer rounding (banker's rounding), overflow detection, and checked arithmetic
+// variants.
 //
 // Key invariants:
 //   - Float-to-integer conversion uses round-to-nearest-even (banker's rounding).
@@ -13,7 +15,8 @@
 //   - Callers own output buffers for formatting functions.
 //   - No heap allocation in pure arithmetic functions; formatting may allocate strings.
 //
-// Links: src/runtime/core/rt_numeric.c (implementation), src/runtime/core/rt_error.h, src/runtime/core/rt_math.h
+// Links: src/runtime/core/rt_numeric.c (implementation), src/runtime/core/rt_error.h,
+// src/runtime/core/rt_math.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

@@ -52,6 +52,4 @@ RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col)
 }
 
 /// @brief Weak stub: no-op.
-RT_WEAK void rt_zia_completion_clear_cache(void)
-{
-}
+RT_WEAK void rt_zia_completion_clear_cache(void) {}

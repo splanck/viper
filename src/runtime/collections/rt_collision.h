@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_collision.h
-// Purpose: AABB and circle collision detection helpers for game physics, providing overlap testing, depth queries, and distance calculations for both object handles and stateless free functions.
+// Purpose: AABB and circle collision detection helpers for game physics, providing overlap testing,
+// depth queries, and distance calculations for both object handles and stateless free functions.
 //
 // Key invariants:
 //   - Width and height values should be non-negative for meaningful results.

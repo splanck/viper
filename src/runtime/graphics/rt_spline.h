@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_spline.h
-// Purpose: Spline interpolation for smooth curved paths, providing Catmull-Rom splines from Vec2 control points with uniform and non-uniform parametrization.
+// Purpose: Spline interpolation for smooth curved paths, providing Catmull-Rom splines from Vec2
+// control points with uniform and non-uniform parametrization.
 //
 // Key invariants:
 //   - At least 2 control points are required for a valid spline.

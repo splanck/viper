@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_random.h
-// Purpose: Deterministic pseudo-random number generator implementing BASIC's RND and RANDOMIZE functions using a 64-bit LCG algorithm producing identical sequences across all platforms for a given seed.
+// Purpose: Deterministic pseudo-random number generator implementing BASIC's RND and RANDOMIZE
+// functions using a 64-bit LCG algorithm producing identical sequences across all platforms for a
+// given seed.
 //
 // Key invariants:
 //   - Uses the Knuth MMIX LCG multiplier/increment constants for good statistical properties.

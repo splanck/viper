@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_lrucache.h
-// Purpose: String-keyed LRU (Least Recently Used) cache evicting the least-recently-accessed entry when capacity is exceeded, providing O(1) average get/put operations.
+// Purpose: String-keyed LRU (Least Recently Used) cache evicting the least-recently-accessed entry
+// when capacity is exceeded, providing O(1) average get/put operations.
 //
 // Key invariants:
 //   - Keys are string-keyed; each key maps to one value at a time.

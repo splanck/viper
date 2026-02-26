@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_jsonpath.h
-// Purpose: JSONPath-like query expressions for navigating JSON objects using dotted access, bracket notation, and array indexing on rt_json parsed maps/seqs.
+// Purpose: JSONPath-like query expressions for navigating JSON objects using dotted access, bracket
+// notation, and array indexing on rt_json parsed maps/seqs.
 //
 // Key invariants:
 //   - Supports dotted access (obj.key), bracket notation (obj['key']), and array indexing (arr[0]).
@@ -13,7 +14,8 @@
 //   - Returned strings and objects are newly allocated; caller must release.
 //   - The JSON tree is borrowed; it must remain valid during the query.
 //
-// Links: src/runtime/text/rt_jsonpath.c (implementation), src/runtime/text/rt_json.h, src/runtime/core/rt_string.h
+// Links: src/runtime/text/rt_jsonpath.c (implementation), src/runtime/text/rt_json.h,
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

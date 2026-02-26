@@ -54,13 +54,6 @@ static inline uint8_t *bytes_data(void *obj)
     return ((bytes_impl *)obj)->data;
 }
 
-static inline int64_t bytes_len(void *obj)
-{
-    if (!obj)
-        return 0;
-    return ((bytes_impl *)obj)->len;
-}
-
 // Forward declaration for Windows WSA init
 void rt_net_init_wsa(void);
 
@@ -502,16 +495,17 @@ static char *build_request(rt_http_req_t *req)
     size_t remaining = size;
     int written;
 
-#define SNPRINTF_OR_FAIL(fmt, ...)                                    \
-    do {                                                               \
-        written = snprintf(p, remaining, fmt, ##__VA_ARGS__);         \
-        if (written < 0 || (size_t)written >= remaining)              \
-        {                                                              \
-            free(request);                                             \
-            return NULL;                                               \
-        }                                                              \
-        p += written;                                                  \
-        remaining -= (size_t)written;                                  \
+#define SNPRINTF_OR_FAIL(fmt, ...)                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        written = snprintf(p, remaining, fmt, __VA_ARGS__);                                        \
+        if (written < 0 || (size_t)written >= remaining)                                           \
+        {                                                                                          \
+            free(request);                                                                         \
+            return NULL;                                                                           \
+        }                                                                                          \
+        p += written;                                                                              \
+        remaining -= (size_t)written;                                                              \
     } while (0)
 
     SNPRINTF_OR_FAIL("%s %s HTTP/1.1\r\n", req->method, req->url.path);
@@ -520,7 +514,7 @@ static char *build_request(rt_http_req_t *req)
     if (content_len_header[0])
         SNPRINTF_OR_FAIL("%s", content_len_header);
 
-    SNPRINTF_OR_FAIL("Connection: close\r\n");
+    SNPRINTF_OR_FAIL("%s", "Connection: close\r\n");
 
     // User headers
     for (http_header_t *h = req->headers; h; h = h->next)
@@ -528,7 +522,7 @@ static char *build_request(rt_http_req_t *req)
         SNPRINTF_OR_FAIL("%s: %s\r\n", h->name, h->value);
     }
 
-    SNPRINTF_OR_FAIL("\r\n");
+    SNPRINTF_OR_FAIL("%s", "\r\n");
 
 #undef SNPRINTF_OR_FAIL
 

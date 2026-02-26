@@ -188,6 +188,7 @@ void rt_heap_retain(void *payload)
         return;
     }
     const size_t next = __atomic_fetch_add(&hdr->refcnt, 1, __ATOMIC_RELAXED) + 1;
+    (void)next;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, next);
 #endif

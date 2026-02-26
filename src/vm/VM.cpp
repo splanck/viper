@@ -114,7 +114,7 @@ static void registerInterruptHandler()
 #if defined(_WIN32)
     SetConsoleCtrlHandler(windowsCtrlHandler, TRUE);
 #else
-    struct sigaction sa {};
+    struct sigaction sa{};
     sa.sa_handler = posixSigintHandler;
     sigemptyset(&sa.sa_mask);
     // SA_RESTART: resume interrupted system calls where possible.
@@ -122,8 +122,6 @@ static void registerInterruptHandler()
     sigaction(SIGINT, &sa, nullptr);
 #endif
 }
-
-
 
 //===----------------------------------------------------------------------===//
 // Section 1: DISPATCH DRIVER INTERFACE AND IMPLEMENTATIONS
@@ -509,9 +507,6 @@ VM::ExecResult VM::executeOpcode(
             detail += " (block " + blockLabel + ')';
         }
         RuntimeBridge::trap(TrapKind::InvalidOperation, detail, in.loc, fr.func->name, blockLabel);
-        ExecResult res{};
-        res.jumped = true;
-        return res;
     }
     return handler(*this, fr, in, blocks, bb, ip);
 }
@@ -784,9 +779,12 @@ bool VM::runDispatchStep(VMContext &context, ExecState &st)
     {
         // Convert any hardware exception (AV, divide-by-zero, stack overflow)
         // to a Viper RuntimeError trap so the program gets a clean error message.
-        RuntimeBridge::trap(TrapKind::RuntimeError,
-                            "hardware exception (access violation, divide by zero, or stack overflow)",
-                            {}, "", "");
+        RuntimeBridge::trap(
+            TrapKind::RuntimeError,
+            "hardware exception (access violation, divide by zero, or stack overflow)",
+            {},
+            "",
+            "");
         // RuntimeBridge::trap throws TrapDispatchSignal — unreachable.
     }
     return finished;

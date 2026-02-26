@@ -37,8 +37,20 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern void rt_trap(const char *msg);
+
+/// @brief Safely cast strlen() result to int, trapping on overflow.
+static int safe_strlen_int(const char *s)
+{
+    size_t n = strlen(s);
+    if (n > (size_t)INT_MAX)
+        rt_trap("CompiledPattern: string too long for regex engine");
+    return (int)n;
+}
 
 //=============================================================================
 // Internal Structure
@@ -93,7 +105,8 @@ int8_t rt_compiled_pattern_is_match(void *obj, rt_string text)
         txt_str = "";
 
     int match_start, match_end;
-    return re_find_match(cpo->pattern, txt_str, (int)strlen(txt_str), 0, &match_start, &match_end);
+    return re_find_match(
+        cpo->pattern, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end);
 }
 
 rt_string rt_compiled_pattern_find(void *obj, rt_string text)
@@ -106,7 +119,7 @@ rt_string rt_compiled_pattern_find(void *obj, rt_string text)
     if (!txt_str)
         txt_str = "";
 
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     int match_start, match_end;
 
     if (re_find_match(cpo->pattern, txt_str, text_len, 0, &match_start, &match_end))
@@ -126,7 +139,7 @@ rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start
     if (!txt_str)
         txt_str = "";
 
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     if (start < 0)
         start = 0;
     if (start > text_len)
@@ -151,7 +164,7 @@ int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text)
         txt_str = "";
 
     int match_start, match_end;
-    if (re_find_match(cpo->pattern, txt_str, (int)strlen(txt_str), 0, &match_start, &match_end))
+    if (re_find_match(cpo->pattern, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end))
     {
         return (int64_t)match_start;
     }
@@ -169,7 +182,7 @@ void *rt_compiled_pattern_find_all(void *obj, rt_string text)
         txt_str = "";
 
     void *seq = rt_seq_new();
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     int pos = 0;
 
     while (pos <= text_len)
@@ -207,7 +220,7 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
         txt_str = "";
 
     void *seq = rt_seq_new();
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
 
     if (start < 0)
         start = 0;
@@ -263,8 +276,8 @@ rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string repla
     if (!rep_str)
         rep_str = "";
 
-    int text_len = (int)strlen(txt_str);
-    int rep_len = (int)strlen(rep_str);
+    int text_len = safe_strlen_int(txt_str);
+    int rep_len = safe_strlen_int(rep_str);
 
     // Build result
     size_t result_cap = text_len + 64;
@@ -332,8 +345,8 @@ rt_string rt_compiled_pattern_replace_first(void *obj, rt_string text, rt_string
     if (!rep_str)
         rep_str = "";
 
-    int text_len = (int)strlen(txt_str);
-    int rep_len = (int)strlen(rep_str);
+    int text_len = safe_strlen_int(txt_str);
+    int rep_len = safe_strlen_int(rep_str);
 
     int match_start, match_end;
     if (!re_find_match(cpo->pattern, txt_str, text_len, 0, &match_start, &match_end))
@@ -376,7 +389,7 @@ void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit)
         txt_str = "";
 
     void *seq = rt_seq_new();
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     int pos = 0;
     int64_t split_count = 0;
 

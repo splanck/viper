@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_parse.h
-// Purpose: Safe parsing functions for Viper.Parse providing TryXxx, XxxOr, and IsXxx variants that never trap on invalid input and handle all edge cases gracefully.
+// Purpose: Safe parsing functions for Viper.Parse providing TryXxx, XxxOr, and IsXxx variants that
+// never trap on invalid input and handle all edge cases gracefully.
 //
 // Key invariants:
 //   - TryXxx functions store the parsed value at a pointer and return true on success.

@@ -309,7 +309,6 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote)
 {
     parser_advance(p); // Skip opening quote
 
-    size_t start = p->pos;
     size_t capacity = 64;
     char *buf = malloc(capacity);
     if (!buf)
@@ -668,7 +667,7 @@ void *rt_yaml_parse(rt_string text)
 
 rt_string rt_yaml_error(void)
 {
-    return rt_string_from_bytes(yaml_last_error, (int64_t)strlen(yaml_last_error));
+    return rt_string_from_bytes(yaml_last_error, strlen(yaml_last_error));
 }
 
 int8_t rt_yaml_is_valid(rt_string text)

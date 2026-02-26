@@ -160,8 +160,8 @@ struct rt_tls_session
     size_t app_buffer_pos;
 
     // Certificate validation state (CS-1/CS-2/CS-3)
-    uint8_t server_cert_der[16384]; // End-entity certificate DER bytes
-    size_t server_cert_der_len;     // Bytes stored in server_cert_der
+    uint8_t server_cert_der[16384];   // End-entity certificate DER bytes
+    size_t server_cert_der_len;       // Bytes stored in server_cert_der
     uint8_t cert_transcript_hash[32]; // Transcript hash saved AFTER Certificate (for CS-3)
 };
 
@@ -351,7 +351,8 @@ static int send_record(rt_tls_session_t *session,
         // H-8: RFC 8446 §5.5 — close before sequence number wraps (nonce uniqueness)
         if (++session->write_keys.seq_num == 0)
         {
-            session->error = "TLS: write sequence number overflow; connection must be re-established";
+            session->error =
+                "TLS: write sequence number overflow; connection must be re-established";
             return RT_TLS_ERROR;
         }
     }
@@ -460,7 +461,8 @@ static int recv_record(rt_tls_session_t *session,
         // H-8: RFC 8446 §5.5 — close before sequence number wraps (nonce uniqueness)
         if (++session->read_keys.seq_num == 0)
         {
-            session->error = "TLS: read sequence number overflow; connection must be re-established";
+            session->error =
+                "TLS: read sequence number overflow; connection must be re-established";
             return RT_TLS_ERROR;
         }
 
@@ -758,8 +760,7 @@ static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_
 ///     N bytes: DER-encoded certificate
 ///     2 bytes: extensions length
 ///     N bytes: certificate extensions (ignored)
-static int tls_parse_certificate_msg(rt_tls_session_t *session,
-                                      const uint8_t *data, size_t len)
+static int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, size_t len)
 {
     if (!data || len < 4)
     {
@@ -831,8 +832,8 @@ static int tls_parse_certificate_msg(rt_tls_session_t *session,
 /// @param val_len Output: the length of the value field.
 /// @param hdr_len Output: the total header length (tag + length octets).
 /// @return 0 on success, -1 on error.
-static int der_read_tlv(const uint8_t *buf, size_t buf_len,
-                         uint8_t *tag, size_t *val_len, size_t *hdr_len)
+static int der_read_tlv(
+    const uint8_t *buf, size_t buf_len, uint8_t *tag, size_t *val_len, size_t *hdr_len)
 {
     if (buf_len < 2)
         return -1;
@@ -865,37 +866,18 @@ static int der_read_tlv(const uint8_t *buf, size_t buf_len,
     return 0;
 }
 
-/// @brief Find a child element with a specific tag within a DER SEQUENCE/SET.
-/// Returns a pointer to the start of the TLV (tag byte), or NULL if not found.
-static const uint8_t *der_find_child(const uint8_t *seq_val, size_t seq_val_len,
-                                      uint8_t target_tag)
-{
-    size_t pos = 0;
-    while (pos < seq_val_len)
-    {
-        uint8_t t;
-        size_t vl, hl;
-        if (der_read_tlv(seq_val + pos, seq_val_len - pos, &t, &vl, &hl) != 0)
-            break;
-
-        if (t == target_tag)
-            return seq_val + pos;
-
-        pos += hl + vl;
-    }
-    return NULL;
-}
-
 /// @brief Compare buf[0..oid_len-1] to the encoded OID bytes.
-static int oid_matches(const uint8_t *buf, size_t buf_len,
-                        const uint8_t *oid_val, size_t oid_val_len)
+static int oid_matches(const uint8_t *buf,
+                       size_t buf_len,
+                       const uint8_t *oid_val,
+                       size_t oid_val_len)
 {
     return buf_len == oid_val_len && memcmp(buf, oid_val, oid_val_len) == 0;
 }
 
 // Known OID encoded values (value bytes only, after the OID tag+length)
-static const uint8_t OID_COMMON_NAME[]     = {0x55, 0x04, 0x03};        // 2.5.4.3
-static const uint8_t OID_SUBJECT_ALT_NAME[]= {0x55, 0x1d, 0x11};        // 2.5.29.17
+static const uint8_t OID_COMMON_NAME[] = {0x55, 0x04, 0x03};      // 2.5.4.3
+static const uint8_t OID_SUBJECT_ALT_NAME[] = {0x55, 0x1d, 0x11}; // 2.5.29.17
 
 /// @brief Extract DNS names from SubjectAltName extension value.
 /// @param ext_val Points to the value bytes of the SAN extension (after the OCTET STRING wrapper).
@@ -903,13 +885,14 @@ static const uint8_t OID_SUBJECT_ALT_NAME[]= {0x55, 0x1d, 0x11};        // 2.5.2
 /// @param san_out Pre-allocated array for DNS name strings.
 /// @param max_names Maximum number of names to return.
 /// @param count Output: number of names found.
-static void extract_san_from_ext_value(const uint8_t *ext_val, size_t ext_len,
-                                        char san_out[][256], int max_names, int *count)
+static void extract_san_from_ext_value(
+    const uint8_t *ext_val, size_t ext_len, char san_out[][256], int max_names, int *count)
 {
     *count = 0;
 
     // SubjectAltName is an OCTET STRING containing a GeneralNames SEQUENCE
-    uint8_t t; size_t vl, hl;
+    uint8_t t;
+    size_t vl, hl;
     if (der_read_tlv(ext_val, ext_len, &t, &vl, &hl) != 0 || t != 0x04 /* OCTET STRING */)
         return;
 
@@ -943,13 +926,13 @@ static void extract_san_from_ext_value(const uint8_t *ext_val, size_t ext_len,
 
 /// @brief Extract SubjectAltName DNS names from a certificate DER.
 /// @return Number of names found (0 if SAN extension absent).
-int tls_extract_san_names(const uint8_t *der, size_t der_len,
-                           char san_out[][256], int max_names)
+int tls_extract_san_names(const uint8_t *der, size_t der_len, char san_out[][256], int max_names)
 {
     int count = 0;
 
     // Certificate SEQUENCE
-    uint8_t t; size_t vl, hl;
+    uint8_t t;
+    size_t vl, hl;
     if (der_read_tlv(der, der_len, &t, &vl, &hl) != 0 || t != 0x30)
         return 0;
 
@@ -973,7 +956,8 @@ int tls_extract_san_names(const uint8_t *der, size_t der_len,
         {
             // Inside [3]: one SEQUENCE of Extensions
             const uint8_t *exts_wrap = tbs_val + pos + hl;
-            uint8_t t2; size_t vl2, hl2;
+            uint8_t t2;
+            size_t vl2, hl2;
             if (der_read_tlv(exts_wrap, vl, &t2, &vl2, &hl2) != 0 || t2 != 0x30)
                 break;
 
@@ -984,14 +968,16 @@ int tls_extract_san_names(const uint8_t *der, size_t der_len,
             while (ep < exts_len && count < max_names)
             {
                 // Each Extension is a SEQUENCE { OID, [BOOL], OCTET STRING }
-                uint8_t t3; size_t vl3, hl3;
+                uint8_t t3;
+                size_t vl3, hl3;
                 if (der_read_tlv(exts + ep, exts_len - ep, &t3, &vl3, &hl3) != 0)
                     break;
 
                 if (t3 == 0x30)
                 {
                     const uint8_t *ext = exts + ep + hl3;
-                    uint8_t t4; size_t vl4, hl4;
+                    uint8_t t4;
+                    size_t vl4, hl4;
 
                     // OID
                     if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06)
@@ -1002,16 +988,20 @@ int tls_extract_san_names(const uint8_t *der, size_t der_len,
                             size_t after_oid = hl4 + vl4;
                             if (after_oid < vl3)
                             {
-                                uint8_t nt; size_t nvl, nhl;
-                                if (der_read_tlv(ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) == 0)
+                                uint8_t nt;
+                                size_t nvl, nhl;
+                                if (der_read_tlv(
+                                        ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) == 0)
                                 {
                                     if (nt == 0x01) // BOOLEAN (critical flag) — skip
                                         after_oid += nhl + nvl;
                                     // Now should be at OCTET STRING
                                     if (after_oid < vl3)
                                         extract_san_from_ext_value(ext + after_oid,
-                                                                    vl3 - after_oid,
-                                                                    san_out, max_names, &count);
+                                                                   vl3 - after_oid,
+                                                                   san_out,
+                                                                   max_names,
+                                                                   &count);
                                 }
                             }
                         }
@@ -1034,7 +1024,8 @@ int tls_extract_san_names(const uint8_t *der, size_t der_len,
 int tls_extract_cn(const uint8_t *der, size_t der_len, char cn_out[256])
 {
     // Certificate SEQUENCE
-    uint8_t t; size_t vl, hl;
+    uint8_t t;
+    size_t vl, hl;
     if (der_read_tlv(der, der_len, &t, &vl, &hl) != 0 || t != 0x30)
         return 0;
 
@@ -1052,9 +1043,9 @@ int tls_extract_cn(const uint8_t *der, size_t der_len, char cn_out[256])
         if (der_read_tlv(tbs_val + pos, tbs_len - pos, &t, &vl, &hl) != 0)
             break;
 
-        // Subject is a SEQUENCE at index 5 in TBS (0:version, 1:serial, 2:alg, 3:issuer, 4:validity, 5:subject)
-        // Walk until we find two consecutive SEQUENCEs — the second is Subject
-        // (Actually, both Issuer and Subject are SEQUENCE/SET, so we need to count.
+        // Subject is a SEQUENCE at index 5 in TBS (0:version, 1:serial, 2:alg, 3:issuer,
+        // 4:validity, 5:subject) Walk until we find two consecutive SEQUENCEs — the second is
+        // Subject (Actually, both Issuer and Subject are SEQUENCE/SET, so we need to count.
         //  Simpler: find any SEQUENCE whose children contain OID 2.5.4.3)
         if (t == 0x30) // SEQUENCE — could be Issuer or Subject
         {
@@ -1065,28 +1056,33 @@ int tls_extract_cn(const uint8_t *der, size_t der_len, char cn_out[256])
             // Each child of Issuer/Subject is a SET containing AttributeTypeAndValue
             while (sp < seq_len)
             {
-                uint8_t ts; size_t vls, hls;
+                uint8_t ts;
+                size_t vls, hls;
                 if (der_read_tlv(seq_val + sp, seq_len - sp, &ts, &vls, &hls) != 0)
                     break;
 
                 if (ts == 0x31) // SET
                 {
                     // AttributeTypeAndValue SEQUENCE
-                    uint8_t ta; size_t vla, hla;
+                    uint8_t ta;
+                    size_t vla, hla;
                     if (der_read_tlv(seq_val + sp + hls, vls, &ta, &vla, &hla) == 0 && ta == 0x30)
                     {
                         const uint8_t *atv = seq_val + sp + hls + hla;
 
                         // OID
-                        uint8_t to; size_t vlo, hlo;
+                        uint8_t to;
+                        size_t vlo, hlo;
                         if (der_read_tlv(atv, vla, &to, &vlo, &hlo) == 0 && to == 0x06)
                         {
                             if (oid_matches(atv + hlo, vlo, OID_COMMON_NAME, 3))
                             {
-                                // Value: UTF8String (0x0C), PrintableString (0x13), IA5String (0x16), etc.
+                                // Value: UTF8String (0x0C), PrintableString (0x13), IA5String
+                                // (0x16), etc.
                                 const uint8_t *val_start = atv + hlo + vlo;
                                 size_t val_remaining = vla - hlo - vlo;
-                                uint8_t tv; size_t vlv, hlv;
+                                uint8_t tv;
+                                size_t vlv, hlv;
                                 if (der_read_tlv(val_start, val_remaining, &tv, &vlv, &hlv) == 0)
                                 {
                                     if (vlv > 0 && vlv < 256)
@@ -1159,9 +1155,8 @@ static int tls_verify_hostname(rt_tls_session_t *session)
 
     // Try SubjectAltName first (RFC 6125 §6.4: SAN takes precedence over CN)
     char san_names[TLS_MAX_SAN_NAMES][256];
-    int san_count = tls_extract_san_names(session->server_cert_der,
-                                           session->server_cert_der_len,
-                                           san_names, TLS_MAX_SAN_NAMES);
+    int san_count = tls_extract_san_names(
+        session->server_cert_der, session->server_cert_der_len, san_names, TLS_MAX_SAN_NAMES);
 
     if (san_count > 0)
     {
@@ -1205,9 +1200,8 @@ static int tls_verify_chain(rt_tls_session_t *session)
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    CFDataRef cert_data = CFDataCreate(kCFAllocatorDefault,
-                                        session->server_cert_der,
-                                        (CFIndex)session->server_cert_der_len);
+    CFDataRef cert_data = CFDataCreate(
+        kCFAllocatorDefault, session->server_cert_der, (CFIndex)session->server_cert_der_len);
     if (!cert_data)
     {
         session->error = "TLS: could not create CFData for certificate";
@@ -1222,9 +1216,8 @@ static int tls_verify_chain(rt_tls_session_t *session)
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    CFStringRef hostname_cf = CFStringCreateWithCString(kCFAllocatorDefault,
-                                                         session->hostname,
-                                                         kCFStringEncodingUTF8);
+    CFStringRef hostname_cf =
+        CFStringCreateWithCString(kCFAllocatorDefault, session->hostname, kCFStringEncodingUTF8);
     if (!hostname_cf)
     {
         CFRelease(cert);
@@ -1241,8 +1234,8 @@ static int tls_verify_chain(rt_tls_session_t *session)
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    CFArrayRef certs = CFArrayCreate(kCFAllocatorDefault, (const void **)&cert, 1,
-                                      &kCFTypeArrayCallBacks);
+    const void *cert_val = (const void *)cert;
+    CFArrayRef certs = CFArrayCreate(kCFAllocatorDefault, &cert_val, 1, &kCFTypeArrayCallBacks);
     SecTrustRef trust = NULL;
     OSStatus os_status = SecTrustCreateWithCertificates(certs, policy, &trust);
     CFRelease(certs);
@@ -1285,10 +1278,9 @@ static int tls_verify_chain(rt_tls_session_t *session)
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(
-        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-        session->server_cert_der,
-        (DWORD)session->server_cert_der_len);
+    PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                                                           session->server_cert_der,
+                                                           (DWORD)session->server_cert_der_len);
 
     if (!cert_ctx)
     {
@@ -1300,8 +1292,7 @@ static int tls_verify_chain(rt_tls_session_t *session)
     chain_para.cbSize = sizeof(chain_para);
 
     PCCERT_CHAIN_CONTEXT chain_ctx = NULL;
-    BOOL ok = CertGetCertificateChain(NULL, cert_ctx, NULL, NULL,
-                                       &chain_para, 0, NULL, &chain_ctx);
+    BOOL ok = CertGetCertificateChain(NULL, cert_ctx, NULL, NULL, &chain_para, 0, NULL, &chain_ctx);
 
     if (!ok || !chain_ctx)
     {
@@ -1331,8 +1322,8 @@ static int tls_verify_chain(rt_tls_session_t *session)
     CERT_CHAIN_POLICY_STATUS policy_status = {0};
     policy_status.cbSize = sizeof(policy_status);
 
-    ok = CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL,
-                                           chain_ctx, &policy_para, &policy_status);
+    ok = CertVerifyCertificateChainPolicy(
+        CERT_CHAIN_POLICY_SSL, chain_ctx, &policy_para, &policy_status);
 
     CertFreeCertificateChain(chain_ctx);
     CertFreeCertificateContext(cert_ctx);
@@ -1351,13 +1342,11 @@ static int tls_verify_chain(rt_tls_session_t *session)
 /// @brief Try to find the system CA bundle.
 static const char *find_ca_bundle(void)
 {
-    static const char *bundles[] = {
-        "/etc/ssl/certs/ca-certificates.crt",   // Debian/Ubuntu
-        "/etc/pki/tls/certs/ca-bundle.crt",      // RHEL/CentOS
-        "/etc/ssl/ca-bundle.pem",                 // OpenSUSE
-        "/etc/ssl/cert.pem",                      // Alpine / macOS fallback
-        NULL
-    };
+    static const char *bundles[] = {"/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu
+                                    "/etc/pki/tls/certs/ca-bundle.crt",   // RHEL/CentOS
+                                    "/etc/ssl/ca-bundle.pem",             // OpenSUSE
+                                    "/etc/ssl/cert.pem",                  // Alpine / macOS fallback
+                                    NULL};
     for (int i = 0; bundles[i]; i++)
     {
         FILE *f = fopen(bundles[i], "r");
@@ -1372,28 +1361,22 @@ static const char *find_ca_bundle(void)
 
 /// @brief Decode one PEM certificate (between -----BEGIN/END CERTIFICATE-----).
 /// Returns DER length written to out_der, or 0 on failure.
-static size_t pem_decode_cert(const char *pem_b64, size_t b64_len,
-                               uint8_t *out_der, size_t max_der)
+static size_t pem_decode_cert(const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der)
 {
     // Simple base64 decode (no line breaks within the data stream)
     static const int8_t b64tab[256] = {
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
-        52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
-        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
-        15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
-        -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
-        41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
-    };
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62,
+        -1, -1, -1, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1, -1, 0,
+        1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+        23, 24, 25, -1, -1, -1, -1, -1, -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
     size_t out_len = 0;
     uint32_t acc = 0;
@@ -1426,8 +1409,7 @@ static size_t pem_decode_cert(const char *pem_b64, size_t b64_len,
 }
 
 /// @brief Compare two DER-encoded Name structures byte-for-byte.
-static int der_names_equal(const uint8_t *a_der, size_t a_len,
-                            const uint8_t *b_der, size_t b_len)
+static int der_names_equal(const uint8_t *a_der, size_t a_len, const uint8_t *b_der, size_t b_len)
 {
     if (a_len != b_len)
         return 0;
@@ -1435,10 +1417,12 @@ static int der_names_equal(const uint8_t *a_der, size_t a_len,
 }
 
 /// @brief Get the DER-encoded Subject from a certificate.
-static const uint8_t *cert_get_subject(const uint8_t *cert_der, size_t cert_len,
-                                        size_t *subject_len)
+static const uint8_t *cert_get_subject(const uint8_t *cert_der,
+                                       size_t cert_len,
+                                       size_t *subject_len)
 {
-    uint8_t t; size_t vl, hl;
+    uint8_t t;
+    size_t vl, hl;
 
     // Certificate SEQUENCE
     if (der_read_tlv(cert_der, cert_len, &t, &vl, &hl) != 0 || t != 0x30)
@@ -1455,15 +1439,19 @@ static const uint8_t *cert_get_subject(const uint8_t *cert_der, size_t cert_len,
     int seq_count = 0;
 
     // Subject is the 4th field in TBSCertificate (0-indexed):
-    // [0] version (optional [0] EXPLICIT), [1] serial, [2] signature alg, [3] issuer, [4] validity, [5] subject
-    // We count SEQUENCE/SET fields skipping context-tags to find Subject.
+    // [0] version (optional [0] EXPLICIT), [1] serial, [2] signature alg, [3] issuer, [4] validity,
+    // [5] subject We count SEQUENCE/SET fields skipping context-tags to find Subject.
     while (pos < tbs_len)
     {
         if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0)
             break;
 
         // Skip version [0] EXPLICIT
-        if (t == 0xA0) { pos += hl + vl; continue; }
+        if (t == 0xA0)
+        {
+            pos += hl + vl;
+            continue;
+        }
 
         seq_count++;
         // Subject is the 3rd SEQUENCE (after serial INTEGER, alg SEQUENCE, issuer SEQUENCE)
@@ -1481,10 +1469,10 @@ static const uint8_t *cert_get_subject(const uint8_t *cert_der, size_t cert_len,
 }
 
 /// @brief Get the DER-encoded Issuer from a certificate.
-static const uint8_t *cert_get_issuer(const uint8_t *cert_der, size_t cert_len,
-                                       size_t *issuer_len)
+static const uint8_t *cert_get_issuer(const uint8_t *cert_der, size_t cert_len, size_t *issuer_len)
 {
-    uint8_t t; size_t vl, hl;
+    uint8_t t;
+    size_t vl, hl;
 
     if (der_read_tlv(cert_der, cert_len, &t, &vl, &hl) != 0 || t != 0x30)
         return NULL;
@@ -1503,7 +1491,11 @@ static const uint8_t *cert_get_issuer(const uint8_t *cert_der, size_t cert_len,
         if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0)
             break;
 
-        if (t == 0xA0) { pos += hl + vl; continue; }
+        if (t == 0xA0)
+        {
+            pos += hl + vl;
+            continue;
+        }
 
         seq_count++;
         // Issuer is the 2nd SEQUENCE (after serial)
@@ -1550,9 +1542,8 @@ static int tls_verify_chain(rt_tls_session_t *session)
 
     // Get the end-entity cert's Issuer DER for comparison
     size_t ee_issuer_len = 0;
-    const uint8_t *ee_issuer = cert_get_issuer(session->server_cert_der,
-                                                 session->server_cert_der_len,
-                                                 &ee_issuer_len);
+    const uint8_t *ee_issuer =
+        cert_get_issuer(session->server_cert_der, session->server_cert_der_len, &ee_issuer_len);
     if (!ee_issuer || ee_issuer_len == 0)
     {
         fclose(f);
@@ -1619,8 +1610,7 @@ static int tls_verify_chain(rt_tls_session_t *session)
 
 /// @brief Build the 130-byte signed content for CertificateVerify (RFC 8446 §4.4.3).
 /// Content = 64 spaces + "TLS 1.3, server CertificateVerify" + 0x00 + transcript_hash
-static void build_cert_verify_content(const uint8_t transcript_hash[32],
-                                       uint8_t content_hash[32])
+static void build_cert_verify_content(const uint8_t transcript_hash[32], uint8_t content_hash[32])
 {
     uint8_t content[130];
     static const char context_str[] = "TLS 1.3, server CertificateVerify";
@@ -1633,8 +1623,7 @@ static void build_cert_verify_content(const uint8_t transcript_hash[32],
 
 #if defined(__APPLE__)
 
-static int tls_verify_cert_verify(rt_tls_session_t *session,
-                                   const uint8_t *data, size_t len)
+static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len)
 {
     if (len < 4)
     {
@@ -1643,7 +1632,7 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     }
 
     uint16_t sig_scheme = ((uint16_t)data[0] << 8) | data[1];
-    uint16_t sig_len    = ((uint16_t)data[2] << 8) | data[3];
+    uint16_t sig_len = ((uint16_t)data[2] << 8) | data[3];
     if (4 + sig_len > len)
     {
         session->error = "TLS: CertificateVerify signature length overflows";
@@ -1657,9 +1646,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     build_cert_verify_content(session->cert_transcript_hash, content_hash);
 
     // Reconstruct SecCertificateRef from stored DER
-    CFDataRef cert_data = CFDataCreate(kCFAllocatorDefault,
-                                        session->server_cert_der,
-                                        (CFIndex)session->server_cert_der_len);
+    CFDataRef cert_data = CFDataCreate(
+        kCFAllocatorDefault, session->server_cert_der, (CFIndex)session->server_cert_der_len);
     if (!cert_data)
     {
         session->error = "TLS: CertVerify: could not create CFData";
@@ -1717,8 +1705,10 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
 
     if (!sig_data || !hash_data)
     {
-        if (sig_data) CFRelease(sig_data);
-        if (hash_data) CFRelease(hash_data);
+        if (sig_data)
+            CFRelease(sig_data);
+        if (hash_data)
+            CFRelease(hash_data);
         CFRelease(pub_key);
         session->error = "TLS: CertVerify: CFData allocation failed";
         return RT_TLS_ERROR_HANDSHAKE;
@@ -1733,7 +1723,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
 
     if (!verified)
     {
-        if (err) CFRelease(err);
+        if (err)
+            CFRelease(err);
         session->error = "TLS: CertificateVerify signature verification failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1743,8 +1734,7 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
 
 #elif defined(_WIN32)
 
-static int tls_verify_cert_verify(rt_tls_session_t *session,
-                                   const uint8_t *data, size_t len)
+static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len)
 {
     if (len < 4)
     {
@@ -1753,7 +1743,7 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     }
 
     uint16_t sig_scheme = ((uint16_t)data[0] << 8) | data[1];
-    uint16_t sig_len    = ((uint16_t)data[2] << 8) | data[3];
+    uint16_t sig_len = ((uint16_t)data[2] << 8) | data[3];
     if (4 + sig_len > len)
     {
         session->error = "TLS: CertificateVerify signature length overflows";
@@ -1765,10 +1755,9 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     uint8_t content_hash[32];
     build_cert_verify_content(session->cert_transcript_hash, content_hash);
 
-    PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(
-        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-        session->server_cert_der,
-        (DWORD)session->server_cert_der_len);
+    PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                                                           session->server_cert_der,
+                                                           (DWORD)session->server_cert_der_len);
 
     if (!cert_ctx)
     {
@@ -1780,9 +1769,17 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     LPCSTR hash_oid;
     switch (sig_scheme)
     {
-        case 0x0403: case 0x0804: hash_oid = szOID_NIST_sha256; break;
-        case 0x0503: case 0x0805: hash_oid = szOID_NIST_sha384; break;
-        case 0x0806:               hash_oid = szOID_NIST_sha512; break;
+        case 0x0403:
+        case 0x0804:
+            hash_oid = szOID_NIST_sha256;
+            break;
+        case 0x0503:
+        case 0x0805:
+            hash_oid = szOID_NIST_sha384;
+            break;
+        case 0x0806:
+            hash_oid = szOID_NIST_sha512;
+            break;
         default:
             CertFreeCertificateContext(cert_ctx);
             session->error = "TLS: CertificateVerify: unsupported scheme (Windows)";
@@ -1793,14 +1790,17 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     HCRYPTPROV_OR_NCRYPT_KEY_HANDLE key_handle = 0;
     DWORD key_spec = 0;
     BOOL must_free_key = FALSE;
-    if (!CryptAcquireCertificatePrivateKey(cert_ctx, CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
-                                            NULL, &key_handle, &key_spec, &must_free_key))
+    if (!CryptAcquireCertificatePrivateKey(cert_ctx,
+                                           CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
+                                           NULL,
+                                           &key_handle,
+                                           &key_spec,
+                                           &must_free_key))
     {
         // Fall back to public key only via CERT_KEY_PROV_INFO
         // Use CryptImportPublicKeyInfo for verification
         HCRYPTPROV hprov = 0;
-        if (!CryptAcquireContextW(&hprov, NULL, NULL, PROV_RSA_AES,
-                                   CRYPT_VERIFYCONTEXT))
+        if (!CryptAcquireContextW(&hprov, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
         {
             CertFreeCertificateContext(cert_ctx);
             session->error = "TLS: CertVerify: CryptAcquireContext failed";
@@ -1808,9 +1808,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
         }
 
         HCRYPTKEY hkey = 0;
-        if (!CryptImportPublicKeyInfo(hprov, X509_ASN_ENCODING,
-                                       &cert_ctx->pCertInfo->SubjectPublicKeyInfo,
-                                       &hkey))
+        if (!CryptImportPublicKeyInfo(
+                hprov, X509_ASN_ENCODING, &cert_ctx->pCertInfo->SubjectPublicKeyInfo, &hkey))
         {
             CryptReleaseContext(hprov, 0);
             CertFreeCertificateContext(cert_ctx);
@@ -1819,9 +1818,9 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
         }
 
         HCRYPTHASH hhash = 0;
-        ALG_ID alg_id = (sig_scheme == 0x0403 || sig_scheme == 0x0804) ? CALG_SHA_256
-                      : (sig_scheme == 0x0503 || sig_scheme == 0x0805) ? CALG_SHA_384
-                                                                        : CALG_SHA_512;
+        ALG_ID alg_id = (sig_scheme == 0x0403 || sig_scheme == 0x0804)   ? CALG_SHA_256
+                        : (sig_scheme == 0x0503 || sig_scheme == 0x0805) ? CALG_SHA_384
+                                                                         : CALG_SHA_512;
 
         if (!CryptCreateHash(hprov, alg_id, 0, 0, &hhash))
         {
@@ -1890,8 +1889,8 @@ typedef EVP_PKEY *(*X509_get_pubkey_fn)(X509 *);
 typedef EVP_PKEY_CTX *(*EVP_PKEY_CTX_new_fn)(EVP_PKEY *, void *);
 typedef int (*EVP_PKEY_verify_init_fn)(EVP_PKEY_CTX *);
 typedef int (*EVP_PKEY_CTX_set_signature_md_fn)(EVP_PKEY_CTX *, void *);
-typedef int (*EVP_PKEY_verify_fn)(EVP_PKEY_CTX *, const unsigned char *, size_t,
-                                   const unsigned char *, size_t);
+typedef int (*EVP_PKEY_verify_fn)(
+    EVP_PKEY_CTX *, const unsigned char *, size_t, const unsigned char *, size_t);
 typedef void (*EVP_PKEY_CTX_free_fn)(EVP_PKEY_CTX *);
 typedef void (*EVP_PKEY_free_fn)(EVP_PKEY *);
 typedef void (*X509_free_fn)(X509 *);
@@ -1904,8 +1903,7 @@ typedef int (*EVP_PKEY_CTX_set_rsa_pss_saltlen_fn)(EVP_PKEY_CTX *, int);
 #define RSA_PKCS1_PSS_PADDING 6
 #define RSA_PSS_SALTLEN_DIGEST -1
 
-static int tls_verify_cert_verify(rt_tls_session_t *session,
-                                   const uint8_t *data, size_t len)
+static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len)
 {
     if (len < 4)
     {
@@ -1914,7 +1912,7 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     }
 
     uint16_t sig_scheme = ((uint16_t)data[0] << 8) | data[1];
-    uint16_t sig_len    = ((uint16_t)data[2] << 8) | data[3];
+    uint16_t sig_len = ((uint16_t)data[2] << 8) | data[3];
     if (4 + sig_len > len)
     {
         session->error = "TLS: CertificateVerify signature length overflows";
@@ -1935,17 +1933,22 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
 
     if (!crypto_lib)
     {
-        if (ssl_lib) dlclose(ssl_lib);
+        if (ssl_lib)
+            dlclose(ssl_lib);
         // libssl not available — chain + hostname verified, CertVerify skipped
         // This is acceptable for Linux systems without OpenSSL installed
         return RT_TLS_OK;
     }
 
     d2i_X509_fn fn_d2i_X509 = (d2i_X509_fn)dlsym(crypto_lib, "d2i_X509");
-    X509_get_pubkey_fn fn_X509_get_pubkey = (X509_get_pubkey_fn)dlsym(crypto_lib, "X509_get_pubkey");
-    EVP_PKEY_CTX_new_fn fn_EVP_PKEY_CTX_new = (EVP_PKEY_CTX_new_fn)dlsym(crypto_lib, "EVP_PKEY_CTX_new");
-    EVP_PKEY_verify_init_fn fn_EVP_PKEY_verify_init = (EVP_PKEY_verify_init_fn)dlsym(crypto_lib, "EVP_PKEY_verify_init");
-    EVP_PKEY_CTX_set_signature_md_fn fn_set_md = (EVP_PKEY_CTX_set_signature_md_fn)dlsym(crypto_lib, "EVP_PKEY_CTX_set_signature_md");
+    X509_get_pubkey_fn fn_X509_get_pubkey =
+        (X509_get_pubkey_fn)dlsym(crypto_lib, "X509_get_pubkey");
+    EVP_PKEY_CTX_new_fn fn_EVP_PKEY_CTX_new =
+        (EVP_PKEY_CTX_new_fn)dlsym(crypto_lib, "EVP_PKEY_CTX_new");
+    EVP_PKEY_verify_init_fn fn_EVP_PKEY_verify_init =
+        (EVP_PKEY_verify_init_fn)dlsym(crypto_lib, "EVP_PKEY_verify_init");
+    EVP_PKEY_CTX_set_signature_md_fn fn_set_md =
+        (EVP_PKEY_CTX_set_signature_md_fn)dlsym(crypto_lib, "EVP_PKEY_CTX_set_signature_md");
     EVP_PKEY_verify_fn fn_verify = (EVP_PKEY_verify_fn)dlsym(crypto_lib, "EVP_PKEY_verify");
     EVP_PKEY_CTX_free_fn fn_ctx_free = (EVP_PKEY_CTX_free_fn)dlsym(crypto_lib, "EVP_PKEY_CTX_free");
     EVP_PKEY_free_fn fn_pkey_free = (EVP_PKEY_free_fn)dlsym(crypto_lib, "EVP_PKEY_free");
@@ -1958,12 +1961,12 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     EVP_PKEY_CTX_set_rsa_pss_saltlen_fn fn_set_pss =
         (EVP_PKEY_CTX_set_rsa_pss_saltlen_fn)dlsym(crypto_lib, "EVP_PKEY_CTX_set_rsa_pss_saltlen");
 
-    if (!fn_d2i_X509 || !fn_X509_get_pubkey || !fn_EVP_PKEY_CTX_new ||
-        !fn_EVP_PKEY_verify_init || !fn_set_md || !fn_verify ||
-        !fn_ctx_free || !fn_pkey_free || !fn_X509_free || !fn_sha256)
+    if (!fn_d2i_X509 || !fn_X509_get_pubkey || !fn_EVP_PKEY_CTX_new || !fn_EVP_PKEY_verify_init ||
+        !fn_set_md || !fn_verify || !fn_ctx_free || !fn_pkey_free || !fn_X509_free || !fn_sha256)
     {
         dlclose(crypto_lib);
-        if (ssl_lib) dlclose(ssl_lib);
+        if (ssl_lib)
+            dlclose(ssl_lib);
         return RT_TLS_OK; // libssl present but symbols missing — skip
     }
 
@@ -1972,7 +1975,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     if (!x509)
     {
         dlclose(crypto_lib);
-        if (ssl_lib) dlclose(ssl_lib);
+        if (ssl_lib)
+            dlclose(ssl_lib);
         session->error = "TLS: CertVerify: d2i_X509 failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1982,7 +1986,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     if (!pkey)
     {
         dlclose(crypto_lib);
-        if (ssl_lib) dlclose(ssl_lib);
+        if (ssl_lib)
+            dlclose(ssl_lib);
         session->error = "TLS: CertVerify: X509_get_pubkey failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1990,10 +1995,12 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     EVP_PKEY_CTX *ctx = fn_EVP_PKEY_CTX_new(pkey, NULL);
     if (!ctx || fn_EVP_PKEY_verify_init(ctx) <= 0)
     {
-        if (ctx) fn_ctx_free(ctx);
+        if (ctx)
+            fn_ctx_free(ctx);
         fn_pkey_free(pkey);
         dlclose(crypto_lib);
-        if (ssl_lib) dlclose(ssl_lib);
+        if (ssl_lib)
+            dlclose(ssl_lib);
         session->error = "TLS: CertVerify: EVP_PKEY_CTX init failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -2002,10 +2009,19 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     void *md = NULL;
     switch (sig_scheme)
     {
-        case 0x0403: case 0x0804: md = fn_sha256(); break;
-        case 0x0503: case 0x0805: md = (fn_sha384 ? fn_sha384() : NULL); break;
-        case 0x0806: md = (fn_sha512 ? fn_sha512() : NULL); break;
-        default: break;
+        case 0x0403:
+        case 0x0804:
+            md = fn_sha256();
+            break;
+        case 0x0503:
+        case 0x0805:
+            md = (fn_sha384 ? fn_sha384() : NULL);
+            break;
+        case 0x0806:
+            md = (fn_sha512 ? fn_sha512() : NULL);
+            break;
+        default:
+            break;
     }
 
     if (!md)
@@ -2013,7 +2029,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
         fn_ctx_free(ctx);
         fn_pkey_free(pkey);
         dlclose(crypto_lib);
-        if (ssl_lib) dlclose(ssl_lib);
+        if (ssl_lib)
+            dlclose(ssl_lib);
         session->error = "TLS: CertificateVerify: unsupported sig scheme (Linux)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -2021,8 +2038,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
     fn_set_md(ctx, md);
 
     // For RSA-PSS schemes, set padding
-    if ((sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) &&
-        fn_set_padding && fn_set_pss)
+    if ((sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) && fn_set_padding &&
+        fn_set_pss)
     {
         fn_set_padding(ctx, RSA_PKCS1_PSS_PADDING);
         fn_set_pss(ctx, RSA_PSS_SALTLEN_DIGEST);
@@ -2030,14 +2047,16 @@ static int tls_verify_cert_verify(rt_tls_session_t *session,
 
     // Determine hash length
     size_t hash_len = (sig_scheme == 0x0503 || sig_scheme == 0x0805) ? 48
-                    : (sig_scheme == 0x0806) ? 64 : 32;
+                      : (sig_scheme == 0x0806)                       ? 64
+                                                                     : 32;
 
     int rc = fn_verify(ctx, sig_bytes, sig_len, content_hash, hash_len);
 
     fn_ctx_free(ctx);
     fn_pkey_free(pkey);
     dlclose(crypto_lib);
-    if (ssl_lib) dlclose(ssl_lib);
+    if (ssl_lib)
+        dlclose(ssl_lib);
 
     if (rc != 1)
     {
@@ -2350,7 +2369,7 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     // each other's lookup result.
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family   = AF_INET;
+    hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
     char port_str[8];
@@ -2372,10 +2391,8 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port   = htons(port);
-    memcpy(&addr.sin_addr,
-           &((struct sockaddr_in *)res->ai_addr)->sin_addr,
-           sizeof(addr.sin_addr));
+    addr.sin_port = htons(port);
+    memcpy(&addr.sin_addr, &((struct sockaddr_in *)res->ai_addr)->sin_addr, sizeof(addr.sin_addr));
     freeaddrinfo(res);
     res = NULL;
 

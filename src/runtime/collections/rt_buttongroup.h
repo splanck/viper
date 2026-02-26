@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_buttongroup.h
-// Purpose: Button group manager for mutually exclusive selections (radio-button semantics), tracking which button in a group is currently selected and notifying on changes.
+// Purpose: Button group manager for mutually exclusive selections (radio-button semantics),
+// tracking which button in a group is currently selected and notifying on changes.
 //
 // Key invariants:
 //   - At most one button is selected at any time; selecting a new button deselects the previous.

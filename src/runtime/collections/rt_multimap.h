@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_multimap.h
-// Purpose: String-keyed multimap supporting multiple values per key, returning all values for a key as a Seq, with O(1) average access.
+// Purpose: String-keyed multimap supporting multiple values per key, returning all values for a key
+// as a Seq, with O(1) average access.
 //
 // Key invariants:
 //   - Each key maps to a sequence of values; duplicate keys are supported.

@@ -52,6 +52,15 @@ int sysctlbyname(const char *, void *, size_t *, void *, size_t);
 #endif
 #endif
 
+/// @brief Convert a function pointer to void* without pedantic warnings.
+/// POSIX guarantees function/data pointer round-trip, but ISO C forbids the cast.
+static inline void *fnptr_to_voidptr(void (*fn)(void *))
+{
+    void *p;
+    memcpy(&p, &fn, sizeof(p));
+    return p;
+}
+
 //=============================================================================
 // Internal Types
 //=============================================================================
@@ -382,7 +391,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
-        rt_threadpool_submit(actual_pool, foreach_callback, &tasks[i]);
+        rt_threadpool_submit(actual_pool, fnptr_to_voidptr(foreach_callback), &tasks[i]);
     }
 
     // Wait for completion
@@ -445,7 +454,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
-        rt_threadpool_submit(actual_pool, map_callback, &tasks[i]);
+        rt_threadpool_submit(actual_pool, fnptr_to_voidptr(map_callback), &tasks[i]);
     }
 
     // Wait for completion
@@ -513,7 +522,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
-        rt_threadpool_submit(actual_pool, invoke_callback, &tasks[i]);
+        rt_threadpool_submit(actual_pool, fnptr_to_voidptr(invoke_callback), &tasks[i]);
     }
 
     // Wait for completion
@@ -611,7 +620,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
-        rt_threadpool_submit(actual_pool, reduce_callback, &tasks[i]);
+        rt_threadpool_submit(actual_pool, fnptr_to_voidptr(reduce_callback), &tasks[i]);
         offset += chunk_size;
     }
 
@@ -679,7 +688,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
-        rt_threadpool_submit(actual_pool, for_callback, &tasks[i]);
+        rt_threadpool_submit(actual_pool, fnptr_to_voidptr(for_callback), &tasks[i]);
     }
 
     // Wait for completion

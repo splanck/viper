@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_regex.h
-// Purpose: Regular expression pattern matching supporting literals, anchors, character classes, shorthand classes, quantifiers (greedy/non-greedy), grouping, and alternation.
+// Purpose: Regular expression pattern matching supporting literals, anchors, character classes,
+// shorthand classes, quantifiers (greedy/non-greedy), grouping, and alternation.
 //
 // Key invariants:
 //   - Patterns are compiled and cached internally for repeated use.
@@ -13,7 +14,8 @@
 //   - Returned strings and Seqs from capture operations are newly allocated; caller must release.
 //   - Input strings are borrowed for the duration of matching.
 //
-// Links: src/runtime/text/rt_regex.c (implementation), src/runtime/text/rt_regex_internal.h, src/runtime/core/rt_string.h
+// Links: src/runtime/text/rt_regex.c (implementation), src/runtime/text/rt_regex_internal.h,
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

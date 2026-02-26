@@ -852,9 +852,8 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
     // makes no calls, uses no callee-saved registers, and has no local frame.
     // Exclude @main because emitFunction injects bl calls to rt_legacy_context
     // and rt_set_current_context at the assembly level (not in MIR).
-    const bool skipFrame =
-        fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() && fn.localFrameSize == 0 &&
-        fn.name != "main";
+    const bool skipFrame = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
+                           fn.localFrameSize == 0 && fn.name != "main";
 
     const bool usePlan = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;

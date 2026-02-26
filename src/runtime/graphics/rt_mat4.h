@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_mat4.h
-// Purpose: 4x4 matrix math for 3D transformations (Viper.Mat4), supporting perspective/orthographic projection, translation, rotation, scaling, and composition.
+// Purpose: 4x4 matrix math for 3D transformations (Viper.Mat4), supporting perspective/orthographic
+// projection, translation, rotation, scaling, and composition.
 //
 // Key invariants:
 //   - Matrices are stored in row-major order; right-multiply with column vectors.
@@ -13,7 +14,8 @@
 //   - Mat4 objects are runtime-managed (heap-allocated).
 //   - Caller is responsible for lifetime management.
 //
-// Links: src/runtime/graphics/rt_mat4.c (implementation), src/runtime/graphics/rt_vec3.h, src/runtime/graphics/rt_quat.h
+// Links: src/runtime/graphics/rt_mat4.c (implementation), src/runtime/graphics/rt_vec3.h,
+// src/runtime/graphics/rt_quat.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

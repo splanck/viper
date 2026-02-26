@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_defaultmap.h
-// Purpose: String-keyed map that returns a configured default value for missing keys instead of NULL, providing safe access without explicit missing-key checks.
+// Purpose: String-keyed map that returns a configured default value for missing keys instead of
+// NULL, providing safe access without explicit missing-key checks.
 //
 // Key invariants:
 //   - rt_defaultmap_get never returns NULL; it returns the configured default for missing keys.

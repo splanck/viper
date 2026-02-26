@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_orderedmap.h
-// Purpose: Insertion-order preserving string-keyed map where iteration yields entries in the order they were first inserted, with O(1) average access.
+// Purpose: Insertion-order preserving string-keyed map where iteration yields entries in the order
+// they were first inserted, with O(1) average access.
 //
 // Key invariants:
 //   - Iteration order matches the order of first insertion.

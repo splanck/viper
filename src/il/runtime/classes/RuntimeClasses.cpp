@@ -369,8 +369,7 @@ ParsedSignature parseRuntimeSignature(std::string_view sig)
         if (rangle != std::string_view::npos && rangle > langle)
         {
             // Extract element type name (e.g. "str" from "seq<str>")
-            result.elementTypeName =
-                std::string(retTok.substr(langle + 1, rangle - langle - 1));
+            result.elementTypeName = std::string(retTok.substr(langle + 1, rangle - langle - 1));
             // Trim any whitespace from element type name
             while (!result.elementTypeName.empty() &&
                    std::isspace(static_cast<unsigned char>(result.elementTypeName.front())))

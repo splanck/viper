@@ -2238,14 +2238,18 @@ void pruneUnusedCalleeSaved(MFunction &fn)
 
     // Prune savedGPRs: remove any callee-saved register not referenced.
     fn.savedGPRs.erase(
-        std::remove_if(fn.savedGPRs.begin(), fn.savedGPRs.end(),
-                        [&](PhysReg r) { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
+        std::remove_if(fn.savedGPRs.begin(),
+                       fn.savedGPRs.end(),
+                       [&](PhysReg r)
+                       { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
         fn.savedGPRs.end());
 
     // Prune savedFPRs: same logic.
     fn.savedFPRs.erase(
-        std::remove_if(fn.savedFPRs.begin(), fn.savedFPRs.end(),
-                        [&](PhysReg r) { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
+        std::remove_if(fn.savedFPRs.begin(),
+                       fn.savedFPRs.end(),
+                       [&](PhysReg r)
+                       { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
         fn.savedFPRs.end());
 }
 

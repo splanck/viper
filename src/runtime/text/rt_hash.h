@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_hash.h
-// Purpose: Cryptographic hash functions (MD5, SHA-1, SHA-256) and CRC32 checksum computation, returning lowercase hex strings or integer checksums.
+// Purpose: Cryptographic hash functions (MD5, SHA-1, SHA-256) and CRC32 checksum computation,
+// returning lowercase hex strings or integer checksums.
 //
 // Key invariants:
 //   - MD5 and SHA-1 are cryptographically broken; use only for checksums or legacy compatibility.

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_compress.h
-// Purpose: DEFLATE/GZIP compression and decompression (RFC 1951, RFC 1952) with no external dependencies, providing Bytes-in/Bytes-out API.
+// Purpose: DEFLATE/GZIP compression and decompression (RFC 1951, RFC 1952) with no external
+// dependencies, providing Bytes-in/Bytes-out API.
 //
 // Key invariants:
 //   - No external dependencies; implements DEFLATE internally.

@@ -524,9 +524,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
                     //   Windows x64: shadowSpace + 16 + stackArgIdx*8  (= 48 + stackArgIdx*8)
                     //                The 32-byte shadow space lives between the return address
                     //                and the first stack-passed argument in the caller frame.
-                    const int32_t offset =
-                        static_cast<int32_t>(target_->shadowSpace) +
-                        16 + static_cast<int32_t>(stackArgIdx * 8);
+                    const int32_t offset = static_cast<int32_t>(target_->shadowSpace) + 16 +
+                                           static_cast<int32_t>(stackArgIdx * 8);
                     stackParams.push_back({paramId, offset, kind});
                     ++stackArgIdx;
                 }
@@ -544,9 +543,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
                     // Stack-passed GPR argument.
                     // SysV AMD64:  16 + stackArgIdx*8
                     // Windows x64: shadowSpace + 16 + stackArgIdx*8
-                    const int32_t offset =
-                        static_cast<int32_t>(target_->shadowSpace) +
-                        16 + static_cast<int32_t>(stackArgIdx * 8);
+                    const int32_t offset = static_cast<int32_t>(target_->shadowSpace) + 16 +
+                                           static_cast<int32_t>(stackArgIdx * 8);
                     stackParams.push_back({paramId, offset, kind});
                     ++stackArgIdx;
                 }
@@ -638,7 +636,6 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             if (!rule)
             {
                 reportNoRule(instr);
-                continue;
             }
             rule->emit(instr, builder);
         }

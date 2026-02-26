@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_dir.h
-// Purpose: Cross-platform directory operations for Viper.IO.Dir, providing listing, creation, deletion, existence checks, and current/home directory queries.
+// Purpose: Cross-platform directory operations for Viper.IO.Dir, providing listing, creation,
+// deletion, existence checks, and current/home directory queries.
 //
 // Key invariants:
 //   - Directory listing returns Seq objects containing string paths.

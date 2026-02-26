@@ -70,7 +70,8 @@ static void ws_send_handshake(void *client, const char *headers_buf)
     char response[512];
     if (accept)
     {
-        snprintf(response, sizeof(response),
+        snprintf(response,
+                 sizeof(response),
                  "HTTP/1.1 101 Switching Protocols\r\n"
                  "Upgrade: websocket\r\n"
                  "Connection: Upgrade\r\n"
@@ -82,7 +83,8 @@ static void ws_send_handshake(void *client, const char *headers_buf)
     else
     {
         // Fallback (shouldn't happen in tests)
-        snprintf(response, sizeof(response),
+        snprintf(response,
+                 sizeof(response),
                  "HTTP/1.1 101 Switching Protocols\r\n"
                  "Upgrade: websocket\r\n"
                  "Connection: Upgrade\r\n"
@@ -255,7 +257,7 @@ static void test_ws_accept_key_rfc_example()
 {
     printf("\nTesting WebSocket accept key (RFC 6455 §1.3 vector):\n");
 
-    const char *client_key    = "dGhlIHNhbXBsZSBub25jZQ==";
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     // NOTE: RFC 6455 §1.3 contains a known typo — it prints "xoo=" but the
     // mathematically correct base64 of SHA-1 bytes 0xc4, 0xea is "xOo=" (capital O).
     // Decoding "xoo=" gives 0xc6, 0x8a which contradicts the RFC's own stated
@@ -267,8 +269,7 @@ static void test_ws_accept_key_rfc_example()
     test_result("accept key is not NULL", accept != NULL);
     if (accept)
     {
-        test_result("RFC 6455 §1.3 accept key matches",
-                    strcmp(accept, expected_accept) == 0);
+        test_result("RFC 6455 §1.3 accept key matches", strcmp(accept, expected_accept) == 0);
         free(accept);
     }
 }

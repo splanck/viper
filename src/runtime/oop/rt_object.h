@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_object.h
-// Purpose: Reference-counted object allocation, retain/release, and System.Object surface providing the foundational object model for all Viper heap objects.
+// Purpose: Reference-counted object allocation, retain/release, and System.Object surface providing
+// the foundational object model for all Viper heap objects.
 //
 // Key invariants:
 //   - Refcounts never underflow; retain and release calls must be balanced.

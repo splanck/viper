@@ -60,8 +60,8 @@
 
 #pragma once
 
-#include "frontends/zia/Compiler.hpp"  // CompilerInput, CompilerOptions
-#include "frontends/zia/Sema.hpp"      // Sema (+ Symbol, TypeRef via transitive includes)
+#include "frontends/zia/Compiler.hpp" // CompilerInput, CompilerOptions
+#include "frontends/zia/Sema.hpp"     // Sema (+ Symbol, TypeRef via transitive includes)
 #include <memory>
 
 namespace il::frontends::zia

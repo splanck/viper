@@ -189,20 +189,6 @@ void rt_lazy_force(void *obj)
 // Transformation
 //=============================================================================
 
-// Helper struct for map operation
-typedef struct
-{
-    void *source_lazy;
-    void *(*fn)(void *);
-} MapContext;
-
-static void *map_supplier(void *ctx)
-{
-    MapContext *mc = (MapContext *)ctx;
-    void *source_value = rt_lazy_get(mc->source_lazy);
-    return mc->fn(source_value);
-}
-
 void *rt_lazy_map(void *obj, void *(*fn)(void *))
 {
     if (!obj || !fn)

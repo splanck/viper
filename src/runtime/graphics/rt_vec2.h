@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_vec2.h
-// Purpose: 2D vector math utilities for Viper.Vec2 with immutable value semantics, providing arithmetic, dot product, magnitude, normalization, rotation, and lerp.
+// Purpose: 2D vector math utilities for Viper.Vec2 with immutable value semantics, providing
+// arithmetic, dot product, magnitude, normalization, rotation, and lerp.
 //
 // Key invariants:
 //   - Vec2 objects are immutable; all operations return new Vec2 objects.

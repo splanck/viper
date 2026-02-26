@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_internal.h
-// Purpose: Shared internal header for the split rt_gui implementation modules, declaring the global application pointer, default font state, and common helper functions.
+// Purpose: Shared internal header for the split rt_gui implementation modules, declaring the global
+// application pointer, default font state, and common helper functions.
 //
 // Key invariants:
 //   - s_current_app must be set before widget constructors run.

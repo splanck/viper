@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_csv.h
-// Purpose: CSV parsing and formatting utilities compliant with RFC 4180, handling quoted fields, embedded newlines, escaped double-quotes, and custom delimiters.
+// Purpose: CSV parsing and formatting utilities compliant with RFC 4180, handling quoted fields,
+// embedded newlines, escaped double-quotes, and custom delimiters.
 //
 // Key invariants:
 //   - Handles quoted fields, escaped quotes (double-quote inside quotes), and newlines in fields.

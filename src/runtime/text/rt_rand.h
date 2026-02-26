@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_rand.h
-// Purpose: Cryptographically secure random number generation using the OS-provided CSPRNG (/dev/urandom on Unix, BCryptGenRandom on Windows).
+// Purpose: Cryptographically secure random number generation using the OS-provided CSPRNG
+// (/dev/urandom on Unix, BCryptGenRandom on Windows).
 //
 // Key invariants:
 //   - Uses OS-provided CSPRNG; output is suitable for security-sensitive applications.

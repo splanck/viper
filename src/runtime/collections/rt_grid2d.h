@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_grid2d.h
-// Purpose: 2D grid container for integer values with fixed dimensions, providing element access, fill, copy, and region operations for tile maps and pixel buffers.
+// Purpose: 2D grid container for integer values with fixed dimensions, providing element access,
+// fill, copy, and region operations for tile maps and pixel buffers.
 //
 // Key invariants:
 //   - Grid dimensions are fixed at creation time and cannot be changed.

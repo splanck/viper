@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_spritebatch.h
-// Purpose: SpriteBatch for efficient batched sprite rendering, accumulating draw calls and submitting them to the GPU in a single batch to reduce render API overhead.
+// Purpose: SpriteBatch for efficient batched sprite rendering, accumulating draw calls and
+// submitting them to the GPU in a single batch to reduce render API overhead.
 //
 // Key invariants:
 //   - Begin must be called before any draw calls; End flushes the batch.

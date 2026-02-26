@@ -518,9 +518,7 @@ const VM::BlockMap &VM::getOrBuildBlockMap(const Function &fn)
 /// @param args   Argument slots for the function's entry block.
 /// @param bb     Set to the entry basic block of @p fn.
 /// @return Fully initialised frame ready to run.
-Frame VM::setupFrame(const Function &fn,
-                     std::span<const Slot> args,
-                     const BasicBlock *&bb)
+Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const BasicBlock *&bb)
 {
     Frame fr;
     fr.func = &fn;

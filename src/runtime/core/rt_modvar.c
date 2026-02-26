@@ -87,7 +87,7 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
     for (size_t i = 0; i < ctx->modvar_count; ++i)
     {
         RtModvarEntry *e = &ctx->modvar_entries[i];
-        if (e->kind == kind && strcmp(e->name, key) == 0)
+        if (e->kind == (int)kind && strcmp(e->name, key) == 0)
             return e;
     }
     // grow table

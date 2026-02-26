@@ -480,9 +480,6 @@ VM::ExecResult handleCallIndirect(VM &vm,
                                 in.loc,
                                 fr.func ? fr.func->name : std::string(),
                                 blockLabel);
-            VM::ExecResult res{};
-            res.returned = true;
-            return res;
         }
         const auto *fn = reinterpret_cast<const il::core::Function *>(callee.ptr);
         il::support::SmallVector<Slot, 8> args;

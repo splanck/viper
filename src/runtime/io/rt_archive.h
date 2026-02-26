@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_archive.h
-// Purpose: ZIP archive support for Viper.IO.Archive, providing reading of existing archives and writing of new archives with per-entry compression.
+// Purpose: ZIP archive support for Viper.IO.Archive, providing reading of existing archives and
+// writing of new archives with per-entry compression.
 //
 // Key invariants:
 //   - Archives opened for reading are read-only; no modification is possible.

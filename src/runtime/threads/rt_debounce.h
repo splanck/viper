@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_debounce.h
-// Purpose: Debouncer and Throttler utilities for rate-limiting operations: Debouncer delays execution until a quiet period elapses; Throttler limits to at most once per interval.
+// Purpose: Debouncer and Throttler utilities for rate-limiting operations: Debouncer delays
+// execution until a quiet period elapses; Throttler limits to at most once per interval.
 //
 // Key invariants:
 //   - Debouncer resets its timer on each call; fires only after quiet_ms have passed.

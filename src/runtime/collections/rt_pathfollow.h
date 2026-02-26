@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_pathfollow.h
-// Purpose: Path follower for moving objects along waypoint paths with linear interpolation, supporting one-shot, looping, and ping-pong traversal modes.
+// Purpose: Path follower for moving objects along waypoint paths with linear interpolation,
+// supporting one-shot, looping, and ping-pong traversal modes.
 //
 // Key invariants:
 //   - Maximum waypoints per path is RT_PATHFOLLOW_MAX_POINTS (64).
@@ -13,7 +14,8 @@
 //   - Caller owns the rt_pathfollow handle; destroy with rt_pathfollow_destroy.
 //   - No reference counting; explicit destruction is required.
 //
-// Links: src/runtime/collections/rt_pathfollow.c (implementation), src/runtime/collections/rt_tween.h
+// Links: src/runtime/collections/rt_pathfollow.c (implementation),
+// src/runtime/collections/rt_tween.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef VIPER_RT_PATHFOLLOW_H

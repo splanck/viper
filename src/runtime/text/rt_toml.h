@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_toml.h
-// Purpose: TOML (Tom's Obvious Minimal Language) configuration file parser returning a nested Map structure representing keys, sections, and arrays.
+// Purpose: TOML (Tom's Obvious Minimal Language) configuration file parser returning a nested Map
+// structure representing keys, sections, and arrays.
 //
 // Key invariants:
 //   - Parses basic TOML: key-value pairs, sections ([table]), arrays, inline tables.

@@ -1,13 +1,24 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_string.h
-// Purpose: Reference-counted UTF-8 string API providing creation, manipulation, comparison, search, and conversion operations for the primary Viper runtime string type.
+// Purpose: Reference-counted UTF-8 string API providing creation, manipulation, comparison, search,
+// and conversion operations for the primary Viper runtime string type.
 //
 // Key invariants:
 //   - Strings are null-terminated UTF-8; the null terminator is not counted in length.
 //   - Reference counting uses atomic increments/decrements for thread safety.
 //   - Immortal string literals created by rt_string_literal are never freed.
 //   - Empty string is represented as NULL or a zero-length allocated string; both are valid.
+//
+// Encoding & indexing:
+//   - All lengths and indices are BYTE-based, not codepoint-based. This follows
+//     traditional BASIC string semantics. rt_str_len() returns the byte count.
+//   - Slicing functions (Left$, Right$, Mid$, Substring) operate on byte offsets.
+//     Slicing mid-codepoint produces a valid (but possibly ill-formed) UTF-8 fragment.
+//   - rt_str_flip() is the only codepoint-aware operation — it reverses by UTF-8
+//     sequences (1-4 bytes each) rather than by individual bytes.
+//   - Case conversion (UCase$/LCase$) is ASCII-only: bytes 0x41-0x5A / 0x61-0x7A
+//     are toggled; multi-byte UTF-8 sequences pass through unchanged.
 //
 // Ownership/Lifetime:
 //   - New strings start with refcount 1; callers own the initial reference.
@@ -332,7 +343,7 @@ extern "C"
     /// @return Newly allocated repeated string.
     rt_string rt_str_repeat(rt_string str, int64_t count);
 
-    /// @brief Reverse string bytes (ASCII-safe).
+    /// @brief Reverse string by UTF-8 codepoints (multi-byte aware).
     /// @param str Source string.
     /// @return Newly allocated reversed string.
     rt_string rt_str_flip(rt_string str);

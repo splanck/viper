@@ -109,7 +109,8 @@ TEST(Arm64GaddrNull, LoadFromPointer)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // After store-load forwarding, the load may be replaced with a mov.
-    EXPECT_TRUE(asmText.find("ldr x") != std::string::npos || asmText.find("mov x") != std::string::npos);
+    EXPECT_TRUE(asmText.find("ldr x") != std::string::npos ||
+                asmText.find("mov x") != std::string::npos);
 }
 
 // Test 4: Store to pointer

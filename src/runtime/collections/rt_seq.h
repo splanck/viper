@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_seq.h
-// Purpose: Runtime-backed dynamic sequence for Viper.Collections.Seq, providing O(1) amortized append, O(1) indexed access, and functional operations (map, filter, reduce).
+// Purpose: Runtime-backed dynamic sequence for Viper.Collections.Seq, providing O(1) amortized
+// append, O(1) indexed access, and functional operations (map, filter, reduce).
 //
 // Key invariants:
 //   - Indices are 0-based; out-of-bounds access traps at runtime.

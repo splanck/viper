@@ -64,13 +64,6 @@ typedef struct
     uint8_t *data;
 } bytes_impl;
 
-static inline uint8_t *bytes_data(void *obj)
-{
-    if (!obj)
-        return NULL;
-    return ((bytes_impl *)obj)->data;
-}
-
 static inline int64_t bytes_len(void *obj)
 {
     if (!obj)

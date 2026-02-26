@@ -85,10 +85,10 @@ TEST(CrossPlatformABI, X64Win64RegisterArgOrder)
     using namespace viper::codegen::x64;
 
     const auto &win64 = win64Target();
-    const auto &sysv  = sysvTarget();
+    const auto &sysv = sysvTarget();
 
     EXPECT_EQ(win64.maxGPRArgs, std::size_t{4});
-    EXPECT_EQ(sysv.maxGPRArgs,  std::size_t{6});
+    EXPECT_EQ(sysv.maxGPRArgs, std::size_t{6});
 
     // Win64: first arg in RCX
     EXPECT_EQ(win64.intArgOrder[0], PhysReg::RCX);
@@ -108,7 +108,7 @@ TEST(CrossPlatformABI, X64Win64RegisterArgOrder)
 
 /// @brief Emit a simple function header using the given target and return it.
 static std::string emitAarch64FunctionHeader(const viper::codegen::aarch64::TargetInfo &ti,
-                                              const std::string &name)
+                                             const std::string &name)
 {
     viper::codegen::aarch64::AsmEmitter emitter{ti};
     std::ostringstream oss;
@@ -127,7 +127,7 @@ TEST(CrossPlatformABI, AArch64WindowsTargetExists)
 TEST(CrossPlatformABI, AArch64WindowsTargetSameRegistersAsLinux)
 {
     // Windows ARM64 uses identical AAPCS64 register conventions to Linux.
-    const auto &linux_ti   = viper::codegen::aarch64::linuxTarget();
+    const auto &linux_ti = viper::codegen::aarch64::linuxTarget();
     const auto &windows_ti = viper::codegen::aarch64::windowsTarget();
 
     EXPECT_EQ(windows_ti.intArgOrder, linux_ti.intArgOrder);
@@ -205,8 +205,7 @@ TEST(CrossPlatformABI, LinkerSupportArchiveExtension)
 TEST(CrossPlatformABI, LinkerSupportArchivePathContainsBaseName)
 {
     // The archive path must contain the base name regardless of platform.
-    const std::filesystem::path path =
-        viper::codegen::common::runtimeArchivePath({}, "my_lib");
+    const std::filesystem::path path = viper::codegen::common::runtimeArchivePath({}, "my_lib");
     EXPECT_NE(path.string().find("my_lib"), std::string::npos);
 }
 

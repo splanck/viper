@@ -1,12 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_sortedset.h
-// Purpose: Sorted set of unique strings maintained in lexicographic order, enabling range queries (floor, ceil, between) and ordered forward/backward iteration.
+// Purpose: Sorted set of unique strings maintained in lexicographic order, enabling range queries
+// (floor, ceil, between) and ordered forward/backward iteration.
 //
 // Key invariants:
 //   - Elements are unique strings maintained in sorted order.
 //   - All operations maintain the sorted invariant.
-//   - rt_sortedset_floor returns the largest element <= key; rt_sortedset_ceil returns the smallest >= key.
+//   - rt_sortedset_floor returns the largest element <= key; rt_sortedset_ceil returns the smallest
+//   >= key.
 //   - Returned subsets from range queries are newly allocated.
 //
 // Ownership/Lifetime:

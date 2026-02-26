@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_set.h
-// Purpose: Generic hash set using object identity (pointer equality) for element comparison, providing O(1) average add, remove, and contains operations.
+// Purpose: Generic hash set using object identity (pointer equality) for element comparison,
+// providing O(1) average add, remove, and contains operations.
 //
 // Key invariants:
 //   - Elements are compared by pointer identity, not deep equality.

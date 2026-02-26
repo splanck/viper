@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_result.h
-// Purpose: Result type for error handling representing either Ok(value) or Err(error), with typed extraction, map, flat_map, and conversion to Option.
+// Purpose: Result type for error handling representing either Ok(value) or Err(error), with typed
+// extraction, map, flat_map, and conversion to Option.
 //
 // Key invariants:
 //   - A Result is always exactly one of Ok or Err.

@@ -84,9 +84,9 @@ extern "C"
 
         /* Word-wrap line cache — populated by measure, consumed by paint.
          * Private; do not access from outside vg_label.c. */
-        char  **wrap_line_bufs;  ///< malloc'd array of malloc'd line strings
-        int     wrap_line_count; ///< number of entries in wrap_line_bufs
-        float   wrap_cached_w;   ///< wrap_width for which cache is valid (-1 = invalid)
+        char **wrap_line_bufs; ///< malloc'd array of malloc'd line strings
+        int wrap_line_count;   ///< number of entries in wrap_line_bufs
+        float wrap_cached_w;   ///< wrap_width for which cache is valid (-1 = invalid)
     } vg_label_t;
 
     /// @brief Create a new label widget
@@ -160,7 +160,7 @@ extern "C"
 
         // Icon
         char *icon_text; ///< UTF-8 icon/emoji string (NULL = no icon, owned by button)
-        int   icon_pos;  ///< Icon position: 0 = left of text (default), 1 = right of text
+        int icon_pos;    ///< Icon position: 0 = left of text (default), 1 = right of text
     } vg_button_t;
 
     /// @brief Create a new button widget
@@ -266,11 +266,12 @@ extern "C"
         bool cursor_visible;     ///< Cursor visibility state
 
         // Undo/redo ring buffer (max 32 snapshots)
-        char   *undo_stack[32];   ///< strdup'd text snapshots; NULL = empty slot
-        size_t  undo_cursors[32]; ///< Cursor position at time of each snapshot
-        int     undo_head;        ///< Index of the most-recent (top) snapshot (0..31)
-        int     undo_count;       ///< Total number of valid snapshots
-        int     undo_pos;         ///< Current position in stack (for redo; equals undo_count after normal edits)
+        char *undo_stack[32];    ///< strdup'd text snapshots; NULL = empty slot
+        size_t undo_cursors[32]; ///< Cursor position at time of each snapshot
+        int undo_head;           ///< Index of the most-recent (top) snapshot (0..31)
+        int undo_count;          ///< Total number of valid snapshots
+        int undo_pos; ///< Current position in stack (for redo; equals undo_count after normal
+                      ///< edits)
     } vg_textinput_t;
 
     /// @brief Create a new text input widget

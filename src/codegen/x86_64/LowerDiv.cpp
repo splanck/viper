@@ -121,6 +121,7 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 {
     return x64::makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(reg));
 }
+
 /// @brief Return log2(v) if v is a positive power of 2, else -1.
 [[nodiscard]] int log2IfPowerOf2(int64_t v)
 {
@@ -284,17 +285,17 @@ void lowerSignedDivRem(MFunction &fn)
                         // Move dividend to dest first (SHR/AND are in-place).
                         if (std::holds_alternative<OpImm>(dividendClone))
                         {
-                            block.instructions[instrIdx] = MInstr::make(
-                                MOpcode::MOVri,
-                                std::vector<Operand>{cloneOperand(destClone),
-                                                     cloneOperand(dividendClone)});
+                            block.instructions[instrIdx] =
+                                MInstr::make(MOpcode::MOVri,
+                                             std::vector<Operand>{cloneOperand(destClone),
+                                                                  cloneOperand(dividendClone)});
                         }
                         else
                         {
-                            block.instructions[instrIdx] = MInstr::make(
-                                MOpcode::MOVrr,
-                                std::vector<Operand>{cloneOperand(destClone),
-                                                     cloneOperand(dividendClone)});
+                            block.instructions[instrIdx] =
+                                MInstr::make(MOpcode::MOVrr,
+                                             std::vector<Operand>{cloneOperand(destClone),
+                                                                  cloneOperand(dividendClone)});
                         }
 
                         if (isUnsignedDiv)
@@ -303,10 +304,9 @@ void lowerSignedDivRem(MFunction &fn)
                             block.instructions.insert(
                                 block.instructions.begin() +
                                     static_cast<std::ptrdiff_t>(instrIdx + 1),
-                                MInstr::make(
-                                    MOpcode::SHRri,
-                                    std::vector<Operand>{cloneOperand(destClone),
-                                                         makeImmOperand(log)}));
+                                MInstr::make(MOpcode::SHRri,
+                                             std::vector<Operand>{cloneOperand(destClone),
+                                                                  makeImmOperand(log)}));
                         }
                         else
                         {
@@ -314,10 +314,9 @@ void lowerSignedDivRem(MFunction &fn)
                             block.instructions.insert(
                                 block.instructions.begin() +
                                     static_cast<std::ptrdiff_t>(instrIdx + 1),
-                                MInstr::make(
-                                    MOpcode::ANDri,
-                                    std::vector<Operand>{cloneOperand(destClone),
-                                                         makeImmOperand(*constVal - 1)}));
+                                MInstr::make(MOpcode::ANDri,
+                                             std::vector<Operand>{cloneOperand(destClone),
+                                                                  makeImmOperand(*constVal - 1)}));
                         }
                         instrIdx += 1; // skip the inserted instruction
                         continue;

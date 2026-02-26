@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_printf_compat.h
-// Purpose: Overridable wrapper around libc snprintf that allows test code to interpose formatting behavior portably across platforms without modifying production code.
+// Purpose: Overridable wrapper around libc snprintf that allows test code to interpose formatting
+// behavior portably across platforms without modifying production code.
 //
 // Key invariants:
 //   - Default implementation forwards directly to the platform's snprintf.

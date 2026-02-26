@@ -368,7 +368,7 @@ StmtPtr Parser::parseClassDecl()
         }
 
         // Parse optional access and method modifiers prefix.
-        auto parseAccessPrefix = [&]() -> std::optional<Access>
+        auto parseAccessPrefix2 = [&]() -> std::optional<Access>
         {
             if (at(TokenKind::KeywordPublic))
             {
@@ -383,7 +383,7 @@ StmtPtr Parser::parseClassDecl()
             return std::nullopt;
         };
 
-        if (auto acc = parseAccessPrefix())
+        if (auto acc = parseAccessPrefix2())
             curAccess = acc;
 
         // Optional single-use STATIC modifier for the next member (method/property/ctor)
@@ -447,8 +447,8 @@ StmtPtr Parser::parseClassDecl()
         {
             auto propLoc = peek().loc;
             consume();
-            Token nameTok = expect(TokenKind::Identifier);
-            if (nameTok.kind != TokenKind::Identifier)
+            Token propNameTok = expect(TokenKind::Identifier);
+            if (propNameTok.kind != TokenKind::Identifier)
                 break;
             Token asTok = expect(TokenKind::KeywordAs);
             if (asTok.kind != TokenKind::KeywordAs)
@@ -461,7 +461,7 @@ StmtPtr Parser::parseClassDecl()
 
             auto prop = std::make_unique<PropertyDecl>();
             prop->loc = propLoc;
-            prop->name = nameTok.lexeme;
+            prop->name = propNameTok.lexeme;
             prop->type = propTy;
             prop->access = curAccess.value_or(Access::Public);
             prop->isStatic = pendingStaticMember;
@@ -503,7 +503,7 @@ StmtPtr Parser::parseClassDecl()
                 }
 
                 // Optional accessor access modifier
-                std::optional<Access> acc = parseAccessPrefix();
+                std::optional<Access> acc = parseAccessPrefix2();
 
                 // GET
                 if (at(TokenKind::KeywordGet) || isIdentEq(peek(), "GET"))

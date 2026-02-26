@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_int_format.h
-// Purpose: Portable, locale-independent 64-bit integer to decimal string formatting, providing signed and unsigned variants that write into caller-supplied buffers.
+// Purpose: Portable, locale-independent 64-bit integer to decimal string formatting, providing
+// signed and unsigned variants that write into caller-supplied buffers.
 //
 // Key invariants:
 //   - Always null-terminates the output buffer when capacity > 0.

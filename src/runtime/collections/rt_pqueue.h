@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_pqueue.h
-// Purpose: Runtime-backed priority queue (heap) for Viper.Collections.Heap, supporting min-heap and max-heap ordering with push/pop/peek operations.
+// Purpose: Runtime-backed priority queue (heap) for Viper.Collections.Heap, supporting min-heap and
+// max-heap ordering with push/pop/peek operations.
 //
 // Key invariants:
 //   - Default is a min-heap; rt_pqueue_new_max creates a max-heap.

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_option.h
-// Purpose: Option type representing either Some(value) or None, with typed extraction, transformation (map, flat_map), and conversion to Result.
+// Purpose: Option type representing either Some(value) or None, with typed extraction,
+// transformation (map, flat_map), and conversion to Result.
 //
 // Key invariants:
 //   - An Option is always exactly one of Some or None.

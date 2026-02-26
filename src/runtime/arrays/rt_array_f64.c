@@ -46,7 +46,7 @@
 /// @return Heap header pointer, or NULL if @p payload is NULL.
 rt_heap_hdr_t *rt_arr_f64_hdr(const double *payload)
 {
-    return payload ? rt_heap_hdr((void *)payload) : NULL;
+    return payload ? rt_heap_hdr((void *)(uintptr_t)payload) : NULL;
 }
 
 // Generate standard array helper functions using macros from rt_internal.h

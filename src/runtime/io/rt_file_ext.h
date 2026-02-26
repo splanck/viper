@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_file_ext.h
-// Purpose: High-level static file operations for Viper.IO.File, providing ReadAllText, WriteAllText, ReadAllLines, AppendText, Copy, Move, Delete, and Exists.
+// Purpose: High-level static file operations for Viper.IO.File, providing ReadAllText,
+// WriteAllText, ReadAllLines, AppendText, Copy, Move, Delete, and Exists.
 //
 // Key invariants:
 //   - Operations are platform-independent and use UTF-8 for text encoding.
@@ -10,7 +11,8 @@
 //   - All returning-functions allocate new objects; caller must release them.
 //
 // Ownership/Lifetime:
-//   - All functions returning strings or objects allocate new instances that the caller must release.
+//   - All functions returning strings or objects allocate new instances that the caller must
+//   release.
 //   - Error conditions are reported via RtError out-parameters or NULL returns.
 //
 // Links: src/runtime/io/rt_file_ext.c (implementation), src/runtime/core/rt_string.h

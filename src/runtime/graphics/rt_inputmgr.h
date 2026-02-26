@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_inputmgr.h
-// Purpose: High-level input manager with debouncing and action mapping, providing edge detection, held-state queries, analog readings, and unified directional/confirm/cancel abstractions.
+// Purpose: High-level input manager with debouncing and action mapping, providing edge detection,
+// held-state queries, analog readings, and unified directional/confirm/cancel abstractions.
 //
 // Key invariants:
 //   - Must be updated exactly once per frame with rt_inputmgr_update after polling events.

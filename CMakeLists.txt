@@ -138,6 +138,12 @@ else()
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     list(APPEND IL_COMPILE_FLAGS -Wunreachable-code)  # dead code after return/throw/break
     list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter -Wno-unused-private-field -Wno-mismatched-tags)
+    # Apple Clang enables -Woverloaded-virtual in -Wall (upstream Clang does not);
+    # suppress it globally since visitor-pattern code legitimately hides overloads.
+    list(APPEND IL_COMPILE_FLAGS -Wno-overloaded-virtual)
+    # VM threaded dispatch uses computed-goto &&label (GCC/Clang extension);
+    # -Wpedantic warns on it, but it is intentional and performance-critical.
+    list(APPEND IL_COMPILE_FLAGS -Wno-gnu-label-as-value)
     if(IL_SANITIZE_ADDRESS)
       list(APPEND IL_COMPILE_FLAGS -fsanitize=address)
       list(APPEND IL_LINK_FLAGS -fsanitize=address)
@@ -195,7 +201,8 @@ endif()
 
 add_library(viper_common_opts INTERFACE)
 # Generated headers live here (configured below)
-target_include_directories(viper_common_opts INTERFACE "${CMAKE_BINARY_DIR}/generated")
+target_include_directories(viper_common_opts INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
 target_compile_features(viper_common_opts INTERFACE cxx_std_20)
 if(IL_COMPILE_FLAGS)
   target_compile_options(viper_common_opts INTERFACE ${IL_COMPILE_FLAGS})
@@ -500,6 +507,7 @@ add_custom_target(distclean
 )
 
 set(VIPER_PUBLIC_LIB_TARGETS
+  viper_common_opts
   viper_support
   viper_rt_base
   viper_rt_arrays

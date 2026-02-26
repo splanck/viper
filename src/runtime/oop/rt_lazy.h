@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_lazy.h
-// Purpose: Lazy type providing deferred computation until first access, evaluating a factory function once and caching the result for subsequent accesses.
+// Purpose: Lazy type providing deferred computation until first access, evaluating a factory
+// function once and caching the result for subsequent accesses.
 //
 // Key invariants:
 //   - The factory function is called exactly once, on first access.

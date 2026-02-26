@@ -465,8 +465,8 @@ void vgfx_set_title(vgfx_window_t window, const char *title)
 ///          during the drag.  On other platforms the callback is stored but
 ///          never invoked from platform code (resize events arrive via poll).
 void vgfx_set_resize_callback(vgfx_window_t window,
-                               void (*callback)(void *userdata, int32_t w, int32_t h),
-                               void *userdata)
+                              void (*callback)(void *userdata, int32_t w, int32_t h),
+                              void *userdata)
 {
     if (!window)
         return;
@@ -694,7 +694,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params)
      * this point; divide by scale_factor to recover logical (point) dimensions. */
     float dpi_scale = vgfx_platform_get_display_scale();
     win->scale_factor = (dpi_scale >= 1.0f) ? dpi_scale : 1.0f;
-    win->width  = (int32_t)(actual_params.width  * win->scale_factor);
+    win->width = (int32_t)(actual_params.width * win->scale_factor);
     win->height = (int32_t)(actual_params.height * win->scale_factor);
     win->stride = win->width * 4;
 
@@ -1050,7 +1050,7 @@ void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color)
         int32_t offset = y * window->stride + x * 4;
         window->pixels[offset + 0] = (uint8_t)((color >> 16) & 0xFF); /* R */
         window->pixels[offset + 1] = (uint8_t)((color >> 8) & 0xFF);  /* G */
-        window->pixels[offset + 2] = (uint8_t)(color & 0xFF);          /* B */
+        window->pixels[offset + 2] = (uint8_t)(color & 0xFF);         /* B */
         window->pixels[offset + 3] = 0xFF;
         return;
     }

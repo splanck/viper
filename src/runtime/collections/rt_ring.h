@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_ring.h
-// Purpose: Fixed-capacity circular buffer (Ring) with FIFO ordering that overwrites the oldest entry when full, useful for rolling logs and event histories.
+// Purpose: Fixed-capacity circular buffer (Ring) with FIFO ordering that overwrites the oldest
+// entry when full, useful for rolling logs and event histories.
 //
 // Key invariants:
 //   - Fixed capacity set at creation; cannot be resized.

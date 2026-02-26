@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_scheduler.h
-// Purpose: Poll-based task scheduler for named delayed tasks using the monotonic clock, where duplicate task names replace the previous registration.
+// Purpose: Poll-based task scheduler for named delayed tasks using the monotonic clock, where
+// duplicate task names replace the previous registration.
 //
 // Key invariants:
 //   - Poll-based, not thread-based; rt_scheduler_poll must be called regularly.

@@ -1,11 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_retry.h
-// Purpose: Retry policy with configurable backoff strategies (fixed, linear, exponential) for transient failure handling in network and I/O operations.
+// Purpose: Retry policy with configurable backoff strategies (fixed, linear, exponential) for
+// transient failure handling in network and I/O operations.
 //
 // Key invariants:
 //   - Tracks attempt count and computes the appropriate delay for each strategy.
-//   - Strategies: fixed (constant delay), linear (delay * attempt), exponential (delay * 2^attempt).
+//   - Strategies: fixed (constant delay), linear (delay * attempt), exponential (delay *
+//   2^attempt).
 //   - Maximum attempt count caps retries; after max, rt_retry_should_retry returns 0.
 //   - Jitter may be applied to prevent thundering-herd effects.
 //

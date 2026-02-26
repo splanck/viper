@@ -1,8 +1,8 @@
 // vg_slider.c - Slider widget implementation
-#include "../../include/vg_widgets.h"
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
-#include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_widgets.h"
 #include <stdlib.h>
 
 //=============================================================================
@@ -203,9 +203,8 @@ static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event)
         {
             /* Arrow keys adjust the slider value by one step (or 1% of range
              * when step == 0).  Home/End jump to the min/max extremes. */
-            float step = (slider->step > 0.0f)
-                             ? slider->step
-                             : (slider->max_value - slider->min_value) * 0.01f;
+            float step = (slider->step > 0.0f) ? slider->step
+                                               : (slider->max_value - slider->min_value) * 0.01f;
             bool horiz = (slider->orientation == VG_SLIDER_HORIZONTAL);
             switch (event->key.key)
             {

@@ -440,8 +440,8 @@ int64_t rt_canvas_text_height(void)
 // Scaled Text Rendering
 //=============================================================================
 
-void rt_canvas_text_scaled(void *canvas_ptr, int64_t x, int64_t y,
-                           rt_string text, int64_t scale, int64_t color)
+void rt_canvas_text_scaled(
+    void *canvas_ptr, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color)
 {
     if (!canvas_ptr || !text || scale < 1)
         return;
@@ -482,8 +482,8 @@ void rt_canvas_text_scaled(void *canvas_ptr, int64_t x, int64_t y,
     }
 }
 
-void rt_canvas_text_scaled_bg(void *canvas_ptr, int64_t x, int64_t y,
-                              rt_string text, int64_t scale, int64_t fg, int64_t bg)
+void rt_canvas_text_scaled_bg(
+    void *canvas_ptr, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg)
 {
     if (!canvas_ptr || !text || scale < 1)
         return;
@@ -533,8 +533,8 @@ int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
 // Alpha-Blended Shapes
 //=============================================================================
 
-void rt_canvas_box_alpha(void *canvas_ptr, int64_t x, int64_t y,
-                         int64_t w, int64_t h, int64_t color, int64_t alpha)
+void rt_canvas_box_alpha(
+    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha)
 {
     if (!canvas_ptr || w <= 0 || h <= 0)
         return;
@@ -547,8 +547,8 @@ void rt_canvas_box_alpha(void *canvas_ptr, int64_t x, int64_t y,
         return;
     if (alpha >= 255)
     {
-        vgfx_fill_rect(canvas->gfx_win, (int32_t)x, (int32_t)y,
-                        (int32_t)w, (int32_t)h, (vgfx_color_t)color);
+        vgfx_fill_rect(
+            canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
         return;
     }
 
@@ -563,8 +563,8 @@ void rt_canvas_box_alpha(void *canvas_ptr, int64_t x, int64_t y,
     }
 }
 
-void rt_canvas_disc_alpha(void *canvas_ptr, int64_t cx, int64_t cy,
-                          int64_t radius, int64_t color, int64_t alpha)
+void rt_canvas_disc_alpha(
+    void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha)
 {
     if (!canvas_ptr || radius <= 0)
         return;
@@ -577,8 +577,8 @@ void rt_canvas_disc_alpha(void *canvas_ptr, int64_t cx, int64_t cy,
         return;
     if (alpha >= 255)
     {
-        vgfx_fill_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy,
-                          (int32_t)radius, (vgfx_color_t)color);
+        vgfx_fill_circle(
+            canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
         return;
     }
 
@@ -591,8 +591,7 @@ void rt_canvas_disc_alpha(void *canvas_ptr, int64_t cx, int64_t cy,
         {
             if (dx * dx + dy * dy <= r2)
             {
-                vgfx_pset_alpha(canvas->gfx_win,
-                                (int32_t)(cx + dx), (int32_t)(cy + dy), argb);
+                vgfx_pset_alpha(canvas->gfx_win, (int32_t)(cx + dx), (int32_t)(cy + dy), argb);
             }
         }
     }
@@ -906,7 +905,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
     double len = sqrt(ldx * ldx + ldy * ldy);
     // Perpendicular unit vector (rotated 90 degrees)
     double px = (-ldy / len) * (double)half;
-    double py = ( ldx / len) * (double)half;
+    double py = (ldx / len) * (double)half;
 
     // Four corners of the parallelogram
     double ax = (double)x1 + px, ay = (double)y1 + py;
@@ -928,39 +927,43 @@ void rt_canvas_thick_line(void *canvas_ptr,
         if (fmin(ay, cy) <= sv && sv <= fmax(ay, cy) && ay != cy)
         {
             xi = ax + (cx - ax) * (sv - ay) / (cy - ay);
-            if (xi < x_min) x_min = xi;
-            if (xi > x_max) x_max = xi;
+            if (xi < x_min)
+                x_min = xi;
+            if (xi > x_max)
+                x_max = xi;
         }
         // Edge C→D
         if (fmin(cy, dy_c) <= sv && sv <= fmax(cy, dy_c) && cy != dy_c)
         {
             xi = cx + (dx - cx) * (sv - cy) / (dy_c - cy);
-            if (xi < x_min) x_min = xi;
-            if (xi > x_max) x_max = xi;
+            if (xi < x_min)
+                x_min = xi;
+            if (xi > x_max)
+                x_max = xi;
         }
         // Edge D→B
         if (fmin(dy_c, by) <= sv && sv <= fmax(dy_c, by) && dy_c != by)
         {
             xi = dx + (bx - dx) * (sv - dy_c) / (by - dy_c);
-            if (xi < x_min) x_min = xi;
-            if (xi > x_max) x_max = xi;
+            if (xi < x_min)
+                x_min = xi;
+            if (xi > x_max)
+                x_max = xi;
         }
         // Edge B→A
         if (fmin(by, ay) <= sv && sv <= fmax(by, ay) && by != ay)
         {
             xi = bx + (ax - bx) * (sv - by) / (ay - by);
-            if (xi < x_min) x_min = xi;
-            if (xi > x_max) x_max = xi;
+            if (xi < x_min)
+                x_min = xi;
+            if (xi > x_max)
+                x_max = xi;
         }
 
         if (x_max >= x_min)
         {
-            vgfx_line(canvas->gfx_win,
-                      (int32_t)floor(x_min),
-                      scan_y,
-                      (int32_t)ceil(x_max),
-                      scan_y,
-                      col);
+            vgfx_line(
+                canvas->gfx_win, (int32_t)floor(x_min), scan_y, (int32_t)ceil(x_max), scan_y, col);
         }
     }
 }
@@ -1534,11 +1537,10 @@ static int64_t sin_deg_fp(int64_t deg)
     if (deg < 0)
         deg += 360;
 
-    // Simple lookup approximation with linear interpolation
-    // sin values * 1024 for 0, 30, 45, 60, 90 degrees
+    // Simple lookup approximation
+    // sin values * 1024 for 0, 10, 20, ... 120 degrees
     static const int64_t sin_table[13] = {
         0, 176, 342, 500, 643, 766, 866, 940, 985, 1004, 992, 951, 883};
-    static const int64_t angles[13] = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120};
 
     int64_t sign = 1;
     if (deg >= 180)
@@ -1551,20 +1553,7 @@ static int64_t sin_deg_fp(int64_t deg)
         deg = 180 - deg;
     }
 
-    // Linear interpolation in table
-    int64_t idx = deg / 10;
-    if (idx >= 12)
-        idx = 11;
-    int64_t frac = deg % 10;
-    int64_t v0 = (idx < 9) ? sin_table[idx] : sin_table[9 - (idx - 9)];
-    int64_t v1 = (idx + 1 < 9) ? sin_table[idx + 1] : sin_table[9 - (idx + 1 - 9)];
-    if (idx >= 9)
-    {
-        v0 = sin_table[9 - (idx - 9)];
-        v1 = (idx + 1 <= 9) ? sin_table[idx + 1] : sin_table[9 - (idx + 1 - 9)];
-    }
-
-    // Simpler approach: use lookup directly
+    // Use lookup directly
     int64_t val;
     if (deg <= 90)
     {
@@ -2769,8 +2758,8 @@ int64_t rt_canvas_text_height(void)
     return 8;
 }
 
-void rt_canvas_text_scaled(void *canvas, int64_t x, int64_t y,
-                           rt_string text, int64_t scale, int64_t color)
+void rt_canvas_text_scaled(
+    void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color)
 {
     (void)canvas;
     (void)x;
@@ -2780,8 +2769,8 @@ void rt_canvas_text_scaled(void *canvas, int64_t x, int64_t y,
     (void)color;
 }
 
-void rt_canvas_text_scaled_bg(void *canvas, int64_t x, int64_t y,
-                              rt_string text, int64_t scale, int64_t fg, int64_t bg)
+void rt_canvas_text_scaled_bg(
+    void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg)
 {
     (void)canvas;
     (void)x;
@@ -2799,8 +2788,8 @@ int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
     return 0;
 }
 
-void rt_canvas_box_alpha(void *canvas, int64_t x, int64_t y,
-                         int64_t w, int64_t h, int64_t color, int64_t alpha)
+void rt_canvas_box_alpha(
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha)
 {
     (void)canvas;
     (void)x;
@@ -2811,8 +2800,8 @@ void rt_canvas_box_alpha(void *canvas, int64_t x, int64_t y,
     (void)alpha;
 }
 
-void rt_canvas_disc_alpha(void *canvas, int64_t cx, int64_t cy,
-                          int64_t radius, int64_t color, int64_t alpha)
+void rt_canvas_disc_alpha(
+    void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha)
 {
     (void)canvas;
     (void)cx;
@@ -3259,19 +3248,91 @@ void rt_canvas_gradient_v(
     (void)c2;
 }
 
-double rt_canvas_get_scale(void *canvas) { (void)canvas; return 1.0; }
-void rt_canvas_get_position(void *canvas, int64_t *x, int64_t *y) { (void)canvas; if (x) *x = 0; if (y) *y = 0; }
-void rt_canvas_set_position(void *canvas, int64_t x, int64_t y) { (void)canvas; (void)x; (void)y; }
-int64_t rt_canvas_get_fps(void *canvas) { (void)canvas; return -1; }
-void rt_canvas_set_fps(void *canvas, int64_t fps) { (void)canvas; (void)fps; }
-int64_t rt_canvas_is_maximized(void *canvas) { (void)canvas; return 0; }
-void rt_canvas_maximize(void *canvas) { (void)canvas; }
-int64_t rt_canvas_is_minimized(void *canvas) { (void)canvas; return 0; }
-void rt_canvas_minimize(void *canvas) { (void)canvas; }
-void rt_canvas_restore(void *canvas) { (void)canvas; }
-int64_t rt_canvas_is_focused(void *canvas) { (void)canvas; return 0; }
-void rt_canvas_focus(void *canvas) { (void)canvas; }
-void rt_canvas_prevent_close(void *canvas, int64_t prevent) { (void)canvas; (void)prevent; }
-void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h) { (void)canvas; if (w) *w = 0; if (h) *h = 0; }
+double rt_canvas_get_scale(void *canvas)
+{
+    (void)canvas;
+    return 1.0;
+}
+
+void rt_canvas_get_position(void *canvas, int64_t *x, int64_t *y)
+{
+    (void)canvas;
+    if (x)
+        *x = 0;
+    if (y)
+        *y = 0;
+}
+
+void rt_canvas_set_position(void *canvas, int64_t x, int64_t y)
+{
+    (void)canvas;
+    (void)x;
+    (void)y;
+}
+
+int64_t rt_canvas_get_fps(void *canvas)
+{
+    (void)canvas;
+    return -1;
+}
+
+void rt_canvas_set_fps(void *canvas, int64_t fps)
+{
+    (void)canvas;
+    (void)fps;
+}
+
+int64_t rt_canvas_is_maximized(void *canvas)
+{
+    (void)canvas;
+    return 0;
+}
+
+void rt_canvas_maximize(void *canvas)
+{
+    (void)canvas;
+}
+
+int64_t rt_canvas_is_minimized(void *canvas)
+{
+    (void)canvas;
+    return 0;
+}
+
+void rt_canvas_minimize(void *canvas)
+{
+    (void)canvas;
+}
+
+void rt_canvas_restore(void *canvas)
+{
+    (void)canvas;
+}
+
+int64_t rt_canvas_is_focused(void *canvas)
+{
+    (void)canvas;
+    return 0;
+}
+
+void rt_canvas_focus(void *canvas)
+{
+    (void)canvas;
+}
+
+void rt_canvas_prevent_close(void *canvas, int64_t prevent)
+{
+    (void)canvas;
+    (void)prevent;
+}
+
+void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h)
+{
+    (void)canvas;
+    if (w)
+        *w = 0;
+    if (h)
+        *h = 0;
+}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

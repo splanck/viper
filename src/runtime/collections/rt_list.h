@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_list.h
-// Purpose: Runtime-backed dynamic list of object references for Viper.Collections.List, providing append, insert, remove, sort, and indexed access with automatic growth.
+// Purpose: Runtime-backed dynamic list of object references for Viper.Collections.List, providing
+// append, insert, remove, sort, and indexed access with automatic growth.
 //
 // Key invariants:
 //   - Elements are reference-managed: retained on store, released on overwrite or removal.

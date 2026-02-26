@@ -1,12 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_duration.h
-// Purpose: Duration/TimeSpan type for representing time intervals stored as milliseconds, with creation helpers for common units and arithmetic/formatting operations.
+// Purpose: Duration/TimeSpan type for representing time intervals stored as milliseconds, with
+// creation helpers for common units and arithmetic/formatting operations.
 //
 // Key invariants:
 //   - Duration is stored as a signed 64-bit integer in milliseconds.
 //   - Negative durations are valid and represent time in the past.
-//   - Conversion helpers (from_seconds, from_minutes, from_hours) never overflow for reasonable inputs.
+//   - Conversion helpers (from_seconds, from_minutes, from_hours) never overflow for reasonable
+//   inputs.
 //   - Arithmetic operations on durations return value types, not heap objects.
 //
 // Ownership/Lifetime:

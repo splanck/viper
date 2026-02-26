@@ -69,11 +69,10 @@ static void radio_paint(vg_widget_t *widget, void *canvas)
     float cx = widget->x + r;
     float cy = widget->y + widget->height / 2.0f;
 
-    uint32_t border_col = (widget->state & VG_STATE_DISABLED)
-                              ? theme->colors.fg_disabled
-                              : radio->circle_color;
-    uint32_t text_col = (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled
-                                                             : radio->text_color;
+    uint32_t border_col =
+        (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled : radio->circle_color;
+    uint32_t text_col =
+        (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled : radio->text_color;
 
     // Outer circle (border)
     vgfx_fill_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)r, border_col);
@@ -83,19 +82,11 @@ static void radio_paint(vg_widget_t *widget, void *canvas)
 
     // Fill dot when selected
     if (radio->selected)
-        vgfx_fill_circle(win,
-                         (int32_t)cx,
-                         (int32_t)cy,
-                         (int32_t)(r * 0.5f),
-                         radio->fill_color);
+        vgfx_fill_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)(r * 0.5f), radio->fill_color);
 
     // Focus ring
     if (widget->state & VG_STATE_FOCUSED)
-        vgfx_circle(win,
-                    (int32_t)cx,
-                    (int32_t)cy,
-                    (int32_t)(r + 2),
-                    theme->colors.border_focus);
+        vgfx_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)(r + 2), theme->colors.border_focus);
 
     // Label text
     if (radio->text && radio->font)

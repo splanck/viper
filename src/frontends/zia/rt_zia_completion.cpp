@@ -33,23 +33,22 @@ CompletionEngine s_engine;
 
 extern "C"
 {
+    rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col)
+    {
+        const char *src_cstr = source ? rt_string_cstr(source) : "";
+        size_t src_len = source ? (size_t)rt_str_len(source) : 0;
 
-rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col)
-{
-    const char *src_cstr = source ? rt_string_cstr(source) : "";
-    size_t      src_len  = source ? (size_t)rt_str_len(source) : 0;
+        std::string sourceStr(src_cstr ? src_cstr : "", src_len);
 
-    std::string sourceStr(src_cstr ? src_cstr : "", src_len);
+        auto items = s_engine.complete(sourceStr, (int)line, (int)col);
+        std::string result = serialize(items);
 
-    auto        items  = s_engine.complete(sourceStr, (int)line, (int)col);
-    std::string result = serialize(items);
+        return rt_string_from_bytes(result.c_str(), result.size());
+    }
 
-    return rt_string_from_bytes(result.c_str(), result.size());
-}
-
-void rt_zia_completion_clear_cache(void)
-{
-    s_engine.clearCache();
-}
+    void rt_zia_completion_clear_cache(void)
+    {
+        s_engine.clearCache();
+    }
 
 } // extern "C"

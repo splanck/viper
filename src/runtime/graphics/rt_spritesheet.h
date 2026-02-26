@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_spritesheet.h
-// Purpose: Sprite sheet/atlas for named region extraction from a single Pixels texture, enabling efficient storage of multiple sprites in one image.
+// Purpose: Sprite sheet/atlas for named region extraction from a single Pixels texture, enabling
+// efficient storage of multiple sprites in one image.
 //
 // Key invariants:
 //   - Regions are stored by name; duplicate names overwrite the previous region.

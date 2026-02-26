@@ -230,8 +230,7 @@ static void test_restclient_many_instances()
         rt_string base = rt_restclient_base_url(c);
         test_result(strcmp(rt_string_cstr(base), "https://api.example.com") == 0,
                     "many_instances: base URL preserved");
-        test_result(rt_restclient_last_status(c) == 0,
-                    "many_instances: last_status initially 0");
+        test_result(rt_restclient_last_status(c) == 0, "many_instances: last_status initially 0");
     }
 
     test_result(true, "many_instances: all 100 instances created without crash");

@@ -1067,8 +1067,8 @@ ExprPtr Parser::parsePrimary()
         if (!expect(TokenKind::RBrace, "}"))
             return nullptr;
 
-        return std::make_unique<IfExpr>(loc, std::move(cond), std::move(thenExpr),
-                                        std::move(elseExpr));
+        return std::make_unique<IfExpr>(
+            loc, std::move(cond), std::move(thenExpr), std::move(elseExpr));
     }
 
     // Match expression or 'match' used as identifier
@@ -1101,7 +1101,8 @@ ExprPtr Parser::parsePrimary()
     if (checkIdentifierLike())
     {
         // Struct-literal detection: only when allowStructLiterals_ is set.
-        // Disambiguate: peek(1) == '{' and (peek(2) == '}' or (peek(2) == Ident and peek(3) == '='))
+        // Disambiguate: peek(1) == '{' and (peek(2) == '}' or (peek(2) == Ident and peek(3) ==
+        // '='))
         if (allowStructLiterals_)
         {
             auto nextKind = peek(1).kind;
@@ -1122,8 +1123,8 @@ ExprPtr Parser::parsePrimary()
             if (isStructLiteral)
             {
                 std::string typeName = peek().text;
-                advance();   // consume TypeName
-                advance();   // consume '{'
+                advance(); // consume TypeName
+                advance(); // consume '{'
 
                 std::vector<StructLiteralExpr::Field> fields;
                 while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))

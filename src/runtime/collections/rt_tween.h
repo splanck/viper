@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_tween.h
-// Purpose: Frame-based tweening system with configurable easing functions for smooth animations, supporting double and int64 value types, play/pause/stop lifecycle, and static lerp helpers.
+// Purpose: Frame-based tweening system with configurable easing functions for smooth animations,
+// supporting double and int64 value types, play/pause/stop lifecycle, and static lerp helpers.
 //
 // Key invariants:
 //   - Duration must be >= 1 frame; easing type must be a valid rt_ease_type.

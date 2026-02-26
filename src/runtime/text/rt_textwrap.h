@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_textwrap.h
-// Purpose: Text wrapping utilities for formatting text to specified column widths, supporting word wrapping, hyphenation hints, and indentation.
+// Purpose: Text wrapping utilities for formatting text to specified column widths, supporting word
+// wrapping, hyphenation hints, and indentation.
 //
 // Key invariants:
 //   - Word wrapping breaks at whitespace; words longer than the width are not split.

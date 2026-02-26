@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_html.h
-// Purpose: Tolerant HTML parser and utilities for Viper.Text.Html, providing parsing to a tree structure, text extraction, escaping, and unescaping of HTML entities.
+// Purpose: Tolerant HTML parser and utilities for Viper.Text.Html, providing parsing to a tree
+// structure, text extraction, escaping, and unescaping of HTML entities.
 //
 // Key invariants:
 //   - Parser is tolerant of malformed HTML; it does not trap on invalid input.

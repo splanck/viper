@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_guid.h
-// Purpose: UUID version 4 (random) generation and manipulation per RFC 4122, producing lowercase hex strings in standard 8-4-4-4-12 hyphenated format.
+// Purpose: UUID version 4 (random) generation and manipulation per RFC 4122, producing lowercase
+// hex strings in standard 8-4-4-4-12 hyphenated format.
 //
 // Key invariants:
 //   - Generates RFC 4122 version 4 UUIDs with proper version and variant bits.

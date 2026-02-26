@@ -82,17 +82,6 @@ static void free_node(rt_trie_node *node)
     free(node);
 }
 
-/// Check if a node has any children.
-static int has_children(rt_trie_node *node)
-{
-    for (int i = 0; i < TRIE_ALPHABET_SIZE; ++i)
-    {
-        if (node->children[i])
-            return 1;
-    }
-    return 0;
-}
-
 /// Collect all keys under a node into a Seq.
 /// buf/buf_cap are passed by pointer so the buffer can grow as needed.
 static void collect_keys(rt_trie_node *node, char **buf, size_t *buf_cap, size_t depth, void *seq)

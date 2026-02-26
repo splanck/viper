@@ -392,9 +392,8 @@ struct RegPools
         // Allocator is responsible for ensuring pressure is handled before requesting.
         // Do not ever return the global scratch register here.
         if (gprFree.empty())
-            throw std::runtime_error(
-                "AArch64 register allocator: GPR pool exhausted — "
-                "maybeSpillForPressure should have freed a register");
+            throw std::runtime_error("AArch64 register allocator: GPR pool exhausted — "
+                                     "maybeSpillForPressure should have freed a register");
         auto r = gprFree.front();
         gprFree.pop_front();
         return r;
@@ -410,9 +409,8 @@ struct RegPools
     PhysReg takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/)
     {
         if (gprFree.empty())
-            throw std::runtime_error(
-                "AArch64 register allocator: GPR pool exhausted — "
-                "maybeSpillForPressure should have freed a register");
+            throw std::runtime_error("AArch64 register allocator: GPR pool exhausted — "
+                                     "maybeSpillForPressure should have freed a register");
 
         // Try to find a callee-saved register first using O(1) array lookup
         for (auto it = gprFree.begin(); it != gprFree.end(); ++it)

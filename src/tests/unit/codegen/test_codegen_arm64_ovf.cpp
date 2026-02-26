@@ -50,8 +50,8 @@ TEST(Arm64CLI, OverflowVariantsRR)
     struct Case
     {
         const char *op;
-        const char *expect;      // primary instruction
-        const char *expectTrap;  // trap branch (nullptr if no trap expected)
+        const char *expect;     // primary instruction
+        const char *expectTrap; // trap branch (nullptr if no trap expected)
     } cases[] = {
         {"iadd.ovf", "adds x0, x0, x1", "b.vs"},
         {"isub.ovf", "subs x0, x0, x1", "b.vs"},

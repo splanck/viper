@@ -309,8 +309,7 @@ static void rasterize_scanlines(
             // Sort intersections (qsort: O(n log n) vs previous O(n²) bubble sort)
             if (num_intersections > 1)
             {
-                qsort(intersections, num_intersections, sizeof(float),
-                      raster_cmp_float);
+                qsort(intersections, num_intersections, sizeof(float), raster_cmp_float);
             }
 
             // Fill between pairs (even-odd rule)

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_future.h
-// Purpose: Future/Promise primitives for asynchronous result passing between threads, with blocking get, timed get, non-blocking try-get, and error propagation.
+// Purpose: Future/Promise primitives for asynchronous result passing between threads, with blocking
+// get, timed get, non-blocking try-get, and error propagation.
 //
 // Key invariants:
 //   - A Promise can be completed exactly once (value or error); subsequent completions trap.

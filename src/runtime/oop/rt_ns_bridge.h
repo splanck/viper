@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_ns_bridge.h
-// Purpose: Prototypes for runtime namespace bridging helpers that create heap-managed, reference-counted object instances for Viper's standard namespace classes.
+// Purpose: Prototypes for runtime namespace bridging helpers that create heap-managed,
+// reference-counted object instances for Viper's standard namespace classes.
 //
 // Key invariants:
 //   - Constructors return heap-managed, reference-counted object pointers.

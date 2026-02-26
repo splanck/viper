@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_concqueue.h
-// Purpose: Thread-safe concurrent queue with blocking and non-blocking dequeue operations, using a mutex and condition variable for producer/consumer synchronization.
+// Purpose: Thread-safe concurrent queue with blocking and non-blocking dequeue operations, using a
+// mutex and condition variable for producer/consumer synchronization.
 //
 // Key invariants:
 //   - FIFO ordering; mutex-protected for thread safety.

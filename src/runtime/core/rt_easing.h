@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_easing.h
-// Purpose: Easing functions for animation and interpolation implementing Robert Penner conventions, providing linear, quadratic, cubic, quartic, quintic, sine, exponential, circular, back, elastic, and bounce variants.
+// Purpose: Easing functions for animation and interpolation implementing Robert Penner conventions,
+// providing linear, quadratic, cubic, quartic, quintic, sine, exponential, circular, back, elastic,
+// and bounce variants.
 //
 // Key invariants:
 //   - Input t is expected in [0.0, 1.0]; behavior outside this range is unspecified.

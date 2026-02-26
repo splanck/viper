@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_codec.h
-// Purpose: Base64, Hex, and URL encoding/decoding utilities for string-based transformations used in network protocols, configuration, and data serialization.
+// Purpose: Base64, Hex, and URL encoding/decoding utilities for string-based transformations used
+// in network protocols, configuration, and data serialization.
 //
 // Key invariants:
 //   - Base64 encoding uses the standard alphabet (A-Z, a-z, 0-9, +, /); output includes padding.

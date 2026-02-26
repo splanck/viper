@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_file.h
-// Purpose: File I/O API with BASIC OPEN/CLOSE/INPUT/PRINT# semantics, channel-based access, RtError integration, and POSIX file descriptor backing.
+// Purpose: File I/O API with BASIC OPEN/CLOSE/INPUT/PRINT# semantics, channel-based access, RtError
+// integration, and POSIX file descriptor backing.
 //
 // Key invariants:
 //   - RtFile.fd == -1 means closed or uninitialized.
@@ -14,7 +15,8 @@
 //   - OS resources are released by rt_file_close.
 //   - The channel-based API manages its own internal file table.
 //
-// Links: src/runtime/io/rt_file.c (implementation), src/runtime/core/rt_error.h, src/runtime/core/rt_string.h
+// Links: src/runtime/io/rt_file.c (implementation), src/runtime/core/rt_error.h,
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

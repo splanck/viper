@@ -63,39 +63,6 @@
 #define VGFX_KEY_UP_VG 260
 #define VGFX_KEY_DOWN_VG 261
 
-/// @brief Convert GLFW-style key code to vgfx key code.
-static int64_t glfw_to_vgfx(int64_t glfw_key)
-{
-    // Letters and numbers match directly (ASCII)
-    if (glfw_key >= 'A' && glfw_key <= 'Z')
-        return glfw_key;
-    if (glfw_key >= '0' && glfw_key <= '9')
-        return glfw_key;
-    if (glfw_key == VIPER_KEY_SPACE)
-        return VGFX_KEY_SPACE;
-
-    // Map special keys from GLFW to vgfx
-    switch (glfw_key)
-    {
-        case VIPER_KEY_ESCAPE:
-            return VGFX_KEY_ESCAPE_VG;
-        case VIPER_KEY_ENTER:
-            return VGFX_KEY_ENTER_VG;
-        case VIPER_KEY_LEFT:
-            return VGFX_KEY_LEFT_VG;
-        case VIPER_KEY_RIGHT:
-            return VGFX_KEY_RIGHT_VG;
-        case VIPER_KEY_UP:
-            return VGFX_KEY_UP_VG;
-        case VIPER_KEY_DOWN:
-            return VGFX_KEY_DOWN_VG;
-        default:
-            // For keys not in vgfx, return original code
-            // (they won't work until vgfx is extended)
-            return glfw_key;
-    }
-}
-
 /// @brief Convert vgfx key code to GLFW-style key code.
 static int64_t vgfx_to_glfw(int64_t vgfx_key)
 {

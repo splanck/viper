@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_convert_coll.h
-// Purpose: Collection conversion utilities for transforming between Seq, List, Set, Map, Stack, Queue, Deque, Bag, and Ring container types, plus variadic constructors for Seq, List, and Set.
+// Purpose: Collection conversion utilities for transforming between Seq, List, Set, Map, Stack,
+// Queue, Deque, Bag, and Ring container types, plus variadic constructors for Seq, List, and Set.
 //
 // Key invariants:
 //   - Conversions produce new independent collections; source collections are not modified.

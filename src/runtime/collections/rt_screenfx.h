@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_screenfx.h
-// Purpose: Screen effects manager for camera shake, color flash, and screen fades, with up to RT_SCREENFX_MAX_EFFECTS (8) concurrent effects outputting shake offsets and overlay colors per frame.
+// Purpose: Screen effects manager for camera shake, color flash, and screen fades, with up to
+// RT_SCREENFX_MAX_EFFECTS (8) concurrent effects outputting shake offsets and overlay colors per
+// frame.
 //
 // Key invariants:
 //   - Time values use fixed-point milliseconds; 1000 = 1 pixel for shake offsets.
@@ -13,7 +15,8 @@
 //   - Caller owns the rt_screenfx handle; destroy with rt_screenfx_destroy.
 //   - No reference counting; explicit destruction is required.
 //
-// Links: src/runtime/collections/rt_screenfx.c (implementation), src/runtime/graphics/rt_camera.h, src/runtime/collections/rt_particle.h
+// Links: src/runtime/collections/rt_screenfx.c (implementation), src/runtime/graphics/rt_camera.h,
+// src/runtime/collections/rt_particle.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef VIPER_RT_SCREENFX_H

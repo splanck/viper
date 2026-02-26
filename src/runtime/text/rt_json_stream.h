@@ -1,11 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_json_stream.h
-// Purpose: SAX-style streaming JSON parser for large or incremental JSON data, providing a pull-based token stream over a JSON string without building an in-memory tree.
+// Purpose: SAX-style streaming JSON parser for large or incremental JSON data, providing a
+// pull-based token stream over a JSON string without building an in-memory tree.
 //
 // Key invariants:
 //   - Stateful, pull-based: call rt_json_stream_next to advance to the next token.
-//   - Token types: object_start, object_end, array_start, array_end, key, string, number, bool, null.
+//   - Token types: object_start, object_end, array_start, array_end, key, string, number, bool,
+//   null.
 //   - No memory allocation for the token stream itself; caller reads token data inline.
 //   - Returns an error token on malformed JSON; does not trap.
 //

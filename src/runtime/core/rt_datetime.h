@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_datetime.h
-// Purpose: Runtime date/time functions providing Unix timestamp queries, component extraction (year, month, day, hour, minute, second), formatting, and arithmetic operations for the Viper.DateTime runtime class.
+// Purpose: Runtime date/time functions providing Unix timestamp queries, component extraction
+// (year, month, day, hour, minute, second), formatting, and arithmetic operations for the
+// Viper.DateTime runtime class.
 //
 // Key invariants:
 //   - All timestamps are Unix timestamps in seconds since the UTC epoch (1970-01-01 00:00:00).

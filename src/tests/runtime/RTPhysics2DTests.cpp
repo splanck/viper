@@ -37,10 +37,10 @@ extern "C" void vm_trap(const char *msg)
     do                                                                                             \
     {                                                                                              \
         g_trap_expected = true;                                                                    \
-        if (setjmp(g_trap_jmp) == 0)                                                              \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
         {                                                                                          \
             (void)(expr);                                                                          \
-            fprintf(stderr, "FAIL [%s:%d]: Expected trap did not fire\n", __FILE__, __LINE__);    \
+            fprintf(stderr, "FAIL [%s:%d]: Expected trap did not fire\n", __FILE__, __LINE__);     \
             tests_run++;                                                                           \
         }                                                                                          \
         else                                                                                       \

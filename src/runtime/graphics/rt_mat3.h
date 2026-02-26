@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_mat3.h
-// Purpose: 3x3 matrix math for 2D transformations (Viper.Mat3), supporting translation, rotation, scaling, and composition in row-major layout.
+// Purpose: 3x3 matrix math for 2D transformations (Viper.Mat3), supporting translation, rotation,
+// scaling, and composition in row-major layout.
 //
 // Key invariants:
 //   - Matrices are stored in row-major order; right-multiply with column vectors.

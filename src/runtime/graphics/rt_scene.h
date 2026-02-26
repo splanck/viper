@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_scene.h
-// Purpose: Scene graph for hierarchical sprite management with local and world transforms computed by composing ancestor transforms.
+// Purpose: Scene graph for hierarchical sprite management with local and world transforms computed
+// by composing ancestor transforms.
 //
 // Key invariants:
 //   - Each scene node has at most one parent; the root has no parent.
@@ -13,7 +14,8 @@
 //   - Scene and SceneNode objects are runtime-managed.
 //   - The scene owns the node tree; callers should not free individual nodes directly.
 //
-// Links: src/runtime/graphics/rt_scene.c (implementation), src/runtime/graphics/rt_camera.h, src/runtime/graphics/rt_graphics.h
+// Links: src/runtime/graphics/rt_scene.c (implementation), src/runtime/graphics/rt_camera.h,
+// src/runtime/graphics/rt_graphics.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

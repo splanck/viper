@@ -475,5 +475,5 @@ rt_string rt_result_to_string(void *obj)
         }
     }
 
-    return rt_string_from_bytes(buf, (int64_t)strlen(buf));
+    return rt_string_from_bytes(buf, strlen(buf));
 }

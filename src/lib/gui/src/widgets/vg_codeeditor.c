@@ -601,8 +601,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
             if (i < span->start_line || i > span->end_line)
                 continue;
             int col_start = (i == span->start_line) ? span->start_col : 0;
-            int col_end = (i == span->end_line) ? span->end_col
-                                                : (int)editor->lines[i].length;
+            int col_end = (i == span->end_line) ? span->end_col : (int)editor->lines[i].length;
             if (col_end <= col_start)
                 col_end = col_start + 1; /* highlight at least one char width */
             float span_x = content_x + col_start * editor->char_width - editor->scroll_x;
@@ -643,9 +642,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                 int32_t icon_r = 4; /* 4px radius dot */
                 int32_t icon_cx = (int32_t)widget->x + icon_r + 2;
                 int32_t icon_cy = (int32_t)line_y + (int32_t)(editor->line_height / 2.0f);
-                vgfx_fill_circle((vgfx_window_t)canvas,
-                                 icon_cx, icon_cy, icon_r,
-                                 (vgfx_color_t)icon->color);
+                vgfx_fill_circle(
+                    (vgfx_window_t)canvas, icon_cx, icon_cy, icon_r, (vgfx_color_t)icon->color);
                 break; /* one icon per line */
             }
         }
@@ -704,15 +702,15 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                  * Cursor position and scrolling are not adjusted; this is a display-
                  * only feature. */
                 int chars_per_row = (int)(content_width / editor->char_width);
-                if (chars_per_row < 1) chars_per_row = 1;
+                if (chars_per_row < 1)
+                    chars_per_row = 1;
                 size_t len = editor->lines[i].length;
                 size_t offset = 0;
                 float sub_y = text_y;
                 while (offset < len)
                 {
-                    size_t seg_len = (len - offset < (size_t)chars_per_row)
-                                         ? (len - offset)
-                                         : (size_t)chars_per_row;
+                    size_t seg_len = (len - offset < (size_t)chars_per_row) ? (len - offset)
+                                                                            : (size_t)chars_per_row;
                     if (editor->lines[i].colors)
                     {
                         for (size_t c = 0; c < seg_len; c++)
@@ -722,22 +720,32 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                                                ? editor->lines[i].colors[gi]
                                                : editor->text_color;
                             char ch[2] = {editor->lines[i].text[gi], '\0'};
-                            vg_font_draw_text(canvas, editor->font, editor->font_size,
-                                              content_x + c * editor->char_width, sub_y,
-                                              ch, col);
+                            vg_font_draw_text(canvas,
+                                              editor->font,
+                                              editor->font_size,
+                                              content_x + c * editor->char_width,
+                                              sub_y,
+                                              ch,
+                                              col);
                         }
                     }
                     else
                     {
                         char seg_buf[256];
-                        size_t copy_len = seg_len < sizeof(seg_buf) - 1 ? seg_len : sizeof(seg_buf) - 1;
+                        size_t copy_len =
+                            seg_len < sizeof(seg_buf) - 1 ? seg_len : sizeof(seg_buf) - 1;
                         memcpy(seg_buf, editor->lines[i].text + offset, copy_len);
                         seg_buf[copy_len] = '\0';
-                        vg_font_draw_text(canvas, editor->font, editor->font_size,
-                                          content_x, sub_y, seg_buf, editor->text_color);
+                        vg_font_draw_text(canvas,
+                                          editor->font,
+                                          editor->font_size,
+                                          content_x,
+                                          sub_y,
+                                          seg_buf,
+                                          editor->text_color);
                     }
                     offset += seg_len;
-                    sub_y  += editor->line_height;
+                    sub_y += editor->line_height;
                 }
             }
             else
@@ -1044,8 +1052,8 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                 float thumb_travel = vis_h - thumb_h;
                 if (thumb_travel > 0.0f && scroll_range > 0.0f)
                 {
-                    editor->scroll_y = editor->scrollbar_drag_start_scroll
-                                       + delta * (scroll_range / thumb_travel);
+                    editor->scroll_y =
+                        editor->scrollbar_drag_start_scroll + delta * (scroll_range / thumb_travel);
                 }
                 if (editor->scroll_y < 0.0f)
                     editor->scroll_y = 0.0f;

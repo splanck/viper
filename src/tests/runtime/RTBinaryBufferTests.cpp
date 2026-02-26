@@ -45,7 +45,7 @@ extern "C" void vm_trap(const char *msg)
     {                                                                                              \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                              \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
         {                                                                                          \
             (void)(expr);                                                                          \
             assert(false && "Expected trap did not occur");                                        \
@@ -256,10 +256,10 @@ static void test_set_position_clamps_to_len()
     rt_binbuf_write_byte(bb, 1);
     rt_binbuf_write_byte(bb, 2);
 
-    rt_binbuf_set_position(bb, 100); // beyond len
+    rt_binbuf_set_position(bb, 100);         // beyond len
     assert(rt_binbuf_get_position(bb) == 2); // clamped to len
 
-    rt_binbuf_set_position(bb, -5); // negative
+    rt_binbuf_set_position(bb, -5);          // negative
     assert(rt_binbuf_get_position(bb) == 0); // clamped to 0
 }
 
@@ -375,9 +375,9 @@ static void test_structured_protocol_encode_decode()
 {
     // Simulate a minimal binary frame: [version:byte][count:i32le][value:i64le]
     void *bb = rt_binbuf_new();
-    rt_binbuf_write_byte(bb, 1);               // version
-    rt_binbuf_write_i32le(bb, 42);             // count
-    rt_binbuf_write_i64le(bb, 0xCAFEBABELL);   // value
+    rt_binbuf_write_byte(bb, 1);             // version
+    rt_binbuf_write_i32le(bb, 42);           // count
+    rt_binbuf_write_i64le(bb, 0xCAFEBABELL); // value
 
     assert(rt_binbuf_get_len(bb) == 1 + 4 + 8);
 

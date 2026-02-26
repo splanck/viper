@@ -43,11 +43,11 @@
 
 // IO-C-2/C-3: Use 64-bit seek/tell to support files larger than 2GB.
 #if defined(_WIN32)
-#  define binfile_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#  define binfile_ftell(fp)              _ftelli64((fp))
+#define binfile_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define binfile_ftell(fp) _ftelli64((fp))
 #else
-#  define binfile_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#  define binfile_ftell(fp)              ftello((fp))
+#define binfile_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define binfile_ftell(fp) ftello((fp))
 #endif
 
 /// @brief Bytes implementation structure (must match rt_bytes.c).

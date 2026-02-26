@@ -308,8 +308,10 @@ double rt_codeeditor_get_font_size(void *editor)
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
     // Return logical pt size — divide stored physical pixels by HiDPI scale.
     float _s = (s_current_app && s_current_app->window)
-                   ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
-    if (_s <= 0.0f) _s = 1.0f;
+                   ? vgfx_window_get_scale(s_current_app->window)
+                   : 1.0f;
+    if (_s <= 0.0f)
+        _s = 1.0f;
     return (double)(ed->font_size / _s);
 }
 
@@ -322,9 +324,11 @@ void rt_codeeditor_set_font_size(void *editor, double size)
     {
         // Store physical pixels — multiply logical pt size by HiDPI scale.
         float _s = (s_current_app && s_current_app->window)
-                       ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
-        if (_s <= 0.0f) _s = 1.0f;
-        ed->font_size   = (float)size * _s;
+                       ? vgfx_window_get_scale(s_current_app->window)
+                       : 1.0f;
+        if (_s <= 0.0f)
+            _s = 1.0f;
+        ed->font_size = (float)size * _s;
         ed->line_height = ed->font_size * 1.4f; /* keep line spacing proportional to font */
         ((vg_widget_t *)ed)->needs_paint = true;
     }

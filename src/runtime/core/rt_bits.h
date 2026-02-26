@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_bits.h
-// Purpose: Bit manipulation utilities implementing the Viper.Bits runtime namespace, providing bitwise operations, shifts, population count, and bit scanning on 64-bit integer values.
+// Purpose: Bit manipulation utilities implementing the Viper.Bits runtime namespace, providing
+// bitwise operations, shifts, population count, and bit scanning on 64-bit integer values.
 //
 // Key invariants:
 //   - All operations treat values as 64-bit two's complement integers.

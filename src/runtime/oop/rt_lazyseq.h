@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_lazyseq.h
-// Purpose: Lazy sequence type for on-demand element generation and transformation, supporting map/filter/take/drop/zip functional operations on potentially infinite sequences.
+// Purpose: Lazy sequence type for on-demand element generation and transformation, supporting
+// map/filter/take/drop/zip functional operations on potentially infinite sequences.
 //
 // Key invariants:
 //   - Sequences are single-pass; calling reset restarts generation from the beginning.

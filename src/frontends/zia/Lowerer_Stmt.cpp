@@ -124,14 +124,14 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
 
         if (varType && varType->kind == TypeKindSem::Optional)
         {
-            TypeRef initType = sema_.typeOf(stmt->initializer.get());
+            TypeRef optInitType = sema_.typeOf(stmt->initializer.get());
             TypeRef innerType = varType->innerType();
             Type optILType = mapType(varType);
-            if (initType && initType->kind == TypeKindSem::Optional)
+            if (optInitType && optInitType->kind == TypeKindSem::Optional)
             {
                 ilType = optILType;
             }
-            else if (initType && initType->kind == TypeKindSem::Unit)
+            else if (optInitType && optInitType->kind == TypeKindSem::Unit)
             {
                 initValue = Value::null();
                 ilType = optILType;
@@ -681,8 +681,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     // Seq iteration: typed rt_seq result from seq<T>-annotated runtime functions.
     // Uses kSeqLen / kSeqGet (not kListCount / kListGet) since rt_seq and rt_list
     // have incompatible internal layouts.
-    if (iterableType->kind == TypeKindSem::Ptr &&
-        iterableType->name == "Viper.Collections.Seq" &&
+    if (iterableType->kind == TypeKindSem::Ptr && iterableType->name == "Viper.Collections.Seq" &&
         !iterableType->typeArgs.empty())
     {
         TypeRef elemType = iterableType->typeArgs[0];
@@ -958,9 +957,9 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
             if (auto *blockExpr = dynamic_cast<BlockExpr *>(arm.body.get()))
             {
                 // Lower each statement in the block
-                for (auto &stmt : blockExpr->statements)
+                for (auto &blockStmt : blockExpr->statements)
                 {
-                    lowerStmt(stmt.get());
+                    lowerStmt(blockStmt.get());
                 }
             }
             else

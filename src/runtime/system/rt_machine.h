@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_machine.h
-// Purpose: System information queries for Viper.Machine providing OS name, version, hostname, username, home/temp directories, CPU count, and memory statistics.
+// Purpose: System information queries for Viper.Machine providing OS name, version, hostname,
+// username, home/temp directories, CPU count, and memory statistics.
 //
 // Key invariants:
 //   - OS values: 'linux', 'macos', 'windows', 'unknown'.

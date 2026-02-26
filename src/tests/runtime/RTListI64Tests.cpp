@@ -70,9 +70,12 @@ static void test_push_basic(void)
     assert(list != nullptr);
 
     int rc;
-    rc = rt_list_i64_push(&list, 10); assert(rc == 0);
-    rc = rt_list_i64_push(&list, 20); assert(rc == 0);
-    rc = rt_list_i64_push(&list, 30); assert(rc == 0);
+    rc = rt_list_i64_push(&list, 10);
+    assert(rc == 0);
+    rc = rt_list_i64_push(&list, 20);
+    assert(rc == 0);
+    rc = rt_list_i64_push(&list, 30);
+    assert(rc == 0);
 
     assert(rt_list_i64_len(list) == 3);
     assert(rt_list_i64_get(list, 0) == 10);

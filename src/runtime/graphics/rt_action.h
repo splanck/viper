@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_action.h
-// Purpose: Action mapping system abstracting raw input (keyboard, mouse, gamepad) into named actions with button and axis types, providing per-frame state queries.
+// Purpose: Action mapping system abstracting raw input (keyboard, mouse, gamepad) into named
+// actions with button and axis types, providing per-frame state queries.
 //
 // Key invariants:
 //   - Action names are unique across all registered actions.
@@ -10,7 +11,8 @@
 //   - All state queries reflect the current frame after rt_action_update.
 //
 // Ownership/Lifetime:
-//   - The action system is globally initialized with rt_action_init and shutdown with rt_action_shutdown.
+//   - The action system is globally initialized with rt_action_init and shutdown with
+//   rt_action_shutdown.
 //   - Action name strings follow runtime refcount rules; rt_action_init retains them.
 //
 // Links: src/runtime/graphics/rt_action.c (implementation), src/runtime/core/rt_string.h

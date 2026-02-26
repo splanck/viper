@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_threadpool.h
-// Purpose: Thread pool for async task execution (Viper.Threads.Pool) with FIFO task dispatch, worker recycling, and configurable pool size.
+// Purpose: Thread pool for async task execution (Viper.Threads.Pool) with FIFO task dispatch,
+// worker recycling, and configurable pool size.
 //
 // Key invariants:
 //   - Tasks are executed FIFO; worker threads are recycled after each task.

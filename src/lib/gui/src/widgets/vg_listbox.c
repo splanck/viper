@@ -1,8 +1,8 @@
 // vg_listbox.c - ListBox widget implementation
+#include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
-#include "../../include/vg_event.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,16 +94,17 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
         if (item->text && lb->font)
         {
             float ty = item_y + ih * 0.7f;
-            vg_font_draw_text(canvas, lb->font, lb->font_size,
-                              widget->x + 4.0f, ty, item->text, lb->text_color);
+            vg_font_draw_text(
+                canvas, lb->font, lb->font_size, widget->x + 4.0f, ty, item->text, lb->text_color);
         }
 
         item_y += ih;
     }
 
     /* Border: use focus color when the listbox has keyboard focus */
-    uint32_t border = (widget->state & VG_STATE_FOCUSED) ? vg_theme_get_current()->colors.border_focus
-                                                         : lb->border_color;
+    uint32_t border = (widget->state & VG_STATE_FOCUSED)
+                          ? vg_theme_get_current()->colors.border_focus
+                          : lb->border_color;
     vgfx_rect(win, x, y, w, h, border);
 }
 
@@ -188,9 +189,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
         case VG_EVENT_KEY_DOWN:
         {
             int total = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
-            int page_items = (lb->item_height > 0.0f)
-                                 ? (int)(widget->height / lb->item_height)
-                                 : 8;
+            int page_items = (lb->item_height > 0.0f) ? (int)(widget->height / lb->item_height) : 8;
             if (page_items < 1)
                 page_items = 1;
 

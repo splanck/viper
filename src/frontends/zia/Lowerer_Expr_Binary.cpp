@@ -108,7 +108,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 if (targetILType.kind != Type::Kind::Ptr)
                 {
                     assignValue = emitUnbox(assignValue, targetILType).value;
-                    assignType  = targetILType;
+                    assignType = targetILType;
                 }
             }
 
@@ -203,7 +203,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             auto base = lowerExpr(indexExpr->base.get());
             auto index = lowerExpr(indexExpr->index.get());
             TypeRef baseType = sema_.typeOf(indexExpr->base.get());
-            TypeRef rightType = sema_.typeOf(expr->right.get());
+            TypeRef indexRightType = sema_.typeOf(expr->right.get());
 
             // Fixed-size array: direct GEP + Store (no boxing, no runtime call)
             if (baseType && baseType->kind == TypeKindSem::FixedArray)
@@ -218,8 +218,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 mulInstr.result = mulId;
                 mulInstr.op = Opcode::Mul;
                 mulInstr.type = Type(Type::Kind::I64);
-                mulInstr.operands = {index.value,
-                                     Value::constInt(static_cast<int64_t>(elemSize))};
+                mulInstr.operands = {index.value, Value::constInt(static_cast<int64_t>(elemSize))};
                 blockMgr_.currentBlock()->instructions.push_back(mulInstr);
                 Value byteOffset = Value::temp(mulId);
 
@@ -242,7 +241,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 return right;
             }
 
-            Value boxedValue = emitBoxValue(right.value, right.type, rightType);
+            Value boxedValue = emitBoxValue(right.value, right.type, indexRightType);
             if (baseType && baseType->kind == TypeKindSem::Map)
                 emitCall(kMapSet, {base.value, index.value, boxedValue});
             else
@@ -359,7 +358,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         right.type = Type(Type::Kind::F64);
     }
 
-    Opcode op;
+    Opcode op = Opcode::Add;
     Type resultType = isFloat ? Type(Type::Kind::F64) : left.type;
 
     switch (expr->op)

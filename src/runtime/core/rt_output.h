@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_output.h
-// Purpose: Centralized output buffering layer for improved terminal rendering performance, accumulating stdout writes and flushing at strategic points to minimize system calls.
+// Purpose: Centralized output buffering layer for improved terminal rendering performance,
+// accumulating stdout writes and flushing at strategic points to minimize system calls.
 //
 // Key invariants:
 //   - rt_output_init is idempotent; safe to call multiple times.

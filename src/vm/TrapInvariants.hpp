@@ -95,14 +95,14 @@
 // In release builds, trap invariant violations terminate with a diagnostic
 // instead of silently continuing.  These checks run only on trap paths,
 // not in hot loops, so the performance cost is negligible.
-#define VIPER_TRAP_ASSERT(condition, message)                                                          \
-    do                                                                                                 \
-    {                                                                                                  \
-        if (!(condition))                                                                              \
-        {                                                                                              \
-            std::fprintf(stderr, "TRAP INVARIANT VIOLATED: %s\n", (message));                          \
-            std::abort();                                                                              \
-        }                                                                                              \
+#define VIPER_TRAP_ASSERT(condition, message)                                                      \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(condition))                                                                          \
+        {                                                                                          \
+            std::fprintf(stderr, "TRAP INVARIANT VIOLATED: %s\n", (message));                      \
+            std::abort();                                                                          \
+        }                                                                                          \
     } while (0)
 #else
 /// @brief Assert a trap invariant in debug builds.

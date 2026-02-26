@@ -470,9 +470,9 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
 }
 
 int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
-                                            void *pixels,
-                                            int64_t offset_x,
-                                            int64_t offset_y)
+                                           void *pixels,
+                                           int64_t offset_x,
+                                           int64_t offset_y)
 {
     if (!emitter || !pixels)
         return 0;

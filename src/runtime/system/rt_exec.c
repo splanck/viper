@@ -127,11 +127,11 @@ static char **build_argv(const char *program, void *args, int64_t *out_argc)
         return NULL;
     }
 
-    argv[0] = (char *)program;
+    argv[0] = (char *)(uintptr_t)program;
     for (int64_t i = 0; i < nargs; i++)
     {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
-        argv[1 + i] = (char *)rt_string_cstr(arg_str);
+        argv[1 + i] = (char *)(uintptr_t)rt_string_cstr(arg_str);
     }
     argv[total - 1] = NULL;
 

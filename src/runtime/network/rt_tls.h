@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_tls.h
-// Purpose: TLS 1.3 client for secure HTTPS connections using ChaCha20-Poly1305 AEAD and X25519 key exchange, implemented in pure C without external TLS libraries.
+// Purpose: TLS 1.3 client for secure HTTPS connections using ChaCha20-Poly1305 AEAD and X25519 key
+// exchange, implemented in pure C without external TLS libraries.
 //
 // Key invariants:
 //   - Implements TLS 1.3 handshake with X25519 key exchange.
@@ -13,7 +14,8 @@
 //   - TLS connection objects are heap-allocated; caller must close and free.
 //   - Returned data buffers are newly allocated; caller must release.
 //
-// Links: src/runtime/network/rt_tls.c (implementation), src/runtime/network/rt_crypto.h, src/runtime/core/rt_string.h
+// Links: src/runtime/network/rt_tls.c (implementation), src/runtime/network/rt_crypto.h,
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef VIPER_RT_TLS_H
@@ -136,8 +138,10 @@ extern "C"
 
     /// @brief Extract SubjectAltName DNS names from a certificate DER.
     /// @return Number of names found.
-    int tls_extract_san_names(const uint8_t *der, size_t der_len,
-                               char san_out[][256], int max_names);
+    int tls_extract_san_names(const uint8_t *der,
+                              size_t der_len,
+                              char san_out[][256],
+                              int max_names);
 
     /// @brief Extract CommonName from a certificate DER Subject.
     /// @return 1 if found, 0 otherwise.

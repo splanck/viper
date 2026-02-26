@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_glob.h
-// Purpose: File glob pattern matching supporting *, **, and ? wildcards, returning matching file paths as a Seq.
+// Purpose: File glob pattern matching supporting *, **, and ? wildcards, returning matching file
+// paths as a Seq.
 //
 // Key invariants:
 //   - Supports *, **, and ? wildcards with standard glob semantics.

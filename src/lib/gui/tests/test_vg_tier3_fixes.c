@@ -31,15 +31,15 @@ static int g_passed = 0;
 static int g_failed = 0;
 
 #define TEST(name) static void test_##name(void)
-#define RUN(name)                                                                                   \
-    do                                                                                              \
-    {                                                                                               \
-        printf("  %-60s", #name "...");                                                             \
-        fflush(stdout);                                                                             \
-        test_##name();                                                                              \
-        if (g_failed == 0)                                                                          \
-            printf("OK\n");                                                                         \
-        g_passed++;                                                                                 \
+#define RUN(name)                                                                                  \
+    do                                                                                             \
+    {                                                                                              \
+        printf("  %-60s", #name "...");                                                            \
+        fflush(stdout);                                                                            \
+        test_##name();                                                                             \
+        if (g_failed == 0)                                                                         \
+            printf("OK\n");                                                                        \
+        g_passed++;                                                                                \
     } while (0)
 
 #define ASSERT(cond)                                                                               \
@@ -47,18 +47,18 @@ static int g_failed = 0;
     {                                                                                              \
         if (!(cond))                                                                               \
         {                                                                                          \
-            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                           \
+            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
-#define ASSERT_EQ(a, b)      ASSERT((a) == (b))
-#define ASSERT_NEQ(a, b)     ASSERT((a) != (b))
-#define ASSERT_NULL(p)       ASSERT((p) == NULL)
-#define ASSERT_NOT_NULL(p)   ASSERT((p) != NULL)
-#define ASSERT_TRUE(cond)    ASSERT(cond)
-#define ASSERT_FALSE(cond)   ASSERT(!(cond))
+#define ASSERT_EQ(a, b) ASSERT((a) == (b))
+#define ASSERT_NEQ(a, b) ASSERT((a) != (b))
+#define ASSERT_NULL(p) ASSERT((p) == NULL)
+#define ASSERT_NOT_NULL(p) ASSERT((p) != NULL)
+#define ASSERT_TRUE(cond) ASSERT(cond)
+#define ASSERT_FALSE(cond) ASSERT(!(cond))
 
 //=============================================================================
 // PERF-002: LRU Glyph Cache
@@ -339,23 +339,33 @@ TEST(modal_blocks_mouse_behind_dialog)
 
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
-    root->x = 0; root->y = 0; root->width = 200; root->height = 200;
-    root->visible = true; root->enabled = true;
+    root->x = 0;
+    root->y = 0;
+    root->width = 200;
+    root->height = 200;
+    root->visible = true;
+    root->enabled = true;
 
     test_clickable_t *bg = calloc(1, sizeof(test_clickable_t));
     ASSERT_NOT_NULL(bg);
     vg_widget_init(&bg->base, VG_WIDGET_CUSTOM, &s_clickable_vtable);
-    bg->base.x = 10; bg->base.y = 10;
-    bg->base.width = 80; bg->base.height = 30;
-    bg->base.visible = true; bg->base.enabled = true;
+    bg->base.x = 10;
+    bg->base.y = 10;
+    bg->base.width = 80;
+    bg->base.height = 30;
+    bg->base.visible = true;
+    bg->base.enabled = true;
     vg_widget_add_child(root, &bg->base);
 
     test_clickable_t *modal_w = calloc(1, sizeof(test_clickable_t));
     ASSERT_NOT_NULL(modal_w);
     vg_widget_init(&modal_w->base, VG_WIDGET_CUSTOM, &s_clickable_vtable);
-    modal_w->base.x = 50; modal_w->base.y = 50;
-    modal_w->base.width = 100; modal_w->base.height = 100;
-    modal_w->base.visible = true; modal_w->base.enabled = true;
+    modal_w->base.x = 50;
+    modal_w->base.y = 50;
+    modal_w->base.width = 100;
+    modal_w->base.height = 100;
+    modal_w->base.visible = true;
+    modal_w->base.enabled = true;
     vg_widget_add_child(root, &modal_w->base);
 
     // Without a modal root: click on background should reach bg
@@ -408,7 +418,8 @@ TEST(focus_next_respects_tab_index_order)
     // Create root and three focusable buttons with explicit tab_index
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
-    root->visible = true; root->enabled = true;
+    root->visible = true;
+    root->enabled = true;
 
     // Insertion order: btn0(tab=2), btn1(tab=0), btn2(tab=1)
     // Expected focus order: btn1(0) → btn2(1) → btn0(2) → btn1(0) …
@@ -440,7 +451,7 @@ TEST(focus_next_respects_tab_index_order)
     ASSERT_EQ(&btn1->base, vg_widget_get_focused(root));
 
     // Clear focus before destroy
-    vg_widget_set_focus(NULL);  // just reset state
+    vg_widget_set_focus(NULL); // just reset state
     vg_widget_destroy(root);
 }
 
@@ -448,7 +459,8 @@ TEST(focus_prev_reverses_tab_index_order)
 {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
-    root->visible = true; root->enabled = true;
+    root->visible = true;
+    root->enabled = true;
 
     vg_button_t *btn0 = vg_button_create(root, "A");
     vg_button_t *btn1 = vg_button_create(root, "B");

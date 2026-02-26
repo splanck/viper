@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_crc32.h
-// Purpose: CRC32 checksum computation using the IEEE 802.3 polynomial (0xEDB88320), compatible with Ethernet, ZIP, and PNG checksums.
+// Purpose: CRC32 checksum computation using the IEEE 802.3 polynomial (0xEDB88320), compatible with
+// Ethernet, ZIP, and PNG checksums.
 //
 // Key invariants:
 //   - Uses the bit-reversed IEEE 802.3 polynomial, producing the same output as zlib crc32.

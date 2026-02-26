@@ -148,9 +148,9 @@ static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
         }
         else if (auto *var = as<const VarExpr>(*expr.base))
         {
-            if (auto qname = analyzer.lookupObjectClassQName(var->name))
+            if (auto qname2 = analyzer.lookupObjectClassQName(var->name))
             {
-                klass = il::runtime::findRuntimeClassByQName(*qname);
+                klass = il::runtime::findRuntimeClassByQName(*qname2);
             }
         }
     }

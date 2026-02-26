@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_countmap.h
-// Purpose: Frequency counting map from string keys to non-negative integer counts, supporting increment, decrement, get, top-N queries, and iteration over counted items.
+// Purpose: Frequency counting map from string keys to non-negative integer counts, supporting
+// increment, decrement, get, top-N queries, and iteration over counted items.
 //
 // Key invariants:
 //   - Counts are always >= 0; decrementing a count to 0 removes the entry.

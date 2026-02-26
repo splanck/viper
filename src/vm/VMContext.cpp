@@ -389,8 +389,6 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             message.append(", at unknown location");
         }
         RuntimeBridge::trap(TrapKind::InvalidOperation, message, loc, fnName, blockLabel);
-        Slot s{};
-        return s;
     }
 
     // Second hot path: integer constants are very common

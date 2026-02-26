@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_stream.h
-// Purpose: Unified stream interface abstracting BinFile and MemStream, providing a common API for read/write/seek regardless of the backing storage type.
+// Purpose: Unified stream interface abstracting BinFile and MemStream, providing a common API for
+// read/write/seek regardless of the backing storage type.
 //
 // Key invariants:
 //   - Stream type is one of STREAM_TYPE_BINFILE (0) or STREAM_TYPE_MEMSTREAM (1).
@@ -13,7 +14,8 @@
 //   - Stream objects are heap-allocated; caller is responsible for lifetime management.
 //   - Destroying the stream destroys the wrapped backing object.
 //
-// Links: src/runtime/io/rt_stream.c (implementation), src/runtime/io/rt_binfile.h, src/runtime/io/rt_memstream.h
+// Links: src/runtime/io/rt_stream.c (implementation), src/runtime/io/rt_binfile.h,
+// src/runtime/io/rt_memstream.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

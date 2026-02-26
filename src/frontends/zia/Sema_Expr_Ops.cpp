@@ -184,7 +184,8 @@ TypeRef Sema::analyzeTernary(TernaryExpr *expr)
 TypeRef Sema::analyzeIfExpr(IfExpr *expr)
 {
     TypeRef condType = analyzeExpr(expr->condition.get());
-    if (condType && condType->kind != TypeKindSem::Boolean && condType->kind != TypeKindSem::Unknown)
+    if (condType && condType->kind != TypeKindSem::Boolean &&
+        condType->kind != TypeKindSem::Unknown)
     {
         error(expr->condition->loc, "Condition must be Boolean");
     }

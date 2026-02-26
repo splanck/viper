@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_cancellation.h
-// Purpose: Cooperative cancellation token for async operations using atomic operations for thread-safe state management; once cancelled, the state is permanent.
+// Purpose: Cooperative cancellation token for async operations using atomic operations for
+// thread-safe state management; once cancelled, the state is permanent.
 //
 // Key invariants:
 //   - Thread-safe via atomic compare-exchange operations.

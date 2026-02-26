@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_perlin.h
-// Purpose: Perlin noise generator for the Viper.Perlin runtime class, providing seeded 2D/3D noise and fractal octave noise with deterministic output per seed.
+// Purpose: Perlin noise generator for the Viper.Perlin runtime class, providing seeded 2D/3D noise
+// and fractal octave noise with deterministic output per seed.
 //
 // Key invariants:
 //   - Output is deterministic: same seed and coordinates always produce the same value.

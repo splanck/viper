@@ -30,8 +30,8 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "tools/common/ArgvView.hpp"
 #include "il/transform/PassManager.hpp"
+#include "tools/common/ArgvView.hpp"
 #include "tools/common/module_loader.hpp"
 
 #include <filesystem>
@@ -229,7 +229,8 @@ static int linkToExe(const std::string &asmPath,
 #endif
     appendArchives(ctx, linkCmd);
     // UniformTypeIdentifiers is required by vipergui's native file dialog on macOS.
-    appendGraphicsLibs(ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers"});
+    appendGraphicsLibs(
+        ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers"});
 
     // C++ runtime archives (e.g. Threads) need the C++ standard library.
     if (hasComponent(ctx, codegen::RtComponent::Threads))
@@ -292,19 +293,35 @@ int emitAndMaybeLink(const Options &opts)
         if (opts.optimize >= 2)
         {
             ilpm.registerPipeline("codegen-O2",
-                                  {"simplify-cfg", "mem2reg",  "simplify-cfg",
-                                   "sccp",         "dce",      "simplify-cfg",
-                                   "inline",       "simplify-cfg", "dce",
-                                   "sccp",         "gvn",      "earlycse", "dse",
-                                   "peephole",     "dce",      "late-cleanup"});
+                                  {"simplify-cfg",
+                                   "mem2reg",
+                                   "simplify-cfg",
+                                   "sccp",
+                                   "dce",
+                                   "simplify-cfg",
+                                   "inline",
+                                   "simplify-cfg",
+                                   "dce",
+                                   "sccp",
+                                   "gvn",
+                                   "earlycse",
+                                   "dse",
+                                   "peephole",
+                                   "dce",
+                                   "late-cleanup"});
             ilpm.runPipeline(mod, "codegen-O2");
         }
         else
         {
             ilpm.registerPipeline("codegen-O1",
-                                  {"simplify-cfg", "mem2reg", "simplify-cfg",
-                                   "sccp",         "dce",     "simplify-cfg",
-                                   "peephole",     "dce"});
+                                  {"simplify-cfg",
+                                   "mem2reg",
+                                   "simplify-cfg",
+                                   "sccp",
+                                   "dce",
+                                   "simplify-cfg",
+                                   "peephole",
+                                   "dce"});
             ilpm.runPipeline(mod, "codegen-O1");
         }
     }

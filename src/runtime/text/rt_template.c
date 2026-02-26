@@ -39,10 +39,22 @@
 #include "rt_string_builder.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern void rt_trap(const char *msg);
+
+/// @brief Safely cast strlen() result to int, trapping on overflow.
+static int safe_strlen_int(const char *s)
+{
+    size_t n = strlen(s);
+    if (n > (size_t)INT_MAX)
+        rt_trap("Template: string too long");
+    return (int)n;
+}
 
 //=============================================================================
 // Helper Functions
@@ -297,7 +309,7 @@ rt_string rt_template_render(rt_string tmpl, void *values)
     if (!tmpl_str)
         tmpl_str = "";
 
-    int tmpl_len = (int)strlen(tmpl_str);
+    int tmpl_len = safe_strlen_int(tmpl_str);
 
     return render_internal(tmpl_str, tmpl_len, values, false, "{{", 2, "}}", 2);
 }
@@ -313,7 +325,7 @@ rt_string rt_template_render_seq(rt_string tmpl, void *values)
     if (!tmpl_str)
         tmpl_str = "";
 
-    int tmpl_len = (int)strlen(tmpl_str);
+    int tmpl_len = safe_strlen_int(tmpl_str);
 
     return render_internal(tmpl_str, tmpl_len, values, true, "{{", 2, "}}", 2);
 }
@@ -341,9 +353,9 @@ rt_string rt_template_render_with(rt_string tmpl, void *values, rt_string prefix
     if (!suffix_str)
         suffix_str = "";
 
-    int tmpl_len = (int)strlen(tmpl_str);
-    int prefix_len = (int)strlen(prefix_str);
-    int suffix_len = (int)strlen(suffix_str);
+    int tmpl_len = safe_strlen_int(tmpl_str);
+    int prefix_len = safe_strlen_int(prefix_str);
+    int suffix_len = safe_strlen_int(suffix_str);
 
     if (prefix_len == 0)
         rt_trap("Template.RenderWith: prefix is empty");
@@ -369,8 +381,8 @@ int8_t rt_template_has(rt_string tmpl, rt_string key)
     if (!key_str)
         return 0;
 
-    int tmpl_len = (int)strlen(tmpl_str);
-    int key_len = (int)strlen(key_str);
+    int tmpl_len = safe_strlen_int(tmpl_str);
+    int key_len = safe_strlen_int(key_str);
 
     if (key_len == 0)
         return 0;
@@ -416,7 +428,7 @@ void *rt_template_keys(rt_string tmpl)
     if (!tmpl_str)
         return bag;
 
-    int tmpl_len = (int)strlen(tmpl_str);
+    int tmpl_len = safe_strlen_int(tmpl_str);
 
     int pos = 0;
     while (pos < tmpl_len)
@@ -457,7 +469,7 @@ rt_string rt_template_escape(rt_string text)
     if (!txt_str)
         return rt_const_cstr("");
 
-    int txt_len = (int)strlen(txt_str);
+    int txt_len = safe_strlen_int(txt_str);
 
     // Count {{ and }} occurrences
     int escape_count = 0;

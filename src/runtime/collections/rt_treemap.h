@@ -1,11 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_treemap.h
-// Purpose: Sorted key-value map with string keys maintained in lexicographic order, providing floor/ceil/first/last navigation and ordered range iteration.
+// Purpose: Sorted key-value map with string keys maintained in lexicographic order, providing
+// floor/ceil/first/last navigation and ordered range iteration.
 //
 // Key invariants:
 //   - Keys are maintained in sorted lexicographic order at all times.
-//   - rt_treemap_floor returns the largest key <= query; rt_treemap_ceil returns the smallest >= query.
+//   - rt_treemap_floor returns the largest key <= query; rt_treemap_ceil returns the smallest >=
+//   query.
 //   - rt_treemap_first/last return the minimum/maximum keys.
 //   - All mutation operations maintain the sort-order invariant.
 //

@@ -126,7 +126,7 @@ extern "C"
             if (is_negative)
                 value = -value;
             if (out_end)
-                *out_end = (char *)cursor;
+                *out_end = (char *)(uintptr_t)cursor;
             *out_value = value;
             return true;
         }
@@ -140,7 +140,7 @@ extern "C"
 
             double value = is_negative ? -INFINITY : INFINITY;
             if (out_end)
-                *out_end = (char *)cursor;
+                *out_end = (char *)(uintptr_t)cursor;
             *out_value = value;
             return true;
         }
@@ -325,7 +325,10 @@ static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_va
 
         va_list args;
         va_start(args, fmt);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
         int written = vsnprintf(out, cap, fmt, args);
+#pragma GCC diagnostic pop
         va_end(args);
 
         if (written < 0)

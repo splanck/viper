@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_concmap.h
-// Purpose: Thread-safe concurrent hash map with string keys using a mutex and separate chaining, providing safe concurrent get/put/remove from multiple threads.
+// Purpose: Thread-safe concurrent hash map with string keys using a mutex and separate chaining,
+// providing safe concurrent get/put/remove from multiple threads.
 //
 // Key invariants:
 //   - All operations are protected by a single mutex; thread-safe for concurrent access.

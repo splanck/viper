@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_binbuf.h
-// Purpose: Positioned binary read/write buffer providing sequential byte-level I/O with explicit position tracking, supporting creation from raw capacity or from existing Bytes objects.
+// Purpose: Positioned binary read/write buffer providing sequential byte-level I/O with explicit
+// position tracking, supporting creation from raw capacity or from existing Bytes objects.
 //
 // Key invariants:
 //   - Position advances on each read/write operation.

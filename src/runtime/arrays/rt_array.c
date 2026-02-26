@@ -50,7 +50,7 @@ extern _Noreturn void rt_trap(const char *msg);
 /// @return Header describing the allocation, or `NULL` when @p payload is null.
 rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload)
 {
-    return payload ? rt_heap_hdr((void *)payload) : NULL;
+    return payload ? rt_heap_hdr((void *)(uintptr_t)payload) : NULL;
 }
 
 /// @brief Trap execution due to an out-of-bounds access.
@@ -61,8 +61,7 @@ rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload)
 void rt_arr_oob_panic(size_t idx, size_t len)
 {
     char buf[128];
-    snprintf(buf, sizeof(buf),
-             "rt_arr_i32: index %zu out of bounds (len=%zu)", idx, len);
+    snprintf(buf, sizeof(buf), "rt_arr_i32: index %zu out of bounds (len=%zu)", idx, len);
     rt_trap(buf);
 }
 

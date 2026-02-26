@@ -43,12 +43,12 @@
 //=============================================================================
 
 // VS Code dark-theme inspired palette (ARGB 0xAARRGGBB)
-#define SYN_COLOR_DEFAULT  0xFFD4D4D4u   // light grey
-#define SYN_COLOR_KEYWORD  0xFF569CD6u   // blue
-#define SYN_COLOR_TYPE     0xFF4EC9B0u   // teal
-#define SYN_COLOR_STRING   0xFFCE9178u   // orange
-#define SYN_COLOR_COMMENT  0xFF6A9955u   // green
-#define SYN_COLOR_NUMBER   0xFFB5CEA8u   // light green
+#define SYN_COLOR_DEFAULT 0xFFD4D4D4u // light grey
+#define SYN_COLOR_KEYWORD 0xFF569CD6u // blue
+#define SYN_COLOR_TYPE 0xFF4EC9B0u    // teal
+#define SYN_COLOR_STRING 0xFFCE9178u  // orange
+#define SYN_COLOR_COMMENT 0xFF6A9955u // green
+#define SYN_COLOR_NUMBER 0xFFB5CEA8u  // light green
 
 // Fill `n` colors with `color` starting at `colors[pos]`
 static void syn_fill(uint32_t *colors, size_t pos, size_t n, uint32_t color)
@@ -109,30 +109,32 @@ static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *t
 // ─── Zia language tokenizer ────────────────────────────────────────────────
 
 static const char *const zia_keywords[] = {
-    "func", "expose", "hide", "entity", "value", "var", "new",
-    "if", "else", "while", "for", "in", "return", "break", "continue", "do",
-    "and", "or", "not", "true", "false", "null", "module", "bind", "self",
-    NULL
-};
+    "func",  "expose", "hide",  "entity", "value",  "var",      "new",  "if",  "else",
+    "while", "for",    "in",    "return", "break",  "continue", "do",   "and", "or",
+    "not",   "true",   "false", "null",   "module", "bind",     "self", NULL};
 
-static const char *const zia_types[] = {
-    "Integer", "Boolean", "String", "Number", "Byte",
-    "List", "Seq", "Map", "Set", "Stack", "Queue",
-    NULL
-};
+static const char *const zia_types[] = {"Integer",
+                                        "Boolean",
+                                        "String",
+                                        "Number",
+                                        "Byte",
+                                        "List",
+                                        "Seq",
+                                        "Map",
+                                        "Set",
+                                        "Stack",
+                                        "Queue",
+                                        NULL};
 
-static void rt_zia_syntax_cb(vg_widget_t *editor,
-                              int line_num,
-                              const char *text,
-                              uint32_t *colors,
-                              void *user_data)
+static void rt_zia_syntax_cb(
+    vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data)
 {
     (void)editor;
     (void)line_num;
     (void)user_data;
 
     size_t len = strlen(text);
-    size_t i   = 0;
+    size_t i = 0;
 
     while (i < len)
     {
@@ -193,25 +195,20 @@ static void rt_zia_syntax_cb(vg_widget_t *editor,
 // ─── Viper BASIC language tokenizer ───────────────────────────────────────
 
 static const char *const basic_keywords[] = {
-    "DIM", "LET", "IF", "THEN", "ELSE", "ENDIF", "FOR", "NEXT", "TO", "STEP",
-    "WHILE", "WEND", "DO", "LOOP", "UNTIL", "GOSUB", "RETURN", "PRINT",
-    "INPUT", "GOTO", "SUB", "END", "FUNCTION", "CALL",
-    "TRUE", "FALSE", "AND", "OR", "NOT", "MOD",
-    NULL
-};
+    "DIM",    "LET",   "IF",    "THEN", "ELSE", "ENDIF", "FOR",      "NEXT",
+    "TO",     "STEP",  "WHILE", "WEND", "DO",   "LOOP",  "UNTIL",    "GOSUB",
+    "RETURN", "PRINT", "INPUT", "GOTO", "SUB",  "END",   "FUNCTION", "CALL",
+    "TRUE",   "FALSE", "AND",   "OR",   "NOT",  "MOD",   NULL};
 
-static void rt_basic_syntax_cb(vg_widget_t *editor,
-                                int line_num,
-                                const char *text,
-                                uint32_t *colors,
-                                void *user_data)
+static void rt_basic_syntax_cb(
+    vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data)
 {
     (void)editor;
     (void)line_num;
     (void)user_data;
 
     size_t len = strlen(text);
-    size_t i   = 0;
+    size_t i = 0;
 
     // Skip leading whitespace to detect REM comments
     size_t first_word_start = 0;
@@ -338,8 +335,7 @@ void rt_codeeditor_add_highlight(void *editor,
     if (ce->highlight_span_count >= ce->highlight_span_cap)
     {
         int new_cap = ce->highlight_span_cap ? ce->highlight_span_cap * 2 : 8;
-        void *p = realloc(ce->highlight_spans,
-                          (size_t)new_cap * sizeof(*ce->highlight_spans));
+        void *p = realloc(ce->highlight_spans, (size_t)new_cap * sizeof(*ce->highlight_spans));
         if (!p)
             return;
         ce->highlight_spans = p;
@@ -347,10 +343,10 @@ void rt_codeeditor_add_highlight(void *editor,
     }
     struct vg_highlight_span *s = &ce->highlight_spans[ce->highlight_span_count++];
     s->start_line = (int)start_line;
-    s->start_col  = (int)start_col;
-    s->end_line   = (int)end_line;
-    s->end_col    = (int)end_col;
-    s->color      = (uint32_t)color;
+    s->start_col = (int)start_col;
+    s->end_line = (int)end_line;
+    s->end_col = (int)end_col;
+    s->color = (uint32_t)color;
     ce->base.needs_paint = true;
 }
 
@@ -416,8 +412,8 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     /* Default color per type */
     static const uint32_t s_type_colors[] = {0x00E81123, 0x00FFB900, 0x00E81123, 0x000078D4};
     struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
-    icon->line  = (int)line;
-    icon->type  = type;
+    icon->line = (int)line;
+    icon->type = type;
     icon->color = s_type_colors[type];
     (void)pixels; /* pixel icons not yet blitted; use colored disc */
     ce->base.needs_paint = true;
@@ -526,8 +522,8 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
     }
     struct vg_fold_region *r = &ce->fold_regions[ce->fold_region_count++];
     r->start_line = (int)start_line;
-    r->end_line   = (int)end_line;
-    r->folded     = false;
+    r->end_line = (int)end_line;
+    r->folded = false;
     ce->base.needs_paint = true;
 }
 
@@ -675,7 +671,7 @@ void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col)
     }
     struct vg_extra_cursor *c = &ce->extra_cursors[ce->extra_cursor_count++];
     c->line = (int)line;
-    c->col  = (int)col;
+    c->col = (int)col;
     ce->base.needs_paint = true;
 }
 
@@ -876,7 +872,7 @@ int64_t rt_messagebox_error(rt_string title, rt_string message)
 int64_t rt_messagebox_question(rt_string title, rt_string message)
 {
     char *ctitle = rt_string_to_cstr(title);
-    char *cmsg   = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_cstr(message);
     vg_dialog_t *dlg =
         vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_YES_NO);
     if (ctitle)
@@ -908,7 +904,7 @@ int64_t rt_messagebox_question(rt_string title, rt_string message)
 int64_t rt_messagebox_confirm(rt_string title, rt_string message)
 {
     char *ctitle = rt_string_to_cstr(title);
-    char *cmsg   = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_cstr(message);
     vg_dialog_t *dlg =
         vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_OK_CANCEL);
     if (ctitle)
@@ -958,7 +954,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message)
         return rt_string_from_bytes("", 0);
 
     char *ctitle = rt_string_to_cstr(title);
-    char *cmsg   = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_cstr(message);
 
     vg_dialog_t *dlg = vg_dialog_create(ctitle);
     if (ctitle)
@@ -1806,8 +1802,8 @@ rt_string rt_codeeditor_get_word_at_cursor(void *editor)
     if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
         return rt_str_empty();
     const char *text = ce->lines[ce->cursor_line].text;
-    int         len  = (int)ce->lines[ce->cursor_line].length;
-    int         col  = ce->cursor_col < len ? ce->cursor_col : len;
+    int len = (int)ce->lines[ce->cursor_line].length;
+    int col = ce->cursor_col < len ? ce->cursor_col : len;
 
     /* scan left to find word start */
     int start = col;
@@ -1833,8 +1829,8 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text)
     if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
         return;
     const char *text = ce->lines[ce->cursor_line].text;
-    int         len  = (int)ce->lines[ce->cursor_line].length;
-    int         col  = ce->cursor_col < len ? ce->cursor_col : len;
+    int len = (int)ce->lines[ce->cursor_line].length;
+    int col = ce->cursor_col < len ? ce->cursor_col : len;
 
     /* find word boundaries */
     int start = col;
@@ -1845,9 +1841,8 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text)
         ++end;
 
     /* select the word, then insert the replacement (replaces selection) */
-    vg_codeeditor_set_selection((vg_codeeditor_t *)editor,
-                                ce->cursor_line, start,
-                                ce->cursor_line, end);
+    vg_codeeditor_set_selection(
+        (vg_codeeditor_t *)editor, ce->cursor_line, start, ce->cursor_line, end);
     char *cstr = rt_string_to_cstr(new_text);
     if (cstr)
     {

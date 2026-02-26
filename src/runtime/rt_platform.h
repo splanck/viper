@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_platform.h
-// Purpose: Cross-platform preprocessor abstractions for the Viper runtime, providing portable macros for thread-local storage, atomic operations, weak symbol linkage, and platform detection.
+// Purpose: Cross-platform preprocessor abstractions for the Viper runtime, providing portable
+// macros for thread-local storage, atomic operations, weak symbol linkage, and platform detection.
 //
 // Key invariants:
 //   - RT_THREAD_LOCAL expands to the correct TLS keyword for each compiler/platform.

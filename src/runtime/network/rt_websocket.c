@@ -97,7 +97,8 @@ static void ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20])
 
     size_t padded_len = ((len + 9 + 63) / 64) * 64;
     uint8_t *padded = (uint8_t *)calloc(padded_len, 1);
-    if (!padded) return;
+    if (!padded)
+        return;
     memcpy(padded, data, len);
     padded[len] = 0x80;
     uint64_t bit_len = (uint64_t)len * 8;
@@ -109,36 +110,60 @@ static void ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20])
         uint32_t w[80];
         for (int j = 0; j < 16; j++)
         {
-            w[j] = ((uint32_t)padded[chunk + j * 4]     << 24) |
+            w[j] = ((uint32_t)padded[chunk + j * 4] << 24) |
                    ((uint32_t)padded[chunk + j * 4 + 1] << 16) |
-                   ((uint32_t)padded[chunk + j * 4 + 2] <<  8) |
+                   ((uint32_t)padded[chunk + j * 4 + 2] << 8) |
                    ((uint32_t)padded[chunk + j * 4 + 3]);
         }
         for (int j = 16; j < 80; j++)
         {
-            uint32_t t = w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16];
+            uint32_t t = w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16];
             w[j] = (t << 1) | (t >> 31);
         }
         uint32_t a = h0, b = h1, c = h2, d = h3, e = h4;
         for (int j = 0; j < 80; j++)
         {
             uint32_t f, k;
-            if      (j < 20) { f = (b & c) | (~b & d); k = 0x5A827999u; }
-            else if (j < 40) { f = b ^ c ^ d;           k = 0x6ED9EBA1u; }
-            else if (j < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDCu; }
-            else             { f = b ^ c ^ d;           k = 0xCA62C1D6u; }
+            if (j < 20)
+            {
+                f = (b & c) | (~b & d);
+                k = 0x5A827999u;
+            }
+            else if (j < 40)
+            {
+                f = b ^ c ^ d;
+                k = 0x6ED9EBA1u;
+            }
+            else if (j < 60)
+            {
+                f = (b & c) | (b & d) | (c & d);
+                k = 0x8F1BBCDCu;
+            }
+            else
+            {
+                f = b ^ c ^ d;
+                k = 0xCA62C1D6u;
+            }
             uint32_t temp = ((a << 5) | (a >> 27)) + f + e + k + w[j];
-            e = d; d = c; c = (b << 30) | (b >> 2); b = a; a = temp;
+            e = d;
+            d = c;
+            c = (b << 30) | (b >> 2);
+            b = a;
+            a = temp;
         }
-        h0 += a; h1 += b; h2 += c; h3 += d; h4 += e;
+        h0 += a;
+        h1 += b;
+        h2 += c;
+        h3 += d;
+        h4 += e;
     }
     free(padded);
 
     for (int i = 0; i < 4; i++)
     {
-        digest[i]      = (uint8_t)(h0 >> (24 - i * 8));
-        digest[4 + i]  = (uint8_t)(h1 >> (24 - i * 8));
-        digest[8 + i]  = (uint8_t)(h2 >> (24 - i * 8));
+        digest[i] = (uint8_t)(h0 >> (24 - i * 8));
+        digest[4 + i] = (uint8_t)(h1 >> (24 - i * 8));
+        digest[8 + i] = (uint8_t)(h2 >> (24 - i * 8));
         digest[12 + i] = (uint8_t)(h3 >> (24 - i * 8));
         digest[16 + i] = (uint8_t)(h4 >> (24 - i * 8));
     }
@@ -490,7 +515,7 @@ static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *
     // Validate Sec-WebSocket-Accept (RFC 6455 §4.1)
     // Expected = Base64(SHA1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
     static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    size_t key_len   = strlen(key_copy);
+    size_t key_len = strlen(key_copy);
     size_t magic_len = sizeof(WS_MAGIC) - 1;
     char *concat = (char *)malloc(key_len + magic_len + 1);
     if (!concat)
@@ -626,17 +651,14 @@ static int ws_recv_exact(rt_ws_impl *ws, void *buffer, size_t len)
 /// @param data_out Receives the payload (caller frees).
 /// @param len_out Receives the payload length.
 /// @return 1 on success, 0 on error.
-static int ws_recv_frame(rt_ws_impl *ws,
-                         uint8_t *fin_out,
-                         uint8_t *opcode_out,
-                         uint8_t **data_out,
-                         size_t *len_out)
+static int ws_recv_frame(
+    rt_ws_impl *ws, uint8_t *fin_out, uint8_t *opcode_out, uint8_t **data_out, size_t *len_out)
 {
     uint8_t header[2];
     if (!ws_recv_exact(ws, header, 2))
         return 0;
 
-    *fin_out    = (header[0] & WS_FIN) ? 1 : 0; // H-11: expose FIN bit for reassembly
+    *fin_out = (header[0] & WS_FIN) ? 1 : 0; // H-11: expose FIN bit for reassembly
     *opcode_out = header[0] & 0x0F;
     uint8_t masked = header[1] & WS_MASK;
     size_t payload_len = header[1] & 0x7F;
@@ -988,8 +1010,8 @@ rt_string rt_ws_recv(void *obj)
 
     // H-11: Fragmentation reassembly buffer (RFC 6455 §5.4)
     uint8_t *frag_buf = NULL;
-    size_t   frag_len = 0;
-    uint8_t  frag_opcode = 0; // opcode of the first fragment
+    size_t frag_len = 0;
+    uint8_t frag_opcode = 0; // opcode of the first fragment
 
     while (ws->is_open)
     {
@@ -1018,8 +1040,8 @@ rt_string rt_ws_recv(void *obj)
         if (opcode == WS_OP_TEXT || opcode == WS_OP_BINARY)
         {
             free(frag_buf); // discard any incomplete previous message
-            frag_buf    = NULL;
-            frag_len    = 0;
+            frag_buf = NULL;
+            frag_len = 0;
             frag_opcode = opcode;
         }
         else if (opcode != WS_OP_CONTINUATION)
@@ -1087,7 +1109,7 @@ void *rt_ws_recv_bytes(void *obj)
 
     // H-11: Fragmentation reassembly buffer (RFC 6455 §5.4)
     uint8_t *frag_buf = NULL;
-    size_t   frag_len = 0;
+    size_t frag_len = 0;
 
     while (ws->is_open)
     {

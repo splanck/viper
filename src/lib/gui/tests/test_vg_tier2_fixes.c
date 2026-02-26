@@ -44,7 +44,7 @@ static int g_failed = 0;
     {                                                                                              \
         if (!(cond))                                                                               \
         {                                                                                          \
-            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                           \
+            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
         }                                                                                          \
@@ -121,7 +121,7 @@ TEST(widget_constraints_after_fixed_size)
     float pw = ((vg_widget_t *)label)->constraints.preferred_width;
     float ph = ((vg_widget_t *)label)->constraints.preferred_height;
     ASSERT_TRUE(pw >= 119.0f && pw <= 121.0f);
-    ASSERT_TRUE(ph >= 39.0f  && ph <= 41.0f);
+    ASSERT_TRUE(ph >= 39.0f && ph <= 41.0f);
     vg_widget_destroy((vg_widget_t *)label);
 }
 
@@ -135,9 +135,9 @@ TEST(widget_set_margin_uniform)
     ASSERT_NOT_NULL(label);
     vg_widget_set_margin((vg_widget_t *)label, 8.0f);
     vg_layout_params_t *lp = &((vg_widget_t *)label)->layout;
-    ASSERT_TRUE(lp->margin_left   > 7.9f && lp->margin_left   < 8.1f);
-    ASSERT_TRUE(lp->margin_top    > 7.9f && lp->margin_top    < 8.1f);
-    ASSERT_TRUE(lp->margin_right  > 7.9f && lp->margin_right  < 8.1f);
+    ASSERT_TRUE(lp->margin_left > 7.9f && lp->margin_left < 8.1f);
+    ASSERT_TRUE(lp->margin_top > 7.9f && lp->margin_top < 8.1f);
+    ASSERT_TRUE(lp->margin_right > 7.9f && lp->margin_right < 8.1f);
     ASSERT_TRUE(lp->margin_bottom > 7.9f && lp->margin_bottom < 8.1f);
     vg_widget_destroy((vg_widget_t *)label);
 }

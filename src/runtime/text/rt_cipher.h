@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_cipher.h
-// Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD with automatic nonce generation and PBKDF2 key derivation from passwords.
+// Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD with automatic nonce
+// generation and PBKDF2 key derivation from passwords.
 //
 // Key invariants:
 //   - Password-based format: [16 bytes salt][12 bytes nonce][ciphertext][16 bytes tag].
@@ -13,7 +14,8 @@
 //   - Returned Bytes objects are newly allocated; caller must release.
 //   - Password and key strings are borrowed for the duration of the call.
 //
-// Links: src/runtime/text/rt_cipher.c (implementation), src/runtime/network/rt_crypto.h, src/runtime/core/rt_string.h
+// Links: src/runtime/text/rt_cipher.c (implementation), src/runtime/network/rt_crypto.h,
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

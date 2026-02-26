@@ -119,7 +119,7 @@ rt_string rt_const_cstr(const char *c)
         return NULL;
     }
     s->magic = RT_STRING_MAGIC;
-    s->data = (char *)c;
+    s->data = (char *)(uintptr_t)c;
     s->heap = NULL;
     s->literal_len = strlen(c);
     // BUG-VL-003 fix: Make literal strings immortal so they're never freed

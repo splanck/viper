@@ -1,12 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_bloomfilter.h
-// Purpose: Probabilistic set membership structure using multiple hash functions, guaranteeing no false negatives while allowing configurable false positive rates.
+// Purpose: Probabilistic set membership structure using multiple hash functions, guaranteeing no
+// false negatives while allowing configurable false positive rates.
 //
 // Key invariants:
 //   - False positives are possible; false negatives are not.
 //   - The filter cannot remove elements once added.
-//   - Optimal bit array size and hash count are computed from expected_items and false_positive_rate.
+//   - Optimal bit array size and hash count are computed from expected_items and
+//   false_positive_rate.
 //   - rt_bloomfilter_contains returns 1 for possible membership, 0 for definite absence.
 //
 // Ownership/Lifetime:

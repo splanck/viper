@@ -149,8 +149,8 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
     if (entityInfoPtr)
     {
-        const EntityTypeInfo &info = *entityInfoPtr;
-        const FieldLayout *field = info.findField(expr->field);
+        const EntityTypeInfo &entityInfo = *entityInfoPtr;
+        const FieldLayout *field = entityInfo.findField(expr->field);
 
         if (field)
         {
@@ -232,10 +232,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     if (baseType->kind == TypeKindSem::Ptr && !baseType->name.empty())
     {
         // Construct getter function name: {ClassName}.get_{PropertyName}
-        std::string getterName = baseType->name + ".get_" + expr->field;
+        std::string rtGetterName = baseType->name + ".get_" + expr->field;
 
         // Look up the getter function
-        Symbol *getterSym = sema_.findExternFunction(getterName);
+        Symbol *getterSym = sema_.findExternFunction(rtGetterName);
         if (getterSym && getterSym->type)
         {
             // Determine the return type - extract from function type if needed
@@ -247,7 +247,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             Type retType = mapType(symType);
 
             // Emit call to the getter function
-            Value result = emitCallRet(retType, getterName, {base.value});
+            Value result = emitCallRet(retType, rtGetterName, {base.value});
             return {result, retType};
         }
     }

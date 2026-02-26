@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_iter.h
-// Purpose: Unified stateful iterator protocol for all collection types, providing a common next/has_next interface over Seq, List, Deque, Map, Set, Stack, Queue, Ring, and Trie.
+// Purpose: Unified stateful iterator protocol for all collection types, providing a common
+// next/has_next interface over Seq, List, Deque, Map, Set, Stack, Queue, Ring, and Trie.
 //
 // Key invariants:
 //   - Iterators are lightweight handles wrapping a collection reference and a position.

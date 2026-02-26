@@ -916,7 +916,7 @@ void *rt_xml_parse(rt_string text)
 
 rt_string rt_xml_error(void)
 {
-    return rt_string_from_bytes(xml_last_error, (int64_t)strlen(xml_last_error));
+    return rt_string_from_bytes(xml_last_error, strlen(xml_last_error));
 }
 
 int8_t rt_xml_is_valid(rt_string text)
@@ -1530,22 +1530,6 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str)
     }
     memcpy(*buf + *len, str, slen);
     *len += slen;
-    (*buf)[*len] = '\0';
-}
-
-static void buf_append_n(char **buf, size_t *cap, size_t *len, const char *str, size_t n)
-{
-    while (*len + n + 1 > *cap)
-    {
-        size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
-        char *tmp = (char *)realloc(*buf, new_cap);
-        if (!tmp)
-            rt_trap("XML format: memory allocation failed");
-        *buf = tmp;
-        *cap = new_cap;
-    }
-    memcpy(*buf + *len, str, n);
-    *len += n;
     (*buf)[*len] = '\0';
 }
 

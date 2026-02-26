@@ -352,7 +352,6 @@ rt_string rt_markdown_to_text(rt_string md)
         const char *eol = p;
         while (eol < src + src_len && *eol != '\n')
             eol++;
-        int64_t line_len = (int64_t)(eol - p);
 
         // Skip heading markers
         const char *start = p;

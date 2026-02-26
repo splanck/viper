@@ -40,8 +40,7 @@ namespace
 /// @brief Check if a symbol name exists in a vector of symbols.
 static bool hasSymbolNamed(const std::vector<Symbol> &syms, const std::string &name)
 {
-    return std::any_of(syms.begin(), syms.end(),
-                       [&](const Symbol &s) { return s.name == name; });
+    return std::any_of(syms.begin(), syms.end(), [&](const Symbol &s) { return s.name == name; });
 }
 
 /// @brief Check if a string exists in a vector of strings.

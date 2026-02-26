@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_crypto.h
-// Purpose: Cryptographic primitives for TLS support: SHA-256, HMAC-SHA256, HKDF, ChaCha20-Poly1305 AEAD, and X25519 key exchange, implemented in pure C with no external dependencies.
+// Purpose: Cryptographic primitives for TLS support: SHA-256, HMAC-SHA256, HKDF, ChaCha20-Poly1305
+// AEAD, and X25519 key exchange, implemented in pure C with no external dependencies.
 //
 // Key invariants:
 //   - All key material and digests are handled as raw byte arrays in caller-provided buffers.

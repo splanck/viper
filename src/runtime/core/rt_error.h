@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_error.h
-// Purpose: Structured runtime error system with categorized error codes (Err enum) and an RtError record propagated via out-parameters, mapping to BASIC ON ERROR handlers and IL trap instructions.
+// Purpose: Structured runtime error system with categorized error codes (Err enum) and an RtError
+// record propagated via out-parameters, mapping to BASIC ON ERROR handlers and IL trap
+// instructions.
 //
 // Key invariants:
 //   - Err_None == 0 means success; all other values indicate failure.

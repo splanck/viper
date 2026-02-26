@@ -224,7 +224,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
 
             // Resolve the transitive bind path relative to its original file
             std::string resolvedPath = resolveImportPath(transitiveBind.path, bindFilePath);
-            std::string normalizedPath = normalizePath(resolvedPath);
+            std::string transitiveNormalizedPath = normalizePath(resolvedPath);
 
             // Check if this normalized path is already bound
             bool alreadyBound = false;
@@ -234,7 +234,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
                     continue; // Skip namespace binds when comparing file paths
                 std::string existingResolved = resolveImportPath(existingBind.path, modulePath);
                 std::string existingNormalized = normalizePath(existingResolved);
-                if (existingNormalized == normalizedPath)
+                if (existingNormalized == transitiveNormalizedPath)
                 {
                     alreadyBound = true;
                     break;
@@ -243,7 +243,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
             if (!alreadyBound)
             {
                 // Store the absolute path so it resolves correctly from any context
-                BindDecl absoluteBind(transitiveBind.loc, normalizedPath);
+                BindDecl absoluteBind(transitiveBind.loc, transitiveNormalizedPath);
                 absoluteBind.alias = transitiveBind.alias;
                 absoluteBind.isNamespaceBind = transitiveBind.isNamespaceBind;
                 absoluteBind.specificItems = transitiveBind.specificItems;

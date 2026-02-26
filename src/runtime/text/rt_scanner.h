@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_scanner.h
-// Purpose: String scanner for lexing and parsing providing character-by-character access, lookahead, match/expect helpers, and token extraction from runtime strings.
+// Purpose: String scanner for lexing and parsing providing character-by-character access,
+// lookahead, match/expect helpers, and token extraction from runtime strings.
 //
 // Key invariants:
 //   - Scanner maintains a position within the source string.

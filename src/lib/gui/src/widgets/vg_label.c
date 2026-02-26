@@ -94,9 +94,9 @@ static void label_destroy(vg_widget_t *widget)
 ///
 /// @return Number of lines produced.
 static int label_measure_wrapped(vg_label_t *label,
-                                  float wrap_width,
-                                  float line_height,
-                                  float *out_total_height)
+                                 float wrap_width,
+                                 float line_height,
+                                 float *out_total_height)
 {
     /* Cache hit: same width as last measure — reuse stored lines. */
     if (label->wrap_line_bufs && label->wrap_cached_w == wrap_width)
@@ -110,13 +110,14 @@ static int label_measure_wrapped(vg_label_t *label,
     label_free_wrap_cache(label);
 
     size_t text_len = strlen(label->text);
-    char *word_buf  = malloc(text_len + 1);
-    char *line_buf  = malloc(text_len + 1);
+    char *word_buf = malloc(text_len + 1);
+    char *line_buf = malloc(text_len + 1);
     if (!word_buf || !line_buf)
     {
         free(word_buf);
         free(line_buf);
-        if (out_total_height) *out_total_height = line_height;
+        if (out_total_height)
+            *out_total_height = line_height;
         return 1;
     }
 
@@ -126,34 +127,42 @@ static int label_measure_wrapped(vg_label_t *label,
     float space_w = sm.width;
 
     /* Dynamic cache array */
-    int   cache_cap  = 8;
-    char **cache     = malloc((size_t)cache_cap * sizeof(char *));
-    int   line_count = 0;
+    int cache_cap = 8;
+    char **cache = malloc((size_t)cache_cap * sizeof(char *));
+    int line_count = 0;
     if (!cache)
     {
-        free(word_buf); free(line_buf);
-        if (out_total_height) *out_total_height = line_height;
+        free(word_buf);
+        free(line_buf);
+        if (out_total_height)
+            *out_total_height = line_height;
         return 1;
     }
 
-    const char *p      = label->text;
-    size_t      line_pos = 0;
-    float       line_w   = 0.0f;
+    const char *p = label->text;
+    size_t line_pos = 0;
+    float line_w = 0.0f;
 
     /* Helper lambda (inline): flush current line_buf to cache */
-#define FLUSH_LINE() do { \
-    if (line_count == cache_cap) { \
-        cache_cap *= 2; \
-        char **tmp = realloc(cache, (size_t)cache_cap * sizeof(char *)); \
-        if (!tmp) goto wrap_oom; \
-        cache = tmp; \
-    } \
-    line_buf[line_pos] = '\0'; \
-    cache[line_count] = strdup(line_buf); \
-    if (!cache[line_count]) goto wrap_oom; \
-    line_count++; \
-    line_pos = 0; line_w = 0.0f; \
-} while (0)
+#define FLUSH_LINE()                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        if (line_count == cache_cap)                                                               \
+        {                                                                                          \
+            cache_cap *= 2;                                                                        \
+            char **tmp = realloc(cache, (size_t)cache_cap * sizeof(char *));                       \
+            if (!tmp)                                                                              \
+                goto wrap_oom;                                                                     \
+            cache = tmp;                                                                           \
+        }                                                                                          \
+        line_buf[line_pos] = '\0';                                                                 \
+        cache[line_count] = strdup(line_buf);                                                      \
+        if (!cache[line_count])                                                                    \
+            goto wrap_oom;                                                                         \
+        line_count++;                                                                              \
+        line_pos = 0;                                                                              \
+        line_w = 0.0f;                                                                             \
+    } while (0)
 
     while (*p)
     {
@@ -186,7 +195,7 @@ static int label_measure_wrapped(vg_label_t *label,
             }
             memcpy(line_buf + line_pos, word_buf, word_len);
             line_pos += word_len;
-            line_w   += wm.width;
+            line_w += wm.width;
         }
 
         /* Skip spaces */
@@ -209,9 +218,9 @@ wrap_done:
     free(word_buf);
     free(line_buf);
 
-    label->wrap_line_bufs  = cache;
+    label->wrap_line_bufs = cache;
     label->wrap_line_count = line_count;
-    label->wrap_cached_w   = wrap_width;
+    label->wrap_cached_w = wrap_width;
 
     if (out_total_height)
         *out_total_height = line_count * line_height;
@@ -220,9 +229,11 @@ wrap_done:
 wrap_oom:
     free(word_buf);
     free(line_buf);
-    for (int k = 0; k < line_count; k++) free(cache[k]);
+    for (int k = 0; k < line_count; k++)
+        free(cache[k]);
     free(cache);
-    if (out_total_height) *out_total_height = line_height;
+    if (out_total_height)
+        *out_total_height = line_height;
     return 1;
 }
 
@@ -376,7 +387,8 @@ static void label_paint(vg_widget_t *widget, void *canvas)
                 break;
         }
 
-        vg_font_draw_text(canvas, label->font, label->font_size, text_x, text_y, label->text, color);
+        vg_font_draw_text(
+            canvas, label->font, label->font_size, text_x, text_y, label->text, color);
     }
 }
 

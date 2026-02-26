@@ -57,7 +57,7 @@
 // prefix.  Until then, directory operations silently truncate or fail for paths
 // exceeding MAX_PATH.
 #ifndef PATH_MAX
-#  define PATH_MAX MAX_PATH
+#define PATH_MAX MAX_PATH
 #endif
 #elif defined(__viperdos__)
 // ViperDOS provides POSIX-compatible directory APIs via libc.

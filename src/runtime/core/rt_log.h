@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_log.h
-// Purpose: Simple leveled logging for the Viper.Log namespace, writing timestamped messages to stderr with DEBUG/INFO/WARN/ERROR levels and a configurable minimum level filter.
+// Purpose: Simple leveled logging for the Viper.Log namespace, writing timestamped messages to
+// stderr with DEBUG/INFO/WARN/ERROR levels and a configurable minimum level filter.
 //
 // Key invariants:
 //   - Log levels are ordered: DEBUG(0) < INFO(1) < WARN(2) < ERROR(3) < OFF(4).

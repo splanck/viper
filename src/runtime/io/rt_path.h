@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_path.h
-// Purpose: Cross-platform file path manipulation utilities for Viper.IO.Path, providing join, dirname, basename, extension, normalization, and existence queries.
+// Purpose: Cross-platform file path manipulation utilities for Viper.IO.Path, providing join,
+// dirname, basename, extension, normalization, and existence queries.
 //
 // Key invariants:
 //   - All functions return newly allocated runtime strings.

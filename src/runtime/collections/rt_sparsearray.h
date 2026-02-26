@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_sparsearray.h
-// Purpose: Memory-efficient sparse array mapping arbitrary int64_t indices to object pointer values, allocating storage only for non-null entries via a hash map.
+// Purpose: Memory-efficient sparse array mapping arbitrary int64_t indices to object pointer
+// values, allocating storage only for non-null entries via a hash map.
 //
 // Key invariants:
 //   - Indices are arbitrary signed 64-bit integers; no range restriction.

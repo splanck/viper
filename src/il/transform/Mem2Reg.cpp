@@ -160,7 +160,7 @@ static AllocaMap collectAllocas(Function &F)
     for (auto &B : F.blocks)
         for (auto &I : B.instructions)
             if (I.op == Opcode::Alloca && I.result)
-                infos[*I.result] = AllocaInfo{&B, *I.result, Type{}, false, false};
+                infos[*I.result] = AllocaInfo{&B, *I.result, Type{}, false, false, true, true, {}};
 
     for (auto &B : F.blocks)
         for (auto &I : B.instructions)

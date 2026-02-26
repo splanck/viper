@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_threads.h
-// Purpose: Runtime thread and monitor primitives backing Viper.Threads, providing thread creation, join, Sleep, and re-entrant FIFO-fair monitor operations.
+// Purpose: Runtime thread and monitor primitives backing Viper.Threads, providing thread creation,
+// join, Sleep, and re-entrant FIFO-fair monitor operations.
 //
 // Key invariants:
 //   - Monitor operations (Lock, Unlock, Wait, Notify, NotifyAll) are re-entrant.

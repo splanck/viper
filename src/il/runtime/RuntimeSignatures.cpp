@@ -2217,7 +2217,6 @@ const char *sigParamKindName(signatures::SigParam::Kind kind)
 ///          unsupported kinds so descriptor drift is caught early.
 signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
 {
-    using Kind = il::core::Type::Kind;
     using signatures::SigParam;
     switch (kind)
     {

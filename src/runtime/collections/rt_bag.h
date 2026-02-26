@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_bag.h
-// Purpose: String set (Bag) backed by a hash table, providing O(1) average membership testing, insertion, and removal of unique string values.
+// Purpose: String set (Bag) backed by a hash table, providing O(1) average membership testing,
+// insertion, and removal of unique string values.
 //
 // Key invariants:
 //   - Stores unique strings only; duplicate insertions are silently ignored.

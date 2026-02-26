@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_weakmap.h
-// Purpose: String-keyed map holding weak (non-retaining) references to values, so values may be collected; getting a collected value returns NULL.
+// Purpose: String-keyed map holding weak (non-retaining) references to values, so values may be
+// collected; getting a collected value returns NULL.
 //
 // Key invariants:
 //   - Values are stored without retaining; the map does not prevent collection.
@@ -11,7 +12,8 @@
 //
 // Ownership/Lifetime:
 //   - Caller manages weakmap lifetime; no reference counting on the map itself.
-//   - Values must not be freed while the weakmap holds a pointer to them unless the caller accounts for it.
+//   - Values must not be freed while the weakmap holds a pointer to them unless the caller accounts
+//   for it.
 //
 // Links: src/runtime/collections/rt_weakmap.c (implementation), src/runtime/core/rt_string.h
 //

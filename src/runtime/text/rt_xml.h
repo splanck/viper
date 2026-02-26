@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_xml.h
-// Purpose: XML parsing and formatting utilities for Viper.Data.Xml, handling elements, attributes, text nodes, comments, and CDATA with a reference-counted tree API.
+// Purpose: XML parsing and formatting utilities for Viper.Data.Xml, handling elements, attributes,
+// text nodes, comments, and CDATA with a reference-counted tree API.
 //
 // Key invariants:
 //   - Parses well-formed XML; returns NULL on malformed input.

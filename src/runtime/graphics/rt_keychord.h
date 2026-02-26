@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_keychord.h
-// Purpose: Key chord (simultaneous) and combo (sequential) detector that recognizes registered named input patterns and reports which pattern fired each frame.
+// Purpose: Key chord (simultaneous) and combo (sequential) detector that recognizes registered
+// named input patterns and reports which pattern fired each frame.
 //
 // Key invariants:
 //   - Chord detection fires when all registered keys are pressed simultaneously.

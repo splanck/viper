@@ -275,10 +275,10 @@ extern "C"
             /// @brief Scroll event data (SCROLL).
             struct
             {
-                float   delta_x; ///< Horizontal scroll delta (positive = right)
-                float   delta_y; ///< Vertical scroll delta (positive = down)
-                int32_t x;       ///< Cursor X at time of scroll (physical pixels)
-                int32_t y;       ///< Cursor Y at time of scroll (physical pixels)
+                float delta_x; ///< Horizontal scroll delta (positive = right)
+                float delta_y; ///< Vertical scroll delta (positive = down)
+                int32_t x;     ///< Cursor X at time of scroll (physical pixels)
+                int32_t y;     ///< Cursor Y at time of scroll (physical pixels)
             } scroll;
         } data;
     } vgfx_event_t;
@@ -389,8 +389,8 @@ extern "C"
     /// @param callback Function called with (userdata, new_width, new_height)
     /// @param userdata Opaque pointer passed back to the callback
     void vgfx_set_resize_callback(vgfx_window_t window,
-                                   void (*callback)(void *userdata, int32_t w, int32_t h),
-                                   void *userdata);
+                                  void (*callback)(void *userdata, int32_t w, int32_t h),
+                                  void *userdata);
 
     /// @brief Set the window to fullscreen or windowed mode.
     /// @details Toggles the window between fullscreen and windowed modes. In
@@ -451,12 +451,12 @@ extern "C"
     /// DEFAULT=0, POINTER=1, TEXT=2, RESIZE_H=3, RESIZE_V=4, WAIT=5
     typedef enum
     {
-        VGFX_CURSOR_DEFAULT  = 0, ///< Standard arrow cursor
-        VGFX_CURSOR_POINTER  = 1, ///< Hand/pointer cursor (links, buttons)
-        VGFX_CURSOR_TEXT     = 2, ///< I-beam text cursor
+        VGFX_CURSOR_DEFAULT = 0,  ///< Standard arrow cursor
+        VGFX_CURSOR_POINTER = 1,  ///< Hand/pointer cursor (links, buttons)
+        VGFX_CURSOR_TEXT = 2,     ///< I-beam text cursor
         VGFX_CURSOR_RESIZE_H = 3, ///< Horizontal resize cursor
         VGFX_CURSOR_RESIZE_V = 4, ///< Vertical resize cursor
-        VGFX_CURSOR_WAIT     = 5  ///< Busy/spinner cursor
+        VGFX_CURSOR_WAIT = 5      ///< Busy/spinner cursor
     } vgfx_cursor_type_t;
 
     /// @brief Set the mouse cursor shape.

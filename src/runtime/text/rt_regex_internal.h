@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_regex_internal.h
-// Purpose: Internal regex engine types and NFA/DFA state structures shared between rt_regex.c and rt_compiled_pattern.c, not part of the public API.
+// Purpose: Internal regex engine types and NFA/DFA state structures shared between rt_regex.c and
+// rt_compiled_pattern.c, not part of the public API.
 //
 // Key invariants:
 //   - This header is internal; it must not be included by code outside the text/ directory.

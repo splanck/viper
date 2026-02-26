@@ -1104,6 +1104,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_string_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_ext test_rt_string_ext)
 
+    viper_add_test(test_rt_string_edge ${VIPER_TESTS_DIR}/runtime/RTStringEdgeTests.cpp)
+    target_link_libraries(test_rt_string_edge PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_edge test_rt_string_edge)
+
     # Game development abstractions tests
     viper_add_test(test_rt_statemachine ${VIPER_TESTS_DIR}/unit/runtime/RTStateMachineTests.cpp)
     target_link_libraries(test_rt_statemachine PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

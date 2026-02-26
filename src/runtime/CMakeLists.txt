@@ -397,9 +397,17 @@ foreach (_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
     )
     if (MSVC)
         # Function-level linking (enables dead code elimination when supported by the linker)
-        target_compile_options(${_rtobj} PRIVATE /Gy)
+        target_compile_options(${_rtobj} PRIVATE /Gy /W4 /wd4100 /wd4201)
     else ()
-        target_compile_options(${_rtobj} PRIVATE -ffunction-sections -fdata-sections)
+        target_compile_options(${_rtobj} PRIVATE
+                -ffunction-sections -fdata-sections
+                -Wall -Wextra -Wpedantic
+                -Wshadow -Wnull-dereference -Wcast-qual
+                -Wimplicit-fallthrough -Wformat=2
+                -Wno-unused-parameter)
+    endif ()
+    if (IL_WARN_AS_ERROR AND NOT MSVC)
+        target_compile_options(${_rtobj} PRIVATE -Werror)
     endif ()
     if (NOT WIN32)
         target_compile_definitions(${_rtobj} PRIVATE _POSIX_C_SOURCE=200809L)

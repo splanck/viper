@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_input.h
-// Purpose: Keyboard, mouse, and gamepad input handling for the Viper.Input runtime namespace, providing per-frame key state, mouse position/button, and gamepad queries.
+// Purpose: Keyboard, mouse, and gamepad input handling for the Viper.Input runtime namespace,
+// providing per-frame key state, mouse position/button, and gamepad queries.
 //
 // Key invariants:
 //   - Input state is frame-coherent; pressed/released edge lists reset each rt_input_poll call.

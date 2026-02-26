@@ -48,7 +48,10 @@ RT_WEAK int rt_snprintf(char *str, size_t size, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     int written = vsnprintf(str, size, fmt, ap);
+#pragma GCC diagnostic pop
     va_end(ap);
     return written;
 }

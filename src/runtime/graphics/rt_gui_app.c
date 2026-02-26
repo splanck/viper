@@ -39,8 +39,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_gui_internal.h"
 #include "fonts/embedded_font.h"
+#include "rt_gui_internal.h"
 
 // Global pointer to the current app for widget constructors to access the default font.
 rt_gui_app_t *s_current_app = NULL;
@@ -111,9 +111,9 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
         _t->ui_scale = _s;
         // Scale typography so theme-derived font sizes render at the correct
         // visual size on HiDPI displays (e.g. 13pt × 2 = 26pt physical on Retina).
-        _t->typography.size_small   *= _s;
-        _t->typography.size_normal  *= _s;
-        _t->typography.size_large   *= _s;
+        _t->typography.size_small *= _s;
+        _t->typography.size_normal *= _s;
+        _t->typography.size_large *= _s;
         _t->typography.size_heading *= _s;
         // Scale spacing presets and per-widget-class metrics.
         _t->spacing.xs *= _s;
@@ -121,11 +121,11 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
         _t->spacing.md *= _s;
         _t->spacing.lg *= _s;
         _t->spacing.xl *= _s;
-        _t->button.height    *= _s;
+        _t->button.height *= _s;
         _t->button.padding_h *= _s;
-        _t->input.height     *= _s;
-        _t->input.padding_h  *= _s;
-        _t->scrollbar.width  *= _s;
+        _t->input.height *= _s;
+        _t->input.padding_h *= _s;
+        _t->scrollbar.width *= _s;
     }
 
     s_current_app = app;
@@ -145,8 +145,7 @@ void rt_gui_ensure_default_font(void)
     {
         // Scale the raster size by the HiDPI factor so glyphs are rendered at
         // native resolution (e.g. 28 px on a 2× Retina display for 14 pt text).
-        float _scale = s_current_app->window
-                       ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+        float _scale = s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
         s_current_app->default_font_size = 14.0f * _scale;
         return;
     }
@@ -163,8 +162,8 @@ void rt_gui_ensure_default_font(void)
         s_current_app->default_font = vg_font_load_file(font_paths[i]);
         if (s_current_app->default_font)
         {
-            float _scale = s_current_app->window
-                           ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+            float _scale =
+                s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
             s_current_app->default_font_size = 14.0f * _scale;
             break;
         }
@@ -280,8 +279,7 @@ void rt_gui_app_poll(void *app_ptr)
             {
                 if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->handle_event)
                 {
-                    g_active_dialog->base.vtable->handle_event(&g_active_dialog->base,
-                                                               &gui_event);
+                    g_active_dialog->base.vtable->handle_event(&g_active_dialog->base, &gui_event);
                 }
                 continue;
             }
@@ -403,202 +401,6 @@ void rt_gui_app_poll(void *app_ptr)
     }
 }
 
-// Get spacing for a container (VBox/HBox store layout data in user_data)
-static float get_container_spacing(vg_widget_t *widget)
-{
-    if (widget->user_data)
-    {
-        // VBox and HBox store vg_vbox_layout_t or vg_hbox_layout_t
-        vg_vbox_layout_t *layout = (vg_vbox_layout_t *)widget->user_data;
-        return layout->spacing;
-    }
-    return 8.0f; // Default spacing
-}
-
-// Get default height for widget based on type
-static float get_widget_default_height(vg_widget_t *widget, float font_size)
-{
-    if (widget->height > 0)
-        return widget->height;
-
-    switch (widget->type)
-    {
-        case VG_WIDGET_LABEL:
-            return font_size + 4;
-        case VG_WIDGET_BUTTON:
-            return 32;
-        case VG_WIDGET_TEXTINPUT:
-            return 28;
-        case VG_WIDGET_CHECKBOX:
-            return 20;
-        case VG_WIDGET_CODEEDITOR:
-            return 200;
-        case VG_WIDGET_CONTAINER:
-        {
-            // Calculate height from children
-            float max_height = 0;
-            float total_height = 0;
-            float spacing = 8.0f;
-            int child_count = 0;
-            vg_widget_t *child = widget->first_child;
-            while (child)
-            {
-                float ch = child->height > 0 ? child->height : 32; // estimate
-                if (ch > max_height)
-                    max_height = ch;
-                total_height += ch;
-                child_count++;
-                child = child->next_sibling;
-            }
-            // For HBox (buttons), use max height; for VBox use total
-            // Heuristic: if all children are buttons, it's HBox
-            int button_count = 0;
-            child = widget->first_child;
-            while (child)
-            {
-                if (child->type == VG_WIDGET_BUTTON)
-                    button_count++;
-                child = child->next_sibling;
-            }
-            if (child_count > 0 && button_count == child_count)
-            {
-                return max_height + 16; // HBox: max child height + padding
-            }
-            return total_height + spacing * (child_count > 0 ? child_count - 1 : 0) + 16;
-        }
-        default:
-            return 24;
-    }
-}
-
-// Check if widget is HBox by comparing vtable (HBox has hbox_arrange)
-static bool is_hbox_container(vg_widget_t *widget)
-{
-    if (!widget || !widget->vtable || widget->type != VG_WIDGET_CONTAINER)
-        return false;
-    // HBox vtable has arrange function at a different address than VBox
-    // We can check by looking at the user_data - HBox uses vg_hbox_layout_t
-    // For simplicity, check if arrange function name contains "hbox" behavior
-    // Actually, the simplest way is to store a flag or check the vtable pointer
-    // For now, we'll use a heuristic: if spacing > 0 and widget has children that
-    // are buttons, treat as HBox. Better solution would be to tag the widget type.
-
-    // Check if this container's children are mostly buttons (heuristic for button bar)
-    int button_count = 0;
-    int child_count = 0;
-    vg_widget_t *child = widget->first_child;
-    while (child)
-    {
-        child_count++;
-        if (child->type == VG_WIDGET_BUTTON)
-            button_count++;
-        child = child->next_sibling;
-    }
-    return (child_count > 0 && button_count == child_count);
-}
-
-// Recursively perform layout on widget tree
-static void layout_widget_tree(
-    vg_widget_t *widget, float rel_x, float rel_y, float parent_width, float font_size)
-{
-    if (!widget)
-        return;
-
-    // Set position (relative to parent)
-    widget->x = rel_x;
-    widget->y = rel_y;
-
-    // Set default height if not specified
-    if (widget->height <= 0)
-    {
-        widget->height = get_widget_default_height(widget, font_size);
-    }
-
-    // Calculate child positions (relative to this widget, starting at padding offset)
-    float spacing = get_container_spacing(widget);
-    float padding = 8.0f;
-    float child_rel_x = padding;
-    float child_rel_y = padding;
-
-    // Available width for children (parent width minus padding on both sides)
-    float available_width = (widget->width > 0 ? widget->width : parent_width) - padding * 2;
-
-    // Determine if this is horizontal or vertical layout
-    bool horizontal = is_hbox_container(widget);
-
-    vg_widget_t *child = widget->first_child;
-    while (child)
-    {
-        // Set default height for child before layout
-        if (child->height <= 0)
-        {
-            child->height = get_widget_default_height(child, font_size);
-        }
-        // Set default width based on layout type
-        if (child->width <= 0)
-        {
-            if (child->type == VG_WIDGET_BUTTON)
-            {
-                child->width = 80; // Buttons have fixed width
-            }
-            else if (!horizontal)
-            {
-                // In vertical layout, children fill the width
-                child->width = available_width;
-            }
-            else
-            {
-                // In horizontal layout, use a default
-                child->width = 100;
-            }
-        }
-
-        layout_widget_tree(child, child_rel_x, child_rel_y, available_width, font_size);
-
-        // Advance position based on layout direction
-        if (widget->type == VG_WIDGET_CONTAINER)
-        {
-            if (horizontal)
-            {
-                child_rel_x += child->width + spacing;
-            }
-            else
-            {
-                child_rel_y += child->height + spacing;
-            }
-        }
-
-        child = child->next_sibling;
-    }
-
-    // Update container height to fit all children (for VBox/HBox)
-    if (widget->type == VG_WIDGET_CONTAINER && widget->first_child)
-    {
-        bool horizontal = is_hbox_container(widget);
-        if (horizontal)
-        {
-            // For HBox, height is the max child height + padding
-            float max_height = 0;
-            for (child = widget->first_child; child; child = child->next_sibling)
-            {
-                if (child->height > max_height)
-                    max_height = child->height;
-            }
-            float needed_height = max_height + padding * 2;
-            if (needed_height > widget->height)
-                widget->height = needed_height;
-        }
-        else
-        {
-            // For VBox, height is the sum of all children + spacing + padding
-            float needed_height =
-                child_rel_y + padding; // child_rel_y already includes all children
-            if (needed_height > widget->height)
-                widget->height = needed_height;
-        }
-    }
-}
-
 void rt_gui_app_render(void *app_ptr)
 {
     if (!app_ptr)
@@ -611,8 +413,7 @@ void rt_gui_app_render(void *app_ptr)
     if (!app->default_font)
     {
         // Try the embedded JetBrains Mono Regular first (always available).
-        app->default_font =
-            vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
+        app->default_font = vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
         if (app->default_font)
         {
             float _s = vgfx_window_get_scale(app->window);
@@ -700,19 +501,17 @@ void rt_gui_app_render(void *app_ptr)
             // (set by arrange). Reading width before the first arrange would return 0.
             if (g_active_dialog->base.measured_width < 1.0f)
             {
-                vg_widget_measure(&g_active_dialog->base,
-                                  (float)dlg_win_w, (float)dlg_win_h);
+                vg_widget_measure(&g_active_dialog->base, (float)dlg_win_w, (float)dlg_win_h);
             }
             float dw = g_active_dialog->base.measured_width;
             float dh = g_active_dialog->base.measured_height;
-            vg_widget_arrange(&g_active_dialog->base,
-                              (dlg_win_w - dw) / 2.0f, (dlg_win_h - dh) / 2.0f, dw, dh);
+            vg_widget_arrange(
+                &g_active_dialog->base, (dlg_win_w - dw) / 2.0f, (dlg_win_h - dh) / 2.0f, dw, dh);
 
             // Paint the dialog
             if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->paint)
             {
-                g_active_dialog->base.vtable->paint(&g_active_dialog->base,
-                                                     (void *)app->window);
+                g_active_dialog->base.vtable->paint(&g_active_dialog->base, (void *)app->window);
             }
         }
         else

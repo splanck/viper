@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_stopwatch.h
-// Purpose: High-precision stopwatch for benchmarking and performance measurement, supporting start/stop/reset operations and elapsed-time queries in nanoseconds, microseconds, and milliseconds.
+// Purpose: High-precision stopwatch for benchmarking and performance measurement, supporting
+// start/stop/reset operations and elapsed-time queries in nanoseconds, microseconds, and
+// milliseconds.
 //
 // Key invariants:
 //   - Accumulated time is monotonic; it never decreases across start/stop cycles.

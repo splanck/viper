@@ -493,7 +493,8 @@ TypeRef seqOf(TypeRef element)
     // Represent a typed rt_seq as Ptr{name="Viper.Collections.Seq", typeArgs=[element]}.
     // This sentinel allows the lowerer to route to kSeqLen/kSeqGet rather than
     // kListCount/kListGet, since rt_seq and rt_list have incompatible layouts.
-    return std::make_shared<ViperType>(TypeKindSem::Ptr, std::string("Viper.Collections.Seq"),
+    return std::make_shared<ViperType>(TypeKindSem::Ptr,
+                                       std::string("Viper.Collections.Seq"),
                                        std::vector<TypeRef>{std::move(element)});
 }
 

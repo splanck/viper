@@ -13,3 +13,4 @@ target_include_directories(viper_support PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
+target_link_libraries(viper_support PRIVATE viper_common_opts)

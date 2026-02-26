@@ -80,17 +80,18 @@
 /// struct layout matches the Zia object model.
 typedef struct
 {
-    void   *vptr;          ///< Zia virtual-dispatch pointer (must be first).
-    double  x, y;          ///< Top-left position in world coordinates.
-    double  w, h;          ///< Width and height of the AABB.
-    double  vx, vy;        ///< Velocity in world-units per second.
-    double  fx, fy;        ///< Accumulated force for the current frame (zeroed after integration).
-    double  mass;          ///< Mass in arbitrary units. 0 = static (immovable).
-    double  inv_mass;      ///< Reciprocal of mass (1/mass), or 0 for static bodies.
-    double  restitution;   ///< Bounciness coefficient in [0, 1]. 0 = inelastic, 1 = perfectly elastic.
-    double  friction;      ///< Kinetic friction coefficient in [0, 1]. Applied along contact tangent.
+    void *vptr;         ///< Zia virtual-dispatch pointer (must be first).
+    double x, y;        ///< Top-left position in world coordinates.
+    double w, h;        ///< Width and height of the AABB.
+    double vx, vy;      ///< Velocity in world-units per second.
+    double fx, fy;      ///< Accumulated force for the current frame (zeroed after integration).
+    double mass;        ///< Mass in arbitrary units. 0 = static (immovable).
+    double inv_mass;    ///< Reciprocal of mass (1/mass), or 0 for static bodies.
+    double restitution; ///< Bounciness coefficient in [0, 1]. 0 = inelastic, 1 = perfectly elastic.
+    double friction;    ///< Kinetic friction coefficient in [0, 1]. Applied along contact tangent.
     int64_t collision_layer; ///< Bitmask: which physical layer(s) this body occupies (default: 1).
-    int64_t collision_mask;  ///< Bitmask: which layers this body can collide with (default: 0xFFFFFFFF, all layers).
+    int64_t collision_mask;  ///< Bitmask: which layers this body can collide with (default:
+                             ///< 0xFFFFFFFF, all layers).
 } rt_body_impl;
 
 /// @brief Internal representation of a physics world.
@@ -103,11 +104,11 @@ typedef struct
 /// Gravity is specified in world-units per second squared.
 typedef struct
 {
-    void         *vptr;                      ///< Zia virtual-dispatch pointer (must be first).
-    double        gravity_x;                 ///< Horizontal gravity (world-units/s²). Usually 0.
-    double        gravity_y;                 ///< Vertical gravity (world-units/s²). Positive = downward in screen space.
-    rt_body_impl *bodies[PH_MAX_BODIES];     ///< Flat array of retained body pointers.
-    int64_t       body_count;                ///< Number of bodies currently in the world.
+    void *vptr;       ///< Zia virtual-dispatch pointer (must be first).
+    double gravity_x; ///< Horizontal gravity (world-units/s²). Usually 0.
+    double gravity_y; ///< Vertical gravity (world-units/s²). Positive = downward in screen space.
+    rt_body_impl *bodies[PH_MAX_BODIES]; ///< Flat array of retained body pointers.
+    int64_t body_count;                  ///< Number of bodies currently in the world.
 } rt_world_impl;
 
 //=============================================================================
@@ -228,10 +229,10 @@ static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, doubl
         if (t_len > 1e-9)
         {
             double mu, jt, vel_along_t;
-            tx /= t_len;  /* Normalise tangent */
+            tx /= t_len; /* Normalise tangent */
             ty /= t_len;
             vel_along_t = rvx * tx + rvy * ty;
-            mu = (a->friction + b->friction) * 0.5;  /* Average both surfaces */
+            mu = (a->friction + b->friction) * 0.5; /* Average both surfaces */
             jt = -vel_along_t / total_inv;
             /* Clamp to Coulomb friction cone */
             if (jt > j * mu)
@@ -325,7 +326,7 @@ void rt_physics2d_world_step(void *obj, double dt)
     {
         rt_body_impl *b = w->bodies[i];
         if (!b || b->inv_mass == 0.0)
-            continue;   /* Skip static bodies */
+            continue; /* Skip static bodies */
         b->vx += (b->fx * b->inv_mass + w->gravity_x) * dt;
         b->vy += (b->fy * b->inv_mass + w->gravity_y) * dt;
         b->fx = 0.0;
@@ -367,8 +368,8 @@ void rt_physics2d_world_step(void *obj, double dt)
      * byte [i*PH_MAX_BODIES+j >> 3], bit [(i*PH_MAX_BODIES+j) & 7]. The matrix
      * is stack-local: (256×256) / 8 = 8192 bytes ≈ 8 KB. */
 
-#define BPG_DIM      8   /* Broad-phase grid cells per axis (8×8 = 64 total) */
-#define BPG_CELL_MAX 32  /* Maximum body indices stored per grid cell */
+#define BPG_DIM 8       /* Broad-phase grid cells per axis (8×8 = 64 total) */
+#define BPG_CELL_MAX 32 /* Maximum body indices stored per grid cell */
 
     if (w->body_count >= 2)
     {
@@ -377,16 +378,23 @@ void rt_physics2d_world_step(void *obj, double dt)
         for (i = 0; i < w->body_count; i++)
         {
             rt_body_impl *b = w->bodies[i];
-            if (!b) continue;
-            if (b->x        < wx0) wx0 = b->x;
-            if (b->y        < wy0) wy0 = b->y;
-            if (b->x + b->w > wx1) wx1 = b->x + b->w;
-            if (b->y + b->h > wy1) wy1 = b->y + b->h;
+            if (!b)
+                continue;
+            if (b->x < wx0)
+                wx0 = b->x;
+            if (b->y < wy0)
+                wy0 = b->y;
+            if (b->x + b->w > wx1)
+                wx1 = b->x + b->w;
+            if (b->y + b->h > wy1)
+                wy1 = b->y + b->h;
         }
         /* Guard: ensure minimum cell size of 1 so division below never divides
          * by zero (can happen when all bodies occupy the exact same point). */
-        if (wx1 <= wx0) wx1 = wx0 + 1.0;
-        if (wy1 <= wy0) wy1 = wy0 + 1.0;
+        if (wx1 <= wx0)
+            wx1 = wx0 + 1.0;
+        if (wy1 <= wy0)
+            wy1 = wy0 + 1.0;
         double cell_w = (wx1 - wx0) / BPG_DIM;
         double cell_h = (wy1 - wy0) / BPG_DIM;
 
@@ -395,17 +403,34 @@ void rt_physics2d_world_step(void *obj, double dt)
          * straddles a cell boundary appears in both cells so it will be paired
          * with neighbours on either side. */
         uint8_t grid_bodies[BPG_DIM * BPG_DIM][BPG_CELL_MAX];
-        int     grid_count [BPG_DIM * BPG_DIM];
+        int grid_count[BPG_DIM * BPG_DIM];
         memset(grid_count, 0, sizeof(grid_count));
 
         for (i = 0; i < w->body_count; i++)
         {
             rt_body_impl *b = w->bodies[i];
-            if (!b) continue;
-            int cx0 = (int)((b->x        - wx0) / cell_w); if (cx0 < 0) cx0 = 0; if (cx0 >= BPG_DIM) cx0 = BPG_DIM - 1;
-            int cy0 = (int)((b->y        - wy0) / cell_h); if (cy0 < 0) cy0 = 0; if (cy0 >= BPG_DIM) cy0 = BPG_DIM - 1;
-            int cx1 = (int)((b->x + b->w - wx0) / cell_w); if (cx1 < 0) cx1 = 0; if (cx1 >= BPG_DIM) cx1 = BPG_DIM - 1;
-            int cy1 = (int)((b->y + b->h - wy0) / cell_h); if (cy1 < 0) cy1 = 0; if (cy1 >= BPG_DIM) cy1 = BPG_DIM - 1;
+            if (!b)
+                continue;
+            int cx0 = (int)((b->x - wx0) / cell_w);
+            if (cx0 < 0)
+                cx0 = 0;
+            if (cx0 >= BPG_DIM)
+                cx0 = BPG_DIM - 1;
+            int cy0 = (int)((b->y - wy0) / cell_h);
+            if (cy0 < 0)
+                cy0 = 0;
+            if (cy0 >= BPG_DIM)
+                cy0 = BPG_DIM - 1;
+            int cx1 = (int)((b->x + b->w - wx0) / cell_w);
+            if (cx1 < 0)
+                cx1 = 0;
+            if (cx1 >= BPG_DIM)
+                cx1 = BPG_DIM - 1;
+            int cy1 = (int)((b->y + b->h - wy0) / cell_h);
+            if (cy1 < 0)
+                cy1 = 0;
+            if (cy1 >= BPG_DIM)
+                cy1 = BPG_DIM - 1;
             for (int cy = cy0; cy <= cy1; cy++)
             {
                 for (int cx = cx0; cx <= cx1; cx++)
@@ -440,7 +465,12 @@ void rt_physics2d_world_step(void *obj, double dt)
                     int ii = (int)grid_bodies[cell][a];
                     int jj = (int)grid_bodies[cell][b_idx];
                     /* Normalise order so ii < jj for bit-matrix lookup */
-                    if (ii > jj) { int tmp = ii; ii = jj; jj = tmp; }
+                    if (ii > jj)
+                    {
+                        int tmp = ii;
+                        ii = jj;
+                        jj = tmp;
+                    }
                     /* Check the bit-matrix: skip this pair if already resolved */
                     int bit = ii * PH_MAX_BODIES + jj;
                     if (pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
@@ -450,13 +480,15 @@ void rt_physics2d_world_step(void *obj, double dt)
                     double nx, ny, pen;
                     rt_body_impl *bi = w->bodies[ii];
                     rt_body_impl *bj = w->bodies[jj];
-                    if (!bi || !bj) continue;
+                    if (!bi || !bj)
+                        continue;
 
                     /* Bidirectional collision filter: both bodies must be on
                      * layers the other can collide with. This allows one-sided
                      * triggers (A sees B, but B ignores A). */
                     if (!((bi->collision_layer & bj->collision_mask) &&
-                          (bj->collision_layer & bi->collision_mask))) continue;
+                          (bj->collision_layer & bi->collision_mask)))
+                        continue;
 
                     if (aabb_overlap(bi, bj, &nx, &ny, &pen))
                         resolve_collision(bi, bj, nx, ny, pen);
@@ -544,10 +576,10 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->fy = 0.0;
     b->mass = mass;
     b->inv_mass = (mass > 0.0) ? (1.0 / mass) : 0.0;
-    b->restitution = 0.5;        /* Moderately bouncy by default */
-    b->friction    = 0.3;        /* Moderate friction by default */
-    b->collision_layer = 1;          /* Default: layer 0, bit 0 set */
-    b->collision_mask  = 0xFFFFFFFF; /* Default: collide with all 32 layers */
+    b->restitution = 0.5;           /* Moderately bouncy by default */
+    b->friction = 0.3;              /* Moderate friction by default */
+    b->collision_layer = 1;         /* Default: layer 0, bit 0 set */
+    b->collision_mask = 0xFFFFFFFF; /* Default: collide with all 32 layers */
     return b;
 }
 
@@ -614,7 +646,7 @@ void rt_physics2d_body_apply_impulse(void *obj, double ix, double iy)
         return;
     b = (rt_body_impl *)obj;
     if (b->inv_mass == 0.0)
-        return;   /* Static bodies cannot be moved by impulses */
+        return; /* Static bodies cannot be moved by impulses */
     /* An impulse is an instantaneous velocity change: Δv = impulse / mass,
      * equivalently: Δv = impulse * inv_mass. */
     b->vx += ix * b->inv_mass;

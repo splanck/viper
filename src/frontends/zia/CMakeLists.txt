@@ -52,5 +52,7 @@ target_link_libraries(fe_zia PUBLIC
         il_runtime
         il_transform
         fe_common
+        PRIVATE
+        viper_common_opts
 )
 add_dependencies(fe_zia generate_runtime_registry)

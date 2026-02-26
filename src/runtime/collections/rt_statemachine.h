@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_statemachine.h
-// Purpose: Finite state machine with up to RT_STATE_MAX (32) registered states, tracking current state, frame count, and one-frame enter/exit transition flags.
+// Purpose: Finite state machine with up to RT_STATE_MAX (32) registered states, tracking current
+// state, frame count, and one-frame enter/exit transition flags.
 //
 // Key invariants:
 //   - State IDs must be in [0, RT_STATE_MAX-1]; each ID may be registered once.

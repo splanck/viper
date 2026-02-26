@@ -123,7 +123,7 @@ vg_menubar_t *vg_menubar_create(vg_widget_t *parent)
     float s = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
     menubar->height = 28.0f * s;
     menubar->menu_padding = 10.0f * s;
-    menubar->item_padding =  8.0f * s;
+    menubar->item_padding = 8.0f * s;
     menubar->bg_color = theme->colors.bg_secondary;
     menubar->text_color = theme->colors.fg_primary;
     menubar->highlight_bg = theme->colors.bg_selected;
@@ -262,7 +262,8 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
     // Calculate dropdown dimensions — scale by ui_scale for HiDPI.
     float dropdown_y = widget->y + widget->height;
     float _ds = vg_theme_get_current()->ui_scale;
-    if (_ds <= 0.0f) _ds = 1.0f;
+    if (_ds <= 0.0f)
+        _ds = 1.0f;
     float dropdown_width = 200.0f * _ds;
     float item_height = 28.0f * _ds;
     float dropdown_height = menubar->open_menu->item_count * item_height;
@@ -452,7 +453,8 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
             {
                 // Check if in dropdown area — scale item_height by ui_scale.
                 float _hs = vg_theme_get_current()->ui_scale;
-                if (_hs <= 0.0f) _hs = 1.0f;
+                if (_hs <= 0.0f)
+                    _hs = 1.0f;
                 float item_height = 28.0f * _hs;
                 int item_index = (int)((local_y - menubar->height) / item_height);
 

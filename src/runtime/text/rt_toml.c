@@ -315,7 +315,7 @@ rt_string rt_toml_format(void *map)
             if (sub_len > 0)
             {
                 rt_sb_append_cstr(&sb, "[");
-                rt_sb_append_bytes(&sb, key_cstr, (int64_t)strlen(key_cstr));
+                rt_sb_append_bytes(&sb, key_cstr, strlen(key_cstr));
                 rt_sb_append_cstr(&sb, "]\n");
 
                 void *sub_k = rt_map_keys(val);
@@ -324,10 +324,10 @@ rt_string rt_toml_format(void *map)
                     rt_string sk = (rt_string)rt_seq_get(sub_k, j);
                     void *sv = rt_map_get(val, sk);
                     const char *sk_cstr = rt_string_cstr(sk);
-                    rt_sb_append_bytes(&sb, sk_cstr, (int64_t)strlen(sk_cstr));
+                    rt_sb_append_bytes(&sb, sk_cstr, strlen(sk_cstr));
                     rt_sb_append_cstr(&sb, " = \"");
                     const char *sv_cstr = rt_string_cstr((rt_string)sv);
-                    rt_sb_append_bytes(&sb, sv_cstr, (int64_t)strlen(sv_cstr));
+                    rt_sb_append_bytes(&sb, sv_cstr, strlen(sv_cstr));
                     rt_sb_append_cstr(&sb, "\"\n");
                 }
                 rt_sb_append_cstr(&sb, "\n");
@@ -336,10 +336,10 @@ rt_string rt_toml_format(void *map)
         }
 
         // Simple key = value
-        rt_sb_append_bytes(&sb, key_cstr, (int64_t)strlen(key_cstr));
+        rt_sb_append_bytes(&sb, key_cstr, strlen(key_cstr));
         rt_sb_append_cstr(&sb, " = \"");
         const char *val_cstr = rt_string_cstr((rt_string)val);
-        rt_sb_append_bytes(&sb, val_cstr, (int64_t)strlen(val_cstr));
+        rt_sb_append_bytes(&sb, val_cstr, strlen(val_cstr));
         rt_sb_append_cstr(&sb, "\"\n");
     }
 

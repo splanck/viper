@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_network.h
-// Purpose: TCP and UDP networking for Viper.Network, providing blocking connection management, data transfer, server listening, and DNS resolution.
+// Purpose: TCP and UDP networking for Viper.Network, providing blocking connection management, data
+// transfer, server listening, and DNS resolution.
 //
 // Key invariants:
 //   - TCP connections use blocking I/O with optional timeouts.

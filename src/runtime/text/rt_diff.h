@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_diff.h
-// Purpose: Line-based text difference computation using the Myers diff algorithm, producing a Seq of diff entries for added, removed, and unchanged lines.
+// Purpose: Line-based text difference computation using the Myers diff algorithm, producing a Seq
+// of diff entries for added, removed, and unchanged lines.
 //
 // Key invariants:
 //   - Uses the Myers O(D) diff algorithm for minimal edit distance.

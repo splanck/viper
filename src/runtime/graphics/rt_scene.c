@@ -793,8 +793,8 @@ static void collect_visible_nodes(scene_node_impl *node, void *list)
 
 static int compare_depth(const void *a, const void *b)
 {
-    scene_node_impl *na = *(scene_node_impl **)a;
-    scene_node_impl *nb = *(scene_node_impl **)b;
+    scene_node_impl *na = *(scene_node_impl *const *)a;
+    scene_node_impl *nb = *(scene_node_impl *const *)b;
 
     if (na->depth < nb->depth)
         return -1;

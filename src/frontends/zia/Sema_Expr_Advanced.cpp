@@ -990,7 +990,8 @@ TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr)
     TypeRef valueType = typeIt->second;
     if (!valueType || valueType->kind != TypeKindSem::Value)
     {
-        error(expr->loc, "'" + expr->typeName + "' is not a value type; struct literal requires a value type");
+        error(expr->loc,
+              "'" + expr->typeName + "' is not a value type; struct literal requires a value type");
         return types::unknown();
     }
 

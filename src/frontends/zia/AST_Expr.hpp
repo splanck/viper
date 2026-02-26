@@ -1013,9 +1013,9 @@ struct StructLiteralExpr : Expr
     /// @brief One named-field initializer.
     struct Field
     {
-        std::string name;  ///< Field name as written in source.
-        ExprPtr value;     ///< Initializer expression for this field.
-        SourceLoc loc;     ///< Location of this field entry.
+        std::string name; ///< Field name as written in source.
+        ExprPtr value;    ///< Initializer expression for this field.
+        SourceLoc loc;    ///< Location of this field entry.
     };
 
     /// @brief The value type name (e.g., "Point").

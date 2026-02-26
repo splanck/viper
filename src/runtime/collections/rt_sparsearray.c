@@ -89,14 +89,6 @@ static void sa_finalizer(void *obj)
     }
 }
 
-static int64_t sa_next_pow2(int64_t n)
-{
-    int64_t p = 16;
-    while (p < n)
-        p *= 2;
-    return p;
-}
-
 static void sa_grow(rt_sparse_impl *sa);
 
 static void sa_insert_internal(rt_sparse_impl *sa, int64_t key, void *value)

@@ -242,8 +242,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
         elementType = types::integer();
     }
     else if (iterableType->kind == TypeKindSem::Ptr &&
-             iterableType->name == "Viper.Collections.Seq" &&
-             !iterableType->typeArgs.empty())
+             iterableType->name == "Viper.Collections.Seq" && !iterableType->typeArgs.empty())
     {
         // Typed seq (e.g. from Str.Split, Dir.FilesSeq) — element type is typeArgs[0]
         elementType = iterableType->typeArgs[0];

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_yaml.h
-// Purpose: YAML 1.2 subset parser and formatter for Viper.Data.Yaml, supporting scalars, sequences, mappings, and multi-document streams.
+// Purpose: YAML 1.2 subset parser and formatter for Viper.Data.Yaml, supporting scalars, sequences,
+// mappings, and multi-document streams.
 //
 // Key invariants:
 //   - Supports YAML 1.2 subset: scalars (string/int/float/bool/null), sequences, mappings.

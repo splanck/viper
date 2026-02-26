@@ -1,8 +1,8 @@
 // vg_colorswatch.c - Color swatch widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 

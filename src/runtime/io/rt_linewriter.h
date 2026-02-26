@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_linewriter.h
-// Purpose: Buffered text file writing for Viper.IO.LineWriter, supporting creation or appending with Write, WriteLn, WriteChar operations and configurable line endings.
+// Purpose: Buffered text file writing for Viper.IO.LineWriter, supporting creation or appending
+// with Write, WriteLn, WriteChar operations and configurable line endings.
 //
 // Key invariants:
 //   - Open mode 'append' preserves existing content; default mode truncates.

@@ -88,6 +88,17 @@ static void pattern_cache_unlock(void)
 }
 #endif
 
+extern void rt_trap(const char *msg);
+
+/// @brief Safely cast strlen() result to int, trapping on overflow.
+static int safe_strlen_int(const char *s)
+{
+    size_t n = strlen(s);
+    if (n > (size_t)INT_MAX)
+        rt_trap("Pattern: string too long for regex engine");
+    return (int)n;
+}
+
 //=============================================================================
 // Regex AST Node Types
 //=============================================================================
@@ -696,7 +707,7 @@ static compiled_pattern *compile_pattern(const char *pattern)
         rt_trap("Pattern: memory allocation failed");
     }
 
-    parser_state p = {pattern, 0, (int)strlen(pattern)};
+    parser_state p = {pattern, 0, safe_strlen_int(pattern)};
 
     cp->root = parse_alternation(&p);
 
@@ -1360,7 +1371,7 @@ int8_t rt_pattern_is_match(rt_string text, rt_string pattern)
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int match_start, match_end;
-    return find_match(cp, txt_str, (int)strlen(txt_str), 0, &match_start, &match_end);
+    return find_match(cp, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end);
 }
 
 rt_string rt_pattern_find(rt_string text, rt_string pattern)
@@ -1374,7 +1385,7 @@ rt_string rt_pattern_find(rt_string text, rt_string pattern)
         txt_str = "";
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     int match_start, match_end;
 
     if (find_match(cp, txt_str, text_len, 0, &match_start, &match_end))
@@ -1394,7 +1405,7 @@ rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
     if (!txt_str)
         txt_str = "";
 
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     if (start < 0)
         start = 0;
     if (start > text_len)
@@ -1423,7 +1434,7 @@ int64_t rt_pattern_find_pos(rt_string text, rt_string pattern)
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int match_start, match_end;
 
-    if (find_match(cp, txt_str, (int)strlen(txt_str), 0, &match_start, &match_end))
+    if (find_match(cp, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end))
     {
         return (int64_t)match_start;
     }
@@ -1442,7 +1453,7 @@ void *rt_pattern_find_all(rt_string text, rt_string pattern)
 
     void *seq = rt_seq_new();
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     int pos = 0;
 
     while (pos <= text_len)
@@ -1475,8 +1486,8 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
         rep_str = "";
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = (int)strlen(txt_str);
-    int rep_len = (int)strlen(rep_str);
+    int text_len = safe_strlen_int(txt_str);
+    int rep_len = safe_strlen_int(rep_str);
 
     // Build result
     size_t result_cap = text_len + 64;
@@ -1544,8 +1555,8 @@ rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string 
         rep_str = "";
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = (int)strlen(txt_str);
-    int rep_len = (int)strlen(rep_str);
+    int text_len = safe_strlen_int(txt_str);
+    int rep_len = safe_strlen_int(rep_str);
 
     int match_start, match_end;
     if (!find_match(cp, txt_str, text_len, 0, &match_start, &match_end))
@@ -1581,7 +1592,7 @@ void *rt_pattern_split(rt_string text, rt_string pattern)
 
     void *seq = rt_seq_new();
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
     int pos = 0;
 
     while (pos <= text_len)
@@ -1624,7 +1635,7 @@ rt_string rt_pattern_escape(rt_string text)
     if (!txt_str)
         txt_str = "";
 
-    int text_len = (int)strlen(txt_str);
+    int text_len = safe_strlen_int(txt_str);
 
     // Count special characters
     int special_count = 0;

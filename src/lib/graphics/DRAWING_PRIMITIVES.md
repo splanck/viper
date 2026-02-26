@@ -448,9 +448,11 @@ framebuffer direct-access API (`vgfx_get_framebuffer`).
 1. Draw a filled circle at each endpoint with radius `thickness/2` (round caps).
 2. Compute the perpendicular unit vector to the line direction.
 3. Offset both endpoints by ±`thickness/2` along that perpendicular to get four corners A, B, C, D of a parallelogram.
-4. Scanline-fill the parallelogram: for each integer y between `y_min` and `y_max`, intersect with each of the four edges and draw a horizontal span.
+4. Scanline-fill the parallelogram: for each integer y between `y_min` and `y_max`, intersect with each of the four
+   edges and draw a horizontal span.
 
-**Complexity:** O((length + r) × r) — a factor of *r* improvement over the naïve O(length × r²) circle-per-step approach, significant for large thickness values.
+**Complexity:** O((length + r) × r) — a factor of *r* improvement over the naïve O(length × r²) circle-per-step
+approach, significant for large thickness values.
 
 **Key geometry:**
 
@@ -472,10 +474,13 @@ Each scanline intersects exactly two of the four edges (convex polygon), so a si
 **Algorithm:**
 
 Two-pass separable box blur:
-1. **Horizontal pass:** for each row, blur all columns with a (2r+1)-wide kernel → store in a temporary buffer.
-2. **Vertical pass:** for each column, blur all rows from the temporary buffer with a (2r+1)-tall kernel → store in result.
 
-**Complexity:** O(w × h × (2r+1) × 2) — vs O(w × h × (2r+1)²) for the naïve 2D convolution. At r=10 this is a ~10× speedup.
+1. **Horizontal pass:** for each row, blur all columns with a (2r+1)-wide kernel → store in a temporary buffer.
+2. **Vertical pass:** for each column, blur all rows from the temporary buffer with a (2r+1)-tall kernel → store in
+   result.
+
+**Complexity:** O(w × h × (2r+1) × 2) — vs O(w × h × (2r+1)²) for the naïve 2D convolution. At r=10 this is a ~10×
+speedup.
 
 **Note:** `radius` is clamped to [1, 10].
 
@@ -484,13 +489,16 @@ Two-pass separable box blur:
 **Functions:** `rt_canvas_gradient_h()`, `rt_canvas_gradient_v()`
 
 **Algorithm (horizontal):**
+
 1. Precompute one row of `w` RGBA pixels with linearly interpolated colours.
 2. `memcpy` that row into each of the `h` destination rows in the framebuffer.
 
 **Algorithm (vertical):**
+
 1. For each of the `h` rows, compute the interpolated colour once, then write `w` pixels inline.
 
-Both approaches avoid per-column/row `vgfx_line()` overhead and operate directly on the framebuffer via `vgfx_get_framebuffer()`. A mock/headless fallback using `vgfx_line()` is provided when the framebuffer is unavailable.
+Both approaches avoid per-column/row `vgfx_line()` overhead and operate directly on the framebuffer via
+`vgfx_get_framebuffer()`. A mock/headless fallback using `vgfx_line()` is provided when the framebuffer is unavailable.
 
 ---
 

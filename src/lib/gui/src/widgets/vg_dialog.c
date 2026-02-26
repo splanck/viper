@@ -389,8 +389,13 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
     {
         float title_x = (float)x + DIALOG_CONTENT_PADDING;
         float title_y = (float)y + DIALOG_TITLE_BAR_HEIGHT / 2.0f + dlg->title_font_size / 3.0f;
-        vg_font_draw_text(canvas, dlg->font, dlg->title_font_size, title_x, title_y,
-                          dlg->title, dlg->title_text_color);
+        vg_font_draw_text(canvas,
+                          dlg->font,
+                          dlg->title_font_size,
+                          title_x,
+                          title_y,
+                          dlg->title,
+                          dlg->title_text_color);
     }
 
     // Close button — draw X glyph
@@ -398,9 +403,13 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
     {
         float close_cx = (float)x + (float)w - (float)DIALOG_CLOSE_BUTTON_SIZE / 2.0f - 4.0f;
         float close_cy = (float)y + DIALOG_TITLE_BAR_HEIGHT / 2.0f + dlg->font_size / 3.0f;
-        vg_font_draw_text(canvas, dlg->font, dlg->font_size,
-                          close_cx - dlg->font_size / 4.0f, close_cy,
-                          "X", dlg->title_text_color);
+        vg_font_draw_text(canvas,
+                          dlg->font,
+                          dlg->font_size,
+                          close_cx - dlg->font_size / 4.0f,
+                          close_cy,
+                          "X",
+                          dlg->title_text_color);
     }
 
     // Content area
@@ -413,9 +422,13 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
         const char *glyph = get_icon_glyph(dlg->icon);
         if (glyph && dlg->font)
         {
-            vg_font_draw_text(canvas, dlg->font, (float)DIALOG_ICON_SIZE,
-                              content_x, content_y + (float)DIALOG_ICON_SIZE * 0.8f,
-                              glyph, dlg->text_color);
+            vg_font_draw_text(canvas,
+                              dlg->font,
+                              (float)DIALOG_ICON_SIZE,
+                              content_x,
+                              content_y + (float)DIALOG_ICON_SIZE * 0.8f,
+                              glyph,
+                              dlg->text_color);
         }
         content_x += DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
     }
@@ -423,9 +436,13 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
     // Message text
     if (dlg->message && dlg->font)
     {
-        vg_font_draw_text(canvas, dlg->font, dlg->font_size,
-                          content_x, content_y + dlg->font_size,
-                          dlg->message, dlg->text_color);
+        vg_font_draw_text(canvas,
+                          dlg->font,
+                          dlg->font_size,
+                          content_x,
+                          content_y + dlg->font_size,
+                          dlg->message,
+                          dlg->text_color);
     }
 
     // Content widget
@@ -456,10 +473,18 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
 
             uint32_t btn_bg =
                 (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
-            vgfx_fill_rect(win, (int32_t)button_x, (int32_t)button_y,
-                           (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, btn_bg);
-            vgfx_rect(win, (int32_t)button_x, (int32_t)button_y,
-                      (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, theme->colors.border_primary);
+            vgfx_fill_rect(win,
+                           (int32_t)button_x,
+                           (int32_t)button_y,
+                           (int32_t)btn_w,
+                           DIALOG_BUTTON_HEIGHT,
+                           btn_bg);
+            vgfx_rect(win,
+                      (int32_t)button_x,
+                      (int32_t)button_y,
+                      (int32_t)btn_w,
+                      DIALOG_BUTTON_HEIGHT,
+                      theme->colors.border_primary);
 
             if (btn->label && dlg->font)
             {
@@ -467,8 +492,8 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
                 vg_font_measure_text(dlg->font, dlg->font_size, btn->label, &metrics);
                 float text_x = button_x + (btn_w - metrics.width) / 2.0f;
                 float text_y = button_y + DIALOG_BUTTON_HEIGHT / 2.0f + dlg->font_size / 3.0f;
-                vg_font_draw_text(canvas, dlg->font, dlg->font_size, text_x, text_y,
-                                  btn->label, dlg->text_color);
+                vg_font_draw_text(
+                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, dlg->text_color);
             }
 
             button_x -= DIALOG_BUTTON_PADDING;
@@ -484,10 +509,18 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
 
             uint32_t btn_bg =
                 (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
-            vgfx_fill_rect(win, (int32_t)button_x, (int32_t)button_y,
-                           (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, btn_bg);
-            vgfx_rect(win, (int32_t)button_x, (int32_t)button_y,
-                      (int32_t)btn_w, DIALOG_BUTTON_HEIGHT, theme->colors.border_primary);
+            vgfx_fill_rect(win,
+                           (int32_t)button_x,
+                           (int32_t)button_y,
+                           (int32_t)btn_w,
+                           DIALOG_BUTTON_HEIGHT,
+                           btn_bg);
+            vgfx_rect(win,
+                      (int32_t)button_x,
+                      (int32_t)button_y,
+                      (int32_t)btn_w,
+                      DIALOG_BUTTON_HEIGHT,
+                      theme->colors.border_primary);
 
             if (btn->label && dlg->font)
             {
@@ -495,8 +528,8 @@ static void dialog_paint(vg_widget_t *widget, void *canvas)
                 vg_font_measure_text(dlg->font, dlg->font_size, btn->label, &metrics);
                 float text_x = button_x + (btn_w - metrics.width) / 2.0f;
                 float text_y = button_y + DIALOG_BUTTON_HEIGHT / 2.0f + dlg->font_size / 3.0f;
-                vg_font_draw_text(canvas, dlg->font, dlg->font_size, text_x, text_y,
-                                  btn->label, dlg->text_color);
+                vg_font_draw_text(
+                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, dlg->text_color);
             }
 
             button_x -= DIALOG_BUTTON_PADDING;

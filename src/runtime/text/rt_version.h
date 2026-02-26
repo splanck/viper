@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_version.h
-// Purpose: Semantic version parsing and comparison (SemVer 2.0.0) supporting MAJOR.MINOR.PATCH with optional pre-release labels and build metadata.
+// Purpose: Semantic version parsing and comparison (SemVer 2.0.0) supporting MAJOR.MINOR.PATCH with
+// optional pre-release labels and build metadata.
 //
 // Key invariants:
 //   - Version format: MAJOR.MINOR.PATCH[-pre-release][+build].

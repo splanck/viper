@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_pluralize.h
-// Purpose: English pluralization and singularization handling common rules, irregular forms, and uncountable nouns for the ~95% common case.
+// Purpose: English pluralization and singularization handling common rules, irregular forms, and
+// uncountable nouns for the ~95% common case.
 //
 // Key invariants:
 //   - Handles common English pluralization rules (e.g., -s, -es, -ies, -ves).

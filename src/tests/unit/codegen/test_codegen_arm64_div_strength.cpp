@@ -28,13 +28,12 @@ TEST(AArch64DivStrength, UDivByPowerOf2BecomesLsr)
     auto &bb = fn.blocks.back();
 
     // mov x1, #8 (load constant divisor)
-    bb.instrs.push_back(
-        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(8)}});
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(8)}});
     // udiv x0, x2, x1 (unsigned divide by 8)
-    bb.instrs.push_back(
-        MInstr{MOpcode::UDivRRR,
-               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X2),
-                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::UDivRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X1)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -54,12 +53,11 @@ TEST(AArch64DivStrength, UDivBy1BecomesLsr0)
     fn.blocks.push_back(MBasicBlock{"entry", {}});
     auto &bb = fn.blocks.back();
 
-    bb.instrs.push_back(
-        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(1)}});
-    bb.instrs.push_back(
-        MInstr{MOpcode::UDivRRR,
-               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X2),
-                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(1)}});
+    bb.instrs.push_back(MInstr{MOpcode::UDivRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X1)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     auto stats = runPeephole(fn);
@@ -77,12 +75,11 @@ TEST(AArch64DivStrength, SDivByPowerOf2NotReduced)
     fn.blocks.push_back(MBasicBlock{"entry", {}});
     auto &bb = fn.blocks.back();
 
-    bb.instrs.push_back(
-        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(4)}});
-    bb.instrs.push_back(
-        MInstr{MOpcode::SDivRRR,
-               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X2),
-                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(4)}});
+    bb.instrs.push_back(MInstr{MOpcode::SDivRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X1)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     auto stats = runPeephole(fn);
@@ -99,12 +96,11 @@ TEST(AArch64DivStrength, UDivByNonPowerOf2NotReduced)
     fn.blocks.push_back(MBasicBlock{"entry", {}});
     auto &bb = fn.blocks.back();
 
-    bb.instrs.push_back(
-        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(7)}});
-    bb.instrs.push_back(
-        MInstr{MOpcode::UDivRRR,
-               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X2),
-                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(7)}});
+    bb.instrs.push_back(MInstr{MOpcode::UDivRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X1)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     auto stats = runPeephole(fn);

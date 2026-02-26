@@ -587,7 +587,8 @@ double rt_app_get_font_size(void *app)
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     // Return logical pt size — divide stored physical pixels by HiDPI scale.
     float _s = gui_app->window ? vgfx_window_get_scale(gui_app->window) : 1.0f;
-    if (_s <= 0.0f) _s = 1.0f;
+    if (_s <= 0.0f)
+        _s = 1.0f;
     return (double)(gui_app->default_font_size / _s);
 }
 
@@ -602,7 +603,8 @@ void rt_app_set_font_size(void *app, double size)
         size = 72.0;
     // Store physical pixels — multiply logical pt size by HiDPI scale.
     float _s = gui_app->window ? vgfx_window_get_scale(gui_app->window) : 1.0f;
-    if (_s <= 0.0f) _s = 1.0f;
+    if (_s <= 0.0f)
+        _s = 1.0f;
     gui_app->default_font_size = (float)size * _s;
 }
 

@@ -513,19 +513,35 @@ PipelineResult CodegenPipeline::run()
         if (opts_.optimize >= 3)
         {
             ilpm.registerPipeline("codegen-O2",
-                                  {"simplify-cfg", "mem2reg",  "simplify-cfg",
-                                   "sccp",         "dce",      "simplify-cfg",
-                                   "inline",       "simplify-cfg", "dce",
-                                   "sccp",         "gvn",      "earlycse", "dse",
-                                   "peephole",     "dce",      "late-cleanup"});
+                                  {"simplify-cfg",
+                                   "mem2reg",
+                                   "simplify-cfg",
+                                   "sccp",
+                                   "dce",
+                                   "simplify-cfg",
+                                   "inline",
+                                   "simplify-cfg",
+                                   "dce",
+                                   "sccp",
+                                   "gvn",
+                                   "earlycse",
+                                   "dse",
+                                   "peephole",
+                                   "dce",
+                                   "late-cleanup"});
             ilpm.runPipeline(module, "codegen-O2");
         }
         else
         {
             ilpm.registerPipeline("codegen-O1",
-                                  {"simplify-cfg", "mem2reg", "simplify-cfg",
-                                   "sccp",         "dce",     "simplify-cfg",
-                                   "peephole",     "dce"});
+                                  {"simplify-cfg",
+                                   "mem2reg",
+                                   "simplify-cfg",
+                                   "sccp",
+                                   "dce",
+                                   "simplify-cfg",
+                                   "peephole",
+                                   "dce"});
             ilpm.runPipeline(module, "codegen-O1");
         }
     }

@@ -1,8 +1,8 @@
 // vg_statusbar.c - Status bar widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -244,12 +244,8 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
     // Draw hover background for buttons
     if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item)
     {
-        vgfx_fill_rect(win,
-                       (int32_t)x,
-                       (int32_t)wy,
-                       (int32_t)item_width,
-                       (int32_t)wh,
-                       sb->hover_color);
+        vgfx_fill_rect(
+            win, (int32_t)x, (int32_t)wy, (int32_t)item_width, (int32_t)wh, sb->hover_color);
     }
 
     switch (item->type)
@@ -282,22 +278,14 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
             float bar_h = 4.0f;
             float bar_y = wy + (wh - bar_h) / 2.0f;
             // Track background
-            vgfx_fill_rect(win,
-                           (int32_t)x,
-                           (int32_t)bar_y,
-                           (int32_t)pw,
-                           (int32_t)bar_h,
-                           0x00404040);
+            vgfx_fill_rect(
+                win, (int32_t)x, (int32_t)bar_y, (int32_t)pw, (int32_t)bar_h, 0x00404040);
             // Progress fill
             float fill_w = item->progress * pw;
             if (fill_w > 0.0f)
             {
-                vgfx_fill_rect(win,
-                               (int32_t)x,
-                               (int32_t)bar_y,
-                               (int32_t)fill_w,
-                               (int32_t)bar_h,
-                               0x000078D4);
+                vgfx_fill_rect(
+                    win, (int32_t)x, (int32_t)bar_y, (int32_t)fill_w, (int32_t)bar_h, 0x000078D4);
             }
             break;
         }

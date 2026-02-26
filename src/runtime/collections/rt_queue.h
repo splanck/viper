@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_queue.h
-// Purpose: Runtime-backed FIFO queue for Viper.Collections.Queue, providing enqueue/dequeue/peek with automatic growth and O(1) operations.
+// Purpose: Runtime-backed FIFO queue for Viper.Collections.Queue, providing enqueue/dequeue/peek
+// with automatic growth and O(1) operations.
 //
 // Key invariants:
 //   - FIFO ordering: enqueue at back, dequeue from front.

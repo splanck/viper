@@ -255,20 +255,6 @@ static uint64_t ptr_hash(void *p)
     return v ^ (v >> 31);
 }
 
-static weak_chain *find_weak_chain(void *target)
-{
-    ensure_weak_buckets();
-    uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
-    weak_chain *wc = g_gc.weak_buckets[bucket].next;
-    while (wc)
-    {
-        if (wc->target == target)
-            return wc;
-        wc = wc->next;
-    }
-    return NULL;
-}
-
 static void register_weak_ref(void *target, rt_weakref *ref)
 {
     ensure_weak_buckets();
@@ -414,25 +400,6 @@ void rt_gc_clear_weak_refs(void *target)
 //=============================================================================
 // Cycle Detection — Trial Deletion Algorithm
 //=============================================================================
-
-/// Get the current refcount of an object via the heap header.
-static size_t get_refcount(void *obj)
-{
-    if (!obj)
-        return 0;
-    /* The header is immediately before the payload. */
-    uint8_t *raw = (uint8_t *)obj;
-    /* rt_heap_hdr_t is at (raw - sizeof(rt_heap_hdr_t)).
-       We read the refcnt field.  The layout matches rt_heap.h. */
-    size_t *rc_ptr =
-        (size_t *)(raw - sizeof(size_t) * 4 - sizeof(uint32_t) * 2 - sizeof(uint16_t) * 2);
-    /* This is fragile — use the public API instead. */
-    (void)rc_ptr;
-
-    /* Actually, just use rt_obj_refcount if available, or inline the header
-       offset.  Since rt_heap_hdr_t layout is known, let's compute directly. */
-    return 0; /* placeholder — see below */
-}
 
 /// Visitor that trial-decrements child refcounts.
 static void trial_decrement(void *child, void *ctx)

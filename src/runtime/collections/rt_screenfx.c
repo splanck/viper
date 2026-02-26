@@ -71,11 +71,11 @@ struct screenfx_effect
 struct rt_screenfx_impl
 {
     struct screenfx_effect effects[RT_SCREENFX_MAX_EFFECTS];
-    int64_t shake_x;        ///< Current shake offset X.
-    int64_t shake_y;        ///< Current shake offset Y.
-    int64_t overlay_color;  ///< Current overlay color (RGB).
-    int64_t overlay_alpha;  ///< Current overlay alpha (0-255).
-    int64_t rand_state;     ///< Per-instance LCG state for shake RNG (thread-safe).
+    int64_t shake_x;       ///< Current shake offset X.
+    int64_t shake_y;       ///< Current shake offset Y.
+    int64_t overlay_color; ///< Current overlay color (RGB).
+    int64_t overlay_alpha; ///< Current overlay alpha (0-255).
+    int64_t rand_state;    ///< Per-instance LCG state for shake RNG (thread-safe).
 };
 
 rt_screenfx rt_screenfx_new(void)
@@ -169,7 +169,8 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
                     // Use integer approximation of (1 - t)^2 for decay==2000 default
                     // General form: factor = (1000 - progress)^(decay/1000) / 1000
                     int64_t remaining = 1000 - progress; // 0..1000
-                    if (remaining < 0) remaining = 0;
+                    if (remaining < 0)
+                        remaining = 0;
                     // decay stored as 1000×exponent; apply once for linear, twice for quadratic
                     int64_t decay_factor = remaining; // always at least one factor
                     if (e->decay >= 1500)             // >= 1.5 exponent → apply twice

@@ -947,14 +947,14 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder)
                 {
                     // qhat was too big, add back
                     qhat--;
-                    uint64_t carry = 0;
+                    uint64_t addback_carry = 0;
                     for (int64_t i = 0; i < n; i++)
                     {
-                        uint64_t sum =
-                            (j + i < rem->len ? rem->digits[j + i] : 0) + d->digits[i] + carry;
+                        uint64_t sum = (j + i < rem->len ? rem->digits[j + i] : 0) + d->digits[i] +
+                                       addback_carry;
                         if (j + i < rem->len)
                             rem->digits[j + i] = (uint32_t)(sum & 0xFFFFFFFF);
-                        carry = sum >> 32;
+                        addback_carry = sum >> 32;
                     }
                     rem->digits[j + n] = 0;
                 }
@@ -973,12 +973,12 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder)
         // Right shift remainder
         if (shift > 0)
         {
-            uint32_t carry = 0;
+            uint32_t rshift_carry = 0;
             for (int64_t i = rem->len - 1; i >= 0; i--)
             {
-                uint64_t val = ((uint64_t)carry << 32) | rem->digits[i];
+                uint64_t val = ((uint64_t)rshift_carry << 32) | rem->digits[i];
                 rem->digits[i] = (uint32_t)(val >> shift);
-                carry = (uint32_t)(val & ((1 << shift) - 1));
+                rshift_carry = (uint32_t)(val & ((1 << shift) - 1));
             }
         }
 

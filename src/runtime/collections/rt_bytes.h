@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_bytes.h
-// Purpose: Efficient byte array type for binary data manipulation, providing creation, element access, search, encoding/decoding, and conversion to/from strings and hex.
+// Purpose: Efficient byte array type for binary data manipulation, providing creation, element
+// access, search, encoding/decoding, and conversion to/from strings and hex.
 //
 // Key invariants:
 //   - Byte values are stored as uint8_t; set operations clamp input to [0, 255].

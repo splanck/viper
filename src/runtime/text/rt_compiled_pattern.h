@@ -1,19 +1,22 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_compiled_pattern.h
-// Purpose: Pre-compiled regular expression pattern for efficient repeated matching without per-call recompilation overhead, supporting find, capture, replace, and split.
+// Purpose: Pre-compiled regular expression pattern for efficient repeated matching without per-call
+// recompilation overhead, supporting find, capture, replace, and split.
 //
 // Key invariants:
 //   - Pattern compilation traps on invalid syntax.
 //   - Compiled patterns are opaque objects managed by the runtime object system.
 //   - Match results use Seq containers for multi-capture returns.
-//   - rt_compiled_pattern_replace replaces the first or all occurrences based on the replace_all flag.
+//   - rt_compiled_pattern_replace replaces the first or all occurrences based on the replace_all
+//   flag.
 //
 // Ownership/Lifetime:
 //   - CompiledPattern objects are runtime-managed; caller does not need to free them.
 //   - Returned strings and Seqs are newly allocated and owned by the caller.
 //
-// Links: src/runtime/text/rt_compiled_pattern.c (implementation), src/runtime/text/rt_regex_internal.h
+// Links: src/runtime/text/rt_compiled_pattern.c (implementation),
+// src/runtime/text/rt_regex_internal.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef VIPER_RT_COMPILED_PATTERN_H

@@ -1,12 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_format.h
-// Purpose: Deterministic, locale-independent formatting utilities providing f64-to-string conversion and CSV quoting for BASIC PRINT and WRITE# statement output.
+// Purpose: Deterministic, locale-independent formatting utilities providing f64-to-string
+// conversion and CSV quoting for BASIC PRINT and WRITE# statement output.
 //
 // Key invariants:
 //   - rt_format_f64 output is identical across platforms and locales.
 //   - The caller supplies the output buffer and must ensure sufficient capacity.
-//   - rt_csv_quote_alloc always surrounds the value with double-quotes and doubles any internal quotes.
+//   - rt_csv_quote_alloc always surrounds the value with double-quotes and doubles any internal
+//   quotes.
 //   - NULL input to rt_csv_quote_alloc is treated as empty string.
 //
 // Ownership/Lifetime:

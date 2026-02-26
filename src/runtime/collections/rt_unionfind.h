@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_unionfind.h
-// Purpose: Disjoint-set (Union-Find) data structure for efficient set merging and connectivity queries, using path compression and union by rank for near-constant-time operations.
+// Purpose: Disjoint-set (Union-Find) data structure for efficient set merging and connectivity
+// queries, using path compression and union by rank for near-constant-time operations.
 //
 // Key invariants:
 //   - Elements are identified by integers in [0, n-1] set at creation.

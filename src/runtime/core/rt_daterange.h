@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_daterange.h
-// Purpose: Date interval type representing a range between two Unix timestamps, with containment testing, overlap detection, and duration queries.
+// Purpose: Date interval type representing a range between two Unix timestamps, with containment
+// testing, overlap detection, and duration queries.
 //
 // Key invariants:
 //   - Start and end are Unix timestamps in seconds since epoch (UTC).

@@ -41,6 +41,7 @@
 #include "rt_string.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -249,7 +250,7 @@ static void mac_scan_devices(void)
         CFRelease(devices);
         return;
     }
-    CFSetGetValues(devices, (const void **)device_list);
+    CFSetGetValues(devices, (const void **)(void *)device_list);
 
     int pad_index = 0;
     for (CFIndex i = 0; i < count && pad_index < VIPER_PAD_MAX; ++i)
@@ -285,7 +286,8 @@ static void mac_scan_devices(void)
             CFIndex elem_count = CFArrayGetCount(elements);
             for (CFIndex e = 0; e < elem_count; ++e)
             {
-                IOHIDElementRef elem = (IOHIDElementRef)CFArrayGetValueAtIndex(elements, e);
+                IOHIDElementRef elem =
+                    (IOHIDElementRef)(uintptr_t)CFArrayGetValueAtIndex(elements, e);
                 if (!elem)
                     continue;
 
@@ -369,8 +371,8 @@ static void mac_init_manager(void)
         matches[1] = mac_make_match(kHIDUsage_GD_Joystick);
         matches[2] = mac_make_match(kHIDUsage_GD_MultiAxisController);
 
-        CFArrayRef match_array =
-            CFArrayCreate(kCFAllocatorDefault, (const void **)matches, 3, &kCFTypeArrayCallBacks);
+        CFArrayRef match_array = CFArrayCreate(
+            kCFAllocatorDefault, (const void **)(void *)matches, 3, &kCFTypeArrayCallBacks);
         IOHIDManagerSetDeviceMatchingMultiple(g_hid_manager, match_array);
         IOHIDManagerOpen(g_hid_manager, kIOHIDOptionsTypeNone);
 

@@ -90,8 +90,7 @@ void lowerOverflowOps(MFunction &fn)
         MBasicBlock trapBlock{};
         trapBlock.name = trapLabel;
         // bl rt_trap
-        trapBlock.instrs.push_back(
-            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+        trapBlock.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
         fn.blocks.push_back(std::move(trapBlock));
         trapIndex = fn.blocks.size() - 1U;
         return *trapIndex;
@@ -170,9 +169,8 @@ void lowerOverflowOps(MFunction &fn)
 
             // Insert b.vs to trap block after the flag-setting instruction.
             MInstr bvs{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp(trapLabel)}};
-            block.instrs.insert(
-                block.instrs.begin() + static_cast<std::ptrdiff_t>(i + 1U),
-                std::move(bvs));
+            block.instrs.insert(block.instrs.begin() + static_cast<std::ptrdiff_t>(i + 1U),
+                                std::move(bvs));
 
             // Skip past the b.vs we just inserted.
             ++i;

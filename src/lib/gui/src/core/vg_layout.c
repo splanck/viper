@@ -701,8 +701,8 @@ typedef struct grid_placement
 /// @brief Grid container internal state (stored in impl_data).
 typedef struct grid_impl
 {
-    vg_grid_layout_t layout;       ///< column/row counts, gaps, width/height arrays
-    grid_placement_t *placements;  ///< per-child placement records
+    vg_grid_layout_t layout;      ///< column/row counts, gaps, width/height arrays
+    grid_placement_t *placements; ///< per-child placement records
     int placement_count;
     int placement_capacity;
 } grid_impl_t;
@@ -762,10 +762,8 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
         int cs = p ? (p->item.col_span > 0 ? p->item.col_span : 1) : 1;
         int rs = p ? (p->item.row_span > 0 ? p->item.row_span : 1) : 1;
 
-        float cell_w =
-            auto_col_w * cs + g->layout.column_gap * (cs - 1);
-        float cell_h =
-            auto_row_h * rs + g->layout.row_gap * (rs - 1);
+        float cell_w = auto_col_w * cs + g->layout.column_gap * (cs - 1);
+        float cell_h = auto_row_h * rs + g->layout.row_gap * (rs - 1);
 
         vg_widget_measure(child, cell_w, cell_h);
     }
@@ -786,9 +784,8 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
 
     for (int r = 0; r < rows; r++)
     {
-        float h = (g->layout.row_heights && g->layout.row_heights[r] > 0)
-                      ? g->layout.row_heights[r]
-                      : auto_row_h;
+        float h = (g->layout.row_heights && g->layout.row_heights[r] > 0) ? g->layout.row_heights[r]
+                                                                          : auto_row_h;
         grid_h += h;
         if (r < rows - 1)
             grid_h += g->layout.row_gap;
@@ -1063,8 +1060,7 @@ void vg_grid_place(
     if (g->placement_count >= g->placement_capacity)
     {
         int new_cap = g->placement_capacity * 2;
-        grid_placement_t *new_p =
-            realloc(g->placements, new_cap * sizeof(grid_placement_t));
+        grid_placement_t *new_p = realloc(g->placements, new_cap * sizeof(grid_placement_t));
         if (!new_p)
             return;
         g->placements = new_p;

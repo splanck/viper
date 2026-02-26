@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_spriteanim.h
-// Purpose: Frame-based sprite animation controller tracking frame index, timing, playback mode (loop/ping-pong), and speed for game sprite animations.
+// Purpose: Frame-based sprite animation controller tracking frame index, timing, playback mode
+// (loop/ping-pong), and speed for game sprite animations.
 //
 // Key invariants:
 //   - Frame indices are bounded by the range set in rt_spriteanim_setup.
@@ -13,7 +14,8 @@
 //   - Caller owns the rt_spriteanim handle; destroy with rt_spriteanim_destroy.
 //   - No reference counting; explicit destruction is required.
 //
-// Links: src/runtime/collections/rt_spriteanim.c (implementation), src/runtime/collections/rt_tween.h
+// Links: src/runtime/collections/rt_spriteanim.c (implementation),
+// src/runtime/collections/rt_tween.h
 //
 //===----------------------------------------------------------------------===//
 #ifndef VIPER_RT_SPRITEANIM_H

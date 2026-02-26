@@ -42,7 +42,7 @@ namespace
 /// @param message Warning text to append to the diagnostic.
 void emitWarning(const VerifyCtx &ctx, std::string_view message)
 {
-    ctx.diags.report(Diag{Severity::Warning, formatDiag(ctx, message), ctx.instr.loc});
+    ctx.diags.report(Diag{Severity::Warning, formatDiag(ctx, message), ctx.instr.loc, {}});
 }
 
 } // namespace

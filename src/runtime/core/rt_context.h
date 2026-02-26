@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_context.h
-// Purpose: Per-VM runtime context that isolates all global mutable state across concurrent VM instances, including module variables, file channels, argument stores, and type registry.
+// Purpose: Per-VM runtime context that isolates all global mutable state across concurrent VM
+// instances, including module variables, file channels, argument stores, and type registry.
 //
 // Key invariants:
 //   - Thread-local binding ensures each thread accesses its active VM context.
@@ -11,7 +12,8 @@
 //
 // Ownership/Lifetime:
 //   - The VM owns the RtContext object and is responsible for its lifetime.
-//   - The thread-local pointer is a borrowed reference; the VM must not free the context while other threads reference it.
+//   - The thread-local pointer is a borrowed reference; the VM must not free the context while
+//   other threads reference it.
 //
 // Links: src/runtime/core/rt_context.c (implementation), src/runtime/core/rt_string.h
 //

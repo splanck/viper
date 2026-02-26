@@ -69,29 +69,29 @@ namespace il::frontends::zia
 /// @brief Category of a completion item (maps to an icon in the UI).
 enum class CompletionKind : uint8_t
 {
-    Keyword      = 0,
-    Snippet      = 1,
-    Variable     = 2,
-    Parameter    = 3,
-    Field        = 4,
-    Method       = 5,
-    Function     = 6,
-    Entity       = 7,
-    Value        = 8,
-    Interface    = 9,
-    Module       = 10,
+    Keyword = 0,
+    Snippet = 1,
+    Variable = 2,
+    Parameter = 3,
+    Field = 4,
+    Method = 5,
+    Function = 6,
+    Entity = 7,
+    Value = 8,
+    Interface = 9,
+    Module = 10,
     RuntimeClass = 11,
-    Property     = 12,
+    Property = 12,
 };
 
 /// @brief A single code-completion suggestion.
 struct CompletionItem
 {
-    std::string    label;        ///< Text shown in the popup list
-    std::string    insertText;   ///< Text inserted into the editor buffer
+    std::string label;      ///< Text shown in the popup list
+    std::string insertText; ///< Text inserted into the editor buffer
     CompletionKind kind{CompletionKind::Variable};
-    std::string    detail;       ///< Type/signature shown right-aligned in popup
-    int            sortPriority{100}; ///< Lower = ranked higher
+    std::string detail;    ///< Type/signature shown right-aligned in popup
+    int sortPriority{100}; ///< Lower = ranked higher
 };
 
 /// @brief Serialize a list of items to tab-delimited text for the runtime bridge.
@@ -134,10 +134,10 @@ class CompletionEngine
     /// @param maxResults Maximum number of items returned (0 = unlimited).
     /// @return           Filtered, ranked completion items.
     std::vector<CompletionItem> complete(std::string_view source,
-                                         int              line,
-                                         int              col,
-                                         std::string_view filePath  = "<editor>",
-                                         int              maxResults = 50);
+                                         int line,
+                                         int col,
+                                         std::string_view filePath = "<editor>",
+                                         int maxResults = 50);
 
     /// @brief Discard the cached AnalysisResult (forces re-parse next call).
     void clearCache();
@@ -182,22 +182,21 @@ class CompletionEngine
     std::vector<CompletionItem> provideKeywords(const std::string &prefix) const;
     std::vector<CompletionItem> provideSnippets(const std::string &prefix) const;
 
-    std::vector<CompletionItem> provideScopeSymbols(const Sema        &sema,
+    std::vector<CompletionItem> provideScopeSymbols(const Sema &sema,
+                                                    const std::string &prefix) const;
+
+    std::vector<CompletionItem> provideMemberCompletions(const Sema &sema,
+                                                         const Context &ctx) const;
+
+    std::vector<CompletionItem> provideTypeNames(const Sema &sema, const std::string &prefix) const;
+
+    std::vector<CompletionItem> provideModuleMembers(const Sema &sema,
+                                                     const std::string &moduleAlias,
                                                      const std::string &prefix) const;
 
-    std::vector<CompletionItem> provideMemberCompletions(const Sema    &sema,
-                                                          const Context &ctx) const;
-
-    std::vector<CompletionItem> provideTypeNames(const Sema        &sema,
-                                                  const std::string &prefix) const;
-
-    std::vector<CompletionItem> provideModuleMembers(const Sema        &sema,
-                                                      const std::string &moduleAlias,
+    std::vector<CompletionItem> provideRuntimeMembers(const Sema &sema,
+                                                      const std::string &fullClassName,
                                                       const std::string &prefix) const;
-
-    std::vector<CompletionItem> provideRuntimeMembers(const Sema        &sema,
-                                                       const std::string &fullClassName,
-                                                       const std::string &prefix) const;
 
     /// @brief Enumerate classes that are direct children of a runtime namespace.
     /// @details For example, with nsPrefix="Viper.GUI", this returns items for
@@ -205,9 +204,9 @@ class CompletionEngine
     ///          a module alias followed by a dot (e.g. "GUI.").
     /// @param nsPrefix  Full dotted namespace path (e.g. "Viper.GUI").
     /// @param prefix    Typed prefix filter (case-insensitive).
-    std::vector<CompletionItem> provideNamespaceMembers(const Sema        &sema,
-                                                         const std::string &nsPrefix,
-                                                         const std::string &prefix) const;
+    std::vector<CompletionItem> provideNamespaceMembers(const Sema &sema,
+                                                        const std::string &nsPrefix,
+                                                        const std::string &prefix) const;
 
     /// @}
     //=========================================================================
@@ -228,8 +227,7 @@ class CompletionEngine
     /// @{
     //=========================================================================
 
-    void filterByPrefix(std::vector<CompletionItem> &items,
-                        const std::string           &prefix) const;
+    void filterByPrefix(std::vector<CompletionItem> &items, const std::string &prefix) const;
 
     void rank(std::vector<CompletionItem> &items, const std::string &prefix) const;
 
@@ -246,11 +244,11 @@ class CompletionEngine
 
     struct Cache
     {
-        uint64_t                        hash{0};
+        uint64_t hash{0};
         std::unique_ptr<AnalysisResult> result;
     };
 
-    Cache                                cache_;
+    Cache cache_;
     std::unique_ptr<il::support::SourceManager> sm_;
 
     /// @}

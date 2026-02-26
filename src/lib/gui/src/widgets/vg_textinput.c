@@ -366,7 +366,7 @@ static void textinput_push_undo(vg_textinput_t *input)
                 input->undo_cursors + 1,
                 (TEXTINPUT_UNDO_CAPACITY - 1) * sizeof(size_t));
         input->undo_stack[TEXTINPUT_UNDO_CAPACITY - 1] = NULL;
-        input->undo_pos  = TEXTINPUT_UNDO_CAPACITY - 1;
+        input->undo_pos = TEXTINPUT_UNDO_CAPACITY - 1;
         input->undo_count = TEXTINPUT_UNDO_CAPACITY;
     }
     else
@@ -374,7 +374,7 @@ static void textinput_push_undo(vg_textinput_t *input)
         input->undo_count = input->undo_pos + 1;
     }
 
-    input->undo_stack[input->undo_pos]   = strdup(input->text);
+    input->undo_stack[input->undo_pos] = strdup(input->text);
     input->undo_cursors[input->undo_pos] = input->cursor_pos;
 }
 

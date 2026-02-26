@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_exc.h
-// Purpose: Runtime exception support for structured exception handling, providing exception object creation, message access, and type checking for catch handlers.
+// Purpose: Runtime exception support for structured exception handling, providing exception object
+// creation, message access, and type checking for catch handlers.
 //
 // Key invariants:
 //   - Exception objects carry a class ID for type-based catch dispatch.

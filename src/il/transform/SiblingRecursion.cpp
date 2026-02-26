@@ -79,18 +79,18 @@ bool isAssocAdd(Opcode op)
 /// Check if an opcode is a signed comparison suitable for base case detection.
 bool isSignedCmp(Opcode op)
 {
-    return op == Opcode::SCmpLE || op == Opcode::SCmpLT ||
-           op == Opcode::SCmpGE || op == Opcode::SCmpGT;
+    return op == Opcode::SCmpLE || op == Opcode::SCmpLT || op == Opcode::SCmpGE ||
+           op == Opcode::SCmpGT;
 }
 
 /// Matched pattern information for the sibling recursion transformation.
 struct SiblingPattern
 {
-    size_t blockIdx;     // Index of the recurse block in fn.blocks
-    size_t call1Idx;     // Instruction index of first self-call
-    size_t call2Idx;     // Instruction index of second self-call
-    size_t addIdx;       // Instruction index of the combining add
-    Opcode addOp;        // The add opcode (IAddOvf or Add)
+    size_t blockIdx; // Index of the recurse block in fn.blocks
+    size_t call1Idx; // Instruction index of first self-call
+    size_t call2Idx; // Instruction index of second self-call
+    size_t addIdx;   // Instruction index of the combining add
+    Opcode addOp;    // The add opcode (IAddOvf or Add)
 
     // Entry/predecessor block base case info
     Opcode cmpOp;        // Base case comparison opcode (e.g., SCmpLE)
@@ -137,8 +137,7 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
         // Both calls must produce results with same arity as function params.
         if (!call1.result || !call2.result)
             continue;
-        if (call1.operands.size() != fn.params.size() ||
-            call2.operands.size() != fn.params.size())
+        if (call1.operands.size() != fn.params.size() || call2.operands.size() != fn.params.size())
             continue;
 
         const unsigned r1 = *call1.result;
@@ -199,8 +198,7 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
             if (bb.instructions[i].op == Opcode::Ret)
             {
                 const auto &retOp = bb.instructions[i];
-                if (!retOp.operands.empty() &&
-                    retOp.operands[0].kind == Value::Kind::Temp &&
+                if (!retOp.operands.empty() && retOp.operands[0].kind == Value::Kind::Temp &&
                     retOp.operands[0].id == sumId)
                 {
                     retIdx = i;
@@ -319,8 +317,7 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &)
             continue;
         for (auto &instr : fn.blocks[bi].instructions)
         {
-            if (instr.op != Opcode::Br && instr.op != Opcode::CBr &&
-                instr.op != Opcode::SwitchI32)
+            if (instr.op != Opcode::Br && instr.op != Opcode::CBr && instr.op != Opcode::SwitchI32)
                 continue;
 
             for (size_t li = 0; li < instr.labels.size(); ++li)
@@ -332,10 +329,8 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &)
     }
 
     // --- Step 2: Collect data from the recurse block ---
-    const Value secondCallArg =
-        fn.blocks[pat.blockIdx].instructions[pat.call2Idx].operands[0];
-    const unsigned r1Id =
-        *fn.blocks[pat.blockIdx].instructions[pat.call1Idx].result;
+    const Value secondCallArg = fn.blocks[pat.blockIdx].instructions[pat.call2Idx].operands[0];
+    const unsigned r1Id = *fn.blocks[pat.blockIdx].instructions[pat.call1Idx].result;
 
     // --- Step 3: Build new instructions for the loop block ---
     std::vector<Instr> newInstrs;

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_aes.h
-// Purpose: AES-128 and AES-256 encryption in CBC mode with PKCS7 padding, implemented in pure C with no external dependencies.
+// Purpose: AES-128 and AES-256 encryption in CBC mode with PKCS7 padding, implemented in pure C
+// with no external dependencies.
 //
 // Key invariants:
 //   - Supports AES-128 (16-byte key) and AES-256 (32-byte key).

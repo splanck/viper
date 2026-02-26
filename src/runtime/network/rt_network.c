@@ -1792,7 +1792,7 @@ rt_string rt_dns_reverse(rt_string ip_address)
     struct sockaddr_in sa4;
     struct sockaddr_in6 sa6;
     struct sockaddr *sa;
-    socklen_t sa_len;
+    socklen_t sa_len = 0;
 
     if (inet_pton(AF_INET, addr_ptr, &sa4.sin_addr) == 1)
     {

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/arrays/rt_array.h
-// Purpose: Dynamic array API for 32-bit integers (i32) backing BASIC DIM/REDIM statements, providing allocation, reference counting, bounds-checked access, and resize operations.
+// Purpose: Dynamic array API for 32-bit integers (i32) backing BASIC DIM/REDIM statements,
+// providing allocation, reference counting, bounds-checked access, and resize operations.
 //
 // Key invariants:
 //   - Payload pointers are preceded by an rt_heap_hdr_t header at a negative offset.

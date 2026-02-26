@@ -90,7 +90,7 @@ static void calculate_pan_gains(float pan, float *left_gain, float *right_gain)
      * pan=-1.0 → left=1.0, right=0.0   (full left)
      * pan= 0.0 → left=0.5, right=0.5   (center)
      * pan=+1.0 → left=0.0, right=1.0   (full right) */
-    *left_gain  = (1.0f - pan) * 0.5f;
+    *left_gain = (1.0f - pan) * 0.5f;
     *right_gain = (1.0f + pan) * 0.5f;
 }
 

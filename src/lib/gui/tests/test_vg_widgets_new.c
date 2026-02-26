@@ -35,7 +35,7 @@ static int g_failed = 0;
     {                                                                                              \
         if (!(cond))                                                                               \
         {                                                                                          \
-            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                           \
+            printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
         }                                                                                          \
@@ -346,8 +346,8 @@ TEST(commandpalette_add_and_find)
 {
     vg_commandpalette_t *p = vg_commandpalette_create();
     ASSERT_NOT_NULL(p);
-    vg_command_t *cmd = vg_commandpalette_add_command(p, "file.open", "Open File", "Ctrl+O",
-                                                       NULL, NULL);
+    vg_command_t *cmd =
+        vg_commandpalette_add_command(p, "file.open", "Open File", "Ctrl+O", NULL, NULL);
     ASSERT_NOT_NULL(cmd);
     ASSERT_EQ((int)p->command_count, 1);
     vg_command_t *found = vg_commandpalette_get_command(p, "file.open");

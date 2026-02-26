@@ -17,7 +17,7 @@ static int tests_failed = 0;
 //=============================================================================
 
 static jmp_buf g_trap_jmp;
-static bool    g_trap_expected = false;
+static bool g_trap_expected = false;
 
 extern "C" void vm_trap(const char *msg)
 {
@@ -29,19 +29,19 @@ extern "C" void vm_trap(const char *msg)
 
 /// Assert that evaluating @p expr causes a trap. Increments tests_failed and
 /// returns early from the current test function if no trap fires.
-#define EXPECT_TRAP(expr)                                                          \
-    do                                                                             \
-    {                                                                              \
-        g_trap_expected = true;                                                    \
-        if (setjmp(g_trap_jmp) == 0)                                              \
-        {                                                                          \
-            (void)(expr);                                                          \
-            printf(" FAILED at line %d: expected trap did not fire\n", __LINE__); \
-            tests_failed++;                                                        \
-            g_trap_expected = false;                                               \
-            return;                                                                \
-        }                                                                          \
-        g_trap_expected = false;                                                   \
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
+        {                                                                                          \
+            (void)(expr);                                                                          \
+            printf(" FAILED at line %d: expected trap did not fire\n", __LINE__);                  \
+            tests_failed++;                                                                        \
+            g_trap_expected = false;                                                               \
+            return;                                                                                \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
     } while (0)
 
 #define TEST(name) static void test_##name()

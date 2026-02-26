@@ -820,7 +820,7 @@ void *rt_pixels_load_png(void *path)
 
     bytes_t *raw = (bytes_t *)raw_bytes;
 
-    int channels = (color_type == 6) ? 4 : 3; // RGBA vs RGB
+    int channels = (color_type == 6) ? 4 : 3;        // RGBA vs RGB
     if ((size_t)width > SIZE_MAX / (size_t)channels) // overflow guard
         return NULL;
     size_t stride = (size_t)width * (size_t)channels;
@@ -1635,10 +1635,9 @@ void *rt_pixels_blur(void *pixels, int64_t radius)
                 }
             }
             if (count > 0)
-                tmp[y * w + x] = ((uint32_t)(sum_a / count) << 24)
-                               | ((uint32_t)(sum_r / count) << 16)
-                               | ((uint32_t)(sum_g / count) << 8)
-                               |  (uint32_t)(sum_b / count);
+                tmp[y * w + x] = ((uint32_t)(sum_a / count) << 24) |
+                                 ((uint32_t)(sum_r / count) << 16) |
+                                 ((uint32_t)(sum_g / count) << 8) | (uint32_t)(sum_b / count);
         }
     }
 
@@ -1663,10 +1662,9 @@ void *rt_pixels_blur(void *pixels, int64_t radius)
                 }
             }
             if (count > 0)
-                result->data[y * w + x] = ((uint32_t)(sum_a / count) << 24)
-                                        | ((uint32_t)(sum_r / count) << 16)
-                                        | ((uint32_t)(sum_g / count) << 8)
-                                        |  (uint32_t)(sum_b / count);
+                result->data[y * w + x] =
+                    ((uint32_t)(sum_a / count) << 24) | ((uint32_t)(sum_r / count) << 16) |
+                    ((uint32_t)(sum_g / count) << 8) | (uint32_t)(sum_b / count);
         }
     }
 
@@ -1827,8 +1825,7 @@ void rt_pixels_draw_line(
     }
 }
 
-void rt_pixels_draw_box(
-    void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
+void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
 {
     if (!pixels)
     {
@@ -1853,8 +1850,7 @@ void rt_pixels_draw_box(
             p->data[row * p->width + col] = rgba;
 }
 
-void rt_pixels_draw_frame(
-    void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
+void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
 {
     if (!pixels)
     {
@@ -2134,8 +2130,8 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
                                 return; // Abort flood fill on capacity overflow
                             }
                             int64_t new_cap = cap * 2;
-                            FillSeed *ns = (FillSeed *)realloc(
-                                stack, (size_t)new_cap * sizeof(FillSeed));
+                            FillSeed *ns =
+                                (FillSeed *)realloc(stack, (size_t)new_cap * sizeof(FillSeed));
                             if (!ns)
                             {
                                 free(stack);
@@ -2161,10 +2157,8 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
     free(stack);
 }
 
-void rt_pixels_draw_thick_line(void *pixels,
-                               int64_t x1, int64_t y1,
-                               int64_t x2, int64_t y2,
-                               int64_t thickness, int64_t color)
+void rt_pixels_draw_thick_line(
+    void *pixels, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t thickness, int64_t color)
 {
     if (!pixels)
     {
@@ -2210,9 +2204,12 @@ void rt_pixels_draw_thick_line(void *pixels,
 }
 
 void rt_pixels_draw_triangle(void *pixels,
-                             int64_t x1, int64_t y1,
-                             int64_t x2, int64_t y2,
-                             int64_t x3, int64_t y3,
+                             int64_t x1,
+                             int64_t y1,
+                             int64_t x2,
+                             int64_t y2,
+                             int64_t x3,
+                             int64_t y3,
                              int64_t color)
 {
     if (!pixels)
@@ -2226,18 +2223,30 @@ void rt_pixels_draw_triangle(void *pixels,
     // Sort vertices by y ascending (bubble sort 3 elements)
     if (y1 > y2)
     {
-        int64_t tx = x1; x1 = x2; x2 = tx;
-        int64_t ty = y1; y1 = y2; y2 = ty;
+        int64_t tx = x1;
+        x1 = x2;
+        x2 = tx;
+        int64_t ty = y1;
+        y1 = y2;
+        y2 = ty;
     }
     if (y1 > y3)
     {
-        int64_t tx = x1; x1 = x3; x3 = tx;
-        int64_t ty = y1; y1 = y3; y3 = ty;
+        int64_t tx = x1;
+        x1 = x3;
+        x3 = tx;
+        int64_t ty = y1;
+        y1 = y3;
+        y3 = ty;
     }
     if (y2 > y3)
     {
-        int64_t tx = x2; x2 = x3; x3 = tx;
-        int64_t ty = y2; y2 = y3; y3 = ty;
+        int64_t tx = x2;
+        x2 = x3;
+        x3 = tx;
+        int64_t ty = y2;
+        y2 = y3;
+        y3 = ty;
     }
 
     int64_t total_h = y3 - y1;
@@ -2253,7 +2262,9 @@ void rt_pixels_draw_triangle(void *pixels,
         int64_t bx = x1 + (x2 - x1) * row / (upper_h > 0 ? upper_h : 1);
         if (ax > bx)
         {
-            int64_t tmp = ax; ax = bx; bx = tmp;
+            int64_t tmp = ax;
+            ax = bx;
+            bx = tmp;
         }
         for (int64_t col = ax; col <= bx; col++)
             set_pixel_raw(p, col, scan_y, rgba);
@@ -2268,7 +2279,9 @@ void rt_pixels_draw_triangle(void *pixels,
         int64_t bx = x2 + (x3 - x2) * row / (lower_h > 0 ? lower_h : 1);
         if (ax > bx)
         {
-            int64_t tmp = ax; ax = bx; bx = tmp;
+            int64_t tmp = ax;
+            ax = bx;
+            bx = tmp;
         }
         for (int64_t col = ax; col <= bx; col++)
             set_pixel_raw(p, col, scan_y, rgba);
@@ -2276,9 +2289,12 @@ void rt_pixels_draw_triangle(void *pixels,
 }
 
 void rt_pixels_draw_bezier(void *pixels,
-                           int64_t x1, int64_t y1,
-                           int64_t cx_ctrl, int64_t cy_ctrl,
-                           int64_t x2, int64_t y2,
+                           int64_t x1,
+                           int64_t y1,
+                           int64_t cx_ctrl,
+                           int64_t cy_ctrl,
+                           int64_t x2,
+                           int64_t y2,
                            int64_t color)
 {
     if (!pixels)
@@ -2290,16 +2306,28 @@ void rt_pixels_draw_bezier(void *pixels,
     uint32_t rgba = rgb_to_rgba(color);
 
     // Adaptive step count: enough steps to avoid gaps
-    int64_t adx = x2 - x1;     if (adx < 0) adx = -adx;
-    int64_t ady = y2 - y1;     if (ady < 0) ady = -ady;
-    int64_t acx = cx_ctrl - x1; if (acx < 0) acx = -acx;
-    int64_t acy = cy_ctrl - y1; if (acy < 0) acy = -acy;
+    int64_t adx = x2 - x1;
+    if (adx < 0)
+        adx = -adx;
+    int64_t ady = y2 - y1;
+    if (ady < 0)
+        ady = -ady;
+    int64_t acx = cx_ctrl - x1;
+    if (acx < 0)
+        acx = -acx;
+    int64_t acy = cy_ctrl - y1;
+    if (acy < 0)
+        acy = -acy;
     int64_t steps = adx > ady ? adx : ady;
-    if (acx > steps) steps = acx;
-    if (acy > steps) steps = acy;
+    if (acx > steps)
+        steps = acx;
+    if (acy > steps)
+        steps = acy;
     steps = steps * 2 + 1;
-    if (steps < 2) steps = 2;
-    if (steps > 10000) steps = 10000; // Cap to prevent excessive loops
+    if (steps < 2)
+        steps = 2;
+    if (steps > 10000)
+        steps = 10000; // Cap to prevent excessive loops
 
     // Integer de Casteljau: P(t) via linear interpolation at t = i/steps
     for (int64_t i = 0; i <= steps; i++)
@@ -2308,8 +2336,8 @@ void rt_pixels_draw_bezier(void *pixels,
         int64_t ly0 = y1 + (cy_ctrl - y1) * i / steps;
         int64_t lx1 = cx_ctrl + (x2 - cx_ctrl) * i / steps;
         int64_t ly1 = cy_ctrl + (y2 - cy_ctrl) * i / steps;
-        int64_t bx  = lx0 + (lx1 - lx0) * i / steps;
-        int64_t by  = ly0 + (ly1 - ly0) * i / steps;
+        int64_t bx = lx0 + (lx1 - lx0) * i / steps;
+        int64_t by = ly0 + (ly1 - ly0) * i / steps;
         set_pixel_raw(p, bx, by, rgba);
     }
 }
@@ -2340,24 +2368,24 @@ void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, in
 
     // Extract source channels from 0x00RRGGBB
     uint32_t sr = (uint32_t)((color >> 16) & 0xFF);
-    uint32_t sg = (uint32_t)((color >>  8) & 0xFF);
-    uint32_t sb = (uint32_t)( color        & 0xFF);
+    uint32_t sg = (uint32_t)((color >> 8) & 0xFF);
+    uint32_t sb = (uint32_t)(color & 0xFF);
     uint32_t sa = (uint32_t)alpha;
 
     // Extract destination channels from 0xRRGGBBAA
     uint32_t dst = p->data[y * p->width + x];
     uint32_t dr = (dst >> 24) & 0xFF;
     uint32_t dg = (dst >> 16) & 0xFF;
-    uint32_t db = (dst >>  8) & 0xFF;
-    uint32_t da = (dst)       & 0xFF;
+    uint32_t db = (dst >> 8) & 0xFF;
+    uint32_t da = (dst) & 0xFF;
 
     // Porter-Duff "over": out = src * sa/255 + dst * da/255 * (255 - sa)/255
     // Simplified (pre-multiplied integer arithmetic, +127 for rounding):
     uint32_t inv = 255 - sa;
     uint32_t or_ = (sr * sa + dr * inv + 127) / 255;
-    uint32_t og  = (sg * sa + dg * inv + 127) / 255;
-    uint32_t ob  = (sb * sa + db * inv + 127) / 255;
-    uint32_t oa  = sa + (da * inv + 127) / 255;
+    uint32_t og = (sg * sa + dg * inv + 127) / 255;
+    uint32_t ob = (sb * sa + db * inv + 127) / 255;
+    uint32_t oa = sa + (da * inv + 127) / 255;
 
     p->data[y * p->width + x] = (or_ << 24) | (og << 16) | (ob << 8) | oa;
 }

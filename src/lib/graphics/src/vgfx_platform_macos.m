@@ -357,10 +357,10 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     /* Get new view dimensions in logical points, then convert to physical pixels.
      * The view bounds are always in logical (point) coordinates; multiplying by
      * scale_factor gives the physical pixel dimensions for the framebuffer. */
-    NSRect  contentRect = [platform->view bounds];
-    float   sf          = _vgfxWindow->scale_factor;
-    int32_t new_width   = (int32_t)(contentRect.size.width  * sf);
-    int32_t new_height  = (int32_t)(contentRect.size.height * sf);
+    NSRect contentRect = [platform->view bounds];
+    float sf = _vgfxWindow->scale_factor;
+    int32_t new_width = (int32_t)(contentRect.size.width * sf);
+    int32_t new_height = (int32_t)(contentRect.size.height * sf);
 
     /* Only handle if size actually changed (avoid redundant reallocation) */
     if (new_width == _vgfxWindow->width && new_height == _vgfxWindow->height)
@@ -726,13 +726,13 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 case NSEventTypeOtherMouseDragged:
                 {
                     NSPoint location = [event locationInWindow];
-                    NSRect  contentRect = [platform->view bounds];
+                    NSRect contentRect = [platform->view bounds];
 
                     /* Convert to ViperGFX coordinate system (top-left origin) and
                      * scale logical points to physical pixels for the framebuffer. */
-                    float   sf = win->scale_factor;
-                    int32_t x  = (int32_t)(location.x * sf);
-                    int32_t y  = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    float sf = win->scale_factor;
+                    int32_t x = (int32_t)(location.x * sf);
+                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     win->mouse_x = x; /* Update input state */
                     win->mouse_y = y;
@@ -749,11 +749,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 case NSEventTypeOtherMouseDown:
                 {
                     NSPoint location = [event locationInWindow];
-                    NSRect  contentRect = [platform->view bounds];
+                    NSRect contentRect = [platform->view bounds];
 
-                    float   sf = win->scale_factor;
-                    int32_t x  = (int32_t)(location.x * sf);
-                    int32_t y  = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    float sf = win->scale_factor;
+                    int32_t x = (int32_t)(location.x * sf);
+                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     /* Determine which button was pressed */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
@@ -784,11 +784,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 case NSEventTypeOtherMouseUp:
                 {
                     NSPoint location = [event locationInWindow];
-                    NSRect  contentRect = [platform->view bounds];
+                    NSRect contentRect = [platform->view bounds];
 
-                    float   sf = win->scale_factor;
-                    int32_t x  = (int32_t)(location.x * sf);
-                    int32_t y  = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    float sf = win->scale_factor;
+                    int32_t x = (int32_t)(location.x * sf);
+                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     /* Determine which button was released */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
@@ -816,28 +816,28 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                 case NSEventTypeScrollWheel:
                 {
-                    NSPoint location    = [event locationInWindow];
-                    NSRect  contentRect = [platform->view bounds];
-                    float   sf          = win->scale_factor;
-                    int32_t x           = (int32_t)(location.x * sf);
-                    int32_t y           = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    NSPoint location = [event locationInWindow];
+                    NSRect contentRect = [platform->view bounds];
+                    float sf = win->scale_factor;
+                    int32_t x = (int32_t)(location.x * sf);
+                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     float dx, dy;
                     if ([event hasPreciseScrollingDeltas])
                     {
                         /* Trackpad: values are in points — convert to pixels */
-                        dx =  (float)[event scrollingDeltaX] * sf;
+                        dx = (float)[event scrollingDeltaX] * sf;
                         dy = -(float)[event scrollingDeltaY] * sf;
                     }
                     else
                     {
                         /* Traditional scroll wheel: deltaY is in lines (typically ±1/3) */
-                        dx =  (float)[event deltaX];
+                        dx = (float)[event deltaX];
                         dy = -(float)[event deltaY];
                     }
 
                     vgfx_event_t vgfx_event = {
-                        .type    = VGFX_EVENT_SCROLL,
+                        .type = VGFX_EVENT_SCROLL,
                         .time_ms = timestamp,
                         .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
@@ -1239,12 +1239,24 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
     {
         switch (cursor_type)
         {
-            case 1: [[NSCursor pointingHandCursor] set]; break;
-            case 2: [[NSCursor IBeamCursor] set];        break;
-            case 3: [[NSCursor resizeLeftRightCursor] set]; break;
-            case 4: [[NSCursor resizeUpDownCursor] set]; break;
-            case 5: [[NSCursor arrowCursor] set];        break; /* no public wait cursor in NSCursor */
-            default: [[NSCursor arrowCursor] set];       break;
+            case 1:
+                [[NSCursor pointingHandCursor] set];
+                break;
+            case 2:
+                [[NSCursor IBeamCursor] set];
+                break;
+            case 3:
+                [[NSCursor resizeLeftRightCursor] set];
+                break;
+            case 4:
+                [[NSCursor resizeUpDownCursor] set];
+                break;
+            case 5:
+                [[NSCursor arrowCursor] set];
+                break; /* no public wait cursor in NSCursor */
+            default:
+                [[NSCursor arrowCursor] set];
+                break;
         }
     }
 }

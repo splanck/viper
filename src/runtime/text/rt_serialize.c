@@ -54,7 +54,7 @@ static rt_string g_last_error = NULL;
 
 static void set_error(const char *msg)
 {
-    g_last_error = rt_string_from_bytes(msg, (int64_t)strlen(msg));
+    g_last_error = rt_string_from_bytes(msg, strlen(msg));
 }
 
 static void clear_error(void)

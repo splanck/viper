@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_heap.h
-// Purpose: Unified heap allocation system for all runtime reference types (strings, arrays, objects), providing a common header layout, reference counting, and type metadata.
+// Purpose: Unified heap allocation system for all runtime reference types (strings, arrays,
+// objects), providing a common header layout, reference counting, and type metadata.
 //
 // Key invariants:
 //   - Magic field (0x52504956 = 'VIPR') validates heap objects; invalid magic indicates corruption.
@@ -14,7 +15,8 @@
 //   - rt_heap_retain increments the refcount; rt_heap_release decrements and frees at zero.
 //   - rt_heap_release_deferred decrements without immediate free for batch cleanup.
 //
-// Links: src/runtime/core/rt_heap.c (implementation), src/runtime/core/rt_string.h, src/runtime/arrays/rt_array.h
+// Links: src/runtime/core/rt_heap.c (implementation), src/runtime/core/rt_string.h,
+// src/runtime/arrays/rt_array.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_zia_completion.h
-// Purpose: Runtime bridge declarations for the Zia language completion engine, provided by fe_zia at link time via weak/strong symbol resolution.
+// Purpose: Runtime bridge declarations for the Zia language completion engine, provided by fe_zia
+// at link time via weak/strong symbol resolution.
 //
 // Key invariants:
 //   - Strong implementations live in src/frontends/zia/rt_zia_completion.cpp (fe_zia).
@@ -13,13 +14,14 @@
 //   - Returned completion results are heap-allocated strings; caller must release them.
 //   - Source text string is borrowed for the duration of the call only.
 //
-// Links: src/frontends/zia/rt_zia_completion.cpp (strong implementation), src/runtime/core/rt_string.h
+// Links: src/frontends/zia/rt_zia_completion.cpp (strong implementation),
+// src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include <stdint.h>
 #include "rt_string.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"

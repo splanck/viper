@@ -360,7 +360,10 @@ static rt_sb_status rt_sb_vprintf_internal(rt_string_builder *sb, const char *fm
         }
 
         va_copy(copy, args);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
         int written = vsnprintf(sb->data + sb->len, avail, fmt, copy);
+#pragma GCC diagnostic pop
         va_end(copy);
 
         if (written < 0)

@@ -1,8 +1,8 @@
 // vg_minimap.c - Minimap widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -179,10 +179,7 @@ static void minimap_paint(vg_widget_t *widget, void *canvas)
                 uint32_t color = ((uint32_t)minimap->render_buffer[idx + 0] << 16) |
                                  ((uint32_t)minimap->render_buffer[idx + 1] << 8) |
                                  (uint32_t)minimap->render_buffer[idx + 2];
-                vgfx_pset(win,
-                          (int32_t)(widget->x + px),
-                          (int32_t)(widget->y + py),
-                          color);
+                vgfx_pset(win, (int32_t)(widget->x + px), (int32_t)(widget->y + py), color);
             }
         }
     }
@@ -194,20 +191,15 @@ static void minimap_paint(vg_widget_t *widget, void *canvas)
 
         // Map editor line coordinates to minimap pixel rows
         int32_t start_y = (int32_t)(widget->y + ed->visible_first_line * minimap->line_height);
-        int32_t end_y   = (int32_t)(widget->y +
-                           (ed->visible_first_line + ed->visible_line_count) * minimap->line_height);
+        int32_t end_y = (int32_t)(widget->y + (ed->visible_first_line + ed->visible_line_count) *
+                                                  minimap->line_height);
         int32_t h = end_y - start_y;
         if (h < 2)
             h = 2;
 
         // Draw viewport highlight rectangle
         uint32_t vc = minimap->viewport_color & 0x00FFFFFF; // strip alpha for vgfx
-        vgfx_rect(win,
-                  (int32_t)widget->x,
-                  start_y,
-                  (int32_t)minimap->buffer_width,
-                  h,
-                  vc);
+        vgfx_rect(win, (int32_t)widget->x, start_y, (int32_t)minimap->buffer_width, h, vc);
     }
 }
 

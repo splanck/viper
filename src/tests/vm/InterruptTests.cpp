@@ -34,8 +34,8 @@
 #include <string>
 
 #if !defined(_WIN32)
-#  include <sys/wait.h>
-#  include <unistd.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 using namespace il::core;
@@ -103,7 +103,8 @@ static int testInterruptFires()
     // process.  Run the VM in a forked child so the parent can capture the
     // trap diagnostic from stderr and verify the trap fired correctly.
 #if defined(_WIN32)
-    std::fprintf(stdout, "[SKIP] testInterruptFires: subprocess capture not available on Windows\n");
+    std::fprintf(stdout,
+                 "[SKIP] testInterruptFires: subprocess capture not available on Windows\n");
     return 0;
 #else
     Module mod;
@@ -144,11 +145,14 @@ static int testInterruptFires()
         // returning false.  runFunctionLoop checks s_interruptRequested after
         // dispatchDriver->run() returns and raises TrapKind::Interrupt.
         int callCount = 0;
-        VMTestHook::setPoll(vm, 500, [&callCount](VM &) -> bool {
-            if (++callCount == 1)
-                VM::requestInterrupt();
-            return false; // Stop the driver so the post-dispatch check fires.
-        });
+        VMTestHook::setPoll(vm,
+                            500,
+                            [&callCount](VM &) -> bool
+                            {
+                                if (++callCount == 1)
+                                    VM::requestInterrupt();
+                                return false; // Stop the driver so the post-dispatch check fires.
+                            });
 
         vm.run();
         ::_exit(0); // Unreachable: rt_abort terminates the child first.
@@ -172,11 +176,10 @@ static int testInterruptFires()
 
     // The child must have terminated with a non-zero exit code (rt_abort).
     const bool exitedNonZero = WIFEXITED(status) && WEXITSTATUS(status) != 0;
-    const bool signaled      = WIFSIGNALED(status);
+    const bool signaled = WIFSIGNALED(status);
     if (!exitedNonZero && !signaled)
     {
-        std::fprintf(stderr,
-                     "[FAIL] testInterruptFires: child exited cleanly (expected trap)\n");
+        std::fprintf(stderr, "[FAIL] testInterruptFires: child exited cleanly (expected trap)\n");
         return 1;
     }
 

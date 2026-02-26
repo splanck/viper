@@ -157,9 +157,9 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const
         }
 
         Symbol sym;
-        sym.kind    = Symbol::Kind::Method;
-        sym.name    = method.name;
-        sym.type    = types::function(std::move(paramTypes), retType);
+        sym.kind = Symbol::Kind::Method;
+        sym.name = method.name;
+        sym.type = types::function(std::move(paramTypes), retType);
         sym.isExtern = true;
         result.push_back(sym);
     }
@@ -170,13 +170,13 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const
         if (!prop.name)
             continue;
 
-        auto ilType  = il::runtime::mapILToken(prop.type ? prop.type : "");
+        auto ilType = il::runtime::mapILToken(prop.type ? prop.type : "");
         TypeRef propType = toZiaType(ilType);
 
         Symbol sym;
-        sym.kind    = Symbol::Kind::Field;
-        sym.name    = prop.name;
-        sym.type    = propType;
+        sym.kind = Symbol::Kind::Field;
+        sym.name = prop.name;
+        sym.type = propType;
         sym.isFinal = prop.readonly;
         sym.isExtern = true;
         result.push_back(sym);
@@ -259,7 +259,7 @@ std::string Sema::resolveModuleAlias(const std::string &alias) const
 std::vector<std::string> Sema::getNamespaceClasses(const std::string &nsPrefix) const
 {
     std::vector<std::string> result;
-    const std::string        nsWithDot = nsPrefix + ".";
+    const std::string nsWithDot = nsPrefix + ".";
     const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
 
     std::unordered_set<std::string> seen;
@@ -277,7 +277,7 @@ std::vector<std::string> Sema::getNamespaceClasses(const std::string &nsPrefix) 
         // e.g.  "Viper.GUI.Canvas"       → "Canvas"
         //        "Viper.GUI.App.Toolbar"  → "App"
         std::string rest(qname.substr(nsWithDot.size()));
-        auto        dotPos    = rest.find('.');
+        auto dotPos = rest.find('.');
         std::string childName = (dotPos != std::string::npos) ? rest.substr(0, dotPos) : rest;
         if (!childName.empty() && seen.insert(childName).second)
             result.push_back(childName);

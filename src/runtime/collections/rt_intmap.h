@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_intmap.h
-// Purpose: Integer-keyed hash map mapping int64_t keys to object pointer values, providing O(1) average insertion, lookup, and removal.
+// Purpose: Integer-keyed hash map mapping int64_t keys to object pointer values, providing O(1)
+// average insertion, lookup, and removal.
 //
 // Key invariants:
 //   - Keys are int64_t stored directly without boxing.

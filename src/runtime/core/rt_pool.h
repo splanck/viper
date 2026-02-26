@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_pool.h
-// Purpose: Slab allocator with four size classes (64, 128, 256, 512 bytes), reducing allocation overhead by reusing freed blocks without returning to the system allocator.
+// Purpose: Slab allocator with four size classes (64, 128, 256, 512 bytes), reducing allocation
+// overhead by reusing freed blocks without returning to the system allocator.
 //
 // Key invariants:
 //   - Size classes cover 1-64, 65-128, 129-256, and 257-512 byte allocations.

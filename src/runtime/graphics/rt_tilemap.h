@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_tilemap.h
-// Purpose: Tile-based 2D map for efficient grid rendering, providing per-tile attribute storage, layer support, and optimized batch rendering to a canvas.
+// Purpose: Tile-based 2D map for efficient grid rendering, providing per-tile attribute storage,
+// layer support, and optimized batch rendering to a canvas.
 //
 // Key invariants:
 //   - Tile IDs are non-negative integers; 0 conventionally means empty.

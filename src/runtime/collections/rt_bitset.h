@@ -1,7 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_bitset.h
-// Purpose: Arbitrary-size bit array (BitSet) with 0-based indexing that auto-grows when bits are set beyond the current size, supporting population count, set/clear/toggle, and bitwise operations.
+// Purpose: Arbitrary-size bit array (BitSet) with 0-based indexing that auto-grows when bits are
+// set beyond the current size, supporting population count, set/clear/toggle, and bitwise
+// operations.
 //
 // Key invariants:
 //   - Bit indices are 0-based; the bitset auto-grows when setting beyond current size.

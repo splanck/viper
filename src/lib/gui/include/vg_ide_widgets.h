@@ -1972,12 +1972,12 @@ extern "C"
     /// @brief Line information
     typedef struct vg_code_line
     {
-        char *text;            ///< Line text (owned)
-        size_t length;         ///< Text length
-        size_t capacity;       ///< Buffer capacity
-        uint32_t *colors;      ///< Per-character colors (owned, optional)
+        char *text;             ///< Line text (owned)
+        size_t length;          ///< Text length
+        size_t capacity;        ///< Buffer capacity
+        uint32_t *colors;       ///< Per-character colors (owned, optional)
         size_t colors_capacity; ///< Allocated entries in colors array
-        bool modified;         ///< Line modified since last save
+        bool modified;          ///< Line modified since last save
     } vg_code_line_t;
 
     /// @brief Selection range
@@ -2055,7 +2055,7 @@ extern "C"
         vg_edit_history_t *history; ///< Edit history for undo/redo
 
         // Scrollbar drag state
-        bool  scrollbar_dragging;          ///< True while user is dragging the scroll thumb
+        bool scrollbar_dragging;           ///< True while user is dragging the scroll thumb
         float scrollbar_drag_offset;       ///< Mouse Y at drag start (widget-relative)
         float scrollbar_drag_start_scroll; ///< scroll_y value at drag start
 
@@ -2066,8 +2066,9 @@ extern "C"
             int end_line, end_col;     ///< Exclusive end position
             uint32_t color;            ///< Background highlight color (0x00RRGGBB)
         } *highlight_spans;            ///< Owned array; NULL when unused
-        int highlight_span_count;      ///< Active span count
-        int highlight_span_cap;        ///< Allocated capacity
+
+        int highlight_span_count; ///< Active span count
+        int highlight_span_cap;   ///< Allocated capacity
 
         // Gutter icons (breakpoints, diagnostics, etc.)
         struct vg_gutter_icon
@@ -2075,9 +2076,10 @@ extern "C"
             int line;       ///< 0-based line number
             int type;       ///< 0=breakpoint, 1=warning, 2=error, 3=info
             uint32_t color; ///< Icon color (0x00RRGGBB)
-        } *gutter_icons;               ///< Owned array; NULL when unused
-        int gutter_icon_count;         ///< Active icon count
-        int gutter_icon_cap;           ///< Allocated capacity
+        } *gutter_icons;    ///< Owned array; NULL when unused
+
+        int gutter_icon_count; ///< Active icon count
+        int gutter_icon_cap;   ///< Allocated capacity
 
         // Fold regions
         struct vg_fold_region
@@ -2085,18 +2087,20 @@ extern "C"
             int start_line; ///< First line of the foldable block
             int end_line;   ///< Last line of the foldable block (inclusive)
             bool folded;    ///< Whether the region is currently collapsed
-        } *fold_regions;               ///< Owned array; NULL when unused
-        int fold_region_count;         ///< Active region count
-        int fold_region_cap;           ///< Allocated capacity
+        } *fold_regions;    ///< Owned array; NULL when unused
+
+        int fold_region_count; ///< Active region count
+        int fold_region_cap;   ///< Allocated capacity
 
         // Extra cursors (multi-cursor display — input still uses primary cursor)
         struct vg_extra_cursor
         {
-            int line; ///< 0-based line number
-            int col;  ///< 0-based column number
-        } *extra_cursors;              ///< Owned array; NULL when unused
-        int extra_cursor_count;        ///< Active extra cursor count
-        int extra_cursor_cap;          ///< Allocated capacity
+            int line;     ///< 0-based line number
+            int col;      ///< 0-based column number
+        } *extra_cursors; ///< Owned array; NULL when unused
+
+        int extra_cursor_count; ///< Active extra cursor count
+        int extra_cursor_cap;   ///< Allocated capacity
     } vg_codeeditor_t;
 
     /// @brief Create a new code editor widget
@@ -2671,7 +2675,7 @@ extern "C"
         bool dropdown_open;   ///< Is dropdown open
         int dropdown_index;   ///< Which item's dropdown is open
         int dropdown_hovered; ///< Hovered dropdown item
-        int max_items;        ///< Maximum items to display (0 = unlimited, oldest removed when exceeded)
+        int max_items; ///< Maximum items to display (0 = unlimited, oldest removed when exceeded)
 
         // Callbacks
         void (*on_click)(struct vg_breadcrumb *bc, int index, void *user_data);
@@ -2779,8 +2783,9 @@ extern "C"
             uint32_t color; ///< Marker color (0x00RRGGBB)
             int type;       ///< Marker type (user-defined category)
         } *markers;         ///< Owned array; NULL when unused
-        int marker_count;   ///< Active marker count
-        int marker_cap;     ///< Allocated capacity
+
+        int marker_count; ///< Active marker count
+        int marker_cap;   ///< Allocated capacity
     } vg_minimap_t;
 
     /// @brief Create a new minimap widget
@@ -2991,12 +2996,12 @@ extern "C"
 
         uint32_t bg_color;     ///< Background fill color (0xAARRGGBB).
         uint32_t border_color; ///< Border color (0xAARRGGBB).
-        float    border_width; ///< Border width in pixels (0 = no border).
+        float border_width;    ///< Border width in pixels (0 = no border).
 
         /// @brief Private child array (not part of the widget tree).
         vg_widget_t **children;
-        int           child_count;
-        int           child_cap;
+        int child_count;
+        int child_cap;
     } vg_floatingpanel_t;
 
     /// @brief Create a floating panel connected to @p root.

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_args.h
-// Purpose: Process-wide command-line argument store and environment variable access, providing push/query semantics for argument strings and get/set/has helpers for environment variables.
+// Purpose: Process-wide command-line argument store and environment variable access, providing
+// push/query semantics for argument strings and get/set/has helpers for environment variables.
 //
 // Key invariants:
 //   - Argument indices are zero-based and contiguous.

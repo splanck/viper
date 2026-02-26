@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_sprite.h
-// Purpose: 2D sprite with transform (position, rotation, scale), animation frame tracking, and canvas-based rendering for game development.
+// Purpose: 2D sprite with transform (position, rotation, scale), animation frame tracking, and
+// canvas-based rendering for game development.
 //
 // Key invariants:
 //   - Position is in logical pixels; rotation is in degrees.
@@ -179,11 +180,11 @@ extern "C"
     typedef struct rt_sprite_animator
     {
         rt_anim_clip_t clips[RT_ANIM_MAX_CLIPS]; ///< Registered clips
-        int clip_count;                           ///< Number of registered clips
-        int current_clip;                         ///< Index of playing clip (-1 = idle)
-        int64_t clip_frame;                       ///< Frame index within current clip
-        int64_t last_update_ms;                   ///< Timestamp of last frame advance
-        int playing;                              ///< 1 if animation is running
+        int clip_count;                          ///< Number of registered clips
+        int current_clip;                        ///< Index of playing clip (-1 = idle)
+        int64_t clip_frame;                      ///< Frame index within current clip
+        int64_t last_update_ms;                  ///< Timestamp of last frame advance
+        int playing;                             ///< 1 if animation is running
     } rt_sprite_animator_t;
 
     /// @brief Allocate a new animator (caller owns; free with rt_sprite_animator_destroy).
