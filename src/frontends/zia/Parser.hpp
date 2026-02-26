@@ -679,6 +679,15 @@ class Parser
     /// @details Set by error() and errorAt().
     bool hasError_{false};
 
+    /// @brief Current expression nesting depth for recursion guard.
+    /// @details Incremented on entry to parseUnary(), decremented on exit.
+    /// Prevents stack overflow from deeply nested expressions like
+    /// `-(-(-(-(...))))`.
+    unsigned exprDepth_{0};
+
+    /// @brief Maximum allowed expression nesting depth.
+    static constexpr unsigned kMaxExprDepth = 256;
+
     /// @brief Depth of speculative parsing scopes (suppresses diagnostics).
     int suppressionDepth_{0};
 

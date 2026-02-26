@@ -61,7 +61,6 @@ namespace
         instr.loc,
         functionName,
         sourceLabel);
-    std::_Exit(1);
 }
 } // namespace
 

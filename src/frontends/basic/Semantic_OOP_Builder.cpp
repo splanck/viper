@@ -434,19 +434,6 @@ void OopIndexBuilder::processInterfaceDecl(const InterfaceDecl &idecl)
     index_.interfacesByQname()[ii.qualifiedName] = std::move(ii);
 }
 
-// Legacy compatibility - forwards to unified scan
-void OopIndexBuilder::scanClasses(const std::vector<StmtPtr> &stmts)
-{
-    scanDeclarations(stmts);
-}
-
-// Legacy compatibility - now a no-op since scanDeclarations handles both
-void OopIndexBuilder::scanInterfaces(const std::vector<StmtPtr> &stmts)
-{
-    // Interface scanning is now done in scanDeclarations
-    (void)stmts;
-}
-
 void OopIndexBuilder::collectUsingDirectives(const std::vector<StmtPtr> &stmts)
 {
     for (const auto &stmtPtr : stmts)
@@ -848,11 +835,8 @@ void OopIndexBuilder::build(const Program &program)
 {
     index_.clear();
 
-    // Phase 1: Scan classes and collect metadata
-    scanClasses(program.main);
-
-    // Phase 1b: Scan interfaces and assign stable IDs
-    scanInterfaces(program.main);
+    // Phase 1: Scan classes and interfaces, collect metadata
+    scanDeclarations(program.main);
 
     // Collect USING directives for resolution
     collectUsingDirectives(program.main);

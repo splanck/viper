@@ -210,11 +210,11 @@ class RuntimeBridge
 
     /// @brief Report a trap with source location @p loc within function @p fn and
     /// block @p block.
-    static void trap(TrapKind kind,
-                     const std::string &msg,
-                     const il::support::SourceLoc &loc,
-                     const std::string &fn,
-                     const std::string &block);
+    [[noreturn]] static void trap(TrapKind kind,
+                                  const std::string &msg,
+                                  const il::support::SourceLoc &loc,
+                                  const std::string &fn,
+                                  const std::string &block);
 
     /// @brief Access the runtime call context active on the current thread.
     /// @return Pointer to the call context when a runtime call is executing; nullptr otherwise.

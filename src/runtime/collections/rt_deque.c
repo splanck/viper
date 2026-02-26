@@ -56,10 +56,11 @@ typedef struct
 // Helper Functions
 //=============================================================================
 
+extern void rt_trap(const char *msg);
+
 static void trap_with_message(const char *msg)
 {
-    fprintf(stderr, "Deque trap: %s\n", msg);
-    abort();
+    rt_trap(msg);
 }
 
 static void ensure_capacity(Deque *d, int64_t required)

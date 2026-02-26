@@ -84,7 +84,6 @@ std::string captureTrap(bool includeMetadata, bool primeContext)
         const std::string block = includeMetadata ? std::string(kFirstBlock) : std::string();
 
         il::vm::RuntimeBridge::trap(il::vm::TrapKind::DomainError, message, loc, fn, block);
-        _exit(0); // Unreachable but placates compilers.
     }
 
     close(fds[1]);

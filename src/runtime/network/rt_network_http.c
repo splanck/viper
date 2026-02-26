@@ -2310,13 +2310,13 @@ rt_string rt_url_host_port(void *obj)
     int64_t default_port = default_port_for_scheme(url->scheme);
     bool show_port = url->port > 0 && url->port != default_port;
 
-    size_t size = strlen(url->host) + (show_port ? 8 : 0);
+    size_t size = strlen(url->host) + (show_port ? 22 : 0);
     char *result = (char *)malloc(size + 1);
     if (!result)
         return rt_string_from_bytes("", 0);
 
     if (show_port)
-        sprintf(result, "%s:%lld", url->host, (long long)url->port);
+        snprintf(result, size + 1, "%s:%lld", url->host, (long long)url->port);
     else
     {
         size_t hlen = strlen(url->host);
@@ -2584,7 +2584,7 @@ void *rt_url_resolve(void *obj, rt_string relative)
                         size_t len = strlen(rel.path) + 2;
                         result->path = (char *)malloc(len);
                         if (result->path)
-                            sprintf(result->path, "/%s", rel.path);
+                            snprintf(result->path, len, "/%s", rel.path);
                     }
                     else
                     {

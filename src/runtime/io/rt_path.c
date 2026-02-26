@@ -39,6 +39,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 #ifdef _WIN32
 #include <direct.h>
 #include <windows.h>
@@ -840,6 +842,12 @@ rt_string rt_path_norm(rt_string path)
     // We'll store component start/end pairs
     size_t *comp_starts = (size_t *)malloc(len * sizeof(size_t));
     size_t *comp_ends = (size_t *)malloc(len * sizeof(size_t));
+    if (!comp_starts || !comp_ends)
+    {
+        free(comp_starts);
+        free(comp_ends);
+        rt_trap("rt_path: memory allocation failed");
+    }
     size_t comp_count = 0;
 
     int is_absolute = 0;

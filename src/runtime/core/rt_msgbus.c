@@ -44,6 +44,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 // --- Subscription ---
 
 typedef struct mb_sub
@@ -147,6 +149,8 @@ static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic)
         return t;
 
     t = (mb_topic *)calloc(1, sizeof(mb_topic));
+    if (!t)
+        rt_trap("rt_msgbus: memory allocation failed");
     t->name = topic;
     rt_obj_retain_maybe(topic);
     t->subs = NULL;
@@ -166,6 +170,8 @@ void *rt_msgbus_new(void)
     rt_msgbus_impl *mb = (rt_msgbus_impl *)rt_obj_new_i64(0, sizeof(rt_msgbus_impl));
     mb->bucket_count = 32;
     mb->buckets = (mb_topic **)calloc(32, sizeof(mb_topic *));
+    if (!mb->buckets)
+        rt_trap("rt_msgbus: memory allocation failed");
     mb->next_id = 1;
     mb->total_subs = 0;
     rt_obj_set_finalizer(mb, mb_finalizer);
@@ -180,6 +186,8 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback)
     mb_topic *t = mb_ensure_topic(mb, topic);
 
     mb_sub *s = (mb_sub *)calloc(1, sizeof(mb_sub));
+    if (!s)
+        rt_trap("rt_msgbus: memory allocation failed");
     s->id = mb->next_id++;
     s->topic = topic;
     rt_obj_retain_maybe(topic);

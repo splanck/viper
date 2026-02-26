@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/ErrorsEhTests.cpp
-// Purpose: Validate VM error handlers resume execution using resume.next and resume.label.
+// Purpose: Validate VM error handlers resume execution using resume.same, resume.next, and resume.label.
 // Key invariants: Handlers receive resume tokens and normal execution continues as specified.
 // Ownership/Lifetime: Builds IL modules on the stack and executes them via the VM.
 // Links: docs/specs/errors.md
@@ -341,6 +341,121 @@ Module buildErrGetLineModule()
     return module;
 }
 
+/// Build a module that tests resume.same with nested EH handlers.
+///
+/// Flow:
+///   entry:       eh.push outer_handler, br -> setup
+///   setup:       eh.push inner_handler, br -> try_block
+///   try_block:   sdiv.chk0 10/0 → traps → inner_handler catches
+///   inner_handler: resume.same → re-executes sdiv.chk0 → traps again
+///                  inner was already popped, so outer_handler catches
+///   outer_handler: ret 77
+///
+/// Verifies resume.same correctly re-dispatches to the faulting instruction,
+/// causing a second trap that the outer handler catches.
+Module buildResumeSameModule()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    fn.blocks.reserve(5);
+    auto &entry = builder.addBlock(fn, "entry");
+    auto &setup = builder.addBlock(fn, "setup");
+    auto &tryBlock = builder.addBlock(fn, "try_block");
+    auto &outerHandler = builder.createBlock(
+        fn,
+        "outer_handler",
+        {Param{"err", Type(Type::Kind::Error), 0}, Param{"tok", Type(Type::Kind::ResumeTok), 0}});
+    auto &innerHandler = builder.createBlock(
+        fn,
+        "inner_handler",
+        {Param{"err", Type(Type::Kind::Error), 0}, Param{"tok", Type(Type::Kind::ResumeTok), 0}});
+
+    // entry: push outer handler, branch to setup
+    builder.setInsertPoint(entry);
+    Instr pushOuter;
+    pushOuter.op = Opcode::EhPush;
+    pushOuter.type = Type(Type::Kind::Void);
+    pushOuter.labels.push_back("outer_handler");
+    entry.instructions.push_back(pushOuter);
+
+    Instr brSetup;
+    brSetup.op = Opcode::Br;
+    brSetup.type = Type(Type::Kind::Void);
+    brSetup.labels.push_back("setup");
+    brSetup.brArgs.push_back({});
+    entry.instructions.push_back(brSetup);
+    entry.terminated = true;
+
+    // setup: push inner handler, branch to try_block
+    builder.setInsertPoint(setup);
+    Instr pushInner;
+    pushInner.op = Opcode::EhPush;
+    pushInner.type = Type(Type::Kind::Void);
+    pushInner.labels.push_back("inner_handler");
+    setup.instructions.push_back(pushInner);
+
+    Instr brTry;
+    brTry.op = Opcode::Br;
+    brTry.type = Type(Type::Kind::Void);
+    brTry.labels.push_back("try_block");
+    brTry.brArgs.push_back({});
+    setup.instructions.push_back(brTry);
+    setup.terminated = true;
+
+    // try_block: sdiv.chk0 10/0 (traps), eh.pop, ret 0
+    builder.setInsertPoint(tryBlock);
+    Instr div;
+    div.result = builder.reserveTempId();
+    div.op = Opcode::SDivChk0;
+    div.type = Type(Type::Kind::I64);
+    div.operands.push_back(Value::constInt(10));
+    div.operands.push_back(Value::constInt(0));
+    tryBlock.instructions.push_back(div);
+
+    Instr popInner;
+    popInner.op = Opcode::EhPop;
+    popInner.type = Type(Type::Kind::Void);
+    tryBlock.instructions.push_back(popInner);
+
+    Instr popOuter;
+    popOuter.op = Opcode::EhPop;
+    popOuter.type = Type(Type::Kind::Void);
+    tryBlock.instructions.push_back(popOuter);
+
+    Instr retNormal;
+    retNormal.op = Opcode::Ret;
+    retNormal.type = Type(Type::Kind::Void);
+    retNormal.operands.push_back(Value::constInt(0));
+    tryBlock.instructions.push_back(retNormal);
+    tryBlock.terminated = true;
+
+    // inner_handler: pop self from EH stack, then resume.same to rethrow
+    builder.setInsertPoint(innerHandler);
+    Instr popSelf;
+    popSelf.op = Opcode::EhPop;
+    popSelf.type = Type(Type::Kind::Void);
+    innerHandler.instructions.push_back(popSelf);
+
+    Instr resumeSame;
+    resumeSame.op = Opcode::ResumeSame;
+    resumeSame.type = Type(Type::Kind::Void);
+    resumeSame.operands.push_back(builder.blockParam(innerHandler, 1));
+    innerHandler.instructions.push_back(resumeSame);
+    innerHandler.terminated = true;
+
+    // outer_handler: catch the rethrown exception, return 77
+    builder.setInsertPoint(outerHandler);
+    Instr retOuter;
+    retOuter.op = Opcode::Ret;
+    retOuter.type = Type(Type::Kind::Void);
+    retOuter.operands.push_back(Value::constInt(77));
+    outerHandler.instructions.push_back(retOuter);
+    outerHandler.terminated = true;
+
+    return module;
+}
+
 Module buildTrapKindReadModule()
 {
     Module module;
@@ -422,6 +537,14 @@ int main()
         il::vm::VM vm(module);
         const int64_t exitCode = vm.run();
         assert(exitCode == 99);
+    }
+
+    // resume.same: inner handler rethrows via resume.same, outer handler catches and returns 77
+    {
+        Module module = buildResumeSameModule();
+        il::vm::VM vm(module);
+        const int64_t exitCode = vm.run();
+        assert(exitCode == 77);
     }
 
     {

@@ -80,7 +80,7 @@ using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
 /// @param fn Name of the function executing the call.
 /// @param block Name of the basic block executing the call.
 /// @return True when counts match; false when a trap was raised.
-static bool validateArgumentCount(const RuntimeDescriptor &desc,
+static void validateArgumentCount(const RuntimeDescriptor &desc,
                                   std::span<const Slot> args,
                                   const SourceLoc &loc,
                                   const std::string &fn,
@@ -88,10 +88,9 @@ static bool validateArgumentCount(const RuntimeDescriptor &desc,
 {
     auto validation = il::vm::validateMarshalArity(desc, args.size());
     if (validation.ok)
-        return true;
+        return;
 
     RuntimeBridge::trap(TrapKind::DomainError, validation.errorMessage, loc, fn, block);
-    return false;
 }
 
 /// @brief Execute a runtime descriptor by marshalling arguments and collecting results.
@@ -298,7 +297,6 @@ extern "C" __attribute__((weak)) void vm_trap(const char *msg)
     {
         il::vm::RuntimeBridge::trap(
             TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
-        return;
     }
     if (trapMsg && *trapMsg)
         std::fprintf(stderr, "%s\n", trapMsg);
@@ -314,7 +312,6 @@ extern "C" void vm_trap(const char *msg)
     {
         il::vm::RuntimeBridge::trap(
             TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
-        return;
     }
     if (trapMsg && *trapMsg)
         std::fprintf(stderr, "%s\n", trapMsg);
@@ -515,8 +512,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
             TrapKind::DomainError, diag::formatUnknownRuntimeHelper(name), loc, fn, block);
         return result;
     }
-    if (!validateArgumentCount(*desc, args, loc, fn, block))
-        return result;
+    validateArgumentCount(*desc, args, loc, fn, block);
 
     ctx.descriptor = desc;
     ctx.argBegin = args.empty() ? nullptr : const_cast<Slot *>(args.data());
@@ -648,14 +644,17 @@ void RuntimeBridge::trap(TrapKind kind,
     {
         case TrapKind::Overflow:
             handleOverflow(ctx, trapOpcode, noOperands);
-            return;
+            break;
         case TrapKind::DivideByZero:
             handleDivByZero(ctx, trapOpcode, noOperands);
-            return;
+            break;
         default:
             handleGenericTrap(ctx);
-            return;
+            break;
     }
+    // handleOverflow / handleDivByZero / handleGenericTrap always throw
+    // TrapDispatchSignal or call rt_abort(); control never reaches here.
+    __builtin_unreachable();
 }
 
 /// @brief Retrieve the currently installed runtime call context, if any.

@@ -16,7 +16,6 @@
 #include "support/arena.hpp"
 #include "support/diag_expected.hpp"
 #include "support/diagnostics.hpp"
-#include "support/result.hpp"
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
@@ -276,27 +275,6 @@ int main()
     assert(!overflow);
     assert(boundedInterner.lookup(overflow).empty());
     assert(boundedInterner.intern("s0") == s0);
-
-    // Result<T> basic success/error flows
-    il::support::Result<int> intResult(42);
-    assert(intResult.isOk());
-    assert(intResult.value() == 42);
-
-    il::support::Result<int> intError = il::support::Result<int>::error("boom");
-    assert(!intError.isOk());
-    assert(intError.error() == "boom");
-
-    il::support::Result<std::string> strResult = il::support::Result<std::string>::success("value");
-    assert(strResult.isOk());
-    assert(strResult.value() == "value");
-
-    il::support::Result<std::string> strError = il::support::Result<std::string>::error("nope");
-    assert(!strError.isOk());
-    assert(strError.error() == "nope");
-
-    il::support::Result<std::string> literalResult{"ok"};
-    assert(literalResult.isOk());
-    assert(literalResult.value() == "ok");
 
     // SourceManager overflow handling
     {

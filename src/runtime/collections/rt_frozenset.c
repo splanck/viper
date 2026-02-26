@@ -42,6 +42,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 // --- Helper: extract string from seq element (may be boxed) ---
 
 static rt_string fs_extract_str(void *elem)
@@ -124,6 +126,8 @@ static rt_frozenset_impl *fs_alloc(int64_t count)
     fs->count = 0;
     fs->capacity = cap;
     fs->slots = (fs_slot *)calloc((size_t)cap, sizeof(fs_slot));
+    if (!fs->slots)
+        rt_trap("rt_frozenset: memory allocation failed");
     rt_obj_set_finalizer(fs, fs_finalizer);
     return fs;
 }

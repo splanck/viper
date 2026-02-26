@@ -100,9 +100,15 @@ Token Parser::expect(TokenKind k)
 ///          messaging while ensuring the parser resumes at a stable location.
 void Parser::syncToStmtBoundary()
 {
-    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
+    // Bounded token consumption prevents compiler hang on pathological input.
+    constexpr unsigned kMaxResyncTokens = 10000;
+    unsigned consumed = 0;
+
+    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon) &&
+           consumed < kMaxResyncTokens)
     {
         consume();
+        ++consumed;
     }
 }
 

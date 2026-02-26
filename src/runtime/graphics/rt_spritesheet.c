@@ -104,6 +104,11 @@ static void ensure_cap(rt_spritesheet_impl *ss)
 {
     if (ss->count < ss->capacity)
         return;
+    if (ss->capacity > INT64_MAX / 2)
+    {
+        rt_trap("SpriteSheet: capacity overflow");
+        return;
+    }
     int64_t new_cap = ss->capacity * 2;
 
     // Use malloc+memcpy so both arrays can be freed independently on partial failure.

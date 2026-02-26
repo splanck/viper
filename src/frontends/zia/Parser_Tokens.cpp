@@ -105,7 +105,12 @@ bool Parser::expect(TokenKind kind, const char *what, Token *out)
 
 void Parser::resyncAfterError()
 {
-    while (!check(TokenKind::Eof))
+    // Bounded token consumption prevents compiler hang on pathological input
+    // lacking statement boundaries.
+    constexpr unsigned kMaxResyncTokens = 10000;
+    unsigned consumed = 0;
+
+    while (!check(TokenKind::Eof) && consumed < kMaxResyncTokens)
     {
         if (check(TokenKind::Semicolon))
         {
@@ -118,6 +123,7 @@ void Parser::resyncAfterError()
             return;
         }
         advance();
+        ++consumed;
     }
 }
 

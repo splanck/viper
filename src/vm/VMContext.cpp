@@ -259,7 +259,6 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
     if (!blockLabel.empty())
         detail += " (block " + blockLabel + ')';
     RuntimeBridge::trap(TrapKind::InvalidOperation, detail, ctx.loc, funcName, blockLabel);
-    std::terminate();
 }
 
 /// @brief Forward trace events to the underlying VM tracer.
@@ -482,11 +481,12 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             return slot;
         }
         default:
-            // Already handled Temp, ConstInt, ConstFloat above
-            break;
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "eval: unexpected value kind",
+                                {},
+                                fr.func ? fr.func->name : std::string{},
+                                "");
     }
-    Slot slot{};
-    return slot;
 }
 
 /// @brief Execute a single interpreter step on behalf of the VM.

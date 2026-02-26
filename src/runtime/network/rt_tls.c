@@ -2485,6 +2485,11 @@ void *rt_viper_tls_connect(rt_string host, int64_t port)
 
     tls->session = session;
     tls->host = strdup(host_cstr);
+    if (!tls->host)
+    {
+        rt_tls_close(session);
+        return NULL;
+    }
     tls->port = port;
 
     rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
@@ -2525,6 +2530,11 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 
     tls->session = session;
     tls->host = strdup(host_cstr);
+    if (!tls->host)
+    {
+        rt_tls_close(session);
+        return NULL;
+    }
     tls->port = port;
 
     rt_obj_set_finalizer(tls, rt_viper_tls_finalize);

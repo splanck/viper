@@ -75,13 +75,6 @@ PassManager::PassManager()
             viper::analysis::CFGContext ctx(module);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
-    analysisRegistry_.registerFunctionAnalysis<viper::analysis::PostDomTree>(
-        kAnalysisPostDominators,
-        [](core::Module &module, core::Function &fn)
-        {
-            viper::analysis::CFGContext ctx(module);
-            return viper::analysis::computePostDominatorTree(ctx, fn);
-        });
     analysisRegistry_.registerFunctionAnalysis<LoopInfo>(
         kAnalysisLoopInfo,
         [](core::Module &module, core::Function &fn) { return computeLoopInfo(module, fn); });

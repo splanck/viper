@@ -150,10 +150,11 @@ int8_t rt_result_is_err(void *obj)
 // Value Extraction
 //=============================================================================
 
+extern void rt_trap(const char *msg);
+
 static void trap_with_message(const char *msg)
 {
-    fprintf(stderr, "Result trap: %s\n", msg);
-    abort();
+    rt_trap(msg);
 }
 
 void *rt_result_unwrap(void *obj)

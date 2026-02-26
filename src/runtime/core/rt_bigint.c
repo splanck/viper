@@ -78,6 +78,8 @@ static bigint_t *bigint_alloc(int64_t capacity)
     bigint_t *bi = (bigint_t *)obj;
     bi->cap = capacity > 0 ? capacity : 4;
     bi->digits = calloc((size_t)bi->cap, sizeof(uint32_t));
+    if (!bi->digits)
+        rt_trap("bigint: memory allocation failed");
     bi->len = 0;
     bi->sign = 0;
 
@@ -438,6 +440,8 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base)
     // Estimate size: safe upper bound covering all bases (base 2 = 32 bits/limb)
     int64_t max_chars = bi->len * 33 + 4;
     char *buf = malloc((size_t)max_chars);
+    if (!buf)
+        rt_trap("bigint: memory allocation failed");
     int64_t pos = max_chars - 1;
     buf[pos--] = '\0';
 

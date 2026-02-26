@@ -457,9 +457,18 @@ Token Lexer::lexIdentifierOrKeyword()
     tok.loc = currentLoc();
     tok.text.reserve(16);
 
-    // Consume identifier characters
+    // Consume identifier characters (capped at 1024 to prevent OOM from malicious input)
     while (!eof() && isIdentifierContinue(peekChar()))
     {
+        if (tok.text.size() >= 1024)
+        {
+            reportError(tok.loc, "identifier too long (limit: 1024 characters)");
+            // Skip remaining identifier characters
+            while (!eof() && isIdentifierContinue(peekChar()))
+                getChar();
+            tok.kind = TokenKind::Error;
+            return tok;
+        }
         tok.text.push_back(getChar());
     }
 
@@ -758,6 +767,9 @@ Token Lexer::lexString()
 
     tok.text.push_back(getChar()); // consume opening "
 
+    // 16MB cap prevents OOM from malicious input
+    static constexpr size_t kMaxStringLength = 16 * 1024 * 1024;
+
     while (!eof())
     {
         char c = peekChar();
@@ -769,9 +781,27 @@ Token Lexer::lexString()
             return tok;
         }
 
+        if (tok.text.size() >= kMaxStringLength)
+        {
+            reportError(tok.loc, "string literal too long (limit: 16MB)");
+            // Skip to closing quote or EOF
+            while (!eof() && peekChar() != '"')
+                getChar();
+            if (!eof())
+                getChar(); // consume closing "
+            tok.kind = TokenKind::Error;
+            return tok;
+        }
+
         // Check for string interpolation: ${
         if (c == '$' && peekChar(1) == '{')
         {
+            if (interpolationDepth_ >= 32)
+            {
+                reportError(tok.loc, "string interpolation nesting too deep (limit: 32)");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
             // This is an interpolated string - change token kind to StringStart
             tok.kind = TokenKind::StringStart;
             tok.text.push_back(getChar()); // consume '$'
@@ -876,6 +906,12 @@ Token Lexer::lexInterpolatedStringContinuation()
         // Check for another interpolation: ${
         if (c == '$' && peekChar(1) == '{')
         {
+            if (interpolationDepth_ >= 32)
+            {
+                reportError(tok.loc, "string interpolation nesting too deep (limit: 32)");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
             tok.kind = TokenKind::StringMid;
             tok.text.push_back(getChar()); // consume '$'
             tok.text.push_back(getChar()); // consume '{'

@@ -198,6 +198,8 @@ static void bw_init(bit_writer_t *bw, size_t initial_cap)
 {
     bw->capacity = initial_cap > 256 ? initial_cap : 256;
     bw->data = (uint8_t *)malloc(bw->capacity);
+    if (!bw->data)
+        rt_trap("rt_compress: memory allocation failed");
     bw->len = 0;
     bw->buffer = 0;
     bw->bits_in_buf = 0;
@@ -458,6 +460,8 @@ static void out_init(output_buffer_t *out, size_t initial_cap)
 {
     out->capacity = initial_cap > 256 ? initial_cap : 256;
     out->data = (uint8_t *)malloc(out->capacity);
+    if (!out->data)
+        rt_trap("rt_compress: memory allocation failed");
     out->len = 0;
 }
 

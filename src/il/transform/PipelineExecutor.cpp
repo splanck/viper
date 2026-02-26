@@ -26,6 +26,7 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <iostream>
 #include <thread>
 #include <utility>
 
@@ -195,11 +196,14 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
     }
 
     bool ok = driver.runPipeline(pipeline);
+    if (!ok)
+    {
 #ifndef NDEBUG
-    assert(ok && "pass pipeline execution failed");
+        assert(false && "pass pipeline execution failed");
 #else
-    (void)ok;
+        std::cerr << "warning: pass pipeline execution failed\n";
 #endif
+    }
 }
 
 } // namespace il::transform

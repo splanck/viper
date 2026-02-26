@@ -243,6 +243,8 @@ static void ensure_weak_buckets(void)
         return;
     g_gc.weak_bucket_count = WEAK_BUCKET_COUNT;
     g_gc.weak_buckets = (weak_chain *)calloc((size_t)g_gc.weak_bucket_count, sizeof(weak_chain));
+    if (!g_gc.weak_buckets)
+        rt_trap("gc: memory allocation failed");
 }
 
 static uint64_t ptr_hash(void *p)
@@ -545,6 +547,8 @@ int64_t rt_gc_collect(void)
     if (garbage_count > 0)
     {
         garbage = (void **)malloc((size_t)garbage_count * sizeof(void *));
+        if (!garbage)
+            rt_trap("gc: memory allocation failed");
         int64_t gi = 0;
 
         /* Collect garbage pointers and remove from tracked set. */

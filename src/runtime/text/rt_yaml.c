@@ -44,6 +44,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 //=============================================================================
 // Type Constants
 //=============================================================================
@@ -310,6 +312,8 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote)
     size_t start = p->pos;
     size_t capacity = 64;
     char *buf = malloc(capacity);
+    if (!buf)
+        rt_trap("rt_yaml: memory allocation failed");
     size_t len = 0;
 
     while (!parser_eof(p) && parser_peek(p) != quote)
@@ -356,6 +360,8 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote)
         {
             capacity *= 2;
             buf = realloc(buf, capacity);
+            if (!buf)
+                rt_trap("rt_yaml: memory allocation failed");
         }
         buf[len++] = c;
     }
@@ -562,6 +568,8 @@ static void *parse_value(yaml_parser *p, int base_indent)
 
         size_t capacity = 256;
         char *buf = malloc(capacity);
+        if (!buf)
+            rt_trap("rt_yaml: memory allocation failed");
         size_t len = 0;
 
         while (!parser_eof(p))
@@ -581,6 +589,8 @@ static void *parse_value(yaml_parser *p, int base_indent)
                 {
                     capacity *= 2;
                     buf = realloc(buf, capacity);
+                    if (!buf)
+                        rt_trap("rt_yaml: memory allocation failed");
                 }
                 buf[len++] = parser_advance(p);
             }
@@ -691,6 +701,8 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str)
     {
         *cap = (*cap == 0) ? 256 : (*cap * 2);
         *buf = realloc(*buf, *cap);
+        if (!*buf)
+            rt_trap("rt_yaml: memory allocation failed");
     }
     memcpy(*buf + *len, str, slen);
     *len += slen;
@@ -703,6 +715,8 @@ static void buf_append_char(char **buf, size_t *cap, size_t *len, char c)
     {
         *cap = (*cap == 0) ? 256 : (*cap * 2);
         *buf = realloc(*buf, *cap);
+        if (!*buf)
+            rt_trap("rt_yaml: memory allocation failed");
     }
     (*buf)[*len] = c;
     (*len)++;

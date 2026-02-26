@@ -42,6 +42,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 // ---------------------------------------------------------------------------
 // Internal structure
 // ---------------------------------------------------------------------------
@@ -232,7 +234,11 @@ void rt_defaultmap_set(void *map, rt_string key, void *value)
 
     // New entry
     rt_dm_entry *ne = (rt_dm_entry *)calloc(1, sizeof(rt_dm_entry));
+    if (!ne)
+        rt_trap("rt_defaultmap: memory allocation failed");
     ne->key = (char *)malloc(klen + 1);
+    if (!ne->key)
+        rt_trap("rt_defaultmap: memory allocation failed");
     memcpy(ne->key, kstr, klen + 1);
     ne->key_len = klen;
     if (value)

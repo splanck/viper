@@ -147,10 +147,11 @@ int8_t rt_option_is_none(void *obj)
 // Value Extraction
 //=============================================================================
 
+extern void rt_trap(const char *msg);
+
 static void trap_with_message(const char *msg)
 {
-    fprintf(stderr, "Option trap: %s\n", msg);
-    abort();
+    rt_trap(msg);
 }
 
 void *rt_option_unwrap(void *obj)

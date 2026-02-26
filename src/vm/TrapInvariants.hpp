@@ -88,11 +88,22 @@
 #pragma once
 
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
 
 #ifdef NDEBUG
-#define VIPER_TRAP_ASSERT(condition, message) ((void)0)
-#define VIPER_TRAP_REQUIRE_ACTIVE_VM() ((void)0)
-#define VIPER_TRAP_REQUIRE_NO_STALE_TOKEN() ((void)0)
+// In release builds, trap invariant violations terminate with a diagnostic
+// instead of silently continuing.  These checks run only on trap paths,
+// not in hot loops, so the performance cost is negligible.
+#define VIPER_TRAP_ASSERT(condition, message)                                                          \
+    do                                                                                                 \
+    {                                                                                                  \
+        if (!(condition))                                                                              \
+        {                                                                                              \
+            std::fprintf(stderr, "TRAP INVARIANT VIOLATED: %s\n", (message));                          \
+            std::abort();                                                                              \
+        }                                                                                              \
+    } while (0)
 #else
 /// @brief Assert a trap invariant in debug builds.
 #define VIPER_TRAP_ASSERT(condition, message) assert((condition) && (message))

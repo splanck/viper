@@ -43,6 +43,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 // --- Helper: navigate one segment ---
 
 static void *navigate_segment(void *current, const char *seg, int64_t len)
@@ -281,6 +283,8 @@ void *rt_jsonpath_query(void *root, rt_string path)
         if (pre_len > 0 && p[pre_len - 1] == '.')
             pre_len--;
         char *pre = (char *)malloc((size_t)(pre_len + 1));
+        if (!pre)
+            rt_trap("rt_jsonpath: memory allocation failed");
         memcpy(pre, p, (size_t)pre_len);
         pre[pre_len] = '\0';
         parent = resolve_path(root, pre);

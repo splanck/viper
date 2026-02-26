@@ -36,12 +36,6 @@ struct LoopUnrollConfig
 
     /// Maximum loop body size (instructions) for unrolling consideration.
     unsigned maxLoopSize = 50;
-
-    /// Unroll factor for partial unrolling when full unroll is not applicable.
-    unsigned partialUnrollFactor = 4;
-
-    /// Whether to enable partial unrolling (in addition to full unrolling).
-    bool enablePartialUnroll = false;
 };
 
 /// @brief Loop unrolling optimization pass.

@@ -48,10 +48,6 @@ inline constexpr const char *kAnalysisCFG = "cfg";
 /// @see viper::analysis::DomTree
 inline constexpr const char *kAnalysisDominators = "dominators";
 
-/// @brief Identifier for the post-dominator-tree analysis.
-/// @see viper::analysis::PostDomTree
-inline constexpr const char *kAnalysisPostDominators = "post-dominators";
-
 /// @brief Identifier for the loop-information analysis.
 /// @see il::transform::LoopInfo
 inline constexpr const char *kAnalysisLoopInfo = "loop-info";

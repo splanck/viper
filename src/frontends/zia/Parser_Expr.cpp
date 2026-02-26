@@ -511,6 +511,15 @@ ExprPtr Parser::parseMultiplicative()
 
 ExprPtr Parser::parseUnary()
 {
+    if (++exprDepth_ > kMaxExprDepth)
+    {
+        --exprDepth_;
+        error("expression nesting too deep (limit: 256)");
+        return nullptr;
+    }
+
+    ExprPtr result;
+
     if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde) ||
         check(TokenKind::KwNot) || check(TokenKind::Ampersand))
     {
@@ -532,6 +541,7 @@ ExprPtr Parser::parseUnary()
                 op = UnaryOp::AddressOf;
                 break;
             default:
+                --exprDepth_;
                 error("expected unary operator");
                 return nullptr;
         }
@@ -543,18 +553,27 @@ ExprPtr Parser::parseUnary()
         if (op == UnaryOp::Neg && check(TokenKind::IntegerLiteral) && peek().requiresNegation)
         {
             advance(); // consume the integer literal
+            --exprDepth_;
             // Return INT64_MIN directly as an integer literal
             return std::make_unique<IntLiteralExpr>(loc, INT64_MIN);
         }
 
         ExprPtr operand = parseUnary();
         if (!operand)
+        {
+            --exprDepth_;
             return nullptr;
+        }
 
-        return std::make_unique<UnaryExpr>(loc, op, std::move(operand));
+        result = std::make_unique<UnaryExpr>(loc, op, std::move(operand));
+    }
+    else
+    {
+        result = parsePostfix();
     }
 
-    return parsePostfix();
+    --exprDepth_;
+    return result;
 }
 
 ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr)

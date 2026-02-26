@@ -795,6 +795,8 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
     ws->socket_fd = -1;
     ws->tls = NULL;
     ws->url = strdup(url_cstr);
+    if (!ws->url)
+        return NULL;
     ws->is_open = 0;
     ws->close_code = 0;
     ws->close_reason = NULL;

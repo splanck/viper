@@ -38,6 +38,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 /// Internal structure for SortedSet.
 struct rt_sortedset_impl
 {
@@ -118,11 +120,10 @@ static void ensure_capacity(rt_sortedset set, int64_t needed)
         new_cap *= 2;
 
     rt_string *new_data = realloc(set->data, sizeof(rt_string) * new_cap);
-    if (new_data)
-    {
-        set->data = new_data;
-        set->cap = new_cap;
-    }
+    if (!new_data)
+        rt_trap("rt_sortedset: memory allocation failed");
+    set->data = new_data;
+    set->cap = new_cap;
 }
 
 //=============================================================================

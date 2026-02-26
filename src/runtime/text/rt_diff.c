@@ -36,6 +36,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 // ---------------------------------------------------------------------------
 // Line splitting helper
 // ---------------------------------------------------------------------------
@@ -59,6 +61,8 @@ static line_array split_lines(const char *text)
             count++;
 
     la.lines = (char **)malloc((size_t)count * sizeof(char *));
+    if (!la.lines)
+        rt_trap("rt_diff: memory allocation failed");
     la.count = 0;
 
     const char *start = text;
@@ -68,6 +72,8 @@ static line_array split_lines(const char *text)
         {
             size_t len = (size_t)(p - start);
             la.lines[la.count] = (char *)malloc(len + 1);
+            if (!la.lines[la.count])
+                rt_trap("rt_diff: memory allocation failed");
             memcpy(la.lines[la.count], start, len);
             la.lines[la.count][len] = '\0';
             la.count++;

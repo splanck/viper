@@ -125,6 +125,7 @@
 #include <array>
 #include <cassert>
 #include <deque>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -390,8 +391,10 @@ struct RegPools
     {
         // Allocator is responsible for ensuring pressure is handled before requesting.
         // Do not ever return the global scratch register here.
-        assert(!gprFree.empty() &&
-               "GPR pool exhausted — maybeSpillForPressure should have freed a register");
+        if (gprFree.empty())
+            throw std::runtime_error(
+                "AArch64 register allocator: GPR pool exhausted — "
+                "maybeSpillForPressure should have freed a register");
         auto r = gprFree.front();
         gprFree.pop_front();
         return r;
@@ -406,8 +409,10 @@ struct RegPools
     ///       O(n) linear search through ti.calleeSavedGPR.
     PhysReg takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/)
     {
-        assert(!gprFree.empty() &&
-               "GPR pool exhausted — maybeSpillForPressure should have freed a register");
+        if (gprFree.empty())
+            throw std::runtime_error(
+                "AArch64 register allocator: GPR pool exhausted — "
+                "maybeSpillForPressure should have freed a register");
 
         // Try to find a callee-saved register first using O(1) array lookup
         for (auto it = gprFree.begin(); it != gprFree.end(); ++it)

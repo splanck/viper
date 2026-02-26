@@ -116,8 +116,6 @@ class OopIndexBuilder
 
     // Phase methods
     void scanDeclarations(const std::vector<StmtPtr> &stmts);
-    void scanClasses(const std::vector<StmtPtr> &stmts);
-    void scanInterfaces(const std::vector<StmtPtr> &stmts);
     void collectUsingDirectives(const std::vector<StmtPtr> &stmts);
     void resolveBasesAndImplements();
     void detectInheritanceCycles();

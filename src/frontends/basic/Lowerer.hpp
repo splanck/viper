@@ -1021,7 +1021,6 @@ class Lowerer
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     static constexpr int kGosubStackDepth = 128;
-    size_t nextStringId{0}; ///< @deprecated Use stringTable_ instead.
     size_t nextFallbackBlockId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
     std::unordered_map<std::string, std::string> procNameAliases;

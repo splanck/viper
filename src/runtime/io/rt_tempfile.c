@@ -124,6 +124,8 @@ rt_string rt_tempfile_dir(void)
         if (len > 0 && tmp[len - 1] == '/')
         {
             char *copy = (char *)malloc(len);
+            if (!copy)
+                rt_trap("rt_tempfile: memory allocation failed");
             memcpy(copy, tmp, len - 1);
             copy[len - 1] = '\0';
             rt_string result = rt_string_from_bytes(copy, len - 1);

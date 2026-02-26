@@ -41,6 +41,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern _Noreturn void rt_trap(const char *msg);
+
 /// @brief Retrieve the heap header for a runtime array payload.
 /// @details Delegates to @ref rt_heap_hdr while tolerating null payloads so
 ///          callers can interrogate optional handles without branching.
@@ -51,17 +53,17 @@ rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload)
     return payload ? rt_heap_hdr((void *)payload) : NULL;
 }
 
-/// @brief Abort execution due to an out-of-bounds access.
-/// @details Emits a descriptive error message to standard error before
-///          terminating the process.  The helper is intentionally marked `noreturn`
-///          through the implicit @ref abort call so callers can rely on it for
-///          bounds enforcement in release builds as well.
+/// @brief Trap execution due to an out-of-bounds access.
+/// @details Formats a descriptive message and delegates to @ref rt_trap so the
+///          VM error-handling stack can intercept the condition when available.
 /// @param idx Index that triggered the violation.
 /// @param len Array length used for diagnostics.
 void rt_arr_oob_panic(size_t idx, size_t len)
 {
-    fprintf(stderr, "rt_arr_i32: index %zu out of bounds (len=%zu)\n", idx, len);
-    abort();
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+             "rt_arr_i32: index %zu out of bounds (len=%zu)", idx, len);
+    rt_trap(buf);
 }
 
 // Generate standard array helper functions using macros from rt_internal.h

@@ -45,6 +45,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 #define TRIE_ALPHABET_SIZE 128
 
 typedef struct rt_trie_node
@@ -64,6 +66,8 @@ typedef struct rt_trie_impl
 static rt_trie_node *new_node(void)
 {
     rt_trie_node *n = (rt_trie_node *)calloc(1, sizeof(rt_trie_node));
+    if (!n)
+        rt_trap("rt_trie: memory allocation failed");
     return n;
 }
 

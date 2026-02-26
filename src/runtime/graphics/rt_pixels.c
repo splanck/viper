@@ -1026,11 +1026,16 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         return 0;
     }
 
+    // Track write success — any fwrite failure produces a corrupt PNG.
+    int write_ok = 1;
+
     // Write PNG signature
     static const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
-    fwrite(sig, 1, 8, out);
+    if (fwrite(sig, 1, 8, out) != 8)
+        write_ok = 0;
 
     // Write IHDR chunk
+    if (write_ok)
     {
         uint8_t ihdr[13];
         ihdr[0] = (uint8_t)(w >> 24);
@@ -1048,12 +1053,14 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         ihdr[12] = 0; // interlace
 
         uint8_t len_buf[4] = {0, 0, 0, 13};
-        fwrite(len_buf, 1, 4, out);
+        if (fwrite(len_buf, 1, 4, out) != 4)
+            write_ok = 0;
 
         uint8_t type_data[4 + 13];
         memcpy(type_data, "IHDR", 4);
         memcpy(type_data + 4, ihdr, 13);
-        fwrite(type_data, 1, 17, out);
+        if (write_ok && fwrite(type_data, 1, 17, out) != 17)
+            write_ok = 0;
 
         uint32_t chunk_crc;
         PNG_CRC(type_data, 17);
@@ -1061,16 +1068,19 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
                               (uint8_t)(chunk_crc >> 16),
                               (uint8_t)(chunk_crc >> 8),
                               (uint8_t)chunk_crc};
-        fwrite(crc_buf, 1, 4, out);
+        if (write_ok && fwrite(crc_buf, 1, 4, out) != 4)
+            write_ok = 0;
     }
 
     // Write IDAT chunk
+    if (write_ok)
     {
         uint8_t len_buf[4] = {(uint8_t)(zlib_len >> 24),
                               (uint8_t)(zlib_len >> 16),
                               (uint8_t)(zlib_len >> 8),
                               (uint8_t)zlib_len};
-        fwrite(len_buf, 1, 4, out);
+        if (fwrite(len_buf, 1, 4, out) != 4)
+            write_ok = 0;
 
         size_t td_len = 4 + zlib_len;
         uint8_t *type_data = (uint8_t *)malloc(td_len);
@@ -1082,7 +1092,8 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         }
         memcpy(type_data, "IDAT", 4);
         memcpy(type_data + 4, zlib_data, zlib_len);
-        fwrite(type_data, 1, td_len, out);
+        if (write_ok && fwrite(type_data, 1, td_len, out) != td_len)
+            write_ok = 0;
 
         uint32_t chunk_crc;
         PNG_CRC(type_data, td_len);
@@ -1090,23 +1101,26 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
                               (uint8_t)(chunk_crc >> 16),
                               (uint8_t)(chunk_crc >> 8),
                               (uint8_t)chunk_crc};
-        fwrite(crc_buf, 1, 4, out);
+        if (write_ok && fwrite(crc_buf, 1, 4, out) != 4)
+            write_ok = 0;
         free(type_data);
     }
 
     free(zlib_data);
 
     // Write IEND chunk
+    if (write_ok)
     {
         uint8_t iend[12] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82};
-        fwrite(iend, 1, 12, out);
+        if (fwrite(iend, 1, 12, out) != 12)
+            write_ok = 0;
     }
 
 #undef PNG_CRC
 
     fflush(out);
     fclose(out);
-    return 1;
+    return write_ok;
 }
 
 //=============================================================================
@@ -2114,6 +2128,11 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
                     {
                         if (top >= cap)
                         {
+                            if (cap > INT64_MAX / 2)
+                            {
+                                free(stack);
+                                return; // Abort flood fill on capacity overflow
+                            }
                             int64_t new_cap = cap * 2;
                             FillSeed *ns = (FillSeed *)realloc(
                                 stack, (size_t)new_cap * sizeof(FillSeed));

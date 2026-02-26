@@ -1013,7 +1013,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
         CLOSE_SOCKET(client_sock);
         rt_trap("Network: memory allocation failed");
     }
-    strcpy(host_cstr, host_buf);
+    memcpy(host_cstr, host_buf, strlen(host_buf) + 1);
 
     // Create connection object
     rt_tcp_t *tcp = (rt_tcp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_t));

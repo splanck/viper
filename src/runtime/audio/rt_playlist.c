@@ -39,6 +39,8 @@
 #include <string.h>
 #include <time.h>
 
+extern void rt_trap(const char *msg);
+
 //=============================================================================
 // Internal Structure
 //=============================================================================
@@ -77,6 +79,8 @@ static void generate_shuffle_order(playlist_impl *pl)
 
     // Create sequential order first
     int64_t *indices = (int64_t *)malloc(count * sizeof(int64_t));
+    if (!indices)
+        rt_trap("rt_playlist: memory allocation failed");
     for (int64_t i = 0; i < count; i++)
     {
         indices[i] = i;

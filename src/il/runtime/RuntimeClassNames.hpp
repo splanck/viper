@@ -39,9 +39,6 @@ inline constexpr std::string_view RTCLASS_LIST = "Viper.Collections.List";
 inline constexpr std::string_view RTCLASS_MAP = "Viper.Collections.Map";
 /// @brief Canonical runtime class name for Viper.Math.
 inline constexpr std::string_view RTCLASS_MATH = "Viper.Math";
-// RTCLASS_CONSOLE deprecated - Console consolidated into Terminal
-/// @brief Canonical runtime class name for Viper.Terminal (legacy Console alias).
-inline constexpr std::string_view RTCLASS_CONSOLE = "Viper.Terminal";
 /// @brief Canonical runtime class name for Viper.Core.Convert.
 inline constexpr std::string_view RTCLASS_CONVERT = "Viper.Core.Convert";
 /// @brief Canonical runtime class name for Viper.Math.Random.
@@ -56,8 +53,6 @@ inline constexpr std::string_view RTCLASS_GFX_WINDOW = "Viper.Graphics.Window";
 inline constexpr std::string_view RTCLASS_GFX_COLOR = "Viper.Graphics.Color";
 /// @brief Canonical runtime class name for Viper.Terminal.
 inline constexpr std::string_view RTCLASS_TERMINAL = "Viper.Terminal";
-/// @brief Canonical runtime class name for Viper.Time (deprecated).
-inline constexpr std::string_view RTCLASS_TIME = "Viper.Time"; // Deprecated, use RTCLASS_CLOCK
 /// @brief Canonical runtime class name for Viper.Time.Clock.
 inline constexpr std::string_view RTCLASS_CLOCK = "Viper.Time.Clock";
 /// @brief Canonical runtime class name for Viper.Core.Diagnostics.Stopwatch.
