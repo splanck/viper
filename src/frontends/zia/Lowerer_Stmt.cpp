@@ -79,6 +79,12 @@ void Lowerer::lowerStmt(Stmt *stmt)
         case StmtKind::Match:
             lowerMatchStmt(static_cast<MatchStmt *>(stmt));
             break;
+        case StmtKind::Try:
+            lowerTryStmt(static_cast<TryStmt *>(stmt));
+            break;
+        case StmtKind::Throw:
+            lowerThrowStmt(static_cast<ThrowStmt *>(stmt));
+            break;
     }
 
     // Release any deferred temporaries from this statement.

@@ -270,6 +270,12 @@ struct EntityTypeInfo
     /// @details Used for interface method dispatch.
     std::set<std::string> implementedInterfaces;
 
+    /// @brief Property getter method names (e.g., "get_area").
+    std::set<std::string> propertyGetters;
+
+    /// @brief Property setter method names (e.g., "set_area").
+    std::set<std::string> propertySetters;
+
     /// @brief Find a field by name.
     /// @param n The field name.
     /// @return Pointer to FieldLayout, or nullptr if not found.
@@ -312,11 +318,17 @@ struct InterfaceTypeInfo
     /// @brief The interface name.
     std::string name;
 
-    /// @brief Method declarations (signatures only, no bodies).
+    /// @brief Unique interface ID for runtime itable dispatch.
+    int ifaceId{-1};
+
+    /// @brief Method declarations (signatures only, no bodies) in slot order.
     std::vector<MethodDecl *> methods;
 
     /// @brief Fast lookup: method name -> method declaration.
     std::unordered_map<std::string, MethodDecl *> methodMap;
+
+    /// @brief Method name -> itable slot index (0-based).
+    std::unordered_map<std::string, size_t> slotIndex;
 
     /// @brief Find a method by name.
     /// @param n The method name.
@@ -325,6 +337,15 @@ struct InterfaceTypeInfo
     {
         auto it = methodMap.find(n);
         return it != methodMap.end() ? it->second : nullptr;
+    }
+
+    /// @brief Find the itable slot for a method.
+    /// @param n The method name.
+    /// @return Slot index, or SIZE_MAX if not found.
+    size_t findSlot(const std::string &n) const
+    {
+        auto it = slotIndex.find(n);
+        return it != slotIndex.end() ? it->second : SIZE_MAX;
     }
 };
 
@@ -502,6 +523,9 @@ class Lowerer
     /// @brief Counter for assigning unique class IDs.
     int nextClassId_{1};
 
+    /// @brief Counter for assigning unique interface IDs.
+    int nextIfaceId_{1};
+
     /// @brief Global constant values: name -> IL value.
     /// @details Stores the lowered values of module-level constants
     /// (e.g., `Integer GAME_WIDTH = 70;`). Used during identifier
@@ -664,6 +688,13 @@ class Lowerer
     /// @param decl The interface declaration.
     void lowerInterfaceDecl(InterfaceDecl &decl);
 
+    /// @brief Emit interface registration and itable binding for all interfaces.
+    /// @details Emits a __zia_iface_init function that:
+    ///   1. Registers each interface via rt_register_interface_direct
+    ///   2. For each implementing entity, allocates an itable, populates it
+    ///      with function pointers, and binds it via rt_bind_interface
+    void emitItableInit();
+
     /// @brief Lower a namespace declaration.
     /// @param decl The namespace declaration.
     /// @details Processes all declarations within the namespace, using
@@ -686,6 +717,14 @@ class Lowerer
     /// @param typeName The enclosing type name.
     /// @param isEntity True if this is an entity method.
     void lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity = false);
+
+    /// @brief Lower a property declaration by synthesizing get_/set_ methods.
+    void lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isEntity = false);
+
+    /// @brief Lower a destructor declaration by emitting a __dtor function.
+    /// @details Synthesizes `TypeName.__dtor(self: Ptr) -> Void` that runs user
+    ///          body then releases reference-typed fields.
+    void lowerDestructorDecl(DestructorDecl &decl, const std::string &typeName);
 
     /// @}
     //=========================================================================
@@ -745,6 +784,14 @@ class Lowerer
     /// @brief Lower a match statement.
     /// @param stmt The match statement.
     void lowerMatchStmt(MatchStmt *stmt);
+
+    /// @brief Lower a try/catch/finally statement.
+    /// @param stmt The try statement.
+    void lowerTryStmt(TryStmt *stmt);
+
+    /// @brief Lower a throw statement.
+    /// @param stmt The throw statement.
+    void lowerThrowStmt(ThrowStmt *stmt);
 
     /// @}
     //=========================================================================
@@ -845,6 +892,10 @@ class Lowerer
     /// @return LowerResult with pointer to new map.
     LowerResult lowerMapLiteral(MapLiteralExpr *expr);
 
+    /// @brief Lower a set literal expression.
+    /// @return LowerResult with pointer to new set.
+    LowerResult lowerSetLiteral(SetLiteralExpr *expr);
+
     /// @brief Lower a tuple literal expression.
     /// @return LowerResult with pointer to tuple on stack.
     LowerResult lowerTuple(TupleExpr *expr);
@@ -881,6 +932,10 @@ class Lowerer
     /// @return LowerResult with value cast to target type.
     LowerResult lowerAs(AsExpr *expr);
 
+    /// @brief Lower an is (type check) expression.
+    /// @return LowerResult with boolean (I64) indicating type match.
+    LowerResult lowerIsExpr(IsExpr *expr);
+
     /// @}
     //=========================================================================
     /// @name Instruction Emission Helpers
@@ -908,6 +963,15 @@ class Lowerer
     /// @param value The i32 value to widen.
     /// @return The widened i64 value.
     Value widenByteToInteger(Value value);
+
+    /// @brief Pad missing arguments with default parameter values.
+    /// @details Looks up the function declaration and lowers default expressions
+    ///          for any trailing parameters that have default values and are missing.
+    /// @param calleeName The function name.
+    /// @param args The current argument values (may be padded in-place).
+    /// @param callExpr The original call expression for arg count comparison.
+    void padDefaultArgs(const std::string &calleeName, std::vector<Value> &args,
+                        CallExpr *callExpr);
 
     /// @brief Emit a function call with return value.
     /// @param retTy The expected return type.

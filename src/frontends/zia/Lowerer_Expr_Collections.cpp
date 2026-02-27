@@ -39,6 +39,23 @@ LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
     return {list, Type(Type::Kind::Ptr)};
 }
 
+LowerResult Lowerer::lowerSetLiteral(SetLiteralExpr *expr)
+{
+    // Create a new set
+    Value set = emitCallRet(Type(Type::Kind::Ptr), kSetNew, {});
+
+    // Add each element to the set (boxed)
+    for (auto &elem : expr->elements)
+    {
+        auto result = lowerExpr(elem.get());
+        TypeRef elemType = sema_.typeOf(elem.get());
+        Value boxed = emitBoxValue(result.value, result.type, elemType);
+        emitCall(kSetPut, {set, boxed});
+    }
+
+    return {set, Type(Type::Kind::Ptr)};
+}
+
 LowerResult Lowerer::lowerMapLiteral(MapLiteralExpr *expr)
 {
     Value map = emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});

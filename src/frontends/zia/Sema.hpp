@@ -1071,6 +1071,11 @@ class Sema
     /// @return Pointer to the declaration, or nullptr if not found.
     FunctionDecl *getGenericFunction(const std::string &name) const;
 
+    /// @brief Get a user-defined function declaration by name.
+    /// @param name The function name (as declared in the program).
+    /// @return Pointer to the function declaration, or nullptr if not found.
+    FunctionDecl *getFunctionDecl(const std::string &name) const;
+
     /// @brief Instantiate a generic function with concrete type arguments.
     /// @param name The function name (e.g., "identity").
     /// @param args The concrete type arguments (e.g., [Integer]).
@@ -1378,6 +1383,11 @@ class Sema
     /// @details Key: "FuncName$Arg1$Arg2", Value: Instantiated function TypeRef.
     /// Prevents re-instantiation of the same generic function arguments.
     std::map<std::string, TypeRef> genericFunctionInstances_;
+
+    /// @brief User-defined function declarations for default parameter lookup.
+    /// @details Key: Function name, Value: AST declaration pointer.
+    /// Used by validateCallArgs to exempt missing args with defaults.
+    std::map<std::string, FunctionDecl *> functionDecls_;
 
     /// @}
 };

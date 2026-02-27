@@ -723,6 +723,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     }
     else
     {
+        // Pad missing trailing arguments with default values from function declaration
+        padDefaultArgs(calleeName, args, expr);
+
         if (ilReturnType.kind == Type::Kind::Void)
         {
             emitCall(calleeName, args);
@@ -733,6 +736,40 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             Value result = emitCallRet(ilReturnType, calleeName, args);
             return {result, ilReturnType};
         }
+    }
+}
+
+//=============================================================================
+// Default Parameter Padding
+//=============================================================================
+
+void Lowerer::padDefaultArgs(const std::string &calleeName, std::vector<Value> &args,
+                             CallExpr *callExpr)
+{
+    FunctionDecl *funcDecl = sema_.getFunctionDecl(calleeName);
+    // Fall back to original ident name (before mangling)
+    if (!funcDecl && callExpr->callee->kind == ExprKind::Ident)
+    {
+        auto *ident = static_cast<IdentExpr *>(callExpr->callee.get());
+        funcDecl = sema_.getFunctionDecl(ident->name);
+    }
+    if (!funcDecl)
+        return;
+
+    size_t numParams = funcDecl->params.size();
+    size_t numArgs = args.size();
+    if (numArgs >= numParams)
+        return;
+
+    // Pad missing trailing arguments with their default values
+    for (size_t i = numArgs; i < numParams; ++i)
+    {
+        const auto &param = funcDecl->params[i];
+        if (!param.defaultValue)
+            break; // No default — shouldn't happen if sema validated
+
+        auto result = lowerExpr(param.defaultValue.get());
+        args.push_back(result.value);
     }
 }
 

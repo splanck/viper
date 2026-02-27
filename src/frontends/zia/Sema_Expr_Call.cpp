@@ -210,7 +210,7 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
     const size_t numParams = paramTys.size();
     const size_t numArgs = expr->args.size();
 
-    // Check argument count
+    // Check argument count (with default parameter support)
     if (numArgs > numParams)
     {
         error(expr->loc,
@@ -219,9 +219,40 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
     }
     else if (numArgs < numParams)
     {
-        error(expr->loc,
-              "Too few arguments to '" + calleeName + "': expected " + std::to_string(numParams) +
-                  ", got " + std::to_string(numArgs));
+        // Check if missing arguments have default values
+        FunctionDecl *funcDecl = getFunctionDecl(calleeName);
+        bool allDefaulted = false;
+        if (funcDecl && funcDecl->params.size() == numParams)
+        {
+            allDefaulted = true;
+            for (size_t i = numArgs; i < numParams; ++i)
+            {
+                if (!funcDecl->params[i].defaultValue)
+                {
+                    allDefaulted = false;
+                    break;
+                }
+            }
+        }
+        if (!allDefaulted)
+        {
+            size_t minRequired = numParams;
+            if (funcDecl && funcDecl->params.size() == numParams)
+            {
+                // Count required params (those without defaults)
+                minRequired = 0;
+                for (const auto &p : funcDecl->params)
+                {
+                    if (!p.defaultValue)
+                        ++minRequired;
+                    else
+                        break; // defaults must be trailing
+                }
+            }
+            error(expr->loc,
+                  "Too few arguments to '" + calleeName + "': expected at least " +
+                      std::to_string(minRequired) + ", got " + std::to_string(numArgs));
+        }
     }
 
     // Check argument types (up to the shorter of the two lists)

@@ -84,6 +84,12 @@ const char *tokenKindToString(TokenKind kind)
             return "hide";
         case TokenKind::KwOverride:
             return "override";
+        case TokenKind::KwDeinit:
+            return "deinit";
+        case TokenKind::KwProperty:
+            return "property";
+        case TokenKind::KwStatic:
+            return "static";
         case TokenKind::KwWeak:
             return "weak";
         case TokenKind::KwModule:
@@ -122,6 +128,14 @@ const char *tokenKindToString(TokenKind kind)
             return "break";
         case TokenKind::KwContinue:
             return "continue";
+        case TokenKind::KwTry:
+            return "try";
+        case TokenKind::KwCatch:
+            return "catch";
+        case TokenKind::KwFinally:
+            return "finally";
+        case TokenKind::KwThrow:
+            return "throw";
         case TokenKind::KwExtends:
             return "extends";
         case TokenKind::KwImplements:
@@ -156,6 +170,16 @@ const char *tokenKindToString(TokenKind kind)
             return "/";
         case TokenKind::Percent:
             return "%";
+        case TokenKind::PlusEqual:
+            return "+=";
+        case TokenKind::MinusEqual:
+            return "-=";
+        case TokenKind::StarEqual:
+            return "*=";
+        case TokenKind::SlashEqual:
+            return "/=";
+        case TokenKind::PercentEqual:
+            return "%=";
         case TokenKind::Ampersand:
             return "&";
         case TokenKind::Pipe:
@@ -244,19 +268,22 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-// Sorted for binary search (37 keywords)
-constexpr std::array<KeywordEntry, 37> kKeywordTable = {{
+// Sorted for binary search (44 keywords)
+constexpr std::array<KeywordEntry, 44> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"bind", TokenKind::KwBind},
     {"break", TokenKind::KwBreak},
+    {"catch", TokenKind::KwCatch},
     {"continue", TokenKind::KwContinue},
+    {"deinit", TokenKind::KwDeinit},
     {"else", TokenKind::KwElse},
     {"entity", TokenKind::KwEntity},
     {"expose", TokenKind::KwExpose},
     {"extends", TokenKind::KwExtends},
     {"false", TokenKind::KwFalse},
     {"final", TokenKind::KwFinal},
+    {"finally", TokenKind::KwFinally},
     {"for", TokenKind::KwFor},
     {"func", TokenKind::KwFunc},
     {"guard", TokenKind::KwGuard},
@@ -275,10 +302,14 @@ constexpr std::array<KeywordEntry, 37> kKeywordTable = {{
     {"null", TokenKind::KwNull},
     {"or", TokenKind::KwOr},
     {"override", TokenKind::KwOverride},
+    {"property", TokenKind::KwProperty},
     {"return", TokenKind::KwReturn},
     {"self", TokenKind::KwSelf},
+    {"static", TokenKind::KwStatic},
     {"super", TokenKind::KwSuper},
+    {"throw", TokenKind::KwThrow},
     {"true", TokenKind::KwTrue},
+    {"try", TokenKind::KwTry},
     {"value", TokenKind::KwValue},
     {"var", TokenKind::KwVar},
     {"weak", TokenKind::KwWeak},
@@ -1063,9 +1094,18 @@ Token Lexer::next()
     switch (c)
     {
         case '+':
-            tok.kind = TokenKind::Plus;
-            tok.text = "+";
             getChar();
+            if (peekChar() == '=')
+            {
+                getChar();
+                tok.kind = TokenKind::PlusEqual;
+                tok.text = "+=";
+            }
+            else
+            {
+                tok.kind = TokenKind::Plus;
+                tok.text = "+";
+            }
             break;
 
         case '-':
@@ -1076,6 +1116,12 @@ Token Lexer::next()
                 tok.kind = TokenKind::Arrow;
                 tok.text = "->";
             }
+            else if (peekChar() == '=')
+            {
+                getChar();
+                tok.kind = TokenKind::MinusEqual;
+                tok.text = "-=";
+            }
             else
             {
                 tok.kind = TokenKind::Minus;
@@ -1084,21 +1130,48 @@ Token Lexer::next()
             break;
 
         case '*':
-            tok.kind = TokenKind::Star;
-            tok.text = "*";
             getChar();
+            if (peekChar() == '=')
+            {
+                getChar();
+                tok.kind = TokenKind::StarEqual;
+                tok.text = "*=";
+            }
+            else
+            {
+                tok.kind = TokenKind::Star;
+                tok.text = "*";
+            }
             break;
 
         case '/':
-            tok.kind = TokenKind::Slash;
-            tok.text = "/";
             getChar();
+            if (peekChar() == '=')
+            {
+                getChar();
+                tok.kind = TokenKind::SlashEqual;
+                tok.text = "/=";
+            }
+            else
+            {
+                tok.kind = TokenKind::Slash;
+                tok.text = "/";
+            }
             break;
 
         case '%':
-            tok.kind = TokenKind::Percent;
-            tok.text = "%";
             getChar();
+            if (peekChar() == '=')
+            {
+                getChar();
+                tok.kind = TokenKind::PercentEqual;
+                tok.text = "%=";
+            }
+            else
+            {
+                tok.kind = TokenKind::Percent;
+                tok.text = "%";
+            }
             break;
 
         case '&':

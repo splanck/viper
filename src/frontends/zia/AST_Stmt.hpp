@@ -100,6 +100,14 @@ enum class StmtKind
     /// @brief Pattern matching statement: `match x { ... }`.
     /// @see MatchStmt
     Match,
+
+    /// @brief Try/catch/finally statement.
+    /// @see TryStmt
+    Try,
+
+    /// @brief Throw statement: `throw expr;`.
+    /// @see ThrowStmt
+    Throw,
 };
 
 /// @brief Base class for all statement nodes.
@@ -445,6 +453,59 @@ struct MatchStmt : Stmt
     /// @param a The arms.
     MatchStmt(SourceLoc l, ExprPtr s, std::vector<MatchArm> a)
         : Stmt(StmtKind::Match, l), scrutinee(std::move(s)), arms(std::move(a))
+    {
+    }
+};
+
+/// @brief Try/catch/finally statement.
+/// @details Implements structured exception handling.
+///
+/// ## Example
+/// ```
+/// try {
+///     riskyCode();
+/// } catch(e) {
+///     handleError(e);
+/// } finally {
+///     cleanup();
+/// }
+/// ```
+struct TryStmt : Stmt
+{
+    /// @brief The try body.
+    StmtPtr tryBody;
+
+    /// @brief Catch variable name (empty if no catch clause).
+    std::string catchVar;
+
+    /// @brief Catch body (nullptr if no catch clause).
+    StmtPtr catchBody;
+
+    /// @brief Finally body (nullptr if no finally clause).
+    StmtPtr finallyBody;
+
+    /// @brief Construct a try statement.
+    /// @param l Source location.
+    TryStmt(SourceLoc l) : Stmt(StmtKind::Try, l) {}
+};
+
+/// @brief Throw statement.
+/// @details Raises an exception with a value expression.
+///
+/// ## Example
+/// ```
+/// throw "something went wrong";
+/// ```
+struct ThrowStmt : Stmt
+{
+    /// @brief The value to throw (may be nullptr for bare `throw;`).
+    ExprPtr value;
+
+    /// @brief Construct a throw statement.
+    /// @param l Source location.
+    /// @param v The value to throw.
+    ThrowStmt(SourceLoc l, ExprPtr v)
+        : Stmt(StmtKind::Throw, l), value(std::move(v))
     {
     }
 };

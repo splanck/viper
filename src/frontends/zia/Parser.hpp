@@ -533,6 +533,14 @@ class Parser
     /// @details Parses match arms with patterns and bodies.
     StmtPtr parseMatchStmt();
 
+    /// @brief Parse a try/catch/finally statement.
+    /// @return The parsed TryStmt.
+    StmtPtr parseTryStmt();
+
+    /// @brief Parse a throw statement: throw expr;
+    /// @return The parsed ThrowStmt.
+    StmtPtr parseThrowStmt();
+
     /// @}
     //=========================================================================
     /// @name Type Parsing
@@ -640,6 +648,10 @@ class Parser
     /// @brief Parse a method declaration within a type.
     /// @return The parsed MethodDecl.
     DeclPtr parseMethodDecl();
+
+    /// @brief Parse a property declaration with get/set accessors.
+    /// @return The parsed PropertyDecl.
+    DeclPtr parsePropertyDecl();
 
     /// @brief Parse a comma-separated interface list after 'implements'.
     /// @param[out] interfaces Output vector of interface name strings.

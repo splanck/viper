@@ -181,6 +181,9 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
         lowerGenericFunctionInstantiation(mangledName, decl);
     }
 
+    // Emit interface registration and itable binding
+    emitItableInit();
+
     // Add extern declarations for used runtime functions
     for (const auto &externName : usedExterns_)
     {

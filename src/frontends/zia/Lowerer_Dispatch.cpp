@@ -178,99 +178,42 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
         returnType = methodType->returnType();
     Type ilReturnType = mapType(returnType);
 
-    // Build argument list
+    // Build argument list: self + call args
     std::vector<Value> args;
     args.reserve(expr->args.size() + 1);
     args.push_back(selfValue);
     for (auto &arg : expr->args)
         args.push_back(lowerExpr(arg.value.get()).value);
 
-    // Build dispatch table for all implementors
-    std::vector<DispatchEntry> dispatchTable;
-    for (const auto &[entityName, entityInfo] : entityTypes_)
+    // Look up the method's slot index in the interface
+    size_t slotIdx = ifaceInfo.findSlot(methodName);
+    if (slotIdx == SIZE_MAX)
     {
-        if (entityInfo.implementedInterfaces.count(ifaceInfo.name))
-        {
-            auto it = entityInfo.vtableIndex.find(methodName);
-            if (it != entityInfo.vtableIndex.end())
-                dispatchTable.emplace_back(entityInfo.classId, entityInfo.vtable[it->second]);
-        }
-    }
-
-    if (dispatchTable.empty())
+        // Fallback: method not in interface slot map (shouldn't happen)
         return {Value::constInt(0), ilReturnType};
-
-    // Get runtime class_id
-    Value classIdVal = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
-
-    // Single implementation - direct call
-    if (dispatchTable.size() == 1)
-    {
-        // Handle void return types correctly
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
-            emitCall(dispatchTable[0].second, args);
-            return {Value::constInt(0), Type(Type::Kind::Void)};
-        }
-        else
-        {
-            Value result = emitCallRet(ilReturnType, dispatchTable[0].second, args);
-            return {result, ilReturnType};
-        }
     }
 
-    // Multiple implementations - dispatch switch
-    size_t endBlock = createBlock("iface_dispatch_end");
-    Value resultSlot;
-    if (ilReturnType.kind != Type::Kind::Void)
-    {
-        unsigned id = nextTempId();
-        il::core::Instr instr{
-            id, Opcode::Alloca, Type(Type::Kind::Ptr), {Value::constInt(8)}, {}, {}, {}, {}, {}};
-        instr.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(instr);
-        resultSlot = Value::temp(id);
-    }
+    // Get object's class ID (from heap header, works for Zia objects)
+    Value classId = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
 
-    for (size_t i = 0; i < dispatchTable.size(); ++i)
-    {
-        const auto &[classId, targetMethod] = dispatchTable[i];
-        bool isLast = (i == dispatchTable.size() - 1);
+    // Emit itable lookup: rt_get_interface_impl(classId, ifaceId) -> Ptr to itable
+    Value itable = emitCallRet(Type(Type::Kind::Ptr), "rt_get_interface_impl",
+                               {classId, Value::constInt(static_cast<int64_t>(ifaceInfo.ifaceId))});
 
-        if (isLast)
-        {
-            if (ilReturnType.kind == Type::Kind::Void)
-                emitCall(targetMethod, args);
-            else
-                emitStore(resultSlot, emitCallRet(ilReturnType, targetMethod, args), ilReturnType);
-            emitBr(endBlock);
-        }
-        else
-        {
-            size_t nextCheck = createBlock("iface_dispatch_check_" + std::to_string(i + 1));
-            size_t callBlock = createBlock("iface_dispatch_call_" + std::to_string(i));
+    // Load function pointer from itable[slotIdx]
+    int64_t offset = static_cast<int64_t>(slotIdx * 8ULL);
+    Value entryPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr),
+                                itable, Value::constInt(offset));
+    Value fnPtr = emitLoad(entryPtr, Type(Type::Kind::Ptr));
 
-            emitCBr(emitBinary(Opcode::ICmpEq,
-                               Type(Type::Kind::I1),
-                               classIdVal,
-                               Value::constInt(static_cast<int64_t>(classId))),
-                    callBlock,
-                    nextCheck);
-
-            setBlock(callBlock);
-            if (ilReturnType.kind == Type::Kind::Void)
-                emitCall(targetMethod, args);
-            else
-                emitStore(resultSlot, emitCallRet(ilReturnType, targetMethod, args), ilReturnType);
-            emitBr(endBlock);
-            setBlock(nextCheck);
-        }
-    }
-
-    setBlock(endBlock);
+    // Emit indirect call through function pointer
     if (ilReturnType.kind == Type::Kind::Void)
+    {
+        emitCallIndirect(fnPtr, args);
         return {Value::constInt(0), Type(Type::Kind::Void)};
-    return {emitLoad(resultSlot, ilReturnType), ilReturnType};
+    }
+    Value result = emitCallIndirectRet(ilReturnType, fnPtr, args);
+    return {result, ilReturnType};
 }
 
 } // namespace il::frontends::zia

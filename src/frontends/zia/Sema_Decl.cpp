@@ -725,6 +725,9 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
     if (!decl.genericParams.empty())
         return;
 
+    // Register the function declaration for default parameter lookup
+    functionDecls_[decl.name] = &decl;
+
     currentFunction_ = &decl;
     expectedReturnType_ =
         decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();

@@ -205,6 +205,21 @@ enum class TokenKind
     /// Syntax: `override func toString() -> String { ... }`
     KwOverride,
 
+    /// @brief Destructor declaration keyword.
+    /// @details Declares a destructor for entity cleanup.
+    /// Syntax: `deinit { cleanup code }`
+    KwDeinit,
+
+    /// @brief Property declaration keyword.
+    /// @details Declares a computed property with getter and optional setter.
+    /// Syntax: `property name: Type { get { ... } set(value) { ... } }`
+    KwProperty,
+
+    /// @brief Static member modifier.
+    /// @details Declares a field or method as belonging to the type, not instances.
+    /// Syntax: `static count: Integer = 0` or `static func create() -> Self`
+    KwStatic,
+
     /// @brief Weak reference modifier.
     /// @details Creates a reference that doesn't prevent garbage collection.
     /// Syntax: `weak var parent: Node?;`
@@ -317,6 +332,26 @@ enum class TokenKind
     /// Syntax: `continue;`
     KwContinue,
 
+    /// @brief Try block keyword.
+    /// @details Begins an exception handling block.
+    /// Syntax: `try { ... } catch(e) { ... } finally { ... }`
+    KwTry,
+
+    /// @brief Catch block keyword.
+    /// @details Handles exceptions from the preceding try block.
+    /// Syntax: `catch(e) { ... }`
+    KwCatch,
+
+    /// @brief Finally block keyword.
+    /// @details Code that always executes after try/catch.
+    /// Syntax: `finally { ... }`
+    KwFinally,
+
+    /// @brief Throw expression keyword.
+    /// @details Raises an exception.
+    /// Syntax: `throw expr;`
+    KwThrow,
+
     /// @}
 
     //=========================================================================
@@ -415,6 +450,21 @@ enum class TokenKind
 
     /// @brief Modulo (remainder) operator `%`.
     Percent,
+
+    /// @brief Compound addition assignment `+=`.
+    PlusEqual,
+
+    /// @brief Compound subtraction assignment `-=`.
+    MinusEqual,
+
+    /// @brief Compound multiplication assignment `*=`.
+    StarEqual,
+
+    /// @brief Compound division assignment `/=`.
+    SlashEqual,
+
+    /// @brief Compound modulo assignment `%=`.
+    PercentEqual,
 
     /// @}
 

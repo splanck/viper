@@ -1126,6 +1126,18 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
+        case StmtKind::Try:
+        {
+            const auto &s = static_cast<const TryStmt &>(stmt);
+            p.line("TryStmt " + locStr(s.loc));
+            break;
+        }
+        case StmtKind::Throw:
+        {
+            const auto &s = static_cast<const ThrowStmt &>(stmt);
+            p.line("ThrowStmt " + locStr(s.loc));
+            break;
+        }
     }
 }
 
@@ -1455,6 +1467,17 @@ static void printDecl(const Decl &decl, Printer &p)
                     p.line("<null>");
             }
             p.pop();
+            break;
+        }
+        case DeclKind::Property:
+        {
+            const auto &d = static_cast<const PropertyDecl &>(decl);
+            p.line("PropertyDecl \"" + d.name + "\" " + locStr(d.loc));
+            break;
+        }
+        case DeclKind::Destructor:
+        {
+            p.line("DestructorDecl " + locStr(decl.loc));
             break;
         }
     }

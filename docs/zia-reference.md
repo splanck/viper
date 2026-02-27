@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-17
+last-updated: 2026-02-27
 ---
 
 # Zia — Reference
@@ -13,9 +13,11 @@ Complete language reference for Zia. This document describes **syntax**, **types
 ## Key Language Features
 
 - **Static typing**: All variables have compile-time types with inference
-- **Entity types**: Reference semantics with identity, methods, and inheritance
+- **Entity types**: Reference semantics with identity, methods, inheritance, properties, static members, and destructors
 - **Value types**: Copy semantics with stack allocation
+- **Interfaces**: Contracts with full runtime itable dispatch
 - **Generics**: Parameterized types for collections (`List[T]`, `Map[K, V]`)
+- **Exception handling**: `try`/`catch`/`finally` with structured error propagation
 - **Modules**: File-based modules with bind system
 - **C-like syntax**: Familiar braces, semicolons, and operators
 - **Runtime library**: Full access to Viper.* classes
@@ -28,9 +30,9 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - [Lexical Elements](#lexical-elements)
 - [Types](#types)
 - [Expressions](#expressions)
-- [Statements](#statements)
-- [Declarations](#declarations)
-- [Entity Types](#entity-types)
+- [Statements](#statements) (includes try/catch/finally)
+- [Declarations](#declarations) (includes default parameters)
+- [Entity Types](#entity-types) (includes properties, static members, destructors)
 - [Value Types](#value-types)
 - [Interfaces](#interfaces)
 - [Modules and Imports](#modules-and-imports)
@@ -311,6 +313,13 @@ func start() {
 | Operator | Description |
 |----------|-------------|
 | `=` | Assignment |
+| `+=` | Add and assign |
+| `-=` | Subtract and assign |
+| `*=` | Multiply and assign |
+| `/=` | Divide and assign |
+| `%=` | Modulo and assign |
+
+Compound assignment operators desugar to `a = a op b` at parse time. The left-hand side must be a mutable variable, field, or indexed expression.
 
 ### Ternary Operator
 
@@ -551,6 +560,33 @@ Supported patterns:
 - Constructor patterns (`Point(x, y)`, `Some(value)`, `None`)
 - Guards (`pattern if condition => ...`)
 
+### Try/Catch/Finally Statement
+
+Structured exception handling for runtime errors:
+
+```viper
+try {
+    riskyOperation();
+} catch (e: Error) {
+    handleError(e);
+} finally {
+    cleanup();
+}
+```
+
+- The `try` block is always required.
+- The `catch` block receives the error object. The catch variable name and type annotation are required.
+- The `finally` block runs whether or not an exception was thrown.
+- Both `catch` and `finally` are optional, but at least one must be present.
+
+### Throw Statement
+
+Raises a runtime error:
+
+```viper
+throw someErrorValue;
+```
+
 ---
 
 ## Declarations
@@ -568,6 +604,23 @@ func noReturn(param: Type) {
     // body
 }
 ```
+
+#### Default Parameter Values
+
+Parameters may have default values. When a call omits trailing arguments, the default expressions are used:
+
+```viper
+func greet(name: String, greeting: String = "Hello") -> String {
+    return greeting + ", " + name;
+}
+
+func start() {
+    var msg1 = greet("Alice", "Hi");    // "Hi, Alice"
+    var msg2 = greet("Bob");            // "Hello, Bob"
+}
+```
+
+Default values must be trailing — a parameter with a default cannot be followed by a parameter without one.
 
 ### Global Variable Declaration
 
@@ -643,6 +696,67 @@ entity Counter {
 }
 ```
 
+### Properties
+
+Properties provide computed get/set accessors for entity fields:
+
+```viper
+entity Temperature {
+    Number celsius;
+
+    property fahrenheit: Number {
+        get { return self.celsius * 1.8 + 32.0; }
+        set(value) { self.celsius = (value - 32.0) / 1.8; }
+    }
+}
+```
+
+- The `get` body returns the computed value.
+- The `set` body receives a `value` parameter (name declared in parentheses).
+- Either `get` or `set` may be omitted for read-only or write-only properties.
+- Properties are accessed like fields: `temp.fahrenheit` calls the getter, `temp.fahrenheit = 212.0` calls the setter.
+
+### Static Members
+
+Fields and methods marked `static` belong to the entity type, not to instances:
+
+```viper
+entity Counter {
+    static Integer instanceCount;
+
+    static func getCount() -> Integer {
+        return instanceCount;
+    }
+
+    func init() {
+        instanceCount = instanceCount + 1;
+    }
+}
+```
+
+- Static fields are stored as module-level globals (not per-instance).
+- Static methods have no `self` parameter.
+- Access via the entity name: `Counter.getCount()`, `Counter.instanceCount`.
+
+### Destructors
+
+The `deinit` block defines cleanup logic that runs when an object is destroyed:
+
+```viper
+entity FileHandle {
+    Integer fd;
+
+    deinit {
+        // Cleanup code — release resources
+        closeFile(self.fd);
+    }
+}
+```
+
+- At most one `deinit` block per entity.
+- The destructor automatically releases reference-typed fields after the user body executes.
+- The generated IL function is named `__dtor_TypeName`.
+
 ---
 
 ## Value Types
@@ -700,11 +814,35 @@ interface InterfaceName {
 
 ```viper
 entity MyEntity implements InterfaceName {
-    func methodSignature(params) -> ReturnType {
+    expose func methodSignature(params) -> ReturnType {
         // Implementation
     }
 }
 ```
+
+Implementing methods must be marked `expose` (public visibility).
+
+### Interface Dispatch
+
+Interface-typed variables use runtime itable dispatch. Calling a method on an interface variable performs a lookup through the interface table (itable) to find the correct implementation:
+
+```viper
+interface IShape {
+    func area() -> Number;
+}
+
+entity Circle implements IShape {
+    expose Number radius;
+    expose func area() -> Number { return 3.14 * self.radius * self.radius; }
+}
+
+func printArea(s: IShape) {
+    // Runtime dispatch via itable lookup
+    var a = s.area();
+}
+```
+
+At module initialization, a `__zia_iface_init` function registers each interface and binds implementation itables. Method calls on interface-typed parameters use `rt_get_interface_impl` to find the function pointer at the correct slot, then invoke it via indirect call.
 
 ---
 
@@ -1001,7 +1139,7 @@ From highest to lowest:
 | 12 | `??` | Left |
 | 13 | `..` `..=` | Left |
 | 14 | `? :` | Right |
-| 15 | `=` | Right |
+| 15 | `=` `+=` `-=` `*=` `/=` `%=` | Right |
 
 ---
 
@@ -1012,14 +1150,15 @@ The following words are reserved and cannot be used as identifiers:
 ### Keywords
 
 ```
-and         as          bind        break       continue
-else        entity      expose      extends     false
-final       for         func        guard       hide
-if          implements  in          interface   is
-let         match       module      namespace   new
-not         null        or          override    return
-self        super       true        value       var
-weak        while
+and         as          bind        break       catch
+continue    deinit      else        entity      expose
+extends     false       final       finally     for
+func        guard       hide        if          implements
+in          interface   is          let         match
+module      namespace   new         not         null
+or          override    property    return      self
+static      super       throw       true        try
+value       var         weak        while
 ```
 
 ### Type Names
@@ -1049,9 +1188,13 @@ entityDecl  ::= "entity" IDENT ["extends" IDENT] ["implements" identList] "{" me
 valueDecl   ::= "value" IDENT ["implements" identList] "{" member* "}"
 interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
 funcDecl    ::= "func" IDENT "(" params ")" ["->" type] block
+param       ::= IDENT ":" type ["=" expr]
 varDecl     ::= ("var" | "final") IDENT [":" type] ["=" expr] ";"
 namespaceDecl ::= "namespace" qualifiedName "{" decl* "}"
 qualifiedName ::= IDENT ("." IDENT)*
+member      ::= ["expose" | "hide"] ["static" | "override"] (fieldDecl | funcDecl | propertyDecl | deinitDecl)
+propertyDecl ::= "property" IDENT ":" type "{" ["get" block] ["set" "(" IDENT ")" block] "}"
+deinitDecl  ::= "deinit" block
 ```
 
 ### Statements
@@ -1059,7 +1202,7 @@ qualifiedName ::= IDENT ("." IDENT)*
 ```
 stmt        ::= block | varStmt | ifStmt | whileStmt | forStmt | forInStmt
               | returnStmt | breakStmt | continueStmt | guardStmt | matchStmt
-              | exprStmt
+              | tryStmt | throwStmt | exprStmt
 block       ::= "{" stmt* "}"
 ifStmt      ::= "if" expr block ["else" (ifStmt | block)]
 whileStmt   ::= "while" expr block
@@ -1071,6 +1214,8 @@ continueStmt ::= "continue" ";"
 guardStmt   ::= "guard" expr "else" block
 matchStmt   ::= "match" expr "{" matchArm* "}"
 matchArm    ::= pattern ["if" expr] "=>" (block | expr ";")
+tryStmt     ::= "try" block ["catch" "(" IDENT ":" type ")" block] ["finally" block]
+throwStmt   ::= "throw" expr ";"
 exprStmt    ::= expr ";"
 ```
 
@@ -1078,7 +1223,7 @@ exprStmt    ::= expr ";"
 
 ```
 expr        ::= assignment
-assignment  ::= ternary ["=" assignment]
+assignment  ::= ternary [("=" | "+=" | "-=" | "*=" | "/=" | "%=") assignment]
 ternary     ::= logicalOr ["?" expr ":" ternary]
 logicalOr   ::= logicalAnd ("||" logicalAnd)*
 logicalAnd  ::= equality ("&&" equality)*

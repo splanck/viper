@@ -23,6 +23,7 @@ set(ZIA_SOURCES
         Lowerer.cpp
         Lowerer_Decl.cpp
         Lowerer_Stmt.cpp
+        Lowerer_Stmt_EH.cpp
         Lowerer_Expr.cpp
         Lowerer_Expr_Complex.cpp
         Lowerer_Expr_Literals.cpp

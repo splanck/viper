@@ -128,6 +128,10 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerMatchExpr(static_cast<MatchExpr *>(expr));
         case ExprKind::As:
             return lowerAs(static_cast<AsExpr *>(expr));
+        case ExprKind::Is:
+            return lowerIsExpr(static_cast<IsExpr *>(expr));
+        case ExprKind::SetLiteral:
+            return lowerSetLiteral(static_cast<SetLiteralExpr *>(expr));
         default:
             return {Value::constInt(0), Type(Type::Kind::I64)};
     }

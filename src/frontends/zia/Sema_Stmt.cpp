@@ -77,6 +77,36 @@ void Sema::analyzeStmt(Stmt *stmt)
         case StmtKind::Match:
             analyzeMatchStmt(static_cast<MatchStmt *>(stmt));
             break;
+        case StmtKind::Try:
+        {
+            auto *tryStmt = static_cast<TryStmt *>(stmt);
+            if (tryStmt->tryBody)
+                analyzeStmt(tryStmt->tryBody.get());
+            if (tryStmt->catchBody)
+            {
+                pushScope();
+                if (!tryStmt->catchVar.empty())
+                {
+                    Symbol sym;
+                    sym.kind = Symbol::Kind::Variable;
+                    sym.name = tryStmt->catchVar;
+                    sym.type = types::ptr();
+                    defineSymbol(tryStmt->catchVar, sym);
+                }
+                analyzeStmt(tryStmt->catchBody.get());
+                popScope();
+            }
+            if (tryStmt->finallyBody)
+                analyzeStmt(tryStmt->finallyBody.get());
+            break;
+        }
+        case StmtKind::Throw:
+        {
+            auto *throwStmt = static_cast<ThrowStmt *>(stmt);
+            if (throwStmt->value)
+                analyzeExpr(throwStmt->value.get());
+            break;
+        }
     }
 }
 

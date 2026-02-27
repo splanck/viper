@@ -294,6 +294,12 @@ FunctionDecl *Sema::getGenericFunction(const std::string &name) const
     return it != genericFunctionDecls_.end() ? it->second : nullptr;
 }
 
+FunctionDecl *Sema::getFunctionDecl(const std::string &name) const
+{
+    auto it = functionDecls_.find(name);
+    return it != functionDecls_.end() ? it->second : nullptr;
+}
+
 bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceName) const
 {
     if (!type)

@@ -114,6 +114,18 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
         case BinaryOp::BitAnd:
         case BinaryOp::BitOr:
         case BinaryOp::BitXor:
+            // W017: ^ is bitwise XOR, not exponentiation
+            if (expr->op == BinaryOp::BitXor)
+            {
+                warn(WarningCode::W017_XorConfusion, expr->loc,
+                     "'^' is bitwise XOR in Zia; use Math.Pow() for exponentiation");
+            }
+            // W018: & is bitwise AND, not string concatenation
+            if (expr->op == BinaryOp::BitAnd)
+            {
+                warn(WarningCode::W018_BitwiseAndConfusion, expr->loc,
+                     "'&' is bitwise AND in Zia; use '+' for string concatenation");
+            }
             // Bitwise operations
             if (!leftType->isIntegral() || !rightType->isIntegral())
             {

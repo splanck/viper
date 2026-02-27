@@ -48,6 +48,8 @@ static constexpr WarningInfo kWarningTable[] = {
     {WarningCode::W014_UnusedResult, "W014", "unused-result"},
     {WarningCode::W015_UninitializedVariable, "W015", "uninitialized-variable"},
     {WarningCode::W016_OptionalWithoutCheck, "W016", "optional-without-check"},
+    {WarningCode::W017_XorConfusion, "W017", "xor-confusion"},
+    {WarningCode::W018_BitwiseAndConfusion, "W018", "bitwise-and-confusion"},
 };
 
 static_assert(sizeof(kWarningTable) / sizeof(kWarningTable[0]) == kWarningCodeCount,
@@ -126,6 +128,8 @@ const std::unordered_set<WarningCode> &WarningPolicy::defaultEnabled()
         WarningCode::W012_DuplicateImport,
         WarningCode::W015_UninitializedVariable,
         WarningCode::W016_OptionalWithoutCheck,
+        WarningCode::W017_XorConfusion,
+        WarningCode::W018_BitwiseAndConfusion,
     };
     return defaults;
 }

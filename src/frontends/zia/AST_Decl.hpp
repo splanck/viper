@@ -102,6 +102,14 @@ enum class DeclKind
     /// @brief Namespace declaration: groups declarations under a qualified name.
     /// @see NamespaceDecl
     Namespace,
+
+    /// @brief Property declaration: computed property with getter/setter.
+    /// @see PropertyDecl
+    Property,
+
+    /// @brief Destructor declaration: entity cleanup code.
+    /// @see DestructorDecl
+    Destructor,
 };
 
 /// @brief Member visibility level.
@@ -247,6 +255,9 @@ struct FieldDecl : Decl
     /// @brief True if this is a weak reference (entity types only).
     bool isWeak = false;
 
+    /// @brief True if this is a static (type-level) field.
+    bool isStatic = false;
+
     /// @brief Construct a field declaration.
     /// @param l Source location.
     /// @param n Field name.
@@ -287,10 +298,79 @@ struct MethodDecl : Decl
     /// @brief True if this overrides a parent method.
     bool isOverride = false;
 
+    /// @brief True if this is a static (type-level) method.
+    bool isStatic = false;
+
     /// @brief Construct a method declaration.
     /// @param l Source location.
     /// @param n Method name.
     MethodDecl(SourceLoc l, std::string n) : Decl(DeclKind::Method, l), name(std::move(n)) {}
+};
+
+/// @brief Property declaration with computed getter and optional setter.
+/// @details Declares a property with explicit get/set accessors.
+///
+/// ## Example
+/// ```
+/// entity Circle {
+///     expose radius: Number;
+///     property area: Number {
+///         get { return 3.14159 * self.radius * self.radius; }
+///     }
+/// }
+/// ```
+struct PropertyDecl : Decl
+{
+    /// @brief Property name.
+    std::string name;
+
+    /// @brief Property type.
+    TypePtr type;
+
+    /// @brief Getter body (required).
+    StmtPtr getterBody;
+
+    /// @brief Setter body (nullptr if read-only).
+    StmtPtr setterBody;
+
+    /// @brief Setter parameter name (defaults to "value").
+    std::string setterParam = "value";
+
+    /// @brief Property visibility.
+    Visibility visibility = Visibility::Private;
+
+    /// @brief True if this is a static property.
+    bool isStatic = false;
+
+    /// @brief Construct a property declaration.
+    /// @param l Source location.
+    /// @param n Property name.
+    PropertyDecl(SourceLoc l, std::string n) : Decl(DeclKind::Property, l), name(std::move(n)) {}
+};
+
+/// @brief Destructor declaration for entity types.
+/// @details Defines cleanup code that runs when an entity instance is destroyed.
+/// At most one destructor is allowed per entity. The lowerer synthesizes a
+/// `__dtor_TypeName` IL function that runs the user body, then releases
+/// reference-typed fields.
+///
+/// ## Example
+/// ```
+/// entity Connection {
+///     expose String host;
+///     deinit {
+///         // cleanup resources
+///     }
+/// }
+/// ```
+struct DestructorDecl : Decl
+{
+    /// @brief Destructor body.
+    StmtPtr body;
+
+    /// @brief Construct a destructor declaration.
+    /// @param l Source location.
+    DestructorDecl(SourceLoc l) : Decl(DeclKind::Destructor, l) {}
 };
 
 /// @brief Constructor declaration for entity types.

@@ -1,20 +1,22 @@
 # CLAUDE.md — AI Agent Operating Guide for Viper
 
-**Project:** IL-based Compiler Toolchain (Frontends → IL → VM → Codegen)  
-**Spec Authority:** `/docs/il-guide.md#reference` (IL v0.1), `/docs/architecture.md`, `/docs/codemap.md`
+**Project:** IL-based Compiler Toolchain (Frontends → IL → VM → Codegen)
+**Spec Authority:** `/docs/il-guide.md#reference` (IL v0.2.0), `/docs/architecture.md`, `/docs/codemap.md`
 
 **Permissions:** File/network access within Viper project scope. May download/install tools needed for Viper development work.
 
--IMPORTANY: CLAUDE SHOULD HAVE ALL ALLOW PERMISSIONS. IT SHOULDNT ASK ME FOR PERMISSION TO DO ANYTHING EXCEPT COMMIT OR PUSH!
+-IMPORTANT: CLAUDE SHOULD HAVE ALL ALLOW PERMISSIONS. IT SHOULDNT ASK ME FOR PERMISSION TO DO ANYTHING EXCEPT COMMIT OR PUSH!
 
 **COMMIT MESSAGE RULE:** Never mention Claude, AI, or include generated-by footers in commit messages. Plain conventional commits only.
+
+NOTES: Never mention Claude in any commit messages or comments. Never commit changes, leave that to me.
 
 ## Core Principles (Priority Order)
 
 1. **Spec First** — IL spec is normative. Changes require ADR, never silent divergence.
 2. **Always Green Locally** — Build + tests pass before proposing changes. No CI workflow modifications.
 3. **Discovery Before Questions** — Search codebase for 3-5 similar implementations before asking users.
-4. **Small Increments** — Each change = one coherent, verifiable unit (<10 files).
+4. **Small Increments** — Each change = one coherent, verifiable unit (<50 files).
 5. **Determinism** — VM and native outputs must match for all defined programs.
 
 ---
@@ -30,8 +32,8 @@ Find pattern examples → Extract structure → Identify gaps → Then ask
 - **Rule:** Technical patterns → search code. Business decisions → ask user.
 
 ### 2. INTERROGATE (5-Stage Progression)
-**Stage 1:** What/why/success criteria  
-**Stage 2:** "Found pattern X at location Y—use this?"  
+**Stage 1:** What/why/success criteria
+**Stage 2:** "Found pattern X at location Y—use this?"
 **Stage 3:** ★ **MANDATORY** ★ Resolve ALL of:
 - Feature toggle (required? default state?)
 - Configuration (keys/defaults or "none")
@@ -39,7 +41,7 @@ Find pattern examples → Extract structure → Identify gaps → Then ask
 - Performance SLAs (e.g., "p95 < 500ms")
 - All error scenarios with exact messages
 
-**Stage 4:** Exact technical details (property names, types, API contracts, test cases)  
+**Stage 4:** Exact technical details (property names, types, API contracts, test cases)
 **Stage 5:** "We're building X with Y behavior using Z pattern—what did I miss?"
 
 ### 3. SPECIFY (Before Code)
@@ -50,14 +52,11 @@ Use template from §20.4 (paste into deliverable). Must include:
 - Given/When/Then for positive, negative, edge tests
 
 ### 4. IMPLEMENT (After Spec Approval)
-```sh
-# Add tests first, then code
-cmake -S . -B build && cmake --build build -j
-ctest --test-dir build --output-on-failure
-```
+- Add tests first, then code
 - Format with `.clang-format`, zero warnings
 - Follow Conventional Commits: `<type>(<scope>): <summary>`
 - Keep headers minimal, avoid cross-layer dependencies
+- **All new/modified source files must have the full Viper header** (see Source File Header Template below)
 
 ---
 
@@ -91,17 +90,6 @@ Cross-layer includes require ADR. Never modify `/docs/il-guide.md#reference` wit
 
 ---
 
-## Scope Rules
-
-**Good scope** (pick one):
-- Implement `il::io::Serializer` printing + golden test
-- Add `scmp_*` comparisons in VM + unit tests
-- Create `LinearScanAllocator` skeleton + compile tests
-
-**Too large:** "Implement full x86-64 backend" → Split into tasks, track in `AGENTS_NOTES.md`
-
----
-
 ## File Ownership ("Do Not Touch" Without ADR)
 
 - `/docs/il-guide.md#reference` — IL spec
@@ -126,7 +114,7 @@ When responding to a task:
 2. **Knowledge Gaps** — Structured list requiring resolution
 3. **Questions** — Staged interrogation (§2)
 4. **Specification Draft** — Using §20.4 template; mark TODOs explicitly
-5. **Implementation Plan** — Approach + files to modify (<10)
+5. **Implementation Plan** — Approach + files to modify (<50)
 6. **Commands & Results** — Build/test output summary
 7. **Validation** — Against acceptance criteria
 8. **Commit Message** — Conventional Commits format
@@ -134,6 +122,26 @@ When responding to a task:
 ---
 
 ## Appendix: Quick Reference
+
+### Build Commands
+
+**IMPORTANT:** Always use the provided build scripts. Never use raw `cmake` commands directly.
+
+```sh
+# Build and test Viper
+./scripts/build_viper.sh
+
+# Build all demos
+./scripts/build_demos.sh
+
+# Build and test ViperDOS (NEVER use build_viper.sh for ViperDOS!)
+./scripts/build_viperdos.sh
+# Build ViperDOS without launching QEMU:
+./scripts/build_viperdos.sh --no-run
+
+# Format
+clang-format -i <files>
+```
 
 ### Conventional Commits
 ```
@@ -143,9 +151,33 @@ When responding to a task:
 ```
 Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `build`
 
-### New Class Header Template
+### Source File Header Template
+
+**All source files (.h, .c, .hpp, .cpp) must use this header:**
+
 ```cpp
-// <path>/<Name>.h
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: <path>
+// Purpose: <brief description of file purpose>
+// Key invariants:
+//   - <invariant 1>
+//   - <invariant 2>
+// Ownership/Lifetime:
+//   - <ownership model>
+//   - <lifetime guarantee>
+// Links: <related files or docs>
+//
+//===----------------------------------------------------------------------===//
+```
+
+### New Class Header Template (after file header)
+```cpp
 #pragma once
 /// @brief <purpose>
 /// @invariant <key invariants>
@@ -169,19 +201,6 @@ class Name {
 
 ---
 
-**Build Commands:**
-```sh
-# Configure & build
-cmake -S . -B build
-cmake --build build -j
-
-# Test
-ctest --test-dir build --output-on-failure
-
-# Format
-clang-format -i <files>
-```
-
 **Compiler:** Clang is canonical (Apple Clang on macOS, clang++ on Linux)
 
 ---
@@ -192,5 +211,5 @@ clang-format -i <files>
 - Discovery-driven interrogation before specification
 - Strict architectural layering enforcement
 - VM/native determinism requirement
-
-NOTES: Never mention Claude in any commit messages or comments. Never commit changes, leave that to me.
+- Mandatory build scripts (never raw cmake)
+- Full Viper source file headers on all code files

@@ -204,6 +204,51 @@ ExprPtr Parser::parseExpression()
     return parseAssignment();
 }
 
+/// @brief Clone an lvalue expression for compound assignment desugaring.
+/// @details Only handles lvalue forms: IdentExpr, FieldExpr, IndexExpr, SelfExpr.
+static ExprPtr cloneLvalueExpr(Expr *expr)
+{
+    if (!expr)
+        return nullptr;
+
+    switch (expr->kind)
+    {
+        case ExprKind::Ident:
+        {
+            auto *id = static_cast<IdentExpr *>(expr);
+            return std::make_unique<IdentExpr>(id->loc, id->name);
+        }
+        case ExprKind::SelfExpr:
+            return std::make_unique<SelfExpr>(expr->loc);
+        case ExprKind::Field:
+        {
+            auto *field = static_cast<FieldExpr *>(expr);
+            return std::make_unique<FieldExpr>(
+                field->loc, cloneLvalueExpr(field->base.get()), field->field);
+        }
+        case ExprKind::Index:
+        {
+            auto *idx = static_cast<IndexExpr *>(expr);
+            return std::make_unique<IndexExpr>(
+                idx->loc, cloneLvalueExpr(idx->base.get()), cloneLvalueExpr(idx->index.get()));
+        }
+        default:
+            // For other expression types (e.g., int literals used as index),
+            // reconstruct as literal if possible
+            if (expr->kind == ExprKind::IntLiteral)
+            {
+                auto *lit = static_cast<IntLiteralExpr *>(expr);
+                return std::make_unique<IntLiteralExpr>(lit->loc, lit->value);
+            }
+            if (expr->kind == ExprKind::StringLiteral)
+            {
+                auto *lit = static_cast<StringLiteralExpr *>(expr);
+                return std::make_unique<StringLiteralExpr>(lit->loc, lit->value);
+            }
+            return nullptr;
+    }
+}
+
 ExprPtr Parser::parseAssignment()
 {
     ExprPtr expr = parseTernary();
@@ -219,6 +264,54 @@ ExprPtr Parser::parseAssignment()
             return nullptr;
         return std::make_unique<BinaryExpr>(
             loc, BinaryOp::Assign, std::move(expr), std::move(value));
+    }
+
+    // Compound assignment operators: +=, -=, *=, /=, %=
+    // Desugar: a += b  →  a = a + b
+    auto compoundOp = [&](TokenKind tk) -> BinaryOp
+    {
+        switch (tk)
+        {
+            case TokenKind::PlusEqual:
+                return BinaryOp::Add;
+            case TokenKind::MinusEqual:
+                return BinaryOp::Sub;
+            case TokenKind::StarEqual:
+                return BinaryOp::Mul;
+            case TokenKind::SlashEqual:
+                return BinaryOp::Div;
+            case TokenKind::PercentEqual:
+                return BinaryOp::Mod;
+            default:
+                return BinaryOp::Add; // unreachable
+        }
+    };
+
+    Token compTok;
+    if (match(TokenKind::PlusEqual, &compTok) || match(TokenKind::MinusEqual, &compTok) ||
+        match(TokenKind::StarEqual, &compTok) || match(TokenKind::SlashEqual, &compTok) ||
+        match(TokenKind::PercentEqual, &compTok))
+    {
+        SourceLoc loc = compTok.loc;
+        BinaryOp op = compoundOp(compTok.kind);
+
+        // Clone the LHS for the read side of the compound operation
+        ExprPtr lhsClone = cloneLvalueExpr(expr.get());
+        if (!lhsClone)
+        {
+            error("compound assignment target must be an lvalue");
+            return nullptr;
+        }
+
+        ExprPtr rhs = parseAssignment(); // right-associative
+        if (!rhs)
+            return nullptr;
+
+        // Build: lhs = lhsClone op rhs
+        auto arithExpr =
+            std::make_unique<BinaryExpr>(loc, op, std::move(lhsClone), std::move(rhs));
+        return std::make_unique<BinaryExpr>(
+            loc, BinaryOp::Assign, std::move(expr), std::move(arithExpr));
     }
 
     return expr;

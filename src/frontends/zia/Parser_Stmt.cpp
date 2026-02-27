@@ -147,6 +147,22 @@ StmtPtr Parser::parseStatement()
         return std::make_unique<ContinueStmt>(loc);
     }
 
+    // Try/catch/finally
+    if (check(TokenKind::KwTry))
+    {
+        result = parseTryStmt();
+        --stmtDepth_;
+        return result;
+    }
+
+    // Throw statement
+    if (check(TokenKind::KwThrow))
+    {
+        result = parseThrowStmt();
+        --stmtDepth_;
+        return result;
+    }
+
     // Expression statement
     ExprPtr expr = parseExpression();
     if (!expr)
@@ -658,6 +674,77 @@ StmtPtr Parser::parseMatchStmt()
         return nullptr;
 
     return std::make_unique<MatchStmt>(loc, std::move(scrutinee), std::move(arms));
+}
+
+/// @brief Parse a try/catch/finally statement.
+/// @details Syntax:
+///   try { body }
+///   [catch(varName) { catchBody }]
+///   [finally { finallyBody }]
+/// At least one of catch or finally must be present.
+StmtPtr Parser::parseTryStmt()
+{
+    Token tryTok = advance(); // consume 'try'
+    SourceLoc loc = tryTok.loc;
+
+    auto stmt = std::make_unique<TryStmt>(loc);
+
+    // Parse try body
+    stmt->tryBody = parseBlock();
+    if (!stmt->tryBody)
+        return nullptr;
+
+    // Parse optional catch clause
+    if (match(TokenKind::KwCatch))
+    {
+        // Optional catch variable: catch(e) or catch
+        if (match(TokenKind::LParen))
+        {
+            if (checkIdentifierLike())
+            {
+                stmt->catchVar = advance().text;
+            }
+            if (!expect(TokenKind::RParen, "')'"))
+                return nullptr;
+        }
+
+        stmt->catchBody = parseBlock();
+        if (!stmt->catchBody)
+            return nullptr;
+    }
+
+    // Parse optional finally clause
+    if (match(TokenKind::KwFinally))
+    {
+        stmt->finallyBody = parseBlock();
+        if (!stmt->finallyBody)
+            return nullptr;
+    }
+
+    // At least one of catch or finally must be present
+    if (!stmt->catchBody && !stmt->finallyBody)
+    {
+        error("try statement requires at least a catch or finally clause");
+        return nullptr;
+    }
+
+    return stmt;
+}
+
+/// @brief Parse a throw statement: throw expr;
+StmtPtr Parser::parseThrowStmt()
+{
+    Token throwTok = advance(); // consume 'throw'
+    SourceLoc loc = throwTok.loc;
+
+    ExprPtr value = parseExpression();
+    if (!value)
+        return nullptr;
+
+    if (!expect(TokenKind::Semicolon, ";"))
+        return nullptr;
+
+    return std::make_unique<ThrowStmt>(loc, std::move(value));
 }
 
 } // namespace il::frontends::zia

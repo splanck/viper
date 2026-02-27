@@ -1241,4 +1241,52 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
     return {source.value, ilTargetType};
 }
 
+//=============================================================================
+// Is Expression Lowering
+//=============================================================================
+
+LowerResult Lowerer::lowerIsExpr(IsExpr *expr)
+{
+    // Lower the value being tested
+    auto source = lowerExpr(expr->value.get());
+
+    // Resolve the target type name
+    TypeRef targetType = sema_.resolveType(expr->type.get());
+    if (!targetType)
+    {
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    // Look up the entity type info for the target type
+    std::string targetName = targetType->name;
+    auto it = entityTypes_.find(targetName);
+    if (it == entityTypes_.end())
+    {
+        // Not an entity type — fall back to false
+        diag_.report({il::support::Severity::Warning,
+                      "'is' check against non-entity type '" + targetName +
+                          "' always evaluates to false",
+                      expr->loc, "W019"});
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    int targetClassId = it->second.classId;
+
+    // Emit: classId = call rt_obj_class_id(source)
+    Value classId =
+        emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {source.value});
+
+    // Emit: result = icmp_eq classId, targetClassId
+    unsigned cmpId = nextTempId();
+    il::core::Instr cmpInstr;
+    cmpInstr.result = cmpId;
+    cmpInstr.op = Opcode::ICmpEq;
+    cmpInstr.type = Type(Type::Kind::I64);
+    cmpInstr.operands = {classId, Value::constInt(static_cast<int64_t>(targetClassId))};
+    cmpInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(cmpInstr);
+
+    return {Value::temp(cmpId), Type(Type::Kind::I64)};
+}
+
 } // namespace il::frontends::zia

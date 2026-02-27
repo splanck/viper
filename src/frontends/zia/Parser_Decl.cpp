@@ -528,10 +528,12 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
     {
         Visibility visibility = defaultVisibility;
         bool isOverride = false;
+        bool isStatic = false;
 
         // Parse modifiers (can appear in any order when override is allowed)
         while (check(TokenKind::KwExpose) || check(TokenKind::KwHide) ||
-               (allowOverride && check(TokenKind::KwOverride)))
+               (allowOverride && check(TokenKind::KwOverride)) ||
+               check(TokenKind::KwStatic))
         {
             if (match(TokenKind::KwExpose))
                 visibility = Visibility::Public;
@@ -539,6 +541,8 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 visibility = Visibility::Private;
             else if (allowOverride && match(TokenKind::KwOverride))
                 isOverride = true;
+            else if (match(TokenKind::KwStatic))
+                isStatic = true;
         }
 
         if (check(TokenKind::KwFunc))
@@ -549,21 +553,44 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 auto *m = static_cast<MethodDecl *>(method.get());
                 m->visibility = visibility;
                 m->isOverride = isOverride;
+                m->isStatic = isStatic;
                 members.push_back(std::move(method));
             }
+        }
+        else if (check(TokenKind::KwProperty))
+        {
+            auto prop = parsePropertyDecl();
+            if (prop)
+            {
+                auto *p = static_cast<PropertyDecl *>(prop.get());
+                p->visibility = visibility;
+                p->isStatic = isStatic;
+                members.push_back(std::move(prop));
+            }
+        }
+        else if (check(TokenKind::KwDeinit))
+        {
+            Token deinitTok = advance(); // consume 'deinit'
+            auto dtor = std::make_unique<DestructorDecl>(deinitTok.loc);
+
+            // parseBlock() expects and consumes '{' itself
+            dtor->body = parseBlock();
+            members.push_back(std::move(dtor));
         }
         else if (check(TokenKind::Identifier))
         {
             auto field = parseFieldDecl();
             if (field)
             {
-                static_cast<FieldDecl *>(field.get())->visibility = visibility;
+                auto *f = static_cast<FieldDecl *>(field.get());
+                f->visibility = visibility;
+                f->isStatic = isStatic;
                 members.push_back(std::move(field));
             }
         }
         else
         {
-            error("expected field or method declaration");
+            error("expected field, method, property, or deinit declaration");
             advance();
         }
     }
@@ -934,6 +961,79 @@ DeclPtr Parser::parseMethodDecl()
     }
 
     return method;
+}
+
+/// @brief Parse a property declaration: property name: Type { get { ... } set(param) { ... } }
+/// @return The parsed PropertyDecl, or nullptr on error.
+DeclPtr Parser::parsePropertyDecl()
+{
+    Token propTok = advance(); // consume 'property'
+    SourceLoc loc = propTok.loc;
+
+    // Property name
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected property name");
+        return nullptr;
+    }
+    Token nameTok = advance();
+    std::string name = nameTok.text;
+
+    // Colon + type
+    if (!expect(TokenKind::Colon, ":"))
+        return nullptr;
+    TypePtr type = parseType();
+    if (!type)
+        return nullptr;
+
+    auto prop = std::make_unique<PropertyDecl>(loc, std::move(name));
+    prop->type = std::move(type);
+
+    // Opening brace for accessor block
+    if (!expect(TokenKind::LBrace, "{"))
+        return nullptr;
+
+    // Parse get/set accessors (contextual keywords — parsed as identifiers)
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+    {
+        if (check(TokenKind::Identifier) && peek().text == "get")
+        {
+            advance(); // consume 'get'
+            prop->getterBody = parseBlock();
+        }
+        else if (check(TokenKind::Identifier) && peek().text == "set")
+        {
+            advance(); // consume 'set'
+            // Optional parameter name: set(value)
+            if (match(TokenKind::LParen))
+            {
+                if (check(TokenKind::Identifier))
+                {
+                    prop->setterParam = advance().text;
+                }
+                if (!expect(TokenKind::RParen, ")"))
+                    return nullptr;
+            }
+            prop->setterBody = parseBlock();
+        }
+        else
+        {
+            error("expected 'get' or 'set' in property declaration");
+            advance();
+        }
+    }
+
+    // Closing brace
+    if (!expect(TokenKind::RBrace, "}"))
+        return nullptr;
+
+    if (!prop->getterBody)
+    {
+        error("property must have a getter");
+        return nullptr;
+    }
+
+    return prop;
 }
 
 } // namespace il::frontends::zia

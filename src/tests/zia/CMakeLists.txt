@@ -161,4 +161,39 @@ function(viper_add_zia_tests)
     viper_add_test(test_zia_warnings ${_VIPER_ZIA_DIR}/test_zia_warnings.cpp)
     target_link_libraries(test_zia_warnings PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_warnings test_zia_warnings)
+
+    # Compound assignment operator tests (+=, -=, *=, /=, %=)
+    viper_add_test(test_zia_compound_assign ${_VIPER_ZIA_DIR}/test_zia_compound_assign.cpp)
+    target_link_libraries(test_zia_compound_assign PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_compound_assign test_zia_compound_assign)
+
+    # `is` type check + set literal lowering tests
+    viper_add_test(test_zia_is_and_sets ${_VIPER_ZIA_DIR}/test_zia_is_and_sets.cpp)
+    target_link_libraries(test_zia_is_and_sets PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_is_and_sets test_zia_is_and_sets)
+
+    # Default parameter value tests
+    viper_add_test(test_zia_defaults ${_VIPER_ZIA_DIR}/test_zia_defaults.cpp)
+    target_link_libraries(test_zia_defaults PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_defaults test_zia_defaults)
+
+    # Property (get/set) and static member tests
+    viper_add_test(test_zia_properties_static ${_VIPER_ZIA_DIR}/test_zia_properties_static.cpp)
+    target_link_libraries(test_zia_properties_static PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_properties_static test_zia_properties_static)
+
+    # Destructor (deinit) tests
+    viper_add_test(test_zia_destructors ${_VIPER_ZIA_DIR}/test_zia_destructors.cpp)
+    target_link_libraries(test_zia_destructors PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_destructors test_zia_destructors)
+
+    # Try/catch/finally tests
+    viper_add_test(test_zia_try_catch ${_VIPER_ZIA_DIR}/test_zia_try_catch.cpp)
+    target_link_libraries(test_zia_try_catch PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_try_catch test_zia_try_catch)
+
+    # Interface dynamic dispatch tests
+    viper_add_test(test_zia_iface_dispatch ${_VIPER_ZIA_DIR}/test_zia_iface_dispatch.cpp)
+    target_link_libraries(test_zia_iface_dispatch PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_iface_dispatch test_zia_iface_dispatch)
 endfunction()

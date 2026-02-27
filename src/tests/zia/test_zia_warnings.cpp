@@ -457,6 +457,44 @@ TEST(ZiaWarnings, ParseWarningCode_NumericAndName)
     EXPECT_FALSE(c3.has_value());
 }
 
+// =============================================================================
+// W017: XOR Confusion (^ is bitwise XOR, not exponentiation)
+// =============================================================================
+
+TEST(ZiaWarnings, W017_XorConfusion)
+{
+    WarningPolicy policy;
+    policy.enableAll = true;
+    auto r = compileWithPolicy(R"(
+module Test;
+func start() {
+    var x = 2 ^ 3;
+}
+)", policy);
+
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_TRUE(hasWarningCode(r, "W017"));
+}
+
+// =============================================================================
+// W018: Bitwise AND Confusion (& is bitwise AND, not concatenation)
+// =============================================================================
+
+TEST(ZiaWarnings, W018_BitwiseAndConfusion)
+{
+    WarningPolicy policy;
+    policy.enableAll = true;
+    auto r = compileWithPolicy(R"(
+module Test;
+func start() {
+    var x = 5 & 3;
+}
+)", policy);
+
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_TRUE(hasWarningCode(r, "W018"));
+}
+
 } // namespace
 
 int main()

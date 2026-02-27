@@ -53,10 +53,12 @@ enum class WarningCode : uint16_t
     W014_UnusedResult = 14,
     W015_UninitializedVariable = 15,
     W016_OptionalWithoutCheck = 16,
+    W017_XorConfusion = 17,
+    W018_BitwiseAndConfusion = 18,
 };
 
 /// @brief Total number of defined warning codes.
-inline constexpr uint16_t kWarningCodeCount = 16;
+inline constexpr uint16_t kWarningCodeCount = 18;
 
 /// @brief Get the diagnostic code string for a warning (e.g., "W001").
 /// @param code The warning code.
