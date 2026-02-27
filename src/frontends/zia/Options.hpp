@@ -28,6 +28,8 @@
 
 #pragma once
 
+#include "frontends/zia/Warnings.hpp"
+
 namespace il::frontends::zia
 {
 
@@ -74,6 +76,10 @@ struct CompilerOptions
     ///          speed and runtime performance. Use O0 for debugging or O2
     ///          for maximum performance.
     OptLevel optLevel{OptLevel::O0};
+
+    /// @brief Warning policy controlling which warnings are enabled, whether
+    ///        warnings are errors, and per-warning suppression via CLI flags.
+    WarningPolicy warningPolicy{};
 };
 
 } // namespace il::frontends::zia

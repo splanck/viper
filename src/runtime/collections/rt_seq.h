@@ -26,9 +26,25 @@ extern "C"
 {
 #endif
 
+    /// @brief Seq class identifier for heap header tagging.
+#define RT_SEQ_CLASS_ID 2
+
     /// @brief Create a new empty sequence with default capacity.
     /// @return Opaque pointer to the new Seq object.
     void *rt_seq_new(void);
+
+    /// @brief Enable or disable element ownership for a Seq.
+    /// @details When enabled, the Seq retains elements on push/insert/set and
+    ///          releases them on clear/finalize. Must be called before pushing.
+    /// @param obj Opaque Seq object pointer.
+    /// @param owns 1 to enable ownership, 0 to disable.
+    void rt_seq_set_owns_elements(void *obj, int8_t owns);
+
+    /// @brief Push an element without retaining it, regardless of ownership mode.
+    /// @details For internal runtime use where element lifetime is managed externally.
+    /// @param obj Opaque Seq object pointer.
+    /// @param val Element to add.
+    void rt_seq_push_raw(void *obj, void *val);
 
     /// @brief Create a new empty sequence with specified initial capacity.
     /// @param cap Initial capacity (minimum 1).

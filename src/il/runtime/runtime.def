@@ -318,6 +318,15 @@ RT_FUNC(WeakMapClear,   rt_weakmap_clear,   "Viper.Collections.WeakMap.Clear",  
 RT_FUNC(WeakMapCompact, rt_weakmap_compact, "Viper.Collections.WeakMap.Compact",    "i64(obj)")
 
 //=============================================================================
+// MEMORY - Reference Counting
+//=============================================================================
+
+RT_FUNC(HeapRetain,       rt_heap_retain,         "Viper.Memory.Retain",           "void(obj)")
+RT_FUNC(HeapRelease,      rt_heap_release,        "Viper.Memory.Release",          "i64(obj)")
+// NOTE: rt_str_release_maybe is already registered in RuntimeSignatures.cpp
+// under its C name. Use "rt_str_release_maybe" directly as the callee.
+
+//=============================================================================
 // MEMORY - GC Cycle Collection
 //=============================================================================
 
@@ -325,12 +334,16 @@ RT_FUNC(GcCollect,      rt_gc_collect,      "Viper.Memory.GC.Collect",        "i
 RT_FUNC(GcTrackedCount, rt_gc_tracked_count,"Viper.Memory.GC.TrackedCount",   "i64()")
 RT_FUNC(GcTotalCollected, rt_gc_total_collected, "Viper.Memory.GC.TotalCollected", "i64()")
 RT_FUNC(GcPassCount,    rt_gc_pass_count,   "Viper.Memory.GC.PassCount",      "i64()")
+RT_FUNC(GcSetThreshold, rt_gc_set_threshold,"Viper.Memory.GC.SetThreshold",   "void(i64)")
+RT_FUNC(GcGetThreshold, rt_gc_get_threshold,"Viper.Memory.GC.GetThreshold",   "i64()")
 
 RT_CLASS_BEGIN("Viper.Memory.GC", MemoryGC, "obj", none)
     RT_METHOD("Collect",        "i64()", GcCollect)
     RT_METHOD("TrackedCount",   "i64()", GcTrackedCount)
     RT_METHOD("TotalCollected", "i64()", GcTotalCollected)
     RT_METHOD("PassCount",      "i64()", GcPassCount)
+    RT_METHOD("SetThreshold",   "void(i64)", GcSetThreshold)
+    RT_METHOD("GetThreshold",   "i64()", GcGetThreshold)
 RT_CLASS_END()
 
 //=============================================================================

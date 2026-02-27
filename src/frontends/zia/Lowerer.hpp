@@ -529,6 +529,43 @@ class Lowerer
     /// @brief Maximum allowed lowering recursion depth.
     static constexpr unsigned kMaxLowerDepth = 512;
 
+    //=========================================================================
+    /// @name Deferred Release Tracking
+    /// @brief Tracks temporary values that need release at statement boundary.
+    /// @details When a runtime call returns a reference-counted value (string
+    ///          or heap object), the result is added to deferredTemps_. At the
+    ///          end of each statement, all remaining deferred temps are released.
+    ///          Temps that are "consumed" (stored to a slot or returned) are
+    ///          removed from the list before release.
+    //=========================================================================
+
+    /// @brief A temporary value pending release at statement boundary.
+    struct DeferredRelease
+    {
+        Value value;     ///< The temporary SSA value to release.
+        bool isString;   ///< true = rt_str_release_maybe; false = rt_heap_release.
+        size_t blockIdx; ///< Block where this temp was defined (for SSA safety).
+    };
+
+    /// @brief Temporaries queued for release at the next statement boundary.
+    std::vector<DeferredRelease> deferredTemps_;
+
+    /// @brief Queue a temporary for release at statement boundary.
+    void deferRelease(Value v, bool isString);
+
+    /// @brief Emit release calls for all deferred temporaries, then clear.
+    void releaseDeferredTemps();
+
+    /// @brief Remove a value from the deferred list (it was consumed by a
+    ///        store-to-slot or return, so it must NOT be released).
+    void consumeDeferred(Value v);
+
+    /// @brief Check if a semantic type is refcounted and needs release.
+    bool needsRelease(TypeRef type) const;
+
+    /// @brief Check if a semantic type is a string (vs heap object).
+    bool isStringType(TypeRef type) const;
+
     /// @}
     //=========================================================================
     /// @name Block Management

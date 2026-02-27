@@ -30,6 +30,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_lazyseq.h"
+#include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include <stdlib.h>
@@ -147,12 +148,68 @@ struct rt_lazyseq_impl
 // Internal helpers
 //=============================================================================
 
+/// @brief Release a source LazySeq reference via the object release path.
+/// @details Decrements the refcount and, if it reaches zero, runs the
+///          source's finalizer (which recursively releases its own children)
+///          before freeing the memory.
+static void release_source(rt_lazyseq source)
+{
+    if (!source)
+        return;
+    if (rt_obj_release_check0(source))
+        rt_obj_free(source);
+}
+
+/// @brief Finalizer for LazySeq objects.
+/// @details Releases retained source sequences for composite types.
+///          Installed on every LazySeq via alloc_lazyseq().
+static void lazyseq_finalizer(void *obj)
+{
+    struct rt_lazyseq_impl *seq = (struct rt_lazyseq_impl *)obj;
+    if (!seq)
+        return;
+
+    switch (seq->type)
+    {
+        case LAZYSEQ_MAP:
+        case LAZYSEQ_FILTER:
+            release_source(seq->data.transform.source);
+            seq->data.transform.source = NULL;
+            break;
+        case LAZYSEQ_TAKE:
+        case LAZYSEQ_DROP:
+            release_source(seq->data.bounded.source);
+            seq->data.bounded.source = NULL;
+            break;
+        case LAZYSEQ_TAKE_WHILE:
+        case LAZYSEQ_DROP_WHILE:
+            release_source(seq->data.predicated.source);
+            seq->data.predicated.source = NULL;
+            break;
+        case LAZYSEQ_CONCAT:
+            release_source(seq->data.concat.first);
+            release_source(seq->data.concat.second);
+            seq->data.concat.first = NULL;
+            seq->data.concat.second = NULL;
+            break;
+        case LAZYSEQ_ZIP:
+            release_source(seq->data.zip.seq1);
+            release_source(seq->data.zip.seq2);
+            seq->data.zip.seq1 = NULL;
+            seq->data.zip.seq2 = NULL;
+            break;
+        default:
+            break;
+    }
+}
+
 static rt_lazyseq alloc_lazyseq(lazyseq_type type)
 {
     struct rt_lazyseq_impl *seq =
         (struct rt_lazyseq_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_lazyseq_impl));
     memset(seq, 0, sizeof(struct rt_lazyseq_impl));
     seq->type = type;
+    rt_obj_set_finalizer(seq, lazyseq_finalizer);
     return seq;
 }
 
@@ -220,32 +277,11 @@ void rt_lazyseq_destroy(rt_lazyseq seq)
     if (!seq)
         return;
 
-    // Recursively destroy nested sequences
-    switch (seq->type)
-    {
-        case LAZYSEQ_MAP:
-        case LAZYSEQ_FILTER:
-            rt_lazyseq_destroy(seq->data.transform.source);
-            break;
-        case LAZYSEQ_TAKE:
-        case LAZYSEQ_DROP:
-            rt_lazyseq_destroy(seq->data.bounded.source);
-            break;
-        case LAZYSEQ_TAKE_WHILE:
-        case LAZYSEQ_DROP_WHILE:
-            rt_lazyseq_destroy(seq->data.predicated.source);
-            break;
-        case LAZYSEQ_CONCAT:
-            rt_lazyseq_destroy(seq->data.concat.first);
-            rt_lazyseq_destroy(seq->data.concat.second);
-            break;
-        case LAZYSEQ_ZIP:
-            rt_lazyseq_destroy(seq->data.zip.seq1);
-            rt_lazyseq_destroy(seq->data.zip.seq2);
-            break;
-        default:
-            break;
-    }
+    // Release one reference. If this is the last reference, the finalizer
+    // (lazyseq_finalizer) recursively releases child sources and frees the
+    // object. This replaces the old manual recursive cleanup.
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
 }
 
 //=============================================================================
@@ -620,6 +656,7 @@ rt_lazyseq rt_lazyseq_map(rt_lazyseq seq, void *(*fn)(void *))
     if (!result)
         return NULL;
 
+    rt_heap_retain(seq);
     result->data.transform.source = seq;
     result->data.transform.map_fn = fn;
     return result;
@@ -634,6 +671,7 @@ rt_lazyseq rt_lazyseq_filter(rt_lazyseq seq, int8_t (*pred)(void *))
     if (!result)
         return NULL;
 
+    rt_heap_retain(seq);
     result->data.transform.source = seq;
     result->data.transform.filter_fn = pred;
     return result;
@@ -648,6 +686,7 @@ rt_lazyseq rt_lazyseq_take(rt_lazyseq seq, int64_t n)
     if (!result)
         return NULL;
 
+    rt_heap_retain(seq);
     result->data.bounded.source = seq;
     result->data.bounded.limit = n;
     result->data.bounded.consumed = 0;
@@ -663,6 +702,7 @@ rt_lazyseq rt_lazyseq_drop(rt_lazyseq seq, int64_t n)
     if (!result)
         return NULL;
 
+    rt_heap_retain(seq);
     result->data.bounded.source = seq;
     result->data.bounded.limit = n;
     result->data.bounded.consumed = 0;
@@ -678,6 +718,7 @@ rt_lazyseq rt_lazyseq_take_while(rt_lazyseq seq, int8_t (*pred)(void *))
     if (!result)
         return NULL;
 
+    rt_heap_retain(seq);
     result->data.predicated.source = seq;
     result->data.predicated.pred = pred;
     result->data.predicated.done = 0;
@@ -693,6 +734,7 @@ rt_lazyseq rt_lazyseq_drop_while(rt_lazyseq seq, int8_t (*pred)(void *))
     if (!result)
         return NULL;
 
+    rt_heap_retain(seq);
     result->data.predicated.source = seq;
     result->data.predicated.pred = pred;
     result->data.predicated.done = 0;
@@ -708,6 +750,8 @@ rt_lazyseq rt_lazyseq_concat(rt_lazyseq first, rt_lazyseq second)
     if (!result)
         return NULL;
 
+    rt_heap_retain(first);
+    rt_heap_retain(second);
     result->data.concat.first = first;
     result->data.concat.second = second;
     result->data.concat.on_second = 0;
@@ -723,6 +767,8 @@ rt_lazyseq rt_lazyseq_zip(rt_lazyseq seq1, rt_lazyseq seq2, void *(*combine)(voi
     if (!result)
         return NULL;
 
+    rt_heap_retain(seq1);
+    rt_heap_retain(seq2);
     result->data.zip.seq1 = seq1;
     result->data.zip.seq2 = seq2;
     result->data.zip.combine = combine;

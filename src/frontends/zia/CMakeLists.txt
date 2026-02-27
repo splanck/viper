@@ -1,4 +1,5 @@
 set(ZIA_SOURCES
+        Warnings.cpp
         Lexer.cpp
         ImportResolver.cpp
         Parser_Tokens.cpp

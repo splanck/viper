@@ -150,6 +150,12 @@ static enum Err rt_file_err_from_errno(int err, enum Err fallback)
         case EACCES:
         case EPERM:
         case EBADF:
+#ifdef EMFILE
+        case EMFILE: // Per-process file descriptor limit
+#endif
+#ifdef ENFILE
+        case ENFILE: // System-wide file descriptor limit
+#endif
             // Permission, transient, or device/storage I/O errors
             return Err_IOError;
         default:

@@ -49,6 +49,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "vgfx.h"
@@ -106,6 +108,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
     {
         if (rt_obj_release_check0(canvas))
             rt_obj_free(canvas);
+        rt_trap("Canvas.New: failed to create window (display server unavailable?)");
         return NULL;
     }
 
@@ -2668,6 +2671,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
     (void)title;
     (void)width;
     (void)height;
+    rt_trap("Canvas.New: graphics support not compiled in");
     return NULL;
 }
 

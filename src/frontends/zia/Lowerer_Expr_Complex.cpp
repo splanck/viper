@@ -1023,9 +1023,11 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     auto savedLocals = std::move(locals_);
     auto savedSlots = std::move(slots_);
     auto savedLocalTypes = std::move(localTypes_);
+    auto savedDeferredTemps = std::move(deferredTemps_);
     locals_.clear();
     slots_.clear();
     localTypes_.clear();
+    deferredTemps_.clear();
 
     // Create the lambda function and entry block via IRBuilder so param IDs are assigned.
     currentFunc_ = &builder_->startFunction(lambdaName, ilReturnType, params);
@@ -1145,6 +1147,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     locals_ = std::move(savedLocals);
     slots_ = std::move(savedSlots);
     localTypes_ = std::move(savedLocalTypes);
+    deferredTemps_ = std::move(savedDeferredTemps);
     currentReturnType_ = savedReturnType;
 
     // Get the function pointer

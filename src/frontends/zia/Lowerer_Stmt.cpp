@@ -80,6 +80,10 @@ void Lowerer::lowerStmt(Stmt *stmt)
             lowerMatchStmt(static_cast<MatchStmt *>(stmt));
             break;
     }
+
+    // Release any deferred temporaries from this statement.
+    // Temps consumed by stores or returns have already been removed.
+    releaseDeferredTemps();
 }
 
 void Lowerer::lowerBlockStmt(BlockStmt *stmt)
@@ -208,11 +212,15 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
     {
         createSlot(stmt->name, ilType);
         storeToSlot(stmt->name, initValue, ilType);
+        // The init value is consumed by the slot — don't release it at statement boundary
+        consumeDeferred(initValue);
     }
     else
     {
         // Final/immutable variables can use direct SSA values
         defineLocal(stmt->name, initValue);
+        // The init value is consumed by the local — don't release it at statement boundary
+        consumeDeferred(initValue);
     }
 
     if (varType)
@@ -229,6 +237,9 @@ void Lowerer::lowerIfStmt(IfStmt *stmt)
 
     // Lower condition
     auto cond = lowerExpr(stmt->condition.get());
+
+    // Release condition temps before branch (SSA: temps are scoped to this block)
+    releaseDeferredTemps();
 
     // Emit branch
     if (stmt->elseBranch)
@@ -277,6 +288,7 @@ void Lowerer::lowerWhileStmt(WhileStmt *stmt)
     // Lower condition
     setBlock(condIdx);
     auto cond = lowerExpr(stmt->condition.get());
+    releaseDeferredTemps(); // Release condition temps before branch
     emitCBr(cond.value, bodyIdx, endIdx);
 
     // Lower body
@@ -317,6 +329,7 @@ void Lowerer::lowerForStmt(ForStmt *stmt)
     if (stmt->condition)
     {
         auto cond = lowerExpr(stmt->condition.get());
+        releaseDeferredTemps(); // Release condition temps before branch
         emitCBr(cond.value, bodyIdx, endIdx);
     }
     else
@@ -852,10 +865,15 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
             }
         }
 
+        // The return value is transferred to the caller — don't release it.
+        // But release any intermediate temps from evaluating the return expr.
+        consumeDeferred(returnValue);
+        releaseDeferredTemps();
         emitRet(returnValue);
     }
     else
     {
+        releaseDeferredTemps();
         emitRetVoid();
     }
 }
@@ -864,6 +882,7 @@ void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/)
 {
     if (!loopStack_.empty())
     {
+        releaseDeferredTemps(); // Release any pending temps before branch
         emitBr(loopStack_.breakTarget());
     }
 }
@@ -872,6 +891,7 @@ void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/)
 {
     if (!loopStack_.empty())
     {
+        releaseDeferredTemps(); // Release any pending temps before branch
         emitBr(loopStack_.continueTarget());
     }
 }
@@ -883,6 +903,9 @@ void Lowerer::lowerGuardStmt(GuardStmt *stmt)
 
     // Lower condition
     auto cond = lowerExpr(stmt->condition.get());
+
+    // Release condition temps before branch (SSA scoping)
+    releaseDeferredTemps();
 
     // If condition is true, continue; else, execute else block
     emitCBr(cond.value, contIdx, elseIdx);
@@ -905,6 +928,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
     std::string scrutineeSlot = "__match_scrutinee";
     createSlot(scrutineeSlot, scrutinee.type);
     storeToSlot(scrutineeSlot, scrutinee.value, scrutinee.type);
+    consumeDeferred(scrutinee.value); // Stored to slot — ownership transferred
     TypeRef scrutineeType = sema_.typeOf(stmt->scrutinee.get());
 
     // Create end block for the match
@@ -945,6 +969,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
         // In the current block, test the pattern
         Value scrutineeVal = loadFromSlot(scrutineeSlot, scrutinee.type);
         PatternValue scrutineeValue{scrutineeVal, scrutineeType};
+        releaseDeferredTemps(); // Release temps before pattern branch
         emitPatternTest(arm.pattern, scrutineeValue, matchBlock, nextTestBlocks[i]);
 
         if (guardBlock)
@@ -955,6 +980,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
             PatternValue scrutineeValueInGuard{scrutineeInGuard, scrutineeType};
             emitPatternBindings(arm.pattern, scrutineeValueInGuard);
             auto guardResult = lowerExpr(arm.pattern.guard.get());
+            releaseDeferredTemps(); // Release guard temps before branch
             emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
         }
 

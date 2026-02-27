@@ -114,6 +114,39 @@ extern "C"
     /// @return Cumulative count of rt_gc_collect() invocations.
     int64_t rt_gc_pass_count(void);
 
+    //=============================================================================
+    // Auto-Trigger
+    //=============================================================================
+
+    /// @brief Set the allocation threshold for automatic cycle collection.
+    /// @details When @p n > 0, every @p n-th heap allocation (via rt_heap_alloc)
+    ///          triggers an automatic rt_gc_collect() pass. Set to 0 to disable
+    ///          auto-triggering (default).
+    /// @param n Number of allocations between automatic collection passes.
+    void rt_gc_set_threshold(int64_t n);
+
+    /// @brief Get the current auto-trigger allocation threshold.
+    /// @return The threshold, or 0 if auto-triggering is disabled.
+    int64_t rt_gc_get_threshold(void);
+
+    /// @brief Notify the GC that a heap allocation occurred.
+    /// @details Increments an internal counter and triggers collection when
+    ///          the counter reaches the configured threshold. Called from
+    ///          rt_heap_alloc(). No-op when auto-triggering is disabled.
+    void rt_gc_notify_alloc(void);
+
+    //=============================================================================
+    // Shutdown
+    //=============================================================================
+
+    /// @brief Release all GC internal state (tracking table, weak ref buckets).
+    /// @details Should only be called during program shutdown after all tracked
+    ///          objects have been freed or are about to be reclaimed by the OS.
+    ///          Typically called from an atexit handler.
+    /// @warning Calling this while tracked objects are still in use causes
+    ///          undefined behavior.
+    void rt_gc_shutdown(void);
+
 #ifdef __cplusplus
 }
 #endif

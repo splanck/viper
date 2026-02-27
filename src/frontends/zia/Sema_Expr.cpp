@@ -218,6 +218,9 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
         return types::unknown();
     }
 
+    // Mark symbol as used for W001 (unused variable) detection
+    sym->used = true;
+
     // For variables and parameters, respect flow-sensitive type narrowing
     // (e.g., after `if x != null`, x is narrowed from T? to T)
     if (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter)
@@ -225,8 +228,8 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
         // Warn if variable used before initialization
         if (sym->kind == Symbol::Kind::Variable && !isInitialized(expr->name))
         {
-            warning(expr->loc,
-                    "Variable '" + expr->name + "' may be used before initialization");
+            warn(WarningCode::W015_UninitializedVariable, expr->loc,
+                 "Variable '" + expr->name + "' may be used before initialization");
         }
 
         TypeRef narrowed = lookupVarType(expr->name);

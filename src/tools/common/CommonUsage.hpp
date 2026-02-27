@@ -31,6 +31,9 @@ inline void printSharedOptions(std::ostream &os)
        << "  --stdin-from FILE              Redirect stdin from file\n"
        << "  --max-steps N                  Limit execution steps\n"
        << "  --dump-trap                    Show detailed trap diagnostics\n"
+       << "  -Wall                          Enable all warnings\n"
+       << "  -Werror                        Treat warnings as errors\n"
+       << "  -Wno-XXXX                     Disable warning (code or name)\n"
        << "  -h, --help                     Show this help message\n"
        << "  --version                      Show version information\n";
 }

@@ -77,6 +77,12 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
     registerBuiltins();
 }
 
+void Sema::initWarnings(const WarningPolicy &policy, std::string_view source)
+{
+    warningPolicy_ = &policy;
+    suppressions_.scan(source);
+}
+
 /// @brief Run multi-pass semantic analysis on a module.
 /// @details Pass 1: Register all top-level declarations (types, functions, globals).
 ///          Pass 1b: Process namespace declarations (recursive multi-pass).
@@ -327,9 +333,14 @@ void Sema::pushScope()
 
 /// @brief Pop the current scope, restoring its parent as the active scope.
 /// @pre There must be more than the global scope remaining.
+/// @details Checks for unused variables (W001) in the scope before popping.
 void Sema::popScope()
 {
     assert(scopes_.size() > 1 && "cannot pop global scope");
+
+    // W001: Check for unused variables/parameters in the scope being popped
+    checkUnusedVariables(*currentScope_);
+
     currentScope_ = currentScope_->parent();
     scopes_.pop_back();
     assert(currentScope_ == scopes_.back().get() && "scope stack corrupted");
@@ -478,10 +489,67 @@ bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull
 // Error Reporting
 //=============================================================================
 
-/// @brief Report a semantic warning at a source location.
+/// @brief Report a semantic warning at a source location (legacy).
 void Sema::warning(SourceLoc loc, const std::string &message)
 {
     diag_.report({il::support::Severity::Warning, message, loc, "V3001"});
+}
+
+/// @brief Report a coded warning with policy and suppression checks.
+void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message)
+{
+    // Check policy: is this warning enabled?
+    if (warningPolicy_)
+    {
+        if (!warningPolicy_->isEnabled(code))
+            return;
+    }
+    else
+    {
+        // No policy set — use default conservative set
+        if (WarningPolicy::defaultEnabled().count(code) == 0)
+            return;
+    }
+
+    // Check inline suppression
+    if (suppressions_.isSuppressed(code, loc.line))
+        return;
+
+    // Determine severity: Warning or Error (if -Werror)
+    auto sev = (warningPolicy_ && warningPolicy_->warningsAsErrors)
+                   ? il::support::Severity::Error
+                   : il::support::Severity::Warning;
+
+    if (sev == il::support::Severity::Error)
+        hasError_ = true;
+
+    diag_.report({sev, message, loc, warningCodeStr(code)});
+}
+
+/// @brief Check for unused variables in a scope and emit W001 warnings.
+void Sema::checkUnusedVariables(const Scope &scope)
+{
+    for (const auto &[name, sym] : scope.getSymbols())
+    {
+        // Only check variables and parameters
+        if (sym.kind != Symbol::Kind::Variable && sym.kind != Symbol::Kind::Parameter)
+            continue;
+
+        // Skip the discard name "_"
+        if (name == "_")
+            continue;
+
+        // Skip extern/runtime symbols
+        if (sym.isExtern)
+            continue;
+
+        if (!sym.used)
+        {
+            std::string what = (sym.kind == Symbol::Kind::Parameter) ? "Parameter" : "Variable";
+            warn(WarningCode::W001_UnusedVariable, sym.decl ? sym.decl->loc : SourceLoc{},
+                 what + " '" + name + "' is declared but never used");
+        }
+    }
 }
 
 /// @brief Report a semantic error at a source location.

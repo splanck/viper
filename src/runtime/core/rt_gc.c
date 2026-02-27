@@ -12,6 +12,10 @@
 //          candidates as potential cycle members, restore reachable objects,
 //          then free confirmed cycles.
 //
+//          The tracked-object set is stored in an open-addressing hash table
+//          (power-of-two capacity, linear probing, tombstone deletion) for O(1)
+//          lookup during the trial-decrement and restore phases.
+//
 // Key invariants:
 //   - Objects must be registered via rt_gc_track before cycles can be detected;
 //     untracked objects rely solely on reference counting for collection.
@@ -20,7 +24,7 @@
 //   - Weak references to collected objects are zeroed before the finalizer runs,
 //     ensuring no dangling weak-ref reads after collection.
 //   - The GC table lock (pthread_mutex / CRITICAL_SECTION) protects the tracked-
-//     object list and weak reference registry; finalizers run outside the lock.
+//     object table and weak reference registry; finalizers run outside the lock.
 //   - Pass statistics (total_collected, pass_count) are updated atomically.
 //
 // Ownership/Lifetime:
@@ -56,13 +60,19 @@ extern void rt_trap(const char *msg);
 // Internal Data Structures
 //=============================================================================
 
-/// Entry in the tracked-object table.
+/// Sentinel values for the open-addressing hash table.
+/// GC_EMPTY marks a slot that has never been used (terminates probe chains).
+/// GC_TOMBSTONE marks a deleted slot (skipped during probing, reusable on insert).
+#define GC_EMPTY     NULL
+#define GC_TOMBSTONE ((void *)(uintptr_t)1)
+
+/// Entry in the tracked-object hash table.
 typedef struct gc_entry
 {
-    void *obj;
+    void *obj;                ///< Object pointer (NULL=empty, 1=tombstone, else live).
     rt_gc_traverse_fn traverse;
-    int64_t trial_rc; ///< Temporary refcount for cycle detection.
-    int8_t color;     ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
+    int64_t trial_rc;         ///< Temporary refcount for cycle detection.
+    int8_t color;             ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
 } gc_entry;
 
 /// Weak reference record.
@@ -83,9 +93,9 @@ typedef struct weak_chain
 /// Global GC state.
 static struct
 {
-    gc_entry *entries;
-    int64_t count;
-    int64_t capacity;
+    gc_entry *entries;      ///< Open-addressing hash table (power-of-two capacity).
+    int64_t count;          ///< Number of live entries (excludes tombstones).
+    int64_t capacity;       ///< Table size (always a power of two, or 0).
 
     weak_chain *weak_buckets;
     int64_t weak_bucket_count;
@@ -101,6 +111,13 @@ static struct
     int lock_init;
 #endif
 } g_gc;
+
+/// Auto-trigger: allocation counter and threshold.
+/// When g_gc_threshold > 0, every rt_gc_notify_alloc() call increments
+/// g_gc_alloc_counter; when the counter reaches the threshold, a collection
+/// pass is triggered automatically.
+static int64_t g_gc_threshold = 0;
+static int64_t g_gc_alloc_counter = 0;
 
 //=============================================================================
 // Lock helpers
@@ -138,17 +155,83 @@ static void gc_unlock(void)
 }
 
 //=============================================================================
-// Tracked Objects Table
+// Hash Utility
 //=============================================================================
 
+/// @brief Splitmix64-style pointer hash for hash table slot computation.
+static uint64_t ptr_hash(void *p)
+{
+    uint64_t v = (uint64_t)(uintptr_t)p;
+    v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
+    return v ^ (v >> 31);
+}
+
+/// @brief Check if a hash table slot contains a live (tracked) entry.
+static int gc_slot_is_live(const gc_entry *e)
+{
+    return e->obj != GC_EMPTY && e->obj != GC_TOMBSTONE;
+}
+
+//=============================================================================
+// Tracked Objects Hash Table
+//=============================================================================
+
+/// @brief Find the slot index for @p obj in the hash table.
+/// @details Uses linear probing. Tombstones are skipped (do not terminate
+///          the probe chain); empty slots terminate it.
+/// @return Slot index if found, -1 otherwise. Caller must hold gc_lock.
 static int64_t find_entry(void *obj)
 {
-    for (int64_t i = 0; i < g_gc.count; i++)
+    if (!g_gc.entries || g_gc.capacity == 0)
+        return -1;
+    uint64_t mask = (uint64_t)(g_gc.capacity - 1);
+    uint64_t idx = ptr_hash(obj) & mask;
+    for (int64_t probe = 0; probe < g_gc.capacity; probe++)
     {
-        if (g_gc.entries[i].obj == obj)
-            return i;
+        gc_entry *e = &g_gc.entries[idx];
+        if (e->obj == obj)
+            return (int64_t)idx;
+        if (e->obj == GC_EMPTY)
+            return -1;
+        /* Tombstone — keep probing. */
+        idx = (idx + 1) & mask;
     }
     return -1;
+}
+
+/// @brief Rehash all live entries into a new table of @p new_cap slots.
+/// @details Allocates a fresh zero-initialised table, re-inserts every live
+///          entry, and frees the old table. Tombstones are discarded. The
+///          caller must hold gc_lock.
+/// @param new_cap New table capacity (must be a power of two).
+static void gc_rehash(int64_t new_cap)
+{
+    gc_entry *old = g_gc.entries;
+    int64_t old_cap = g_gc.capacity;
+
+    gc_entry *new_entries = (gc_entry *)calloc((size_t)new_cap, sizeof(gc_entry));
+    if (!new_entries)
+        rt_trap("rt_gc: failed to grow hash table (out of memory)");
+
+    uint64_t mask = (uint64_t)(new_cap - 1);
+    int64_t live = 0;
+
+    for (int64_t i = 0; i < old_cap; i++)
+    {
+        if (!gc_slot_is_live(&old[i]))
+            continue;
+        uint64_t slot = ptr_hash(old[i].obj) & mask;
+        while (new_entries[slot].obj != GC_EMPTY)
+            slot = (slot + 1) & mask;
+        new_entries[slot] = old[i];
+        live++;
+    }
+
+    g_gc.entries = new_entries;
+    g_gc.capacity = new_cap;
+    g_gc.count = live;
+    free(old);
 }
 
 void rt_gc_track(void *obj, rt_gc_traverse_fn traverse)
@@ -167,23 +250,20 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse)
         return;
     }
 
-    /* Grow table if needed. */
-    if (g_gc.count >= g_gc.capacity)
+    /* Grow if needed: maintain < 5/8 load factor. */
+    if (g_gc.capacity == 0 || g_gc.count * 8 >= g_gc.capacity * 5)
     {
         int64_t new_cap = g_gc.capacity == 0 ? 64 : g_gc.capacity * 2;
-        gc_entry *new_entries =
-            (gc_entry *)realloc(g_gc.entries, (size_t)new_cap * sizeof(gc_entry));
-        if (!new_entries)
-        {
-            gc_unlock();
-            rt_trap("rt_gc_track: failed to grow GC tracking table (out of memory)");
-            return; /* unreachable — rt_trap terminates */
-        }
-        g_gc.entries = new_entries;
-        g_gc.capacity = new_cap;
+        gc_rehash(new_cap);
     }
 
-    gc_entry *e = &g_gc.entries[g_gc.count];
+    /* Insert at first empty or tombstone slot. */
+    uint64_t mask = (uint64_t)(g_gc.capacity - 1);
+    uint64_t slot = ptr_hash(obj) & mask;
+    while (gc_slot_is_live(&g_gc.entries[slot]))
+        slot = (slot + 1) & mask;
+
+    gc_entry *e = &g_gc.entries[slot];
     e->obj = obj;
     e->traverse = traverse;
     e->trial_rc = 0;
@@ -203,10 +283,10 @@ void rt_gc_untrack(void *obj)
     int64_t idx = find_entry(obj);
     if (idx >= 0)
     {
-        /* Swap with last entry. */
+        /* Mark slot as tombstone so probe chains are preserved. */
+        g_gc.entries[idx].obj = GC_TOMBSTONE;
+        g_gc.entries[idx].traverse = NULL;
         g_gc.count--;
-        if (idx < g_gc.count)
-            g_gc.entries[idx] = g_gc.entries[g_gc.count];
     }
 
     gc_unlock();
@@ -245,14 +325,6 @@ static void ensure_weak_buckets(void)
     g_gc.weak_buckets = (weak_chain *)calloc((size_t)g_gc.weak_bucket_count, sizeof(weak_chain));
     if (!g_gc.weak_buckets)
         rt_trap("gc: memory allocation failed");
-}
-
-static uint64_t ptr_hash(void *p)
-{
-    uint64_t v = (uint64_t)(uintptr_t)p;
-    v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
-    return v ^ (v >> 31);
 }
 
 static void register_weak_ref(void *target, rt_weakref *ref)
@@ -436,6 +508,13 @@ static void trial_restore(void *child, void *ctx)
     gc_unlock();
 }
 
+/// Lightweight snapshot entry for traversal outside the lock.
+typedef struct
+{
+    void *obj;
+    rt_gc_traverse_fn traverse;
+} gc_snap_entry;
+
 int64_t rt_gc_collect(void)
 {
     int64_t freed = 0;
@@ -449,68 +528,71 @@ int64_t rt_gc_collect(void)
         return 0;
     }
 
-    /* Phase 1: Initialize trial refcounts to 1 (each tracked object
-       has at least 1 ref from being tracked, plus possibly external refs).
-       We approximate refcount as 1 for simplicity — the real refcount
-       is in the heap header but we can check if the object is only
-       referenced within the tracked set. */
-    for (int64_t i = 0; i < g_gc.count; i++)
+    /* Phase 1: Initialize trial refcounts and build a snapshot of all live
+       entries for safe traversal outside the lock. */
+    int64_t snap_count = 0;
+    gc_snap_entry *snapshot =
+        (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
+    if (!snapshot)
+        rt_trap("gc: memory allocation failed");
+
+    for (int64_t i = 0; i < g_gc.capacity; i++)
     {
+        if (!gc_slot_is_live(&g_gc.entries[i]))
+            continue;
         g_gc.entries[i].trial_rc = 1; /* assume 1 external ref */
         g_gc.entries[i].color = 0;    /* white */
+        snapshot[snap_count].obj = g_gc.entries[i].obj;
+        snapshot[snap_count].traverse = g_gc.entries[i].traverse;
+        snap_count++;
     }
+
+    gc_unlock();
 
     /* Phase 2: Trial decrement — for each tracked object, visit its
        children.  If a child is also tracked, decrement its trial_rc.
        After this phase, objects whose trial_rc <= 0 are only referenced
        by other tracked objects (potential cycle members). */
-    int64_t count = g_gc.count;
-    gc_unlock();
-
-    for (int64_t i = 0; i < count; i++)
+    for (int64_t i = 0; i < snap_count; i++)
     {
-        gc_lock();
-        if (i >= g_gc.count)
-        {
-            gc_unlock();
-            break;
-        }
-        gc_entry e = g_gc.entries[i];
-        gc_unlock();
-
-        e.traverse(e.obj, trial_decrement, NULL);
+        snapshot[i].traverse(snapshot[i].obj, trial_decrement, NULL);
     }
 
     /* Phase 3: Scan — objects with trial_rc > 0 have external references
        and are definitely reachable.  Mark them black and recursively
-       mark everything reachable from them. */
-    gc_lock();
-    count = g_gc.count;
-
-    for (int64_t i = 0; i < count; i++)
+       mark everything reachable from them.  We look up each snapshot
+       entry in the (possibly rehashed) live table via find_entry. */
+    for (int64_t i = 0; i < snap_count; i++)
     {
-        if (g_gc.entries[i].trial_rc > 0)
+        gc_lock();
+        int64_t idx = find_entry(snapshot[i].obj);
+        if (idx >= 0 && g_gc.entries[idx].trial_rc > 0
+            && g_gc.entries[idx].color != 2)
         {
-            g_gc.entries[i].color = 2; /* black = definitely reachable */
-            gc_entry e = g_gc.entries[i];
+            g_gc.entries[idx].color = 2; /* black = definitely reachable */
             gc_unlock();
-            e.traverse(e.obj, trial_restore, NULL);
-            gc_lock();
-            count = g_gc.count; /* count may have changed */
+            snapshot[i].traverse(snapshot[i].obj, trial_restore, NULL);
+        }
+        else
+        {
+            gc_unlock();
         }
     }
 
-    /* Phase 4: Collect — white objects are unreachable cycle members.
-       Gather them, untrack them, clear weak refs, then free. */
-    int64_t garbage_count = 0;
-    void **garbage = NULL;
+    free(snapshot);
 
-    for (int64_t i = 0; i < g_gc.count; i++)
+    /* Phase 4: Collect — white objects are unreachable cycle members.
+       Gather them, remove from the hash table, clear weak refs, then free. */
+    gc_lock();
+
+    int64_t garbage_count = 0;
+    for (int64_t i = 0; i < g_gc.capacity; i++)
     {
-        if (g_gc.entries[i].color == 0) /* white = unreachable */
+        if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0)
             garbage_count++;
     }
 
+    void **garbage = NULL;
     if (garbage_count > 0)
     {
         garbage = (void **)malloc((size_t)garbage_count * sizeof(void *));
@@ -518,16 +600,16 @@ int64_t rt_gc_collect(void)
             rt_trap("gc: memory allocation failed");
         int64_t gi = 0;
 
-        /* Collect garbage pointers and remove from tracked set. */
-        for (int64_t i = g_gc.count - 1; i >= 0 && gi < garbage_count; i--)
+        for (int64_t i = 0; i < g_gc.capacity && gi < garbage_count; i++)
         {
-            if (g_gc.entries[i].color == 0)
+            if (gc_slot_is_live(&g_gc.entries[i])
+                && g_gc.entries[i].color == 0)
             {
                 garbage[gi++] = g_gc.entries[i].obj;
-                /* Swap-remove from entries. */
+                /* Tombstone the slot. */
+                g_gc.entries[i].obj = GC_TOMBSTONE;
+                g_gc.entries[i].traverse = NULL;
                 g_gc.count--;
-                if (i < g_gc.count)
-                    g_gc.entries[i] = g_gc.entries[g_gc.count];
             }
         }
     }
@@ -553,6 +635,33 @@ int64_t rt_gc_collect(void)
 }
 
 //=============================================================================
+// Auto-Trigger
+//=============================================================================
+
+void rt_gc_set_threshold(int64_t n)
+{
+    __atomic_store_n(&g_gc_threshold, n > 0 ? n : 0, __ATOMIC_RELAXED);
+}
+
+int64_t rt_gc_get_threshold(void)
+{
+    return __atomic_load_n(&g_gc_threshold, __ATOMIC_RELAXED);
+}
+
+void rt_gc_notify_alloc(void)
+{
+    int64_t threshold = __atomic_load_n(&g_gc_threshold, __ATOMIC_RELAXED);
+    if (threshold <= 0)
+        return;
+    int64_t count = __atomic_fetch_add(&g_gc_alloc_counter, 1, __ATOMIC_RELAXED) + 1;
+    if (count >= threshold)
+    {
+        __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
+        rt_gc_collect();
+    }
+}
+
+//=============================================================================
 // Statistics
 //=============================================================================
 
@@ -570,4 +679,43 @@ int64_t rt_gc_pass_count(void)
     int64_t n = g_gc.pass_count;
     gc_unlock();
     return n;
+}
+
+//=============================================================================
+// Shutdown
+//=============================================================================
+
+void rt_gc_shutdown(void)
+{
+    gc_lock();
+
+    /* Free tracked-object hash table. */
+    free(g_gc.entries);
+    g_gc.entries = NULL;
+    g_gc.count = 0;
+    g_gc.capacity = 0;
+
+    /* Free weak reference bucket chains. */
+    if (g_gc.weak_buckets)
+    {
+        for (int64_t i = 0; i < g_gc.weak_bucket_count; i++)
+        {
+            weak_chain *wc = g_gc.weak_buckets[i].next;
+            while (wc)
+            {
+                weak_chain *next = wc->next;
+                free(wc);
+                wc = next;
+            }
+        }
+        free(g_gc.weak_buckets);
+        g_gc.weak_buckets = NULL;
+        g_gc.weak_bucket_count = 0;
+    }
+
+    /* Reset auto-trigger state. */
+    __atomic_store_n(&g_gc_threshold, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
+
+    gc_unlock();
 }

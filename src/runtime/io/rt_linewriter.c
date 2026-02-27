@@ -449,7 +449,11 @@ void rt_linewriter_write_char(void *obj, int64_t ch)
 
     if (ch >= 0 && ch <= 255)
     {
-        fputc((int)ch, lw->fp);
+        if (fputc((int)ch, lw->fp) == EOF)
+        {
+            rt_trap("LineWriter.WriteChar: write failed (disk full or I/O error)");
+            return;
+        }
     }
 }
 
@@ -490,7 +494,11 @@ void rt_linewriter_flush(void *obj)
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
     if (lw->fp && !lw->closed)
     {
-        fflush(lw->fp);
+        if (fflush(lw->fp) != 0)
+        {
+            rt_trap("LineWriter.Flush: flush failed (disk full or I/O error)");
+            return;
+        }
     }
 }
 

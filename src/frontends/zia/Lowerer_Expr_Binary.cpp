@@ -128,6 +128,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (slotIt != slots_.end())
             {
                 storeToSlot(ident->name, assignValue, assignType);
+                // The assigned value is consumed by the slot — don't release
+                consumeDeferred(assignValue);
                 return right;
             }
 

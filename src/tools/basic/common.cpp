@@ -78,16 +78,36 @@ std::optional<std::uint32_t> loadBasicSource(const char *path,
         return std::nullopt;
     }
 
-    std::ifstream in(path);
+    std::ifstream in(path, std::ios::binary);
     if (!in)
     {
         std::cerr << "cannot open " << path << "\n";
         return std::nullopt;
     }
 
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    const std::string contents = ss.str();
+    // Check file size before reading to avoid OOM on huge files.
+    in.seekg(0, std::ios::end);
+    auto fileSize = in.tellg();
+    in.seekg(0, std::ios::beg);
+    constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
+    if (fileSize < 0 || fileSize > kMaxSourceSize)
+    {
+        std::cerr << "source file too large: " << path << " (limit: 256 MB)\n";
+        return std::nullopt;
+    }
+
+    std::string contents;
+    try
+    {
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        contents = ss.str();
+    }
+    catch (const std::bad_alloc &)
+    {
+        std::cerr << "out of memory reading " << path << "\n";
+        return std::nullopt;
+    }
 
     std::uint32_t fileId = sm.addFile(path);
     if (fileId == 0)

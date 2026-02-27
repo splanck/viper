@@ -268,7 +268,7 @@ static void maybe_resize(rt_map_impl *map)
 /// @see rt_map_finalize For cleanup behavior
 void *rt_map_new(void)
 {
-    rt_map_impl *map = (rt_map_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_map_impl));
+    rt_map_impl *map = (rt_map_impl *)rt_obj_new_i64(RT_MAP_CLASS_ID, (int64_t)sizeof(rt_map_impl));
     if (!map)
         return NULL;
 

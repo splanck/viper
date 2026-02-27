@@ -697,6 +697,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_network PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network test_rt_network)
 
+    viper_add_test(test_rt_network_timeout ${VIPER_TESTS_DIR}/runtime/RTNetworkTimeoutTests.cpp)
+    target_link_libraries(test_rt_network_timeout PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_network_timeout test_rt_network_timeout)
+
     viper_add_test(test_rt_websocket ${VIPER_TESTS_DIR}/runtime/RTWebSocketTests.cpp)
     target_link_libraries(test_rt_websocket PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_websocket test_rt_websocket)
@@ -728,6 +732,18 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_linewriter ${VIPER_TESTS_DIR}/runtime/RTLineWriterTests.cpp)
     target_link_libraries(test_rt_linewriter PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_linewriter test_rt_linewriter)
+
+    viper_add_test(test_rt_disk_full ${VIPER_TESTS_DIR}/runtime/RTDiskFullTests.cpp)
+    target_link_libraries(test_rt_disk_full PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_disk_full test_rt_disk_full)
+
+    viper_add_test(test_rt_canvas_unavailable ${VIPER_TESTS_DIR}/runtime/RTCanvasUnavailableTests.cpp)
+    target_link_libraries(test_rt_canvas_unavailable PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_canvas_unavailable test_rt_canvas_unavailable)
+
+    viper_add_test(test_rt_file_exhaustion ${VIPER_TESTS_DIR}/runtime/RTFileExhaustionTests.cpp)
+    target_link_libraries(test_rt_file_exhaustion PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_file_exhaustion test_rt_file_exhaustion)
 
     viper_add_test(test_rt_exec ${VIPER_TESTS_DIR}/runtime/RTExecTests.cpp)
     target_link_libraries(test_rt_exec PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -916,6 +932,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_gc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_gc test_rt_gc)
 
+    viper_add_test(test_rt_gc_hash ${VIPER_TESTS_DIR}/runtime/RTGCHashTableTests.cpp)
+    target_link_libraries(test_rt_gc_hash PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_gc_hash test_rt_gc_hash)
+
     viper_add_test(test_rt_viperdos_platform ${VIPER_TESTS_DIR}/runtime/RTViperDOSPlatformTests.cpp)
     target_link_libraries(test_rt_viperdos_platform PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_viperdos_platform test_rt_viperdos_platform)
@@ -931,6 +951,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_alloc ${VIPER_TESTS_DIR}/runtime/RTAllocTests.cpp)
     target_link_libraries(test_rt_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_alloc test_rt_alloc)
+
+    viper_add_test(test_rt_alloc_oom ${VIPER_TESTS_DIR}/runtime/RTAllocOOMTests.cpp)
+    target_link_libraries(test_rt_alloc_oom PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_alloc_oom test_rt_alloc_oom)
 
     viper_add_test(
             test_rt_string_alloc_overflow
@@ -1381,4 +1405,8 @@ function(viper_add_runtime_tests)
         target_link_libraries(test_basic_depth_limits PRIVATE fe_basic)
         viper_add_ctest(test_basic_depth_limits test_basic_depth_limits)
     endif ()
+
+    viper_add_test(test_source_loader_limits ${VIPER_TESTS_DIR}/unit/test_source_loader_limits.cpp)
+    target_link_libraries(test_source_loader_limits PRIVATE il_tools_common viper_test_common)
+    viper_add_ctest(test_source_loader_limits test_source_loader_limits)
 endfunction()

@@ -35,9 +35,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_heap.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_pool.h"
+#include "rt_string_intern.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -45,6 +47,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+//=============================================================================
+// Global shutdown handler
+//=============================================================================
+
+/// @brief Whether the atexit shutdown handler has been registered.
+static int g_shutdown_registered = 0;
+
+/// @brief Global shutdown handler called at process exit via atexit().
+/// @details Releases runtime global state in dependency order:
+///          1. Interned strings (may free pool-allocated memory)
+///          2. GC tables (tracking array, weak ref buckets)
+///          3. Pool slabs (must be last — other cleanup may touch pool memory)
+static void rt_global_shutdown(void)
+{
+    rt_string_intern_drain();
+    rt_gc_shutdown();
+    rt_pool_shutdown();
+}
 
 /// @brief Recover a heap header from a payload pointer.
 /// @details Performs the inverse of @ref rt_heap_data by subtracting the header
@@ -158,6 +179,16 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     __atomic_store_n(&hdr->refcnt, 1, __ATOMIC_RELAXED);
     hdr->len = init_len;
     hdr->cap = cap;
+
+    /* Register the global shutdown handler once on first allocation. */
+    if (!g_shutdown_registered)
+    {
+        g_shutdown_registered = 1;
+        atexit(rt_global_shutdown);
+    }
+
+    /* Notify the GC of a new allocation (for auto-trigger). */
+    rt_gc_notify_alloc();
 
     return rt_heap_data(hdr);
 }

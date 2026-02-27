@@ -160,9 +160,9 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
     // precedes this access, so emit a warning for potential null dereference.
     if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
     {
-        warning(expr->loc,
-                "Accessing member '" + expr->field + "' on Optional type '" +
-                    baseType->toString() + "' without null check");
+        warn(WarningCode::W016_OptionalWithoutCheck, expr->loc,
+             "Accessing member '" + expr->field + "' on Optional type '" +
+                 baseType->toString() + "' without null check");
         baseType = baseType->innerType();
     }
 

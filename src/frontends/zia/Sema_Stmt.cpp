@@ -30,8 +30,20 @@ void Sema::analyzeStmt(Stmt *stmt)
             analyzeBlockStmt(static_cast<BlockStmt *>(stmt));
             break;
         case StmtKind::Expr:
-            analyzeExpr(static_cast<ExprStmt *>(stmt)->expr.get());
+        {
+            auto *exprStmt = static_cast<ExprStmt *>(stmt);
+            TypeRef resultType = analyzeExpr(exprStmt->expr.get());
+
+            // W014: Unused result — call returning non-void value discarded
+            if (exprStmt->expr->kind == ExprKind::Call && resultType &&
+                resultType->kind != TypeKindSem::Void &&
+                resultType->kind != TypeKindSem::Unknown)
+            {
+                warn(WarningCode::W014_UnusedResult, exprStmt->loc,
+                     "Result of function call is unused");
+            }
             break;
+        }
         case StmtKind::Var:
             analyzeVarStmt(static_cast<VarStmt *>(stmt));
             break;
@@ -71,9 +83,24 @@ void Sema::analyzeStmt(Stmt *stmt)
 void Sema::analyzeBlockStmt(BlockStmt *stmt)
 {
     pushScope();
+    bool afterTerminator = false;
     for (auto &s : stmt->statements)
     {
+        // W002: Unreachable code after return/break/continue
+        if (afterTerminator)
+        {
+            warn(WarningCode::W002_UnreachableCode, s->loc,
+                 "Unreachable code after return/break/continue");
+            break; // Only warn once per block
+        }
+
         analyzeStmt(s.get());
+
+        if (s->kind == StmtKind::Return || s->kind == StmtKind::Break ||
+            s->kind == StmtKind::Continue)
+        {
+            afterTerminator = true;
+        }
     }
     popScope();
 }
@@ -99,6 +126,15 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
             }
         }
 
+        // W003: Implicit narrowing (Number assigned to Integer variable)
+        if (declaredType->kind == TypeKindSem::Integer &&
+            initType->kind == TypeKindSem::Number)
+        {
+            warn(WarningCode::W003_ImplicitNarrowing, stmt->loc,
+                 "Implicit narrowing from Number to Integer in initialization of '" +
+                     stmt->name + "'");
+        }
+
         // Both declared and inferred - check compatibility
         if (!declaredType->isAssignableFrom(*initType))
         {
@@ -120,6 +156,18 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
         varType = types::unknown();
     }
 
+    // W004: Variable shadowing — check if name shadows a variable in parent scope
+    if (currentScope_ && currentScope_->parent())
+    {
+        Symbol *existing = currentScope_->parent()->lookup(stmt->name);
+        if (existing &&
+            (existing->kind == Symbol::Kind::Variable || existing->kind == Symbol::Kind::Parameter))
+        {
+            warn(WarningCode::W004_VariableShadowing, stmt->loc,
+                 "Variable '" + stmt->name + "' shadows a variable in an outer scope");
+        }
+    }
+
     Symbol sym;
     sym.kind = Symbol::Kind::Variable;
     sym.name = stmt->name;
@@ -136,10 +184,43 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
 
 void Sema::analyzeIfStmt(IfStmt *stmt)
 {
+    // W007: Assignment in condition (e.g., `if (x = 5)`)
+    if (stmt->condition->kind == ExprKind::Binary)
+    {
+        auto *binary = static_cast<BinaryExpr *>(stmt->condition.get());
+        if (binary->op == BinaryOp::Assign)
+        {
+            warn(WarningCode::W007_AssignmentInCondition, stmt->condition->loc,
+                 "Assignment in condition; did you mean '=='?");
+        }
+    }
+
     TypeRef condType = analyzeExpr(stmt->condition.get());
     if (condType->kind != TypeKindSem::Boolean)
     {
         error(stmt->condition->loc, "Condition must be Boolean");
+    }
+
+    // W013: Empty if body
+    if (stmt->thenBranch && stmt->thenBranch->kind == StmtKind::Block)
+    {
+        auto *block = static_cast<BlockStmt *>(stmt->thenBranch.get());
+        if (block->statements.empty())
+        {
+            warn(WarningCode::W013_EmptyBody, stmt->loc,
+                 "Empty if-body; consider removing or adding a comment");
+        }
+    }
+
+    // W013: Empty else body
+    if (stmt->elseBranch && stmt->elseBranch->kind == StmtKind::Block)
+    {
+        auto *block = static_cast<BlockStmt *>(stmt->elseBranch.get());
+        if (block->statements.empty())
+        {
+            warn(WarningCode::W013_EmptyBody, stmt->elseBranch->loc,
+                 "Empty else-body; consider removing or adding a comment");
+        }
     }
 
     // Check for null check pattern for type narrowing
@@ -211,10 +292,32 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
 
 void Sema::analyzeWhileStmt(WhileStmt *stmt)
 {
+    // W007: Assignment in condition
+    if (stmt->condition->kind == ExprKind::Binary)
+    {
+        auto *binary = static_cast<BinaryExpr *>(stmt->condition.get());
+        if (binary->op == BinaryOp::Assign)
+        {
+            warn(WarningCode::W007_AssignmentInCondition, stmt->condition->loc,
+                 "Assignment in while-condition; did you mean '=='?");
+        }
+    }
+
     TypeRef condType = analyzeExpr(stmt->condition.get());
     if (condType->kind != TypeKindSem::Boolean)
     {
         error(stmt->condition->loc, "Condition must be Boolean");
+    }
+
+    // W006: Empty loop body
+    if (stmt->body && stmt->body->kind == StmtKind::Block)
+    {
+        auto *block = static_cast<BlockStmt *>(stmt->body.get());
+        if (block->statements.empty())
+        {
+            warn(WarningCode::W006_EmptyLoopBody, stmt->loc,
+                 "Empty while-loop body");
+        }
     }
 
     loopDepth_++;
@@ -237,6 +340,18 @@ void Sema::analyzeForStmt(ForStmt *stmt)
     }
     if (stmt->update)
         analyzeExpr(stmt->update.get());
+
+    // W006: Empty loop body
+    if (stmt->body && stmt->body->kind == StmtKind::Block)
+    {
+        auto *block = static_cast<BlockStmt *>(stmt->body.get());
+        if (block->statements.empty())
+        {
+            warn(WarningCode::W006_EmptyLoopBody, stmt->loc,
+                 "Empty for-loop body");
+        }
+    }
+
     loopDepth_++;
     analyzeStmt(stmt->body.get());
     loopDepth_--;

@@ -37,6 +37,7 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -176,7 +177,10 @@ void *rt_binfile_open(void *path, void *mode)
     FILE *fp = fopen(path_str, fmode);
     if (!fp)
     {
-        rt_trap("BinFile.Open: failed to open file");
+        char buf[512];
+        snprintf(buf, sizeof(buf), "BinFile.Open: failed to open '%s': %s",
+                 path_str, strerror(errno));
+        rt_trap(buf);
         return NULL;
     }
 
@@ -702,7 +706,11 @@ void rt_binfile_flush(void *obj)
     if (!bf->fp || bf->closed)
         return;
 
-    fflush(bf->fp);
+    if (fflush(bf->fp) != 0)
+    {
+        rt_trap("BinFile.Flush: flush failed (disk full or I/O error)");
+        return;
+    }
 }
 
 /// @brief Checks whether the end of file has been reached.

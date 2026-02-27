@@ -37,6 +37,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_random.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -75,13 +76,16 @@
 /// - This gives O(1) amortized time for Push operations
 ///
 /// **Element ownership:**
-/// The Seq stores raw pointers and does NOT own the elements. Elements must
-/// be managed separately by the caller (typically via GC reference counting).
+/// By default (owns_elements=0), the Seq stores raw pointers and does NOT own
+/// the elements. When owns_elements=1, the Seq retains elements on push and
+/// releases them on finalize/clear/set-replace, enabling automatic lifetime
+/// management via reference counting.
 typedef struct rt_seq_impl
 {
-    int64_t len;  ///< Number of elements currently in the sequence
-    int64_t cap;  ///< Current capacity (allocated slots)
-    void **items; ///< Array of element pointers
+    int64_t len;           ///< Number of elements currently in the sequence
+    int64_t cap;           ///< Current capacity (allocated slots)
+    void **items;          ///< Array of element pointers
+    int8_t owns_elements;  ///< 1 = retain on push, release on finalize/clear
 } rt_seq_impl;
 
 /// @brief Finalizer callback invoked when a Seq is garbage collected.
@@ -97,11 +101,25 @@ typedef struct rt_seq_impl
 /// @note This function is idempotent - safe to call on already-finalized seqs.
 ///
 /// @see rt_seq_clear For removing elements without finalization
+/// @brief Release a single element via the object API (safe for strings and objects).
+static void seq_release_element(void *val)
+{
+    if (!val)
+        return;
+    if (rt_obj_release_check0(val))
+        rt_obj_free(val);
+}
+
 static void rt_seq_finalize(void *obj)
 {
     if (!obj)
         return;
     rt_seq_impl *seq = (rt_seq_impl *)obj;
+    if (seq->owns_elements && seq->items)
+    {
+        for (int64_t i = 0; i < seq->len; i++)
+            seq_release_element(seq->items[i]);
+    }
     free(seq->items);
     seq->items = NULL;
     seq->len = 0;
@@ -183,7 +201,7 @@ static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed)
 /// @see rt_seq_finalize For cleanup behavior
 void *rt_seq_new(void)
 {
-    rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_seq_impl));
+    rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(RT_SEQ_CLASS_ID, (int64_t)sizeof(rt_seq_impl));
     if (!seq)
     {
         rt_trap("Seq: memory allocation failed");
@@ -240,7 +258,7 @@ void *rt_seq_with_capacity(int64_t cap)
     if (cap < 1)
         cap = 1;
 
-    rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_seq_impl));
+    rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(RT_SEQ_CLASS_ID, (int64_t)sizeof(rt_seq_impl));
     if (!seq)
     {
         rt_trap("Seq: memory allocation failed");
@@ -259,6 +277,24 @@ void *rt_seq_with_capacity(int64_t cap)
     }
 
     return seq;
+}
+
+/// @brief Enable or disable element ownership for a Seq.
+///
+/// When owns_elements=1, the Seq retains elements on push/set and releases
+/// them on clear/finalize. When owns_elements=0 (default), the Seq stores
+/// raw pointers and the caller manages element lifetime.
+///
+/// @param obj Pointer to a Seq object. Must not be NULL.
+/// @param owns 1 to enable ownership, 0 to disable.
+///
+/// @note Must be called before any elements are pushed. Changing ownership
+///       mode on a non-empty Seq may cause leaks or double-frees.
+void rt_seq_set_owns_elements(void *obj, int8_t owns)
+{
+    if (!obj)
+        return;
+    ((rt_seq_impl *)obj)->owns_elements = owns;
 }
 
 /// @brief Returns the number of elements currently in the Seq.
@@ -427,6 +463,12 @@ void rt_seq_set(void *obj, int64_t idx, void *val)
         rt_trap("Seq.Set: index out of bounds");
     }
 
+    if (seq->owns_elements)
+    {
+        if (val)
+            rt_obj_retain_maybe(val);
+        seq_release_element(seq->items[idx]);
+    }
     seq->items[idx] = val;
 }
 
@@ -463,6 +505,20 @@ void rt_seq_set(void *obj, int64_t idx, void *val)
 /// @see rt_seq_insert For inserting at arbitrary positions
 /// @see rt_seq_push_all For appending multiple elements
 void rt_seq_push(void *obj, void *val)
+{
+    if (!obj)
+        rt_trap("Seq.Push: null sequence");
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    seq_ensure_capacity(seq, seq->len + 1);
+    if (seq->owns_elements && val)
+        rt_obj_retain_maybe(val);
+    seq->items[seq->len] = val;
+    seq->len++;
+}
+
+void rt_seq_push_raw(void *obj, void *val)
 {
     if (!obj)
         rt_trap("Seq.Push: null sequence");
@@ -532,12 +588,24 @@ void rt_seq_push_all(void *obj, void *other)
         int64_t original_len = seq->len;
         seq_ensure_capacity(seq, original_len + original_len);
         memcpy(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
+        if (seq->owns_elements)
+        {
+            for (int64_t i = 0; i < original_len; i++)
+                if (seq->items[i])
+                    rt_obj_retain_maybe(seq->items[i]);
+        }
         seq->len = original_len + original_len;
         return;
     }
 
     seq_ensure_capacity(seq, seq->len + src->len);
     memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
+    if (seq->owns_elements)
+    {
+        for (int64_t i = 0; i < src->len; i++)
+            if (src->items[i])
+                rt_obj_retain_maybe(src->items[i]);
+    }
     seq->len += src->len;
 }
 
@@ -784,6 +852,8 @@ void rt_seq_insert(void *obj, int64_t idx, void *val)
         memmove(&seq->items[idx + 1], &seq->items[idx], (size_t)(seq->len - idx) * sizeof(void *));
     }
 
+    if (seq->owns_elements && val)
+        rt_obj_retain_maybe(val);
     seq->items[idx] = val;
     seq->len++;
 }
@@ -887,7 +957,13 @@ void rt_seq_clear(void *obj)
 {
     if (!obj)
         return;
-    ((rt_seq_impl *)obj)->len = 0;
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    if (seq->owns_elements && seq->items)
+    {
+        for (int64_t i = 0; i < seq->len; i++)
+            seq_release_element(seq->items[i]);
+    }
+    seq->len = 0;
 }
 
 /// @brief Finds the first occurrence of an element in the Seq.

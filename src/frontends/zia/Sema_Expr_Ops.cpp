@@ -39,6 +39,27 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                 // String concatenation
                 return types::string();
             }
+
+            // W010: Division by zero — check for literal zero divisor
+            if ((expr->op == BinaryOp::Div || expr->op == BinaryOp::Mod) &&
+                leftType->isNumeric() && rightType->isNumeric())
+            {
+                if (expr->right->kind == ExprKind::IntLiteral)
+                {
+                    auto *lit = static_cast<IntLiteralExpr *>(expr->right.get());
+                    if (lit->value == 0)
+                        warn(WarningCode::W010_DivisionByZero, expr->loc,
+                             "Division by zero");
+                }
+                else if (expr->right->kind == ExprKind::NumberLiteral)
+                {
+                    auto *lit = static_cast<NumberLiteralExpr *>(expr->right.get());
+                    if (lit->value == 0.0)
+                        warn(WarningCode::W010_DivisionByZero, expr->loc,
+                             "Division by zero");
+                }
+            }
+
             if (leftType->isNumeric() && rightType->isNumeric())
             {
                 // Return wider type
@@ -55,6 +76,29 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
         case BinaryOp::Le:
         case BinaryOp::Gt:
         case BinaryOp::Ge:
+            // W005: Float equality — comparing floats with == or != is unreliable
+            if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
+                leftType->kind == TypeKindSem::Number && rightType->kind == TypeKindSem::Number)
+            {
+                warn(WarningCode::W005_FloatEquality, expr->loc,
+                     "Comparing floating-point values with " +
+                         std::string(expr->op == BinaryOp::Eq ? "==" : "!=") +
+                         " is unreliable; consider using an epsilon threshold");
+            }
+
+            // W011: Redundant bool comparison (e.g., `flag == true`, `b != false`)
+            if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
+                (leftType->kind == TypeKindSem::Boolean || rightType->kind == TypeKindSem::Boolean))
+            {
+                bool leftIsBoolLit = (expr->left->kind == ExprKind::BoolLiteral);
+                bool rightIsBoolLit = (expr->right->kind == ExprKind::BoolLiteral);
+                if (leftIsBoolLit || rightIsBoolLit)
+                {
+                    warn(WarningCode::W011_RedundantBoolComparison, expr->loc,
+                         "Redundant comparison with Boolean literal; use the expression directly");
+                }
+            }
+
             // Comparison operations
             return types::boolean();
 
@@ -78,6 +122,18 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
             return types::integer();
 
         case BinaryOp::Assign:
+            // W009: Self-assignment (e.g., `x = x`)
+            if (expr->left->kind == ExprKind::Ident && expr->right->kind == ExprKind::Ident)
+            {
+                auto *lhs = static_cast<IdentExpr *>(expr->left.get());
+                auto *rhs = static_cast<IdentExpr *>(expr->right.get());
+                if (lhs->name == rhs->name)
+                {
+                    warn(WarningCode::W009_SelfAssignment, expr->loc,
+                         "Self-assignment of '" + lhs->name + "' has no effect");
+                }
+            }
+
             // Assignment - LHS must be assignable, types must be compatible
             if (!rightType->isConvertibleTo(*leftType))
             {

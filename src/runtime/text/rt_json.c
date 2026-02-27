@@ -872,84 +872,68 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
         return;
     }
 
-    // Distinguish between boxes and collections using allocation size.
-    // The heap header stores the payload size:
-    // - rt_box_t = 16 bytes (tag + union)
-    // - rt_seq_impl = 24 bytes (len + cap + items pointer)
-    // - rt_map_impl = 32 bytes (vptr + buckets + capacity + count)
-    //
-    // This is more reliable than checking the first field (which would be
-    // box.tag, seq.len, or map.vptr - all potentially overlapping values).
+    // Distinguish between boxes and collections using the heap header's
+    // class_id field. Seq objects have RT_SEQ_CLASS_ID (2), Map objects have
+    // RT_MAP_CLASS_ID (3), and boxed primitives have class_id 0.
 
     rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
     if (hdr && hdr->magic == RT_MAGIC)
     {
-        size_t obj_size = hdr->len;
-
-        // Box is exactly 16 bytes (sizeof(rt_box_t))
-        if (obj_size == 16)
-        {
-            // This is a box - check its type
-            int64_t box_type = rt_box_type(obj);
-
-            if (box_type == RT_BOX_I64)
-            {
-                int64_t val = rt_unbox_i64(obj);
-                char buf[32];
-                snprintf(buf, sizeof(buf), "%lld", (long long)val);
-                sb_append(sb, buf);
-                return;
-            }
-
-            if (box_type == RT_BOX_F64)
-            {
-                double val = rt_unbox_f64(obj);
-                if (isnan(val))
-                {
-                    sb_append(sb, "null");
-                    return;
-                }
-                if (isinf(val))
-                {
-                    sb_append(sb, "null");
-                    return;
-                }
-                char buf[64];
-                snprintf(buf, sizeof(buf), "%.17g", val);
-                sb_append(sb, buf);
-                return;
-            }
-
-            if (box_type == RT_BOX_I1)
-            {
-                int8_t val = rt_unbox_i1(obj);
-                sb_append(sb, val ? "true" : "false");
-                return;
-            }
-
-            if (box_type == RT_BOX_STR)
-            {
-                rt_string str = rt_unbox_str(obj);
-                format_string(sb, str);
-                return;
-            }
-
-            // Unknown box type - format as null
-            sb_append(sb, "null");
-            return;
-        }
-
-        // Seq is 24 bytes
-        if (obj_size == 24)
+        // Check collection types by class_id first
+        if (hdr->class_id == RT_SEQ_CLASS_ID)
         {
             format_array(sb, obj, indent, level);
             return;
         }
 
-        // Map is 32 bytes
-        if (obj_size == 32)
+        if (hdr->class_id == RT_MAP_CLASS_ID)
         {
             format_object(sb, obj, indent, level);
+            return;
+        }
+
+        // Box (class_id == 0) - check its type tag
+        int64_t box_type = rt_box_type(obj);
+
+        if (box_type == RT_BOX_I64)
+        {
+            int64_t val = rt_unbox_i64(obj);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%lld", (long long)val);
+            sb_append(sb, buf);
+            return;
+        }
+
+        if (box_type == RT_BOX_F64)
+        {
+            double val = rt_unbox_f64(obj);
+            if (isnan(val))
+            {
+                sb_append(sb, "null");
+                return;
+            }
+            if (isinf(val))
+            {
+                sb_append(sb, "null");
+                return;
+            }
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%.17g", val);
+            sb_append(sb, buf);
+            return;
+        }
+
+        if (box_type == RT_BOX_I1)
+        {
+            int8_t val = rt_unbox_i1(obj);
+            sb_append(sb, val ? "true" : "false");
+            return;
+        }
+
+        if (box_type == RT_BOX_STR)
+        {
+            rt_string str = rt_unbox_str(obj);
+            format_string(sb, str);
             return;
         }
     }
@@ -1445,31 +1429,24 @@ rt_string rt_json_type_of(void *obj)
     if (rt_string_is_handle(obj))
         return rt_string_from_bytes("string", 6);
 
-    // Use allocation size to distinguish between boxes and collections
+    // Use class_id to distinguish between collections and boxes
     rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
     if (hdr && hdr->magic == RT_MAGIC)
     {
-        size_t obj_size = hdr->len;
-
-        // Box is 16 bytes
-        if (obj_size == 16)
-        {
-            int64_t box_type = rt_box_type(obj);
-            if (box_type == RT_BOX_I64 || box_type == RT_BOX_F64)
-                return rt_string_from_bytes("number", 6);
-            if (box_type == RT_BOX_I1)
-                return rt_string_from_bytes("boolean", 7);
-            if (box_type == RT_BOX_STR)
-                return rt_string_from_bytes("string", 6);
-        }
-
-        // Seq is 24 bytes
-        if (obj_size == 24)
+        if (hdr->class_id == RT_SEQ_CLASS_ID)
             return rt_string_from_bytes("array", 5);
 
-        // Map is 32 bytes
-        if (obj_size == 32)
+        if (hdr->class_id == RT_MAP_CLASS_ID)
             return rt_string_from_bytes("object", 6);
+
+        // Box (class_id == 0) - check type tag
+        int64_t box_type = rt_box_type(obj);
+        if (box_type == RT_BOX_I64 || box_type == RT_BOX_F64)
+            return rt_string_from_bytes("number", 6);
+        if (box_type == RT_BOX_I1)
+            return rt_string_from_bytes("boolean", 7);
+        if (box_type == RT_BOX_STR)
+            return rt_string_from_bytes("string", 6);
     }
 
     return rt_string_from_bytes("unknown", 7);

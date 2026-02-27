@@ -40,6 +40,13 @@ void Sema::analyzeBind(BindDecl &decl)
         return;
     }
 
+    // W012: Duplicate import
+    if (binds_.count(decl.path))
+    {
+        warn(WarningCode::W012_DuplicateImport, decl.loc,
+             "Duplicate import of '" + decl.path + "'");
+    }
+
     // Handle file binds (existing logic)
     binds_.insert(decl.path);
 
@@ -742,6 +749,17 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
     if (decl.body)
     {
         analyzeStmt(decl.body.get());
+
+        // W008: Missing return in non-void function
+        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void)
+        {
+            if (!stmtAlwaysExits(decl.body.get()))
+            {
+                warn(WarningCode::W008_MissingReturn, decl.loc,
+                     "Function '" + decl.name +
+                         "' may not return a value on all code paths");
+            }
+        }
     }
 
     popScope();
@@ -836,6 +854,17 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
     if (decl.body)
     {
         analyzeStmt(decl.body.get());
+
+        // W008: Missing return in non-void method
+        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void)
+        {
+            if (!stmtAlwaysExits(decl.body.get()))
+            {
+                warn(WarningCode::W008_MissingReturn, decl.loc,
+                     "Method '" + decl.name +
+                         "' may not return a value on all code paths");
+            }
+        }
     }
 
     popScope();

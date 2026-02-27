@@ -97,6 +97,16 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value)
     return emitBinary(Opcode::And, Type(Type::Kind::I64), loaded, Value::constInt(0xFFFFFFFFLL));
 }
 
+/// @brief Check if a string-returning call returns a borrowed reference.
+/// @details These functions return pointers into existing data structures
+///          rather than newly allocated strings. Releasing them would cause
+///          dangling pointers in the owning collection.
+static bool isBorrowedStringCall(const std::string &callee)
+{
+    return callee == kSeqGetStr ||     // raw pointer into Seq
+           callee == kUnboxStr;        // pointer into Box
+}
+
 Lowerer::Value Lowerer::emitCallRet(Type retTy,
                                     const std::string &callee,
                                     const std::vector<Value> &args)
@@ -111,7 +121,15 @@ Lowerer::Value Lowerer::emitCallRet(Type retTy,
     instr.operands = args;
     instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
-    return Value::temp(id);
+
+    Value result = Value::temp(id);
+
+    // Auto-track string-returning calls for deferred release at statement
+    // boundary. Excludes borrowed-reference calls (getters/unboxers).
+    if (retTy.kind == Type::Kind::Str && !isBorrowedStringCall(callee))
+        deferRelease(result, /*isString=*/true);
+
+    return result;
 }
 
 void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
@@ -744,5 +762,80 @@ bool Lowerer::equalsIgnoreCase(const std::string &a, const std::string &b)
     return true;
 }
 
+
+//=============================================================================
+// Deferred Release (Automatic Memory Management)
+//=============================================================================
+
+bool Lowerer::needsRelease(TypeRef type) const
+{
+    if (!type)
+        return false;
+    switch (type->kind)
+    {
+        case TypeKindSem::String:
+        case TypeKindSem::Entity:
+        case TypeKindSem::List:
+        case TypeKindSem::Map:
+        case TypeKindSem::Set:
+            return true;
+        // Ptr with a non-empty name is likely a runtime class (Seq, etc.)
+        case TypeKindSem::Ptr:
+            return !type->name.empty();
+        default:
+            return false;
+    }
+}
+
+bool Lowerer::isStringType(TypeRef type) const
+{
+    return type && type->kind == TypeKindSem::String;
+}
+
+void Lowerer::deferRelease(Value v, bool isString)
+{
+    deferredTemps_.push_back({v, isString, blockMgr_.currentBlockIndex()});
+}
+
+void Lowerer::consumeDeferred(Value v)
+{
+    if (v.kind != Value::Kind::Temp)
+        return;
+
+    // Remove the LAST matching entry (most recently deferred)
+    for (auto it = deferredTemps_.rbegin(); it != deferredTemps_.rend(); ++it)
+    {
+        if (it->value.kind == Value::Kind::Temp && it->value.id == v.id)
+        {
+            // Convert reverse iterator to forward iterator for erase
+            deferredTemps_.erase(std::next(it).base());
+            return;
+        }
+    }
+}
+
+void Lowerer::releaseDeferredTemps()
+{
+    if (deferredTemps_.empty() || isTerminated())
+    {
+        deferredTemps_.clear();
+        return;
+    }
+
+    // Only release temps defined in the current block (SSA scoping).
+    // Temps from other blocks cannot be referenced here without violating SSA;
+    // they are dropped (accepted leak — the proper fix is spilling to alloca).
+    size_t curBlock = blockMgr_.currentBlockIndex();
+    for (auto &t : deferredTemps_)
+    {
+        if (t.blockIdx != curBlock)
+            continue;
+        if (t.isString)
+            emitCall(kStrReleaseMaybe, {t.value});
+        else
+            emitCallRet(Type(Type::Kind::I64), kHeapRelease, {t.value});
+    }
+    deferredTemps_.clear();
+}
 
 } // namespace il::frontends::zia

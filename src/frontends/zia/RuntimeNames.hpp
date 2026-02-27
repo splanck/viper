@@ -299,4 +299,21 @@ inline constexpr const char *kRtObjClassId = "rt_obj_class_id";
 
 /// @}
 
+//=============================================================================
+/// @name Memory Management Aliases
+/// @brief Short names for Viper.Memory retain/release functions.
+/// @{
+//=============================================================================
+
+/// @brief Increment reference count of a heap object.
+inline constexpr const char *kHeapRetain = kMemoryRetain;
+/// @brief Decrement reference count; free when it reaches zero.
+inline constexpr const char *kHeapRelease = kMemoryRelease;
+/// @brief Release a string if it's heap-allocated (no-op for static/interned).
+/// @details Uses the C function name directly because it's already registered
+///          in RuntimeSignatures.cpp (not via runtime.def's mangled name).
+inline constexpr const char *kStrReleaseMaybe = "rt_str_release_maybe";
+
+/// @}
+
 } // namespace il::frontends::zia::runtime

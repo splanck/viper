@@ -15,6 +15,7 @@
 #include "cli.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "frontends/zia/Compiler.hpp"
+#include "frontends/zia/Warnings.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/transform/PassManager.hpp"
 #include "support/diag_expected.hpp"
@@ -238,6 +239,15 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
     opts.dumpIL = shared.dumpIL;
     opts.dumpILOpt = shared.dumpILOpt;
     opts.dumpILPasses = shared.dumpILPasses;
+
+    // Warning policy from CLI flags
+    opts.warningPolicy.enableAll = shared.wall;
+    opts.warningPolicy.warningsAsErrors = shared.werror;
+    for (const auto &w : shared.disabledWarnings)
+    {
+        if (auto code = il::frontends::zia::parseWarningCode(w))
+            opts.warningPolicy.disabled.insert(*code);
+    }
 
     if (project.optimizeLevel == "O0")
         opts.optLevel = il::frontends::zia::OptLevel::O0;

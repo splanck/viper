@@ -18,6 +18,7 @@
 #include "viper/vm/debug/Debug.hpp"
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace il::support
 {
@@ -62,6 +63,15 @@ struct SharedCliOptions
 
     /// @brief Dump IL before and after each optimization pass.
     bool dumpILPasses = false;
+
+    /// @brief Enable all warnings (corresponds to `-Wall`).
+    bool wall = false;
+
+    /// @brief Treat warnings as errors (corresponds to `-Werror`).
+    bool werror = false;
+
+    /// @brief Warning codes/names disabled via `-Wno-XXX`.
+    std::vector<std::string> disabledWarnings;
 };
 
 /// @brief Result of attempting to parse a shared CLI option.

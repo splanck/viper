@@ -16,6 +16,7 @@
 
 #include "cli.hpp"
 #include "frontends/zia/Compiler.hpp"
+#include "frontends/zia/Warnings.hpp"
 #include "il/api/expected_api.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
@@ -146,6 +147,15 @@ int runFrontZia(const FrontZiaConfig &config,
     compilerOpts.dumpIL = config.shared.dumpIL;
     compilerOpts.dumpILOpt = config.shared.dumpILOpt;
     compilerOpts.dumpILPasses = config.shared.dumpILPasses;
+
+    // Warning policy from CLI flags
+    compilerOpts.warningPolicy.enableAll = config.shared.wall;
+    compilerOpts.warningPolicy.warningsAsErrors = config.shared.werror;
+    for (const auto &w : config.shared.disabledWarnings)
+    {
+        if (auto code = parseWarningCode(w))
+            compilerOpts.warningPolicy.disabled.insert(*code);
+    }
 
     auto result = compile(compilerInput, compilerOpts, sm);
 

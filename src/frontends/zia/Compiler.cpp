@@ -165,6 +165,7 @@ CompilerResult compile(const CompilerInput &input,
     debugTime("Phase 3: Semantic Analysis");
     // Phase 3: Semantic Analysis
     Sema sema(result.diagnostics);
+    sema.initWarnings(options.warningPolicy, input.source);
     bool semanticOk = sema.analyze(*module);
 
     // Dump AST after semantic analysis.

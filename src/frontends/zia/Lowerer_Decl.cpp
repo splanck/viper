@@ -586,6 +586,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     locals_.clear();
     slots_.clear();
     localTypes_.clear();
+    deferredTemps_.clear();
 
     // Create entry block with the function's params as block params
     // (required for proper VM argument passing)
@@ -713,6 +714,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, 
     locals_.clear();
     slots_.clear();
     localTypes_.clear();
+    deferredTemps_.clear();
 
     // Create entry block with the function's params as block params
     builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
@@ -1153,6 +1155,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     locals_.clear();
     slots_.clear();
     localTypes_.clear();
+    deferredTemps_.clear();
 
     // Create entry block with the function's params as block params
     // (required for proper VM argument passing)

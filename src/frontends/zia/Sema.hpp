@@ -89,6 +89,8 @@
 
 #include "frontends/zia/AST.hpp"
 #include "frontends/zia/Types.hpp"
+#include "frontends/zia/Warnings.hpp"
+#include "frontends/zia/WarningSuppressions.hpp"
 #include "support/diagnostics.hpp"
 #include <map>
 #include <memory>
@@ -153,6 +155,11 @@ struct Symbol
     /// @details For functions in the Viper.* namespace, this is true.
     /// The lowerer uses this to emit extern calls instead of direct calls.
     bool isExtern{false};
+
+    /// @brief Whether this symbol has been referenced (read) in the source.
+    /// @details Used by W001 (unused-variable) to detect variables that are
+    /// declared but never read. Set to true by Sema::analyzeIdent() on lookup.
+    bool used{false};
 
     /// @brief Pointer to the AST declaration node.
     /// @details May be nullptr for built-in symbols or extern functions.
@@ -233,7 +240,7 @@ class Scope
 
     /// @brief Get all symbols defined in this scope (not ancestors).
     /// @return Const reference to the symbols map.
-    /// @details Used by completion tools to enumerate available symbols.
+    /// @details Used by completion tools and unused-variable checks.
     const std::unordered_map<std::string, Symbol> &getSymbols() const
     {
         return symbols_;
@@ -297,6 +304,13 @@ class Sema
     /// functions. The diagnostic engine is borrowed and must outlive the
     /// analyzer.
     explicit Sema(il::support::DiagnosticEngine &diag);
+
+    /// @brief Initialize warning infrastructure with a policy and source text.
+    /// @param policy Warning policy controlling which warnings are enabled.
+    /// @param source Full source text for scanning @suppress directives.
+    /// @details Must be called before analyze() for warning support. If not
+    ///          called, warnings use the default policy (conservative set).
+    void initWarnings(const WarningPolicy &policy, std::string_view source);
 
     /// @brief Analyze a module declaration.
     /// @param module The parsed module to analyze.
@@ -1141,10 +1155,18 @@ class Sema
     /// @{
     //=========================================================================
 
-    /// @brief Report a semantic warning.
+    /// @brief Report a semantic warning (legacy, uses generic V3001 code).
     /// @param loc Source location of the warning.
     /// @param message Warning message.
     void warning(SourceLoc loc, const std::string &message);
+
+    /// @brief Report a coded semantic warning with policy and suppression checks.
+    /// @param code The warning code (e.g., W001_UnusedVariable).
+    /// @param loc Source location of the warning.
+    /// @param message Warning message.
+    /// @details Checks the warning policy (enabled/disabled, -Wall, -Wno-XXX),
+    ///          inline suppression pragmas, and -Werror before emitting.
+    void warn(WarningCode code, SourceLoc loc, const std::string &message);
 
     /// @brief Report a semantic error.
     /// @param loc Source location of the error.
@@ -1179,6 +1201,32 @@ class Sema
     /// @}
     //=========================================================================
     /// @name Member Variables
+    /// @{
+    //=========================================================================
+
+    /// @brief Check for unused variables in the given scope and emit W001 warnings.
+    /// @param scope The scope to check for unused symbols.
+    /// @details Called from popScope() for function-level scopes. Warns for
+    ///          Variable and Parameter symbols that were never referenced.
+    ///          Skips symbols named "_" (conventional discard name).
+    void checkUnusedVariables(const Scope &scope);
+
+    /// @}
+    //=========================================================================
+    /// @name Warning Infrastructure
+    /// @{
+    //=========================================================================
+
+    /// @brief Warning policy controlling which warnings are enabled.
+    /// @details Null until initWarnings() is called; warn() uses default policy.
+    const WarningPolicy *warningPolicy_{nullptr};
+
+    /// @brief Source-level warning suppressions from @suppress comments.
+    WarningSuppressions suppressions_;
+
+    /// @}
+    //=========================================================================
+    /// @name Core State
     /// @{
     //=========================================================================
 

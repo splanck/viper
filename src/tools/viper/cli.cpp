@@ -126,6 +126,21 @@ SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, Sha
         opts.dumpILPasses = true;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "-Wall")
+    {
+        opts.wall = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "-Werror")
+    {
+        opts.werror = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg.substr(0, 5) == "-Wno-" && arg.size() > 5)
+    {
+        opts.disabledWarnings.emplace_back(arg.substr(5));
+        return SharedOptionParseResult::Parsed;
+    }
     return SharedOptionParseResult::NotMatched;
 }
 
